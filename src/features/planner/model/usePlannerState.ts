@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react'
 import type {
   NewTaskInput,
   Task,
+  TaskScheduleInput,
   TaskStatus,
 } from '@/entities/task'
 import {
   addTask as addTaskToList,
   removeTask as removeTaskFromList,
   setTaskPlannedDate as setTaskPlannedDateInList,
+  setTaskSchedule as setTaskScheduleInList,
   setTaskStatus as setTaskStatusInList,
   sortTasks,
 } from '@/entities/task'
@@ -39,6 +41,12 @@ export function usePlannerState(): PlannerState {
     )
   }
 
+  function setTaskSchedule(taskId: string, schedule: TaskScheduleInput) {
+    setTasks((currentTasks) =>
+      setTaskScheduleInList(currentTasks, taskId, schedule),
+    )
+  }
+
   function removeTask(taskId: string) {
     setTasks((currentTasks) => removeTaskFromList(currentTasks, taskId))
   }
@@ -48,6 +56,7 @@ export function usePlannerState(): PlannerState {
     addTask,
     setTaskStatus,
     setTaskPlannedDate,
+    setTaskSchedule,
     removeTask,
   }
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, getDateKey, isBeforeDate } from './date'
+import { addDays, formatTimeRange, getDateKey, isBeforeDate } from './date'
 
 describe('date helpers', () => {
   it('creates a stable date key', () => {
@@ -18,5 +18,10 @@ describe('date helpers', () => {
   it('compares date keys lexicographically', () => {
     expect(isBeforeDate('2026-04-14', '2026-04-15')).toBe(true)
     expect(isBeforeDate('2026-04-15', '2026-04-15')).toBe(false)
+  })
+
+  it('formats timeline ranges', () => {
+    expect(formatTimeRange('9:00', null)).toBe('09:00')
+    expect(formatTimeRange('09:00', '10:30')).toBe('09:00 - 10:30')
   })
 })

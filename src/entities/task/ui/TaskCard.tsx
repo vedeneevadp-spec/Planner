@@ -1,7 +1,12 @@
+import type { Task, TaskStatus } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
-import { addDays, formatShortDate, getDateKey } from '@/shared/lib/date'
+import {
+  addDays,
+  formatShortDate,
+  formatTimeRange,
+  getDateKey,
+} from '@/shared/lib/date'
 
-import type { Task, TaskStatus } from '../model/task.types'
 import styles from './TaskCard.module.css'
 
 interface TaskCardProps {
@@ -39,6 +44,11 @@ export function TaskCard({
         <div className={styles.meta}>
           {task.project ? (
             <span className={styles.metaChip}>{task.project}</span>
+          ) : null}
+          {task.plannedStartTime ? (
+            <span className={styles.metaChip}>
+              Time {formatTimeRange(task.plannedStartTime, task.plannedEndTime)}
+            </span>
           ) : null}
           {task.plannedDate ? (
             <span className={styles.metaChip}>

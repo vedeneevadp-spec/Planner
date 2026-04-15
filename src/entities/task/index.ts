@@ -1,5 +1,7 @@
+export type { TaskScheduleInput, TimelineTaskLayout } from './model/planner'
 export {
   addTask,
+  buildTimelineLayout,
   getPlannerSummary,
   groupTasksByProject,
   removeTask,
@@ -7,9 +9,12 @@ export {
   selectDoneTodayTasks,
   selectInboxTasks,
   selectOverdueTasks,
+  selectPlannedTasks,
+  selectTimedTasks,
   selectTodayTasks,
   selectTodoTasks,
   setTaskPlannedDate,
+  setTaskSchedule,
   setTaskStatus,
   sortTasks,
 } from './model/planner'

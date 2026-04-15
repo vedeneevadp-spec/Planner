@@ -2,9 +2,25 @@ import { getDateKey, isBeforeDate } from '@/shared/lib/date'
 
 import type { NewTaskInput, Task, TaskStatus } from './task.types'
 
+const DEFAULT_TIMELINE_DURATION_MINUTES = 60
+
 export interface AddTaskOptions {
   now?: string
   createId?: () => string
+}
+
+export interface TaskScheduleInput {
+  plannedDate: string | null
+  plannedStartTime: string | null
+  plannedEndTime: string | null
+}
+
+export interface TimelineTaskLayout {
+  task: Task
+  startMinutes: number
+  endMinutes: number
+  column: number
+  columns: number
 }
 
 export interface PlannerSummary {
@@ -13,6 +29,7 @@ export interface PlannerSummary {
   overdueCount: number
   doneTodayCount: number
   projectCount: number
+  timelineCount: number
 }
 
 function createTaskId(): string {
@@ -21,6 +38,124 @@ function createTaskId(): string {
   }
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function normalizeTaskSchedule({
+  plannedDate,
+  plannedStartTime,
+  plannedEndTime,
+}: TaskScheduleInput): TaskScheduleInput {
+  if (!plannedDate) {
+    return {
+      plannedDate: null,
+      plannedStartTime: null,
+      plannedEndTime: null,
+    }
+  }
+
+  if (!plannedStartTime) {
+    return {
+      plannedDate,
+      plannedStartTime: null,
+      plannedEndTime: null,
+    }
+  }
+
+  if (!plannedEndTime || plannedEndTime <= plannedStartTime) {
+    return {
+      plannedDate,
+      plannedStartTime,
+      plannedEndTime: null,
+    }
+  }
+
+  return {
+    plannedDate,
+    plannedStartTime,
+    plannedEndTime,
+  }
+}
+
+function compareOptionalTime(
+  left: string | null,
+  right: string | null,
+): number {
+  if (left === right) {
+    return 0
+  }
+
+  if (left === null) {
+    return 1
+  }
+
+  if (right === null) {
+    return -1
+  }
+
+  return left < right ? -1 : 1
+}
+
+function parseTimeKey(value: string): number {
+  const [hoursRaw, minutesRaw] = value.split(':')
+  const hours = Number(hoursRaw)
+  const minutes = Number(minutesRaw)
+
+  return hours * 60 + minutes
+}
+
+function getTimelineEndMinutes(task: Task): number | null {
+  if (!task.plannedStartTime) {
+    return null
+  }
+
+  const startMinutes = parseTimeKey(task.plannedStartTime)
+  const rawEndMinutes = task.plannedEndTime
+    ? parseTimeKey(task.plannedEndTime)
+    : Math.min(startMinutes + DEFAULT_TIMELINE_DURATION_MINUTES, 24 * 60)
+
+  if (rawEndMinutes <= startMinutes) {
+    return Math.min(startMinutes + DEFAULT_TIMELINE_DURATION_MINUTES, 24 * 60)
+  }
+
+  return rawEndMinutes
+}
+
+function finalizeTimelineGroup(
+  group: TimelineTaskLayout[],
+): TimelineTaskLayout[] {
+  if (group.length === 0) {
+    return []
+  }
+
+  const activeColumns: Array<{ column: number; endMinutes: number }> = []
+  let maxColumns = 1
+
+  for (const entry of group) {
+    for (let index = activeColumns.length - 1; index >= 0; index -= 1) {
+      if (activeColumns[index]!.endMinutes <= entry.startMinutes) {
+        activeColumns.splice(index, 1)
+      }
+    }
+
+    const occupiedColumns = new Set(activeColumns.map((item) => item.column))
+    let nextColumn = 0
+
+    while (occupiedColumns.has(nextColumn)) {
+      nextColumn += 1
+    }
+
+    entry.column = nextColumn
+    activeColumns.push({
+      column: nextColumn,
+      endMinutes: entry.endMinutes,
+    })
+    maxColumns = Math.max(maxColumns, activeColumns.length)
+  }
+
+  return group.map((entry) => ({
+    ...entry,
+    columns: maxColumns,
+  }))
 }
 
 export function sortTasks(tasks: Task[]): Task[] {
@@ -34,6 +169,15 @@ export function sortTasks(tasks: Task[]): Task[] {
 
     if (leftAnchor !== rightAnchor) {
       return leftAnchor < rightAnchor ? -1 : 1
+    }
+
+    const timeComparison = compareOptionalTime(
+      left.plannedStartTime,
+      right.plannedStartTime,
+    )
+
+    if (timeComparison !== 0) {
+      return timeComparison
     }
 
     if (left.createdAt === right.createdAt) {
@@ -51,13 +195,20 @@ export function addTask(
 ): Task[] {
   const now = options.now ?? new Date().toISOString()
   const createId = options.createId ?? createTaskId
+  const schedule = normalizeTaskSchedule({
+    plannedDate: input.plannedDate,
+    plannedStartTime: input.plannedStartTime,
+    plannedEndTime: input.plannedEndTime,
+  })
   const task: Task = {
     id: createId(),
     title: input.title.trim(),
     note: input.note.trim(),
     project: input.project.trim(),
     status: 'todo',
-    plannedDate: input.plannedDate,
+    plannedDate: schedule.plannedDate,
+    plannedStartTime: schedule.plannedStartTime,
+    plannedEndTime: schedule.plannedEndTime,
     dueDate: input.dueDate,
     createdAt: now,
     completedAt: null,
@@ -93,11 +244,36 @@ export function setTaskPlannedDate(
   plannedDate: string | null,
 ): Task[] {
   return sortTasks(
+    tasks.map((task) => {
+      if (task.id !== taskId) {
+        return task
+      }
+
+      return {
+        ...task,
+        ...normalizeTaskSchedule({
+          plannedDate,
+          plannedStartTime: plannedDate ? task.plannedStartTime : null,
+          plannedEndTime: plannedDate ? task.plannedEndTime : null,
+        }),
+      }
+    }),
+  )
+}
+
+export function setTaskSchedule(
+  tasks: Task[],
+  taskId: string,
+  schedule: TaskScheduleInput,
+): Task[] {
+  const normalizedSchedule = normalizeTaskSchedule(schedule)
+
+  return sortTasks(
     tasks.map((task) =>
       task.id === taskId
         ? {
             ...task,
-            plannedDate,
+            ...normalizedSchedule,
           }
         : task,
     ),
@@ -120,6 +296,16 @@ export function selectTodayTasks(tasks: Task[], todayKey: string): Task[] {
   return selectTodoTasks(tasks).filter((task) => task.plannedDate === todayKey)
 }
 
+export function selectPlannedTasks(tasks: Task[], dateKey: string): Task[] {
+  return selectTodoTasks(tasks).filter((task) => task.plannedDate === dateKey)
+}
+
+export function selectTimedTasks(tasks: Task[], dateKey: string): Task[] {
+  return selectPlannedTasks(tasks, dateKey).filter(
+    (task) => task.plannedStartTime !== null,
+  )
+}
+
 export function selectOverdueTasks(tasks: Task[], todayKey: string): Task[] {
   return selectTodoTasks(tasks).filter(
     (task) =>
@@ -137,6 +323,67 @@ export function selectDoneTodayTasks(tasks: Task[], todayKey: string): Task[] {
       task.completedAt !== null &&
       getDateKey(new Date(task.completedAt)) === todayKey,
   )
+}
+
+export function buildTimelineLayout(
+  tasks: Task[],
+  dateKey: string,
+): TimelineTaskLayout[] {
+  const scheduledEntries = selectTimedTasks(tasks, dateKey)
+    .map((task) => {
+      const startMinutes = parseTimeKey(task.plannedStartTime!)
+      const endMinutes = getTimelineEndMinutes(task)
+
+      if (endMinutes === null) {
+        return null
+      }
+
+      return {
+        task,
+        startMinutes,
+        endMinutes,
+        column: 0,
+        columns: 1,
+      }
+    })
+    .filter((entry): entry is TimelineTaskLayout => entry !== null)
+    .sort((left, right) => {
+      if (left.startMinutes !== right.startMinutes) {
+        return left.startMinutes - right.startMinutes
+      }
+
+      if (left.endMinutes !== right.endMinutes) {
+        return left.endMinutes - right.endMinutes
+      }
+
+      if (left.task.createdAt === right.task.createdAt) {
+        return 0
+      }
+
+      return left.task.createdAt < right.task.createdAt ? -1 : 1
+    })
+
+  const layout: TimelineTaskLayout[] = []
+  let currentGroup: TimelineTaskLayout[] = []
+  let currentGroupEnd = -1
+
+  for (const entry of scheduledEntries) {
+    if (currentGroup.length === 0 || entry.startMinutes < currentGroupEnd) {
+      currentGroup.push(entry)
+      currentGroupEnd = Math.max(currentGroupEnd, entry.endMinutes)
+      continue
+    }
+
+    layout.push(...finalizeTimelineGroup(currentGroup))
+    currentGroup = [entry]
+    currentGroupEnd = entry.endMinutes
+  }
+
+  if (currentGroup.length > 0) {
+    layout.push(...finalizeTimelineGroup(currentGroup))
+  }
+
+  return layout
 }
 
 export function groupTasksByProject(tasks: Task[]): Array<[string, Task[]]> {
@@ -165,5 +412,6 @@ export function getPlannerSummary(
     overdueCount: selectOverdueTasks(tasks, todayKey).length,
     doneTodayCount: selectDoneTodayTasks(tasks, todayKey).length,
     projectCount: groupTasksByProject(tasks).length,
+    timelineCount: selectTimedTasks(tasks, todayKey).length,
   }
 }

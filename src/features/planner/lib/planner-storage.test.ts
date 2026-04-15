@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  loadTasks,
-  saveTasks,
-  type StorageLike,
-} from './planner-storage'
+import { loadTasks, saveTasks, type StorageLike } from './planner-storage'
 
 function createStorage(seed: Record<string, string> = {}): StorageLike {
   const store = new Map(Object.entries(seed))
@@ -20,7 +16,7 @@ function createStorage(seed: Record<string, string> = {}): StorageLike {
 }
 
 describe('planner storage', () => {
-  it('loads validated tasks from storage', () => {
+  it('loads legacy tasks from storage and fills new timeline fields', () => {
     const storage = createStorage({
       'planner.tasks.v1': JSON.stringify([
         {
@@ -37,7 +33,13 @@ describe('planner storage', () => {
       ]),
     })
 
-    expect(loadTasks(storage)).toHaveLength(1)
+    expect(loadTasks(storage)).toMatchObject([
+      {
+        id: 'task-1',
+        plannedStartTime: null,
+        plannedEndTime: null,
+      },
+    ])
   })
 
   it('returns an empty list for invalid payloads', () => {
@@ -60,6 +62,8 @@ describe('planner storage', () => {
           project: 'Planner',
           status: 'todo',
           plannedDate: null,
+          plannedStartTime: '09:00',
+          plannedEndTime: '10:00',
           dueDate: null,
           createdAt: '2026-04-15T09:00:00.000Z',
           completedAt: null,
@@ -72,6 +76,7 @@ describe('planner storage', () => {
       {
         id: 'task-1',
         title: 'Ship setup',
+        plannedStartTime: '09:00',
       },
     ])
   })

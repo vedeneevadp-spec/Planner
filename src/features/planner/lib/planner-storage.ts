@@ -4,14 +4,22 @@ import type { Task } from '@/entities/task'
 
 const STORAGE_KEY = 'planner.tasks.v1'
 
+const nullableStringWithDefault = z
+  .string()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
+
 const taskSchema = z.object({
   id: z.string(),
   title: z.string(),
   note: z.string(),
   project: z.string(),
   status: z.enum(['todo', 'done']),
-  plannedDate: z.string().nullable(),
-  dueDate: z.string().nullable(),
+  plannedDate: nullableStringWithDefault,
+  plannedStartTime: nullableStringWithDefault,
+  plannedEndTime: nullableStringWithDefault,
+  dueDate: nullableStringWithDefault,
   createdAt: z.string(),
   completedAt: z.string().nullable(),
 })

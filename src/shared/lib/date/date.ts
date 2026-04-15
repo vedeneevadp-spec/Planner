@@ -44,3 +44,24 @@ export function formatShortDate(value: string): string {
 export function isBeforeDate(left: string, right: string): boolean {
   return left < right
 }
+
+export function formatTime(value: string): string {
+  const [hoursRaw = '00', minutesRaw = '00'] = value.split(':')
+  const hours = hoursRaw.padStart(2, '0')
+  const minutes = minutesRaw.padStart(2, '0')
+
+  return `${hours}:${minutes}`
+}
+
+export function formatTimeRange(
+  startTime: string,
+  endTime: string | null,
+): string {
+  const startLabel = formatTime(startTime)
+
+  if (!endTime) {
+    return startLabel
+  }
+
+  return `${startLabel} - ${formatTime(endTime)}`
+}

@@ -8,17 +8,32 @@ import styles from './TaskComposer.module.css'
 
 interface TaskComposerProps {
   initialPlannedDate: string | null
+  showTimeFields?: boolean
 }
 
-export function TaskComposer({ initialPlannedDate }: TaskComposerProps) {
+export function TaskComposer({
+  initialPlannedDate,
+  showTimeFields = false,
+}: TaskComposerProps) {
   const { addTask } = usePlanner()
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const [title, setTitle] = useState('')
   const [project, setProject] = useState('')
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
+  const [plannedStartTime, setPlannedStartTime] = useState('')
+  const [plannedEndTime, setPlannedEndTime] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [note, setNote] = useState('')
+
+  function handlePlannedDateChange(nextPlannedDate: string) {
+    setPlannedDate(nextPlannedDate)
+
+    if (!nextPlannedDate) {
+      setPlannedStartTime('')
+      setPlannedEndTime('')
+    }
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -33,19 +48,28 @@ export function TaskComposer({ initialPlannedDate }: TaskComposerProps) {
       note,
       project,
       plannedDate: plannedDate || null,
+      plannedStartTime: plannedStartTime || null,
+      plannedEndTime: plannedEndTime || null,
       dueDate: dueDate || null,
     })
 
     setTitle('')
     setProject('')
     setPlannedDate(initialPlannedDate ?? '')
+    setPlannedStartTime('')
+    setPlannedEndTime('')
     setDueDate('')
     setNote('')
   }
 
   return (
     <form className={styles.panel} onSubmit={handleSubmit}>
-      <div className={styles.composerMain}>
+      <div
+        className={cx(
+          styles.composerMain,
+          showTimeFields && styles.composerMainTimeline,
+        )}
+      >
         <label className={cx(styles.field, styles.fieldTitle)}>
           <span>Новая задача</span>
           <input
@@ -70,9 +94,33 @@ export function TaskComposer({ initialPlannedDate }: TaskComposerProps) {
           <input
             type="date"
             value={plannedDate}
-            onChange={(event) => setPlannedDate(event.target.value)}
+            onChange={(event) => handlePlannedDateChange(event.target.value)}
           />
         </label>
+
+        {showTimeFields ? (
+          <>
+            <label className={styles.field}>
+              <span>Старт</span>
+              <input
+                type="time"
+                value={plannedStartTime}
+                disabled={!plannedDate}
+                onChange={(event) => setPlannedStartTime(event.target.value)}
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span>Финиш</span>
+              <input
+                type="time"
+                value={plannedEndTime}
+                disabled={!plannedDate || !plannedStartTime}
+                onChange={(event) => setPlannedEndTime(event.target.value)}
+              />
+            </label>
+          </>
+        ) : null}
 
         <label className={styles.field}>
           <span>Дедлайн</span>
@@ -99,21 +147,27 @@ export function TaskComposer({ initialPlannedDate }: TaskComposerProps) {
           <button
             className={styles.ghostButton}
             type="button"
-            onClick={() => setPlannedDate(todayKey)}
+            onClick={() => {
+              handlePlannedDateChange(todayKey)
+            }}
           >
             На сегодня
           </button>
           <button
             className={styles.ghostButton}
             type="button"
-            onClick={() => setPlannedDate(tomorrowKey)}
+            onClick={() => {
+              handlePlannedDateChange(tomorrowKey)
+            }}
           >
             На завтра
           </button>
           <button
             className={styles.ghostButton}
             type="button"
-            onClick={() => setPlannedDate('')}
+            onClick={() => {
+              handlePlannedDateChange('')
+            }}
           >
             В inbox
           </button>

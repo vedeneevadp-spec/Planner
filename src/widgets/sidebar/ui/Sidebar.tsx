@@ -9,6 +9,7 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Today' },
+  { to: '/timeline', label: 'Timeline' },
   { to: '/inbox', label: 'Inbox' },
   { to: '/projects', label: 'Projects' },
 ] as const
@@ -25,7 +26,8 @@ export function Sidebar() {
         <h1>Мой рабочий ритм</h1>
         <p className={styles.copy}>
           Первый MVP без синка и лишней инфраструктуры. Здесь можно быстро
-          захватить задачу, выбрать фокус на день и разложить всё по проектам.
+          захватить задачу, выбрать фокус на день, собрать таймлайн и разложить
+          всё по проектам.
         </p>
       </div>
 
@@ -34,9 +36,11 @@ export function Sidebar() {
           const count =
             item.to === '/today'
               ? summary.focusCount + summary.overdueCount
-              : item.to === '/inbox'
-                ? summary.inboxCount
-                : summary.projectCount
+              : item.to === '/timeline'
+                ? summary.timelineCount
+                : item.to === '/inbox'
+                  ? summary.inboxCount
+                  : summary.projectCount
 
           return (
             <NavLink
@@ -62,16 +66,16 @@ export function Sidebar() {
             <strong>{summary.focusCount}</strong>
           </div>
           <div>
+            <span>Timeline</span>
+            <strong>{summary.timelineCount}</strong>
+          </div>
+          <div>
             <span>Inbox</span>
             <strong>{summary.inboxCount}</strong>
           </div>
           <div>
             <span>Done</span>
             <strong>{summary.doneTodayCount}</strong>
-          </div>
-          <div>
-            <span>Projects</span>
-            <strong>{summary.projectCount}</strong>
           </div>
         </div>
       </section>

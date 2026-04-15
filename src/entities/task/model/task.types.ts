@@ -7,6 +7,8 @@ export interface Task {
   project: string
   status: TaskStatus
   plannedDate: string | null
+  plannedStartTime: string | null
+  plannedEndTime: string | null
   dueDate: string | null
   createdAt: string
   completedAt: string | null
@@ -17,5 +19,7 @@ export interface NewTaskInput {
   note: string
   project: string
   plannedDate: string | null
+  plannedStartTime: string | null
+  plannedEndTime: string | null
   dueDate: string | null
 }
