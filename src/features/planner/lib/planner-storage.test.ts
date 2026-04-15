@@ -4,7 +4,7 @@ import {
   loadTasks,
   saveTasks,
   type StorageLike,
-} from '@/shared/lib/storage/planner-storage'
+} from './planner-storage'
 
 function createStorage(seed: Record<string, string> = {}): StorageLike {
   const store = new Map(Object.entries(seed))

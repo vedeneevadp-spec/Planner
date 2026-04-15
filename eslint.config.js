@@ -14,6 +14,71 @@ const typeCheckedConfigs = tseslint.configs.recommendedTypeChecked.map(
     files: ['**/*.{ts,tsx}'],
   }),
 )
+const layerOrder = [
+  'app',
+  'pages',
+  'widgets',
+  'features',
+  'entities',
+  'shared',
+]
+const publicApiModules = [
+  'app',
+  'pages/inbox',
+  'pages/projects',
+  'pages/today',
+  'widgets/sidebar',
+  'features/planner',
+  'features/task-create',
+  'entities/task',
+  'shared/lib/classnames',
+  'shared/lib/date',
+  'shared/ui/Page',
+  'shared/ui/PageHeader',
+]
+
+function createPublicApiPatterns() {
+  return publicApiModules.flatMap((modulePath) => [
+    {
+      group: [`@/${modulePath}/*`],
+      message: `Import from the public API "@/` + `${modulePath}" instead.`,
+    },
+    {
+      regex: `^(?:\\.\\.?/)+(?:${modulePath})(?:/.+)$`,
+      message: `Import from the public API "@/` + `${modulePath}" instead.`,
+    },
+  ])
+}
+
+function createLayerBoundaryPatterns(layer) {
+  const layerIndex = layerOrder.indexOf(layer)
+  const restrictedLayers = layerOrder.slice(0, layerIndex)
+  const allowedLayers = layerOrder.slice(layerIndex)
+
+  return restrictedLayers.flatMap((restrictedLayer) => [
+    {
+      group: [`@/${restrictedLayer}`, `@/${restrictedLayer}/*`],
+      message: `"${layer}" can depend only on ${allowedLayers.join(', ')}.`,
+    },
+    {
+      regex: `^(?:\\.\\.?/)+(?:${restrictedLayer})(?:/|$)`,
+      message: `"${layer}" can depend only on ${allowedLayers.join(', ')}.`,
+    },
+  ])
+}
+
+const publicApiPatterns = createPublicApiPatterns()
+const layerBoundaryConfigs = layerOrder.slice(1).map((layer) => ({
+  files: [`src/${layer}/**/*.{ts,tsx}`],
+  rules: {
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: [...publicApiPatterns, ...createLayerBoundaryPatterns(layer)],
+      },
+    ],
+  },
+}))
 
 export default tseslint.config(
   {
@@ -72,5 +137,17 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: publicApiPatterns,
+        },
+      ],
+    },
+  },
+  ...layerBoundaryConfigs,
   prettierConfig,
 )

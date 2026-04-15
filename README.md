@@ -1,55 +1,57 @@
 # Planner
 
-Personal planning app on `Vite + React + TypeScript` with a deliberate foundation pass before feature work starts.
+Приложение для личного планирования на `Vite + React + TypeScript` с аккуратно выделенной базовой архитектурой до активной фичевой разработки.
 
-## Stack
+## Стек
 
 - React 19
 - React Router 7
-- TypeScript in strict mode
+- TypeScript в strict-режиме
 - ESLint + Prettier
 - Vitest
 - Husky + lint-staged
 - GitHub Actions CI
 
-## Requirements
+## Требования
 
 - Node `24.14.0`
 - npm `11.9.0`
 
-Use `.nvmrc` or `.node-version` to align the runtime.
+Для выравнивания версии окружения используйте `.nvmrc` или `.node-version`.
 
-## Scripts
+## Скрипты
 
-- `npm run dev` - local development server
-- `npm run lint` - static analysis
-- `npm run typecheck` - TypeScript validation
-- `npm run test:run` - run unit tests once
-- `npm run build` - production build
-- `npm run check` - lint + typecheck + tests
-- `npm run ci` - full local CI pipeline
+- `npm run dev` - локальный dev-сервер, при запуске автоматически открывает приложение в браузере
+- `npm run start` - алиас локального dev-запуска с автооткрытием браузера
+- `npm run lint` - статический анализ
+- `npm run typecheck` - проверка TypeScript
+- `npm run test:run` - однократный запуск unit-тестов
+- `npm run coverage` - запуск тестов с coverage-отчётом в `coverage/`
+- `npm run build` - production-сборка
+- `npm run check` - lint + typecheck + тесты
+- `npm run ci` - полный локальный CI-пайплайн
 
-## Project layout
+## Структура проекта
 
 ```text
 src/
-  app/        app shell, providers, router
-  pages/      route-level pages
-  widgets/    reusable route widgets
-  features/   user actions and state orchestration
-  entities/   domain model and task UI
-  shared/     cross-cutting libs and UI primitives
+  app/        каркас приложения, провайдеры, роутер
+  pages/      страницы уровня маршрутов
+  widgets/    переиспользуемые экранные блоки
+  features/   пользовательские действия и orchestration-логика
+  entities/   доменная модель и UI задач
+  shared/     общие утилиты и базовые UI-примитивы
 ```
 
-## Architecture
+## Архитектура
 
-Short version: `pages` compose UI, `features` mutate state, `entities` own task domain logic, `shared` contains generic utilities.
+Коротко: `pages` собирают экран, `features` управляют действиями и изменением состояния, `entities` содержат доменную логику задач, `shared` хранит универсальные утилиты.
 
-See [docs/architecture.md](docs/architecture.md) for the detailed layer rules.
+Подробные правила по слоям описаны в [docs/architecture.md](docs/architecture.md).
 
-## Quality gates
+## Контроль качества
 
-- pre-commit hook runs `lint-staged`
-- CI runs `npm run ci`
-- local persistence is schema-validated with `zod`
-- domain logic has unit tests
+- pre-commit hook запускает `lint-staged`
+- CI запускает `npm run ci`
+- локальное хранилище валидируется через `zod`
+- доменная логика покрыта unit-тестами

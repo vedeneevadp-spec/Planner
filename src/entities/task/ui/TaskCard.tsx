@@ -1,17 +1,24 @@
-import { usePlanner } from '@/app/providers/usePlanner'
-import type { Task } from '@/entities/task/model/task.types'
-import { cx } from '@/shared/lib/classnames/cx'
-import { addDays,formatShortDate, getDateKey } from '@/shared/lib/date/date'
+import { cx } from '@/shared/lib/classnames'
+import { addDays, formatShortDate, getDateKey } from '@/shared/lib/date'
 
+import type { Task, TaskStatus } from '../model/task.types'
 import styles from './TaskCard.module.css'
 
 interface TaskCardProps {
   task: Task
   tone?: 'default' | 'warning' | 'success'
+  onSetStatus: (taskId: string, status: TaskStatus) => void
+  onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
+  onRemove: (taskId: string) => void
 }
 
-export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
-  const { removeTask, setTaskPlannedDate, setTaskStatus } = usePlanner()
+export function TaskCard({
+  task,
+  tone = 'default',
+  onSetStatus,
+  onSetPlannedDate,
+  onRemove,
+}: TaskCardProps) {
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const toneClass =
@@ -52,7 +59,7 @@ export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
             <button
               className={styles.button}
               type="button"
-              onClick={() => setTaskStatus(task.id, 'done')}
+              onClick={() => onSetStatus(task.id, 'done')}
             >
               Done
             </button>
@@ -60,7 +67,7 @@ export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
               <button
                 className={styles.button}
                 type="button"
-                onClick={() => setTaskPlannedDate(task.id, todayKey)}
+                onClick={() => onSetPlannedDate(task.id, todayKey)}
               >
                 Today
               </button>
@@ -69,7 +76,7 @@ export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
               <button
                 className={styles.button}
                 type="button"
-                onClick={() => setTaskPlannedDate(task.id, tomorrowKey)}
+                onClick={() => onSetPlannedDate(task.id, tomorrowKey)}
               >
                 Tomorrow
               </button>
@@ -78,7 +85,7 @@ export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
               <button
                 className={styles.button}
                 type="button"
-                onClick={() => setTaskPlannedDate(task.id, null)}
+                onClick={() => onSetPlannedDate(task.id, null)}
               >
                 Inbox
               </button>
@@ -88,7 +95,7 @@ export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
           <button
             className={styles.button}
             type="button"
-            onClick={() => setTaskStatus(task.id, 'todo')}
+            onClick={() => onSetStatus(task.id, 'todo')}
           >
             Reopen
           </button>
@@ -97,7 +104,7 @@ export function TaskCard({ task, tone = 'default' }: TaskCardProps) {
         <button
           className={cx(styles.button, styles.dangerButton)}
           type="button"
-          onClick={() => removeTask(task.id)}
+          onClick={() => onRemove(task.id)}
         >
           Delete
         </button>

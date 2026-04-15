@@ -1,90 +1,92 @@
-# Architecture
+# Архитектура
 
-## Goals
+## Цели
 
-- Keep feature work fast without letting the app collapse back into a single file.
-- Separate pure domain logic from React and browser APIs.
-- Make the next storage layer change survivable.
+- Сохранить высокую скорость разработки фич, не скатываясь обратно в один большой файл.
+- Отделить чистую доменную логику от React и браузерных API.
+- Сделать следующую замену слоя хранения данных управляемой.
 
-## Layers
+## Слои
 
 ### `app`
 
-Application shell and global providers.
+Каркас приложения и глобальные провайдеры.
 
-- router setup
-- planner provider
-- top-level layout
+- настройка роутера
+- composition root
+- верхнеуровневый layout
 
 ### `pages`
 
-Route entry points.
+Точки входа маршрутов.
 
-Pages should compose widgets and features, but avoid business logic beyond selecting data for the screen.
+Страницы должны собирать экран из widgets и features, но не содержать бизнес-логику, кроме выбора данных для конкретного экрана.
 
 ### `widgets`
 
-Reusable screen blocks that combine lower-level pieces.
+Переиспользуемые экранные блоки, которые комбинируют более низкоуровневые части.
 
-Current example: sidebar.
+Текущий пример: sidebar.
 
 ### `features`
 
-User actions and orchestration.
+Пользовательские действия и orchestration-логика.
 
-Current examples:
+Текущие примеры:
 
-- planner state hook
-- task composer
+- planner provider и context hook
+- хук состояния planner
+- storage adapter для persistence
+- composer для создания задач
 
-Feature code can depend on `entities` and `shared`.
+Feature-код может зависеть от `entities` и `shared`.
 
 ### `entities`
 
-Domain objects, selectors and pure task operations.
+Доменные объекты, селекторы и чистые операции над задачами.
 
-Current examples:
+Текущие примеры:
 
-- task types
-- sorting and grouping
-- derived selectors for today, inbox, overdue
-- task card and task section UI
+- типы задач
+- сортировка и группировка
+- производные селекторы для today, inbox и overdue
+- UI-компоненты task card и task section
 
 ### `shared`
 
-Generic utilities and base UI.
+Универсальные утилиты и базовый UI.
 
-Current examples:
+Текущие примеры:
 
 - date helpers
-- storage adapter
-- class name helper
+- helper для class names
 - page header
 
-## Dependency direction
+## Направление зависимостей
 
-Dependencies should flow inward like this:
+Зависимости должны идти внутрь по такой схеме:
 
 `app -> pages -> widgets -> features -> entities -> shared`
 
-`shared` does not import from upper layers.
-`entities` does not import from `features`, `widgets`, `pages` or `app`.
+`shared` не импортирует код из верхних слоёв.
+`entities` не импортирует код из `features`, `widgets`, `pages` и `app`.
+Кросс-срезовые импорты идут только через публичный `index.ts` среза, например `@/features/planner`, а не через внутренние пути вроде `@/features/planner/model/...`.
 
-## State strategy
+## Стратегия состояния
 
-Right now the app uses a small React context backed by a custom hook and local storage.
+Сейчас приложение использует небольшой React context, который опирается на кастомный хук и local storage.
 
-This is intentional:
+Это сделано намеренно:
 
-- global enough to remove prop drilling
-- simple enough to avoid introducing a full state library too early
-- ready to swap persistence later because storage is isolated
+- состояние достаточно глобальное, чтобы убрать prop drilling
+- решение достаточно простое, чтобы не тащить state-библиотеку слишком рано
+- persistence можно заменить позже, потому что слой хранения изолирован в feature
 
-If sync or collaboration appears later, the first extension point is the storage adapter in `shared/lib/storage`.
+Если позже появится синхронизация или совместная работа, первая точка расширения находится в адаптере хранения `features/planner/lib/planner-storage`.
 
-## Testing strategy
+## Стратегия тестирования
 
-- unit tests for pure domain logic in `entities`
-- unit tests for shared utilities in `shared`
-- component tests only for critical interactions
-- e2e smoke tests later, after flows stabilize
+- unit-тесты для чистой доменной логики в `entities`
+- unit-тесты для общих утилит в `shared`
+- компонентные тесты только для критичных взаимодействий
+- e2e smoke-тесты позже, когда пользовательские сценарии стабилизируются

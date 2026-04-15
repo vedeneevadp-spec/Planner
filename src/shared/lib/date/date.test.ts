@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { addDays, getDateKey, isBeforeDate } from '@/shared/lib/date/date'
+import { addDays, getDateKey, isBeforeDate } from './date'
 
 describe('date helpers', () => {
   it('creates a stable date key', () => {

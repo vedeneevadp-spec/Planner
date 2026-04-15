@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
+import type { Task } from '@/entities/task'
 import {
   addTask,
   getPlannerSummary,
   groupTasksByProject,
   setTaskPlannedDate,
   setTaskStatus,
-} from '@/entities/task/model/planner'
-import type { Task } from '@/entities/task/model/task.types'
+} from '@/entities/task'
 
 const baseTask: Task = {
   id: 'task-1',

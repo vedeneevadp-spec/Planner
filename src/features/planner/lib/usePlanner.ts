@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 
-import { PlannerContext } from '@/app/providers/PlannerContext'
+import { PlannerContext } from '../model/planner-context'
 
 export function usePlanner() {
   const planner = useContext(PlannerContext)

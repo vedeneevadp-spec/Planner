@@ -19,6 +19,7 @@
     "format:check": "prettier . --check",
     "test": "vitest",
     "test:run": "vitest run",
+    "coverage": "node ./scripts/coverage.mjs",
     "check": "npm run lint && npm run typecheck && npm run test:run",
     "ci": "npm run check && npm run build",
     "prepare": "husky"
@@ -44,6 +45,7 @@
     "@types/node": "^24.7.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "4.1.4",
     "@vitejs/plugin-react": "6.0.1",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "10.1.8",

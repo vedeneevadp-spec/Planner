@@ -1,4 +1,4 @@
-import { getDateKey, isBeforeDate } from '@/shared/lib/date/date'
+import { getDateKey, isBeforeDate } from '@/shared/lib/date'
 
 import type { NewTaskInput, Task, TaskStatus } from './task.types'
 

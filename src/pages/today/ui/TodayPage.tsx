@@ -1,17 +1,17 @@
-import { usePlanner } from '@/app/providers/usePlanner'
 import {
   selectDoneTodayTasks,
   selectOverdueTasks,
   selectTodayTasks,
-} from '@/entities/task/model/planner'
-import { TaskSection } from '@/entities/task/ui/TaskSection'
-import { TaskComposer } from '@/features/task-create/ui/TaskComposer'
-import { getDateKey } from '@/shared/lib/date/date'
-import pageStyles from '@/shared/ui/Page/Page.module.css'
-import { PageHeader } from '@/shared/ui/PageHeader/PageHeader'
+  TaskSection,
+} from '@/entities/task'
+import { usePlanner } from '@/features/planner'
+import { TaskComposer } from '@/features/task-create'
+import { getDateKey } from '@/shared/lib/date'
+import pageStyles from '@/shared/ui/Page'
+import { PageHeader } from '@/shared/ui/PageHeader'
 
 export function TodayPage() {
-  const { tasks } = usePlanner()
+  const { tasks, removeTask, setTaskPlannedDate, setTaskStatus } = usePlanner()
   const todayKey = getDateKey(new Date())
   const todayTasks = selectTodayTasks(tasks, todayKey)
   const overdueTasks = selectOverdueTasks(tasks, todayKey)
@@ -32,11 +32,17 @@ export function TodayPage() {
           title="Фокус дня"
           tasks={todayTasks}
           emptyMessage="Пока нет задач на сегодня. Добавь 1-3 конкретных шага и не перегружай день."
+          onRemove={removeTask}
+          onSetPlannedDate={setTaskPlannedDate}
+          onSetStatus={setTaskStatus}
         />
         <TaskSection
           title="Требует решения"
           tasks={overdueTasks}
           emptyMessage="Просроченных задач нет."
+          onRemove={removeTask}
+          onSetPlannedDate={setTaskPlannedDate}
+          onSetStatus={setTaskStatus}
           tone="warning"
         />
       </div>
@@ -45,6 +51,9 @@ export function TodayPage() {
         title="Сделано сегодня"
         tasks={doneTodayTasks}
         emptyMessage="Когда начнёшь закрывать задачи, последние завершённые появятся здесь."
+        onRemove={removeTask}
+        onSetPlannedDate={setTaskPlannedDate}
+        onSetStatus={setTaskStatus}
         tone="success"
       />
     </section>

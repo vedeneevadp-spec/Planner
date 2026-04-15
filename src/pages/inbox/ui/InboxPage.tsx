@@ -1,12 +1,11 @@
-import { usePlanner } from '@/app/providers/usePlanner'
-import { selectInboxTasks } from '@/entities/task/model/planner'
-import { TaskSection } from '@/entities/task/ui/TaskSection'
-import { TaskComposer } from '@/features/task-create/ui/TaskComposer'
-import pageStyles from '@/shared/ui/Page/Page.module.css'
-import { PageHeader } from '@/shared/ui/PageHeader/PageHeader'
+import { selectInboxTasks, TaskSection } from '@/entities/task'
+import { usePlanner } from '@/features/planner'
+import { TaskComposer } from '@/features/task-create'
+import pageStyles from '@/shared/ui/Page'
+import { PageHeader } from '@/shared/ui/PageHeader'
 
 export function InboxPage() {
-  const { tasks } = usePlanner()
+  const { tasks, removeTask, setTaskPlannedDate, setTaskStatus } = usePlanner()
   const inboxTasks = selectInboxTasks(tasks)
 
   return (
@@ -23,6 +22,9 @@ export function InboxPage() {
         title="Без даты"
         tasks={inboxTasks}
         emptyMessage="Inbox пуст. Это нормально: значит, ты либо всё распланировал, либо пока ничего не захватывал."
+        onRemove={removeTask}
+        onSetPlannedDate={setTaskPlannedDate}
+        onSetStatus={setTaskStatus}
       />
     </section>
   )

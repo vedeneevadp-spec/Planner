@@ -1,9 +1,9 @@
 import { NavLink } from 'react-router-dom'
 
-import { usePlanner } from '@/app/providers/usePlanner'
-import { getPlannerSummary } from '@/entities/task/model/planner'
-import { cx } from '@/shared/lib/classnames/cx'
-import { formatLongDate, getDateKey } from '@/shared/lib/date/date'
+import { getPlannerSummary } from '@/entities/task'
+import { usePlanner } from '@/features/planner'
+import { cx } from '@/shared/lib/classnames'
+import { formatLongDate, getDateKey } from '@/shared/lib/date'
 
 import styles from './Sidebar.module.css'
 

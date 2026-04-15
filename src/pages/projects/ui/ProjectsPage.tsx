@@ -1,14 +1,13 @@
-import { usePlanner } from '@/app/providers/usePlanner'
-import { groupTasksByProject } from '@/entities/task/model/planner'
-import { TaskCard } from '@/entities/task/ui/TaskCard'
-import { TaskComposer } from '@/features/task-create/ui/TaskComposer'
-import pageStyles from '@/shared/ui/Page/Page.module.css'
-import { PageHeader } from '@/shared/ui/PageHeader/PageHeader'
+import { groupTasksByProject, TaskCard } from '@/entities/task'
+import { usePlanner } from '@/features/planner'
+import { TaskComposer } from '@/features/task-create'
+import pageStyles from '@/shared/ui/Page'
+import { PageHeader } from '@/shared/ui/PageHeader'
 
 import styles from './ProjectsPage.module.css'
 
 export function ProjectsPage() {
-  const { tasks } = usePlanner()
+  const { tasks, removeTask, setTaskPlannedDate, setTaskStatus } = usePlanner()
   const projectGroups = groupTasksByProject(tasks)
 
   return (
@@ -44,7 +43,13 @@ export function ProjectsPage() {
 
               <div className={styles.stack}>
                 {projectTasks.map((task) => (
-                  <TaskCard key={task.id} task={task} />
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onRemove={removeTask}
+                    onSetPlannedDate={setTaskPlannedDate}
+                    onSetStatus={setTaskStatus}
+                  />
                 ))}
               </div>
             </section>

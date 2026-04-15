@@ -1,8 +1,8 @@
-import { type FormEvent,useState } from 'react'
+import { type FormEvent, useState } from 'react'
 
-import { usePlanner } from '@/app/providers/usePlanner'
-import { cx } from '@/shared/lib/classnames/cx'
-import { addDays, getDateKey } from '@/shared/lib/date/date'
+import { usePlanner } from '@/features/planner'
+import { cx } from '@/shared/lib/classnames'
+import { addDays, getDateKey } from '@/shared/lib/date'
 
 import styles from './TaskComposer.module.css'
 

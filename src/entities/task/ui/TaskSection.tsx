@@ -1,6 +1,5 @@
-import type { Task } from '@/entities/task/model/task.types'
-import { TaskCard } from '@/entities/task/ui/TaskCard'
-
+import type { Task, TaskStatus } from '../model/task.types'
+import { TaskCard } from './TaskCard'
 import styles from './TaskSection.module.css'
 
 interface TaskSectionProps {
@@ -8,6 +7,9 @@ interface TaskSectionProps {
   tasks: Task[]
   emptyMessage: string
   tone?: 'default' | 'warning' | 'success'
+  onSetStatus: (taskId: string, status: TaskStatus) => void
+  onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
+  onRemove: (taskId: string) => void
 }
 
 export function TaskSection({
@@ -15,6 +17,9 @@ export function TaskSection({
   tasks,
   emptyMessage,
   tone = 'default',
+  onSetStatus,
+  onSetPlannedDate,
+  onRemove,
 }: TaskSectionProps) {
   return (
     <section className={styles.panel}>
@@ -28,7 +33,14 @@ export function TaskSection({
       ) : (
         <div className={styles.stack}>
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} tone={tone} />
+            <TaskCard
+              key={task.id}
+              task={task}
+              tone={tone}
+              onRemove={onRemove}
+              onSetPlannedDate={onSetPlannedDate}
+              onSetStatus={onSetStatus}
+            />
           ))}
         </div>
       )}

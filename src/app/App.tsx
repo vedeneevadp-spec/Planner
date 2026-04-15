@@ -1,8 +1,8 @@
-import { PlannerProvider } from '@/app/providers/PlannerProvider'
-import { AppRouter } from '@/app/router/AppRouter'
-import { Sidebar } from '@/widgets/sidebar/ui/Sidebar'
+import { PlannerProvider } from '@/features/planner'
+import { Sidebar } from '@/widgets/sidebar'
 
 import styles from './App.module.css'
+import { AppRouter } from './router'
 
 function App() {
   return (

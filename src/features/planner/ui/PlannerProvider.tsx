@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from 'react'
 
-import { PlannerContext } from '@/app/providers/PlannerContext'
-import { usePlannerState } from '@/features/planner/model/usePlannerState'
+import { PlannerContext } from '../model/planner-context'
+import { usePlannerState } from '../model/usePlannerState'
 
 export function PlannerProvider({ children }: PropsWithChildren) {
   const planner = usePlannerState()

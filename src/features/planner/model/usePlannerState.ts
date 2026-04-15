@@ -1,26 +1,20 @@
 import { useEffect, useState } from 'react'
 
+import type {
+  NewTaskInput,
+  Task,
+  TaskStatus,
+} from '@/entities/task'
 import {
   addTask as addTaskToList,
   removeTask as removeTaskFromList,
   setTaskPlannedDate as setTaskPlannedDateInList,
   setTaskStatus as setTaskStatusInList,
   sortTasks,
-} from '@/entities/task/model/planner'
-import type {
-  NewTaskInput,
-  Task,
-  TaskStatus,
-} from '@/entities/task/model/task.types'
-import { loadTasks, saveTasks } from '@/shared/lib/storage/planner-storage'
+} from '@/entities/task'
 
-export interface PlannerState {
-  tasks: Task[]
-  addTask: (input: NewTaskInput) => void
-  setTaskStatus: (taskId: string, status: TaskStatus) => void
-  setTaskPlannedDate: (taskId: string, plannedDate: string | null) => void
-  removeTask: (taskId: string) => void
-}
+import { loadTasks, saveTasks } from '../lib/planner-storage'
+import type { PlannerState } from './planner.types'
 
 export function usePlannerState(): PlannerState {
   const [tasks, setTasks] = useState<Task[]>(() => sortTasks(loadTasks()))

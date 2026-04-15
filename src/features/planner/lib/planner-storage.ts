@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { Task } from '@/entities/task/model/task.types'
+import type { Task } from '@/entities/task'
 
 const STORAGE_KEY = 'planner.tasks.v1'
 
