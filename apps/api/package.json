@@ -1,0 +1,22 @@
+{
+  "name": "@planner/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "test": "node --import tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@planner/contracts": "file:../../packages/contracts",
+    "@fastify/cors": "^11.2.0",
+    "fastify": "^5.8.5",
+    "kysely": "^0.28.16",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.21.0"
+  }
+}

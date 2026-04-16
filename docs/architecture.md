@@ -6,6 +6,8 @@
 - Отделить чистую доменную логику от React и браузерных API.
 - Сделать следующую замену слоя хранения данных управляемой.
 
+Web-клиент находится в `apps/web`, поэтому пути ниже описаны относительно `apps/web/src`.
+
 ## Слои
 
 ### `app`
@@ -30,13 +32,13 @@
 
 ### `features`
 
-Пользовательские действия и orchestration-логика.
+Пользовательские действия, orchestration-логика и интеграция с API/runtime.
 
 Текущие примеры:
 
 - planner provider и context hook
-- хук состояния planner
-- storage adapter для persistence
+- session query для резолва текущего actor/workspace
+- query/mutation слой planner поверх HTTP API
 - composer для создания задач
 
 Feature-код может зависеть от `entities` и `shared`.
@@ -74,15 +76,15 @@ Feature-код может зависеть от `entities` и `shared`.
 
 ## Стратегия состояния
 
-Сейчас приложение использует небольшой React context, который опирается на кастомный хук и local storage.
+Сейчас приложение использует `React Query` как server-state слой и небольшой React context как фасад над planner-операциями для UI.
 
-Это сделано намеренно:
+Текущий расклад такой:
 
-- состояние достаточно глобальное, чтобы убрать prop drilling
-- решение достаточно простое, чтобы не тащить state-библиотеку слишком рано
-- persistence можно заменить позже, потому что слой хранения изолирован в feature
+- session клиента сначала резолвится через `/api/v1/session`
+- данные задач живут на API и кэшируются на клиенте через query cache
+- оптимистичные мутации остаются в feature-слое, поэтому UI не зависит напрямую от HTTP-клиента
 
-Если позже появится синхронизация или совместная работа, первая точка расширения находится в адаптере хранения `features/planner/lib/planner-storage`.
+Первая точка расширения теперь находится не в browser storage, а в boundary `features/session` и `features/planner/lib/planner-api`, где можно добавлять auth, multi-workspace switching, pagination, realtime sync и offline rehydration без переписывания экранов.
 
 ## Стратегия тестирования
 

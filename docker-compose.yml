@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: planner-postgres
+    environment:
+      POSTGRES_DB: planner_development
+      POSTGRES_PASSWORD: planner
+      POSTGRES_USER: planner
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U planner -d planner_development']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    ports:
+      - '54329:5432'
+    volumes:
+      - planner-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  planner-postgres-data:

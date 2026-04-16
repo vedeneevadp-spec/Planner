@@ -14,14 +14,7 @@ const typeCheckedConfigs = tseslint.configs.recommendedTypeChecked.map(
     files: ['**/*.{ts,tsx}'],
   }),
 )
-const layerOrder = [
-  'app',
-  'pages',
-  'widgets',
-  'features',
-  'entities',
-  'shared',
-]
+const layerOrder = ['app', 'pages', 'widgets', 'features', 'entities', 'shared']
 const publicApiModules = [
   'app',
   'pages/inbox',
@@ -69,7 +62,7 @@ function createLayerBoundaryPatterns(layer) {
 
 const publicApiPatterns = createPublicApiPatterns()
 const layerBoundaryConfigs = layerOrder.slice(1).map((layer) => ({
-  files: [`src/${layer}/**/*.{ts,tsx}`],
+  files: [`apps/web/src/${layer}/**/*.{ts,tsx}`],
   rules: {
     'no-restricted-imports': [
       'error',
@@ -82,7 +75,13 @@ const layerBoundaryConfigs = layerOrder.slice(1).map((layer) => ({
 
 export default tseslint.config(
   {
-    ignores: ['coverage', 'dist', 'node_modules'],
+    ignores: [
+      'coverage',
+      'dist',
+      'node_modules',
+      'apps/*/coverage',
+      'apps/*/dist',
+    ],
   },
   {
     files: ['**/*.{js,mjs,cjs}'],
@@ -132,13 +131,13 @@ export default tseslint.config(
     },
   },
   {
-    files: ['vite.config.ts'],
+    files: ['apps/web/vite.config.ts'],
     languageOptions: {
       globals: globals.node,
     },
   },
   {
-    files: ['src/**/*.{ts,tsx}'],
+    files: ['apps/web/src/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
