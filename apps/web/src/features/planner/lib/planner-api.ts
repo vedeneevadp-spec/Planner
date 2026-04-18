@@ -39,6 +39,7 @@ export class PlannerApiError extends Error {
 }
 
 export interface PlannerApiClientConfig {
+  accessToken?: string
   actorUserId: string
   apiBaseUrl: string
   workspaceId: string
@@ -92,7 +93,11 @@ export function createPlannerApiClient(
       'x-workspace-id': config.workspaceId,
     })
 
-    if (options.writeAccess) {
+    if (config.accessToken) {
+      headers.set('authorization', `Bearer ${config.accessToken}`)
+    }
+
+    if (options.writeAccess && !config.accessToken) {
       headers.set('x-actor-user-id', config.actorUserId)
     }
 

@@ -9,7 +9,7 @@ import type {
   TaskStatus,
 } from '@/entities/task'
 import { sortTasks } from '@/entities/task'
-import { usePlannerSession } from '@/features/session'
+import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import {
@@ -220,6 +220,7 @@ function toggleTaskId(
 }
 
 export function usePlannerState(): PlannerState {
+  const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const queryClient = useQueryClient()
@@ -235,11 +236,14 @@ export function usePlannerState(): PlannerState {
     }
 
     return createPlannerApiClient({
+      ...(auth.accessToken
+        ? { accessToken: auth.accessToken }
+        : {}),
       actorUserId: session.actorUserId,
       apiBaseUrl: plannerApiConfig.apiBaseUrl,
       workspaceId: session.workspaceId,
     })
-  }, [session])
+  }, [auth.accessToken, session])
   const taskQueryKey = useMemo(
     () => ['planner', 'tasks', session?.workspaceId ?? 'pending'] as const,
     [session?.workspaceId],

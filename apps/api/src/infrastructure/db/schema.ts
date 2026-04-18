@@ -65,6 +65,23 @@ export interface AppWorkspaceMembersTable {
   workspace_id: string
 }
 
+export interface AppProjectsTable {
+  color: string | null
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  id: Generated<string>
+  metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  position: number
+  slug: string
+  status: 'active' | 'archived'
+  title: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppTaskTimeBlocksTable {
   created_at: Generated<TimestampColumn>
   created_by: string | null
@@ -94,6 +111,18 @@ export interface AppTaskEventsTable {
   workspace_id: string
 }
 
+export interface AppDeviceSessionsTable {
+  created_at: Generated<TimestampColumn>
+  deleted_at: TimestampColumn | null
+  device_fingerprint: string
+  id: Generated<string>
+  last_seen_at: Generated<TimestampColumn>
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppOutboxTable {
   aggregate_id: string
   aggregate_type: string
@@ -110,7 +139,9 @@ export interface AppOutboxTable {
 }
 
 export interface DatabaseSchema {
+  'app.device_sessions': AppDeviceSessionsTable
   'app.outbox': AppOutboxTable
+  'app.projects': AppProjectsTable
   'app.task_events': AppTaskEventsTable
   'app.task_time_blocks': AppTaskTimeBlocksTable
   'app.tasks': AppTasksTable

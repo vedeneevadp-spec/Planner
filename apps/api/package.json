@@ -9,9 +9,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@planner/contracts": "file:../../packages/contracts",
     "@fastify/cors": "^11.2.0",
+    "@planner/contracts": "file:../../packages/contracts",
     "fastify": "^5.8.5",
+    "jose": "^6.2.2",
     "kysely": "^0.28.16",
     "pg": "^8.20.0"
   },

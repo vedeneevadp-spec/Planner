@@ -12,6 +12,7 @@ if (mode !== 'dev' && mode !== 'start') {
 
 const env = {
   ...process.env,
+  API_AUTH_MODE: 'supabase',
   API_STORAGE_DRIVER: 'postgres',
   DATABASE_URL: getSupabaseRuntimeDatabaseUrl(),
 }

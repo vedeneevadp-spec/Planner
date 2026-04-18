@@ -3,11 +3,16 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import { getRequestAuth } from '../../bootstrap/request-auth.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from './session.service.js'
 
-const sessionHeadersSchema = z.object({
+const legacySessionHeadersSchema = z.object({
   'x-actor-user-id': z.string().min(1).optional(),
+  'x-workspace-id': z.string().min(1).optional(),
+})
+
+const authSessionHeadersSchema = z.object({
   'x-workspace-id': z.string().min(1).optional(),
 })
 
@@ -16,8 +21,25 @@ export function registerSessionRoutes(
   service: SessionService,
 ): void {
   app.get('/api/v1/session', async (request) => {
+    const authContext = getRequestAuth(request)
+
+    if (authContext) {
+      const headers = parseOrThrow(
+        authSessionHeadersSchema,
+        request.headers,
+        'invalid_headers',
+      )
+      const session = await service.resolveSession({
+        actorUserId: undefined,
+        auth: authContext,
+        workspaceId: headers['x-workspace-id'],
+      })
+
+      return sessionResponseSchema.parse(session)
+    }
+
     const headers = parseOrThrow(
-      sessionHeadersSchema,
+      legacySessionHeadersSchema,
       request.headers,
       'invalid_headers',
     )
@@ -31,6 +53,7 @@ export function registerSessionRoutes(
     }
 
     const session = await service.resolveSession({
+      auth: null,
       actorUserId: headers['x-actor-user-id'],
       workspaceId: headers['x-workspace-id'],
     })

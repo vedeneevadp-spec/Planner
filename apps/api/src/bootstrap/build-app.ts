@@ -15,10 +15,15 @@ import type { TaskService } from '../modules/tasks/index.js'
 import { registerTaskRoutes } from '../modules/tasks/index.js'
 import type { ApiConfig } from './config.js'
 import { HttpError } from './http-error.js'
+import {
+  NoopRequestAuthenticator,
+  type RequestAuthenticator,
+} from './request-auth.js'
 
 export interface BuildApiAppOptions {
   config: ApiConfig
   database: DatabaseConnection | null
+  requestAuthenticator?: RequestAuthenticator
   sessionService: SessionService
   taskService: TaskService
 }
@@ -26,6 +31,7 @@ export interface BuildApiAppOptions {
 export function buildApiApp({
   config,
   database,
+  requestAuthenticator = new NoopRequestAuthenticator(),
   sessionService,
   taskService,
 }: BuildApiAppOptions) {
@@ -50,9 +56,19 @@ export function buildApiApp({
     })
   })
 
+  app.decorateRequest('authContext', null)
+
+  app.addHook('onRequest', async (request) => {
+    if (request.method === 'OPTIONS' || request.url === '/api/health') {
+      return
+    }
+
+    request.authContext = await requestAuthenticator.authenticate(request)
+  })
+
   app.register((instance) => {
     registerSessionRoutes(instance, sessionService)
-    registerTaskRoutes(instance, taskService)
+    registerTaskRoutes(instance, sessionService, taskService)
   })
 
   app.setErrorHandler((error, request, reply) => {

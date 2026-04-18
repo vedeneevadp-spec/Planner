@@ -26,7 +26,7 @@ describe('sessionApi', () => {
       ),
     )
 
-    const session = await resolvePlannerSession(fetchMock)
+    const session = await resolvePlannerSession({}, fetchMock)
 
     expect(session.workspace.name).toBe('Personal Workspace')
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -56,11 +56,52 @@ describe('sessionApi', () => {
     )
     const signal = new AbortController().signal
 
-    await resolvePlannerSession(signal, fetchMock)
+    await resolvePlannerSession(
+      {
+        signal,
+      },
+      fetchMock,
+    )
 
     const [, requestInit] = fetchMock.mock.calls[0]!
 
     expect(requestInit?.signal).toBe(signal)
+  })
+
+  it('includes bearer authorization when access token is provided', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          actor: {
+            displayName: 'Planner Dev User',
+            email: 'dev@planner.local',
+            id: 'user-1',
+          },
+          actorUserId: 'user-1',
+          role: 'owner',
+          source: 'access_token',
+          workspace: {
+            id: 'workspace-1',
+            name: 'Personal Workspace',
+            slug: 'personal',
+          },
+          workspaceId: 'workspace-1',
+        }),
+        { status: 200 },
+      ),
+    )
+
+    await resolvePlannerSession(
+      {
+        accessToken: 'planner-access-token',
+      },
+      fetchMock,
+    )
+
+    const [, requestInit] = fetchMock.mock.calls[0]!
+    const headers = new Headers(requestInit?.headers)
+
+    expect(headers.get('authorization')).toBe('Bearer planner-access-token')
   })
 
   it('throws typed error on failed resolve', async () => {
@@ -76,7 +117,7 @@ describe('sessionApi', () => {
       ),
     )
 
-    await expect(resolvePlannerSession(fetchMock)).rejects.toThrow(
+    await expect(resolvePlannerSession({}, fetchMock)).rejects.toThrow(
       SessionApiError,
     )
   })

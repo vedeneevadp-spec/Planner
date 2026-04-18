@@ -3,6 +3,7 @@ export type {
   DeleteTaskCommand,
   StoredTaskRecord,
   TaskListFilters,
+  TaskReadContext,
   TaskWriteContext,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,

@@ -3,13 +3,14 @@ import type {
   DeleteTaskCommand,
   StoredTaskRecord,
   TaskListFilters,
+  TaskReadContext,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
 } from './task.model.js'
 
 export interface TaskRepository {
   listByWorkspace(
-    workspaceId: string,
+    context: TaskReadContext,
     filters?: TaskListFilters,
   ): Promise<StoredTaskRecord[]>
   create(command: CreateTaskCommand): Promise<StoredTaskRecord>

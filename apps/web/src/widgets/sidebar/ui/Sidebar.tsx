@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 
 import { getPlannerSummary } from '@/entities/task'
 import { usePlanner } from '@/features/planner'
-import { usePlannerSession } from '@/features/session'
+import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
 
@@ -17,6 +17,7 @@ const navigation = [
 
 export function Sidebar() {
   const { errorMessage, isLoading, isSyncing, refresh, tasks } = usePlanner()
+  const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
   const todayKey = getDateKey(new Date())
   const summary = getPlannerSummary(tasks, todayKey)
@@ -65,6 +66,21 @@ export function Sidebar() {
             ? `${session.actor.displayName} · ${session.role}`
             : 'Session bootstrap'}
         </p>
+
+        {auth.isAuthEnabled && auth.email ? (
+          <div className={styles.accountRow}>
+            <span className={styles.accountEmail}>{auth.email}</span>
+            <button
+              className={styles.signOutButton}
+              type="button"
+              onClick={() => {
+                void auth.signOut()
+              }}
+            >
+              Выйти
+            </button>
+          </div>
+        ) : null}
 
         {errorMessage ? (
           <>

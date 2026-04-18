@@ -5,6 +5,8 @@ import type {
   TaskStatus,
 } from '@planner/contracts'
 
+import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
+
 export interface StoredTaskRecord extends Task {
   workspaceId: string
   updatedAt: string
@@ -18,9 +20,16 @@ export interface TaskListFilters {
   status?: TaskStatus | undefined
 }
 
-export interface TaskWriteContext {
+export interface TaskReadContext {
+  actorUserId?: string | undefined
+  auth: AuthenticatedRequestContext | null
   workspaceId: string
+}
+
+export interface TaskWriteContext {
   actorUserId: string
+  auth: AuthenticatedRequestContext | null
+  workspaceId: string
 }
 
 export interface CreateTaskCommand {

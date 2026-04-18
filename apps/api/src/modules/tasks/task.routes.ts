@@ -10,7 +10,9 @@ import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import { getRequestAuth } from '../../bootstrap/request-auth.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
+import type { SessionService } from '../session/index.js'
 import type { TaskService } from './task.service.js'
 
 const readHeadersSchema = z.object({
@@ -27,6 +29,7 @@ const taskParamsSchema = z.object({
 
 export function registerTaskRoutes(
   app: FastifyInstance,
+  sessionService: SessionService,
   service: TaskService,
 ): void {
   app.get('/api/v1/tasks', async (request) => {
@@ -40,19 +43,17 @@ export function registerTaskRoutes(
       request.query,
       'invalid_query',
     )
-    const tasks = await service.listTasks(headers['x-workspace-id'], filters)
+    const context = await resolveReadContext(request, sessionService, headers)
+    const tasks = await service.listTasks(context, filters)
 
     return taskListResponseSchema.parse(tasks)
   })
 
   app.post('/api/v1/tasks', async (request, reply) => {
-    const headers = parseOrThrow(
-      writeHeadersSchema,
-      request.headers,
-      'invalid_headers',
-    )
+    const headers = parseHeadersForWrite(request)
     const input = parseOrThrow(newTaskInputSchema, request.body, 'invalid_body')
-    const task = await service.createTask(createWriteContext(headers), input)
+    const context = await resolveWriteContext(request, sessionService, headers)
+    const task = await service.createTask(context, input)
 
     reply.code(201)
 
@@ -60,11 +61,7 @@ export function registerTaskRoutes(
   })
 
   app.patch('/api/v1/tasks/:taskId/status', async (request) => {
-    const headers = parseOrThrow(
-      writeHeadersSchema,
-      request.headers,
-      'invalid_headers',
-    )
+    const headers = parseHeadersForWrite(request)
     const params = parseOrThrow(
       taskParamsSchema,
       request.params,
@@ -75,8 +72,9 @@ export function registerTaskRoutes(
       request.body,
       'invalid_body',
     )
+    const context = await resolveWriteContext(request, sessionService, headers)
     const task = await service.setTaskStatus(
-      createWriteContext(headers),
+      context,
       params.taskId,
       body.status,
       body.expectedVersion,
@@ -86,11 +84,7 @@ export function registerTaskRoutes(
   })
 
   app.patch('/api/v1/tasks/:taskId/schedule', async (request) => {
-    const headers = parseOrThrow(
-      writeHeadersSchema,
-      request.headers,
-      'invalid_headers',
-    )
+    const headers = parseHeadersForWrite(request)
     const params = parseOrThrow(
       taskParamsSchema,
       request.params,
@@ -101,8 +95,9 @@ export function registerTaskRoutes(
       request.body,
       'invalid_body',
     )
+    const context = await resolveWriteContext(request, sessionService, headers)
     const task = await service.setTaskSchedule(
-      createWriteContext(headers),
+      context,
       params.taskId,
       body.schedule,
       body.expectedVersion,
@@ -112,20 +107,17 @@ export function registerTaskRoutes(
   })
 
   app.delete('/api/v1/tasks/:taskId', async (request, reply) => {
-    const headers = parseOrThrow(
-      writeHeadersSchema,
-      request.headers,
-      'invalid_headers',
-    )
+    const headers = parseHeadersForWrite(request)
     const params = parseOrThrow(
       taskParamsSchema,
       request.params,
       'invalid_params',
     )
     const expectedVersion = parseExpectedVersion(request)
+    const context = await resolveWriteContext(request, sessionService, headers)
 
     await service.removeTask(
-      createWriteContext(headers),
+      context,
       params.taskId,
       expectedVersion,
     )
@@ -136,13 +128,73 @@ export function registerTaskRoutes(
   })
 }
 
-function createWriteContext(headers: z.infer<typeof writeHeadersSchema>): {
-  actorUserId: string
-  workspaceId: string
-} {
+function createLegacyWriteContext(headers: z.infer<typeof writeHeadersSchema>) {
   return {
     actorUserId: headers['x-actor-user-id'],
+    auth: null,
     workspaceId: headers['x-workspace-id'],
+  }
+}
+
+function parseHeadersForWrite(request: FastifyRequest) {
+  const authContext = getRequestAuth(request)
+
+  return parseOrThrow(
+    authContext ? readHeadersSchema : writeHeadersSchema,
+    request.headers,
+    'invalid_headers',
+  )
+}
+
+async function resolveReadContext(
+  request: FastifyRequest,
+  sessionService: SessionService,
+  headers: z.infer<typeof readHeadersSchema>,
+) {
+  const authContext = getRequestAuth(request)
+
+  if (!authContext) {
+    return {
+      actorUserId: undefined,
+      auth: null,
+      workspaceId: headers['x-workspace-id'],
+    }
+  }
+
+  const session = await sessionService.resolveSession({
+    actorUserId: undefined,
+    auth: authContext,
+    workspaceId: headers['x-workspace-id'],
+  })
+
+  return {
+    actorUserId: session.actorUserId,
+    auth: authContext,
+    workspaceId: session.workspaceId,
+  }
+}
+
+async function resolveWriteContext(
+  request: FastifyRequest,
+  sessionService: SessionService,
+  headers: z.infer<typeof readHeadersSchema> | z.infer<typeof writeHeadersSchema>,
+) {
+  const authContext = getRequestAuth(request)
+
+  if (!authContext) {
+    return createLegacyWriteContext(headers as z.infer<typeof writeHeadersSchema>)
+  }
+
+  const session = await sessionService.resolveSession({
+    actorUserId: undefined,
+    auth: authContext,
+    workspaceId: headers['x-workspace-id'],
+  })
+
+  return {
+    actorUserId: session.actorUserId,
+    auth: authContext,
+    workspaceId: session.workspaceId,
   }
 }
 

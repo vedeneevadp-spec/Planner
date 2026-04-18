@@ -41,6 +41,31 @@ export function getSupabaseRuntimeDatabaseUrl() {
   return getSupabaseDirectDatabaseUrl()
 }
 
+export function getSupabaseProjectUrl() {
+  const explicitUrl = process.env.SUPABASE_URL
+
+  if (explicitUrl && explicitUrl.trim().length > 0) {
+    return explicitUrl.replace(/\/$/, '')
+  }
+
+  const projectRef = requireEnv('SUPABASE_PROJECT_REF')
+
+  return `https://${projectRef}.supabase.co`
+}
+
+export function getSupabasePublishableKey() {
+  const publishableKey =
+    process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.SUPABASE_ANON_KEY
+
+  if (publishableKey && publishableKey.trim().length > 0) {
+    return publishableKey
+  }
+
+  throw new Error(
+    'Missing required environment variable: SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY',
+  )
+}
+
 export async function runCommand(command, args, options = {}) {
   const child = spawn(command, args, {
     env: options.env ?? process.env,

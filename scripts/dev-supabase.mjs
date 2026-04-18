@@ -2,7 +2,12 @@ import process from 'node:process'
 import { spawn } from 'node:child_process'
 import net from 'node:net'
 
-import { getSupabaseRuntimeDatabaseUrl, npmCommand } from './supabase-utils.mjs'
+import {
+  getSupabaseProjectUrl,
+  getSupabasePublishableKey,
+  getSupabaseRuntimeDatabaseUrl,
+  npmCommand,
+} from './supabase-utils.mjs'
 
 const children = new Map()
 let shuttingDown = false
@@ -16,6 +21,7 @@ const webPort = await findAvailablePort(5173)
 
 const sharedApiEnv = {
   ...process.env,
+  API_AUTH_MODE: 'supabase',
   API_HOST: '127.0.0.1',
   API_PORT: String(apiPort),
   API_STORAGE_DRIVER: 'postgres',
@@ -39,6 +45,8 @@ const processes = [
       ...process.env,
       VITE_API_BASE_URL: `http://127.0.0.1:${apiPort}`,
       VITE_OPEN_BROWSER: 'false',
+      VITE_SUPABASE_PUBLISHABLE_KEY: getSupabasePublishableKey(),
+      VITE_SUPABASE_URL: getSupabaseProjectUrl(),
     },
   },
 ]

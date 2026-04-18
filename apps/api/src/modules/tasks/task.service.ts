@@ -2,6 +2,7 @@ import type {
   CreateTaskCommand,
   DeleteTaskCommand,
   TaskListFilters,
+  TaskReadContext,
   TaskWriteContext,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
@@ -11,8 +12,8 @@ import type { TaskRepository } from './task.repository.js'
 export class TaskService {
   constructor(private readonly repository: TaskRepository) {}
 
-  listTasks(workspaceId: string, filters?: TaskListFilters) {
-    return this.repository.listByWorkspace(workspaceId, filters)
+  listTasks(context: TaskReadContext, filters?: TaskListFilters) {
+    return this.repository.listByWorkspace(context, filters)
   }
 
   createTask(context: TaskWriteContext, input: CreateTaskCommand['input']) {

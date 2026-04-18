@@ -4,6 +4,7 @@ import type {
   DeleteTaskCommand,
   StoredTaskRecord,
   TaskListFilters,
+  TaskReadContext,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
 } from './task.model.js'
@@ -21,12 +22,13 @@ export class MemoryTaskRepository implements TaskRepository {
   private readonly tasks = new Map<string, StoredTaskRecord>()
 
   listByWorkspace(
-    workspaceId: string,
+    context: TaskReadContext,
     filters?: TaskListFilters,
   ): Promise<StoredTaskRecord[]> {
     const tasks = [...this.tasks.values()].filter(
       (task) =>
-        task.workspaceId === workspaceId && matchesTaskFilters(task, filters),
+        task.workspaceId === context.workspaceId &&
+        matchesTaskFilters(task, filters),
     )
 
     return Promise.resolve(sortStoredTasks(tasks))

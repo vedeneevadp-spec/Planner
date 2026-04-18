@@ -55,7 +55,7 @@ export const sessionResponseSchema = z.object({
   actor: sessionActorSchema,
   actorUserId: z.string(),
   role: workspaceRoleSchema,
-  source: z.enum(['default', 'headers']),
+  source: z.enum(['access_token', 'default', 'headers']),
   workspace: sessionWorkspaceSchema,
   workspaceId: z.string(),
 })

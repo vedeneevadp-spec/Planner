@@ -2,6 +2,8 @@ import type { FastifyInstance } from 'fastify'
 
 import { buildApiApp } from './bootstrap/build-app.js'
 import { createApiConfig } from './bootstrap/config.js'
+import { NoopRequestAuthenticator } from './bootstrap/request-auth.js'
+import { SupabaseRequestAuthenticator } from './infrastructure/auth/supabase-request-authenticator.js'
 import {
   createDatabaseConnection,
   type DatabaseConnection,
@@ -41,9 +43,14 @@ export function createApiKernel(
     : new MemorySessionRepository()
   const sessionService = new SessionService(sessionRepository)
   const taskService = new TaskService(taskRepository)
+  const requestAuthenticator =
+    config.authMode === 'supabase' && config.supabaseAuth
+      ? new SupabaseRequestAuthenticator(config.supabaseAuth)
+      : new NoopRequestAuthenticator()
   const app = buildApiApp({
     config,
     database,
+    requestAuthenticator,
     sessionService,
     taskService,
   })

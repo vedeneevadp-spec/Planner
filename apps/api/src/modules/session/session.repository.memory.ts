@@ -20,6 +20,24 @@ const DEFAULT_MEMORY_SESSION: SessionSnapshot = {
 
 export class MemorySessionRepository implements SessionRepository {
   resolve(context: SessionContext): Promise<SessionSnapshot> {
+    if (context.auth) {
+      return Promise.resolve({
+        actor: {
+          ...DEFAULT_MEMORY_SESSION.actor,
+          email: context.auth.claims.email ?? DEFAULT_MEMORY_SESSION.actor.email,
+          id: context.auth.claims.sub,
+        },
+        actorUserId: context.auth.claims.sub,
+        role: DEFAULT_MEMORY_SESSION.role,
+        source: 'access_token',
+        workspace: {
+          ...DEFAULT_MEMORY_SESSION.workspace,
+          id: context.workspaceId ?? DEFAULT_MEMORY_SESSION.workspace.id,
+        },
+        workspaceId: context.workspaceId ?? DEFAULT_MEMORY_SESSION.workspace.id,
+      })
+    }
+
     if (context.actorUserId && context.workspaceId) {
       return Promise.resolve({
         actor: {

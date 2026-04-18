@@ -24,10 +24,10 @@ Monorepo для planner-платформы: текущий `React`-клиент 
 - `npm run dev` - локальный dev-сервер web-приложения из `apps/web`
 - `npm run dev:supabase` - одновременный запуск web + api поверх managed Supabase Postgres с автоматическим подбором свободных локальных портов
 - `npm run start` - алиас локального dev-запуска web-приложения
-- `npm run dev:api` - запуск backend API в watch-режиме из `apps/api`
+- `npm run dev:api` - запуск backend API в watch-режиме с локальным Postgres по умолчанию
 - `npm run dev:api:postgres` - запуск backend API в watch-режиме с локальным Postgres
 - `npm run dev:api:supabase` - запуск backend API с managed Supabase Postgres через `.env.supabase.local`
-- `npm run start:api` - единичный запуск backend API
+- `npm run start:api` - единичный запуск backend API с локальным Postgres по умолчанию
 - `npm run start:api:postgres` - единичный запуск backend API с локальным Postgres
 - `npm run start:api:supabase` - единичный запуск backend API с managed Supabase Postgres
 - `npm run db:up` - поднять локальный Postgres через Docker Compose
@@ -63,7 +63,7 @@ supabase/
 ## Архитектура
 
 - `apps/web` сохраняет текущую feature-oriented структуру `app/pages/widgets/features/entities/shared`
-- `apps/api` уже содержит `Fastify` runtime, task routes, memory adapter и Postgres-ready repository boundary
+- `apps/api` уже содержит `Fastify` runtime, task routes, Postgres runtime boundary и memory adapter для тестов
 - `packages/contracts` становится общей точкой типов и валидации между web и api
 - `supabase/migrations` фиксирует серверную схему как главный источник истины
 
@@ -71,8 +71,9 @@ supabase/
 
 ## API Runtime
 
-- По умолчанию API стартует в режиме `memory` и не требует поднятой базы данных.
-- Для переключения на Postgres используйте `API_STORAGE_DRIVER=postgres` и задайте `DATABASE_URL`.
+- По умолчанию API стартует на локальном Postgres и использует `DATABASE_URL`, либо fallback `postgres://planner:planner@127.0.0.1:54329/planner_development`.
+- `API_STORAGE_DRIVER=memory` поддерживается только в тестовом runtime.
+- `API_DB_RLS_MODE` можно использовать для override поведения RLS runtime layer: в auto-режиме direct Postgres включает DB RLS context, а Supabase pooler runtime отключает его из-за нестабильности transaction-scoped role switching.
 - Базовые endpoint'ы уже доступны: `/api/health`, `/api/v1/tasks`.
 - Для managed Supabase runtime используйте `SUPABASE_RUNTIME_DATABASE_URL` или fallback на `SUPABASE_DB_URL`.
 
@@ -87,7 +88,7 @@ supabase/
 ## Local Postgres
 
 1. Выполните `npm run db:setup`.
-2. Запустите API через `npm run dev:api:postgres`.
+2. Запустите API через `npm run dev:api`.
 3. При необходимости скопируйте `apps/web/.env.example` в `apps/web/.env`.
 4. По умолчанию `/api/v1/session` вернет первый доступный membership из базы.
 5. Для явного override используйте seeded значения:

@@ -13,6 +13,47 @@ import { MemorySessionRepository, SessionService } from '../modules/session/inde
 import { MemoryTaskRepository, TaskService } from '../modules/tasks/index.js'
 import { buildApiApp } from './build-app.js'
 import { createApiConfig } from './config.js'
+import { HttpError } from './http-error.js'
+import type { RequestAuthenticator } from './request-auth.js'
+
+const AUTH_TOKEN = 'planner-test-token'
+const AUTH_CONTEXT = {
+  accessToken: AUTH_TOKEN,
+  claims: {
+    email: 'planner-auth@planner.local',
+    payload: {
+      email: 'planner-auth@planner.local',
+      role: 'authenticated',
+      sub: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    },
+    role: 'authenticated' as const,
+    sub: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  },
+}
+
+const authRequestAuthenticator: RequestAuthenticator = {
+  authenticate(request) {
+    if (request.headers.authorization !== `Bearer ${AUTH_TOKEN}`) {
+      throw new HttpError(
+        401,
+        'authentication_required',
+        'A valid bearer token is required for this request.',
+      )
+    }
+
+    return Promise.resolve(AUTH_CONTEXT)
+  },
+}
+
+function createTestConfig(
+  env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv,
+) {
+  return createApiConfig({
+    API_STORAGE_DRIVER: 'memory',
+    NODE_ENV: 'test',
+    ...env,
+  } as NodeJS.ProcessEnv)
+}
 
 void describe('buildApiApp', () => {
   let app: ReturnType<typeof buildApiApp> | null = null
@@ -26,9 +67,7 @@ void describe('buildApiApp', () => {
 
   void it('returns health information for the configured runtime', async () => {
     app = buildApiApp({
-      config: createApiConfig({
-        NODE_ENV: 'test',
-      } as NodeJS.ProcessEnv),
+      config: createTestConfig(),
       database: null,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -50,9 +89,7 @@ void describe('buildApiApp', () => {
 
   void it('creates, updates and lists tasks via the HTTP API', async () => {
     app = buildApiApp({
-      config: createApiConfig({
-        NODE_ENV: 'test',
-      } as NodeJS.ProcessEnv),
+      config: createTestConfig(),
       database: null,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -146,9 +183,7 @@ void describe('buildApiApp', () => {
 
   void it('returns a typed validation error for malformed requests', async () => {
     app = buildApiApp({
-      config: createApiConfig({
-        NODE_ENV: 'test',
-      } as NodeJS.ProcessEnv),
+      config: createTestConfig(),
       database: null,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -171,10 +206,9 @@ void describe('buildApiApp', () => {
 
   void it('allows PATCH and DELETE in CORS preflight responses', async () => {
     app = buildApiApp({
-      config: createApiConfig({
+      config: createTestConfig({
         API_CORS_ORIGIN: 'http://127.0.0.1:5173',
-        NODE_ENV: 'test',
-      } as NodeJS.ProcessEnv),
+      }),
       database: null,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -215,9 +249,7 @@ void describe('buildApiApp', () => {
 
   void it('resolves a session without explicit headers', async () => {
     app = buildApiApp({
-      config: createApiConfig({
-        NODE_ENV: 'test',
-      } as NodeJS.ProcessEnv),
+      config: createTestConfig(),
       database: null,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -235,5 +267,83 @@ void describe('buildApiApp', () => {
     assert.equal(body.source, 'default')
     assert.equal(body.actor.email, 'dev@planner.local')
     assert.equal(body.workspace.slug, 'personal')
+  })
+
+  void it('requires a bearer token when request authentication is enabled', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(response.statusCode, 401)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'authentication_required')
+  })
+
+  void it('resolves session and task writes from authenticated requests', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const sessionResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-auth',
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(sessionResponse.statusCode, 200)
+
+    const session = sessionResponseSchema.parse(sessionResponse.json())
+
+    assert.equal(session.actor.id, AUTH_CONTEXT.claims.sub)
+    assert.equal(session.source, 'access_token')
+    assert.equal(session.workspace.id, 'workspace-auth')
+
+    const createResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-auth',
+      },
+      method: 'POST',
+      payload: {
+        dueDate: null,
+        note: 'created under bearer auth',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        title: 'Authenticated task write',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(createResponse.statusCode, 201)
+
+    const createdTask = taskRecordSchema.parse(createResponse.json())
+
+    assert.equal(createdTask.workspaceId, 'workspace-auth')
   })
 })

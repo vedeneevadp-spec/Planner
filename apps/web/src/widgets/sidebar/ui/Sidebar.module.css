@@ -52,6 +52,20 @@
   margin: 0.6rem 0 0;
 }
 
+.accountRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.85rem;
+}
+
+.accountEmail {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+  overflow-wrap: anywhere;
+}
+
 .connectionError {
   color: #8a3a21;
 }
@@ -92,8 +106,21 @@
   cursor: pointer;
 }
 
+.signOutButton {
+  border: none;
+  border-radius: 12px;
+  padding: 0.5rem 0.72rem;
+  font: inherit;
+  color: var(--accent);
+  background: rgba(33, 78, 66, 0.08);
+}
+
 .retryButton:hover {
   background: #183b31;
+}
+
+.signOutButton:hover {
+  background: rgba(33, 78, 66, 0.14);
 }
 
 .navList {

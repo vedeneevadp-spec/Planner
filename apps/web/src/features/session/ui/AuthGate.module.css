@@ -1,0 +1,252 @@
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+.panel {
+  width: min(100%, 960px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 420px);
+  gap: 1.25rem;
+  border-radius: 32px;
+  padding: 1.25rem;
+  background: rgba(255, 251, 243, 0.72);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.hero,
+.formCard {
+  border-radius: 24px;
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(247, 203, 119, 0.28),
+      transparent 38%
+    ),
+    linear-gradient(160deg, rgba(33, 78, 66, 0.12), rgba(255, 255, 255, 0.5));
+}
+
+.eyebrow {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.74rem;
+  color: var(--accent);
+}
+
+.title {
+  margin: 0.35rem 0 0;
+  font-size: clamp(2.4rem, 5vw, 4.3rem);
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.copy {
+  max-width: 32rem;
+  margin: 1rem 0 0;
+  color: var(--text-soft);
+}
+
+.heroFooter {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 2rem;
+}
+
+.heroMetric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(37, 45, 37, 0.1);
+}
+
+.heroMetric span {
+  color: var(--text-soft);
+}
+
+.heroMetric strong {
+  font-size: 1.02rem;
+}
+
+.formCard {
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.modeSwitch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.modeButton {
+  border: 1px solid rgba(37, 45, 37, 0.14);
+  border-radius: 999px;
+  padding: 0.55rem 0.8rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-soft);
+  font: inherit;
+}
+
+.modeButtonActive {
+  background: linear-gradient(
+    135deg,
+    rgba(33, 78, 66, 0.14),
+    rgba(247, 203, 119, 0.34)
+  );
+  border-color: rgba(33, 78, 66, 0.28);
+  color: var(--accent);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  padding: 0.26rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: rgba(33, 78, 66, 0.12);
+  color: var(--accent);
+}
+
+.formTitle {
+  margin: 0.9rem 0 0;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.formCopy {
+  margin: 0.6rem 0 0;
+  color: var(--text-soft);
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.4rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.field span {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
+.field input {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.92rem 1rem;
+  color: inherit;
+}
+
+.recoveryCard {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.92rem 1rem;
+  border-radius: 14px;
+  border: 1px dashed rgba(33, 78, 66, 0.2);
+  background: rgba(247, 203, 119, 0.08);
+}
+
+.recoveryCard span {
+  font-size: 0.82rem;
+  color: var(--text-soft);
+}
+
+.recoveryCard strong {
+  font-size: 0.98rem;
+}
+
+.helperText {
+  margin: -0.15rem 0 0;
+  font-size: 0.84rem;
+  color: var(--text-soft);
+}
+
+.submitButton,
+.secondaryButton,
+.tertiaryButton {
+  border: none;
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  font: inherit;
+}
+
+.submitButton {
+  color: #fff7ef;
+  background: linear-gradient(135deg, #214e42, #2f6a58);
+}
+
+.submitButton:disabled {
+  opacity: 0.68;
+  cursor: progress;
+}
+
+.secondaryButton {
+  color: var(--accent);
+  background: rgba(33, 78, 66, 0.08);
+}
+
+.tertiaryButton {
+  color: #8a3a21;
+  background: rgba(173, 78, 47, 0.08);
+}
+
+.message,
+.error {
+  margin: 0;
+  padding: 0.85rem 0.95rem;
+  border-radius: 14px;
+}
+
+.message {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.error {
+  color: #8a3a21;
+  background: rgba(173, 78, 47, 0.12);
+}
+
+.loadingState {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.loadingState strong {
+  font-size: 1.12rem;
+}
+
+.loadingState p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+@media (max-width: 900px) {
+  .panel {
+    grid-template-columns: 1fr;
+  }
+}

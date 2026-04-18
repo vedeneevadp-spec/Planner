@@ -30,20 +30,21 @@ export class SessionApiError extends Error {
   }
 }
 
+export interface ResolvePlannerSessionOptions {
+  accessToken?: string
+  signal?: AbortSignal
+}
+
 export async function resolvePlannerSession(
-  signalOrFetchFn?: AbortSignal | typeof fetch,
+  options: ResolvePlannerSessionOptions = {},
   fetchFn: typeof fetch = fetch,
 ): Promise<SessionResponse> {
-  const signal =
-    typeof signalOrFetchFn === 'function' ? undefined : signalOrFetchFn
-  const resolvedFetchFn =
-    typeof signalOrFetchFn === 'function' ? signalOrFetchFn : fetchFn
-  const headers = getPlannerSessionOverrideHeaders()
+  const headers = getPlannerSessionOverrideHeaders(options.accessToken)
   const requestInit = {
     ...(headers ? { headers } : {}),
-    ...(signal ? { signal } : {}),
+    ...(options.signal ? { signal: options.signal } : {}),
   }
-  const response = await resolvedFetchFn(
+  const response = await fetchFn(
     new URL('/api/v1/session', plannerApiConfig.apiBaseUrl),
     requestInit,
   )

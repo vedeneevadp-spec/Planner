@@ -8,7 +8,7 @@ const connectionString =
 
 const devUser = {
   displayName: 'Planner Dev User',
-  email: 'dev@planner.local',
+  email: 'vedeneeva.d.p@gmail.com',
   id: '11111111-1111-4111-8111-111111111111',
 }
 
