@@ -3,8 +3,13 @@ import { constants } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
 
-const vitestEntrypoint = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url))
-const coverageProviderPath = new URL('../node_modules/@vitest/coverage-v8', import.meta.url)
+const vitestEntrypoint = fileURLToPath(
+  new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
+)
+const coverageProviderPath = new URL(
+  '../node_modules/@vitest/coverage-v8',
+  import.meta.url,
+)
 const forwardedArgs = process.argv.slice(2)
 
 try {
@@ -19,10 +24,14 @@ try {
   process.exit(1)
 }
 
-const child = spawn(process.execPath, [vitestEntrypoint, 'run', '--coverage', ...forwardedArgs], {
-  stdio: 'inherit',
-  env: process.env,
-})
+const child = spawn(
+  process.execPath,
+  [vitestEntrypoint, 'run', '--coverage', ...forwardedArgs],
+  {
+    stdio: 'inherit',
+    env: process.env,
+  },
+)
 
 child.on('exit', (code, signal) => {
   if (signal) {

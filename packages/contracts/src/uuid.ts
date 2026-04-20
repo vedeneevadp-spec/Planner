@@ -13,8 +13,9 @@ export const uuidV7Schema = z.string().regex(uuidV7Pattern, {
 
 export function generateUuidV7(timestampMs: number = Date.now()): string {
   const bytes = new Uint8Array(16)
-  const cryptoApi = (globalThis as typeof globalThis & { crypto?: WebCryptoLike })
-    .crypto
+  const cryptoApi = (
+    globalThis as typeof globalThis & { crypto?: WebCryptoLike }
+  ).crypto
 
   if (!cryptoApi) {
     throw new Error('crypto.getRandomValues is not available in this runtime.')

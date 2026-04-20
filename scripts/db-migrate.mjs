@@ -81,9 +81,12 @@ async function runTransactionalMigrations(migrationFiles) {
 }
 
 async function runStatelessMigrations(migrationFiles) {
-  await withConnectedClient(async (client) => {
-    await ensureSchemaMigrationsTable(client)
-  }, { logSuccess: true })
+  await withConnectedClient(
+    async (client) => {
+      await ensureSchemaMigrationsTable(client)
+    },
+    { logSuccess: true },
+  )
 
   for (const fileName of migrationFiles) {
     const alreadyApplied = await withConnectedClient((client) =>

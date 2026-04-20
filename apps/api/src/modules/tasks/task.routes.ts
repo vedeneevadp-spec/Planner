@@ -116,11 +116,7 @@ export function registerTaskRoutes(
     const expectedVersion = parseExpectedVersion(request)
     const context = await resolveWriteContext(request, sessionService, headers)
 
-    await service.removeTask(
-      context,
-      params.taskId,
-      expectedVersion,
-    )
+    await service.removeTask(context, params.taskId, expectedVersion)
 
     reply.code(204)
 
@@ -177,12 +173,16 @@ async function resolveReadContext(
 async function resolveWriteContext(
   request: FastifyRequest,
   sessionService: SessionService,
-  headers: z.infer<typeof readHeadersSchema> | z.infer<typeof writeHeadersSchema>,
+  headers:
+    | z.infer<typeof readHeadersSchema>
+    | z.infer<typeof writeHeadersSchema>,
 ) {
   const authContext = getRequestAuth(request)
 
   if (!authContext) {
-    return createLegacyWriteContext(headers as z.infer<typeof writeHeadersSchema>)
+    return createLegacyWriteContext(
+      headers as z.infer<typeof writeHeadersSchema>,
+    )
   }
 
   const session = await sessionService.resolveSession({

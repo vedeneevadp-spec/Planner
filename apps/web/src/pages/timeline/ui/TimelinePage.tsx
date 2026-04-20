@@ -82,7 +82,9 @@ function TimelineTaskItem({
   const [plannedStartTime, setPlannedStartTime] = useState(
     task.plannedStartTime ?? '',
   )
-  const [plannedEndTime, setPlannedEndTime] = useState(task.plannedEndTime ?? '')
+  const [plannedEndTime, setPlannedEndTime] = useState(
+    task.plannedEndTime ?? '',
+  )
 
   const isInvalidRange =
     plannedStartTime !== '' &&
@@ -285,7 +287,9 @@ export function TimelinePage() {
             <input
               type="date"
               value={selectedDate}
-              onChange={(event) => setSelectedDate(event.target.value || todayKey)}
+              onChange={(event) =>
+                setSelectedDate(event.target.value || todayKey)
+              }
             />
           </label>
         </div>
@@ -310,7 +314,11 @@ export function TimelinePage() {
         </div>
       </section>
 
-      <TaskComposer key={selectedDate} initialPlannedDate={selectedDate} showTimeFields />
+      <TaskComposer
+        key={selectedDate}
+        initialPlannedDate={selectedDate}
+        showTimeFields
+      />
 
       <div className={styles.layout}>
         <section className={styles.panel}>

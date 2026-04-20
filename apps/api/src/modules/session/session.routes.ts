@@ -44,7 +44,9 @@ export function registerSessionRoutes(
       'invalid_headers',
     )
 
-    if (Boolean(headers['x-actor-user-id']) !== Boolean(headers['x-workspace-id'])) {
+    if (
+      Boolean(headers['x-actor-user-id']) !== Boolean(headers['x-workspace-id'])
+    ) {
       throw new HttpError(
         400,
         'invalid_headers',

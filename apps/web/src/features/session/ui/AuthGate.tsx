@@ -1,4 +1,9 @@
-import { type FormEvent, type PropsWithChildren, useMemo, useState } from 'react'
+import {
+  type FormEvent,
+  type PropsWithChildren,
+  useMemo,
+  useState,
+} from 'react'
 
 import { useSessionAuth } from '@/features/session'
 
@@ -184,7 +189,9 @@ export function AuthGate({ children }: PropsWithChildren) {
       )
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : 'Не удалось завершить auth flow.',
+        error instanceof Error
+          ? error.message
+          : 'Не удалось завершить auth flow.',
       )
     } finally {
       setIsSubmitting(false)
@@ -242,7 +249,9 @@ export function AuthGate({ children }: PropsWithChildren) {
         <div className={styles.hero}>
           <div>
             <p className={styles.eyebrow}>Planner Auth Cutover</p>
-            <h1 className={styles.title}>Backend больше не доверяет заголовкам.</h1>
+            <h1 className={styles.title}>
+              Backend больше не доверяет заголовкам.
+            </h1>
             <p className={styles.copy}>
               Вход теперь идёт через Supabase session. Основной поток теперь
               обычный email/password, а magic link остаётся fallback для
@@ -261,7 +270,9 @@ export function AuthGate({ children }: PropsWithChildren) {
             </div>
             <div className={styles.heroMetric}>
               <span>Best for</span>
-              <strong>{defaultEmailDomain ?? 'рабочий email с доступом к проекту'}</strong>
+              <strong>
+                {defaultEmailDomain ?? 'рабочий email с доступом к проекту'}
+              </strong>
             </div>
           </div>
         </div>
@@ -295,7 +306,10 @@ export function AuthGate({ children }: PropsWithChildren) {
           <h2 className={styles.formTitle}>{modeContent.title}</h2>
           <p className={styles.formCopy}>{modeContent.copy}</p>
 
-          <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+          <form
+            className={styles.form}
+            onSubmit={(event) => void handleSubmit(event)}
+          >
             {screenMode === 'register' ? (
               <label className={styles.field}>
                 <span>Имя</span>
@@ -330,7 +344,9 @@ export function AuthGate({ children }: PropsWithChildren) {
 
             {screenMode !== 'magic_link' ? (
               <label className={styles.field}>
-                <span>{screenMode === 'recover' ? 'Новый пароль' : 'Пароль'}</span>
+                <span>
+                  {screenMode === 'recover' ? 'Новый пароль' : 'Пароль'}
+                </span>
                 <input
                   autoComplete={
                     screenMode === 'register' || screenMode === 'recover'
@@ -365,7 +381,9 @@ export function AuthGate({ children }: PropsWithChildren) {
                   }
                   type="password"
                   value={passwordConfirmation}
-                  onChange={(event) => setPasswordConfirmation(event.target.value)}
+                  onChange={(event) =>
+                    setPasswordConfirmation(event.target.value)
+                  }
                 />
               </label>
             ) : null}
@@ -380,15 +398,21 @@ export function AuthGate({ children }: PropsWithChildren) {
                     : 'Используйте этот режим, если пароль ещё не настроен или нужен резервный вход.'}
             </p>
 
-            {statusMessage ? <p className={styles.message}>{statusMessage}</p> : null}
-            {errorMessage ? <p className={styles.error}>{errorMessage}</p> : null}
+            {statusMessage ? (
+              <p className={styles.message}>{statusMessage}</p>
+            ) : null}
+            {errorMessage ? (
+              <p className={styles.error}>{errorMessage}</p>
+            ) : null}
 
             <button
               className={styles.submitButton}
               disabled={isSubmitting}
               type="submit"
             >
-              {isSubmitting ? modeContent.pendingLabel : modeContent.submitLabel}
+              {isSubmitting
+                ? modeContent.pendingLabel
+                : modeContent.submitLabel}
             </button>
 
             {screenMode === 'login' ? (

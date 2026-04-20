@@ -179,9 +179,7 @@ function buildEffectiveClaims(
 
   return {
     ...authContext.claims.payload,
-    ...(authContext.claims.email
-      ? { email: authContext.claims.email }
-      : {}),
+    ...(authContext.claims.email ? { email: authContext.claims.email } : {}),
     ...(effectiveActorUserId !== authContext.claims.sub
       ? { auth_sub: authContext.claims.sub }
       : {}),

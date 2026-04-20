@@ -4,23 +4,25 @@ const LOCAL_DEVELOPMENT_DEFAULTS = {
   apiBaseUrl: 'http://127.0.0.1:3001',
 } as const
 
-const plannerApiConfigSchema = z.object({
-  apiAccessToken: z.string().min(1).optional(),
-  actorUserIdOverride: z.string().min(1).optional(),
-  apiBaseUrl: z.string().url(),
-  supabasePublishableKey: z.string().min(1).optional(),
-  supabaseUrl: z.string().url().optional(),
-  workspaceIdOverride: z.string().min(1).optional(),
-}).refine(
-  (value) =>
-    (Boolean(value.supabaseUrl) && Boolean(value.supabasePublishableKey)) ||
-    (!value.supabaseUrl && !value.supabasePublishableKey),
-  {
-    message:
-      'VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be configured together.',
-    path: ['supabaseUrl'],
-  },
-)
+const plannerApiConfigSchema = z
+  .object({
+    apiAccessToken: z.string().min(1).optional(),
+    actorUserIdOverride: z.string().min(1).optional(),
+    apiBaseUrl: z.string().url(),
+    supabasePublishableKey: z.string().min(1).optional(),
+    supabaseUrl: z.string().url().optional(),
+    workspaceIdOverride: z.string().min(1).optional(),
+  })
+  .refine(
+    (value) =>
+      (Boolean(value.supabaseUrl) && Boolean(value.supabasePublishableKey)) ||
+      (!value.supabaseUrl && !value.supabasePublishableKey),
+    {
+      message:
+        'VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be configured together.',
+      path: ['supabaseUrl'],
+    },
+  )
 
 export type PlannerApiConfig = z.infer<typeof plannerApiConfigSchema>
 

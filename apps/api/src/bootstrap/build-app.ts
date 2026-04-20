@@ -15,6 +15,7 @@ import type { TaskService } from '../modules/tasks/index.js'
 import { registerTaskRoutes } from '../modules/tasks/index.js'
 import type { ApiConfig } from './config.js'
 import { HttpError } from './http-error.js'
+import { registerOpenApi } from './openapi.js'
 import {
   NoopRequestAuthenticator,
   type RequestAuthenticator,
@@ -43,6 +44,7 @@ export function buildApiApp({
     methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: config.corsOrigin === '*' ? true : config.corsOrigin,
   })
+  registerOpenApi(app, config)
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     const databaseStatus = await getDatabaseStatus(database)
@@ -59,7 +61,7 @@ export function buildApiApp({
   app.decorateRequest('authContext', null)
 
   app.addHook('onRequest', async (request) => {
-    if (request.method === 'OPTIONS' || request.url === '/api/health') {
+    if (isPublicRequest(request.method, request.url)) {
       return
     }
 
@@ -93,6 +95,21 @@ export function buildApiApp({
   })
 
   return app
+}
+
+function isPublicRequest(method: string, url: string): boolean {
+  if (method === 'OPTIONS') {
+    return true
+  }
+
+  const [path = url] = url.split('?')
+
+  return (
+    path === '/api/health' ||
+    path === '/api/openapi.json' ||
+    path === '/api/docs' ||
+    path.startsWith('/api/docs/')
+  )
 }
 
 async function getDatabaseStatus(

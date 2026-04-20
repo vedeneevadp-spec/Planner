@@ -1,10 +1,6 @@
 import type { FastifyRequest } from 'fastify'
 import { decodeJwt, decodeProtectedHeader, jwtVerify } from 'jose'
-import {
-  createRemoteJWKSet,
-  errors as joseErrors,
-  type JWTPayload,
-} from 'jose'
+import { createRemoteJWKSet, errors as joseErrors, type JWTPayload } from 'jose'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -123,12 +119,15 @@ export class SupabaseRequestAuthenticator implements RequestAuthenticator {
   private async verifyViaAuthServer(
     accessToken: string,
   ): Promise<AuthenticatedRequestClaims> {
-    const response = await fetch(new URL('/auth/v1/user', this.config.projectUrl), {
-      headers: {
-        apikey: this.config.publishableKey!,
-        authorization: `Bearer ${accessToken}`,
+    const response = await fetch(
+      new URL('/auth/v1/user', this.config.projectUrl),
+      {
+        headers: {
+          apikey: this.config.publishableKey!,
+          authorization: `Bearer ${accessToken}`,
+        },
       },
-    })
+    )
 
     if (!response.ok) {
       throw invalidAccessTokenError()
@@ -176,7 +175,9 @@ async function verifyWithSharedSecret(
   }
 }
 
-function normalizeVerifiedClaims(payload: JWTPayload): AuthenticatedRequestClaims {
+function normalizeVerifiedClaims(
+  payload: JWTPayload,
+): AuthenticatedRequestClaims {
   const parsedClaims = verifiedJwtClaimsSchema.safeParse(payload)
 
   if (!parsedClaims.success) {

@@ -11,12 +11,10 @@ export function usePlannerSession() {
   return useQuery({
     enabled: !auth.isAuthEnabled || Boolean(auth.accessToken),
     queryFn: ({ signal }) =>
-      resolvePlannerSession(
-        {
-          ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
-          signal,
-        },
-      ),
+      resolvePlannerSession({
+        ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
+        signal,
+      }),
     queryKey: [
       'planner',
       'session',

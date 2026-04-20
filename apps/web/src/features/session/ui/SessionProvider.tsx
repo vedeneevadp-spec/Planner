@@ -28,7 +28,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), [])
   const isAuthEnabled = supabase !== null
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
-    () => typeof window !== 'undefined' && hasRecoveryUrlParams(window.location),
+    () =>
+      typeof window !== 'undefined' && hasRecoveryUrlParams(window.location),
   )
   const [snapshot, setSnapshot] = useState<AuthSnapshot>({
     ...INITIAL_AUTH_SNAPSHOT,

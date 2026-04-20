@@ -1,5 +1,5 @@
 import { generateUuidV7 } from '@planner/contracts'
-import { type Kysely,sql } from 'kysely'
+import { type Kysely, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -46,8 +46,16 @@ export class PostgresSessionRepository implements SessionRepository {
         context.workspaceId,
       )
       const session = context.workspaceId
-        ? await this.resolveExplicitSession(connection, context, authenticatedActor)
-        : await this.resolveDefaultSession(connection, context, authenticatedActor)
+        ? await this.resolveExplicitSession(
+            connection,
+            context,
+            authenticatedActor,
+          )
+        : await this.resolveDefaultSession(
+            connection,
+            context,
+            authenticatedActor,
+          )
 
       return this.mapSessionSnapshot(context, session)
     })
@@ -57,7 +65,11 @@ export class PostgresSessionRepository implements SessionRepository {
     return executor
       .selectFrom('app.workspace_members as membership')
       .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
-      .innerJoin('app.workspaces as workspace', 'workspace.id', 'membership.workspace_id')
+      .innerJoin(
+        'app.workspaces as workspace',
+        'workspace.id',
+        'membership.workspace_id',
+      )
       .select([
         'actor.display_name as actorDisplayName',
         'actor.email as actorEmail',
@@ -148,10 +160,7 @@ export class PostgresSessionRepository implements SessionRepository {
       .executeTakeFirst()
   }
 
-  private createSessionQuery(
-    executor: DatabaseExecutor,
-    workspaceId?: string,
-  ) {
+  private createSessionQuery(executor: DatabaseExecutor, workspaceId?: string) {
     let query = this.createBaseQuery(executor)
 
     if (workspaceId) {
@@ -228,11 +237,19 @@ export class PostgresSessionRepository implements SessionRepository {
     }
 
     if (authActor) {
-      return this.syncAuthenticatedActorProfile(executor, authActor, authContext)
+      return this.syncAuthenticatedActorProfile(
+        executor,
+        authActor,
+        authContext,
+      )
     }
 
     if (emailActor) {
-      return this.syncAuthenticatedActorProfile(executor, emailActor, authContext)
+      return this.syncAuthenticatedActorProfile(
+        executor,
+        emailActor,
+        authContext,
+      )
     }
 
     return this.createAuthenticatedActor(executor, authContext)
@@ -261,8 +278,14 @@ export class PostgresSessionRepository implements SessionRepository {
       }
     }
 
-    const authHasAnyWorkspace = await this.hasAnyWorkspaceAccess(executor, authActor.id)
-    const emailHasAnyWorkspace = await this.hasAnyWorkspaceAccess(executor, emailActor.id)
+    const authHasAnyWorkspace = await this.hasAnyWorkspaceAccess(
+      executor,
+      authActor.id,
+    )
+    const emailHasAnyWorkspace = await this.hasAnyWorkspaceAccess(
+      executor,
+      emailActor.id,
+    )
 
     if (authHasAnyWorkspace !== emailHasAnyWorkspace) {
       return authHasAnyWorkspace ? authActor : emailActor
@@ -297,7 +320,10 @@ export class PostgresSessionRepository implements SessionRepository {
     const desiredDisplayName =
       this.resolveAuthProvidedDisplayName(authContext) ?? actor.displayName
 
-    if (actor.email === desiredEmail && actor.displayName === desiredDisplayName) {
+    if (
+      actor.email === desiredEmail &&
+      actor.displayName === desiredDisplayName
+    ) {
       return {
         ...actor,
         displayName: desiredDisplayName,
@@ -369,7 +395,9 @@ export class PostgresSessionRepository implements SessionRepository {
     const existingActor = await this.findActorById(executor, actor.id)
 
     if (!existingActor) {
-      throw new Error(`Failed to resolve actor "${actor.id}" after provisioning.`)
+      throw new Error(
+        `Failed to resolve actor "${actor.id}" after provisioning.`,
+      )
     }
 
     return existingActor
@@ -459,7 +487,10 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   private resolveAuthEmail(authContext: AuthenticatedRequestContext): string {
-    const payloadEmail = this.getStringClaim(authContext.claims.payload, 'email')
+    const payloadEmail = this.getStringClaim(
+      authContext.claims.payload,
+      'email',
+    )
     const email = authContext.claims.email ?? payloadEmail
 
     if (email) {
@@ -480,7 +511,9 @@ export class PostgresSessionRepository implements SessionRepository {
     return (
       (userMetadata ? this.getStringClaim(userMetadata, 'full_name') : null) ??
       (userMetadata ? this.getStringClaim(userMetadata, 'name') : null) ??
-      (userMetadata ? this.getStringClaim(userMetadata, 'display_name') : null) ??
+      (userMetadata
+        ? this.getStringClaim(userMetadata, 'display_name')
+        : null) ??
       this.getStringClaim(authContext.claims.payload, 'full_name') ??
       this.getStringClaim(authContext.claims.payload, 'name') ??
       this.getStringClaim(authContext.claims.payload, 'display_name')

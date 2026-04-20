@@ -24,7 +24,8 @@ export class MemorySessionRepository implements SessionRepository {
       return Promise.resolve({
         actor: {
           ...DEFAULT_MEMORY_SESSION.actor,
-          email: context.auth.claims.email ?? DEFAULT_MEMORY_SESSION.actor.email,
+          email:
+            context.auth.claims.email ?? DEFAULT_MEMORY_SESSION.actor.email,
           id: context.auth.claims.sub,
         },
         actorUserId: context.auth.claims.sub,

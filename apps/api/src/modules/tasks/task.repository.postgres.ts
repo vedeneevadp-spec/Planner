@@ -1,5 +1,5 @@
 import { generateUuidV7 } from '@planner/contracts'
-import { type Kysely, type Selectable,sql } from 'kysely'
+import { type Kysely, type Selectable, sql } from 'kysely'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
@@ -202,7 +202,11 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
 
         if (command.expectedVersion !== undefined) {
-          updateQuery = updateQuery.where('version', '=', command.expectedVersion)
+          updateQuery = updateQuery.where(
+            'version',
+            '=',
+            command.expectedVersion,
+          )
         }
 
         const updatedTask = await updateQuery.returningAll().executeTakeFirst()
@@ -297,7 +301,11 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
 
         if (command.expectedVersion !== undefined) {
-          updateQuery = updateQuery.where('version', '=', command.expectedVersion)
+          updateQuery = updateQuery.where(
+            'version',
+            '=',
+            command.expectedVersion,
+          )
         }
 
         const updatedTask = await updateQuery.returningAll().executeTakeFirst()
@@ -383,7 +391,11 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
 
         if (command.expectedVersion !== undefined) {
-          updateQuery = updateQuery.where('version', '=', command.expectedVersion)
+          updateQuery = updateQuery.where(
+            'version',
+            '=',
+            command.expectedVersion,
+          )
         }
 
         const updatedTask = await updateQuery
@@ -475,7 +487,9 @@ export class PostgresTaskRepository implements TaskRepository {
     const authContext = command.context.auth
 
     if (!authContext) {
-      throw new Error('Pooler write fallback requires an authenticated context.')
+      throw new Error(
+        'Pooler write fallback requires an authenticated context.',
+      )
     }
 
     const insertedTimeBlockCte =
@@ -690,7 +704,9 @@ export class PostgresTaskRepository implements TaskRepository {
     const authContext = command.context.auth
 
     if (!authContext) {
-      throw new Error('Pooler write fallback requires an authenticated context.')
+      throw new Error(
+        'Pooler write fallback requires an authenticated context.',
+      )
     }
 
     const expectedVersionFilter =
@@ -779,7 +795,9 @@ export class PostgresTaskRepository implements TaskRepository {
     const authContext = command.context.auth
 
     if (!authContext) {
-      throw new Error('Pooler write fallback requires an authenticated context.')
+      throw new Error(
+        'Pooler write fallback requires an authenticated context.',
+      )
     }
 
     const expectedVersionFilter =
@@ -909,7 +927,9 @@ export class PostgresTaskRepository implements TaskRepository {
     const authContext = command.context.auth
 
     if (!authContext) {
-      throw new Error('Pooler write fallback requires an authenticated context.')
+      throw new Error(
+        'Pooler write fallback requires an authenticated context.',
+      )
     }
 
     const updatedTask = await this.executePoolerWriteStatement(
@@ -1213,7 +1233,6 @@ export class PostgresTaskRepository implements TaskRepository {
 function serializeNullableTimestamp(value: unknown): string | null {
   return value === null ? null : serializeTimestamp(value)
 }
-
 
 function serializeNullableDate(value: unknown): string | null {
   if (value === null) {

@@ -182,9 +182,7 @@ describe('plannerApi', () => {
           { status: 200 },
         ),
       )
-      .mockResolvedValueOnce(
-        new Response(null, { status: 204 }),
-      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
 
     await api.setTaskStatus('task-1', {
@@ -199,7 +197,8 @@ describe('plannerApi', () => {
       status: string
     }>(statusRequestInit)
     const [deleteUrl] = fetchMock.mock.calls[1]!
-    const deleteRequestUrl = deleteUrl instanceof URL ? deleteUrl.href : deleteUrl
+    const deleteRequestUrl =
+      deleteUrl instanceof URL ? deleteUrl.href : deleteUrl
 
     expect(statusBody).toEqual({
       expectedVersion: 1,

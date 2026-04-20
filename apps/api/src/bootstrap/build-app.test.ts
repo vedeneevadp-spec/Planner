@@ -9,7 +9,10 @@ import {
   taskRecordSchema,
 } from '@planner/contracts'
 
-import { MemorySessionRepository, SessionService } from '../modules/session/index.js'
+import {
+  MemorySessionRepository,
+  SessionService,
+} from '../modules/session/index.js'
 import { MemoryTaskRepository, TaskService } from '../modules/tasks/index.js'
 import { buildApiApp } from './build-app.js'
 import { createApiConfig } from './config.js'
@@ -45,9 +48,7 @@ const authRequestAuthenticator: RequestAuthenticator = {
   },
 }
 
-function createTestConfig(
-  env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv,
-) {
+function createTestConfig(env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv) {
   return createApiConfig({
     API_STORAGE_DRIVER: 'memory',
     NODE_ENV: 'test',
@@ -176,7 +177,9 @@ void describe('buildApiApp', () => {
 
     assert.equal(deletedListResponse.statusCode, 200)
 
-    const deletedTasks = taskListResponseSchema.parse(deletedListResponse.json())
+    const deletedTasks = taskListResponseSchema.parse(
+      deletedListResponse.json(),
+    )
 
     assert.equal(deletedTasks.length, 0)
   })
@@ -267,6 +270,35 @@ void describe('buildApiApp', () => {
     assert.equal(body.source, 'default')
     assert.equal(body.actor.email, 'dev@planner.local')
     assert.equal(body.workspace.slug, 'personal')
+  })
+
+  void it('serves OpenAPI JSON without request authentication', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/openapi.json',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body: {
+      openapi?: string
+      paths?: Record<string, unknown>
+    } = response.json()
+
+    assert.equal(body.openapi, '3.0.3')
+    assert.ok(body.paths?.['/api/v1/tasks'])
+    assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
   })
 
   void it('requires a bearer token when request authentication is enabled', async () => {

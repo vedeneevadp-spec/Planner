@@ -1,6 +1,6 @@
 import { generateUuidV7, type TaskRecord } from '@planner/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import type {
   NewTaskInput,
@@ -12,6 +12,17 @@ import { sortTasks } from '@/entities/task'
 import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import {
+  countRetryablePlannerOfflineMutations,
+  enqueuePlannerOfflineMutation,
+  isPlannerOfflineStorageAvailable,
+  loadCachedTaskRecords,
+  replaceCachedTaskRecords,
+} from '../lib/offline-planner-store'
+import {
+  drainPlannerOfflineQueue,
+  isQueueablePlannerMutationError,
+} from '../lib/offline-planner-sync'
 import {
   createPlannerApiClient,
   type PlannerApiClient,
@@ -156,7 +167,9 @@ function replaceOptimisticTaskRecord(
     return nextTask
   })
 
-  return replaced ? nextTaskRecords : replaceTaskRecord(nextTaskRecords, nextTask)
+  return replaced
+    ? nextTaskRecords
+    : replaceTaskRecord(nextTaskRecords, nextTask)
 }
 
 function updateTaskRecord(
@@ -193,6 +206,12 @@ function getErrorMessage(error: unknown): string {
   return 'Не удалось синхронизировать данные.'
 }
 
+function shouldKeepOptimisticMutation(error: unknown): boolean {
+  return (
+    isPlannerOfflineStorageAvailable() && isQueueablePlannerMutationError(error)
+  )
+}
+
 function requirePlannerApi(
   plannerApi: PlannerApiClient | null,
 ): PlannerApiClient {
@@ -223,40 +242,162 @@ export function usePlannerState(): PlannerState {
   const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
+  const actorUserId = session?.actorUserId
+  const workspaceId = session?.workspaceId
   const queryClient = useQueryClient()
-  const [mutationErrorMessage, setMutationErrorMessage] = useState<string | null>(
-    null,
-  )
+  const [mutationErrorMessage, setMutationErrorMessage] = useState<
+    string | null
+  >(null)
+  const [isDrainingOfflineQueue, setIsDrainingOfflineQueue] = useState(false)
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(
     () => new Set(),
   )
+  const [queuedMutationCount, setQueuedMutationCount] = useState(0)
   const plannerApi = useMemo(() => {
     if (!session) {
       return null
     }
 
     return createPlannerApiClient({
-      ...(auth.accessToken
-        ? { accessToken: auth.accessToken }
-        : {}),
+      ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
       actorUserId: session.actorUserId,
       apiBaseUrl: plannerApiConfig.apiBaseUrl,
       workspaceId: session.workspaceId,
     })
   }, [auth.accessToken, session])
   const taskQueryKey = useMemo(
-    () => ['planner', 'tasks', session?.workspaceId ?? 'pending'] as const,
-    [session?.workspaceId],
+    () => ['planner', 'tasks', workspaceId ?? 'pending'] as const,
+    [workspaceId],
   )
 
   const tasksQuery = useQuery({
     enabled: plannerApi !== null,
-    queryFn: ({ signal }) => requirePlannerApi(plannerApi).listTasks({}, signal),
+    queryFn: ({ signal }) =>
+      requirePlannerApi(plannerApi).listTasks({}, signal),
     queryKey: taskQueryKey,
   })
+  const refreshQueuedMutationCount = useCallback(async () => {
+    if (!workspaceId) {
+      setQueuedMutationCount(0)
+
+      return
+    }
+
+    setQueuedMutationCount(
+      await countRetryablePlannerOfflineMutations(workspaceId),
+    )
+  }, [workspaceId])
+  const persistCurrentTaskRecords = useCallback(async () => {
+    if (!workspaceId) {
+      return
+    }
+
+    const currentTaskRecords =
+      queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+
+    if (currentTaskRecords) {
+      await replaceCachedTaskRecords(workspaceId, currentTaskRecords)
+    }
+  }, [queryClient, taskQueryKey, workspaceId])
+  const drainQueuedMutations = useCallback(async () => {
+    if (!plannerApi || !workspaceId) {
+      return
+    }
+
+    setIsDrainingOfflineQueue(true)
+
+    try {
+      const result = await drainPlannerOfflineQueue({
+        api: plannerApi,
+        onTaskDeleted: (taskId) => {
+          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+            removeTaskRecord(current, taskId),
+          )
+        },
+        onTaskSynced: (task) => {
+          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+            replaceTaskRecord(current, task),
+          )
+        },
+        workspaceId,
+      })
+
+      if (result.synced > 0 || result.conflicted > 0) {
+        await queryClient.invalidateQueries({ queryKey: taskQueryKey })
+      }
+
+      if (result.conflicted > 0) {
+        setMutationErrorMessage(
+          'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
+        )
+      }
+    } finally {
+      await refreshQueuedMutationCount()
+      setIsDrainingOfflineQueue(false)
+    }
+  }, [
+    plannerApi,
+    queryClient,
+    refreshQueuedMutationCount,
+    taskQueryKey,
+    workspaceId,
+  ])
+
+  useEffect(() => {
+    if (!workspaceId) {
+      return
+    }
+
+    let isActive = true
+
+    void loadCachedTaskRecords(workspaceId).then((cachedTaskRecords) => {
+      if (!isActive || cachedTaskRecords.length === 0) {
+        return
+      }
+
+      queryClient.setQueryData<TaskRecord[]>(
+        taskQueryKey,
+        (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
+      )
+    })
+    void refreshQueuedMutationCount()
+
+    return () => {
+      isActive = false
+    }
+  }, [queryClient, refreshQueuedMutationCount, taskQueryKey, workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId || !tasksQuery.data) {
+      return
+    }
+
+    void replaceCachedTaskRecords(workspaceId, tasksQuery.data)
+  }, [tasksQuery.data, workspaceId])
+
+  useEffect(() => {
+    void drainQueuedMutations()
+  }, [drainQueuedMutations])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    function handleOnline() {
+      void drainQueuedMutations()
+    }
+
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [drainQueuedMutations])
 
   const createTaskMutation = useMutation({
-    mutationFn: (input: NewTaskInput) => requirePlannerApi(plannerApi).createTask(input),
+    mutationFn: (input: NewTaskInput) =>
+      requirePlannerApi(plannerApi).createTask(input),
     onMutate: async (input): Promise<PlannerMutationContext> => {
       setMutationErrorMessage(null)
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
@@ -278,7 +419,11 @@ export function usePlannerState(): PlannerState {
         previousTaskRecords,
       }
     },
-    onError: (_error, _input, context) => {
+    onError: (error, _input, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
       if (context?.previousTaskRecords) {
         queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
       }
@@ -303,10 +448,7 @@ export function usePlannerState(): PlannerState {
         expectedVersion,
         status,
       }),
-    onMutate: async ({
-      status,
-      taskId,
-    }): Promise<PlannerMutationContext> => {
+    onMutate: async ({ status, taskId }): Promise<PlannerMutationContext> => {
       setMutationErrorMessage(null)
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
@@ -320,6 +462,7 @@ export function usePlannerState(): PlannerState {
           completedAt: status === 'done' ? now : null,
           status,
           updatedAt: now,
+          version: task.version + 1,
         })),
       )
 
@@ -328,7 +471,11 @@ export function usePlannerState(): PlannerState {
         previousTaskRecords,
       }
     },
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
       if (context?.previousTaskRecords) {
         queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
       }
@@ -353,10 +500,7 @@ export function usePlannerState(): PlannerState {
         expectedVersion,
         schedule,
       }),
-    onMutate: async ({
-      schedule,
-      taskId,
-    }): Promise<PlannerMutationContext> => {
+    onMutate: async ({ schedule, taskId }): Promise<PlannerMutationContext> => {
       setMutationErrorMessage(null)
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
@@ -372,6 +516,7 @@ export function usePlannerState(): PlannerState {
           plannedEndTime: normalizedSchedule.plannedEndTime,
           plannedStartTime: normalizedSchedule.plannedStartTime,
           updatedAt: now,
+          version: task.version + 1,
         })),
       )
 
@@ -380,7 +525,11 @@ export function usePlannerState(): PlannerState {
         previousTaskRecords,
       }
     },
-    onError: (_error, _variables, context) => {
+    onError: (error, _variables, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
       if (context?.previousTaskRecords) {
         queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
       }
@@ -416,7 +565,11 @@ export function usePlannerState(): PlannerState {
         previousTaskRecords,
       }
     },
-    onError: (_error, _taskId, context) => {
+    onError: (error, _taskId, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
       if (context?.previousTaskRecords) {
         queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
       }
@@ -430,6 +583,7 @@ export function usePlannerState(): PlannerState {
     () => sortTasks((tasksQuery.data ?? []).map((task) => toPlannerTask(task))),
     [tasksQuery.data],
   )
+  const hasTaskRecords = tasksQuery.data !== undefined
 
   function setTaskPending(taskId: string, isPending: boolean): void {
     setPendingTaskIds((current) => toggleTaskId(current, taskId, isPending))
@@ -446,12 +600,26 @@ export function usePlannerState(): PlannerState {
     )
   }
 
-  async function runMutation(action: () => Promise<unknown>): Promise<boolean> {
+  async function runMutation(
+    action: () => Promise<unknown>,
+    queueOfflineMutation?: () => Promise<void>,
+  ): Promise<boolean> {
     try {
       await action()
 
       return true
     } catch (error) {
+      if (queueOfflineMutation && shouldKeepOptimisticMutation(error)) {
+        await queueOfflineMutation()
+        await persistCurrentTaskRecords()
+        await refreshQueuedMutationCount()
+        setMutationErrorMessage(
+          'Нет соединения. Изменение сохранено локально и синхронизируется автоматически.',
+        )
+
+        return true
+      }
+
       if (
         error instanceof PlannerApiError &&
         error.code === 'task_version_conflict'
@@ -471,11 +639,27 @@ export function usePlannerState(): PlannerState {
   }
 
   async function addTask(input: NewTaskInput): Promise<boolean> {
-    return runMutation(() =>
-      createTaskMutation.mutateAsync({
-        ...input,
-        id: input.id ?? generateUuidV7(),
-      }),
+    const taskId = input.id ?? generateUuidV7()
+    const inputWithId = {
+      ...input,
+      id: taskId,
+    }
+
+    return runMutation(
+      () => createTaskMutation.mutateAsync(inputWithId),
+      async () => {
+        if (!actorUserId || !workspaceId) {
+          throw new Error('Planner session is not ready.')
+        }
+
+        await enqueuePlannerOfflineMutation({
+          actorUserId,
+          input: inputWithId,
+          taskId,
+          type: 'task.create',
+          workspaceId,
+        })
+      },
     )
   }
 
@@ -513,12 +697,27 @@ export function usePlannerState(): PlannerState {
     }
 
     return runTaskMutation(taskId, () =>
-      runMutation(() =>
-        setTaskStatusMutation.mutateAsync({
-          expectedVersion: task.version,
-          status,
-          taskId,
-        }),
+      runMutation(
+        () =>
+          setTaskStatusMutation.mutateAsync({
+            expectedVersion: task.version,
+            status,
+            taskId,
+          }),
+        async () => {
+          if (!actorUserId || !workspaceId) {
+            throw new Error('Planner session is not ready.')
+          }
+
+          await enqueuePlannerOfflineMutation({
+            actorUserId,
+            expectedVersion: task.version,
+            statusValue: status,
+            taskId,
+            type: 'task.status.update',
+            workspaceId,
+          })
+        },
       ),
     )
   }
@@ -535,17 +734,34 @@ export function usePlannerState(): PlannerState {
       return false
     }
 
+    const schedule = {
+      plannedDate,
+      plannedEndTime: plannedDate ? (task.plannedEndTime ?? null) : null,
+      plannedStartTime: plannedDate ? (task.plannedStartTime ?? null) : null,
+    }
+
     return runTaskMutation(taskId, () =>
-      runMutation(() =>
-        setTaskScheduleMutation.mutateAsync({
-          expectedVersion: task.version,
-          schedule: {
-            plannedDate,
-            plannedEndTime: plannedDate ? task.plannedEndTime ?? null : null,
-            plannedStartTime: plannedDate ? task.plannedStartTime ?? null : null,
-          },
-          taskId,
-        }),
+      runMutation(
+        () =>
+          setTaskScheduleMutation.mutateAsync({
+            expectedVersion: task.version,
+            schedule,
+            taskId,
+          }),
+        async () => {
+          if (!actorUserId || !workspaceId) {
+            throw new Error('Planner session is not ready.')
+          }
+
+          await enqueuePlannerOfflineMutation({
+            actorUserId,
+            expectedVersion: task.version,
+            schedule,
+            taskId,
+            type: 'task.schedule.update',
+            workspaceId,
+          })
+        },
       ),
     )
   }
@@ -563,12 +779,27 @@ export function usePlannerState(): PlannerState {
     }
 
     return runTaskMutation(taskId, () =>
-      runMutation(() =>
-        setTaskScheduleMutation.mutateAsync({
-          expectedVersion: task.version,
-          schedule,
-          taskId,
-        }),
+      runMutation(
+        () =>
+          setTaskScheduleMutation.mutateAsync({
+            expectedVersion: task.version,
+            schedule,
+            taskId,
+          }),
+        async () => {
+          if (!actorUserId || !workspaceId) {
+            throw new Error('Planner session is not ready.')
+          }
+
+          await enqueuePlannerOfflineMutation({
+            actorUserId,
+            expectedVersion: task.version,
+            schedule,
+            taskId,
+            type: 'task.schedule.update',
+            workspaceId,
+          })
+        },
       ),
     )
   }
@@ -583,11 +814,25 @@ export function usePlannerState(): PlannerState {
     }
 
     return runTaskMutation(taskId, () =>
-      runMutation(() =>
-        removeTaskMutation.mutateAsync({
-          expectedVersion: task.version,
-          taskId,
-        }),
+      runMutation(
+        () =>
+          removeTaskMutation.mutateAsync({
+            expectedVersion: task.version,
+            taskId,
+          }),
+        async () => {
+          if (!actorUserId || !workspaceId) {
+            throw new Error('Planner session is not ready.')
+          }
+
+          await enqueuePlannerOfflineMutation({
+            actorUserId,
+            expectedVersion: task.version,
+            taskId,
+            type: 'task.delete',
+            workspaceId,
+          })
+        },
       ),
     )
   }
@@ -607,10 +852,14 @@ export function usePlannerState(): PlannerState {
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
       (tasksQuery.error ? getErrorMessage(tasksQuery.error) : null),
-    isLoading: sessionQuery.isPending || (sessionQuery.isSuccess && tasksQuery.isPending),
+    isLoading:
+      sessionQuery.isPending ||
+      (sessionQuery.isSuccess && tasksQuery.isPending && !hasTaskRecords),
     isSyncing:
       sessionQuery.isFetching ||
       tasksQuery.isFetching ||
+      isDrainingOfflineQueue ||
+      queuedMutationCount > 0 ||
       createTaskMutation.isPending ||
       setTaskStatusMutation.isPending ||
       setTaskScheduleMutation.isPending ||

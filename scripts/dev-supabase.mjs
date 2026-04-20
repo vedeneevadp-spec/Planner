@@ -40,7 +40,15 @@ const processes = [
     name: 'web',
     color: '\x1b[35m',
     command: npmCommand(),
-    args: ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(webPort)],
+    args: [
+      'run',
+      'dev',
+      '--',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      String(webPort),
+    ],
     env: {
       ...process.env,
       VITE_API_BASE_URL: `http://127.0.0.1:${apiPort}`,

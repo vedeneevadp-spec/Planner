@@ -75,11 +75,14 @@ supabase/
 - `API_STORAGE_DRIVER=memory` поддерживается только в тестовом runtime.
 - `API_DB_RLS_MODE` можно использовать для override поведения RLS runtime layer: в auto-режиме direct Postgres включает DB RLS context, а Supabase pooler runtime отключает его из-за нестабильности transaction-scoped role switching.
 - Базовые endpoint'ы уже доступны: `/api/health`, `/api/v1/tasks`.
+- OpenAPI specification доступна на `/api/openapi.json`, Swagger UI - на `/api/docs`.
 - Для managed Supabase runtime используйте `SUPABASE_RUNTIME_DATABASE_URL` или fallback на `SUPABASE_DB_URL`.
 
 ## Web Runtime
 
 - `apps/web` работает только через HTTP API и server-state cache на `TanStack Query`.
+- Для offline-first сценариев web хранит последний task snapshot и очередь write-операций в IndexedDB через `Dexie`.
+- Offline queue синхронизируется автоматически при восстановлении сети и использует `expectedVersion`; серверные `409 task_version_conflict` оставляют операцию в конфликтном состоянии и обновляют query cache.
 - Текущая session-модель резолвится сервером через `GET /api/v1/session`.
 - Для локального запуска можно использовать значения из `apps/web/.env.example`.
 - Если `VITE_ACTOR_USER_ID` и `VITE_WORKSPACE_ID` не заданы, web берет default session из API runtime.
