@@ -1,5 +1,5 @@
 import { generateUuidV7 } from '@planner/contracts'
-import { type Kysely } from 'kysely'
+import { type Kysely,sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -31,37 +31,26 @@ export class PostgresSessionRepository implements SessionRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
   async resolve(context: SessionContext): Promise<SessionSnapshot> {
-    const authenticatedActor = context.auth
-      ? await this.ensureAuthenticatedActorWorkspace(
-          context.auth,
-          context.workspaceId,
-        )
-      : null
+    if (!context.auth) {
+      const session = context.workspaceId
+        ? await this.resolveExplicitSession(this.db, context, null)
+        : await this.resolveDefaultSession(this.db, context, null)
 
-    const session = context.workspaceId
-      ? await this.resolveExplicitSession(context, authenticatedActor)
-      : await this.resolveDefaultSession(context, authenticatedActor)
-
-    return {
-      actor: {
-        displayName: session.actorDisplayName,
-        email: session.actorEmail,
-        id: session.actorId,
-      },
-      actorUserId: session.actorId,
-      role: session.role,
-      source: context.auth
-        ? 'access_token'
-        : context.actorUserId && context.workspaceId
-          ? 'headers'
-          : 'default',
-      workspace: {
-        id: session.workspaceId,
-        name: session.workspaceName,
-        slug: session.workspaceSlug,
-      },
-      workspaceId: session.workspaceId,
+      return this.mapSessionSnapshot(context, session)
     }
+
+    return this.db.connection().execute(async (connection) => {
+      const authenticatedActor = await this.ensureAuthenticatedActorWorkspace(
+        connection,
+        context.auth!,
+        context.workspaceId,
+      )
+      const session = context.workspaceId
+        ? await this.resolveExplicitSession(connection, context, authenticatedActor)
+        : await this.resolveDefaultSession(connection, context, authenticatedActor)
+
+      return this.mapSessionSnapshot(context, session)
+    })
   }
 
   private createBaseQuery(executor: DatabaseExecutor) {
@@ -84,13 +73,14 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   private async resolveDefaultSession(
+    executor: DatabaseExecutor,
     context: SessionContext,
     authenticatedActor: AppActorRow | null,
   ): Promise<SessionRow> {
     const actorUserId = authenticatedActor?.id ?? context.actorUserId
     const session = actorUserId
-      ? await this.findSessionByActorId(this.db, actorUserId)
-      : await this.createSessionQuery(this.db).executeTakeFirst()
+      ? await this.findSessionByActorId(executor, actorUserId)
+      : await this.createSessionQuery(executor).executeTakeFirst()
 
     if (!session) {
       throw new HttpError(
@@ -104,13 +94,14 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   private async resolveExplicitSession(
+    executor: DatabaseExecutor,
     context: SessionContext,
     authenticatedActor: AppActorRow | null,
   ): Promise<SessionRow> {
     const workspaceId = context.workspaceId ?? ''
     const actorUserId = authenticatedActor?.id ?? context.actorUserId
     const session = actorUserId
-      ? await this.findSessionByActorId(this.db, actorUserId, workspaceId)
+      ? await this.findSessionByActorId(executor, actorUserId, workspaceId)
       : undefined
 
     if (!session) {
@@ -127,63 +118,24 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   private async ensureAuthenticatedActorWorkspace(
+    executor: DatabaseExecutor,
     authContext: AuthenticatedRequestContext,
     requestedWorkspaceId?: string,
   ): Promise<AppActorRow> {
-    return this.db.transaction().execute(async (trx) => {
-      const actor = await this.ensureAuthenticatedActor(
-        trx,
-        authContext,
-        requestedWorkspaceId,
-      )
-      const existingSession = await this.findSessionByActorId(trx, actor.id)
+    const actor = await this.ensureAuthenticatedActor(
+      executor,
+      authContext,
+      requestedWorkspaceId,
+    )
+    const existingSession = await this.findSessionByActorId(executor, actor.id)
 
-      if (existingSession) {
-        return actor
-      }
-
-      const workspaceSlug = this.createPersonalWorkspaceSlug(actor.id)
-      const insertedWorkspace = await trx
-        .insertInto('app.workspaces')
-        .values({
-          description: '',
-          id: generateUuidV7(),
-          name: this.createPersonalWorkspaceName(actor.displayName),
-          owner_user_id: actor.id,
-          slug: workspaceSlug,
-        })
-        .onConflict((conflict) => conflict.column('slug').doNothing())
-        .returning('id')
-        .executeTakeFirst()
-      const personalWorkspaceId =
-        insertedWorkspace?.id ??
-        (
-          await trx
-            .selectFrom('app.workspaces')
-            .select('id')
-            .where('slug', '=', workspaceSlug)
-            .executeTakeFirst()
-        )?.id
-
-      if (!personalWorkspaceId) {
-        throw new Error('Failed to provision a personal workspace.')
-      }
-
-      await trx
-        .insertInto('app.workspace_members')
-        .values({
-          id: generateUuidV7(),
-          role: 'owner',
-          user_id: actor.id,
-          workspace_id: personalWorkspaceId,
-        })
-        .onConflict((conflict) =>
-          conflict.columns(['workspace_id', 'user_id']).doNothing(),
-        )
-        .execute()
-
+    if (existingSession) {
       return actor
-    })
+    }
+
+    await this.provisionPersonalWorkspace(executor, actor)
+
+    return actor
   }
 
   private findSessionByActorId(
@@ -421,6 +373,89 @@ export class PostgresSessionRepository implements SessionRepository {
     }
 
     return existingActor
+  }
+
+  private async provisionPersonalWorkspace(
+    executor: DatabaseExecutor,
+    actor: Pick<AppActorRow, 'displayName' | 'id'>,
+  ): Promise<void> {
+    const workspaceSlug = this.createPersonalWorkspaceSlug(actor.id)
+    const provisionResult = await sql<{ workspace_id: string }>`
+      with inserted_workspace as (
+        insert into app.workspaces (
+          description,
+          id,
+          name,
+          owner_user_id,
+          slug
+        )
+        values (
+          '',
+          ${generateUuidV7()},
+          ${this.createPersonalWorkspaceName(actor.displayName)},
+          ${actor.id},
+          ${workspaceSlug}
+        )
+        on conflict (slug) do nothing
+        returning id
+      ),
+      resolved_workspace as (
+        select id as workspace_id from inserted_workspace
+        union all
+        select workspace.id as workspace_id
+        from app.workspaces as workspace
+        where workspace.slug = ${workspaceSlug}
+          and not exists (select 1 from inserted_workspace)
+      ),
+      inserted_membership as (
+        insert into app.workspace_members (
+          id,
+          role,
+          user_id,
+          workspace_id
+        )
+        select
+          ${generateUuidV7()},
+          'owner',
+          ${actor.id},
+          resolved_workspace.workspace_id
+        from resolved_workspace
+        on conflict (workspace_id, user_id) do nothing
+        returning id
+      )
+      select workspace_id
+      from resolved_workspace
+    `.execute(executor)
+
+    if (!provisionResult.rows[0]?.workspace_id) {
+      throw new Error('Failed to provision a personal workspace.')
+    }
+  }
+
+  private mapSessionSnapshot(
+    context: SessionContext,
+    session: SessionRow,
+  ): SessionSnapshot {
+    return {
+      actor: {
+        displayName: session.actorDisplayName,
+        email: session.actorEmail,
+        id: session.actorId,
+      },
+      actorUserId: session.actorId,
+      role: session.role,
+      source: context.auth
+        ? 'access_token'
+        : context.actorUserId && context.workspaceId
+          ? 'headers'
+          : 'default',
+      workspace: {
+        id: session.workspaceId,
+        name: session.workspaceName,
+        slug: session.workspaceSlug,
+      },
+      workspaceId: session.workspaceId,
+    }
   }
 
   private resolveAuthEmail(authContext: AuthenticatedRequestContext): string {

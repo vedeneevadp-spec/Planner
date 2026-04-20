@@ -1,5 +1,5 @@
 import { Kysely, PostgresDialect, sql } from 'kysely'
-import { Pool, type PoolConfig } from 'pg'
+import { Pool, type PoolClient, type PoolConfig } from 'pg'
 import { types } from 'pg'
 
 import type { DatabaseConfig } from './config.js'
@@ -16,11 +16,28 @@ export interface DatabaseConnection {
 export function createDatabaseConnection(
   config: DatabaseConfig,
 ): DatabaseConnection {
+  const activeClients = new WeakSet<PoolClient>()
   const pool = new Pool(createPgPoolConfig(config.connectionString))
+
+  pool.on('acquire', (client) => {
+    activeClients.add(client)
+  })
+
+  pool.on('release', (_error, client) => {
+    activeClients.delete(client)
+  })
+
+  pool.on('remove', (client) => {
+    activeClients.delete(client)
+  })
 
   pool.on('connect', (client) => {
     client.on('error', (error) => {
       const databaseError = error as NodeJS.ErrnoException
+
+      if (shouldSuppressPoolClientError(databaseError, client, activeClients)) {
+        return
+      }
 
       console.error(
         `Database client error (${databaseError.code ?? 'unknown'}): ${error.message}`,
@@ -28,8 +45,15 @@ export function createDatabaseConnection(
     })
   })
 
-  pool.on('error', (error) => {
+  pool.on('error', (error, client) => {
     const databaseError = error as NodeJS.ErrnoException
+
+    if (
+      client &&
+      shouldSuppressPoolClientError(databaseError, client, activeClients)
+    ) {
+      return
+    }
 
     console.error(
       `Database pool error (${databaseError.code ?? 'unknown'}): ${error.message}`,
@@ -88,4 +112,12 @@ export async function pingDatabase(
 ): Promise<void> {
   // noinspection SqlNoDataSourceInspection
   await sql`select 1`.execute(connection.db)
+}
+
+function shouldSuppressPoolClientError(
+  error: NodeJS.ErrnoException,
+  client: PoolClient,
+  activeClients: WeakSet<PoolClient>,
+): boolean {
+  return error.code === 'ETIMEDOUT' && !activeClients.has(client)
 }

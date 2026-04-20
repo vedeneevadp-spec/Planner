@@ -7,7 +7,12 @@ export type DatabaseExecutor =
   | Kysely<DatabaseSchema>
   | Transaction<DatabaseSchema>
 
-let hasLoggedPoolerRlsBypass = false
+export type RlsStrategy =
+  | 'disabled'
+  | 'session_connection'
+  | 'transaction_local'
+
+let hasLoggedPoolerRlsMode = false
 
 export async function withOptionalRls<T>(
   db: Kysely<DatabaseSchema>,
@@ -19,10 +24,23 @@ export async function withOptionalRls<T>(
     return callback(db)
   }
 
+  const strategy = resolveRlsStrategy()
+
+  if (strategy === 'disabled') {
+    return callback(db)
+  }
+
+  if (strategy === 'session_connection') {
+    return db.connection().execute(async (connection) => {
+      logPoolerRlsMode()
+      await applySessionRlsContext(connection, authContext, actorUserIdOverride)
+
+      return callback(connection)
+    })
+  }
+
   return db.transaction().execute(async (trx) => {
-    if (shouldApplyRlsContext()) {
-      await applyRlsContext(trx, authContext, actorUserIdOverride)
-    }
+    await applyTransactionLocalRlsContext(trx, authContext, actorUserIdOverride)
 
     return callback(trx)
   })
@@ -34,60 +52,98 @@ export async function withWriteTransaction<T>(
   callback: (trx: Transaction<DatabaseSchema>) => Promise<T>,
   actorUserIdOverride?: string,
 ): Promise<T> {
+  const strategy = authContext ? resolveRlsStrategy() : 'disabled'
+
+  if (strategy === 'disabled') {
+    return db.transaction().execute(callback)
+  }
+
+  const resolvedAuthContext = authContext
+
+  if (!resolvedAuthContext) {
+    return db.transaction().execute(callback)
+  }
+
+  if (strategy === 'session_connection') {
+    return db.connection().execute(async (connection) => {
+      logPoolerRlsMode()
+      await applySessionRlsContext(
+        connection,
+        resolvedAuthContext,
+        actorUserIdOverride,
+      )
+
+      return connection.transaction().execute(async (trx) => callback(trx))
+    })
+  }
+
   return db.transaction().execute(async (trx) => {
-    if (authContext && shouldApplyRlsContext()) {
-      await applyRlsContext(trx, authContext, actorUserIdOverride)
-    }
+    await applyTransactionLocalRlsContext(
+      trx,
+      resolvedAuthContext,
+      actorUserIdOverride,
+    )
 
     return callback(trx)
   })
 }
 
-function shouldApplyRlsContext(): boolean {
-  const explicitMode = process.env.API_DB_RLS_MODE?.trim().toLowerCase()
+function resolveRlsStrategy(): RlsStrategy {
+  return resolveRlsStrategyForEnvironment(process.env)
+}
+
+export function resolveRlsStrategyForEnvironment(
+  env: NodeJS.ProcessEnv,
+): RlsStrategy {
+  const explicitMode = env.API_DB_RLS_MODE?.trim().toLowerCase()
 
   if (explicitMode === 'enabled') {
-    return true
+    return 'transaction_local'
   }
 
   if (explicitMode === 'disabled') {
-    return false
+    return 'disabled'
   }
 
-  const databaseUrl = process.env.DATABASE_URL ?? ''
+  const databaseUrl = resolveDatabaseUrlForRls(env)
   const isSupabasePoolerRuntime = databaseUrl.includes('pooler.supabase.com')
 
-  if (isSupabasePoolerRuntime && !hasLoggedPoolerRlsBypass) {
-    hasLoggedPoolerRlsBypass = true
-    console.warn(
-      '[db] Skipping Postgres RLS context for Supabase pooler runtime; backend auth remains authoritative. Set API_DB_RLS_MODE=enabled to force RLS context.',
-    )
+  if (isSupabasePoolerRuntime) {
+    return 'session_connection'
   }
 
-  return !isSupabasePoolerRuntime
+  return 'transaction_local'
 }
 
-async function applyRlsContext(
+function resolveDatabaseUrlForRls(env: NodeJS.ProcessEnv): string {
+  return (
+    env.DATABASE_URL ??
+    env.SUPABASE_RUNTIME_DATABASE_URL ??
+    env.SUPABASE_SESSION_POOLER_URL ??
+    ''
+  )
+}
+
+function logPoolerRlsMode(): void {
+  if (hasLoggedPoolerRlsMode) {
+    return
+  }
+
+  hasLoggedPoolerRlsMode = true
+  console.warn(
+    '[db] Using session-connection Postgres RLS context for Supabase pooler runtime.',
+  )
+}
+
+async function applyTransactionLocalRlsContext(
   executor: DatabaseExecutor,
   authContext: AuthenticatedRequestContext,
   actorUserIdOverride?: string,
 ): Promise<void> {
-  const effectiveActorUserId = actorUserIdOverride ?? authContext.claims.sub
-
   await sql`
     select set_config(
       'request.jwt.claims',
-      ${JSON.stringify({
-        ...authContext.claims.payload,
-        ...(authContext.claims.email
-          ? { email: authContext.claims.email }
-          : {}),
-        ...(effectiveActorUserId !== authContext.claims.sub
-          ? { auth_sub: authContext.claims.sub }
-          : {}),
-        role: authContext.claims.role,
-        sub: effectiveActorUserId,
-      })},
+      ${JSON.stringify(buildEffectiveClaims(authContext, actorUserIdOverride))},
       true
     )
   `.execute(executor)
@@ -95,4 +151,41 @@ async function applyRlsContext(
   await sql`
     set local role authenticated
   `.execute(executor)
+}
+
+async function applySessionRlsContext(
+  executor: Kysely<DatabaseSchema>,
+  authContext: AuthenticatedRequestContext,
+  actorUserIdOverride?: string,
+): Promise<void> {
+  await sql`
+    select set_config(
+      'request.jwt.claims',
+      ${JSON.stringify(buildEffectiveClaims(authContext, actorUserIdOverride))},
+      false
+    )
+  `.execute(executor)
+
+  await sql`
+    set role authenticated
+  `.execute(executor)
+}
+
+function buildEffectiveClaims(
+  authContext: AuthenticatedRequestContext,
+  actorUserIdOverride?: string,
+): Record<string, unknown> {
+  const effectiveActorUserId = actorUserIdOverride ?? authContext.claims.sub
+
+  return {
+    ...authContext.claims.payload,
+    ...(authContext.claims.email
+      ? { email: authContext.claims.email }
+      : {}),
+    ...(effectiveActorUserId !== authContext.claims.sub
+      ? { auth_sub: authContext.claims.sub }
+      : {}),
+    role: authContext.claims.role,
+    sub: effectiveActorUserId,
+  }
 }
