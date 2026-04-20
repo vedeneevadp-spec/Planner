@@ -82,6 +82,39 @@ describe('plannerApi', () => {
     expect(requestInit?.signal).toBe(signal)
   })
 
+  it('requests task event cursor with workspace header', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          events: [],
+          nextEventId: 42,
+        }),
+        {
+          status: 200,
+        },
+      ),
+    )
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    const result = await api.listTaskEvents({
+      afterEventId: 41,
+      limit: 100,
+    })
+
+    expect(result.nextEventId).toBe(42)
+
+    const [url, requestInit] = fetchMock.mock.calls[0]!
+    const requestUrl = url instanceof URL ? url.href : url
+
+    expect(requestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/task-events?afterEventId=41&limit=100',
+    )
+    expect(new Headers(requestInit?.headers).get('x-workspace-id')).toBe(
+      'workspace-1',
+    )
+    expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBeNull()
+  })
+
   it('throws structured API error for failed writes', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

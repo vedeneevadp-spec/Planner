@@ -111,6 +111,24 @@ export interface AppTaskEventsTable {
   workspace_id: string
 }
 
+export interface AppTaskAttachmentsTable {
+  content_type: string
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  id: Generated<string>
+  metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  original_filename: string
+  size_bytes: number
+  storage_bucket: string
+  storage_object_path: string
+  task_id: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppDeviceSessionsTable {
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null
@@ -142,6 +160,7 @@ export interface DatabaseSchema {
   'app.device_sessions': AppDeviceSessionsTable
   'app.outbox': AppOutboxTable
   'app.projects': AppProjectsTable
+  'app.task_attachments': AppTaskAttachmentsTable
   'app.task_events': AppTaskEventsTable
   'app.task_time_blocks': AppTaskTimeBlocksTable
   'app.tasks': AppTasksTable

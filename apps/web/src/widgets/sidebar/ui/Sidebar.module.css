@@ -60,6 +60,21 @@
   margin-top: 0.85rem;
 }
 
+.queueState {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.queueState span {
+  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  font-size: 0.74rem;
+  color: #6f5010;
+  background: rgba(239, 202, 130, 0.24);
+}
+
 .accountEmail {
   font-size: 0.82rem;
   color: var(--text-soft);

@@ -1,8 +1,11 @@
 import type {
   NewTaskInput,
   Task,
+  TaskEventListFilters,
+  TaskEventRecord,
   TaskScheduleInput,
   TaskStatus,
+  WorkspaceRole,
 } from '@planner/contracts'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -20,15 +23,26 @@ export interface TaskListFilters {
   status?: TaskStatus | undefined
 }
 
+export type StoredTaskEventRecord = TaskEventRecord
+
+export interface TaskEventListResult {
+  events: StoredTaskEventRecord[]
+  nextEventId: number
+}
+
+export type TaskEventFilters = TaskEventListFilters
+
 export interface TaskReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  role?: WorkspaceRole | undefined
   workspaceId: string
 }
 
 export interface TaskWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  role?: WorkspaceRole | undefined
   workspaceId: string
 }
 

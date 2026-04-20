@@ -188,6 +188,42 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    '/api/v1/task-events': {
+      get: {
+        operationId: 'listTaskEvents',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          {
+            in: 'query',
+            name: 'afterEventId',
+            required: false,
+            schema: {
+              minimum: 0,
+              type: 'integer',
+            },
+          },
+          {
+            in: 'query',
+            name: 'limit',
+            required: false,
+            schema: {
+              maximum: 500,
+              minimum: 1,
+              type: 'integer',
+            },
+          },
+        ],
+        responses: {
+          200: jsonResponse('TaskEventListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List task events for cursor-based sync',
+        tags: ['tasks'],
+      },
+    },
     '/api/v1/tasks/{taskId}': {
       delete: {
         operationId: 'deleteTask',
@@ -426,6 +462,62 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         $ref: '#/components/schemas/TaskRecord',
       },
       type: 'array',
+    },
+    TaskEventListResponse: {
+      additionalProperties: false,
+      properties: {
+        events: {
+          items: {
+            $ref: '#/components/schemas/TaskEventRecord',
+          },
+          type: 'array',
+        },
+        nextEventId: {
+          minimum: 0,
+          type: 'integer',
+        },
+      },
+      required: ['events', 'nextEventId'],
+      type: 'object',
+    },
+    TaskEventRecord: {
+      additionalProperties: false,
+      properties: {
+        actorUserId: nullableStringSchema(),
+        eventId: {
+          type: 'string',
+        },
+        eventType: {
+          type: 'string',
+        },
+        id: {
+          minimum: 0,
+          type: 'integer',
+        },
+        occurredAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        payload: {
+          additionalProperties: true,
+          type: 'object',
+        },
+        taskId: nullableStringSchema(),
+        workspaceId: {
+          type: 'string',
+        },
+      },
+      required: [
+        'actorUserId',
+        'eventId',
+        'eventType',
+        'id',
+        'occurredAt',
+        'payload',
+        'taskId',
+        'workspaceId',
+      ],
+      type: 'object',
     },
     TaskRecord: {
       allOf: [

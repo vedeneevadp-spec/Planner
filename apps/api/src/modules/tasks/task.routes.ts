@@ -1,5 +1,7 @@
 import {
   newTaskInputSchema,
+  taskEventListFiltersSchema,
+  taskEventListResponseSchema,
   taskListFiltersSchema,
   taskListResponseSchema,
   taskRecordSchema,
@@ -47,6 +49,23 @@ export function registerTaskRoutes(
     const tasks = await service.listTasks(context, filters)
 
     return taskListResponseSchema.parse(tasks)
+  })
+
+  app.get('/api/v1/task-events', async (request) => {
+    const headers = parseOrThrow(
+      readHeadersSchema,
+      request.headers,
+      'invalid_headers',
+    )
+    const filters = parseOrThrow(
+      taskEventListFiltersSchema,
+      request.query,
+      'invalid_query',
+    )
+    const context = await resolveReadContext(request, sessionService, headers)
+    const result = await service.listTaskEvents(context, filters)
+
+    return taskEventListResponseSchema.parse(result)
   })
 
   app.post('/api/v1/tasks', async (request, reply) => {
@@ -128,6 +147,7 @@ function createLegacyWriteContext(headers: z.infer<typeof writeHeadersSchema>) {
   return {
     actorUserId: headers['x-actor-user-id'],
     auth: null,
+    role: undefined,
     workspaceId: headers['x-workspace-id'],
   }
 }
@@ -153,6 +173,7 @@ async function resolveReadContext(
     return {
       actorUserId: undefined,
       auth: null,
+      role: undefined,
       workspaceId: headers['x-workspace-id'],
     }
   }
@@ -166,6 +187,7 @@ async function resolveReadContext(
   return {
     actorUserId: session.actorUserId,
     auth: authContext,
+    role: session.role,
     workspaceId: session.workspaceId,
   }
 }
@@ -194,6 +216,7 @@ async function resolveWriteContext(
   return {
     actorUserId: session.actorUserId,
     auth: authContext,
+    role: session.role,
     workspaceId: session.workspaceId,
   }
 }

@@ -3,6 +3,8 @@ import type {
   CreateTaskCommand,
   DeleteTaskCommand,
   StoredTaskRecord,
+  TaskEventFilters,
+  TaskEventListResult,
   TaskListFilters,
   TaskReadContext,
   UpdateTaskScheduleCommand,
@@ -32,6 +34,18 @@ export class MemoryTaskRepository implements TaskRepository {
     )
 
     return Promise.resolve(sortStoredTasks(tasks))
+  }
+
+  listEventsByWorkspace(
+    _context: TaskReadContext,
+    filters: TaskEventFilters = {},
+  ): Promise<TaskEventListResult> {
+    const afterEventId = filters.afterEventId ?? 0
+
+    return Promise.resolve({
+      events: [],
+      nextEventId: afterEventId,
+    })
   }
 
   create(command: CreateTaskCommand): Promise<StoredTaskRecord> {

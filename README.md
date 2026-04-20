@@ -37,6 +37,7 @@ Monorepo для planner-платформы: текущий `React`-клиент 
 - `npm run db:migrate:supabase` - применить SQL-миграции к managed Supabase Postgres
 - `npm run db:seed:supabase` - загрузить базовые dev-данные в managed Supabase Postgres
 - `npm run db:setup:supabase` - миграции + seed для managed Supabase Postgres
+- `npm run outbox:run` - обработать pending/failed outbox-сообщения одной пачкой
 - `npm run supabase:login` - логин в Supabase CLI через токен из `.env.supabase.local`
 - `npm run supabase:link` - линковка локального репозитория с remote Supabase project
 - `npm run lint` - статический анализ всего monorepo
@@ -74,15 +75,17 @@ supabase/
 - По умолчанию API стартует на локальном Postgres и использует `DATABASE_URL`, либо fallback `postgres://planner:planner@127.0.0.1:54329/planner_development`.
 - `API_STORAGE_DRIVER=memory` поддерживается только в тестовом runtime.
 - `API_DB_RLS_MODE` можно использовать для override поведения RLS runtime layer: в auto-режиме direct Postgres включает DB RLS context, а Supabase pooler runtime отключает его из-за нестабильности transaction-scoped role switching.
-- Базовые endpoint'ы уже доступны: `/api/health`, `/api/v1/tasks`.
+- Базовые endpoint'ы уже доступны: `/api/health`, `/api/v1/session`, `/api/v1/tasks`, `/api/v1/task-events`.
 - OpenAPI specification доступна на `/api/openapi.json`, Swagger UI - на `/api/docs`.
 - Для managed Supabase runtime используйте `SUPABASE_RUNTIME_DATABASE_URL` или fallback на `SUPABASE_DB_URL`.
+- Outbox worker запускается через `npm run outbox:run`; в production его можно дергать scheduler'ом поверх той же backend-конфигурации.
 
 ## Web Runtime
 
 - `apps/web` работает только через HTTP API и server-state cache на `TanStack Query`.
 - Для offline-first сценариев web хранит последний task snapshot и очередь write-операций в IndexedDB через `Dexie`.
 - Offline queue синхронизируется автоматически при восстановлении сети и использует `expectedVersion`; серверные `409 task_version_conflict` оставляют операцию в конфликтном состоянии и обновляют query cache.
+- Cursor sync читает `/api/v1/task-events`, хранит последний event id в IndexedDB и инвалидирует task cache при новых событиях или Supabase Realtime notification.
 - Текущая session-модель резолвится сервером через `GET /api/v1/session`.
 - Для локального запуска можно использовать значения из `apps/web/.env.example`.
 - Если `VITE_ACTOR_USER_ID` и `VITE_WORKSPACE_ID` не заданы, web берет default session из API runtime.
@@ -105,6 +108,10 @@ supabase/
 - `apps/api` остается единственной точкой записи и чтения данных для UI
 - `supabase/migrations` остается главным источником SQL-схемы
 - Supabase CLI добавлен для project linking и дальнейших platform workflows
+- Auth подключается через Supabase JWT verification на backend boundary
+- Realtime подключен к `app.task_events`; web только слушает notification и затем синхронизируется через backend API
+- Storage подготовлен приватным bucket `task-attachments` и state table `app.task_attachments`; UI не пишет напрямую в Storage
+- Queue/Cron hooks условно активируются в managed Supabase: task events зеркалятся в PGMQ queue `planner_task_events`, а pg_cron может чистить completed outbox
 
 ### Подготовка окружения
 

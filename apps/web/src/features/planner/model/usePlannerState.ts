@@ -9,15 +9,22 @@ import type {
   TaskStatus,
 } from '@/entities/task'
 import { sortTasks } from '@/entities/task'
-import { usePlannerSession, useSessionAuth } from '@/features/session'
+import {
+  getSupabaseBrowserClient,
+  usePlannerSession,
+  useSessionAuth,
+} from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import {
+  countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   enqueuePlannerOfflineMutation,
+  getLastTaskEventId,
   isPlannerOfflineStorageAvailable,
   loadCachedTaskRecords,
   replaceCachedTaskRecords,
+  setLastTaskEventId,
 } from '../lib/offline-planner-store'
 import {
   drainPlannerOfflineQueue,
@@ -253,6 +260,7 @@ export function usePlannerState(): PlannerState {
     () => new Set(),
   )
   const [queuedMutationCount, setQueuedMutationCount] = useState(0)
+  const [conflictedMutationCount, setConflictedMutationCount] = useState(0)
   const plannerApi = useMemo(() => {
     if (!session) {
       return null
@@ -279,12 +287,16 @@ export function usePlannerState(): PlannerState {
   const refreshQueuedMutationCount = useCallback(async () => {
     if (!workspaceId) {
       setQueuedMutationCount(0)
+      setConflictedMutationCount(0)
 
       return
     }
 
     setQueuedMutationCount(
       await countRetryablePlannerOfflineMutations(workspaceId),
+    )
+    setConflictedMutationCount(
+      await countConflictedPlannerOfflineMutations(workspaceId),
     )
   }, [workspaceId])
   const persistCurrentTaskRecords = useCallback(async () => {
@@ -299,6 +311,31 @@ export function usePlannerState(): PlannerState {
       await replaceCachedTaskRecords(workspaceId, currentTaskRecords)
     }
   }, [queryClient, taskQueryKey, workspaceId])
+  const syncTaskEventCursor = useCallback(async () => {
+    if (!plannerApi || !workspaceId) {
+      return
+    }
+
+    try {
+      const afterEventId = await getLastTaskEventId(workspaceId)
+      const result = await plannerApi.listTaskEvents({
+        afterEventId,
+        limit: 500,
+      })
+
+      if (result.nextEventId > afterEventId) {
+        await setLastTaskEventId(workspaceId, result.nextEventId)
+      }
+
+      if (result.events.length > 0) {
+        await queryClient.invalidateQueries({ queryKey: taskQueryKey })
+      }
+    } catch (error) {
+      if (!isQueueablePlannerMutationError(error)) {
+        setMutationErrorMessage(getErrorMessage(error))
+      }
+    }
+  }, [plannerApi, queryClient, taskQueryKey, workspaceId])
   const drainQueuedMutations = useCallback(async () => {
     if (!plannerApi || !workspaceId) {
       return
@@ -331,6 +368,10 @@ export function usePlannerState(): PlannerState {
           'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
         )
       }
+
+      if (result.failed === 0) {
+        await syncTaskEventCursor()
+      }
     } finally {
       await refreshQueuedMutationCount()
       setIsDrainingOfflineQueue(false)
@@ -339,6 +380,7 @@ export function usePlannerState(): PlannerState {
     plannerApi,
     queryClient,
     refreshQueuedMutationCount,
+    syncTaskEventCursor,
     taskQueryKey,
     workspaceId,
   ])
@@ -380,6 +422,10 @@ export function usePlannerState(): PlannerState {
   }, [drainQueuedMutations])
 
   useEffect(() => {
+    void syncTaskEventCursor()
+  }, [syncTaskEventCursor])
+
+  useEffect(() => {
     if (typeof window === 'undefined') {
       return
     }
@@ -394,6 +440,38 @@ export function usePlannerState(): PlannerState {
       window.removeEventListener('online', handleOnline)
     }
   }, [drainQueuedMutations])
+
+  useEffect(() => {
+    if (!workspaceId) {
+      return
+    }
+
+    const supabase = getSupabaseBrowserClient()
+
+    if (!supabase) {
+      return
+    }
+
+    const channel = supabase
+      .channel(`planner-task-events-${workspaceId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          filter: `workspace_id=eq.${workspaceId}`,
+          schema: 'app',
+          table: 'task_events',
+        },
+        () => {
+          void syncTaskEventCursor()
+        },
+      )
+      .subscribe()
+
+    return () => {
+      void supabase.removeChannel(channel)
+    }
+  }, [syncTaskEventCursor, workspaceId])
 
   const createTaskMutation = useMutation({
     mutationFn: (input: NewTaskInput) =>
@@ -848,6 +926,7 @@ export function usePlannerState(): PlannerState {
 
   return {
     addTask,
+    conflictedMutationCount,
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
@@ -865,6 +944,7 @@ export function usePlannerState(): PlannerState {
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
     isTaskPending,
+    queuedMutationCount,
     refresh,
     removeTask,
     setTaskPlannedDate,

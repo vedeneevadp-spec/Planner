@@ -16,7 +16,15 @@ const navigation = [
 ] as const
 
 export function Sidebar() {
-  const { errorMessage, isLoading, isSyncing, refresh, tasks } = usePlanner()
+  const {
+    conflictedMutationCount,
+    errorMessage,
+    isLoading,
+    isSyncing,
+    queuedMutationCount,
+    refresh,
+    tasks,
+  } = usePlanner()
   const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
   const todayKey = getDateKey(new Date())
@@ -66,6 +74,17 @@ export function Sidebar() {
             ? `${session.actor.displayName} · ${session.role}`
             : 'Session bootstrap'}
         </p>
+
+        {queuedMutationCount > 0 || conflictedMutationCount > 0 ? (
+          <div className={styles.queueState}>
+            {queuedMutationCount > 0 ? (
+              <span>{queuedMutationCount} в offline-очереди</span>
+            ) : null}
+            {conflictedMutationCount > 0 ? (
+              <span>{conflictedMutationCount} конфликтов</span>
+            ) : null}
+          </div>
+        ) : null}
 
         {auth.isAuthEnabled && auth.email ? (
           <div className={styles.accountRow}>

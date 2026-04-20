@@ -3,6 +3,10 @@ import {
   generateUuidV7,
   type NewTaskInput,
   newTaskInputSchema,
+  type TaskEventListFilters,
+  taskEventListFiltersSchema,
+  type TaskEventListResponse,
+  taskEventListResponseSchema,
   type TaskListFilters,
   taskListFiltersSchema,
   taskListResponseSchema,
@@ -47,6 +51,10 @@ export interface PlannerApiClientConfig {
 
 export interface PlannerApiClient {
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
+  listTaskEvents: (
+    filters?: TaskEventListFilters,
+    signal?: RequestSignal,
+  ) => Promise<TaskEventListResponse>
   listTasks: (
     filters?: TaskListFilters,
     signal?: RequestSignal,
@@ -149,6 +157,16 @@ export function createPlannerApiClient(
         path: '/api/v1/tasks',
         query: validatedFilters,
         responseSchema: taskListResponseSchema,
+        signal,
+      })
+    },
+    async listTaskEvents(filters = {}, signal) {
+      const validatedFilters = taskEventListFiltersSchema.parse(filters)
+
+      return request({
+        path: '/api/v1/task-events',
+        query: validatedFilters,
+        responseSchema: taskEventListResponseSchema,
         signal,
       })
     },

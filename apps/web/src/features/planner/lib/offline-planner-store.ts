@@ -21,6 +21,13 @@ interface PlannerCachedTaskRow {
   workspaceId: string
 }
 
+interface PlannerSyncMetadataRow {
+  key: string
+  updatedAt: string
+  value: number
+  workspaceId: string
+}
+
 interface PlannerOfflineMutationBase {
   actorUserId: string
   attemptCount: number
@@ -96,6 +103,7 @@ const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
 class PlannerOfflineDatabase extends Dexie {
   cachedTasks!: Table<PlannerCachedTaskRow, string>
   mutationQueue!: Table<PlannerOfflineMutationRecord, string>
+  syncMetadata!: Table<PlannerSyncMetadataRow, string>
 
   constructor() {
     super('planner-offline')
@@ -103,6 +111,7 @@ class PlannerOfflineDatabase extends Dexie {
     this.version(1).stores({
       cachedTasks: 'key, workspaceId, taskId, updatedAt',
       mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
+      syncMetadata: 'key, workspaceId, updatedAt',
     })
   }
 }
@@ -111,6 +120,15 @@ let database: PlannerOfflineDatabase | null = null
 
 export function isPlannerOfflineStorageAvailable(): boolean {
   return typeof indexedDB !== 'undefined'
+}
+
+export async function resetPlannerOfflineDatabaseForTests(): Promise<void> {
+  database?.close()
+  database = null
+
+  if (isPlannerOfflineStorageAvailable()) {
+    await Dexie.delete('planner-offline')
+  }
 }
 
 export async function loadCachedTaskRecords(
@@ -245,6 +263,52 @@ export async function countRetryablePlannerOfflineMutations(
   return mutations.length
 }
 
+export async function countConflictedPlannerOfflineMutations(
+  workspaceId: string,
+): Promise<number> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return 0
+  }
+
+  return db.mutationQueue
+    .where('workspaceId')
+    .equals(workspaceId)
+    .filter((mutation) => mutation.status === 'conflicted')
+    .count()
+}
+
+export async function getLastTaskEventId(workspaceId: string): Promise<number> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return 0
+  }
+
+  const row = await db.syncMetadata.get(createSyncMetadataKey(workspaceId))
+
+  return row?.value ?? 0
+}
+
+export async function setLastTaskEventId(
+  workspaceId: string,
+  value: number,
+): Promise<void> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  await db.syncMetadata.put({
+    key: createSyncMetadataKey(workspaceId),
+    updatedAt: new Date().toISOString(),
+    value,
+    workspaceId,
+  })
+}
+
 export async function markPlannerOfflineMutationSyncing(
   mutationId: string,
 ): Promise<void> {
@@ -334,6 +398,10 @@ function getPlannerOfflineDatabase(): PlannerOfflineDatabase | null {
 
 function createCachedTaskKey(workspaceId: string, taskId: string): string {
   return `${workspaceId}:${taskId}`
+}
+
+function createSyncMetadataKey(workspaceId: string): string {
+  return `${workspaceId}:task-events:last-id`
 }
 
 function compareOfflineMutations(

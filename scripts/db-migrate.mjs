@@ -4,7 +4,11 @@ import { fileURLToPath } from 'node:url'
 
 import { Client } from 'pg'
 
-import { createPgConnectionConfig } from './pg-connection-config.mjs'
+import {
+  closePgClient,
+  createPgConnectionConfig,
+  preparePgAdminConnection,
+} from './pg-connection-config.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
@@ -76,7 +80,7 @@ async function runTransactionalMigrations(migrationFiles) {
       }
     }
   } finally {
-    await client.end()
+    await closePgClient(client)
   }
 }
 
@@ -143,7 +147,7 @@ async function runStatementWithRetry(statement) {
       )
       await wait(retryDelayMs)
     } finally {
-      await client.end().catch(() => {})
+      await closePgClient(client)
     }
   }
 
@@ -151,13 +155,30 @@ async function runStatementWithRetry(statement) {
 }
 
 async function withConnectedClient(callback, options = {}) {
-  const client = await connectWithRetry(options)
+  let lastError = null
 
-  try {
-    return await callback(client)
-  } finally {
-    await client.end().catch(() => {})
+  for (let attempt = 1; attempt <= statementRetries; attempt += 1) {
+    const client = await connectWithRetry(options)
+
+    try {
+      return await callback(client)
+    } catch (error) {
+      lastError = error
+
+      if (!isTransientConnectionError(error) || attempt === statementRetries) {
+        throw error
+      }
+
+      console.log(
+        `Transient database error for migration metadata. Retry ${attempt}/${statementRetries} in ${retryDelayMs}ms.`,
+      )
+      await wait(retryDelayMs)
+    } finally {
+      await closePgClient(client)
+    }
   }
+
+  throw lastError
 }
 
 async function connectWithRetry(options = {}) {
@@ -168,13 +189,14 @@ async function connectWithRetry(options = {}) {
 
     try {
       await client.connect()
+      await preparePgAdminConnection(client)
       if (options.logSuccess) {
         console.log('Connected to database.')
       }
       return client
     } catch (error) {
       lastError = error
-      await client.end().catch(() => {})
+      await closePgClient(client)
       console.log(
         `Database is not ready yet. Retry ${attempt}/${retries} in ${retryDelayMs}ms.`,
       )
@@ -189,6 +211,10 @@ function createClient() {
   const client = new Client(createPgConnectionConfig(connectionString))
 
   client.on('error', (error) => {
+    if (isTransientConnectionError(error)) {
+      return
+    }
+
     console.error(
       `Database client error (${error.code ?? 'unknown'}): ${error.message}`,
     )
@@ -198,7 +224,22 @@ function createClient() {
 }
 
 async function ensureSchemaMigrationsTable(client) {
-  await client.query('create schema if not exists app')
+  const schemaResult = await client.query(
+    "select to_regnamespace('app') is not null as exists",
+  )
+
+  if (!schemaResult.rows[0]?.exists) {
+    await client.query('create schema app')
+  }
+
+  const tableResult = await client.query(
+    "select to_regclass('app.schema_migrations') is not null as exists",
+  )
+
+  if (tableResult.rows[0]?.exists) {
+    return
+  }
+
   await client.query(
     // noinspection SqlNoDataSourceInspection
     `
@@ -430,9 +471,16 @@ function isAlreadyExistsError(error) {
 }
 
 function isTransientConnectionError(error) {
+  if (typeof error?.code === 'string') {
+    return ['ETIMEDOUT', 'ECONNRESET', 'EPIPE'].includes(error.code)
+  }
+
   return (
-    typeof error?.code === 'string' &&
-    ['ETIMEDOUT', 'ECONNRESET', 'EPIPE'].includes(error.code)
+    error instanceof Error &&
+    (error.message.includes('Client has encountered a connection error') ||
+      error.message.includes('Connection terminated') ||
+      error.message.includes('Query read timeout') ||
+      error.message.includes('timeout'))
   )
 }
 

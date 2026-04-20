@@ -1,6 +1,8 @@
+import { HttpError } from '../../bootstrap/http-error.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
+  TaskEventFilters,
   TaskListFilters,
   TaskReadContext,
   TaskWriteContext,
@@ -16,7 +18,13 @@ export class TaskService {
     return this.repository.listByWorkspace(context, filters)
   }
 
+  listTaskEvents(context: TaskReadContext, filters?: TaskEventFilters) {
+    return this.repository.listEventsByWorkspace(context, filters)
+  }
+
   createTask(context: TaskWriteContext, input: CreateTaskCommand['input']) {
+    assertCanWriteTasks(context)
+
     return this.repository.create({ context, input })
   }
 
@@ -26,6 +34,8 @@ export class TaskService {
     status: UpdateTaskStatusCommand['status'],
     expectedVersion?: number,
   ) {
+    assertCanWriteTasks(context)
+
     const command: UpdateTaskStatusCommand = {
       context,
       taskId,
@@ -45,6 +55,8 @@ export class TaskService {
     schedule: UpdateTaskScheduleCommand['schedule'],
     expectedVersion?: number,
   ) {
+    assertCanWriteTasks(context)
+
     const command: UpdateTaskScheduleCommand = {
       context,
       taskId,
@@ -63,6 +75,8 @@ export class TaskService {
     taskId: string,
     expectedVersion?: number,
   ) {
+    assertCanWriteTasks(context)
+
     const command: DeleteTaskCommand = {
       context,
       taskId,
@@ -73,5 +87,15 @@ export class TaskService {
     }
 
     return this.repository.remove(command)
+  }
+}
+
+function assertCanWriteTasks(context: TaskWriteContext): void {
+  if (context.role === 'viewer') {
+    throw new HttpError(
+      403,
+      'workspace_write_forbidden',
+      'The current workspace role cannot write tasks.',
+    )
   }
 }

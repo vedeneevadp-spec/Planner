@@ -17,6 +17,8 @@ import type {
   CreateTaskCommand,
   DeleteTaskCommand,
   StoredTaskRecord,
+  TaskEventFilters,
+  TaskEventListResult,
   TaskListFilters,
   TaskReadContext,
   UpdateTaskScheduleCommand,
@@ -33,6 +35,7 @@ import {
 } from './task.shared.js'
 
 type TaskRow = Selectable<DatabaseSchema['app.tasks']>
+type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
 type TaskTimeBlockRow = Selectable<DatabaseSchema['app.task_time_blocks']>
 type TaskListRow = TaskRow & {
   time_block_ends_at: TaskTimeBlockRow['ends_at'] | null
@@ -69,6 +72,34 @@ export class PostgresTaskRepository implements TaskRepository {
         ? taskRecords.filter((task) => task.project === filters.project)
         : taskRecords,
     )
+  }
+
+  async listEventsByWorkspace(
+    context: TaskReadContext,
+    filters: TaskEventFilters = {},
+  ): Promise<TaskEventListResult> {
+    const limit = filters.limit ?? 100
+    const afterEventId = filters.afterEventId ?? 0
+    const rows = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        executor
+          .selectFrom('app.task_events')
+          .selectAll()
+          .where('workspace_id', '=', context.workspaceId)
+          .where('id', '>', afterEventId)
+          .orderBy('id', 'asc')
+          .limit(limit)
+          .execute(),
+      context.actorUserId,
+    )
+    const events = rows.map((row) => this.mapTaskEventRecord(row))
+
+    return {
+      events,
+      nextEventId: events.at(-1)?.id ?? afterEventId,
+    }
   }
 
   async create(command: CreateTaskCommand): Promise<StoredTaskRecord> {
@@ -1140,6 +1171,19 @@ export class PostgresTaskRepository implements TaskRepository {
       updatedAt: serializeTimestamp(task.updated_at),
       version: Number(task.version),
       workspaceId: task.workspace_id,
+    }
+  }
+
+  private mapTaskEventRecord(taskEvent: TaskEventRow) {
+    return {
+      actorUserId: taskEvent.actor_user_id,
+      eventId: taskEvent.event_id,
+      eventType: taskEvent.event_type,
+      id: Number(taskEvent.id),
+      occurredAt: serializeTimestamp(taskEvent.occurred_at),
+      payload: taskEvent.payload,
+      taskId: taskEvent.task_id,
+      workspaceId: taskEvent.workspace_id,
     }
   }
 

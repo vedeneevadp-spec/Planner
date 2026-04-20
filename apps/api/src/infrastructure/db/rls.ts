@@ -35,7 +35,11 @@ export async function withOptionalRls<T>(
       logPoolerRlsMode()
       await applySessionRlsContext(connection, authContext, actorUserIdOverride)
 
-      return callback(connection)
+      try {
+        return await callback(connection)
+      } finally {
+        await clearSessionRlsContext(connection)
+      }
     })
   }
 
@@ -73,7 +77,13 @@ export async function withWriteTransaction<T>(
         actorUserIdOverride,
       )
 
-      return connection.transaction().execute(async (trx) => callback(trx))
+      try {
+        return await connection
+          .transaction()
+          .execute(async (trx) => callback(trx))
+      } finally {
+        await clearSessionRlsContext(connection)
+      }
     })
   }
 
@@ -169,6 +179,21 @@ async function applySessionRlsContext(
   await sql`
     set role authenticated
   `.execute(executor)
+}
+
+async function clearSessionRlsContext(
+  executor: Kysely<DatabaseSchema>,
+): Promise<void> {
+  try {
+    await sql`
+      reset role
+    `.execute(executor)
+    await sql`
+      select set_config('request.jwt.claims', '{}', false)
+    `.execute(executor)
+  } catch (error) {
+    console.warn('[db] Failed to clear session Postgres RLS context.', error)
+  }
 }
 
 function buildEffectiveClaims(

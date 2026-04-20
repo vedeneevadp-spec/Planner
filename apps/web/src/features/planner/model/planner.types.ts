@@ -7,8 +7,10 @@ import type {
 
 export interface PlannerState {
   tasks: Task[]
+  conflictedMutationCount: number
   isLoading: boolean
   isSyncing: boolean
+  queuedMutationCount: number
   errorMessage: string | null
   isTaskPending: (taskId: string) => boolean
   refresh: () => Promise<void>

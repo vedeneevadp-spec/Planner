@@ -5,12 +5,14 @@ import {
   apiErrorSchema,
   healthResponseSchema,
   sessionResponseSchema,
+  taskEventListResponseSchema,
   taskListResponseSchema,
   taskRecordSchema,
 } from '@planner/contracts'
 
 import {
   MemorySessionRepository,
+  type SessionRepository,
   SessionService,
 } from '../modules/session/index.js'
 import { MemoryTaskRepository, TaskService } from '../modules/tasks/index.js'
@@ -45,6 +47,27 @@ const authRequestAuthenticator: RequestAuthenticator = {
     }
 
     return Promise.resolve(AUTH_CONTEXT)
+  },
+}
+
+const viewerSessionRepository: SessionRepository = {
+  resolve() {
+    return Promise.resolve({
+      actor: {
+        displayName: 'Planner Viewer',
+        email: 'viewer@planner.local',
+        id: AUTH_CONTEXT.claims.sub,
+      },
+      actorUserId: AUTH_CONTEXT.claims.sub,
+      role: 'viewer',
+      source: 'access_token',
+      workspace: {
+        id: 'workspace-viewer',
+        name: 'Viewer Workspace',
+        slug: 'viewer',
+      },
+      workspaceId: 'workspace-viewer',
+    })
   },
 }
 
@@ -207,6 +230,30 @@ void describe('buildApiApp', () => {
     assert.equal(body.error.code, 'invalid_query')
   })
 
+  void it('returns task event sync cursor responses', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/task-events?afterEventId=5&limit=50',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = taskEventListResponseSchema.parse(response.json())
+
+    assert.equal(body.nextEventId, 5)
+    assert.deepEqual(body.events, [])
+  })
+
   void it('allows PATCH and DELETE in CORS preflight responses', async () => {
     app = buildApiApp({
       config: createTestConfig({
@@ -297,6 +344,7 @@ void describe('buildApiApp', () => {
     } = response.json()
 
     assert.equal(body.openapi, '3.0.3')
+    assert.ok(body.paths?.['/api/v1/task-events'])
     assert.ok(body.paths?.['/api/v1/tasks'])
     assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
   })
@@ -377,5 +425,42 @@ void describe('buildApiApp', () => {
     const createdTask = taskRecordSchema.parse(createResponse.json())
 
     assert.equal(createdTask.workspaceId, 'workspace-auth')
+  })
+
+  void it('forbids task writes for viewer workspace role', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(viewerSessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-viewer',
+      },
+      method: 'POST',
+      payload: {
+        dueDate: null,
+        note: '',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        title: 'Viewer cannot write',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(response.statusCode, 403)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'workspace_write_forbidden')
   })
 })

@@ -68,6 +68,27 @@ export const taskListFiltersSchema = z.object({
 
 export const taskListResponseSchema = z.array(taskRecordSchema)
 
+export const taskEventRecordSchema = z.object({
+  actorUserId: z.string().nullable(),
+  eventId: z.string(),
+  eventType: z.string(),
+  id: z.number().int().nonnegative(),
+  occurredAt: z.string(),
+  payload: z.record(z.string(), z.unknown()),
+  taskId: z.string().nullable(),
+  workspaceId: z.string(),
+})
+
+export const taskEventListFiltersSchema = z.object({
+  afterEventId: z.coerce.number().int().nonnegative().optional(),
+  limit: z.coerce.number().int().min(1).max(500).optional(),
+})
+
+export const taskEventListResponseSchema = z.object({
+  events: z.array(taskEventRecordSchema),
+  nextEventId: z.number().int().nonnegative(),
+})
+
 export const taskStatusUpdateInputSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
   status: taskStatusSchema,
@@ -85,6 +106,9 @@ export type SessionActor = z.infer<typeof sessionActorSchema>
 export type SessionResponse = z.infer<typeof sessionResponseSchema>
 export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
+export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>
+export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
+export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>
 export type TaskListFilters = z.infer<typeof taskListFiltersSchema>
 export type TaskRecord = z.infer<typeof taskRecordSchema>
 export type TaskScheduleUpdateInput = z.infer<
