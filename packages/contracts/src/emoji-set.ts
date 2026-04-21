@@ -2,8 +2,8 @@ import { z } from 'zod'
 
 import { uuidV7Schema } from './uuid.js'
 
-export const emojiAssetKindSchema = z.enum(['unicode', 'image'])
-export const emojiSetSourceSchema = z.enum(['custom', 'telegram'])
+export const emojiAssetKindSchema = z.enum(['image'])
+export const emojiSetSourceSchema = z.enum(['custom'])
 export const emojiSetStatusSchema = z.enum(['active', 'archived'])
 
 export const emojiAssetSchema = z.object({
@@ -28,10 +28,10 @@ export const emojiSetSchema = z.object({
 
 export const newEmojiAssetInputSchema = z.object({
   id: uuidV7Schema.optional(),
-  kind: emojiAssetKindSchema,
+  kind: emojiAssetKindSchema.optional(),
   keywords: z.array(z.string()).optional(),
   label: z.string().min(1),
-  shortcode: z.string().min(1),
+  shortcode: z.string().min(1).optional(),
   value: z.string().min(1),
 })
 
@@ -43,6 +43,11 @@ export const newEmojiSetInputSchema = z.object({
   title: z.string().min(1),
 })
 
+export const addEmojiSetItemsInputSchema = z.object({
+  items: z.array(newEmojiAssetInputSchema).min(1).max(200),
+})
+
+export type AddEmojiSetItemsInput = z.infer<typeof addEmojiSetItemsInputSchema>
 export type EmojiAsset = z.infer<typeof emojiAssetSchema>
 export type EmojiAssetKind = z.infer<typeof emojiAssetKindSchema>
 export type EmojiSet = z.infer<typeof emojiSetSchema>

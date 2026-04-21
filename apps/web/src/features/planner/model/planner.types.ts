@@ -9,10 +9,15 @@ import type {
   TaskScheduleInput,
   TaskStatus,
 } from '@/entities/task'
+import type {
+  NewTaskTemplateInput,
+  TaskTemplate,
+} from '@/entities/task-template'
 
 export interface PlannerState {
   projects: Project[]
   tasks: Task[]
+  taskTemplates: TaskTemplate[]
   conflictedMutationCount: number
   isLoading: boolean
   isSyncing: boolean
@@ -22,6 +27,7 @@ export interface PlannerState {
   refresh: () => Promise<void>
   addProject: (input: NewProjectInput) => Promise<boolean>
   addTask: (input: NewTaskInput) => Promise<boolean>
+  addTaskTemplate: (input: NewTaskTemplateInput) => Promise<boolean>
   updateProject: (
     projectId: string,
     input: ProjectUpdateInput,
@@ -36,4 +42,5 @@ export interface PlannerState {
     schedule: TaskScheduleInput,
   ) => Promise<boolean>
   removeTask: (taskId: string) => Promise<boolean>
+  removeTaskTemplate: (templateId: string) => Promise<boolean>
 }

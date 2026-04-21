@@ -9,6 +9,7 @@ export interface ApiConfig {
   authMode: ApiAuthMode
   corsOrigin: string
   host: string
+  iconAssetDirectory: string
   port: number
   supabaseAuth: SupabaseAuthRuntimeConfig | null
   storageDriver: StorageDriver
@@ -116,6 +117,7 @@ export function createApiConfig(
     authMode,
     corsOrigin: env.API_CORS_ORIGIN ?? '*',
     host: env.API_HOST ?? '0.0.0.0',
+    iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
     port: parsePort(env.API_PORT),
     supabaseAuth: createSupabaseAuthConfig(env, authMode),
     storageDriver: parseStorageDriver(env.API_STORAGE_DRIVER, appEnv),

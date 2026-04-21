@@ -1,6 +1,10 @@
 import type {
+  AddEmojiSetItemsCommand,
   CreateEmojiSetCommand,
+  DeleteEmojiSetCommand,
+  DeleteEmojiSetItemCommand,
   EmojiSetReadContext,
+  StoredEmojiAssetRecord,
   StoredEmojiSetRecord,
 } from './emoji-set.model.js'
 
@@ -11,4 +15,9 @@ export interface EmojiSetRepository {
     emojiSetId: string,
   ): Promise<StoredEmojiSetRecord>
   create(command: CreateEmojiSetCommand): Promise<StoredEmojiSetRecord>
+  addItems(command: AddEmojiSetItemsCommand): Promise<StoredEmojiSetRecord>
+  deleteSet(command: DeleteEmojiSetCommand): Promise<StoredEmojiSetRecord>
+  deleteItem(
+    command: DeleteEmojiSetItemCommand,
+  ): Promise<StoredEmojiAssetRecord>
 }

@@ -27,7 +27,7 @@
 }
 
 .copy h4 {
-  margin: 0;
+  margin: 0.45rem 0 0;
   font-family: Georgia, 'Times New Roman', serif;
   letter-spacing: -0.03em;
 }
@@ -54,6 +54,40 @@
   background: rgba(33, 78, 66, 0.08);
   color: var(--accent-strong);
   font-size: 0.8rem;
+}
+
+.projectBadge,
+.projectBadgeMuted {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 0.4rem;
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.78rem;
+}
+
+.projectBadge {
+  border: 1px solid rgba(33, 78, 66, 0.16);
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent-strong);
+}
+
+.projectBadgeMuted {
+  border: 1px dashed rgba(31, 36, 30, 0.14);
+  background: rgba(255, 255, 255, 0.5);
+  color: var(--text-soft);
+}
+
+.projectIcon {
+  display: inline-grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffdf8;
+  font-size: 0.72rem;
+  line-height: 1;
 }
 
 .button {

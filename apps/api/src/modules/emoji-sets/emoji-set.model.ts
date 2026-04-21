@@ -1,4 +1,5 @@
 import type {
+  AddEmojiSetItemsInput,
   EmojiAssetRecord,
   EmojiSetRecord,
   NewEmojiSetInput,
@@ -27,4 +28,21 @@ export interface EmojiSetWriteContext {
 export interface CreateEmojiSetCommand {
   context: EmojiSetWriteContext
   input: NewEmojiSetInput
+}
+
+export interface AddEmojiSetItemsCommand {
+  context: EmojiSetWriteContext
+  emojiSetId: string
+  input: AddEmojiSetItemsInput
+}
+
+export interface DeleteEmojiSetCommand {
+  context: EmojiSetWriteContext
+  emojiSetId: string
+}
+
+export interface DeleteEmojiSetItemCommand {
+  context: EmojiSetWriteContext
+  emojiSetId: string
+  iconAssetId: string
 }

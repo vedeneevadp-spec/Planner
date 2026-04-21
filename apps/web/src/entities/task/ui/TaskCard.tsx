@@ -1,3 +1,4 @@
+import type { Project } from '@/entities/project'
 import type { Task, TaskStatus } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import {
@@ -11,6 +12,7 @@ import styles from './TaskCard.module.css'
 
 interface TaskCardProps {
   task: Task
+  project?: Project | undefined
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
@@ -20,6 +22,7 @@ interface TaskCardProps {
 
 export function TaskCard({
   task,
+  project,
   tone = 'default',
   isPending = false,
   onSetStatus,
@@ -28,6 +31,7 @@ export function TaskCard({
 }: TaskCardProps) {
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
+  const projectTitle = project?.title ?? task.project.trim()
   const toneClass =
     tone === 'warning'
       ? styles.warning
@@ -39,14 +43,28 @@ export function TaskCard({
     <article className={cx(styles.card, toneClass)}>
       <div className={styles.main}>
         <div className={styles.copy}>
+          {projectTitle ? (
+            <span className={styles.projectBadge}>
+              {project ? (
+                <span
+                  className={styles.projectIcon}
+                  style={{ backgroundColor: project.color }}
+                  aria-hidden="true"
+                >
+                  {project.icon}
+                </span>
+              ) : null}
+              <span>Проект: {projectTitle}</span>
+            </span>
+          ) : (
+            <span className={styles.projectBadgeMuted}>Без проекта</span>
+          )}
+
           <h4>{task.title}</h4>
           {task.note ? <p>{task.note}</p> : null}
         </div>
 
         <div className={styles.meta}>
-          {task.project ? (
-            <span className={styles.metaChip}>{task.project}</span>
-          ) : null}
           {task.plannedStartTime ? (
             <span className={styles.metaChip}>
               Time {formatTimeRange(task.plannedStartTime, task.plannedEndTime)}

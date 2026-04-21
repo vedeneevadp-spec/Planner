@@ -1,4 +1,5 @@
 export type {
+  AddEmojiSetItemsInput,
   EmojiAssetKind,
   EmojiAssetRecord,
   EmojiSetRecord,

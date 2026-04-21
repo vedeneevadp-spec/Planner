@@ -2,6 +2,7 @@ import {
   generateUuidV7,
   type ProjectRecord,
   type TaskRecord,
+  type TaskTemplateRecord,
 } from '@planner/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -18,6 +19,10 @@ import type {
   TaskStatus,
 } from '@/entities/task'
 import { sortTasks } from '@/entities/task'
+import type {
+  NewTaskTemplateInput,
+  TaskTemplate,
+} from '@/entities/task-template'
 import {
   getSupabaseBrowserClient,
   isUnauthorizedSessionApiError,
@@ -34,8 +39,10 @@ import {
   isPlannerOfflineStorageAvailable,
   loadCachedProjectRecords,
   loadCachedTaskRecords,
+  loadCachedTaskTemplateRecords,
   replaceCachedProjectRecords,
   replaceCachedTaskRecords,
+  replaceCachedTaskTemplateRecords,
   setLastTaskEventId,
 } from '../lib/offline-planner-store'
 import {
@@ -58,6 +65,11 @@ interface PlannerMutationContext {
 interface ProjectMutationContext {
   optimisticProjectId: string | undefined
   previousProjectRecords: ProjectRecord[] | undefined
+}
+
+interface TaskTemplateMutationContext {
+  optimisticTemplateId: string | undefined
+  previousTemplateRecords: TaskTemplateRecord[] | undefined
 }
 
 interface UpdateProjectMutationVariables {
@@ -99,8 +111,39 @@ function toPlannerTask(task: TaskRecord): Task {
   }
 }
 
+function toPlannerTaskTemplate(template: TaskTemplateRecord): TaskTemplate {
+  return {
+    createdAt: template.createdAt,
+    dueDate: template.dueDate,
+    id: template.id,
+    note: template.note,
+    plannedDate: template.plannedDate,
+    plannedEndTime: template.plannedEndTime,
+    plannedStartTime: template.plannedStartTime,
+    project: template.project,
+    projectId: template.projectId,
+    title: template.title,
+  }
+}
+
 function sortProjects(projects: ProjectRecord[]): ProjectRecord[] {
   return [...projects].sort((left, right) => {
+    if (left.title !== right.title) {
+      return left.title.localeCompare(right.title)
+    }
+
+    if (left.createdAt === right.createdAt) {
+      return 0
+    }
+
+    return left.createdAt < right.createdAt ? -1 : 1
+  })
+}
+
+function sortTaskTemplates(
+  templates: TaskTemplateRecord[],
+): TaskTemplateRecord[] {
+  return [...templates].sort((left, right) => {
     if (left.title !== right.title) {
       return left.title.localeCompare(right.title)
     }
@@ -180,6 +223,35 @@ function createOptimisticTaskRecord(
   }
 }
 
+function createOptimisticTaskTemplateRecord(
+  input: NewTaskTemplateInput,
+  workspaceId: string,
+): TaskTemplateRecord {
+  const now = new Date().toISOString()
+  const schedule = normalizeSchedule({
+    plannedDate: input.plannedDate,
+    plannedEndTime: input.plannedEndTime,
+    plannedStartTime: input.plannedStartTime,
+  })
+
+  return {
+    createdAt: now,
+    deletedAt: null,
+    dueDate: input.dueDate,
+    id: input.id ?? generateUuidV7(),
+    note: input.note.trim(),
+    plannedDate: schedule.plannedDate,
+    plannedEndTime: schedule.plannedEndTime,
+    plannedStartTime: schedule.plannedStartTime,
+    project: input.project.trim(),
+    projectId: input.projectId,
+    title: input.title.trim(),
+    updatedAt: now,
+    version: 1,
+    workspaceId,
+  }
+}
+
 function createOptimisticProjectRecord(
   input: NewProjectInput,
   workspaceId: string,
@@ -245,6 +317,50 @@ function replaceOptimisticProjectRecord(
     : replaceProjectRecord(nextProjectRecords, nextProject)
 }
 
+function replaceTaskTemplateRecord(
+  templateRecords: TaskTemplateRecord[],
+  nextTemplate: TaskTemplateRecord,
+): TaskTemplateRecord[] {
+  const existingIndex = templateRecords.findIndex(
+    (template) => template.id === nextTemplate.id,
+  )
+
+  if (existingIndex === -1) {
+    return sortTaskTemplates([nextTemplate, ...templateRecords])
+  }
+
+  return sortTaskTemplates(
+    templateRecords.map((template) =>
+      template.id === nextTemplate.id ? nextTemplate : template,
+    ),
+  )
+}
+
+function replaceOptimisticTaskTemplateRecord(
+  templateRecords: TaskTemplateRecord[],
+  optimisticTemplateId: string | undefined,
+  nextTemplate: TaskTemplateRecord,
+): TaskTemplateRecord[] {
+  if (!optimisticTemplateId) {
+    return replaceTaskTemplateRecord(templateRecords, nextTemplate)
+  }
+
+  let replaced = false
+  const nextTemplateRecords = templateRecords.map((template) => {
+    if (template.id !== optimisticTemplateId) {
+      return template
+    }
+
+    replaced = true
+
+    return nextTemplate
+  })
+
+  return replaced
+    ? sortTaskTemplates(nextTemplateRecords)
+    : replaceTaskTemplateRecord(nextTemplateRecords, nextTemplate)
+}
+
 function replaceTaskRecord(
   taskRecords: TaskRecord[],
   nextTask: TaskRecord,
@@ -305,11 +421,32 @@ function updateTaskProjectRecords(
   )
 }
 
+function updateTaskTemplateProjectRecords(
+  templateRecords: TaskTemplateRecord[],
+  project: ProjectRecord,
+): TaskTemplateRecord[] {
+  return templateRecords.map((template) =>
+    template.projectId === project.id
+      ? {
+          ...template,
+          project: project.title,
+        }
+      : template,
+  )
+}
+
 function removeTaskRecord(
   taskRecords: TaskRecord[],
   taskId: string,
 ): TaskRecord[] {
   return taskRecords.filter((task) => task.id !== taskId)
+}
+
+function removeTaskTemplateRecord(
+  templateRecords: TaskTemplateRecord[],
+  templateId: string,
+): TaskTemplateRecord[] {
+  return templateRecords.filter((template) => template.id !== templateId)
 }
 
 function getTaskRecord(
@@ -408,6 +545,10 @@ export function usePlannerState(): PlannerState {
     () => ['planner', 'projects', workspaceId ?? 'pending'] as const,
     [workspaceId],
   )
+  const taskTemplateQueryKey = useMemo(
+    () => ['planner', 'task-templates', workspaceId ?? 'pending'] as const,
+    [workspaceId],
+  )
 
   const tasksQuery = useQuery({
     enabled: plannerApi !== null,
@@ -421,6 +562,14 @@ export function usePlannerState(): PlannerState {
     enabled: plannerApi !== null,
     queryFn: ({ signal }) => requirePlannerApi(plannerApi).listProjects(signal),
     queryKey: projectQueryKey,
+    retry: (failureCount, error) =>
+      !isUnauthorizedPlannerApiError(error) && failureCount < 2,
+  })
+  const taskTemplatesQuery = useQuery({
+    enabled: plannerApi !== null,
+    queryFn: ({ signal }) =>
+      requirePlannerApi(plannerApi).listTaskTemplates(signal),
+    queryKey: taskTemplateQueryKey,
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
@@ -463,6 +612,21 @@ export function usePlannerState(): PlannerState {
       await replaceCachedProjectRecords(workspaceId, currentProjectRecords)
     }
   }, [projectQueryKey, queryClient, workspaceId])
+  const persistCurrentTaskTemplateRecords = useCallback(async () => {
+    if (!workspaceId) {
+      return
+    }
+
+    const currentTemplateRecords =
+      queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
+
+    if (currentTemplateRecords) {
+      await replaceCachedTaskTemplateRecords(
+        workspaceId,
+        currentTemplateRecords,
+      )
+    }
+  }, [queryClient, taskTemplateQueryKey, workspaceId])
   const syncTaskEventCursor = useCallback(async () => {
     if (taskEventCursorSyncRef.current) {
       try {
@@ -525,6 +689,11 @@ export function usePlannerState(): PlannerState {
           queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
             updateTaskProjectRecords(current, project),
           )
+          queryClient.setQueryData<TaskTemplateRecord[]>(
+            taskTemplateQueryKey,
+            (current = []) =>
+              updateTaskTemplateProjectRecords(current, project),
+          )
         },
         onTaskDeleted: (taskId) => {
           queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
@@ -541,6 +710,7 @@ export function usePlannerState(): PlannerState {
 
       if (result.synced > 0 || result.conflicted > 0) {
         await queryClient.invalidateQueries({ queryKey: projectQueryKey })
+        await queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
         await queryClient.invalidateQueries({ queryKey: taskQueryKey })
       }
 
@@ -563,6 +733,7 @@ export function usePlannerState(): PlannerState {
     queryClient,
     refreshQueuedMutationCount,
     syncTaskEventCursor,
+    taskTemplateQueryKey,
     taskQueryKey,
     workspaceId,
   ])
@@ -595,6 +766,19 @@ export function usePlannerState(): PlannerState {
           currentProjectRecords ?? cachedProjectRecords,
       )
     })
+    void loadCachedTaskTemplateRecords(workspaceId).then(
+      (cachedTemplateRecords) => {
+        if (!isActive || cachedTemplateRecords.length === 0) {
+          return
+        }
+
+        queryClient.setQueryData<TaskTemplateRecord[]>(
+          taskTemplateQueryKey,
+          (currentTemplateRecords) =>
+            currentTemplateRecords ?? cachedTemplateRecords,
+        )
+      },
+    )
     void refreshQueuedMutationCount()
 
     return () => {
@@ -604,6 +788,7 @@ export function usePlannerState(): PlannerState {
     projectQueryKey,
     queryClient,
     refreshQueuedMutationCount,
+    taskTemplateQueryKey,
     taskQueryKey,
     workspaceId,
   ])
@@ -623,6 +808,14 @@ export function usePlannerState(): PlannerState {
 
     void replaceCachedProjectRecords(workspaceId, projectsQuery.data)
   }, [projectsQuery.data, workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId || !taskTemplatesQuery.data) {
+      return
+    }
+
+    void replaceCachedTaskTemplateRecords(workspaceId, taskTemplatesQuery.data)
+  }, [taskTemplatesQuery.data, workspaceId])
 
   useEffect(() => {
     void drainQueuedMutations()
@@ -796,9 +989,14 @@ export function usePlannerState(): PlannerState {
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
         updateTaskProjectRecords(current, project),
       )
+      queryClient.setQueryData<TaskTemplateRecord[]>(
+        taskTemplateQueryKey,
+        (current = []) => updateTaskTemplateProjectRecords(current, project),
+      )
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
       void queryClient.invalidateQueries({ queryKey: taskQueryKey })
     },
   })
@@ -843,6 +1041,54 @@ export function usePlannerState(): PlannerState {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
+  const createTaskTemplateMutation = useMutation({
+    mutationFn: (input: NewTaskTemplateInput) =>
+      requirePlannerApi(plannerApi).createTaskTemplate(input),
+    onMutate: async (input): Promise<TaskTemplateMutationContext> => {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: taskTemplateQueryKey })
+
+      const previousTemplateRecords =
+        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
+      const optimisticTemplate = createOptimisticTaskTemplateRecord(
+        input,
+        session?.workspaceId ?? 'pending',
+      )
+
+      queryClient.setQueryData<TaskTemplateRecord[]>(
+        taskTemplateQueryKey,
+        (current = []) => sortTaskTemplates([optimisticTemplate, ...current]),
+      )
+
+      return {
+        optimisticTemplateId: optimisticTemplate.id,
+        previousTemplateRecords,
+      }
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previousTemplateRecords) {
+        queryClient.setQueryData(
+          taskTemplateQueryKey,
+          context.previousTemplateRecords,
+        )
+      }
+    },
+    onSuccess: (template, _input, context) => {
+      queryClient.setQueryData<TaskTemplateRecord[]>(
+        taskTemplateQueryKey,
+        (current = []) =>
+          replaceOptimisticTaskTemplateRecord(
+            current,
+            context?.optimisticTemplateId,
+            template,
+          ),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
     },
   })
 
@@ -987,14 +1233,52 @@ export function usePlannerState(): PlannerState {
     },
   })
 
+  const removeTaskTemplateMutation = useMutation({
+    mutationFn: (templateId: string) =>
+      requirePlannerApi(plannerApi).removeTaskTemplate(templateId),
+    onMutate: async (
+      templateId: string,
+    ): Promise<TaskTemplateMutationContext> => {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: taskTemplateQueryKey })
+
+      const previousTemplateRecords =
+        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
+
+      queryClient.setQueryData<TaskTemplateRecord[]>(
+        taskTemplateQueryKey,
+        (current = []) => removeTaskTemplateRecord(current, templateId),
+      )
+
+      return {
+        optimisticTemplateId: undefined,
+        previousTemplateRecords,
+      }
+    },
+    onError: (_error, _templateId, context) => {
+      if (context?.previousTemplateRecords) {
+        queryClient.setQueryData(
+          taskTemplateQueryKey,
+          context.previousTemplateRecords,
+        )
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
+    },
+  })
+
   useEffect(() => {
     const authError =
       sessionQuery.error ??
       projectsQuery.error ??
+      taskTemplatesQuery.error ??
       tasksQuery.error ??
       createProjectMutation.error ??
+      createTaskTemplateMutation.error ??
       updateProjectMutation.error ??
       createTaskMutation.error ??
+      removeTaskTemplateMutation.error ??
       setTaskStatusMutation.error ??
       setTaskScheduleMutation.error ??
       removeTaskMutation.error
@@ -1015,13 +1299,16 @@ export function usePlannerState(): PlannerState {
     accessToken,
     createProjectMutation.error,
     createTaskMutation.error,
+    createTaskTemplateMutation.error,
     expireSession,
     isAuthEnabled,
     projectsQuery.error,
     removeTaskMutation.error,
+    removeTaskTemplateMutation.error,
     sessionQuery.error,
     setTaskScheduleMutation.error,
     setTaskStatusMutation.error,
+    taskTemplatesQuery.error,
     tasksQuery.error,
     updateProjectMutation.error,
   ])
@@ -1030,12 +1317,20 @@ export function usePlannerState(): PlannerState {
     () => sortProjects(projectsQuery.data ?? []),
     [projectsQuery.data],
   )
+  const taskTemplates = useMemo<TaskTemplate[]>(
+    () =>
+      sortTaskTemplates(taskTemplatesQuery.data ?? []).map((template) =>
+        toPlannerTaskTemplate(template),
+      ),
+    [taskTemplatesQuery.data],
+  )
   const tasks = useMemo(
     () => sortTasks((tasksQuery.data ?? []).map((task) => toPlannerTask(task))),
     [tasksQuery.data],
   )
   const hasTaskRecords = tasksQuery.data !== undefined
   const hasProjectRecords = projectsQuery.data !== undefined
+  const hasTaskTemplateRecords = taskTemplatesQuery.data !== undefined
 
   function setTaskPending(taskId: string, isPending: boolean): void {
     pendingTaskIdsRef.current = toggleTaskId(
@@ -1183,6 +1478,22 @@ export function usePlannerState(): PlannerState {
           workspaceId,
         })
       },
+    )
+  }
+
+  async function addTaskTemplate(
+    input: NewTaskTemplateInput,
+  ): Promise<boolean> {
+    const templateId = input.id ?? generateUuidV7()
+    const inputWithId = {
+      ...input,
+      id: templateId,
+    }
+
+    return runMutation(
+      () => createTaskTemplateMutation.mutateAsync(inputWithId),
+      undefined,
+      persistCurrentTaskTemplateRecords,
     )
   }
 
@@ -1360,12 +1671,23 @@ export function usePlannerState(): PlannerState {
     )
   }
 
+  async function removeTaskTemplate(templateId: string): Promise<boolean> {
+    return runMutation(
+      () => removeTaskTemplateMutation.mutateAsync(templateId),
+      undefined,
+      persistCurrentTaskTemplateRecords,
+    )
+  }
+
   async function refresh(): Promise<void> {
     setMutationErrorMessage(null)
 
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
       queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['planner', 'task-templates'],
+      }),
       queryClient.invalidateQueries({ queryKey: ['planner', 'tasks'] }),
     ])
   }
@@ -1373,27 +1695,37 @@ export function usePlannerState(): PlannerState {
   return {
     addProject,
     addTask,
+    addTaskTemplate,
     conflictedMutationCount,
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
       (projectsQuery.error ? getErrorMessage(projectsQuery.error) : null) ??
+      (taskTemplatesQuery.error
+        ? getErrorMessage(taskTemplatesQuery.error)
+        : null) ??
       (tasksQuery.error ? getErrorMessage(tasksQuery.error) : null),
     isLoading:
       sessionQuery.isPending ||
       (sessionQuery.isSuccess &&
         projectsQuery.isPending &&
         !hasProjectRecords) ||
+      (sessionQuery.isSuccess &&
+        taskTemplatesQuery.isPending &&
+        !hasTaskTemplateRecords) ||
       (sessionQuery.isSuccess && tasksQuery.isPending && !hasTaskRecords),
     isSyncing:
       sessionQuery.isFetching ||
       projectsQuery.isFetching ||
+      taskTemplatesQuery.isFetching ||
       tasksQuery.isFetching ||
       isDrainingOfflineQueue ||
       queuedMutationCount > 0 ||
       createProjectMutation.isPending ||
       updateProjectMutation.isPending ||
       createTaskMutation.isPending ||
+      createTaskTemplateMutation.isPending ||
+      removeTaskTemplateMutation.isPending ||
       setTaskStatusMutation.isPending ||
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
@@ -1402,10 +1734,12 @@ export function usePlannerState(): PlannerState {
     queuedMutationCount,
     refresh,
     removeTask,
+    removeTaskTemplate,
     setTaskPlannedDate,
     setTaskSchedule,
     setTaskStatus,
     tasks,
+    taskTemplates,
     updateProject,
   }
 }

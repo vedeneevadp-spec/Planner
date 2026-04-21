@@ -1,38 +1,59 @@
-import { type FormEvent, useState } from 'react'
+import { type ChangeEvent, type FormEvent, useState } from 'react'
 
+import { EmojiGlyph, type NewEmojiAssetInput } from '@/entities/emoji-set'
 import {
-  type EmojiAssetKind,
-  EmojiGlyph,
-  type EmojiSetSource,
-  type NewEmojiAssetInput,
-} from '@/entities/emoji-set'
-import { useCreateEmojiSet, useEmojiSets } from '@/features/emoji-library'
+  useAddEmojiSetItems,
+  useCreateEmojiSet,
+  useDeleteEmojiSet,
+  useDeleteEmojiSetItem,
+  useEmojiSets,
+} from '@/features/emoji-library'
 import { usePlannerSession } from '@/features/session'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
 import styles from './AdminPage.module.css'
 
-interface DraftEmojiItem {
+interface DraftIconItem {
   draftId: string
-  keywords: string
-  kind: EmojiAssetKind
+  fileError: string | null
+  fileName: string
   label: string
-  shortcode: string
   value: string
 }
 
+const MAX_ICON_FILE_SIZE_BYTES = 1024 * 1024
+const SUPPORTED_ICON_MIME_TYPES = new Set([
+  'image/gif',
+  'image/jpeg',
+  'image/png',
+  'image/svg+xml',
+  'image/webp',
+])
+const SUPPORTED_ICON_EXTENSIONS = new Map([
+  ['.gif', 'image/gif'],
+  ['.jpeg', 'image/jpeg'],
+  ['.jpg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.svg', 'image/svg+xml'],
+  ['.webp', 'image/webp'],
+])
+const ACCEPTED_ICON_TYPES = [
+  ...SUPPORTED_ICON_MIME_TYPES,
+  ...SUPPORTED_ICON_EXTENSIONS.keys(),
+].join(',')
+const NEW_ICON_SET_TARGET = 'new'
+
 let draftItemCounter = 0
 
-function createDraftEmojiItem(): DraftEmojiItem {
+function createDraftIconItem(): DraftIconItem {
   draftItemCounter += 1
 
   return {
-    draftId: `emoji-item-${draftItemCounter}`,
-    keywords: '',
-    kind: 'unicode',
+    draftId: `icon-item-${draftItemCounter}`,
+    fileError: null,
+    fileName: '',
     label: '',
-    shortcode: '',
     value: '',
   }
 }
@@ -43,17 +64,28 @@ function canManageAdmin(role: string | undefined): boolean {
 
 export function AdminPage() {
   const sessionQuery = usePlannerSession()
-  const emojiSetsQuery = useEmojiSets()
-  const createEmojiSet = useCreateEmojiSet()
+  const iconSetsQuery = useEmojiSets()
+  const addIconSetItems = useAddEmojiSetItems()
+  const createIconSet = useCreateEmojiSet()
+  const deleteIconSet = useDeleteEmojiSet()
+  const deleteIconSetItem = useDeleteEmojiSetItem()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [source, setSource] = useState<EmojiSetSource>('telegram')
-  const [items, setItems] = useState<DraftEmojiItem[]>(() => [
-    createDraftEmojiItem(),
+  const [targetSetId, setTargetSetId] = useState(NEW_ICON_SET_TARGET)
+  const [items, setItems] = useState<DraftIconItem[]>(() => [
+    createDraftIconItem(),
   ])
   const [formError, setFormError] = useState<string | null>(null)
+  const [libraryError, setLibraryError] = useState<string | null>(null)
+  const [brokenIconIds, setBrokenIconIds] = useState<Set<string>>(
+    () => new Set(),
+  )
   const session = sessionQuery.data
   const canManage = canManageAdmin(session?.role)
+  const iconSets = iconSetsQuery.data ?? []
+  const isCreatingNewSet = targetSetId === NEW_ICON_SET_TARGET
+  const isSaving = createIconSet.isPending || addIconSetItems.isPending
+  const isDeleting = deleteIconSet.isPending || deleteIconSetItem.isPending
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -62,51 +94,200 @@ export function AdminPage() {
     const normalizedTitle = title.trim()
     const normalizedItems = normalizeDraftItems(items)
 
-    if (!normalizedTitle) {
+    if (isCreatingNewSet && !normalizedTitle) {
       setFormError('Название набора обязательно.')
       return
     }
 
     if (normalizedItems.length === 0) {
-      setFormError('Добавьте хотя бы один emoji.')
+      setFormError('Добавьте хотя бы одну иконку.')
       return
     }
 
     if (hasIncompleteDraftItem(items)) {
-      setFormError('У каждого emoji должны быть код, название и значение.')
+      setFormError('У каждой иконки должны быть название и файл.')
+      return
+    }
+
+    if (items.some((item) => item.fileError)) {
+      setFormError('Исправьте ошибки загрузки файлов.')
+      return
+    }
+
+    if (
+      !isCreatingNewSet &&
+      !iconSets.some((iconSet) => iconSet.id === targetSetId)
+    ) {
+      setFormError('Выберите существующий набор или создайте новый.')
       return
     }
 
     try {
-      await createEmojiSet.mutateAsync({
-        description,
-        items: normalizedItems,
-        source,
-        title: normalizedTitle,
-      })
-      setTitle('')
-      setDescription('')
-      setSource('telegram')
-      setItems([createDraftEmojiItem()])
+      if (isCreatingNewSet) {
+        await createIconSet.mutateAsync({
+          description,
+          items: normalizedItems,
+          title: normalizedTitle,
+        })
+        setTitle('')
+        setDescription('')
+      } else {
+        await addIconSetItems.mutateAsync({
+          emojiSetId: targetSetId,
+          items: normalizedItems,
+        })
+      }
+
+      setItems([createDraftIconItem()])
     } catch (error) {
       setFormError(
         error instanceof Error
           ? error.message
-          : 'Не удалось сохранить emoji-набор.',
+          : 'Не удалось сохранить набор иконок.',
       )
     }
   }
 
-  function updateItem<Field extends keyof Omit<DraftEmojiItem, 'draftId'>>(
+  function updateItem<Field extends keyof Omit<DraftIconItem, 'draftId'>>(
     draftId: string,
     field: Field,
-    value: DraftEmojiItem[Field],
+    value: DraftIconItem[Field],
   ) {
     setItems((currentItems) =>
       currentItems.map((item) =>
         item.draftId === draftId ? { ...item, [field]: value } : item,
       ),
     )
+  }
+
+  async function handleIconFileChange(
+    draftId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ''
+
+    if (!file) {
+      return
+    }
+
+    const validationError = validateIconFile(file)
+
+    if (validationError) {
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.draftId === draftId
+            ? {
+                ...item,
+                fileError: validationError,
+                fileName: file.name,
+                value: '',
+              }
+            : item,
+        ),
+      )
+      return
+    }
+
+    try {
+      const value = await readFileAsDataUrl(file)
+
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.draftId === draftId
+            ? {
+                ...item,
+                fileError: null,
+                fileName: file.name,
+                label: item.label.trim()
+                  ? item.label
+                  : createLabelFromFile(file),
+                value,
+              }
+            : item,
+        ),
+      )
+    } catch (error) {
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.draftId === draftId
+            ? {
+                ...item,
+                fileError:
+                  error instanceof Error
+                    ? error.message
+                    : 'Не удалось прочитать файл.',
+                fileName: file.name,
+                value: '',
+              }
+            : item,
+        ),
+      )
+    }
+  }
+
+  async function handleDeleteIconSet(iconSetId: string, iconSetTitle: string) {
+    if (!window.confirm(`Удалить набор "${iconSetTitle}" вместе с иконками?`)) {
+      return
+    }
+
+    setLibraryError(null)
+
+    try {
+      await deleteIconSet.mutateAsync(iconSetId)
+
+      if (targetSetId === iconSetId) {
+        setTargetSetId(NEW_ICON_SET_TARGET)
+      }
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : 'Не удалось удалить набор.',
+      )
+    }
+  }
+
+  async function handleDeleteIconItem(
+    iconSetId: string,
+    iconAssetId: string,
+    iconLabel: string,
+  ) {
+    if (!window.confirm(`Удалить иконку "${iconLabel}"?`)) {
+      return
+    }
+
+    setLibraryError(null)
+
+    try {
+      await deleteIconSetItem.mutateAsync({
+        emojiSetId: iconSetId,
+        iconAssetId,
+      })
+      setBrokenIconIds((currentIconIds) => {
+        const nextIconIds = new Set(currentIconIds)
+
+        nextIconIds.delete(iconAssetId)
+
+        return nextIconIds
+      })
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : 'Не удалось удалить иконку.',
+      )
+    }
+  }
+
+  function markIconAsBroken(iconAssetId: string) {
+    setBrokenIconIds((currentIconIds) => {
+      if (currentIconIds.has(iconAssetId)) {
+        return currentIconIds
+      }
+
+      const nextIconIds = new Set(currentIconIds)
+
+      nextIconIds.add(iconAssetId)
+
+      return nextIconIds
+    })
   }
 
   if (sessionQuery.isLoading) {
@@ -127,7 +308,7 @@ export function AdminPage() {
         <PageHeader
           kicker="Admin"
           title="Недостаточно прав"
-          description="Управление emoji-наборами доступно владельцам и администраторам workspace."
+          description="Управление наборами иконок доступно владельцам и администраторам workspace."
         />
       </section>
     )
@@ -138,7 +319,7 @@ export function AdminPage() {
       <PageHeader
         kicker="Admin"
         title="Админка"
-        description="Наборы emoji сохраняются на уровне workspace и доступны для будущих picker-компонентов."
+        description="Загружайте иконки в наборы workspace, чтобы использовать их в будущих компонентах выбора."
       />
 
       <form
@@ -149,8 +330,8 @@ export function AdminPage() {
       >
         <div className={styles.formHeader}>
           <div>
-            <p className={styles.eyebrow}>Emoji registry</p>
-            <h3>Новый набор</h3>
+            <p className={styles.eyebrow}>Icon registry</p>
+            <h3>{isCreatingNewSet ? 'Новый набор' : 'Пополнить набор'}</h3>
           </div>
           <button
             className={styles.secondaryButton}
@@ -158,48 +339,58 @@ export function AdminPage() {
             onClick={() =>
               setItems((currentItems) => [
                 ...currentItems,
-                createDraftEmojiItem(),
+                createDraftIconItem(),
               ])
             }
           >
-            Добавить emoji
+            Добавить иконку
           </button>
         </div>
 
         <div className={styles.formGrid}>
           <label className={styles.field}>
-            <span>Название</span>
-            <input
-              required
-              value={title}
-              placeholder="Telegram Planner"
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Источник</span>
+            <span>Куда добавить</span>
             <select
-              value={source}
-              onChange={(event) =>
-                setSource(event.target.value as EmojiSetSource)
-              }
+              value={targetSetId}
+              onChange={(event) => setTargetSetId(event.target.value)}
             >
-              <option value="telegram">Telegram</option>
-              <option value="custom">Custom</option>
+              <option value={NEW_ICON_SET_TARGET}>Создать новый набор</option>
+              {iconSets.map((iconSet) => (
+                <option key={iconSet.id} value={iconSet.id}>
+                  {iconSet.title}
+                </option>
+              ))}
             </select>
           </label>
+
+          {isCreatingNewSet ? (
+            <label className={styles.field}>
+              <span>Название набора</span>
+              <input
+                required
+                value={title}
+                placeholder="Рабочие статусы"
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </label>
+          ) : null}
         </div>
 
-        <label className={styles.field}>
-          <span>Описание</span>
-          <textarea
-            rows={3}
-            value={description}
-            placeholder="Маркеры для проектов и задач"
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        </label>
+        {isCreatingNewSet ? (
+          <label className={styles.field}>
+            <span>Описание</span>
+            <textarea
+              rows={3}
+              value={description}
+              placeholder="Иконки для проектов и задач"
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </label>
+        ) : (
+          <div className={styles.selectedSetNote}>
+            Иконки будут добавлены в выбранный набор.
+          </div>
+        )}
 
         <div className={styles.itemList}>
           {items.map((item, index) => (
@@ -207,8 +398,8 @@ export function AdminPage() {
               <div className={styles.previewCell}>
                 {item.value ? (
                   <EmojiGlyph
-                    kind={item.kind}
-                    label={item.label || item.shortcode}
+                    kind="image"
+                    label={item.label}
                     value={item.value}
                   />
                 ) : (
@@ -216,73 +407,46 @@ export function AdminPage() {
                 )}
               </div>
 
-              <label className={styles.compactField}>
-                <span>Тип</span>
-                <select
-                  value={item.kind}
-                  onChange={(event) =>
-                    updateItem(
-                      item.draftId,
-                      'kind',
-                      event.target.value as EmojiAssetKind,
-                    )
-                  }
-                >
-                  <option value="unicode">Unicode</option>
-                  <option value="image">Image</option>
-                </select>
-              </label>
-
-              <label className={styles.compactField}>
-                <span>Код</span>
-                <input
-                  value={item.shortcode}
-                  placeholder="focus"
-                  onChange={(event) =>
-                    updateItem(item.draftId, 'shortcode', event.target.value)
-                  }
-                />
-              </label>
-
-              <label className={styles.compactField}>
-                <span>Название</span>
+              <label className={styles.nameField}>
+                <span>Название иконки</span>
                 <input
                   value={item.label}
-                  placeholder="Focus"
+                  placeholder="Фокус"
                   onChange={(event) =>
                     updateItem(item.draftId, 'label', event.target.value)
                   }
                 />
               </label>
 
-              <label className={styles.valueField}>
-                <span>Значение</span>
-                <input
-                  value={item.value}
-                  placeholder={
-                    item.kind === 'image' ? '/emoji/telegram/focus.webp' : '🎯'
-                  }
-                  onChange={(event) =>
-                    updateItem(item.draftId, 'value', event.target.value)
-                  }
-                />
-              </label>
-
-              <label className={styles.compactField}>
-                <span>Ключи</span>
-                <input
-                  value={item.keywords}
-                  placeholder="focus, task"
-                  onChange={(event) =>
-                    updateItem(item.draftId, 'keywords', event.target.value)
-                  }
-                />
+              <label className={styles.uploadField}>
+                <span>Файл</span>
+                <span className={styles.uploadControl}>
+                  <input
+                    className={styles.fileInput}
+                    type="file"
+                    accept={ACCEPTED_ICON_TYPES}
+                    onChange={(event) => {
+                      void handleIconFileChange(item.draftId, event)
+                    }}
+                  />
+                  <span className={styles.uploadText}>
+                    {item.fileName || 'Выбрать файл'}
+                  </span>
+                </span>
+                {item.fileError ? (
+                  <small className={styles.fieldError}>{item.fileError}</small>
+                ) : (
+                  <small className={styles.fileHint}>
+                    PNG, SVG, WebP, JPG или GIF до{' '}
+                    {formatFileSize(MAX_ICON_FILE_SIZE_BYTES)}.
+                  </small>
+                )}
               </label>
 
               <button
                 className={styles.iconButton}
                 type="button"
-                aria-label="Удалить emoji"
+                aria-label="Удалить иконку"
                 disabled={items.length === 1}
                 onClick={() =>
                   setItems((currentItems) =>
@@ -292,7 +456,7 @@ export function AdminPage() {
                   )
                 }
               >
-                ×
+                x
               </button>
             </div>
           ))}
@@ -303,9 +467,13 @@ export function AdminPage() {
         <button
           className={styles.primaryButton}
           type="submit"
-          disabled={createEmojiSet.isPending}
+          disabled={isSaving}
         >
-          {createEmojiSet.isPending ? 'Сохраняем' : 'Сохранить набор'}
+          {isSaving
+            ? 'Сохраняем'
+            : isCreatingNewSet
+              ? 'Сохранить набор'
+              : 'Добавить в набор'}
         </button>
       </form>
 
@@ -315,38 +483,87 @@ export function AdminPage() {
             <p className={styles.eyebrow}>Library</p>
             <h3>Наборы</h3>
           </div>
-          <span className={styles.countBadge}>
-            {emojiSetsQuery.data?.length ?? 0}
-          </span>
+          <span className={styles.countBadge}>{iconSets.length}</span>
         </div>
 
-        {emojiSetsQuery.isLoading ? (
+        {libraryError ? (
+          <p className={styles.formError}>{libraryError}</p>
+        ) : null}
+
+        {iconSetsQuery.isLoading ? (
           <div className={pageStyles.emptyPanel}>Загружаем наборы.</div>
-        ) : emojiSetsQuery.data && emojiSetsQuery.data.length > 0 ? (
+        ) : iconSets.length > 0 ? (
           <div className={styles.setGrid}>
-            {emojiSetsQuery.data.map((emojiSet) => (
-              <article className={styles.setCard} key={emojiSet.id}>
+            {iconSets.map((iconSet) => (
+              <article className={styles.setCard} key={iconSet.id}>
                 <div className={styles.setCardHeader}>
                   <div>
-                    <p className={styles.eyebrow}>{emojiSet.source}</p>
-                    <h4>{emojiSet.title}</h4>
+                    <p className={styles.eyebrow}>Icon set</p>
+                    <h4>{iconSet.title}</h4>
                   </div>
-                  <span className={styles.countBadge}>
-                    {emojiSet.items.length}
-                  </span>
+                  <div className={styles.setHeaderActions}>
+                    <span className={styles.countBadge}>
+                      {iconSet.items.length}
+                    </span>
+                    <button
+                      className={styles.dangerButton}
+                      type="button"
+                      disabled={isDeleting}
+                      onClick={() => {
+                        void handleDeleteIconSet(iconSet.id, iconSet.title)
+                      }}
+                    >
+                      Удалить набор
+                    </button>
+                  </div>
                 </div>
-                {emojiSet.description ? (
-                  <p className={styles.description}>{emojiSet.description}</p>
+                {iconSet.description ? (
+                  <p className={styles.description}>{iconSet.description}</p>
                 ) : null}
                 <div className={styles.previewList}>
-                  {emojiSet.items.slice(0, 12).map((item) => (
-                    <EmojiGlyph
-                      key={item.id}
-                      kind={item.kind}
-                      label={item.label}
-                      value={item.value}
-                    />
-                  ))}
+                  {iconSet.items.length > 0 ? (
+                    iconSet.items.map((item) => {
+                      const isBroken = brokenIconIds.has(item.id)
+
+                      return (
+                        <span
+                          className={`${styles.iconChip} ${
+                            isBroken ? styles.brokenIconChip : ''
+                          }`}
+                          key={item.id}
+                        >
+                          <EmojiGlyph
+                            kind={item.kind}
+                            label={item.label}
+                            value={item.value}
+                            onError={() => markIconAsBroken(item.id)}
+                          />
+                          <span className={styles.iconLabel}>{item.label}</span>
+                          {isBroken ? (
+                            <span className={styles.brokenLabel}>битая</span>
+                          ) : null}
+                          <button
+                            className={styles.chipDeleteButton}
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={() => {
+                              void handleDeleteIconItem(
+                                iconSet.id,
+                                item.id,
+                                item.label,
+                              )
+                            }}
+                          >
+                            Удалить
+                          </button>
+                        </span>
+                      )
+                    })
+                  ) : (
+                    <p className={styles.emptySetNote}>
+                      В наборе пока нет иконок.
+                    </p>
+                  )}
                 </div>
               </article>
             ))}
@@ -359,34 +576,94 @@ export function AdminPage() {
   )
 }
 
-function normalizeDraftItems(items: DraftEmojiItem[]): NewEmojiAssetInput[] {
+function normalizeDraftItems(items: DraftIconItem[]): NewEmojiAssetInput[] {
   return items
     .filter((item) => hasAnyDraftItemValue(item))
     .map((item) => ({
-      keywords: item.keywords
-        .split(',')
-        .map((keyword) => keyword.trim())
-        .filter(Boolean),
-      kind: item.kind,
+      kind: 'image',
       label: item.label.trim(),
-      shortcode: item.shortcode.trim(),
       value: item.value.trim(),
     }))
 }
 
-function hasIncompleteDraftItem(items: DraftEmojiItem[]): boolean {
+function hasIncompleteDraftItem(items: DraftIconItem[]): boolean {
   return items.some(
     (item) =>
-      hasAnyDraftItemValue(item) &&
-      (!item.label.trim() || !item.shortcode.trim() || !item.value.trim()),
+      hasAnyDraftItemValue(item) && (!item.label.trim() || !item.value.trim()),
   )
 }
 
-function hasAnyDraftItemValue(item: DraftEmojiItem): boolean {
-  return Boolean(
-    item.label.trim() ||
-    item.shortcode.trim() ||
-    item.value.trim() ||
-    item.keywords.trim(),
+function hasAnyDraftItemValue(item: DraftIconItem): boolean {
+  return Boolean(item.label.trim() || item.value.trim() || item.fileName.trim())
+}
+
+function validateIconFile(file: File): string | null {
+  if (!getSupportedIconMimeType(file)) {
+    return 'Поддерживаются только PNG, SVG, WebP, JPG и GIF.'
+  }
+
+  if (file.size > MAX_ICON_FILE_SIZE_BYTES) {
+    return `Файл должен быть не больше ${formatFileSize(
+      MAX_ICON_FILE_SIZE_BYTES,
+    )}.`
+  }
+
+  return null
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    const fallbackMimeType = getSupportedIconMimeType(file)
+
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл.'))
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        reject(new Error('Файл прочитан в неподдерживаемом формате.'))
+        return
+      }
+
+      if (reader.result.startsWith('data:;base64,') && fallbackMimeType) {
+        resolve(
+          reader.result.replace(
+            'data:;base64,',
+            `data:${fallbackMimeType};base64,`,
+          ),
+        )
+        return
+      }
+
+      resolve(reader.result)
+    }
+
+    reader.readAsDataURL(file)
+  })
+}
+
+function getSupportedIconMimeType(file: File): string | null {
+  if (SUPPORTED_ICON_MIME_TYPES.has(file.type)) {
+    return file.type
+  }
+
+  const normalizedFileName = file.name.toLowerCase()
+  const extension = [...SUPPORTED_ICON_EXTENSIONS.keys()].find((candidate) =>
+    normalizedFileName.endsWith(candidate),
   )
+
+  return extension ? (SUPPORTED_ICON_EXTENSIONS.get(extension) ?? null) : null
+}
+
+function createLabelFromFile(file: File): string {
+  return file.name
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .trim()
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${Math.round(bytes / (1024 * 1024))} MB`
+  }
+
+  return `${Math.round(bytes / 1024)} KB`
 }

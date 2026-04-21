@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 
 import {
@@ -12,10 +15,14 @@ import {
   taskEventListResponseSchema,
   taskListResponseSchema,
   taskRecordSchema,
+  taskTemplateListResponseSchema,
+  taskTemplateRecordSchema,
 } from '@planner/contracts'
 
 import {
+  type EmojiSetRepository,
   EmojiSetService,
+  LocalIconAssetStorage,
   MemoryEmojiSetRepository,
 } from '../modules/emoji-sets/index.js'
 import {
@@ -27,6 +34,10 @@ import {
   type SessionRepository,
   SessionService,
 } from '../modules/session/index.js'
+import {
+  MemoryTaskTemplateRepository,
+  TaskTemplateService,
+} from '../modules/task-templates/index.js'
 import { MemoryTaskRepository, TaskService } from '../modules/tasks/index.js'
 import { buildApiApp } from './build-app.js'
 import { createApiConfig } from './config.js'
@@ -93,12 +104,22 @@ function createTestConfig(env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv) {
 
 void describe('buildApiApp', () => {
   let app: ReturnType<typeof buildApiApp> | null = null
+  const temporaryDirectories: string[] = []
 
   void afterEach(async () => {
     if (app) {
       await app.close()
       app = null
     }
+
+    await Promise.all(
+      temporaryDirectories.splice(0).map((directory) =>
+        rm(directory, {
+          force: true,
+          recursive: true,
+        }),
+      ),
+    )
   })
 
   void it('returns health information for the configured runtime', async () => {
@@ -328,11 +349,89 @@ void describe('buildApiApp', () => {
     assert.equal(projects[0]?.id, createdProject.id)
   })
 
-  void it('creates and lists emoji sets via the HTTP API', async () => {
+  void it('creates, lists and deletes task templates via the HTTP API', async () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      emojiSetService: new EmojiSetService(new MemoryEmojiSetRepository()),
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+      taskTemplateService: new TaskTemplateService(
+        new MemoryTaskTemplateRepository(),
+      ),
+    })
+
+    const createResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        dueDate: null,
+        note: 'Reusable checklist',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        title: 'Weekly review',
+      },
+      url: '/api/v1/task-templates',
+    })
+
+    assert.equal(createResponse.statusCode, 201)
+
+    const createdTemplate = taskTemplateRecordSchema.parse(
+      createResponse.json(),
+    )
+
+    assert.equal(createdTemplate.title, 'Weekly review')
+    assert.equal(createdTemplate.workspaceId, 'workspace-1')
+
+    const listResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/task-templates',
+    })
+
+    assert.equal(listResponse.statusCode, 200)
+
+    const templates = taskTemplateListResponseSchema.parse(listResponse.json())
+
+    assert.equal(templates.length, 1)
+    assert.equal(templates[0]?.id, createdTemplate.id)
+
+    const deleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'DELETE',
+      url: `/api/v1/task-templates/${createdTemplate.id}`,
+    })
+
+    assert.equal(deleteResponse.statusCode, 204)
+  })
+
+  void it('creates and lists icon sets via the HTTP API', async () => {
+    const iconAssetDirectory = await mkdtemp(
+      path.join(tmpdir(), 'planner-icon-assets-'),
+    )
+
+    temporaryDirectories.push(iconAssetDirectory)
+
+    app = buildApiApp({
+      config: createTestConfig({
+        API_ICON_ASSET_DIR: iconAssetDirectory,
+      }),
+      database: null,
+      emojiSetService: new EmojiSetService(
+        new MemoryEmojiSetRepository(),
+        new LocalIconAssetStorage(iconAssetDirectory),
+      ),
       projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -345,24 +444,19 @@ void describe('buildApiApp', () => {
       },
       method: 'POST',
       payload: {
-        description: 'Telegram export for planning markers',
+        description: 'Uploaded icons for planning markers',
         items: [
           {
-            kind: 'unicode',
             keywords: ['focus', 'target'],
             label: 'Focus',
-            shortcode: ':Focus:',
-            value: '🎯',
+            value: 'data:image/png;base64,iVBORw0KGgo=',
           },
           {
-            kind: 'image',
-            label: 'Telegram folder',
-            shortcode: 'tg-folder',
-            value: '/emoji/telegram/folder.webp',
+            label: 'Folder',
+            value: 'data:image/webp;base64,UklGRg==',
           },
         ],
-        source: 'telegram',
-        title: 'Telegram Planner',
+        title: 'Planner icons',
       },
       url: '/api/v1/emoji-sets',
     })
@@ -371,11 +465,42 @@ void describe('buildApiApp', () => {
 
     const createdEmojiSet = emojiSetRecordSchema.parse(createResponse.json())
 
-    assert.equal(createdEmojiSet.title, 'Telegram Planner')
-    assert.equal(createdEmojiSet.source, 'telegram')
+    assert.equal(createdEmojiSet.title, 'Planner icons')
+    assert.equal(createdEmojiSet.source, 'custom')
     assert.equal(createdEmojiSet.workspaceId, 'workspace-1')
     assert.equal(createdEmojiSet.items.length, 2)
-    assert.equal(createdEmojiSet.items[0]?.shortcode, 'focus')
+    assert.equal(createdEmojiSet.items[0]?.kind, 'image')
+    assert.equal(createdEmojiSet.items[0]?.shortcode, 'icon-1')
+    const iconAssetUrl = createdEmojiSet.items[0]?.value
+
+    assert.ok(iconAssetUrl)
+    assert.match(iconAssetUrl, /^\/api\/v1\/icon-assets\/.+\.png$/)
+
+    const iconAssetResponse = await app.inject({
+      method: 'GET',
+      url: iconAssetUrl,
+    })
+
+    assert.equal(iconAssetResponse.statusCode, 200)
+    assert.match(
+      String(iconAssetResponse.headers['content-type']),
+      /^image\/png/,
+    )
+
+    const legacyIconAssetFileName =
+      '22222222-2222-4222-8222-222222222222-019daf9c-9d3b-7c20-a85f-0004f1fbef25-000-019daf9c-9d3b-77b6-b936-887672ef6a0f.jpg'
+
+    await writeFile(
+      path.join(iconAssetDirectory, legacyIconAssetFileName),
+      Buffer.from('legacy image'),
+    )
+
+    const legacyIconAssetResponse = await app.inject({
+      method: 'GET',
+      url: `/api/v1/icon-assets/${legacyIconAssetFileName}`,
+    })
+
+    assert.equal(legacyIconAssetResponse.statusCode, 200)
 
     const listResponse = await app.inject({
       headers: {
@@ -391,9 +516,173 @@ void describe('buildApiApp', () => {
 
     assert.equal(emojiSets.length, 1)
     assert.equal(emojiSets[0]?.id, createdEmojiSet.id)
+
+    const addItemsResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        items: [
+          {
+            label: 'Archive',
+            value: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        ],
+      },
+      url: `/api/v1/emoji-sets/${createdEmojiSet.id}/items`,
+    })
+
+    assert.equal(addItemsResponse.statusCode, 201)
+
+    const updatedEmojiSet = emojiSetRecordSchema.parse(addItemsResponse.json())
+
+    assert.equal(updatedEmojiSet.items.length, 3)
+    assert.equal(updatedEmojiSet.items[2]?.shortcode, 'icon-3')
+
+    const addedIconAsset = updatedEmojiSet.items[2]
+
+    assert.ok(addedIconAsset)
+
+    const deleteItemResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'DELETE',
+      url: `/api/v1/emoji-sets/${createdEmojiSet.id}/items/${addedIconAsset.id}`,
+    })
+
+    assert.equal(deleteItemResponse.statusCode, 204)
+
+    const deletedIconAssetResponse = await app.inject({
+      method: 'GET',
+      url: addedIconAsset.value,
+    })
+
+    assert.equal(deletedIconAssetResponse.statusCode, 404)
+
+    const listAfterItemDeleteResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(listAfterItemDeleteResponse.statusCode, 200)
+
+    const emojiSetsAfterItemDelete = emojiSetListResponseSchema.parse(
+      listAfterItemDeleteResponse.json(),
+    )
+
+    assert.equal(emojiSetsAfterItemDelete.length, 1)
+    assert.equal(emojiSetsAfterItemDelete[0]?.items.length, 2)
+
+    const deleteSetResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'DELETE',
+      url: `/api/v1/emoji-sets/${createdEmojiSet.id}`,
+    })
+
+    assert.equal(deleteSetResponse.statusCode, 204)
+
+    const deletedSetIconAssetResponse = await app.inject({
+      method: 'GET',
+      url: iconAssetUrl,
+    })
+
+    assert.equal(deletedSetIconAssetResponse.statusCode, 404)
+
+    const listAfterSetDeleteResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(listAfterSetDeleteResponse.statusCode, 200)
+
+    const emojiSetsAfterSetDelete = emojiSetListResponseSchema.parse(
+      listAfterSetDeleteResponse.json(),
+    )
+
+    assert.equal(emojiSetsAfterSetDelete.length, 0)
   })
 
-  void it('forbids emoji set management for viewer workspace role', async () => {
+  void it('returns a retryable error when icon set repository times out', async () => {
+    const timeoutRepository: EmojiSetRepository = {
+      addItems() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      create() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      deleteItem() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      deleteSet() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      getById() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      listByWorkspace() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+    }
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      emojiSetService: new EmojiSetService(timeoutRepository),
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        items: [
+          {
+            label: 'Archive',
+            value: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        ],
+      },
+      url: '/api/v1/emoji-sets/icon-set-1/items',
+    })
+
+    assert.equal(response.statusCode, 503)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'database_unavailable')
+  })
+
+  void it('forbids icon set management for viewer workspace role', async () => {
     app = buildApiApp({
       config: createTestConfig({
         API_AUTH_MODE: 'supabase',
@@ -417,10 +706,8 @@ void describe('buildApiApp', () => {
         description: '',
         items: [
           {
-            kind: 'unicode',
             label: 'Focus',
-            shortcode: 'focus',
-            value: '🎯',
+            value: 'data:image/png;base64,iVBORw0KGgo=',
           },
         ],
         title: 'Viewer set',
@@ -579,9 +866,15 @@ void describe('buildApiApp', () => {
     assert.equal(body.openapi, '3.0.3')
     assert.ok(body.paths?.['/api/v1/emoji-sets'])
     assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}'])
+    assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}/items'])
+    assert.ok(
+      body.paths?.['/api/v1/emoji-sets/{emojiSetId}/items/{iconAssetId}'],
+    )
     assert.ok(body.paths?.['/api/v1/projects'])
     assert.ok(body.paths?.['/api/v1/projects/{projectId}'])
     assert.ok(body.paths?.['/api/v1/task-events'])
+    assert.ok(body.paths?.['/api/v1/task-templates'])
+    assert.ok(body.paths?.['/api/v1/task-templates/{templateId}'])
     assert.ok(body.paths?.['/api/v1/tasks'])
     assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
   })

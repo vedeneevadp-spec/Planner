@@ -108,6 +108,7 @@ export function ProjectPage() {
       <TaskSection
         title="Задачи проекта"
         tasks={projectTasks}
+        projects={projects}
         emptyMessage="В этом проекте пока нет задач."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {

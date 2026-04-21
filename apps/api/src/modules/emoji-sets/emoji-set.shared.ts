@@ -10,6 +10,7 @@ import type {
 } from './emoji-set.model.js'
 
 export interface NormalizedEmojiAssetInput extends NewEmojiAssetInput {
+  kind: 'image'
   keywords: string[]
   label: string
   shortcode: string
@@ -19,7 +20,7 @@ export interface NormalizedEmojiAssetInput extends NewEmojiAssetInput {
 export interface NormalizedEmojiSetInput extends NewEmojiSetInput {
   description: string
   items: NormalizedEmojiAssetInput[]
-  source: 'custom' | 'telegram'
+  source: 'custom'
   title: string
 }
 
@@ -29,20 +30,24 @@ export function normalizeEmojiSetInput(
   return {
     ...input,
     description: input.description.trim(),
-    items: input.items.map(normalizeEmojiAssetInput),
-    source: input.source ?? 'custom',
+    items: input.items.map((item, index) =>
+      normalizeEmojiAssetInput(item, index),
+    ),
+    source: 'custom',
     title: input.title.trim(),
   }
 }
 
 export function normalizeEmojiAssetInput(
   input: NewEmojiAssetInput,
+  index = 0,
 ): NormalizedEmojiAssetInput {
   return {
     ...input,
+    kind: 'image',
     keywords: normalizeKeywords(input.keywords ?? []),
     label: input.label.trim(),
-    shortcode: normalizeShortcode(input.shortcode),
+    shortcode: normalizeShortcode(input.shortcode ?? '') || `icon-${index + 1}`,
     value: input.value.trim(),
   }
 }
@@ -147,14 +152,15 @@ export function sortStoredEmojiSets(
 }
 
 export function buildEmojiSetSlug(title: string, emojiSetId: string): string {
+  const idSlug = emojiSetId.replace(/-/g, '')
   const baseSlug =
     title
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'emoji-set'
+      .replace(/^-+|-+$/g, '') || 'icon-set'
 
-  return `${baseSlug}-${emojiSetId.slice(0, 8)}`
+  return `${baseSlug}-${idSlug}`
 }
 
 function normalizeShortcode(value: string): string {

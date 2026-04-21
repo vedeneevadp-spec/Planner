@@ -16,6 +16,7 @@ export type {
   TaskRecord,
   TaskScheduleUpdateInput,
   TaskStatusUpdateInput,
+  TaskTemplateRecord,
   WorkspaceRole,
 } from './api.js'
 export {
@@ -39,9 +40,12 @@ export {
   taskRecordSchema,
   taskScheduleUpdateInputSchema,
   taskStatusUpdateInputSchema,
+  taskTemplateListResponseSchema,
+  taskTemplateRecordSchema,
   workspaceRoleSchema,
 } from './api.js'
 export type {
+  AddEmojiSetItemsInput,
   EmojiAsset,
   EmojiAssetKind,
   EmojiSet,
@@ -51,6 +55,7 @@ export type {
   NewEmojiSetInput,
 } from './emoji-set.js'
 export {
+  addEmojiSetItemsInputSchema,
   emojiAssetKindSchema,
   emojiAssetSchema,
   emojiSetSchema,
@@ -90,4 +95,10 @@ export {
   taskStatusChangeSchema,
   taskStatusSchema,
 } from './task.js'
+export type { NewTaskTemplateInput, TaskTemplate } from './task-template.js'
+export {
+  newTaskTemplateInputSchema,
+  taskTemplateSchema,
+  taskTemplatesSchema,
+} from './task-template.js'
 export { generateUuidV7, isUuidV7, uuidV7Schema } from './uuid.js'

@@ -13,6 +13,7 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 export function TodayPage() {
   const {
     tasks,
+    projects,
     isTaskPending,
     removeTask,
     setTaskPlannedDate,
@@ -37,6 +38,7 @@ export function TodayPage() {
         <TaskSection
           title="Фокус дня"
           tasks={todayTasks}
+          projects={projects}
           emptyMessage="Пока нет задач на сегодня. Добавь 1-3 конкретных шага и не перегружай день."
           isTaskPending={isTaskPending}
           onRemove={(taskId) => {
@@ -52,6 +54,7 @@ export function TodayPage() {
         <TaskSection
           title="Требует решения"
           tasks={overdueTasks}
+          projects={projects}
           emptyMessage="Просроченных задач нет."
           isTaskPending={isTaskPending}
           onRemove={(taskId) => {
@@ -70,6 +73,7 @@ export function TodayPage() {
       <TaskSection
         title="Сделано сегодня"
         tasks={doneTodayTasks}
+        projects={projects}
         emptyMessage="Когда начнёшь закрывать задачи, последние завершённые появятся здесь."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {

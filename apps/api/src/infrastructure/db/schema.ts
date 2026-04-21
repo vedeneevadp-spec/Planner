@@ -2,6 +2,7 @@ import type { ColumnType, Generated } from 'kysely'
 
 export type JsonObject = Record<string, unknown>
 export type DateColumn = ColumnType<string, string, string>
+export type TimeColumn = ColumnType<string, string, string>
 export type TimestampColumn = ColumnType<string, string | Date, string | Date>
 
 export interface AppTasksTable {
@@ -20,6 +21,25 @@ export interface AppTasksTable {
   project_id: string | null
   sort_key: string
   status: 'todo' | 'done'
+  title: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppTaskTemplatesTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  description: string
+  due_on: DateColumn | null
+  id: Generated<string>
+  metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  planned_end_time: TimeColumn | null
+  planned_on: DateColumn | null
+  planned_start_time: TimeColumn | null
+  project_id: string | null
   title: string
   updated_at: Generated<TimestampColumn>
   updated_by: string | null
@@ -92,7 +112,7 @@ export interface AppEmojiSetsTable {
   id: Generated<string>
   metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
   slug: string
-  source: 'custom' | 'telegram'
+  source: 'custom'
   status: 'active' | 'archived'
   title: string
   updated_at: Generated<TimestampColumn>
@@ -108,7 +128,7 @@ export interface AppEmojiAssetsTable {
   emoji_set_id: string
   id: Generated<string>
   keywords: ColumnType<string[], string[] | string, string[] | string>
-  kind: 'unicode' | 'image'
+  kind: 'image'
   label: string
   metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
   shortcode: string
@@ -202,6 +222,7 @@ export interface DatabaseSchema {
   'app.projects': AppProjectsTable
   'app.task_attachments': AppTaskAttachmentsTable
   'app.task_events': AppTaskEventsTable
+  'app.task_templates': AppTaskTemplatesTable
   'app.task_time_blocks': AppTaskTimeBlocksTable
   'app.tasks': AppTasksTable
   'app.users': AppUsersTable

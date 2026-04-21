@@ -1,8 +1,7 @@
 import {
-  addEmojiSetItemsInputSchema,
-  emojiSetListResponseSchema,
-  emojiSetRecordSchema,
-  newEmojiSetInputSchema,
+  newTaskTemplateInputSchema,
+  taskTemplateListResponseSchema,
+  taskTemplateRecordSchema,
 } from '@planner/contracts'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -10,7 +9,7 @@ import { z } from 'zod'
 import { getRequestAuth } from '../../bootstrap/request-auth.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from '../session/index.js'
-import type { EmojiSetService } from './emoji-set.service.js'
+import type { TaskTemplateService } from './task-template.service.js'
 
 const readHeadersSchema = z.object({
   'x-workspace-id': z.string().min(1),
@@ -20,125 +19,57 @@ const writeHeadersSchema = readHeadersSchema.extend({
   'x-actor-user-id': z.string().min(1),
 })
 
-const emojiSetParamsSchema = z.object({
-  emojiSetId: z.string().min(1),
+const taskTemplateParamsSchema = z.object({
+  templateId: z.string().min(1),
 })
 
-const emojiSetItemParamsSchema = emojiSetParamsSchema.extend({
-  iconAssetId: z.string().min(1),
-})
-
-export function registerEmojiSetRoutes(
+export function registerTaskTemplateRoutes(
   app: FastifyInstance,
   sessionService: SessionService,
-  service: EmojiSetService,
+  service: TaskTemplateService,
 ): void {
-  app.get('/api/v1/emoji-sets', async (request) => {
+  app.get('/api/v1/task-templates', async (request) => {
     const headers = parseOrThrow(
       readHeadersSchema,
       request.headers,
       'invalid_headers',
     )
     const context = await resolveReadContext(request, sessionService, headers)
-    const emojiSets = await service.listEmojiSets(context)
+    const templates = await service.listTaskTemplates(context)
 
-    return emojiSetListResponseSchema.parse(emojiSets)
+    return taskTemplateListResponseSchema.parse(templates)
   })
 
-  app.get('/api/v1/emoji-sets/:emojiSetId', async (request) => {
-    const headers = parseOrThrow(
-      readHeadersSchema,
-      request.headers,
-      'invalid_headers',
-    )
-    const params = parseOrThrow(
-      emojiSetParamsSchema,
-      request.params,
-      'invalid_params',
-    )
-    const context = await resolveReadContext(request, sessionService, headers)
-    const emojiSet = await service.getEmojiSet(context, params.emojiSetId)
-
-    return emojiSetRecordSchema.parse(emojiSet)
-  })
-
-  app.delete('/api/v1/emoji-sets/:emojiSetId', async (request, reply) => {
-    const headers = parseHeadersForWrite(request)
-    const params = parseOrThrow(
-      emojiSetParamsSchema,
-      request.params,
-      'invalid_params',
-    )
-    const context = await resolveWriteContext(request, sessionService, headers)
-
-    await service.deleteEmojiSet(context, params.emojiSetId)
-
-    reply.code(204).send()
-  })
-
-  app.post('/api/v1/emoji-sets', async (request, reply) => {
+  app.post('/api/v1/task-templates', async (request, reply) => {
     const headers = parseHeadersForWrite(request)
     const input = parseOrThrow(
-      newEmojiSetInputSchema,
+      newTaskTemplateInputSchema,
       request.body,
       'invalid_body',
     )
     const context = await resolveWriteContext(request, sessionService, headers)
-    const emojiSet = await service.createEmojiSet(context, input)
+    const template = await service.createTaskTemplate(context, input)
 
     reply.code(201)
 
-    return emojiSetRecordSchema.parse(emojiSet)
+    return taskTemplateRecordSchema.parse(template)
   })
 
-  app.post('/api/v1/emoji-sets/:emojiSetId/items', async (request, reply) => {
+  app.delete('/api/v1/task-templates/:templateId', async (request, reply) => {
     const headers = parseHeadersForWrite(request)
     const params = parseOrThrow(
-      emojiSetParamsSchema,
+      taskTemplateParamsSchema,
       request.params,
       'invalid_params',
     )
-    const input = parseOrThrow(
-      addEmojiSetItemsInputSchema,
-      request.body,
-      'invalid_body',
-    )
     const context = await resolveWriteContext(request, sessionService, headers)
-    const emojiSet = await service.addEmojiSetItems(
-      context,
-      params.emojiSetId,
-      input,
-    )
 
-    reply.code(201)
+    await service.removeTaskTemplate(context, params.templateId)
 
-    return emojiSetRecordSchema.parse(emojiSet)
+    reply.code(204)
+
+    return null
   })
-
-  app.delete(
-    '/api/v1/emoji-sets/:emojiSetId/items/:iconAssetId',
-    async (request, reply) => {
-      const headers = parseHeadersForWrite(request)
-      const params = parseOrThrow(
-        emojiSetItemParamsSchema,
-        request.params,
-        'invalid_params',
-      )
-      const context = await resolveWriteContext(
-        request,
-        sessionService,
-        headers,
-      )
-
-      await service.deleteEmojiSetItem(
-        context,
-        params.emojiSetId,
-        params.iconAssetId,
-      )
-
-      reply.code(204).send()
-    },
-  )
 }
 
 function createLegacyWriteContext(headers: z.infer<typeof writeHeadersSchema>) {

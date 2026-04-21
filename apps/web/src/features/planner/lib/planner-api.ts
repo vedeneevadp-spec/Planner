@@ -5,6 +5,8 @@ import {
   newProjectInputSchema,
   type NewTaskInput,
   newTaskInputSchema,
+  type NewTaskTemplateInput,
+  newTaskTemplateInputSchema,
   projectListResponseSchema,
   type ProjectRecord,
   projectRecordSchema,
@@ -23,6 +25,9 @@ import {
   taskScheduleUpdateInputSchema,
   type TaskStatusUpdateInput,
   taskStatusUpdateInputSchema,
+  taskTemplateListResponseSchema,
+  type TaskTemplateRecord,
+  taskTemplateRecordSchema,
 } from '@planner/contracts'
 
 type FetchFn = typeof fetch
@@ -65,6 +70,9 @@ export interface PlannerApiClientConfig {
 export interface PlannerApiClient {
   createProject: (input: NewProjectInput) => Promise<ProjectRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
+  createTaskTemplate: (
+    input: NewTaskTemplateInput,
+  ) => Promise<TaskTemplateRecord>
   getProject: (
     projectId: string,
     signal?: RequestSignal,
@@ -78,6 +86,8 @@ export interface PlannerApiClient {
     filters?: TaskListFilters,
     signal?: RequestSignal,
   ) => Promise<TaskRecord[]>
+  listTaskTemplates: (signal?: RequestSignal) => Promise<TaskTemplateRecord[]>
+  removeTaskTemplate: (templateId: string) => Promise<void>
   removeTask: (taskId: string, expectedVersion?: number) => Promise<void>
   setTaskSchedule: (
     taskId: string,
@@ -243,6 +253,34 @@ export function createPlannerApiClient(
         method: 'POST',
         path: '/api/v1/tasks',
         responseSchema: taskRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async listTaskTemplates(signal) {
+      return request({
+        path: '/api/v1/task-templates',
+        responseSchema: taskTemplateListResponseSchema,
+        signal,
+      })
+    },
+    async createTaskTemplate(input) {
+      const validatedInput = newTaskTemplateInputSchema.parse({
+        ...input,
+        id: input.id ?? generateUuidV7(),
+      })
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/task-templates',
+        responseSchema: taskTemplateRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async removeTaskTemplate(templateId) {
+      await request<void>({
+        method: 'DELETE',
+        path: `/api/v1/task-templates/${encodeURIComponent(templateId)}`,
         writeAccess: true,
       })
     },

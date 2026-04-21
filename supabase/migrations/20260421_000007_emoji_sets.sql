@@ -16,7 +16,7 @@ begin
     where typnamespace = 'app'::regnamespace
       and typname = 'emoji_set_source'
   ) then
-    create type app.emoji_set_source as enum ('custom', 'telegram');
+    create type app.emoji_set_source as enum ('custom');
   end if;
 
   if not exists (
@@ -25,7 +25,7 @@ begin
     where typnamespace = 'app'::regnamespace
       and typname = 'emoji_asset_kind'
   ) then
-    create type app.emoji_asset_kind as enum ('unicode', 'image');
+    create type app.emoji_asset_kind as enum ('image');
   end if;
 end
 $$;

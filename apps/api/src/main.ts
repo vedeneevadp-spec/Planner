@@ -12,6 +12,7 @@ import {
 import { createDatabaseConfig } from './infrastructure/db/config.js'
 import {
   EmojiSetService,
+  LocalIconAssetStorage,
   MemoryEmojiSetRepository,
   PostgresEmojiSetRepository,
 } from './modules/emoji-sets/index.js'
@@ -25,6 +26,11 @@ import {
   PostgresSessionRepository,
   SessionService,
 } from './modules/session/index.js'
+import {
+  MemoryTaskTemplateRepository,
+  PostgresTaskTemplateRepository,
+  TaskTemplateService,
+} from './modules/task-templates/index.js'
 import {
   MemoryTaskRepository,
   PostgresTaskRepository,
@@ -48,6 +54,9 @@ export function createApiKernel(
   const taskRepository = database
     ? new PostgresTaskRepository(database.db)
     : new MemoryTaskRepository()
+  const taskTemplateRepository = database
+    ? new PostgresTaskTemplateRepository(database.db)
+    : new MemoryTaskTemplateRepository()
   const projectRepository = database
     ? new PostgresProjectRepository(database.db)
     : new MemoryProjectRepository()
@@ -57,9 +66,14 @@ export function createApiKernel(
   const sessionRepository = database
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
+  const iconAssetStorage = new LocalIconAssetStorage(config.iconAssetDirectory)
   const sessionService = new SessionService(sessionRepository)
-  const emojiSetService = new EmojiSetService(emojiSetRepository)
+  const emojiSetService = new EmojiSetService(
+    emojiSetRepository,
+    iconAssetStorage,
+  )
   const projectService = new ProjectService(projectRepository)
+  const taskTemplateService = new TaskTemplateService(taskTemplateRepository)
   const taskService = new TaskService(taskRepository)
   const requestAuthenticator =
     config.authMode === 'supabase' && config.supabaseAuth
@@ -72,6 +86,7 @@ export function createApiKernel(
     projectService,
     requestAuthenticator,
     sessionService,
+    taskTemplateService,
     taskService,
   })
 

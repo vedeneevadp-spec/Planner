@@ -1,6 +1,57 @@
 .actionRow {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
   justify-content: flex-end;
+}
+
+.templateQuickBar {
+  display: flex;
+  flex: 1 1 26rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.templateQuickLabel {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.templateQuickButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(33, 78, 66, 0.16);
+  padding: 0.58rem 0.78rem;
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.templateQuickButton span {
+  display: grid;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(33, 78, 66, 0.1);
+  color: var(--accent-strong);
+  line-height: 1;
+}
+
+.templateQuickButton:hover {
+  border-color: rgba(33, 78, 66, 0.3);
+  background: rgba(255, 255, 255, 0.86);
+  transform: translateY(-1px);
 }
 
 .openButton {
@@ -86,6 +137,95 @@
   font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(1.5rem, 3vw, 2.1rem);
   line-height: 1;
+}
+
+.templatePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  border-radius: 22px;
+  padding: 0.95rem;
+  background:
+    linear-gradient(135deg, rgba(33, 78, 66, 0.08), transparent 58%),
+    rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(33, 78, 66, 0.1);
+}
+
+.templatePanelHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.templatePanelHeader h3,
+.templateCard h4 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.03em;
+}
+
+.templatePanelHeader p,
+.templateCard p,
+.templateCard span,
+.notice,
+.eyebrow {
+  color: var(--text-soft);
+}
+
+.templatePanelHeader > p {
+  max-width: 28rem;
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.templateCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  justify-content: space-between;
+  min-width: 0;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.templateCardActive {
+  border-color: rgba(33, 78, 66, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(33, 78, 66, 0.1);
+}
+
+.templateCard p {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+}
+
+.templateCard span {
+  display: block;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.templateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .closeButton {
@@ -177,6 +317,13 @@
   gap: 0.55rem;
 }
 
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
 .primaryButton,
 .ghostButton {
   border-radius: 999px;
@@ -199,9 +346,27 @@
   color: inherit;
 }
 
+.dangerButton {
+  border-color: rgba(140, 75, 36, 0.25);
+  color: var(--warning);
+}
+
+.notice {
+  margin: -0.2rem 0 0;
+  font-size: 0.88rem;
+}
+
 .primaryButton:hover,
 .ghostButton:hover {
   transform: translateY(-1px);
+}
+
+.primaryButton:disabled,
+.ghostButton:disabled,
+.templateQuickButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
 }
 
 @media (max-width: 900px) {
@@ -209,15 +374,36 @@
     grid-template-columns: 1fr;
   }
 
+  .templatePanelHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .templateGrid {
+    grid-template-columns: 1fr;
+  }
+
   .footer {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .footerActions {
+    justify-content: stretch;
   }
 }
 
 @media (max-width: 560px) {
   .actionRow {
     justify-content: stretch;
+  }
+
+  .templateQuickBar {
+    flex-basis: 100%;
+  }
+
+  .templateQuickButton {
+    flex: 1 1 100%;
   }
 
   .openButton {

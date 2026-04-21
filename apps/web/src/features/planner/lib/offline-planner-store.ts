@@ -7,6 +7,7 @@ import {
   type TaskRecord,
   type TaskScheduleInput,
   type TaskStatus,
+  type TaskTemplateRecord,
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
 
@@ -28,6 +29,14 @@ interface PlannerCachedProjectRow {
   key: string
   project: ProjectRecord
   projectId: string
+  updatedAt: string
+  workspaceId: string
+}
+
+interface PlannerCachedTaskTemplateRow {
+  key: string
+  template: TaskTemplateRecord
+  templateId: string
   updatedAt: string
   workspaceId: string
 }
@@ -140,6 +149,7 @@ const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
 
 class PlannerOfflineDatabase extends Dexie {
   cachedProjects!: Table<PlannerCachedProjectRow, string>
+  cachedTaskTemplates!: Table<PlannerCachedTaskTemplateRow, string>
   cachedTasks!: Table<PlannerCachedTaskRow, string>
   mutationQueue!: Table<PlannerOfflineMutationRecord, string>
   syncMetadata!: Table<PlannerSyncMetadataRow, string>
@@ -154,6 +164,13 @@ class PlannerOfflineDatabase extends Dexie {
     })
     this.version(2).stores({
       cachedProjects: 'key, workspaceId, projectId, updatedAt',
+      cachedTasks: 'key, workspaceId, taskId, updatedAt',
+      mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
+      syncMetadata: 'key, workspaceId, updatedAt',
+    })
+    this.version(3).stores({
+      cachedProjects: 'key, workspaceId, projectId, updatedAt',
+      cachedTaskTemplates: 'key, workspaceId, templateId, updatedAt',
       cachedTasks: 'key, workspaceId, taskId, updatedAt',
       mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
       syncMetadata: 'key, workspaceId, updatedAt',
@@ -208,6 +225,23 @@ export async function loadCachedProjectRecords(
     .toArray()
 
   return rows.map((row) => row.project)
+}
+
+export async function loadCachedTaskTemplateRecords(
+  workspaceId: string,
+): Promise<TaskTemplateRecord[]> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return []
+  }
+
+  const rows = await db.cachedTaskTemplates
+    .where('workspaceId')
+    .equals(workspaceId)
+    .toArray()
+
+  return rows.map((row) => row.template)
 }
 
 export async function replaceCachedTaskRecords(
@@ -266,6 +300,39 @@ export async function replaceCachedProjectRecords(
 
     if (rows.length > 0) {
       await db.cachedProjects.bulkPut(rows)
+    }
+  })
+}
+
+export async function replaceCachedTaskTemplateRecords(
+  workspaceId: string,
+  templates: TaskTemplateRecord[],
+): Promise<void> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  const updatedAt = new Date().toISOString()
+  const rows = templates.map(
+    (template): PlannerCachedTaskTemplateRow => ({
+      key: createCachedTaskTemplateKey(workspaceId, template.id),
+      template,
+      templateId: template.id,
+      updatedAt,
+      workspaceId,
+    }),
+  )
+
+  await db.transaction('rw', db.cachedTaskTemplates, async () => {
+    await db.cachedTaskTemplates
+      .where('workspaceId')
+      .equals(workspaceId)
+      .delete()
+
+    if (rows.length > 0) {
+      await db.cachedTaskTemplates.bulkPut(rows)
     }
   })
 }
@@ -516,6 +583,13 @@ function createCachedProjectKey(
   projectId: string,
 ): string {
   return `${workspaceId}:${projectId}`
+}
+
+function createCachedTaskTemplateKey(
+  workspaceId: string,
+  templateId: string,
+): string {
+  return `${workspaceId}:${templateId}`
 }
 
 function createSyncMetadataKey(workspaceId: string): string {

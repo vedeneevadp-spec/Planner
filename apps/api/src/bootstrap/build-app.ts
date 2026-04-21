@@ -10,11 +10,16 @@ import Fastify from 'fastify'
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
 import type { EmojiSetService } from '../modules/emoji-sets/index.js'
-import { registerEmojiSetRoutes } from '../modules/emoji-sets/index.js'
+import {
+  registerEmojiSetRoutes,
+  registerIconAssetRoutes,
+} from '../modules/emoji-sets/index.js'
 import type { ProjectService } from '../modules/projects/index.js'
 import { registerProjectRoutes } from '../modules/projects/index.js'
 import type { SessionService } from '../modules/session/index.js'
 import { registerSessionRoutes } from '../modules/session/index.js'
+import type { TaskTemplateService } from '../modules/task-templates/index.js'
+import { registerTaskTemplateRoutes } from '../modules/task-templates/index.js'
 import type { TaskService } from '../modules/tasks/index.js'
 import { registerTaskRoutes } from '../modules/tasks/index.js'
 import type { ApiConfig } from './config.js'
@@ -32,6 +37,7 @@ export interface BuildApiAppOptions {
   emojiSetService?: EmojiSetService
   projectService: ProjectService
   sessionService: SessionService
+  taskTemplateService?: TaskTemplateService
   taskService: TaskService
 }
 
@@ -42,10 +48,15 @@ export function buildApiApp({
   emojiSetService,
   projectService,
   sessionService,
+  taskTemplateService,
   taskService,
 }: BuildApiAppOptions) {
   const app = Fastify({
+    bodyLimit: 25 * 1024 * 1024,
     logger: config.appEnv !== 'test',
+    routerOptions: {
+      maxParamLength: 260,
+    },
   })
 
   app.register(cors, {
@@ -53,6 +64,7 @@ export function buildApiApp({
     origin: config.corsOrigin === '*' ? true : config.corsOrigin,
   })
   registerOpenApi(app, config)
+  registerIconAssetRoutes(app, config.iconAssetDirectory)
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     const databaseStatus = await getDatabaseStatus(database)
@@ -82,6 +94,9 @@ export function buildApiApp({
       registerEmojiSetRoutes(instance, sessionService, emojiSetService)
     }
     registerProjectRoutes(instance, sessionService, projectService)
+    if (taskTemplateService) {
+      registerTaskTemplateRoutes(instance, sessionService, taskTemplateService)
+    }
     registerTaskRoutes(instance, sessionService, taskService)
   })
 
@@ -118,6 +133,7 @@ function isPublicRequest(method: string, url: string): boolean {
 
   return (
     path === '/api/health' ||
+    path.startsWith('/api/v1/icon-assets/') ||
     path === '/api/openapi.json' ||
     path === '/api/docs' ||
     path.startsWith('/api/docs/')

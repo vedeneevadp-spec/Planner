@@ -7,9 +7,15 @@ import {
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
-import { EmojiSetNotFoundError } from './emoji-set.errors.js'
+import {
+  EmojiAssetNotFoundError,
+  EmojiSetNotFoundError,
+} from './emoji-set.errors.js'
 import type {
+  AddEmojiSetItemsCommand,
   CreateEmojiSetCommand,
+  DeleteEmojiSetCommand,
+  DeleteEmojiSetItemCommand,
   EmojiSetReadContext,
   StoredEmojiAssetRecord,
   StoredEmojiSetRecord,
@@ -17,6 +23,7 @@ import type {
 import type { EmojiSetRepository } from './emoji-set.repository.js'
 import {
   buildEmojiSetSlug,
+  normalizeEmojiAssetInput,
   normalizeEmojiSetInput,
   sortStoredEmojiSets,
 } from './emoji-set.shared.js'
@@ -152,7 +159,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             )
 
         if (!emojiSet) {
-          throw new Error('Failed to create emoji set record.')
+          throw new Error('Failed to create icon set record.')
         }
 
         const assetRows = await this.loadEmojiAssetRows(
@@ -162,6 +169,170 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
         )
 
         return this.mapEmojiSetRecord(emojiSet, assetRows)
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async addItems(
+    command: AddEmojiSetItemsCommand,
+  ): Promise<StoredEmojiSetRecord> {
+    return withOptionalRls(
+      this.db,
+      command.context.auth,
+      async (executor) => {
+        const emojiSet = await this.loadActiveEmojiSet(
+          executor,
+          command.context.workspaceId,
+          command.emojiSetId,
+        )
+
+        if (!emojiSet) {
+          throw new EmojiSetNotFoundError(command.emojiSetId)
+        }
+
+        const assetStats = await this.loadEmojiAssetStats(
+          executor,
+          command.context.workspaceId,
+          command.emojiSetId,
+        )
+        const normalizedItems = command.input.items.map((item, index) =>
+          normalizeEmojiAssetInput(
+            {
+              ...item,
+              shortcode: undefined,
+            },
+            assetStats.count + index,
+          ),
+        )
+
+        await executor
+          .insertInto('app.emoji_assets')
+          .values(
+            normalizedItems.map((item, index) => ({
+              created_by: command.context.actorUserId,
+              deleted_at: null,
+              emoji_set_id: command.emojiSetId,
+              id: item.id ?? generateUuidV7(),
+              keywords: item.keywords,
+              kind: item.kind,
+              label: item.label,
+              metadata: {},
+              shortcode: item.shortcode,
+              sort_order: assetStats.maxSortOrder + 1 + index,
+              updated_by: command.context.actorUserId,
+              value: item.value,
+              workspace_id: command.context.workspaceId,
+            })),
+          )
+          .execute()
+
+        const assetRows = await this.loadEmojiAssetRows(
+          executor,
+          command.context.workspaceId,
+          [emojiSet.id],
+        )
+
+        return this.mapEmojiSetRecord(emojiSet, assetRows)
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async deleteSet(
+    command: DeleteEmojiSetCommand,
+  ): Promise<StoredEmojiSetRecord> {
+    return withOptionalRls(
+      this.db,
+      command.context.auth,
+      async (executor) => {
+        const emojiSet = await this.loadActiveEmojiSet(
+          executor,
+          command.context.workspaceId,
+          command.emojiSetId,
+        )
+
+        if (!emojiSet) {
+          throw new EmojiSetNotFoundError(command.emojiSetId)
+        }
+
+        const assetRows = await this.loadEmojiAssetRows(
+          executor,
+          command.context.workspaceId,
+          [emojiSet.id],
+        )
+        const deletedAt = new Date()
+
+        await executor
+          .updateTable('app.emoji_assets')
+          .set({
+            deleted_at: deletedAt,
+            updated_by: command.context.actorUserId,
+          })
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('emoji_set_id', '=', command.emojiSetId)
+          .where('deleted_at', 'is', null)
+          .execute()
+
+        const deletedEmojiSet = await executor
+          .updateTable('app.emoji_sets')
+          .set({
+            deleted_at: deletedAt,
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', command.emojiSetId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .where('status', '=', 'active')
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!deletedEmojiSet) {
+          throw new EmojiSetNotFoundError(command.emojiSetId)
+        }
+
+        return this.mapEmojiSetRecord(deletedEmojiSet, assetRows)
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async deleteItem(
+    command: DeleteEmojiSetItemCommand,
+  ): Promise<StoredEmojiAssetRecord> {
+    return withOptionalRls(
+      this.db,
+      command.context.auth,
+      async (executor) => {
+        const emojiSet = await this.loadActiveEmojiSet(
+          executor,
+          command.context.workspaceId,
+          command.emojiSetId,
+        )
+
+        if (!emojiSet) {
+          throw new EmojiSetNotFoundError(command.emojiSetId)
+        }
+
+        const deletedAt = new Date()
+        const deletedIconAsset = await executor
+          .updateTable('app.emoji_assets')
+          .set({
+            deleted_at: deletedAt,
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', command.iconAssetId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('emoji_set_id', '=', command.emojiSetId)
+          .where('deleted_at', 'is', null)
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!deletedIconAsset) {
+          throw new EmojiAssetNotFoundError(command.iconAssetId)
+        }
+
+        return this.mapEmojiAssetRecord(deletedIconAsset)
       },
       command.context.actorUserId,
     )
@@ -180,6 +351,28 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
       .where('deleted_at', 'is', null)
       .where('status', '=', 'active')
       .executeTakeFirst()
+  }
+
+  private async loadEmojiAssetStats(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    emojiSetId: string,
+  ): Promise<{ count: number; maxSortOrder: number }> {
+    const row = await executor
+      .selectFrom('app.emoji_assets')
+      .select([
+        (eb) => eb.fn.countAll<string>().as('asset_count'),
+        (eb) => eb.fn.max<number>('sort_order').as('max_sort_order'),
+      ])
+      .where('workspace_id', '=', workspaceId)
+      .where('emoji_set_id', '=', emojiSetId)
+      .executeTakeFirstOrThrow()
+
+    return {
+      count: Number(row.asset_count),
+      maxSortOrder:
+        row.max_sort_order === null ? -1 : Number(row.max_sort_order),
+    }
   }
 
   private loadEmojiAssetRows(

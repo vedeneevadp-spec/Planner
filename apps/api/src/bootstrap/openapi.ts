@@ -92,12 +92,16 @@ function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'session',
       },
       {
-        description: 'Workspace emoji sets and reusable emoji assets.',
+        description: 'Workspace icon sets and reusable uploaded icons.',
         name: 'emojiSets',
       },
       {
         description: 'Task list and task mutations.',
         name: 'tasks',
+      },
+      {
+        description: 'Reusable task templates for fast task creation.',
+        name: 'taskTemplates',
       },
       {
         description: 'Independent project catalog and project mutations.',
@@ -147,9 +151,10 @@ function createPaths(): OpenAPIV3.PathsObject {
           400: errorResponse(),
           401: errorResponse(),
           403: errorResponse(),
+          503: errorResponse(),
         },
         security: [{ bearerAuth: [] }, {}],
-        summary: 'List emoji sets in a workspace',
+        summary: 'List icon sets in a workspace',
         tags: ['emojiSets'],
       },
       post: {
@@ -164,13 +169,34 @@ function createPaths(): OpenAPIV3.PathsObject {
           400: errorResponse(),
           401: errorResponse(),
           403: errorResponse(),
+          409: errorResponse(),
+          503: errorResponse(),
         },
         security: [{ bearerAuth: [] }, {}],
-        summary: 'Create an emoji set',
+        summary: 'Create an icon set',
         tags: ['emojiSets'],
       },
     },
     '/api/v1/emoji-sets/{emojiSetId}': {
+      delete: {
+        operationId: 'deleteEmojiSet',
+        parameters: [
+          emojiSetIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          204: emptyResponse('Icon set deleted.'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          503: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Delete an icon set',
+        tags: ['emojiSets'],
+      },
       get: {
         operationId: 'getEmojiSet',
         parameters: [
@@ -183,9 +209,55 @@ function createPaths(): OpenAPIV3.PathsObject {
           401: errorResponse(),
           403: errorResponse(),
           404: errorResponse(),
+          503: errorResponse(),
         },
         security: [{ bearerAuth: [] }, {}],
-        summary: 'Get an emoji set',
+        summary: 'Get an icon set',
+        tags: ['emojiSets'],
+      },
+    },
+    '/api/v1/emoji-sets/{emojiSetId}/items': {
+      post: {
+        operationId: 'addEmojiSetItems',
+        parameters: [
+          emojiSetIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('AddEmojiSetItemsInput'),
+        responses: {
+          201: jsonResponse('EmojiSetRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+          503: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Add icons to an icon set',
+        tags: ['emojiSets'],
+      },
+    },
+    '/api/v1/emoji-sets/{emojiSetId}/items/{iconAssetId}': {
+      delete: {
+        operationId: 'deleteEmojiSetItem',
+        parameters: [
+          emojiSetIdParameter(),
+          iconAssetIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          204: emptyResponse('Icon asset deleted.'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          503: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Delete an icon from an icon set',
         tags: ['emojiSets'],
       },
     },
@@ -362,6 +434,60 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    '/api/v1/task-templates': {
+      get: {
+        operationId: 'listTaskTemplates',
+        parameters: [parameter('requiredWorkspaceIdHeader')],
+        responses: {
+          200: jsonResponse('TaskTemplateListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List task templates in a workspace',
+        tags: ['taskTemplates'],
+      },
+      post: {
+        operationId: 'createTaskTemplate',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('NewTaskTemplateInput'),
+        responses: {
+          201: jsonResponse('TaskTemplateRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Create a task template',
+        tags: ['taskTemplates'],
+      },
+    },
+    '/api/v1/task-templates/{templateId}': {
+      delete: {
+        operationId: 'deleteTaskTemplate',
+        parameters: [
+          taskTemplateIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          204: {
+            description: 'Task template deleted.',
+          },
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Soft-delete a task template',
+        tags: ['taskTemplates'],
+      },
+    },
     '/api/v1/tasks/{taskId}': {
       delete: {
         operationId: 'deleteTask',
@@ -525,7 +651,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
       },
-      required: ['kind', 'label', 'shortcode', 'value'],
+      required: ['label', 'value'],
       type: 'object',
     },
     NewEmojiSetInput: {
@@ -558,7 +684,58 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       required: ['description', 'items', 'title'],
       type: 'object',
     },
+    AddEmojiSetItemsInput: {
+      additionalProperties: false,
+      properties: {
+        items: {
+          items: {
+            $ref: '#/components/schemas/NewEmojiAssetInput',
+          },
+          maxItems: 200,
+          minItems: 1,
+          type: 'array',
+        },
+      },
+      required: ['items'],
+      type: 'object',
+    },
     NewTaskInput: {
+      additionalProperties: false,
+      properties: {
+        dueDate: nullableStringSchema(),
+        id: {
+          pattern:
+            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          type: 'string',
+        },
+        note: {
+          type: 'string',
+        },
+        plannedDate: nullableStringSchema(),
+        plannedEndTime: nullableStringSchema(),
+        plannedStartTime: nullableStringSchema(),
+        project: {
+          type: 'string',
+        },
+        projectId: nullableStringSchema(),
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: [
+        'dueDate',
+        'note',
+        'plannedDate',
+        'plannedEndTime',
+        'plannedStartTime',
+        'project',
+        'projectId',
+        'title',
+      ],
+      type: 'object',
+    },
+    NewTaskTemplateInput: {
       additionalProperties: false,
       properties: {
         dueDate: nullableStringSchema(),
@@ -622,7 +799,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       type: 'object',
     },
     EmojiAssetKind: {
-      enum: ['image', 'unicode'],
+      enum: ['image'],
       type: 'string',
     },
     EmojiAssetRecord: {
@@ -752,7 +929,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       type: 'object',
     },
     EmojiSetSource: {
-      enum: ['custom', 'telegram'],
+      enum: ['custom'],
       type: 'string',
     },
     ProjectListResponse: {
@@ -919,6 +1096,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       },
       type: 'array',
     },
+    TaskTemplateListResponse: {
+      items: {
+        $ref: '#/components/schemas/TaskTemplateRecord',
+      },
+      type: 'array',
+    },
     TaskEventListResponse: {
       additionalProperties: false,
       properties: {
@@ -997,6 +1180,69 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'object',
         },
       ],
+    },
+    TaskTemplateRecord: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/TaskTemplate',
+        },
+        {
+          additionalProperties: false,
+          properties: {
+            deletedAt: nullableStringSchema(),
+            updatedAt: {
+              format: 'date-time',
+              type: 'string',
+            },
+            version: positiveIntegerSchema(),
+            workspaceId: {
+              type: 'string',
+            },
+          },
+          required: ['deletedAt', 'updatedAt', 'version', 'workspaceId'],
+          type: 'object',
+        },
+      ],
+    },
+    TaskTemplate: {
+      additionalProperties: false,
+      properties: {
+        createdAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        dueDate: nullableStringSchema(),
+        id: {
+          type: 'string',
+        },
+        note: {
+          type: 'string',
+        },
+        plannedDate: nullableStringSchema(),
+        plannedEndTime: nullableStringSchema(),
+        plannedStartTime: nullableStringSchema(),
+        project: {
+          type: 'string',
+        },
+        projectId: nullableStringSchema(),
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: [
+        'createdAt',
+        'dueDate',
+        'id',
+        'note',
+        'plannedDate',
+        'plannedEndTime',
+        'plannedStartTime',
+        'project',
+        'projectId',
+        'title',
+      ],
+      type: 'object',
     },
     Task: {
       additionalProperties: false,
@@ -1087,6 +1333,12 @@ function errorResponse(): OpenAPIV3.ResponseObject {
   return jsonResponse('ApiError')
 }
 
+function emptyResponse(description: string): OpenAPIV3.ResponseObject {
+  return {
+    description,
+  }
+}
+
 function jsonRequestBody(schemaName: string): OpenAPIV3.RequestBodyObject {
   return {
     content: {
@@ -1144,6 +1396,17 @@ function emojiSetIdParameter(): OpenAPIV3.ParameterObject {
   }
 }
 
+function iconAssetIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'iconAssetId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
 function projectIdParameter(): OpenAPIV3.ParameterObject {
   return {
     in: 'path',
@@ -1159,6 +1422,17 @@ function taskIdParameter(): OpenAPIV3.ParameterObject {
   return {
     in: 'path',
     name: 'taskId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function taskTemplateIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'templateId',
     required: true,
     schema: {
       type: 'string',

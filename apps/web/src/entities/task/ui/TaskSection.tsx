@@ -1,3 +1,4 @@
+import type { Project } from '@/entities/project'
 import type { Task, TaskStatus } from '@/entities/task'
 
 import { TaskCard } from './TaskCard'
@@ -6,6 +7,7 @@ import styles from './TaskSection.module.css'
 interface TaskSectionProps {
   title: string
   tasks: Task[]
+  projects?: Project[] | undefined
   emptyMessage: string
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
@@ -17,6 +19,7 @@ interface TaskSectionProps {
 export function TaskSection({
   title,
   tasks,
+  projects = [],
   emptyMessage,
   tone = 'default',
   isTaskPending,
@@ -39,6 +42,9 @@ export function TaskSection({
             <TaskCard
               key={task.id}
               task={task}
+              project={projects.find(
+                (project) => project.id === task.projectId,
+              )}
               isPending={isTaskPending?.(task.id)}
               tone={tone}
               onRemove={onRemove}

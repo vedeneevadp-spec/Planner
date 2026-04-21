@@ -286,6 +286,96 @@ describe('plannerApi', () => {
     expect(isUuidV7(body.id)).toBe(true)
   })
 
+  it('lists, creates and removes task templates through the planner API', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              createdAt: '2026-04-16T03:00:00.000Z',
+              deletedAt: null,
+              dueDate: null,
+              id: 'template-1',
+              note: '',
+              plannedDate: null,
+              plannedEndTime: null,
+              plannedStartTime: null,
+              project: '',
+              projectId: null,
+              title: 'Template title',
+              updatedAt: '2026-04-16T03:00:00.000Z',
+              version: 1,
+              workspaceId: 'workspace-1',
+            },
+          ]),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            createdAt: '2026-04-16T03:00:00.000Z',
+            deletedAt: null,
+            dueDate: null,
+            id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b2',
+            note: '',
+            plannedDate: null,
+            plannedEndTime: null,
+            plannedStartTime: null,
+            project: '',
+            projectId: null,
+            title: 'Template title',
+            updatedAt: '2026-04-16T03:00:00.000Z',
+            version: 1,
+            workspaceId: 'workspace-1',
+          }),
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    await api.listTaskTemplates()
+    await api.createTaskTemplate({
+      dueDate: null,
+      note: '',
+      plannedDate: null,
+      plannedEndTime: null,
+      plannedStartTime: null,
+      project: '',
+      projectId: null,
+      title: 'Template title',
+    })
+    await api.removeTaskTemplate('template-1')
+
+    const [listUrl, listRequestInit] = fetchMock.mock.calls[0]!
+    const [createUrl, createRequestInit] = fetchMock.mock.calls[1]!
+    const [deleteUrl, deleteRequestInit] = fetchMock.mock.calls[2]!
+    const listRequestUrl = listUrl instanceof URL ? listUrl.href : listUrl
+    const createRequestUrl =
+      createUrl instanceof URL ? createUrl.href : createUrl
+    const deleteRequestUrl =
+      deleteUrl instanceof URL ? deleteUrl.href : deleteUrl
+    const createBody = parseJsonRequestBody<{ id: string }>(createRequestInit)
+
+    expect(listRequestUrl).toBe('http://127.0.0.1:3001/api/v1/task-templates')
+    expect(createRequestUrl).toBe('http://127.0.0.1:3001/api/v1/task-templates')
+    expect(deleteRequestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/task-templates/template-1',
+    )
+    expect(isUuidV7(createBody.id)).toBe(true)
+    expect(new Headers(listRequestInit?.headers).get('x-actor-user-id')).toBe(
+      null,
+    )
+    expect(new Headers(createRequestInit?.headers).get('x-actor-user-id')).toBe(
+      'user-1',
+    )
+    expect(new Headers(deleteRequestInit?.headers).get('x-actor-user-id')).toBe(
+      'user-1',
+    )
+  })
+
   it('sends expectedVersion for versioned task mutations', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

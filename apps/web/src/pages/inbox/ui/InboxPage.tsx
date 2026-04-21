@@ -7,6 +7,7 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 export function InboxPage() {
   const {
     tasks,
+    projects,
     isTaskPending,
     removeTask,
     setTaskPlannedDate,
@@ -27,6 +28,7 @@ export function InboxPage() {
       <TaskSection
         title="Без даты"
         tasks={inboxTasks}
+        projects={projects}
         emptyMessage="Inbox пуст. Это нормально: значит, ты либо всё распланировал, либо пока ничего не захватывал."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {

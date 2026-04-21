@@ -7,6 +7,7 @@ import {
   taskSchema,
   taskStatusSchema,
 } from './task.js'
+import { taskTemplateSchema } from './task-template.js'
 
 export const storageDriverSchema = z.enum(['memory', 'postgres'])
 export const workspaceRoleSchema = z.enum([
@@ -35,6 +36,13 @@ export const healthResponseSchema = z.object({
 })
 
 export const taskRecordSchema = taskSchema.extend({
+  workspaceId: z.string(),
+  updatedAt: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+
+export const taskTemplateRecordSchema = taskTemplateSchema.extend({
   workspaceId: z.string(),
   updatedAt: z.string(),
   deletedAt: z.string().nullable(),
@@ -93,6 +101,7 @@ export const taskListFiltersSchema = z.object({
 })
 
 export const taskListResponseSchema = z.array(taskRecordSchema)
+export const taskTemplateListResponseSchema = z.array(taskTemplateRecordSchema)
 export const projectListResponseSchema = z.array(projectRecordSchema)
 export const emojiSetListResponseSchema = z.array(emojiSetRecordSchema)
 
@@ -142,6 +151,7 @@ export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
 export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>
 export type TaskListFilters = z.infer<typeof taskListFiltersSchema>
 export type TaskRecord = z.infer<typeof taskRecordSchema>
+export type TaskTemplateRecord = z.infer<typeof taskTemplateRecordSchema>
 export type TaskScheduleUpdateInput = z.infer<
   typeof taskScheduleUpdateInputSchema
 >
