@@ -1,5 +1,12 @@
 import type { Session } from '@supabase/supabase-js'
-import { type PropsWithChildren, useEffect, useMemo, useState } from 'react'
+import {
+  type PropsWithChildren,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
@@ -24,13 +31,18 @@ const INITIAL_AUTH_SNAPSHOT: AuthSnapshot = {
   userId: null,
 }
 
+const DEFAULT_EXPIRED_SESSION_MESSAGE =
+  'Сессия истекла или больше не принимается сервером. Войдите заново.'
+
 export function SessionProvider({ children }: PropsWithChildren) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), [])
   const isAuthEnabled = supabase !== null
+  const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
     () =>
       typeof window !== 'undefined' && hasRecoveryUrlParams(window.location),
   )
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<AuthSnapshot>({
     ...INITIAL_AUTH_SNAPSHOT,
     isLoading: isAuthEnabled,
@@ -53,6 +65,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       if (error) {
         console.error('Failed to restore Supabase session.', error)
+        setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
+        clearPersistedSupabaseAuthSession()
         setSnapshot({
           ...INITIAL_AUTH_SNAPSHOT,
           isLoading: false,
@@ -74,10 +88,25 @@ export function SessionProvider({ children }: PropsWithChildren) {
       }
 
       if (event === 'PASSWORD_RECOVERY') {
+        setAuthNotice(null)
         setIsPasswordRecovery(true)
         clearSupabaseAuthUrlFragment()
       } else if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
         setIsPasswordRecovery(false)
+      }
+
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setAuthNotice(null)
+      }
+
+      if (event === 'SIGNED_OUT') {
+        const pendingNotice = pendingSignOutNoticeRef.current
+        pendingSignOutNoticeRef.current = null
+        setAuthNotice(
+          pendingNotice === false
+            ? null
+            : (pendingNotice ?? DEFAULT_EXPIRED_SESSION_MESSAGE),
+        )
       }
 
       setSnapshot(toAuthSnapshot(session, false))
@@ -89,17 +118,49 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }
   }, [supabase])
 
-  const value: SessionAuthState = {
-    accessToken:
-      snapshot.sessionAccessToken ?? plannerApiConfig.apiAccessToken ?? null,
-    email: snapshot.email,
-    isAuthEnabled,
-    isLoading: isAuthEnabled && snapshot.isLoading,
-    isPasswordRecovery,
-    requestPasswordReset: async (email) => {
+  const clearAuthSession = useCallback(
+    async (notice: string | false | null) => {
+      pendingSignOutNoticeRef.current = notice
+      setAuthNotice(notice === false ? null : notice)
+      setIsPasswordRecovery(false)
+      setSnapshot({
+        ...INITIAL_AUTH_SNAPSHOT,
+        isLoading: false,
+      })
+
+      if (!supabase) {
+        return
+      }
+
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error('Failed to clear Supabase session.', error)
+        clearPersistedSupabaseAuthSession()
+        pendingSignOutNoticeRef.current = null
+      }
+    },
+    [supabase],
+  )
+
+  const clearAuthNotice = useCallback(() => {
+    setAuthNotice(null)
+  }, [])
+
+  const expireSession = useCallback(
+    async (message = DEFAULT_EXPIRED_SESSION_MESSAGE) => {
+      await clearAuthSession(message)
+    },
+    [clearAuthSession],
+  )
+
+  const requestPasswordReset = useCallback(
+    async (email: string) => {
       if (!supabase) {
         throw new Error('Supabase browser auth is not configured.')
       }
+
+      setAuthNotice(null)
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin,
@@ -109,10 +170,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
         throw error
       }
     },
-    signInWithPassword: async (email, password) => {
+    [supabase],
+  )
+
+  const signInWithPassword = useCallback(
+    async (email: string, password: string) => {
       if (!supabase) {
         throw new Error('Supabase browser auth is not configured.')
       }
+
+      setAuthNotice(null)
 
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -123,10 +190,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
         throw error
       }
     },
-    signInWithOtp: async (email) => {
+    [supabase],
+  )
+
+  const signInWithOtp = useCallback(
+    async (email: string) => {
       if (!supabase) {
         throw new Error('Supabase browser auth is not configured.')
       }
+
+      setAuthNotice(null)
 
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -139,10 +212,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
         throw error
       }
     },
-    signUpWithPassword: async (input) => {
+    [supabase],
+  )
+
+  const signUpWithPassword = useCallback(
+    async (input: PasswordSignUpInput) => {
       if (!supabase) {
         throw new Error('Supabase browser auth is not configured.')
       }
+
+      setAuthNotice(null)
 
       const signUpOptions = createEmailSignUpOptions(input)
       const { data, error } = await supabase.auth.signUp({
@@ -159,21 +238,20 @@ export function SessionProvider({ children }: PropsWithChildren) {
         requiresEmailConfirmation: data.session === null,
       }
     },
-    signOut: async () => {
-      if (!supabase) {
-        return
-      }
+    [supabase],
+  )
 
-      const { error } = await supabase.auth.signOut()
+  const signOut = useCallback(async () => {
+    await clearAuthSession(false)
+  }, [clearAuthSession])
 
-      if (error) {
-        throw error
-      }
-    },
-    updatePassword: async (password) => {
+  const updatePassword = useCallback(
+    async (password: string) => {
       if (!supabase) {
         throw new Error('Supabase browser auth is not configured.')
       }
+
+      setAuthNotice(null)
 
       const { error } = await supabase.auth.updateUser({ password })
 
@@ -181,8 +259,47 @@ export function SessionProvider({ children }: PropsWithChildren) {
         throw error
       }
     },
-    userId: snapshot.userId,
-  }
+    [supabase],
+  )
+
+  const value: SessionAuthState = useMemo(
+    () => ({
+      accessToken:
+        snapshot.sessionAccessToken ??
+        (isAuthEnabled ? null : (plannerApiConfig.apiAccessToken ?? null)),
+      authNotice,
+      clearAuthNotice,
+      email: snapshot.email,
+      expireSession,
+      isAuthEnabled,
+      isLoading: isAuthEnabled && snapshot.isLoading,
+      isPasswordRecovery,
+      requestPasswordReset,
+      signInWithOtp,
+      signInWithPassword,
+      signOut,
+      signUpWithPassword,
+      updatePassword,
+      userId: snapshot.userId,
+    }),
+    [
+      authNotice,
+      clearAuthNotice,
+      expireSession,
+      isAuthEnabled,
+      isPasswordRecovery,
+      requestPasswordReset,
+      signInWithOtp,
+      signInWithPassword,
+      signOut,
+      signUpWithPassword,
+      snapshot.email,
+      snapshot.isLoading,
+      snapshot.sessionAccessToken,
+      snapshot.userId,
+      updatePassword,
+    ],
+  )
 
   return (
     <SessionAuthContext.Provider value={value}>
@@ -247,4 +364,35 @@ function clearSupabaseAuthUrlFragment() {
     document.title,
     `${window.location.pathname}${window.location.search}`,
   )
+}
+
+function clearPersistedSupabaseAuthSession() {
+  if (typeof window === 'undefined' || !plannerApiConfig.supabaseUrl) {
+    return
+  }
+
+  const storageKey = getSupabaseAuthStorageKey(plannerApiConfig.supabaseUrl)
+
+  if (!storageKey) {
+    return
+  }
+
+  try {
+    window.localStorage.removeItem(storageKey)
+    window.localStorage.removeItem(`${storageKey}-code-verifier`)
+    window.localStorage.removeItem(`${storageKey}-user`)
+  } catch (error) {
+    console.error('Failed to clear persisted Supabase session.', error)
+  }
+}
+
+function getSupabaseAuthStorageKey(supabaseUrl: string): string | null {
+  try {
+    const hostname = new URL(supabaseUrl).hostname
+    const projectRef = hostname.split('.')[0]
+
+    return projectRef ? `sb-${projectRef}-auth-token` : null
+  } catch {
+    return null
+  }
 }

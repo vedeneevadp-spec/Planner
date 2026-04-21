@@ -12,7 +12,10 @@ export interface PasswordSignUpResult {
 
 export interface SessionAuthState {
   accessToken: string | null
+  authNotice: string | null
+  clearAuthNotice: () => void
   email: string | null
+  expireSession: (message?: string) => Promise<void>
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean

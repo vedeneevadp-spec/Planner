@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { resolvePlannerSession, SessionApiError } from './session-api'
+import {
+  isUnauthorizedSessionApiError,
+  resolvePlannerSession,
+  SessionApiError,
+} from './session-api'
 
 describe('sessionApi', () => {
   it('loads the current session', async () => {
@@ -119,6 +123,18 @@ describe('sessionApi', () => {
 
     await expect(resolvePlannerSession({}, fetchMock)).rejects.toThrow(
       SessionApiError,
+    )
+  })
+
+  it('detects unauthorized session errors', () => {
+    const error = new SessionApiError('Unauthorized.', {
+      code: 'authentication_required',
+      status: 401,
+    })
+
+    expect(isUnauthorizedSessionApiError(error)).toBe(true)
+    expect(isUnauthorizedSessionApiError(new Error('Network failed.'))).toBe(
+      false,
     )
   })
 })

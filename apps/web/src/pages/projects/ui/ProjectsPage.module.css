@@ -1,4 +1,6 @@
-.panel {
+.projectForm,
+.detailPanel,
+.projectCard {
   border-radius: 24px;
   padding: 1.1rem;
   backdrop-filter: blur(18px);
@@ -7,12 +9,194 @@
   box-shadow: var(--shadow);
 }
 
-.header {
+.projectForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.formHeader,
+.detailHeader,
+.projectCardHeader,
+.projectIdentity,
+.detailActions,
+.pickerRow {
   display: flex;
   align-items: center;
+  gap: 0.85rem;
+}
+
+.formHeader,
+.detailHeader,
+.projectCardHeader {
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.9rem;
+}
+
+.formHeader h3,
+.detailHeader h3,
+.projectCard h3 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.03em;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 0.85rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.field span,
+.pickerLabel {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.58);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: rgba(33, 78, 66, 0.5);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.pickerRow {
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.pickerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.swatchList,
+.iconList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.swatchButton,
+.iconButton {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  transition:
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.swatchButton {
+  color: transparent;
+}
+
+.iconButton {
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+  font-size: 1rem;
+}
+
+.swatchButtonActive,
+.iconButtonActive {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.45rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.62rem 0.95rem;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.primaryButton {
+  align-self: flex-start;
+  background: var(--accent);
+  color: #fffdf8;
+}
+
+.secondaryButton {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: var(--line);
+  color: inherit;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover {
+  transform: translateY(-1px);
+}
+
+.projectCard {
+  display: flex;
+  min-height: 12rem;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.projectCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  background: var(--surface-strong);
+}
+
+.projectIcon,
+.projectIconLarge {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffdf8;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.projectIcon {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.1rem;
+}
+
+.projectIconLarge {
+  width: 3.4rem;
+  height: 3.4rem;
+  font-size: 1.35rem;
 }
 
 .eyebrow {
@@ -21,12 +205,6 @@
   font-size: 0.75rem;
   letter-spacing: 0.14em;
   color: var(--accent);
-}
-
-.header h3 {
-  margin: 0.2rem 0 0;
-  font-family: Georgia, 'Times New Roman', serif;
-  letter-spacing: -0.03em;
 }
 
 .countChip {
@@ -41,14 +219,46 @@
   font-size: 0.95rem;
 }
 
-.stack {
+.projectDescription {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.detailPanel {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 1rem;
+}
+
+@media (max-width: 760px) {
+  .formGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailHeader,
+  .pickerRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .detailActions {
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 560px) {
-  .panel {
+  .projectForm,
+  .detailPanel,
+  .projectCard {
     border-radius: 22px;
+  }
+
+  .primaryButton,
+  .secondaryButton {
+    width: 100%;
   }
 }

@@ -30,6 +30,12 @@ export class SessionApiError extends Error {
   }
 }
 
+export function isUnauthorizedSessionApiError(
+  error: unknown,
+): error is SessionApiError {
+  return error instanceof SessionApiError && error.status === 401
+}
+
 export interface ResolvePlannerSessionOptions {
   accessToken?: string
   signal?: AbortSignal

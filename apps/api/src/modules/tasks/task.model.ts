@@ -19,6 +19,7 @@ export interface StoredTaskRecord extends Task {
 
 export interface TaskListFilters {
   plannedDate?: string | undefined
+  projectId?: string | undefined
   project?: string | undefined
   status?: TaskStatus | undefined
 }

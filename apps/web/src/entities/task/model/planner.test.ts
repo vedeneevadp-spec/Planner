@@ -15,6 +15,7 @@ const baseTask: Task = {
   title: 'Write docs',
   note: 'Architecture outline',
   project: 'Planner',
+  projectId: 'project-1',
   status: 'todo',
   plannedDate: '2026-04-15',
   plannedStartTime: '09:00',
@@ -32,6 +33,7 @@ describe('planner model', () => {
         title: '  Review CI  ',
         note: '  tighten checks  ',
         project: '  Ops  ',
+        projectId: 'project-2',
         plannedDate: '2026-04-14',
         plannedStartTime: '08:00',
         plannedEndTime: '09:00',
@@ -48,6 +50,7 @@ describe('planner model', () => {
       title: 'Review CI',
       note: 'tighten checks',
       project: 'Ops',
+      projectId: 'project-2',
     })
   })
 
@@ -128,6 +131,7 @@ describe('planner model', () => {
         ...baseTask,
         id: 'task-2',
         project: ' ',
+        projectId: null,
       },
     ])
 

@@ -2,7 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
-import { resolvePlannerSession } from './session-api'
+import {
+  isUnauthorizedSessionApiError,
+  resolvePlannerSession,
+} from './session-api'
 import { useSessionAuth } from './useSessionAuth'
 
 export function usePlannerSession() {
@@ -22,6 +25,8 @@ export function usePlannerSession() {
       plannerApiConfig.actorUserIdOverride ?? 'default',
       plannerApiConfig.workspaceIdOverride ?? 'default',
     ] as const,
+    retry: (failureCount, error) =>
+      !isUnauthorizedSessionApiError(error) && failureCount < 2,
     staleTime: 5 * 60_000,
   })
 }

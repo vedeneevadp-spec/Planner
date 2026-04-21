@@ -22,6 +22,7 @@ const webPort = await findAvailablePort(5173)
 const sharedApiEnv = {
   ...process.env,
   API_AUTH_MODE: 'supabase',
+  API_DB_RLS_MODE: 'disabled',
   API_HOST: '127.0.0.1',
   API_PORT: String(apiPort),
   API_STORAGE_DRIVER: 'postgres',

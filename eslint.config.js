@@ -17,12 +17,15 @@ const typeCheckedConfigs = tseslint.configs.recommendedTypeChecked.map(
 const layerOrder = ['app', 'pages', 'widgets', 'features', 'entities', 'shared']
 const publicApiModules = [
   'app',
+  'pages/admin',
   'pages/inbox',
   'pages/projects',
   'pages/today',
   'widgets/sidebar',
+  'features/emoji-library',
   'features/planner',
   'features/task-create',
+  'entities/emoji-set',
   'entities/task',
   'shared/lib/classnames',
   'shared/lib/date',

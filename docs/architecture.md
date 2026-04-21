@@ -83,8 +83,9 @@ Feature-код может зависеть от `entities` и `shared`.
 - session клиента сначала резолвится через `/api/v1/session`
 - данные задач живут на API и кэшируются на клиенте через query cache
 - оптимистичные мутации остаются в feature-слое, поэтому UI не зависит напрямую от HTTP-клиента
-- последний task snapshot и offline mutation queue хранятся в IndexedDB через `Dexie`
-- queued мутации replay-ятся через тот же HTTP API; stale writes получают `409 task_version_conflict`
+- последние task/project snapshots и offline mutation queue хранятся в IndexedDB через `Dexie`
+- queued мутации replay-ятся через тот же HTTP API; stale writes получают `409 task_version_conflict` или `409 project_version_conflict`
+- cursor sync читает реальные `task_events`, хранит последний обработанный id локально и инвалидирует server-state cache
 
 Первая точка расширения теперь находится не в browser storage, а в boundary `features/session` и `features/planner/lib/planner-api`, где можно добавлять auth, multi-workspace switching, pagination, realtime sync и offline rehydration без переписывания экранов.
 

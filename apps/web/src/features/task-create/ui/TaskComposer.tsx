@@ -15,7 +15,7 @@ export function TaskComposer({
   initialPlannedDate,
   showTimeFields = false,
 }: TaskComposerProps) {
-  const { addTask } = usePlanner()
+  const { addTask, projects } = usePlanner()
   const titleId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -23,7 +23,7 @@ export function TaskComposer({
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
-  const [project, setProject] = useState('')
+  const [projectId, setProjectId] = useState('')
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
   const [plannedEndTime, setPlannedEndTime] = useState('')
@@ -36,6 +36,7 @@ export function TaskComposer({
     }
 
     const previousOverflow = document.body.style.overflow
+    const openButton = openButtonRef.current
     document.body.style.overflow = 'hidden'
     titleInputRef.current?.focus()
 
@@ -50,7 +51,7 @@ export function TaskComposer({
     return () => {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
-      openButtonRef.current?.focus()
+      openButton?.focus()
     }
   }, [isOpen])
 
@@ -71,10 +72,13 @@ export function TaskComposer({
       return
     }
 
+    const selectedProject =
+      projects.find((project) => project.id === projectId) ?? null
     const isCreated = await addTask({
       title: normalizedTitle,
       note,
-      project,
+      project: selectedProject?.title ?? '',
+      projectId: selectedProject?.id ?? null,
       plannedDate: plannedDate || null,
       plannedStartTime: plannedStartTime || null,
       plannedEndTime: plannedEndTime || null,
@@ -86,7 +90,7 @@ export function TaskComposer({
     }
 
     setTitle('')
-    setProject('')
+    setProjectId('')
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
@@ -161,11 +165,17 @@ export function TaskComposer({
 
               <label className={styles.field}>
                 <span>Проект</span>
-                <input
-                  value={project}
-                  placeholder="Planner, Work, Study"
-                  onChange={(event) => setProject(event.target.value)}
-                />
+                <select
+                  value={projectId}
+                  onChange={(event) => setProjectId(event.target.value)}
+                >
+                  <option value="">Без проекта</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.icon} {project.title}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className={styles.field}>

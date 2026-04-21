@@ -13,6 +13,7 @@ const navigation = [
   { to: '/timeline', label: 'Timeline' },
   { to: '/inbox', label: 'Inbox' },
   { to: '/projects', label: 'Projects' },
+  { to: '/admin', label: 'Admin' },
 ] as const
 
 export function Sidebar() {
@@ -21,6 +22,7 @@ export function Sidebar() {
     errorMessage,
     isLoading,
     isSyncing,
+    projects,
     queuedMutationCount,
     refresh,
     tasks,
@@ -29,6 +31,12 @@ export function Sidebar() {
   const { data: session } = usePlannerSession()
   const todayKey = getDateKey(new Date())
   const summary = getPlannerSummary(tasks, todayKey)
+  const visibleNavigation = navigation.filter(
+    (item) =>
+      item.to !== '/admin' ||
+      session?.role === 'admin' ||
+      session?.role === 'owner',
+  )
   const syncStateLabel = errorMessage
     ? 'Connection issue'
     : isLoading
@@ -86,9 +94,11 @@ export function Sidebar() {
           </div>
         ) : null}
 
-        {auth.isAuthEnabled && auth.email ? (
+        {auth.isAuthEnabled && (auth.email || auth.accessToken) ? (
           <div className={styles.accountRow}>
-            <span className={styles.accountEmail}>{auth.email}</span>
+            <span className={styles.accountEmail}>
+              {auth.email ?? 'Supabase session'}
+            </span>
             <button
               className={styles.signOutButton}
               type="button"
@@ -118,7 +128,7 @@ export function Sidebar() {
       </section>
 
       <nav aria-label="Main navigation" className={styles.navList}>
-        {navigation.map((item) => {
+        {visibleNavigation.map((item) => {
           const count =
             item.to === '/today'
               ? summary.focusCount + summary.overdueCount
@@ -126,7 +136,9 @@ export function Sidebar() {
                 ? summary.timelineCount
                 : item.to === '/inbox'
                   ? summary.inboxCount
-                  : summary.projectCount
+                  : item.to === '/projects'
+                    ? projects.length
+                    : (session?.role ?? 'Admin')
 
           return (
             <NavLink

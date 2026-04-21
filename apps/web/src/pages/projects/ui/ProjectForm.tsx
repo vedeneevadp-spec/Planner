@@ -1,0 +1,161 @@
+import { type FormEvent, useId, useState } from 'react'
+
+import type { Project } from '@/entities/project'
+import { cx } from '@/shared/lib/classnames'
+
+import styles from './ProjectsPage.module.css'
+
+const PROJECT_COLORS = [
+  '#2f6f62',
+  '#c65d32',
+  '#d49b35',
+  '#3f5f9f',
+  '#7a4e92',
+  '#576056',
+] as const
+
+const PROJECT_ICONS = ['📁', '🎯', '💼', '📚', '🧭', '✦'] as const
+
+export interface ProjectFormValues {
+  color: string
+  description: string
+  icon: string
+  title: string
+}
+
+interface ProjectFormProps {
+  project?: Project | undefined
+  submitLabel: string
+  onCancel?: (() => void) | undefined
+  onSubmit: (values: ProjectFormValues) => Promise<boolean>
+}
+
+export function ProjectForm({
+  project,
+  submitLabel,
+  onCancel,
+  onSubmit,
+}: ProjectFormProps) {
+  const titleId = useId()
+  const [title, setTitle] = useState(project?.title ?? '')
+  const [description, setDescription] = useState(project?.description ?? '')
+  const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0])
+  const [icon, setIcon] = useState(project?.icon ?? PROJECT_ICONS[0])
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const normalizedTitle = title.trim()
+
+    if (!normalizedTitle) {
+      return
+    }
+
+    const isSaved = await onSubmit({
+      color,
+      description,
+      icon,
+      title: normalizedTitle,
+    })
+
+    if (!isSaved || project) {
+      return
+    }
+
+    setTitle('')
+    setDescription('')
+    setColor(PROJECT_COLORS[0])
+    setIcon(PROJECT_ICONS[0])
+  }
+
+  return (
+    <form
+      className={styles.projectForm}
+      aria-labelledby={titleId}
+      onSubmit={(event) => {
+        void handleSubmit(event)
+      }}
+    >
+      <div className={styles.formHeader}>
+        <h3 id={titleId}>
+          {project ? 'Редактировать проект' : 'Новый проект'}
+        </h3>
+        {onCancel ? (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={onCancel}
+          >
+            Отмена
+          </button>
+        ) : null}
+      </div>
+
+      <div className={styles.formGrid}>
+        <label className={styles.field}>
+          <span>Название</span>
+          <input
+            required
+            value={title}
+            placeholder="Planner"
+            onChange={(event) => setTitle(event.target.value)}
+          />
+        </label>
+
+        <label className={styles.field}>
+          <span>Описание</span>
+          <textarea
+            rows={3}
+            value={description}
+            placeholder="Контекст проекта и ожидаемый результат"
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className={styles.pickerRow}>
+        <div className={styles.pickerGroup}>
+          <span className={styles.pickerLabel}>Маркер</span>
+          <div className={styles.swatchList}>
+            {PROJECT_COLORS.map((projectColor) => (
+              <button
+                key={projectColor}
+                className={cx(
+                  styles.swatchButton,
+                  color === projectColor && styles.swatchButtonActive,
+                )}
+                type="button"
+                style={{ backgroundColor: projectColor }}
+                aria-label={`Цвет ${projectColor}`}
+                onClick={() => setColor(projectColor)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className={styles.pickerGroup}>
+          <span className={styles.pickerLabel}>Иконка</span>
+          <div className={styles.iconList}>
+            {PROJECT_ICONS.map((projectIcon) => (
+              <button
+                key={projectIcon}
+                className={cx(
+                  styles.iconButton,
+                  icon === projectIcon && styles.iconButtonActive,
+                )}
+                type="button"
+                onClick={() => setIcon(projectIcon)}
+              >
+                {projectIcon}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <button className={styles.primaryButton} type="submit">
+        {submitLabel}
+      </button>
+    </form>
+  )
+}

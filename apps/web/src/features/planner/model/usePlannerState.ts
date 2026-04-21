@@ -1,7 +1,16 @@
-import { generateUuidV7, type TaskRecord } from '@planner/contracts'
+import {
+  generateUuidV7,
+  type ProjectRecord,
+  type TaskRecord,
+} from '@planner/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import type {
+  NewProjectInput,
+  Project,
+  ProjectUpdateInput,
+} from '@/entities/project'
 import type {
   NewTaskInput,
   Task,
@@ -11,6 +20,7 @@ import type {
 import { sortTasks } from '@/entities/task'
 import {
   getSupabaseBrowserClient,
+  isUnauthorizedSessionApiError,
   usePlannerSession,
   useSessionAuth,
 } from '@/features/session'
@@ -22,7 +32,9 @@ import {
   enqueuePlannerOfflineMutation,
   getLastTaskEventId,
   isPlannerOfflineStorageAvailable,
+  loadCachedProjectRecords,
   loadCachedTaskRecords,
+  replaceCachedProjectRecords,
   replaceCachedTaskRecords,
   setLastTaskEventId,
 } from '../lib/offline-planner-store'
@@ -32,6 +44,7 @@ import {
 } from '../lib/offline-planner-sync'
 import {
   createPlannerApiClient,
+  isUnauthorizedPlannerApiError,
   type PlannerApiClient,
   PlannerApiError,
 } from '../lib/planner-api'
@@ -40,6 +53,16 @@ import type { PlannerState } from './planner.types'
 interface PlannerMutationContext {
   optimisticTaskId: string | undefined
   previousTaskRecords: TaskRecord[] | undefined
+}
+
+interface ProjectMutationContext {
+  optimisticProjectId: string | undefined
+  previousProjectRecords: ProjectRecord[] | undefined
+}
+
+interface UpdateProjectMutationVariables {
+  input: ProjectUpdateInput
+  projectId: string
 }
 
 interface ScheduleMutationVariables {
@@ -70,9 +93,24 @@ function toPlannerTask(task: TaskRecord): Task {
     plannedEndTime: task.plannedEndTime,
     plannedStartTime: task.plannedStartTime,
     project: task.project,
+    projectId: task.projectId,
     status: task.status,
     title: task.title,
   }
+}
+
+function sortProjects(projects: ProjectRecord[]): ProjectRecord[] {
+  return [...projects].sort((left, right) => {
+    if (left.title !== right.title) {
+      return left.title.localeCompare(right.title)
+    }
+
+    if (left.createdAt === right.createdAt) {
+      return 0
+    }
+
+    return left.createdAt < right.createdAt ? -1 : 1
+  })
 }
 
 function normalizeSchedule({
@@ -133,12 +171,78 @@ function createOptimisticTaskRecord(
     plannedEndTime: schedule.plannedEndTime,
     plannedStartTime: schedule.plannedStartTime,
     project: input.project.trim(),
+    projectId: input.projectId,
     status: 'todo',
     title: input.title.trim(),
     updatedAt: now,
     version: 1,
     workspaceId,
   }
+}
+
+function createOptimisticProjectRecord(
+  input: NewProjectInput,
+  workspaceId: string,
+): ProjectRecord {
+  const now = new Date().toISOString()
+
+  return {
+    color: input.color.trim(),
+    createdAt: now,
+    deletedAt: null,
+    description: input.description.trim(),
+    icon: input.icon.trim(),
+    id: input.id ?? generateUuidV7(),
+    status: 'active',
+    title: input.title.trim(),
+    updatedAt: now,
+    version: 1,
+    workspaceId,
+  }
+}
+
+function replaceProjectRecord(
+  projectRecords: ProjectRecord[],
+  nextProject: ProjectRecord,
+): ProjectRecord[] {
+  const existingIndex = projectRecords.findIndex(
+    (project) => project.id === nextProject.id,
+  )
+
+  if (existingIndex === -1) {
+    return sortProjects([nextProject, ...projectRecords])
+  }
+
+  return sortProjects(
+    projectRecords.map((project) =>
+      project.id === nextProject.id ? nextProject : project,
+    ),
+  )
+}
+
+function replaceOptimisticProjectRecord(
+  projectRecords: ProjectRecord[],
+  optimisticProjectId: string | undefined,
+  nextProject: ProjectRecord,
+): ProjectRecord[] {
+  if (!optimisticProjectId) {
+    return replaceProjectRecord(projectRecords, nextProject)
+  }
+
+  let replaced = false
+  const nextProjectRecords = projectRecords.map((project) => {
+    if (project.id !== optimisticProjectId) {
+      return project
+    }
+
+    replaced = true
+
+    return nextProject
+  })
+
+  return replaced
+    ? sortProjects(nextProjectRecords)
+    : replaceProjectRecord(nextProjectRecords, nextProject)
 }
 
 function replaceTaskRecord(
@@ -187,6 +291,20 @@ function updateTaskRecord(
   return taskRecords.map((task) => (task.id === taskId ? updater(task) : task))
 }
 
+function updateTaskProjectRecords(
+  taskRecords: TaskRecord[],
+  project: ProjectRecord,
+): TaskRecord[] {
+  return taskRecords.map((task) =>
+    task.projectId === project.id
+      ? {
+          ...task,
+          project: project.title,
+        }
+      : task,
+  )
+}
+
 function removeTaskRecord(
   taskRecords: TaskRecord[],
   taskId: string,
@@ -202,6 +320,13 @@ function getTaskRecord(
 }
 
 function getErrorMessage(error: unknown): string {
+  if (
+    isUnauthorizedPlannerApiError(error) ||
+    isUnauthorizedSessionApiError(error)
+  ) {
+    return 'Сессия истекла. Войдите заново.'
+  }
+
   if (error instanceof PlannerApiError) {
     return error.message
   }
@@ -246,7 +371,7 @@ function toggleTaskId(
 }
 
 export function usePlannerState(): PlannerState {
-  const auth = useSessionAuth()
+  const { accessToken, expireSession, isAuthEnabled } = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const actorUserId = session?.actorUserId
@@ -259,6 +384,8 @@ export function usePlannerState(): PlannerState {
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(
     () => new Set(),
   )
+  const pendingTaskIdsRef = useRef<Set<string>>(new Set())
+  const taskEventCursorSyncRef = useRef<Promise<void> | null>(null)
   const [queuedMutationCount, setQueuedMutationCount] = useState(0)
   const [conflictedMutationCount, setConflictedMutationCount] = useState(0)
   const plannerApi = useMemo(() => {
@@ -267,14 +394,18 @@ export function usePlannerState(): PlannerState {
     }
 
     return createPlannerApiClient({
-      ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
+      ...(accessToken ? { accessToken } : {}),
       actorUserId: session.actorUserId,
       apiBaseUrl: plannerApiConfig.apiBaseUrl,
       workspaceId: session.workspaceId,
     })
-  }, [auth.accessToken, session])
+  }, [accessToken, session])
   const taskQueryKey = useMemo(
     () => ['planner', 'tasks', workspaceId ?? 'pending'] as const,
+    [workspaceId],
+  )
+  const projectQueryKey = useMemo(
+    () => ['planner', 'projects', workspaceId ?? 'pending'] as const,
     [workspaceId],
   )
 
@@ -283,6 +414,15 @@ export function usePlannerState(): PlannerState {
     queryFn: ({ signal }) =>
       requirePlannerApi(plannerApi).listTasks({}, signal),
     queryKey: taskQueryKey,
+    retry: (failureCount, error) =>
+      !isUnauthorizedPlannerApiError(error) && failureCount < 2,
+  })
+  const projectsQuery = useQuery({
+    enabled: plannerApi !== null,
+    queryFn: ({ signal }) => requirePlannerApi(plannerApi).listProjects(signal),
+    queryKey: projectQueryKey,
+    retry: (failureCount, error) =>
+      !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
   const refreshQueuedMutationCount = useCallback(async () => {
     if (!workspaceId) {
@@ -311,12 +451,34 @@ export function usePlannerState(): PlannerState {
       await replaceCachedTaskRecords(workspaceId, currentTaskRecords)
     }
   }, [queryClient, taskQueryKey, workspaceId])
+  const persistCurrentProjectRecords = useCallback(async () => {
+    if (!workspaceId) {
+      return
+    }
+
+    const currentProjectRecords =
+      queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
+
+    if (currentProjectRecords) {
+      await replaceCachedProjectRecords(workspaceId, currentProjectRecords)
+    }
+  }, [projectQueryKey, queryClient, workspaceId])
   const syncTaskEventCursor = useCallback(async () => {
+    if (taskEventCursorSyncRef.current) {
+      try {
+        await taskEventCursorSyncRef.current
+      } catch {
+        // The owner call reports the sync error.
+      }
+
+      return
+    }
+
     if (!plannerApi || !workspaceId) {
       return
     }
 
-    try {
+    taskEventCursorSyncRef.current = (async () => {
       const afterEventId = await getLastTaskEventId(workspaceId)
       const result = await plannerApi.listTaskEvents({
         afterEventId,
@@ -325,17 +487,26 @@ export function usePlannerState(): PlannerState {
 
       if (result.nextEventId > afterEventId) {
         await setLastTaskEventId(workspaceId, result.nextEventId)
-      }
-
-      if (result.events.length > 0) {
         await queryClient.invalidateQueries({ queryKey: taskQueryKey })
       }
+    })()
+
+    try {
+      await taskEventCursorSyncRef.current
     } catch (error) {
+      if (isUnauthorizedPlannerApiError(error)) {
+        void expireSession()
+
+        return
+      }
+
       if (!isQueueablePlannerMutationError(error)) {
         setMutationErrorMessage(getErrorMessage(error))
       }
+    } finally {
+      taskEventCursorSyncRef.current = null
     }
-  }, [plannerApi, queryClient, taskQueryKey, workspaceId])
+  }, [expireSession, plannerApi, queryClient, taskQueryKey, workspaceId])
   const drainQueuedMutations = useCallback(async () => {
     if (!plannerApi || !workspaceId) {
       return
@@ -346,6 +517,15 @@ export function usePlannerState(): PlannerState {
     try {
       const result = await drainPlannerOfflineQueue({
         api: plannerApi,
+        onProjectSynced: (project) => {
+          queryClient.setQueryData<ProjectRecord[]>(
+            projectQueryKey,
+            (current = []) => replaceProjectRecord(current, project),
+          )
+          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+            updateTaskProjectRecords(current, project),
+          )
+        },
         onTaskDeleted: (taskId) => {
           queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
             removeTaskRecord(current, taskId),
@@ -360,6 +540,7 @@ export function usePlannerState(): PlannerState {
       })
 
       if (result.synced > 0 || result.conflicted > 0) {
+        await queryClient.invalidateQueries({ queryKey: projectQueryKey })
         await queryClient.invalidateQueries({ queryKey: taskQueryKey })
       }
 
@@ -378,6 +559,7 @@ export function usePlannerState(): PlannerState {
     }
   }, [
     plannerApi,
+    projectQueryKey,
     queryClient,
     refreshQueuedMutationCount,
     syncTaskEventCursor,
@@ -402,12 +584,29 @@ export function usePlannerState(): PlannerState {
         (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
       )
     })
+    void loadCachedProjectRecords(workspaceId).then((cachedProjectRecords) => {
+      if (!isActive || cachedProjectRecords.length === 0) {
+        return
+      }
+
+      queryClient.setQueryData<ProjectRecord[]>(
+        projectQueryKey,
+        (currentProjectRecords) =>
+          currentProjectRecords ?? cachedProjectRecords,
+      )
+    })
     void refreshQueuedMutationCount()
 
     return () => {
       isActive = false
     }
-  }, [queryClient, refreshQueuedMutationCount, taskQueryKey, workspaceId])
+  }, [
+    projectQueryKey,
+    queryClient,
+    refreshQueuedMutationCount,
+    taskQueryKey,
+    workspaceId,
+  ])
 
   useEffect(() => {
     if (!workspaceId || !tasksQuery.data) {
@@ -416,6 +615,14 @@ export function usePlannerState(): PlannerState {
 
     void replaceCachedTaskRecords(workspaceId, tasksQuery.data)
   }, [tasksQuery.data, workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId || !projectsQuery.data) {
+      return
+    }
+
+    void replaceCachedProjectRecords(workspaceId, projectsQuery.data)
+  }, [projectsQuery.data, workspaceId])
 
   useEffect(() => {
     void drainQueuedMutations()
@@ -472,6 +679,129 @@ export function usePlannerState(): PlannerState {
       void supabase.removeChannel(channel)
     }
   }, [syncTaskEventCursor, workspaceId])
+
+  const createProjectMutation = useMutation({
+    mutationFn: (input: NewProjectInput) =>
+      requirePlannerApi(plannerApi).createProject(input),
+    onMutate: async (input): Promise<ProjectMutationContext> => {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: projectQueryKey })
+
+      const previousProjectRecords =
+        queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
+      const optimisticProject = createOptimisticProjectRecord(
+        input,
+        session?.workspaceId ?? 'pending',
+      )
+
+      queryClient.setQueryData<ProjectRecord[]>(
+        projectQueryKey,
+        (current = []) => sortProjects([optimisticProject, ...current]),
+      )
+
+      return {
+        optimisticProjectId: optimisticProject.id,
+        previousProjectRecords,
+      }
+    },
+    onError: (error, _input, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
+      if (context?.previousProjectRecords) {
+        queryClient.setQueryData(
+          projectQueryKey,
+          context.previousProjectRecords,
+        )
+      }
+    },
+    onSuccess: (project, _input, context) => {
+      queryClient.setQueryData<ProjectRecord[]>(
+        projectQueryKey,
+        (current = []) =>
+          replaceOptimisticProjectRecord(
+            current,
+            context?.optimisticProjectId,
+            project,
+          ),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+    },
+  })
+
+  const updateProjectMutation = useMutation({
+    mutationFn: ({ input, projectId }: UpdateProjectMutationVariables) =>
+      requirePlannerApi(plannerApi).updateProject(projectId, input),
+    onMutate: async ({ input, projectId }): Promise<ProjectMutationContext> => {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: projectQueryKey })
+
+      const previousProjectRecords =
+        queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
+      const now = new Date().toISOString()
+
+      queryClient.setQueryData<ProjectRecord[]>(
+        projectQueryKey,
+        (current = []) =>
+          sortProjects(
+            current.map((project) =>
+              project.id === projectId
+                ? {
+                    ...project,
+                    ...(input.title !== undefined
+                      ? { title: input.title.trim() }
+                      : {}),
+                    ...(input.description !== undefined
+                      ? { description: input.description.trim() }
+                      : {}),
+                    ...(input.color !== undefined
+                      ? { color: input.color.trim() }
+                      : {}),
+                    ...(input.icon !== undefined
+                      ? { icon: input.icon.trim() }
+                      : {}),
+                    updatedAt: now,
+                    version: project.version + 1,
+                  }
+                : project,
+            ),
+          ),
+      )
+
+      return {
+        optimisticProjectId: undefined,
+        previousProjectRecords,
+      }
+    },
+    onError: (error, _variables, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
+      if (context?.previousProjectRecords) {
+        queryClient.setQueryData(
+          projectQueryKey,
+          context.previousProjectRecords,
+        )
+      }
+    },
+    onSuccess: (project) => {
+      queryClient.setQueryData<ProjectRecord[]>(
+        projectQueryKey,
+        (current = []) => replaceProjectRecord(current, project),
+      )
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        updateTaskProjectRecords(current, project),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
 
   const createTaskMutation = useMutation({
     mutationFn: (input: NewTaskInput) =>
@@ -657,14 +987,63 @@ export function usePlannerState(): PlannerState {
     },
   })
 
+  useEffect(() => {
+    const authError =
+      sessionQuery.error ??
+      projectsQuery.error ??
+      tasksQuery.error ??
+      createProjectMutation.error ??
+      updateProjectMutation.error ??
+      createTaskMutation.error ??
+      setTaskStatusMutation.error ??
+      setTaskScheduleMutation.error ??
+      removeTaskMutation.error
+
+    if (
+      !isAuthEnabled ||
+      !accessToken ||
+      !(
+        isUnauthorizedSessionApiError(authError) ||
+        isUnauthorizedPlannerApiError(authError)
+      )
+    ) {
+      return
+    }
+
+    void expireSession()
+  }, [
+    accessToken,
+    createProjectMutation.error,
+    createTaskMutation.error,
+    expireSession,
+    isAuthEnabled,
+    projectsQuery.error,
+    removeTaskMutation.error,
+    sessionQuery.error,
+    setTaskScheduleMutation.error,
+    setTaskStatusMutation.error,
+    tasksQuery.error,
+    updateProjectMutation.error,
+  ])
+
+  const projects = useMemo<Project[]>(
+    () => sortProjects(projectsQuery.data ?? []),
+    [projectsQuery.data],
+  )
   const tasks = useMemo(
     () => sortTasks((tasksQuery.data ?? []).map((task) => toPlannerTask(task))),
     [tasksQuery.data],
   )
   const hasTaskRecords = tasksQuery.data !== undefined
+  const hasProjectRecords = projectsQuery.data !== undefined
 
   function setTaskPending(taskId: string, isPending: boolean): void {
-    setPendingTaskIds((current) => toggleTaskId(current, taskId, isPending))
+    pendingTaskIdsRef.current = toggleTaskId(
+      pendingTaskIdsRef.current,
+      taskId,
+      isPending,
+    )
+    setPendingTaskIds(new Set(pendingTaskIdsRef.current))
   }
 
   function isTaskPending(taskId: string): boolean {
@@ -681,6 +1060,7 @@ export function usePlannerState(): PlannerState {
   async function runMutation(
     action: () => Promise<unknown>,
     queueOfflineMutation?: () => Promise<void>,
+    persistOfflineSnapshot: () => Promise<void> = persistCurrentTaskRecords,
   ): Promise<boolean> {
     try {
       await action()
@@ -689,7 +1069,7 @@ export function usePlannerState(): PlannerState {
     } catch (error) {
       if (queueOfflineMutation && shouldKeepOptimisticMutation(error)) {
         await queueOfflineMutation()
-        await persistCurrentTaskRecords()
+        await persistOfflineSnapshot()
         await refreshQueuedMutationCount()
         setMutationErrorMessage(
           'Нет соединения. Изменение сохранено локально и синхронизируется автоматически.',
@@ -710,10 +1090,75 @@ export function usePlannerState(): PlannerState {
         return false
       }
 
+      if (
+        error instanceof PlannerApiError &&
+        error.code === 'project_version_conflict'
+      ) {
+        await queryClient.invalidateQueries({ queryKey: projectQueryKey })
+        setMutationErrorMessage(
+          'Проект уже изменился на сервере. Обновили данные, повторите действие.',
+        )
+
+        return false
+      }
+
       setMutationErrorMessage(getErrorMessage(error))
 
       return false
     }
+  }
+
+  async function addProject(input: NewProjectInput): Promise<boolean> {
+    const projectId = input.id ?? generateUuidV7()
+    const inputWithId = {
+      ...input,
+      id: projectId,
+    }
+
+    return runMutation(
+      () => createProjectMutation.mutateAsync(inputWithId),
+      async () => {
+        if (!actorUserId || !workspaceId) {
+          throw new Error('Planner session is not ready.')
+        }
+
+        await enqueuePlannerOfflineMutation({
+          actorUserId,
+          input: inputWithId,
+          projectId,
+          type: 'project.create',
+          workspaceId,
+        })
+      },
+      persistCurrentProjectRecords,
+    )
+  }
+
+  async function updateProject(
+    projectId: string,
+    input: ProjectUpdateInput,
+  ): Promise<boolean> {
+    return runMutation(
+      () =>
+        updateProjectMutation.mutateAsync({
+          input,
+          projectId,
+        }),
+      async () => {
+        if (!actorUserId || !workspaceId) {
+          throw new Error('Planner session is not ready.')
+        }
+
+        await enqueuePlannerOfflineMutation({
+          actorUserId,
+          input,
+          projectId,
+          type: 'project.update',
+          workspaceId,
+        })
+      },
+      persistCurrentProjectRecords,
+    )
   }
 
   async function addTask(input: NewTaskInput): Promise<boolean> {
@@ -745,7 +1190,7 @@ export function usePlannerState(): PlannerState {
     taskId: string,
     action: () => Promise<boolean>,
   ): Promise<boolean> {
-    if (pendingTaskIds.has(taskId)) {
+    if (pendingTaskIdsRef.current.has(taskId)) {
       setMutationErrorMessage(
         'Дождитесь завершения текущего изменения задачи и повторите действие.',
       )
@@ -920,30 +1365,40 @@ export function usePlannerState(): PlannerState {
 
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
+      queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] }),
       queryClient.invalidateQueries({ queryKey: ['planner', 'tasks'] }),
     ])
   }
 
   return {
+    addProject,
     addTask,
     conflictedMutationCount,
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
+      (projectsQuery.error ? getErrorMessage(projectsQuery.error) : null) ??
       (tasksQuery.error ? getErrorMessage(tasksQuery.error) : null),
     isLoading:
       sessionQuery.isPending ||
+      (sessionQuery.isSuccess &&
+        projectsQuery.isPending &&
+        !hasProjectRecords) ||
       (sessionQuery.isSuccess && tasksQuery.isPending && !hasTaskRecords),
     isSyncing:
       sessionQuery.isFetching ||
+      projectsQuery.isFetching ||
       tasksQuery.isFetching ||
       isDrainingOfflineQueue ||
       queuedMutationCount > 0 ||
+      createProjectMutation.isPending ||
+      updateProjectMutation.isPending ||
       createTaskMutation.isPending ||
       setTaskStatusMutation.isPending ||
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
     isTaskPending,
+    projects,
     queuedMutationCount,
     refresh,
     removeTask,
@@ -951,5 +1406,6 @@ export function usePlannerState(): PlannerState {
     setTaskSchedule,
     setTaskStatus,
     tasks,
+    updateProject,
   }
 }

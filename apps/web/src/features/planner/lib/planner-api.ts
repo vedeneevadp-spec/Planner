@@ -1,8 +1,15 @@
 import {
   apiErrorSchema,
   generateUuidV7,
+  type NewProjectInput,
+  newProjectInputSchema,
   type NewTaskInput,
   newTaskInputSchema,
+  projectListResponseSchema,
+  type ProjectRecord,
+  projectRecordSchema,
+  type ProjectUpdateInput,
+  projectUpdateInputSchema,
   type TaskEventListFilters,
   taskEventListFiltersSchema,
   type TaskEventListResponse,
@@ -42,6 +49,12 @@ export class PlannerApiError extends Error {
   }
 }
 
+export function isUnauthorizedPlannerApiError(
+  error: unknown,
+): error is PlannerApiError {
+  return error instanceof PlannerApiError && error.status === 401
+}
+
 export interface PlannerApiClientConfig {
   accessToken?: string
   actorUserId: string
@@ -50,11 +63,17 @@ export interface PlannerApiClientConfig {
 }
 
 export interface PlannerApiClient {
+  createProject: (input: NewProjectInput) => Promise<ProjectRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
+  getProject: (
+    projectId: string,
+    signal?: RequestSignal,
+  ) => Promise<ProjectRecord>
   listTaskEvents: (
     filters?: TaskEventListFilters,
     signal?: RequestSignal,
   ) => Promise<TaskEventListResponse>
+  listProjects: (signal?: RequestSignal) => Promise<ProjectRecord[]>
   listTasks: (
     filters?: TaskListFilters,
     signal?: RequestSignal,
@@ -68,6 +87,10 @@ export interface PlannerApiClient {
     taskId: string,
     input: TaskStatusUpdateInput,
   ) => Promise<TaskRecord>
+  updateProject: (
+    projectId: string,
+    input: ProjectUpdateInput,
+  ) => Promise<ProjectRecord>
 }
 
 export function createPlannerApiClient(
@@ -150,6 +173,45 @@ export function createPlannerApiClient(
   }
 
   return {
+    async listProjects(signal) {
+      return request({
+        path: '/api/v1/projects',
+        responseSchema: projectListResponseSchema,
+        signal,
+      })
+    },
+    async getProject(projectId, signal) {
+      return request({
+        path: `/api/v1/projects/${encodeURIComponent(projectId)}`,
+        responseSchema: projectRecordSchema,
+        signal,
+      })
+    },
+    async createProject(input) {
+      const validatedInput = newProjectInputSchema.parse({
+        ...input,
+        id: input.id ?? generateUuidV7(),
+      })
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/projects',
+        responseSchema: projectRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async updateProject(projectId, input) {
+      const validatedInput = projectUpdateInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'PATCH',
+        path: `/api/v1/projects/${encodeURIComponent(projectId)}`,
+        responseSchema: projectRecordSchema,
+        writeAccess: true,
+      })
+    },
     async listTasks(filters = {}, signal) {
       const validatedFilters = taskListFiltersSchema.parse(filters)
 

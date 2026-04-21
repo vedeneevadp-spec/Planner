@@ -11,6 +11,16 @@ import {
 } from './infrastructure/db/client.js'
 import { createDatabaseConfig } from './infrastructure/db/config.js'
 import {
+  EmojiSetService,
+  MemoryEmojiSetRepository,
+  PostgresEmojiSetRepository,
+} from './modules/emoji-sets/index.js'
+import {
+  MemoryProjectRepository,
+  PostgresProjectRepository,
+  ProjectService,
+} from './modules/projects/index.js'
+import {
   MemorySessionRepository,
   PostgresSessionRepository,
   SessionService,
@@ -38,10 +48,18 @@ export function createApiKernel(
   const taskRepository = database
     ? new PostgresTaskRepository(database.db)
     : new MemoryTaskRepository()
+  const projectRepository = database
+    ? new PostgresProjectRepository(database.db)
+    : new MemoryProjectRepository()
+  const emojiSetRepository = database
+    ? new PostgresEmojiSetRepository(database.db)
+    : new MemoryEmojiSetRepository()
   const sessionRepository = database
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
   const sessionService = new SessionService(sessionRepository)
+  const emojiSetService = new EmojiSetService(emojiSetRepository)
+  const projectService = new ProjectService(projectRepository)
   const taskService = new TaskService(taskRepository)
   const requestAuthenticator =
     config.authMode === 'supabase' && config.supabaseAuth
@@ -50,6 +68,8 @@ export function createApiKernel(
   const app = buildApiApp({
     config,
     database,
+    emojiSetService,
+    projectService,
     requestAuthenticator,
     sessionService,
     taskService,

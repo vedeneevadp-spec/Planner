@@ -1,4 +1,4 @@
-import type { TaskRecord } from '@planner/contracts'
+import type { ProjectRecord, TaskRecord } from '@planner/contracts'
 
 import {
   completePlannerOfflineMutation,
@@ -8,6 +8,7 @@ import {
   markPlannerOfflineMutationSyncing,
   type PlannerOfflineMutationRecord,
   removeCachedTaskRecord,
+  upsertCachedProjectRecord,
   upsertCachedTaskRecord,
 } from './offline-planner-store'
 import { type PlannerApiClient, PlannerApiError } from './planner-api'
@@ -21,6 +22,7 @@ export interface PlannerOfflineDrainResult {
 
 export interface DrainPlannerOfflineQueueOptions {
   api: PlannerApiClient
+  onProjectSynced?: (project: ProjectRecord) => void
   onTaskDeleted?: (taskId: string) => void
   onTaskSynced?: (task: TaskRecord) => void
   workspaceId: string
@@ -32,12 +34,14 @@ interface ConflictDetails {
 }
 
 interface OfflineMutationCallbacks {
+  onProjectSynced?: (project: ProjectRecord) => void
   onTaskDeleted?: (taskId: string) => void
   onTaskSynced?: (task: TaskRecord) => void
 }
 
 export async function drainPlannerOfflineQueue({
   api,
+  onProjectSynced,
   onTaskDeleted,
   onTaskSynced,
   workspaceId,
@@ -50,6 +54,10 @@ export async function drainPlannerOfflineQueue({
   }
   const mutations = await listRetryablePlannerOfflineMutations(workspaceId)
   const callbacks: OfflineMutationCallbacks = {}
+
+  if (onProjectSynced) {
+    callbacks.onProjectSynced = onProjectSynced
+  }
 
   if (onTaskDeleted) {
     callbacks.onTaskDeleted = onTaskDeleted
@@ -109,6 +117,24 @@ async function applyOfflineMutation(
   mutation: PlannerOfflineMutationRecord,
   callbacks: OfflineMutationCallbacks,
 ): Promise<void> {
+  if (mutation.type === 'project.create') {
+    const project = await api.createProject(mutation.input)
+
+    await upsertCachedProjectRecord(mutation.workspaceId, project)
+    callbacks.onProjectSynced?.(project)
+
+    return
+  }
+
+  if (mutation.type === 'project.update') {
+    const project = await api.updateProject(mutation.projectId, mutation.input)
+
+    await upsertCachedProjectRecord(mutation.workspaceId, project)
+    callbacks.onProjectSynced?.(project)
+
+    return
+  }
+
   if (mutation.type === 'task.create') {
     const task = await api.createTask(mutation.input)
 
@@ -149,7 +175,9 @@ async function applyOfflineMutation(
 
 function isVersionConflict(error: unknown): error is PlannerApiError {
   return (
-    error instanceof PlannerApiError && error.code === 'task_version_conflict'
+    error instanceof PlannerApiError &&
+    (error.code === 'project_version_conflict' ||
+      error.code === 'task_version_conflict')
   )
 }
 

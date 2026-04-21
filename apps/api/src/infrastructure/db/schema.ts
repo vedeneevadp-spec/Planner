@@ -70,6 +70,8 @@ export interface AppProjectsTable {
   created_at: Generated<TimestampColumn>
   created_by: string | null
   deleted_at: TimestampColumn | null
+  description: string
+  icon: string
   id: Generated<string>
   metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
   position: number
@@ -78,6 +80,42 @@ export interface AppProjectsTable {
   title: string
   updated_at: Generated<TimestampColumn>
   updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppEmojiSetsTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  description: string
+  id: Generated<string>
+  metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  slug: string
+  source: 'custom' | 'telegram'
+  status: 'active' | 'archived'
+  title: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppEmojiAssetsTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  emoji_set_id: string
+  id: Generated<string>
+  keywords: ColumnType<string[], string[] | string, string[] | string>
+  kind: 'unicode' | 'image'
+  label: string
+  metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  shortcode: string
+  sort_order: number
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  value: string
   version: Generated<number>
   workspace_id: string
 }
@@ -158,6 +196,8 @@ export interface AppOutboxTable {
 
 export interface DatabaseSchema {
   'app.device_sessions': AppDeviceSessionsTable
+  'app.emoji_assets': AppEmojiAssetsTable
+  'app.emoji_sets': AppEmojiSetsTable
   'app.outbox': AppOutboxTable
   'app.projects': AppProjectsTable
   'app.task_attachments': AppTaskAttachmentsTable

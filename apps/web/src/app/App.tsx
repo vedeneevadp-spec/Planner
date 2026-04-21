@@ -1,4 +1,4 @@
-import { PlannerProvider } from '@/features/planner'
+import { PlannerProvider, PlannerQueryProvider } from '@/features/planner'
 import { AuthGate, SessionProvider } from '@/features/session'
 import { Sidebar } from '@/widgets/sidebar'
 
@@ -8,16 +8,18 @@ import { AppRouter } from './router'
 function App() {
   return (
     <SessionProvider>
-      <AuthGate>
-        <PlannerProvider>
-          <div className={styles.shell}>
-            <Sidebar />
-            <main className={styles.main}>
-              <AppRouter />
-            </main>
-          </div>
-        </PlannerProvider>
-      </AuthGate>
+      <PlannerQueryProvider>
+        <AuthGate>
+          <PlannerProvider>
+            <div className={styles.shell}>
+              <Sidebar />
+              <main className={styles.main}>
+                <AppRouter />
+              </main>
+            </div>
+          </PlannerProvider>
+        </AuthGate>
+      </PlannerQueryProvider>
     </SessionProvider>
   )
 }

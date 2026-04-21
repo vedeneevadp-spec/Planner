@@ -12,6 +12,7 @@ const DEFAULT_DURATION_MINUTES = 60
 export interface NormalizedTaskInput extends NewTaskInput {
   note: string
   project: string
+  projectId: string | null
   title: string
 }
 
@@ -56,6 +57,7 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     ...input,
     note: input.note.trim(),
     project: input.project.trim(),
+    projectId: input.projectId,
     title: input.title.trim(),
   }
 }
@@ -137,6 +139,7 @@ export function createStoredTaskRecord(
     plannedEndTime: schedule.plannedEndTime,
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
+    projectId: normalizedInput.projectId,
     status: 'todo',
     title: normalizedInput.title,
     updatedAt: now,
@@ -192,6 +195,7 @@ export function matchesTaskFilters(
   task: StoredTaskRecord,
   filters?: {
     plannedDate?: string | undefined
+    projectId?: string | undefined
     project?: string | undefined
     status?: TaskStatus | undefined
   },
@@ -209,6 +213,10 @@ export function matchesTaskFilters(
   }
 
   if (filters.project && task.project !== filters.project) {
+    return false
+  }
+
+  if (filters.projectId && task.projectId !== filters.projectId) {
     return false
   }
 

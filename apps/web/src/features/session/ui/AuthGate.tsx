@@ -1,12 +1,16 @@
 import {
   type FormEvent,
   type PropsWithChildren,
+  type ReactNode,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
-import { useSessionAuth } from '@/features/session'
-
+import { isUnauthorizedSessionApiError } from '../lib/session-api'
+import { usePlannerSession } from '../lib/usePlannerSession'
+import { useSessionAuth } from '../lib/useSessionAuth'
 import styles from './AuthGate.module.css'
 
 type AuthMode = 'login' | 'magic_link' | 'register'
@@ -61,16 +65,22 @@ const AUTH_MODE_OPTIONS: Array<{ id: AuthMode; label: string }> = [
 export function AuthGate({ children }: PropsWithChildren) {
   const {
     accessToken,
+    authNotice,
+    clearAuthNotice,
     email,
+    expireSession,
     isAuthEnabled,
     isLoading,
     isPasswordRecovery,
     requestPasswordReset,
+    signOut,
     signInWithOtp,
     signInWithPassword,
     signUpWithPassword,
     updatePassword,
   } = useSessionAuth()
+  const plannerSessionQuery = usePlannerSession()
+  const handledUnauthorizedTokenRef = useRef<string | null>(null)
   const [mode, setMode] = useState<AuthMode>('login')
   const [formEmail, setFormEmail] = useState(email ?? '')
   const [displayName, setDisplayName] = useState('')
@@ -82,41 +92,149 @@ export function AuthGate({ children }: PropsWithChildren) {
   const defaultEmailDomain = useMemo(() => extractEmailDomain(email), [email])
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
   const modeContent = AUTH_MODE_CONTENT[screenMode]
+  const shouldResolvePlannerSession =
+    !isAuthEnabled || (Boolean(accessToken) && !isPasswordRecovery)
 
-  if (!isAuthEnabled || (accessToken && !isPasswordRecovery)) {
-    return children
-  }
+  useEffect(() => {
+    if (
+      !isAuthEnabled ||
+      !accessToken ||
+      !isUnauthorizedSessionApiError(plannerSessionQuery.error)
+    ) {
+      return
+    }
+
+    if (handledUnauthorizedTokenRef.current === accessToken) {
+      return
+    }
+
+    handledUnauthorizedTokenRef.current = accessToken
+    void expireSession()
+  }, [accessToken, expireSession, isAuthEnabled, plannerSessionQuery.error])
 
   if (isLoading) {
     return (
-      <section className={styles.shell}>
-        <div className={styles.panel}>
-          <div className={styles.hero}>
-            <div>
-              <p className={styles.eyebrow}>Supabase Auth</p>
-              <h1 className={styles.title}>Поднимаем рабочую сессию.</h1>
-              <p className={styles.copy}>
-                Planner ждёт access token от Supabase, чтобы backend начал
-                работать в authenticated runtime.
-              </p>
+      <AuthStatusPanel
+        badge="Supabase Auth"
+        copy="Если вход уже открывали в этом браузере, сессия восстановится автоматически."
+        title="Проверяем локальную сессию"
+      />
+    )
+  }
+
+  if (shouldResolvePlannerSession) {
+    if (isUnauthorizedSessionApiError(plannerSessionQuery.error)) {
+      if (isAuthEnabled) {
+        return (
+          <AuthStatusPanel
+            badge="Session expired"
+            copy="Сервер больше не принимает текущий access token. Локальная сессия будет сброшена, затем можно войти заново."
+            title="Сессия завершилась"
+          >
+            <div className={styles.actionRow}>
+              <button
+                className={styles.submitButton}
+                type="button"
+                onClick={() => {
+                  void expireSession()
+                }}
+              >
+                Войти заново
+              </button>
             </div>
+          </AuthStatusPanel>
+        )
+      }
+
+      return (
+        <AuthStatusPanel
+          badge="Auth required"
+          copy="Сервер требует bearer token, но вход через Supabase в этом web runtime не настроен."
+          title="Нужен вход"
+        >
+          <p className={styles.error}>
+            Запустите web через Supabase runtime или передайте браузеру
+            VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY.
+          </p>
+          <div className={styles.actionRow}>
+            <button
+              className={styles.submitButton}
+              type="button"
+              onClick={() => {
+                void plannerSessionQuery.refetch()
+              }}
+            >
+              Проверить снова
+            </button>
           </div>
-          <div className={styles.formCard}>
-            <div className={styles.loadingState}>
-              <strong>Проверяем локальную auth-сессию</strong>
-              <p>
-                Если email/password или magic link уже открывали сессию в этом
-                браузере, вход восстановится автоматически.
-              </p>
-            </div>
+        </AuthStatusPanel>
+      )
+    }
+
+    if (plannerSessionQuery.isPending) {
+      return (
+        <AuthStatusPanel
+          badge="Workspace"
+          copy="Проверяем доступ к рабочему пространству перед загрузкой задач."
+          title="Открываем Planner"
+        />
+      )
+    }
+
+    if (plannerSessionQuery.error && !plannerSessionQuery.data) {
+      return (
+        <AuthStatusPanel
+          badge="Connection issue"
+          copy="Не удалось проверить доступ к рабочему пространству. Повторите попытку или выйдите и войдите заново."
+          title="Planner не открылся"
+        >
+          <p className={styles.error}>
+            {plannerSessionQuery.error instanceof Error
+              ? plannerSessionQuery.error.message
+              : 'Не удалось открыть рабочую сессию.'}
+          </p>
+          <div className={styles.actionRow}>
+            <button
+              className={styles.submitButton}
+              type="button"
+              onClick={() => {
+                void plannerSessionQuery.refetch()
+              }}
+            >
+              Повторить
+            </button>
+            {isAuthEnabled ? (
+              <button
+                className={styles.secondaryButton}
+                type="button"
+                onClick={() => {
+                  void signOut()
+                }}
+              >
+                Выйти
+              </button>
+            ) : null}
           </div>
-        </div>
-      </section>
+        </AuthStatusPanel>
+      )
+    }
+
+    if (plannerSessionQuery.data) {
+      return children
+    }
+
+    return (
+      <AuthStatusPanel
+        badge="Workspace"
+        copy="Проверяем доступ к рабочему пространству перед загрузкой задач."
+        title="Открываем Planner"
+      />
     )
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    clearAuthNotice()
 
     const normalizedEmail = formEmail.trim().toLowerCase()
 
@@ -204,6 +322,8 @@ export function AuthGate({ children }: PropsWithChildren) {
   }
 
   async function handlePasswordResetRequest() {
+    clearAuthNotice()
+
     const normalizedEmail = formEmail.trim().toLowerCase()
 
     if (!normalizedEmail) {
@@ -234,6 +354,7 @@ export function AuthGate({ children }: PropsWithChildren) {
 
   function handleModeChange(nextMode: AuthMode) {
     setMode(nextMode)
+    clearAuthNotice()
     setErrorMessage(null)
     setStatusMessage(null)
     clearSensitiveFields()
@@ -401,6 +522,7 @@ export function AuthGate({ children }: PropsWithChildren) {
             {statusMessage ? (
               <p className={styles.message}>{statusMessage}</p>
             ) : null}
+            {authNotice ? <p className={styles.error}>{authNotice}</p> : null}
             {errorMessage ? (
               <p className={styles.error}>{errorMessage}</p>
             ) : null}
@@ -456,4 +578,37 @@ function extractEmailDomain(email: string | null): string | null {
   }
 
   return email.split('@')[1] ?? null
+}
+
+function AuthStatusPanel({
+  badge,
+  children,
+  copy,
+  title,
+}: {
+  badge: string
+  children?: ReactNode
+  copy: string
+  title: string
+}) {
+  return (
+    <section className={styles.shell}>
+      <div className={styles.panel}>
+        <div className={styles.hero}>
+          <div>
+            <p className={styles.eyebrow}>{badge}</p>
+            <h1 className={styles.title}>{title}</h1>
+            <p className={styles.copy}>{copy}</p>
+          </div>
+        </div>
+        <div className={styles.formCard}>
+          <div className={styles.loadingState}>
+            <strong>{title}</strong>
+            <p>{copy}</p>
+            {children}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
 }

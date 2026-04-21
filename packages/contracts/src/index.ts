@@ -1,7 +1,10 @@
 export type {
   ApiError,
+  EmojiAssetRecord,
+  EmojiSetRecord,
   HealthDatabaseStatus,
   HealthResponse,
+  ProjectRecord,
   SessionActor,
   SessionResponse,
   SessionWorkspace,
@@ -17,8 +20,13 @@ export type {
 } from './api.js'
 export {
   apiErrorSchema,
+  emojiAssetRecordSchema,
+  emojiSetListResponseSchema,
+  emojiSetRecordSchema,
   healthDatabaseStatusSchema,
   healthResponseSchema,
+  projectListResponseSchema,
+  projectRecordSchema,
   sessionActorSchema,
   sessionResponseSchema,
   sessionWorkspaceSchema,
@@ -33,6 +41,36 @@ export {
   taskStatusUpdateInputSchema,
   workspaceRoleSchema,
 } from './api.js'
+export type {
+  EmojiAsset,
+  EmojiAssetKind,
+  EmojiSet,
+  EmojiSetSource,
+  EmojiSetStatus,
+  NewEmojiAssetInput,
+  NewEmojiSetInput,
+} from './emoji-set.js'
+export {
+  emojiAssetKindSchema,
+  emojiAssetSchema,
+  emojiSetSchema,
+  emojiSetSourceSchema,
+  emojiSetStatusSchema,
+  newEmojiAssetInputSchema,
+  newEmojiSetInputSchema,
+} from './emoji-set.js'
+export type {
+  NewProjectInput,
+  Project,
+  ProjectStatus,
+  ProjectUpdateInput,
+} from './project.js'
+export {
+  newProjectInputSchema,
+  projectSchema,
+  projectStatusSchema,
+  projectUpdateInputSchema,
+} from './project.js'
 export type {
   NewTaskInput,
   Task,

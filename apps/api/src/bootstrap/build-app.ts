@@ -9,6 +9,10 @@ import Fastify from 'fastify'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
+import type { EmojiSetService } from '../modules/emoji-sets/index.js'
+import { registerEmojiSetRoutes } from '../modules/emoji-sets/index.js'
+import type { ProjectService } from '../modules/projects/index.js'
+import { registerProjectRoutes } from '../modules/projects/index.js'
 import type { SessionService } from '../modules/session/index.js'
 import { registerSessionRoutes } from '../modules/session/index.js'
 import type { TaskService } from '../modules/tasks/index.js'
@@ -25,6 +29,8 @@ export interface BuildApiAppOptions {
   config: ApiConfig
   database: DatabaseConnection | null
   requestAuthenticator?: RequestAuthenticator
+  emojiSetService?: EmojiSetService
+  projectService: ProjectService
   sessionService: SessionService
   taskService: TaskService
 }
@@ -33,6 +39,8 @@ export function buildApiApp({
   config,
   database,
   requestAuthenticator = new NoopRequestAuthenticator(),
+  emojiSetService,
+  projectService,
   sessionService,
   taskService,
 }: BuildApiAppOptions) {
@@ -70,6 +78,10 @@ export function buildApiApp({
 
   app.register((instance) => {
     registerSessionRoutes(instance, sessionService)
+    if (emojiSetService) {
+      registerEmojiSetRoutes(instance, sessionService, emojiSetService)
+    }
+    registerProjectRoutes(instance, sessionService, projectService)
     registerTaskRoutes(instance, sessionService, taskService)
   })
 

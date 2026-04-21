@@ -1,7 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 
+import { AdminPage } from '@/pages/admin'
 import { InboxPage } from '@/pages/inbox'
-import { ProjectsPage } from '@/pages/projects'
+import { ProjectPage, ProjectsPage } from '@/pages/projects'
 import { TimelinePage } from '@/pages/timeline'
 import { TodayPage } from '@/pages/today'
 
@@ -13,6 +14,8 @@ export function AppRouter() {
       <Route path="/timeline" element={<TimelinePage />} />
       <Route path="/inbox" element={<InboxPage />} />
       <Route path="/projects" element={<ProjectsPage />} />
+      <Route path="/projects/:projectId" element={<ProjectPage />} />
+      <Route path="/admin" element={<AdminPage />} />
       <Route path="*" element={<Navigate replace to="/today" />} />
     </Routes>
   )

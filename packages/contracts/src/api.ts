@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { emojiAssetSchema, emojiSetSchema } from './emoji-set.js'
+import { projectSchema } from './project.js'
 import {
   taskScheduleInputSchema,
   taskSchema,
@@ -39,6 +41,29 @@ export const taskRecordSchema = taskSchema.extend({
   version: z.number().int().positive(),
 })
 
+export const projectRecordSchema = projectSchema.extend({
+  workspaceId: z.string(),
+  updatedAt: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+
+export const emojiAssetRecordSchema = emojiAssetSchema.extend({
+  createdAt: z.string(),
+  deletedAt: z.string().nullable(),
+  updatedAt: z.string(),
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
+})
+
+export const emojiSetRecordSchema = emojiSetSchema.extend({
+  deletedAt: z.string().nullable(),
+  items: z.array(emojiAssetRecordSchema),
+  updatedAt: z.string(),
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
+})
+
 export const sessionActorSchema = z.object({
   id: z.string(),
   email: z.string(),
@@ -62,11 +87,14 @@ export const sessionResponseSchema = z.object({
 
 export const taskListFiltersSchema = z.object({
   plannedDate: z.string().optional(),
+  projectId: z.string().optional(),
   project: z.string().optional(),
   status: taskStatusSchema.optional(),
 })
 
 export const taskListResponseSchema = z.array(taskRecordSchema)
+export const projectListResponseSchema = z.array(projectRecordSchema)
+export const emojiSetListResponseSchema = z.array(emojiSetRecordSchema)
 
 export const taskEventRecordSchema = z.object({
   actorUserId: z.string().nullable(),
@@ -102,10 +130,13 @@ export const taskScheduleUpdateInputSchema = z.object({
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
+export type EmojiAssetRecord = z.infer<typeof emojiAssetRecordSchema>
+export type EmojiSetRecord = z.infer<typeof emojiSetRecordSchema>
 export type SessionActor = z.infer<typeof sessionActorSchema>
 export type SessionResponse = z.infer<typeof sessionResponseSchema>
 export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
+export type ProjectRecord = z.infer<typeof projectRecordSchema>
 export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>
 export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
 export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>

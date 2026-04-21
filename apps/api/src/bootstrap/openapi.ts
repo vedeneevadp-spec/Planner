@@ -92,8 +92,16 @@ function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'session',
       },
       {
+        description: 'Workspace emoji sets and reusable emoji assets.',
+        name: 'emojiSets',
+      },
+      {
         description: 'Task list and task mutations.',
         name: 'tasks',
+      },
+      {
+        description: 'Independent project catalog and project mutations.',
+        name: 'projects',
       },
     ],
   }
@@ -130,6 +138,128 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/emoji-sets': {
+      get: {
+        operationId: 'listEmojiSets',
+        parameters: [parameter('requiredWorkspaceIdHeader')],
+        responses: {
+          200: jsonResponse('EmojiSetListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List emoji sets in a workspace',
+        tags: ['emojiSets'],
+      },
+      post: {
+        operationId: 'createEmojiSet',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('NewEmojiSetInput'),
+        responses: {
+          201: jsonResponse('EmojiSetRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Create an emoji set',
+        tags: ['emojiSets'],
+      },
+    },
+    '/api/v1/emoji-sets/{emojiSetId}': {
+      get: {
+        operationId: 'getEmojiSet',
+        parameters: [
+          emojiSetIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+        ],
+        responses: {
+          200: jsonResponse('EmojiSetRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Get an emoji set',
+        tags: ['emojiSets'],
+      },
+    },
+    '/api/v1/projects': {
+      get: {
+        operationId: 'listProjects',
+        parameters: [parameter('requiredWorkspaceIdHeader')],
+        responses: {
+          200: jsonResponse('ProjectListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List projects in a workspace',
+        tags: ['projects'],
+      },
+      post: {
+        operationId: 'createProject',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('NewProjectInput'),
+        responses: {
+          201: jsonResponse('ProjectRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Create a project',
+        tags: ['projects'],
+      },
+    },
+    '/api/v1/projects/{projectId}': {
+      get: {
+        operationId: 'getProject',
+        parameters: [
+          projectIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+        ],
+        responses: {
+          200: jsonResponse('ProjectRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Get a project',
+        tags: ['projects'],
+      },
+      patch: {
+        operationId: 'updateProject',
+        parameters: [
+          projectIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('ProjectUpdateInput'),
+        responses: {
+          200: jsonResponse('ProjectRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Update a project',
+        tags: ['projects'],
+      },
+    },
     '/api/v1/tasks': {
       get: {
         operationId: 'listTasks',
@@ -138,6 +268,14 @@ function createPaths(): OpenAPIV3.PathsObject {
           {
             in: 'query',
             name: 'plannedDate',
+            required: false,
+            schema: {
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'projectId',
             required: false,
             schema: {
               type: 'string',
@@ -357,6 +495,69 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       ],
       type: 'object',
     },
+    NewEmojiAssetInput: {
+      additionalProperties: false,
+      properties: {
+        id: {
+          pattern:
+            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          type: 'string',
+        },
+        kind: {
+          $ref: '#/components/schemas/EmojiAssetKind',
+        },
+        keywords: {
+          items: {
+            type: 'string',
+          },
+          type: 'array',
+        },
+        label: {
+          minLength: 1,
+          type: 'string',
+        },
+        shortcode: {
+          minLength: 1,
+          type: 'string',
+        },
+        value: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['kind', 'label', 'shortcode', 'value'],
+      type: 'object',
+    },
+    NewEmojiSetInput: {
+      additionalProperties: false,
+      properties: {
+        description: {
+          type: 'string',
+        },
+        id: {
+          pattern:
+            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          type: 'string',
+        },
+        items: {
+          items: {
+            $ref: '#/components/schemas/NewEmojiAssetInput',
+          },
+          maxItems: 200,
+          minItems: 1,
+          type: 'array',
+        },
+        source: {
+          $ref: '#/components/schemas/EmojiSetSource',
+        },
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['description', 'items', 'title'],
+      type: 'object',
+    },
     NewTaskInput: {
       additionalProperties: false,
       properties: {
@@ -375,6 +576,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         project: {
           type: 'string',
         },
+        projectId: nullableStringSchema(),
         title: {
           minLength: 1,
           type: 'string',
@@ -387,8 +589,262 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'plannedEndTime',
         'plannedStartTime',
         'project',
+        'projectId',
         'title',
       ],
+      type: 'object',
+    },
+    NewProjectInput: {
+      additionalProperties: false,
+      properties: {
+        color: {
+          minLength: 1,
+          type: 'string',
+        },
+        description: {
+          type: 'string',
+        },
+        icon: {
+          minLength: 1,
+          type: 'string',
+        },
+        id: {
+          pattern:
+            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+          type: 'string',
+        },
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['color', 'description', 'icon', 'title'],
+      type: 'object',
+    },
+    EmojiAssetKind: {
+      enum: ['image', 'unicode'],
+      type: 'string',
+    },
+    EmojiAssetRecord: {
+      additionalProperties: false,
+      properties: {
+        createdAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        deletedAt: nullableStringSchema(),
+        emojiSetId: {
+          type: 'string',
+        },
+        id: {
+          type: 'string',
+        },
+        keywords: {
+          items: {
+            type: 'string',
+          },
+          type: 'array',
+        },
+        kind: {
+          $ref: '#/components/schemas/EmojiAssetKind',
+        },
+        label: {
+          minLength: 1,
+          type: 'string',
+        },
+        shortcode: {
+          minLength: 1,
+          type: 'string',
+        },
+        sortOrder: {
+          minimum: 0,
+          type: 'integer',
+        },
+        updatedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        value: {
+          minLength: 1,
+          type: 'string',
+        },
+        version: positiveIntegerSchema(),
+        workspaceId: {
+          type: 'string',
+        },
+      },
+      required: [
+        'createdAt',
+        'deletedAt',
+        'emojiSetId',
+        'id',
+        'keywords',
+        'kind',
+        'label',
+        'shortcode',
+        'sortOrder',
+        'updatedAt',
+        'value',
+        'version',
+        'workspaceId',
+      ],
+      type: 'object',
+    },
+    EmojiSetListResponse: {
+      items: {
+        $ref: '#/components/schemas/EmojiSetRecord',
+      },
+      type: 'array',
+    },
+    EmojiSetRecord: {
+      additionalProperties: false,
+      properties: {
+        createdAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        deletedAt: nullableStringSchema(),
+        description: {
+          type: 'string',
+        },
+        id: {
+          type: 'string',
+        },
+        items: {
+          items: {
+            $ref: '#/components/schemas/EmojiAssetRecord',
+          },
+          type: 'array',
+        },
+        source: {
+          $ref: '#/components/schemas/EmojiSetSource',
+        },
+        status: {
+          enum: ['active', 'archived'],
+          type: 'string',
+        },
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+        updatedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        version: positiveIntegerSchema(),
+        workspaceId: {
+          type: 'string',
+        },
+      },
+      required: [
+        'createdAt',
+        'deletedAt',
+        'description',
+        'id',
+        'items',
+        'source',
+        'status',
+        'title',
+        'updatedAt',
+        'version',
+        'workspaceId',
+      ],
+      type: 'object',
+    },
+    EmojiSetSource: {
+      enum: ['custom', 'telegram'],
+      type: 'string',
+    },
+    ProjectListResponse: {
+      items: {
+        $ref: '#/components/schemas/ProjectRecord',
+      },
+      type: 'array',
+    },
+    ProjectRecord: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/Project',
+        },
+        {
+          additionalProperties: false,
+          properties: {
+            deletedAt: nullableStringSchema(),
+            updatedAt: {
+              format: 'date-time',
+              type: 'string',
+            },
+            version: positiveIntegerSchema(),
+            workspaceId: {
+              type: 'string',
+            },
+          },
+          required: ['deletedAt', 'updatedAt', 'version', 'workspaceId'],
+          type: 'object',
+        },
+      ],
+    },
+    Project: {
+      additionalProperties: false,
+      properties: {
+        color: {
+          minLength: 1,
+          type: 'string',
+        },
+        createdAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        description: {
+          type: 'string',
+        },
+        icon: {
+          minLength: 1,
+          type: 'string',
+        },
+        id: {
+          type: 'string',
+        },
+        status: {
+          enum: ['active', 'archived'],
+          type: 'string',
+        },
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: [
+        'color',
+        'createdAt',
+        'description',
+        'icon',
+        'id',
+        'status',
+        'title',
+      ],
+      type: 'object',
+    },
+    ProjectUpdateInput: {
+      additionalProperties: false,
+      properties: {
+        color: {
+          minLength: 1,
+          type: 'string',
+        },
+        description: {
+          type: 'string',
+        },
+        expectedVersion: positiveIntegerSchema(),
+        icon: {
+          minLength: 1,
+          type: 'string',
+        },
+        title: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
       type: 'object',
     },
     SessionActor: {
@@ -563,6 +1019,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         project: {
           type: 'string',
         },
+        projectId: nullableStringSchema(),
         status: {
           $ref: '#/components/schemas/TaskStatus',
         },
@@ -581,6 +1038,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'plannedEndTime',
         'plannedStartTime',
         'project',
+        'projectId',
         'status',
         'title',
       ],
@@ -672,6 +1130,28 @@ function positiveIntegerSchema(): OpenAPIV3.SchemaObject {
   return {
     minimum: 1,
     type: 'integer',
+  }
+}
+
+function emojiSetIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'emojiSetId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function projectIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'projectId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
   }
 }
 

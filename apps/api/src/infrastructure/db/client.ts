@@ -92,7 +92,9 @@ function createPgPoolConfig(connectionString: string): PoolConfig {
     connectionString: url.toString(),
     idleTimeoutMillis: 5_000,
     idle_in_transaction_session_timeout: 5_000,
+    keepAlive: false,
     lock_timeout: 5_000,
+    max: 4,
     maxUses: 1,
     statement_timeout: 15_000,
     ssl: {

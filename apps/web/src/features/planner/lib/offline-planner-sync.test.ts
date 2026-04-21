@@ -1,12 +1,18 @@
 import 'fake-indexeddb/auto'
 
-import type { NewTaskInput, TaskRecord } from '@planner/contracts'
+import type {
+  NewProjectInput,
+  NewTaskInput,
+  ProjectRecord,
+  TaskRecord,
+} from '@planner/contracts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   enqueuePlannerOfflineMutation,
+  loadCachedProjectRecords,
   loadCachedTaskRecords,
   resetPlannerOfflineDatabaseForTests,
 } from './offline-planner-store'
@@ -24,7 +30,16 @@ const createInput: NewTaskInput = {
   plannedEndTime: null,
   plannedStartTime: null,
   project: '',
+  projectId: null,
   title: 'Offline task',
+}
+
+const createProjectInput: NewProjectInput = {
+  color: '#2f6f62',
+  description: 'Offline project',
+  icon: 'folder',
+  id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b3',
+  title: 'Offline project',
 }
 
 describe('offline planner sync', () => {
@@ -94,18 +109,49 @@ describe('offline planner sync', () => {
     expect(await countRetryablePlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
     expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(1)
   })
+
+  it('replays queued project creates through the API and caches the server record', async () => {
+    const projectRecord = createProjectRecord(createProjectInput.id!)
+    const api = createPlannerApiClientMock({
+      createProject: vi.fn().mockResolvedValue(projectRecord),
+    })
+
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      input: createProjectInput,
+      projectId: createProjectInput.id!,
+      type: 'project.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainPlannerOfflineQueue({
+      api,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result.synced).toBe(1)
+    expect(api.createProject).toHaveBeenCalledWith(createProjectInput)
+    expect(await countRetryablePlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
+    expect(await loadCachedProjectRecords(WORKSPACE_ID)).toEqual([
+      projectRecord,
+    ])
+  })
 })
 
 function createPlannerApiClientMock(
   overrides: Partial<PlannerApiClient>,
 ): PlannerApiClient {
   return {
+    createProject: vi.fn(),
     createTask: vi.fn(),
+    getProject: vi.fn(),
     listTaskEvents: vi.fn(),
+    listProjects: vi.fn(),
     listTasks: vi.fn(),
     removeTask: vi.fn(),
     setTaskSchedule: vi.fn(),
     setTaskStatus: vi.fn(),
+    updateProject: vi.fn(),
     ...overrides,
   }
 }
@@ -122,8 +168,25 @@ function createTaskRecord(taskId: string): TaskRecord {
     plannedEndTime: null,
     plannedStartTime: null,
     project: '',
+    projectId: null,
     status: 'todo',
     title: 'Offline task',
+    updatedAt: '2026-04-20T00:00:00.000Z',
+    version: 1,
+    workspaceId: WORKSPACE_ID,
+  }
+}
+
+function createProjectRecord(projectId: string): ProjectRecord {
+  return {
+    color: '#2f6f62',
+    createdAt: '2026-04-20T00:00:00.000Z',
+    deletedAt: null,
+    description: 'Offline project',
+    icon: 'folder',
+    id: projectId,
+    status: 'active',
+    title: 'Offline project',
     updatedAt: '2026-04-20T00:00:00.000Z',
     version: 1,
     workspaceId: WORKSPACE_ID,

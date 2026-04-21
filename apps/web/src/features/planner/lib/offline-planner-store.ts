@@ -1,6 +1,9 @@
 import {
   generateUuidV7,
+  type NewProjectInput,
   type NewTaskInput,
+  type ProjectRecord,
+  type ProjectUpdateInput,
   type TaskRecord,
   type TaskScheduleInput,
   type TaskStatus,
@@ -21,6 +24,14 @@ interface PlannerCachedTaskRow {
   workspaceId: string
 }
 
+interface PlannerCachedProjectRow {
+  key: string
+  project: ProjectRecord
+  projectId: string
+  updatedAt: string
+  workspaceId: string
+}
+
 interface PlannerSyncMetadataRow {
   key: string
   updatedAt: string
@@ -37,32 +48,59 @@ interface PlannerOfflineMutationBase {
   id: string
   lastError: string | null
   status: PlannerOfflineMutationStatus
-  taskId: string
   updatedAt: string
   workspaceId: string
 }
 
 export type PlannerOfflineMutationRecord =
   | (PlannerOfflineMutationBase & {
+      input: NewProjectInput
+      projectId: string
+      type: 'project.create'
+    })
+  | (PlannerOfflineMutationBase & {
+      input: ProjectUpdateInput
+      projectId: string
+      type: 'project.update'
+    })
+  | (PlannerOfflineMutationBase & {
       input: NewTaskInput
+      taskId: string
       type: 'task.create'
     })
   | (PlannerOfflineMutationBase & {
       expectedVersion: number
       statusValue: TaskStatus
+      taskId: string
       type: 'task.status.update'
     })
   | (PlannerOfflineMutationBase & {
       expectedVersion: number
       schedule: TaskScheduleInput
+      taskId: string
       type: 'task.schedule.update'
     })
   | (PlannerOfflineMutationBase & {
       expectedVersion: number
+      taskId: string
       type: 'task.delete'
     })
 
 export type PlannerOfflineMutationInput =
+  | {
+      actorUserId: string
+      input: NewProjectInput
+      projectId: string
+      type: 'project.create'
+      workspaceId: string
+    }
+  | {
+      actorUserId: string
+      input: ProjectUpdateInput
+      projectId: string
+      type: 'project.update'
+      workspaceId: string
+    }
   | {
       actorUserId: string
       input: NewTaskInput
@@ -101,6 +139,7 @@ const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
 ]
 
 class PlannerOfflineDatabase extends Dexie {
+  cachedProjects!: Table<PlannerCachedProjectRow, string>
   cachedTasks!: Table<PlannerCachedTaskRow, string>
   mutationQueue!: Table<PlannerOfflineMutationRecord, string>
   syncMetadata!: Table<PlannerSyncMetadataRow, string>
@@ -109,6 +148,12 @@ class PlannerOfflineDatabase extends Dexie {
     super('planner-offline')
 
     this.version(1).stores({
+      cachedTasks: 'key, workspaceId, taskId, updatedAt',
+      mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
+      syncMetadata: 'key, workspaceId, updatedAt',
+    })
+    this.version(2).stores({
+      cachedProjects: 'key, workspaceId, projectId, updatedAt',
       cachedTasks: 'key, workspaceId, taskId, updatedAt',
       mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
       syncMetadata: 'key, workspaceId, updatedAt',
@@ -148,6 +193,23 @@ export async function loadCachedTaskRecords(
   return rows.map((row) => row.task)
 }
 
+export async function loadCachedProjectRecords(
+  workspaceId: string,
+): Promise<ProjectRecord[]> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return []
+  }
+
+  const rows = await db.cachedProjects
+    .where('workspaceId')
+    .equals(workspaceId)
+    .toArray()
+
+  return rows.map((row) => row.project)
+}
+
 export async function replaceCachedTaskRecords(
   workspaceId: string,
   tasks: TaskRecord[],
@@ -178,6 +240,36 @@ export async function replaceCachedTaskRecords(
   })
 }
 
+export async function replaceCachedProjectRecords(
+  workspaceId: string,
+  projects: ProjectRecord[],
+): Promise<void> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  const updatedAt = new Date().toISOString()
+  const rows = projects.map(
+    (project): PlannerCachedProjectRow => ({
+      key: createCachedProjectKey(workspaceId, project.id),
+      project,
+      projectId: project.id,
+      updatedAt,
+      workspaceId,
+    }),
+  )
+
+  await db.transaction('rw', db.cachedProjects, async () => {
+    await db.cachedProjects.where('workspaceId').equals(workspaceId).delete()
+
+    if (rows.length > 0) {
+      await db.cachedProjects.bulkPut(rows)
+    }
+  })
+}
+
 export async function upsertCachedTaskRecord(
   workspaceId: string,
   task: TaskRecord,
@@ -192,6 +284,25 @@ export async function upsertCachedTaskRecord(
     key: createCachedTaskKey(workspaceId, task.id),
     task,
     taskId: task.id,
+    updatedAt: new Date().toISOString(),
+    workspaceId,
+  })
+}
+
+export async function upsertCachedProjectRecord(
+  workspaceId: string,
+  project: ProjectRecord,
+): Promise<void> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  await db.cachedProjects.put({
+    key: createCachedProjectKey(workspaceId, project.id),
+    project,
+    projectId: project.id,
     updatedAt: new Date().toISOString(),
     workspaceId,
   })
@@ -398,6 +509,13 @@ function getPlannerOfflineDatabase(): PlannerOfflineDatabase | null {
 
 function createCachedTaskKey(workspaceId: string, taskId: string): string {
   return `${workspaceId}:${taskId}`
+}
+
+function createCachedProjectKey(
+  workspaceId: string,
+  projectId: string,
+): string {
+  return `${workspaceId}:${projectId}`
 }
 
 function createSyncMetadataKey(workspaceId: string): string {

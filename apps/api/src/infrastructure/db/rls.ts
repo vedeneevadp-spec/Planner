@@ -107,22 +107,29 @@ export function resolveRlsStrategyForEnvironment(
 ): RlsStrategy {
   const explicitMode = env.API_DB_RLS_MODE?.trim().toLowerCase()
 
-  if (explicitMode === 'enabled') {
+  if (explicitMode === 'enabled' || explicitMode === 'transaction_local') {
     return 'transaction_local'
+  }
+
+  if (explicitMode === 'session_connection') {
+    return 'session_connection'
   }
 
   if (explicitMode === 'disabled') {
     return 'disabled'
   }
 
-  const databaseUrl = resolveDatabaseUrlForRls(env)
-  const isSupabasePoolerRuntime = databaseUrl.includes('pooler.supabase.com')
-
-  if (isSupabasePoolerRuntime) {
-    return 'session_connection'
+  if (isSupabasePoolerRuntimeEnvironment(env)) {
+    return 'disabled'
   }
 
   return 'transaction_local'
+}
+
+export function isSupabasePoolerRuntimeEnvironment(
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return resolveDatabaseUrlForRls(env).includes('pooler.supabase.com')
 }
 
 function resolveDatabaseUrlForRls(env: NodeJS.ProcessEnv): string {

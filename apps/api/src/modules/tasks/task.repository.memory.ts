@@ -1,7 +1,10 @@
+import { generateUuidV7 } from '@planner/contracts'
+
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
+  StoredTaskEventRecord,
   StoredTaskRecord,
   TaskEventFilters,
   TaskEventListResult,
@@ -21,6 +24,8 @@ import {
 } from './task.shared.js'
 
 export class MemoryTaskRepository implements TaskRepository {
+  private readonly events: StoredTaskEventRecord[] = []
+  private nextEventId = 1
   private readonly tasks = new Map<string, StoredTaskRecord>()
 
   listByWorkspace(
@@ -37,14 +42,22 @@ export class MemoryTaskRepository implements TaskRepository {
   }
 
   listEventsByWorkspace(
-    _context: TaskReadContext,
+    context: TaskReadContext,
     filters: TaskEventFilters = {},
   ): Promise<TaskEventListResult> {
     const afterEventId = filters.afterEventId ?? 0
+    const limit = filters.limit ?? 500
+    const events = this.events
+      .filter(
+        (event) =>
+          event.workspaceId === context.workspaceId && event.id > afterEventId,
+      )
+      .sort((left, right) => left.id - right.id)
+      .slice(0, limit)
 
     return Promise.resolve({
-      events: [],
-      nextEventId: afterEventId,
+      events,
+      nextEventId: events.at(-1)?.id ?? afterEventId,
     })
   }
 
@@ -66,6 +79,13 @@ export class MemoryTaskRepository implements TaskRepository {
     })
 
     this.tasks.set(task.id, task)
+    this.appendTaskEvent(command, {
+      eventType: 'task.created',
+      payload: {
+        task,
+      },
+      taskId: task.id,
+    })
 
     return Promise.resolve(task)
   }
@@ -79,6 +99,14 @@ export class MemoryTaskRepository implements TaskRepository {
 
     const nextTask = applyTaskStatus(task, command.status)
     this.tasks.set(nextTask.id, nextTask)
+    this.appendTaskEvent(command, {
+      eventType: 'task.status_changed',
+      payload: {
+        status: nextTask.status,
+        version: nextTask.version,
+      },
+      taskId: nextTask.id,
+    })
 
     return Promise.resolve(nextTask)
   }
@@ -94,6 +122,16 @@ export class MemoryTaskRepository implements TaskRepository {
 
     const nextTask = applyTaskSchedule(task, command.schedule)
     this.tasks.set(nextTask.id, nextTask)
+    this.appendTaskEvent(command, {
+      eventType: 'task.updated',
+      payload: {
+        plannedDate: nextTask.plannedDate,
+        plannedEndTime: nextTask.plannedEndTime,
+        plannedStartTime: nextTask.plannedStartTime,
+        version: nextTask.version,
+      },
+      taskId: nextTask.id,
+    })
 
     return Promise.resolve(nextTask)
   }
@@ -105,7 +143,16 @@ export class MemoryTaskRepository implements TaskRepository {
     )
     this.assertVersion(task, command.expectedVersion)
 
-    this.tasks.set(task.id, markTaskDeleted(task))
+    const deletedTask = markTaskDeleted(task)
+    this.tasks.set(task.id, deletedTask)
+    this.appendTaskEvent(command, {
+      eventType: 'task.deleted',
+      payload: {
+        deletedAt: deletedTask.deletedAt,
+        version: deletedTask.version,
+      },
+      taskId: task.id,
+    })
 
     return Promise.resolve()
   }
@@ -134,5 +181,30 @@ export class MemoryTaskRepository implements TaskRepository {
     if (task.version !== expectedVersion) {
       throw new TaskVersionConflictError(task.id, expectedVersion, task.version)
     }
+  }
+
+  private appendTaskEvent(
+    command:
+      | CreateTaskCommand
+      | DeleteTaskCommand
+      | UpdateTaskScheduleCommand
+      | UpdateTaskStatusCommand,
+    event: {
+      eventType: string
+      payload: Record<string, unknown>
+      taskId: string
+    },
+  ): void {
+    this.events.push({
+      actorUserId: command.context.actorUserId,
+      eventId: generateUuidV7(),
+      eventType: event.eventType,
+      id: this.nextEventId,
+      occurredAt: new Date().toISOString(),
+      payload: event.payload,
+      taskId: event.taskId,
+      workspaceId: command.context.workspaceId,
+    })
+    this.nextEventId += 1
   }
 }

@@ -4,7 +4,7 @@ import { type Kysely, type Selectable, sql } from 'kysely'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
   type DatabaseExecutor,
-  resolveRlsStrategyForEnvironment,
+  isSupabasePoolerRuntimeEnvironment,
   withOptionalRls,
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
@@ -12,10 +12,12 @@ import type {
   DatabaseSchema,
   JsonObject,
 } from '../../infrastructure/db/schema.js'
+import { ProjectNotFoundError } from '../projects/project.errors.js'
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
+  StoredTaskEventRecord,
   StoredTaskRecord,
   TaskEventFilters,
   TaskEventListResult,
@@ -35,11 +37,18 @@ import {
 } from './task.shared.js'
 
 type TaskRow = Selectable<DatabaseSchema['app.tasks']>
-type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
+type ProjectRow = Selectable<DatabaseSchema['app.projects']>
 type TaskTimeBlockRow = Selectable<DatabaseSchema['app.task_time_blocks']>
+type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
 type TaskListRow = TaskRow & {
+  project_title?: ProjectRow['title'] | null
   time_block_ends_at: TaskTimeBlockRow['ends_at'] | null
   time_block_starts_at: TaskTimeBlockRow['starts_at'] | null
+}
+
+interface ResolvedTaskProject {
+  id: string
+  title: string
 }
 
 const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
@@ -78,9 +87,9 @@ export class PostgresTaskRepository implements TaskRepository {
     context: TaskReadContext,
     filters: TaskEventFilters = {},
   ): Promise<TaskEventListResult> {
-    const limit = filters.limit ?? 100
     const afterEventId = filters.afterEventId ?? 0
-    const rows = await withOptionalRls(
+    const limit = filters.limit ?? 500
+    const eventRows = await withOptionalRls(
       this.db,
       context.auth,
       (executor) =>
@@ -94,18 +103,27 @@ export class PostgresTaskRepository implements TaskRepository {
           .execute(),
       context.actorUserId,
     )
-    const events = rows.map((row) => this.mapTaskEventRecord(row))
+    const events = eventRows.map((eventRow) =>
+      this.mapTaskEventRecord(eventRow),
+    )
+    const nextEventId = events.at(-1)?.id ?? afterEventId
 
     return {
       events,
-      nextEventId: events.at(-1)?.id ?? afterEventId,
+      nextEventId,
     }
   }
 
   async create(command: CreateTaskCommand): Promise<StoredTaskRecord> {
     const normalizedInput = normalizeTaskInput(command.input)
     const normalizedSchedule = normalizeTaskSchedule(command.input)
-    const metadata = this.buildTaskMetadata(normalizedInput.project)
+    const project = await this.resolveTaskProject(
+      command.context,
+      normalizedInput.projectId,
+    )
+    const metadata = this.buildTaskMetadata(
+      project ? '' : normalizedInput.project,
+    )
     const taskId = normalizedInput.id ?? generateUuidV7()
     const startsAt =
       normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
@@ -129,6 +147,7 @@ export class PostgresTaskRepository implements TaskRepository {
         metadata,
         normalizedInput,
         normalizedSchedule,
+        projectId: project?.id ?? null,
         startsAt,
         taskId,
       })
@@ -150,7 +169,7 @@ export class PostgresTaskRepository implements TaskRepository {
             metadata,
             planned_on: normalizedSchedule.plannedDate,
             priority: 2,
-            project_id: null,
+            project_id: project?.id ?? null,
             sort_key: '',
             status: 'todo',
             title: normalizedInput.title,
@@ -187,7 +206,12 @@ export class PostgresTaskRepository implements TaskRepository {
               command.context.workspaceId,
               task.id,
             )
-        const record = this.mapTaskRecord(task, timeBlock)
+        const projectTitle = await this.loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          task.project_id,
+        )
+        const record = this.mapTaskRecord(task, timeBlock, projectTitle)
 
         if (insertedTask) {
           await this.writeTaskMutationArtifacts(trx, {
@@ -268,7 +292,12 @@ export class PostgresTaskRepository implements TaskRepository {
           command.context.workspaceId,
           command.taskId,
         )
-        const record = this.mapTaskRecord(updatedTask, timeBlock)
+        const projectTitle = await this.loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          updatedTask.project_id,
+        )
+        const record = this.mapTaskRecord(updatedTask, timeBlock, projectTitle)
 
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
@@ -379,7 +408,12 @@ export class PostgresTaskRepository implements TaskRepository {
           taskId: command.taskId,
           workspaceId: command.context.workspaceId,
         })
-        const record = this.mapTaskRecord(updatedTask, timeBlock)
+        const projectTitle = await this.loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          updatedTask.project_id,
+        )
+        const record = this.mapTaskRecord(updatedTask, timeBlock, projectTitle)
 
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
@@ -486,8 +520,7 @@ export class PostgresTaskRepository implements TaskRepository {
     authContext: AuthenticatedRequestContext | null,
   ): authContext is AuthenticatedRequestContext {
     return (
-      authContext !== null &&
-      resolveRlsStrategyForEnvironment(process.env) === 'session_connection'
+      authContext !== null && isSupabasePoolerRuntimeEnvironment(process.env)
     )
   }
 
@@ -511,6 +544,7 @@ export class PostgresTaskRepository implements TaskRepository {
       metadata: JsonObject
       normalizedInput: ReturnType<typeof normalizeTaskInput>
       normalizedSchedule: ReturnType<typeof normalizeTaskSchedule>
+      projectId: string | null
       startsAt: string | null
       taskId: string
     },
@@ -593,7 +627,7 @@ export class PostgresTaskRepository implements TaskRepository {
               cast(${JSON.stringify(params.metadata)} as jsonb),
               cast(${params.normalizedSchedule.plannedDate} as date),
               2,
-              null,
+              cast(${params.projectId} as uuid),
               '',
               'todo',
               ${params.normalizedInput.title},
@@ -616,9 +650,14 @@ export class PostgresTaskRepository implements TaskRepository {
           task_with_time_block as (
             select
               selected_task.*,
+              project.title as project_title,
               time_block.starts_at as time_block_starts_at,
               time_block.ends_at as time_block_ends_at
             from selected_task
+            left join app.projects as project
+              on project.id = selected_task.project_id
+              and project.workspace_id = selected_task.workspace_id
+              and project.deleted_at is null
             left join lateral (
               select starts_at, ends_at
               from app.task_time_blocks
@@ -688,8 +727,11 @@ export class PostgresTaskRepository implements TaskRepository {
                       'HH24:MI'
                     )
                   end,
+                  'projectId',
+                  task_with_time_block.project_id,
                   'project',
                   coalesce(
+                    task_with_time_block.project_title,
                     task_with_time_block.metadata ->> 'legacyProjectName',
                     ''
                   ),
@@ -1080,12 +1122,20 @@ export class PostgresTaskRepository implements TaskRepository {
     const plannedDateFilter = filters?.plannedDate
       ? sql`and task.planned_on = ${filters.plannedDate}`
       : sql``
+    const projectIdFilter = filters?.projectId
+      ? sql`and task.project_id = ${filters.projectId}`
+      : sql``
     const result = await sql<TaskListRow>`
       select
         task.*,
+        project.title as project_title,
         time_block.starts_at as time_block_starts_at,
         time_block.ends_at as time_block_ends_at
       from app.tasks as task
+      left join app.projects as project
+        on project.id = task.project_id
+        and project.workspace_id = task.workspace_id
+        and project.deleted_at is null
       left join lateral (
         select starts_at, ends_at
         from app.task_time_blocks
@@ -1099,6 +1149,7 @@ export class PostgresTaskRepository implements TaskRepository {
         and task.deleted_at is null
         ${statusFilter}
         ${plannedDateFilter}
+        ${projectIdFilter}
       order by task.created_at asc
     `.execute(executor)
 
@@ -1121,9 +1172,69 @@ export class PostgresTaskRepository implements TaskRepository {
       .executeTakeFirst()
   }
 
+  private async resolveTaskProject(
+    context: CreateTaskCommand['context'],
+    projectId: string | null,
+  ): Promise<ResolvedTaskProject | null> {
+    if (!projectId) {
+      return null
+    }
+
+    const project = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        this.loadActiveProject(executor, context.workspaceId, projectId),
+      context.actorUserId,
+    )
+
+    if (!project) {
+      throw new ProjectNotFoundError(projectId)
+    }
+
+    return {
+      id: project.id,
+      title: project.title,
+    }
+  }
+
+  private async loadProjectTitle(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    projectId: string | null,
+  ): Promise<string | null> {
+    if (!projectId) {
+      return null
+    }
+
+    const project = await this.loadActiveProject(
+      executor,
+      workspaceId,
+      projectId,
+    )
+
+    return project?.title ?? null
+  }
+
+  private loadActiveProject(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    projectId: string,
+  ): Promise<Pick<ProjectRow, 'id' | 'title'> | undefined> {
+    return executor
+      .selectFrom('app.projects')
+      .select(['id', 'title'])
+      .where('id', '=', projectId)
+      .where('workspace_id', '=', workspaceId)
+      .where('deleted_at', 'is', null)
+      .where('status', '=', 'active')
+      .executeTakeFirst()
+  }
+
   private mapTaskRecord(
     task: TaskRow,
     timeBlock: TaskTimeBlockRow | undefined,
+    projectTitle: string | null,
   ): StoredTaskRecord {
     return {
       completedAt: serializeNullableTimestamp(task.completed_at),
@@ -1139,7 +1250,8 @@ export class PostgresTaskRepository implements TaskRepository {
       plannedStartTime: timeBlock
         ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.starts_at))
         : null,
-      project: this.readLegacyProjectName(task.metadata),
+      project: projectTitle ?? this.readLegacyProjectName(task.metadata),
+      projectId: task.project_id,
       status: task.status,
       title: task.title,
       updatedAt: serializeTimestamp(task.updated_at),
@@ -1165,25 +1277,13 @@ export class PostgresTaskRepository implements TaskRepository {
             serializeTimestamp(task.time_block_starts_at),
           )
         : null,
-      project: this.readLegacyProjectName(task.metadata),
+      project: task.project_title ?? this.readLegacyProjectName(task.metadata),
+      projectId: task.project_id,
       status: task.status,
       title: task.title,
       updatedAt: serializeTimestamp(task.updated_at),
       version: Number(task.version),
       workspaceId: task.workspace_id,
-    }
-  }
-
-  private mapTaskEventRecord(taskEvent: TaskEventRow) {
-    return {
-      actorUserId: taskEvent.actor_user_id,
-      eventId: taskEvent.event_id,
-      eventType: taskEvent.event_type,
-      id: Number(taskEvent.id),
-      occurredAt: serializeTimestamp(taskEvent.occurred_at),
-      payload: taskEvent.payload,
-      taskId: taskEvent.task_id,
-      workspaceId: taskEvent.workspace_id,
     }
   }
 
@@ -1255,6 +1355,19 @@ export class PostgresTaskRepository implements TaskRepository {
       .executeTakeFirst()
   }
 
+  private mapTaskEventRecord(event: TaskEventRow): StoredTaskEventRecord {
+    return {
+      actorUserId: event.actor_user_id,
+      eventId: event.event_id,
+      eventType: event.event_type,
+      id: Number(event.id),
+      occurredAt: serializeTimestamp(event.occurred_at),
+      payload: normalizeJsonObject(event.payload),
+      taskId: event.task_id,
+      workspaceId: event.workspace_id,
+    }
+  }
+
   private loadCurrentTask(
     executor: DatabaseExecutor,
     command: {
@@ -1300,4 +1413,18 @@ function serializeNullableDate(value: unknown): string | null {
 
 function serializeTimestamp(value: unknown): string {
   return value instanceof Date ? value.toISOString() : String(value)
+}
+
+function normalizeJsonObject(value: unknown): JsonObject {
+  if (typeof value === 'string') {
+    const parsedValue = JSON.parse(value) as unknown
+
+    return normalizeJsonObject(parsedValue)
+  }
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as JsonObject
+  }
+
+  return {}
 }

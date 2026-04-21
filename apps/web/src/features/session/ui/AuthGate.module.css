@@ -142,6 +142,16 @@
   margin-top: 1.4rem;
 }
 
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.actionRow > button {
+  flex: 1 1 12rem;
+}
+
 .field {
   display: grid;
   gap: 0.45rem;

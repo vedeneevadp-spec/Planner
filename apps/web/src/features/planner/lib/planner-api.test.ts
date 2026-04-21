@@ -1,7 +1,11 @@
 import { isUuidV7 } from '@planner/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
-import { createPlannerApiClient, PlannerApiError } from './planner-api'
+import {
+  createPlannerApiClient,
+  isUnauthorizedPlannerApiError,
+  PlannerApiError,
+} from './planner-api'
 
 const TEST_CONFIG = {
   actorUserId: 'user-1',
@@ -35,6 +39,7 @@ describe('plannerApi', () => {
             plannedEndTime: null,
             plannedStartTime: null,
             project: '',
+            projectId: null,
             status: 'todo',
             title: 'Inbox',
             updatedAt: '2026-04-15T10:00:00.000Z',
@@ -115,6 +120,82 @@ describe('plannerApi', () => {
     expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBeNull()
   })
 
+  it('creates and updates projects through the planner API', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            color: '#2f6f62',
+            createdAt: '2026-04-16T02:00:00.000Z',
+            deletedAt: null,
+            description: '',
+            icon: 'folder',
+            id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b2',
+            status: 'active',
+            title: 'Planner',
+            updatedAt: '2026-04-16T02:00:00.000Z',
+            version: 1,
+            workspaceId: 'workspace-1',
+          }),
+          { status: 201 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            color: '#3f5f9f',
+            createdAt: '2026-04-16T02:00:00.000Z',
+            deletedAt: null,
+            description: 'Updated',
+            icon: 'target',
+            id: 'project-1',
+            status: 'active',
+            title: 'Planner App',
+            updatedAt: '2026-04-16T03:00:00.000Z',
+            version: 2,
+            workspaceId: 'workspace-1',
+          }),
+          { status: 200 },
+        ),
+      )
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    await api.createProject({
+      color: '#2f6f62',
+      description: '',
+      icon: 'folder',
+      title: 'Planner',
+    })
+    await api.updateProject('project-1', {
+      color: '#3f5f9f',
+      description: 'Updated',
+      expectedVersion: 1,
+      icon: 'target',
+      title: 'Planner App',
+    })
+
+    const [createUrl, createRequestInit] = fetchMock.mock.calls[0]!
+    const [updateUrl, updateRequestInit] = fetchMock.mock.calls[1]!
+    const createRequestUrl =
+      createUrl instanceof URL ? createUrl.href : createUrl
+    const updateRequestUrl =
+      updateUrl instanceof URL ? updateUrl.href : updateUrl
+    const createBody = parseJsonRequestBody<{ id: string }>(createRequestInit)
+
+    expect(createRequestUrl).toBe('http://127.0.0.1:3001/api/v1/projects')
+    expect(updateRequestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/projects/project-1',
+    )
+    expect(isUuidV7(createBody.id)).toBe(true)
+    expect(new Headers(createRequestInit?.headers).get('x-actor-user-id')).toBe(
+      'user-1',
+    )
+    expect(new Headers(updateRequestInit?.headers).get('x-actor-user-id')).toBe(
+      'user-1',
+    )
+  })
+
   it('throws structured API error for failed writes', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
@@ -139,6 +220,7 @@ describe('plannerApi', () => {
         plannedEndTime: null,
         plannedStartTime: null,
         project: '',
+        projectId: null,
         title: 'Task title',
       }),
     ).rejects.toThrow(PlannerApiError)
@@ -146,6 +228,18 @@ describe('plannerApi', () => {
     const [, requestInit] = fetchMock.mock.calls[0]!
     expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBe(
       'user-1',
+    )
+  })
+
+  it('detects unauthorized planner API errors', () => {
+    const error = new PlannerApiError('Unauthorized.', {
+      code: 'authentication_required',
+      status: 401,
+    })
+
+    expect(isUnauthorizedPlannerApiError(error)).toBe(true)
+    expect(isUnauthorizedPlannerApiError(new Error('Network failed.'))).toBe(
+      false,
     )
   })
 
@@ -163,6 +257,7 @@ describe('plannerApi', () => {
           plannedEndTime: null,
           plannedStartTime: null,
           project: '',
+          projectId: null,
           status: 'todo',
           title: 'Task title',
           updatedAt: '2026-04-16T03:00:00.000Z',
@@ -181,6 +276,7 @@ describe('plannerApi', () => {
       plannedEndTime: null,
       plannedStartTime: null,
       project: '',
+      projectId: null,
       title: 'Task title',
     })
 
@@ -206,6 +302,7 @@ describe('plannerApi', () => {
             plannedEndTime: null,
             plannedStartTime: null,
             project: '',
+            projectId: null,
             status: 'done',
             title: 'Task title',
             updatedAt: '2026-04-16T03:00:00.000Z',

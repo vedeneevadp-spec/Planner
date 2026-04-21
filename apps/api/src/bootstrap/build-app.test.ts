@@ -3,13 +3,25 @@ import { afterEach, describe, it } from 'node:test'
 
 import {
   apiErrorSchema,
+  emojiSetListResponseSchema,
+  emojiSetRecordSchema,
   healthResponseSchema,
+  projectListResponseSchema,
+  projectRecordSchema,
   sessionResponseSchema,
   taskEventListResponseSchema,
   taskListResponseSchema,
   taskRecordSchema,
 } from '@planner/contracts'
 
+import {
+  EmojiSetService,
+  MemoryEmojiSetRepository,
+} from '../modules/emoji-sets/index.js'
+import {
+  MemoryProjectRepository,
+  ProjectService,
+} from '../modules/projects/index.js'
 import {
   MemorySessionRepository,
   type SessionRepository,
@@ -93,6 +105,7 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -115,9 +128,26 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
+
+    const projectResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        color: '#2f6f62',
+        description: 'Inbox processing',
+        icon: 'folder',
+        title: 'Inbox',
+      },
+      url: '/api/v1/projects',
+    })
+    const project = projectRecordSchema.parse(projectResponse.json())
 
     const createResponse = await app.inject({
       headers: {
@@ -132,6 +162,7 @@ void describe('buildApiApp', () => {
         plannedEndTime: '10:00',
         plannedStartTime: '09:00',
         project: 'Inbox',
+        projectId: project.id,
         title: 'Prepare planner backend',
       },
       url: '/api/v1/tasks',
@@ -142,6 +173,7 @@ void describe('buildApiApp', () => {
     const createdTask = taskRecordSchema.parse(createResponse.json())
 
     assert.equal(createdTask.version, 1)
+    assert.equal(createdTask.projectId, project.id)
     assert.equal(createdTask.workspaceId, 'workspace-1')
 
     const statusResponse = await app.inject({
@@ -190,6 +222,25 @@ void describe('buildApiApp', () => {
 
     assert.equal(deleteResponse.statusCode, 204)
 
+    const eventsResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/task-events?afterEventId=0&limit=10',
+    })
+
+    assert.equal(eventsResponse.statusCode, 200)
+
+    const eventsBody = taskEventListResponseSchema.parse(eventsResponse.json())
+
+    assert.equal(eventsBody.nextEventId, 3)
+    assert.deepEqual(
+      eventsBody.events.map((event) => event.eventType),
+      ['task.created', 'task.status_changed', 'task.deleted'],
+    )
+    assert.equal(eventsBody.events[0]?.taskId, createdTask.id)
+
     const deletedListResponse = await app.inject({
       headers: {
         'x-workspace-id': 'workspace-1',
@@ -207,10 +258,188 @@ void describe('buildApiApp', () => {
     assert.equal(deletedTasks.length, 0)
   })
 
+  void it('creates, updates and lists projects via the HTTP API', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const createResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        color: '#2f6f62',
+        description: 'Planner product work',
+        icon: 'folder',
+        title: 'Planner',
+      },
+      url: '/api/v1/projects',
+    })
+
+    assert.equal(createResponse.statusCode, 201)
+
+    const createdProject = projectRecordSchema.parse(createResponse.json())
+
+    assert.equal(createdProject.title, 'Planner')
+    assert.equal(createdProject.workspaceId, 'workspace-1')
+
+    const updateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'PATCH',
+      payload: {
+        color: '#3f5f9f',
+        description: 'Updated project context',
+        expectedVersion: createdProject.version,
+        icon: 'target',
+        title: 'Planner App',
+      },
+      url: `/api/v1/projects/${createdProject.id}`,
+    })
+
+    assert.equal(updateResponse.statusCode, 200)
+
+    const updatedProject = projectRecordSchema.parse(updateResponse.json())
+
+    assert.equal(updatedProject.title, 'Planner App')
+    assert.equal(updatedProject.version, 2)
+
+    const listResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/projects',
+    })
+
+    assert.equal(listResponse.statusCode, 200)
+
+    const projects = projectListResponseSchema.parse(listResponse.json())
+
+    assert.equal(projects.length, 1)
+    assert.equal(projects[0]?.id, createdProject.id)
+  })
+
+  void it('creates and lists emoji sets via the HTTP API', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      emojiSetService: new EmojiSetService(new MemoryEmojiSetRepository()),
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const createResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        description: 'Telegram export for planning markers',
+        items: [
+          {
+            kind: 'unicode',
+            keywords: ['focus', 'target'],
+            label: 'Focus',
+            shortcode: ':Focus:',
+            value: '🎯',
+          },
+          {
+            kind: 'image',
+            label: 'Telegram folder',
+            shortcode: 'tg-folder',
+            value: '/emoji/telegram/folder.webp',
+          },
+        ],
+        source: 'telegram',
+        title: 'Telegram Planner',
+      },
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(createResponse.statusCode, 201)
+
+    const createdEmojiSet = emojiSetRecordSchema.parse(createResponse.json())
+
+    assert.equal(createdEmojiSet.title, 'Telegram Planner')
+    assert.equal(createdEmojiSet.source, 'telegram')
+    assert.equal(createdEmojiSet.workspaceId, 'workspace-1')
+    assert.equal(createdEmojiSet.items.length, 2)
+    assert.equal(createdEmojiSet.items[0]?.shortcode, 'focus')
+
+    const listResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(listResponse.statusCode, 200)
+
+    const emojiSets = emojiSetListResponseSchema.parse(listResponse.json())
+
+    assert.equal(emojiSets.length, 1)
+    assert.equal(emojiSets[0]?.id, createdEmojiSet.id)
+  })
+
+  void it('forbids emoji set management for viewer workspace role', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      emojiSetService: new EmojiSetService(new MemoryEmojiSetRepository()),
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(viewerSessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-viewer',
+      },
+      method: 'POST',
+      payload: {
+        description: '',
+        items: [
+          {
+            kind: 'unicode',
+            label: 'Focus',
+            shortcode: 'focus',
+            value: '🎯',
+          },
+        ],
+        title: 'Viewer set',
+      },
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(response.statusCode, 403)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'workspace_admin_required')
+  })
+
   void it('returns a typed validation error for malformed requests', async () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -234,6 +463,7 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -260,6 +490,7 @@ void describe('buildApiApp', () => {
         API_CORS_ORIGIN: 'http://127.0.0.1:5173',
       }),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -301,6 +532,7 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -326,6 +558,7 @@ void describe('buildApiApp', () => {
         SUPABASE_PROJECT_REF: 'planner-test-project',
       }),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -344,6 +577,10 @@ void describe('buildApiApp', () => {
     } = response.json()
 
     assert.equal(body.openapi, '3.0.3')
+    assert.ok(body.paths?.['/api/v1/emoji-sets'])
+    assert.ok(body.paths?.['/api/v1/emoji-sets/{emojiSetId}'])
+    assert.ok(body.paths?.['/api/v1/projects'])
+    assert.ok(body.paths?.['/api/v1/projects/{projectId}'])
     assert.ok(body.paths?.['/api/v1/task-events'])
     assert.ok(body.paths?.['/api/v1/tasks'])
     assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
@@ -356,6 +593,7 @@ void describe('buildApiApp', () => {
         SUPABASE_PROJECT_REF: 'planner-test-project',
       }),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -380,6 +618,7 @@ void describe('buildApiApp', () => {
         SUPABASE_PROJECT_REF: 'planner-test-project',
       }),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -434,6 +673,7 @@ void describe('buildApiApp', () => {
         SUPABASE_PROJECT_REF: 'planner-test-project',
       }),
       database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(viewerSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),

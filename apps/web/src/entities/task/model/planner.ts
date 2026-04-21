@@ -202,6 +202,7 @@ export function addTask(
     title: input.title.trim(),
     note: input.note.trim(),
     project: input.project.trim(),
+    projectId: input.projectId,
     status: 'todo',
     plannedDate: schedule.plannedDate,
     plannedStartTime: schedule.plannedStartTime,

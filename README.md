@@ -74,7 +74,7 @@ supabase/
 
 - По умолчанию API стартует на локальном Postgres и использует `DATABASE_URL`, либо fallback `postgres://planner:planner@127.0.0.1:54329/planner_development`.
 - `API_STORAGE_DRIVER=memory` поддерживается только в тестовом runtime.
-- `API_DB_RLS_MODE` можно использовать для override поведения RLS runtime layer: в auto-режиме direct Postgres включает DB RLS context, а Supabase pooler runtime отключает его из-за нестабильности transaction-scoped role switching.
+- `API_DB_RLS_MODE` можно использовать для override поведения RLS runtime layer. По умолчанию direct Postgres включает transaction-local DB RLS context, а Supabase transaction pooler runtime отключает DB RLS context из-за нестабильности transaction-scoped role switching; backend policies остаются обязательным первым уровнем защиты.
 - Базовые endpoint'ы уже доступны: `/api/health`, `/api/v1/session`, `/api/v1/tasks`, `/api/v1/task-events`.
 - OpenAPI specification доступна на `/api/openapi.json`, Swagger UI - на `/api/docs`.
 - Для managed Supabase runtime используйте `SUPABASE_RUNTIME_DATABASE_URL` или fallback на `SUPABASE_DB_URL`.
@@ -83,9 +83,9 @@ supabase/
 ## Web Runtime
 
 - `apps/web` работает только через HTTP API и server-state cache на `TanStack Query`.
-- Для offline-first сценариев web хранит последний task snapshot и очередь write-операций в IndexedDB через `Dexie`.
-- Offline queue синхронизируется автоматически при восстановлении сети и использует `expectedVersion`; серверные `409 task_version_conflict` оставляют операцию в конфликтном состоянии и обновляют query cache.
-- Cursor sync читает `/api/v1/task-events`, хранит последний event id в IndexedDB и инвалидирует task cache при новых событиях или Supabase Realtime notification.
+- Для offline-first сценариев web хранит последние task/project snapshots и очередь write-операций в IndexedDB через `Dexie`.
+- Offline queue синхронизируется автоматически при восстановлении сети и использует `expectedVersion`; серверные `409 task_version_conflict` и `409 project_version_conflict` оставляют операцию в конфликтном состоянии и обновляют query cache.
+- Cursor sync читает реальные события из `/api/v1/task-events`, хранит последний event id в IndexedDB и инвалидирует task/project cache при новых событиях или Supabase Realtime notification.
 - Текущая session-модель резолвится сервером через `GET /api/v1/session`.
 - Для локального запуска можно использовать значения из `apps/web/.env.example`.
 - Если `VITE_ACTOR_USER_ID` и `VITE_WORKSPACE_ID` не заданы, web берет default session из API runtime.

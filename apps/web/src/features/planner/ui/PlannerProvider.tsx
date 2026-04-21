@@ -4,7 +4,7 @@ import { type PropsWithChildren, useState } from 'react'
 import { PlannerContext } from '../model/planner-context'
 import { usePlannerState } from '../model/usePlannerState'
 
-export function PlannerProvider({ children }: PropsWithChildren) {
+export function PlannerQueryProvider({ children }: PropsWithChildren) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -21,13 +21,11 @@ export function PlannerProvider({ children }: PropsWithChildren) {
   )
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <PlannerStateProvider>{children}</PlannerStateProvider>
-    </QueryClientProvider>
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
 }
 
-function PlannerStateProvider({ children }: PropsWithChildren) {
+export function PlannerProvider({ children }: PropsWithChildren) {
   const planner = usePlannerState()
 
   return (
