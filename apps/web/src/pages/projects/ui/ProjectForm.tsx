@@ -2,6 +2,10 @@ import { type FormEvent, useId, useState } from 'react'
 
 import type { Project } from '@/entities/project'
 import { cx } from '@/shared/lib/classnames'
+import {
+  IconChoicePicker,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 
 import styles from './ProjectsPage.module.css'
 
@@ -14,7 +18,7 @@ const PROJECT_COLORS = [
   '#576056',
 ] as const
 
-const PROJECT_ICONS = ['📁', '🎯', '💼', '📚', '🧭', '✦'] as const
+const DEFAULT_PROJECT_ICON = '📁'
 
 export interface ProjectFormValues {
   color: string
@@ -26,6 +30,7 @@ export interface ProjectFormValues {
 interface ProjectFormProps {
   project?: Project | undefined
   submitLabel: string
+  uploadedIcons?: UploadedIconAsset[] | undefined
   onCancel?: (() => void) | undefined
   onSubmit: (values: ProjectFormValues) => Promise<boolean>
 }
@@ -33,6 +38,7 @@ interface ProjectFormProps {
 export function ProjectForm({
   project,
   submitLabel,
+  uploadedIcons = [],
   onCancel,
   onSubmit,
 }: ProjectFormProps) {
@@ -40,7 +46,7 @@ export function ProjectForm({
   const [title, setTitle] = useState(project?.title ?? '')
   const [description, setDescription] = useState(project?.description ?? '')
   const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0])
-  const [icon, setIcon] = useState(project?.icon ?? PROJECT_ICONS[0])
+  const [icon, setIcon] = useState(project?.icon ?? DEFAULT_PROJECT_ICON)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -65,7 +71,7 @@ export function ProjectForm({
     setTitle('')
     setDescription('')
     setColor(PROJECT_COLORS[0])
-    setIcon(PROJECT_ICONS[0])
+    setIcon(DEFAULT_PROJECT_ICON)
   }
 
   return (
@@ -133,24 +139,14 @@ export function ProjectForm({
           </div>
         </div>
 
-        <div className={styles.pickerGroup}>
-          <span className={styles.pickerLabel}>Иконка</span>
-          <div className={styles.iconList}>
-            {PROJECT_ICONS.map((projectIcon) => (
-              <button
-                key={projectIcon}
-                className={cx(
-                  styles.iconButton,
-                  icon === projectIcon && styles.iconButtonActive,
-                )}
-                type="button"
-                onClick={() => setIcon(projectIcon)}
-              >
-                {projectIcon}
-              </button>
-            ))}
-          </div>
-        </div>
+        <IconChoicePicker
+          allowEmpty={false}
+          className={styles.iconPicker}
+          label="Иконка"
+          uploadedIcons={uploadedIcons}
+          value={icon}
+          onChange={setIcon}
+        />
       </div>
 
       <button className={styles.primaryButton} type="submit">

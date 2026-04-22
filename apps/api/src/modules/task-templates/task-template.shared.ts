@@ -7,10 +7,13 @@ import {
 import type { StoredTaskTemplateRecord } from './task-template.model.js'
 
 export interface NormalizedTaskTemplateInput extends NewTaskTemplateInput {
+  icon: string
+  importance: NonNullable<NewTaskTemplateInput['importance']>
   note: string
   project: string
   projectId: string | null
   title: string
+  urgency: NonNullable<NewTaskTemplateInput['urgency']>
 }
 
 export function normalizeTaskTemplateSchedule({
@@ -54,10 +57,13 @@ export function normalizeTaskTemplateInput(
 ): NormalizedTaskTemplateInput {
   return {
     ...input,
+    icon: (input.icon ?? '').trim(),
+    importance: input.importance ?? 'not_important',
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
     title: input.title.trim(),
+    urgency: input.urgency ?? 'not_urgent',
   }
 }
 
@@ -77,7 +83,9 @@ export function createStoredTaskTemplateRecord(
     createdAt: now,
     deletedAt: null,
     dueDate: normalizedInput.dueDate,
+    icon: normalizedInput.icon,
     id: normalizedInput.id ?? options.id ?? generateUuidV7(),
+    importance: normalizedInput.importance,
     note: normalizedInput.note,
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
@@ -85,6 +93,7 @@ export function createStoredTaskTemplateRecord(
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
     title: normalizedInput.title,
+    urgency: normalizedInput.urgency,
     updatedAt: now,
     version: 1,
     workspaceId: options.workspaceId,

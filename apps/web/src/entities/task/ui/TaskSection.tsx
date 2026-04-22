@@ -1,5 +1,6 @@
 import type { Project } from '@/entities/project'
-import type { Task, TaskStatus } from '@/entities/task'
+import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
+import type { UploadedIconAsset } from '@/shared/ui/Icon'
 
 import { TaskCard } from './TaskCard'
 import styles from './TaskSection.module.css'
@@ -8,11 +9,13 @@ interface TaskSectionProps {
   title: string
   tasks: Task[]
   projects?: Project[] | undefined
+  uploadedIcons?: UploadedIconAsset[] | undefined
   emptyMessage: string
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
+  onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   onRemove: (taskId: string) => void
 }
 
@@ -20,11 +23,13 @@ export function TaskSection({
   title,
   tasks,
   projects = [],
+  uploadedIcons = [],
   emptyMessage,
   tone = 'default',
   isTaskPending,
   onSetStatus,
   onSetPlannedDate,
+  onUpdate,
   onRemove,
 }: TaskSectionProps) {
   return (
@@ -42,14 +47,17 @@ export function TaskSection({
             <TaskCard
               key={task.id}
               task={task}
+              projects={projects}
               project={projects.find(
                 (project) => project.id === task.projectId,
               )}
               isPending={isTaskPending?.(task.id)}
+              uploadedIcons={uploadedIcons}
               tone={tone}
               onRemove={onRemove}
               onSetPlannedDate={onSetPlannedDate}
               onSetStatus={onSetStatus}
+              onUpdate={onUpdate}
             />
           ))}
         </div>

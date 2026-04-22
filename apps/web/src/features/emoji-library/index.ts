@@ -8,4 +8,5 @@ export {
   useDeleteEmojiSet,
   useDeleteEmojiSetItem,
   useEmojiSets,
+  useUploadedIconAssets,
 } from './lib/useEmojiLibrary'

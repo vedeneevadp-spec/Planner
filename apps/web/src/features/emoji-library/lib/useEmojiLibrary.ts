@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 import type {
   AddEmojiSetItemsInput,
@@ -6,6 +7,7 @@ import type {
 } from '@/entities/emoji-set'
 import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import type { UploadedIconAsset } from '@/shared/ui/Icon'
 
 import {
   createEmojiLibraryApiClient,
@@ -40,6 +42,31 @@ export function useEmojiSets() {
     queryKey: emojiSetQueryKey(session?.workspaceId ?? 'pending'),
     staleTime: 60_000,
   })
+}
+
+export function useUploadedIconAssets(): {
+  isLoading: boolean
+  uploadedIcons: UploadedIconAsset[]
+} {
+  const iconSetsQuery = useEmojiSets()
+  const uploadedIcons = useMemo(
+    () =>
+      (iconSetsQuery.data ?? []).flatMap((iconSet) =>
+        iconSet.items.map(
+          (item): UploadedIconAsset => ({
+            id: item.id,
+            label: item.label,
+            value: item.value,
+          }),
+        ),
+      ),
+    [iconSetsQuery.data],
+  )
+
+  return {
+    isLoading: iconSetsQuery.isLoading,
+    uploadedIcons,
+  }
 }
 
 export function useCreateEmojiSet() {

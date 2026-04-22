@@ -7,12 +7,14 @@ import {
   useState,
 } from 'react'
 
-import type { Project } from '@/entities/project'
-import type { NewTaskInput } from '@/entities/task'
+import { type Project, ProjectPicker } from '@/entities/project'
+import type { NewTaskInput, TaskImportance } from '@/entities/task'
 import type { TaskTemplate } from '@/entities/task-template'
+import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
 import { cx } from '@/shared/lib/classnames'
 import { addDays, getDateKey } from '@/shared/lib/date'
+import { IconChoicePicker, IconMark, TrashIcon } from '@/shared/ui/Icon'
 
 import styles from './TaskComposer.module.css'
 
@@ -48,19 +50,17 @@ function resolveProjectFields(
   }
 }
 
-function getTemplateProjectLabel(
+function getTemplateProject(
   template: TaskTemplate,
   projects: Project[],
-): string {
-  const project = template.projectId
-    ? projects.find((candidate) => candidate.id === template.projectId)
-    : null
-
-  if (project) {
-    return `${project.icon} ${project.title}`
+): Project | null {
+  if (!template.projectId) {
+    return null
   }
 
-  return template.project || 'Без проекта'
+  return (
+    projects.find((candidate) => candidate.id === template.projectId) ?? null
+  )
 }
 
 function buildTaskInputFromTemplate(
@@ -78,18 +78,21 @@ function buildTaskInputFromTemplate(
   return {
     dueDate: template.dueDate,
     note: template.note,
+    icon: template.icon,
+    importance: template.importance,
     plannedDate,
     plannedEndTime: plannedDate ? template.plannedEndTime : null,
     plannedStartTime: plannedDate ? template.plannedStartTime : null,
     project: project.project,
     projectId: project.projectId,
     title: template.title,
+    urgency: 'not_urgent',
   }
 }
 
 export function TaskComposer({
   initialPlannedDate,
-  showTimeFields = false,
+  showTimeFields = true,
 }: TaskComposerProps) {
   const {
     addTask,
@@ -98,6 +101,7 @@ export function TaskComposer({
     removeTaskTemplate,
     taskTemplates,
   } = usePlanner()
+  const { uploadedIcons } = useUploadedIconAssets()
   const titleId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -109,6 +113,8 @@ export function TaskComposer({
   )
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
+  const [icon, setIcon] = useState('')
+  const [importance, setImportance] = useState<TaskImportance>('not_important')
   const [projectId, setProjectId] = useState('')
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
@@ -122,6 +128,7 @@ export function TaskComposer({
     null,
   )
   const [templateNotice, setTemplateNotice] = useState<string | null>(null)
+  const [isTemplatesExpanded, setIsTemplatesExpanded] = useState(false)
 
   useEffect(() => {
     if (!isOpen) {
@@ -170,6 +177,8 @@ export function TaskComposer({
 
     return {
       dueDate: dueDate || null,
+      icon,
+      importance,
       note,
       plannedDate: plannedDate || null,
       plannedEndTime:
@@ -178,11 +187,14 @@ export function TaskComposer({
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
       title: normalizedTitle,
+      urgency: 'not_urgent',
     }
   }
 
   function resetForm() {
     setTitle('')
+    setIcon('')
+    setImportance('not_important')
     setProjectId('')
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
@@ -193,7 +205,7 @@ export function TaskComposer({
     setTemplateNotice(null)
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const input = buildCurrentTaskInput()
@@ -202,14 +214,9 @@ export function TaskComposer({
       return
     }
 
-    const isCreated = await addTask(input)
-
-    if (!isCreated) {
-      return
-    }
-
     resetForm()
     setIsOpen(false)
+    void addTask(input)
   }
 
   async function handleSaveTemplate() {
@@ -222,6 +229,7 @@ export function TaskComposer({
     const isCreated = await addTaskTemplate(input)
 
     if (isCreated) {
+      resetForm()
       setTemplateNotice(
         'Шаблон сохранён. Теперь его можно запускать в один клик.',
       )
@@ -235,6 +243,8 @@ export function TaskComposer({
       : null
 
     setTitle(template.title)
+    setIcon(template.icon)
+    setImportance(template.importance)
     setProjectId(knownProject?.id ?? '')
     setPlannedDate(plannedDateFromTemplate ?? '')
     setPlannedStartTime(
@@ -257,16 +267,22 @@ export function TaskComposer({
       return
     }
 
+    const input = buildTaskInputFromTemplate(
+      template,
+      projects,
+      initialPlannedDate,
+    )
+
     setPendingTemplateId(template.id)
+    resetForm()
+    setTemplateNotice(`Задача из шаблона «${template.title}» создаётся.`)
+    setIsOpen(false)
 
     try {
-      const isCreated = await addTask(
-        buildTaskInputFromTemplate(template, projects, initialPlannedDate),
-      )
+      const isCreated = await addTask(input)
 
       if (isCreated) {
         setTemplateNotice(`Задача из шаблона «${template.title}» создана.`)
-        setIsOpen(false)
       }
     } finally {
       setPendingTemplateId(null)
@@ -287,6 +303,7 @@ export function TaskComposer({
 
   function openComposer() {
     setTemplateNotice(null)
+    setIsTemplatesExpanded(false)
     setIsOpen(true)
   }
 
@@ -342,7 +359,7 @@ export function TaskComposer({
           <form
             className={styles.panel}
             onSubmit={(event) => {
-              void handleSubmit(event)
+              handleSubmit(event)
             }}
           >
             <div className={styles.modalHeader}>
@@ -360,65 +377,123 @@ export function TaskComposer({
             {taskTemplates.length > 0 ? (
               <section className={styles.templatePanel}>
                 <div className={styles.templatePanelHeader}>
-                  <div>
-                    <p className={styles.eyebrow}>Шаблоны</p>
-                    <h3>Быстрый старт</h3>
-                  </div>
-                  <p>
-                    Создай задачу сразу или подставь шаблон и поправь детали.
+                  <p className={styles.eyebrow}>
+                    Шаблоны
+                    <span className={styles.templateCount}>
+                      {taskTemplates.length}
+                    </span>
                   </p>
+                  <button
+                    className={styles.templateToggle}
+                    type="button"
+                    aria-expanded={isTemplatesExpanded}
+                    onClick={() => setIsTemplatesExpanded((value) => !value)}
+                  >
+                    {isTemplatesExpanded ? 'Свернуть' : 'Показать'}
+                  </button>
                 </div>
 
-                <div className={styles.templateGrid}>
-                  {taskTemplates.map((template) => (
-                    <article
-                      key={template.id}
-                      className={cx(
-                        styles.templateCard,
-                        selectedTemplateId === template.id &&
-                          styles.templateCardActive,
-                      )}
-                    >
-                      <div>
-                        <h4>{template.title}</h4>
-                        <p>{getTemplateProjectLabel(template, projects)}</p>
-                        {template.note ? <span>{template.note}</span> : null}
-                      </div>
+                {isTemplatesExpanded ? (
+                  <div className={styles.templateList}>
+                    {taskTemplates.map((template) => {
+                      const templateProject = getTemplateProject(
+                        template,
+                        projects,
+                      )
+                      const templateProjectTitle =
+                        templateProject?.title ??
+                        (template.project || 'Без проекта')
 
-                      <div className={styles.templateActions}>
-                        <button
-                          className={styles.ghostButton}
-                          type="button"
-                          onClick={() => handleApplyTemplate(template)}
-                        >
-                          Подставить
-                        </button>
-                        <button
-                          className={styles.ghostButton}
-                          type="button"
-                          disabled={pendingTemplateId !== null}
-                          onClick={() => {
-                            void handleCreateFromTemplate(template)
-                          }}
-                        >
-                          Создать
-                        </button>
-                        <button
+                      return (
+                        <article
+                          key={template.id}
                           className={cx(
-                            styles.ghostButton,
-                            styles.dangerButton,
+                            styles.templateRow,
+                            selectedTemplateId === template.id &&
+                              styles.templateRowActive,
                           )}
-                          type="button"
-                          onClick={() => {
-                            void handleRemoveTemplate(template)
-                          }}
                         >
-                          Удалить
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                          <button
+                            className={styles.templateSelectButton}
+                            type="button"
+                            title={`Подставить шаблон «${template.title}»`}
+                            onClick={() => handleApplyTemplate(template)}
+                          >
+                            <span className={styles.templateIconSlot}>
+                              {template.icon ? (
+                                <IconMark
+                                  className={styles.templateTaskIcon}
+                                  value={template.icon}
+                                  uploadedIcons={uploadedIcons}
+                                />
+                              ) : null}
+                            </span>
+
+                            <span className={styles.templateText}>
+                              <strong>{template.title}</strong>
+                              {template.note ? (
+                                <span>{template.note}</span>
+                              ) : null}
+                            </span>
+
+                            <span
+                              className={cx(
+                                styles.templateProjectChip,
+                                !templateProject &&
+                                  !template.project &&
+                                  styles.templateProjectChipMuted,
+                              )}
+                            >
+                              {templateProject ? (
+                                <span
+                                  className={styles.templateProjectIcon}
+                                  style={{
+                                    backgroundColor: templateProject.color,
+                                  }}
+                                  aria-hidden="true"
+                                >
+                                  <IconMark
+                                    value={templateProject.icon}
+                                    uploadedIcons={uploadedIcons}
+                                  />
+                                </span>
+                              ) : null}
+                              {templateProjectTitle}
+                            </span>
+                          </button>
+
+                          <div className={styles.templateActions}>
+                            <button
+                              className={styles.ghostButton}
+                              type="button"
+                              disabled={pendingTemplateId !== null}
+                              onClick={() => {
+                                void handleCreateFromTemplate(template)
+                              }}
+                            >
+                              Создать
+                            </button>
+                            <button
+                              className={cx(
+                                styles.ghostButton,
+                                styles.iconButton,
+                                styles.dangerButton,
+                              )}
+                              type="button"
+                              aria-label={`Удалить шаблон ${template.title}`}
+                              title="Удалить"
+                              onClick={() => {
+                                void handleRemoveTemplate(template)
+                              }}
+                            >
+                              <TrashIcon size={17} />
+                            </button>
+                          </div>
+                        </article>
+                      )
+                    })}
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -439,19 +514,28 @@ export function TaskComposer({
                 />
               </label>
 
-              <label className={styles.field}>
-                <span>Проект</span>
-                <select
-                  value={projectId}
-                  onChange={(event) => setProjectId(event.target.value)}
-                >
-                  <option value="">Без проекта</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.icon} {project.title}
-                    </option>
-                  ))}
-                </select>
+              <ProjectPicker
+                className={styles.fieldProject}
+                projects={projects}
+                uploadedIcons={uploadedIcons}
+                value={projectId}
+                onChange={setProjectId}
+              />
+
+              <label className={cx(styles.field, styles.fieldImportant)}>
+                <span>Маркер</span>
+                <span className={styles.checkboxControl}>
+                  <input
+                    type="checkbox"
+                    checked={importance === 'important'}
+                    onChange={(event) =>
+                      setImportance(
+                        event.target.checked ? 'important' : 'not_important',
+                      )
+                    }
+                  />
+                  <span>Важно</span>
+                </span>
               </label>
 
               <label className={styles.field}>
@@ -501,6 +585,17 @@ export function TaskComposer({
                   onChange={(event) => setDueDate(event.target.value)}
                 />
               </label>
+            </div>
+
+            <div className={styles.visualPanel}>
+              <IconChoicePicker
+                allowEmpty={false}
+                label="Иконка"
+                showEmojiChoices={false}
+                value={icon}
+                uploadedIcons={uploadedIcons}
+                onChange={setIcon}
+              />
             </div>
 
             <label className={styles.field}>

@@ -708,6 +708,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
             '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
           type: 'string',
         },
+        icon: {
+          type: 'string',
+        },
+        importance: {
+          $ref: '#/components/schemas/TaskImportance',
+        },
         note: {
           type: 'string',
         },
@@ -721,6 +727,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         title: {
           minLength: 1,
           type: 'string',
+        },
+        urgency: {
+          $ref: '#/components/schemas/TaskUrgency',
         },
       },
       required: [
@@ -744,6 +753,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
             '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
           type: 'string',
         },
+        icon: {
+          type: 'string',
+        },
+        importance: {
+          $ref: '#/components/schemas/TaskImportance',
+        },
         note: {
           type: 'string',
         },
@@ -757,6 +772,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         title: {
           minLength: 1,
           type: 'string',
+        },
+        urgency: {
+          $ref: '#/components/schemas/TaskUrgency',
         },
       },
       required: [
@@ -1215,6 +1233,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         id: {
           type: 'string',
         },
+        icon: {
+          type: 'string',
+        },
+        importance: {
+          $ref: '#/components/schemas/TaskImportance',
+        },
         note: {
           type: 'string',
         },
@@ -1229,11 +1253,16 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           minLength: 1,
           type: 'string',
         },
+        urgency: {
+          $ref: '#/components/schemas/TaskUrgency',
+        },
       },
       required: [
         'createdAt',
         'dueDate',
         'id',
+        'icon',
+        'importance',
         'note',
         'plannedDate',
         'plannedEndTime',
@@ -1241,6 +1270,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'project',
         'projectId',
         'title',
+        'urgency',
       ],
       type: 'object',
     },
@@ -1255,6 +1285,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         dueDate: nullableStringSchema(),
         id: {
           type: 'string',
+        },
+        icon: {
+          type: 'string',
+        },
+        importance: {
+          $ref: '#/components/schemas/TaskImportance',
         },
         note: {
           type: 'string',
@@ -1273,12 +1309,17 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           minLength: 1,
           type: 'string',
         },
+        urgency: {
+          $ref: '#/components/schemas/TaskUrgency',
+        },
       },
       required: [
         'completedAt',
         'createdAt',
         'dueDate',
         'id',
+        'icon',
+        'importance',
         'note',
         'plannedDate',
         'plannedEndTime',
@@ -1287,8 +1328,13 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'projectId',
         'status',
         'title',
+        'urgency',
       ],
       type: 'object',
+    },
+    TaskImportance: {
+      enum: ['important', 'not_important'],
+      type: 'string',
     },
     TaskScheduleInput: {
       additionalProperties: false,
@@ -1325,6 +1371,10 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       },
       required: ['status'],
       type: 'object',
+    },
+    TaskUrgency: {
+      enum: ['not_urgent', 'urgent'],
+      type: 'string',
     },
   }
 }

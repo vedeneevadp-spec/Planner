@@ -23,6 +23,7 @@ import type {
   TaskEventListResult,
   TaskListFilters,
   TaskReadContext,
+  UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
 } from './task.model.js'
@@ -53,6 +54,11 @@ interface ResolvedTaskProject {
 
 const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
 const MANUAL_TIME_BLOCK_SOURCE = 'manual'
+const TASK_ICON_KEY = 'taskIcon'
+const TASK_IMPORTANCE_KEY = 'taskImportance'
+const TASK_URGENCY_KEY = 'taskUrgency'
+const DEFAULT_TASK_IMPORTANCE = 'not_important'
+const DEFAULT_TASK_URGENCY = 'not_urgent'
 
 export class PostgresTaskRepository implements TaskRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -123,6 +129,7 @@ export class PostgresTaskRepository implements TaskRepository {
     )
     const metadata = this.buildTaskMetadata(
       project ? '' : normalizedInput.project,
+      normalizedInput,
     )
     const taskId = normalizedInput.id ?? generateUuidV7()
     const startsAt =
@@ -224,6 +231,140 @@ export class PostgresTaskRepository implements TaskRepository {
             workspaceId: command.context.workspaceId,
           })
         }
+
+        return record
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async update(command: UpdateTaskCommand): Promise<StoredTaskRecord> {
+    const normalizedInput = normalizeTaskInput({
+      ...command.input,
+      id: command.taskId,
+    })
+    const normalizedSchedule = normalizeTaskSchedule(normalizedInput)
+    const project = await this.resolveTaskProject(
+      command.context,
+      normalizedInput.projectId,
+    )
+    const metadata = this.buildTaskMetadata(
+      project ? '' : normalizedInput.project,
+      normalizedInput,
+    )
+    const deletedAt = new Date().toISOString()
+    const startsAt =
+      normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+        ? buildTimestampFromDateAndTime(
+            normalizedSchedule.plannedDate,
+            normalizedSchedule.plannedStartTime,
+          )
+        : null
+    const endsAt =
+      normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+        ? buildTimestampFromDateAndTime(
+            normalizedSchedule.plannedDate,
+            normalizedSchedule.plannedEndTime ??
+              buildDefaultEndTime(normalizedSchedule.plannedStartTime),
+          )
+        : null
+
+    if (this.shouldUsePoolerWriteFallback(command.context.auth)) {
+      return this.updateWithPoolerWriteFallback(command, {
+        deletedAt,
+        endsAt,
+        metadata,
+        normalizedInput,
+        normalizedSchedule,
+        projectId: project?.id ?? null,
+        startsAt,
+      })
+    }
+
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        let updateQuery = trx
+          .updateTable('app.tasks')
+          .set({
+            description: normalizedInput.note,
+            due_on: normalizedInput.dueDate,
+            metadata,
+            planned_on: normalizedSchedule.plannedDate,
+            project_id: project?.id ?? null,
+            title: normalizedInput.title,
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+
+        if (command.expectedVersion !== undefined) {
+          updateQuery = updateQuery.where(
+            'version',
+            '=',
+            command.expectedVersion,
+          )
+        }
+
+        const updatedTask = await updateQuery.returningAll().executeTakeFirst()
+
+        if (!updatedTask) {
+          const currentTask = await this.loadCurrentTask(trx, command)
+
+          if (!currentTask) {
+            throw new TaskNotFoundError(command.taskId)
+          }
+
+          if (
+            command.expectedVersion !== undefined &&
+            Number(currentTask.version) !== command.expectedVersion
+          ) {
+            throw new TaskVersionConflictError(
+              command.taskId,
+              command.expectedVersion,
+              Number(currentTask.version),
+            )
+          }
+
+          throw new Error(`Task "${command.taskId}" was not updated.`)
+        }
+
+        await trx
+          .updateTable('app.task_time_blocks')
+          .set({
+            deleted_at: deletedAt,
+            updated_by: command.context.actorUserId,
+          })
+          .where('task_id', '=', command.taskId)
+          .where('deleted_at', 'is', null)
+          .execute()
+
+        const timeBlock = await this.insertPrimaryTimeBlock(trx, {
+          actorUserId: command.context.actorUserId,
+          endsAt,
+          startsAt,
+          taskId: command.taskId,
+          workspaceId: command.context.workspaceId,
+        })
+        const projectTitle = await this.loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          updatedTask.project_id,
+        )
+        const record = this.mapTaskRecord(updatedTask, timeBlock, projectTitle)
+
+        await this.writeTaskMutationArtifacts(trx, {
+          actorUserId: command.context.actorUserId,
+          eventType: 'task.updated',
+          payload: {
+            task: record,
+            version: record.version,
+          },
+          taskId: command.taskId,
+          workspaceId: command.context.workspaceId,
+        })
 
         return record
       },
@@ -707,6 +848,13 @@ export class PostgresTaskRepository implements TaskRepository {
                   cast(task_with_time_block.due_on as text),
                   'id',
                   task_with_time_block.id,
+                  'icon',
+                  coalesce(task_with_time_block.metadata ->> 'taskIcon', ''),
+                  'importance',
+                  coalesce(
+                    task_with_time_block.metadata ->> 'taskImportance',
+                    'not_important'
+                  ),
                   'note',
                   task_with_time_block.description,
                   'plannedDate',
@@ -739,6 +887,11 @@ export class PostgresTaskRepository implements TaskRepository {
                   cast(task_with_time_block.status as text),
                   'title',
                   task_with_time_block.title,
+                  'urgency',
+                  coalesce(
+                    task_with_time_block.metadata ->> 'taskUrgency',
+                    'not_urgent'
+                  ),
                   'updatedAt',
                   to_char(
                     task_with_time_block.updated_at at time zone 'UTC',
@@ -768,6 +921,147 @@ export class PostgresTaskRepository implements TaskRepository {
     }
 
     return this.mapTaskRecordFromListRow(createdTask)
+  }
+
+  private async updateWithPoolerWriteFallback(
+    command: UpdateTaskCommand,
+    params: {
+      deletedAt: string
+      endsAt: string | null
+      metadata: JsonObject
+      normalizedInput: ReturnType<typeof normalizeTaskInput>
+      normalizedSchedule: ReturnType<typeof normalizeTaskSchedule>
+      projectId: string | null
+      startsAt: string | null
+    },
+  ): Promise<StoredTaskRecord> {
+    const authContext = command.context.auth
+
+    if (!authContext) {
+      throw new Error(
+        'Pooler write fallback requires an authenticated context.',
+      )
+    }
+
+    const expectedVersionFilter =
+      command.expectedVersion !== undefined
+        ? sql`and version = ${command.expectedVersion}`
+        : sql``
+    const insertedTimeBlockCte =
+      params.startsAt && params.endsAt
+        ? sql`
+            inserted_time_block as (
+              insert into app.task_time_blocks (
+                created_by,
+                ends_at,
+                metadata,
+                position,
+                source,
+                starts_at,
+                task_id,
+                timezone,
+                updated_by,
+                workspace_id
+              )
+              select
+                ${command.context.actorUserId},
+                cast(${params.endsAt} as timestamptz),
+                '{}'::jsonb,
+                0,
+                ${MANUAL_TIME_BLOCK_SOURCE},
+                cast(${params.startsAt} as timestamptz),
+                updated_task.id,
+                'UTC',
+                ${command.context.actorUserId},
+                updated_task.workspace_id
+              from updated_task
+              returning starts_at, ends_at
+            ),
+          `
+        : sql`
+            inserted_time_block as (
+              select
+                null::timestamptz as starts_at,
+                null::timestamptz as ends_at
+              from updated_task
+            ),
+          `
+    const updatedTask = await this.executePoolerWriteStatement(
+      authContext,
+      command.context.actorUserId,
+      async (executor) => {
+        const result = await sql<TaskListRow>`
+          with updated_task as (
+            update app.tasks
+            set
+              description = ${params.normalizedInput.note},
+              due_on = cast(${params.normalizedInput.dueDate} as date),
+              metadata = cast(${JSON.stringify(params.metadata)} as jsonb),
+              planned_on = cast(${params.normalizedSchedule.plannedDate} as date),
+              project_id = cast(${params.projectId} as uuid),
+              title = ${params.normalizedInput.title},
+              updated_by = ${command.context.actorUserId}
+            where id = ${command.taskId}
+              and workspace_id = ${command.context.workspaceId}
+              and deleted_at is null
+              ${expectedVersionFilter}
+            returning *
+          ),
+          retired_time_blocks as (
+            update app.task_time_blocks
+            set
+              deleted_at = ${params.deletedAt},
+              updated_by = ${command.context.actorUserId}
+            where workspace_id = ${command.context.workspaceId}
+              and task_id = ${command.taskId}
+              and deleted_at is null
+              and exists (select 1 from updated_task)
+            returning id
+          ),
+          ${insertedTimeBlockCte}
+          event_insert as (
+            insert into app.task_events (
+              actor_user_id,
+              event_type,
+              payload,
+              task_id,
+              workspace_id
+            )
+            select
+              ${command.context.actorUserId},
+              'task.updated'::app.task_event_type,
+              jsonb_build_object('version', updated_task.version),
+              updated_task.id,
+              updated_task.workspace_id
+            from updated_task
+          )
+          select
+            updated_task.*,
+            project.title as project_title,
+            inserted_time_block.starts_at as time_block_starts_at,
+            inserted_time_block.ends_at as time_block_ends_at
+          from updated_task
+          left join app.projects as project
+            on project.id = updated_task.project_id
+            and project.workspace_id = updated_task.workspace_id
+            and project.deleted_at is null
+          left join inserted_time_block on true
+        `.execute(executor)
+
+        return result.rows[0]
+      },
+    )
+
+    if (!updatedTask) {
+      return this.resolvePoolerWriteConflict(
+        authContext,
+        command.context.actorUserId,
+        command,
+        `Task "${command.taskId}" was not updated.`,
+      )
+    }
+
+    return this.mapTaskRecordFromListRow(updatedTask)
   }
 
   private async updateStatusWithPoolerWriteFallback(
@@ -1242,6 +1536,8 @@ export class PostgresTaskRepository implements TaskRepository {
       deletedAt: serializeNullableTimestamp(task.deleted_at),
       dueDate: serializeNullableDate(task.due_on),
       id: task.id,
+      icon: this.readTaskIcon(task.metadata),
+      importance: this.readTaskImportance(task.metadata),
       note: task.description,
       plannedDate: serializeNullableDate(task.planned_on),
       plannedEndTime: timeBlock
@@ -1254,6 +1550,7 @@ export class PostgresTaskRepository implements TaskRepository {
       projectId: task.project_id,
       status: task.status,
       title: task.title,
+      urgency: this.readTaskUrgency(task.metadata),
       updatedAt: serializeTimestamp(task.updated_at),
       version: Number(task.version),
       workspaceId: task.workspace_id,
@@ -1267,6 +1564,8 @@ export class PostgresTaskRepository implements TaskRepository {
       deletedAt: serializeNullableTimestamp(task.deleted_at),
       dueDate: serializeNullableDate(task.due_on),
       id: task.id,
+      icon: this.readTaskIcon(task.metadata),
+      importance: this.readTaskImportance(task.metadata),
       note: task.description,
       plannedDate: serializeNullableDate(task.planned_on),
       plannedEndTime: task.time_block_ends_at
@@ -1281,24 +1580,66 @@ export class PostgresTaskRepository implements TaskRepository {
       projectId: task.project_id,
       status: task.status,
       title: task.title,
+      urgency: this.readTaskUrgency(task.metadata),
       updatedAt: serializeTimestamp(task.updated_at),
       version: Number(task.version),
       workspaceId: task.workspace_id,
     }
   }
 
-  private buildTaskMetadata(projectName: string): JsonObject {
-    return projectName
-      ? {
-          [LEGACY_PROJECT_NAME_KEY]: projectName,
-        }
-      : {}
+  private buildTaskMetadata(
+    projectName: string,
+    input: Pick<StoredTaskRecord, 'icon' | 'importance' | 'urgency'>,
+  ): JsonObject {
+    const metadata: JsonObject = {}
+
+    if (projectName) {
+      metadata[LEGACY_PROJECT_NAME_KEY] = projectName
+    }
+
+    if (input.icon) {
+      metadata[TASK_ICON_KEY] = input.icon
+    }
+
+    if (input.importance !== DEFAULT_TASK_IMPORTANCE) {
+      metadata[TASK_IMPORTANCE_KEY] = input.importance
+    }
+
+    if (input.urgency !== DEFAULT_TASK_URGENCY) {
+      metadata[TASK_URGENCY_KEY] = input.urgency
+    }
+
+    return metadata
   }
 
   private readLegacyProjectName(metadata: JsonObject): string {
     const value = metadata[LEGACY_PROJECT_NAME_KEY]
 
     return typeof value === 'string' ? value : ''
+  }
+
+  private readTaskIcon(metadata: JsonObject): string {
+    const value = metadata[TASK_ICON_KEY]
+
+    return typeof value === 'string' ? value : ''
+  }
+
+  private readTaskImportance(
+    metadata: JsonObject,
+  ): StoredTaskRecord['importance'] {
+    const value = metadata[TASK_IMPORTANCE_KEY]
+
+    return value === 'important' || value === 'not_important'
+      ? value
+      : DEFAULT_TASK_IMPORTANCE
+  }
+
+  private readTaskUrgency(metadata: JsonObject): StoredTaskRecord['urgency'] {
+    const value = metadata[TASK_URGENCY_KEY]
+
+    return value === 'urgent' || value === 'not_urgent'
+      ? value
+      : DEFAULT_TASK_URGENCY
   }
 
   private insertPrimaryTimeBlock(

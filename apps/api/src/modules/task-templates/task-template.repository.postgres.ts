@@ -37,6 +37,11 @@ interface ResolvedTaskTemplateProject {
 }
 
 const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
+const TASK_ICON_KEY = 'taskIcon'
+const TASK_IMPORTANCE_KEY = 'taskImportance'
+const TASK_URGENCY_KEY = 'taskUrgency'
+const DEFAULT_TASK_IMPORTANCE = 'not_important'
+const DEFAULT_TASK_URGENCY = 'not_urgent'
 
 export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -68,6 +73,7 @@ export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
     const templateId = normalizedInput.id ?? generateUuidV7()
     const metadata = this.buildTemplateMetadata(
       project ? '' : normalizedInput.project,
+      normalizedInput,
     )
 
     return withWriteTransaction(
@@ -236,12 +242,29 @@ export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
       .then((project) => project?.title ?? null)
   }
 
-  private buildTemplateMetadata(projectName: string): JsonObject {
-    return projectName
-      ? {
-          [LEGACY_PROJECT_NAME_KEY]: projectName,
-        }
-      : {}
+  private buildTemplateMetadata(
+    projectName: string,
+    input: Pick<StoredTaskTemplateRecord, 'icon' | 'importance' | 'urgency'>,
+  ): JsonObject {
+    const metadata: JsonObject = {}
+
+    if (projectName) {
+      metadata[LEGACY_PROJECT_NAME_KEY] = projectName
+    }
+
+    if (input.icon) {
+      metadata[TASK_ICON_KEY] = input.icon
+    }
+
+    if (input.importance !== DEFAULT_TASK_IMPORTANCE) {
+      metadata[TASK_IMPORTANCE_KEY] = input.importance
+    }
+
+    if (input.urgency !== DEFAULT_TASK_URGENCY) {
+      metadata[TASK_URGENCY_KEY] = input.urgency
+    }
+
+    return metadata
   }
 
   private mapTaskTemplateRecord(
@@ -252,6 +275,8 @@ export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
       deletedAt: serializeNullableTimestamp(template.deleted_at),
       dueDate: serializeNullableDate(template.due_on),
       id: template.id,
+      icon: this.readTaskIcon(template.metadata),
+      importance: this.readTaskImportance(template.metadata),
       note: template.description,
       plannedDate: serializeNullableDate(template.planned_on),
       plannedEndTime: serializeNullableTime(template.planned_end_time),
@@ -259,6 +284,7 @@ export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
       project: this.resolveProjectName(template),
       projectId: template.project_id,
       title: template.title,
+      urgency: this.readTaskUrgency(template.metadata),
       updatedAt: serializeTimestamp(template.updated_at),
       version: Number(template.version),
       workspaceId: template.workspace_id,
@@ -273,6 +299,32 @@ export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
     const legacyProjectName = template.metadata[LEGACY_PROJECT_NAME_KEY]
 
     return typeof legacyProjectName === 'string' ? legacyProjectName : ''
+  }
+
+  private readTaskIcon(metadata: JsonObject): string {
+    const value = metadata[TASK_ICON_KEY]
+
+    return typeof value === 'string' ? value : ''
+  }
+
+  private readTaskImportance(
+    metadata: JsonObject,
+  ): StoredTaskTemplateRecord['importance'] {
+    const value = metadata[TASK_IMPORTANCE_KEY]
+
+    return value === 'important' || value === 'not_important'
+      ? value
+      : DEFAULT_TASK_IMPORTANCE
+  }
+
+  private readTaskUrgency(
+    metadata: JsonObject,
+  ): StoredTaskTemplateRecord['urgency'] {
+    const value = metadata[TASK_URGENCY_KEY]
+
+    return value === 'urgent' || value === 'not_urgent'
+      ? value
+      : DEFAULT_TASK_URGENCY
   }
 }
 

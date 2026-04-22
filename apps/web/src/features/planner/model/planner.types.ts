@@ -8,6 +8,7 @@ import type {
   Task,
   TaskScheduleInput,
   TaskStatus,
+  TaskUpdateInput,
 } from '@/entities/task'
 import type {
   NewTaskTemplateInput,
@@ -28,6 +29,7 @@ export interface PlannerState {
   addProject: (input: NewProjectInput) => Promise<boolean>
   addTask: (input: NewTaskInput) => Promise<boolean>
   addTaskTemplate: (input: NewTaskTemplateInput) => Promise<boolean>
+  updateTask: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   updateProject: (
     projectId: string,
     input: ProjectUpdateInput,

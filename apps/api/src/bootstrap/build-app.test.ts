@@ -178,6 +178,8 @@ void describe('buildApiApp', () => {
       method: 'POST',
       payload: {
         dueDate: '2026-04-15',
+        icon: 'svg:calendar',
+        importance: 'important',
         note: 'first note',
         plannedDate: '2026-04-15',
         plannedEndTime: '10:00',
@@ -185,6 +187,7 @@ void describe('buildApiApp', () => {
         project: 'Inbox',
         projectId: project.id,
         title: 'Prepare planner backend',
+        urgency: 'urgent',
       },
       url: '/api/v1/tasks',
     })
@@ -194,8 +197,48 @@ void describe('buildApiApp', () => {
     const createdTask = taskRecordSchema.parse(createResponse.json())
 
     assert.equal(createdTask.version, 1)
+    assert.equal(createdTask.icon, 'svg:calendar')
+    assert.equal(createdTask.importance, 'important')
     assert.equal(createdTask.projectId, project.id)
+    assert.equal(createdTask.urgency, 'urgent')
     assert.equal(createdTask.workspaceId, 'workspace-1')
+
+    const detailsResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'PATCH',
+      payload: {
+        dueDate: null,
+        expectedVersion: createdTask.version,
+        icon: 'svg:check',
+        importance: 'not_important',
+        note: 'updated note',
+        plannedDate: '2026-04-16',
+        plannedEndTime: '12:30',
+        plannedStartTime: '11:30',
+        project: '',
+        projectId: null,
+        title: 'Prepare planner UI',
+        urgency: 'not_urgent',
+      },
+      url: `/api/v1/tasks/${createdTask.id}`,
+    })
+
+    assert.equal(detailsResponse.statusCode, 200)
+
+    const detailsTask = taskRecordSchema.parse(detailsResponse.json())
+
+    assert.equal(detailsTask.version, 2)
+    assert.equal(detailsTask.title, 'Prepare planner UI')
+    assert.equal(detailsTask.icon, 'svg:check')
+    assert.equal(detailsTask.importance, 'not_important')
+    assert.equal(detailsTask.note, 'updated note')
+    assert.equal(detailsTask.plannedDate, '2026-04-16')
+    assert.equal(detailsTask.plannedStartTime, '11:30')
+    assert.equal(detailsTask.plannedEndTime, '12:30')
+    assert.equal(detailsTask.projectId, null)
 
     const statusResponse = await app.inject({
       headers: {
@@ -204,7 +247,7 @@ void describe('buildApiApp', () => {
       },
       method: 'PATCH',
       payload: {
-        expectedVersion: createdTask.version,
+        expectedVersion: detailsTask.version,
         status: 'done',
       },
       url: `/api/v1/tasks/${createdTask.id}/status`,
@@ -215,7 +258,7 @@ void describe('buildApiApp', () => {
     const updatedTask = taskRecordSchema.parse(statusResponse.json())
 
     assert.equal(updatedTask.status, 'done')
-    assert.equal(updatedTask.version, 2)
+    assert.equal(updatedTask.version, 3)
 
     const listResponse = await app.inject({
       headers: {
@@ -255,10 +298,10 @@ void describe('buildApiApp', () => {
 
     const eventsBody = taskEventListResponseSchema.parse(eventsResponse.json())
 
-    assert.equal(eventsBody.nextEventId, 3)
+    assert.equal(eventsBody.nextEventId, 4)
     assert.deepEqual(
       eventsBody.events.map((event) => event.eventType),
-      ['task.created', 'task.status_changed', 'task.deleted'],
+      ['task.created', 'task.updated', 'task.status_changed', 'task.deleted'],
     )
     assert.equal(eventsBody.events[0]?.taskId, createdTask.id)
 

@@ -1,6 +1,6 @@
 import type { TaskScheduleInput } from '@planner/contracts'
 
-import { getDateKey, isBeforeDate } from '@/shared/lib/date'
+import { addDays, getDateKey, isBeforeDate } from '@/shared/lib/date'
 
 import type { NewTaskInput, Task, TaskStatus } from './task.types'
 
@@ -27,6 +27,7 @@ export interface PlannerSummary {
   doneTodayCount: number
   projectCount: number
   timelineCount: number
+  tomorrowCount: number
 }
 
 function createTaskId(): string {
@@ -90,6 +91,22 @@ function compareOptionalTime(
   }
 
   return left < right ? -1 : 1
+}
+
+function getTaskMatrixWeight(task: Task): number {
+  if (task.importance === 'important' && task.urgency === 'urgent') {
+    return 0
+  }
+
+  if (task.importance === 'not_important' && task.urgency === 'urgent') {
+    return 1
+  }
+
+  if (task.importance === 'important' && task.urgency === 'not_urgent') {
+    return 2
+  }
+
+  return 3
 }
 
 function parseTimeKey(value: string): number {
@@ -177,6 +194,13 @@ export function sortTasks(tasks: Task[]): Task[] {
       return timeComparison
     }
 
+    const matrixComparison =
+      getTaskMatrixWeight(left) - getTaskMatrixWeight(right)
+
+    if (matrixComparison !== 0) {
+      return matrixComparison
+    }
+
     if (left.createdAt === right.createdAt) {
       return 0
     }
@@ -199,6 +223,8 @@ export function addTask(
   })
   const task: Task = {
     id: createId(),
+    icon: (input.icon ?? '').trim(),
+    importance: input.importance ?? 'not_important',
     title: input.title.trim(),
     note: input.note.trim(),
     project: input.project.trim(),
@@ -210,6 +236,7 @@ export function addTask(
     dueDate: input.dueDate,
     createdAt: now,
     completedAt: null,
+    urgency: input.urgency ?? 'not_urgent',
   }
 
   return sortTasks([task, ...tasks])
@@ -292,6 +319,15 @@ export function selectInboxTasks(tasks: Task[]): Task[] {
 
 export function selectTodayTasks(tasks: Task[], todayKey: string): Task[] {
   return selectTodoTasks(tasks).filter((task) => task.plannedDate === todayKey)
+}
+
+export function selectTomorrowTasks(
+  tasks: Task[],
+  tomorrowKey: string,
+): Task[] {
+  return selectTodoTasks(tasks).filter(
+    (task) => task.plannedDate === tomorrowKey,
+  )
 }
 
 export function selectPlannedTasks(tasks: Task[], dateKey: string): Task[] {
@@ -411,5 +447,9 @@ export function getPlannerSummary(
     doneTodayCount: selectDoneTodayTasks(tasks, todayKey).length,
     projectCount: groupTasksByProject(tasks).length,
     timelineCount: selectTimedTasks(tasks, todayKey).length,
+    tomorrowCount: selectPlannedTasks(
+      tasks,
+      getDateKey(addDays(new Date(`${todayKey}T12:00:00`), 1)),
+    ).length,
   }
 }

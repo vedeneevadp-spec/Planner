@@ -89,6 +89,10 @@
   gap: 0.5rem;
 }
 
+.iconPicker {
+  min-width: min(100%, 24rem);
+}
+
 .swatchList,
 .iconList {
   display: flex;
@@ -197,6 +201,16 @@
   width: 3.4rem;
   height: 3.4rem;
   font-size: 1.35rem;
+}
+
+.projectIcon > span {
+  width: 1.45rem;
+  height: 1.45rem;
+}
+
+.projectIconLarge > span {
+  width: 1.8rem;
+  height: 1.8rem;
 }
 
 .eyebrow {

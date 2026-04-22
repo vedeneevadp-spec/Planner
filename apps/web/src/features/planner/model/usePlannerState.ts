@@ -17,6 +17,7 @@ import type {
   Task,
   TaskScheduleInput,
   TaskStatus,
+  TaskUpdateInput,
 } from '@/entities/task'
 import { sortTasks } from '@/entities/task'
 import type {
@@ -89,6 +90,12 @@ interface StatusMutationVariables {
   taskId: string
 }
 
+interface UpdateTaskMutationVariables {
+  expectedVersion: number
+  input: TaskUpdateInput
+  taskId: string
+}
+
 interface RemoveTaskMutationVariables {
   expectedVersion: number
   taskId: string
@@ -100,6 +107,8 @@ function toPlannerTask(task: TaskRecord): Task {
     createdAt: task.createdAt,
     dueDate: task.dueDate,
     id: task.id,
+    icon: task.icon,
+    importance: task.importance,
     note: task.note,
     plannedDate: task.plannedDate,
     plannedEndTime: task.plannedEndTime,
@@ -108,6 +117,7 @@ function toPlannerTask(task: TaskRecord): Task {
     projectId: task.projectId,
     status: task.status,
     title: task.title,
+    urgency: task.urgency,
   }
 }
 
@@ -116,6 +126,8 @@ function toPlannerTaskTemplate(template: TaskTemplateRecord): TaskTemplate {
     createdAt: template.createdAt,
     dueDate: template.dueDate,
     id: template.id,
+    icon: template.icon,
+    importance: template.importance,
     note: template.note,
     plannedDate: template.plannedDate,
     plannedEndTime: template.plannedEndTime,
@@ -123,6 +135,7 @@ function toPlannerTaskTemplate(template: TaskTemplateRecord): TaskTemplate {
     project: template.project,
     projectId: template.projectId,
     title: template.title,
+    urgency: template.urgency,
   }
 }
 
@@ -209,6 +222,8 @@ function createOptimisticTaskRecord(
     deletedAt: null,
     dueDate: input.dueDate,
     id: input.id ?? generateUuidV7(),
+    icon: (input.icon ?? '').trim(),
+    importance: input.importance ?? 'not_important',
     note: input.note.trim(),
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
@@ -217,6 +232,7 @@ function createOptimisticTaskRecord(
     projectId: input.projectId,
     status: 'todo',
     title: input.title.trim(),
+    urgency: input.urgency ?? 'not_urgent',
     updatedAt: now,
     version: 1,
     workspaceId,
@@ -239,6 +255,8 @@ function createOptimisticTaskTemplateRecord(
     deletedAt: null,
     dueDate: input.dueDate,
     id: input.id ?? generateUuidV7(),
+    icon: (input.icon ?? '').trim(),
+    importance: input.importance ?? 'not_important',
     note: input.note.trim(),
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
@@ -246,6 +264,7 @@ function createOptimisticTaskTemplateRecord(
     project: input.project.trim(),
     projectId: input.projectId,
     title: input.title.trim(),
+    urgency: input.urgency ?? 'not_urgent',
     updatedAt: now,
     version: 1,
     workspaceId,
@@ -1044,6 +1063,75 @@ export function usePlannerState(): PlannerState {
     },
   })
 
+  const updateTaskMutation = useMutation({
+    mutationFn: ({
+      expectedVersion,
+      input,
+      taskId,
+    }: UpdateTaskMutationVariables) =>
+      requirePlannerApi(plannerApi).updateTask(taskId, {
+        ...input,
+        expectedVersion,
+      }),
+    onMutate: async ({
+      input,
+      taskId,
+    }: UpdateTaskMutationVariables): Promise<PlannerMutationContext> => {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: taskQueryKey })
+
+      const previousTaskRecords =
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+      const normalizedSchedule = normalizeSchedule({
+        plannedDate: input.plannedDate,
+        plannedEndTime: input.plannedEndTime,
+        plannedStartTime: input.plannedStartTime,
+      })
+      const now = new Date().toISOString()
+
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        updateTaskRecord(current, taskId, (task) => ({
+          ...task,
+          dueDate: input.dueDate,
+          icon: (input.icon ?? '').trim(),
+          importance: input.importance ?? 'not_important',
+          note: input.note.trim(),
+          plannedDate: normalizedSchedule.plannedDate,
+          plannedEndTime: normalizedSchedule.plannedEndTime,
+          plannedStartTime: normalizedSchedule.plannedStartTime,
+          project: input.project.trim(),
+          projectId: input.projectId,
+          title: input.title.trim(),
+          urgency: input.urgency ?? 'not_urgent',
+          updatedAt: now,
+          version: task.version + 1,
+        })),
+      )
+
+      return {
+        optimisticTaskId: undefined,
+        previousTaskRecords,
+      }
+    },
+    onError: (error, _variables, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
+      if (context?.previousTaskRecords) {
+        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
+      }
+    },
+    onSuccess: (task) => {
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        replaceTaskRecord(current, task),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
   const createTaskTemplateMutation = useMutation({
     mutationFn: (input: NewTaskTemplateInput) =>
       requirePlannerApi(plannerApi).createTaskTemplate(input),
@@ -1278,6 +1366,7 @@ export function usePlannerState(): PlannerState {
       createTaskTemplateMutation.error ??
       updateProjectMutation.error ??
       createTaskMutation.error ??
+      updateTaskMutation.error ??
       removeTaskTemplateMutation.error ??
       setTaskStatusMutation.error ??
       setTaskScheduleMutation.error ??
@@ -1311,6 +1400,7 @@ export function usePlannerState(): PlannerState {
     taskTemplatesQuery.error,
     tasksQuery.error,
     updateProjectMutation.error,
+    updateTaskMutation.error,
   ])
 
   const projects = useMemo<Project[]>(
@@ -1478,6 +1568,44 @@ export function usePlannerState(): PlannerState {
           workspaceId,
         })
       },
+    )
+  }
+
+  async function updateTask(
+    taskId: string,
+    input: TaskUpdateInput,
+  ): Promise<boolean> {
+    const task = getCachedTaskRecord(taskId)
+
+    if (!task) {
+      setMutationErrorMessage(`Task "${taskId}" was not found.`)
+
+      return false
+    }
+
+    return runTaskMutation(taskId, () =>
+      runMutation(
+        () =>
+          updateTaskMutation.mutateAsync({
+            expectedVersion: task.version,
+            input,
+            taskId,
+          }),
+        async () => {
+          if (!actorUserId || !workspaceId) {
+            throw new Error('Planner session is not ready.')
+          }
+
+          await enqueuePlannerOfflineMutation({
+            actorUserId,
+            expectedVersion: task.version,
+            input,
+            taskId,
+            type: 'task.update',
+            workspaceId,
+          })
+        },
+      ),
     )
   }
 
@@ -1724,6 +1852,7 @@ export function usePlannerState(): PlannerState {
       createProjectMutation.isPending ||
       updateProjectMutation.isPending ||
       createTaskMutation.isPending ||
+      updateTaskMutation.isPending ||
       createTaskTemplateMutation.isPending ||
       removeTaskTemplateMutation.isPending ||
       setTaskStatusMutation.isPending ||
@@ -1741,5 +1870,6 @@ export function usePlannerState(): PlannerState {
     tasks,
     taskTemplates,
     updateProject,
+    updateTask,
   }
 }

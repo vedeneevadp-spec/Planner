@@ -10,6 +10,7 @@ import type {
   TaskEventListResult,
   TaskListFilters,
   TaskReadContext,
+  UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
 } from './task.model.js'
@@ -17,6 +18,7 @@ import type { TaskRepository } from './task.repository.js'
 import {
   applyTaskSchedule,
   applyTaskStatus,
+  applyTaskUpdate,
   createStoredTaskRecord,
   markTaskDeleted,
   matchesTaskFilters,
@@ -88,6 +90,27 @@ export class MemoryTaskRepository implements TaskRepository {
     })
 
     return Promise.resolve(task)
+  }
+
+  update(command: UpdateTaskCommand): Promise<StoredTaskRecord> {
+    const task = this.getTaskOrThrow(
+      command.taskId,
+      command.context.workspaceId,
+    )
+    this.assertVersion(task, command.expectedVersion)
+
+    const nextTask = applyTaskUpdate(task, command.input)
+    this.tasks.set(nextTask.id, nextTask)
+    this.appendTaskEvent(command, {
+      eventType: 'task.updated',
+      payload: {
+        task: nextTask,
+        version: nextTask.version,
+      },
+      taskId: nextTask.id,
+    })
+
+    return Promise.resolve(nextTask)
   }
 
   updateStatus(command: UpdateTaskStatusCommand): Promise<StoredTaskRecord> {
@@ -187,6 +210,7 @@ export class MemoryTaskRepository implements TaskRepository {
     command:
       | CreateTaskCommand
       | DeleteTaskCommand
+      | UpdateTaskCommand
       | UpdateTaskScheduleCommand
       | UpdateTaskStatusCommand,
     event: {

@@ -1,4 +1,5 @@
 import { selectInboxTasks, TaskSection } from '@/entities/task'
+import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
 import { TaskComposer } from '@/features/task-create'
 import pageStyles from '@/shared/ui/Page'
@@ -12,7 +13,9 @@ export function InboxPage() {
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
+    updateTask,
   } = usePlanner()
+  const { uploadedIcons } = useUploadedIconAssets()
   const inboxTasks = selectInboxTasks(tasks)
 
   return (
@@ -29,6 +32,7 @@ export function InboxPage() {
         title="Без даты"
         tasks={inboxTasks}
         projects={projects}
+        uploadedIcons={uploadedIcons}
         emptyMessage="Inbox пуст. Это нормально: значит, ты либо всё распланировал, либо пока ничего не захватывал."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {
@@ -40,6 +44,7 @@ export function InboxPage() {
         onSetStatus={(taskId, status) => {
           void setTaskStatus(taskId, status)
         }}
+        onUpdate={updateTask}
       />
     </section>
   )

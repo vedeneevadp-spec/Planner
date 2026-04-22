@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { TaskSection } from '@/entities/task'
+import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
@@ -20,7 +22,9 @@ export function ProjectPage() {
     setTaskStatus,
     tasks,
     updateProject,
+    updateTask,
   } = usePlanner()
+  const { uploadedIcons } = useUploadedIconAssets()
   const [isEditing, setIsEditing] = useState(false)
   const project = projects.find((candidate) => candidate.id === projectId)
   const projectTasks = useMemo(
@@ -62,7 +66,7 @@ export function ProjectPage() {
               className={styles.projectIconLarge}
               style={{ backgroundColor: project.color }}
             >
-              {project.icon}
+              <IconMark value={project.icon} uploadedIcons={uploadedIcons} />
             </span>
             <div>
               <p className={styles.eyebrow}>Marker</p>
@@ -88,6 +92,7 @@ export function ProjectPage() {
           <ProjectForm
             project={project}
             submitLabel="Сохранить"
+            uploadedIcons={uploadedIcons}
             onCancel={() => setIsEditing(false)}
             onSubmit={async (values) => {
               const isSaved = await updateProject(project.id, {
@@ -109,6 +114,7 @@ export function ProjectPage() {
         title="Задачи проекта"
         tasks={projectTasks}
         projects={projects}
+        uploadedIcons={uploadedIcons}
         emptyMessage="В этом проекте пока нет задач."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {
@@ -120,6 +126,7 @@ export function ProjectPage() {
         onSetStatus={(taskId, status) => {
           void setTaskStatus(taskId, status)
         }}
+        onUpdate={updateTask}
       />
     </section>
   )

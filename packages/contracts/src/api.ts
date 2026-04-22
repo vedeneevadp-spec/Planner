@@ -6,6 +6,7 @@ import {
   taskScheduleInputSchema,
   taskSchema,
   taskStatusSchema,
+  taskUpdateInputSchema,
 } from './task.js'
 import { taskTemplateSchema } from './task-template.js'
 
@@ -136,6 +137,8 @@ export const taskScheduleUpdateInputSchema = z.object({
   schedule: taskScheduleInputSchema,
 })
 
+export const taskDetailsUpdateInputSchema = taskUpdateInputSchema
+
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
@@ -156,4 +159,7 @@ export type TaskScheduleUpdateInput = z.infer<
   typeof taskScheduleUpdateInputSchema
 >
 export type TaskStatusUpdateInput = z.infer<typeof taskStatusUpdateInputSchema>
+export type TaskDetailsUpdateInput = z.infer<
+  typeof taskDetailsUpdateInputSchema
+>
 export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>

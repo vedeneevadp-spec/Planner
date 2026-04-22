@@ -29,6 +29,7 @@ const publicApiModules = [
   'entities/task',
   'shared/lib/classnames',
   'shared/lib/date',
+  'shared/ui/Icon',
   'shared/ui/Page',
   'shared/ui/PageHeader',
 ]

@@ -13,11 +13,19 @@ export {
   selectTimedTasks,
   selectTodayTasks,
   selectTodoTasks,
+  selectTomorrowTasks,
   setTaskPlannedDate,
   setTaskSchedule,
   setTaskStatus,
   sortTasks,
 } from './model/planner'
-export type { NewTaskInput, Task, TaskStatus } from './model/task.types'
-export { TaskCard } from './ui/TaskCard'
+export type {
+  NewTaskInput,
+  Task,
+  TaskImportance,
+  TaskStatus,
+  TaskUpdateInput,
+  TaskUrgency,
+} from './model/task.types'
+export { TaskCard, TaskEditDialog } from './ui/TaskCard'
 export { TaskSection } from './ui/TaskSection'

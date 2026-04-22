@@ -155,6 +155,7 @@ function createPlannerApiClientMock(
     setTaskSchedule: vi.fn(),
     setTaskStatus: vi.fn(),
     updateProject: vi.fn(),
+    updateTask: vi.fn(),
     ...overrides,
   }
 }
@@ -166,6 +167,8 @@ function createTaskRecord(taskId: string): TaskRecord {
     deletedAt: null,
     dueDate: null,
     id: taskId,
+    icon: '',
+    importance: 'not_important',
     note: '',
     plannedDate: null,
     plannedEndTime: null,
@@ -174,6 +177,7 @@ function createTaskRecord(taskId: string): TaskRecord {
     projectId: null,
     status: 'todo',
     title: 'Offline task',
+    urgency: 'not_urgent',
     updatedAt: '2026-04-20T00:00:00.000Z',
     version: 1,
     workspaceId: WORKSPACE_ID,

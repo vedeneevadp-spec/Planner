@@ -1,13 +1,18 @@
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
 
+import type { Project } from '@/entities/project'
 import {
   buildTimelineLayout,
   selectPlannedTasks,
   type Task,
+  TaskEditDialog,
   type TaskScheduleInput,
+  type TaskUpdateInput,
 } from '@/entities/task'
+import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
 import { TaskComposer } from '@/features/task-create'
+import { cx } from '@/shared/lib/classnames'
 import {
   addDays,
   formatLongDate,
@@ -15,6 +20,13 @@ import {
   formatTimeRange,
   getDateKey,
 } from '@/shared/lib/date'
+import {
+  CheckIcon,
+  EditIcon,
+  IconMark,
+  TrashIcon,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
@@ -64,21 +76,28 @@ function getTimelineBlockStyle(
 
 interface TimelineTaskItemProps {
   task: Task
+  projects: Project[]
   isPending?: boolean | undefined
+  uploadedIcons?: UploadedIconAsset[] | undefined
   onRemove: (taskId: string) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
   onSetSchedule: (taskId: string, schedule: TaskScheduleInput) => void
   onSetStatus: (taskId: string, status: 'todo' | 'done') => void
+  onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
 }
 
 function TimelineTaskItem({
   task,
+  projects,
   isPending = false,
+  uploadedIcons = [],
   onRemove,
   onSetPlannedDate,
   onSetSchedule,
   onSetStatus,
+  onUpdate,
 }: TimelineTaskItemProps) {
+  const [isEditing, setIsEditing] = useState(false)
   const [plannedStartTime, setPlannedStartTime] = useState(
     task.plannedStartTime ?? '',
   )
@@ -112,10 +131,24 @@ function TimelineTaskItem({
   }
 
   return (
-    <article className={styles.taskItem}>
+    <article
+      className={cx(
+        styles.taskItem,
+        task.importance === 'important' && styles.taskItemImportant,
+      )}
+    >
       <div className={styles.taskHeader}>
         <div>
-          <h3>{task.title}</h3>
+          <div className={styles.taskTitleRow}>
+            {task.icon ? (
+              <IconMark
+                className={styles.taskIcon}
+                value={task.icon}
+                uploadedIcons={uploadedIcons}
+              />
+            ) : null}
+            <h3>{task.title}</h3>
+          </div>
           {task.note ? <p>{task.note}</p> : null}
         </div>
         {task.project ? (
@@ -136,6 +169,11 @@ function TimelineTaskItem({
         {task.dueDate ? (
           <span className={styles.metaChip}>
             Дедлайн {formatShortDate(task.dueDate)}
+          </span>
+        ) : null}
+        {task.importance === 'important' ? (
+          <span className={cx(styles.metaChip, styles.importantChip)}>
+            Важно
           </span>
         ) : null}
       </div>
@@ -188,12 +226,24 @@ function TimelineTaskItem({
           Без времени
         </button>
         <button
-          className={styles.secondaryButton}
+          className={cx(styles.secondaryButton, styles.iconButton)}
           type="button"
           disabled={isPending}
+          aria-label="Завершить задачу"
+          title="Завершить"
           onClick={() => onSetStatus(task.id, 'done')}
         >
-          Done
+          <CheckIcon size={18} />
+        </button>
+        <button
+          className={cx(styles.secondaryButton, styles.iconButton)}
+          type="button"
+          disabled={isPending}
+          aria-label="Редактировать задачу"
+          title="Редактировать"
+          onClick={() => setIsEditing(true)}
+        >
+          <EditIcon size={18} />
         </button>
         <button
           className={styles.secondaryButton}
@@ -204,14 +254,27 @@ function TimelineTaskItem({
           Inbox
         </button>
         <button
-          className={styles.dangerButton}
+          className={cx(styles.dangerButton, styles.iconButton)}
           type="button"
           disabled={isPending}
+          aria-label="Удалить задачу"
+          title="Удалить"
           onClick={() => onRemove(task.id)}
         >
-          Delete
+          <TrashIcon size={18} />
         </button>
       </div>
+
+      {isEditing ? (
+        <TaskEditDialog
+          task={task}
+          projects={projects}
+          uploadedIcons={uploadedIcons}
+          isPending={isPending}
+          onClose={() => setIsEditing(false)}
+          onUpdate={onUpdate}
+        />
+      ) : null}
     </article>
   )
 }
@@ -219,12 +282,15 @@ function TimelineTaskItem({
 export function TimelinePage() {
   const {
     isTaskPending,
+    projects,
     tasks,
     removeTask,
     setTaskPlannedDate,
     setTaskSchedule,
     setTaskStatus,
+    updateTask,
   } = usePlanner()
+  const { uploadedIcons } = useUploadedIconAssets()
   const todayKey = getDateKey(new Date())
   const [selectedDate, setSelectedDate] = useState(todayKey)
 
@@ -360,7 +426,11 @@ export function TimelinePage() {
                 {timelineEntries.map((entry) => (
                   <article
                     key={entry.task.id}
-                    className={styles.timelineBlock}
+                    className={cx(
+                      styles.timelineBlock,
+                      entry.task.importance === 'important' &&
+                        styles.timelineBlockImportant,
+                    )}
                     style={getTimelineBlockStyle(
                       entry.startMinutes,
                       entry.endMinutes,
@@ -374,7 +444,16 @@ export function TimelinePage() {
                         entry.task.plannedEndTime,
                       )}
                     </span>
-                    <strong>{entry.task.title}</strong>
+                    <strong className={styles.timelineTitle}>
+                      {entry.task.icon ? (
+                        <IconMark
+                          className={styles.timelineIcon}
+                          value={entry.task.icon}
+                          uploadedIcons={uploadedIcons}
+                        />
+                      ) : null}
+                      <span>{entry.task.title}</span>
+                    </strong>
                     {entry.task.project ? (
                       <span>{entry.task.project}</span>
                     ) : null}
@@ -410,7 +489,9 @@ export function TimelinePage() {
                 <TimelineTaskItem
                   key={`${task.id}:${task.plannedStartTime ?? ''}:${task.plannedEndTime ?? ''}`}
                   task={task}
+                  projects={projects}
                   isPending={isTaskPending(task.id)}
+                  uploadedIcons={uploadedIcons}
                   onRemove={(taskId) => {
                     void removeTask(taskId)
                   }}
@@ -423,6 +504,7 @@ export function TimelinePage() {
                   onSetStatus={(taskId, status) => {
                     void setTaskStatus(taskId, status)
                   }}
+                  onUpdate={updateTask}
                 />
               ))}
             </div>

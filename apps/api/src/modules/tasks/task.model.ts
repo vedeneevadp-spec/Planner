@@ -5,6 +5,7 @@ import type {
   TaskEventRecord,
   TaskScheduleInput,
   TaskStatus,
+  TaskUpdateInput,
   WorkspaceRole,
 } from '@planner/contracts'
 
@@ -56,6 +57,13 @@ export interface UpdateTaskStatusCommand {
   context: TaskWriteContext
   taskId: string
   status: TaskStatus
+  expectedVersion?: number
+}
+
+export interface UpdateTaskCommand {
+  context: TaskWriteContext
+  input: TaskUpdateInput
+  taskId: string
   expectedVersion?: number
 }
 

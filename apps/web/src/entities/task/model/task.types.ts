@@ -1,1 +1,8 @@
-export type { NewTaskInput, Task, TaskStatus } from '@planner/contracts'
+export type {
+  NewTaskInput,
+  Task,
+  TaskImportance,
+  TaskStatus,
+  TaskUpdateInput,
+  TaskUrgency,
+} from '@planner/contracts'

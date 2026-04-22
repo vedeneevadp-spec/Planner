@@ -12,6 +12,8 @@ import {
   projectRecordSchema,
   type ProjectUpdateInput,
   projectUpdateInputSchema,
+  type TaskDetailsUpdateInput,
+  taskDetailsUpdateInputSchema,
   type TaskEventListFilters,
   taskEventListFiltersSchema,
   type TaskEventListResponse,
@@ -96,6 +98,10 @@ export interface PlannerApiClient {
   setTaskStatus: (
     taskId: string,
     input: TaskStatusUpdateInput,
+  ) => Promise<TaskRecord>
+  updateTask: (
+    taskId: string,
+    input: TaskDetailsUpdateInput,
   ) => Promise<TaskRecord>
   updateProject: (
     projectId: string,
@@ -281,6 +287,17 @@ export function createPlannerApiClient(
       await request<void>({
         method: 'DELETE',
         path: `/api/v1/task-templates/${encodeURIComponent(templateId)}`,
+        writeAccess: true,
+      })
+    },
+    async updateTask(taskId, input) {
+      const validatedInput = taskDetailsUpdateInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'PATCH',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}`,
+        responseSchema: taskRecordSchema,
         writeAccess: true,
       })
     },

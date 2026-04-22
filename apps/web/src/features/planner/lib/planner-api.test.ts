@@ -382,11 +382,39 @@ describe('plannerApi', () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
+            completedAt: null,
+            createdAt: '2026-04-16T02:00:00.000Z',
+            deletedAt: null,
+            dueDate: null,
+            icon: '',
+            id: 'task-1',
+            importance: 'important',
+            note: 'Updated',
+            plannedDate: '2026-04-16',
+            plannedEndTime: null,
+            plannedStartTime: '09:00',
+            project: '',
+            projectId: null,
+            status: 'todo',
+            title: 'Updated task',
+            updatedAt: '2026-04-16T02:30:00.000Z',
+            urgency: 'not_urgent',
+            version: 2,
+            workspaceId: 'workspace-1',
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
             completedAt: '2026-04-16T03:00:00.000Z',
             createdAt: '2026-04-16T02:00:00.000Z',
             deletedAt: null,
             dueDate: null,
+            icon: '',
             id: 'task-1',
+            importance: 'important',
             note: '',
             plannedDate: null,
             plannedEndTime: null,
@@ -396,7 +424,8 @@ describe('plannerApi', () => {
             status: 'done',
             title: 'Task title',
             updatedAt: '2026-04-16T03:00:00.000Z',
-            version: 2,
+            urgency: 'not_urgent',
+            version: 3,
             workspaceId: 'workspace-1',
           }),
           { status: 200 },
@@ -405,27 +434,49 @@ describe('plannerApi', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
 
-    await api.setTaskStatus('task-1', {
+    await api.updateTask('task-1', {
+      dueDate: null,
       expectedVersion: 1,
+      icon: '',
+      importance: 'important',
+      note: 'Updated',
+      plannedDate: '2026-04-16',
+      plannedEndTime: null,
+      plannedStartTime: '09:00',
+      project: '',
+      projectId: null,
+      title: 'Updated task',
+      urgency: 'not_urgent',
+    })
+    await api.setTaskStatus('task-1', {
+      expectedVersion: 2,
       status: 'done',
     })
-    await api.removeTask('task-1', 2)
+    await api.removeTask('task-1', 3)
 
-    const [, statusRequestInit] = fetchMock.mock.calls[0]!
+    const [updateUrl, updateRequestInit] = fetchMock.mock.calls[0]!
+    const [, statusRequestInit] = fetchMock.mock.calls[1]!
+    const updateBody = parseJsonRequestBody<{ expectedVersion: number }>(
+      updateRequestInit,
+    )
     const statusBody = parseJsonRequestBody<{
       expectedVersion: number
       status: string
     }>(statusRequestInit)
-    const [deleteUrl] = fetchMock.mock.calls[1]!
+    const updateRequestUrl =
+      updateUrl instanceof URL ? updateUrl.href : updateUrl
+    const [deleteUrl] = fetchMock.mock.calls[2]!
     const deleteRequestUrl =
       deleteUrl instanceof URL ? deleteUrl.href : deleteUrl
 
+    expect(updateRequestUrl).toBe('http://127.0.0.1:3001/api/v1/tasks/task-1')
+    expect(updateBody.expectedVersion).toBe(1)
     expect(statusBody).toEqual({
-      expectedVersion: 1,
+      expectedVersion: 2,
       status: 'done',
     })
     expect(deleteRequestUrl).toBe(
-      'http://127.0.0.1:3001/api/v1/tasks/task-1?expectedVersion=2',
+      'http://127.0.0.1:3001/api/v1/tasks/task-1?expectedVersion=3',
     )
   })
 })

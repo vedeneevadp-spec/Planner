@@ -12,6 +12,8 @@ import {
 
 const baseTask: Task = {
   id: 'task-1',
+  icon: '',
+  importance: 'not_important',
   title: 'Write docs',
   note: 'Architecture outline',
   project: 'Planner',
@@ -23,6 +25,7 @@ const baseTask: Task = {
   dueDate: null,
   createdAt: '2026-04-14T09:00:00.000Z',
   completedAt: null,
+  urgency: 'not_urgent',
 }
 
 describe('planner model', () => {
@@ -172,6 +175,7 @@ describe('planner model', () => {
       doneTodayCount: 1,
       projectCount: 1,
       timelineCount: 1,
+      tomorrowCount: 0,
     })
   })
 })

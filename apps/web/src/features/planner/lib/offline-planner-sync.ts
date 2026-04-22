@@ -144,6 +144,18 @@ async function applyOfflineMutation(
     return
   }
 
+  if (mutation.type === 'task.update') {
+    const task = await api.updateTask(mutation.taskId, {
+      ...mutation.input,
+      expectedVersion: mutation.expectedVersion,
+    })
+
+    await upsertCachedTaskRecord(mutation.workspaceId, task)
+    callbacks.onTaskSynced?.(task)
+
+    return
+  }
+
   if (mutation.type === 'task.status.update') {
     const task = await api.setTaskStatus(mutation.taskId, {
       expectedVersion: mutation.expectedVersion,

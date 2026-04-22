@@ -180,8 +180,40 @@
   overflow: hidden;
 }
 
+.timelineBlockImportant {
+  border-color: rgba(140, 75, 36, 0.36);
+  background: linear-gradient(
+    160deg,
+    rgba(140, 75, 36, 0.22),
+    rgba(239, 202, 130, 0.34)
+  );
+  box-shadow:
+    inset 4px 0 0 rgba(140, 75, 36, 0.52),
+    0 14px 32px rgba(70, 58, 34, 0.14);
+}
+
 .timelineBlock strong {
   font-size: 0.98rem;
+}
+
+.timelineTitle,
+.taskTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.timelineTitle span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timelineIcon,
+.taskIcon {
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .timelineTime {
@@ -202,6 +234,14 @@
   border-radius: 20px;
   background: rgba(255, 255, 255, 0.58);
   border: 1px solid var(--line);
+}
+
+.taskItemImportant {
+  border-color: rgba(140, 75, 36, 0.32);
+  background:
+    linear-gradient(135deg, rgba(239, 202, 130, 0.2), transparent 55%),
+    rgba(255, 255, 255, 0.68);
+  box-shadow: inset 4px 0 0 rgba(140, 75, 36, 0.5);
 }
 
 .taskHeader {
@@ -230,6 +270,11 @@
   background: rgba(33, 78, 66, 0.08);
   color: var(--accent-strong);
   font-size: 0.8rem;
+}
+
+.importantChip {
+  background: rgba(140, 75, 36, 0.1);
+  color: var(--warning);
 }
 
 .scheduleForm {
@@ -272,6 +317,19 @@
   background: rgba(255, 255, 255, 0.62);
   border-color: rgba(140, 75, 36, 0.25);
   color: var(--warning);
+}
+
+.iconButton {
+  display: inline-grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+}
+
+.iconButton svg {
+  display: block;
 }
 
 .primaryButton:hover,

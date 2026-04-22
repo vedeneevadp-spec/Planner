@@ -168,6 +168,10 @@ export function Sidebar() {
             <strong>{summary.timelineCount}</strong>
           </div>
           <div>
+            <span>Tomorrow</span>
+            <strong>{summary.tomorrowCount}</strong>
+          </div>
+          <div>
             <span>Inbox</span>
             <strong>{summary.inboxCount}</strong>
           </div>

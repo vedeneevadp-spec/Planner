@@ -9,6 +9,7 @@ export type {
   SessionResponse,
   SessionWorkspace,
   StorageDriver,
+  TaskDetailsUpdateInput,
   TaskEventListFilters,
   TaskEventListResponse,
   TaskEventRecord,
@@ -32,6 +33,7 @@ export {
   sessionResponseSchema,
   sessionWorkspaceSchema,
   storageDriverSchema,
+  taskDetailsUpdateInputSchema,
   taskEventListFiltersSchema,
   taskEventListResponseSchema,
   taskEventRecordSchema,
@@ -80,20 +82,27 @@ export type {
   NewTaskInput,
   Task,
   TaskDelete,
+  TaskImportance,
   TaskScheduleChange,
   TaskScheduleInput,
   TaskStatus,
   TaskStatusChange,
+  TaskUpdateInput,
+  TaskUrgency,
 } from './task.js'
 export {
   newTaskInputSchema,
   taskDeleteSchema,
+  taskIconSchema,
+  taskImportanceSchema,
   taskScheduleChangeSchema,
   taskScheduleInputSchema,
   taskSchema,
   tasksSchema,
   taskStatusChangeSchema,
   taskStatusSchema,
+  taskUpdateInputSchema,
+  taskUrgencySchema,
 } from './task.js'
 export type { NewTaskTemplateInput, TaskTemplate } from './task-template.js'
 export {

@@ -9,11 +9,21 @@ const nullableStringWithDefault = z
   .transform((value) => value ?? null)
 
 export const taskStatusSchema = z.enum(['todo', 'done'])
+export const taskImportanceSchema = z.enum(['important', 'not_important'])
+export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
+
+export const taskIconSchema = z
+  .string()
+  .optional()
+  .transform((value) => value?.trim() ?? '')
 
 export const taskSchema = z.object({
   id: z.string(),
   title: z.string().min(1),
   note: z.string(),
+  icon: taskIconSchema,
+  importance: taskImportanceSchema.optional().default('not_important'),
+  urgency: taskUrgencySchema.optional().default('not_urgent'),
   projectId: nullableStringWithDefault,
   project: z.string(),
   status: taskStatusSchema,
@@ -37,6 +47,9 @@ export const newTaskInputSchema = z.object({
   id: uuidV7Schema.optional(),
   title: z.string().min(1),
   note: z.string(),
+  icon: z.string().optional(),
+  importance: taskImportanceSchema.optional(),
+  urgency: taskUrgencySchema.optional(),
   projectId: nullableStringWithDefault,
   project: z.string(),
   plannedDate: nullableStringWithDefault,
@@ -44,6 +57,12 @@ export const newTaskInputSchema = z.object({
   plannedEndTime: nullableStringWithDefault,
   dueDate: nullableStringWithDefault,
 })
+
+export const taskUpdateInputSchema = newTaskInputSchema
+  .omit({ id: true })
+  .extend({
+    expectedVersion: z.number().int().positive().optional(),
+  })
 
 export const taskStatusChangeSchema = z.object({
   taskId: z.string(),
@@ -63,9 +82,12 @@ export const taskDeleteSchema = z.object({
 })
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>
+export type TaskImportance = z.infer<typeof taskImportanceSchema>
+export type TaskUrgency = z.infer<typeof taskUrgencySchema>
 export type Task = z.infer<typeof taskSchema>
 export type TaskScheduleInput = z.infer<typeof taskScheduleInputSchema>
 export type NewTaskInput = z.infer<typeof newTaskInputSchema>
+export type TaskUpdateInput = z.infer<typeof taskUpdateInputSchema>
 export type TaskStatusChange = z.infer<typeof taskStatusChangeSchema>
 export type TaskScheduleChange = z.infer<typeof taskScheduleChangeSchema>
 export type TaskDelete = z.infer<typeof taskDeleteSchema>

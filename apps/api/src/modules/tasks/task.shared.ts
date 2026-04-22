@@ -2,6 +2,7 @@ import type {
   NewTaskInput,
   TaskScheduleInput,
   TaskStatus,
+  TaskUpdateInput,
 } from '@planner/contracts'
 import { generateUuidV7 } from '@planner/contracts'
 
@@ -10,10 +11,13 @@ import type { StoredTaskRecord } from './task.model.js'
 const DEFAULT_DURATION_MINUTES = 60
 
 export interface NormalizedTaskInput extends NewTaskInput {
+  icon: string
+  importance: NonNullable<NewTaskInput['importance']>
   note: string
   project: string
   projectId: string | null
   title: string
+  urgency: NonNullable<NewTaskInput['urgency']>
 }
 
 export function normalizeTaskSchedule({
@@ -55,10 +59,13 @@ export function normalizeTaskSchedule({
 export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
   return {
     ...input,
+    icon: (input.icon ?? '').trim(),
+    importance: input.importance ?? 'not_important',
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
     title: input.title.trim(),
+    urgency: input.urgency ?? 'not_urgent',
   }
 }
 
@@ -133,7 +140,9 @@ export function createStoredTaskRecord(
     createdAt: now,
     deletedAt: null,
     dueDate: normalizedInput.dueDate,
+    icon: normalizedInput.icon,
     id: normalizedInput.id ?? options.id ?? generateUuidV7(),
+    importance: normalizedInput.importance,
     note: normalizedInput.note,
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
@@ -142,6 +151,7 @@ export function createStoredTaskRecord(
     projectId: normalizedInput.projectId,
     status: 'todo',
     title: normalizedInput.title,
+    urgency: normalizedInput.urgency,
     updatedAt: now,
     version: 1,
     workspaceId: options.workspaceId,
@@ -174,6 +184,35 @@ export function applyTaskSchedule(
     plannedDate: normalizedSchedule.plannedDate,
     plannedEndTime: normalizedSchedule.plannedEndTime,
     plannedStartTime: normalizedSchedule.plannedStartTime,
+    updatedAt: now,
+    version: task.version + 1,
+  }
+}
+
+export function applyTaskUpdate(
+  task: StoredTaskRecord,
+  input: TaskUpdateInput,
+  now: string = new Date().toISOString(),
+): StoredTaskRecord {
+  const normalizedInput = normalizeTaskInput({
+    ...input,
+    id: task.id,
+  })
+  const schedule = normalizeTaskSchedule(normalizedInput)
+
+  return {
+    ...task,
+    dueDate: normalizedInput.dueDate,
+    icon: normalizedInput.icon,
+    importance: normalizedInput.importance,
+    note: normalizedInput.note,
+    plannedDate: schedule.plannedDate,
+    plannedEndTime: schedule.plannedEndTime,
+    plannedStartTime: schedule.plannedStartTime,
+    project: normalizedInput.project,
+    projectId: normalizedInput.projectId,
+    title: normalizedInput.title,
+    urgency: normalizedInput.urgency,
     updatedAt: now,
     version: task.version + 1,
   }

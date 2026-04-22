@@ -1,5 +1,6 @@
 import {
   newTaskInputSchema,
+  taskDetailsUpdateInputSchema,
   taskEventListFiltersSchema,
   taskEventListResponseSchema,
   taskListFiltersSchema,
@@ -75,6 +76,24 @@ export function registerTaskRoutes(
     const task = await service.createTask(context, input)
 
     reply.code(201)
+
+    return taskRecordSchema.parse(task)
+  })
+
+  app.patch('/api/v1/tasks/:taskId', async (request) => {
+    const headers = parseHeadersForWrite(request)
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const input = parseOrThrow(
+      taskDetailsUpdateInputSchema,
+      request.body,
+      'invalid_body',
+    )
+    const context = await resolveWriteContext(request, sessionService, headers)
+    const task = await service.updateTask(context, params.taskId, input)
 
     return taskRecordSchema.parse(task)
   })

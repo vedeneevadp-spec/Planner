@@ -6,6 +6,7 @@ import type {
   TaskListFilters,
   TaskReadContext,
   TaskWriteContext,
+  UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
 } from './task.model.js'
@@ -26,6 +27,26 @@ export class TaskService {
     assertCanWriteTasks(context)
 
     return this.repository.create({ context, input })
+  }
+
+  updateTask(
+    context: TaskWriteContext,
+    taskId: string,
+    input: UpdateTaskCommand['input'],
+  ) {
+    assertCanWriteTasks(context)
+
+    const command: UpdateTaskCommand = {
+      context,
+      input,
+      taskId,
+    }
+
+    if (input.expectedVersion !== undefined) {
+      command.expectedVersion = input.expectedVersion
+    }
+
+    return this.repository.update(command)
   }
 
   setTaskStatus(

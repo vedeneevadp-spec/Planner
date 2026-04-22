@@ -8,6 +8,7 @@ import {
   type TaskScheduleInput,
   type TaskStatus,
   type TaskTemplateRecord,
+  type TaskUpdateInput,
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
 
@@ -79,6 +80,12 @@ export type PlannerOfflineMutationRecord =
     })
   | (PlannerOfflineMutationBase & {
       expectedVersion: number
+      input: TaskUpdateInput
+      taskId: string
+      type: 'task.update'
+    })
+  | (PlannerOfflineMutationBase & {
+      expectedVersion: number
       statusValue: TaskStatus
       taskId: string
       type: 'task.status.update'
@@ -115,6 +122,14 @@ export type PlannerOfflineMutationInput =
       input: NewTaskInput
       taskId: string
       type: 'task.create'
+      workspaceId: string
+    }
+  | {
+      actorUserId: string
+      expectedVersion: number
+      input: TaskUpdateInput
+      taskId: string
+      type: 'task.update'
       workspaceId: string
     }
   | {

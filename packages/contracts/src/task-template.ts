@@ -1,5 +1,10 @@
 import { z } from 'zod'
 
+import {
+  taskIconSchema,
+  taskImportanceSchema,
+  taskUrgencySchema,
+} from './task.js'
 import { uuidV7Schema } from './uuid.js'
 
 const nullableStringWithDefault = z
@@ -12,6 +17,9 @@ export const taskTemplateSchema = z.object({
   id: z.string(),
   title: z.string().min(1),
   note: z.string(),
+  icon: taskIconSchema,
+  importance: taskImportanceSchema.optional().default('not_important'),
+  urgency: taskUrgencySchema.optional().default('not_urgent'),
   projectId: nullableStringWithDefault,
   project: z.string(),
   plannedDate: nullableStringWithDefault,
@@ -27,6 +35,9 @@ export const newTaskTemplateInputSchema = z.object({
   id: uuidV7Schema.optional(),
   title: z.string().min(1),
   note: z.string(),
+  icon: z.string().optional(),
+  importance: taskImportanceSchema.optional(),
+  urgency: taskUrgencySchema.optional(),
   projectId: nullableStringWithDefault,
   project: z.string(),
   plannedDate: nullableStringWithDefault,

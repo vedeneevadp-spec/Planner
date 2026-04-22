@@ -4,3 +4,4 @@ export type {
   ProjectStatus,
   ProjectUpdateInput,
 } from './model/project.types'
+export { ProjectPicker } from './ui/ProjectPicker'

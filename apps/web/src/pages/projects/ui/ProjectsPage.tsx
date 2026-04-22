@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom'
 
+import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
@@ -9,6 +11,7 @@ import styles from './ProjectsPage.module.css'
 
 export function ProjectsPage() {
   const { addProject, projects, tasks } = usePlanner()
+  const { uploadedIcons } = useUploadedIconAssets()
   const taskCountsByProjectId = new Map<string, number>()
 
   for (const task of tasks) {
@@ -32,6 +35,7 @@ export function ProjectsPage() {
 
       <ProjectForm
         submitLabel="Создать проект"
+        uploadedIcons={uploadedIcons}
         onSubmit={(values) => addProject(values)}
       />
 
@@ -57,7 +61,10 @@ export function ProjectsPage() {
                     className={styles.projectIcon}
                     style={{ backgroundColor: project.color }}
                   >
-                    {project.icon}
+                    <IconMark
+                      value={project.icon}
+                      uploadedIcons={uploadedIcons}
+                    />
                   </span>
                   <span className={styles.countChip}>{activeTaskCount}</span>
                 </div>

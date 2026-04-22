@@ -142,9 +142,9 @@
 .templatePanel {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  border-radius: 22px;
-  padding: 0.95rem;
+  gap: 0.55rem;
+  border-radius: 18px;
+  padding: 0.7rem;
   background:
     linear-gradient(135deg, rgba(33, 78, 66, 0.08), transparent 58%),
     rgba(255, 255, 255, 0.42);
@@ -153,79 +153,181 @@
 
 .templatePanelHeader {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
-.templatePanelHeader h3,
-.templateCard h4 {
-  margin: 0;
-  font-family: Georgia, 'Times New Roman', serif;
-  letter-spacing: -0.03em;
-}
-
-.templatePanelHeader p,
-.templateCard p,
-.templateCard span,
 .notice,
 .eyebrow {
   color: var(--text-soft);
 }
 
-.templatePanelHeader > p {
-  max-width: 28rem;
-  margin: 0;
-}
-
 .eyebrow {
-  margin: 0 0 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
 
-.templateGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+.templateCount {
+  display: inline-grid;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  letter-spacing: 0;
 }
 
-.templateCard {
+.templateToggle {
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  padding: 0.42rem 0.7rem;
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+  font-size: 0.82rem;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.templateToggle:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  background: rgba(255, 255, 255, 0.86);
+}
+
+.templateList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.templateRow {
   display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
+  align-items: center;
+  gap: 0.5rem;
   justify-content: space-between;
   min-width: 0;
-  border-radius: 18px;
+  border-radius: 15px;
   border: 1px solid var(--line);
-  padding: 0.85rem;
+  padding: 0.32rem;
   background: rgba(255, 255, 255, 0.64);
 }
 
-.templateCardActive {
+.templateRowActive {
   border-color: rgba(33, 78, 66, 0.42);
   box-shadow: inset 0 0 0 1px rgba(33, 78, 66, 0.1);
 }
 
-.templateCard p {
-  margin: 0.35rem 0 0;
-  font-size: 0.82rem;
+.templateActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
 }
 
-.templateCard span {
-  display: block;
-  margin-top: 0.35rem;
+.templateSelectButton {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.42rem;
+  border: 0;
+  border-radius: 12px;
+  padding: 0.25rem 0.35rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.templateSelectButton:hover {
+  background: rgba(33, 78, 66, 0.06);
+}
+
+.templateIconSlot {
+  display: inline-grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+}
+
+.templateText {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.templateText strong,
+.templateText span {
   overflow: hidden;
-  font-size: 0.82rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.templateActions {
+.templateText strong {
+  font-size: 0.9rem;
+  letter-spacing: -0.02em;
+}
+
+.templateText span {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.templateTaskIcon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.templateProjectChip {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-width: fit-content;
+  gap: 0.28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  padding: 0.18rem 0.42rem;
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.templateProjectChipMuted {
+  color: var(--text-soft);
+}
+
+.templateProjectIcon {
+  display: inline-grid;
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  color: #fffdf8;
+  line-height: 1;
+}
+
+.templateProjectIcon > span {
+  display: grid;
+  width: 0.78rem;
+  height: 0.78rem;
+  place-items: center;
 }
 
 .closeButton {
@@ -254,12 +356,52 @@
 
 .composerMain {
   display: grid;
-  grid-template-columns: minmax(0, 2.1fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(10rem, 0.9fr)
+    minmax(9rem, 0.7fr);
   gap: 0.85rem;
 }
 
 .composerMainTimeline {
-  grid-template-columns: minmax(0, 2.1fr) repeat(5, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(10rem, 0.9fr)
+    minmax(9rem, 0.7fr);
+}
+
+.visualPanel {
+  display: block;
+  border-radius: 18px;
+  border: 1px solid rgba(33, 78, 66, 0.1);
+  padding: 0.85rem 0.9rem;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.checkboxControl {
+  display: flex;
+  align-items: center;
+  min-height: 2.95rem;
+  gap: 0.5rem;
+  white-space: nowrap;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  padding: 0.7rem 0.8rem;
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+
+  input {
+    width: auto !important;
+  }
+}
+
+.checkboxControl input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
+.checkboxControl span {
+  color: inherit;
+  font-size: 0.86rem;
 }
 
 .field {
@@ -301,7 +443,18 @@
 }
 
 .fieldTitle {
+  grid-column: span 2;
   min-width: 0;
+}
+
+.fieldProject,
+.fieldImportant {
+  min-width: 0;
+}
+
+.fieldImportant {
+  align-items: stretch;
+  text-align: left;
 }
 
 .footer {
@@ -328,7 +481,7 @@
 .ghostButton {
   border-radius: 999px;
   border: 1px solid transparent;
-  padding: 0.68rem 1rem;
+  padding: 0.4rem 0.9rem;
   transition:
     transform 160ms ease,
     border-color 160ms ease,
@@ -344,6 +497,19 @@
   background: rgba(255, 255, 255, 0.62);
   border-color: var(--line);
   color: inherit;
+}
+
+.iconButton {
+  display: inline-grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+}
+
+.iconButton svg {
+  display: block;
 }
 
 .dangerButton {
@@ -370,8 +536,13 @@
 }
 
 @media (max-width: 900px) {
-  .composerMain {
+  .composerMain,
+  .composerMainTimeline {
     grid-template-columns: 1fr;
+  }
+
+  .fieldTitle {
+    grid-column: auto;
   }
 
   .templatePanelHeader {
@@ -379,7 +550,10 @@
     align-items: stretch;
   }
 
-  .templateGrid {
+  .templateList {
+    grid-auto-flow: row;
+    grid-auto-columns: initial;
+    grid-template-rows: none;
     grid-template-columns: 1fr;
   }
 
@@ -418,5 +592,17 @@
   .panel {
     border-radius: 22px;
     max-height: calc(100vh - 1.3rem);
+  }
+
+  .templateSelectButton {
+    grid-template-columns: 1.55rem minmax(0, 1fr);
+  }
+
+  .templateProjectChip {
+    display: none;
+  }
+
+  .templateActions {
+    justify-content: stretch;
   }
 }

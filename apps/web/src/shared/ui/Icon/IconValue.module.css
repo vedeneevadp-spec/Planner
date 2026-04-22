@@ -1,0 +1,90 @@
+.mark {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  color: currentColor;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.image,
+.mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.image {
+  object-fit: contain;
+}
+
+.text {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.placeholder {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pickerLabel {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.optionList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.optionButton {
+  display: inline-grid;
+  align-items: center;
+  justify-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.62);
+  color: inherit;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.optionButton .mark {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.optionButton:hover {
+  background: rgba(255, 255, 255, 0.88);
+  transform: translateY(-1px);
+}
+
+.optionButtonActive {
+  border-color: var(--accent);
+  background: rgba(33, 78, 66, 0.1);
+}
