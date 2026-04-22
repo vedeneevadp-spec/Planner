@@ -53,7 +53,8 @@
     "check": "npm run lint && npm run typecheck && npm run test:run",
     "ci": "npm run check && npm run build",
     "prepare": "husky",
-    "outbox:run": "npm run -w apps/api outbox:run"
+    "outbox:run": "npm run -w apps/api outbox:run",
+    "deploy:prod": "node ./scripts/deploy-prod.mjs"
   },
   "lint-staged": {
     "*.{js,mjs,cjs,ts,tsx}": [

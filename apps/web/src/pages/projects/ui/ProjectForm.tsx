@@ -11,17 +11,32 @@ import {
 import styles from './ProjectsPage.module.css'
 
 const PROJECT_COLORS = [
-  '#f12b2b',
-  '#ed5212',
-  '#e4aa3f',
-  '#39b629',
-  '#42a8f1',
   '#1a3bd1',
   '#4010c3',
   '#bf1fd3',
   '#e581f4',
   '#26ba86',
   '#5f6fb3',
+  '#ff0000',
+  '#c72c2c',
+  '#b10000',
+  '#ff5656',
+  '#ff9a9a',
+  '#ff8100',
+  '#c77a2c',
+  '#b15900',
+  '#ffab56',
+  '#ffcd9a',
+  '#047fa1',
+  '#1e697e',
+  '#025870',
+  '#4fc0e0',
+  '#8acde0',
+  '#00cd00',
+  '#23a023',
+  '#008e00',
+  '#50ef50',
+  '#90ef90',
 ] as const
 
 const DEFAULT_PROJECT_ICON = createSvgIconValue('folder')

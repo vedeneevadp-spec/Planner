@@ -146,7 +146,8 @@ supabase/
 
 Для постоянного доступа из России используйте российский VPS/облако, Caddy как
 HTTPS reverse proxy и systemd для API. Готовые шаблоны лежат в `deploy/`, а
-пошаговая инструкция - в [DEPLOY_RU.md](DEPLOY_RU.md).
+пошаговая инструкция - в [DEPLOY_RU.md](DEPLOY_RU.md). Обновление production
+выполняется одной командой: `npm run deploy:prod`.
 
 ## Контроль качества
 

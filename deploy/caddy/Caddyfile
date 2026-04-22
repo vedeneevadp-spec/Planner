@@ -1,5 +1,5 @@
-# Replace planner.example.ru with the production domain.
-planner.example.ru {
+# Production domain for Planner.
+chaotika.ru {
   encode gzip zstd
   root * /opt/planner/apps/web/dist
 
