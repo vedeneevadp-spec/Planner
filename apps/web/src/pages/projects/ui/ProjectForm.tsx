@@ -3,6 +3,7 @@ import { type FormEvent, useId, useState } from 'react'
 import type { Project } from '@/entities/project'
 import { cx } from '@/shared/lib/classnames'
 import {
+  createSvgIconValue,
   IconChoicePicker,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
@@ -10,15 +11,20 @@ import {
 import styles from './ProjectsPage.module.css'
 
 const PROJECT_COLORS = [
-  '#2f6f62',
-  '#c65d32',
-  '#d49b35',
-  '#3f5f9f',
-  '#7a4e92',
-  '#576056',
+  '#f12b2b',
+  '#ed5212',
+  '#e4aa3f',
+  '#39b629',
+  '#42a8f1',
+  '#1a3bd1',
+  '#4010c3',
+  '#bf1fd3',
+  '#e581f4',
+  '#26ba86',
+  '#5f6fb3',
 ] as const
 
-const DEFAULT_PROJECT_ICON = '📁'
+const DEFAULT_PROJECT_ICON = createSvgIconValue('folder')
 
 export interface ProjectFormValues {
   color: string
@@ -143,6 +149,7 @@ export function ProjectForm({
           allowEmpty={false}
           className={styles.iconPicker}
           label="Иконка"
+          showEmojiChoices={false}
           uploadedIcons={uploadedIcons}
           value={icon}
           onChange={setIcon}
