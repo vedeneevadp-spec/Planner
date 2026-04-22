@@ -142,6 +142,12 @@ supabase/
 - `SUPABASE_RUNTIME_DATABASE_URL` нужен для backend runtime. Для этого проекта рабочий вариант - Supavisor transaction pooler на `:6543`.
 - `SUPABASE_SESSION_POOLER_URL` оставлен как backward-compatible alias для старых локальных env-файлов.
 
+## Production Deploy
+
+Для постоянного доступа из России используйте российский VPS/облако, Caddy как
+HTTPS reverse proxy и systemd для API. Готовые шаблоны лежат в `deploy/`, а
+пошаговая инструкция - в [DEPLOY_RU.md](DEPLOY_RU.md).
+
 ## Контроль качества
 
 - pre-commit hook запускает `lint-staged`

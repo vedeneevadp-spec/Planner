@@ -118,7 +118,7 @@ export function createApiConfig(
     corsOrigin: env.API_CORS_ORIGIN ?? '*',
     host: env.API_HOST ?? '0.0.0.0',
     iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
-    port: parsePort(env.API_PORT),
+    port: parsePort(env.API_PORT ?? env.PORT),
     supabaseAuth: createSupabaseAuthConfig(env, authMode),
     storageDriver: parseStorageDriver(env.API_STORAGE_DRIVER, appEnv),
   }

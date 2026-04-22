@@ -4,6 +4,25 @@ import { describe, it } from 'node:test'
 import { createApiConfig } from './config.js'
 
 void describe('createApiConfig', () => {
+  void it('resolves the API port from API_PORT, PORT, or the local default', () => {
+    const defaultConfig = createApiConfig({
+      NODE_ENV: 'development',
+    } as NodeJS.ProcessEnv)
+    const platformPortConfig = createApiConfig({
+      NODE_ENV: 'production',
+      PORT: '10000',
+    } as NodeJS.ProcessEnv)
+    const explicitPortConfig = createApiConfig({
+      API_PORT: '3001',
+      NODE_ENV: 'production',
+      PORT: '10000',
+    } as NodeJS.ProcessEnv)
+
+    assert.equal(defaultConfig.port, 3001)
+    assert.equal(platformPortConfig.port, 10000)
+    assert.equal(explicitPortConfig.port, 3001)
+  })
+
   void it('defaults to postgres storage driver', () => {
     const config = createApiConfig({
       NODE_ENV: 'development',

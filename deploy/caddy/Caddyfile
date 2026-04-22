@@ -1,0 +1,19 @@
+# Replace planner.example.ru with the production domain.
+planner.example.ru {
+  encode gzip zstd
+  root * /opt/planner/apps/web/dist
+
+  handle /api/* {
+    reverse_proxy 127.0.0.1:3001
+  }
+
+  handle {
+    try_files {path} /index.html
+    file_server
+  }
+
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+  }
+}

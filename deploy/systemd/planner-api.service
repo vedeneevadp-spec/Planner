@@ -1,0 +1,19 @@
+[Unit]
+Description=Planner API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=planner
+Group=planner
+WorkingDirectory=/opt/planner
+EnvironmentFile=/etc/planner/planner.env
+ExecStart=/usr/bin/npm run -w apps/api start
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
