@@ -193,6 +193,24 @@ async function syncIconAssets() {
 async function runRemoteRelease() {
   const remoteScript = `
 set -euo pipefail
+
+wait_for_url() {
+  url="$1"
+
+  for attempt in $(seq 1 30); do
+    if curl -fsS "$url"; then
+      return 0
+    fi
+
+    echo "Waiting for $url ($attempt/30)..."
+    sleep 1
+  done
+
+  echo "Healthcheck failed: $url" >&2
+  curl -v "$url" || true
+  return 1
+}
+
 cd ${shellQuote(config.remoteRoot)}
 
 chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
@@ -210,11 +228,11 @@ cp ${shellQuote(`${config.remoteRoot}/deploy/caddy/Caddyfile`)} /etc/caddy/Caddy
 
 systemctl daemon-reload
 systemctl restart planner-api
+wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
+caddy fmt --overwrite /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 systemctl reload caddy
-
-curl -fsS ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
-curl -fsS ${shellQuote(`https://${config.domain}${config.healthPath}`)}
+wait_for_url ${shellQuote(`https://${config.domain}${config.healthPath}`)}
 `
 
   await runWithInput('ssh', [config.remoteHost, 'bash', '-se'], remoteScript)
