@@ -12,6 +12,14 @@ import { usePlannerSession } from '@/features/session'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
+import {
+  ACCEPTED_ICON_TYPES,
+  createLabelFromFile,
+  formatFileSize,
+  MAX_ICON_ASSET_BYTES,
+  prepareIconUpload,
+  validateIconFile,
+} from '../lib/icon-upload'
 import styles from './AdminPage.module.css'
 
 interface DraftIconItem {
@@ -22,26 +30,6 @@ interface DraftIconItem {
   value: string
 }
 
-const MAX_ICON_FILE_SIZE_BYTES = 1024 * 1024
-const SUPPORTED_ICON_MIME_TYPES = new Set([
-  'image/gif',
-  'image/jpeg',
-  'image/png',
-  'image/svg+xml',
-  'image/webp',
-])
-const SUPPORTED_ICON_EXTENSIONS = new Map([
-  ['.gif', 'image/gif'],
-  ['.jpeg', 'image/jpeg'],
-  ['.jpg', 'image/jpeg'],
-  ['.png', 'image/png'],
-  ['.svg', 'image/svg+xml'],
-  ['.webp', 'image/webp'],
-])
-const ACCEPTED_ICON_TYPES = [
-  ...SUPPORTED_ICON_MIME_TYPES,
-  ...SUPPORTED_ICON_EXTENSIONS.keys(),
-].join(',')
 const NEW_ICON_SET_TARGET = 'new'
 
 let draftItemCounter = 0
@@ -190,7 +178,7 @@ export function AdminPage() {
     }
 
     try {
-      const value = await readFileAsDataUrl(file)
+      const { value } = await prepareIconUpload(file)
 
       setItems((currentItems) =>
         currentItems.map((item) =>
@@ -437,8 +425,9 @@ export function AdminPage() {
                   <small className={styles.fieldError}>{item.fileError}</small>
                 ) : (
                   <small className={styles.fileHint}>
-                    PNG, SVG, WebP, JPG или GIF до{' '}
-                    {formatFileSize(MAX_ICON_FILE_SIZE_BYTES)}.
+                    PNG, SVG, WebP, JPG, GIF, WebM или TGS; WebM/TGS
+                    сохраняются как PNG до{' '}
+                    {formatFileSize(MAX_ICON_ASSET_BYTES)}.
                   </small>
                 )}
               </label>
@@ -595,75 +584,4 @@ function hasIncompleteDraftItem(items: DraftIconItem[]): boolean {
 
 function hasAnyDraftItemValue(item: DraftIconItem): boolean {
   return Boolean(item.label.trim() || item.value.trim() || item.fileName.trim())
-}
-
-function validateIconFile(file: File): string | null {
-  if (!getSupportedIconMimeType(file)) {
-    return 'Поддерживаются только PNG, SVG, WebP, JPG и GIF.'
-  }
-
-  if (file.size > MAX_ICON_FILE_SIZE_BYTES) {
-    return `Файл должен быть не больше ${formatFileSize(
-      MAX_ICON_FILE_SIZE_BYTES,
-    )}.`
-  }
-
-  return null
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    const fallbackMimeType = getSupportedIconMimeType(file)
-
-    reader.onerror = () => reject(new Error('Не удалось прочитать файл.'))
-    reader.onload = () => {
-      if (typeof reader.result !== 'string') {
-        reject(new Error('Файл прочитан в неподдерживаемом формате.'))
-        return
-      }
-
-      if (reader.result.startsWith('data:;base64,') && fallbackMimeType) {
-        resolve(
-          reader.result.replace(
-            'data:;base64,',
-            `data:${fallbackMimeType};base64,`,
-          ),
-        )
-        return
-      }
-
-      resolve(reader.result)
-    }
-
-    reader.readAsDataURL(file)
-  })
-}
-
-function getSupportedIconMimeType(file: File): string | null {
-  if (SUPPORTED_ICON_MIME_TYPES.has(file.type)) {
-    return file.type
-  }
-
-  const normalizedFileName = file.name.toLowerCase()
-  const extension = [...SUPPORTED_ICON_EXTENSIONS.keys()].find((candidate) =>
-    normalizedFileName.endsWith(candidate),
-  )
-
-  return extension ? (SUPPORTED_ICON_EXTENSIONS.get(extension) ?? null) : null
-}
-
-function createLabelFromFile(file: File): string {
-  return file.name
-    .replace(/\.[^.]+$/, '')
-    .replace(/[-_]+/g, ' ')
-    .trim()
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) {
-    return `${Math.round(bytes / (1024 * 1024))} MB`
-  }
-
-  return `${Math.round(bytes / 1024)} KB`
 }

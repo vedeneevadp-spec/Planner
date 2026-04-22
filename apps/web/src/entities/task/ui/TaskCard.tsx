@@ -82,7 +82,7 @@ export function TaskCard({
                   />
                 </span>
               ) : null}
-              <span>Проект: {projectTitle}</span>
+              <span>{projectTitle}</span>
             </span>
           ) : (
             <span className={styles.projectBadgeMuted}>Без проекта</span>
