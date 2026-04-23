@@ -69,6 +69,8 @@ export function TaskCard({
   const taskResource = getTaskResource(task)
   const isActiveTask = task.status !== 'done'
   const isInProgress = task.status === 'in_progress'
+  const canPostponeTask =
+    task.plannedDate === todayKey || task.plannedDate === tomorrowKey
   const toneClass =
     tone === 'warning'
       ? styles.warning
@@ -178,7 +180,7 @@ export function TaskCard({
                 На завтра
               </button>
             ) : null}
-            {task.plannedDate ? (
+            {canPostponeTask ? (
               <button
                 className={styles.button}
                 type="button"

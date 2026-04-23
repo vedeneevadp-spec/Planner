@@ -22,13 +22,6 @@ interface SessionRow {
   workspaceSlug: string
 }
 
-interface WorkspaceRow {
-  id: string
-  name: string
-  ownerUserId: string
-  slug: string
-}
-
 interface WorkspaceUserRow {
   displayName: string
   email: string
@@ -271,11 +264,9 @@ export class PostgresSessionRepository implements SessionRepository {
       return actor
     }
 
-    await this.provisionDefaultWorkspaceMembership(
-      executor,
-      actor,
-      requestedWorkspaceId,
-    )
+    if (!requestedWorkspaceId) {
+      await this.provisionPersonalWorkspace(executor, actor, 'user')
+    }
 
     return actor
   }
@@ -531,97 +522,6 @@ export class PostgresSessionRepository implements SessionRepository {
     }
 
     return existingActor
-  }
-
-  private async provisionDefaultWorkspaceMembership(
-    executor: DatabaseExecutor,
-    actor: Pick<AppActorRow, 'displayName' | 'id'>,
-    requestedWorkspaceId?: string,
-  ): Promise<void> {
-    if (requestedWorkspaceId) {
-      const requestedWorkspace = await this.findWorkspaceById(
-        executor,
-        requestedWorkspaceId,
-      )
-
-      await this.createWorkspaceMembership(
-        executor,
-        requestedWorkspace.id,
-        actor.id,
-        'user',
-      )
-
-      return
-    }
-
-    const defaultWorkspace = await this.findDefaultWorkspace(executor)
-
-    if (defaultWorkspace) {
-      await this.createWorkspaceMembership(
-        executor,
-        defaultWorkspace.id,
-        actor.id,
-        'user',
-      )
-
-      return
-    }
-
-    await this.provisionPersonalWorkspace(executor, actor, 'owner')
-  }
-
-  private async findWorkspaceById(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-  ): Promise<WorkspaceRow> {
-    const workspace = await this.createWorkspaceLookupQuery(executor)
-      .where('id', '=', workspaceId)
-      .executeTakeFirst()
-
-    if (!workspace) {
-      throw new HttpError(
-        403,
-        'workspace_access_denied',
-        'The current user is not allowed to access the requested workspace.',
-      )
-    }
-
-    return workspace
-  }
-
-  private async findDefaultWorkspace(
-    executor: DatabaseExecutor,
-  ): Promise<WorkspaceRow | undefined> {
-    return this.createWorkspaceLookupQuery(executor)
-      .orderBy('created_at', 'asc')
-      .executeTakeFirst()
-  }
-
-  private createWorkspaceLookupQuery(executor: DatabaseExecutor) {
-    return executor
-      .selectFrom('app.workspaces')
-      .select(['id', 'name', 'owner_user_id as ownerUserId', 'slug'])
-      .where('deleted_at', 'is', null)
-  }
-
-  private async createWorkspaceMembership(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    userId: string,
-    role: WorkspaceRole,
-  ): Promise<void> {
-    await executor
-      .insertInto('app.workspace_members')
-      .values({
-        id: generateUuidV7(),
-        role,
-        user_id: userId,
-        workspace_id: workspaceId,
-      })
-      .onConflict((conflict) =>
-        conflict.columns(['workspace_id', 'user_id']).doNothing(),
-      )
-      .execute()
   }
 
   private async provisionPersonalWorkspace(

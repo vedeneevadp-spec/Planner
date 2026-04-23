@@ -1,4 +1,7 @@
+import { readFileSync } from 'node:fs'
+
 import type { StorageDriver } from '@planner/contracts'
+import type { JSONWebKeySet } from 'jose'
 
 import type { SupabaseAuthRuntimeConfig } from '../infrastructure/auth/supabase-request-authenticator.js'
 
@@ -96,6 +99,7 @@ function createSupabaseAuthConfig(
 
   return {
     issuer: `${projectUrl}/auth/v1`,
+    jwksJson: readSupabaseJwksJson(env),
     jwksUrl: `${projectUrl}/auth/v1/.well-known/jwks.json`,
     jwtSecret: env.SUPABASE_JWT_SECRET?.trim() || undefined,
     projectUrl,
@@ -104,6 +108,29 @@ function createSupabaseAuthConfig(
       env.SUPABASE_ANON_KEY?.trim() ||
       undefined,
   }
+}
+
+function readSupabaseJwksJson(
+  env: NodeJS.ProcessEnv,
+): JSONWebKeySet | undefined {
+  const jwksPath = env.SUPABASE_JWKS_PATH?.trim()
+
+  if (!jwksPath) {
+    return undefined
+  }
+
+  const value = JSON.parse(readFileSync(jwksPath, 'utf8')) as unknown
+
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !Array.isArray((value as { keys?: unknown }).keys)
+  ) {
+    throw new Error('SUPABASE_JWKS_PATH must point to a JWKS JSON object.')
+  }
+
+  return value as JSONWebKeySet
 }
 
 export function createApiConfig(

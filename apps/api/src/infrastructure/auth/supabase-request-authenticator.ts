@@ -1,6 +1,12 @@
 import type { FastifyRequest } from 'fastify'
 import { decodeJwt, decodeProtectedHeader, jwtVerify } from 'jose'
-import { createRemoteJWKSet, errors as joseErrors, type JWTPayload } from 'jose'
+import {
+  createLocalJWKSet,
+  createRemoteJWKSet,
+  errors as joseErrors,
+  type JSONWebKeySet,
+  type JWTPayload,
+} from 'jose'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -25,6 +31,7 @@ interface SupabaseUserPayload {
 
 export interface SupabaseAuthRuntimeConfig {
   issuer: string
+  jwksJson?: JSONWebKeySet | undefined
   jwksUrl: string
   jwtSecret?: string | undefined
   projectUrl: string
@@ -35,9 +42,11 @@ export class SupabaseRequestAuthenticator implements RequestAuthenticator {
   private readonly jwks
 
   constructor(private readonly config: SupabaseAuthRuntimeConfig) {
-    this.jwks = createRemoteJWKSet(new URL(config.jwksUrl), {
-      timeoutDuration: 15_000,
-    })
+    this.jwks = config.jwksJson
+      ? createLocalJWKSet(config.jwksJson)
+      : createRemoteJWKSet(new URL(config.jwksUrl), {
+          timeoutDuration: 15_000,
+        })
   }
 
   async authenticate(
