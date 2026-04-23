@@ -11,6 +11,14 @@ const nullableStringWithDefault = z
 export const taskStatusSchema = z.enum(['todo', 'done'])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
+export const taskResourceSchema = z
+  .number()
+  .int()
+  .min(1)
+  .max(5)
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
 
 export const taskIconSchema = z
   .string()
@@ -25,8 +33,10 @@ export const taskSchema = z.object({
   importance: taskImportanceSchema.optional().default('not_important'),
   urgency: taskUrgencySchema.optional().default('not_urgent'),
   projectId: nullableStringWithDefault,
+  sphereId: nullableStringWithDefault,
   project: z.string(),
   status: taskStatusSchema,
+  resource: taskResourceSchema,
   plannedDate: nullableStringWithDefault,
   plannedStartTime: nullableStringWithDefault,
   plannedEndTime: nullableStringWithDefault,
@@ -51,7 +61,9 @@ export const newTaskInputSchema = z.object({
   importance: taskImportanceSchema.optional(),
   urgency: taskUrgencySchema.optional(),
   projectId: nullableStringWithDefault,
+  sphereId: nullableStringWithDefault,
   project: z.string(),
+  resource: taskResourceSchema,
   plannedDate: nullableStringWithDefault,
   plannedStartTime: nullableStringWithDefault,
   plannedEndTime: nullableStringWithDefault,
@@ -84,6 +96,7 @@ export const taskDeleteSchema = z.object({
 export type TaskStatus = z.infer<typeof taskStatusSchema>
 export type TaskImportance = z.infer<typeof taskImportanceSchema>
 export type TaskUrgency = z.infer<typeof taskUrgencySchema>
+export type TaskResource = z.infer<typeof taskResourceSchema>
 export type Task = z.infer<typeof taskSchema>
 export type TaskScheduleInput = z.infer<typeof taskScheduleInputSchema>
 export type NewTaskInput = z.infer<typeof newTaskInputSchema>

@@ -245,6 +245,9 @@ export function TaskEditDialog({
   )
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const [icon, setIcon] = useState(task.icon)
+  const [resource, setResource] = useState(
+    task.resource === null ? '' : String(task.resource),
+  )
   const [isImportant, setIsImportant] = useState(
     task.importance === 'important',
   )
@@ -282,6 +285,8 @@ export function TaskEditDialog({
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
+      resource: resource ? (Number(resource) as 1 | 2 | 3 | 4 | 5) : null,
+      sphereId: task.sphereId,
       title: normalizedTitle,
       urgency: 'not_urgent',
     })
@@ -388,6 +393,21 @@ export function TaskEditDialog({
               value={dueDate}
               onChange={(event) => setDueDate(event.target.value)}
             />
+          </label>
+
+          <label className={styles.field}>
+            <span>Ресурс</span>
+            <select
+              value={resource}
+              onChange={(event) => setResource(event.target.value)}
+            >
+              <option value="">Авто</option>
+              <option value="1">1 - очень легко</option>
+              <option value="2">2 - легко</option>
+              <option value="3">3 - средне</option>
+              <option value="4">4 - тяжело</option>
+              <option value="5">5 - очень тяжело</option>
+            </select>
           </label>
         </div>
 

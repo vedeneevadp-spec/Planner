@@ -19,11 +19,70 @@ export interface AppTasksTable {
   planned_on: DateColumn | null
   priority: number
   project_id: string | null
+  resource: number | null
+  sphere_id: string | null
   sort_key: string
   status: 'todo' | 'done'
   title: string
   updated_at: Generated<TimestampColumn>
   updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppChaosInboxItemsTable {
+  converted_note_id: string | null
+  converted_task_id: string | null
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  due_on: DateColumn | null
+  id: Generated<string>
+  kind: 'unknown' | 'task' | 'note' | 'shopping' | 'event' | 'idea'
+  priority: 'low' | 'medium' | 'high' | null
+  source: 'manual' | 'quick_add' | 'widget' | 'voice'
+  sphere_id: string | null
+  status: 'new' | 'in_review' | 'converted' | 'archived'
+  text: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppDailyPlansTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  date: DateColumn
+  deleted_at: TimestampColumn | null
+  energy_mode: 'minimum' | 'normal' | 'maximum'
+  focus_task_ids: ColumnType<string[], string[] | string, string[] | string>
+  id: Generated<string>
+  overload_score: number
+  routine_task_ids: ColumnType<string[], string[] | string, string[] | string>
+  support_task_ids: ColumnType<string[], string[] | string, string[] | string>
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppLifeSpheresTable {
+  color: string | null
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  icon: string | null
+  id: Generated<string>
+  is_active: boolean
+  is_default: boolean
+  name: string
+  sort_order: number
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
   version: Generated<number>
   workspace_id: string
 }
@@ -215,9 +274,12 @@ export interface AppOutboxTable {
 }
 
 export interface DatabaseSchema {
+  'app.chaos_inbox_items': AppChaosInboxItemsTable
   'app.device_sessions': AppDeviceSessionsTable
+  'app.daily_plans': AppDailyPlansTable
   'app.emoji_assets': AppEmojiAssetsTable
   'app.emoji_sets': AppEmojiSetsTable
+  'app.life_spheres': AppLifeSpheresTable
   'app.outbox': AppOutboxTable
   'app.projects': AppProjectsTable
   'app.task_attachments': AppTaskAttachmentsTable

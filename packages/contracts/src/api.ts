@@ -1,6 +1,14 @@
 import { z } from 'zod'
 
+import {
+  chaosInboxConvertToTaskResponseSchema,
+  chaosInboxCreatedResponseSchema,
+  chaosInboxItemSchema,
+  chaosInboxListResponseSchema,
+} from './chaos-inbox.js'
+import { dailyPlanSchema } from './daily-plan.js'
 import { emojiAssetSchema, emojiSetSchema } from './emoji-set.js'
+import { lifeSphereSchema, weeklySphereStatsResponseSchema } from './life-sphere.js'
 import { projectSchema } from './project.js'
 import {
   taskScheduleInputSchema,
@@ -97,11 +105,44 @@ export const sessionResponseSchema = z.object({
 export const taskListFiltersSchema = z.object({
   plannedDate: z.string().optional(),
   projectId: z.string().optional(),
+  sphereId: z.string().optional(),
   project: z.string().optional(),
   status: taskStatusSchema.optional(),
 })
 
 export const taskListResponseSchema = z.array(taskRecordSchema)
+export const chaosInboxItemRecordSchema = chaosInboxItemSchema.extend({
+  workspaceId: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+export const chaosInboxListRecordResponseSchema =
+  chaosInboxListResponseSchema.extend({
+    items: z.array(chaosInboxItemRecordSchema),
+  })
+export const chaosInboxCreatedRecordResponseSchema =
+  chaosInboxCreatedResponseSchema.extend({
+    items: z.array(chaosInboxItemRecordSchema),
+  })
+export const chaosInboxConvertToTaskRecordResponseSchema =
+  chaosInboxConvertToTaskResponseSchema.extend({
+    inboxItem: chaosInboxItemRecordSchema,
+  })
+export const dailyPlanRecordSchema = dailyPlanSchema.extend({
+  workspaceId: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+export const lifeSphereRecordSchema = lifeSphereSchema.extend({
+  workspaceId: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+export const lifeSphereListRecordResponseSchema = z.array(lifeSphereRecordSchema)
+export const weeklySphereStatsRecordResponseSchema =
+  weeklySphereStatsResponseSchema.extend({
+    spheres: z.array(lifeSphereRecordSchema),
+  })
 export const taskTemplateListResponseSchema = z.array(taskTemplateRecordSchema)
 export const projectListResponseSchema = z.array(projectRecordSchema)
 export const emojiSetListResponseSchema = z.array(emojiSetRecordSchema)
@@ -142,8 +183,20 @@ export const taskDetailsUpdateInputSchema = taskUpdateInputSchema
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
+export type ChaosInboxItemRecord = z.infer<typeof chaosInboxItemRecordSchema>
+export type ChaosInboxListRecordResponse = z.infer<
+  typeof chaosInboxListRecordResponseSchema
+>
+export type ChaosInboxCreatedRecordResponse = z.infer<
+  typeof chaosInboxCreatedRecordResponseSchema
+>
+export type ChaosInboxConvertToTaskRecordResponse = z.infer<
+  typeof chaosInboxConvertToTaskRecordResponseSchema
+>
+export type DailyPlanRecord = z.infer<typeof dailyPlanRecordSchema>
 export type EmojiAssetRecord = z.infer<typeof emojiAssetRecordSchema>
 export type EmojiSetRecord = z.infer<typeof emojiSetRecordSchema>
+export type LifeSphereRecord = z.infer<typeof lifeSphereRecordSchema>
 export type SessionActor = z.infer<typeof sessionActorSchema>
 export type SessionResponse = z.infer<typeof sessionResponseSchema>
 export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>

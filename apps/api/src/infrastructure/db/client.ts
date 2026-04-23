@@ -71,11 +71,16 @@ export function createDatabaseConnection(
 }
 
 function createPgPoolConfig(connectionString: string): PoolConfig {
+  const connectionTimeoutMillis = readPositiveIntegerEnv(
+    'API_DB_CONNECTION_TIMEOUT_MS',
+    15_000,
+  )
+  const queryTimeout = readPositiveIntegerEnv('API_DB_QUERY_TIMEOUT_MS', 30_000)
   const config: PoolConfig = {
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis,
     connectionString,
     keepAlive: true,
-    query_timeout: 15_000,
+    query_timeout: queryTimeout,
   }
 
   if (!connectionString.includes('pooler.supabase.com')) {
@@ -94,13 +99,30 @@ function createPgPoolConfig(connectionString: string): PoolConfig {
     idle_in_transaction_session_timeout: 5_000,
     keepAlive: false,
     lock_timeout: 5_000,
-    max: 4,
+    max: readPositiveIntegerEnv('API_DB_POOL_MAX', 8),
     maxUses: 1,
-    statement_timeout: 15_000,
+    statement_timeout: readPositiveIntegerEnv(
+      'API_DB_STATEMENT_TIMEOUT_MS',
+      queryTimeout,
+    ),
     ssl: {
       rejectUnauthorized: false,
     },
   }
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const rawValue = process.env[name]
+
+  if (!rawValue) {
+    return fallback
+  }
+
+  const parsedValue = Number(rawValue)
+
+  return Number.isInteger(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : fallback
 }
 
 export async function destroyDatabaseConnection(

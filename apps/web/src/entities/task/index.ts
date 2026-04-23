@@ -19,10 +19,12 @@ export {
   setTaskStatus,
   sortTasks,
 } from './model/planner'
+export { getTaskResource } from './model/resource'
 export type {
   NewTaskInput,
   Task,
   TaskImportance,
+  TaskResource,
   TaskStatus,
   TaskUpdateInput,
   TaskUrgency,

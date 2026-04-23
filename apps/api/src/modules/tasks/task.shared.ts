@@ -16,6 +16,8 @@ export interface NormalizedTaskInput extends NewTaskInput {
   note: string
   project: string
   projectId: string | null
+  resource: NewTaskInput['resource']
+  sphereId: string | null
   title: string
   urgency: NonNullable<NewTaskInput['urgency']>
 }
@@ -64,6 +66,8 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
+    resource: input.resource,
+    sphereId: input.sphereId,
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',
   }
@@ -149,6 +153,8 @@ export function createStoredTaskRecord(
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
+    resource: normalizedInput.resource,
+    sphereId: normalizedInput.sphereId,
     status: 'todo',
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,
@@ -211,6 +217,8 @@ export function applyTaskUpdate(
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
+    resource: normalizedInput.resource,
+    sphereId: normalizedInput.sphereId,
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,
     updatedAt: now,
@@ -236,6 +244,7 @@ export function matchesTaskFilters(
     plannedDate?: string | undefined
     projectId?: string | undefined
     project?: string | undefined
+    sphereId?: string | undefined
     status?: TaskStatus | undefined
   },
 ): boolean {
@@ -256,6 +265,10 @@ export function matchesTaskFilters(
   }
 
   if (filters.projectId && task.projectId !== filters.projectId) {
+    return false
+  }
+
+  if (filters.sphereId && task.sphereId !== filters.sphereId) {
     return false
   }
 

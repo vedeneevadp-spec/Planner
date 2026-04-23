@@ -229,6 +229,8 @@ export function addTask(
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
+    resource: input.resource,
+    sphereId: input.sphereId,
     status: 'todo',
     plannedDate: schedule.plannedDate,
     plannedStartTime: schedule.plannedStartTime,

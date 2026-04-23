@@ -115,6 +115,8 @@ function toPlannerTask(task: TaskRecord): Task {
     plannedStartTime: task.plannedStartTime,
     project: task.project,
     projectId: task.projectId,
+    resource: task.resource,
+    sphereId: task.sphereId,
     status: task.status,
     title: task.title,
     urgency: task.urgency,
@@ -230,6 +232,8 @@ function createOptimisticTaskRecord(
     plannedStartTime: schedule.plannedStartTime,
     project: input.project.trim(),
     projectId: input.projectId,
+    resource: input.resource,
+    sphereId: input.sphereId,
     status: 'todo',
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',
@@ -739,7 +743,7 @@ export function usePlannerState(): PlannerState {
         )
       }
 
-      if (result.failed === 0) {
+      if (result.processed > 0 && result.failed === 0) {
         await syncTaskEventCursor()
       }
     } finally {
@@ -839,10 +843,6 @@ export function usePlannerState(): PlannerState {
   useEffect(() => {
     void drainQueuedMutations()
   }, [drainQueuedMutations])
-
-  useEffect(() => {
-    void syncTaskEventCursor()
-  }, [syncTaskEventCursor])
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1101,6 +1101,8 @@ export function usePlannerState(): PlannerState {
           plannedStartTime: normalizedSchedule.plannedStartTime,
           project: input.project.trim(),
           projectId: input.projectId,
+          resource: input.resource,
+          sphereId: input.sphereId,
           title: input.title.trim(),
           urgency: input.urgency ?? 'not_urgent',
           updatedAt: now,

@@ -85,6 +85,8 @@ function buildTaskInputFromTemplate(
     plannedStartTime: plannedDate ? template.plannedStartTime : null,
     project: project.project,
     projectId: project.projectId,
+    resource: null,
+    sphereId: null,
     title: template.title,
     urgency: 'not_urgent',
   }
@@ -186,6 +188,8 @@ export function TaskComposer({
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
+      resource: null,
+      sphereId: null,
       title: normalizedTitle,
       urgency: 'not_urgent',
     }

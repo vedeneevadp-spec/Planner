@@ -59,6 +59,7 @@ const TASK_IMPORTANCE_KEY = 'taskImportance'
 const TASK_URGENCY_KEY = 'taskUrgency'
 const DEFAULT_TASK_IMPORTANCE = 'not_important'
 const DEFAULT_TASK_URGENCY = 'not_urgent'
+const TASK_LIST_BATCH_SIZE = 20
 
 export class PostgresTaskRepository implements TaskRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -177,6 +178,8 @@ export class PostgresTaskRepository implements TaskRepository {
             planned_on: normalizedSchedule.plannedDate,
             priority: 2,
             project_id: project?.id ?? null,
+            resource: normalizedInput.resource,
+            sphere_id: normalizedInput.sphereId,
             sort_key: '',
             status: 'todo',
             title: normalizedInput.title,
@@ -293,6 +296,8 @@ export class PostgresTaskRepository implements TaskRepository {
             metadata,
             planned_on: normalizedSchedule.plannedDate,
             project_id: project?.id ?? null,
+            resource: normalizedInput.resource,
+            sphere_id: normalizedInput.sphereId,
             title: normalizedInput.title,
             updated_by: command.context.actorUserId,
           })
@@ -752,6 +757,8 @@ export class PostgresTaskRepository implements TaskRepository {
               planned_on,
               priority,
               project_id,
+              resource,
+              sphere_id,
               sort_key,
               status,
               title,
@@ -769,6 +776,8 @@ export class PostgresTaskRepository implements TaskRepository {
               cast(${params.normalizedSchedule.plannedDate} as date),
               2,
               cast(${params.projectId} as uuid),
+              ${params.normalizedInput.resource},
+              cast(${params.normalizedInput.sphereId} as uuid),
               '',
               'todo',
               ${params.normalizedInput.title},
@@ -999,6 +1008,8 @@ export class PostgresTaskRepository implements TaskRepository {
               metadata = cast(${JSON.stringify(params.metadata)} as jsonb),
               planned_on = cast(${params.normalizedSchedule.plannedDate} as date),
               project_id = cast(${params.projectId} as uuid),
+              resource = ${params.normalizedInput.resource},
+              sphere_id = cast(${params.normalizedInput.sphereId} as uuid),
               title = ${params.normalizedInput.title},
               updated_by = ${command.context.actorUserId}
             where id = ${command.taskId}
@@ -1410,44 +1421,150 @@ export class PostgresTaskRepository implements TaskRepository {
     workspaceId: string,
     filters?: TaskListFilters,
   ): Promise<TaskListRow[]> {
-    const statusFilter = filters?.status
-      ? sql`and task.status = ${filters.status}`
-      : sql``
-    const plannedDateFilter = filters?.plannedDate
-      ? sql`and task.planned_on = ${filters.plannedDate}`
-      : sql``
-    const projectIdFilter = filters?.projectId
-      ? sql`and task.project_id = ${filters.projectId}`
-      : sql``
-    const result = await sql<TaskListRow>`
-      select
-        task.*,
-        project.title as project_title,
-        time_block.starts_at as time_block_starts_at,
-        time_block.ends_at as time_block_ends_at
-      from app.tasks as task
-      left join app.projects as project
-        on project.id = task.project_id
-        and project.workspace_id = task.workspace_id
-        and project.deleted_at is null
-      left join lateral (
-        select starts_at, ends_at
-        from app.task_time_blocks
-        where workspace_id = task.workspace_id
-          and task_id = task.id
-          and deleted_at is null
-        order by position asc, starts_at asc
-        limit 1
-      ) as time_block on true
-      where task.workspace_id = ${workspaceId}
-        and task.deleted_at is null
-        ${statusFilter}
-        ${plannedDateFilter}
-        ${projectIdFilter}
-      order by task.created_at asc
-    `.execute(executor)
+    const taskRows = await this.loadTaskRowsInBatches(
+      executor,
+      workspaceId,
+      filters,
+    )
 
-    return result.rows
+    if (taskRows.length === 0) {
+      return []
+    }
+
+    const [primaryTimeBlocks, projectTitles] = await Promise.all([
+      this.loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
+      this.loadProjectTitlesForTasks(executor, workspaceId, taskRows),
+    ])
+
+    return taskRows.map((taskRow) => {
+      const timeBlock = primaryTimeBlocks.get(taskRow.id)
+
+      return {
+        ...taskRow,
+        project_title: taskRow.project_id
+          ? (projectTitles.get(taskRow.project_id) ?? null)
+          : null,
+        time_block_ends_at: timeBlock?.ends_at ?? null,
+        time_block_starts_at: timeBlock?.starts_at ?? null,
+      }
+    })
+  }
+
+  private async loadTaskRowsInBatches(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    filters?: TaskListFilters,
+  ): Promise<TaskRow[]> {
+    const taskRows: TaskRow[] = []
+    let offset = 0
+
+    for (;;) {
+      let query = executor
+        .selectFrom('app.tasks')
+        .selectAll()
+        .where('workspace_id', '=', workspaceId)
+        .where('deleted_at', 'is', null)
+        .orderBy('created_at', 'asc')
+        .orderBy('id', 'asc')
+        .limit(TASK_LIST_BATCH_SIZE)
+        .offset(offset)
+
+      if (filters?.status) {
+        query = query.where('status', '=', filters.status)
+      }
+
+      if (filters?.plannedDate) {
+        query = query.where('planned_on', '=', filters.plannedDate)
+      }
+
+      if (filters?.projectId) {
+        query = query.where('project_id', '=', filters.projectId)
+      }
+
+      if (filters?.sphereId) {
+        query = query.where('sphere_id', '=', filters.sphereId)
+      }
+
+      const batch = await query.execute()
+
+      taskRows.push(...batch)
+
+      if (batch.length < TASK_LIST_BATCH_SIZE) {
+        return taskRows
+      }
+
+      offset += TASK_LIST_BATCH_SIZE
+    }
+  }
+
+  private async loadPrimaryTimeBlocksForTasks(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    taskRows: TaskRow[],
+  ): Promise<Map<string, Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at'>>> {
+    const taskIds = taskRows.map((taskRow) => taskRow.id)
+
+    if (taskIds.length === 0) {
+      return new Map()
+    }
+
+    const timeBlockRows = await executor
+      .selectFrom('app.task_time_blocks')
+      .select(['task_id', 'starts_at', 'ends_at'])
+      .where('workspace_id', '=', workspaceId)
+      .where('task_id', 'in', taskIds)
+      .where('deleted_at', 'is', null)
+      .orderBy('task_id', 'asc')
+      .orderBy('position', 'asc')
+      .orderBy('starts_at', 'asc')
+      .execute()
+    const primaryTimeBlocks = new Map<
+      string,
+      Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at'>
+    >()
+
+    for (const timeBlockRow of timeBlockRows) {
+      if (primaryTimeBlocks.has(timeBlockRow.task_id)) {
+        continue
+      }
+
+      primaryTimeBlocks.set(timeBlockRow.task_id, {
+        ends_at: timeBlockRow.ends_at,
+        starts_at: timeBlockRow.starts_at,
+      })
+    }
+
+    return primaryTimeBlocks
+  }
+
+  private async loadProjectTitlesForTasks(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    taskRows: TaskRow[],
+  ): Promise<Map<string, string>> {
+    const projectIds = [
+      ...new Set(
+        taskRows
+          .map((taskRow) => taskRow.project_id)
+          .filter((projectId): projectId is string => projectId !== null),
+      ),
+    ]
+
+    if (projectIds.length === 0) {
+      return new Map()
+    }
+
+    const projectRows = await executor
+      .selectFrom('app.projects')
+      .select(['id', 'title'])
+      .where('workspace_id', '=', workspaceId)
+      .where('id', 'in', projectIds)
+      .where('deleted_at', 'is', null)
+      .execute()
+
+    return new Map(
+      projectRows.map((projectRow) => [projectRow.id, projectRow.title]),
+    )
   }
 
   private loadPrimaryTimeBlock(
@@ -1548,6 +1665,8 @@ export class PostgresTaskRepository implements TaskRepository {
         : null,
       project: projectTitle ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
+      resource: task.resource,
+      sphereId: task.sphere_id,
       status: task.status,
       title: task.title,
       urgency: this.readTaskUrgency(task.metadata),
@@ -1578,6 +1697,8 @@ export class PostgresTaskRepository implements TaskRepository {
         : null,
       project: task.project_title ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
+      resource: task.resource,
+      sphereId: task.sphere_id,
       status: task.status,
       title: task.title,
       urgency: this.readTaskUrgency(task.metadata),

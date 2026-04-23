@@ -11,11 +11,26 @@ import {
 } from './infrastructure/db/client.js'
 import { createDatabaseConfig } from './infrastructure/db/config.js'
 import {
+  ChaosInboxService,
+  MemoryChaosInboxRepository,
+  PostgresChaosInboxRepository,
+} from './modules/chaos-inbox/index.js'
+import {
+  DailyPlanService,
+  MemoryDailyPlanRepository,
+  PostgresDailyPlanRepository,
+} from './modules/daily-plans/index.js'
+import {
   EmojiSetService,
   LocalIconAssetStorage,
   MemoryEmojiSetRepository,
   PostgresEmojiSetRepository,
 } from './modules/emoji-sets/index.js'
+import {
+  LifeSphereService,
+  MemoryLifeSphereRepository,
+  PostgresLifeSphereRepository,
+} from './modules/life-spheres/index.js'
 import {
   MemoryProjectRepository,
   PostgresProjectRepository,
@@ -54,6 +69,12 @@ export function createApiKernel(
   const taskRepository = database
     ? new PostgresTaskRepository(database.db)
     : new MemoryTaskRepository()
+  const chaosInboxRepository = database
+    ? new PostgresChaosInboxRepository(database.db)
+    : new MemoryChaosInboxRepository()
+  const dailyPlanRepository = database
+    ? new PostgresDailyPlanRepository(database.db)
+    : new MemoryDailyPlanRepository()
   const taskTemplateRepository = database
     ? new PostgresTaskTemplateRepository(database.db)
     : new MemoryTaskTemplateRepository()
@@ -63,6 +84,9 @@ export function createApiKernel(
   const emojiSetRepository = database
     ? new PostgresEmojiSetRepository(database.db)
     : new MemoryEmojiSetRepository()
+  const lifeSphereRepository = database
+    ? new PostgresLifeSphereRepository(database.db)
+    : new MemoryLifeSphereRepository()
   const sessionRepository = database
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
@@ -72,17 +96,26 @@ export function createApiKernel(
     emojiSetRepository,
     iconAssetStorage,
   )
+  const lifeSphereService = new LifeSphereService(lifeSphereRepository)
   const projectService = new ProjectService(projectRepository)
   const taskTemplateService = new TaskTemplateService(taskTemplateRepository)
   const taskService = new TaskService(taskRepository)
+  const chaosInboxService = new ChaosInboxService(
+    chaosInboxRepository,
+    taskService,
+  )
+  const dailyPlanService = new DailyPlanService(dailyPlanRepository)
   const requestAuthenticator =
     config.authMode === 'supabase' && config.supabaseAuth
       ? new SupabaseRequestAuthenticator(config.supabaseAuth)
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
     config,
+    chaosInboxService,
+    dailyPlanService,
     database,
     emojiSetService,
+    lifeSphereService,
     projectService,
     requestAuthenticator,
     sessionService,

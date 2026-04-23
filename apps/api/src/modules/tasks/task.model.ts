@@ -22,6 +22,7 @@ export interface TaskListFilters {
   plannedDate?: string | undefined
   projectId?: string | undefined
   project?: string | undefined
+  sphereId?: string | undefined
   status?: TaskStatus | undefined
 }
 

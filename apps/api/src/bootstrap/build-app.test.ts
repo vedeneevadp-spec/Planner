@@ -839,7 +839,7 @@ void describe('buildApiApp', () => {
     assert.equal(patchResponse.statusCode, 204)
     assert.equal(
       patchResponse.headers['access-control-allow-methods'],
-      'GET, HEAD, POST, PATCH, DELETE, OPTIONS',
+      'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
     )
 
     const deleteResponse = await app.inject({
@@ -854,7 +854,7 @@ void describe('buildApiApp', () => {
     assert.equal(deleteResponse.statusCode, 204)
     assert.equal(
       deleteResponse.headers['access-control-allow-methods'],
-      'GET, HEAD, POST, PATCH, DELETE, OPTIONS',
+      'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
     )
   })
 

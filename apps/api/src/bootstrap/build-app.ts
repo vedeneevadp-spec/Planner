@@ -9,11 +9,17 @@ import Fastify from 'fastify'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
+import type { ChaosInboxService } from '../modules/chaos-inbox/index.js'
+import { registerChaosInboxRoutes } from '../modules/chaos-inbox/index.js'
+import type { DailyPlanService } from '../modules/daily-plans/index.js'
+import { registerDailyPlanRoutes } from '../modules/daily-plans/index.js'
 import type { EmojiSetService } from '../modules/emoji-sets/index.js'
 import {
   registerEmojiSetRoutes,
   registerIconAssetRoutes,
 } from '../modules/emoji-sets/index.js'
+import type { LifeSphereService } from '../modules/life-spheres/index.js'
+import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
 import type { ProjectService } from '../modules/projects/index.js'
 import { registerProjectRoutes } from '../modules/projects/index.js'
 import type { SessionService } from '../modules/session/index.js'
@@ -34,7 +40,10 @@ export interface BuildApiAppOptions {
   config: ApiConfig
   database: DatabaseConnection | null
   requestAuthenticator?: RequestAuthenticator
+  chaosInboxService?: ChaosInboxService
+  dailyPlanService?: DailyPlanService
   emojiSetService?: EmojiSetService
+  lifeSphereService?: LifeSphereService
   projectService: ProjectService
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
@@ -45,7 +54,10 @@ export function buildApiApp({
   config,
   database,
   requestAuthenticator = new NoopRequestAuthenticator(),
+  chaosInboxService,
+  dailyPlanService,
   emojiSetService,
+  lifeSphereService,
   projectService,
   sessionService,
   taskTemplateService,
@@ -60,7 +72,7 @@ export function buildApiApp({
   })
 
   app.register(cors, {
-    methods: ['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: config.corsOrigin === '*' ? true : config.corsOrigin,
   })
   registerOpenApi(app, config)
@@ -93,11 +105,20 @@ export function buildApiApp({
     if (emojiSetService) {
       registerEmojiSetRoutes(instance, sessionService, emojiSetService)
     }
+    if (lifeSphereService) {
+      registerLifeSphereRoutes(instance, sessionService, lifeSphereService)
+    }
     registerProjectRoutes(instance, sessionService, projectService)
     if (taskTemplateService) {
       registerTaskTemplateRoutes(instance, sessionService, taskTemplateService)
     }
     registerTaskRoutes(instance, sessionService, taskService)
+    if (dailyPlanService) {
+      registerDailyPlanRoutes(instance, sessionService, dailyPlanService)
+    }
+    if (chaosInboxService) {
+      registerChaosInboxRoutes(instance, sessionService, chaosInboxService)
+    }
   })
 
   app.setErrorHandler((error, request, reply) => {

@@ -1,6 +1,39 @@
 import {
   apiErrorSchema,
+  type ChaosInboxBulkUpdateInput,
+  chaosInboxBulkUpdateInputSchema,
+  type ChaosInboxConvertToTaskRecordResponse,
+  chaosInboxConvertToTaskRecordResponseSchema,
+  type ChaosInboxCreatedRecordResponse,
+  chaosInboxCreatedRecordResponseSchema,
+  type ChaosInboxItemRecord,
+  chaosInboxItemRecordSchema,
+  type ChaosInboxItemUpdateInput,
+  chaosInboxItemUpdateInputSchema,
+  type ChaosInboxListFilters,
+  chaosInboxListFiltersSchema,
+  type ChaosInboxListRecordResponse,
+  chaosInboxListRecordResponseSchema,
+  type CreateChaosInboxItemsInput,
+  createChaosInboxItemsInputSchema,
+  type DailyPlanAutoBuildInput,
+  dailyPlanAutoBuildInputSchema,
+  type DailyPlanRecord,
+  dailyPlanRecordSchema,
+  type DailyPlanUnloadInput,
+  dailyPlanUnloadInputSchema,
+  type DailyPlanUnloadResponse,
+  dailyPlanUnloadResponseSchema,
+  type DailyPlanUpsertInput,
+  dailyPlanUpsertInputSchema,
   generateUuidV7,
+  lifeSphereListRecordResponseSchema,
+  type LifeSphereRecord,
+  lifeSphereRecordSchema,
+  type LifeSphereUpdateInput,
+  lifeSphereUpdateInputSchema,
+  type NewLifeSphereInput,
+  newLifeSphereInputSchema,
   type NewProjectInput,
   newProjectInputSchema,
   type NewTaskInput,
@@ -30,6 +63,8 @@ import {
   taskTemplateListResponseSchema,
   type TaskTemplateRecord,
   taskTemplateRecordSchema,
+  weeklySphereStatsRecordResponseSchema,
+  type WeeklySphereStatsResponse,
 } from '@planner/contracts'
 
 type FetchFn = typeof fetch
@@ -70,6 +105,21 @@ export interface PlannerApiClientConfig {
 }
 
 export interface PlannerApiClient {
+  autoBuildDailyPlan: (input: DailyPlanAutoBuildInput) => Promise<DailyPlanRecord>
+  bulkConvertChaosInboxItemsToTasks: (
+    ids: string[],
+  ) => Promise<ChaosInboxConvertToTaskRecordResponse[]>
+  bulkDeleteChaosInboxItems: (ids: string[]) => Promise<void>
+  bulkUpdateChaosInboxItems: (
+    input: ChaosInboxBulkUpdateInput,
+  ) => Promise<ChaosInboxCreatedRecordResponse>
+  convertChaosInboxItemToTask: (
+    id: string,
+  ) => Promise<ChaosInboxConvertToTaskRecordResponse>
+  createChaosInboxItems: (
+    input: CreateChaosInboxItemsInput,
+  ) => Promise<ChaosInboxCreatedRecordResponse>
+  createLifeSphere: (input: NewLifeSphereInput) => Promise<LifeSphereRecord>
   createProject: (input: NewProjectInput) => Promise<ProjectRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
   createTaskTemplate: (
@@ -79,6 +129,17 @@ export interface PlannerApiClient {
     projectId: string,
     signal?: RequestSignal,
   ) => Promise<ProjectRecord>
+  getDailyPlan: (date: string, signal?: RequestSignal) => Promise<DailyPlanRecord>
+  getLifeSphereWeeklyStats: (
+    from: string,
+    to: string,
+    signal?: RequestSignal,
+  ) => Promise<WeeklySphereStatsResponse>
+  listChaosInboxItems: (
+    filters?: ChaosInboxListFilters,
+    signal?: RequestSignal,
+  ) => Promise<ChaosInboxListRecordResponse>
+  listLifeSpheres: (signal?: RequestSignal) => Promise<LifeSphereRecord[]>
   listTaskEvents: (
     filters?: TaskEventListFilters,
     signal?: RequestSignal,
@@ -90,7 +151,13 @@ export interface PlannerApiClient {
   ) => Promise<TaskRecord[]>
   listTaskTemplates: (signal?: RequestSignal) => Promise<TaskTemplateRecord[]>
   removeTaskTemplate: (templateId: string) => Promise<void>
+  removeLifeSphere: (sphereId: string) => Promise<void>
+  removeChaosInboxItem: (id: string) => Promise<void>
   removeTask: (taskId: string, expectedVersion?: number) => Promise<void>
+  saveDailyPlan: (
+    date: string,
+    input: DailyPlanUpsertInput,
+  ) => Promise<DailyPlanRecord>
   setTaskSchedule: (
     taskId: string,
     input: TaskScheduleUpdateInput,
@@ -107,6 +174,17 @@ export interface PlannerApiClient {
     projectId: string,
     input: ProjectUpdateInput,
   ) => Promise<ProjectRecord>
+  updateChaosInboxItem: (
+    id: string,
+    input: ChaosInboxItemUpdateInput,
+  ) => Promise<ChaosInboxItemRecord>
+  updateLifeSphere: (
+    sphereId: string,
+    input: LifeSphereUpdateInput,
+  ) => Promise<LifeSphereRecord>
+  unloadDailyPlan: (
+    input: DailyPlanUnloadInput,
+  ) => Promise<DailyPlanUnloadResponse>
 }
 
 export function createPlannerApiClient(
@@ -117,7 +195,7 @@ export function createPlannerApiClient(
 
   async function request<TResponse>(options: {
     body?: unknown
-    method?: 'DELETE' | 'GET' | 'PATCH' | 'POST'
+    method?: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT'
     path: string
     query?: Record<string, string | number | undefined> | undefined
     responseSchema?: { parse: (value: unknown) => TResponse }
@@ -189,6 +267,172 @@ export function createPlannerApiClient(
   }
 
   return {
+    async listChaosInboxItems(filters = {}, signal) {
+      const validatedFilters = chaosInboxListFiltersSchema.parse(filters)
+
+      return request({
+        path: '/api/v1/chaos-inbox',
+        query: validatedFilters,
+        responseSchema: chaosInboxListRecordResponseSchema,
+        signal,
+      })
+    },
+    async createChaosInboxItems(input) {
+      const validatedInput = createChaosInboxItemsInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/chaos-inbox',
+        responseSchema: chaosInboxCreatedRecordResponseSchema,
+        writeAccess: true,
+      })
+    },
+    async updateChaosInboxItem(id, input) {
+      const validatedInput = chaosInboxItemUpdateInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'PATCH',
+        path: `/api/v1/chaos-inbox/${encodeURIComponent(id)}`,
+        responseSchema: chaosInboxItemRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async bulkUpdateChaosInboxItems(input) {
+      const validatedInput = chaosInboxBulkUpdateInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/chaos-inbox/bulk-update',
+        responseSchema: chaosInboxCreatedRecordResponseSchema,
+        writeAccess: true,
+      })
+    },
+    async removeChaosInboxItem(id) {
+      await request<void>({
+        method: 'DELETE',
+        path: `/api/v1/chaos-inbox/${encodeURIComponent(id)}`,
+        writeAccess: true,
+      })
+    },
+    async bulkDeleteChaosInboxItems(ids) {
+      await request<void>({
+        body: { ids },
+        method: 'POST',
+        path: '/api/v1/chaos-inbox/bulk-delete',
+        writeAccess: true,
+      })
+    },
+    async convertChaosInboxItemToTask(id) {
+      return request({
+        method: 'POST',
+        path: `/api/v1/chaos-inbox/${encodeURIComponent(id)}/convert-to-task`,
+        responseSchema: chaosInboxConvertToTaskRecordResponseSchema,
+        writeAccess: true,
+      })
+    },
+    async bulkConvertChaosInboxItemsToTasks(ids) {
+      return request({
+        body: { ids },
+        method: 'POST',
+        path: '/api/v1/chaos-inbox/bulk-convert-to-tasks',
+        responseSchema: {
+          parse: (value) =>
+            chaosInboxConvertToTaskRecordResponseSchema.array().parse(value),
+        },
+        writeAccess: true,
+      })
+    },
+    async getDailyPlan(date, signal) {
+      return request({
+        path: '/api/v1/daily-plan',
+        query: { date },
+        responseSchema: dailyPlanRecordSchema,
+        signal,
+      })
+    },
+    async saveDailyPlan(date, input) {
+      const validatedInput = dailyPlanUpsertInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'PUT',
+        path: '/api/v1/daily-plan',
+        query: { date },
+        responseSchema: dailyPlanRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async autoBuildDailyPlan(input) {
+      const validatedInput = dailyPlanAutoBuildInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/daily-plan/auto-build',
+        responseSchema: dailyPlanRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async unloadDailyPlan(input) {
+      const validatedInput = dailyPlanUnloadInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/daily-plan/unload',
+        responseSchema: dailyPlanUnloadResponseSchema,
+      })
+    },
+    async listLifeSpheres(signal) {
+      return request({
+        path: '/api/v1/life-spheres',
+        responseSchema: lifeSphereListRecordResponseSchema,
+        signal,
+      })
+    },
+    async createLifeSphere(input) {
+      const validatedInput = newLifeSphereInputSchema.parse({
+        ...input,
+        id: input.id ?? generateUuidV7(),
+      })
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: '/api/v1/life-spheres',
+        responseSchema: lifeSphereRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async updateLifeSphere(sphereId, input) {
+      const validatedInput = lifeSphereUpdateInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'PATCH',
+        path: `/api/v1/life-spheres/${encodeURIComponent(sphereId)}`,
+        responseSchema: lifeSphereRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async removeLifeSphere(sphereId) {
+      await request<void>({
+        method: 'DELETE',
+        path: `/api/v1/life-spheres/${encodeURIComponent(sphereId)}`,
+        writeAccess: true,
+      })
+    },
+    async getLifeSphereWeeklyStats(from, to, signal) {
+      return request({
+        path: '/api/v1/life-spheres/weekly-stats',
+        query: { from, to },
+        responseSchema: weeklySphereStatsRecordResponseSchema,
+        signal,
+      })
+    },
     async listProjects(signal) {
       return request({
         path: '/api/v1/projects',

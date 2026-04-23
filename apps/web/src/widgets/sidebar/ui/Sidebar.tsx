@@ -9,10 +9,11 @@ import { formatLongDate, getDateKey } from '@/shared/lib/date'
 import styles from './Sidebar.module.css'
 
 const navigation = [
-  { to: '/today', label: 'Today' },
-  { to: '/timeline', label: 'Timeline' },
-  { to: '/inbox', label: 'Inbox' },
-  { to: '/projects', label: 'Projects' },
+  { to: '/today', label: 'Сегодня' },
+  { to: '/timeline', label: 'Таймлайн' },
+  { to: '/inbox', label: 'Сброс' },
+  { to: '/spheres', label: 'Сферы' },
+  { to: '/projects', label: 'Проекты' },
   { to: '/admin', label: 'Admin' },
 ] as const
 
@@ -49,10 +50,10 @@ export function Sidebar() {
     <aside className={styles.sidebar}>
       <div className={styles.brandBlock}>
         <p className={styles.eyebrow}>{session?.workspace.name ?? 'Planner'}</p>
-        <h1>Мой рабочий ритм</h1>
+        <h1>Chaotika</h1>
         <p className={styles.copy}>
           {session
-            ? `${session.actor.displayName} работает в workspace ${session.workspace.slug}. Данные загружаются через backend API и кэшируются на клиенте.`
+            ? `${session.actor.displayName} собирает хаос в workspace ${session.workspace.slug}. Данные синхронизируются через backend API и кэшируются на клиенте.`
             : 'Определяем текущий workspace и пользователя перед загрузкой задач.'}
         </p>
       </div>
@@ -136,7 +137,7 @@ export function Sidebar() {
                 ? summary.timelineCount
                 : item.to === '/inbox'
                   ? summary.inboxCount
-                  : item.to === '/projects'
+                  : item.to === '/spheres' || item.to === '/projects'
                     ? projects.length
                     : (session?.role ?? 'Admin')
 
