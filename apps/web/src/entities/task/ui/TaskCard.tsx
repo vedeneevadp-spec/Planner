@@ -20,7 +20,21 @@ import {
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 
+import { getTaskResource } from '../model/resource'
+import {
+  getResourceFromValue,
+  getTaskImportanceFromType,
+  getTaskTypeValue,
+  getTaskUrgencyFromType,
+  type ResourceValue,
+  type TaskTypeValue,
+} from '../model/task-meta'
 import styles from './TaskCard.module.css'
+import {
+  ResourcePicker,
+  TaskResourceMeter,
+  TaskTypePicker,
+} from './TaskMetaPickers'
 
 interface TaskCardProps {
   task: Task
@@ -51,6 +65,10 @@ export function TaskCard({
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const projectTitle = project?.title ?? task.project.trim()
+  const taskType = getTaskTypeValue(task)
+  const taskResource = getTaskResource(task)
+  const isActiveTask = task.status !== 'done'
+  const isInProgress = task.status === 'in_progress'
   const toneClass =
     tone === 'warning'
       ? styles.warning
@@ -64,6 +82,7 @@ export function TaskCard({
         styles.card,
         toneClass,
         task.importance === 'important' && styles.important,
+        isInProgress && styles.inProgress,
       )}
     >
       <div className={styles.main}>
@@ -117,17 +136,81 @@ export function TaskCard({
               Due {formatShortDate(task.dueDate)}
             </span>
           ) : null}
-          {task.importance === 'important' ? (
+          {taskType === 'important' ? (
             <span className={cx(styles.metaChip, styles.markerChipStrong)}>
-              Важно
+              Важное
+            </span>
+          ) : null}
+          {taskType === 'routine' ? (
+            <span className={styles.metaChip}>Рутина</span>
+          ) : null}
+          {taskResource !== 0 ? (
+            <span className={cx(styles.metaChip, styles.resourceChip)}>
+              <TaskResourceMeter
+                className={styles.cardResourceMeter}
+                value={taskResource}
+              />
             </span>
           ) : null}
         </div>
       </div>
 
       <div className={styles.actions}>
-        {task.status === 'todo' ? (
-          <>
+        {isActiveTask ? (
+          <div className={styles.scheduleActions}>
+            {task.plannedDate !== todayKey ? (
+              <button
+                className={styles.button}
+                type="button"
+                disabled={isPending}
+                onClick={() => onSetPlannedDate(task.id, todayKey)}
+              >
+                На сегодня
+              </button>
+            ) : null}
+            {task.plannedDate !== tomorrowKey ? (
+              <button
+                className={styles.button}
+                type="button"
+                disabled={isPending}
+                onClick={() => onSetPlannedDate(task.id, tomorrowKey)}
+              >
+                На завтра
+              </button>
+            ) : null}
+            {task.plannedDate ? (
+              <button
+                className={styles.button}
+                type="button"
+                disabled={isPending}
+                onClick={() => onSetPlannedDate(task.id, null)}
+              >
+                Отложить
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className={styles.cardMainActions}>
+          {isActiveTask ? (
+            <button
+              className={cx(
+                styles.button,
+                styles.workButton,
+                isInProgress && styles.workButtonActive,
+              )}
+              type="button"
+              disabled={isPending}
+              aria-pressed={isInProgress}
+              onClick={() =>
+                onSetStatus(task.id, isInProgress ? 'todo' : 'in_progress')
+              }
+            >
+              В работе
+            </button>
+          ) : null}
+
+          {isActiveTask ? (
             <button
               className={cx(styles.button, styles.iconButton)}
               type="button"
@@ -138,69 +221,43 @@ export function TaskCard({
             >
               <CheckIcon size={18} />
             </button>
-            {task.plannedDate !== todayKey ? (
-              <button
-                className={styles.button}
-                type="button"
-                disabled={isPending}
-                onClick={() => onSetPlannedDate(task.id, todayKey)}
-              >
-                Today
-              </button>
-            ) : null}
-            {task.plannedDate !== tomorrowKey ? (
-              <button
-                className={styles.button}
-                type="button"
-                disabled={isPending}
-                onClick={() => onSetPlannedDate(task.id, tomorrowKey)}
-              >
-                Tomorrow
-              </button>
-            ) : null}
-            {task.plannedDate ? (
-              <button
-                className={styles.button}
-                type="button"
-                disabled={isPending}
-                onClick={() => onSetPlannedDate(task.id, null)}
-              >
-                Inbox
-              </button>
-            ) : null}
-          </>
-        ) : (
+          ) : (
+            <button
+              className={styles.button}
+              type="button"
+              disabled={isPending}
+              onClick={() => onSetStatus(task.id, 'todo')}
+            >
+              Вернуть
+            </button>
+          )}
+
           <button
-            className={styles.button}
+            className={cx(styles.button, styles.iconButton)}
             type="button"
             disabled={isPending}
-            onClick={() => onSetStatus(task.id, 'todo')}
+            aria-label="Редактировать задачу"
+            title="Редактировать"
+            onClick={() => setIsEditing(true)}
           >
-            Reopen
+            <EditIcon size={18} />
           </button>
-        )}
 
-        <button
-          className={cx(styles.button, styles.iconButton)}
-          type="button"
-          disabled={isPending}
-          aria-label="Редактировать задачу"
-          title="Редактировать"
-          onClick={() => setIsEditing(true)}
-        >
-          <EditIcon size={18} />
-        </button>
-
-        <button
-          className={cx(styles.button, styles.iconButton, styles.dangerButton)}
-          type="button"
-          disabled={isPending}
-          aria-label="Удалить задачу"
-          title="Удалить"
-          onClick={() => onRemove(task.id)}
-        >
-          <TrashIcon size={18} />
-        </button>
+          <button
+            className={cx(
+              styles.button,
+              styles.iconButton,
+              styles.dangerButton,
+            )}
+            type="button"
+            disabled={isPending}
+            aria-label="Удалить задачу"
+            title="Удалить"
+            onClick={() => onRemove(task.id)}
+          >
+            <TrashIcon size={18} />
+          </button>
+        </div>
       </div>
 
       {isEditing ? (
@@ -246,10 +303,12 @@ export function TaskEditDialog({
   const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const [icon, setIcon] = useState(task.icon)
   const [resource, setResource] = useState(
-    task.resource === null ? '' : String(task.resource),
+    task.resource === null || task.resource === 0
+      ? ''
+      : (String(task.resource) as ResourceValue),
   )
-  const [isImportant, setIsImportant] = useState(
-    task.importance === 'important',
+  const [taskType, setTaskType] = useState<TaskTypeValue>(
+    getTaskTypeValue(task),
   )
   const [note, setNote] = useState(task.note)
 
@@ -277,7 +336,7 @@ export function TaskEditDialog({
     const isUpdated = await onUpdate(task.id, {
       dueDate: dueDate || null,
       icon,
-      importance: isImportant ? 'important' : 'not_important',
+      importance: getTaskImportanceFromType(taskType),
       note,
       plannedDate: plannedDate || null,
       plannedEndTime:
@@ -285,10 +344,10 @@ export function TaskEditDialog({
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
-      resource: resource ? (Number(resource) as 1 | 2 | 3 | 4 | 5) : null,
+      resource: getResourceFromValue(resource),
       sphereId: task.sphereId,
       title: normalizedTitle,
-      urgency: 'not_urgent',
+      urgency: getTaskUrgencyFromType(taskType),
     })
 
     if (isUpdated) {
@@ -345,17 +404,11 @@ export function TaskEditDialog({
             onChange={setProjectId}
           />
 
-          <label className={cx(styles.field, styles.fieldImportant)}>
-            <span>Маркер</span>
-            <span className={styles.checkboxControl}>
-              <input
-                type="checkbox"
-                checked={isImportant}
-                onChange={(event) => setIsImportant(event.target.checked)}
-              />
-              <span>Важно</span>
-            </span>
-          </label>
+          <TaskTypePicker
+            className={styles.fieldType}
+            value={taskType}
+            onChange={setTaskType}
+          />
 
           <label className={styles.field}>
             <span>План</span>
@@ -395,20 +448,11 @@ export function TaskEditDialog({
             />
           </label>
 
-          <label className={styles.field}>
-            <span>Ресурс</span>
-            <select
-              value={resource}
-              onChange={(event) => setResource(event.target.value)}
-            >
-              <option value="">Авто</option>
-              <option value="1">1 - очень легко</option>
-              <option value="2">2 - легко</option>
-              <option value="3">3 - средне</option>
-              <option value="4">4 - тяжело</option>
-              <option value="5">5 - очень тяжело</option>
-            </select>
-          </label>
+          <ResourcePicker
+            className={styles.fieldResource}
+            value={resource}
+            onChange={setResource}
+          />
         </div>
 
         <div className={styles.editorVisual}>

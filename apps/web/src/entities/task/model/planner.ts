@@ -109,6 +109,18 @@ function getTaskMatrixWeight(task: Task): number {
   return 3
 }
 
+function getTaskStatusWeight(status: TaskStatus): number {
+  if (status === 'in_progress') {
+    return 0
+  }
+
+  if (status === 'todo') {
+    return 1
+  }
+
+  return 2
+}
+
 function parseTimeKey(value: string): number {
   const [hoursRaw, minutesRaw] = value.split(':')
   const hours = Number(hoursRaw)
@@ -175,7 +187,9 @@ function finalizeTimelineGroup(
 export function sortTasks(tasks: Task[]): Task[] {
   return [...tasks].sort((left, right) => {
     if (left.status !== right.status) {
-      return left.status === 'todo' ? -1 : 1
+      return (
+        getTaskStatusWeight(left.status) - getTaskStatusWeight(right.status)
+      )
     }
 
     const leftAnchor = left.plannedDate ?? left.dueDate ?? left.createdAt
@@ -312,7 +326,7 @@ export function removeTask(tasks: Task[], taskId: string): Task[] {
 }
 
 export function selectTodoTasks(tasks: Task[]): Task[] {
-  return tasks.filter((task) => task.status === 'todo')
+  return tasks.filter((task) => task.status !== 'done')
 }
 
 export function selectInboxTasks(tasks: Task[]): Task[] {

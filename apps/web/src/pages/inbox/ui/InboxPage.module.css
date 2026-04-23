@@ -19,7 +19,10 @@
   box-shadow: var(--shadow);
 }
 
-.filterGroup,
+.toolbar {
+  justify-content: flex-end;
+}
+
 .bulkActions,
 .cardActions,
 .quickActions {
@@ -29,7 +32,6 @@
   gap: 0.5rem;
 }
 
-.filterButton,
 .secondaryButton,
 .dangerButton,
 .primaryButton,
@@ -48,7 +50,6 @@
   color: var(--accent-strong);
 }
 
-.filterButtonActive,
 .primaryButton {
   border-color: transparent;
   background: var(--accent);
@@ -97,14 +98,6 @@
   flex-wrap: wrap;
   color: var(--text-soft);
   font-size: 0.84rem;
-}
-
-.statusBadge {
-  border-radius: 999px;
-  padding: 0.25rem 0.55rem;
-  background: rgba(33, 78, 66, 0.1);
-  color: var(--accent-strong);
-  font-weight: 700;
 }
 
 .checkbox {

@@ -12,6 +12,7 @@ import {
   FolderIcon,
   HeartIcon,
   HomeIcon,
+  LightningIcon,
   MenuIcon,
   MinusIcon,
   PlusIcon,
@@ -44,4 +45,5 @@ export const appIcons = {
   download: DownloadIcon,
   upload: UploadIcon,
   menu: MenuIcon,
+  lightning: LightningIcon,
 } as const

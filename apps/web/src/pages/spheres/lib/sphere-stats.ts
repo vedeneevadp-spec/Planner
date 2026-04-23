@@ -174,7 +174,7 @@ export function buildSphereStats(
     const latestActivityDate = getLatestActivityDate(task)
 
     if (
-      task.status === 'todo' &&
+      task.status !== 'done' &&
       isInWeek(task.plannedDate ?? task.dueDate, week)
     ) {
       stats.plannedCount += 1
@@ -185,7 +185,7 @@ export function buildSphereStats(
     }
 
     if (
-      task.status === 'todo' &&
+      task.status !== 'done' &&
       task.plannedDate !== null &&
       task.plannedDate < todayKey
     ) {
@@ -193,7 +193,7 @@ export function buildSphereStats(
     }
 
     if (isInWeek(weekAnchor, week)) {
-      stats.totalResource += getTaskResource(task)
+      stats.totalResource += Math.max(0, -getTaskResource(task))
     }
 
     if (!stats.lastActivityAt || latestActivityDate > stats.lastActivityAt) {

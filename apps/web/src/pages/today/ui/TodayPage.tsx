@@ -1,9 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import {
   selectDoneTodayTasks,
-  selectOverdueTasks,
   selectTodayTasks,
   selectTodoTasks,
   selectTomorrowTasks,
@@ -11,31 +9,34 @@ import {
   TaskSection,
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
-import { usePlanner, usePlannerApiClient } from '@/features/planner'
+import { usePlanner } from '@/features/planner'
 import { TaskComposer } from '@/features/task-create'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
-import {
-  type EnergyMode,
-  groupDailyTasks,
-} from '../lib/resource-plan'
+import type { EnergyMode } from '../lib/resource-plan'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
-import styles from './ResourcePlanPanel.module.css'
 
-interface PlanDraft {
-  energyMode: EnergyMode
-  focusTaskIds: string[]
-  supportTaskIds: string[]
-  routineTaskIds: string[]
+const ENERGY_MODE_STORAGE_KEY = 'planner.today.energyMode'
+
+function isRoutineTask(task: Task): boolean {
+  return task.urgency === 'urgent'
 }
 
-type PlanSection = 'focusTaskIds' | 'routineTaskIds' | 'supportTaskIds'
+function readStoredEnergyMode(): EnergyMode {
+  if (typeof window === 'undefined') {
+    return 'normal'
+  }
+
+  const value = window.localStorage.getItem(ENERGY_MODE_STORAGE_KEY)
+
+  return value === 'minimum' || value === 'maximum' || value === 'normal'
+    ? value
+    : 'normal'
+}
 
 export function TodayPage() {
-  const api = usePlannerApiClient()
-  const queryClient = useQueryClient()
   const {
     tasks,
     projects,
@@ -46,141 +47,68 @@ export function TodayPage() {
     updateTask,
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
+  const [energyMode, setEnergyMode] = useState<EnergyMode>(readStoredEnergyMode)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
-  const dailyPlanQuery = useQuery({
-    enabled: api !== null,
-    queryFn: ({ signal }) => api!.getDailyPlan(todayKey, signal),
-    queryKey: ['daily-plan', todayKey],
-  })
-  const taskById = useMemo(
-    () => new Map(tasks.map((task) => [task.id, task])),
-    [tasks],
-  )
+  useEffect(() => {
+    window.localStorage.setItem(ENERGY_MODE_STORAGE_KEY, energyMode)
+  }, [energyMode])
+
   const todayTasks = useMemo(
     () => selectTodayTasks(tasks, todayKey),
     [tasks, todayKey],
   )
-  const fallbackGroups = useMemo(
-    () => groupDailyTasks(todayTasks),
+  const doneTodayTasks = useMemo(
+    () => selectDoneTodayTasks(tasks, todayKey),
+    [tasks, todayKey],
+  )
+  const routineTasks = useMemo(
+    () => todayTasks.filter((task) => isRoutineTask(task)),
     [todayTasks],
   )
-  const planDraft = useMemo<PlanDraft>(() => {
-    const plan = dailyPlanQuery.data
-
-    if (!plan) {
-      return {
-        energyMode: 'normal',
-        focusTaskIds: fallbackGroups.focusTasks.map((task) => task.id),
-        routineTaskIds: fallbackGroups.routineTasks.map((task) => task.id),
-        supportTaskIds: fallbackGroups.supportTasks.map((task) => task.id),
-      }
-    }
-
-    const hasSavedTasks =
-      plan.focusTaskIds.length > 0 ||
-      plan.supportTaskIds.length > 0 ||
-      plan.routineTaskIds.length > 0
-
-    return {
-      energyMode: plan.energyMode,
-      focusTaskIds: hasSavedTasks
-        ? plan.focusTaskIds
-        : fallbackGroups.focusTasks.map((task) => task.id),
-      routineTaskIds: hasSavedTasks
-        ? plan.routineTaskIds
-        : fallbackGroups.routineTasks.map((task) => task.id),
-      supportTaskIds: hasSavedTasks
-        ? plan.supportTaskIds
-        : fallbackGroups.supportTasks.map((task) => task.id),
-    }
-  }, [dailyPlanQuery.data, fallbackGroups])
-  const focusTasks = resolvePlanTasks(planDraft.focusTaskIds, taskById)
-  const supportTasks = resolvePlanTasks(planDraft.supportTaskIds, taskById)
-  const routineTasks = resolvePlanTasks(planDraft.routineTaskIds, taskById)
-  const plannedIds = new Set([
-    ...planDraft.focusTaskIds,
-    ...planDraft.supportTaskIds,
-    ...planDraft.routineTaskIds,
-  ])
-  const backlogTasks = selectTodoTasks(tasks).filter(
-    (task) => !plannedIds.has(task.id),
+  const mainTodayTasks = useMemo(
+    () => todayTasks.filter((task) => !isRoutineTask(task)),
+    [todayTasks],
   )
-  const [taskToAdd, setTaskToAdd] = useState('')
-  const [targetSection, setTargetSection] = useState<PlanSection>('focusTaskIds')
-  const tomorrowTasks = selectTomorrowTasks(tasks, tomorrowKey)
-  const overdueTasks = selectOverdueTasks(tasks, todayKey)
-  const doneTodayTasks = selectDoneTodayTasks(tasks, todayKey)
-  const savePlanMutation = useMutation({
-    mutationFn: (draft: PlanDraft) => api!.saveDailyPlan(todayKey, draft),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['daily-plan', todayKey] })
-    },
-  })
-  const autoBuildMutation = useMutation({
-    mutationFn: () =>
-      api!.autoBuildDailyPlan({
-        date: todayKey,
-        energyMode: planDraft.energyMode,
-      }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['daily-plan', todayKey] })
-    },
-  })
+  const tomorrowTasks = useMemo(
+    () => selectTomorrowTasks(tasks, tomorrowKey),
+    [tasks, tomorrowKey],
+  )
+  const visibleTaskIds = useMemo(
+    () =>
+      new Set([
+        ...mainTodayTasks.map((task) => task.id),
+        ...routineTasks.map((task) => task.id),
+        ...tomorrowTasks.map((task) => task.id),
+      ]),
+    [mainTodayTasks, routineTasks, tomorrowTasks],
+  )
+  const otherTasks = useMemo(
+    () => selectTodoTasks(tasks).filter((task) => !visibleTaskIds.has(task.id)),
+    [tasks, visibleTaskIds],
+  )
+  const resourceTasks = useMemo(
+    () => [...todayTasks, ...doneTodayTasks],
+    [doneTodayTasks, todayTasks],
+  )
 
-  function savePlan(nextDraft: PlanDraft) {
-    if (!api) {
-      return
-    }
-
-    savePlanMutation.mutate(nextDraft)
-  }
-
-  function updateEnergyMode(energyMode: EnergyMode) {
-    savePlan({ ...planDraft, energyMode })
-  }
-
-  function removeFromPlan(taskId: string) {
-    savePlan({
-      ...planDraft,
-      focusTaskIds: planDraft.focusTaskIds.filter((id) => id !== taskId),
-      routineTaskIds: planDraft.routineTaskIds.filter((id) => id !== taskId),
-      supportTaskIds: planDraft.supportTaskIds.filter((id) => id !== taskId),
-    })
-  }
-
-  function addTaskToPlan() {
-    if (!taskToAdd) {
-      return
-    }
-
-    const cleanedDraft: PlanDraft = {
-      ...planDraft,
-      focusTaskIds: planDraft.focusTaskIds.filter((id) => id !== taskToAdd),
-      routineTaskIds: planDraft.routineTaskIds.filter((id) => id !== taskToAdd),
-      supportTaskIds: planDraft.supportTaskIds.filter((id) => id !== taskToAdd),
-    }
-    const nextDraft: PlanDraft = {
-      ...cleanedDraft,
-      [targetSection]: [...cleanedDraft[targetSection], taskToAdd],
-    }
-
-    void setTaskPlannedDate(taskToAdd, todayKey)
-    savePlan(nextDraft)
-    setTaskToAdd('')
-  }
-
-  function renderTaskSection(title: string, sectionTasks: Task[]) {
+  function renderTaskSection(
+    title: string,
+    sectionTasks: Task[],
+    emptyMessage: string,
+    tone: 'default' | 'warning' | 'success' = 'default',
+  ) {
     return (
       <TaskSection
         title={title}
         tasks={sectionTasks}
         projects={projects}
         uploadedIcons={uploadedIcons}
-        emptyMessage="Здесь пока пусто. Добавь задачу вручную или собери день автоматически."
+        emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
+        tone={tone}
         onRemove={(taskId) => {
-          removeFromPlan(taskId)
+          void removeTask(taskId)
         }}
         onSetPlannedDate={(taskId, plannedDate) => {
           void setTaskPlannedDate(taskId, plannedDate)
@@ -197,126 +125,51 @@ export function TodayPage() {
     <section className={pageStyles.page}>
       <PageHeader
         kicker="Focus"
-        title="План дня по ресурсу"
-        description="Выбери реальный режим дня, собери фокус и увидь перегруз до того, как он сорвет план."
+        actions={<TaskComposer initialPlannedDate={todayKey} />}
       />
 
       <ResourcePlanPanel
-        energyMode={planDraft.energyMode}
-        tasks={[...focusTasks, ...supportTasks, ...routineTasks]}
+        energyMode={energyMode}
         isTaskPending={isTaskPending}
-        onAutoBuild={() => autoBuildMutation.mutate()}
-        onEnergyModeChange={updateEnergyMode}
+        tasks={resourceTasks}
+        onEnergyModeChange={setEnergyMode}
         onMoveTaskTomorrow={(taskId) => {
-          removeFromPlan(taskId)
           void setTaskPlannedDate(taskId, tomorrowKey)
         }}
       />
 
-      <div className={styles.loadCard}>
-        <div className={styles.loadHeader}>
-          <div>
-            <span>Ручное добавление в план</span>
-            <strong>focus / support / routine</strong>
-          </div>
-          <div className={styles.planAddControls}>
-            <select value={taskToAdd} onChange={(event) => setTaskToAdd(event.target.value)}>
-              <option value="">Выбери задачу</option>
-              {backlogTasks.map((task) => (
-                <option key={task.id} value={task.id}>
-                  {task.title}
-                </option>
-              ))}
-            </select>
-            <select
-              value={targetSection}
-              onChange={(event) => setTargetSection(event.target.value as PlanSection)}
-            >
-              <option value="focusTaskIds">Главное</option>
-              <option value="supportTaskIds">Поддерживающее</option>
-              <option value="routineTaskIds">Рутина</option>
-            </select>
-            <button type="button" disabled={!taskToAdd} onClick={addTaskToPlan}>
-              Добавить
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <TaskComposer initialPlannedDate={todayKey} />
-
       <div className={pageStyles.gridTwo}>
-        {renderTaskSection('Главное сегодня', focusTasks)}
-        {renderTaskSection('Поддерживающее', supportTasks)}
+        {renderTaskSection(
+          'Сегодня',
+          mainTodayTasks,
+          'На сегодня пока нет задач.',
+        )}
+        {renderTaskSection(
+          'Рутина',
+          routineTasks,
+          'Рутинных задач на сегодня пока нет.',
+        )}
       </div>
 
       <div className={pageStyles.gridTwo}>
-        {renderTaskSection('Рутина', routineTasks)}
-        <TaskSection
-          title="Завтра"
-          tasks={tomorrowTasks}
-          projects={projects}
-          uploadedIcons={uploadedIcons}
-          emptyMessage="На завтра пока ничего нет. Удобно переносить лишнее без переписывания плана."
-          isTaskPending={isTaskPending}
-          onRemove={(taskId) => {
-            void removeTask(taskId)
-          }}
-          onSetPlannedDate={(taskId, plannedDate) => {
-            void setTaskPlannedDate(taskId, plannedDate)
-          }}
-          onSetStatus={(taskId, status) => {
-            void setTaskStatus(taskId, status)
-          }}
-          onUpdate={updateTask}
-        />
+        {renderTaskSection(
+          'Завтра',
+          tomorrowTasks,
+          'На завтра пока ничего нет.',
+        )}
+        {renderTaskSection(
+          'Остальные задачи',
+          otherTasks,
+          'Все активные задачи уже разложены на сегодня или завтра.',
+        )}
       </div>
 
-      <TaskSection
-        title="Требует решения"
-        tasks={overdueTasks}
-        projects={projects}
-        uploadedIcons={uploadedIcons}
-        emptyMessage="Просроченных задач нет."
-        isTaskPending={isTaskPending}
-        onRemove={(taskId) => {
-          void removeTask(taskId)
-        }}
-        onSetPlannedDate={(taskId, plannedDate) => {
-          void setTaskPlannedDate(taskId, plannedDate)
-        }}
-        onSetStatus={(taskId, status) => {
-          void setTaskStatus(taskId, status)
-        }}
-        onUpdate={updateTask}
-        tone="warning"
-      />
-
-      <TaskSection
-        title="Сделано сегодня"
-        tasks={doneTodayTasks}
-        projects={projects}
-        uploadedIcons={uploadedIcons}
-        emptyMessage="Когда начнёшь закрывать задачи, последние завершённые появятся здесь."
-        isTaskPending={isTaskPending}
-        onRemove={(taskId) => {
-          void removeTask(taskId)
-        }}
-        onSetPlannedDate={(taskId, plannedDate) => {
-          void setTaskPlannedDate(taskId, plannedDate)
-        }}
-        onSetStatus={(taskId, status) => {
-          void setTaskStatus(taskId, status)
-        }}
-        onUpdate={updateTask}
-        tone="success"
-      />
+      {renderTaskSection(
+        'Выполнено сегодня',
+        doneTodayTasks,
+        'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
+        'success',
+      )}
     </section>
   )
-}
-
-function resolvePlanTasks(taskIds: string[], taskById: Map<string, Task>): Task[] {
-  return taskIds
-    .map((taskId) => taskById.get(taskId))
-    .filter((task): task is Task => task !== undefined)
 }

@@ -1,8 +1,10 @@
 import { generateUuidV7 } from '@planner/contracts'
-import { type Kysely, type Selectable } from 'kysely'
+import { type Kysely, type Selectable, sql } from 'kysely'
 
+import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
   type DatabaseExecutor,
+  isSupabasePoolerRuntimeEnvironment,
   withOptionalRls,
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
@@ -30,6 +32,10 @@ import {
 
 type EmojiSetRow = Selectable<DatabaseSchema['app.emoji_sets']>
 type EmojiAssetRow = Selectable<DatabaseSchema['app.emoji_assets']>
+type EmojiSetAggregateRow = {
+  assets: EmojiAssetRow[]
+  emoji_set: EmojiSetRow
+}
 
 export class PostgresEmojiSetRepository implements EmojiSetRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -104,6 +110,14 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
     const emojiSetId = normalizedInput.id ?? generateUuidV7()
     const slug = buildEmojiSetSlug(normalizedInput.title, emojiSetId)
 
+    if (this.shouldUsePoolerWriteFallback()) {
+      return this.createWithPoolerWriteFallback(command, {
+        emojiSetId,
+        normalizedInput,
+        slug,
+      })
+    }
+
     return withWriteTransaction(
       this.db,
       command.context.auth,
@@ -177,6 +191,10 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
   async addItems(
     command: AddEmojiSetItemsCommand,
   ): Promise<StoredEmojiSetRecord> {
+    if (this.shouldUsePoolerWriteFallback()) {
+      return this.addItemsWithPoolerWriteFallback(command)
+    }
+
     return withOptionalRls(
       this.db,
       command.context.auth,
@@ -237,6 +255,303 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
       },
       command.context.actorUserId,
     )
+  }
+
+  private shouldUsePoolerWriteFallback(): boolean {
+    return isSupabasePoolerRuntimeEnvironment(process.env)
+  }
+
+  private executePoolerWriteStatement<T>(
+    authContext: AuthenticatedRequestContext | null,
+    actorUserId: string,
+    callback: (executor: DatabaseExecutor) => Promise<T>,
+  ): Promise<T> {
+    return withOptionalRls(this.db, authContext, callback, actorUserId)
+  }
+
+  private async createWithPoolerWriteFallback(
+    command: CreateEmojiSetCommand,
+    params: {
+      emojiSetId: string
+      normalizedInput: ReturnType<typeof normalizeEmojiSetInput>
+      slug: string
+    },
+  ): Promise<StoredEmojiSetRecord> {
+    const assetValues = sql.join(
+      params.normalizedInput.items.map((item, index) => {
+        const iconAssetId = item.id ?? generateUuidV7()
+
+        return sql`(
+          cast(${iconAssetId} as uuid),
+          cast(${item.keywords} as text[]),
+          cast(${item.kind} as app.emoji_asset_kind),
+          ${item.label},
+          ${item.shortcode},
+          cast(${index} as integer),
+          ${item.value}
+        )`
+      }),
+    )
+    const aggregate = await this.executePoolerWriteStatement(
+      command.context.auth,
+      command.context.actorUserId,
+      async (executor) => {
+        const result = await sql<EmojiSetAggregateRow>`
+          with inserted_emoji_set as (
+            insert into app.emoji_sets (
+              created_by,
+              deleted_at,
+              description,
+              id,
+              metadata,
+              slug,
+              source,
+              status,
+              title,
+              updated_by,
+              workspace_id
+            )
+            values (
+              ${command.context.actorUserId},
+              null,
+              ${params.normalizedInput.description},
+              ${params.emojiSetId},
+              '{}'::jsonb,
+              ${params.slug},
+              ${params.normalizedInput.source},
+              'active',
+              ${params.normalizedInput.title},
+              ${command.context.actorUserId},
+              ${command.context.workspaceId}
+            )
+            on conflict (id) do nothing
+            returning *
+          ),
+          selected_emoji_set as (
+            select *
+            from inserted_emoji_set
+
+            union all
+
+            select emoji_set.*
+            from app.emoji_sets as emoji_set
+            where emoji_set.id = ${params.emojiSetId}
+              and emoji_set.workspace_id = ${command.context.workspaceId}
+              and emoji_set.deleted_at is null
+              and emoji_set.status = 'active'
+              and not exists (select 1 from inserted_emoji_set)
+          ),
+          input_assets(
+            id,
+            keywords,
+            kind,
+            label,
+            shortcode,
+            sort_order,
+            value
+          ) as (
+            values ${assetValues}
+          ),
+          inserted_assets as (
+            insert into app.emoji_assets (
+              created_by,
+              deleted_at,
+              emoji_set_id,
+              id,
+              keywords,
+              kind,
+              label,
+              metadata,
+              shortcode,
+              sort_order,
+              updated_by,
+              value,
+              workspace_id
+            )
+            select
+              ${command.context.actorUserId},
+              null,
+              selected_emoji_set.id,
+              input_assets.id,
+              input_assets.keywords,
+              input_assets.kind,
+              input_assets.label,
+              '{}'::jsonb,
+              input_assets.shortcode,
+              input_assets.sort_order,
+              ${command.context.actorUserId},
+              input_assets.value,
+              selected_emoji_set.workspace_id
+            from selected_emoji_set
+            cross join input_assets
+            where exists (select 1 from inserted_emoji_set)
+            returning *
+          ),
+          asset_rows as (
+            select *
+            from inserted_assets
+
+            union all
+
+            select asset.*
+            from app.emoji_assets as asset
+            where asset.workspace_id = ${command.context.workspaceId}
+              and asset.emoji_set_id = ${params.emojiSetId}
+              and asset.deleted_at is null
+              and not exists (select 1 from inserted_emoji_set)
+          )
+          select
+            to_jsonb(selected_emoji_set.*) as emoji_set,
+            (
+              select coalesce(
+                jsonb_agg(
+                  to_jsonb(asset_rows.*)
+                  order by asset_rows.sort_order asc, asset_rows.label asc
+                ),
+                '[]'::jsonb
+              )
+              from asset_rows
+            ) as assets
+          from selected_emoji_set
+        `.execute(executor)
+
+        return result.rows[0]
+      },
+    )
+
+    if (!aggregate) {
+      throw new Error('Failed to create icon set record.')
+    }
+
+    return this.mapEmojiSetRecord(aggregate.emoji_set, aggregate.assets)
+  }
+
+  private async addItemsWithPoolerWriteFallback(
+    command: AddEmojiSetItemsCommand,
+  ): Promise<StoredEmojiSetRecord> {
+    const inputValues = sql.join(
+      command.input.items.map((item, index) => {
+        const normalizedItem = normalizeEmojiAssetInput(
+          {
+            ...item,
+            shortcode: undefined,
+          },
+          index,
+        )
+        const iconAssetId = item.id ?? generateUuidV7()
+
+        return sql`(
+          cast(${iconAssetId} as uuid),
+          cast(${normalizedItem.keywords} as text[]),
+          cast(${normalizedItem.kind} as app.emoji_asset_kind),
+          ${normalizedItem.label},
+          cast(${index} as integer),
+          ${normalizedItem.value}
+        )`
+      }),
+    )
+    const aggregate = await this.executePoolerWriteStatement(
+      command.context.auth,
+      command.context.actorUserId,
+      async (executor) => {
+        const result = await sql<EmojiSetAggregateRow>`
+          with selected_emoji_set as (
+            select *
+            from app.emoji_sets
+            where id = ${command.emojiSetId}
+              and workspace_id = ${command.context.workspaceId}
+              and deleted_at is null
+              and status = 'active'
+          ),
+          asset_stats as (
+            select
+              count(*)::integer as asset_count,
+              coalesce(max(sort_order), -1)::integer as max_sort_order
+            from app.emoji_assets
+            where workspace_id = ${command.context.workspaceId}
+              and emoji_set_id = ${command.emojiSetId}
+          ),
+          input_assets(
+            id,
+            keywords,
+            kind,
+            label,
+            sort_offset,
+            value
+          ) as (
+            values ${inputValues}
+          ),
+          inserted_assets as (
+            insert into app.emoji_assets (
+              created_by,
+              deleted_at,
+              emoji_set_id,
+              id,
+              keywords,
+              kind,
+              label,
+              metadata,
+              shortcode,
+              sort_order,
+              updated_by,
+              value,
+              workspace_id
+            )
+            select
+              ${command.context.actorUserId},
+              null,
+              selected_emoji_set.id,
+              input_assets.id,
+              input_assets.keywords,
+              input_assets.kind,
+              input_assets.label,
+              '{}'::jsonb,
+              'icon-' || (asset_stats.asset_count + input_assets.sort_offset + 1),
+              asset_stats.max_sort_order + 1 + input_assets.sort_offset,
+              ${command.context.actorUserId},
+              input_assets.value,
+              selected_emoji_set.workspace_id
+            from selected_emoji_set
+            cross join asset_stats
+            cross join input_assets
+            returning *
+          ),
+          asset_rows as (
+            select asset.*
+            from app.emoji_assets as asset
+            where asset.workspace_id = ${command.context.workspaceId}
+              and asset.emoji_set_id = ${command.emojiSetId}
+              and asset.deleted_at is null
+
+            union all
+
+            select *
+            from inserted_assets
+          )
+          select
+            to_jsonb(selected_emoji_set.*) as emoji_set,
+            (
+              select coalesce(
+                jsonb_agg(
+                  to_jsonb(asset_rows.*)
+                  order by asset_rows.sort_order asc, asset_rows.label asc
+                ),
+                '[]'::jsonb
+              )
+              from asset_rows
+            ) as assets
+          from selected_emoji_set
+        `.execute(executor)
+
+        return result.rows[0]
+      },
+    )
+
+    if (!aggregate) {
+      throw new EmojiSetNotFoundError(command.emojiSetId)
+    }
+
+    return this.mapEmojiSetRecord(aggregate.emoji_set, aggregate.assets)
   }
 
   async deleteSet(

@@ -22,7 +22,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     plannedStartTime: null,
     project: '',
     projectId: null,
-    resource: null,
+    resource: -2,
     sphereId: null,
     status: 'todo',
     title: 'Task',
@@ -47,11 +47,12 @@ describe('resource plan', () => {
       createTask({ importance: 'important', title: 'Ответить клиенту' }),
       createTask({ title: 'купить продукты' }),
       createTask({ project: 'Быт', title: 'счетчики' }),
+      createTask({ title: 'Разобрать почту', urgency: 'urgent' }),
     ])
 
     expect(groups.focusTasks).toHaveLength(1)
     expect(groups.supportTasks).toHaveLength(1)
-    expect(groups.routineTasks).toHaveLength(1)
+    expect(groups.routineTasks).toHaveLength(2)
   })
 
   it('suggests non-important heavy tasks for unloading first', () => {
@@ -59,6 +60,7 @@ describe('resource plan', () => {
       id: 'support',
       plannedEndTime: '15:00',
       plannedStartTime: '09:00',
+      resource: -5,
     })
     const focus = createTask({ id: 'focus', importance: 'important' })
 

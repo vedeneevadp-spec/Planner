@@ -247,3 +247,11 @@ export function MenuIcon(props: IconProps) {
     </SvgIcon>
   )
 }
+
+export function LightningIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M13.25 3.75L5.75 13.1H11.25L10.75 20.25L18.25 10.6H12.75L13.25 3.75Z" />
+    </SvgIcon>
+  )
+}

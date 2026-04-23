@@ -92,12 +92,24 @@ function compareNullableTime(
   return left < right ? -1 : 1
 }
 
+function getTaskStatusWeight(status: TaskStatus): number {
+  if (status === 'in_progress') {
+    return 0
+  }
+
+  if (status === 'todo') {
+    return 1
+  }
+
+  return 2
+}
+
 export function compareStoredTasks(
   left: StoredTaskRecord,
   right: StoredTaskRecord,
 ): number {
   if (left.status !== right.status) {
-    return left.status === 'todo' ? -1 : 1
+    return getTaskStatusWeight(left.status) - getTaskStatusWeight(right.status)
   }
 
   const leftAnchor = left.plannedDate ?? left.dueDate ?? left.createdAt

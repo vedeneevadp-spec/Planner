@@ -1,4 +1,4 @@
-import { type EnergyMode,generateUuidV7 } from '@planner/contracts'
+import { type EnergyMode, generateUuidV7 } from '@planner/contracts'
 
 import type { StoredDailyPlanRecord } from './daily-plan.model.js'
 
@@ -14,7 +14,7 @@ export const DAILY_FOCUS_LIMITS: Record<EnergyMode, number> = {
   maximum: 5,
 }
 
-export const DEFAULT_TASK_RESOURCE = 2
+export const DEFAULT_TASK_RESOURCE = 0
 
 export function calculateOverloadScore(
   totalResource: number,

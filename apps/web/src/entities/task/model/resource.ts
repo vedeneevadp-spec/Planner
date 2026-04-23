@@ -1,8 +1,9 @@
 import type { Task } from './task.types'
 
 export const DEFAULT_TASK_RESOURCE = 2
-export const MIN_TASK_RESOURCE = 1
+export const MIN_TASK_RESOURCE = -5
 export const MAX_TASK_RESOURCE = 5
+export const EMPTY_TASK_RESOURCE = 0
 
 function clampTaskResource(value: number): number {
   return Math.max(MIN_TASK_RESOURCE, Math.min(MAX_TASK_RESOURCE, value))
@@ -57,6 +58,21 @@ export function getTaskResource(
     return task.resource
   }
 
+  return EMPTY_TASK_RESOURCE
+}
+
+export function getEstimatedTaskResource(
+  task: Pick<
+    Task,
+    | 'importance'
+    | 'note'
+    | 'plannedEndTime'
+    | 'plannedStartTime'
+    | 'resource'
+    | 'title'
+    | 'urgency'
+  >,
+): number {
   let resource = DEFAULT_TASK_RESOURCE
   const durationMinutes = getScheduledDurationMinutes(task)
 
@@ -80,5 +96,5 @@ export function getTaskResource(
     resource += 1
   }
 
-  return clampTaskResource(resource)
+  return -clampTaskResource(resource)
 }

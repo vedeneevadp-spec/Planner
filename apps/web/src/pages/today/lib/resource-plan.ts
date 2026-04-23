@@ -68,9 +68,9 @@ export function analyzeDailyLoad(
   energyMode: EnergyMode,
 ): DailyLoadAnalysis {
   const resourceLimit = ENERGY_MODE_CONFIGS[energyMode].resourceLimit
-  const totalResource = tasks.reduce(
-    (sum, task) => sum + getTaskResource(task),
+  const totalResource = Math.max(
     0,
+    tasks.reduce((sum, task) => sum - getTaskResource(task), 0),
   )
   const overloadScore = Math.round((totalResource / resourceLimit) * 100)
   const state: LoadState =
@@ -84,7 +84,13 @@ export function analyzeDailyLoad(
   }
 }
 
-export function isRoutineTask(task: Pick<Task, 'project' | 'title'>): boolean {
+export function isRoutineTask(
+  task: Pick<Task, 'project' | 'title' | 'urgency'>,
+): boolean {
+  if (task.urgency === 'urgent') {
+    return true
+  }
+
   const haystack = `${task.project} ${task.title}`.toLowerCase()
 
   return ROUTINE_KEYWORDS.some((keyword) => haystack.includes(keyword))
@@ -116,13 +122,14 @@ export function groupDailyTasks(tasks: Task[]): DailyTaskGroups {
 
 export function getUnloadCandidates(tasks: Task[], limit = 3): Task[] {
   return [...tasks]
-    .filter((task) => task.status === 'todo')
+    .filter((task) => task.status !== 'done' && getTaskResource(task) < 0)
     .sort((left, right) => {
       if (left.importance !== right.importance) {
         return left.importance === 'important' ? 1 : -1
       }
 
-      const resourceDelta = getTaskResource(right) - getTaskResource(left)
+      const resourceDelta =
+        Math.abs(getTaskResource(right)) - Math.abs(getTaskResource(left))
 
       if (resourceDelta !== 0) {
         return resourceDelta

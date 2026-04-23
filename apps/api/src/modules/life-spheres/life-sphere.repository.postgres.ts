@@ -35,7 +35,6 @@ type TaskRow = Pick<
   | 'status'
 >
 
-const DEFAULT_RESOURCE = 2
 const DEFAULT_SPHERE_COLOR = '#2f6f62'
 const DEFAULT_SPHERE_ICON = 'folder'
 
@@ -482,7 +481,7 @@ function updateStats(
     .sort()
     .at(-1)!
 
-  if (task.status === 'todo' && isInRange(plannedDate ?? dueDate, dates)) {
+  if (task.status !== 'done' && isInRange(plannedDate ?? dueDate, dates)) {
     stats.plannedCount += 1
   }
 
@@ -491,7 +490,7 @@ function updateStats(
   }
 
   if (
-    task.status === 'todo' &&
+    task.status !== 'done' &&
     plannedDate !== null &&
     plannedDate < dates.today
   ) {
@@ -499,7 +498,7 @@ function updateStats(
   }
 
   if (isInRange(weekAnchor, dates)) {
-    stats.totalResource += task.resource ?? DEFAULT_RESOURCE
+    stats.totalResource += Math.max(0, -(task.resource ?? 0))
   }
 
   if (!stats.lastActivityAt || latestActivity > stats.lastActivityAt) {

@@ -1358,7 +1358,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       type: 'object',
     },
     TaskStatus: {
-      enum: ['done', 'todo'],
+      enum: ['done', 'in_progress', 'todo'],
       type: 'string',
     },
     TaskStatusUpdateInput: {

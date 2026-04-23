@@ -1,14 +1,17 @@
-import {
-  type FormEvent,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 
 import { type Project, ProjectPicker } from '@/entities/project'
-import type { NewTaskInput, TaskImportance } from '@/entities/task'
+import {
+  getResourceFromValue,
+  getTaskImportanceFromType,
+  getTaskTypeValue,
+  getTaskUrgencyFromType,
+  type NewTaskInput,
+  ResourcePicker,
+  type ResourceValue,
+  TaskTypePicker,
+  type TaskTypeValue,
+} from '@/entities/task'
 import type { TaskTemplate } from '@/entities/task-template'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
@@ -19,13 +22,28 @@ import { IconChoicePicker, IconMark, TrashIcon } from '@/shared/ui/Icon'
 import styles from './TaskComposer.module.css'
 
 interface TaskComposerProps {
+  hideOpenButton?: boolean
   initialPlannedDate: string | null
+  openDraft?: TaskComposerDraft | null | undefined
   showTimeFields?: boolean
+  onTaskCreated?: ((input: NewTaskInput) => Promise<void> | void) | undefined
 }
 
 interface ProjectFields {
   project: string
   projectId: string | null
+}
+
+export interface TaskComposerDraft {
+  dueDate?: string | null | undefined
+  icon?: string | undefined
+  note?: string | undefined
+  plannedDate?: string | null | undefined
+  projectId?: string | null | undefined
+  requestId: string
+  resource?: ResourceValue | undefined
+  taskType?: TaskTypeValue | undefined
+  title?: string | undefined
 }
 
 function resolveProjectFields(
@@ -85,16 +103,19 @@ function buildTaskInputFromTemplate(
     plannedStartTime: plannedDate ? template.plannedStartTime : null,
     project: project.project,
     projectId: project.projectId,
-    resource: null,
+    resource: 0,
     sphereId: null,
     title: template.title,
-    urgency: 'not_urgent',
+    urgency: template.urgency,
   }
 }
 
 export function TaskComposer({
+  hideOpenButton = false,
   initialPlannedDate,
+  openDraft,
   showTimeFields = true,
+  onTaskCreated,
 }: TaskComposerProps) {
   const {
     addTask,
@@ -106,17 +127,15 @@ export function TaskComposer({
   const { uploadedIcons } = useUploadedIconAssets()
   const titleId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
+  const openDraftRequestIdRef = useRef<string | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
-  const visibleQuickTemplates = useMemo(
-    () => taskTemplates.slice(0, 5),
-    [taskTemplates],
-  )
   const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [icon, setIcon] = useState('')
-  const [importance, setImportance] = useState<TaskImportance>('not_important')
+  const [taskType, setTaskType] = useState<TaskTypeValue>('')
+  const [resource, setResource] = useState<ResourceValue>('')
   const [projectId, setProjectId] = useState('')
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
@@ -157,6 +176,28 @@ export function TaskComposer({
     }
   }, [isOpen])
 
+  useEffect(() => {
+    if (!openDraft || openDraftRequestIdRef.current === openDraft.requestId) {
+      return
+    }
+
+    openDraftRequestIdRef.current = openDraft.requestId
+    setTitle(openDraft.title ?? '')
+    setIcon(openDraft.icon ?? '')
+    setTaskType(openDraft.taskType ?? '')
+    setResource(openDraft.resource ?? '')
+    setProjectId(openDraft.projectId ?? '')
+    setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
+    setPlannedStartTime('')
+    setPlannedEndTime('')
+    setDueDate(openDraft.dueDate ?? '')
+    setNote(openDraft.note ?? '')
+    setSelectedTemplateId(null)
+    setTemplateNotice(null)
+    setIsTemplatesExpanded(false)
+    setIsOpen(true)
+  }, [initialPlannedDate, openDraft])
+
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
 
@@ -180,7 +221,7 @@ export function TaskComposer({
     return {
       dueDate: dueDate || null,
       icon,
-      importance,
+      importance: getTaskImportanceFromType(taskType),
       note,
       plannedDate: plannedDate || null,
       plannedEndTime:
@@ -188,17 +229,18 @@ export function TaskComposer({
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
-      resource: null,
+      resource: getResourceFromValue(resource),
       sphereId: null,
       title: normalizedTitle,
-      urgency: 'not_urgent',
+      urgency: getTaskUrgencyFromType(taskType),
     }
   }
 
   function resetForm() {
     setTitle('')
     setIcon('')
-    setImportance('not_important')
+    setTaskType('')
+    setResource('')
     setProjectId('')
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
@@ -209,7 +251,7 @@ export function TaskComposer({
     setTemplateNotice(null)
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const input = buildCurrentTaskInput()
@@ -218,9 +260,18 @@ export function TaskComposer({
       return
     }
 
-    resetForm()
-    setIsOpen(false)
-    void addTask(input)
+    const isCreated = await addTask(input)
+
+    if (!isCreated) {
+      return
+    }
+
+    try {
+      await onTaskCreated?.(input)
+    } finally {
+      resetForm()
+      setIsOpen(false)
+    }
   }
 
   async function handleSaveTemplate() {
@@ -248,7 +299,8 @@ export function TaskComposer({
 
     setTitle(template.title)
     setIcon(template.icon)
-    setImportance(template.importance)
+    setTaskType(getTaskTypeValue(template))
+    setResource('')
     setProjectId(knownProject?.id ?? '')
     setPlannedDate(plannedDateFromTemplate ?? '')
     setPlannedStartTime(
@@ -313,37 +365,19 @@ export function TaskComposer({
 
   return (
     <>
-      <div className={styles.actionRow}>
-        {visibleQuickTemplates.length > 0 ? (
-          <div className={styles.templateQuickBar} aria-label="Шаблоны задач">
-            <span className={styles.templateQuickLabel}>Из шаблона</span>
-            {visibleQuickTemplates.map((template) => (
-              <button
-                key={template.id}
-                className={styles.templateQuickButton}
-                type="button"
-                disabled={pendingTemplateId !== null}
-                onClick={() => {
-                  void handleCreateFromTemplate(template)
-                }}
-              >
-                <span aria-hidden="true">+</span>
-                {template.title}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <button
-          ref={openButtonRef}
-          className={styles.openButton}
-          type="button"
-          onClick={openComposer}
-        >
-          <span aria-hidden="true">+</span>
-          Новая задача
-        </button>
-      </div>
+      {hideOpenButton ? null : (
+        <div className={styles.actionRow}>
+          <button
+            ref={openButtonRef}
+            className={styles.openButton}
+            type="button"
+            onClick={openComposer}
+          >
+            <span aria-hidden="true">+</span>
+            Новая задача
+          </button>
+        </div>
+      )}
 
       {isOpen ? (
         <div
@@ -363,7 +397,7 @@ export function TaskComposer({
           <form
             className={styles.panel}
             onSubmit={(event) => {
-              handleSubmit(event)
+              void handleSubmit(event)
             }}
           >
             <div className={styles.modalHeader}>
@@ -391,9 +425,20 @@ export function TaskComposer({
                     className={styles.templateToggle}
                     type="button"
                     aria-expanded={isTemplatesExpanded}
+                    aria-label={
+                      isTemplatesExpanded
+                        ? 'Свернуть шаблоны'
+                        : 'Показать шаблоны'
+                    }
                     onClick={() => setIsTemplatesExpanded((value) => !value)}
                   >
-                    {isTemplatesExpanded ? 'Свернуть' : 'Показать'}
+                    <span
+                      className={cx(
+                        styles.templateChevron,
+                        isTemplatesExpanded && styles.templateChevronExpanded,
+                      )}
+                      aria-hidden="true"
+                    />
                   </button>
                 </div>
 
@@ -526,21 +571,11 @@ export function TaskComposer({
                 onChange={setProjectId}
               />
 
-              <label className={cx(styles.field, styles.fieldImportant)}>
-                <span>Маркер</span>
-                <span className={styles.checkboxControl}>
-                  <input
-                    type="checkbox"
-                    checked={importance === 'important'}
-                    onChange={(event) =>
-                      setImportance(
-                        event.target.checked ? 'important' : 'not_important',
-                      )
-                    }
-                  />
-                  <span>Важно</span>
-                </span>
-              </label>
+              <TaskTypePicker
+                className={styles.fieldType}
+                value={taskType}
+                onChange={setTaskType}
+              />
 
               <label className={styles.field}>
                 <span>План</span>
@@ -589,6 +624,12 @@ export function TaskComposer({
                   onChange={(event) => setDueDate(event.target.value)}
                 />
               </label>
+
+              <ResourcePicker
+                className={styles.fieldResource}
+                value={resource}
+                onChange={setResource}
+              />
             </div>
 
             <div className={styles.visualPanel}>

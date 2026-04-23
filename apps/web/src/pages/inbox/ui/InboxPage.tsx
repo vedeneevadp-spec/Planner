@@ -1,12 +1,9 @@
-import type {
-  ChaosInboxItemRecord,
-  ChaosInboxStatus,
-  LifeSphereRecord,
-} from '@planner/contracts'
+import type { ChaosInboxItemRecord, LifeSphereRecord } from '@planner/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { usePlanner, usePlannerApiClient } from '@/features/planner'
+import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { addDays, formatShortDate, getDateKey } from '@/shared/lib/date'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
@@ -14,46 +11,42 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 import { ChaosDumpPanel } from './ChaosDumpPanel'
 import styles from './InboxPage.module.css'
 
-const filters: Array<{ label: string; value: ChaosInboxStatus | 'all' }> = [
-  { label: 'Все', value: 'all' },
-  { label: 'Новые', value: 'new' },
-  { label: 'Без разбора', value: 'in_review' },
-  { label: 'Уже превращенные', value: 'converted' },
-  { label: 'Архив', value: 'archived' },
-]
+interface InboxTaskDraft extends TaskComposerDraft {
+  inboxItemId: string
+}
 
 export function InboxPage() {
   const api = usePlannerApiClient()
   const planner = usePlanner()
   const queryClient = useQueryClient()
-  const [statusFilter, setStatusFilter] = useState<ChaosInboxStatus | 'all'>(
-    'all',
-  )
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [bulkSphereId, setBulkSphereId] = useState('')
   const [isQuickReview, setIsQuickReview] = useState(false)
+  const [taskDraft, setTaskDraft] = useState<InboxTaskDraft | null>(null)
   const todayKey = getDateKey(new Date())
   const weekKey = getDateKey(addDays(new Date(), 7))
   const chaosQuery = useQuery({
     enabled: api !== null,
-    queryFn: ({ signal }) =>
-      api!.listChaosInboxItems(
-        statusFilter === 'all' ? {} : { status: statusFilter },
-        signal,
-      ),
-    queryKey: ['chaos-inbox', statusFilter],
+    queryFn: ({ signal }) => api!.listChaosInboxItems({}, signal),
+    queryKey: ['chaos-inbox'],
   })
   const spheresQuery = useQuery({
     enabled: api !== null,
     queryFn: ({ signal }) => api!.listLifeSpheres(signal),
     queryKey: ['life-spheres'],
   })
-  const items = useMemo(() => chaosQuery.data?.items ?? [], [chaosQuery.data])
+  const items = useMemo(
+    () =>
+      (chaosQuery.data?.items ?? []).filter(
+        (item) => item.status !== 'archived' && item.status !== 'converted',
+      ),
+    [chaosQuery.data],
+  )
   const selectedItems = useMemo(
     () => items.filter((item) => selectedIds.has(item.id)),
     [items, selectedIds],
   )
-  const activeReviewItem = items.find((item) => item.status !== 'converted') ?? null
+  const activeReviewItem = items[0] ?? null
 
   function invalidateInbox() {
     void queryClient.invalidateQueries({ queryKey: ['chaos-inbox'] })
@@ -67,20 +60,12 @@ export function InboxPage() {
     }) => api!.updateChaosInboxItem(variables.id, variables.input),
     onSuccess: invalidateInbox,
   })
-  const convertMutation = useMutation({
-    mutationFn: (id: string) => api!.convertChaosInboxItemToTask(id),
-    onSuccess: invalidateInbox,
-  })
   const bulkUpdateMutation = useMutation({
-    mutationFn: (input: Parameters<NonNullable<typeof api>['bulkUpdateChaosInboxItems']>[0]) =>
-      api!.bulkUpdateChaosInboxItems(input),
-    onSuccess: () => {
-      setSelectedIds(new Set())
-      invalidateInbox()
-    },
-  })
-  const bulkConvertMutation = useMutation({
-    mutationFn: (ids: string[]) => api!.bulkConvertChaosInboxItemsToTasks(ids),
+    mutationFn: (
+      input: Parameters<
+        NonNullable<typeof api>['bulkUpdateChaosInboxItems']
+      >[0],
+    ) => api!.bulkUpdateChaosInboxItems(input),
     onSuccess: () => {
       setSelectedIds(new Set())
       invalidateInbox()
@@ -90,6 +75,17 @@ export function InboxPage() {
     mutationFn: (ids: string[]) => api!.bulkDeleteChaosInboxItems(ids),
     onSuccess: () => {
       setSelectedIds(new Set())
+      invalidateInbox()
+    },
+  })
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api!.removeChaosInboxItem(id),
+    onSuccess: (_data, id) => {
+      setSelectedIds((current) => {
+        const next = new Set(current)
+        next.delete(id)
+        return next
+      })
       invalidateInbox()
     },
   })
@@ -115,8 +111,27 @@ export function InboxPage() {
     updateMutation.mutate({ id, input })
   }
 
-  function convertItem(id: string) {
-    convertMutation.mutate(id)
+  function openTaskComposer(item: ChaosInboxItemRecord) {
+    setTaskDraft({
+      dueDate: item.dueDate,
+      inboxItemId: item.id,
+      plannedDate: null,
+      projectId: item.sphereId,
+      requestId: `${item.id}:${Date.now()}`,
+      resource:
+        item.priority === 'high' ? '-3' : item.priority === 'low' ? '-1' : '',
+      taskType: item.priority === 'high' ? 'important' : '',
+      title: item.text,
+    })
+  }
+
+  async function handleTaskCreatedFromInbox() {
+    if (!taskDraft) {
+      return
+    }
+
+    await deleteMutation.mutateAsync(taskDraft.inboxItemId)
+    setTaskDraft(null)
   }
 
   return (
@@ -130,22 +145,6 @@ export function InboxPage() {
       <ChaosDumpPanel onSaved={invalidateInbox} />
 
       <div className={styles.toolbar}>
-        <div className={styles.filterGroup}>
-          {filters.map((filter) => (
-            <button
-              key={filter.value}
-              className={
-                statusFilter === filter.value
-                  ? `${styles.filterButton} ${styles.filterButtonActive}`
-                  : styles.filterButton
-              }
-              type="button"
-              onClick={() => setStatusFilter(filter.value)}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
         <button
           className={styles.secondaryButton}
           type="button"
@@ -183,23 +182,6 @@ export function InboxPage() {
               Назначить сферу
             </button>
             <button
-              type="button"
-              onClick={() => bulkConvertMutation.mutate([...selectedIds])}
-            >
-              В задачи
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                bulkUpdateMutation.mutate({
-                  ids: [...selectedIds],
-                  patch: { status: 'archived' },
-                })
-              }
-            >
-              Архив
-            </button>
-            <button
               className={styles.dangerButton}
               type="button"
               onClick={() => bulkDeleteMutation.mutate([...selectedIds])}
@@ -216,7 +198,8 @@ export function InboxPage() {
           spheres={spheresQuery.data ?? []}
           todayKey={todayKey}
           weekKey={weekKey}
-          onConvert={convertItem}
+          onDelete={(id) => deleteMutation.mutate(id)}
+          onOpenTask={openTaskComposer}
           onUpdate={updateItem}
         />
       ) : null}
@@ -234,12 +217,20 @@ export function InboxPage() {
             item={item}
             spheres={spheresQuery.data ?? []}
             isSelected={selectedIds.has(item.id)}
-            onConvert={convertItem}
+            onDelete={(id) => deleteMutation.mutate(id)}
+            onOpenTask={openTaskComposer}
             onSelect={toggleSelected}
             onUpdate={updateItem}
           />
         ))}
       </div>
+
+      <TaskComposer
+        hideOpenButton
+        initialPlannedDate={null}
+        openDraft={taskDraft}
+        onTaskCreated={handleTaskCreatedFromInbox}
+      />
 
       {planner.errorMessage ? (
         <p className={styles.emptyPanel}>{planner.errorMessage}</p>
@@ -252,11 +243,16 @@ interface ChaosInboxCardProps {
   item: ChaosInboxItemRecord
   spheres: LifeSphereRecord[]
   isSelected: boolean
-  onConvert: (id: string) => void
+  onDelete: (id: string) => void
+  onOpenTask: (item: ChaosInboxItemRecord) => void
   onSelect: (id: string) => void
   onUpdate: (
     id: string,
-    input: Parameters<NonNullable<ReturnType<typeof usePlannerApiClient>>['updateChaosInboxItem']>[1],
+    input: Parameters<
+      NonNullable<
+        ReturnType<typeof usePlannerApiClient>
+      >['updateChaosInboxItem']
+    >[1],
   ) => void
 }
 
@@ -264,7 +260,8 @@ function ChaosInboxCard({
   item,
   spheres,
   isSelected,
-  onConvert,
+  onDelete,
+  onOpenTask,
   onSelect,
   onUpdate,
 }: ChaosInboxCardProps) {
@@ -282,30 +279,24 @@ function ChaosInboxCard({
             onChange={() => onSelect(item.id)}
           />
         </label>
-        <span className={styles.statusBadge}>{item.status}</span>
       </div>
       <p className={styles.cardTitle}>{item.text}</p>
       <div className={styles.cardMeta}>
         <span>{formatShortDate(item.createdAt.slice(0, 10))}</span>
         <span>{item.kind}</span>
         <span>{sphere?.name ?? 'Без сферы'}</span>
-        {item.dueDate ? <span>Дата: {formatShortDate(item.dueDate)}</span> : null}
+        {item.dueDate ? (
+          <span>Дата: {formatShortDate(item.dueDate)}</span>
+        ) : null}
         {item.linkedTaskDeleted ? <span>Связанная задача удалена</span> : null}
       </div>
       <div className={styles.cardActions}>
         <button
           className={styles.primaryButton}
           type="button"
-          disabled={item.status === 'converted'}
-          onClick={() => onConvert(item.id)}
+          onClick={() => onOpenTask(item)}
         >
           В задачу
-        </button>
-        <button
-          type="button"
-          onClick={() => onUpdate(item.id, { kind: 'note', status: 'archived' })}
-        >
-          Не требует действий
         </button>
         <select
           value={item.sphereId ?? ''}
@@ -328,10 +319,11 @@ function ChaosInboxCard({
           }
         />
         <button
+          className={styles.dangerButton}
           type="button"
-          onClick={() => onUpdate(item.id, { status: 'archived' })}
+          onClick={() => onDelete(item.id)}
         >
-          Архив
+          Удалить
         </button>
       </div>
     </article>
@@ -343,7 +335,8 @@ interface QuickReviewCardProps {
   spheres: LifeSphereRecord[]
   todayKey: string
   weekKey: string
-  onConvert: (id: string) => void
+  onDelete: (id: string) => void
+  onOpenTask: (item: ChaosInboxItemRecord) => void
   onUpdate: ChaosInboxCardProps['onUpdate']
 }
 
@@ -352,7 +345,8 @@ function QuickReviewCard({
   spheres,
   todayKey,
   weekKey,
-  onConvert,
+  onDelete,
+  onOpenTask,
   onUpdate,
 }: QuickReviewCardProps) {
   return (
@@ -360,13 +354,22 @@ function QuickReviewCard({
       <strong>Быстрый разбор</strong>
       <p className={styles.cardTitle}>{item.text}</p>
       <div className={styles.quickActions}>
-        <button type="button" onClick={() => onUpdate(item.id, { dueDate: todayKey })}>
+        <button
+          type="button"
+          onClick={() => onUpdate(item.id, { dueDate: todayKey })}
+        >
           сегодня
         </button>
-        <button type="button" onClick={() => onUpdate(item.id, { dueDate: weekKey })}>
+        <button
+          type="button"
+          onClick={() => onUpdate(item.id, { dueDate: weekKey })}
+        >
           на неделе
         </button>
-        <button type="button" onClick={() => onUpdate(item.id, { dueDate: null })}>
+        <button
+          type="button"
+          onClick={() => onUpdate(item.id, { dueDate: null })}
+        >
           без даты
         </button>
         <select
@@ -382,17 +385,15 @@ function QuickReviewCard({
             </option>
           ))}
         </select>
-        <button type="button" onClick={() => onConvert(item.id)}>
+        <button type="button" onClick={() => onOpenTask(item)}>
           в задачу
         </button>
-        <button type="button" onClick={() => onUpdate(item.id, { status: 'archived' })}>
-          архив
-        </button>
         <button
+          className={styles.dangerButton}
           type="button"
-          onClick={() => onUpdate(item.id, { kind: 'note', status: 'archived' })}
+          onClick={() => onDelete(item.id)}
         >
-          это не задача
+          удалить
         </button>
       </div>
     </article>

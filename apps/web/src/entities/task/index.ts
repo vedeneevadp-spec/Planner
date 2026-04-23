@@ -29,5 +29,17 @@ export type {
   TaskUpdateInput,
   TaskUrgency,
 } from './model/task.types'
+export type { ResourceValue, TaskTypeValue } from './model/task-meta'
+export {
+  getResourceFromValue,
+  getTaskImportanceFromType,
+  getTaskTypeValue,
+  getTaskUrgencyFromType,
+} from './model/task-meta'
 export { TaskCard, TaskEditDialog } from './ui/TaskCard'
+export {
+  ResourcePicker,
+  TaskResourceMeter,
+  TaskTypePicker,
+} from './ui/TaskMetaPickers'
 export { TaskSection } from './ui/TaskSection'

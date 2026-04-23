@@ -43,7 +43,9 @@ type TaskRow = Pick<
 export class PostgresDailyPlanRepository implements DailyPlanRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
-  async getByDate(command: GetDailyPlanCommand): Promise<StoredDailyPlanRecord> {
+  async getByDate(
+    command: GetDailyPlanCommand,
+  ): Promise<StoredDailyPlanRecord> {
     if (!command.context.actorUserId) {
       return createVirtualDailyPlan({
         date: command.date,
@@ -74,7 +76,9 @@ export class PostgresDailyPlanRepository implements DailyPlanRepository {
         })
   }
 
-  async upsert(command: UpsertDailyPlanCommand): Promise<StoredDailyPlanRecord> {
+  async upsert(
+    command: UpsertDailyPlanCommand,
+  ): Promise<StoredDailyPlanRecord> {
     const overloadScore = await this.calculatePlanOverloadScore(
       command.context.workspaceId,
       [
@@ -109,17 +113,15 @@ export class PostgresDailyPlanRepository implements DailyPlanRepository {
             workspace_id: command.context.workspaceId,
           })
           .onConflict((conflict) =>
-            conflict
-              .columns(['workspace_id', 'user_id', 'date'])
-              .doUpdateSet({
-                deleted_at: null,
-                energy_mode: command.input.energyMode,
-                focus_task_ids: command.input.focusTaskIds,
-                overload_score: overloadScore,
-                routine_task_ids: command.input.routineTaskIds,
-                support_task_ids: command.input.supportTaskIds,
-                updated_by: command.context.actorUserId,
-              }),
+            conflict.columns(['workspace_id', 'user_id', 'date']).doUpdateSet({
+              deleted_at: null,
+              energy_mode: command.input.energyMode,
+              focus_task_ids: command.input.focusTaskIds,
+              overload_score: overloadScore,
+              routine_task_ids: command.input.routineTaskIds,
+              support_task_ids: command.input.supportTaskIds,
+              updated_by: command.context.actorUserId,
+            }),
           )
           .returningAll()
           .executeTakeFirstOrThrow()
@@ -203,7 +205,9 @@ export class PostgresDailyPlanRepository implements DailyPlanRepository {
     })
   }
 
-  async unload(command: UnloadDailyPlanCommand): Promise<DailyPlanUnloadResult> {
+  async unload(
+    command: UnloadDailyPlanCommand,
+  ): Promise<DailyPlanUnloadResult> {
     const plan = await this.getByDate({
       context: command.context,
       date: command.date,
@@ -234,15 +238,15 @@ export class PostgresDailyPlanRepository implements DailyPlanRepository {
 
     return {
       suggestions: tasks
-        .filter((task) => !isImportantTask(task))
-        .sort((left, right) =>
-          (right.resource ?? DEFAULT_TASK_RESOURCE) -
-          (left.resource ?? DEFAULT_TASK_RESOURCE),
+        .filter((task) => !isImportantTask(task) && (task.resource ?? 0) < 0)
+        .sort(
+          (left, right) =>
+            Math.abs(right.resource ?? 0) - Math.abs(left.resource ?? 0),
         )
         .slice(0, 3)
         .map((task) => ({
           action: 'move_tomorrow',
-          resource: task.resource ?? DEFAULT_TASK_RESOURCE,
+          resource: Math.abs(task.resource ?? 0),
           taskId: task.id,
           title: task.title,
         })),
@@ -291,9 +295,12 @@ export class PostgresDailyPlanRepository implements DailyPlanRepository {
           .execute(),
       actorUserId,
     )
-    const totalResource = rows.reduce(
-      (sum, row) => sum + (row.resource ?? DEFAULT_TASK_RESOURCE),
+    const totalResource = Math.max(
       0,
+      rows.reduce(
+        (sum, row) => sum - (row.resource ?? DEFAULT_TASK_RESOURCE),
+        0,
+      ),
     )
 
     return calculateOverloadScore(totalResource, energyMode)
@@ -331,7 +338,8 @@ function sortAutoBuildTasks(tasks: TaskRow[]): TaskRow[] {
       return leftDue < rightDue ? -1 : 1
     }
 
-    return serializeTimestamp(left.created_at) < serializeTimestamp(right.created_at)
+    return serializeTimestamp(left.created_at) <
+      serializeTimestamp(right.created_at)
       ? -1
       : 1
   })

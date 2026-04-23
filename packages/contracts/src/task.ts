@@ -8,13 +8,13 @@ const nullableStringWithDefault = z
   .optional()
   .transform((value) => value ?? null)
 
-export const taskStatusSchema = z.enum(['todo', 'done'])
+export const taskStatusSchema = z.enum(['todo', 'in_progress', 'done'])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
 export const taskResourceSchema = z
   .number()
   .int()
-  .min(1)
+  .min(-5)
   .max(5)
   .nullable()
   .optional()

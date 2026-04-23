@@ -7,6 +7,7 @@ import {
   type Task,
   TaskEditDialog,
   type TaskScheduleInput,
+  type TaskStatus,
   type TaskUpdateInput,
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
@@ -82,7 +83,7 @@ interface TimelineTaskItemProps {
   onRemove: (taskId: string) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
   onSetSchedule: (taskId: string, schedule: TaskScheduleInput) => void
-  onSetStatus: (taskId: string, status: 'todo' | 'done') => void
+  onSetStatus: (taskId: string, status: TaskStatus) => void
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
 }
 
