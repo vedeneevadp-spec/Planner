@@ -124,6 +124,7 @@ export interface AppWorkspacesTable {
   deleted_at: TimestampColumn | null
   description: string
   id: Generated<string>
+  kind: 'personal' | 'shared'
   name: string
   owner_user_id: string
   slug: string
@@ -134,6 +135,7 @@ export interface AppWorkspacesTable {
 export interface AppWorkspaceMembersTable {
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null
+  group_role: 'group_admin' | 'senior_member' | 'member' | null
   id: Generated<string>
   invited_by: string | null
   joined_at: Generated<TimestampColumn>

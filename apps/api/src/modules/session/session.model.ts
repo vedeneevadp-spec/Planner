@@ -1,4 +1,7 @@
 import type {
+  SessionWorkspaceMembership as ContractSessionWorkspaceMembership,
+  WorkspaceGroupRole,
+  WorkspaceKind,
   WorkspaceRole,
   WorkspaceUserRecord as ContractWorkspaceUserRecord,
 } from '@planner/contracts'
@@ -13,6 +16,7 @@ export interface SessionActor {
 
 export interface SessionWorkspace {
   id: string
+  kind: WorkspaceKind
   name: string
   slug: string
 }
@@ -20,10 +24,12 @@ export interface SessionWorkspace {
 export interface SessionSnapshot {
   actor: SessionActor
   actorUserId: string
+  groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
   source: 'access_token' | 'default' | 'headers'
   workspace: SessionWorkspace
   workspaceId: string
+  workspaces: SessionWorkspaceMembership[]
 }
 
 export interface SessionContext {
@@ -32,4 +38,5 @@ export interface SessionContext {
   workspaceId: string | undefined
 }
 
+export type SessionWorkspaceMembership = ContractSessionWorkspaceMembership
 export type WorkspaceUserRecord = ContractWorkspaceUserRecord

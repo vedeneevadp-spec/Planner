@@ -1,5 +1,9 @@
 import {
+  type CreateSharedWorkspaceInput,
   generateUuidV7,
+  type SessionWorkspaceMembership,
+  type WorkspaceGroupRole,
+  type WorkspaceKind,
   type WorkspaceRole,
   type WorkspaceUserRecord,
 } from '@planner/contracts'
@@ -16,8 +20,10 @@ interface SessionRow {
   actorDisplayName: string
   actorEmail: string
   actorId: string
+  groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
   workspaceId: string
+  workspaceKind: WorkspaceKind
   workspaceName: string
   workspaceSlug: string
 }
@@ -25,11 +31,21 @@ interface SessionRow {
 interface WorkspaceUserRow {
   displayName: string
   email: string
+  groupRole: WorkspaceGroupRole | null
   id: string
   joinedAt: unknown
   membershipId: string
   role: WorkspaceRole
   updatedAt: unknown
+}
+
+interface WorkspaceMembershipRow {
+  groupRole: WorkspaceGroupRole | null
+  id: string
+  kind: WorkspaceKind
+  name: string
+  role: WorkspaceRole
+  slug: string
 }
 
 interface AppActorRow {
@@ -49,8 +65,12 @@ export class PostgresSessionRepository implements SessionRepository {
       const session = context.workspaceId
         ? await this.resolveExplicitSession(this.db, context, null)
         : await this.resolveDefaultSession(this.db, context, null)
+      const workspaces = await this.listSessionWorkspaces(
+        this.db,
+        session.actorId,
+      )
 
-      return this.mapSessionSnapshot(context, session)
+      return this.mapSessionSnapshot(context, session, workspaces)
     }
 
     return this.db.connection().execute(async (connection) => {
@@ -70,8 +90,73 @@ export class PostgresSessionRepository implements SessionRepository {
             context,
             authenticatedActor,
           )
+      const workspaces = await this.listSessionWorkspaces(
+        connection,
+        session.actorId,
+      )
 
-      return this.mapSessionSnapshot(context, session)
+      return this.mapSessionSnapshot(context, session, workspaces)
+    })
+  }
+
+  async createSharedWorkspace(
+    session: SessionSnapshot,
+    input: CreateSharedWorkspaceInput,
+  ): Promise<SessionWorkspaceMembership> {
+    return this.db.transaction().execute(async (trx) => {
+      const existingSharedWorkspaces = await this.countSharedWorkspaces(
+        trx,
+        session.actorUserId,
+      )
+
+      if (existingSharedWorkspaces >= 3) {
+        throw new HttpError(
+          409,
+          'shared_workspace_limit_reached',
+          'A user can have up to three shared workspaces.',
+        )
+      }
+
+      const workspaceId = generateUuidV7()
+      const workspaceName =
+        input.name?.trim() || `Shared Workspace ${existingSharedWorkspaces + 1}`
+      const workspaceSlug = this.createSharedWorkspaceSlug(
+        session.actorUserId,
+        workspaceId,
+      )
+
+      const workspace = await trx
+        .insertInto('app.workspaces')
+        .values({
+          description: '',
+          id: workspaceId,
+          kind: 'shared',
+          name: workspaceName,
+          owner_user_id: session.actorUserId,
+          slug: workspaceSlug,
+        })
+        .returning(['id', 'kind', 'name', 'slug'])
+        .executeTakeFirstOrThrow()
+
+      await trx
+        .insertInto('app.workspace_members')
+        .values({
+          group_role: 'group_admin',
+          id: generateUuidV7(),
+          role: 'owner',
+          user_id: session.actorUserId,
+          workspace_id: workspace.id,
+        })
+        .execute()
+
+      return {
+        groupRole: 'group_admin',
+        id: workspace.id,
+        kind: workspace.kind,
+        name: workspace.name,
+        role: 'owner',
+        slug: workspace.slug,
+      }
     })
   }
 
@@ -151,8 +236,10 @@ export class PostgresSessionRepository implements SessionRepository {
         'actor.display_name as actorDisplayName',
         'actor.email as actorEmail',
         'actor.id as actorId',
+        'membership.group_role as groupRole',
         'membership.role as role',
         'workspace.id as workspaceId',
+        'workspace.kind as workspaceKind',
         'workspace.name as workspaceName',
         'workspace.slug as workspaceSlug',
       ])
@@ -171,6 +258,7 @@ export class PostgresSessionRepository implements SessionRepository {
       .select([
         'actor.display_name as displayName',
         'actor.email as email',
+        'membership.group_role as groupRole',
         'actor.id as id',
         'membership.id as membershipId',
         'membership.joined_at as joinedAt',
@@ -180,6 +268,53 @@ export class PostgresSessionRepository implements SessionRepository {
       .where('membership.workspace_id', '=', workspaceId)
       .where('membership.deleted_at', 'is', null)
       .where('actor.deleted_at', 'is', null)
+  }
+
+  private listSessionWorkspaces(
+    executor: DatabaseExecutor,
+    actorUserId: string,
+  ): Promise<WorkspaceMembershipRow[]> {
+    return executor
+      .selectFrom('app.workspace_members as membership')
+      .innerJoin(
+        'app.workspaces as workspace',
+        'workspace.id',
+        'membership.workspace_id',
+      )
+      .select([
+        'membership.group_role as groupRole',
+        'membership.role as role',
+        'workspace.id as id',
+        'workspace.kind as kind',
+        'workspace.name as name',
+        'workspace.slug as slug',
+      ])
+      .where('membership.user_id', '=', actorUserId)
+      .where('membership.deleted_at', 'is', null)
+      .where('workspace.deleted_at', 'is', null)
+      .orderBy('workspace.created_at', 'asc')
+      .execute()
+  }
+
+  private async countSharedWorkspaces(
+    executor: DatabaseExecutor,
+    actorUserId: string,
+  ): Promise<number> {
+    const row = await executor
+      .selectFrom('app.workspace_members as membership')
+      .innerJoin(
+        'app.workspaces as workspace',
+        'workspace.id',
+        'membership.workspace_id',
+      )
+      .select(({ fn }) => fn.countAll<number>().as('total'))
+      .where('membership.user_id', '=', actorUserId)
+      .where('membership.deleted_at', 'is', null)
+      .where('workspace.kind', '=', 'shared')
+      .where('workspace.deleted_at', 'is', null)
+      .executeTakeFirst()
+
+    return Number(row?.total ?? 0)
   }
 
   private async assertWorkspaceKeepsOwner(
@@ -535,6 +670,7 @@ export class PostgresSessionRepository implements SessionRepository {
         insert into app.workspaces (
           description,
           id,
+          kind,
           name,
           owner_user_id,
           slug
@@ -542,6 +678,7 @@ export class PostgresSessionRepository implements SessionRepository {
         values (
           '',
           ${generateUuidV7()},
+          'personal'::app.workspace_kind,
           ${this.createPersonalWorkspaceName(actor.displayName)},
           ${actor.id},
           ${workspaceSlug}
@@ -585,6 +722,7 @@ export class PostgresSessionRepository implements SessionRepository {
   private mapSessionSnapshot(
     context: SessionContext,
     session: SessionRow,
+    workspaces: SessionWorkspaceMembership[],
   ): SessionSnapshot {
     return {
       actor: {
@@ -593,6 +731,7 @@ export class PostgresSessionRepository implements SessionRepository {
         id: session.actorId,
       },
       actorUserId: session.actorId,
+      groupRole: session.groupRole,
       role: session.role,
       source: context.auth
         ? 'access_token'
@@ -601,10 +740,12 @@ export class PostgresSessionRepository implements SessionRepository {
           : 'default',
       workspace: {
         id: session.workspaceId,
+        kind: session.workspaceKind,
         name: session.workspaceName,
         slug: session.workspaceSlug,
       },
       workspaceId: session.workspaceId,
+      workspaces,
     }
   }
 
@@ -669,6 +810,16 @@ export class PostgresSessionRepository implements SessionRepository {
     return `personal-${actorUserId.replaceAll('-', '').slice(0, 12)}`
   }
 
+  private createSharedWorkspaceSlug(
+    actorUserId: string,
+    workspaceId: string,
+  ): string {
+    const actorPart = actorUserId.replaceAll('-', '').slice(0, 8)
+    const workspacePart = workspaceId.replaceAll('-', '').slice(-8)
+
+    return `shared-${actorPart}-${workspacePart}`
+  }
+
   private getRecordClaim(
     payload: Record<string, unknown>,
     key: string,
@@ -702,6 +853,7 @@ function mapWorkspaceUserRecord(row: WorkspaceUserRow): WorkspaceUserRecord {
   return {
     displayName: row.displayName,
     email: row.email,
+    groupRole: row.groupRole,
     id: row.id,
     joinedAt: serializeTimestamp(row.joinedAt),
     membershipId: row.membershipId,

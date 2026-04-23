@@ -52,6 +52,53 @@
   margin: 0.6rem 0 0;
 }
 
+.workspaceSwitcher {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.workspaceSelectLabel {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.workspaceSelectLabel select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.58rem 0.7rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.72);
+  font: inherit;
+}
+
+.createWorkspaceButton {
+  align-self: end;
+  border: none;
+  border-radius: 12px;
+  padding: 0.62rem 0.72rem;
+  font: inherit;
+  font-weight: 700;
+  color: #fff7ef;
+  background: #214e42;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.createWorkspaceButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.createWorkspaceButton:not(:disabled):hover {
+  background: #183b31;
+}
+
 .accountRow {
   display: flex;
   align-items: center;
@@ -221,5 +268,9 @@
 
   .connectionHeader {
     flex-direction: column;
+  }
+
+  .workspaceSwitcher {
+    grid-template-columns: 1fr;
   }
 }

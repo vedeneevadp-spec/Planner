@@ -12,6 +12,7 @@ import {
   projectListResponseSchema,
   projectRecordSchema,
   sessionResponseSchema,
+  sessionWorkspaceMembershipSchema,
   taskEventListResponseSchema,
   taskListResponseSchema,
   taskRecordSchema,
@@ -83,15 +84,34 @@ const guestSessionRepository: SessionRepository = {
         id: AUTH_CONTEXT.claims.sub,
       },
       actorUserId: AUTH_CONTEXT.claims.sub,
+      groupRole: null,
       role: 'guest',
       source: 'access_token',
       workspace: {
         id: 'workspace-guest',
+        kind: 'personal',
         name: 'Guest Workspace',
         slug: 'guest',
       },
       workspaceId: 'workspace-guest',
+      workspaces: [
+        {
+          groupRole: null,
+          id: 'workspace-guest',
+          kind: 'personal',
+          name: 'Guest Workspace',
+          role: 'guest',
+          slug: 'guest',
+        },
+      ],
     })
+  },
+  createSharedWorkspace() {
+    throw new HttpError(
+      403,
+      'workspace_admin_required',
+      'The current workspace role cannot create shared workspaces.',
+    )
   },
   listWorkspaceUsers() {
     return Promise.resolve([])
@@ -948,6 +968,37 @@ void describe('buildApiApp', () => {
     assert.equal(body.workspace.slug, 'personal')
   })
 
+  void it('creates a shared workspace for the current actor', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Family Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    assert.equal(response.statusCode, 201)
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(response.json())
+
+    assert.equal(workspace.kind, 'shared')
+    assert.equal(workspace.groupRole, 'group_admin')
+    assert.equal(workspace.role, 'owner')
+    assert.equal(workspace.name, 'Family Workspace')
+  })
+
   void it('serves OpenAPI JSON without request authentication', async () => {
     app = buildApiApp({
       config: createTestConfig({
@@ -987,6 +1038,7 @@ void describe('buildApiApp', () => {
     assert.ok(body.paths?.['/api/v1/task-templates/{templateId}'])
     assert.ok(body.paths?.['/api/v1/tasks'])
     assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
+    assert.ok(body.paths?.['/api/v1/workspaces/shared'])
   })
 
   void it('requires a bearer token when request authentication is enabled', async () => {

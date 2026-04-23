@@ -23,6 +23,12 @@ import { taskTemplateSchema } from './task-template.js'
 
 export const storageDriverSchema = z.enum(['memory', 'postgres'])
 export const workspaceRoleSchema = z.enum(['owner', 'admin', 'user', 'guest'])
+export const workspaceKindSchema = z.enum(['personal', 'shared'])
+export const workspaceGroupRoleSchema = z.enum([
+  'group_admin',
+  'senior_member',
+  'member',
+])
 
 export const apiErrorSchema = z.object({
   error: z.object({
@@ -87,22 +93,31 @@ export const sessionActorSchema = z.object({
 
 export const sessionWorkspaceSchema = z.object({
   id: z.string(),
+  kind: workspaceKindSchema,
   name: z.string(),
   slug: z.string(),
+})
+
+export const sessionWorkspaceMembershipSchema = sessionWorkspaceSchema.extend({
+  groupRole: workspaceGroupRoleSchema.nullable(),
+  role: workspaceRoleSchema,
 })
 
 export const sessionResponseSchema = z.object({
   actor: sessionActorSchema,
   actorUserId: z.string(),
+  groupRole: workspaceGroupRoleSchema.nullable(),
   role: workspaceRoleSchema,
   source: z.enum(['access_token', 'default', 'headers']),
   workspace: sessionWorkspaceSchema,
   workspaceId: z.string(),
+  workspaces: z.array(sessionWorkspaceMembershipSchema),
 })
 
 export const workspaceUserRecordSchema = z.object({
   displayName: z.string(),
   email: z.string(),
+  groupRole: workspaceGroupRoleSchema.nullable(),
   id: z.string(),
   joinedAt: z.string(),
   membershipId: z.string(),
@@ -116,6 +131,10 @@ export const workspaceUserListResponseSchema = z.object({
 
 export const workspaceUserRoleUpdateInputSchema = z.object({
   role: workspaceRoleSchema,
+})
+
+export const createSharedWorkspaceInputSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
 })
 
 export const taskListFiltersSchema = z.object({
@@ -218,13 +237,21 @@ export type LifeSphereRecord = z.infer<typeof lifeSphereRecordSchema>
 export type SessionActor = z.infer<typeof sessionActorSchema>
 export type SessionResponse = z.infer<typeof sessionResponseSchema>
 export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
+export type SessionWorkspaceMembership = z.infer<
+  typeof sessionWorkspaceMembershipSchema
+>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
+export type WorkspaceGroupRole = z.infer<typeof workspaceGroupRoleSchema>
+export type WorkspaceKind = z.infer<typeof workspaceKindSchema>
 export type WorkspaceUserRecord = z.infer<typeof workspaceUserRecordSchema>
 export type WorkspaceUserListResponse = z.infer<
   typeof workspaceUserListResponseSchema
 >
 export type WorkspaceUserRoleUpdateInput = z.infer<
   typeof workspaceUserRoleUpdateInputSchema
+>
+export type CreateSharedWorkspaceInput = z.infer<
+  typeof createSharedWorkspaceInputSchema
 >
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
 export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>

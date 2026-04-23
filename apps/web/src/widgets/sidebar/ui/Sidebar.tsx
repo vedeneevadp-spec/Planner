@@ -3,7 +3,13 @@ import { NavLink } from 'react-router-dom'
 
 import { getPlannerSummary } from '@/entities/task'
 import { usePlanner, usePlannerApiClient } from '@/features/planner'
-import { usePlannerSession, useSessionAuth } from '@/features/session'
+import {
+  getCreateSharedWorkspaceErrorMessage,
+  setSelectedWorkspaceId,
+  useCreateSharedWorkspace,
+  usePlannerSession,
+  useSessionAuth,
+} from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
 
@@ -31,10 +37,15 @@ export function Sidebar() {
   const api = usePlannerApiClient()
   const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
+  const createSharedWorkspaceMutation = useCreateSharedWorkspace()
   const todayKey = getDateKey(new Date())
   const summary = getPlannerSummary(tasks, todayKey)
+  const isSharedWorkspace = session?.workspace.kind === 'shared'
+  const sharedWorkspaceCount =
+    session?.workspaces.filter((workspace) => workspace.kind === 'shared')
+      .length ?? 0
   const chaosInboxCountQuery = useQuery({
-    enabled: api !== null,
+    enabled: api !== null && !isSharedWorkspace,
     queryFn: async ({ signal }) => {
       const [newItems, inReviewItems] = await Promise.all([
         api!.listChaosInboxItems({ limit: 1, status: 'new' }, signal),
@@ -53,9 +64,10 @@ export function Sidebar() {
   const chaosInboxCount = chaosInboxCountQuery.data ?? 0
   const visibleNavigation = navigation.filter(
     (item) =>
-      item.to !== '/admin' ||
-      session?.role === 'admin' ||
-      session?.role === 'owner',
+      (!isSharedWorkspace || item.to === '/today') &&
+      (item.to !== '/admin' ||
+        session?.role === 'admin' ||
+        session?.role === 'owner'),
   )
   const syncStateLabel = errorMessage
     ? 'Connection issue'
@@ -99,9 +111,56 @@ export function Sidebar() {
 
         <p className={styles.connectionMeta}>
           {session
-            ? `${session.actor.displayName} · ${session.role}`
+            ? `${session.actor.displayName} · ${getWorkspaceRoleLabel(session.role)}${
+                session.groupRole
+                  ? ` · ${getWorkspaceGroupRoleLabel(session.groupRole)}`
+                  : ''
+              }`
             : 'Session bootstrap'}
         </p>
+
+        {session ? (
+          <div className={styles.workspaceSwitcher}>
+            <label className={styles.workspaceSelectLabel}>
+              <span>Workspace</span>
+              <select
+                value={session.workspaceId}
+                onChange={(event) => {
+                  setSelectedWorkspaceId(event.target.value)
+                }}
+              >
+                {session.workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name} ·{' '}
+                    {workspace.kind === 'shared' ? 'общий' : 'личный'}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button
+              className={styles.createWorkspaceButton}
+              type="button"
+              disabled={
+                createSharedWorkspaceMutation.isPending ||
+                sharedWorkspaceCount >= 3
+              }
+              onClick={() => {
+                createSharedWorkspaceMutation.mutate()
+              }}
+            >
+              + Общий
+            </button>
+          </div>
+        ) : null}
+
+        {createSharedWorkspaceMutation.error ? (
+          <p className={styles.connectionError}>
+            {getCreateSharedWorkspaceErrorMessage(
+              createSharedWorkspaceMutation.error,
+            )}
+          </p>
+        ) : null}
 
         {queuedMutationCount > 0 || conflictedMutationCount > 0 ? (
           <div className={styles.queueState}>
@@ -203,4 +262,25 @@ export function Sidebar() {
       </section>
     </aside>
   )
+}
+
+function getWorkspaceRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    admin: 'Admin',
+    guest: 'Guest',
+    owner: 'Owner',
+    user: 'User',
+  }
+
+  return labels[role] ?? role
+}
+
+function getWorkspaceGroupRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    group_admin: 'Администратор группы',
+    member: 'Участник',
+    senior_member: 'Старший участник',
+  }
+
+  return labels[role] ?? role
 }

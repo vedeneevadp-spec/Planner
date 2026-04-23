@@ -57,23 +57,30 @@ export function hasSupabaseBrowserAuthConfig(
   return Boolean(config.supabaseUrl && config.supabasePublishableKey)
 }
 
-export function getPlannerSessionOverrideHeaders(
-  accessToken?: string,
-): HeadersInit | undefined {
+export function getPlannerSessionOverrideHeaders(options: {
+  accessToken?: string | undefined
+  actorUserId?: string | undefined
+  workspaceId?: string | undefined
+} = {}): HeadersInit | undefined {
   const headers: Record<string, string> = {}
 
-  const resolvedAccessToken = accessToken ?? plannerApiConfig.apiAccessToken
+  const resolvedAccessToken =
+    options.accessToken ?? plannerApiConfig.apiAccessToken
+  const resolvedActorUserId =
+    options.actorUserId ?? plannerApiConfig.actorUserIdOverride
+  const resolvedWorkspaceId =
+    options.workspaceId ?? plannerApiConfig.workspaceIdOverride
 
   if (resolvedAccessToken) {
     headers.authorization = `Bearer ${resolvedAccessToken}`
   }
 
-  if (
-    plannerApiConfig.actorUserIdOverride &&
-    plannerApiConfig.workspaceIdOverride
-  ) {
-    headers['x-actor-user-id'] = plannerApiConfig.actorUserIdOverride
-    headers['x-workspace-id'] = plannerApiConfig.workspaceIdOverride
+  if (resolvedWorkspaceId) {
+    headers['x-workspace-id'] = resolvedWorkspaceId
+  }
+
+  if (!resolvedAccessToken && resolvedActorUserId && resolvedWorkspaceId) {
+    headers['x-actor-user-id'] = resolvedActorUserId
   }
 
   return Object.keys(headers).length > 0 ? headers : undefined

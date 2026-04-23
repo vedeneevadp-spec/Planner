@@ -1,5 +1,7 @@
 import {
+  createSharedWorkspaceInputSchema,
   sessionResponseSchema,
+  sessionWorkspaceMembershipSchema,
   workspaceUserListResponseSchema,
   workspaceUserRecordSchema,
   workspaceUserRoleUpdateInputSchema,
@@ -38,46 +40,24 @@ export function registerSessionRoutes(
   service: SessionService,
 ): void {
   app.get('/api/v1/session', async (request) => {
-    const authContext = getRequestAuth(request)
-
-    if (authContext) {
-      const headers = parseOrThrow(
-        authSessionHeadersSchema,
-        request.headers,
-        'invalid_headers',
-      )
-      const session = await service.resolveSession({
-        actorUserId: undefined,
-        auth: authContext,
-        workspaceId: headers['x-workspace-id'],
-      })
-
-      return sessionResponseSchema.parse(session)
-    }
-
-    const headers = parseOrThrow(
-      legacySessionHeadersSchema,
-      request.headers,
-      'invalid_headers',
-    )
-
-    if (
-      Boolean(headers['x-actor-user-id']) !== Boolean(headers['x-workspace-id'])
-    ) {
-      throw new HttpError(
-        400,
-        'invalid_headers',
-        'x-actor-user-id and x-workspace-id must be provided together.',
-      )
-    }
-
-    const session = await service.resolveSession({
-      auth: null,
-      actorUserId: headers['x-actor-user-id'],
-      workspaceId: headers['x-workspace-id'],
-    })
+    const context = resolveOptionalSessionContext(request)
+    const session = await service.resolveSession(context)
 
     return sessionResponseSchema.parse(session)
+  })
+
+  app.post('/api/v1/workspaces/shared', async (request, reply) => {
+    const context = resolveOptionalSessionContext(request)
+    const input = parseOrThrow(
+      createSharedWorkspaceInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const workspace = await service.createSharedWorkspace(context, input)
+
+    reply.code(201)
+
+    return sessionWorkspaceMembershipSchema.parse(workspace)
   })
 
   app.get('/api/v1/admin/users', async (request) => {
@@ -107,6 +87,44 @@ export function registerSessionRoutes(
 
     return workspaceUserRecordSchema.parse(user)
   })
+}
+
+function resolveOptionalSessionContext(request: FastifyRequest) {
+  const authContext = getRequestAuth(request)
+
+  if (authContext) {
+    const headers = parseOrThrow(
+      authSessionHeadersSchema,
+      request.headers,
+      'invalid_headers',
+    )
+
+    return {
+      actorUserId: undefined,
+      auth: authContext,
+      workspaceId: headers['x-workspace-id'],
+    }
+  }
+
+  const headers = parseOrThrow(
+    legacySessionHeadersSchema,
+    request.headers,
+    'invalid_headers',
+  )
+
+  if (Boolean(headers['x-actor-user-id']) !== Boolean(headers['x-workspace-id'])) {
+    throw new HttpError(
+      400,
+      'invalid_headers',
+      'x-actor-user-id and x-workspace-id must be provided together.',
+    )
+  }
+
+  return {
+    actorUserId: headers['x-actor-user-id'],
+    auth: null,
+    workspaceId: headers['x-workspace-id'],
+  }
 }
 
 function resolveAdminSessionContext(request: FastifyRequest) {

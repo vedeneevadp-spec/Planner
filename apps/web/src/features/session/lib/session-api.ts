@@ -1,7 +1,11 @@
 import {
   apiErrorSchema,
+  type CreateSharedWorkspaceInput,
+  createSharedWorkspaceInputSchema,
   type SessionResponse,
   sessionResponseSchema,
+  type SessionWorkspaceMembership,
+  sessionWorkspaceMembershipSchema,
 } from '@planner/contracts'
 
 import {
@@ -38,14 +42,20 @@ export function isUnauthorizedSessionApiError(
 
 export interface ResolvePlannerSessionOptions {
   accessToken?: string
+  actorUserId?: string | undefined
   signal?: AbortSignal
+  workspaceId?: string | undefined
 }
 
 export async function resolvePlannerSession(
   options: ResolvePlannerSessionOptions = {},
   fetchFn: typeof fetch = fetch,
 ): Promise<SessionResponse> {
-  const headers = getPlannerSessionOverrideHeaders(options.accessToken)
+  const headers = getPlannerSessionOverrideHeaders({
+    accessToken: options.accessToken,
+    actorUserId: options.actorUserId,
+    workspaceId: options.workspaceId,
+  })
   const requestInit = {
     ...(headers ? { headers } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
@@ -57,22 +67,66 @@ export async function resolvePlannerSession(
   const payload = (await response.json()) as unknown
 
   if (!response.ok) {
-    const parsedError = apiErrorSchema.safeParse(payload)
+    throwSessionApiError(response, payload, 'Failed to resolve planner session.')
+  }
 
-    if (parsedError.success) {
-      throw new SessionApiError(parsedError.data.error.message, {
-        code: parsedError.data.error.code,
-        details: parsedError.data.error.details,
-        status: response.status,
-      })
-    }
+  return sessionResponseSchema.parse(payload)
+}
 
-    throw new SessionApiError('Failed to resolve planner session.', {
-      code: 'session_request_failed',
-      details: payload,
+export interface CreateSharedWorkspaceOptions {
+  accessToken?: string
+  actorUserId?: string | undefined
+  input?: CreateSharedWorkspaceInput | undefined
+  workspaceId?: string | undefined
+}
+
+export async function createSharedWorkspace(
+  options: CreateSharedWorkspaceOptions = {},
+  fetchFn: typeof fetch = fetch,
+): Promise<SessionWorkspaceMembership> {
+  const headers = getPlannerSessionOverrideHeaders({
+    accessToken: options.accessToken,
+    actorUserId: options.actorUserId,
+    workspaceId: options.workspaceId,
+  })
+  const requestHeaders = new Headers(headers)
+  requestHeaders.set('content-type', 'application/json')
+  const input = createSharedWorkspaceInputSchema.parse(options.input ?? {})
+  const response = await fetchFn(
+    new URL('/api/v1/workspaces/shared', plannerApiConfig.apiBaseUrl),
+    {
+      body: JSON.stringify(input),
+      headers: requestHeaders,
+      method: 'POST',
+    },
+  )
+  const payload = (await response.json()) as unknown
+
+  if (!response.ok) {
+    throwSessionApiError(response, payload, 'Failed to create workspace.')
+  }
+
+  return sessionWorkspaceMembershipSchema.parse(payload)
+}
+
+function throwSessionApiError(
+  response: Response,
+  payload: unknown,
+  fallbackMessage: string,
+): never {
+  const parsedError = apiErrorSchema.safeParse(payload)
+
+  if (parsedError.success) {
+    throw new SessionApiError(parsedError.data.error.message, {
+      code: parsedError.data.error.code,
+      details: parsedError.data.error.details,
       status: response.status,
     })
   }
 
-  return sessionResponseSchema.parse(payload)
+  throw new SessionApiError(fallbackMessage, {
+    code: 'session_request_failed',
+    details: payload,
+    status: response.status,
+  })
 }

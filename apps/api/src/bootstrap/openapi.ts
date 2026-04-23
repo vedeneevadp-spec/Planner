@@ -5,6 +5,7 @@ import type { OpenAPIV3 } from 'openapi-types'
 
 import type { ApiConfig } from './config.js'
 
+// noinspection SqlNoDataSourceInspection
 export function registerOpenApi(app: FastifyInstance, config: ApiConfig): void {
   app.register(swagger, {
     mode: 'static',
@@ -139,6 +140,26 @@ function createPaths(): OpenAPIV3.PathsObject {
         },
         security: [{ bearerAuth: [] }, {}],
         summary: 'Resolve current planner session',
+        tags: ['session'],
+      },
+    },
+    '/api/v1/workspaces/shared': {
+      post: {
+        operationId: 'createSharedWorkspace',
+        parameters: [
+          parameter('optionalWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('CreateSharedWorkspaceInput'),
+        responses: {
+          201: jsonResponse('SessionWorkspaceMembership'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Create a shared workspace for the current actor',
         tags: ['session'],
       },
     },
@@ -1106,6 +1127,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         actorUserId: {
           type: 'string',
         },
+        groupRole: nullableRefSchema('WorkspaceGroupRole'),
         role: {
           $ref: '#/components/schemas/WorkspaceRole',
         },
@@ -1119,14 +1141,22 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         workspaceId: {
           type: 'string',
         },
+        workspaces: {
+          items: {
+            $ref: '#/components/schemas/SessionWorkspaceMembership',
+          },
+          type: 'array',
+        },
       },
       required: [
         'actor',
         'actorUserId',
+        'groupRole',
         'role',
         'source',
         'workspace',
         'workspaceId',
+        'workspaces',
       ],
       type: 'object',
     },
@@ -1136,6 +1166,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         id: {
           type: 'string',
         },
+        kind: {
+          $ref: '#/components/schemas/WorkspaceKind',
+        },
         name: {
           type: 'string',
         },
@@ -1143,12 +1176,49 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
       },
-      required: ['id', 'name', 'slug'],
+      required: ['id', 'kind', 'name', 'slug'],
       type: 'object',
+    },
+    SessionWorkspaceMembership: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/SessionWorkspace',
+        },
+        {
+          additionalProperties: false,
+          properties: {
+            groupRole: nullableRefSchema('WorkspaceGroupRole'),
+            role: {
+              $ref: '#/components/schemas/WorkspaceRole',
+            },
+          },
+          required: ['groupRole', 'role'],
+          type: 'object',
+        },
+      ],
+    },
+    WorkspaceGroupRole: {
+      enum: ['group_admin', 'member', 'senior_member'],
+      type: 'string',
+    },
+    WorkspaceKind: {
+      enum: ['personal', 'shared'],
+      type: 'string',
     },
     WorkspaceRole: {
       enum: ['admin', 'guest', 'owner', 'user'],
       type: 'string',
+    },
+    CreateSharedWorkspaceInput: {
+      additionalProperties: false,
+      properties: {
+        name: {
+          maxLength: 80,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      type: 'object',
     },
     WorkspaceUserListResponse: {
       additionalProperties: false,
@@ -1172,6 +1242,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         email: {
           type: 'string',
         },
+        groupRole: nullableRefSchema('WorkspaceGroupRole'),
         id: {
           type: 'string',
         },
@@ -1193,6 +1264,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       required: [
         'displayName',
         'email',
+        'groupRole',
         'id',
         'joinedAt',
         'membershipId',
@@ -1522,6 +1594,17 @@ function nullableStringSchema(): OpenAPIV3.SchemaObject {
   return {
     nullable: true,
     type: 'string',
+  }
+}
+
+function nullableRefSchema(schemaName: string): OpenAPIV3.SchemaObject {
+  return {
+    allOf: [
+      {
+        $ref: `#/components/schemas/${schemaName}`,
+      },
+    ],
+    nullable: true,
   }
 }
 

@@ -1,4 +1,7 @@
-import type { WorkspaceRole } from '@planner/contracts'
+import type {
+  CreateSharedWorkspaceInput,
+  WorkspaceRole,
+} from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { SessionContext, SessionSnapshot } from './session.model.js'
@@ -13,11 +16,14 @@ interface CachedSessionSnapshot {
 
 export class SessionService {
   private readonly authSessionCache = new Map<string, CachedSessionSnapshot>()
+  private readonly repository: SessionRepository
 
-  constructor(private readonly repository: SessionRepository) {}
+  constructor(repository: SessionRepository) {
+    this.repository = repository
+  }
 
   async resolveSession(context: SessionContext) {
-    const cacheKey = this.getAuthSessionCacheKey(context)
+    const cacheKey = getAuthSessionCacheKey(context)
 
     if (cacheKey) {
       const cached = this.authSessionCache.get(cacheKey)
@@ -47,6 +53,21 @@ export class SessionService {
     return this.repository.listWorkspaceUsers(session)
   }
 
+  async createSharedWorkspace(
+    context: SessionContext,
+    input: CreateSharedWorkspaceInput,
+  ) {
+    const session = await this.resolveSession(context)
+    const workspace = await this.repository.createSharedWorkspace(
+      session,
+      input,
+    )
+
+    this.authSessionCache.clear()
+
+    return workspace
+  }
+
   async updateWorkspaceUserRole(
     context: SessionContext,
     userId: string,
@@ -66,18 +87,18 @@ export class SessionService {
 
     return user
   }
+}
 
-  private getAuthSessionCacheKey(context: SessionContext): string | null {
-    if (!context.auth) {
-      return null
-    }
-
-    return [
-      context.auth.claims.sub,
-      context.auth.claims.sessionId ?? 'session',
-      context.workspaceId ?? 'default',
-    ].join(':')
+function getAuthSessionCacheKey(context: SessionContext): string | null {
+  if (!context.auth) {
+    return null
   }
+
+  return [
+    context.auth.claims.sub,
+    context.auth.claims.sessionId ?? 'session',
+    context.workspaceId ?? 'default',
+  ].join(':')
 }
 
 function assertCanManageWorkspaceUsers(session: SessionSnapshot): void {
