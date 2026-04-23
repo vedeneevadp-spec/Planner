@@ -13,6 +13,8 @@ Accepted
 - `packages/contracts` для shared DTO и schema-контрактов
 - `supabase/migrations` для SQL-first схемы Postgres/Supabase
 - `task_events` + `outbox` для sync/integration trail без pure event sourcing
+- Supabase Auth проверяется на backend boundary; frontend не получает прямой
+  write access к Postgres
 
 ## Rationale
 
@@ -23,8 +25,8 @@ Accepted
 
 ## Consequences
 
-- локальный web storage остается только временной совместимостью и импортным источником
+- IndexedDB используется только как offline cache/queue и не становится
+  источником истины
 - новые фичи сначала проектируются как contracts + DB schema + api boundary, а уже потом как UI state
 - серверные инварианты будут жить в `apps/api` и SQL-схеме, а не в React context
 - Supabase используется как managed platform вокруг Postgres, но frontend не получает прямой write access в базу
-- frontend может использовать IndexedDB только как offline cache/queue, а не как источник истины

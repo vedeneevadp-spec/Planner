@@ -1,97 +1,148 @@
-# Архитектура
+# Архитектура web-клиента
+
+`apps/web` использует feature-oriented структуру. Пути ниже указаны
+относительно `apps/web/src`.
 
 ## Цели
 
-- Сохранить высокую скорость разработки фич, не скатываясь обратно в один большой файл.
-- Отделить чистую доменную логику от React и браузерных API.
-- Сделать следующую замену слоя хранения данных управляемой.
-
-Web-клиент находится в `apps/web`, поэтому пути ниже описаны относительно `apps/web/src`.
+- Сохранять скорость разработки экранов без возврата к одному большому файлу.
+- Держать чистую доменную логику отдельно от React и браузерных API.
+- Не привязывать UI к конкретному storage/runtime: web работает через backend
+  HTTP API.
+- Оставлять замену или расширение backend-модулей управляемой через contracts.
 
 ## Слои
 
 ### `app`
 
-Каркас приложения и глобальные провайдеры.
+Composition root приложения.
 
-- настройка роутера
-- composition root
+- глобальные провайдеры
+- router setup
 - верхнеуровневый layout
 
 ### `pages`
 
 Точки входа маршрутов.
 
-Страницы должны собирать экран из widgets и features, но не содержать бизнес-логику, кроме выбора данных для конкретного экрана.
+Текущие страницы:
+
+- `today` - фокус дня, ресурсный план и быстрые изменения задач
+- `timeline` - задачи на временной линии
+- `inbox` - chaos dump, разбор входящих и конвертация в задачи
+- `spheres` - список сфер жизни и недельный баланс
+- `admin` - администрирование icon/emoji assets
+
+Страницы собирают экран из widgets, features и entities. Бизнес-логику, которую
+можно переиспользовать или тестировать отдельно, нужно выносить в `features`,
+`entities` или локальный `lib` страницы.
 
 ### `widgets`
 
-Переиспользуемые экранные блоки, которые комбинируют более низкоуровневые части.
+Переиспользуемые экранные блоки, которые комбинируют более низкоуровневые
+части.
 
-Текущий пример: sidebar.
+Текущий пример: `sidebar`.
 
 ### `features`
 
-Пользовательские действия, orchestration-логика и интеграция с API/runtime.
+Пользовательские действия, orchestration-логика и интеграция с runtime.
 
 Текущие примеры:
 
-- planner provider и context hook
-- session query для резолва текущего actor/workspace
-- query/mutation слой planner поверх HTTP API
-- composer для создания задач
+- `session` - Supabase browser auth, access token lifecycle и session query
+- `planner` - planner provider, HTTP API client, TanStack Query state,
+  optimistic mutations, offline queue и task-event cursor sync
+- `task-create` - composer для создания задач
+- `emoji-library` - загрузка и чтение custom icon assets
 
 Feature-код может зависеть от `entities` и `shared`.
 
 ### `entities`
 
-Доменные объекты, селекторы и чистые операции над задачами.
+Доменные объекты, чистые селекторы и UI-компоненты, не завязанные на конкретный
+runtime.
 
 Текущие примеры:
 
-- типы задач
-- сортировка и группировка
-- производные селекторы для today, inbox и overdue
-- UI-компоненты task card и task section
+- `task` - типы, сортировка, группировка, selectors, task card/section
+- `project` - compatibility-модель для сфер в старом planner state
+- `emoji-set` - типы и glyph rendering
+- `task-template` - типы templates
 
 ### `shared`
 
-Универсальные утилиты и базовый UI.
+Универсальные утилиты, config и базовый UI.
 
 Текущие примеры:
 
-- date helpers
-- helper для class names
-- page header
+- `config/planner-api` - чтение Vite env и общие headers для API
+- `lib/date` - date helpers
+- `lib/classnames` - helper для class names
+- `ui/Icon`, `ui/Page`, `ui/PageHeader`
 
 ## Направление зависимостей
 
-Зависимости должны идти внутрь по такой схеме:
+Зависимости идут внутрь:
 
 `app -> pages -> widgets -> features -> entities -> shared`
 
-`shared` не импортирует код из верхних слоёв.
-`entities` не импортирует код из `features`, `widgets`, `pages` и `app`.
-Кросс-срезовые импорты идут только через публичный `index.ts` среза, например `@/features/planner`, а не через внутренние пути вроде `@/features/planner/model/...`.
+Правила:
+
+- `shared` не импортирует верхние слои
+- `entities` не импортирует `features`, `widgets`, `pages` и `app`
+- `features` не импортирует `widgets`, `pages` и `app`
+- кросс-срезовые импорты идут через публичный `index.ts` среза, например
+  `@/features/planner`
+- не импортировать внутренние пути другого среза вроде
+  `@/features/planner/model/...`, если это не локальный код того же среза
 
 ## Стратегия состояния
 
-Сейчас приложение использует `React Query` как server-state слой и небольшой React context как фасад над planner-операциями для UI.
+Главный источник истины - backend API и Postgres/Supabase schema. Web хранит
+только server-state cache, offline snapshots и очередь операций.
 
-Текущий расклад такой:
+Текущий расклад:
 
-- session клиента сначала резолвится через `/api/v1/session`
-- данные задач живут на API и кэшируются на клиенте через query cache
-- оптимистичные мутации остаются в feature-слое, поэтому UI не зависит напрямую от HTTP-клиента
-- последние task/project snapshots и offline mutation queue хранятся в IndexedDB через `Dexie`
-- queued мутации replay-ятся через тот же HTTP API; stale writes получают `409 task_version_conflict` или `409 project_version_conflict`
-- cursor sync читает реальные `task_events`, хранит последний обработанный id локально и инвалидирует server-state cache
+- session сначала резолвится через `/api/v1/session`
+- Supabase browser auth включается только при наличии
+  `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`
+- данные задач, сфер, templates, inbox и daily plan читаются через backend API
+- TanStack Query отвечает за server-state cache и invalidation
+- planner feature держит optimistic mutations, чтобы UI-компоненты не зависели
+  от HTTP details
+- IndexedDB через Dexie хранит последние snapshots задач, spheres/compat
+  projects, templates и offline mutation queue
+- queued mutations replay-ятся через тот же backend API
+- stale writes получают `409 task_version_conflict`,
+  `409 project_version_conflict` или `409 life_sphere_version_conflict`
+- cursor sync читает `/api/v1/task-events`, сохраняет последний обработанный id
+  локально и инвалидирует query cache
 
-Первая точка расширения теперь находится не в browser storage, а в boundary `features/session` и `features/planner/lib/planner-api`, где можно добавлять auth, multi-workspace switching, pagination, realtime sync и offline rehydration без переписывания экранов.
+Расширять runtime лучше в boundary-слоях:
+
+- `features/session` - auth, session bootstrap, access token lifecycle
+- `features/planner/lib/planner-api` - HTTP contract web -> API
+- `features/planner/model/usePlannerState` - query/mutation orchestration
+- `packages/contracts` - DTO и zod-схемы между web и API
+
+## Сферы и compatibility projects
+
+Пользовательская модель сейчас называется "сферы жизни" и ходит в backend через
+`/api/v1/life-spheres`.
+
+В web еще есть compatibility-термины `Project`/`projects` в planner state и
+части UI props. Этот слой мапит `LifeSphereRecord` в `ProjectRecord`, чтобы не
+ломать старые task components и offline cache за один большой рефактор.
+
+Новую пользовательскую функциональность нужно проектировать вокруг сфер. Старые
+project names допустимы только как compatibility boundary.
 
 ## Стратегия тестирования
 
-- unit-тесты для чистой доменной логики в `entities`
-- unit-тесты для общих утилит в `shared`
-- компонентные тесты только для критичных взаимодействий
-- e2e smoke-тесты позже, когда пользовательские сценарии стабилизируются
+- чистая доменная логика в `entities` и page `lib` покрывается unit-тестами
+- API client, offline queue и session helpers покрываются web-тестами через
+  Vitest
+- backend modules и bootstrap покрываются Node test runner с `tsx`
+- e2e smoke-тестов пока нет; добавлять их стоит после стабилизации основных
+  пользовательских сценариев

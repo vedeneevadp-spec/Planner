@@ -1,108 +1,43 @@
-# Как выложить Planner на Timeweb: очень простая инструкция
+# Production Deploy: Planner на Timeweb
 
-Эта инструкция конкретно для твоей текущей ситуации:
+Инструкция описывает текущий production target проекта.
 
 ```text
 Домен: chaotika.ru
-Сервер Timeweb: 147.45.158.186
-Проект на Mac: /Users/daryavedeneeva/ Projects  /Planner
+VPS: 147.45.158.186
+Локальный проект: /Users/daryavedeneeva/ Projects  /Planner
+Production root: /opt/planner
+Production env: /etc/planner/planner.env
+Icon assets: /var/lib/planner/icon-assets
 ```
 
-Что получится в конце:
+После настройки сайт открывается на `https://chaotika.ru`, API доступен под тем
+же доменом, например `https://chaotika.ru/api/health`.
 
-```text
-https://chaotika.ru
-```
+## Что важно
 
-По этой ссылке будет открываться Planner. API будет работать внутри того же домена:
+- Web-сайт и API живут на VPS за Caddy.
+- База и auth в текущей production-конфигурации остаются в managed Supabase.
+- UI не ходит в Postgres напрямую: все чтение и запись идут через backend API.
+- Загруженные иконки emoji library хранятся в локальной папке API:
+  `/var/lib/planner/icon-assets`.
+- Повторные выкладки выполняются локально командой `npm run deploy:prod`.
 
-```text
-https://chaotika.ru/api/health
-```
+## 1. Проверить DNS
 
-Важно: сейчас приложение всё ещё использует Supabase для входа и базы. Сайт будет жить на российском сервере Timeweb, но регистрация/логин пока зависят от Supabase.
-
-## Что уже готово
-
-Ты уже сделала:
-
-```text
-1. Домен chaotika.ru выбран в Timeweb.
-2. VPS Timeweb создан.
-3. IP сервера: 147.45.158.186.
-```
-
-Теперь надо сделать 5 больших шагов:
-
-```text
-1. Проверить, что домен ведёт на сервер.
-2. Подключиться к серверу.
-3. Установить на сервер Node.js, Caddy и Git.
-4. Скопировать проект на сервер и собрать сайт.
-5. Запустить API и включить HTTPS.
-```
-
-## Шаг 1. Купить домен и привязать его к серверу
-
-Открой Timeweb Cloud в браузере.
-
-На скриншоте у `chaotika.ru` статус:
-
-```text
-Домен свободен
-```
-
-и есть кнопка:
-
-```text
-В корзину
-```
-
-Это значит, что домен ещё не куплен. Сначала его нужно зарегистрировать.
-
-Что сделать в Timeweb:
-
-```text
-1. Нажми "В корзину".
-2. Перейди в корзину.
-3. Оплати регистрацию домена chaotika.ru.
-4. Вернись на экран домена после оплаты.
-```
-
-На этом же экране уже видно:
-
-```text
-Привязан к сервису Mysterious Bittern
-147.45.158.186
-```
-
-Это правильно. Значит домен должен вести на твой сервер.
-
-После оплаты домена DNS может обновляться не сразу. Обычно это занимает от 5
-минут до нескольких часов.
-
-На Mac можно проверить так. Открой обычный Terminal и введи:
+На Mac:
 
 ```bash
 dig +short chaotika.ru
 ```
 
-Хороший результат:
+Ожидаемый результат:
 
 ```text
 147.45.158.186
 ```
 
-Если команда ничего не вывела, домен ещё не активировался или DNS ещё не
-обновился.
-
-Если команда показывает другой IP, открой в Timeweb подсказку:
-
-```text
-Как изменить DNS-записи?
-```
-
-и проверь, что есть A-запись:
+Если вывод пустой или там другой IP, в Timeweb должна быть A-запись:
 
 ```text
 Тип: A
@@ -110,7 +45,7 @@ dig +short chaotika.ru
 Значение: 147.45.158.186
 ```
 
-Если хочешь, чтобы открывался ещё и `www.chaotika.ru`, добавь вторую запись:
+Для `www.chaotika.ru` можно добавить CNAME:
 
 ```text
 Тип: CNAME
@@ -118,614 +53,253 @@ dig +short chaotika.ru
 Значение: chaotika.ru
 ```
 
-Дальше можно настраивать сервер, но HTTPS нормально заработает только когда
-`dig +short chaotika.ru` покажет `147.45.158.186`.
+HTTPS нормально выпустится только после того, как DNS указывает на VPS.
 
-## Шаг 2. Подключиться к серверу
+## 2. Подготовить сервер один раз
 
-Открой Terminal на Mac.
-
-Введи:
+Подключиться к серверу:
 
 ```bash
 ssh root@147.45.158.186
 ```
 
-Если появится вопрос:
-
-```text
-Are you sure you want to continue connecting?
-```
-
-напиши:
-
-```text
-yes
-```
-
-и нажми Enter.
-
-Потом введи пароль от сервера из Timeweb. Когда вводишь пароль, символы не показываются. Это нормально.
-
-Если ты видишь строку примерно такую:
-
-```text
-root@...
-```
-
-значит ты внутри сервера.
-
-Дальше команды из следующих шагов надо вводить уже в этом окне сервера.
-
-## Шаг 3. Установить всё нужное на сервер
-
-Скопируй и вставь эту команду на сервер:
+Установить системные зависимости:
 
 ```bash
-apt update && apt upgrade -y
-```
-
-Потом эту:
-
-```bash
+apt update
+apt upgrade -y
 apt install -y curl git ufw caddy rsync
 ```
 
-Теперь установи Node.js:
+Установить Node.js 24:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-```
-
-Потом:
-
-```bash
 apt install -y nodejs
-```
-
-Проверь, что Node установился:
-
-```bash
 node -v
-```
-
-Должно показать что-то вроде:
-
-```text
-v24.x.x
-```
-
-Проверь npm:
-
-```bash
 npm -v
 ```
 
-## Шаг 4. Включить firewall
-
-На сервере введи:
+Включить firewall:
 
 ```bash
 ufw allow OpenSSH
-```
-
-Потом:
-
-```bash
 ufw allow 80
-```
-
-Потом:
-
-```bash
 ufw allow 443
-```
-
-Потом:
-
-```bash
 ufw enable
 ```
 
-Если спросит:
-
-```text
-Command may disrupt existing ssh connections. Proceed with operation?
-```
-
-напиши:
-
-```text
-y
-```
-
-и нажми Enter.
-
-## Шаг 5. Создать папки для Planner на сервере
-
-На сервере введи:
+Создать пользователя и рабочие директории:
 
 ```bash
 useradd --system --create-home --shell /usr/sbin/nologin planner || true
-```
-
-Потом:
-
-```bash
 mkdir -p /opt/planner /etc/planner /var/lib/planner/icon-assets
-```
-
-Потом:
-
-```bash
 chown -R planner:planner /opt/planner /var/lib/planner
-```
-
-Потом:
-
-```bash
 chmod 750 /etc/planner
 ```
 
-## Шаг 6. Скопировать проект с Mac на сервер
+## 3. Создать production env
 
-Теперь нужно вернуться в Terminal на Mac, не в сервер.
-
-Если ты всё ещё внутри сервера, напиши:
-
-```bash
-exit
-```
-
-Теперь ты снова на Mac.
-
-Перейди в проект:
-
-```bash
-cd "/Users/daryavedeneeva/ Projects  /Planner"
-```
-
-Скопируй проект на сервер:
-
-```bash
-rsync -az --delete \
-  --exclude node_modules \
-  --exclude .git \
-  --exclude apps/web/dist \
-  --exclude coverage \
-  --exclude tmp \
-  --exclude .env \
-  --exclude .env.local \
-  --exclude .env.supabase.local \
-  ./ root@147.45.158.186:/opt/planner/
-```
-
-Отдельно скопируй загруженные картинки/иконки. Это важно: база хранит ссылки на
-них, а сами файлы лежат не в Supabase, а в локальной папке API.
-
-На Mac:
-
-```bash
-rsync -az apps/api/tmp/icon-assets/ root@147.45.158.186:/var/lib/planner/icon-assets/
-```
-
-Если попросит пароль, введи пароль от сервера Timeweb.
-
-После копирования снова зайди на сервер:
-
-```bash
-ssh root@147.45.158.186
-```
-
-На сервере поправь права:
-
-```bash
-chown -R planner:planner /opt/planner
-```
-
-Потом поправь права на картинки:
-
-```bash
-chown -R planner:planner /var/lib/planner/icon-assets
-```
-
-## Шаг 7. Установить зависимости проекта на сервере
-
-На сервере введи:
-
-```bash
-cd /opt/planner
-```
-
-Потом:
-
-```bash
-sudo -u planner env HUSKY=0 npm ci --include=dev
-```
-
-Это может занять несколько минут.
-
-Если команда закончилась без красной ошибки, всё хорошо.
-
-## Шаг 8. Создать секретный env-файл для сервера
-
-Нужно создать файл:
+На сервере нужен файл:
 
 ```text
 /etc/planner/planner.env
 ```
 
-Сначала на сервере открой редактор:
+Базовый шаблон есть в `.env.production.example`. Для текущего deploy нужны
+такие значения:
+
+```text
+NODE_ENV=production
+API_AUTH_MODE=supabase
+API_STORAGE_DRIVER=postgres
+API_DB_RLS_MODE=disabled
+API_HOST=127.0.0.1
+API_PORT=3001
+API_CORS_ORIGIN=https://chaotika.ru
+API_ICON_ASSET_DIR=/var/lib/planner/icon-assets
+DATABASE_URL=<resolved SUPABASE_RUNTIME_DATABASE_URL>
+SUPABASE_URL=<https://project-ref.supabase.co>
+SUPABASE_PUBLISHABLE_KEY=<sb_publishable_...>
+SUPABASE_JWT_SECRET=
+```
+
+Чтобы быстро получить готовый текст из локального `.env.supabase.local`, на Mac
+можно выполнить:
+
+```bash
+cd "/Users/daryavedeneeva/ Projects  /Planner"
+node --env-file=.env.supabase.local --input-type=module -e 'import { getSupabaseRuntimeDatabaseUrl } from "./scripts/supabase-utils.mjs"; console.log(["NODE_ENV=production","API_AUTH_MODE=supabase","API_STORAGE_DRIVER=postgres","API_DB_RLS_MODE=disabled","API_HOST=127.0.0.1","API_PORT=3001","API_CORS_ORIGIN=https://chaotika.ru","API_ICON_ASSET_DIR=/var/lib/planner/icon-assets","DATABASE_URL=" + getSupabaseRuntimeDatabaseUrl(),"SUPABASE_URL=" + process.env.SUPABASE_URL,"SUPABASE_PUBLISHABLE_KEY=" + process.env.SUPABASE_PUBLISHABLE_KEY,"SUPABASE_JWT_SECRET=" + (process.env.SUPABASE_JWT_SECRET ?? "")].join("\n"))'
+```
+
+На сервере создать файл:
 
 ```bash
 nano /etc/planner/planner.env
 ```
 
-Откроется пустой файл.
-
-Теперь надо вставить туда production-настройки.
-
-Чтобы получить готовый текст настроек, открой НОВЫЙ Terminal на Mac, не на сервере.
-
-На Mac введи:
-
-```bash
-cd "/Users/daryavedeneeva/ Projects  /Planner"
-```
-
-Потом введи эту длинную команду:
-
-```bash
-node --env-file=.env.supabase.local --input-type=module -e 'import { getSupabaseRuntimeDatabaseUrl } from "./scripts/supabase-utils.mjs"; console.log(["NODE_ENV=production","API_AUTH_MODE=supabase","API_STORAGE_DRIVER=postgres","API_DB_RLS_MODE=disabled","API_HOST=127.0.0.1","API_PORT=3001","API_CORS_ORIGIN=https://chaotika.ru","API_ICON_ASSET_DIR=/var/lib/planner/icon-assets","DATABASE_URL=" + getSupabaseRuntimeDatabaseUrl(),"SUPABASE_URL=" + process.env.SUPABASE_URL,"SUPABASE_PUBLISHABLE_KEY=" + process.env.SUPABASE_PUBLISHABLE_KEY,"SUPABASE_JWT_SECRET=" + (process.env.SUPABASE_JWT_SECRET ?? "")].join("\n"))'
-```
-
-Она напечатает текст вида:
-
-```text
-NODE_ENV=production
-API_AUTH_MODE=supabase
-...
-```
-
-Скопируй весь напечатанный текст.
-
-Вернись в окно сервера, где открыт `nano`, и вставь этот текст.
-
-Сохранить файл в nano:
-
-```text
-Ctrl + O
-Enter
-Ctrl + X
-```
-
-Потом на сервере задай права на файл:
+После сохранения выставить права:
 
 ```bash
 chown root:planner /etc/planner/planner.env
-```
-
-Потом:
-
-```bash
 chmod 640 /etc/planner/planner.env
 ```
 
-## Шаг 9. Собрать web-сайт на сервере
+## 4. Первый deploy
 
-На сервере введи:
-
-```bash
-cd /opt/planner
-```
-
-Потом вставь эту команду целиком:
+На Mac:
 
 ```bash
-sudo -u planner env \
-  VITE_API_BASE_URL=https://chaotika.ru \
-  VITE_SUPABASE_URL="$(grep '^SUPABASE_URL=' /etc/planner/planner.env | cut -d= -f2-)" \
-  VITE_SUPABASE_PUBLISHABLE_KEY="$(grep '^SUPABASE_PUBLISHABLE_KEY=' /etc/planner/planner.env | cut -d= -f2-)" \
-  npm run build
+cd "/Users/daryavedeneeva/ Projects  /Planner"
+npm run deploy:prod
 ```
 
-Если в конце видишь примерно:
+Скрипт делает следующее:
 
 ```text
-built in ...
+1. Проверяет рабочее дерево и предупреждает о незакоммиченных изменениях.
+2. Запускает npm run check.
+3. Создает/проверяет production-директории на сервере.
+4. Копирует проект через rsync.
+5. Копирует apps/api/tmp/icon-assets, если папка есть.
+6. На сервере запускает npm ci --include=dev.
+7. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
+8. Копирует deploy/systemd/planner-api.service.
+9. Копирует deploy/caddy/Caddyfile.
+10. Перезапускает planner-api.
+11. Валидирует и перезагружает Caddy.
+12. Проверяет http://127.0.0.1:3001/api/health и https://chaotika.ru/api/health.
 ```
 
-значит сайт собрался.
-
-Проверь, что папка сайта есть:
-
-```bash
-ls -la /opt/planner/apps/web/dist
-```
-
-Если видишь `index.html`, всё хорошо.
-
-## Шаг 10. Запустить API как сервис
-
-На сервере введи:
-
-```bash
-cp /opt/planner/deploy/systemd/planner-api.service /etc/systemd/system/planner-api.service
-```
-
-Потом:
-
-```bash
-systemctl daemon-reload
-```
-
-Потом:
-
-```bash
-systemctl enable --now planner-api
-```
-
-Проверь статус:
-
-```bash
-systemctl status planner-api
-```
-
-Хорошо, если видишь:
-
-```text
-active (running)
-```
-
-Чтобы выйти из просмотра статуса, нажми:
-
-```text
-q
-```
-
-Проверь API:
-
-```bash
-curl http://127.0.0.1:3001/api/health
-```
-
-Хороший результат содержит:
-
-```text
-"status":"ok"
-```
-
-Если API не запустился, посмотреть ошибку можно так:
-
-```bash
-journalctl -u planner-api -n 100 --no-pager
-```
-
-## Шаг 11. Настроить Caddy для HTTPS и домена
-
-На сервере скопируй готовый Caddyfile:
-
-```bash
-cp /opt/planner/deploy/caddy/Caddyfile /etc/caddy/Caddyfile
-```
-
-Проверь конфиг:
-
-```bash
-cat /etc/caddy/Caddyfile
-```
-
-Там должен быть домен:
-
-```text
-chaotika.ru
-```
-
-Проверь Caddy:
-
-```bash
-caddy validate --config /etc/caddy/Caddyfile
-```
-
-Если ошибок нет, перезапусти Caddy:
-
-```bash
-systemctl reload caddy
-```
-
-Проверь сайт через API:
+После успешного deploy проверить:
 
 ```bash
 curl https://chaotika.ru/api/health
 ```
 
-Хороший результат содержит:
+Ожидаемый фрагмент ответа:
 
 ```text
 "status":"ok"
 ```
 
-Теперь открой в браузере:
+Один раз после первого deploy включить автозапуск API после reboot:
 
-```text
-https://chaotika.ru
+```bash
+ssh root@147.45.158.186 "systemctl enable planner-api && systemctl enable caddy"
 ```
 
-## Шаг 12. Настроить Supabase, чтобы вход работал
+## 5. Настроить Supabase Auth redirects
 
-Открой Supabase Dashboard в браузере.
-
-Дальше:
+В Supabase Dashboard:
 
 ```text
-1. Выбери проект Planner.
-2. Слева открой Authentication.
-3. Открой URL Configuration.
-4. В Site URL вставь https://chaotika.ru
-5. В Redirect URLs добавь https://chaotika.ru/**
-6. Нажми Save.
+Authentication -> URL Configuration
 ```
 
-Для локальной разработки можно оставить ещё:
+Production:
+
+```text
+Site URL: https://chaotika.ru
+Redirect URLs: https://chaotika.ru/**
+```
+
+Для локальной разработки можно оставить:
 
 ```text
 http://localhost:5173/**
 http://127.0.0.1:5173/**
 ```
 
-## Шаг 13. Финальная проверка
+## Частые команды deploy
 
-Открой:
-
-```text
-https://chaotika.ru
-```
-
-Проверь:
-
-```text
-1. Страница открывается.
-2. Можно зарегистрироваться или войти.
-3. Можно создать задачу.
-4. После обновления страницы задача остаётся.
-5. С телефона сайт тоже открывается.
-```
-
-## Как обновлять сайт потом
-
-Когда ты изменила код на Mac и хочешь обновить сервер, теперь используй одну
-команду.
-
-На Mac:
-
-```bash
-cd "/Users/daryavedeneeva/ Projects  /Planner"
-```
-
-Потом:
+Обычное обновление:
 
 ```bash
 npm run deploy:prod
 ```
 
-Эта команда сама делает:
-
-```text
-1. Проверяет код: lint, typecheck, tests.
-2. Копирует проект на сервер.
-3. Копирует локальные картинки/иконки, если они есть.
-4. На сервере запускает npm ci --include=dev.
-5. Собирает web для https://chaotika.ru.
-6. Перезапускает API.
-7. Перезагружает Caddy.
-8. Проверяет https://chaotika.ru/api/health.
-```
-
-Если нужно быстро выкатить маленькую правку без локальных проверок:
+Без локальных проверок:
 
 ```bash
 npm run deploy:prod -- --skip-checks
 ```
 
-Если не нужно копировать локальные картинки:
+Без копирования локальных иконок:
 
 ```bash
 npm run deploy:prod -- --skip-icons
 ```
 
-Если хочешь посмотреть, что будет скопировано, но ничего не перезапускать:
+Dry run:
 
 ```bash
 npm run deploy:prod -- --dry-run
 ```
 
-## Как убрать запрос пароля при деплое
+Переопределения через env:
 
-На Mac уже должен быть отдельный SSH-ключ для production:
-
-```text
-~/.ssh/planner_timeweb_ed25519
+```bash
+DEPLOY_HOST=root@147.45.158.186
+DEPLOY_DOMAIN=chaotika.ru
+DEPLOY_REMOTE_ROOT=/opt/planner
+DEPLOY_ICON_REMOTE_DIR=/var/lib/planner/icon-assets
 ```
 
-Чтобы сервер начал его принимать, один раз выполни на Mac:
+## SSH без пароля
+
+Если локально настроен SSH alias `planner-prod`, ключ можно добавить так:
 
 ```bash
 ssh-copy-id -i ~/.ssh/planner_timeweb_ed25519.pub planner-prod
-```
-
-Команда попросит пароль от сервера Timeweb. Введи его последний раз.
-
-Проверь вход без пароля:
-
-```bash
 ssh planner-prod "echo ok"
 ```
 
-Хороший результат:
+После этого можно запускать deploy с переопределением хоста:
 
-```text
-ok
+```bash
+DEPLOY_HOST=planner-prod npm run deploy:prod
 ```
 
-После этого `npm run deploy:prod` тоже должен работать без запроса пароля.
+## Диагностика
 
-## Если что-то не работает
-
-### Сайт не открывается
-
-На Mac проверь домен:
+DNS:
 
 ```bash
 dig +short chaotika.ru
 ```
 
-Должно быть:
-
-```text
-147.45.158.186
-```
-
-Если пусто или другой IP, проблема в DNS Timeweb.
-
-### API не работает
-
-На сервере:
+API на сервере:
 
 ```bash
 systemctl status planner-api
-```
-
-Потом:
-
-```bash
 journalctl -u planner-api -n 100 --no-pager
+curl http://127.0.0.1:3001/api/health
 ```
 
-### HTTPS не работает
-
-На сервере:
+Caddy/HTTPS:
 
 ```bash
 systemctl status caddy
+journalctl -u caddy -n 100 --no-pager
+caddy validate --config /etc/caddy/Caddyfile
+curl https://chaotika.ru/api/health
 ```
 
-Потом:
+Проверить production env:
 
 ```bash
-journalctl -u caddy -n 100 --no-pager
+grep -E '^(NODE_ENV|API_|DATABASE_URL|SUPABASE_)' /etc/planner/planner.env
 ```
 
-### Вход перекидывает не туда
+Проверить файлы web build:
 
-Проверь Supabase:
-
-```text
-Authentication -> URL Configuration
+```bash
+ls -la /opt/planner/apps/web/dist
 ```
 
-Там должно быть:
+Проверить локальные icon assets на сервере:
 
-```text
-Site URL: https://chaotika.ru
-Redirect URLs: https://chaotika.ru/**
+```bash
+ls -la /var/lib/planner/icon-assets
 ```
