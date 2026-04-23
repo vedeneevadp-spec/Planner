@@ -1,5 +1,3 @@
-import { generateUuidV7 } from '@planner/contracts'
-
 import { HttpError } from '../../bootstrap/http-error.js'
 import type {
   CreateLifeSphereCommand,
@@ -11,10 +9,7 @@ import type {
   WeeklySphereStatsResult,
 } from './life-sphere.model.js'
 import type { LifeSphereRepository } from './life-sphere.repository.js'
-import {
-  createStoredLifeSphereRecord,
-  DEFAULT_LIFE_SPHERES,
-} from './life-sphere.shared.js'
+import { createStoredLifeSphereRecord } from './life-sphere.shared.js'
 
 export class MemoryLifeSphereRepository implements LifeSphereRepository {
   private readonly spheres = new Map<string, StoredLifeSphereRecord>()
@@ -22,8 +17,6 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
   listByWorkspace(
     context: LifeSphereReadContext,
   ): Promise<StoredLifeSphereRecord[]> {
-    this.ensureDefaultSpheres(context)
-
     return Promise.resolve(this.listActiveSpheres(context))
   }
 
@@ -49,8 +42,15 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
       ...(command.input.name !== undefined
         ? { name: command.input.name.trim() }
         : {}),
-      ...(command.input.color !== undefined ? { color: command.input.color } : {}),
-      ...(command.input.icon !== undefined ? { icon: command.input.icon } : {}),
+      ...(command.input.description !== undefined
+        ? { description: command.input.description.trim() }
+        : {}),
+      ...(command.input.color !== undefined
+        ? { color: command.input.color.trim() }
+        : {}),
+      ...(command.input.icon !== undefined
+        ? { icon: command.input.icon.trim() }
+        : {}),
       ...(command.input.isActive !== undefined
         ? { isActive: command.input.isActive }
         : {}),
@@ -86,7 +86,6 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
   getWeeklyStats(
     command: WeeklySphereStatsCommand,
   ): Promise<WeeklySphereStatsResult> {
-    this.ensureDefaultSpheres(command.context)
     const spheres = this.listActiveSpheres(command.context)
 
     return Promise.resolve({
@@ -113,39 +112,11 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
       .filter(
         (sphere) =>
           sphere.workspaceId === context.workspaceId &&
-          sphere.userId === context.actorUserId &&
+          (!context.actorUserId || sphere.userId === context.actorUserId) &&
           sphere.deletedAt === null &&
           sphere.isActive,
       )
       .sort((left, right) => left.sortOrder - right.sortOrder)
-  }
-
-  private ensureDefaultSpheres(context: LifeSphereReadContext): void {
-    if (!context.actorUserId || this.listActiveSpheres(context).length > 0) {
-      return
-    }
-
-    const now = new Date().toISOString()
-
-    DEFAULT_LIFE_SPHERES.forEach((sphere, index) => {
-      const id = generateUuidV7()
-
-      this.spheres.set(id, {
-        color: sphere.color,
-        createdAt: now,
-        deletedAt: null,
-        icon: sphere.icon,
-        id,
-        isActive: true,
-        isDefault: true,
-        name: sphere.name,
-        sortOrder: index,
-        updatedAt: now,
-        userId: context.actorUserId!,
-        version: 1,
-        workspaceId: context.workspaceId,
-      })
-    })
   }
 
   private getSphereOrThrow(

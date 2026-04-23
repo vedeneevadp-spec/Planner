@@ -17,7 +17,7 @@ interface ProjectPickerProps {
 
 export function ProjectPicker({
   className,
-  label = 'Проект',
+  label = 'Сфера',
   projects,
   uploadedIcons = [],
   value,
@@ -114,7 +114,7 @@ function ProjectOptionContent({
     return (
       <>
         <span className={styles.emptyIcon} aria-hidden="true" />
-        <span className={styles.title}>Без проекта</span>
+        <span className={styles.title}>Без сферы</span>
       </>
     )
   }

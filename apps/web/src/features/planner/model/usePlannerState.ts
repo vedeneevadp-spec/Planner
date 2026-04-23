@@ -1479,11 +1479,12 @@ export function usePlannerState(): PlannerState {
 
       if (
         error instanceof PlannerApiError &&
-        error.code === 'project_version_conflict'
+        (error.code === 'project_version_conflict' ||
+          error.code === 'life_sphere_version_conflict')
       ) {
         await queryClient.invalidateQueries({ queryKey: projectQueryKey })
         setMutationErrorMessage(
-          'Проект уже изменился на сервере. Обновили данные, повторите действие.',
+          'Сфера уже изменилась на сервере. Обновили данные, повторите действие.',
         )
 
         return false

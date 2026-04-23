@@ -189,6 +189,7 @@ function isVersionConflict(error: unknown): error is PlannerApiError {
   return (
     error instanceof PlannerApiError &&
     (error.code === 'project_version_conflict' ||
+      error.code === 'life_sphere_version_conflict' ||
       error.code === 'task_version_conflict')
   )
 }

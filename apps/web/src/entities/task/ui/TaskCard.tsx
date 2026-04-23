@@ -85,7 +85,7 @@ export function TaskCard({
               <span>{projectTitle}</span>
             </span>
           ) : (
-            <span className={styles.projectBadgeMuted}>Без проекта</span>
+            <span className={styles.projectBadgeMuted}>Без сферы</span>
           )}
 
           <div className={styles.titleRow}>

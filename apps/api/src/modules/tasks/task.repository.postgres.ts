@@ -124,9 +124,11 @@ export class PostgresTaskRepository implements TaskRepository {
   async create(command: CreateTaskCommand): Promise<StoredTaskRecord> {
     const normalizedInput = normalizeTaskInput(command.input)
     const normalizedSchedule = normalizeTaskSchedule(command.input)
+    const sphereProjectId =
+      normalizedInput.projectId ?? normalizedInput.sphereId
     const project = await this.resolveTaskProject(
       command.context,
-      normalizedInput.projectId,
+      sphereProjectId,
     )
     const metadata = this.buildTaskMetadata(
       project ? '' : normalizedInput.project,
@@ -179,7 +181,7 @@ export class PostgresTaskRepository implements TaskRepository {
             priority: 2,
             project_id: project?.id ?? null,
             resource: normalizedInput.resource,
-            sphere_id: normalizedInput.sphereId,
+            sphere_id: project?.id ?? null,
             sort_key: '',
             status: 'todo',
             title: normalizedInput.title,
@@ -247,9 +249,11 @@ export class PostgresTaskRepository implements TaskRepository {
       id: command.taskId,
     })
     const normalizedSchedule = normalizeTaskSchedule(normalizedInput)
+    const sphereProjectId =
+      normalizedInput.projectId ?? normalizedInput.sphereId
     const project = await this.resolveTaskProject(
       command.context,
-      normalizedInput.projectId,
+      sphereProjectId,
     )
     const metadata = this.buildTaskMetadata(
       project ? '' : normalizedInput.project,
@@ -297,7 +301,7 @@ export class PostgresTaskRepository implements TaskRepository {
             planned_on: normalizedSchedule.plannedDate,
             project_id: project?.id ?? null,
             resource: normalizedInput.resource,
-            sphere_id: normalizedInput.sphereId,
+            sphere_id: project?.id ?? null,
             title: normalizedInput.title,
             updated_by: command.context.actorUserId,
           })
@@ -777,7 +781,7 @@ export class PostgresTaskRepository implements TaskRepository {
               2,
               cast(${params.projectId} as uuid),
               ${params.normalizedInput.resource},
-              cast(${params.normalizedInput.sphereId} as uuid),
+              cast(${params.projectId} as uuid),
               '',
               'todo',
               ${params.normalizedInput.title},
@@ -1009,7 +1013,7 @@ export class PostgresTaskRepository implements TaskRepository {
               planned_on = cast(${params.normalizedSchedule.plannedDate} as date),
               project_id = cast(${params.projectId} as uuid),
               resource = ${params.normalizedInput.resource},
-              sphere_id = cast(${params.normalizedInput.sphereId} as uuid),
+              sphere_id = cast(${params.projectId} as uuid),
               title = ${params.normalizedInput.title},
               updated_by = ${command.context.actorUserId}
             where id = ${command.taskId}
@@ -1482,7 +1486,14 @@ export class PostgresTaskRepository implements TaskRepository {
       }
 
       if (filters?.sphereId) {
-        query = query.where('sphere_id', '=', filters.sphereId)
+        const sphereId = filters.sphereId
+
+        query = query.where((expressionBuilder) =>
+          expressionBuilder.or([
+            expressionBuilder('project_id', '=', sphereId),
+            expressionBuilder('sphere_id', '=', sphereId),
+          ]),
+        )
       }
 
       const batch = await query.execute()
@@ -1666,7 +1677,7 @@ export class PostgresTaskRepository implements TaskRepository {
       project: projectTitle ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
       resource: task.resource,
-      sphereId: task.sphere_id,
+      sphereId: task.project_id ?? task.sphere_id,
       status: task.status,
       title: task.title,
       urgency: this.readTaskUrgency(task.metadata),
@@ -1698,7 +1709,7 @@ export class PostgresTaskRepository implements TaskRepository {
       project: task.project_title ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
       resource: task.resource,
-      sphereId: task.sphere_id,
+      sphereId: task.project_id ?? task.sphere_id,
       status: task.status,
       title: task.title,
       urgency: this.readTaskUrgency(task.metadata),

@@ -6,17 +6,18 @@ export const UNSPHERED_ID = '__unsphered__'
 
 export const DEFAULT_LIFE_SPHERES: Array<{
   color: string
+  description: string
   icon: string
   name: string
 }> = [
-  { name: 'Работа', color: '#2f6f62', icon: 'briefcase' },
-  { name: 'Дом', color: '#c47f42', icon: 'home' },
-  { name: 'Дети / семья', color: '#e0a84f', icon: 'heart' },
-  { name: 'Здоровье', color: '#5f8f78', icon: 'activity' },
-  { name: 'Отношения', color: '#b46a55', icon: 'heart' },
-  { name: 'Я / личное', color: '#557a9f', icon: 'spark' },
-  { name: 'Быт / покупки', color: '#8a7356', icon: 'cart' },
-  { name: 'Финансы', color: '#596b3f', icon: 'wallet' },
+  { name: 'Работа', description: '', color: '#2f6f62', icon: 'briefcase' },
+  { name: 'Дом', description: '', color: '#c47f42', icon: 'home' },
+  { name: 'Дети / семья', description: '', color: '#e0a84f', icon: 'heart' },
+  { name: 'Здоровье', description: '', color: '#5f8f78', icon: 'activity' },
+  { name: 'Отношения', description: '', color: '#b46a55', icon: 'heart' },
+  { name: 'Я / личное', description: '', color: '#557a9f', icon: 'spark' },
+  { name: 'Быт / покупки', description: '', color: '#8a7356', icon: 'cart' },
+  { name: 'Финансы', description: '', color: '#596b3f', icon: 'wallet' },
 ]
 
 export function createStoredLifeSphereRecord(
@@ -32,10 +33,11 @@ export function createStoredLifeSphereRecord(
   const now = options.now ?? new Date().toISOString()
 
   return {
-    color: input.color,
+    color: input.color.trim(),
     createdAt: now,
     deletedAt: null,
-    icon: input.icon,
+    description: input.description.trim(),
+    icon: input.icon.trim(),
     id: input.id ?? options.id ?? generateUuidV7(),
     isActive: true,
     isDefault: false,

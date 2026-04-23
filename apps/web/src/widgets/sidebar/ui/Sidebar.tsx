@@ -13,7 +13,6 @@ const navigation = [
   { to: '/timeline', label: 'Таймлайн' },
   { to: '/inbox', label: 'Сброс' },
   { to: '/spheres', label: 'Сферы' },
-  { to: '/projects', label: 'Проекты' },
   { to: '/admin', label: 'Admin' },
 ] as const
 
@@ -137,7 +136,7 @@ export function Sidebar() {
                 ? summary.timelineCount
                 : item.to === '/inbox'
                   ? summary.inboxCount
-                  : item.to === '/spheres' || item.to === '/projects'
+                  : item.to === '/spheres'
                     ? projects.length
                     : (session?.role ?? 'Admin')
 

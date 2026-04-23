@@ -8,15 +8,15 @@ import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
-import { ProjectForm } from './ProjectForm'
-import styles from './ProjectsPage.module.css'
+import { SphereForm } from './SphereForm'
+import styles from './SpheresPage.module.css'
 
-export function ProjectPage() {
-  const { projectId } = useParams()
+export function SpherePage() {
+  const { sphereId } = useParams()
   const {
     isLoading,
     isTaskPending,
-    projects,
+    projects: spheres,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
@@ -26,26 +26,26 @@ export function ProjectPage() {
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
   const [isEditing, setIsEditing] = useState(false)
-  const project = projects.find((candidate) => candidate.id === projectId)
-  const projectTasks = useMemo(
-    () => tasks.filter((task) => task.projectId === projectId),
-    [projectId, tasks],
+  const sphere = spheres.find((candidate) => candidate.id === sphereId)
+  const sphereTasks = useMemo(
+    () => tasks.filter((task) => task.projectId === sphereId),
+    [sphereId, tasks],
   )
 
-  if (!project) {
+  if (!sphere) {
     return (
       <section className={pageStyles.page}>
         <PageHeader
-          kicker="Projects"
-          title={isLoading ? 'Загружаем проект' : 'Проект не найден'}
+          kicker="Spheres"
+          title={isLoading ? 'Загружаем сферу' : 'Сфера не найдена'}
           description={
             isLoading
-              ? 'Проверяем список проектов в текущем workspace.'
-              : 'В этом workspace нет проекта с таким идентификатором.'
+              ? 'Проверяем список сфер в текущем workspace.'
+              : 'В этом workspace нет сферы с таким идентификатором.'
           }
         />
-        <Link className={styles.secondaryButton} to="/projects">
-          К проектам
+        <Link className={styles.secondaryButton} to="/spheres">
+          К сферам
         </Link>
       </section>
     )
@@ -54,29 +54,29 @@ export function ProjectPage() {
   return (
     <section className={pageStyles.page}>
       <PageHeader
-        kicker="Project"
-        title={project.title}
-        description={project.description || 'Описание проекта пока пустое.'}
+        kicker="Sphere"
+        title={sphere.title}
+        description={sphere.description || 'Описание сферы пока пустое.'}
       />
 
       <section className={styles.detailPanel}>
         <div className={styles.detailHeader}>
-          <div className={styles.projectIdentity}>
+          <div className={styles.sphereIdentity}>
             <span
-              className={styles.projectIconLarge}
-              style={{ backgroundColor: project.color }}
+              className={styles.sphereIconLarge}
+              style={{ backgroundColor: sphere.color }}
             >
-              <IconMark value={project.icon} uploadedIcons={uploadedIcons} />
+              <IconMark value={sphere.icon} uploadedIcons={uploadedIcons} />
             </span>
             <div>
               <p className={styles.eyebrow}>Marker</p>
-              <h3>{project.title}</h3>
+              <h3>{sphere.title}</h3>
             </div>
           </div>
 
           <div className={styles.detailActions}>
-            <Link className={styles.secondaryButton} to="/projects">
-              К проектам
+            <Link className={styles.secondaryButton} to="/spheres">
+              К сферам
             </Link>
             <button
               className={styles.primaryButton}
@@ -89,15 +89,15 @@ export function ProjectPage() {
         </div>
 
         {isEditing ? (
-          <ProjectForm
-            project={project}
+          <SphereForm
+            sphere={sphere}
             submitLabel="Сохранить"
             uploadedIcons={uploadedIcons}
             onCancel={() => setIsEditing(false)}
             onSubmit={async (values) => {
-              const isSaved = await updateProject(project.id, {
+              const isSaved = await updateProject(sphere.id, {
                 ...values,
-                expectedVersion: project.version,
+                expectedVersion: sphere.version,
               })
 
               if (isSaved) {
@@ -111,11 +111,11 @@ export function ProjectPage() {
       </section>
 
       <TaskSection
-        title="Задачи проекта"
-        tasks={projectTasks}
-        projects={projects}
+        title="Задачи сферы"
+        tasks={sphereTasks}
+        projects={spheres}
         uploadedIcons={uploadedIcons}
-        emptyMessage="В этом проекте пока нет задач."
+        emptyMessage="В этой сфере пока нет задач."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {
           void removeTask(taskId)

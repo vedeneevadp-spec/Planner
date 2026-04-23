@@ -122,7 +122,7 @@ describe('plannerApi', () => {
     expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBeNull()
   })
 
-  it('creates and updates projects through the planner API', async () => {
+  it('creates and updates spheres through the planner API', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(
@@ -134,9 +134,12 @@ describe('plannerApi', () => {
             description: '',
             icon: 'folder',
             id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b2',
-            status: 'active',
-            title: 'Planner',
+            isActive: true,
+            isDefault: false,
+            name: 'Planner',
+            sortOrder: 0,
             updatedAt: '2026-04-16T02:00:00.000Z',
+            userId: 'user-1',
             version: 1,
             workspaceId: 'workspace-1',
           }),
@@ -152,9 +155,12 @@ describe('plannerApi', () => {
             description: 'Updated',
             icon: 'target',
             id: 'project-1',
-            status: 'active',
-            title: 'Planner App',
+            isActive: true,
+            isDefault: false,
+            name: 'Planner App',
+            sortOrder: 0,
             updatedAt: '2026-04-16T03:00:00.000Z',
+            userId: 'user-1',
             version: 2,
             workspaceId: 'workspace-1',
           }),
@@ -183,13 +189,18 @@ describe('plannerApi', () => {
       createUrl instanceof URL ? createUrl.href : createUrl
     const updateRequestUrl =
       updateUrl instanceof URL ? updateUrl.href : updateUrl
-    const createBody = parseJsonRequestBody<{ id: string }>(createRequestInit)
+    const createBody = parseJsonRequestBody<{ id: string; name: string }>(
+      createRequestInit,
+    )
 
-    expect(createRequestUrl).toBe('http://127.0.0.1:3001/api/v1/projects')
+    expect(createRequestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/life-spheres',
+    )
     expect(updateRequestUrl).toBe(
-      'http://127.0.0.1:3001/api/v1/projects/project-1',
+      'http://127.0.0.1:3001/api/v1/life-spheres/project-1',
     )
     expect(isUuidV7(createBody.id)).toBe(true)
+    expect(createBody.name).toBe('Planner')
     expect(new Headers(createRequestInit?.headers).get('x-actor-user-id')).toBe(
       'user-1',
     )

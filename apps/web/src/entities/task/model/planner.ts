@@ -426,7 +426,7 @@ export function groupTasksByProject(tasks: Task[]): Array<[string, Task[]]> {
   const projectMap = new Map<string, Task[]>()
 
   for (const task of tasks) {
-    const projectName = task.project.trim() || 'No project'
+    const projectName = task.project.trim() || 'No sphere'
     const projectTasks = projectMap.get(projectName) ?? []
 
     projectTasks.push(task)

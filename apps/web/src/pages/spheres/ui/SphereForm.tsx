@@ -8,9 +8,9 @@ import {
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 
-import styles from './ProjectsPage.module.css'
+import styles from './SpheresPage.module.css'
 
-const PROJECT_COLORS = [
+const SPHERE_COLORS = [
   '#1a3bd1',
   '#4010c3',
   '#bf1fd3',
@@ -39,35 +39,35 @@ const PROJECT_COLORS = [
   '#90ef90',
 ] as const
 
-const DEFAULT_PROJECT_ICON = createSvgIconValue('folder')
+const DEFAULT_SPHERE_ICON = createSvgIconValue('folder')
 
-export interface ProjectFormValues {
+export interface SphereFormValues {
   color: string
   description: string
   icon: string
   title: string
 }
 
-interface ProjectFormProps {
-  project?: Project | undefined
+interface SphereFormProps {
+  sphere?: Project | undefined
   submitLabel: string
   uploadedIcons?: UploadedIconAsset[] | undefined
   onCancel?: (() => void) | undefined
-  onSubmit: (values: ProjectFormValues) => Promise<boolean>
+  onSubmit: (values: SphereFormValues) => Promise<boolean>
 }
 
-export function ProjectForm({
-  project,
+export function SphereForm({
+  sphere,
   submitLabel,
   uploadedIcons = [],
   onCancel,
   onSubmit,
-}: ProjectFormProps) {
+}: SphereFormProps) {
   const titleId = useId()
-  const [title, setTitle] = useState(project?.title ?? '')
-  const [description, setDescription] = useState(project?.description ?? '')
-  const [color, setColor] = useState(project?.color ?? PROJECT_COLORS[0])
-  const [icon, setIcon] = useState(project?.icon ?? DEFAULT_PROJECT_ICON)
+  const [title, setTitle] = useState(sphere?.title ?? '')
+  const [description, setDescription] = useState(sphere?.description ?? '')
+  const [color, setColor] = useState(sphere?.color ?? SPHERE_COLORS[0])
+  const [icon, setIcon] = useState(sphere?.icon ?? DEFAULT_SPHERE_ICON)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -85,19 +85,19 @@ export function ProjectForm({
       title: normalizedTitle,
     })
 
-    if (!isSaved || project) {
+    if (!isSaved || sphere) {
       return
     }
 
     setTitle('')
     setDescription('')
-    setColor(PROJECT_COLORS[0])
-    setIcon(DEFAULT_PROJECT_ICON)
+    setColor(SPHERE_COLORS[0])
+    setIcon(DEFAULT_SPHERE_ICON)
   }
 
   return (
     <form
-      className={styles.projectForm}
+      className={styles.sphereForm}
       aria-labelledby={titleId}
       onSubmit={(event) => {
         void handleSubmit(event)
@@ -105,7 +105,7 @@ export function ProjectForm({
     >
       <div className={styles.formHeader}>
         <h3 id={titleId}>
-          {project ? 'Редактировать проект' : 'Новый проект'}
+          {sphere ? 'Редактировать сферу' : 'Новая сфера'}
         </h3>
         {onCancel ? (
           <button
@@ -118,13 +118,13 @@ export function ProjectForm({
         ) : null}
       </div>
 
-      <div className={styles.formGrid}>
+      <div className={styles.formGridDetailed}>
         <label className={styles.field}>
           <span>Название</span>
           <input
             required
             value={title}
-            placeholder="Planner"
+            placeholder="Например: здоровье"
             onChange={(event) => setTitle(event.target.value)}
           />
         </label>
@@ -134,7 +134,7 @@ export function ProjectForm({
           <textarea
             rows={3}
             value={description}
-            placeholder="Контекст проекта и ожидаемый результат"
+            placeholder="Что входит в эту сферу и какой результат важен"
             onChange={(event) => setDescription(event.target.value)}
           />
         </label>
@@ -142,19 +142,19 @@ export function ProjectForm({
 
       <div className={styles.pickerRow}>
         <div className={styles.pickerGroup}>
-          <span className={styles.pickerLabel}>Маркер</span>
+          <span className={styles.pickerLabel}>Цвет</span>
           <div className={styles.swatchList}>
-            {PROJECT_COLORS.map((projectColor) => (
+            {SPHERE_COLORS.map((sphereColor) => (
               <button
-                key={projectColor}
+                key={sphereColor}
                 className={cx(
                   styles.swatchButton,
-                  color === projectColor && styles.swatchButtonActive,
+                  color === sphereColor && styles.swatchButtonActive,
                 )}
                 type="button"
-                style={{ backgroundColor: projectColor }}
-                aria-label={`Цвет ${projectColor}`}
-                onClick={() => setColor(projectColor)}
+                style={{ backgroundColor: sphereColor }}
+                aria-label={`Цвет ${sphereColor}`}
+                onClick={() => setColor(sphereColor)}
               />
             ))}
           </div>

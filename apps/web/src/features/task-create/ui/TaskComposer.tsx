@@ -406,7 +406,7 @@ export function TaskComposer({
                       )
                       const templateProjectTitle =
                         templateProject?.title ??
-                        (template.project || 'Без проекта')
+                        (template.project || 'Без сферы')
 
                       return (
                         <article

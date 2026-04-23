@@ -118,7 +118,7 @@ function buildTaskInput(item: Awaited<ReturnType<ChaosInboxRepository['getById']
     plannedEndTime: null,
     plannedStartTime: null,
     project: '',
-    projectId: null,
+    projectId: item.sphereId,
     resource: item.priority === 'high' ? 3 : item.priority === 'low' ? 1 : 2,
     sphereId: item.sphereId,
     title: item.text,

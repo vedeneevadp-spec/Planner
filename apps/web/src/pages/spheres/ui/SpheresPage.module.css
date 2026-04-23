@@ -1,15 +1,19 @@
 .balancePanel,
 .forgottenPanel,
+.detailPanel,
+.sphereForm,
 .sphereCard {
   border: 1px solid var(--line);
-  border-radius: 28px;
+  border-radius: 24px;
   background: var(--surface);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
 
 .balancePanel,
-.forgottenPanel {
+.forgottenPanel,
+.detailPanel,
+.sphereForm {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -30,6 +34,11 @@
 .balanceHeader,
 .cardHeader,
 .cardActions,
+.detailHeader,
+.detailActions,
+.formHeader,
+.pickerRow,
+.sphereIdentity,
 .forgottenPanel {
   display: flex;
   align-items: flex-start;
@@ -46,6 +55,8 @@
 }
 
 .balanceHeader h3,
+.detailHeader h3,
+.formHeader h3,
 .forgottenPanel h3,
 .sphereCard h3 {
   margin: 0.2rem 0 0;
@@ -59,6 +70,7 @@
 
 .balanceHeader p,
 .emptyCopy,
+.sphereDescription,
 .cardCopy,
 .statsGrid span {
   color: var(--text-soft);
@@ -66,6 +78,7 @@
 
 .balanceHeader p,
 .emptyCopy,
+.sphereDescription,
 .cardCopy {
   margin: 0.4rem 0 0;
 }
@@ -139,12 +152,22 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 1.1rem;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
 }
 
-.sphereIcon {
+.sphereCard:hover {
+  transform: translateY(-2px);
+  border-color: var(--line-strong);
+  background: var(--surface-strong);
+}
+
+.sphereIcon,
+.sphereIconLarge {
   display: inline-grid;
-  width: 3rem;
-  height: 3rem;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 999px;
@@ -152,9 +175,24 @@
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
+.sphereIcon {
+  width: 3rem;
+  height: 3rem;
+}
+
+.sphereIconLarge {
+  width: 3.4rem;
+  height: 3.4rem;
+}
+
 .sphereIcon > span {
   width: 1.55rem;
   height: 1.55rem;
+}
+
+.sphereIconLarge > span {
+  width: 1.8rem;
+  height: 1.8rem;
 }
 
 .healthBadge {
@@ -191,13 +229,96 @@
   gap: 0.65rem;
 }
 
-.formGrid input {
+.formGrid input,
+.field input,
+.field textarea {
+  width: 100%;
   min-height: 2.55rem;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 16px;
   padding: 0.55rem 0.85rem;
   background: rgba(255, 255, 255, 0.7);
   color: inherit;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.formGrid input {
+  border-radius: 999px;
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: rgba(33, 78, 66, 0.5);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.formGridDetailed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 0.85rem;
+}
+
+.field,
+.pickerGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.field span,
+.pickerLabel {
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.pickerRow {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.iconPicker {
+  min-width: min(100%, 24rem);
+}
+
+.swatchList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.swatchButton {
+  display: inline-grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  color: transparent;
+  transition:
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.swatchButtonActive {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.detailHeader,
+.formHeader {
+  align-items: center;
+}
+
+.sphereIdentity,
+.detailActions {
+  align-items: center;
+}
+
+.detailActions {
+  flex-wrap: wrap;
 }
 
 .statsGrid div {
@@ -253,11 +374,14 @@
   .balanceHeader,
   .forgottenPanel,
   .cardActions,
+  .detailHeader,
+  .formGridDetailed,
   .formGrid {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .formGridDetailed,
   .formGrid {
     display: flex;
   }
@@ -270,6 +394,8 @@
 @media (max-width: 560px) {
   .balancePanel,
   .forgottenPanel,
+  .detailPanel,
+  .sphereForm,
   .sphereCard {
     border-radius: 22px;
   }

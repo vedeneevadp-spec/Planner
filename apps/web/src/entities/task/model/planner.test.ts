@@ -131,7 +131,7 @@ describe('planner model', () => {
     })
   })
 
-  it('groups tasks by project and falls back to No project', () => {
+  it('groups tasks by project and falls back to No sphere', () => {
     const groups = groupTasksByProject([
       baseTask,
       {
@@ -143,7 +143,7 @@ describe('planner model', () => {
     ])
 
     expect(groups).toEqual([
-      ['No project', [expect.objectContaining({ id: 'task-2' })]],
+      ['No sphere', [expect.objectContaining({ id: 'task-2' })]],
       ['Planner', [expect.objectContaining({ id: 'task-1' })]],
     ])
   })

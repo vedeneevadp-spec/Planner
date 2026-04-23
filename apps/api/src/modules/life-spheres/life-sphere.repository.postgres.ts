@@ -8,6 +8,7 @@ import {
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
+import { buildProjectSlug } from '../projects/project.shared.js'
 import type {
   CreateLifeSphereCommand,
   DeleteLifeSphereCommand,
@@ -19,25 +20,24 @@ import type {
   WeeklySphereStatsResult,
 } from './life-sphere.model.js'
 import type { LifeSphereRepository } from './life-sphere.repository.js'
-import {
-  DEFAULT_LIFE_SPHERES,
-  resolveSphereHealth,
-  UNSPHERED_ID,
-} from './life-sphere.shared.js'
+import { resolveSphereHealth, UNSPHERED_ID } from './life-sphere.shared.js'
 
-type LifeSphereRow = Selectable<DatabaseSchema['app.life_spheres']>
+type ProjectRow = Selectable<DatabaseSchema['app.projects']>
 type TaskRow = Pick<
   Selectable<DatabaseSchema['app.tasks']>,
   | 'completed_at'
   | 'created_at'
   | 'due_on'
   | 'planned_on'
+  | 'project_id'
   | 'resource'
   | 'sphere_id'
   | 'status'
 >
 
 const DEFAULT_RESOURCE = 2
+const DEFAULT_SPHERE_COLOR = '#2f6f62'
+const DEFAULT_SPHERE_ICON = 'folder'
 
 export class PostgresLifeSphereRepository implements LifeSphereRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -45,51 +45,68 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
   async listByWorkspace(
     context: LifeSphereReadContext,
   ): Promise<StoredLifeSphereRecord[]> {
-    await this.ensureDefaultSpheres(context)
-
     const rows = await withOptionalRls(
       this.db,
       context.auth,
-      (executor) => this.loadActiveSphereRows(executor, context),
+      (executor) => this.loadActiveSphereRows(executor, context.workspaceId),
       context.actorUserId,
     )
 
-    return rows.map((row) => this.mapSphereRecord(row))
+    return rows.map((row) => this.mapSphereRecord(row, context))
   }
 
   async create(
     command: CreateLifeSphereCommand,
   ): Promise<StoredLifeSphereRecord> {
+    const name = command.input.name.trim()
+    const description = command.input.description.trim()
+    const color = command.input.color.trim()
+    const icon = command.input.icon.trim()
+    const sphereId = command.input.id ?? generateUuidV7()
+    const slug = buildProjectSlug(name, sphereId)
+
     return withWriteTransaction(
       this.db,
       command.context.auth,
       async (trx) => {
-        const nextSortOrder = await this.loadNextSortOrder(
+        const nextPosition = await this.loadNextPosition(
           trx,
           command.context.workspaceId,
-          command.context.actorUserId,
         )
-        const sphereId = command.input.id ?? generateUuidV7()
         const inserted = await trx
-          .insertInto('app.life_spheres')
+          .insertInto('app.projects')
           .values({
-            color: command.input.color,
+            color,
             created_by: command.context.actorUserId,
             deleted_at: null,
-            icon: command.input.icon,
+            description,
+            icon,
             id: sphereId,
-            is_active: true,
-            is_default: false,
-            name: command.input.name.trim(),
-            sort_order: nextSortOrder,
+            metadata: {},
+            position: nextPosition,
+            slug,
+            status: 'active',
+            title: name,
             updated_by: command.context.actorUserId,
-            user_id: command.context.actorUserId,
             workspace_id: command.context.workspaceId,
           })
+          .onConflict((conflict) => conflict.column('id').doNothing())
           .returningAll()
-          .executeTakeFirstOrThrow()
+          .executeTakeFirst()
 
-        return this.mapSphereRecord(inserted)
+        const sphere = inserted
+          ? inserted
+          : await this.loadActiveSphereRow(
+              trx,
+              command.context.workspaceId,
+              sphereId,
+            )
+
+        if (!sphere) {
+          throw new Error('Failed to create life sphere record.')
+        }
+
+        return this.mapSphereRecord(sphere, command.context)
       },
       command.context.actorUserId,
     )
@@ -98,50 +115,88 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
   async update(
     command: UpdateLifeSphereCommand,
   ): Promise<StoredLifeSphereRecord> {
-    const row = await withWriteTransaction(
+    return withWriteTransaction(
       this.db,
       command.context.auth,
       async (trx) => {
-        const updated = await trx
-          .updateTable('app.life_spheres')
+        let updateQuery = trx
+          .updateTable('app.projects')
           .set({
             ...(command.input.name !== undefined
-              ? { name: command.input.name.trim() }
+              ? { title: command.input.name.trim() }
+              : {}),
+            ...(command.input.description !== undefined
+              ? { description: command.input.description.trim() }
               : {}),
             ...(command.input.color !== undefined
-              ? { color: command.input.color }
+              ? { color: command.input.color.trim() }
               : {}),
             ...(command.input.icon !== undefined
-              ? { icon: command.input.icon }
+              ? { icon: command.input.icon.trim() }
               : {}),
             ...(command.input.isActive !== undefined
-              ? { is_active: command.input.isActive }
+              ? {
+                  status: command.input.isActive
+                    ? ('active' as const)
+                    : ('archived' as const),
+                }
               : {}),
             ...(command.input.sortOrder !== undefined
-              ? { sort_order: command.input.sortOrder }
+              ? { position: command.input.sortOrder }
               : {}),
             updated_by: command.context.actorUserId,
           })
           .where('id', '=', command.sphereId)
           .where('workspace_id', '=', command.context.workspaceId)
           .where('deleted_at', 'is', null)
-          .returningAll()
-          .executeTakeFirst()
 
-        if (!updated) {
-          throw new HttpError(
-            404,
-            'life_sphere_not_found',
-            'Life sphere not found.',
+        if (command.input.expectedVersion !== undefined) {
+          updateQuery = updateQuery.where(
+            'version',
+            '=',
+            command.input.expectedVersion,
           )
         }
 
-        return updated
+        const updated = await updateQuery.returningAll().executeTakeFirst()
+
+        if (!updated) {
+          const currentVersion = await this.loadCurrentSphereVersion(
+            trx,
+            command.context.workspaceId,
+            command.sphereId,
+          )
+
+          if (!currentVersion) {
+            throw new HttpError(
+              404,
+              'life_sphere_not_found',
+              'Life sphere not found.',
+            )
+          }
+
+          if (
+            command.input.expectedVersion !== undefined &&
+            Number(currentVersion.version) !== command.input.expectedVersion
+          ) {
+            throw new HttpError(
+              409,
+              'life_sphere_version_conflict',
+              'Life sphere was changed on the server.',
+              {
+                actualVersion: Number(currentVersion.version),
+                expectedVersion: command.input.expectedVersion,
+              },
+            )
+          }
+
+          throw new Error(`Life sphere "${command.sphereId}" was not updated.`)
+        }
+
+        return this.mapSphereRecord(updated, command.context)
       },
       command.context.actorUserId,
     )
-
-    return this.mapSphereRecord(row)
   }
 
   async remove(command: DeleteLifeSphereCommand): Promise<void> {
@@ -152,10 +207,10 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
       command.context.auth,
       async (trx) => {
         const updated = await trx
-          .updateTable('app.life_spheres')
+          .updateTable('app.projects')
           .set({
             deleted_at: deletedAt,
-            is_active: false,
+            status: 'archived',
             updated_by: command.context.actorUserId,
           })
           .where('id', '=', command.sphereId)
@@ -175,6 +230,34 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
         await trx
           .updateTable('app.tasks')
           .set({
+            project_id: null,
+            sphere_id: null,
+            updated_by: command.context.actorUserId,
+          })
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .where((expressionBuilder) =>
+            expressionBuilder.or([
+              expressionBuilder('project_id', '=', command.sphereId),
+              expressionBuilder('sphere_id', '=', command.sphereId),
+            ]),
+          )
+          .execute()
+
+        await trx
+          .updateTable('app.task_templates')
+          .set({
+            project_id: null,
+            updated_by: command.context.actorUserId,
+          })
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('project_id', '=', command.sphereId)
+          .where('deleted_at', 'is', null)
+          .execute()
+
+        await trx
+          .updateTable('app.chaos_inbox_items')
+          .set({
             sphere_id: null,
             updated_by: command.context.actorUserId,
           })
@@ -190,15 +273,13 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
   async getWeeklyStats(
     command: WeeklySphereStatsCommand,
   ): Promise<WeeklySphereStatsResult> {
-    await this.ensureDefaultSpheres(command.context)
-
     const [sphereRows, taskRows] = await withOptionalRls(
       this.db,
       command.context.auth,
       async (executor) => {
         const spheres = await this.loadActiveSphereRows(
           executor,
-          command.context,
+          command.context.workspaceId,
         )
         const tasks = await executor
           .selectFrom('app.tasks')
@@ -207,6 +288,7 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
             'created_at',
             'due_on',
             'planned_on',
+            'project_id',
             'resource',
             'sphere_id',
             'status',
@@ -219,7 +301,9 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
       },
       command.context.actorUserId,
     )
-    const spheres = sphereRows.map((row) => this.mapSphereRecord(row))
+    const spheres = sphereRows.map((row) =>
+      this.mapSphereRecord(row, command.context),
+    )
     const sphereIds = new Set(spheres.map((sphere) => sphere.id))
     const statsBySphereId = new Map<string, StoredSphereStatsWeekly>()
 
@@ -230,9 +314,12 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     let hasUnassigned = false
 
     for (const task of taskRows) {
-      const sphereId = task.sphere_id && sphereIds.has(task.sphere_id)
-        ? task.sphere_id
-        : UNSPHERED_ID
+      const sphereId =
+        task.project_id && sphereIds.has(task.project_id)
+          ? task.project_id
+          : task.sphere_id && sphereIds.has(task.sphere_id)
+            ? task.sphere_id
+            : UNSPHERED_ID
 
       if (sphereId === UNSPHERED_ID) {
         hasUnassigned = true
@@ -255,7 +342,10 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     )
     const stats = [...statsBySphereId.values()].map((statsItem) => {
       const idleDays = statsItem.lastActivityAt
-        ? Math.max(0, diffInDays(statsItem.lastActivityAt, getDateKey(new Date())))
+        ? Math.max(
+            0,
+            diffInDays(statsItem.lastActivityAt, getDateKey(new Date())),
+          )
         : null
 
       return {
@@ -283,104 +373,80 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     }
   }
 
-  private async ensureDefaultSpheres(
-    context: LifeSphereReadContext,
-  ): Promise<void> {
-    if (!context.actorUserId || context.role === 'viewer') {
-      return
-    }
-
-    await withWriteTransaction(
-      this.db,
-      context.auth,
-      async (trx) => {
-        const existing = await trx
-          .selectFrom('app.life_spheres')
-          .select(({ fn }) => fn.countAll<number>().as('count'))
-          .where('workspace_id', '=', context.workspaceId)
-          .where('user_id', '=', context.actorUserId!)
-          .where('deleted_at', 'is', null)
-          .executeTakeFirst()
-
-        if (Number(existing?.count ?? 0) > 0) {
-          return
-        }
-
-        await trx
-          .insertInto('app.life_spheres')
-          .values(
-            DEFAULT_LIFE_SPHERES.map((sphere, index) => ({
-              color: sphere.color,
-              created_by: context.actorUserId!,
-              deleted_at: null,
-              icon: sphere.icon,
-              id: generateUuidV7(),
-              is_active: true,
-              is_default: true,
-              name: sphere.name,
-              sort_order: index,
-              updated_by: context.actorUserId!,
-              user_id: context.actorUserId!,
-              workspace_id: context.workspaceId,
-            })),
-          )
-          .onConflict((conflict) =>
-            conflict.columns(['workspace_id', 'user_id', 'name']).doNothing(),
-          )
-          .execute()
-      },
-      context.actorUserId,
-    )
-  }
-
   private loadActiveSphereRows(
     executor: DatabaseExecutor,
-    context: LifeSphereReadContext,
-  ): Promise<LifeSphereRow[]> {
-    let query = executor
-      .selectFrom('app.life_spheres')
+    workspaceId: string,
+  ): Promise<ProjectRow[]> {
+    return executor
+      .selectFrom('app.projects')
       .selectAll()
-      .where('workspace_id', '=', context.workspaceId)
+      .where('workspace_id', '=', workspaceId)
       .where('deleted_at', 'is', null)
-      .where('is_active', '=', true)
-      .orderBy('sort_order', 'asc')
+      .where('status', '=', 'active')
+      .orderBy('position', 'asc')
       .orderBy('created_at', 'asc')
-
-    if (context.actorUserId) {
-      query = query.where('user_id', '=', context.actorUserId)
-    }
-
-    return query.execute()
+      .execute()
   }
 
-  private async loadNextSortOrder(
+  private loadActiveSphereRow(
     executor: DatabaseExecutor,
     workspaceId: string,
-    userId: string,
-  ): Promise<number> {
-    const result = await executor
-      .selectFrom('app.life_spheres')
-      .select(({ fn }) => fn.max<number>('sort_order').as('max_sort_order'))
+    sphereId: string,
+  ): Promise<ProjectRow | undefined> {
+    return executor
+      .selectFrom('app.projects')
+      .selectAll()
+      .where('id', '=', sphereId)
       .where('workspace_id', '=', workspaceId)
-      .where('user_id', '=', userId)
+      .where('deleted_at', 'is', null)
+      .where('status', '=', 'active')
       .executeTakeFirst()
-
-    return Number(result?.max_sort_order ?? -1) + 1
   }
 
-  private mapSphereRecord(row: LifeSphereRow): StoredLifeSphereRecord {
+  private loadCurrentSphereVersion(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    sphereId: string,
+  ): Promise<Pick<ProjectRow, 'id' | 'version'> | undefined> {
+    return executor
+      .selectFrom('app.projects')
+      .select(['id', 'version'])
+      .where('id', '=', sphereId)
+      .where('workspace_id', '=', workspaceId)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst()
+  }
+
+  private async loadNextPosition(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+  ): Promise<number> {
+    const result = await executor
+      .selectFrom('app.projects')
+      .select(({ fn }) => fn.max<number>('position').as('max_position'))
+      .where('workspace_id', '=', workspaceId)
+      .executeTakeFirst()
+
+    return Number(result?.max_position ?? -1) + 1
+  }
+
+  private mapSphereRecord(
+    row: ProjectRow,
+    context: Pick<LifeSphereReadContext, 'actorUserId' | 'workspaceId'>,
+  ): StoredLifeSphereRecord {
     return {
-      color: row.color,
+      color: row.color ?? DEFAULT_SPHERE_COLOR,
       createdAt: serializeTimestamp(row.created_at),
       deletedAt: serializeNullableTimestamp(row.deleted_at),
-      icon: row.icon,
+      description: row.description,
+      icon: row.icon || DEFAULT_SPHERE_ICON,
       id: row.id,
-      isActive: row.is_active,
-      isDefault: row.is_default,
-      name: row.name,
-      sortOrder: row.sort_order,
+      isActive: row.status === 'active',
+      isDefault: false,
+      name: row.title,
+      sortOrder: row.position,
       updatedAt: serializeTimestamp(row.updated_at),
-      userId: row.user_id,
+      userId: context.actorUserId ?? row.created_by ?? '',
       version: Number(row.version),
       workspaceId: row.workspace_id,
     }
@@ -405,7 +471,8 @@ function updateStats(
   task: TaskRow,
   dates: { from: string; today: string; to: string },
 ): void {
-  const completedDate = serializeNullableTimestamp(task.completed_at)?.slice(0, 10) ?? null
+  const completedDate =
+    serializeNullableTimestamp(task.completed_at)?.slice(0, 10) ?? null
   const createdDate = serializeTimestamp(task.created_at).slice(0, 10)
   const plannedDate = serializeNullableDate(task.planned_on)
   const dueDate = serializeNullableDate(task.due_on)
@@ -423,7 +490,11 @@ function updateStats(
     stats.completedCount += 1
   }
 
-  if (task.status === 'todo' && plannedDate !== null && plannedDate < dates.today) {
+  if (
+    task.status === 'todo' &&
+    plannedDate !== null &&
+    plannedDate < dates.today
+  ) {
     stats.overdueCount += 1
   }
 
@@ -452,7 +523,8 @@ function createUnassignedSphere(
     color: '#6f766d',
     createdAt: now,
     deletedAt: null,
-    icon: 'folder',
+    description: '',
+    icon: DEFAULT_SPHERE_ICON,
     id: UNSPHERED_ID,
     isActive: true,
     isDefault: false,

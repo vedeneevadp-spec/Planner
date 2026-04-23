@@ -40,7 +40,6 @@ import {
   newTaskInputSchema,
   type NewTaskTemplateInput,
   newTaskTemplateInputSchema,
-  projectListResponseSchema,
   type ProjectRecord,
   projectRecordSchema,
   type ProjectUpdateInput,
@@ -95,6 +94,24 @@ export function isUnauthorizedPlannerApiError(
   error: unknown,
 ): error is PlannerApiError {
   return error instanceof PlannerApiError && error.status === 401
+}
+
+function mapLifeSphereToProjectRecord(
+  sphere: LifeSphereRecord,
+): ProjectRecord {
+  return {
+    color: sphere.color,
+    createdAt: sphere.createdAt,
+    deletedAt: sphere.deletedAt,
+    description: sphere.description,
+    icon: sphere.icon,
+    id: sphere.id,
+    status: sphere.isActive ? 'active' : 'archived',
+    title: sphere.name,
+    updatedAt: sphere.updatedAt,
+    version: sphere.version,
+    workspaceId: sphere.workspaceId,
+  }
 }
 
 export interface PlannerApiClientConfig {
@@ -434,11 +451,13 @@ export function createPlannerApiClient(
       })
     },
     async listProjects(signal) {
-      return request({
-        path: '/api/v1/projects',
-        responseSchema: projectListResponseSchema,
+      const spheres = await request({
+        path: '/api/v1/life-spheres',
+        responseSchema: lifeSphereListRecordResponseSchema,
         signal,
       })
+
+      return spheres.map((sphere) => mapLifeSphereToProjectRecord(sphere))
     },
     async getProject(projectId, signal) {
       return request({
@@ -453,24 +472,50 @@ export function createPlannerApiClient(
         id: input.id ?? generateUuidV7(),
       })
 
-      return request({
-        body: validatedInput,
+      const sphere = await request({
+        body: {
+          color: validatedInput.color,
+          description: validatedInput.description,
+          icon: validatedInput.icon,
+          id: validatedInput.id,
+          name: validatedInput.title,
+        },
         method: 'POST',
-        path: '/api/v1/projects',
-        responseSchema: projectRecordSchema,
+        path: '/api/v1/life-spheres',
+        responseSchema: lifeSphereRecordSchema,
         writeAccess: true,
       })
+
+      return mapLifeSphereToProjectRecord(sphere)
     },
     async updateProject(projectId, input) {
       const validatedInput = projectUpdateInputSchema.parse(input)
 
-      return request({
-        body: validatedInput,
+      const sphere = await request({
+        body: {
+          ...(validatedInput.expectedVersion !== undefined
+            ? { expectedVersion: validatedInput.expectedVersion }
+            : {}),
+          ...(validatedInput.title !== undefined
+            ? { name: validatedInput.title }
+            : {}),
+          ...(validatedInput.description !== undefined
+            ? { description: validatedInput.description }
+            : {}),
+          ...(validatedInput.color !== undefined
+            ? { color: validatedInput.color }
+            : {}),
+          ...(validatedInput.icon !== undefined
+            ? { icon: validatedInput.icon }
+            : {}),
+        },
         method: 'PATCH',
-        path: `/api/v1/projects/${encodeURIComponent(projectId)}`,
-        responseSchema: projectRecordSchema,
+        path: `/api/v1/life-spheres/${encodeURIComponent(projectId)}`,
+        responseSchema: lifeSphereRecordSchema,
         writeAccess: true,
       })
+
+      return mapLifeSphereToProjectRecord(sphere)
     },
     async listTasks(filters = {}, signal) {
       const validatedFilters = taskListFiltersSchema.parse(filters)

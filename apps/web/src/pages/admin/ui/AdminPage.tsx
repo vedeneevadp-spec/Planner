@@ -370,7 +370,7 @@ export function AdminPage() {
             <textarea
               rows={3}
               value={description}
-              placeholder="Иконки для проектов и задач"
+              placeholder="Иконки для сфер и задач"
               onChange={(event) => setDescription(event.target.value)}
             />
           </label>

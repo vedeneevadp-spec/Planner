@@ -2,18 +2,13 @@ import { z } from 'zod'
 
 import { uuidV7Schema } from './uuid.js'
 
-const nullableStringWithDefault = z
-  .string()
-  .nullable()
-  .optional()
-  .transform((value) => value ?? null)
-
 export const lifeSphereSchema = z.object({
   id: z.string(),
   userId: z.string(),
   name: z.string().min(1),
-  color: nullableStringWithDefault,
-  icon: nullableStringWithDefault,
+  description: z.string(),
+  color: z.string().min(1),
+  icon: z.string().min(1),
   isDefault: z.boolean(),
   sortOrder: z.number().int(),
   isActive: z.boolean(),
@@ -24,21 +19,25 @@ export const lifeSphereSchema = z.object({
 export const newLifeSphereInputSchema = z.object({
   id: uuidV7Schema.optional(),
   name: z.string().trim().min(1),
-  color: nullableStringWithDefault,
-  icon: nullableStringWithDefault,
+  description: z.string().optional().default(''),
+  color: z.string().min(1).optional().default('#2f6f62'),
+  icon: z.string().min(1).optional().default('folder'),
 })
 
 export const lifeSphereUpdateInputSchema = z
   .object({
+    expectedVersion: z.number().int().positive().optional(),
     name: z.string().trim().min(1).optional(),
-    color: z.string().nullable().optional(),
-    icon: z.string().nullable().optional(),
+    description: z.string().optional(),
+    color: z.string().min(1).optional(),
+    icon: z.string().min(1).optional(),
     isActive: z.boolean().optional(),
     sortOrder: z.number().int().optional(),
   })
   .refine(
     (value) =>
       value.name !== undefined ||
+      value.description !== undefined ||
       value.color !== undefined ||
       value.icon !== undefined ||
       value.isActive !== undefined ||
