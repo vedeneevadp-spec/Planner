@@ -1,7 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
 import { NavLink } from 'react-router-dom'
 
 import { getPlannerSummary } from '@/entities/task'
-import { usePlanner } from '@/features/planner'
+import { usePlanner, usePlannerApiClient } from '@/features/planner'
 import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
@@ -10,9 +11,9 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
-  { to: '/timeline', label: 'Таймлайн' },
   { to: '/inbox', label: 'Сброс' },
   { to: '/spheres', label: 'Сферы' },
+  { to: '/timeline', label: 'Таймлайн' },
   { to: '/admin', label: 'Admin' },
 ] as const
 
@@ -27,10 +28,29 @@ export function Sidebar() {
     refresh,
     tasks,
   } = usePlanner()
+  const api = usePlannerApiClient()
   const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
   const todayKey = getDateKey(new Date())
   const summary = getPlannerSummary(tasks, todayKey)
+  const chaosInboxCountQuery = useQuery({
+    enabled: api !== null,
+    queryFn: async ({ signal }) => {
+      const [newItems, inReviewItems] = await Promise.all([
+        api!.listChaosInboxItems({ limit: 1, status: 'new' }, signal),
+        api!.listChaosInboxItems({ limit: 1, status: 'in_review' }, signal),
+      ])
+
+      return newItems.total + inReviewItems.total
+    },
+    queryKey: [
+      'chaos-inbox',
+      'active-count',
+      session?.workspaceId ?? 'pending',
+    ],
+    staleTime: 30_000,
+  })
+  const chaosInboxCount = chaosInboxCountQuery.data ?? 0
   const visibleNavigation = navigation.filter(
     (item) =>
       item.to !== '/admin' ||
@@ -135,7 +155,7 @@ export function Sidebar() {
               : item.to === '/timeline'
                 ? summary.timelineCount
                 : item.to === '/inbox'
-                  ? summary.inboxCount
+                  ? chaosInboxCount
                   : item.to === '/spheres'
                     ? projects.length
                     : (session?.role ?? 'Admin')
@@ -172,8 +192,8 @@ export function Sidebar() {
             <strong>{summary.tomorrowCount}</strong>
           </div>
           <div>
-            <span>Inbox</span>
-            <strong>{summary.inboxCount}</strong>
+            <span>Сброс</span>
+            <strong>{chaosInboxCount}</strong>
           </div>
           <div>
             <span>Done</span>

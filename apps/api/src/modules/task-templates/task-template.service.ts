@@ -36,7 +36,7 @@ export class TaskTemplateService {
 }
 
 function assertCanWriteTaskTemplates(context: TaskTemplateWriteContext): void {
-  if (context.role === 'viewer') {
+  if (context.role === 'guest') {
     throw new HttpError(
       403,
       'workspace_write_forbidden',

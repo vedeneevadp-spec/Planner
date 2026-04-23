@@ -17,6 +17,7 @@ import {
   taskRecordSchema,
   taskTemplateListResponseSchema,
   taskTemplateRecordSchema,
+  workspaceUserListResponseSchema,
 } from '@planner/contracts'
 
 import {
@@ -73,24 +74,34 @@ const authRequestAuthenticator: RequestAuthenticator = {
   },
 }
 
-const viewerSessionRepository: SessionRepository = {
+const guestSessionRepository: SessionRepository = {
   resolve() {
     return Promise.resolve({
       actor: {
-        displayName: 'Planner Viewer',
-        email: 'viewer@planner.local',
+        displayName: 'Planner Guest',
+        email: 'guest@planner.local',
         id: AUTH_CONTEXT.claims.sub,
       },
       actorUserId: AUTH_CONTEXT.claims.sub,
-      role: 'viewer',
+      role: 'guest',
       source: 'access_token',
       workspace: {
-        id: 'workspace-viewer',
-        name: 'Viewer Workspace',
-        slug: 'viewer',
+        id: 'workspace-guest',
+        name: 'Guest Workspace',
+        slug: 'guest',
       },
-      workspaceId: 'workspace-viewer',
+      workspaceId: 'workspace-guest',
     })
+  },
+  listWorkspaceUsers() {
+    return Promise.resolve([])
+  },
+  updateWorkspaceUserRole() {
+    throw new HttpError(
+      403,
+      'workspace_admin_required',
+      'The current workspace role cannot manage users.',
+    )
   },
 }
 
@@ -143,6 +154,62 @@ void describe('buildApiApp', () => {
     assert.equal(body.appEnv, 'test')
     assert.equal(body.databaseStatus, 'disabled')
     assert.equal(body.storageDriver, 'memory')
+  })
+
+  void it('lists workspace users for workspace admins', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/admin/users',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = workspaceUserListResponseSchema.parse(response.json())
+
+    assert.equal(body.users.length, 1)
+    assert.equal(body.users[0]?.id, 'user-1')
+    assert.equal(body.users[0]?.role, 'owner')
+  })
+
+  void it('forbids workspace user management for guest role', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(guestSessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-guest',
+      },
+      method: 'GET',
+      url: '/api/v1/admin/users',
+    })
+
+    assert.equal(response.statusCode, 403)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'workspace_admin_required')
   })
 
   void it('creates, updates and lists tasks via the HTTP API', async () => {
@@ -725,7 +792,7 @@ void describe('buildApiApp', () => {
     assert.equal(body.error.code, 'database_unavailable')
   })
 
-  void it('forbids icon set management for viewer workspace role', async () => {
+  void it('forbids icon set management for guest workspace role', async () => {
     app = buildApiApp({
       config: createTestConfig({
         API_AUTH_MODE: 'supabase',
@@ -735,14 +802,14 @@ void describe('buildApiApp', () => {
       emojiSetService: new EmojiSetService(new MemoryEmojiSetRepository()),
       projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
-      sessionService: new SessionService(viewerSessionRepository),
+      sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
 
     const response = await app.inject({
       headers: {
         authorization: `Bearer ${AUTH_TOKEN}`,
-        'x-workspace-id': 'workspace-viewer',
+        'x-workspace-id': 'workspace-guest',
       },
       method: 'POST',
       payload: {
@@ -753,7 +820,7 @@ void describe('buildApiApp', () => {
             value: 'data:image/png;base64,iVBORw0KGgo=',
           },
         ],
-        title: 'Viewer set',
+        title: 'Guest set',
       },
       url: '/api/v1/emoji-sets',
     })
@@ -1002,7 +1069,7 @@ void describe('buildApiApp', () => {
     assert.equal(createdTask.workspaceId, 'workspace-auth')
   })
 
-  void it('forbids task writes for viewer workspace role', async () => {
+  void it('forbids task writes for guest workspace role', async () => {
     app = buildApiApp({
       config: createTestConfig({
         API_AUTH_MODE: 'supabase',
@@ -1011,14 +1078,14 @@ void describe('buildApiApp', () => {
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
-      sessionService: new SessionService(viewerSessionRepository),
+      sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
 
     const response = await app.inject({
       headers: {
         authorization: `Bearer ${AUTH_TOKEN}`,
-        'x-workspace-id': 'workspace-viewer',
+        'x-workspace-id': 'workspace-guest',
       },
       method: 'POST',
       payload: {
@@ -1028,7 +1095,7 @@ void describe('buildApiApp', () => {
         plannedEndTime: null,
         plannedStartTime: null,
         project: '',
-        title: 'Viewer cannot write',
+        title: 'Guest cannot write',
       },
       url: '/api/v1/tasks',
     })

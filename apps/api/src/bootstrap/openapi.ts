@@ -142,6 +142,45 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/admin/users': {
+      get: {
+        operationId: 'listWorkspaceUsers',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          200: jsonResponse('WorkspaceUserListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List workspace users',
+        tags: ['session'],
+      },
+    },
+    '/api/v1/admin/users/{userId}/role': {
+      patch: {
+        operationId: 'updateWorkspaceUserRole',
+        parameters: [
+          userIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('WorkspaceUserRoleUpdateInput'),
+        responses: {
+          200: jsonResponse('WorkspaceUserRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Update workspace user role',
+        tags: ['session'],
+      },
+    },
     '/api/v1/emoji-sets': {
       get: {
         operationId: 'listEmojiSets',
@@ -1068,8 +1107,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
         role: {
-          enum: ['admin', 'member', 'owner', 'viewer'],
-          type: 'string',
+          $ref: '#/components/schemas/WorkspaceRole',
         },
         source: {
           enum: ['access_token', 'default', 'headers'],
@@ -1106,6 +1144,71 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: ['id', 'name', 'slug'],
+      type: 'object',
+    },
+    WorkspaceRole: {
+      enum: ['admin', 'guest', 'owner', 'user'],
+      type: 'string',
+    },
+    WorkspaceUserListResponse: {
+      additionalProperties: false,
+      properties: {
+        users: {
+          items: {
+            $ref: '#/components/schemas/WorkspaceUserRecord',
+          },
+          type: 'array',
+        },
+      },
+      required: ['users'],
+      type: 'object',
+    },
+    WorkspaceUserRecord: {
+      additionalProperties: false,
+      properties: {
+        displayName: {
+          type: 'string',
+        },
+        email: {
+          type: 'string',
+        },
+        id: {
+          type: 'string',
+        },
+        joinedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        membershipId: {
+          type: 'string',
+        },
+        role: {
+          $ref: '#/components/schemas/WorkspaceRole',
+        },
+        updatedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+      },
+      required: [
+        'displayName',
+        'email',
+        'id',
+        'joinedAt',
+        'membershipId',
+        'role',
+        'updatedAt',
+      ],
+      type: 'object',
+    },
+    WorkspaceUserRoleUpdateInput: {
+      additionalProperties: false,
+      properties: {
+        role: {
+          $ref: '#/components/schemas/WorkspaceRole',
+        },
+      },
+      required: ['role'],
       type: 'object',
     },
     TaskListResponse: {
@@ -1483,6 +1586,17 @@ function taskTemplateIdParameter(): OpenAPIV3.ParameterObject {
   return {
     in: 'path',
     name: 'templateId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function userIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'userId',
     required: true,
     schema: {
       type: 'string',

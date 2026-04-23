@@ -25,6 +25,9 @@ export type {
   TaskStatusUpdateInput,
   TaskTemplateRecord,
   WorkspaceRole,
+  WorkspaceUserListResponse,
+  WorkspaceUserRecord,
+  WorkspaceUserRoleUpdateInput,
 } from './api.js'
 export {
   apiErrorSchema,
@@ -59,6 +62,9 @@ export {
   taskTemplateRecordSchema,
   weeklySphereStatsRecordResponseSchema,
   workspaceRoleSchema,
+  workspaceUserListResponseSchema,
+  workspaceUserRecordSchema,
+  workspaceUserRoleUpdateInputSchema,
 } from './api.js'
 export type {
   ChaosInboxBulkUpdateInput,

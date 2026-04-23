@@ -82,7 +82,10 @@ export class ChaosInboxService {
       )
     }
 
-    const task = await this.taskService.createTask(context, buildTaskInput(item))
+    const task = await this.taskService.createTask(
+      context,
+      buildTaskInput(item),
+    )
     const inboxItem = await this.repository.markConverted({
       context,
       convertedTaskId: task.id,
@@ -108,7 +111,9 @@ export class ChaosInboxService {
   }
 }
 
-function buildTaskInput(item: Awaited<ReturnType<ChaosInboxRepository['getById']>>): NewTaskInput {
+function buildTaskInput(
+  item: Awaited<ReturnType<ChaosInboxRepository['getById']>>,
+): NewTaskInput {
   return {
     dueDate: item.dueDate,
     icon: '',
@@ -127,7 +132,7 @@ function buildTaskInput(item: Awaited<ReturnType<ChaosInboxRepository['getById']
 }
 
 function assertCanWriteChaosInbox(context: ChaosInboxWriteContext): void {
-  if (context.role === 'viewer') {
+  if (context.role === 'guest') {
     throw new HttpError(
       403,
       'workspace_write_forbidden',

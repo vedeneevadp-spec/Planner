@@ -8,7 +8,10 @@ import {
 } from './chaos-inbox.js'
 import { dailyPlanSchema } from './daily-plan.js'
 import { emojiAssetSchema, emojiSetSchema } from './emoji-set.js'
-import { lifeSphereSchema, weeklySphereStatsResponseSchema } from './life-sphere.js'
+import {
+  lifeSphereSchema,
+  weeklySphereStatsResponseSchema,
+} from './life-sphere.js'
 import { projectSchema } from './project.js'
 import {
   taskScheduleInputSchema,
@@ -19,12 +22,7 @@ import {
 import { taskTemplateSchema } from './task-template.js'
 
 export const storageDriverSchema = z.enum(['memory', 'postgres'])
-export const workspaceRoleSchema = z.enum([
-  'owner',
-  'admin',
-  'member',
-  'viewer',
-])
+export const workspaceRoleSchema = z.enum(['owner', 'admin', 'user', 'guest'])
 
 export const apiErrorSchema = z.object({
   error: z.object({
@@ -102,6 +100,24 @@ export const sessionResponseSchema = z.object({
   workspaceId: z.string(),
 })
 
+export const workspaceUserRecordSchema = z.object({
+  displayName: z.string(),
+  email: z.string(),
+  id: z.string(),
+  joinedAt: z.string(),
+  membershipId: z.string(),
+  role: workspaceRoleSchema,
+  updatedAt: z.string(),
+})
+
+export const workspaceUserListResponseSchema = z.object({
+  users: z.array(workspaceUserRecordSchema),
+})
+
+export const workspaceUserRoleUpdateInputSchema = z.object({
+  role: workspaceRoleSchema,
+})
+
 export const taskListFiltersSchema = z.object({
   plannedDate: z.string().optional(),
   projectId: z.string().optional(),
@@ -138,7 +154,9 @@ export const lifeSphereRecordSchema = lifeSphereSchema.extend({
   deletedAt: z.string().nullable(),
   version: z.number().int().positive(),
 })
-export const lifeSphereListRecordResponseSchema = z.array(lifeSphereRecordSchema)
+export const lifeSphereListRecordResponseSchema = z.array(
+  lifeSphereRecordSchema,
+)
 export const weeklySphereStatsRecordResponseSchema =
   weeklySphereStatsResponseSchema.extend({
     spheres: z.array(lifeSphereRecordSchema),
@@ -201,6 +219,13 @@ export type SessionActor = z.infer<typeof sessionActorSchema>
 export type SessionResponse = z.infer<typeof sessionResponseSchema>
 export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
+export type WorkspaceUserRecord = z.infer<typeof workspaceUserRecordSchema>
+export type WorkspaceUserListResponse = z.infer<
+  typeof workspaceUserListResponseSchema
+>
+export type WorkspaceUserRoleUpdateInput = z.infer<
+  typeof workspaceUserRoleUpdateInputSchema
+>
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
 export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>
 export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>

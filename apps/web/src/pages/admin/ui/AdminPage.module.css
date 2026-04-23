@@ -47,6 +47,49 @@
   gap: 0.85rem;
 }
 
+.userList {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.userRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(8rem, 10rem);
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.72rem;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.userIdentity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.userIdentity strong,
+.userIdentity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.userIdentity span {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.currentUserBadge {
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+}
+
 .field,
 .nameField,
 .uploadField {
@@ -76,7 +119,8 @@
 .field input,
 .field textarea,
 .field select,
-.nameField input {
+.nameField input,
+.roleSelect {
   width: 100%;
   min-height: 2.55rem;
   border: 1px solid var(--line);
@@ -97,7 +141,8 @@
 .field input:focus,
 .field textarea:focus,
 .field select:focus,
-.nameField input:focus {
+.nameField input:focus,
+.roleSelect:focus {
   outline: none;
   border-color: rgba(33, 78, 66, 0.5);
   background: rgba(255, 255, 255, 0.92);
@@ -380,6 +425,10 @@
   }
 
   .itemRow {
+    grid-template-columns: 1fr;
+  }
+
+  .userRow {
     grid-template-columns: 1fr;
   }
 

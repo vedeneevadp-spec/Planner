@@ -1,3 +1,4 @@
+import type { WorkspaceRole } from '@planner/contracts'
 import { type ChangeEvent, type FormEvent, useState } from 'react'
 
 import { EmojiGlyph, type NewEmojiAssetInput } from '@/entities/emoji-set'
@@ -8,7 +9,11 @@ import {
   useDeleteEmojiSetItem,
   useEmojiSets,
 } from '@/features/emoji-library'
-import { usePlannerSession } from '@/features/session'
+import {
+  usePlannerSession,
+  useUpdateWorkspaceUserRole,
+  useWorkspaceUsers,
+} from '@/features/session'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 
@@ -31,6 +36,18 @@ interface DraftIconItem {
 }
 
 const NEW_ICON_SET_TARGET = 'new'
+const WORKSPACE_ROLES = [
+  'owner',
+  'admin',
+  'user',
+  'guest',
+] satisfies WorkspaceRole[]
+const ROLE_LABELS: Record<WorkspaceRole, string> = {
+  admin: 'admin',
+  guest: 'guest',
+  owner: 'owner',
+  user: 'user',
+}
 
 let draftItemCounter = 0
 
@@ -65,15 +82,20 @@ export function AdminPage() {
   ])
   const [formError, setFormError] = useState<string | null>(null)
   const [libraryError, setLibraryError] = useState<string | null>(null)
+  const [userError, setUserError] = useState<string | null>(null)
   const [brokenIconIds, setBrokenIconIds] = useState<Set<string>>(
     () => new Set(),
   )
   const session = sessionQuery.data
   const canManage = canManageAdmin(session?.role)
+  const workspaceUsersQuery = useWorkspaceUsers({ enabled: canManage })
+  const updateWorkspaceUserRole = useUpdateWorkspaceUserRole()
+  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const iconSets = iconSetsQuery.data ?? []
   const isCreatingNewSet = targetSetId === NEW_ICON_SET_TARGET
   const isSaving = createIconSet.isPending || addIconSetItems.isPending
   const isDeleting = deleteIconSet.isPending || deleteIconSetItem.isPending
+  const isUpdatingUsers = updateWorkspaceUserRole.isPending
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -264,6 +286,20 @@ export function AdminPage() {
     }
   }
 
+  async function handleUserRoleChange(userId: string, role: WorkspaceRole) {
+    setUserError(null)
+
+    try {
+      await updateWorkspaceUserRole.mutateAsync({ role, userId })
+    } catch (error) {
+      setUserError(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось обновить роль пользователя.',
+      )
+    }
+  }
+
   function markIconAsBroken(iconAssetId: string) {
     setBrokenIconIds((currentIconIds) => {
       if (currentIconIds.has(iconAssetId)) {
@@ -307,8 +343,57 @@ export function AdminPage() {
       <PageHeader
         kicker="Admin"
         title="Админка"
-        description="Загружайте иконки в наборы workspace, чтобы использовать их в будущих компонентах выбора."
+        description="Управляйте пользователями workspace и библиотекой иконок."
       />
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <div>
+            <p className={styles.eyebrow}>Access</p>
+            <h3>Пользователи</h3>
+          </div>
+          <span className={styles.countBadge}>{workspaceUsers.length}</span>
+        </div>
+
+        {userError ? <p className={styles.formError}>{userError}</p> : null}
+
+        {workspaceUsersQuery.isLoading ? (
+          <div className={pageStyles.emptyPanel}>Загружаем пользователей.</div>
+        ) : workspaceUsers.length > 0 ? (
+          <div className={styles.userList}>
+            {workspaceUsers.map((user) => (
+              <div className={styles.userRow} key={user.membershipId}>
+                <div className={styles.userIdentity}>
+                  <strong>{user.displayName}</strong>
+                  <span>{user.email}</span>
+                </div>
+                {user.id === session?.actorUserId ? (
+                  <span className={styles.currentUserBadge}>вы</span>
+                ) : null}
+                <select
+                  className={styles.roleSelect}
+                  value={user.role}
+                  disabled={isUpdatingUsers}
+                  onChange={(event) => {
+                    void handleUserRoleChange(
+                      user.id,
+                      event.target.value as WorkspaceRole,
+                    )
+                  }}
+                >
+                  {WORKSPACE_ROLES.map((role) => (
+                    <option key={role} value={role}>
+                      {ROLE_LABELS[role]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className={pageStyles.emptyPanel}>Пользователей пока нет.</div>
+        )}
+      </section>
 
       <form
         className={styles.panel}
@@ -425,9 +510,8 @@ export function AdminPage() {
                   <small className={styles.fieldError}>{item.fileError}</small>
                 ) : (
                   <small className={styles.fileHint}>
-                    PNG, SVG, WebP, JPG, GIF, WebM или TGS; WebM/TGS
-                    сохраняются как PNG до{' '}
-                    {formatFileSize(MAX_ICON_ASSET_BYTES)}.
+                    PNG, SVG, WebP, JPG, GIF, WebM или TGS; WebM/TGS сохраняются
+                    как PNG до {formatFileSize(MAX_ICON_ASSET_BYTES)}.
                   </small>
                 )}
               </label>

@@ -1,3 +1,6 @@
+import type { WorkspaceRole } from '@planner/contracts'
+
+import { HttpError } from '../../bootstrap/http-error.js'
 import type { SessionContext, SessionSnapshot } from './session.model.js'
 import type { SessionRepository } from './session.repository.js'
 
@@ -36,6 +39,34 @@ export class SessionService {
     return snapshot
   }
 
+  async listWorkspaceUsers(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    assertCanManageWorkspaceUsers(session)
+
+    return this.repository.listWorkspaceUsers(session)
+  }
+
+  async updateWorkspaceUserRole(
+    context: SessionContext,
+    userId: string,
+    role: WorkspaceRole,
+  ) {
+    const session = await this.resolveSession(context)
+
+    assertCanManageWorkspaceUsers(session)
+
+    const user = await this.repository.updateWorkspaceUserRole(
+      session,
+      userId,
+      role,
+    )
+
+    this.authSessionCache.clear()
+
+    return user
+  }
+
   private getAuthSessionCacheKey(context: SessionContext): string | null {
     if (!context.auth) {
       return null
@@ -47,4 +78,16 @@ export class SessionService {
       context.workspaceId ?? 'default',
     ].join(':')
   }
+}
+
+function assertCanManageWorkspaceUsers(session: SessionSnapshot): void {
+  if (session.role === 'admin' || session.role === 'owner') {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'workspace_admin_required',
+    'The current workspace role cannot manage users.',
+  )
 }

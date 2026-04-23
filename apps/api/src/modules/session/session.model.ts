@@ -1,4 +1,7 @@
-import type { WorkspaceRole } from '@planner/contracts'
+import type {
+  WorkspaceRole,
+  WorkspaceUserRecord as ContractWorkspaceUserRecord,
+} from '@planner/contracts'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 
@@ -28,3 +31,5 @@ export interface SessionContext {
   actorUserId: string | undefined
   workspaceId: string | undefined
 }
+
+export type WorkspaceUserRecord = ContractWorkspaceUserRecord

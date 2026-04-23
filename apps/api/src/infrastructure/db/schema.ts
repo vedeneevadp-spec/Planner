@@ -137,7 +137,7 @@ export interface AppWorkspaceMembersTable {
   id: Generated<string>
   invited_by: string | null
   joined_at: Generated<TimestampColumn>
-  role: 'owner' | 'admin' | 'member' | 'viewer'
+  role: 'owner' | 'admin' | 'user' | 'guest'
   updated_at: Generated<TimestampColumn>
   user_id: string
   version: Generated<number>

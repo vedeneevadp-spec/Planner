@@ -1,4 +1,8 @@
-import { generateUuidV7 } from '@planner/contracts'
+import {
+  generateUuidV7,
+  type WorkspaceRole,
+  type WorkspaceUserRecord,
+} from '@planner/contracts'
 import { type Kysely, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -12,10 +16,27 @@ interface SessionRow {
   actorDisplayName: string
   actorEmail: string
   actorId: string
-  role: 'owner' | 'admin' | 'member' | 'viewer'
+  role: WorkspaceRole
   workspaceId: string
   workspaceName: string
   workspaceSlug: string
+}
+
+interface WorkspaceRow {
+  id: string
+  name: string
+  ownerUserId: string
+  slug: string
+}
+
+interface WorkspaceUserRow {
+  displayName: string
+  email: string
+  id: string
+  joinedAt: unknown
+  membershipId: string
+  role: WorkspaceRole
+  updatedAt: unknown
 }
 
 interface AppActorRow {
@@ -61,6 +82,69 @@ export class PostgresSessionRepository implements SessionRepository {
     })
   }
 
+  async listWorkspaceUsers(
+    session: SessionSnapshot,
+  ): Promise<WorkspaceUserRecord[]> {
+    const rows = await this.createWorkspaceUserQuery(
+      this.db,
+      session.workspaceId,
+    )
+      .orderBy('membership.role', 'asc')
+      .orderBy('actor.display_name', 'asc')
+      .orderBy('actor.email', 'asc')
+      .execute()
+
+    return rows.map(mapWorkspaceUserRecord)
+  }
+
+  async updateWorkspaceUserRole(
+    session: SessionSnapshot,
+    userId: string,
+    role: WorkspaceRole,
+  ): Promise<WorkspaceUserRecord> {
+    return this.db.transaction().execute(async (trx) => {
+      const currentUser = await this.createWorkspaceUserQuery(
+        trx,
+        session.workspaceId,
+      )
+        .where('actor.id', '=', userId)
+        .executeTakeFirst()
+
+      if (!currentUser) {
+        throw new HttpError(
+          404,
+          'workspace_user_not_found',
+          'Workspace user was not found.',
+        )
+      }
+
+      if (currentUser.role === 'owner' && role !== 'owner') {
+        await this.assertWorkspaceKeepsOwner(trx, session.workspaceId)
+      }
+
+      await trx
+        .updateTable('app.workspace_members')
+        .set({ role })
+        .where('workspace_id', '=', session.workspaceId)
+        .where('user_id', '=', userId)
+        .where('deleted_at', 'is', null)
+        .executeTakeFirst()
+
+      const updatedUser = await this.createWorkspaceUserQuery(
+        trx,
+        session.workspaceId,
+      )
+        .where('actor.id', '=', userId)
+        .executeTakeFirst()
+
+      if (!updatedUser) {
+        throw new Error('Failed to resolve updated workspace user.')
+      }
+
+      return mapWorkspaceUserRecord(updatedUser)
+    })
+  }
+
   private createBaseQuery(executor: DatabaseExecutor) {
     return executor
       .selectFrom('app.workspace_members as membership')
@@ -82,6 +166,48 @@ export class PostgresSessionRepository implements SessionRepository {
       .where('membership.deleted_at', 'is', null)
       .where('actor.deleted_at', 'is', null)
       .where('workspace.deleted_at', 'is', null)
+  }
+
+  private createWorkspaceUserQuery(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+  ) {
+    return executor
+      .selectFrom('app.workspace_members as membership')
+      .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
+      .select([
+        'actor.display_name as displayName',
+        'actor.email as email',
+        'actor.id as id',
+        'membership.id as membershipId',
+        'membership.joined_at as joinedAt',
+        'membership.role as role',
+        'membership.updated_at as updatedAt',
+      ])
+      .where('membership.workspace_id', '=', workspaceId)
+      .where('membership.deleted_at', 'is', null)
+      .where('actor.deleted_at', 'is', null)
+  }
+
+  private async assertWorkspaceKeepsOwner(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+  ): Promise<void> {
+    const ownerCount = await executor
+      .selectFrom('app.workspace_members')
+      .select(({ fn }) => fn.countAll<number>().as('total'))
+      .where('workspace_id', '=', workspaceId)
+      .where('role', '=', 'owner')
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst()
+
+    if (Number(ownerCount?.total ?? 0) <= 1) {
+      throw new HttpError(
+        400,
+        'last_owner_required',
+        'Workspace must keep at least one owner.',
+      )
+    }
   }
 
   private async resolveDefaultSession(
@@ -145,7 +271,11 @@ export class PostgresSessionRepository implements SessionRepository {
       return actor
     }
 
-    await this.provisionPersonalWorkspace(executor, actor)
+    await this.provisionDefaultWorkspaceMembership(
+      executor,
+      actor,
+      requestedWorkspaceId,
+    )
 
     return actor
   }
@@ -403,9 +533,101 @@ export class PostgresSessionRepository implements SessionRepository {
     return existingActor
   }
 
+  private async provisionDefaultWorkspaceMembership(
+    executor: DatabaseExecutor,
+    actor: Pick<AppActorRow, 'displayName' | 'id'>,
+    requestedWorkspaceId?: string,
+  ): Promise<void> {
+    if (requestedWorkspaceId) {
+      const requestedWorkspace = await this.findWorkspaceById(
+        executor,
+        requestedWorkspaceId,
+      )
+
+      await this.createWorkspaceMembership(
+        executor,
+        requestedWorkspace.id,
+        actor.id,
+        'user',
+      )
+
+      return
+    }
+
+    const defaultWorkspace = await this.findDefaultWorkspace(executor)
+
+    if (defaultWorkspace) {
+      await this.createWorkspaceMembership(
+        executor,
+        defaultWorkspace.id,
+        actor.id,
+        'user',
+      )
+
+      return
+    }
+
+    await this.provisionPersonalWorkspace(executor, actor, 'owner')
+  }
+
+  private async findWorkspaceById(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+  ): Promise<WorkspaceRow> {
+    const workspace = await this.createWorkspaceLookupQuery(executor)
+      .where('id', '=', workspaceId)
+      .executeTakeFirst()
+
+    if (!workspace) {
+      throw new HttpError(
+        403,
+        'workspace_access_denied',
+        'The current user is not allowed to access the requested workspace.',
+      )
+    }
+
+    return workspace
+  }
+
+  private async findDefaultWorkspace(
+    executor: DatabaseExecutor,
+  ): Promise<WorkspaceRow | undefined> {
+    return this.createWorkspaceLookupQuery(executor)
+      .orderBy('created_at', 'asc')
+      .executeTakeFirst()
+  }
+
+  private createWorkspaceLookupQuery(executor: DatabaseExecutor) {
+    return executor
+      .selectFrom('app.workspaces')
+      .select(['id', 'name', 'owner_user_id as ownerUserId', 'slug'])
+      .where('deleted_at', 'is', null)
+  }
+
+  private async createWorkspaceMembership(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    userId: string,
+    role: WorkspaceRole,
+  ): Promise<void> {
+    await executor
+      .insertInto('app.workspace_members')
+      .values({
+        id: generateUuidV7(),
+        role,
+        user_id: userId,
+        workspace_id: workspaceId,
+      })
+      .onConflict((conflict) =>
+        conflict.columns(['workspace_id', 'user_id']).doNothing(),
+      )
+      .execute()
+  }
+
   private async provisionPersonalWorkspace(
     executor: DatabaseExecutor,
     actor: Pick<AppActorRow, 'displayName' | 'id'>,
+    role: WorkspaceRole,
   ): Promise<void> {
     const workspaceSlug = this.createPersonalWorkspaceSlug(actor.id)
     const provisionResult = await sql<{ workspace_id: string }>`
@@ -444,7 +666,7 @@ export class PostgresSessionRepository implements SessionRepository {
         )
         select
           ${generateUuidV7()},
-          'owner',
+          ${role}::app.workspace_role,
           ${actor.id},
           resolved_workspace.workspace_id
         from resolved_workspace
@@ -574,4 +796,20 @@ export class PostgresSessionRepository implements SessionRepository {
 
     return normalizedValue.length > 0 ? normalizedValue : null
   }
+}
+
+function mapWorkspaceUserRecord(row: WorkspaceUserRow): WorkspaceUserRecord {
+  return {
+    displayName: row.displayName,
+    email: row.email,
+    id: row.id,
+    joinedAt: serializeTimestamp(row.joinedAt),
+    membershipId: row.membershipId,
+    role: row.role,
+    updatedAt: serializeTimestamp(row.updatedAt),
+  }
+}
+
+function serializeTimestamp(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : String(value)
 }

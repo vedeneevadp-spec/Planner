@@ -112,7 +112,7 @@ export class TaskService {
 }
 
 function assertCanWriteTasks(context: TaskWriteContext): void {
-  if (context.role === 'viewer') {
+  if (context.role === 'guest') {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
