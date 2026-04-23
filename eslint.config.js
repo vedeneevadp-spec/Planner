@@ -18,7 +18,6 @@ const layerOrder = ['app', 'pages', 'widgets', 'features', 'entities', 'shared']
 const publicApiModules = [
   'app',
   'pages/admin',
-  'pages/inbox',
   'pages/projects',
   'pages/today',
   'widgets/sidebar',

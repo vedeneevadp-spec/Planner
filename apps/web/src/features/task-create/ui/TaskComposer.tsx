@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { type Project, ProjectPicker } from '@/entities/project'
 import {
@@ -25,6 +26,7 @@ interface TaskComposerProps {
   hideOpenButton?: boolean
   initialPlannedDate: string | null
   openDraft?: TaskComposerDraft | null | undefined
+  openButtonLabel?: string | undefined
   showTimeFields?: boolean
   onTaskCreated?: ((input: NewTaskInput) => Promise<void> | void) | undefined
 }
@@ -114,6 +116,7 @@ export function TaskComposer({
   hideOpenButton = false,
   initialPlannedDate,
   openDraft,
+  openButtonLabel = 'Новая задача',
   showTimeFields = true,
   onTaskCreated,
 }: TaskComposerProps) {
@@ -374,340 +377,346 @@ export function TaskComposer({
             onClick={openComposer}
           >
             <span aria-hidden="true">+</span>
-            Новая задача
+            {openButtonLabel}
           </button>
         </div>
       )}
 
-      {isOpen ? (
-        <div
-          className={styles.modalOverlay}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-        >
-          <button
-            className={styles.backdropButton}
-            type="button"
-            tabIndex={-1}
-            aria-label="Закрыть окно создания задачи"
-            onClick={() => setIsOpen(false)}
-          />
-
-          <form
-            className={styles.panel}
-            onSubmit={(event) => {
-              void handleSubmit(event)
-            }}
-          >
-            <div className={styles.modalHeader}>
-              <h2 id={titleId}>Новая задача</h2>
+      {isOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className={styles.modalOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+            >
               <button
-                className={styles.closeButton}
+                className={styles.backdropButton}
                 type="button"
-                aria-label="Закрыть"
+                tabIndex={-1}
+                aria-label="Закрыть окно создания задачи"
                 onClick={() => setIsOpen(false)}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </div>
+              />
 
-            {taskTemplates.length > 0 ? (
-              <section className={styles.templatePanel}>
-                <div className={styles.templatePanelHeader}>
-                  <p className={styles.eyebrow}>
-                    Шаблоны
-                    <span className={styles.templateCount}>
-                      {taskTemplates.length}
-                    </span>
-                  </p>
+              <form
+                className={styles.panel}
+                onSubmit={(event) => {
+                  void handleSubmit(event)
+                }}
+              >
+                <div className={styles.modalHeader}>
+                  <h2 id={titleId}>Новая задача</h2>
                   <button
-                    className={styles.templateToggle}
+                    className={styles.closeButton}
                     type="button"
-                    aria-expanded={isTemplatesExpanded}
-                    aria-label={
-                      isTemplatesExpanded
-                        ? 'Свернуть шаблоны'
-                        : 'Показать шаблоны'
-                    }
-                    onClick={() => setIsTemplatesExpanded((value) => !value)}
+                    aria-label="Закрыть"
+                    onClick={() => setIsOpen(false)}
                   >
-                    <span
-                      className={cx(
-                        styles.templateChevron,
-                        isTemplatesExpanded && styles.templateChevronExpanded,
-                      )}
-                      aria-hidden="true"
-                    />
+                    <span aria-hidden="true">×</span>
                   </button>
                 </div>
 
-                {isTemplatesExpanded ? (
-                  <div className={styles.templateList}>
-                    {taskTemplates.map((template) => {
-                      const templateProject = getTemplateProject(
-                        template,
-                        projects,
-                      )
-                      const templateProjectTitle =
-                        templateProject?.title ??
-                        (template.project || 'Без сферы')
-
-                      return (
-                        <article
-                          key={template.id}
+                {taskTemplates.length > 0 ? (
+                  <section className={styles.templatePanel}>
+                    <div className={styles.templatePanelHeader}>
+                      <p className={styles.eyebrow}>
+                        Шаблоны
+                        <span className={styles.templateCount}>
+                          {taskTemplates.length}
+                        </span>
+                      </p>
+                      <button
+                        className={styles.templateToggle}
+                        type="button"
+                        aria-expanded={isTemplatesExpanded}
+                        aria-label={
+                          isTemplatesExpanded
+                            ? 'Свернуть шаблоны'
+                            : 'Показать шаблоны'
+                        }
+                        onClick={() =>
+                          setIsTemplatesExpanded((value) => !value)
+                        }
+                      >
+                        <span
                           className={cx(
-                            styles.templateRow,
-                            selectedTemplateId === template.id &&
-                              styles.templateRowActive,
+                            styles.templateChevron,
+                            isTemplatesExpanded &&
+                              styles.templateChevronExpanded,
                           )}
-                        >
-                          <button
-                            className={styles.templateSelectButton}
-                            type="button"
-                            title={`Подставить шаблон «${template.title}»`}
-                            onClick={() => handleApplyTemplate(template)}
-                          >
-                            <span className={styles.templateIconSlot}>
-                              {template.icon ? (
-                                <IconMark
-                                  className={styles.templateTaskIcon}
-                                  value={template.icon}
-                                  uploadedIcons={uploadedIcons}
-                                />
-                              ) : null}
-                            </span>
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </div>
 
-                            <span className={styles.templateText}>
-                              <strong>{template.title}</strong>
-                              {template.note ? (
-                                <span>{template.note}</span>
-                              ) : null}
-                            </span>
+                    {isTemplatesExpanded ? (
+                      <div className={styles.templateList}>
+                        {taskTemplates.map((template) => {
+                          const templateProject = getTemplateProject(
+                            template,
+                            projects,
+                          )
+                          const templateProjectTitle =
+                            templateProject?.title ??
+                            (template.project || 'Без сферы')
 
-                            <span
+                          return (
+                            <article
+                              key={template.id}
                               className={cx(
-                                styles.templateProjectChip,
-                                !templateProject &&
-                                  !template.project &&
-                                  styles.templateProjectChipMuted,
+                                styles.templateRow,
+                                selectedTemplateId === template.id &&
+                                  styles.templateRowActive,
                               )}
                             >
-                              {templateProject ? (
-                                <span
-                                  className={styles.templateProjectIcon}
-                                  style={{
-                                    backgroundColor: templateProject.color,
-                                  }}
-                                  aria-hidden="true"
-                                >
-                                  <IconMark
-                                    value={templateProject.icon}
-                                    uploadedIcons={uploadedIcons}
-                                  />
+                              <button
+                                className={styles.templateSelectButton}
+                                type="button"
+                                title={`Подставить шаблон «${template.title}»`}
+                                onClick={() => handleApplyTemplate(template)}
+                              >
+                                <span className={styles.templateIconSlot}>
+                                  {template.icon ? (
+                                    <IconMark
+                                      className={styles.templateTaskIcon}
+                                      value={template.icon}
+                                      uploadedIcons={uploadedIcons}
+                                    />
+                                  ) : null}
                                 </span>
-                              ) : null}
-                              {templateProjectTitle}
-                            </span>
-                          </button>
 
-                          <div className={styles.templateActions}>
-                            <button
-                              className={styles.ghostButton}
-                              type="button"
-                              disabled={pendingTemplateId !== null}
-                              onClick={() => {
-                                void handleCreateFromTemplate(template)
-                              }}
-                            >
-                              Создать
-                            </button>
-                            <button
-                              className={cx(
-                                styles.ghostButton,
-                                styles.iconButton,
-                                styles.dangerButton,
-                              )}
-                              type="button"
-                              aria-label={`Удалить шаблон ${template.title}`}
-                              title="Удалить"
-                              onClick={() => {
-                                void handleRemoveTemplate(template)
-                              }}
-                            >
-                              <TrashIcon size={17} />
-                            </button>
-                          </div>
-                        </article>
-                      )
-                    })}
-                  </div>
+                                <span className={styles.templateText}>
+                                  <strong>{template.title}</strong>
+                                  {template.note ? (
+                                    <span>{template.note}</span>
+                                  ) : null}
+                                </span>
+
+                                <span
+                                  className={cx(
+                                    styles.templateProjectChip,
+                                    !templateProject &&
+                                      !template.project &&
+                                      styles.templateProjectChipMuted,
+                                  )}
+                                >
+                                  {templateProject ? (
+                                    <span
+                                      className={styles.templateProjectIcon}
+                                      style={{
+                                        backgroundColor: templateProject.color,
+                                      }}
+                                      aria-hidden="true"
+                                    >
+                                      <IconMark
+                                        value={templateProject.icon}
+                                        uploadedIcons={uploadedIcons}
+                                      />
+                                    </span>
+                                  ) : null}
+                                  {templateProjectTitle}
+                                </span>
+                              </button>
+
+                              <div className={styles.templateActions}>
+                                <button
+                                  className={styles.ghostButton}
+                                  type="button"
+                                  disabled={pendingTemplateId !== null}
+                                  onClick={() => {
+                                    void handleCreateFromTemplate(template)
+                                  }}
+                                >
+                                  Создать
+                                </button>
+                                <button
+                                  className={cx(
+                                    styles.ghostButton,
+                                    styles.iconButton,
+                                    styles.dangerButton,
+                                  )}
+                                  type="button"
+                                  aria-label={`Удалить шаблон ${template.title}`}
+                                  title="Удалить"
+                                  onClick={() => {
+                                    void handleRemoveTemplate(template)
+                                  }}
+                                >
+                                  <TrashIcon size={17} />
+                                </button>
+                              </div>
+                            </article>
+                          )
+                        })}
+                      </div>
+                    ) : null}
+                  </section>
                 ) : null}
-              </section>
-            ) : null}
 
-            <div
-              className={cx(
-                styles.composerMain,
-                showTimeFields && styles.composerMainTimeline,
-              )}
-            >
-              <label className={cx(styles.field, styles.fieldTitle)}>
-                <span>Задача</span>
-                <input
-                  ref={titleInputRef}
-                  required
-                  value={title}
-                  placeholder="Например: собрать референсы для недельного плана"
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-              </label>
-
-              <ProjectPicker
-                className={styles.fieldProject}
-                projects={projects}
-                uploadedIcons={uploadedIcons}
-                value={projectId}
-                onChange={setProjectId}
-              />
-
-              <TaskTypePicker
-                className={styles.fieldType}
-                value={taskType}
-                onChange={setTaskType}
-              />
-
-              <label className={styles.field}>
-                <span>План</span>
-                <input
-                  type="date"
-                  value={plannedDate}
-                  onChange={(event) =>
-                    handlePlannedDateChange(event.target.value)
-                  }
-                />
-              </label>
-
-              {showTimeFields ? (
-                <>
-                  <label className={styles.field}>
-                    <span>Старт</span>
+                <div
+                  className={cx(
+                    styles.composerMain,
+                    showTimeFields && styles.composerMainTimeline,
+                  )}
+                >
+                  <label className={cx(styles.field, styles.fieldTitle)}>
+                    <span>Задача</span>
                     <input
-                      type="time"
-                      value={plannedStartTime}
-                      disabled={!plannedDate}
+                      ref={titleInputRef}
+                      required
+                      value={title}
+                      placeholder="Например: собрать референсы для недельного плана"
+                      onChange={(event) => setTitle(event.target.value)}
+                    />
+                  </label>
+
+                  <ProjectPicker
+                    className={styles.fieldProject}
+                    projects={projects}
+                    uploadedIcons={uploadedIcons}
+                    value={projectId}
+                    onChange={setProjectId}
+                  />
+
+                  <TaskTypePicker
+                    className={styles.fieldType}
+                    value={taskType}
+                    onChange={setTaskType}
+                  />
+
+                  <label className={styles.field}>
+                    <span>План</span>
+                    <input
+                      type="date"
+                      value={plannedDate}
                       onChange={(event) =>
-                        setPlannedStartTime(event.target.value)
+                        handlePlannedDateChange(event.target.value)
                       }
                     />
                   </label>
 
+                  {showTimeFields ? (
+                    <>
+                      <label className={styles.field}>
+                        <span>Старт</span>
+                        <input
+                          type="time"
+                          value={plannedStartTime}
+                          disabled={!plannedDate}
+                          onChange={(event) =>
+                            setPlannedStartTime(event.target.value)
+                          }
+                        />
+                      </label>
+
+                      <label className={styles.field}>
+                        <span>Финиш</span>
+                        <input
+                          type="time"
+                          value={plannedEndTime}
+                          disabled={!plannedDate || !plannedStartTime}
+                          onChange={(event) =>
+                            setPlannedEndTime(event.target.value)
+                          }
+                        />
+                      </label>
+                    </>
+                  ) : null}
+
                   <label className={styles.field}>
-                    <span>Финиш</span>
+                    <span>Дедлайн</span>
                     <input
-                      type="time"
-                      value={plannedEndTime}
-                      disabled={!plannedDate || !plannedStartTime}
-                      onChange={(event) =>
-                        setPlannedEndTime(event.target.value)
-                      }
+                      type="date"
+                      value={dueDate}
+                      onChange={(event) => setDueDate(event.target.value)}
                     />
                   </label>
-                </>
-              ) : null}
 
-              <label className={styles.field}>
-                <span>Дедлайн</span>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(event) => setDueDate(event.target.value)}
-                />
-              </label>
+                  <ResourcePicker
+                    className={styles.fieldResource}
+                    value={resource}
+                    onChange={setResource}
+                  />
+                </div>
 
-              <ResourcePicker
-                className={styles.fieldResource}
-                value={resource}
-                onChange={setResource}
-              />
-            </div>
+                <div className={styles.visualPanel}>
+                  <IconChoicePicker
+                    allowEmpty={false}
+                    label="Иконка"
+                    showEmojiChoices={false}
+                    value={icon}
+                    uploadedIcons={uploadedIcons}
+                    onChange={setIcon}
+                  />
+                </div>
 
-            <div className={styles.visualPanel}>
-              <IconChoicePicker
-                allowEmpty={false}
-                label="Иконка"
-                showEmojiChoices={false}
-                value={icon}
-                uploadedIcons={uploadedIcons}
-                onChange={setIcon}
-              />
-            </div>
+                <label className={styles.field}>
+                  <span>Заметка</span>
+                  <textarea
+                    rows={3}
+                    value={note}
+                    placeholder="Контекст, next step, ссылка на материал"
+                    onChange={(event) => setNote(event.target.value)}
+                  />
+                </label>
 
-            <label className={styles.field}>
-              <span>Заметка</span>
-              <textarea
-                rows={3}
-                value={note}
-                placeholder="Контекст, next step, ссылка на материал"
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </label>
+                {templateNotice ? (
+                  <p className={styles.notice}>{templateNotice}</p>
+                ) : null}
 
-            {templateNotice ? (
-              <p className={styles.notice}>{templateNotice}</p>
-            ) : null}
+                <div className={styles.footer}>
+                  <div className={styles.quickActions}>
+                    <button
+                      className={styles.ghostButton}
+                      type="button"
+                      onClick={() => {
+                        handlePlannedDateChange(todayKey)
+                      }}
+                    >
+                      На сегодня
+                    </button>
+                    <button
+                      className={styles.ghostButton}
+                      type="button"
+                      onClick={() => {
+                        handlePlannedDateChange(tomorrowKey)
+                      }}
+                    >
+                      На завтра
+                    </button>
+                    <button
+                      className={styles.ghostButton}
+                      type="button"
+                      onClick={() => {
+                        handlePlannedDateChange('')
+                      }}
+                    >
+                      В inbox
+                    </button>
+                  </div>
 
-            <div className={styles.footer}>
-              <div className={styles.quickActions}>
-                <button
-                  className={styles.ghostButton}
-                  type="button"
-                  onClick={() => {
-                    handlePlannedDateChange(todayKey)
-                  }}
-                >
-                  На сегодня
-                </button>
-                <button
-                  className={styles.ghostButton}
-                  type="button"
-                  onClick={() => {
-                    handlePlannedDateChange(tomorrowKey)
-                  }}
-                >
-                  На завтра
-                </button>
-                <button
-                  className={styles.ghostButton}
-                  type="button"
-                  onClick={() => {
-                    handlePlannedDateChange('')
-                  }}
-                >
-                  В inbox
-                </button>
-              </div>
+                  <div className={styles.footerActions}>
+                    <button
+                      className={styles.ghostButton}
+                      type="button"
+                      disabled={!title.trim()}
+                      onClick={() => {
+                        void handleSaveTemplate()
+                      }}
+                    >
+                      Сохранить как шаблон
+                    </button>
 
-              <div className={styles.footerActions}>
-                <button
-                  className={styles.ghostButton}
-                  type="button"
-                  disabled={!title.trim()}
-                  onClick={() => {
-                    void handleSaveTemplate()
-                  }}
-                >
-                  Сохранить как шаблон
-                </button>
-
-                <button className={styles.primaryButton} type="submit">
-                  Добавить задачу
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
-      ) : null}
+                    <button className={styles.primaryButton} type="submit">
+                      Добавить задачу
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

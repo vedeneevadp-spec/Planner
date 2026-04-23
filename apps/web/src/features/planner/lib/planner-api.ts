@@ -1,21 +1,5 @@
 import {
   apiErrorSchema,
-  type ChaosInboxBulkUpdateInput,
-  chaosInboxBulkUpdateInputSchema,
-  type ChaosInboxConvertToTaskRecordResponse,
-  chaosInboxConvertToTaskRecordResponseSchema,
-  type ChaosInboxCreatedRecordResponse,
-  chaosInboxCreatedRecordResponseSchema,
-  type ChaosInboxItemRecord,
-  chaosInboxItemRecordSchema,
-  type ChaosInboxItemUpdateInput,
-  chaosInboxItemUpdateInputSchema,
-  type ChaosInboxListFilters,
-  chaosInboxListFiltersSchema,
-  type ChaosInboxListRecordResponse,
-  chaosInboxListRecordResponseSchema,
-  type CreateChaosInboxItemsInput,
-  createChaosInboxItemsInputSchema,
   type DailyPlanAutoBuildInput,
   dailyPlanAutoBuildInputSchema,
   type DailyPlanRecord,
@@ -96,9 +80,7 @@ export function isUnauthorizedPlannerApiError(
   return error instanceof PlannerApiError && error.status === 401
 }
 
-function mapLifeSphereToProjectRecord(
-  sphere: LifeSphereRecord,
-): ProjectRecord {
+function mapLifeSphereToProjectRecord(sphere: LifeSphereRecord): ProjectRecord {
   return {
     color: sphere.color,
     createdAt: sphere.createdAt,
@@ -122,20 +104,9 @@ export interface PlannerApiClientConfig {
 }
 
 export interface PlannerApiClient {
-  autoBuildDailyPlan: (input: DailyPlanAutoBuildInput) => Promise<DailyPlanRecord>
-  bulkConvertChaosInboxItemsToTasks: (
-    ids: string[],
-  ) => Promise<ChaosInboxConvertToTaskRecordResponse[]>
-  bulkDeleteChaosInboxItems: (ids: string[]) => Promise<void>
-  bulkUpdateChaosInboxItems: (
-    input: ChaosInboxBulkUpdateInput,
-  ) => Promise<ChaosInboxCreatedRecordResponse>
-  convertChaosInboxItemToTask: (
-    id: string,
-  ) => Promise<ChaosInboxConvertToTaskRecordResponse>
-  createChaosInboxItems: (
-    input: CreateChaosInboxItemsInput,
-  ) => Promise<ChaosInboxCreatedRecordResponse>
+  autoBuildDailyPlan: (
+    input: DailyPlanAutoBuildInput,
+  ) => Promise<DailyPlanRecord>
   createLifeSphere: (input: NewLifeSphereInput) => Promise<LifeSphereRecord>
   createProject: (input: NewProjectInput) => Promise<ProjectRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
@@ -146,16 +117,15 @@ export interface PlannerApiClient {
     projectId: string,
     signal?: RequestSignal,
   ) => Promise<ProjectRecord>
-  getDailyPlan: (date: string, signal?: RequestSignal) => Promise<DailyPlanRecord>
+  getDailyPlan: (
+    date: string,
+    signal?: RequestSignal,
+  ) => Promise<DailyPlanRecord>
   getLifeSphereWeeklyStats: (
     from: string,
     to: string,
     signal?: RequestSignal,
   ) => Promise<WeeklySphereStatsResponse>
-  listChaosInboxItems: (
-    filters?: ChaosInboxListFilters,
-    signal?: RequestSignal,
-  ) => Promise<ChaosInboxListRecordResponse>
   listLifeSpheres: (signal?: RequestSignal) => Promise<LifeSphereRecord[]>
   listTaskEvents: (
     filters?: TaskEventListFilters,
@@ -169,7 +139,6 @@ export interface PlannerApiClient {
   listTaskTemplates: (signal?: RequestSignal) => Promise<TaskTemplateRecord[]>
   removeTaskTemplate: (templateId: string) => Promise<void>
   removeLifeSphere: (sphereId: string) => Promise<void>
-  removeChaosInboxItem: (id: string) => Promise<void>
   removeTask: (taskId: string, expectedVersion?: number) => Promise<void>
   saveDailyPlan: (
     date: string,
@@ -191,10 +160,6 @@ export interface PlannerApiClient {
     projectId: string,
     input: ProjectUpdateInput,
   ) => Promise<ProjectRecord>
-  updateChaosInboxItem: (
-    id: string,
-    input: ChaosInboxItemUpdateInput,
-  ) => Promise<ChaosInboxItemRecord>
   updateLifeSphere: (
     sphereId: string,
     input: LifeSphereUpdateInput,
@@ -284,84 +249,6 @@ export function createPlannerApiClient(
   }
 
   return {
-    async listChaosInboxItems(filters = {}, signal) {
-      const validatedFilters = chaosInboxListFiltersSchema.parse(filters)
-
-      return request({
-        path: '/api/v1/chaos-inbox',
-        query: validatedFilters,
-        responseSchema: chaosInboxListRecordResponseSchema,
-        signal,
-      })
-    },
-    async createChaosInboxItems(input) {
-      const validatedInput = createChaosInboxItemsInputSchema.parse(input)
-
-      return request({
-        body: validatedInput,
-        method: 'POST',
-        path: '/api/v1/chaos-inbox',
-        responseSchema: chaosInboxCreatedRecordResponseSchema,
-        writeAccess: true,
-      })
-    },
-    async updateChaosInboxItem(id, input) {
-      const validatedInput = chaosInboxItemUpdateInputSchema.parse(input)
-
-      return request({
-        body: validatedInput,
-        method: 'PATCH',
-        path: `/api/v1/chaos-inbox/${encodeURIComponent(id)}`,
-        responseSchema: chaosInboxItemRecordSchema,
-        writeAccess: true,
-      })
-    },
-    async bulkUpdateChaosInboxItems(input) {
-      const validatedInput = chaosInboxBulkUpdateInputSchema.parse(input)
-
-      return request({
-        body: validatedInput,
-        method: 'POST',
-        path: '/api/v1/chaos-inbox/bulk-update',
-        responseSchema: chaosInboxCreatedRecordResponseSchema,
-        writeAccess: true,
-      })
-    },
-    async removeChaosInboxItem(id) {
-      await request<void>({
-        method: 'DELETE',
-        path: `/api/v1/chaos-inbox/${encodeURIComponent(id)}`,
-        writeAccess: true,
-      })
-    },
-    async bulkDeleteChaosInboxItems(ids) {
-      await request<void>({
-        body: { ids },
-        method: 'POST',
-        path: '/api/v1/chaos-inbox/bulk-delete',
-        writeAccess: true,
-      })
-    },
-    async convertChaosInboxItemToTask(id) {
-      return request({
-        method: 'POST',
-        path: `/api/v1/chaos-inbox/${encodeURIComponent(id)}/convert-to-task`,
-        responseSchema: chaosInboxConvertToTaskRecordResponseSchema,
-        writeAccess: true,
-      })
-    },
-    async bulkConvertChaosInboxItemsToTasks(ids) {
-      return request({
-        body: { ids },
-        method: 'POST',
-        path: '/api/v1/chaos-inbox/bulk-convert-to-tasks',
-        responseSchema: {
-          parse: (value) =>
-            chaosInboxConvertToTaskRecordResponseSchema.array().parse(value),
-        },
-        writeAccess: true,
-      })
-    },
     async getDailyPlan(date, signal) {
       return request({
         path: '/api/v1/daily-plan',

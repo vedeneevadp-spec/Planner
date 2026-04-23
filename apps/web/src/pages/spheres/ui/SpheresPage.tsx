@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { TaskComposer } from '@/features/task-create'
 import { formatShortDate, getDateKey } from '@/shared/lib/date'
 import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
@@ -13,7 +14,6 @@ import {
   getCurrentWeekRange,
   getSphereHealthLabel,
   type SphereStats,
-  UNSPHERED_ID,
 } from '../lib/sphere-stats'
 import { SphereForm } from './SphereForm'
 import styles from './SpheresPage.module.css'
@@ -32,16 +32,16 @@ function buildHeadline(stats: SphereStats[]): string {
 
   if (abandonedCount > 0) {
     return `${abandonedCount} ${
-      abandonedCount === 1
-        ? 'сфера просит внимания'
-        : 'сферы просят внимания'
+      abandonedCount === 1 ? 'сфера просит внимания' : 'сферы просят внимания'
     }`
   }
 
   return 'Баланс недели выглядит ровно'
 }
 
-function getLastActivityLabel(stat: Pick<SphereStats, 'idleDays' | 'lastActivityAt'>): string {
+function getLastActivityLabel(
+  stat: Pick<SphereStats, 'idleDays' | 'lastActivityAt'>,
+): string {
   if (!stat.lastActivityAt || stat.idleDays === null) {
     return 'активности еще не было'
   }
@@ -84,12 +84,14 @@ export function SpheresPage() {
               {stats.length > 0 ? buildHeadline(stats) : 'Сферы пока не заданы'}
             </h3>
             <p>
-              {formatShortDate(week.from)} - {formatShortDate(week.to)} · ресурс считается по задачам недели.
+              {formatShortDate(week.from)} - {formatShortDate(week.to)} · ресурс
+              считается по задачам недели.
             </p>
           </div>
-          <Link className={styles.secondaryButton} to="/inbox">
-            Добавить действие
-          </Link>
+          <TaskComposer
+            initialPlannedDate={null}
+            openButtonLabel="Добавить действие"
+          />
         </div>
 
         {stats.length > 0 ? (
@@ -195,7 +197,9 @@ export function SpheresPage() {
                     </p>
                   ) : null}
                   <p className={styles.cardCopy}>
-                    {stat ? getLastActivityLabel(stat) : 'активности еще не было'}
+                    {stat
+                      ? getLastActivityLabel(stat)
+                      : 'активности еще не было'}
                   </p>
                 </div>
 
@@ -222,12 +226,6 @@ export function SpheresPage() {
           })}
         </div>
       )}
-
-      {statsBySphereId.has(UNSPHERED_ID) ? (
-        <Link className={styles.secondaryButton} to="/inbox">
-          Разобрать задачи без сферы
-        </Link>
-      ) : null}
     </section>
   )
 }

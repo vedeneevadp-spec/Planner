@@ -1,8 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
 import { NavLink } from 'react-router-dom'
 
 import { getPlannerSummary } from '@/entities/task'
-import { usePlanner, usePlannerApiClient } from '@/features/planner'
+import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
   setSelectedWorkspaceId,
@@ -17,7 +16,6 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
-  { to: '/inbox', label: 'Сброс' },
   { to: '/spheres', label: 'Сферы' },
   { to: '/timeline', label: 'Таймлайн' },
   { to: '/admin', label: 'Admin' },
@@ -34,7 +32,6 @@ export function Sidebar() {
     refresh,
     tasks,
   } = usePlanner()
-  const api = usePlannerApiClient()
   const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
   const createSharedWorkspaceMutation = useCreateSharedWorkspace()
@@ -44,24 +41,6 @@ export function Sidebar() {
   const sharedWorkspaceCount =
     session?.workspaces.filter((workspace) => workspace.kind === 'shared')
       .length ?? 0
-  const chaosInboxCountQuery = useQuery({
-    enabled: api !== null && !isSharedWorkspace,
-    queryFn: async ({ signal }) => {
-      const [newItems, inReviewItems] = await Promise.all([
-        api!.listChaosInboxItems({ limit: 1, status: 'new' }, signal),
-        api!.listChaosInboxItems({ limit: 1, status: 'in_review' }, signal),
-      ])
-
-      return newItems.total + inReviewItems.total
-    },
-    queryKey: [
-      'chaos-inbox',
-      'active-count',
-      session?.workspaceId ?? 'pending',
-    ],
-    staleTime: 30_000,
-  })
-  const chaosInboxCount = chaosInboxCountQuery.data ?? 0
   const visibleNavigation = navigation.filter(
     (item) =>
       (!isSharedWorkspace || item.to === '/today') &&
@@ -213,11 +192,9 @@ export function Sidebar() {
               ? summary.focusCount + summary.overdueCount
               : item.to === '/timeline'
                 ? summary.timelineCount
-                : item.to === '/inbox'
-                  ? chaosInboxCount
-                  : item.to === '/spheres'
-                    ? projects.length
-                    : (session?.role ?? 'Admin')
+                : item.to === '/spheres'
+                  ? projects.length
+                  : (session?.role ?? 'Admin')
 
           return (
             <NavLink
@@ -249,10 +226,6 @@ export function Sidebar() {
           <div>
             <span>Tomorrow</span>
             <strong>{summary.tomorrowCount}</strong>
-          </div>
-          <div>
-            <span>Сброс</span>
-            <strong>{chaosInboxCount}</strong>
           </div>
           <div>
             <span>Done</span>
