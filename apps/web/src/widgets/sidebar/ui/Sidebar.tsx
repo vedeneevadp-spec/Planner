@@ -45,8 +45,8 @@ export function Sidebar() {
     (item) =>
       (!isSharedWorkspace || item.to === '/today') &&
       (item.to !== '/admin' ||
-        session?.role === 'admin' ||
-        session?.role === 'owner'),
+        session?.appRole === 'admin' ||
+        session?.appRole === 'owner'),
   )
   const syncStateLabel = errorMessage
     ? 'Connection issue'
@@ -90,7 +90,7 @@ export function Sidebar() {
 
         <p className={styles.connectionMeta}>
           {session
-            ? `${session.actor.displayName} · ${getWorkspaceRoleLabel(session.role)}${
+            ? `${session.actor.displayName} · ${getAppRoleLabel(session.appRole)} · ${getWorkspaceRoleLabel(session.role)}${
                 session.groupRole
                   ? ` · ${getWorkspaceGroupRoleLabel(session.groupRole)}`
                   : ''
@@ -194,7 +194,7 @@ export function Sidebar() {
                 ? summary.timelineCount
                 : item.to === '/spheres'
                   ? projects.length
-                  : (session?.role ?? 'Admin')
+                  : (session?.appRole ?? 'Admin')
 
           return (
             <NavLink
@@ -235,6 +235,17 @@ export function Sidebar() {
       </section>
     </aside>
   )
+}
+
+function getAppRoleLabel(role: string): string {
+  const labels: Record<string, string> = {
+    admin: 'App Admin',
+    guest: 'App Guest',
+    owner: 'App Owner',
+    user: 'App User',
+  }
+
+  return labels[role] ?? role
 }
 
 function getWorkspaceRoleLabel(role: string): string {

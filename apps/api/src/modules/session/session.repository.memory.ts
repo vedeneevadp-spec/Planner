@@ -1,7 +1,8 @@
 import {
+  type AdminUserRecord,
+  type AssignableAppRole,
   type CreateSharedWorkspaceInput,
   generateUuidV7,
-  type WorkspaceRole,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -28,6 +29,7 @@ const DEFAULT_MEMORY_SESSION: SessionSnapshot = {
     id: '11111111-1111-4111-8111-111111111111',
   },
   actorUserId: '11111111-1111-4111-8111-111111111111',
+  appRole: 'owner',
   groupRole: DEFAULT_MEMORY_WORKSPACE.groupRole,
   role: 'owner',
   source: 'default',
@@ -43,6 +45,22 @@ const DEFAULT_MEMORY_SESSION: SessionSnapshot = {
 
 export class MemorySessionRepository implements SessionRepository {
   private session: SessionSnapshot = DEFAULT_MEMORY_SESSION
+  private users: AdminUserRecord[] = [
+    {
+      appRole: 'owner',
+      displayName: DEFAULT_MEMORY_SESSION.actor.displayName,
+      email: DEFAULT_MEMORY_SESSION.actor.email,
+      id: DEFAULT_MEMORY_SESSION.actorUserId,
+      updatedAt: new Date(0).toISOString(),
+    },
+    {
+      appRole: 'user',
+      displayName: 'Planner Reader',
+      email: 'reader@planner.local',
+      id: '44444444-4444-4444-8444-444444444444',
+      updatedAt: new Date(0).toISOString(),
+    },
+  ]
   private workspaces: SessionWorkspaceMembership[] = [DEFAULT_MEMORY_WORKSPACE]
 
   resolve(context: SessionContext): Promise<SessionSnapshot> {
@@ -50,15 +68,20 @@ export class MemorySessionRepository implements SessionRepository {
       const workspace = this.resolveWorkspace(
         context.workspaceId ?? this.session.workspaceId,
       )
+      const actor = this.resolveActor(
+        context.auth.claims.sub,
+        context.auth.claims.email ?? this.session.actor.email,
+      )
 
       return Promise.resolve({
         ...this.session,
         actor: {
-          ...this.session.actor,
-          email: context.auth.claims.email ?? this.session.actor.email,
-          id: context.auth.claims.sub,
+          displayName: actor.displayName,
+          email: actor.email,
+          id: actor.id,
         },
-        actorUserId: context.auth.claims.sub,
+        actorUserId: actor.id,
+        appRole: actor.appRole,
         groupRole: workspace.groupRole,
         role: workspace.role,
         source: 'access_token',
@@ -75,14 +98,21 @@ export class MemorySessionRepository implements SessionRepository {
 
     if (context.actorUserId && context.workspaceId) {
       const workspace = this.resolveWorkspace(context.workspaceId)
+      const actor = this.resolveActor(
+        context.actorUserId,
+        this.session.actor.email,
+        this.session.actor.displayName,
+      )
 
       return Promise.resolve({
         ...this.session,
         actor: {
-          ...this.session.actor,
-          id: context.actorUserId,
+          displayName: actor.displayName,
+          email: actor.email,
+          id: actor.id,
         },
-        actorUserId: context.actorUserId,
+        actorUserId: actor.id,
+        appRole: actor.appRole,
         groupRole: workspace.groupRole,
         role: workspace.role,
         source: 'headers',
@@ -100,60 +130,59 @@ export class MemorySessionRepository implements SessionRepository {
     return Promise.resolve(this.session)
   }
 
-  listWorkspaceUsers(session: SessionSnapshot) {
-    return Promise.resolve([
-      {
-        displayName: session.actor.displayName,
-        email: session.actor.email,
-        groupRole: session.groupRole,
-        id: session.actorUserId,
-        joinedAt: new Date(0).toISOString(),
-        membershipId: '33333333-3333-4333-8333-333333333333',
-        role: session.role,
-        updatedAt: new Date(0).toISOString(),
-      },
-    ])
+  listAdminUsers() {
+    return Promise.resolve(this.users)
   }
 
-  updateWorkspaceUserRole(
+  updateAdminUserRole(
     session: SessionSnapshot,
     userId: string,
-    role: WorkspaceRole,
+    role: AssignableAppRole,
   ) {
-    if (userId !== session.actorUserId) {
+    if (session.appRole !== 'owner') {
+      throw new HttpError(
+        403,
+        'owner_required',
+        'Only the global owner can manage application users.',
+      )
+    }
+
+    const currentUser = this.users.find((user) => user.id === userId)
+
+    if (!currentUser) {
       throw new HttpError(
         404,
-        'workspace_user_not_found',
-        'Workspace user was not found.',
+        'admin_user_not_found',
+        'Application user was not found.',
       )
     }
 
-    if (session.role === 'owner' && role !== 'owner') {
+    if (currentUser.appRole === 'owner') {
       throw new HttpError(
         400,
-        'last_owner_required',
-        'Workspace must keep at least one owner.',
+        'owner_role_immutable',
+        'The global owner role cannot be changed.',
       )
     }
 
-    this.session = {
-      ...this.session,
-      role,
-    }
-    this.workspaces = this.workspaces.map((workspace) =>
-      workspace.id === session.workspaceId ? { ...workspace, role } : workspace,
+    const updatedUser = {
+      ...currentUser,
+      appRole: role,
+      updatedAt: new Date().toISOString(),
+    } satisfies AdminUserRecord
+
+    this.users = this.users.map((user) =>
+      user.id === userId ? updatedUser : user,
     )
 
-    return Promise.resolve({
-      displayName: session.actor.displayName,
-      email: session.actor.email,
-      groupRole: session.groupRole,
-      id: session.actorUserId,
-      joinedAt: new Date(0).toISOString(),
-      membershipId: '33333333-3333-4333-8333-333333333333',
-      role,
-      updatedAt: new Date().toISOString(),
-    })
+    if (userId === this.session.actorUserId) {
+      this.session = {
+        ...this.session,
+        appRole: role,
+      }
+    }
+
+    return Promise.resolve(updatedUser)
   }
 
   createSharedWorkspace(
@@ -208,5 +237,29 @@ export class MemorySessionRepository implements SessionRepository {
       role: this.session.role,
       slug: this.session.workspace.slug,
     }
+  }
+
+  private resolveActor(
+    actorUserId: string,
+    email: string,
+    displayName = this.session.actor.displayName,
+  ): AdminUserRecord {
+    const existingUser = this.users.find((user) => user.id === actorUserId)
+
+    if (existingUser) {
+      return existingUser
+    }
+
+    const createdUser: AdminUserRecord = {
+      appRole: 'user',
+      displayName,
+      email,
+      id: actorUserId,
+      updatedAt: new Date().toISOString(),
+    }
+
+    this.users = [...this.users, createdUser]
+
+    return createdUser
   }
 }

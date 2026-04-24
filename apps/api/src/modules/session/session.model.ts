@@ -1,9 +1,10 @@
 import type {
+  AdminUserRecord as ContractAdminUserRecord,
+  AppRole,
   SessionWorkspaceMembership as ContractSessionWorkspaceMembership,
   WorkspaceGroupRole,
   WorkspaceKind,
   WorkspaceRole,
-  WorkspaceUserRecord as ContractWorkspaceUserRecord,
 } from '@planner/contracts'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -24,6 +25,7 @@ export interface SessionWorkspace {
 export interface SessionSnapshot {
   actor: SessionActor
   actorUserId: string
+  appRole: AppRole
   groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
   source: 'access_token' | 'default' | 'headers'
@@ -39,4 +41,4 @@ export interface SessionContext {
 }
 
 export type SessionWorkspaceMembership = ContractSessionWorkspaceMembership
-export type WorkspaceUserRecord = ContractWorkspaceUserRecord
+export type AdminUserRecord = ContractAdminUserRecord

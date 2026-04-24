@@ -165,40 +165,40 @@ function createPaths(): OpenAPIV3.PathsObject {
     },
     '/api/v1/admin/users': {
       get: {
-        operationId: 'listWorkspaceUsers',
+        operationId: 'listAdminUsers',
         parameters: [
           parameter('requiredWorkspaceIdHeader'),
           parameter('actorUserIdHeader'),
         ],
         responses: {
-          200: jsonResponse('WorkspaceUserListResponse'),
+          200: jsonResponse('AdminUserListResponse'),
           400: errorResponse(),
           401: errorResponse(),
           403: errorResponse(),
         },
         security: [{ bearerAuth: [] }, {}],
-        summary: 'List workspace users',
+        summary: 'List application users',
         tags: ['session'],
       },
     },
     '/api/v1/admin/users/{userId}/role': {
       patch: {
-        operationId: 'updateWorkspaceUserRole',
+        operationId: 'updateAdminUserRole',
         parameters: [
           userIdParameter(),
           parameter('requiredWorkspaceIdHeader'),
           parameter('actorUserIdHeader'),
         ],
-        requestBody: jsonRequestBody('WorkspaceUserRoleUpdateInput'),
+        requestBody: jsonRequestBody('AdminUserRoleUpdateInput'),
         responses: {
-          200: jsonResponse('WorkspaceUserRecord'),
+          200: jsonResponse('AdminUserRecord'),
           400: errorResponse(),
           401: errorResponse(),
           403: errorResponse(),
           404: errorResponse(),
         },
         security: [{ bearerAuth: [] }, {}],
-        summary: 'Update workspace user role',
+        summary: 'Update application user role',
         tags: ['session'],
       },
     },
@@ -1127,6 +1127,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         actorUserId: {
           type: 'string',
         },
+        appRole: {
+          $ref: '#/components/schemas/AppRole',
+        },
         groupRole: nullableRefSchema('WorkspaceGroupRole'),
         role: {
           $ref: '#/components/schemas/WorkspaceRole',
@@ -1151,6 +1154,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       required: [
         'actor',
         'actorUserId',
+        'appRole',
         'groupRole',
         'role',
         'source',
@@ -1209,6 +1213,14 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       enum: ['admin', 'guest', 'owner', 'user'],
       type: 'string',
     },
+    AppRole: {
+      enum: ['admin', 'guest', 'owner', 'user'],
+      type: 'string',
+    },
+    AssignableAppRole: {
+      enum: ['admin', 'guest', 'user'],
+      type: 'string',
+    },
     CreateSharedWorkspaceInput: {
       additionalProperties: false,
       properties: {
@@ -1218,6 +1230,58 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
       },
+      type: 'object',
+    },
+    AdminUserListResponse: {
+      additionalProperties: false,
+      properties: {
+        users: {
+          items: {
+            $ref: '#/components/schemas/AdminUserRecord',
+          },
+          type: 'array',
+        },
+      },
+      required: ['users'],
+      type: 'object',
+    },
+    AdminUserRecord: {
+      additionalProperties: false,
+      properties: {
+        appRole: {
+          $ref: '#/components/schemas/AppRole',
+        },
+        displayName: {
+          type: 'string',
+        },
+        email: {
+          type: 'string',
+        },
+        id: {
+          type: 'string',
+        },
+        updatedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+      },
+      required: [
+        'appRole',
+        'displayName',
+        'email',
+        'id',
+        'updatedAt',
+      ],
+      type: 'object',
+    },
+    AdminUserRoleUpdateInput: {
+      additionalProperties: false,
+      properties: {
+        role: {
+          $ref: '#/components/schemas/AssignableAppRole',
+        },
+      },
+      required: ['role'],
       type: 'object',
     },
     WorkspaceUserListResponse: {

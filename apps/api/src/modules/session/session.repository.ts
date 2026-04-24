@@ -1,13 +1,13 @@
 import type {
+  AssignableAppRole,
   CreateSharedWorkspaceInput,
-  WorkspaceRole,
 } from '@planner/contracts'
 
 import type {
+  AdminUserRecord,
   SessionContext,
   SessionSnapshot,
   SessionWorkspaceMembership,
-  WorkspaceUserRecord,
 } from './session.model.js'
 
 export interface SessionRepository {
@@ -16,10 +16,10 @@ export interface SessionRepository {
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,
   ): Promise<SessionWorkspaceMembership>
-  listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]>
-  updateWorkspaceUserRole(
+  listAdminUsers(session: SessionSnapshot): Promise<AdminUserRecord[]>
+  updateAdminUserRole(
     session: SessionSnapshot,
     userId: string,
-    role: WorkspaceRole,
-  ): Promise<WorkspaceUserRecord>
+    role: AssignableAppRole,
+  ): Promise<AdminUserRecord>
 }

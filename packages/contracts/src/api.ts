@@ -22,6 +22,8 @@ import {
 import { taskTemplateSchema } from './task-template.js'
 
 export const storageDriverSchema = z.enum(['memory', 'postgres'])
+export const appRoleSchema = z.enum(['owner', 'admin', 'user', 'guest'])
+export const assignableAppRoleSchema = z.enum(['admin', 'user', 'guest'])
 export const workspaceRoleSchema = z.enum(['owner', 'admin', 'user', 'guest'])
 export const workspaceKindSchema = z.enum(['personal', 'shared'])
 export const workspaceGroupRoleSchema = z.enum([
@@ -106,12 +108,29 @@ export const sessionWorkspaceMembershipSchema = sessionWorkspaceSchema.extend({
 export const sessionResponseSchema = z.object({
   actor: sessionActorSchema,
   actorUserId: z.string(),
+  appRole: appRoleSchema,
   groupRole: workspaceGroupRoleSchema.nullable(),
   role: workspaceRoleSchema,
   source: z.enum(['access_token', 'default', 'headers']),
   workspace: sessionWorkspaceSchema,
   workspaceId: z.string(),
   workspaces: z.array(sessionWorkspaceMembershipSchema),
+})
+
+export const adminUserRecordSchema = z.object({
+  displayName: z.string(),
+  email: z.string(),
+  id: z.string(),
+  appRole: appRoleSchema,
+  updatedAt: z.string(),
+})
+
+export const adminUserListResponseSchema = z.object({
+  users: z.array(adminUserRecordSchema),
+})
+
+export const adminUserRoleUpdateInputSchema = z.object({
+  role: assignableAppRoleSchema,
 })
 
 export const workspaceUserRecordSchema = z.object({
@@ -218,6 +237,13 @@ export const taskScheduleUpdateInputSchema = z.object({
 export const taskDetailsUpdateInputSchema = taskUpdateInputSchema
 
 export type ApiError = z.infer<typeof apiErrorSchema>
+export type AdminUserRecord = z.infer<typeof adminUserRecordSchema>
+export type AdminUserListResponse = z.infer<typeof adminUserListResponseSchema>
+export type AdminUserRoleUpdateInput = z.infer<
+  typeof adminUserRoleUpdateInputSchema
+>
+export type AppRole = z.infer<typeof appRoleSchema>
+export type AssignableAppRole = z.infer<typeof assignableAppRoleSchema>
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
 export type ChaosInboxItemRecord = z.infer<typeof chaosInboxItemRecordSchema>

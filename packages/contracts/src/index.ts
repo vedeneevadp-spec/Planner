@@ -1,5 +1,10 @@
 export type {
+  AdminUserListResponse,
+  AdminUserRecord,
+  AdminUserRoleUpdateInput,
   ApiError,
+  AppRole,
+  AssignableAppRole,
   ChaosInboxConvertToTaskRecordResponse,
   ChaosInboxCreatedRecordResponse,
   ChaosInboxItemRecord,
@@ -34,7 +39,12 @@ export type {
   WorkspaceUserRoleUpdateInput,
 } from './api.js'
 export {
+  adminUserListResponseSchema,
+  adminUserRecordSchema,
+  adminUserRoleUpdateInputSchema,
   apiErrorSchema,
+  appRoleSchema,
+  assignableAppRoleSchema,
   chaosInboxConvertToTaskRecordResponseSchema,
   chaosInboxCreatedRecordResponseSchema,
   chaosInboxItemRecordSchema,

@@ -143,9 +143,9 @@ export function registerEmojiSetRoutes(
 
 function createLegacyWriteContext(headers: z.infer<typeof writeHeadersSchema>) {
   return {
+    appRole: undefined,
     actorUserId: headers['x-actor-user-id'],
     auth: null,
-    role: undefined,
     workspaceId: headers['x-workspace-id'],
   }
 }
@@ -169,9 +169,9 @@ async function resolveReadContext(
 
   if (!authContext) {
     return {
+      appRole: undefined,
       actorUserId: undefined,
       auth: null,
-      role: undefined,
       workspaceId: headers['x-workspace-id'],
     }
   }
@@ -183,9 +183,9 @@ async function resolveReadContext(
   })
 
   return {
+    appRole: session.appRole,
     actorUserId: session.actorUserId,
     auth: authContext,
-    role: session.role,
     workspaceId: session.workspaceId,
   }
 }
@@ -212,9 +212,9 @@ async function resolveWriteContext(
   })
 
   return {
+    appRole: session.appRole,
     actorUserId: session.actorUserId,
     auth: authContext,
-    role: session.role,
     workspaceId: session.workspaceId,
   }
 }

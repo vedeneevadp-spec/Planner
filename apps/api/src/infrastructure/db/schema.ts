@@ -107,6 +107,7 @@ export interface AppTaskTemplatesTable {
 }
 
 export interface AppUsersTable {
+  app_role: 'owner' | 'admin' | 'user' | 'guest'
   avatar_url: string | null
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null

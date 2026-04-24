@@ -1,4 +1,4 @@
-import type { WorkspaceRole } from '@planner/contracts'
+import type { AppRole, AssignableAppRole } from '@planner/contracts'
 import { type ChangeEvent, type FormEvent, useState } from 'react'
 
 import { EmojiGlyph, type NewEmojiAssetInput } from '@/entities/emoji-set'
@@ -10,9 +10,9 @@ import {
   useEmojiSets,
 } from '@/features/emoji-library'
 import {
+  useAdminUsers,
   usePlannerSession,
-  useUpdateWorkspaceUserRole,
-  useWorkspaceUsers,
+  useUpdateAdminUserRole,
 } from '@/features/session'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
@@ -36,13 +36,12 @@ interface DraftIconItem {
 }
 
 const NEW_ICON_SET_TARGET = 'new'
-const WORKSPACE_ROLES = [
-  'owner',
+const MANAGEABLE_APP_ROLES = [
   'admin',
   'user',
   'guest',
-] satisfies WorkspaceRole[]
-const ROLE_LABELS: Record<WorkspaceRole, string> = {
+] satisfies AssignableAppRole[]
+const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'admin',
   guest: 'guest',
   owner: 'owner',
@@ -63,7 +62,7 @@ function createDraftIconItem(): DraftIconItem {
   }
 }
 
-function canManageAdmin(role: string | undefined): boolean {
+function canManageAdmin(role: AppRole | undefined): boolean {
   return role === 'admin' || role === 'owner'
 }
 
@@ -87,15 +86,16 @@ export function AdminPage() {
     () => new Set(),
   )
   const session = sessionQuery.data
-  const canManage = canManageAdmin(session?.role)
-  const workspaceUsersQuery = useWorkspaceUsers({ enabled: canManage })
-  const updateWorkspaceUserRole = useUpdateWorkspaceUserRole()
-  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
+  const canManage = canManageAdmin(session?.appRole)
+  const isOwner = session?.appRole === 'owner'
+  const adminUsersQuery = useAdminUsers({ enabled: isOwner })
+  const updateAdminUserRole = useUpdateAdminUserRole()
+  const adminUsers = adminUsersQuery.data?.users ?? []
   const iconSets = iconSetsQuery.data ?? []
   const isCreatingNewSet = targetSetId === NEW_ICON_SET_TARGET
   const isSaving = createIconSet.isPending || addIconSetItems.isPending
   const isDeleting = deleteIconSet.isPending || deleteIconSetItem.isPending
-  const isUpdatingUsers = updateWorkspaceUserRole.isPending
+  const isUpdatingUsers = updateAdminUserRole.isPending
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -286,11 +286,11 @@ export function AdminPage() {
     }
   }
 
-  async function handleUserRoleChange(userId: string, role: WorkspaceRole) {
+  async function handleUserRoleChange(userId: string, role: AssignableAppRole) {
     setUserError(null)
 
     try {
-      await updateWorkspaceUserRole.mutateAsync({ role, userId })
+      await updateAdminUserRole.mutateAsync({ role, userId })
     } catch (error) {
       setUserError(
         error instanceof Error
@@ -332,7 +332,7 @@ export function AdminPage() {
         <PageHeader
           kicker="Admin"
           title="Недостаточно прав"
-          description="Управление наборами иконок доступно владельцам и администраторам workspace."
+          description="Глобальная админка доступна владельцу и администраторам приложения."
         />
       </section>
     )
@@ -343,50 +343,67 @@ export function AdminPage() {
       <PageHeader
         kicker="Admin"
         title="Админка"
-        description="Управляйте пользователями workspace и библиотекой иконок."
+        description="Управляйте пользователями и библиотекой иконок."
       />
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <div>
             <p className={styles.eyebrow}>Access</p>
-            <h3>Пользователи</h3>
+            <h3>Пользователи приложения</h3>
           </div>
-          <span className={styles.countBadge}>{workspaceUsers.length}</span>
+          {isOwner ? (
+            <span className={styles.countBadge}>{adminUsers.length}</span>
+          ) : null}
         </div>
+        <p className={styles.sectionCopy}>
+          {isOwner
+            ? 'Глобальный owner видит всех пользователей приложения и может менять их глобальные роли.'
+            : 'Только глобальный owner может управлять ролями пользователей.'}
+        </p>
 
         {userError ? <p className={styles.formError}>{userError}</p> : null}
 
-        {workspaceUsersQuery.isLoading ? (
+        {!isOwner ? (
+          <div className={pageStyles.emptyPanel}>
+            Список пользователей доступен только глобальному owner.
+          </div>
+        ) : adminUsersQuery.isLoading ? (
           <div className={pageStyles.emptyPanel}>Загружаем пользователей.</div>
-        ) : workspaceUsers.length > 0 ? (
+        ) : adminUsers.length > 0 ? (
           <div className={styles.userList}>
-            {workspaceUsers.map((user) => (
-              <div className={styles.userRow} key={user.membershipId}>
+            {adminUsers.map((user) => (
+              <div className={styles.userRow} key={user.id}>
                 <div className={styles.userIdentity}>
                   <strong>{user.displayName}</strong>
                   <span>{user.email}</span>
                 </div>
-                {user.id === session?.actorUserId ? (
-                  <span className={styles.currentUserBadge}>вы</span>
-                ) : null}
-                <select
-                  className={styles.roleSelect}
-                  value={user.role}
-                  disabled={isUpdatingUsers}
-                  onChange={(event) => {
-                    void handleUserRoleChange(
-                      user.id,
-                      event.target.value as WorkspaceRole,
-                    )
-                  }}
-                >
-                  {WORKSPACE_ROLES.map((role) => (
-                    <option key={role} value={role}>
-                      {ROLE_LABELS[role]}
-                    </option>
-                  ))}
-                </select>
+                <div className={styles.userMeta}>
+                  {user.id === session?.actorUserId ? (
+                    <span className={styles.currentUserBadge}>вы</span>
+                  ) : null}
+                </div>
+                {user.appRole === 'owner' ? (
+                  <span className={styles.roleValue}>{ROLE_LABELS[user.appRole]}</span>
+                ) : (
+                  <select
+                    className={styles.roleSelect}
+                    value={user.appRole}
+                    disabled={isUpdatingUsers}
+                    onChange={(event) => {
+                      void handleUserRoleChange(
+                        user.id,
+                        event.target.value as AssignableAppRole,
+                      )
+                    }}
+                  >
+                    {MANAGEABLE_APP_ROLES.map((role) => (
+                      <option key={role} value={role}>
+                        {ROLE_LABELS[role]}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             ))}
           </div>

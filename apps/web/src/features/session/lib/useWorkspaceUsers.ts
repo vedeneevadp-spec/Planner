@@ -1,4 +1,4 @@
-import type { WorkspaceRole } from '@planner/contracts'
+import type { AssignableAppRole } from '@planner/contracts'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
@@ -6,15 +6,15 @@ import { plannerApiConfig } from '@/shared/config/planner-api'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 import {
-  createWorkspaceUsersApiClient,
-  type WorkspaceUsersApiClientConfig,
+  type AdminUsersApiClientConfig,
+  createAdminUsersApiClient,
 } from './workspace-users-api'
 
-function workspaceUsersQueryKey(workspaceId: string) {
-  return ['workspace-users', workspaceId] as const
+function adminUsersQueryKey(workspaceId: string) {
+  return ['admin-users', workspaceId] as const
 }
 
-export function useWorkspaceUsers(options: { enabled?: boolean } = {}) {
+export function useAdminUsers(options: { enabled?: boolean } = {}) {
   const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
@@ -26,41 +26,41 @@ export function useWorkspaceUsers(options: { enabled?: boolean } = {}) {
       (!auth.isAuthEnabled || Boolean(auth.accessToken)),
     queryFn: ({ signal }) => {
       if (!session) {
-        throw new Error('Planner session is required to load workspace users.')
+        throw new Error('Planner session is required to load admin users.')
       }
 
-      return createWorkspaceUsersApiClient(
-        createWorkspaceUsersApiClientConfig({
+      return createAdminUsersApiClient(
+        createAdminUsersApiClientConfig({
           accessToken: auth.accessToken,
           actorUserId: session.actorUserId,
           workspaceId: session.workspaceId,
         }),
-      ).listWorkspaceUsers(signal)
+      ).listAdminUsers(signal)
     },
-    queryKey: workspaceUsersQueryKey(session?.workspaceId ?? 'pending'),
+    queryKey: adminUsersQueryKey(session?.workspaceId ?? 'pending'),
     staleTime: 30_000,
   })
 }
 
-export function useUpdateWorkspaceUserRole() {
+export function useUpdateAdminUserRole() {
   const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (input: { role: WorkspaceRole; userId: string }) => {
+    mutationFn: async (input: { role: AssignableAppRole; userId: string }) => {
       if (!session) {
         throw new Error('Planner session is required to update user roles.')
       }
 
-      return createWorkspaceUsersApiClient(
-        createWorkspaceUsersApiClientConfig({
+      return createAdminUsersApiClient(
+        createAdminUsersApiClientConfig({
           accessToken: auth.accessToken,
           actorUserId: session.actorUserId,
           workspaceId: session.workspaceId,
         }),
-      ).updateWorkspaceUserRole(input.userId, input.role)
+      ).updateAdminUserRole(input.userId, input.role)
     },
     onSuccess: async () => {
       if (!session) {
@@ -69,7 +69,7 @@ export function useUpdateWorkspaceUserRole() {
 
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: workspaceUsersQueryKey(session.workspaceId),
+          queryKey: adminUsersQueryKey(session.workspaceId),
         }),
         queryClient.invalidateQueries({
           queryKey: ['planner', 'session'],
@@ -79,11 +79,11 @@ export function useUpdateWorkspaceUserRole() {
   })
 }
 
-function createWorkspaceUsersApiClientConfig(input: {
+function createAdminUsersApiClientConfig(input: {
   accessToken: string | null
   actorUserId: string
   workspaceId: string
-}): WorkspaceUsersApiClientConfig {
+}): AdminUsersApiClientConfig {
   return {
     actorUserId: input.actorUserId,
     apiBaseUrl: plannerApiConfig.apiBaseUrl,

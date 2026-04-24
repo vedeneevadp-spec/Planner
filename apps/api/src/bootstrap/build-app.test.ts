@@ -5,6 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 
 import {
+  adminUserListResponseSchema,
   apiErrorSchema,
   emojiSetListResponseSchema,
   emojiSetRecordSchema,
@@ -18,7 +19,6 @@ import {
   taskRecordSchema,
   taskTemplateListResponseSchema,
   taskTemplateRecordSchema,
-  workspaceUserListResponseSchema,
 } from '@planner/contracts'
 
 import {
@@ -84,6 +84,7 @@ const guestSessionRepository: SessionRepository = {
         id: AUTH_CONTEXT.claims.sub,
       },
       actorUserId: AUTH_CONTEXT.claims.sub,
+      appRole: 'guest',
       groupRole: null,
       role: 'guest',
       source: 'access_token',
@@ -113,14 +114,14 @@ const guestSessionRepository: SessionRepository = {
       'The current workspace role cannot create shared workspaces.',
     )
   },
-  listWorkspaceUsers() {
+  listAdminUsers() {
     return Promise.resolve([])
   },
-  updateWorkspaceUserRole() {
+  updateAdminUserRole() {
     throw new HttpError(
       403,
-      'workspace_admin_required',
-      'The current workspace role cannot manage users.',
+      'owner_required',
+      'Only the global owner can manage application users.',
     )
   },
 }
@@ -176,7 +177,7 @@ void describe('buildApiApp', () => {
     assert.equal(body.storageDriver, 'memory')
   })
 
-  void it('lists workspace users for workspace admins', async () => {
+  void it('lists all application users for the global owner', async () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
@@ -187,7 +188,7 @@ void describe('buildApiApp', () => {
 
     const response = await app.inject({
       headers: {
-        'x-actor-user-id': 'user-1',
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
         'x-workspace-id': 'workspace-1',
       },
       method: 'GET',
@@ -196,14 +197,15 @@ void describe('buildApiApp', () => {
 
     assert.equal(response.statusCode, 200)
 
-    const body = workspaceUserListResponseSchema.parse(response.json())
+    const body = adminUserListResponseSchema.parse(response.json())
 
-    assert.equal(body.users.length, 1)
-    assert.equal(body.users[0]?.id, 'user-1')
-    assert.equal(body.users[0]?.role, 'owner')
+    assert.equal(body.users.length, 2)
+    assert.equal(body.users[0]?.id, '11111111-1111-4111-8111-111111111111')
+    assert.equal(body.users[0]?.appRole, 'owner')
+    assert.equal(body.users[1]?.appRole, 'user')
   })
 
-  void it('forbids workspace user management for guest role', async () => {
+  void it('forbids application user management for non-owner role', async () => {
     app = buildApiApp({
       config: createTestConfig({
         API_AUTH_MODE: 'supabase',
@@ -229,7 +231,7 @@ void describe('buildApiApp', () => {
 
     const body = apiErrorSchema.parse(response.json())
 
-    assert.equal(body.error.code, 'workspace_admin_required')
+    assert.equal(body.error.code, 'owner_required')
   })
 
   void it('creates, updates and lists tasks via the HTTP API', async () => {
@@ -812,7 +814,7 @@ void describe('buildApiApp', () => {
     assert.equal(body.error.code, 'database_unavailable')
   })
 
-  void it('forbids icon set management for guest workspace role', async () => {
+  void it('forbids icon set management for guest application role', async () => {
     app = buildApiApp({
       config: createTestConfig({
         API_AUTH_MODE: 'supabase',
@@ -849,7 +851,7 @@ void describe('buildApiApp', () => {
 
     const body = apiErrorSchema.parse(response.json())
 
-    assert.equal(body.error.code, 'workspace_admin_required')
+    assert.equal(body.error.code, 'app_admin_required')
   })
 
   void it('returns a typed validation error for malformed requests', async () => {

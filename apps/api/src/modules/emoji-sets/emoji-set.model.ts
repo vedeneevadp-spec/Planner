@@ -1,9 +1,9 @@
 import type {
   AddEmojiSetItemsInput,
+  AppRole,
   EmojiAssetRecord,
   EmojiSetRecord,
   NewEmojiSetInput,
-  WorkspaceRole,
 } from '@planner/contracts'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -13,15 +13,15 @@ export type StoredEmojiSetRecord = EmojiSetRecord
 
 export interface EmojiSetReadContext {
   actorUserId?: string | undefined
+  appRole?: AppRole | undefined
   auth: AuthenticatedRequestContext | null
-  role?: WorkspaceRole | undefined
   workspaceId: string
 }
 
 export interface EmojiSetWriteContext {
   actorUserId: string
+  appRole?: AppRole | undefined
   auth: AuthenticatedRequestContext | null
-  role?: WorkspaceRole | undefined
   workspaceId: string
 }
 

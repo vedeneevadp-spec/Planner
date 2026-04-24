@@ -269,11 +269,11 @@ function getErrorCode(error: unknown): string | undefined {
 }
 
 function assertCanManageEmojiSets(context: EmojiSetWriteContext): void {
-  if (context.role && !['admin', 'owner'].includes(context.role)) {
+  if (context.appRole && !['admin', 'owner'].includes(context.appRole)) {
     throw new HttpError(
       403,
-      'workspace_admin_required',
-      'The current workspace role cannot manage icon sets.',
+      'app_admin_required',
+      'The current application role cannot manage icon sets.',
     )
   }
 }

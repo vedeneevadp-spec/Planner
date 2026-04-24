@@ -1,17 +1,17 @@
 import {
+  type AdminUserListResponse,
+  adminUserListResponseSchema,
+  type AdminUserRecord,
+  adminUserRecordSchema,
+  adminUserRoleUpdateInputSchema,
   apiErrorSchema,
-  type WorkspaceRole,
-  type WorkspaceUserListResponse,
-  workspaceUserListResponseSchema,
-  type WorkspaceUserRecord,
-  workspaceUserRecordSchema,
-  workspaceUserRoleUpdateInputSchema,
+  type AssignableAppRole,
 } from '@planner/contracts'
 
 type FetchFn = typeof fetch
 type RequestSignal = AbortSignal | undefined
 
-export class WorkspaceUsersApiError extends Error {
+export class AdminUsersApiError extends Error {
   readonly code: string
   readonly details?: unknown
   readonly status: number
@@ -25,34 +25,32 @@ export class WorkspaceUsersApiError extends Error {
     },
   ) {
     super(message)
-    this.name = 'WorkspaceUsersApiError'
+    this.name = 'AdminUsersApiError'
     this.code = options.code
     this.details = options.details
     this.status = options.status
   }
 }
 
-export interface WorkspaceUsersApiClientConfig {
+export interface AdminUsersApiClientConfig {
   accessToken?: string
   actorUserId: string
   apiBaseUrl: string
   workspaceId: string
 }
 
-export interface WorkspaceUsersApiClient {
-  listWorkspaceUsers: (
-    signal?: RequestSignal,
-  ) => Promise<WorkspaceUserListResponse>
-  updateWorkspaceUserRole: (
+export interface AdminUsersApiClient {
+  listAdminUsers: (signal?: RequestSignal) => Promise<AdminUserListResponse>
+  updateAdminUserRole: (
     userId: string,
-    role: WorkspaceRole,
-  ) => Promise<WorkspaceUserRecord>
+    role: AssignableAppRole,
+  ) => Promise<AdminUserRecord>
 }
 
-export function createWorkspaceUsersApiClient(
-  config: WorkspaceUsersApiClientConfig,
+export function createAdminUsersApiClient(
+  config: AdminUsersApiClientConfig,
   fetchFn: FetchFn = fetch,
-): WorkspaceUsersApiClient {
+): AdminUsersApiClient {
   const baseUrl = config.apiBaseUrl.replace(/\/$/, '')
 
   async function request<TResponse>(options: {
@@ -109,14 +107,14 @@ export function createWorkspaceUsersApiClient(
     const parsedError = apiErrorSchema.safeParse(payload)
 
     if (parsedError.success) {
-      throw new WorkspaceUsersApiError(parsedError.data.error.message, {
+      throw new AdminUsersApiError(parsedError.data.error.message, {
         code: parsedError.data.error.code,
         details: parsedError.data.error.details,
         status: response.status,
       })
     }
 
-    throw new WorkspaceUsersApiError('Request failed.', {
+    throw new AdminUsersApiError('Request failed.', {
       code: 'request_failed',
       details: payload,
       status: response.status,
@@ -124,21 +122,21 @@ export function createWorkspaceUsersApiClient(
   }
 
   return {
-    listWorkspaceUsers(signal) {
+    listAdminUsers(signal) {
       return request({
         path: '/api/v1/admin/users',
-        responseSchema: workspaceUserListResponseSchema,
+        responseSchema: adminUserListResponseSchema,
         signal,
       })
     },
-    updateWorkspaceUserRole(userId, role) {
-      const input = workspaceUserRoleUpdateInputSchema.parse({ role })
+    updateAdminUserRole(userId, role) {
+      const input = adminUserRoleUpdateInputSchema.parse({ role })
 
       return request({
         body: input,
         method: 'PATCH',
         path: `/api/v1/admin/users/${encodeURIComponent(userId)}/role`,
-        responseSchema: workspaceUserRecordSchema,
+        responseSchema: adminUserRecordSchema,
       })
     },
   }

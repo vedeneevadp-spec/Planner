@@ -13,6 +13,7 @@ const retries = 5
 const retryDelayMs = 1000
 
 const devUser = {
+  appRole: 'owner',
   displayName: 'Planner Dev User',
   email: 'vedeneeva.d.p@gmail.com',
   id: '11111111-1111-4111-8111-111111111111',
@@ -35,16 +36,18 @@ const devMembership = {
 const seedStatements = [
   {
     name: 'dev user',
-    parameters: [devUser.id, devUser.email, devUser.displayName],
+    parameters: [devUser.id, devUser.email, devUser.displayName, devUser.appRole],
     sql: `
       insert into app.users (
         id,
+        app_role,
         email,
         display_name
       )
-      values ($1, $2, $3)
+      values ($1, $4::app.app_role, $2, $3)
       on conflict (id) do update
       set
+        app_role = excluded.app_role,
         email = excluded.email,
         display_name = excluded.display_name
     `,

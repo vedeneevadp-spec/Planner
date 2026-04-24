@@ -1,10 +1,10 @@
 import {
+  adminUserListResponseSchema,
+  adminUserRecordSchema,
+  adminUserRoleUpdateInputSchema,
   createSharedWorkspaceInputSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
-  workspaceUserListResponseSchema,
-  workspaceUserRecordSchema,
-  workspaceUserRoleUpdateInputSchema,
 } from '@planner/contracts'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -62,9 +62,9 @@ export function registerSessionRoutes(
 
   app.get('/api/v1/admin/users', async (request) => {
     const context = resolveAdminSessionContext(request)
-    const users = await service.listWorkspaceUsers(context)
+    const users = await service.listAdminUsers(context)
 
-    return workspaceUserListResponseSchema.parse({ users })
+    return adminUserListResponseSchema.parse({ users })
   })
 
   app.patch('/api/v1/admin/users/:userId/role', async (request) => {
@@ -75,17 +75,17 @@ export function registerSessionRoutes(
       'invalid_params',
     )
     const input = parseOrThrow(
-      workspaceUserRoleUpdateInputSchema,
+      adminUserRoleUpdateInputSchema,
       request.body,
       'invalid_body',
     )
-    const user = await service.updateWorkspaceUserRole(
+    const user = await service.updateAdminUserRole(
       context,
       params.userId,
       input.role,
     )
 
-    return workspaceUserRecordSchema.parse(user)
+    return adminUserRecordSchema.parse(user)
   })
 }
 

@@ -82,12 +82,38 @@
   font-size: 0.84rem;
 }
 
+.userMeta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
 .currentUserBadge {
   border-radius: 999px;
   padding: 0.2rem 0.5rem;
   background: rgba(33, 78, 66, 0.08);
   color: var(--accent-strong);
   font-size: 0.78rem;
+}
+
+.statusBadge {
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+}
+
+.statusBadgeMuted {
+  background: rgba(64, 58, 41, 0.08);
+  color: rgba(64, 58, 41, 0.78);
+}
+
+.sectionCopy {
+  margin: -0.35rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.88rem;
 }
 
 .field,
@@ -146,6 +172,19 @@
   outline: none;
   border-color: rgba(33, 78, 66, 0.5);
   background: rgba(255, 255, 255, 0.92);
+}
+
+.roleValue {
+  display: inline-flex;
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0.72rem 0.82rem;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--text-soft);
+  font-size: 0.88rem;
 }
 
 .itemList {

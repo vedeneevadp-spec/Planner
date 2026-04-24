@@ -10,19 +10,13 @@ export {
   getCreateSharedWorkspaceErrorMessage,
   useCreateSharedWorkspace,
 } from './lib/useWorkspaceActions'
-export {
-  useUpdateWorkspaceUserRole,
-  useWorkspaceUsers,
-} from './lib/useWorkspaceUsers'
+export { useAdminUsers, useUpdateAdminUserRole } from './lib/useWorkspaceUsers'
 export {
   clearSelectedWorkspaceId,
   getSelectedWorkspaceId,
   setSelectedWorkspaceId,
   useSelectedWorkspaceId,
 } from './lib/workspace-selection'
-export {
-  createWorkspaceUsersApiClient,
-  WorkspaceUsersApiError,
-} from './lib/workspace-users-api'
+export { AdminUsersApiError, createAdminUsersApiClient } from './lib/workspace-users-api'
 export { AuthGate } from './ui/AuthGate'
 export { SessionProvider } from './ui/SessionProvider'

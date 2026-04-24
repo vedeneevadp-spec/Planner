@@ -1,6 +1,6 @@
 import type {
+  AssignableAppRole,
   CreateSharedWorkspaceInput,
-  WorkspaceRole,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -45,12 +45,12 @@ export class SessionService {
     return snapshot
   }
 
-  async listWorkspaceUsers(context: SessionContext) {
+  async listAdminUsers(context: SessionContext) {
     const session = await this.resolveSession(context)
 
-    assertCanManageWorkspaceUsers(session)
+    assertCanManageAdminUsers(session)
 
-    return this.repository.listWorkspaceUsers(session)
+    return this.repository.listAdminUsers(session)
   }
 
   async createSharedWorkspace(
@@ -68,16 +68,16 @@ export class SessionService {
     return workspace
   }
 
-  async updateWorkspaceUserRole(
+  async updateAdminUserRole(
     context: SessionContext,
     userId: string,
-    role: WorkspaceRole,
+    role: AssignableAppRole,
   ) {
     const session = await this.resolveSession(context)
 
-    assertCanManageWorkspaceUsers(session)
+    assertCanManageAdminUsers(session)
 
-    const user = await this.repository.updateWorkspaceUserRole(
+    const user = await this.repository.updateAdminUserRole(
       session,
       userId,
       role,
@@ -101,14 +101,14 @@ function getAuthSessionCacheKey(context: SessionContext): string | null {
   ].join(':')
 }
 
-function assertCanManageWorkspaceUsers(session: SessionSnapshot): void {
-  if (session.role === 'admin' || session.role === 'owner') {
+function assertCanManageAdminUsers(session: SessionSnapshot): void {
+  if (session.appRole === 'owner') {
     return
   }
 
   throw new HttpError(
     403,
-    'workspace_admin_required',
-    'The current workspace role cannot manage users.',
+    'owner_required',
+    'Only the global owner can manage application users.',
   )
 }

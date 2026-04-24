@@ -15,6 +15,7 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
       id: 'user-1',
     },
     actorUserId: 'user-1',
+    appRole: 'owner',
     groupRole: null,
     role: 'owner',
     source,
