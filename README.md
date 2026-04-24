@@ -52,34 +52,38 @@ npm run dev:supabase
 
 Полный список находится в `package.json`.
 
-| Команда                                            | Назначение                                           |
-| -------------------------------------------------- | ---------------------------------------------------- |
-| `npm run dev` / `npm run start`                    | dev-сервер web-приложения                            |
-| `npm run preview`                                  | preview production-сборки web                        |
-| `npm run dev:supabase`                             | web + API поверх managed Supabase Postgres           |
-| `npm run dev:api`                                  | API в watch-режиме                                   |
-| `npm run dev:api:postgres`                         | API с локальным Docker Postgres                      |
-| `npm run dev:api:supabase`                         | API с `.env.supabase.local`                          |
-| `npm run start:api`                                | единичный запуск API                                 |
-| `npm run db:up` / `npm run db:down`                | поднять/остановить локальный Postgres                |
-| `npm run db:migrate` / `npm run db:seed`           | применить миграции и dev seed локально               |
-| `npm run db:setup`                                 | `db:up` + migrations + seed                          |
-| `npm run db:migrate:supabase`                      | применить SQL-миграции к Supabase Postgres           |
-| `npm run db:push:supabase`                         | выполнить `supabase db push` через локальный wrapper |
-| `npm run db:seed:supabase`                         | загрузить seed в Supabase Postgres                   |
-| `npm run db:setup:supabase`                        | migrations + seed для Supabase                       |
-| `npm run supabase:login` / `npm run supabase:link` | CLI login/link через env                             |
-| `npm run outbox:run`                               | обработать одну пачку outbox-сообщений               |
-| `npm run lint` / `npm run lint:fix`                | ESLint                                               |
-| `npm run format:check` / `npm run format`          | Prettier                                             |
-| `npm run typecheck`                                | typecheck web, contracts и API                       |
-| `npm run test:web:run` / `npm run test:api`        | web/API тесты                                        |
-| `npm run test:run`                                 | web + API тесты                                      |
-| `npm run coverage`                                 | web coverage                                         |
-| `npm run build`                                    | production-сборка web                                |
-| `npm run check`                                    | lint + typecheck + tests                             |
-| `npm run ci`                                       | локальный CI: check + build                          |
-| `npm run deploy:prod`                              | production deploy на текущий VPS                     |
+| Команда                                            | Назначение                                             |
+| -------------------------------------------------- | ------------------------------------------------------ |
+| `npm run dev` / `npm run start`                    | dev-сервер web-приложения                              |
+| `npm run preview`                                  | preview production-сборки web                          |
+| `npm run dev:supabase`                             | web + API поверх managed Supabase Postgres             |
+| `npm run dev:api`                                  | API в watch-режиме                                     |
+| `npm run dev:api:postgres`                         | API с локальным Docker Postgres                        |
+| `npm run dev:api:supabase`                         | API с `.env.supabase.local`                            |
+| `npm run start:api`                                | единичный запуск API                                   |
+| `npm run db:up` / `npm run db:down`                | поднять/остановить локальный Postgres                  |
+| `npm run db:migrate` / `npm run db:seed`           | применить миграции и dev seed локально                 |
+| `npm run db:setup`                                 | `db:up` + migrations + seed                            |
+| `npm run db:migrate:supabase`                      | применить SQL-миграции к Supabase Postgres             |
+| `npm run db:push:supabase`                         | выполнить `supabase db push` через локальный wrapper   |
+| `npm run db:seed:supabase`                         | загрузить seed в Supabase Postgres                     |
+| `npm run db:setup:supabase`                        | migrations + seed для Supabase                         |
+| `npm run supabase:login` / `npm run supabase:link` | CLI login/link через env                               |
+| `npm run outbox:run`                               | обработать одну пачку outbox-сообщений                 |
+| `npm run lint` / `npm run lint:fix`                | ESLint                                                 |
+| `npm run format:check` / `npm run format`          | Prettier                                               |
+| `npm run typecheck`                                | typecheck web, contracts и API                         |
+| `npm run test:web:run` / `npm run test:api`        | web/API тесты                                          |
+| `npm run test:run`                                 | web + API тесты                                        |
+| `npm run coverage`                                 | web coverage                                           |
+| `npm run build`                                    | production-сборка web                                  |
+| `npm run mobile:sync`                              | production build web + sync в `ios/` и `android/`      |
+| `npm run mobile:assets`                            | пересобрать нативные icons/splash из `assets/logo.png` |
+| `npm run mobile:open:ios` / `mobile:open:android`  | открыть нативный проект в Xcode / Android Studio       |
+| `npm run mobile:doctor`                            | проверить состояние Capacitor toolchain                |
+| `npm run check`                                    | lint + typecheck + tests                               |
+| `npm run ci`                                       | локальный CI: check + build                            |
+| `npm run deploy:prod`                              | production deploy на текущий VPS                       |
 
 ## Структура
 
@@ -160,6 +164,29 @@ Web-клиент работает через backend HTTP API и не пишет
 Текущие экраны: `/today`, `/timeline`, `/inbox`, `/spheres`,
 `/spheres/:sphereId`, `/admin`.
 
+## Mobile Runtime
+
+Проект поддерживает два мобильных канала: installable `PWA` и нативную оболочку
+через Capacitor.
+
+Пошаговый end-to-end workflow от локальной разработки до production rollout
+описан в [docs/release-workflow.md](docs/release-workflow.md).
+
+- `PWA` использует `apps/web/public/manifest.webmanifest` и
+  `apps/web/public/sw.js`
+- service worker регистрируется только в production browser build и не
+  включается внутри Capacitor webview
+- Capacitor config лежит в `capacitor.config.ts`, а нативные проекты живут в
+  `ios/` и `android/`
+- исходник для нативных иконок и splash лежит в `assets/logo.png`; для
+  регенерации используйте `npm run mobile:assets`
+- для обновления нативных оболочек после изменений web используйте
+  `npm run mobile:sync`
+- для dev/staging/prod mobile-сборок `VITE_API_BASE_URL` должен указывать на
+  API, доступный с устройства; `http://127.0.0.1:3001` работает только в
+  браузере на той же машине, для Android emulator нужен `http://10.0.2.2:3001`,
+  а для физического устройства обычно нужен публичный `https` URL
+
 ## Supabase Platform
 
 Supabase используется как managed platform, но backend остается единственной
@@ -197,6 +224,8 @@ npm run deploy:prod
 
 - [docs/architecture.md](docs/architecture.md) - слои web-клиента и стратегия
   состояния
+- [docs/release-workflow.md](docs/release-workflow.md) - пошаговый workflow от
+  разработки до production web/PWA/store release
 - [docs/adr/0001-platform-foundation.md](docs/adr/0001-platform-foundation.md)
   - базовое архитектурное решение по платформе
 - [DEPLOY_RU.md](DEPLOY_RU.md) - production deployment на текущий VPS

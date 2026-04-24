@@ -82,6 +82,9 @@ export default tseslint.config(
       'coverage',
       'dist',
       'node_modules',
+      'android/**',
+      'capacitor.config.ts',
+      'ios/**',
       'apps/*/coverage',
       'apps/*/dist',
     ],
@@ -137,6 +140,15 @@ export default tseslint.config(
     files: ['apps/web/vite.config.ts'],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+  {
+    files: ['apps/web/public/sw.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.serviceworker,
+      },
     },
   },
   {

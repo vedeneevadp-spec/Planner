@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Chaotika</string>
+    <string name="title_activity_main">Chaotika</string>
+    <string name="package_name">ru.chaotika.app</string>
+    <string name="custom_url_scheme">ru.chaotika.app</string>
+</resources>
