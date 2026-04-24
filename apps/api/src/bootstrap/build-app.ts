@@ -73,7 +73,7 @@ export function buildApiApp({
 
   app.register(cors, {
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    origin: config.corsOrigin === '*' ? true : config.corsOrigin,
+    origin: resolveCorsOrigin(config.corsOrigin),
   })
   registerOpenApi(app, config)
   registerIconAssetRoutes(app, config.iconAssetDirectory)
@@ -143,6 +143,29 @@ export function buildApiApp({
   })
 
   return app
+}
+
+const NATIVE_APP_CORS_ORIGINS = [
+  'capacitor://localhost',
+  'http://localhost',
+  'https://localhost',
+  'ionic://localhost',
+] as const
+
+function resolveCorsOrigin(corsOrigin: string): true | string | string[] {
+  if (corsOrigin === '*') {
+    return true
+  }
+
+  const configuredOrigins = corsOrigin
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+  const allowedOrigins = Array.from(
+    new Set([...configuredOrigins, ...NATIVE_APP_CORS_ORIGINS]),
+  )
+
+  return allowedOrigins.length === 1 ? allowedOrigins[0]! : allowedOrigins
 }
 
 function isPublicRequest(method: string, url: string): boolean {

@@ -238,6 +238,76 @@ npm run deploy:prod
 
 Этот шаг нужен только если изменения должны дойти до пользователей store-app.
 
+Большую часть подготовки можно автоматизировать одной командой:
+
+```bash
+npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2
+```
+
+Что делает команда:
+
+1. обновляет `versionName` / `MARKETING_VERSION`
+2. обновляет `versionCode` / `CURRENT_PROJECT_VERSION`
+3. при необходимости может пересобрать native assets через флаг `--assets`
+4. выполняет `mobile:sync` с указанным `VITE_API_BASE_URL`
+5. при флаге `--open=ios|android|all` может сразу открыть IDE
+
+Если нужен не только sync, но и сборка release-артефактов:
+
+```bash
+npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2 --build-artifacts=all --android-format=bundle
+```
+
+Дополнительно:
+
+- `--build-artifacts=android|ios|all` включает native build после sync
+- `--android-format=apk|bundle|both` выбирает формат Android release
+- `--ios-export-options=ios/ExportOptions.plist` после archive экспортирует IPA
+- `--android-sdk=...` позволяет явно указать SDK, если он не найден
+- `--ios-developer-dir=...` позволяет явно указать полный Xcode developer dir
+
+Для RuStore удобнее отдельная команда под signed APK:
+
+```bash
+npm run mobile:release:rustore -- --api-url=https://chaotika.ru --version=1.0.1 --build=2
+```
+
+Перед первым запуском нужно настроить release signing:
+
+1. создать `android/keystore.properties` из `android/keystore.properties.example`
+2. положить keystore, например, в `android/keystore/chaotika-upload.jks`
+3. заполнить:
+
+```text
+storeFile=keystore/chaotika-upload.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+Альтернатива: вместо файла передать те же значения через env:
+
+```bash
+ANDROID_KEYSTORE_PATH=/absolute/path/to/chaotika-upload.jks
+ANDROID_KEYSTORE_PASSWORD=...
+ANDROID_KEY_ALIAS=...
+ANDROID_KEY_PASSWORD=...
+```
+
+После успешной сборки signed APK лежит в:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+Примеры:
+
+```bash
+npm run mobile:release -- --api-url=https://staging.chaotika.ru --build=15
+npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2 --open=ios
+npm run mobile:release -- --api-url=https://chaotika.ru --version=1.1.0 --build=7 --assets --open=all
+```
+
 Базовый поток:
 
 1. выставить production или staging `VITE_API_BASE_URL`
@@ -254,6 +324,21 @@ npm run deploy:prod
 - signing выполняется в Xcode / Android Studio
 - upload в App Store Connect / Google Play выполняется вручную
 - CI/CD для native release в репозитории пока нет
+
+Текущая one-command автоматизация покрывает:
+
+- version/build bump
+- asset regeneration
+- `mobile:sync`
+- Android `assembleRelease` / `bundleRelease`
+- iOS `xcodebuild archive`
+- optional `xcodebuild -exportArchive`, если передан `ExportOptions.plist`
+
+Она не покрывает:
+
+- настройку signing certificates / provisioning profiles
+- первый запуск Xcode (`sudo xcodebuild -runFirstLaunch`)
+- upload в stores
 
 Это значит, что `npm run deploy:prod` и web rollout можно сделать отдельно от
 store release. Если релиз срочный, backend и web можно выкатить сразу, а native

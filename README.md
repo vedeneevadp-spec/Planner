@@ -78,6 +78,8 @@ npm run dev:supabase
 | `npm run coverage`                                 | web coverage                                           |
 | `npm run build`                                    | production-сборка web                                  |
 | `npm run mobile:sync`                              | production build web + sync в `ios/` и `android/`      |
+| `npm run mobile:release -- --api-url=...`          | подготовить и при флагах собрать native release        |
+| `npm run mobile:release:rustore -- --api-url=...`  | собрать signed APK для RuStore                         |
 | `npm run mobile:assets`                            | пересобрать нативные icons/splash из `assets/logo.png` |
 | `npm run mobile:open:ios` / `mobile:open:android`  | открыть нативный проект в Xcode / Android Studio       |
 | `npm run mobile:doctor`                            | проверить состояние Capacitor toolchain                |
@@ -180,12 +182,21 @@ Web-клиент работает через backend HTTP API и не пишет
   `ios/` и `android/`
 - исходник для нативных иконок и splash лежит в `assets/logo.png`; для
   регенерации используйте `npm run mobile:assets`
+- для one-command подготовки native release используйте
+  `npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2`
+- для signed APK под RuStore сначала создайте `android/keystore.properties` по
+  образцу `android/keystore.properties.example`, затем запускайте
+  `npm run mobile:release:rustore -- --api-url=https://chaotika.ru --version=1.0.1 --build=2`
+- для one-command сборки release-артефактов используйте, например,
+  `npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2 --build-artifacts=all --android-format=both`
 - для обновления нативных оболочек после изменений web используйте
   `npm run mobile:sync`
 - для dev/staging/prod mobile-сборок `VITE_API_BASE_URL` должен указывать на
   API, доступный с устройства; `http://127.0.0.1:3001` работает только в
   браузере на той же машине, для Android emulator нужен `http://10.0.2.2:3001`,
   а для физического устройства обычно нужен публичный `https` URL
+- production API CORS должен разрешать origin нативной оболочки Capacitor:
+  минимум `https://localhost` для Android и `capacitor://localhost` для iOS
 
 ## Supabase Platform
 

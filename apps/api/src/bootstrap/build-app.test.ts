@@ -947,6 +947,77 @@ void describe('buildApiApp', () => {
     )
   })
 
+  void it('allows Capacitor app origins in CORS preflight responses', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_CORS_ORIGIN: 'https://chaotika.ru',
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const androidResponse = await app.inject({
+      headers: {
+        'access-control-request-headers': 'authorization,x-workspace-id',
+        'access-control-request-method': 'GET',
+        origin: 'https://localhost',
+      },
+      method: 'OPTIONS',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(androidResponse.statusCode, 204)
+    assert.equal(
+      androidResponse.headers['access-control-allow-origin'],
+      'https://localhost',
+    )
+
+    const iosResponse = await app.inject({
+      headers: {
+        'access-control-request-headers': 'authorization,x-workspace-id',
+        'access-control-request-method': 'GET',
+        origin: 'capacitor://localhost',
+      },
+      method: 'OPTIONS',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(iosResponse.statusCode, 204)
+    assert.equal(
+      iosResponse.headers['access-control-allow-origin'],
+      'capacitor://localhost',
+    )
+  })
+
+  void it('supports multiple configured CORS origins', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_CORS_ORIGIN: 'https://chaotika.ru, https://staging.chaotika.ru',
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'access-control-request-method': 'GET',
+        origin: 'https://staging.chaotika.ru',
+      },
+      method: 'OPTIONS',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(response.statusCode, 204)
+    assert.equal(
+      response.headers['access-control-allow-origin'],
+      'https://staging.chaotika.ru',
+    )
+  })
+
   void it('resolves a session without explicit headers', async () => {
     app = buildApiApp({
       config: createTestConfig(),

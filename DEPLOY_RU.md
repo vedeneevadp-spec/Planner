@@ -116,7 +116,7 @@ API_STORAGE_DRIVER=postgres
 API_DB_RLS_MODE=disabled
 API_HOST=127.0.0.1
 API_PORT=3001
-API_CORS_ORIGIN=https://chaotika.ru
+API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost
 API_ICON_ASSET_DIR=/var/lib/planner/icon-assets
 DATABASE_URL=<resolved SUPABASE_RUNTIME_DATABASE_URL>
 SUPABASE_URL=<https://project-ref.supabase.co>
@@ -129,7 +129,7 @@ SUPABASE_JWT_SECRET=
 
 ```bash
 cd "/Users/daryavedeneeva/ Projects  /Planner"
-node --env-file=.env.supabase.local --input-type=module -e 'import { getSupabaseRuntimeDatabaseUrl } from "./scripts/supabase-utils.mjs"; console.log(["NODE_ENV=production","API_AUTH_MODE=supabase","API_STORAGE_DRIVER=postgres","API_DB_RLS_MODE=disabled","API_HOST=127.0.0.1","API_PORT=3001","API_CORS_ORIGIN=https://chaotika.ru","API_ICON_ASSET_DIR=/var/lib/planner/icon-assets","DATABASE_URL=" + getSupabaseRuntimeDatabaseUrl(),"SUPABASE_URL=" + process.env.SUPABASE_URL,"SUPABASE_PUBLISHABLE_KEY=" + process.env.SUPABASE_PUBLISHABLE_KEY,"SUPABASE_JWT_SECRET=" + (process.env.SUPABASE_JWT_SECRET ?? "")].join("\n"))'
+node --env-file=.env.supabase.local --input-type=module -e 'import { getSupabaseRuntimeDatabaseUrl } from "./scripts/supabase-utils.mjs"; console.log(["NODE_ENV=production","API_AUTH_MODE=supabase","API_STORAGE_DRIVER=postgres","API_DB_RLS_MODE=disabled","API_HOST=127.0.0.1","API_PORT=3001","API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost","API_ICON_ASSET_DIR=/var/lib/planner/icon-assets","DATABASE_URL=" + getSupabaseRuntimeDatabaseUrl(),"SUPABASE_URL=" + process.env.SUPABASE_URL,"SUPABASE_PUBLISHABLE_KEY=" + process.env.SUPABASE_PUBLISHABLE_KEY,"SUPABASE_JWT_SECRET=" + (process.env.SUPABASE_JWT_SECRET ?? "")].join("\n"))'
 ```
 
 На сервере создать файл:

@@ -6,6 +6,7 @@ import {
   isUnauthorizedSessionApiError,
   resolvePlannerSession,
 } from './session-api'
+import { canBootstrapPlannerSession } from './session-bootstrap'
 import { useSessionAuth } from './useSessionAuth'
 import {
   clearSelectedWorkspaceId,
@@ -17,9 +18,14 @@ import {
 export function usePlannerSession() {
   const auth = useSessionAuth()
   const selectedWorkspaceId = useSelectedWorkspaceId()
+  const canLoadPlannerSession = canBootstrapPlannerSession({
+    accessToken: auth.accessToken,
+    config: plannerApiConfig,
+    isAuthEnabled: auth.isAuthEnabled,
+  })
 
   return useQuery({
-    enabled: !auth.isAuthEnabled || Boolean(auth.accessToken),
+    enabled: canLoadPlannerSession,
     queryFn: async ({ signal }) => {
       const legacyActorUserId =
         getLastActorUserId() ?? plannerApiConfig.actorUserIdOverride

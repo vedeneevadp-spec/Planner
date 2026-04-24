@@ -7,7 +7,13 @@ import {
   useState,
 } from 'react'
 
-import { isUnauthorizedSessionApiError, SessionApiError } from '../lib/session-api'
+import { plannerApiConfig } from '@/shared/config/planner-api'
+
+import {
+  isUnauthorizedSessionApiError,
+  SessionApiError,
+} from '../lib/session-api'
+import { canBootstrapPlannerSession } from '../lib/session-bootstrap'
 import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
 import styles from './AuthGate.module.css'
@@ -36,14 +42,16 @@ const AUTH_MODE_CONTENT: Record<
   },
   register: {
     copy: 'Зарегистрируйтесь и начните собирать свои дела, списки и планы в одном месте.',
-    helper: 'Если нужно подтверждение email, после регистрации придет письмо с инструкцией.',
+    helper:
+      'Если нужно подтверждение email, после регистрации придет письмо с инструкцией.',
     pendingLabel: 'Создаем аккаунт...',
     submitLabel: 'Создать аккаунт',
     title: 'Создайте аккаунт',
   },
   recover: {
     copy: 'Задайте новый пароль, чтобы снова войти в Chaotika.',
-    helper: 'После сохранения нового пароля вход по email и паролю снова будет доступен.',
+    helper:
+      'После сохранения нового пароля вход по email и паролю снова будет доступен.',
     pendingLabel: 'Сохраняем пароль...',
     submitLabel: 'Сохранить пароль',
     title: 'Обновите пароль',
@@ -104,8 +112,13 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
   const modeContent = AUTH_MODE_CONTENT[screenMode]
+  const canResolvePlannerSession = canBootstrapPlannerSession({
+    accessToken,
+    config: plannerApiConfig,
+    isAuthEnabled,
+  })
   const shouldResolvePlannerSession =
-    !isAuthEnabled || (Boolean(accessToken) && !isPasswordRecovery)
+    !isPasswordRecovery && canResolvePlannerSession
 
   useEffect(() => {
     if (
@@ -131,6 +144,22 @@ export function AuthGate({ children }: PropsWithChildren) {
 
     setFormEmail((currentEmail) => currentEmail || email)
   }, [email])
+
+  if (!isAuthEnabled && !canResolvePlannerSession) {
+    return (
+      <AuthStatusPanel
+        copy="В этой сборке не настроен вход в Chaotika, поэтому экран регистрации и входа недоступен."
+        title="Сборка без настройки входа"
+      >
+        <p className={styles.errorBanner} role="alert">
+          Для мобильной сборки нужны VITE_SUPABASE_URL и
+          VITE_SUPABASE_PUBLISHABLE_KEY. Служебный режим возможен только через
+          VITE_API_ACCESS_TOKEN либо VITE_ACTOR_USER_ID вместе с
+          VITE_WORKSPACE_ID.
+        </p>
+      </AuthStatusPanel>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -523,7 +552,11 @@ export function AuthGate({ children }: PropsWithChildren) {
           ) : null}
         </div>
 
-        <button className={styles.submitButton} disabled={isSubmitting} type="submit">
+        <button
+          className={styles.submitButton}
+          disabled={isSubmitting}
+          type="submit"
+        >
           {isSubmitting ? (
             <span className={styles.buttonContent}>
               <span aria-hidden="true" className={styles.spinner} />
@@ -655,7 +688,14 @@ function FormField({
 }: {
   autoComplete?: string | undefined
   error: string | undefined
-  inputMode?: 'email' | 'numeric' | 'search' | 'tel' | 'text' | 'url' | undefined
+  inputMode?:
+    | 'email'
+    | 'numeric'
+    | 'search'
+    | 'tel'
+    | 'text'
+    | 'url'
+    | undefined
   label: string
   name: FieldName
   placeholder: string
