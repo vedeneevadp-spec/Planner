@@ -2,154 +2,285 @@
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 1.5rem;
+  padding: clamp(1rem, 2vw, 2rem);
 }
 
 .panel {
-  width: min(100%, 960px);
+  width: min(100%, 1180px);
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 420px);
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, 460px);
+  grid-template-areas:
+    'intro form'
+    'benefits form';
   gap: 1.25rem;
-  border-radius: 32px;
   padding: 1.25rem;
-  background: rgba(255, 251, 243, 0.72);
-  border: 1px solid var(--line);
-  box-shadow: var(--shadow);
+  border-radius: 36px;
+  background: rgba(255, 249, 240, 0.78);
+  border: 1px solid rgba(57, 68, 58, 0.12);
+  box-shadow: 0 24px 80px rgba(82, 68, 37, 0.14);
   backdrop-filter: blur(18px);
 }
 
-.hero,
+.introCard,
+.benefitsCard,
 .formCard {
-  border-radius: 24px;
-  padding: 1.5rem;
+  border-radius: 28px;
   border: 1px solid var(--line);
 }
 
-.hero {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+.introCard {
+  grid-area: intro;
+  padding: 2rem;
   background:
     radial-gradient(
       circle at top left,
-      rgba(247, 203, 119, 0.28),
+      rgba(247, 203, 119, 0.34),
+      transparent 32%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(104, 148, 132, 0.18),
       transparent 38%
     ),
-    linear-gradient(160deg, rgba(33, 78, 66, 0.12), rgba(255, 255, 255, 0.5));
+    linear-gradient(
+      145deg,
+      rgba(255, 252, 246, 0.96),
+      rgba(244, 235, 220, 0.82)
+    );
 }
 
-.eyebrow {
+.benefitsCard {
+  grid-area: benefits;
+  display: grid;
+  gap: 1.35rem;
+  padding: 1.65rem;
+  background: rgba(255, 252, 246, 0.86);
+}
+
+.formCard {
+  grid-area: form;
+  display: grid;
+  align-content: start;
+  gap: 1.4rem;
+  padding: 1.75rem;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.brandRow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.brandMark {
+  width: 3.5rem;
+  height: 3.5rem;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: linear-gradient(140deg, #214e42, #d99b4a);
+  color: #fff8f0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+  box-shadow: 0 14px 24px rgba(33, 78, 66, 0.18);
+}
+
+.eyebrow,
+.formEyebrow {
   margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.16em;
-  font-size: 0.74rem;
+  font-size: 0.76rem;
+  font-weight: 700;
   color: var(--accent);
 }
 
 .title {
-  margin: 0.35rem 0 0;
-  font-size: clamp(2.4rem, 5vw, 4.3rem);
-  line-height: 0.92;
-  letter-spacing: -0.04em;
+  margin: 0.45rem 0 0;
+  max-width: 12ch;
   font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(3.5rem, 6vw, 4.75rem);
+  line-height: 0.94;
+  letter-spacing: -0.045em;
 }
 
 .copy {
-  max-width: 32rem;
-  margin: 1rem 0 0;
+  max-width: 38rem;
+  margin: 1.3rem 0 0;
+  font-size: 1.08rem;
   color: var(--text-soft);
 }
 
-.heroFooter {
-  display: grid;
-  gap: 0.85rem;
-  margin-top: 2rem;
+.tagRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 1.6rem;
 }
 
-.heroMetric {
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 999px;
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.featureList {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.featureItem {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.featureBullet {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.45rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #214e42, #d99b4a);
+  box-shadow: 0 0 0 5px rgba(33, 78, 66, 0.08);
+}
+
+.featureItem strong {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.featureItem p {
+  margin: 0.32rem 0 0;
+  color: var(--text-soft);
+}
+
+.previewCard {
+  display: grid;
+  gap: 0.95rem;
+  padding: 1.2rem 1.25rem;
+  border-radius: 22px;
+  border: 1px solid rgba(37, 45, 37, 0.12);
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(247, 243, 235, 0.86)
+  );
+}
+
+.previewHeader {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid rgba(37, 45, 37, 0.1);
 }
 
-.heroMetric span {
+.previewHeader span {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--text-soft);
 }
 
-.heroMetric strong {
-  font-size: 1.02rem;
+.previewHeader strong {
+  font-size: 1rem;
 }
 
-.formCard {
-  background: rgba(255, 255, 255, 0.52);
+.previewList {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.previewList > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(37, 45, 37, 0.08);
+}
+
+.previewList span {
+  font-size: 0.88rem;
+  color: var(--text-soft);
+}
+
+.previewList strong {
+  text-align: right;
+  font-size: 0.96rem;
+}
+
+.formCardHeader,
+.statusCard {
+  display: grid;
+  gap: 0.65rem;
 }
 
 .modeSwitch {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: rgba(245, 239, 231, 0.88);
+  border: 1px solid rgba(37, 45, 37, 0.1);
   margin-bottom: 1rem;
 }
 
 .modeButton {
-  border: 1px solid rgba(37, 45, 37, 0.14);
+  min-height: 2.95rem;
+  border: none;
   border-radius: 999px;
-  padding: 0.55rem 0.8rem;
-  background: rgba(255, 255, 255, 0.72);
+  background: transparent;
   color: var(--text-soft);
   font: inherit;
+  font-weight: 600;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.modeButton:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.55);
 }
 
 .modeButtonActive {
-  background: linear-gradient(
-    135deg,
-    rgba(33, 78, 66, 0.14),
-    rgba(247, 203, 119, 0.34)
-  );
-  border-color: rgba(33, 78, 66, 0.28);
-  color: var(--accent);
-}
-
-.statusBadge {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  padding: 0.26rem 0.62rem;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  background: rgba(33, 78, 66, 0.12);
+  background: rgba(255, 252, 246, 0.96);
+  box-shadow:
+    inset 0 0 0 1px rgba(33, 78, 66, 0.18),
+    0 1px 2px rgba(37, 45, 37, 0.08);
   color: var(--accent);
 }
 
 .formTitle {
-  margin: 0.9rem 0 0;
-  font-size: 1.55rem;
+  margin: 0;
+  font-size: clamp(1.85rem, 2.5vw, 2.3rem);
   line-height: 1;
 }
 
 .formCopy {
-  margin: 0.6rem 0 0;
+  margin: 0;
   color: var(--text-soft);
 }
 
 .form {
   display: grid;
   gap: 1rem;
-  margin-top: 1.4rem;
-}
-
-.actionRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-}
-
-.actionRow > button {
-  flex: 1 1 12rem;
 }
 
 .field {
@@ -157,61 +288,125 @@
   gap: 0.45rem;
 }
 
-.field span {
-  font-size: 0.82rem;
-  color: var(--text-soft);
+.fieldLabel {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .field input {
   width: 100%;
-  border-radius: 14px;
+  min-height: 3.5rem;
+  border-radius: 18px;
   border: 1px solid var(--line-strong);
-  background: rgba(255, 255, 255, 0.72);
-  padding: 0.92rem 1rem;
+  background: rgba(252, 250, 245, 0.96);
+  padding: 0.95rem 1rem;
   color: inherit;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.field input::placeholder {
+  color: rgba(87, 96, 86, 0.72);
+}
+
+.field input:hover {
+  border-color: rgba(33, 78, 66, 0.2);
+}
+
+.field input:focus-visible {
+  border-color: rgba(33, 78, 66, 0.42);
+  box-shadow: 0 0 0 4px rgba(33, 78, 66, 0.12);
+}
+
+.field input[aria-invalid='true'] {
+  border-color: rgba(173, 78, 47, 0.42);
+  background: rgba(255, 246, 241, 0.96);
+}
+
+.fieldError {
+  font-size: 0.86rem;
+  color: #8a3a21;
 }
 
 .recoveryCard {
   display: grid;
-  gap: 0.35rem;
-  padding: 0.92rem 1rem;
-  border-radius: 14px;
-  border: 1px dashed rgba(33, 78, 66, 0.2);
-  background: rgba(247, 203, 119, 0.08);
+  gap: 0.4rem;
+  padding: 1rem 1.05rem;
+  border-radius: 18px;
+  border: 1px dashed rgba(33, 78, 66, 0.22);
+  background: rgba(247, 203, 119, 0.1);
 }
 
 .recoveryCard span {
-  font-size: 0.82rem;
-  color: var(--text-soft);
-}
-
-.recoveryCard strong {
-  font-size: 0.98rem;
-}
-
-.helperText {
-  margin: -0.15rem 0 0;
   font-size: 0.84rem;
   color: var(--text-soft);
 }
 
+.recoveryCard strong {
+  overflow-wrap: anywhere;
+}
+
+.helperText {
+  margin: -0.1rem 0 0;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+
+.feedbackStack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.messageBanner,
+.errorBanner {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border-radius: 18px;
+  overflow-wrap: anywhere;
+}
+
+.messageBanner {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.errorBanner {
+  color: #8a3a21;
+  background: rgba(173, 78, 47, 0.12);
+}
+
 .submitButton,
-.secondaryButton,
-.tertiaryButton {
+.secondaryButton {
+  min-height: 3.5rem;
   border: none;
-  border-radius: 14px;
+  border-radius: 18px;
   padding: 0.9rem 1rem;
   font: inherit;
+  font-weight: 700;
 }
 
 .submitButton {
-  color: #fff7ef;
+  width: 100%;
+  color: #fff8f0;
   background: linear-gradient(135deg, #214e42, #2f6a58);
+  box-shadow: 0 18px 30px rgba(33, 78, 66, 0.18);
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease,
+    opacity 160ms ease;
+}
+
+.submitButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 20px 34px rgba(33, 78, 66, 0.22);
 }
 
 .submitButton:disabled {
-  opacity: 0.68;
+  opacity: 0.72;
   cursor: progress;
+  transform: none;
 }
 
 .secondaryButton {
@@ -219,44 +414,136 @@
   background: rgba(33, 78, 66, 0.08);
 }
 
-.tertiaryButton {
-  color: #8a3a21;
-  background: rgba(173, 78, 47, 0.08);
+.inlineLink {
+  justify-self: start;
+  border: none;
+  padding: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.22em;
 }
 
-.message,
-.error {
-  margin: 0;
-  padding: 0.85rem 0.95rem;
-  border-radius: 14px;
+.inlineLink:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.message {
-  color: var(--success);
-  background: var(--success-bg);
+.buttonContent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
 }
 
-.error {
-  color: #8a3a21;
-  background: rgba(173, 78, 47, 0.12);
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(255, 248, 240, 0.48);
+  border-top-color: #fff8f0;
+  border-radius: 999px;
+  animation: spin 800ms linear infinite;
 }
 
-.loadingState {
-  display: grid;
+.statusCard {
+  min-height: 100%;
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
 
-.loadingState strong {
-  font-size: 1.12rem;
+.actionRow > button {
+  flex: 1 1 12rem;
 }
 
-.loadingState p {
-  margin: 0;
-  color: var(--text-soft);
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1023px) {
   .panel {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      'intro'
+      'form'
+      'benefits';
+  }
+
+  .title {
+    max-width: 14ch;
+    font-size: clamp(3rem, 8vw, 4rem);
+  }
+}
+
+@media (max-width: 767px) {
+  .shell {
+    padding: 1rem 0.75rem 1.5rem;
+    place-items: start stretch;
+  }
+
+  .panel {
+    gap: 0.85rem;
+    padding: 0.85rem;
+    border-radius: 28px;
+  }
+
+  .introCard,
+  .benefitsCard,
+  .formCard {
+    border-radius: 22px;
+  }
+
+  .introCard,
+  .benefitsCard,
+  .formCard {
+    padding: 1.25rem;
+  }
+
+  .brandRow {
+    gap: 0.8rem;
+  }
+
+  .brandMark {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 16px;
+    font-size: 1.35rem;
+  }
+
+  .title {
+    font-size: clamp(2.2rem, 11vw, 3rem);
+  }
+
+  .copy {
+    margin-top: 1rem;
+    font-size: 1rem;
+  }
+
+  .tagRow {
+    margin-top: 1.15rem;
+  }
+
+  .modeButton,
+  .field input,
+  .submitButton,
+  .secondaryButton {
+    min-height: 3.25rem;
+  }
+
+  .previewHeader,
+  .previewList > div {
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  .previewList strong {
+    text-align: left;
   }
 }

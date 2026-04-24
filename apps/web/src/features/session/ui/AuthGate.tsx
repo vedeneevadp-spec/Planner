@@ -3,64 +3,76 @@ import {
   type PropsWithChildren,
   type ReactNode,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
 
-import { isUnauthorizedSessionApiError } from '../lib/session-api'
+import { isUnauthorizedSessionApiError, SessionApiError } from '../lib/session-api'
 import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
 import styles from './AuthGate.module.css'
 
-type AuthMode = 'login' | 'magic_link' | 'register'
+type AuthMode = 'login' | 'register'
 type AuthScreenMode = AuthMode | 'recover'
+type FieldName = 'displayName' | 'email' | 'password' | 'passwordConfirmation'
+type FieldErrors = Partial<Record<FieldName, string>>
 
 const AUTH_MODE_CONTENT: Record<
   AuthScreenMode,
   {
-    badge: string
     copy: string
+    helper: string
     pendingLabel: string
     submitLabel: string
     title: string
   }
 > = {
   login: {
-    badge: 'Password sign-in',
-    copy: 'Войдите по email и паролю. Magic link оставлен как запасной вариант.',
-    pendingLabel: 'Открываем сессию...',
+    copy: 'Введите email и пароль, чтобы продолжить работу.',
+    helper: 'Безопасный вход по email и паролю.',
+    pendingLabel: 'Входим...',
     submitLabel: 'Войти',
-    title: 'Откройте Planner по паролю',
-  },
-  magic_link: {
-    badge: 'Magic link fallback',
-    copy: 'Если пароль ещё не настроен или нужен быстрый вход с подтверждением через почту, используйте ссылку.',
-    pendingLabel: 'Отправляем ссылку...',
-    submitLabel: 'Отправить magic link',
-    title: 'Войти по magic link',
+    title: 'Войдите в Chaotika',
   },
   register: {
-    badge: 'Password sign-up',
-    copy: 'Создайте email/password аккаунт. Если в проекте включено подтверждение email, сначала подтвердите почту, потом входите по паролю.',
-    pendingLabel: 'Создаём аккаунт...',
-    submitLabel: 'Зарегистрироваться',
-    title: 'Зарегистрируйте парольный доступ',
+    copy: 'Зарегистрируйтесь и начните собирать свои дела, списки и планы в одном месте.',
+    helper: 'Если нужно подтверждение email, после регистрации придет письмо с инструкцией.',
+    pendingLabel: 'Создаем аккаунт...',
+    submitLabel: 'Создать аккаунт',
+    title: 'Создайте аккаунт',
   },
   recover: {
-    badge: 'Password recovery',
-    copy: 'Вы открыли recovery link из письма Supabase. Задайте новый пароль для этого аккаунта.',
+    copy: 'Задайте новый пароль, чтобы снова войти в Chaotika.',
+    helper: 'После сохранения нового пароля вход по email и паролю снова будет доступен.',
     pendingLabel: 'Сохраняем пароль...',
-    submitLabel: 'Обновить пароль',
-    title: 'Задайте новый пароль',
+    submitLabel: 'Сохранить пароль',
+    title: 'Обновите пароль',
   },
 }
 
 const AUTH_MODE_OPTIONS: Array<{ id: AuthMode; label: string }> = [
-  { id: 'login', label: 'Войти' },
+  { id: 'login', label: 'Вход' },
   { id: 'register', label: 'Регистрация' },
-  { id: 'magic_link', label: 'Magic link' },
 ]
+
+const HERO_FEATURES = [
+  {
+    title: 'Собирайте все дела в одном месте',
+    copy: 'Задачи, покупки, заметки и бытовые мелочи не расползаются по разным спискам.',
+  },
+  {
+    title: 'Разделяйте задачи по сферам жизни',
+    copy: 'Работа, дом, семья и личные планы живут рядом, но не смешиваются в один шум.',
+  },
+  {
+    title: 'Не держите все в голове',
+    copy: 'Chaotika помогает разгрузить память и вернуться к важному без лишней суеты.',
+  },
+] as const
+
+const HERO_TAGS = ['Планы', 'Списки', 'Рутины'] as const
+
+const MIN_PASSWORD_LENGTH = 6
 
 export function AuthGate({ children }: PropsWithChildren) {
   const {
@@ -74,7 +86,6 @@ export function AuthGate({ children }: PropsWithChildren) {
     isPasswordRecovery,
     requestPasswordReset,
     signOut,
-    signInWithOtp,
     signInWithPassword,
     signUpWithPassword,
     updatePassword,
@@ -86,10 +97,11 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [hasLoginFailure, setHasLoginFailure] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const defaultEmailDomain = useMemo(() => extractEmailDomain(email), [email])
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
   const modeContent = AUTH_MODE_CONTENT[screenMode]
   const shouldResolvePlannerSession =
@@ -112,12 +124,19 @@ export function AuthGate({ children }: PropsWithChildren) {
     void expireSession()
   }, [accessToken, expireSession, isAuthEnabled, plannerSessionQuery.error])
 
+  useEffect(() => {
+    if (!email) {
+      return
+    }
+
+    setFormEmail((currentEmail) => currentEmail || email)
+  }, [email])
+
   if (isLoading) {
     return (
       <AuthStatusPanel
-        badge="Supabase Auth"
-        copy="Если вход уже открывали в этом браузере, сессия восстановится автоматически."
-        title="Проверяем локальную сессию"
+        copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
+        title="Проверяем сохраненный вход"
       />
     )
   }
@@ -127,8 +146,7 @@ export function AuthGate({ children }: PropsWithChildren) {
       if (isAuthEnabled) {
         return (
           <AuthStatusPanel
-            badge="Session expired"
-            copy="Сервер больше не принимает текущий access token. Локальная сессия будет сброшена, затем можно войти заново."
+            copy="Текущая сессия больше не действует. Войдите снова, чтобы продолжить работу."
             title="Сессия завершилась"
           >
             <div className={styles.actionRow}>
@@ -148,14 +166,9 @@ export function AuthGate({ children }: PropsWithChildren) {
 
       return (
         <AuthStatusPanel
-          badge="Auth required"
-          copy="Сервер требует bearer token, но вход через Supabase в этом web runtime не настроен."
-          title="Нужен вход"
+          copy="Этот стенд пока не готов к входу через браузер. Проверьте настройки и попробуйте снова."
+          title="Вход временно недоступен"
         >
-          <p className={styles.error}>
-            Запустите web через Supabase runtime или передайте браузеру
-            VITE_SUPABASE_URL и VITE_SUPABASE_PUBLISHABLE_KEY.
-          </p>
           <div className={styles.actionRow}>
             <button
               className={styles.submitButton}
@@ -174,9 +187,8 @@ export function AuthGate({ children }: PropsWithChildren) {
     if (plannerSessionQuery.isPending) {
       return (
         <AuthStatusPanel
-          badge="Workspace"
-          copy="Проверяем доступ к рабочему пространству перед загрузкой задач."
-          title="Открываем Planner"
+          copy="Проверяем доступ к вашему пространству, чтобы открыть планер."
+          title="Открываем Chaotika"
         />
       )
     }
@@ -184,14 +196,11 @@ export function AuthGate({ children }: PropsWithChildren) {
     if (plannerSessionQuery.error && !plannerSessionQuery.data) {
       return (
         <AuthStatusPanel
-          badge="Connection issue"
-          copy="Не удалось проверить доступ к рабочему пространству. Повторите попытку или выйдите и войдите заново."
-          title="Planner не открылся"
+          copy="Не удалось открыть ваш планер. Попробуйте еще раз или войдите повторно."
+          title="Не получилось загрузить данные"
         >
-          <p className={styles.error}>
-            {plannerSessionQuery.error instanceof Error
-              ? plannerSessionQuery.error.message
-              : 'Не удалось открыть рабочую сессию.'}
+          <p className={styles.errorBanner} role="alert">
+            {getFriendlyPlannerSessionErrorMessage(plannerSessionQuery.error)}
           </p>
           <div className={styles.actionRow}>
             <button
@@ -225,9 +234,8 @@ export function AuthGate({ children }: PropsWithChildren) {
 
     return (
       <AuthStatusPanel
-        badge="Workspace"
-        copy="Проверяем доступ к рабочему пространству перед загрузкой задач."
-        title="Открываем Planner"
+        copy="Проверяем доступ к вашему пространству, чтобы открыть планер."
+        title="Открываем Chaotika"
       />
     )
   }
@@ -237,30 +245,21 @@ export function AuthGate({ children }: PropsWithChildren) {
     clearAuthNotice()
 
     const normalizedEmail = formEmail.trim().toLowerCase()
+    const validationErrors = validateForm({
+      email: normalizedEmail,
+      password,
+      passwordConfirmation,
+      screenMode,
+    })
 
-    if (screenMode !== 'recover' && !normalizedEmail) {
-      setErrorMessage(
-        screenMode === 'magic_link'
-          ? 'Укажите email, на который можно отправить magic link.'
-          : 'Укажите email для входа.',
-      )
-      return
-    }
-
-    if (screenMode !== 'magic_link' && !password) {
-      setErrorMessage('Введите пароль.')
-      return
-    }
-
-    if (
-      (screenMode === 'register' || screenMode === 'recover') &&
-      password !== passwordConfirmation
-    ) {
-      setErrorMessage('Пароли не совпадают.')
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors)
+      setErrorMessage(null)
       return
     }
 
     setIsSubmitting(true)
+    setFieldErrors({})
     setErrorMessage(null)
     setStatusMessage(null)
 
@@ -268,49 +267,83 @@ export function AuthGate({ children }: PropsWithChildren) {
       if (screenMode === 'recover') {
         await updatePassword(password)
         clearSensitiveFields()
-        setStatusMessage('Пароль обновлён. Открываем рабочую сессию...')
+        setHasLoginFailure(false)
+        setStatusMessage('Пароль обновлен. Открываем ваш планер...')
         return
       }
 
       if (screenMode === 'login') {
         await signInWithPassword(normalizedEmail, password)
-        setStatusMessage('Сессия открывается...')
+        setHasLoginFailure(false)
+        setStatusMessage('Вход выполнен. Открываем ваш планер...')
         return
       }
 
-      if (screenMode === 'register') {
-        const signUpResult = await signUpWithPassword({
-          ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
-          email: normalizedEmail,
-          password,
-        })
+      const signUpResult = await signUpWithPassword({
+        ...(displayName.trim() ? { displayName: displayName.trim() } : {}),
+        email: normalizedEmail,
+        password,
+      })
 
-        clearSensitiveFields()
-
-        if (signUpResult.requiresEmailConfirmation) {
-          setMode('login')
-          setStatusMessage(
-            `Аккаунт для ${normalizedEmail} создан. Подтвердите email через письмо, затем входите по паролю.`,
-          )
-
-          return
-        }
-
-        setStatusMessage('Аккаунт создан. Открываем рабочую сессию...')
-        return
-      }
-
-      await signInWithOtp(normalizedEmail)
       clearSensitiveFields()
+
+      if (signUpResult.requiresEmailConfirmation) {
+        setMode('login')
+        setHasLoginFailure(false)
+        setStatusMessage(
+          `Аккаунт для ${normalizedEmail} создан. Подтвердите email по ссылке из письма и затем войдите.`,
+        )
+        return
+      }
+
+      setHasLoginFailure(false)
+      setStatusMessage('Аккаунт создан. Открываем ваш планер...')
+    } catch (error) {
+      if (screenMode === 'login') {
+        setHasLoginFailure(true)
+      }
+
+      setErrorMessage(getFriendlyAuthErrorMessage(error, screenMode))
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  async function handlePasswordResetRequest() {
+    clearAuthNotice()
+
+    const normalizedEmail = formEmail.trim().toLowerCase()
+    const nextFieldErrors: FieldErrors = {}
+
+    if (!normalizedEmail) {
+      nextFieldErrors.email = 'Введите email, чтобы восстановить пароль.'
+    } else if (!isValidEmail(normalizedEmail)) {
+      nextFieldErrors.email = 'Введите email в корректном формате.'
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors((currentErrors) => ({
+        ...currentErrors,
+        ...nextFieldErrors,
+      }))
+      setErrorMessage(null)
+      return
+    }
+
+    setIsSubmitting(true)
+    setFieldErrors((currentErrors) => omitFieldError(currentErrors, 'email'))
+    setErrorMessage(null)
+    setStatusMessage(null)
+
+    try {
+      await requestPasswordReset(normalizedEmail)
+      clearSensitiveFields()
+      setHasLoginFailure(false)
       setStatusMessage(
-        `Magic link отправлен на ${normalizedEmail}. Откройте письмо и вернитесь в Planner.`,
+        `Письмо для восстановления отправлено на ${normalizedEmail}. Проверьте почту и задайте новый пароль.`,
       )
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось завершить auth flow.',
-      )
+      setErrorMessage(getFriendlyAuthErrorMessage(error, 'recover'))
     } finally {
       setIsSubmitting(false)
     }
@@ -321,42 +354,13 @@ export function AuthGate({ children }: PropsWithChildren) {
     setPasswordConfirmation('')
   }
 
-  async function handlePasswordResetRequest() {
-    clearAuthNotice()
-
-    const normalizedEmail = formEmail.trim().toLowerCase()
-
-    if (!normalizedEmail) {
-      setErrorMessage('Сначала укажите email для восстановления пароля.')
-      return
-    }
-
-    setIsSubmitting(true)
-    setErrorMessage(null)
-    setStatusMessage(null)
-
-    try {
-      await requestPasswordReset(normalizedEmail)
-      clearSensitiveFields()
-      setStatusMessage(
-        `Письмо для сброса пароля отправлено на ${normalizedEmail}. Откройте ссылку из письма и задайте новый пароль.`,
-      )
-    } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось отправить письмо для сброса пароля.',
-      )
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   function handleModeChange(nextMode: AuthMode) {
     setMode(nextMode)
     clearAuthNotice()
+    setFieldErrors({})
     setErrorMessage(null)
     setStatusMessage(null)
+    setHasLoginFailure(false)
     clearSensitiveFields()
 
     if (nextMode !== 'register') {
@@ -364,251 +368,456 @@ export function AuthGate({ children }: PropsWithChildren) {
     }
   }
 
+  function handleFieldChange(field: FieldName, value: string) {
+    if (field === 'displayName') {
+      setDisplayName(value)
+    }
+
+    if (field === 'email') {
+      setFormEmail(value)
+    }
+
+    if (field === 'password') {
+      setPassword(value)
+    }
+
+    if (field === 'passwordConfirmation') {
+      setPasswordConfirmation(value)
+    }
+
+    setFieldErrors((currentErrors) => omitFieldError(currentErrors, field))
+
+    if (errorMessage) {
+      setErrorMessage(null)
+    }
+  }
+
+  return (
+    <AuthShell>
+      <div className={styles.formCardHeader}>
+        {!isPasswordRecovery ? (
+          <div
+            className={styles.modeSwitch}
+            role="tablist"
+            aria-label="Режим авторизации"
+          >
+            {AUTH_MODE_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                aria-selected={mode === option.id}
+                className={[
+                  styles.modeButton,
+                  mode === option.id ? styles.modeButtonActive : '',
+                ].join(' ')}
+                role="tab"
+                type="button"
+                onClick={() => handleModeChange(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {screenMode === 'recover' ? (
+          <p className={styles.formEyebrow}>Восстановление доступа</p>
+        ) : null}
+        <h2 className={styles.formTitle}>{modeContent.title}</h2>
+        <p className={styles.formCopy}>{modeContent.copy}</p>
+      </div>
+
+      <form
+        className={styles.form}
+        noValidate
+        onSubmit={(event) => void handleSubmit(event)}
+      >
+        {screenMode === 'register' ? (
+          <FormField
+            autoComplete="name"
+            error={fieldErrors.displayName}
+            label="Имя"
+            name="displayName"
+            placeholder="Как вас называть"
+            type="text"
+            value={displayName}
+            onChange={handleFieldChange}
+          />
+        ) : null}
+
+        {screenMode !== 'recover' ? (
+          <FormField
+            autoComplete="email"
+            error={fieldErrors.email}
+            inputMode="email"
+            label="Email"
+            name="email"
+            placeholder="name@example.com"
+            type="email"
+            value={formEmail}
+            onChange={handleFieldChange}
+          />
+        ) : (
+          <div className={styles.recoveryCard}>
+            <span>Аккаунт для восстановления</span>
+            <strong>{email ?? 'Email из письма восстановления'}</strong>
+          </div>
+        )}
+
+        <FormField
+          autoComplete={
+            screenMode === 'register' || screenMode === 'recover'
+              ? 'new-password'
+              : 'current-password'
+          }
+          error={fieldErrors.password}
+          label={screenMode === 'recover' ? 'Новый пароль' : 'Пароль'}
+          name="password"
+          placeholder={
+            screenMode === 'register' || screenMode === 'recover'
+              ? 'Минимум 6 символов'
+              : 'Введите пароль'
+          }
+          type="password"
+          value={password}
+          onChange={handleFieldChange}
+        />
+
+        {screenMode === 'register' || screenMode === 'recover' ? (
+          <FormField
+            autoComplete="new-password"
+            error={fieldErrors.passwordConfirmation}
+            label={
+              screenMode === 'recover'
+                ? 'Повторите новый пароль'
+                : 'Подтвердите пароль'
+            }
+            name="passwordConfirmation"
+            placeholder={
+              screenMode === 'recover'
+                ? 'Повторите новый пароль'
+                : 'Повторите пароль'
+            }
+            type="password"
+            value={passwordConfirmation}
+            onChange={handleFieldChange}
+          />
+        ) : null}
+
+        <p className={styles.helperText}>{modeContent.helper}</p>
+
+        <div className={styles.feedbackStack}>
+          {statusMessage ? (
+            <p className={styles.messageBanner} aria-live="polite">
+              {statusMessage}
+            </p>
+          ) : null}
+          {authNotice ? (
+            <p className={styles.errorBanner} role="alert">
+              {authNotice}
+            </p>
+          ) : null}
+          {errorMessage ? (
+            <p className={styles.errorBanner} role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+        </div>
+
+        <button className={styles.submitButton} disabled={isSubmitting} type="submit">
+          {isSubmitting ? (
+            <span className={styles.buttonContent}>
+              <span aria-hidden="true" className={styles.spinner} />
+              {modeContent.pendingLabel}
+            </span>
+          ) : (
+            modeContent.submitLabel
+          )}
+        </button>
+
+        {screenMode === 'login' && hasLoginFailure ? (
+          <button
+            className={styles.inlineLink}
+            disabled={isSubmitting}
+            type="button"
+            onClick={() => {
+              void handlePasswordResetRequest()
+            }}
+          >
+            Забыли пароль?
+          </button>
+        ) : null}
+      </form>
+    </AuthShell>
+  )
+}
+
+function AuthShell({ children }: { children: ReactNode }) {
   return (
     <section className={styles.shell}>
       <div className={styles.panel}>
-        <div className={styles.hero}>
-          <div>
-            <p className={styles.eyebrow}>Planner Auth Cutover</p>
-            <h1 className={styles.title}>
-              Backend больше не доверяет заголовкам.
-            </h1>
-            <p className={styles.copy}>
-              Вход теперь идёт через Supabase session. Основной поток теперь
-              обычный email/password, а magic link остаётся fallback для
-              подтверждения и аварийного входа.
-            </p>
-          </div>
-
-          <div className={styles.heroFooter}>
-            <div className={styles.heroMetric}>
-              <span>Runtime</span>
-              <strong>Supabase JWT + Fastify + RLS</strong>
+        <section className={styles.introCard}>
+          <div className={styles.brandRow}>
+            <div aria-hidden="true" className={styles.brandMark}>
+              C
             </div>
-            <div className={styles.heroMetric}>
-              <span>Redirect</span>
-              <strong>{window.location.origin}</strong>
-            </div>
-            <div className={styles.heroMetric}>
-              <span>Best for</span>
-              <strong>
-                {defaultEmailDomain ?? 'рабочий email с доступом к проекту'}
-              </strong>
+            <div>
+              <p className={styles.eyebrow}>Chaotika planner</p>
+              <h1 className={styles.title}>Наведите порядок в хаосе дел.</h1>
             </div>
           </div>
-        </div>
 
-        <div className={styles.formCard}>
-          {!isPasswordRecovery ? (
-            <div
-              className={styles.modeSwitch}
-              role="tablist"
-              aria-label="Authentication mode"
-            >
-              {AUTH_MODE_OPTIONS.map((option) => (
-                <button
-                  key={option.id}
-                  aria-selected={mode === option.id}
-                  className={[
-                    styles.modeButton,
-                    mode === option.id ? styles.modeButtonActive : '',
-                  ].join(' ')}
-                  role="tab"
-                  type="button"
-                  onClick={() => handleModeChange(option.id)}
-                >
-                  {option.label}
-                </button>
-              ))}
+          <p className={styles.copy}>
+            Планер для жизни, где все происходит одновременно: работа, дом,
+            дети, покупки, задачи и рутина.
+          </p>
+
+          <div className={styles.tagRow} aria-label="Возможности Chaotika">
+            {HERO_TAGS.map((tag) => (
+              <span key={tag} className={styles.tagChip}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        <aside className={styles.formCard}>{children}</aside>
+
+        <section className={styles.benefitsCard}>
+          <ul className={styles.featureList}>
+            {HERO_FEATURES.map((feature) => (
+              <li key={feature.title} className={styles.featureItem}>
+                <div className={styles.featureBullet} aria-hidden="true" />
+                <div>
+                  <strong>{feature.title}</strong>
+                  <p>{feature.copy}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <div className={styles.previewCard} aria-hidden="true">
+            <div className={styles.previewHeader}>
+              <span>Сегодня</span>
+              <strong>Все под рукой</strong>
             </div>
-          ) : null}
-
-          <span className={styles.statusBadge}>{modeContent.badge}</span>
-          <h2 className={styles.formTitle}>{modeContent.title}</h2>
-          <p className={styles.formCopy}>{modeContent.copy}</p>
-
-          <form
-            className={styles.form}
-            onSubmit={(event) => void handleSubmit(event)}
-          >
-            {screenMode === 'register' ? (
-              <label className={styles.field}>
-                <span>Имя</span>
-                <input
-                  autoComplete="name"
-                  placeholder="Как вас называть"
-                  type="text"
-                  value={displayName}
-                  onChange={(event) => setDisplayName(event.target.value)}
-                />
-              </label>
-            ) : null}
-
-            {screenMode !== 'recover' ? (
-              <label className={styles.field}>
-                <span>Email</span>
-                <input
-                  autoComplete="email"
-                  inputMode="email"
-                  placeholder="name@company.com"
-                  type="email"
-                  value={formEmail}
-                  onChange={(event) => setFormEmail(event.target.value)}
-                />
-              </label>
-            ) : (
-              <div className={styles.recoveryCard}>
-                <span>Аккаунт для восстановления</span>
-                <strong>{email ?? 'email из recovery session'}</strong>
+            <div className={styles.previewList}>
+              <div>
+                <span>Работа</span>
+                <strong>Подготовить встречу</strong>
               </div>
-            )}
-
-            {screenMode !== 'magic_link' ? (
-              <label className={styles.field}>
-                <span>
-                  {screenMode === 'recover' ? 'Новый пароль' : 'Пароль'}
-                </span>
-                <input
-                  autoComplete={
-                    screenMode === 'register' || screenMode === 'recover'
-                      ? 'new-password'
-                      : 'current-password'
-                  }
-                  placeholder={
-                    screenMode === 'register' || screenMode === 'recover'
-                      ? 'Придумайте пароль'
-                      : 'Введите ваш пароль'
-                  }
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </label>
-            ) : null}
-
-            {screenMode === 'register' || screenMode === 'recover' ? (
-              <label className={styles.field}>
-                <span>
-                  {screenMode === 'recover'
-                    ? 'Повторите новый пароль'
-                    : 'Повторите пароль'}
-                </span>
-                <input
-                  autoComplete="new-password"
-                  placeholder={
-                    screenMode === 'recover'
-                      ? 'Повторите новый пароль'
-                      : 'Повторите пароль'
-                  }
-                  type="password"
-                  value={passwordConfirmation}
-                  onChange={(event) =>
-                    setPasswordConfirmation(event.target.value)
-                  }
-                />
-              </label>
-            ) : null}
-
-            <p className={styles.helperText}>
-              {screenMode === 'login'
-                ? 'После первого подтверждения email можно входить напрямую по паролю.'
-                : screenMode === 'register'
-                  ? 'Если в Supabase включено подтверждение email, после регистрации придёт письмо подтверждения.'
-                  : screenMode === 'recover'
-                    ? 'После сохранения нового пароля вход по email/password снова будет работать.'
-                    : 'Используйте этот режим, если пароль ещё не настроен или нужен резервный вход.'}
-            </p>
-
-            {statusMessage ? (
-              <p className={styles.message}>{statusMessage}</p>
-            ) : null}
-            {authNotice ? <p className={styles.error}>{authNotice}</p> : null}
-            {errorMessage ? (
-              <p className={styles.error}>{errorMessage}</p>
-            ) : null}
-
-            <button
-              className={styles.submitButton}
-              disabled={isSubmitting}
-              type="submit"
-            >
-              {isSubmitting
-                ? modeContent.pendingLabel
-                : modeContent.submitLabel}
-            </button>
-
-            {screenMode === 'login' ? (
-              <button
-                className={styles.tertiaryButton}
-                disabled={isSubmitting}
-                type="button"
-                onClick={() => {
-                  void handlePasswordResetRequest()
-                }}
-              >
-                Забыли пароль?
-              </button>
-            ) : null}
-
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={() => {
-                setErrorMessage(null)
-                setStatusMessage(null)
-                clearSensitiveFields()
-
-                if (screenMode === 'register') {
-                  setDisplayName('')
-                }
-              }}
-            >
-              Очистить чувствительные поля
-            </button>
-          </form>
-        </div>
+              <div>
+                <span>Дом</span>
+                <strong>Заказать продукты</strong>
+              </div>
+              <div>
+                <span>Рутина</span>
+                <strong>Не забыть важное</strong>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </section>
   )
 }
 
-function extractEmailDomain(email: string | null): string | null {
-  if (!email || !email.includes('@')) {
-    return null
-  }
-
-  return email.split('@')[1] ?? null
-}
-
 function AuthStatusPanel({
-  badge,
   children,
   copy,
   title,
 }: {
-  badge: string
   children?: ReactNode
   copy: string
   title: string
 }) {
   return (
-    <section className={styles.shell}>
-      <div className={styles.panel}>
-        <div className={styles.hero}>
-          <div>
-            <p className={styles.eyebrow}>{badge}</p>
-            <h1 className={styles.title}>{title}</h1>
-            <p className={styles.copy}>{copy}</p>
-          </div>
-        </div>
-        <div className={styles.formCard}>
-          <div className={styles.loadingState}>
-            <strong>{title}</strong>
-            <p>{copy}</p>
-            {children}
-          </div>
-        </div>
+    <AuthShell>
+      <div className={styles.statusCard}>
+        <p className={styles.formEyebrow}>Chaotika</p>
+        <h2 className={styles.formTitle}>{title}</h2>
+        <p className={styles.formCopy}>{copy}</p>
+        <div className={styles.feedbackStack}>{children}</div>
       </div>
-    </section>
+    </AuthShell>
   )
+}
+
+function FormField({
+  autoComplete,
+  error,
+  inputMode,
+  label,
+  name,
+  placeholder,
+  type,
+  value,
+  onChange,
+}: {
+  autoComplete?: string | undefined
+  error: string | undefined
+  inputMode?: 'email' | 'numeric' | 'search' | 'tel' | 'text' | 'url' | undefined
+  label: string
+  name: FieldName
+  placeholder: string
+  type: string
+  value: string
+  onChange: (field: FieldName, value: string) => void
+}) {
+  const errorId = `${name}-error`
+
+  return (
+    <label className={styles.field}>
+      <span className={styles.fieldLabel}>{label}</span>
+      <input
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={error ? 'true' : 'false'}
+        autoComplete={autoComplete}
+        inputMode={inputMode}
+        name={name}
+        placeholder={placeholder}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(name, event.target.value)}
+      />
+      {error ? (
+        <span className={styles.fieldError} id={errorId} role="alert">
+          {error}
+        </span>
+      ) : null}
+    </label>
+  )
+}
+
+function validateForm({
+  email,
+  password,
+  passwordConfirmation,
+  screenMode,
+}: {
+  email: string
+  password: string
+  passwordConfirmation: string
+  screenMode: AuthScreenMode
+}): FieldErrors {
+  const errors: FieldErrors = {}
+
+  if (screenMode !== 'recover') {
+    if (!email) {
+      errors.email = 'Введите email.'
+    } else if (!isValidEmail(email)) {
+      errors.email = 'Введите email в корректном формате.'
+    }
+  }
+
+  if (!password) {
+    errors.password =
+      screenMode === 'recover' ? 'Введите новый пароль.' : 'Введите пароль.'
+  } else if (
+    (screenMode === 'register' || screenMode === 'recover') &&
+    password.length < MIN_PASSWORD_LENGTH
+  ) {
+    errors.password = `Пароль должен содержать минимум ${MIN_PASSWORD_LENGTH} символов.`
+  }
+
+  if (screenMode === 'register' || screenMode === 'recover') {
+    if (!passwordConfirmation) {
+      errors.passwordConfirmation =
+        screenMode === 'recover'
+          ? 'Повторите новый пароль.'
+          : 'Подтвердите пароль.'
+    } else if (password !== passwordConfirmation) {
+      errors.passwordConfirmation = 'Пароли не совпадают.'
+    }
+  }
+
+  return errors
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function omitFieldError(errors: FieldErrors, field: FieldName): FieldErrors {
+  const nextErrors = { ...errors }
+  delete nextErrors[field]
+  return nextErrors
+}
+
+function getFriendlyAuthErrorMessage(
+  error: unknown,
+  screenMode: AuthScreenMode,
+): string {
+  if (error instanceof SessionApiError) {
+    return getFriendlyPlannerSessionErrorMessage(error)
+  }
+
+  const message = error instanceof Error ? error.message.toLowerCase() : ''
+
+  if (message.includes('invalid login credentials')) {
+    return 'Неверный email или пароль.'
+  }
+
+  if (message.includes('email not confirmed')) {
+    return 'Подтвердите email по ссылке из письма и попробуйте снова.'
+  }
+
+  if (message.includes('user already registered')) {
+    return 'Такой email уже зарегистрирован.'
+  }
+
+  if (message.includes('password should be at least')) {
+    return `Пароль должен содержать минимум ${MIN_PASSWORD_LENGTH} символов.`
+  }
+
+  if (message.includes('unable to validate email address')) {
+    return 'Введите email в корректном формате.'
+  }
+
+  if (
+    message.includes('rate limit') ||
+    message.includes('too many requests') ||
+    message.includes('over_email_send_rate_limit')
+  ) {
+    return 'Слишком много попыток. Попробуйте чуть позже.'
+  }
+
+  if (message.includes('signup is disabled')) {
+    return 'Регистрация временно недоступна.'
+  }
+
+  if (message.includes('network') || message.includes('fetch')) {
+    return 'Не удалось связаться с сервером. Попробуйте еще раз.'
+  }
+
+  if (screenMode === 'register') {
+    return 'Не удалось создать аккаунт. Попробуйте еще раз.'
+  }
+
+  if (screenMode === 'recover') {
+    return 'Не удалось завершить действие. Попробуйте еще раз.'
+  }
+
+  return 'Не удалось войти. Попробуйте еще раз.'
+}
+
+function getFriendlyPlannerSessionErrorMessage(error: unknown): string {
+  if (error instanceof SessionApiError) {
+    if (error.status >= 500) {
+      return 'Сервис временно недоступен. Попробуйте еще раз позже.'
+    }
+
+    if (error.status === 403) {
+      return 'Для этого пространства пока нет доступа.'
+    }
+
+    if (error.status === 404) {
+      return 'Рабочее пространство не найдено.'
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return 'Не удалось открыть рабочее пространство.'
 }
