@@ -317,11 +317,7 @@ export function AdminPage() {
   if (sessionQuery.isLoading) {
     return (
       <section className={pageStyles.page}>
-        <PageHeader
-          kicker="Admin"
-          title="Админка"
-          description="Загружаем права текущего workspace."
-        />
+        <PageHeader kicker="Admin" />
       </section>
     )
   }
@@ -329,11 +325,7 @@ export function AdminPage() {
   if (!canManage) {
     return (
       <section className={pageStyles.page}>
-        <PageHeader
-          kicker="Admin"
-          title="Недостаточно прав"
-          description="Глобальная админка доступна владельцу и администраторам приложения."
-        />
+        <PageHeader kicker="Admin" />
       </section>
     )
   }
@@ -342,8 +334,6 @@ export function AdminPage() {
     <section className={pageStyles.page}>
       <PageHeader
         kicker="Admin"
-        title="Админка"
-        description="Управляйте пользователями и библиотекой иконок."
       />
 
       <section className={styles.section}>

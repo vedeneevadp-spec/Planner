@@ -10,7 +10,10 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
-import { getSupabaseBrowserClient } from '../lib/supabase-browser'
+import {
+  clearSupabaseBrowserAuthStorage,
+  getSupabaseBrowserClient,
+} from '../lib/supabase-browser'
 import {
   type PasswordSignUpInput,
   SessionAuthContext,
@@ -66,7 +69,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       if (error) {
         console.error('Failed to restore Supabase session.', error)
         setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
-        clearPersistedSupabaseAuthSession()
+        clearSupabaseBrowserAuthStorage()
         setSnapshot({
           ...INITIAL_AUTH_SNAPSHOT,
           isLoading: false,
@@ -136,7 +139,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       if (error) {
         console.error('Failed to clear Supabase session.', error)
-        clearPersistedSupabaseAuthSession()
+        clearSupabaseBrowserAuthStorage()
         pendingSignOutNoticeRef.current = null
       }
     },
@@ -364,35 +367,4 @@ function clearSupabaseAuthUrlFragment() {
     document.title,
     `${window.location.pathname}${window.location.search}`,
   )
-}
-
-function clearPersistedSupabaseAuthSession() {
-  if (typeof window === 'undefined' || !plannerApiConfig.supabaseUrl) {
-    return
-  }
-
-  const storageKey = getSupabaseAuthStorageKey(plannerApiConfig.supabaseUrl)
-
-  if (!storageKey) {
-    return
-  }
-
-  try {
-    window.localStorage.removeItem(storageKey)
-    window.localStorage.removeItem(`${storageKey}-code-verifier`)
-    window.localStorage.removeItem(`${storageKey}-user`)
-  } catch (error) {
-    console.error('Failed to clear persisted Supabase session.', error)
-  }
-}
-
-function getSupabaseAuthStorageKey(supabaseUrl: string): string | null {
-  try {
-    const hostname = new URL(supabaseUrl).hostname
-    const projectRef = hostname.split('.')[0]
-
-    return projectRef ? `sb-${projectRef}-auth-token` : null
-  } catch {
-    return null
-  }
 }

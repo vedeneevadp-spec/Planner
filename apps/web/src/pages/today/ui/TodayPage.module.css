@@ -1,0 +1,31 @@
+.todayPage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fixedTop {
+  display: grid;
+  gap: 1.25rem;
+  flex: none;
+}
+
+.taskScroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.taskScrollInner {
+  display: grid;
+  gap: 1.25rem;
+  align-content: start;
+  padding-right: 0.15rem;
+}
+
+@media (max-width: 560px) {
+  .taskScrollInner {
+    padding-right: 0;
+  }
+}

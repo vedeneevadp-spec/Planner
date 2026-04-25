@@ -376,8 +376,10 @@ export function TaskComposer({
             type="button"
             onClick={openComposer}
           >
-            <span aria-hidden="true">+</span>
-            {openButtonLabel}
+            <span className={styles.openButtonIcon} aria-hidden="true">
+              +
+            </span>
+            <span className={styles.openButtonLabel}>{openButtonLabel}</span>
           </button>
         </div>
       )}

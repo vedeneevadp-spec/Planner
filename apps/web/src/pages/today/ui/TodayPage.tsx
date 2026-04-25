@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import {
   selectDoneTodayTasks,
+  selectOverdueTasks,
   selectTodayTasks,
   selectTodoTasks,
   selectTomorrowTasks,
@@ -18,6 +19,7 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 
 import type { EnergyMode } from '../lib/resource-plan'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
+import styles from './TodayPage.module.css'
 
 const ENERGY_MODE_STORAGE_KEY = 'planner.today.energyMode'
 
@@ -81,6 +83,10 @@ function PersonalTodayPage() {
     () => todayTasks.filter((task) => !isRoutineTask(task)),
     [todayTasks],
   )
+  const overdueTasks = useMemo(
+    () => selectOverdueTasks(tasks, todayKey),
+    [tasks, todayKey],
+  )
   const tomorrowTasks = useMemo(
     () => selectTomorrowTasks(tasks, tomorrowKey),
     [tasks, tomorrowKey],
@@ -90,9 +96,10 @@ function PersonalTodayPage() {
       new Set([
         ...mainTodayTasks.map((task) => task.id),
         ...routineTasks.map((task) => task.id),
+        ...overdueTasks.map((task) => task.id),
         ...tomorrowTasks.map((task) => task.id),
       ]),
-    [mainTodayTasks, routineTasks, tomorrowTasks],
+    [mainTodayTasks, overdueTasks, routineTasks, tomorrowTasks],
   )
   const otherTasks = useMemo(
     () => selectTodoTasks(tasks).filter((task) => !visibleTaskIds.has(task.id)),
@@ -133,54 +140,67 @@ function PersonalTodayPage() {
   }
 
   return (
-    <section className={pageStyles.page}>
-      <PageHeader
-        kicker="Focus"
-        actions={<TaskComposer initialPlannedDate={todayKey} />}
-      />
+    <section className={`${pageStyles.page} ${styles.todayPage}`}>
+      <div className={styles.fixedTop}>
+        <PageHeader
+          kicker="Focus"
+          actions={<TaskComposer initialPlannedDate={todayKey} />}
+        />
 
-      <ResourcePlanPanel
-        energyMode={energyMode}
-        isTaskPending={isTaskPending}
-        tasks={resourceTasks}
-        onEnergyModeChange={setEnergyMode}
-        onMoveTaskTomorrow={(taskId) => {
-          void setTaskPlannedDate(taskId, tomorrowKey)
-        }}
-      />
-
-      <div className={pageStyles.gridTwo}>
-        {renderTaskSection(
-          'Сегодня',
-          mainTodayTasks,
-          'На сегодня пока нет задач.',
-        )}
-        {renderTaskSection(
-          'Рутина',
-          routineTasks,
-          'Рутинных задач на сегодня пока нет.',
-        )}
+        <ResourcePlanPanel
+          energyMode={energyMode}
+          isTaskPending={isTaskPending}
+          tasks={resourceTasks}
+          onEnergyModeChange={setEnergyMode}
+          onMoveTaskTomorrow={(taskId) => {
+            void setTaskPlannedDate(taskId, tomorrowKey)
+          }}
+        />
       </div>
 
-      <div className={pageStyles.gridTwo}>
-        {renderTaskSection(
-          'Завтра',
-          tomorrowTasks,
-          'На завтра пока ничего нет.',
-        )}
-        {renderTaskSection(
-          'Остальные задачи',
-          otherTasks,
-          'Все активные задачи уже разложены на сегодня или завтра.',
-        )}
-      </div>
+      <div className={styles.taskScroll}>
+        <div className={styles.taskScrollInner}>
+          <div className={pageStyles.gridTwo}>
+            {renderTaskSection(
+              'Сегодня',
+              mainTodayTasks,
+              'На сегодня пока нет задач.',
+            )}
+            {renderTaskSection(
+              'Рутина',
+              routineTasks,
+              'Рутинных задач на сегодня пока нет.',
+            )}
+          </div>
 
-      {renderTaskSection(
-        'Выполнено сегодня',
-        doneTodayTasks,
-        'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
-        'success',
-      )}
+          {renderTaskSection(
+            'Требуют внимания',
+            overdueTasks,
+            'Просроченных задач сейчас нет.',
+            'warning',
+          )}
+
+          <div className={pageStyles.gridTwo}>
+            {renderTaskSection(
+              'Завтра',
+              tomorrowTasks,
+              'На завтра пока ничего нет.',
+            )}
+            {renderTaskSection(
+              'Остальные задачи',
+              otherTasks,
+              'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
+            )}
+          </div>
+
+          {renderTaskSection(
+            'Выполнено сегодня',
+            doneTodayTasks,
+            'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
+            'success',
+          )}
+        </div>
+      </div>
     </section>
   )
 }
@@ -202,6 +222,10 @@ function SharedTodayPage() {
     () => selectTodayTasks(tasks, todayKey),
     [tasks, todayKey],
   )
+  const overdueTasks = useMemo(
+    () => selectOverdueTasks(tasks, todayKey),
+    [tasks, todayKey],
+  )
   const tomorrowTasks = useMemo(
     () => selectTomorrowTasks(tasks, tomorrowKey),
     [tasks, tomorrowKey],
@@ -214,9 +238,10 @@ function SharedTodayPage() {
     () =>
       new Set([
         ...todayTasks.map((task) => task.id),
+        ...overdueTasks.map((task) => task.id),
         ...tomorrowTasks.map((task) => task.id),
       ]),
-    [todayTasks, tomorrowTasks],
+    [overdueTasks, todayTasks, tomorrowTasks],
   )
   const otherTasks = useMemo(
     () => selectTodoTasks(tasks).filter((task) => !visibleTaskIds.has(task.id)),
@@ -253,37 +278,50 @@ function SharedTodayPage() {
   }
 
   return (
-    <section className={pageStyles.page}>
-      <PageHeader
-        kicker="Shared Today"
-        actions={<TaskComposer initialPlannedDate={todayKey} />}
-      />
-
-      <div className={pageStyles.gridTwo}>
-        {renderTaskSection(
-          'Сегодня',
-          todayTasks,
-          'В общем workspace на сегодня пока нет задач.',
-        )}
-        {renderTaskSection(
-          'Завтра',
-          tomorrowTasks,
-          'На завтра в общем workspace пока ничего нет.',
-        )}
+    <section className={`${pageStyles.page} ${styles.todayPage}`}>
+      <div className={styles.fixedTop}>
+        <PageHeader
+          kicker="Shared Today"
+          title="Сегодня"
+          actions={<TaskComposer initialPlannedDate={todayKey} />}
+        />
       </div>
 
-      <div className={pageStyles.gridTwo}>
-        {renderTaskSection(
-          'Остальные задачи',
-          otherTasks,
-          'Все активные задачи уже разложены на сегодня или завтра.',
-        )}
-        {renderTaskSection(
-          'Выполнено сегодня',
-          doneTodayTasks,
-          'Закрытые сегодня задачи общего workspace появятся здесь.',
-          'success',
-        )}
+      <div className={styles.taskScroll}>
+        <div className={styles.taskScrollInner}>
+          {renderTaskSection(
+            'Сегодня',
+            todayTasks,
+            'В общем workspace на сегодня пока нет задач.',
+          )}
+
+          {renderTaskSection(
+            'Требуют внимания',
+            overdueTasks,
+            'Просроченных задач сейчас нет.',
+            'warning',
+          )}
+
+          <div className={pageStyles.gridTwo}>
+            {renderTaskSection(
+              'Завтра',
+              tomorrowTasks,
+              'На завтра в общем workspace пока ничего нет.',
+            )}
+            {renderTaskSection(
+              'Остальные задачи',
+              otherTasks,
+              'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
+            )}
+          </div>
+
+          {renderTaskSection(
+            'Выполнено сегодня',
+            doneTodayTasks,
+            'Закрытые сегодня задачи общего workspace появятся здесь.',
+            'success',
+          )}
+        </div>
       </div>
     </section>
   )

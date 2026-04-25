@@ -14,6 +14,10 @@ import {
   SessionApiError,
 } from '../lib/session-api'
 import { canBootstrapPlannerSession } from '../lib/session-bootstrap'
+import {
+  getRememberSessionPreference,
+  setRememberSessionPreference,
+} from '../lib/supabase-browser'
 import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
 import styles from './AuthGate.module.css'
@@ -105,6 +109,9 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
+  const [rememberMe, setRememberMe] = useState(() =>
+    getRememberSessionPreference(),
+  )
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -301,6 +308,8 @@ export function AuthGate({ children }: PropsWithChildren) {
         return
       }
 
+      setRememberSessionPreference(rememberMe)
+
       if (screenMode === 'login') {
         await signInWithPassword(normalizedEmail, password)
         setHasLoginFailure(false)
@@ -452,7 +461,9 @@ export function AuthGate({ children }: PropsWithChildren) {
           <p className={styles.formEyebrow}>Восстановление доступа</p>
         ) : null}
         <h2 className={styles.formTitle}>{modeContent.title}</h2>
-        <p className={styles.formCopy}>{modeContent.copy}</p>
+        <p className={[styles.formCopy, styles.mobileHidden].join(' ')}>
+          {modeContent.copy}
+        </p>
       </div>
 
       <form
@@ -532,6 +543,19 @@ export function AuthGate({ children }: PropsWithChildren) {
           />
         ) : null}
 
+        {screenMode === 'login' ? (
+          <label className={styles.rememberRow}>
+            <input
+              checked={rememberMe}
+              className={styles.rememberCheckbox}
+              name="rememberMe"
+              type="checkbox"
+              onChange={(event) => setRememberMe(event.target.checked)}
+            />
+            <span>Запомнить меня</span>
+          </label>
+        ) : null}
+
         <p className={styles.helperText}>{modeContent.helper}</p>
 
         <div className={styles.feedbackStack}>
@@ -577,6 +601,21 @@ export function AuthGate({ children }: PropsWithChildren) {
             }}
           >
             Забыли пароль?
+          </button>
+        ) : null}
+
+        {!isPasswordRecovery ? (
+          <button
+            className={styles.mobileModeLink}
+            disabled={isSubmitting}
+            type="button"
+            onClick={() =>
+              handleModeChange(mode === 'login' ? 'register' : 'login')
+            }
+          >
+            {mode === 'login'
+              ? 'Нет аккаунта? Зарегистрироваться'
+              : 'Уже есть аккаунт? Войти'}
           </button>
         ) : null}
       </form>

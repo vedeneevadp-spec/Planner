@@ -314,9 +314,7 @@ export function TimelinePage() {
   return (
     <section className={pageStyles.page}>
       <PageHeader
-        kicker="Schedule"
-        title="Timeline"
-        description="Дневной таймлайн показывает, сколько задач реально помещается в день. Здесь удобно разложить фокус по времени и сразу увидеть перегруз."
+        kicker="Timeline"
       />
 
       <section className={styles.toolbar}>

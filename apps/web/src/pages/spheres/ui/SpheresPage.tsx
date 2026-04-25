@@ -72,7 +72,6 @@ export function SpheresPage() {
     <section className={pageStyles.page}>
       <PageHeader
         kicker="Spheres"
-        title="Сферы жизни"
         description="Сферы собирают задачи по областям жизни: видно, где неделя перекосилась и что давно не получало внимания."
       />
 
