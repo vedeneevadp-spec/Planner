@@ -5,6 +5,10 @@
   gap: 1rem;
 }
 
+.rootMinimal {
+  min-height: 0;
+}
+
 .eyebrow {
   margin: 0;
   text-transform: uppercase;
@@ -37,6 +41,10 @@
     flex-direction: column;
     align-items: stretch;
     gap: 0.7rem;
+  }
+
+  .rootMinimal {
+    gap: 0;
   }
 
   .actions {

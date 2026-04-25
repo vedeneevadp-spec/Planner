@@ -25,6 +25,10 @@
 }
 
 @media (max-width: 560px) {
+  .fixedTop {
+    gap: 0.8rem;
+  }
+
   .taskScrollInner {
     padding-right: 0;
   }

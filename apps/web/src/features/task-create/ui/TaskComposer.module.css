@@ -563,10 +563,10 @@
   .openButton {
     position: fixed;
     right: calc(1rem + var(--safe-area-right));
-    bottom: calc(6.2rem + var(--safe-area-bottom));
+    bottom: calc(var(--mobile-fab-offset) + var(--safe-area-bottom));
     z-index: 15;
-    width: 4.1rem;
-    min-height: 4.1rem;
+    width: 3.75rem;
+    min-height: 3.75rem;
     padding: 0;
     border: none;
     border-radius: 999px;
@@ -577,7 +577,7 @@
     width: auto;
     height: auto;
     background: transparent;
-    font-size: 2rem;
+    font-size: 1.85rem;
     line-height: 1;
   }
 

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import { cx } from '@/shared/lib/classnames'
+
 import styles from './PageHeader.module.css'
 
 interface PageHeaderProps {
@@ -16,7 +18,9 @@ export function PageHeader({
   kicker,
 }: PageHeaderProps) {
   return (
-    <header className={styles.root}>
+    <header
+      className={cx(styles.root, !title && !description && styles.rootMinimal)}
+    >
       <div>
         <p className={styles.eyebrow}>{kicker}</p>
         {title ? <h2>{title}</h2> : null}
