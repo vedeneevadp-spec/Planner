@@ -11,13 +11,20 @@ import {
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import {
+  addNativeAppStateChangeListener,
+  getNativeAppIsActive,
+  isNativeSessionPersistenceRuntime,
+} from '../lib/native-session-storage'
+import {
   clearSupabaseBrowserAuthStorage,
   getSupabaseBrowserClient,
+  readSupabaseStoredSession,
 } from '../lib/supabase-browser'
 import {
   type PasswordSignUpInput,
   SessionAuthContext,
   type SessionAuthState,
+  type SessionRecoveryResult,
 } from '../model/session-auth-context'
 
 interface AuthSnapshot {
@@ -40,7 +47,9 @@ const DEFAULT_EXPIRED_SESSION_MESSAGE =
 export function SessionProvider({ children }: PropsWithChildren) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), [])
   const isAuthEnabled = supabase !== null
+  const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
+  const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(
     () =>
       typeof window !== 'undefined' && hasRecoveryUrlParams(window.location),
@@ -51,6 +60,151 @@ export function SessionProvider({ children }: PropsWithChildren) {
     isLoading: isAuthEnabled,
   })
 
+  const clearAuthSession = useCallback(
+    async (notice: string | false | null) => {
+      pendingSignOutNoticeRef.current = notice
+      setAuthNotice(notice === false ? null : notice)
+      setIsPasswordRecovery(false)
+      setSnapshot({
+        ...INITIAL_AUTH_SNAPSHOT,
+        isLoading: false,
+      })
+
+      if (!supabase) {
+        return
+      }
+
+      const { error } = await supabase.auth.signOut()
+
+      if (error) {
+        console.error('Failed to clear Supabase session.', error)
+        await clearSupabaseBrowserAuthStorage()
+        pendingSignOutNoticeRef.current = null
+      }
+    },
+    [supabase],
+  )
+
+  const handleUnrecoverableSessionError = useCallback(
+    async (error: unknown, logMessage: string) => {
+      console.error(logMessage, error)
+      await clearSupabaseBrowserAuthStorage()
+      setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
+      setSnapshot({
+        ...INITIAL_AUTH_SNAPSHOT,
+        isLoading: false,
+      })
+
+      return 'signed_out' as const
+    },
+    [],
+  )
+
+  const keepStoredSession = useCallback(
+    async (error: unknown, logMessage: string) => {
+      if (!isRetryableSupabaseAuthError(error)) {
+        return null
+      }
+
+      const storedSession = await readSupabaseStoredSession()
+
+      if (!storedSession) {
+        return null
+      }
+
+      console.warn(logMessage, error)
+      setAuthNotice(null)
+      setSnapshot(toAuthSnapshot(storedSession, false))
+
+      return 'deferred' as const
+    },
+    [],
+  )
+
+  const restoreSession = useCallback(async (): Promise<SessionRecoveryResult> => {
+    if (!supabase) {
+      return 'signed_out'
+    }
+
+    const { data, error } = await supabase.auth.getSession()
+
+    if (error) {
+      const deferredSession = await keepStoredSession(
+        error,
+        'Supabase session restore deferred.',
+      )
+
+      if (deferredSession) {
+        return deferredSession
+      }
+
+      return handleUnrecoverableSessionError(
+        error,
+        'Failed to restore Supabase session.',
+      )
+    }
+
+    setAuthNotice(null)
+    setSnapshot(toAuthSnapshot(data.session, false))
+
+    return data.session ? 'recovered' : 'signed_out'
+  }, [handleUnrecoverableSessionError, keepStoredSession, supabase])
+
+  const clearAuthNotice = useCallback(() => {
+    setAuthNotice(null)
+  }, [])
+
+  const expireSession = useCallback(
+    async (message = DEFAULT_EXPIRED_SESSION_MESSAGE) => {
+      await clearAuthSession(message)
+    },
+    [clearAuthSession],
+  )
+
+  const recoverSession = useCallback(async (): Promise<SessionRecoveryResult> => {
+    if (!supabase) {
+      return 'signed_out'
+    }
+
+    if (sessionRecoveryRef.current) {
+      return sessionRecoveryRef.current
+    }
+
+    const recovery = (async () => {
+      setAuthNotice(null)
+
+      const { data, error } = await supabase.auth.refreshSession()
+
+      if (error) {
+        const deferredSession = await keepStoredSession(
+          error,
+          'Supabase session refresh deferred.',
+        )
+
+        if (deferredSession) {
+          return deferredSession
+        }
+
+        await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
+        return 'signed_out' as const
+      }
+
+      if (!data.session) {
+        await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
+        return 'signed_out' as const
+      }
+
+      setSnapshot(toAuthSnapshot(data.session, false))
+      return 'recovered' as const
+    })().finally(() => {
+      sessionRecoveryRef.current = null
+    })
+
+    sessionRecoveryRef.current = recovery
+
+    return recovery
+  }, [clearAuthSession, keepStoredSession, supabase])
+
   useEffect(() => {
     if (!supabase) {
       return
@@ -58,30 +212,61 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
     const authClient = supabase
     let isActive = true
+    let removeAppStateListener: (() => Promise<void>) | null = null
 
-    async function bootstrapSession() {
-      const { data, error } = await authClient.auth.getSession()
-
-      if (!isActive) {
+    async function syncNativeAppState(nextIsActive: boolean) {
+      if (!isNativeSessionRuntime) {
         return
       }
 
-      if (error) {
-        console.error('Failed to restore Supabase session.', error)
-        setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
-        clearSupabaseBrowserAuthStorage()
-        setSnapshot({
-          ...INITIAL_AUTH_SNAPSHOT,
-          isLoading: false,
-        })
-
+      if (nextIsActive) {
+        await authClient.auth.startAutoRefresh()
+        await restoreSession()
         return
       }
 
-      setSnapshot(toAuthSnapshot(data.session, false))
+      await authClient.auth.stopAutoRefresh()
     }
 
-    void bootstrapSession()
+    async function bootstrapAuthSession() {
+      if (isNativeSessionRuntime) {
+        const appIsActive = await getNativeAppIsActive().catch((error) => {
+          console.warn('Failed to resolve native app state.', error)
+          return true
+        })
+
+        if (!isActive) {
+          return
+        }
+
+        if (appIsActive) {
+          await authClient.auth.startAutoRefresh()
+        } else {
+          await authClient.auth.stopAutoRefresh()
+        }
+      }
+
+      await restoreSession()
+    }
+
+    void bootstrapAuthSession()
+
+    if (isNativeSessionRuntime) {
+      void addNativeAppStateChangeListener((nextIsActive) => {
+        if (!isActive) {
+          return
+        }
+
+        void syncNativeAppState(nextIsActive)
+      }).then((listenerHandle) => {
+        if (!isActive) {
+          void listenerHandle.remove()
+          return
+        }
+
+        removeAppStateListener = () => listenerHandle.remove()
+      })
+    }
 
     const {
       data: { subscription },
@@ -118,44 +303,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
     return () => {
       isActive = false
       subscription.unsubscribe()
+
+      if (removeAppStateListener) {
+        void removeAppStateListener()
+      }
+
+      if (isNativeSessionRuntime) {
+        void authClient.auth.stopAutoRefresh()
+      }
     }
-  }, [supabase])
-
-  const clearAuthSession = useCallback(
-    async (notice: string | false | null) => {
-      pendingSignOutNoticeRef.current = notice
-      setAuthNotice(notice === false ? null : notice)
-      setIsPasswordRecovery(false)
-      setSnapshot({
-        ...INITIAL_AUTH_SNAPSHOT,
-        isLoading: false,
-      })
-
-      if (!supabase) {
-        return
-      }
-
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error('Failed to clear Supabase session.', error)
-        clearSupabaseBrowserAuthStorage()
-        pendingSignOutNoticeRef.current = null
-      }
-    },
-    [supabase],
-  )
-
-  const clearAuthNotice = useCallback(() => {
-    setAuthNotice(null)
-  }, [])
-
-  const expireSession = useCallback(
-    async (message = DEFAULT_EXPIRED_SESSION_MESSAGE) => {
-      await clearAuthSession(message)
-    },
-    [clearAuthSession],
-  )
+  }, [isNativeSessionRuntime, restoreSession, supabase])
 
   const requestPasswordReset = useCallback(
     async (email: string) => {
@@ -277,6 +434,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       isAuthEnabled,
       isLoading: isAuthEnabled && snapshot.isLoading,
       isPasswordRecovery,
+      recoverSession,
       requestPasswordReset,
       signInWithOtp,
       signInWithPassword,
@@ -291,6 +449,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       expireSession,
       isAuthEnabled,
       isPasswordRecovery,
+      recoverSession,
       requestPasswordReset,
       signInWithOtp,
       signInWithPassword,
@@ -322,11 +481,13 @@ function toAuthSnapshot(
     }
   }
 
+  const sessionUser = session.user ?? null
+
   return {
-    email: session.user.email ?? null,
+    email: sessionUser?.email ?? null,
     isLoading,
     sessionAccessToken: session.access_token,
-    userId: session.user.id,
+    userId: sessionUser?.id ?? null,
   }
 }
 
@@ -366,5 +527,14 @@ function clearSupabaseAuthUrlFragment() {
     {},
     document.title,
     `${window.location.pathname}${window.location.search}`,
+  )
+}
+
+function isRetryableSupabaseAuthError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === 'AuthRetryableFetchError'
   )
 }

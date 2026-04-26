@@ -9,6 +9,7 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import { isNativeSessionPersistenceRuntime } from '../lib/native-session-storage'
 import {
   isUnauthorizedSessionApiError,
   SessionApiError,
@@ -96,6 +97,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     isAuthEnabled,
     isLoading,
     isPasswordRecovery,
+    recoverSession,
     requestPasswordReset,
     signOut,
     signInWithPassword,
@@ -119,6 +121,9 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
   const modeContent = AUTH_MODE_CONTENT[screenMode]
+  const shouldShowRememberMe = !isNativeSessionPersistenceRuntime()
+  const plannerSessionError = plannerSessionQuery.error
+  const refetchPlannerSession = plannerSessionQuery.refetch
   const canResolvePlannerSession = canBootstrapPlannerSession({
     accessToken,
     config: plannerApiConfig,
@@ -131,7 +136,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     if (
       !isAuthEnabled ||
       !accessToken ||
-      !isUnauthorizedSessionApiError(plannerSessionQuery.error)
+      !isUnauthorizedSessionApiError(plannerSessionError)
     ) {
       return
     }
@@ -141,8 +146,19 @@ export function AuthGate({ children }: PropsWithChildren) {
     }
 
     handledUnauthorizedTokenRef.current = accessToken
-    void expireSession()
-  }, [accessToken, expireSession, isAuthEnabled, plannerSessionQuery.error])
+    void recoverSession().then((result) => {
+      if (result === 'recovered') {
+        handledUnauthorizedTokenRef.current = null
+        void refetchPlannerSession()
+      }
+    })
+  }, [
+    accessToken,
+    isAuthEnabled,
+    plannerSessionError,
+    recoverSession,
+    refetchPlannerSession,
+  ])
 
   useEffect(() => {
     if (!email) {
@@ -308,7 +324,7 @@ export function AuthGate({ children }: PropsWithChildren) {
         return
       }
 
-      setRememberSessionPreference(rememberMe)
+      setRememberSessionPreference(shouldShowRememberMe ? rememberMe : true)
 
       if (screenMode === 'login') {
         await signInWithPassword(normalizedEmail, password)
@@ -543,7 +559,7 @@ export function AuthGate({ children }: PropsWithChildren) {
           />
         ) : null}
 
-        {screenMode === 'login' ? (
+        {screenMode === 'login' && shouldShowRememberMe ? (
           <label className={styles.rememberRow}>
             <input
               checked={rememberMe}

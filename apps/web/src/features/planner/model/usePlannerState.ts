@@ -531,7 +531,7 @@ function toggleTaskId(
 }
 
 export function usePlannerState(): PlannerState {
-  const { accessToken, expireSession, isAuthEnabled } = useSessionAuth()
+  const { accessToken, isAuthEnabled, recoverSession } = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const actorUserId = session?.actorUserId
@@ -572,6 +572,16 @@ export function usePlannerState(): PlannerState {
     () => ['planner', 'task-templates', workspaceId ?? 'pending'] as const,
     [workspaceId],
   )
+  const invalidatePlannerQueries = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
+      queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] }),
+      queryClient.invalidateQueries({
+        queryKey: ['planner', 'task-templates'],
+      }),
+      queryClient.invalidateQueries({ queryKey: ['planner', 'tasks'] }),
+    ])
+  }, [queryClient])
 
   const tasksQuery = useQuery({
     enabled: plannerApi !== null,
@@ -682,7 +692,11 @@ export function usePlannerState(): PlannerState {
       await taskEventCursorSyncRef.current
     } catch (error) {
       if (isUnauthorizedPlannerApiError(error)) {
-        void expireSession()
+        const recoveryResult = await recoverSession()
+
+        if (recoveryResult === 'recovered') {
+          await invalidatePlannerQueries()
+        }
 
         return
       }
@@ -693,7 +707,14 @@ export function usePlannerState(): PlannerState {
     } finally {
       taskEventCursorSyncRef.current = null
     }
-  }, [expireSession, plannerApi, queryClient, taskQueryKey, workspaceId])
+  }, [
+    invalidatePlannerQueries,
+    plannerApi,
+    queryClient,
+    recoverSession,
+    taskQueryKey,
+    workspaceId,
+  ])
   const drainQueuedMutations = useCallback(async () => {
     if (!plannerApi || !workspaceId) {
       return
@@ -1385,15 +1406,20 @@ export function usePlannerState(): PlannerState {
       return
     }
 
-    void expireSession()
+    void recoverSession().then((result) => {
+      if (result === 'recovered') {
+        void invalidatePlannerQueries()
+      }
+    })
   }, [
     accessToken,
     createProjectMutation.error,
     createTaskMutation.error,
     createTaskTemplateMutation.error,
-    expireSession,
+    invalidatePlannerQueries,
     isAuthEnabled,
     projectsQuery.error,
+    recoverSession,
     removeTaskMutation.error,
     removeTaskTemplateMutation.error,
     sessionQuery.error,
@@ -1813,14 +1839,7 @@ export function usePlannerState(): PlannerState {
   async function refresh(): Promise<void> {
     setMutationErrorMessage(null)
 
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] }),
-      queryClient.invalidateQueries({
-        queryKey: ['planner', 'task-templates'],
-      }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'tasks'] }),
-    ])
+    await invalidatePlannerQueries()
   }
 
   return {

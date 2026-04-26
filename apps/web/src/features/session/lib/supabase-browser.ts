@@ -1,5 +1,6 @@
 import {
   createClient,
+  type Session,
   type SupabaseClient,
   type SupportedStorage,
 } from '@supabase/supabase-js'
@@ -9,9 +10,17 @@ import {
   plannerApiConfig,
 } from '@/shared/config/planner-api'
 
+import {
+  clearNativeSessionStorage,
+  createNativeSessionStorage,
+  isNativeSessionPersistenceRuntime,
+} from './native-session-storage'
+
 let browserSupabaseClient: SupabaseClient | null = null
 const REMEMBER_SESSION_STORAGE_KEY = 'planner.rememberSession'
 const inMemorySupabaseStorage = new Map<string, string>()
+const nativeSessionStorage = createNativeSessionStorage()
+const supabaseAuthStorage = createSupabaseAuthStorage()
 
 export function getSupabaseBrowserClient(): SupabaseClient | null {
   if (!hasSupabaseBrowserAuthConfig(plannerApiConfig)) {
@@ -30,7 +39,7 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
         autoRefreshToken: true,
         detectSessionInUrl: true,
         persistSession: true,
-        storage: createSupabaseBrowserStorage(),
+        storage: supabaseAuthStorage,
       },
     },
   )
@@ -39,6 +48,10 @@ export function getSupabaseBrowserClient(): SupabaseClient | null {
 }
 
 export function getRememberSessionPreference(): boolean {
+  if (isNativeSessionPersistenceRuntime()) {
+    return true
+  }
+
   if (typeof window === 'undefined') {
     return true
   }
@@ -51,6 +64,10 @@ export function getRememberSessionPreference(): boolean {
 }
 
 export function setRememberSessionPreference(remember: boolean): void {
+  if (isNativeSessionPersistenceRuntime()) {
+    return
+  }
+
   if (typeof window === 'undefined') {
     return
   }
@@ -64,12 +81,12 @@ export function setRememberSessionPreference(remember: boolean): void {
     console.error('Failed to persist session preference.', error)
   }
 
-  clearSupabaseBrowserAuthStorage(remember ? 'session' : 'local')
+  void clearSupabaseBrowserAuthStorage(remember ? 'session' : 'local')
 }
 
-export function clearSupabaseBrowserAuthStorage(
+export async function clearSupabaseBrowserAuthStorage(
   scope: 'all' | 'local' | 'session' = 'all',
-): void {
+): Promise<void> {
   const storageKey = getSupabaseAuthStorageKey(plannerApiConfig.supabaseUrl)
 
   if (!storageKey) {
@@ -77,6 +94,17 @@ export function clearSupabaseBrowserAuthStorage(
   }
 
   const keys = [storageKey, `${storageKey}-code-verifier`, `${storageKey}-user`]
+
+  if (isNativeSessionPersistenceRuntime()) {
+    await clearNativeSessionStorage(keys)
+
+    for (const key of keys) {
+      inMemorySupabaseStorage.delete(key)
+    }
+
+    return
+  }
+
   const storageScopes: Array<'local' | 'session'> =
     scope === 'all' ? ['local', 'session'] : [scope]
 
@@ -99,6 +127,44 @@ export function clearSupabaseBrowserAuthStorage(
   for (const key of keys) {
     inMemorySupabaseStorage.delete(key)
   }
+}
+
+export async function readSupabaseStoredSession(): Promise<Session | null> {
+  const storageKey = getSupabaseAuthStorageKey(plannerApiConfig.supabaseUrl)
+
+  if (!storageKey) {
+    return null
+  }
+
+  const rawSession = await supabaseAuthStorage.getItem(storageKey)
+
+  if (!rawSession) {
+    return null
+  }
+
+  try {
+    const parsedSession = JSON.parse(rawSession) as unknown
+
+    if (
+      parsedSession &&
+      typeof parsedSession === 'object' &&
+      'access_token' in parsedSession
+    ) {
+      return parsedSession as Session
+    }
+  } catch (error) {
+    console.error('Failed to parse stored Supabase session.', error)
+  }
+
+  return null
+}
+
+function createSupabaseAuthStorage(): SupportedStorage {
+  if (isNativeSessionPersistenceRuntime()) {
+    return nativeSessionStorage
+  }
+
+  return createSupabaseBrowserStorage()
 }
 
 function createSupabaseBrowserStorage(): SupportedStorage {

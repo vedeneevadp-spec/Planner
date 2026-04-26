@@ -10,6 +10,8 @@ export interface PasswordSignUpResult {
   requiresEmailConfirmation: boolean
 }
 
+export type SessionRecoveryResult = 'deferred' | 'recovered' | 'signed_out'
+
 export interface SessionAuthState {
   accessToken: string | null
   authNotice: string | null
@@ -19,6 +21,7 @@ export interface SessionAuthState {
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean
+  recoverSession: () => Promise<SessionRecoveryResult>
   requestPasswordReset: (email: string) => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
   signInWithOtp: (email: string) => Promise<void>
