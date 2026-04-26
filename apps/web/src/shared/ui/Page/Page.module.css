@@ -1,6 +1,7 @@
 .page {
   display: flex;
   flex-direction: column;
+  gap: 1.25rem;
   animation: rise 280ms ease;
 }
 
@@ -49,5 +50,9 @@
 @media (max-width: 560px) {
   .emptyPanel {
     border-radius: 22px;
+  }
+
+  .page {
+    gap: 0;
   }
 }
