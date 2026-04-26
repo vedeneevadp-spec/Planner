@@ -45,6 +45,21 @@ export function IconChoicePicker({
           />
         ) : null}
 
+        {uploadedIcons.map((uploadedIcon) => {
+          const iconValue = createImageIconValue(uploadedIcon.id)
+
+          return (
+            <IconOptionButton
+              key={iconValue}
+              label={uploadedIcon.label}
+              selected={value === iconValue}
+              value={iconValue}
+              uploadedIcons={uploadedIcons}
+              onChange={onChange}
+            />
+          )
+        })}
+
         {showEmojiChoices
           ? emojiIconChoices.map((emojiIcon) => (
               <IconOptionButton
@@ -66,21 +81,6 @@ export function IconChoicePicker({
               key={iconValue}
               label={svgIconName}
               selected={value === iconValue || value === svgIconName}
-              value={iconValue}
-              uploadedIcons={uploadedIcons}
-              onChange={onChange}
-            />
-          )
-        })}
-
-        {uploadedIcons.map((uploadedIcon) => {
-          const iconValue = createImageIconValue(uploadedIcon.id)
-
-          return (
-            <IconOptionButton
-              key={iconValue}
-              label={uploadedIcon.label}
-              selected={value === iconValue}
               value={iconValue}
               uploadedIcons={uploadedIcons}
               onChange={onChange}

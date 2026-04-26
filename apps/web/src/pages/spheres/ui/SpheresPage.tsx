@@ -77,7 +77,7 @@ export function SpheresPage() {
 
       <section className={styles.balancePanel}>
         <div className={styles.balanceHeader}>
-          <div>
+          <div className={styles.balanceSummary}>
             <p className={styles.eyebrow}>Баланс недели</p>
             <h3>
               {stats.length > 0 ? buildHeadline(stats) : 'Сферы пока не заданы'}
@@ -87,10 +87,13 @@ export function SpheresPage() {
               считается по задачам недели.
             </p>
           </div>
-          <TaskComposer
-            initialPlannedDate={null}
-            openButtonLabel="Добавить действие"
-          />
+          <div className={styles.balanceAction}>
+            <TaskComposer
+              initialPlannedDate={null}
+              mobileOpenButtonMode="inline"
+              openButtonLabel="Добавить действие"
+            />
+          </div>
         </div>
 
         {stats.length > 0 ? (

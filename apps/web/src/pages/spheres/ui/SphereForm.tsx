@@ -104,9 +104,7 @@ export function SphereForm({
       }}
     >
       <div className={styles.formHeader}>
-        <h3 id={titleId}>
-          {sphere ? 'Редактировать сферу' : 'Новая сфера'}
-        </h3>
+        <h3 id={titleId}>{sphere ? 'Редактировать сферу' : 'Новая сфера'}</h3>
         {onCancel ? (
           <button
             className={styles.secondaryButton}

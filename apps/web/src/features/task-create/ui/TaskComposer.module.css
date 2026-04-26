@@ -86,6 +86,11 @@
   white-space: nowrap;
 }
 
+.actionRowInlineMobile {
+  width: fit-content;
+  margin-left: auto;
+}
+
 .openButton:hover {
   background: var(--accent-strong);
   box-shadow: 0 14px 30px rgba(33, 78, 66, 0.24);
@@ -584,11 +589,42 @@
   .openButtonLabel {
     display: none;
   }
+
+  .actionRowInlineMobile {
+    justify-content: flex-end;
+  }
+
+  .openButtonInlineMobile {
+    position: static;
+    right: auto;
+    bottom: auto;
+    z-index: auto;
+    width: auto;
+    min-height: 2.7rem;
+    padding: 0.68rem 1rem;
+    border: 1px solid var(--accent);
+    box-shadow: 0 12px 26px rgba(33, 78, 66, 0.18);
+  }
+
+  .openButtonInlineMobile .openButtonIcon {
+    width: 1.1rem;
+    height: 1.1rem;
+    background: rgba(255, 253, 248, 0.16);
+    font-size: 1rem;
+  }
+
+  .openButtonInlineMobile .openButtonLabel {
+    display: inline;
+  }
 }
 
 @media (max-width: 560px) {
   .actionRow {
     justify-content: stretch;
+  }
+
+  .actionRowInlineMobile {
+    justify-content: flex-end;
   }
 
   .templateQuickBar {
@@ -601,12 +637,12 @@
 
   .modalOverlay {
     align-items: end;
-    padding: 0.65rem;
+    padding: 2rem 0.65rem;
   }
 
   .panel {
     border-radius: 22px;
-    max-height: calc(100vh - 1.3rem);
+    max-height: calc(100vh - 4rem);
   }
 
   .templateSelectButton {

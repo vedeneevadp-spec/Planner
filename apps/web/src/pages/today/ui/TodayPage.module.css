@@ -15,6 +15,7 @@
 .taskScroll {
   min-height: 0;
   overflow: auto;
+  border-radius: 22px;
 }
 
 .taskScrollInner {

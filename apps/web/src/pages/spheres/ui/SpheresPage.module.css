@@ -46,6 +46,14 @@
   gap: 1rem;
 }
 
+.balanceSummary {
+  min-width: 0;
+}
+
+.balanceAction {
+  flex: 0 0 auto;
+}
+
 .eyebrow {
   margin: 0;
   color: var(--accent);
@@ -371,7 +379,6 @@
 }
 
 @media (max-width: 760px) {
-  .balanceHeader,
   .forgottenPanel,
   .cardActions,
   .detailHeader,
@@ -403,5 +410,19 @@
   .primaryButton,
   .secondaryButton {
     width: 100%;
+  }
+
+  .balanceHeader {
+    position: relative;
+  }
+
+  .balanceSummary {
+    padding-right: min(12.5rem, 52vw);
+  }
+
+  .balanceAction {
+    position: absolute;
+    top: 0;
+    right: 0;
   }
 }

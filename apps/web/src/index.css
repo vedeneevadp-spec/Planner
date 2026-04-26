@@ -38,7 +38,7 @@
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
   --mobile-tabbar-edge-offset: 0.72rem;
-  --mobile-main-bottom-clearance: 5.45rem;
+  --mobile-main-bottom-clearance: 5rem;
   --mobile-fab-offset: 4.85rem;
   --mobile-sheet-bottom-clearance: 4rem;
 }

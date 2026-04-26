@@ -25,6 +25,7 @@ import styles from './TaskComposer.module.css'
 interface TaskComposerProps {
   hideOpenButton?: boolean
   initialPlannedDate: string | null
+  mobileOpenButtonMode?: 'fab' | 'inline'
   openDraft?: TaskComposerDraft | null | undefined
   openButtonLabel?: string | undefined
   showTimeFields?: boolean
@@ -115,6 +116,7 @@ function buildTaskInputFromTemplate(
 export function TaskComposer({
   hideOpenButton = false,
   initialPlannedDate,
+  mobileOpenButtonMode = 'fab',
   openDraft,
   openButtonLabel = 'Новая задача',
   showTimeFields = true,
@@ -369,10 +371,19 @@ export function TaskComposer({
   return (
     <>
       {hideOpenButton ? null : (
-        <div className={styles.actionRow}>
+        <div
+          className={cx(
+            styles.actionRow,
+            mobileOpenButtonMode === 'inline' && styles.actionRowInlineMobile,
+          )}
+        >
           <button
             ref={openButtonRef}
-            className={styles.openButton}
+            className={cx(
+              styles.openButton,
+              mobileOpenButtonMode === 'inline' &&
+                styles.openButtonInlineMobile,
+            )}
             type="button"
             onClick={openComposer}
           >
