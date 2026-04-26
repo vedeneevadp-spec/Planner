@@ -146,20 +146,20 @@ function PersonalTodayPage() {
           kicker="Focus"
           actions={<TaskComposer initialPlannedDate={todayKey} />}
         />
-
-        <ResourcePlanPanel
-          energyMode={energyMode}
-          isTaskPending={isTaskPending}
-          tasks={resourceTasks}
-          onEnergyModeChange={setEnergyMode}
-          onMoveTaskTomorrow={(taskId) => {
-            void setTaskPlannedDate(taskId, tomorrowKey)
-          }}
-        />
       </div>
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
+          <ResourcePlanPanel
+            energyMode={energyMode}
+            isTaskPending={isTaskPending}
+            tasks={resourceTasks}
+            onEnergyModeChange={setEnergyMode}
+            onMoveTaskTomorrow={(taskId) => {
+              void setTaskPlannedDate(taskId, tomorrowKey)
+            }}
+          />
+
           <div className={pageStyles.gridTwo}>
             {renderTaskSection(
               'Сегодня',

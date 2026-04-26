@@ -38,10 +38,7 @@ export function ResourcePlanPanel({
 
   return (
     <section
-      className={cx(
-        styles.panel,
-        isExpanded ? styles.panelExpanded : styles.panelCollapsed,
-      )}
+      className={cx(styles.panel, !isExpanded && styles.panelCollapsed)}
       aria-labelledby="resource-plan-title"
     >
       <div className={styles.header}>
@@ -76,7 +73,9 @@ export function ResourcePlanPanel({
           </button>
         </div>
       </div>
-      {isExpanded ? <h3 className={styles.title}>Сколько у тебя ресурса сегодня?</h3> : null}
+      {isExpanded ? (
+        <h3 className={styles.title}>Сколько у тебя ресурса сегодня?</h3>
+      ) : null}
       {isExpanded ? (
         <>
           <div className={styles.modeGrid}>
