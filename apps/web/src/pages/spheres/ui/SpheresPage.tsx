@@ -15,7 +15,7 @@ import {
   getSphereHealthLabel,
   type SphereStats,
 } from '../lib/sphere-stats'
-import { SphereForm } from './SphereForm'
+import { SphereComposer } from './SphereComposer'
 import styles from './SpheresPage.module.css'
 
 function buildHeadline(stats: SphereStats[]): string {
@@ -77,8 +77,17 @@ export function SpheresPage() {
 
       <section className={styles.balancePanel}>
         <div className={styles.balanceHeader}>
-          <div className={styles.balanceSummary}>
+          <div className={styles.balanceMeta}>
             <p className={styles.eyebrow}>Баланс недели</p>
+          </div>
+          <div className={styles.balanceAction}>
+            <TaskComposer
+              initialPlannedDate={null}
+              mobileOpenButtonMode="inline"
+              openButtonLabel="Действие"
+            />
+          </div>
+          <div className={styles.balanceSummary}>
             <h3>
               {stats.length > 0 ? buildHeadline(stats) : 'Сферы пока не заданы'}
             </h3>
@@ -86,13 +95,6 @@ export function SpheresPage() {
               {formatShortDate(week.from)} - {formatShortDate(week.to)} · ресурс
               считается по задачам недели.
             </p>
-          </div>
-          <div className={styles.balanceAction}>
-            <TaskComposer
-              initialPlannedDate={null}
-              mobileOpenButtonMode="inline"
-              openButtonLabel="Добавить действие"
-            />
           </div>
         </div>
 
@@ -151,10 +153,9 @@ export function SpheresPage() {
         </section>
       ) : null}
 
-      <SphereForm
-        submitLabel="Создать сферу"
+      <SphereComposer
         uploadedIcons={uploadedIcons}
-        onSubmit={(values) => addProject(values)}
+        onCreate={(values) => addProject(values)}
       />
 
       {spheres.length === 0 ? (

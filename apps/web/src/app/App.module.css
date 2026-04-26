@@ -29,8 +29,7 @@
   }
 
   .main {
-    padding: 0.3rem 0
-      calc(var(--mobile-main-bottom-clearance) + var(--safe-area-bottom));
+    padding: 0.3rem 0 var(--mobile-main-bottom-clearance);
   }
 }
 

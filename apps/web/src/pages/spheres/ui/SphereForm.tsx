@@ -49,7 +49,10 @@ export interface SphereFormValues {
 }
 
 interface SphereFormProps {
+  autoFocusTitle?: boolean | undefined
+  embedded?: boolean | undefined
   sphere?: Project | undefined
+  showHeader?: boolean | undefined
   submitLabel: string
   uploadedIcons?: UploadedIconAsset[] | undefined
   onCancel?: (() => void) | undefined
@@ -57,7 +60,10 @@ interface SphereFormProps {
 }
 
 export function SphereForm({
+  autoFocusTitle = false,
+  embedded = false,
   sphere,
+  showHeader = true,
   submitLabel,
   uploadedIcons = [],
   onCancel,
@@ -97,29 +103,32 @@ export function SphereForm({
 
   return (
     <form
-      className={styles.sphereForm}
-      aria-labelledby={titleId}
+      className={cx(styles.sphereForm, embedded && styles.sphereFormEmbedded)}
+      aria-labelledby={showHeader ? titleId : undefined}
       onSubmit={(event) => {
         void handleSubmit(event)
       }}
     >
-      <div className={styles.formHeader}>
-        <h3 id={titleId}>{sphere ? 'Редактировать сферу' : 'Новая сфера'}</h3>
-        {onCancel ? (
-          <button
-            className={styles.secondaryButton}
-            type="button"
-            onClick={onCancel}
-          >
-            Отмена
-          </button>
-        ) : null}
-      </div>
+      {showHeader ? (
+        <div className={styles.formHeader}>
+          <h3 id={titleId}>{sphere ? 'Редактировать сферу' : 'Новая сфера'}</h3>
+          {onCancel ? (
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={onCancel}
+            >
+              Отмена
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className={styles.formGridDetailed}>
         <label className={styles.field}>
           <span>Название</span>
           <input
+            autoFocus={autoFocusTitle}
             required
             value={title}
             placeholder="Например: здоровье"
