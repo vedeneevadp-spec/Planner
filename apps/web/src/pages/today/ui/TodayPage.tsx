@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactElement, useEffect, useMemo, useState } from 'react'
 
 import {
   selectDoneTodayTasks,
@@ -37,6 +37,24 @@ function readStoredEnergyMode(): EnergyMode {
   return value === 'minimum' || value === 'maximum' || value === 'normal'
     ? value
     : 'normal'
+}
+
+function renderTaskSectionGroup(
+  sections: Array<ReactElement | null>,
+): ReactElement | null {
+  const visibleSections = sections.filter(
+    (section): section is ReactElement => section !== null,
+  )
+
+  if (visibleSections.length === 0) {
+    return null
+  }
+
+  if (visibleSections.length === 1) {
+    return visibleSections[0] ?? null
+  }
+
+  return <div className={pageStyles.gridTwo}>{visibleSections}</div>
 }
 
 export function TodayPage() {
@@ -110,14 +128,20 @@ function PersonalTodayPage() {
     [doneTodayTasks, todayTasks],
   )
 
-  function renderTaskSection(
+  function buildTaskSection(
+    key: string,
     title: string,
     sectionTasks: Task[],
     emptyMessage: string,
     tone: 'default' | 'warning' | 'success' = 'default',
-  ) {
+  ): ReactElement | null {
+    if (sectionTasks.length === 0) {
+      return null
+    }
+
     return (
       <TaskSection
+        key={key}
         title={title}
         tasks={sectionTasks}
         projects={projects}
@@ -160,40 +184,46 @@ function PersonalTodayPage() {
             }}
           />
 
-          <div className={pageStyles.gridTwo}>
-            {renderTaskSection(
+          {renderTaskSectionGroup([
+            buildTaskSection(
+              'today',
               'Сегодня',
               mainTodayTasks,
               'На сегодня пока нет задач.',
-            )}
-            {renderTaskSection(
+            ),
+            buildTaskSection(
+              'routine',
               'Рутина',
               routineTasks,
               'Рутинных задач на сегодня пока нет.',
-            )}
-          </div>
+            ),
+          ])}
 
-          {renderTaskSection(
+          {buildTaskSection(
+            'overdue',
             'Требуют внимания',
             overdueTasks,
             'Просроченных задач сейчас нет.',
             'warning',
           )}
 
-          <div className={pageStyles.gridTwo}>
-            {renderTaskSection(
+          {renderTaskSectionGroup([
+            buildTaskSection(
+              'tomorrow',
               'Завтра',
               tomorrowTasks,
               'На завтра пока ничего нет.',
-            )}
-            {renderTaskSection(
+            ),
+            buildTaskSection(
+              'other',
               'Остальные задачи',
               otherTasks,
               'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
-            )}
-          </div>
+            ),
+          ])}
 
-          {renderTaskSection(
+          {buildTaskSection(
+            'done-today',
             'Выполнено сегодня',
             doneTodayTasks,
             'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
@@ -248,14 +278,20 @@ function SharedTodayPage() {
     [tasks, visibleTaskIds],
   )
 
-  function renderTaskSection(
+  function buildTaskSection(
+    key: string,
     title: string,
     sectionTasks: Task[],
     emptyMessage: string,
     tone: 'default' | 'warning' | 'success' = 'default',
-  ) {
+  ): ReactElement | null {
+    if (sectionTasks.length === 0) {
+      return null
+    }
+
     return (
       <TaskSection
+        key={key}
         title={title}
         tasks={sectionTasks}
         projects={projects}
@@ -289,33 +325,38 @@ function SharedTodayPage() {
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
-          {renderTaskSection(
+          {buildTaskSection(
+            'today',
             'Сегодня',
             todayTasks,
             'В общем workspace на сегодня пока нет задач.',
           )}
 
-          {renderTaskSection(
+          {buildTaskSection(
+            'overdue',
             'Требуют внимания',
             overdueTasks,
             'Просроченных задач сейчас нет.',
             'warning',
           )}
 
-          <div className={pageStyles.gridTwo}>
-            {renderTaskSection(
+          {renderTaskSectionGroup([
+            buildTaskSection(
+              'tomorrow',
               'Завтра',
               tomorrowTasks,
               'На завтра в общем workspace пока ничего нет.',
-            )}
-            {renderTaskSection(
+            ),
+            buildTaskSection(
+              'other',
               'Остальные задачи',
               otherTasks,
               'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
-            )}
-          </div>
+            ),
+          ])}
 
-          {renderTaskSection(
+          {buildTaskSection(
+            'done-today',
             'Выполнено сегодня',
             doneTodayTasks,
             'Закрытые сегодня задачи общего workspace появятся здесь.',

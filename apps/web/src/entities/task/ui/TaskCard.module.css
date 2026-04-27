@@ -232,12 +232,14 @@
 }
 
 .editorPanel {
+  --control-height: 3rem;
+  --hero-control-height: 3.35rem;
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  width: min(920px, 100%);
+  width: min(980px, 100%);
   max-height: calc(100vh - 2rem);
   overflow: auto;
   border: 1px solid var(--line);
@@ -276,20 +278,44 @@
   line-height: 1;
 }
 
+.titleField {
+  --control-height: var(--hero-control-height);
+}
+
+.editorColumns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.58fr) minmax(18rem, 0.92fr);
+  gap: 0.85rem;
+  align-items: start;
+}
+
+.editorColumnPanel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid rgba(33, 78, 66, 0.12);
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.editorSection {
+  padding: 0.9rem;
+}
+
+.editorSection + .editorSection {
+  border-top: 1px solid rgba(33, 78, 66, 0.12);
+}
+
 .editorGrid {
   display: grid;
-  grid-template-columns:
-    minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(10rem, 0.9fr)
-    minmax(9rem, 0.7fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.85rem;
 }
 
 .editorVisual {
   display: block;
-  border-radius: 18px;
-  border: 1px solid rgba(33, 78, 66, 0.1);
-  padding: 0.85rem 0.9rem;
-  background: rgba(255, 255, 255, 0.42);
+  padding: 0;
+  background: transparent;
 }
 
 .field {
@@ -307,6 +333,7 @@
 .field select,
 .field textarea {
   width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 0.8rem 0.9rem;
@@ -314,6 +341,11 @@
   transition:
     border-color 150ms ease,
     background 150ms ease;
+}
+
+.field input,
+.field select {
+  min-height: var(--control-height);
 }
 
 .field input:focus,
@@ -329,15 +361,19 @@
   opacity: 0.55;
 }
 
-.fieldTitle {
-  grid-column: span 2;
-  min-width: 0;
+.fieldProject {
+  --control-height: var(--hero-control-height);
 }
 
 .fieldProject,
 .fieldResource,
 .fieldType {
   min-width: 0;
+}
+
+.notePanel textarea {
+  min-height: 4.5rem;
+  resize: vertical;
 }
 
 .primaryButton {
@@ -375,12 +411,9 @@
     justify-content: flex-start;
   }
 
+  .editorColumns,
   .editorGrid {
     grid-template-columns: 1fr;
-  }
-
-  .fieldTitle {
-    grid-column: auto;
   }
 
   .editorActions {

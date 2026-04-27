@@ -302,7 +302,6 @@ export function TaskEditDialog({
   const [plannedEndTime, setPlannedEndTime] = useState(
     task.plannedEndTime ?? '',
   )
-  const [dueDate, setDueDate] = useState(task.dueDate ?? '')
   const [icon, setIcon] = useState(task.icon)
   const [resource, setResource] = useState(
     task.resource === null || task.resource === 0
@@ -336,7 +335,7 @@ export function TaskEditDialog({
       projects.find((project) => project.id === projectId) ?? null
     const hasPlannedDate = Boolean(plannedDate)
     const isUpdated = await onUpdate(task.id, {
-      dueDate: dueDate || null,
+      dueDate: task.dueDate ?? null,
       icon,
       importance: getTaskImportanceFromType(taskType),
       note,
@@ -388,94 +387,107 @@ export function TaskEditDialog({
           </button>
         </div>
 
-        <div className={styles.editorGrid}>
-          <label className={cx(styles.field, styles.fieldTitle)}>
-            <span>Задача</span>
-            <input
-              required
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-            />
-          </label>
-
-          <ProjectPicker
-            className={styles.fieldProject}
-            projects={projects}
-            uploadedIcons={uploadedIcons}
-            value={projectId}
-            onChange={setProjectId}
-          />
-
-          <TaskTypePicker
-            className={styles.fieldType}
-            value={taskType}
-            onChange={setTaskType}
-          />
-
-          <label className={styles.field}>
-            <span>План</span>
-            <input
-              type="date"
-              value={plannedDate}
-              onChange={(event) => handlePlannedDateChange(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Старт</span>
-            <input
-              type="time"
-              value={plannedStartTime}
-              disabled={!plannedDate}
-              onChange={(event) => setPlannedStartTime(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Финиш</span>
-            <input
-              type="time"
-              value={plannedEndTime}
-              disabled={!plannedDate || !plannedStartTime}
-              onChange={(event) => setPlannedEndTime(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Дедлайн</span>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.target.value)}
-            />
-          </label>
-
-          <ResourcePicker
-            className={styles.fieldResource}
-            value={resource}
-            onChange={setResource}
-          />
-        </div>
-
-        <div className={styles.editorVisual}>
-          <IconChoicePicker
-            allowEmpty={false}
-            label="Иконка"
-            showEmojiChoices={false}
-            value={icon}
-            uploadedIcons={uploadedIcons}
-            onChange={setIcon}
-          />
-        </div>
-
-        <label className={styles.field}>
-          <span>Заметка</span>
-          <textarea
-            rows={3}
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
+        <label className={cx(styles.field, styles.titleField)}>
+          <span>Задача</span>
+          <input
+            required
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
           />
         </label>
+
+        <div className={styles.editorColumns}>
+          <div className={styles.editorColumnPanel}>
+            <section className={styles.editorSection}>
+              <div className={styles.editorGrid}>
+                <label className={styles.field}>
+                  <span>План</span>
+                  <input
+                    type="date"
+                    value={plannedDate}
+                    onChange={(event) =>
+                      handlePlannedDateChange(event.target.value)
+                    }
+                  />
+                </label>
+
+                <label className={styles.field}>
+                  <span>Старт</span>
+                  <input
+                    type="time"
+                    value={plannedStartTime}
+                    disabled={!plannedDate}
+                    onChange={(event) =>
+                      setPlannedStartTime(event.target.value)
+                    }
+                  />
+                </label>
+
+                <label className={styles.field}>
+                  <span>Финиш</span>
+                  <input
+                    type="time"
+                    value={plannedEndTime}
+                    disabled={!plannedDate || !plannedStartTime}
+                    onChange={(event) => setPlannedEndTime(event.target.value)}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <section className={styles.editorSection}>
+              <label className={cx(styles.field, styles.notePanel)}>
+                <span>Заметка</span>
+                <textarea
+                  rows={3}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                />
+              </label>
+            </section>
+
+            <section className={styles.editorSection}>
+              <div className={styles.editorVisual}>
+                <IconChoicePicker
+                  allowEmpty={false}
+                  label="Иконка"
+                  showEmojiChoices={false}
+                  value={icon}
+                  uploadedIcons={uploadedIcons}
+                  onChange={setIcon}
+                />
+              </div>
+            </section>
+          </div>
+
+          <div className={styles.editorColumnPanel}>
+            <section className={styles.editorSection}>
+              <ProjectPicker
+                className={styles.fieldProject}
+                projects={projects}
+                uploadedIcons={uploadedIcons}
+                value={projectId}
+                onChange={setProjectId}
+              />
+            </section>
+
+            <section className={styles.editorSection}>
+              <TaskTypePicker
+                className={styles.fieldType}
+                value={taskType}
+                onChange={setTaskType}
+              />
+            </section>
+
+            <section className={styles.editorSection}>
+              <ResourcePicker
+                className={styles.fieldResource}
+                value={resource}
+                onChange={setResource}
+              />
+            </section>
+          </div>
+        </div>
 
         <div className={styles.editorActions}>
           <button className={styles.button} type="button" onClick={onClose}>

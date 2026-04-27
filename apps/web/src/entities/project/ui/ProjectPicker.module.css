@@ -28,7 +28,8 @@
 }
 
 .trigger {
-  min-height: 2.95rem;
+  box-sizing: border-box;
+  min-height: var(--control-height, 3rem);
   border-radius: 16px;
   padding: 0.62rem 0.72rem;
 }

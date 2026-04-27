@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { LightningIcon } from '@/shared/ui/Icon'
@@ -7,9 +7,9 @@ import type { ResourceValue, TaskTypeValue } from '../model/task-meta'
 import styles from './TaskMetaPickers.module.css'
 
 const IMPORTANT_ICON_SRC =
-  '/api/v1/icon-assets/019db853-b277-7b05-a00f-36487fbb5cdb.webp'
+  'https://chaotika.ru/api/v1/icon-assets/019db853-b277-7b05-a00f-36487fbb5cdb.webp'
 const ROUTINE_ICON_SRC =
-  '/api/v1/icon-assets/019db853-b277-7e73-8b26-6bc63220c18b.webp'
+  'https://chaotika.ru/api/v1/icon-assets/019db853-b277-7e73-8b26-6bc63220c18b.webp'
 const RESOURCE_COLORS: Record<1 | 2 | 3 | 4 | 5, string> = {
   1: '#2f9e44',
   2: '#6da83f',
@@ -20,16 +20,12 @@ const RESOURCE_COLORS: Record<1 | 2 | 3 | 4 | 5, string> = {
 const RESTORE_RESOURCE_COLOR = '#2f9e44'
 
 interface TaskTypeOption {
-  imageSrc?: string
+  imageSrc: string
   label: string
   value: TaskTypeValue
 }
 
 const TASK_TYPE_OPTIONS: TaskTypeOption[] = [
-  {
-    label: 'Обычная',
-    value: '',
-  },
   {
     imageSrc: IMPORTANT_ICON_SRC,
     label: 'Важное',
@@ -44,6 +40,7 @@ const TASK_TYPE_OPTIONS: TaskTypeOption[] = [
 
 interface ResourceOption {
   color: string
+  kind: 'drain' | 'restore'
   label: string
   level: number
   value: ResourceValue
@@ -58,72 +55,69 @@ interface TaskResourceMeterProps {
 
 const RESOURCE_OPTIONS: ResourceOption[] = [
   {
-    color: '#879188',
-    label: 'Ресурс 0',
-    level: 0,
-    value: '',
-  },
-  {
     color: RESOURCE_COLORS[1],
+    kind: 'drain',
     label: 'Расход 1',
     level: -1,
     value: '-1',
   },
   {
     color: RESOURCE_COLORS[2],
+    kind: 'drain',
     label: 'Расход 2',
     level: -2,
     value: '-2',
   },
   {
     color: RESOURCE_COLORS[3],
+    kind: 'drain',
     label: 'Расход 3',
     level: -3,
     value: '-3',
   },
   {
     color: RESOURCE_COLORS[4],
+    kind: 'drain',
     label: 'Расход 4',
     level: -4,
     value: '-4',
   },
   {
-    color: RESOURCE_COLORS[5],
-    label: 'Расход 5',
-    level: -5,
-    value: '-5',
-  },
-  {
-    color: RESOURCE_COLORS[1],
+    color: RESTORE_RESOURCE_COLOR,
+    kind: 'restore',
     label: 'Восстановление 1',
     level: 1,
     value: '1',
   },
   {
-    color: RESOURCE_COLORS[2],
+    color: RESTORE_RESOURCE_COLOR,
+    kind: 'restore',
     label: 'Восстановление 2',
     level: 2,
     value: '2',
   },
   {
-    color: RESOURCE_COLORS[3],
+    color: RESTORE_RESOURCE_COLOR,
+    kind: 'restore',
     label: 'Восстановление 3',
     level: 3,
     value: '3',
   },
   {
-    color: RESOURCE_COLORS[4],
+    color: RESTORE_RESOURCE_COLOR,
+    kind: 'restore',
     label: 'Восстановление 4',
     level: 4,
     value: '4',
   },
-  {
-    color: RESOURCE_COLORS[5],
-    label: 'Восстановление 5',
-    level: 5,
-    value: '5',
-  },
 ]
+
+const DRAIN_RESOURCE_OPTIONS = RESOURCE_OPTIONS.filter(
+  (option) => option.kind === 'drain',
+)
+const RESTORE_RESOURCE_OPTIONS = RESOURCE_OPTIONS.filter(
+  (option) => option.kind === 'restore',
+)
 
 interface PickerProps<Value extends string> {
   className?: string | undefined
@@ -138,63 +132,40 @@ export function TaskTypePicker({
   value,
   onChange,
 }: Omit<PickerProps<TaskTypeValue>, 'label'> & { label?: string }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const selectedOption =
-    TASK_TYPE_OPTIONS.find((option) => option.value === value) ??
-    TASK_TYPE_OPTIONS[0]!
-
-  function selectOption(nextValue: TaskTypeValue) {
-    onChange(nextValue)
-    setIsOpen(false)
-  }
+  const labelId = useId()
 
   return (
-    <div
-      className={cx(styles.picker, className)}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget
+    <div className={cx(styles.picker, className)}>
+      <span id={labelId} className={styles.label}>
+        {label}
+      </span>
 
-        if (
-          !(nextTarget instanceof Node) ||
-          !event.currentTarget.contains(nextTarget)
-        ) {
-          setIsOpen(false)
-        }
-      }}
-    >
-      <span className={styles.label}>{label}</span>
-      <button
-        className={styles.trigger}
-        type="button"
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
-        onClick={() => setIsOpen((currentValue) => !currentValue)}
+      <div
+        className={cx(styles.segmentedSurface, styles.typeSurface)}
+        role="group"
+        aria-labelledby={labelId}
       >
-        <TaskTypeOptionContent option={selectedOption} />
-        <span className={styles.chevron} aria-hidden="true">
-          ▾
-        </span>
-      </button>
+        {TASK_TYPE_OPTIONS.map((option) => {
+          const isActive = option.value === value
 
-      {isOpen ? (
-        <div className={styles.menu} role="listbox" tabIndex={-1}>
-          {TASK_TYPE_OPTIONS.map((option) => (
+          return (
             <button
-              key={option.value || 'regular'}
+              key={option.value}
               className={cx(
-                styles.option,
-                option.value === value && styles.active,
+                styles.segmentButton,
+                styles.typeButton,
+                isActive && styles.segmentButtonActive,
               )}
               type="button"
-              role="option"
-              aria-selected={option.value === value}
-              onClick={() => selectOption(option.value)}
+              aria-pressed={isActive}
+              title={option.label}
+              onClick={() => onChange(isActive ? '' : option.value)}
             >
               <TaskTypeOptionContent option={option} />
             </button>
-          ))}
-        </div>
-      ) : null}
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -205,65 +176,45 @@ export function ResourcePicker({
   value,
   onChange,
 }: Omit<PickerProps<ResourceValue>, 'label'> & { label?: string }) {
-  const [isOpen, setIsOpen] = useState(false)
-  const selectedOption =
-    RESOURCE_OPTIONS.find((option) => option.value === value) ??
-    RESOURCE_OPTIONS[0]!
-
-  function selectOption(nextValue: ResourceValue) {
-    onChange(nextValue)
-    setIsOpen(false)
-  }
+  const labelId = useId()
 
   return (
-    <div
-      className={cx(styles.picker, className)}
-      onBlur={(event) => {
-        const nextTarget = event.relatedTarget
+    <div className={cx(styles.picker, className)}>
+      <span id={labelId} className={styles.label}>
+        {label}
+      </span>
 
-        if (
-          !(nextTarget instanceof Node) ||
-          !event.currentTarget.contains(nextTarget)
-        ) {
-          setIsOpen(false)
-        }
-      }}
-    >
-      <span className={styles.label}>{label}</span>
-      <button
-        className={styles.trigger}
-        type="button"
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
-        onClick={() => setIsOpen((currentValue) => !currentValue)}
+      <div
+        className={cx(styles.segmentedSurface, styles.resourceSurface)}
+        role="group"
+        aria-labelledby={labelId}
       >
-        <ResourceOptionContent option={selectedOption} />
-        <span className={styles.chevron} aria-hidden="true">
-          ▾
-        </span>
-      </button>
-
-      {isOpen ? (
-        <div className={styles.menu} role="listbox" tabIndex={-1}>
-          {RESOURCE_OPTIONS.map((option) => (
-            <button
-              key={option.value || 'unset'}
-              className={cx(
-                styles.option,
-                option.value === value && styles.active,
-              )}
-              type="button"
-              aria-label={option.label}
-              role="option"
-              aria-selected={option.value === value}
-              title={option.label}
-              onClick={() => selectOption(option.value)}
-            >
-              <ResourceOptionContent option={option} />
-            </button>
+        <div className={styles.resourceCluster}>
+          {DRAIN_RESOURCE_OPTIONS.map((option) => (
+            <ResourceOptionButton
+              key={option.value}
+              option={option}
+              isActive={option.value === value}
+              onClick={() =>
+                onChange(option.value === value ? '' : option.value)
+              }
+            />
           ))}
         </div>
-      ) : null}
+
+        <div className={styles.resourceCluster}>
+          {RESTORE_RESOURCE_OPTIONS.map((option) => (
+            <ResourceOptionButton
+              key={option.value}
+              option={option}
+              isActive={option.value === value}
+              onClick={() =>
+                onChange(option.value === value ? '' : option.value)
+              }
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -336,45 +287,52 @@ function LeafIcon() {
 
 function TaskTypeOptionContent({ option }: { option: TaskTypeOption }) {
   return (
-    <span className={styles.content}>
-      {option.imageSrc ? (
-        <span className={styles.typeIcon} aria-hidden="true">
-          <img src={option.imageSrc} alt="" />
-        </span>
-      ) : (
-        <span className={styles.emptyTypeIcon} aria-hidden="true" />
-      )}
-      <span className={styles.text}>
-        <span className={styles.title}>{option.label}</span>
+    <span className={cx(styles.content, styles.typeContent)}>
+      <span className={styles.typeIcon} aria-hidden="true">
+        <img src={option.imageSrc} alt="" />
       </span>
+      <span className={styles.typeTitle}>{option.label}</span>
     </span>
   )
 }
 
-function ResourceOptionContent({ option }: { option: ResourceOption }) {
+function ResourceOptionButton({
+  option,
+  isActive,
+  onClick,
+}: {
+  option: ResourceOption
+  isActive: boolean
+  onClick: () => void
+}) {
   return (
-    <span className={cx(styles.content, styles.resourceContent)}>
-      <ResourceIcon color={option.color} level={option.level} />
-      <span className={styles.visuallyHidden}>{option.label}</span>
-    </span>
-  )
-}
-
-function ResourceIcon({
-  color,
-  level,
-}: Pick<ResourceOption, 'color' | 'level'>) {
-  if (level === 0) {
-    return <span className={styles.resourceEmptyIcon} aria-hidden="true" />
-  }
-
-  return (
-    <TaskResourceMeter
-      color={color}
-      label={
-        level > 0 ? `Восстановление ${level}` : `Расход ${Math.abs(level)}`
-      }
-      value={level}
-    />
+    <button
+      className={cx(
+        styles.segmentButton,
+        styles.resourceButton,
+        option.kind === 'drain'
+          ? styles.resourceButtonDrain
+          : styles.resourceButtonRestore,
+        isActive && styles.segmentButtonActive,
+      )}
+      type="button"
+      aria-label={option.label}
+      aria-pressed={isActive}
+      title={option.label}
+      style={{ color: option.color }}
+      onClick={onClick}
+    >
+      <span className={cx(styles.content, styles.resourceContent)}>
+        <span className={styles.resourceBadgeIcon} aria-hidden="true">
+          {option.kind === 'restore' ? (
+            <LeafIcon />
+          ) : (
+            <LightningIcon size={14} strokeWidth={2.3} />
+          )}
+        </span>
+        <span className={styles.resourceValue}>{Math.abs(option.level)}</span>
+        <span className={styles.visuallyHidden}>{option.label}</span>
+      </span>
+    </button>
   )
 }

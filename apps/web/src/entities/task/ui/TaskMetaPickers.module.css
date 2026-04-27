@@ -1,5 +1,4 @@
 .picker {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
@@ -11,62 +10,78 @@
   font-size: 0.78rem;
 }
 
-.trigger,
-.option {
+.segmentedSurface {
   display: flex;
-  align-items: center;
-  width: 100%;
   min-width: 0;
-  gap: 0.55rem;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.58);
-  color: inherit;
-  text-align: left;
-  transition:
-    border-color 150ms ease,
-    background 150ms ease;
-}
-
-.trigger {
-  min-height: 2.95rem;
-  border-radius: 16px;
-  padding: 0.62rem 0.72rem;
-}
-
-.trigger:focus,
-.option:focus {
-  outline: none;
-  border-color: rgba(33, 78, 66, 0.5);
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.menu {
-  position: absolute;
-  top: calc(100% + 0.4rem);
-  right: 0;
-  left: 0;
-  z-index: 8;
-  display: grid;
-  max-height: min(18rem, 45vh);
-  gap: 0.3rem;
-  overflow: auto;
+  box-sizing: border-box;
+  align-items: stretch;
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.35rem;
-  background: rgba(250, 247, 240, 0.96);
-  box-shadow: 0 18px 40px rgba(31, 36, 30, 0.16);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
-.option {
-  min-height: 2.55rem;
+.typeSurface {
+  min-height: var(--control-height, 3rem);
+  gap: 0.35rem;
+  padding: 0.3rem;
+}
+
+.resourceSurface {
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.resourceCluster {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.segmentButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: 0.5rem;
+  border: 1px solid transparent;
   border-radius: 14px;
-  padding: 0.5rem 0.55rem;
+  background: rgba(255, 255, 255, 0.46);
+  color: inherit;
+  transition:
+    transform 160ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease;
 }
 
-.option:hover,
-.active {
-  border-color: rgba(33, 78, 66, 0.24);
-  background: rgba(33, 78, 66, 0.08);
+.segmentButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(33, 78, 66, 0.22);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.segmentButton:focus-visible {
+  outline: none;
+  border-color: rgba(33, 78, 66, 0.5);
+  box-shadow: 0 0 0 3px rgba(33, 78, 66, 0.12);
+}
+
+.segmentButtonActive {
+  border-color: rgba(33, 78, 66, 0.22);
+  background: rgba(240, 236, 228, 0.96);
+  box-shadow: inset 0 0 0 1px rgba(33, 78, 66, 0.08);
+}
+
+.typeButton {
+  min-height: calc(var(--control-height, 3rem) - 0.6rem);
+  flex: 1 1 0;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  padding: 0.52rem 0.82rem;
+  text-align: left;
 }
 
 .content {
@@ -76,55 +91,26 @@
   gap: 0.55rem;
 }
 
-.text {
-  display: grid;
-  min-width: 0;
+.typeContent {
+  justify-content: flex-start;
 }
 
-.title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.typeTitle {
+  flex: 0 0 auto;
+  font-size: 0.94rem;
+  letter-spacing: -0.01em;
 }
 
-.title {
-  font-size: 0.9rem;
-}
-
-.chevron {
-  margin-left: auto;
-  color: var(--text-soft);
-  font-size: 0.9rem;
-}
-
-.emptyTypeIcon,
 .typeIcon {
   display: inline-grid;
-  width: 1.65rem;
-  height: 1.65rem;
+  width: 1.72rem;
+  height: 1.72rem;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 999px;
-  line-height: 1;
-}
-
-.emptyTypeIcon {
-  border: 1px dashed rgba(31, 36, 30, 0.18);
-  background: rgba(31, 36, 30, 0.05);
-}
-
-.emptyTypeIcon::after {
-  display: block;
-  width: 0.42rem;
-  height: 0.42rem;
-  border-radius: 999px;
-  background: rgba(31, 36, 30, 0.22);
-  content: '';
-}
-
-.typeIcon {
   overflow: hidden;
+  border-radius: 999px;
   background: rgba(255, 255, 255, 0.72);
+  line-height: 1;
 }
 
 .typeIcon img {
@@ -132,6 +118,47 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+
+.resourceButton {
+  min-height: 2.55rem;
+  flex: 1 1 calc(25% - 0.27rem);
+  padding: 0.52rem 0.62rem;
+}
+
+.resourceButtonDrain,
+.resourceButtonRestore {
+  border-color: rgba(31, 36, 30, 0.08);
+}
+
+.resourceButton.segmentButtonActive {
+  border-color: currentColor;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.resourceContent {
+  justify-content: center;
+}
+
+.resourceBadgeIcon {
+  display: inline-grid;
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  place-items: center;
+}
+
+.resourceBadgeIcon svg {
+  display: block;
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.resourceValue {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1;
 }
 
 .resourceMeter {
@@ -160,23 +187,6 @@
   color: rgba(31, 36, 30, 0.16);
 }
 
-.resourceEmptyIcon {
-  display: inline-grid;
-  width: 1.65rem;
-  height: 1.65rem;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px dashed rgba(31, 36, 30, 0.18);
-  border-radius: 999px;
-  background: rgba(31, 36, 30, 0.05);
-  color: var(--text-soft);
-}
-
-.resourceContent {
-  flex: 1 1 auto;
-  justify-content: center;
-}
-
 .visuallyHidden {
   position: absolute;
   width: 1px;
@@ -185,4 +195,14 @@
   clip: rect(0 0 0 0);
   white-space: nowrap;
   clip-path: inset(50%);
+}
+
+@media (max-width: 560px) {
+  .resourceCluster {
+    flex-basis: 100%;
+  }
+
+  .resourceButton {
+    flex-basis: calc(25% - 0.27rem);
+  }
 }
