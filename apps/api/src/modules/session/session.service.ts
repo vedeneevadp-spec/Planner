@@ -4,7 +4,13 @@ import type {
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
-import type { SessionContext, SessionSnapshot } from './session.model.js'
+import { isTransientDatabaseError } from '../../infrastructure/db/errors.js'
+import type {
+  SessionContext,
+  SessionSnapshot,
+  WorkspaceInvitationCreateInput,
+  WorkspaceUserGroupRole,
+} from './session.model.js'
 import type { SessionRepository } from './session.repository.js'
 
 const AUTH_SESSION_CACHE_TTL_MS = 30_000
@@ -33,7 +39,9 @@ export class SessionService {
       }
     }
 
-    const snapshot = await this.repository.resolve(context)
+    const snapshot = await withRepositoryErrorMapping(() =>
+      this.repository.resolve(context),
+    )
 
     if (cacheKey) {
       this.authSessionCache.set(cacheKey, {
@@ -50,7 +58,7 @@ export class SessionService {
 
     assertCanManageAdminUsers(session)
 
-    return this.repository.listAdminUsers(session)
+    return withRepositoryErrorMapping(() => this.repository.listAdminUsers(session))
   }
 
   async createSharedWorkspace(
@@ -58,14 +66,104 @@ export class SessionService {
     input: CreateSharedWorkspaceInput,
   ) {
     const session = await this.resolveSession(context)
-    const workspace = await this.repository.createSharedWorkspace(
-      session,
-      input,
+    const workspace = await withRepositoryErrorMapping(() =>
+      this.repository.createSharedWorkspace(session, input),
     )
 
     this.authSessionCache.clear()
 
     return workspace
+  }
+
+  async listWorkspaceUsers(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    assertSharedWorkspace(session)
+
+    return withRepositoryErrorMapping(() =>
+      this.repository.listWorkspaceUsers(session),
+    )
+  }
+
+  async listWorkspaceInvitations(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    assertSharedWorkspace(session)
+    assertCanManageWorkspaceParticipants(session)
+
+    return withRepositoryErrorMapping(() =>
+      this.repository.listWorkspaceInvitations(session),
+    )
+  }
+
+  async createWorkspaceInvitation(
+    context: SessionContext,
+    input: WorkspaceInvitationCreateInput,
+  ) {
+    const session = await this.resolveSession(context)
+
+    assertSharedWorkspace(session)
+    assertCanManageWorkspaceParticipants(session)
+
+    const invitation = await withRepositoryErrorMapping(() =>
+      this.repository.createWorkspaceInvitation(session, input),
+    )
+
+    this.authSessionCache.clear()
+
+    return invitation
+  }
+
+  async updateWorkspaceUserGroupRole(
+    context: SessionContext,
+    membershipId: string,
+    groupRole: WorkspaceUserGroupRole,
+  ) {
+    const session = await this.resolveSession(context)
+
+    assertSharedWorkspace(session)
+    assertCanManageWorkspaceParticipants(session)
+
+    const user = await withRepositoryErrorMapping(() =>
+      this.repository.updateWorkspaceUserGroupRole(
+        session,
+        membershipId,
+        groupRole,
+      ),
+    )
+
+    this.authSessionCache.clear()
+
+    return user
+  }
+
+  async removeWorkspaceUser(context: SessionContext, membershipId: string) {
+    const session = await this.resolveSession(context)
+
+    assertSharedWorkspace(session)
+    assertCanManageWorkspaceParticipants(session)
+
+    await withRepositoryErrorMapping(() =>
+      this.repository.removeWorkspaceUser(session, membershipId),
+    )
+
+    this.authSessionCache.clear()
+  }
+
+  async revokeWorkspaceInvitation(
+    context: SessionContext,
+    invitationId: string,
+  ) {
+    const session = await this.resolveSession(context)
+
+    assertSharedWorkspace(session)
+    assertCanManageWorkspaceParticipants(session)
+
+    await withRepositoryErrorMapping(() =>
+      this.repository.revokeWorkspaceInvitation(session, invitationId),
+    )
+
+    this.authSessionCache.clear()
   }
 
   async updateAdminUserRole(
@@ -77,15 +175,35 @@ export class SessionService {
 
     assertCanManageAdminUsers(session)
 
-    const user = await this.repository.updateAdminUserRole(
-      session,
-      userId,
-      role,
+    const user = await withRepositoryErrorMapping(() =>
+      this.repository.updateAdminUserRole(session, userId, role),
     )
 
     this.authSessionCache.clear()
 
     return user
+  }
+}
+
+async function withRepositoryErrorMapping<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (error instanceof HttpError) {
+      throw error
+    }
+
+    if (isTransientDatabaseError(error)) {
+      throw new HttpError(
+        503,
+        'database_unavailable',
+        'Database request timed out. Please retry the action.',
+      )
+    }
+
+    throw error
   }
 }
 
@@ -99,6 +217,30 @@ function getAuthSessionCacheKey(context: SessionContext): string | null {
     context.auth.claims.sessionId ?? 'session',
     context.workspaceId ?? 'default',
   ].join(':')
+}
+
+function assertSharedWorkspace(session: SessionSnapshot): void {
+  if (session.workspace.kind === 'shared') {
+    return
+  }
+
+  throw new HttpError(
+    400,
+    'shared_workspace_required',
+    'Only shared workspaces support participant management.',
+  )
+}
+
+function assertCanManageWorkspaceParticipants(session: SessionSnapshot): void {
+  if (session.role === 'owner' || session.groupRole === 'group_admin') {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'workspace_participants_manage_forbidden',
+    'Only workspace owners and group admins can manage participants.',
+  )
 }
 
 function assertCanManageAdminUsers(session: SessionSnapshot): void {

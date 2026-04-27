@@ -1,22 +1,36 @@
+export { AdminUsersApiError, createAdminUsersApiClient } from './lib/admin-users-api'
 export {
   createSharedWorkspace,
   isUnauthorizedSessionApiError,
   SessionApiError,
 } from './lib/session-api'
 export { getSupabaseBrowserClient } from './lib/supabase-browser'
+export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { useSessionAuth } from './lib/useSessionAuth'
 export {
   getCreateSharedWorkspaceErrorMessage,
   useCreateSharedWorkspace,
 } from './lib/useWorkspaceActions'
-export { useAdminUsers, useUpdateAdminUserRole } from './lib/useWorkspaceUsers'
+export {
+  getWorkspaceParticipantsErrorMessage,
+  useCreateWorkspaceInvitation,
+  useRemoveWorkspaceUser,
+  useRevokeWorkspaceInvitation,
+  useUpdateWorkspaceUserGroupRole,
+  useWorkspaceInvitations,
+  useWorkspaceUsers,
+} from './lib/useWorkspaceParticipants'
+export {
+  createWorkspaceParticipantsApiClient,
+  WorkspaceParticipantsApiError,
+} from './lib/workspace-participants-api'
 export {
   clearSelectedWorkspaceId,
   getSelectedWorkspaceId,
   setSelectedWorkspaceId,
   useSelectedWorkspaceId,
 } from './lib/workspace-selection'
-export { AdminUsersApiError, createAdminUsersApiClient } from './lib/workspace-users-api'
 export { AuthGate } from './ui/AuthGate'
 export { SessionProvider } from './ui/SessionProvider'
+export { WorkspaceParticipantsDialog } from './ui/WorkspaceParticipantsDialog'

@@ -3,12 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
-import { usePlannerSession } from './usePlannerSession'
-import { useSessionAuth } from './useSessionAuth'
 import {
   type AdminUsersApiClientConfig,
   createAdminUsersApiClient,
-} from './workspace-users-api'
+} from './admin-users-api'
+import { usePlannerSession } from './usePlannerSession'
+import { useSessionAuth } from './useSessionAuth'
 
 function adminUsersQueryKey(workspaceId: string) {
   return ['admin-users', workspaceId] as const

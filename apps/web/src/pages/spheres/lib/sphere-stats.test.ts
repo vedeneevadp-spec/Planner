@@ -25,6 +25,8 @@ const project: Project = {
 
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
+    assigneeDisplayName: null,
+    assigneeUserId: null,
     completedAt: null,
     createdAt: '2026-04-20T08:00:00.000Z',
     dueDate: null,

@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { TaskSection } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
 import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
@@ -24,7 +25,13 @@ export function SpherePage() {
     updateProject,
     updateTask,
   } = usePlanner()
+  const { data: session } = usePlannerSession()
   const { uploadedIcons } = useUploadedIconAssets()
+  const isSharedWorkspace = session?.workspace.kind === 'shared'
+  const workspaceUsersQuery = useWorkspaceUsers({
+    enabled: isSharedWorkspace,
+  })
+  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const [isEditing, setIsEditing] = useState(false)
   const sphere = spheres.find((candidate) => candidate.id === sphereId)
   const sphereTasks = useMemo(
@@ -113,8 +120,10 @@ export function SpherePage() {
       <TaskSection
         title="Задачи сферы"
         tasks={sphereTasks}
+        isSharedWorkspace={isSharedWorkspace}
         projects={spheres}
         uploadedIcons={uploadedIcons}
+        workspaceUsers={workspaceUsers}
         emptyMessage="В этой сфере пока нет задач."
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {

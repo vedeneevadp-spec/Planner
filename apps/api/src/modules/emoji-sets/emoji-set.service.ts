@@ -5,6 +5,10 @@ import {
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import {
+  getDatabaseErrorCode,
+  isTransientDatabaseError,
+} from '../../infrastructure/db/errors.js'
 import type {
   AddEmojiSetItemsCommand,
   CreateEmojiSetCommand,
@@ -241,31 +245,8 @@ async function withRepositoryErrorMapping<T>(
   }
 }
 
-function isTransientDatabaseError(error: unknown): boolean {
-  const code = getErrorCode(error)
-  const message = error instanceof Error ? error.message : ''
-
-  return (
-    code === 'ETIMEDOUT' ||
-    code === 'ECONNRESET' ||
-    code === '57014' ||
-    message.includes('Query read timeout') ||
-    message.includes('read ETIMEDOUT')
-  )
-}
-
 function isUniqueConstraintError(error: unknown): boolean {
-  return getErrorCode(error) === '23505'
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
-    return undefined
-  }
-
-  const code = error.code
-
-  return typeof code === 'string' ? code : undefined
+  return getDatabaseErrorCode(error) === '23505'
 }
 
 function assertCanManageEmojiSets(context: EmojiSetWriteContext): void {

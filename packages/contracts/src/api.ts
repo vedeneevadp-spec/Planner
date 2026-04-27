@@ -31,6 +31,7 @@ export const workspaceGroupRoleSchema = z.enum([
   'senior_member',
   'member',
 ])
+export const assignableWorkspaceGroupRoleSchema = workspaceGroupRoleSchema
 
 export const apiErrorSchema = z.object({
   error: z.object({
@@ -138,9 +139,9 @@ export const workspaceUserRecordSchema = z.object({
   email: z.string(),
   groupRole: workspaceGroupRoleSchema.nullable(),
   id: z.string(),
+  isOwner: z.boolean(),
   joinedAt: z.string(),
   membershipId: z.string(),
-  role: workspaceRoleSchema,
   updatedAt: z.string(),
 })
 
@@ -148,8 +149,25 @@ export const workspaceUserListResponseSchema = z.object({
   users: z.array(workspaceUserRecordSchema),
 })
 
-export const workspaceUserRoleUpdateInputSchema = z.object({
-  role: workspaceRoleSchema,
+export const workspaceUserGroupRoleUpdateInputSchema = z.object({
+  groupRole: assignableWorkspaceGroupRoleSchema,
+})
+
+export const workspaceInvitationRecordSchema = z.object({
+  email: z.string(),
+  groupRole: assignableWorkspaceGroupRoleSchema,
+  id: z.string(),
+  invitedAt: z.string(),
+  updatedAt: z.string(),
+})
+
+export const workspaceInvitationListResponseSchema = z.object({
+  invitations: z.array(workspaceInvitationRecordSchema),
+})
+
+export const workspaceInvitationCreateInputSchema = z.object({
+  email: z.string().trim().email().max(320),
+  groupRole: assignableWorkspaceGroupRoleSchema.default('member'),
 })
 
 export const createSharedWorkspaceInputSchema = z.object({
@@ -244,6 +262,9 @@ export type AdminUserRoleUpdateInput = z.infer<
 >
 export type AppRole = z.infer<typeof appRoleSchema>
 export type AssignableAppRole = z.infer<typeof assignableAppRoleSchema>
+export type AssignableWorkspaceGroupRole = z.infer<
+  typeof assignableWorkspaceGroupRoleSchema
+>
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
 export type ChaosInboxItemRecord = z.infer<typeof chaosInboxItemRecordSchema>
@@ -269,12 +290,21 @@ export type SessionWorkspaceMembership = z.infer<
 export type StorageDriver = z.infer<typeof storageDriverSchema>
 export type WorkspaceGroupRole = z.infer<typeof workspaceGroupRoleSchema>
 export type WorkspaceKind = z.infer<typeof workspaceKindSchema>
+export type WorkspaceInvitationCreateInput = z.infer<
+  typeof workspaceInvitationCreateInputSchema
+>
+export type WorkspaceInvitationListResponse = z.infer<
+  typeof workspaceInvitationListResponseSchema
+>
+export type WorkspaceInvitationRecord = z.infer<
+  typeof workspaceInvitationRecordSchema
+>
 export type WorkspaceUserRecord = z.infer<typeof workspaceUserRecordSchema>
 export type WorkspaceUserListResponse = z.infer<
   typeof workspaceUserListResponseSchema
 >
-export type WorkspaceUserRoleUpdateInput = z.infer<
-  typeof workspaceUserRoleUpdateInputSchema
+export type WorkspaceUserGroupRoleUpdateInput = z.infer<
+  typeof workspaceUserGroupRoleUpdateInputSchema
 >
 export type CreateSharedWorkspaceInput = z.infer<
   typeof createSharedWorkspaceInputSchema

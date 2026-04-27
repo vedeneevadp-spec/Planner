@@ -152,6 +152,8 @@ export function createStoredTaskRecord(
   const schedule = normalizeTaskSchedule(normalizedInput)
 
   return {
+    assigneeDisplayName: null,
+    assigneeUserId: normalizedInput.assigneeUserId,
     completedAt: null,
     createdAt: now,
     deletedAt: null,
@@ -220,6 +222,8 @@ export function applyTaskUpdate(
 
   return {
     ...task,
+    assigneeUserId: normalizedInput.assigneeUserId,
+    assigneeDisplayName: null,
     dueDate: normalizedInput.dueDate,
     icon: normalizedInput.icon,
     importance: normalizedInput.importance,

@@ -202,6 +202,125 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/workspace-users': {
+      get: {
+        operationId: 'listWorkspaceUsers',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          200: jsonResponse('WorkspaceUserListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List active participants in the current workspace',
+        tags: ['session'],
+      },
+    },
+    '/api/v1/workspace-users/{membershipId}/group-role': {
+      patch: {
+        operationId: 'updateWorkspaceUserGroupRole',
+        parameters: [
+          membershipIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('WorkspaceUserGroupRoleUpdateInput'),
+        responses: {
+          200: jsonResponse('WorkspaceUserRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Update an active workspace participant group role',
+        tags: ['session'],
+      },
+    },
+    '/api/v1/workspace-users/{membershipId}': {
+      delete: {
+        operationId: 'removeWorkspaceUser',
+        parameters: [
+          membershipIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          204: {
+            description: 'Participant removed.',
+          },
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Remove an active participant from the current workspace',
+        tags: ['session'],
+      },
+    },
+    '/api/v1/workspace-invitations': {
+      get: {
+        operationId: 'listWorkspaceInvitations',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          200: jsonResponse('WorkspaceInvitationListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List pending invitations for the current workspace',
+        tags: ['session'],
+      },
+      post: {
+        operationId: 'createWorkspaceInvitation',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('WorkspaceInvitationCreateInput'),
+        responses: {
+          201: jsonResponse('WorkspaceInvitationRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Invite a participant to the current shared workspace',
+        tags: ['session'],
+      },
+    },
+    '/api/v1/workspace-invitations/{invitationId}': {
+      delete: {
+        operationId: 'revokeWorkspaceInvitation',
+        parameters: [
+          invitationIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          204: {
+            description: 'Invitation revoked.',
+          },
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Revoke a pending workspace invitation',
+        tags: ['session'],
+      },
+    },
     '/api/v1/emoji-sets': {
       get: {
         operationId: 'listEmojiSets',
@@ -762,6 +881,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
     NewTaskInput: {
       additionalProperties: false,
       properties: {
+        assigneeUserId: nullableStringSchema(),
         dueDate: nullableStringSchema(),
         id: {
           pattern:
@@ -793,6 +913,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: [
+        'assigneeUserId',
         'dueDate',
         'note',
         'plannedDate',
@@ -1221,6 +1342,10 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       enum: ['admin', 'guest', 'user'],
       type: 'string',
     },
+    AssignableWorkspaceGroupRole: {
+      enum: ['group_admin', 'member', 'senior_member'],
+      type: 'string',
+    },
     CreateSharedWorkspaceInput: {
       additionalProperties: false,
       properties: {
@@ -1310,15 +1435,15 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         id: {
           type: 'string',
         },
+        isOwner: {
+          type: 'boolean',
+        },
         joinedAt: {
           format: 'date-time',
           type: 'string',
         },
         membershipId: {
           type: 'string',
-        },
-        role: {
-          $ref: '#/components/schemas/WorkspaceRole',
         },
         updatedAt: {
           format: 'date-time',
@@ -1330,21 +1455,73 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'email',
         'groupRole',
         'id',
+        'isOwner',
         'joinedAt',
         'membershipId',
-        'role',
         'updatedAt',
       ],
       type: 'object',
     },
-    WorkspaceUserRoleUpdateInput: {
+    WorkspaceUserGroupRoleUpdateInput: {
       additionalProperties: false,
       properties: {
-        role: {
-          $ref: '#/components/schemas/WorkspaceRole',
+        groupRole: {
+          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
         },
       },
-      required: ['role'],
+      required: ['groupRole'],
+      type: 'object',
+    },
+    WorkspaceInvitationListResponse: {
+      additionalProperties: false,
+      properties: {
+        invitations: {
+          items: {
+            $ref: '#/components/schemas/WorkspaceInvitationRecord',
+          },
+          type: 'array',
+        },
+      },
+      required: ['invitations'],
+      type: 'object',
+    },
+    WorkspaceInvitationRecord: {
+      additionalProperties: false,
+      properties: {
+        email: {
+          type: 'string',
+        },
+        groupRole: {
+          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
+        },
+        id: {
+          type: 'string',
+        },
+        invitedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        updatedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+      },
+      required: ['email', 'groupRole', 'id', 'invitedAt', 'updatedAt'],
+      type: 'object',
+    },
+    WorkspaceInvitationCreateInput: {
+      additionalProperties: false,
+      properties: {
+        email: {
+          format: 'email',
+          maxLength: 320,
+          type: 'string',
+        },
+        groupRole: {
+          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
+        },
+      },
+      required: ['email'],
       type: 'object',
     },
     TaskListResponse: {
@@ -1516,6 +1693,8 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
     Task: {
       additionalProperties: false,
       properties: {
+        assigneeDisplayName: nullableStringSchema(),
+        assigneeUserId: nullableStringSchema(),
         completedAt: nullableStringSchema(),
         createdAt: {
           format: 'date-time',
@@ -1553,6 +1732,8 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: [
+        'assigneeDisplayName',
+        'assigneeUserId',
         'completedAt',
         'createdAt',
         'dueDate',
@@ -1733,6 +1914,28 @@ function taskTemplateIdParameter(): OpenAPIV3.ParameterObject {
   return {
     in: 'path',
     name: 'templateId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function membershipIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'membershipId',
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function invitationIdParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'invitationId',
     required: true,
     schema: {
       type: 'string',

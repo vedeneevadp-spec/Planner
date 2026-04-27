@@ -1,4 +1,5 @@
 import { HttpError } from '../../bootstrap/http-error.js'
+import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   CreateTaskTemplateCommand,
   DeleteTaskTemplateCommand,
@@ -36,11 +37,11 @@ export class TaskTemplateService {
 }
 
 function assertCanWriteTaskTemplates(context: TaskTemplateWriteContext): void {
-  if (context.role === 'guest') {
+  if (!canWriteWorkspaceContent(context)) {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
-      'The current workspace role cannot write task templates.',
+      'The current workspace access cannot write task templates.',
     )
   }
 }

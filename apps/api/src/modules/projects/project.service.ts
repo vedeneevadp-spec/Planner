@@ -1,4 +1,5 @@
 import { HttpError } from '../../bootstrap/http-error.js'
+import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   CreateProjectCommand,
   ProjectReadContext,
@@ -43,11 +44,11 @@ export class ProjectService {
 }
 
 function assertCanWriteProjects(context: ProjectWriteContext): void {
-  if (context.role === 'guest') {
+  if (!canWriteWorkspaceContent(context)) {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
-      'The current workspace role cannot write projects.',
+      'The current workspace access cannot write projects.',
     )
   }
 }

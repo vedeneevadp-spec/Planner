@@ -14,14 +14,14 @@ const retryDelayMs = 1000
 
 const devUser = {
   appRole: 'owner',
-  displayName: 'Planner Dev User',
+  displayName: 'Tikondra',
   email: 'vedeneeva.d.p@gmail.com',
   id: '11111111-1111-4111-8111-111111111111',
 }
 
 const devWorkspace = {
   id: '22222222-2222-4222-8222-222222222222',
-  name: 'Planner Personal Workspace',
+  name: 'Personal Workspace',
   ownerUserId: devUser.id,
   slug: 'personal',
 }

@@ -93,6 +93,10 @@
 }
 
 .createWorkspaceButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
   width: 100%;
   border: 1px solid rgba(33, 78, 66, 0.12);
   border-radius: 15px;
@@ -107,6 +111,17 @@
     background 160ms ease,
     border-color 160ms ease,
     color 160ms ease;
+}
+
+.mobileWorkspaceActions {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 0.95rem;
+}
+
+.secondaryWorkspaceButton {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .createWorkspaceButton:disabled {
@@ -410,11 +425,6 @@
   }
 
   .mobileCreateWorkspaceButton {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.55rem;
-    margin-top: 0.95rem;
     padding: 0.82rem 1rem;
   }
 

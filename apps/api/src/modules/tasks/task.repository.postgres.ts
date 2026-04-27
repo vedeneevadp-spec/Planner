@@ -1,6 +1,7 @@
 import { generateUuidV7 } from '@planner/contracts'
 import { type Kysely, type Selectable, sql } from 'kysely'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
   type DatabaseExecutor,
@@ -42,6 +43,7 @@ type ProjectRow = Selectable<DatabaseSchema['app.projects']>
 type TaskTimeBlockRow = Selectable<DatabaseSchema['app.task_time_blocks']>
 type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
 type TaskListRow = TaskRow & {
+  assignee_display_name?: string | null
   project_title?: ProjectRow['title'] | null
   time_block_ends_at: TaskTimeBlockRow['ends_at'] | null
   time_block_starts_at: TaskTimeBlockRow['starts_at'] | null
@@ -50,6 +52,11 @@ type TaskListRow = TaskRow & {
 interface ResolvedTaskProject {
   id: string
   title: string
+}
+
+interface ResolvedTaskAssignee {
+  displayName: string
+  id: string
 }
 
 const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
@@ -130,6 +137,10 @@ export class PostgresTaskRepository implements TaskRepository {
       command.context,
       sphereProjectId,
     )
+    const assignee = await this.resolveTaskAssignee(
+      command.context,
+      normalizedInput.assigneeUserId,
+    )
     const metadata = this.buildTaskMetadata(
       project ? '' : normalizedInput.project,
       normalizedInput,
@@ -155,6 +166,7 @@ export class PostgresTaskRepository implements TaskRepository {
       return this.createWithPoolerWriteFallback(command, {
         endsAt,
         metadata,
+        assigneeUserId: assignee?.id ?? null,
         normalizedInput,
         normalizedSchedule,
         projectId: project?.id ?? null,
@@ -175,6 +187,7 @@ export class PostgresTaskRepository implements TaskRepository {
             description: normalizedInput.note,
             due_at: null,
             due_on: normalizedInput.dueDate,
+            assignee_user_id: assignee?.id ?? null,
             id: taskId,
             metadata,
             planned_on: normalizedSchedule.plannedDate,
@@ -223,7 +236,16 @@ export class PostgresTaskRepository implements TaskRepository {
           command.context.workspaceId,
           task.project_id,
         )
-        const record = this.mapTaskRecord(task, timeBlock, projectTitle)
+        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+          trx,
+          task.assignee_user_id,
+        )
+        const record = this.mapTaskRecord(
+          task,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+        )
 
         if (insertedTask) {
           await this.writeTaskMutationArtifacts(trx, {
@@ -255,6 +277,10 @@ export class PostgresTaskRepository implements TaskRepository {
       command.context,
       sphereProjectId,
     )
+    const assignee = await this.resolveTaskAssignee(
+      command.context,
+      normalizedInput.assigneeUserId,
+    )
     const metadata = this.buildTaskMetadata(
       project ? '' : normalizedInput.project,
       normalizedInput,
@@ -281,6 +307,7 @@ export class PostgresTaskRepository implements TaskRepository {
         deletedAt,
         endsAt,
         metadata,
+        assigneeUserId: assignee?.id ?? null,
         normalizedInput,
         normalizedSchedule,
         projectId: project?.id ?? null,
@@ -295,6 +322,7 @@ export class PostgresTaskRepository implements TaskRepository {
         let updateQuery = trx
           .updateTable('app.tasks')
           .set({
+            assignee_user_id: assignee?.id ?? null,
             description: normalizedInput.note,
             due_on: normalizedInput.dueDate,
             metadata,
@@ -362,7 +390,16 @@ export class PostgresTaskRepository implements TaskRepository {
           command.context.workspaceId,
           updatedTask.project_id,
         )
-        const record = this.mapTaskRecord(updatedTask, timeBlock, projectTitle)
+        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+          trx,
+          updatedTask.assignee_user_id,
+        )
+        const record = this.mapTaskRecord(
+          updatedTask,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+        )
 
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
@@ -447,7 +484,16 @@ export class PostgresTaskRepository implements TaskRepository {
           command.context.workspaceId,
           updatedTask.project_id,
         )
-        const record = this.mapTaskRecord(updatedTask, timeBlock, projectTitle)
+        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+          trx,
+          updatedTask.assignee_user_id,
+        )
+        const record = this.mapTaskRecord(
+          updatedTask,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+        )
 
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
@@ -563,7 +609,16 @@ export class PostgresTaskRepository implements TaskRepository {
           command.context.workspaceId,
           updatedTask.project_id,
         )
-        const record = this.mapTaskRecord(updatedTask, timeBlock, projectTitle)
+        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+          trx,
+          updatedTask.assignee_user_id,
+        )
+        const record = this.mapTaskRecord(
+          updatedTask,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+        )
 
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
@@ -690,6 +745,7 @@ export class PostgresTaskRepository implements TaskRepository {
   private async createWithPoolerWriteFallback(
     command: CreateTaskCommand,
     params: {
+      assigneeUserId: string | null
       endsAt: string | null
       metadata: JsonObject
       normalizedInput: ReturnType<typeof normalizeTaskInput>
@@ -756,6 +812,7 @@ export class PostgresTaskRepository implements TaskRepository {
               description,
               due_at,
               due_on,
+              assignee_user_id,
               id,
               metadata,
               planned_on,
@@ -775,6 +832,7 @@ export class PostgresTaskRepository implements TaskRepository {
               ${params.normalizedInput.note},
               null,
               cast(${params.normalizedInput.dueDate} as date),
+              cast(${params.assigneeUserId} as uuid),
               ${params.taskId},
               cast(${JSON.stringify(params.metadata)} as jsonb),
               cast(${params.normalizedSchedule.plannedDate} as date),
@@ -804,10 +862,14 @@ export class PostgresTaskRepository implements TaskRepository {
           task_with_time_block as (
             select
               selected_task.*,
+              assignee_user.display_name as assignee_display_name,
               project.title as project_title,
               time_block.starts_at as time_block_starts_at,
               time_block.ends_at as time_block_ends_at
             from selected_task
+            left join app.users as assignee_user
+              on assignee_user.id = selected_task.assignee_user_id
+              and assignee_user.deleted_at is null
             left join app.projects as project
               on project.id = selected_task.project_id
               and project.workspace_id = selected_task.workspace_id
@@ -859,6 +921,10 @@ export class PostgresTaskRepository implements TaskRepository {
                   end,
                   'dueDate',
                   cast(task_with_time_block.due_on as text),
+                  'assigneeDisplayName',
+                  task_with_time_block.assignee_display_name,
+                  'assigneeUserId',
+                  task_with_time_block.assignee_user_id,
                   'id',
                   task_with_time_block.id,
                   'icon',
@@ -939,6 +1005,7 @@ export class PostgresTaskRepository implements TaskRepository {
   private async updateWithPoolerWriteFallback(
     command: UpdateTaskCommand,
     params: {
+      assigneeUserId: string | null
       deletedAt: string
       endsAt: string | null
       metadata: JsonObject
@@ -1007,6 +1074,7 @@ export class PostgresTaskRepository implements TaskRepository {
           with updated_task as (
             update app.tasks
             set
+              assignee_user_id = cast(${params.assigneeUserId} as uuid),
               description = ${params.normalizedInput.note},
               due_on = cast(${params.normalizedInput.dueDate} as date),
               metadata = cast(${JSON.stringify(params.metadata)} as jsonb),
@@ -1052,10 +1120,14 @@ export class PostgresTaskRepository implements TaskRepository {
           )
           select
             updated_task.*,
+            assignee_user.display_name as assignee_display_name,
             project.title as project_title,
             inserted_time_block.starts_at as time_block_starts_at,
             inserted_time_block.ends_at as time_block_ends_at
           from updated_task
+          left join app.users as assignee_user
+            on assignee_user.id = updated_task.assignee_user_id
+            and assignee_user.deleted_at is null
           left join app.projects as project
             on project.id = updated_task.project_id
             and project.workspace_id = updated_task.workspace_id
@@ -1135,9 +1207,13 @@ export class PostgresTaskRepository implements TaskRepository {
           )
           select
             updated_task.*,
+            assignee_user.display_name as assignee_display_name,
             time_block.starts_at as time_block_starts_at,
             time_block.ends_at as time_block_ends_at
           from updated_task
+          left join app.users as assignee_user
+            on assignee_user.id = updated_task.assignee_user_id
+            and assignee_user.deleted_at is null
           left join lateral (
             select starts_at, ends_at
             from app.task_time_blocks
@@ -1280,9 +1356,13 @@ export class PostgresTaskRepository implements TaskRepository {
           )
           select
             updated_task.*,
+            assignee_user.display_name as assignee_display_name,
             inserted_time_block.starts_at as time_block_starts_at,
             inserted_time_block.ends_at as time_block_ends_at
           from updated_task
+          left join app.users as assignee_user
+            on assignee_user.id = updated_task.assignee_user_id
+            and assignee_user.deleted_at is null
           left join inserted_time_block on true
         `.execute(executor)
 
@@ -1435,9 +1515,10 @@ export class PostgresTaskRepository implements TaskRepository {
       return []
     }
 
-    const [primaryTimeBlocks, projectTitles] = await Promise.all([
+    const [primaryTimeBlocks, projectTitles, assigneeDisplayNames] = await Promise.all([
       this.loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
       this.loadProjectTitlesForTasks(executor, workspaceId, taskRows),
+      this.loadAssigneeDisplayNamesForTasks(executor, taskRows),
     ])
 
     return taskRows.map((taskRow) => {
@@ -1445,6 +1526,9 @@ export class PostgresTaskRepository implements TaskRepository {
 
       return {
         ...taskRow,
+        assignee_display_name: taskRow.assignee_user_id
+          ? (assigneeDisplayNames.get(taskRow.assignee_user_id) ?? null)
+          : null,
         project_title: taskRow.project_id
           ? (projectTitles.get(taskRow.project_id) ?? null)
           : null,
@@ -1578,6 +1662,37 @@ export class PostgresTaskRepository implements TaskRepository {
     )
   }
 
+  private async loadAssigneeDisplayNamesForTasks(
+    executor: DatabaseExecutor,
+    taskRows: TaskRow[],
+  ): Promise<Map<string, string>> {
+    const assigneeUserIds = [
+      ...new Set(
+        taskRows
+          .map((taskRow) => taskRow.assignee_user_id)
+          .filter((userId): userId is string => userId !== null),
+      ),
+    ]
+
+    if (assigneeUserIds.length === 0) {
+      return new Map()
+    }
+
+    const assigneeRows = await executor
+      .selectFrom('app.users')
+      .select(['id', 'display_name'])
+      .where('id', 'in', assigneeUserIds)
+      .where('deleted_at', 'is', null)
+      .execute()
+
+    return new Map(
+      assigneeRows.map((assigneeRow) => [
+        assigneeRow.id,
+        assigneeRow.display_name,
+      ]),
+    )
+  }
+
   private loadPrimaryTimeBlock(
     executor: DatabaseExecutor,
     workspaceId: string,
@@ -1620,6 +1735,45 @@ export class PostgresTaskRepository implements TaskRepository {
     }
   }
 
+  private async resolveTaskAssignee(
+    context: CreateTaskCommand['context'],
+    assigneeUserId: string | null,
+  ): Promise<ResolvedTaskAssignee | null> {
+    if (!assigneeUserId) {
+      return null
+    }
+
+    if (context.workspaceKind !== 'shared') {
+      throw new HttpError(
+        400,
+        'task_assignee_shared_workspace_required',
+        'Task assignees are supported only in shared workspaces.',
+      )
+    }
+
+    const assignee = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        this.loadActiveWorkspaceAssignee(
+          executor,
+          context.workspaceId,
+          assigneeUserId,
+        ),
+      context.actorUserId,
+    )
+
+    if (!assignee) {
+      throw new HttpError(
+        400,
+        'task_assignee_not_found',
+        'The selected assignee is not a participant of this workspace.',
+      )
+    }
+
+    return assignee
+  }
+
   private async loadProjectTitle(
     executor: DatabaseExecutor,
     workspaceId: string,
@@ -1653,12 +1807,52 @@ export class PostgresTaskRepository implements TaskRepository {
       .executeTakeFirst()
   }
 
+  private loadActiveWorkspaceAssignee(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    assigneeUserId: string,
+  ): Promise<ResolvedTaskAssignee | undefined> {
+    return executor
+      .selectFrom('app.workspace_members as membership')
+      .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
+      .select([
+        'actor.display_name as displayName',
+        'actor.id as id',
+      ])
+      .where('membership.workspace_id', '=', workspaceId)
+      .where('membership.user_id', '=', assigneeUserId)
+      .where('membership.deleted_at', 'is', null)
+      .where('actor.deleted_at', 'is', null)
+      .executeTakeFirst()
+  }
+
+  private async loadAssigneeDisplayName(
+    executor: DatabaseExecutor,
+    assigneeUserId: string | null,
+  ): Promise<string | null> {
+    if (!assigneeUserId) {
+      return null
+    }
+
+    const assignee = await executor
+      .selectFrom('app.users')
+      .select('display_name')
+      .where('id', '=', assigneeUserId)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst()
+
+    return assignee?.display_name ?? null
+  }
+
   private mapTaskRecord(
     task: TaskRow,
     timeBlock: TaskTimeBlockRow | undefined,
     projectTitle: string | null,
+    assigneeDisplayName: string | null,
   ): StoredTaskRecord {
     return {
+      assigneeDisplayName,
+      assigneeUserId: task.assignee_user_id,
       completedAt: serializeNullableTimestamp(task.completed_at),
       createdAt: serializeTimestamp(task.created_at),
       deletedAt: serializeNullableTimestamp(task.deleted_at),
@@ -1689,6 +1883,8 @@ export class PostgresTaskRepository implements TaskRepository {
 
   private mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     return {
+      assigneeDisplayName: task.assignee_display_name ?? null,
+      assigneeUserId: task.assignee_user_id,
       completedAt: serializeNullableTimestamp(task.completed_at),
       createdAt: serializeTimestamp(task.created_at),
       deletedAt: serializeNullableTimestamp(task.deleted_at),

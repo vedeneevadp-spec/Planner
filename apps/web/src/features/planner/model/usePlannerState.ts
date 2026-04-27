@@ -103,6 +103,8 @@ interface RemoveTaskMutationVariables {
 
 function toPlannerTask(task: TaskRecord): Task {
   return {
+    assigneeDisplayName: task.assigneeDisplayName,
+    assigneeUserId: task.assigneeUserId,
     completedAt: task.completedAt,
     createdAt: task.createdAt,
     dueDate: task.dueDate,
@@ -219,6 +221,8 @@ function createOptimisticTaskRecord(
   })
 
   return {
+    assigneeDisplayName: null,
+    assigneeUserId: input.assigneeUserId ?? null,
     completedAt: null,
     createdAt: now,
     deletedAt: null,
@@ -1113,6 +1117,8 @@ export function usePlannerState(): PlannerState {
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
         updateTaskRecord(current, taskId, (task) => ({
           ...task,
+          assigneeDisplayName: null,
+          assigneeUserId: input.assigneeUserId ?? null,
           dueDate: input.dueDate,
           icon: (input.icon ?? '').trim(),
           importance: input.importance ?? 'not_important',

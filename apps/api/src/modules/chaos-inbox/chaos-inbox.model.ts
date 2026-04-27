@@ -5,6 +5,8 @@ import type {
   ChaosInboxListFilters,
   ChaosInboxListRecordResponse,
   CreateChaosInboxItemsInput,
+  WorkspaceGroupRole,
+  WorkspaceKind,
   WorkspaceRole,
 } from '@planner/contracts'
 
@@ -15,14 +17,18 @@ export type StoredChaosInboxItemRecord = ChaosInboxItemRecord
 export interface ChaosInboxReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 
 export interface ChaosInboxWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 

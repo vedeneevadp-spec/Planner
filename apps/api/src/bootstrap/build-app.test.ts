@@ -19,6 +19,10 @@ import {
   taskRecordSchema,
   taskTemplateListResponseSchema,
   taskTemplateRecordSchema,
+  workspaceInvitationListResponseSchema,
+  workspaceInvitationRecordSchema,
+  workspaceUserListResponseSchema,
+  workspaceUserRecordSchema,
 } from '@planner/contracts'
 
 import {
@@ -58,6 +62,20 @@ const AUTH_CONTEXT = {
     },
     role: 'authenticated' as const,
     sub: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  },
+}
+
+const READER_AUTH_CONTEXT = {
+  accessToken: 'planner-reader-token',
+  claims: {
+    email: 'reader@planner.local',
+    payload: {
+      email: 'reader@planner.local',
+      role: 'authenticated',
+      sub: '44444444-4444-4444-8444-444444444444',
+    },
+    role: 'authenticated' as const,
+    sub: '44444444-4444-4444-8444-444444444444',
   },
 }
 
@@ -112,6 +130,40 @@ const guestSessionRepository: SessionRepository = {
       403,
       'workspace_admin_required',
       'The current workspace role cannot create shared workspaces.',
+    )
+  },
+  listWorkspaceUsers() {
+    return Promise.resolve([])
+  },
+  listWorkspaceInvitations() {
+    return Promise.resolve([])
+  },
+  createWorkspaceInvitation() {
+    throw new HttpError(
+      403,
+      'workspace_participants_manage_forbidden',
+      'Only workspace owners and group admins can manage participants.',
+    )
+  },
+  updateWorkspaceUserGroupRole() {
+    throw new HttpError(
+      403,
+      'workspace_participants_manage_forbidden',
+      'Only workspace owners and group admins can manage participants.',
+    )
+  },
+  removeWorkspaceUser() {
+    throw new HttpError(
+      403,
+      'workspace_participants_manage_forbidden',
+      'Only workspace owners and group admins can manage participants.',
+    )
+  },
+  revokeWorkspaceInvitation() {
+    throw new HttpError(
+      403,
+      'workspace_participants_manage_forbidden',
+      'Only workspace owners and group admins can manage participants.',
     )
   },
   listAdminUsers() {
@@ -409,6 +461,44 @@ void describe('buildApiApp', () => {
     )
 
     assert.equal(deletedTasks.length, 0)
+  })
+
+  void it('rejects assignees outside shared workspaces', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const createResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: {
+        assigneeUserId: '44444444-4444-4444-8444-444444444444',
+        dueDate: null,
+        note: '',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        resource: null,
+        sphereId: null,
+        title: 'Personal assignment',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(createResponse.statusCode, 400)
+
+    const body = apiErrorSchema.parse(createResponse.json())
+
+    assert.equal(body.error.code, 'task_assignee_shared_workspace_required')
   })
 
   void it('creates, updates and lists projects via the HTTP API', async () => {
@@ -1041,6 +1131,62 @@ void describe('buildApiApp', () => {
     assert.equal(body.workspace.slug, 'personal')
   })
 
+  void it('returns a retryable error when session resolution times out', async () => {
+    const timeoutRepository: SessionRepository = {
+      resolve() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      createSharedWorkspace() {
+        throw new Error('Not implemented.')
+      },
+      listWorkspaceUsers() {
+        throw new Error('Not implemented.')
+      },
+      listWorkspaceInvitations() {
+        throw new Error('Not implemented.')
+      },
+      createWorkspaceInvitation() {
+        throw new Error('Not implemented.')
+      },
+      updateWorkspaceUserGroupRole() {
+        throw new Error('Not implemented.')
+      },
+      removeWorkspaceUser() {
+        throw new Error('Not implemented.')
+      },
+      revokeWorkspaceInvitation() {
+        throw new Error('Not implemented.')
+      },
+      listAdminUsers() {
+        throw new Error('Not implemented.')
+      },
+      updateAdminUserRole() {
+        throw new Error('Not implemented.')
+      },
+    }
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(timeoutRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(response.statusCode, 503)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'database_unavailable')
+  })
+
   void it('creates a shared workspace for the current actor', async () => {
     app = buildApiApp({
       config: createTestConfig(),
@@ -1070,6 +1216,274 @@ void describe('buildApiApp', () => {
     assert.equal(workspace.groupRole, 'group_admin')
     assert.equal(workspace.role, 'owner')
     assert.equal(workspace.name, 'Family Workspace')
+  })
+
+  void it('creates and lists workspace invitations for a shared workspace', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Family Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+    const inviteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'POST',
+      payload: {
+        email: 'reader@planner.local',
+        groupRole: 'group_admin',
+      },
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(inviteResponse.statusCode, 201)
+
+    const invitation = workspaceInvitationRecordSchema.parse(
+      inviteResponse.json(),
+    )
+
+    assert.equal(invitation.email, 'reader@planner.local')
+    assert.equal(invitation.groupRole, 'group_admin')
+
+    const invitationsResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(invitationsResponse.statusCode, 200)
+
+    const invitations = workspaceInvitationListResponseSchema.parse(
+      invitationsResponse.json(),
+    )
+
+    assert.equal(invitations.invitations.length, 1)
+    assert.equal(invitations.invitations[0]?.email, 'reader@planner.local')
+  })
+
+  void it('updates workspace participant group roles', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Team Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+
+    const inviteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'POST',
+      payload: {
+        email: READER_AUTH_CONTEXT.claims.email,
+        groupRole: 'member',
+      },
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(inviteResponse.statusCode, 201)
+
+    await sessionRepository.resolve({
+      actorUserId: undefined,
+      auth: READER_AUTH_CONTEXT,
+      workspaceId: workspace.id,
+    })
+
+    const usersResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/workspace-users',
+    })
+
+    assert.equal(usersResponse.statusCode, 200)
+
+    const users = workspaceUserListResponseSchema.parse(usersResponse.json())
+    const readerMembership = users.users.find(
+      (candidate) => candidate.email === READER_AUTH_CONTEXT.claims.email,
+    )
+
+    assert.ok(readerMembership)
+    assert.equal(readerMembership.groupRole, 'member')
+    assert.equal(readerMembership.isOwner, false)
+
+    const updateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        groupRole: 'senior_member',
+      },
+      url: `/api/v1/workspace-users/${readerMembership.membershipId}/group-role`,
+    })
+
+    assert.equal(updateResponse.statusCode, 200)
+
+    const updatedUser = workspaceUserRecordSchema.parse(updateResponse.json())
+
+    assert.equal(updatedUser.groupRole, 'senior_member')
+    assert.equal(updatedUser.isOwner, false)
+  })
+
+  void it('claims matching workspace invitations during authenticated session resolution', async () => {
+    const sessionService = new SessionService(new MemorySessionRepository())
+    const setupApp = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService,
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await setupApp.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Team Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+    const inviteResponse = await setupApp.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'POST',
+      payload: {
+        email: AUTH_CONTEXT.claims.email,
+        groupRole: 'member',
+      },
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(inviteResponse.statusCode, 201)
+
+    await setupApp.close()
+
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService,
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const sessionResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(sessionResponse.statusCode, 200)
+
+    const session = sessionResponseSchema.parse(sessionResponse.json())
+
+    assert.equal(session.workspaceId, workspace.id)
+    assert.equal(session.actor.email, AUTH_CONTEXT.claims.email)
+    assert.ok(session.workspaces.some((candidate) => candidate.id === workspace.id))
+
+    const verifyApp = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService,
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+    const usersResponse = await verifyApp.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/workspace-users',
+    })
+
+    assert.equal(usersResponse.statusCode, 200)
+
+    const users = workspaceUserListResponseSchema.parse(usersResponse.json())
+
+    assert.ok(
+      users.users.some((candidate) => candidate.email === AUTH_CONTEXT.claims.email),
+    )
+
+    const invitationsResponse = await verifyApp.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(invitationsResponse.statusCode, 200)
+
+    const invitations = workspaceInvitationListResponseSchema.parse(
+      invitationsResponse.json(),
+    )
+
+    assert.equal(invitations.invitations.length, 0)
+
+    await verifyApp.close()
   })
 
   void it('serves OpenAPI JSON without request authentication', async () => {
@@ -1111,6 +1525,11 @@ void describe('buildApiApp', () => {
     assert.ok(body.paths?.['/api/v1/task-templates/{templateId}'])
     assert.ok(body.paths?.['/api/v1/tasks'])
     assert.ok(body.paths?.['/api/v1/tasks/{taskId}/status'])
+    assert.ok(body.paths?.['/api/v1/workspace-invitations'])
+    assert.ok(body.paths?.['/api/v1/workspace-invitations/{invitationId}'])
+    assert.ok(body.paths?.['/api/v1/workspace-users'])
+    assert.ok(body.paths?.['/api/v1/workspace-users/{membershipId}'])
+    assert.ok(body.paths?.['/api/v1/workspace-users/{membershipId}/group-role'])
     assert.ok(body.paths?.['/api/v1/workspaces/shared'])
   })
 

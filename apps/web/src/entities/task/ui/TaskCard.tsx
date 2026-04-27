@@ -1,3 +1,4 @@
+import type { WorkspaceUserRecord } from '@planner/contracts'
 import { type FormEvent, useState } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -37,6 +38,8 @@ import {
 } from './TaskMetaPickers'
 
 interface TaskCardProps {
+  isSharedWorkspace?: boolean | undefined
+  workspaceUsers?: WorkspaceUserRecord[] | undefined
   task: Task
   project?: Project | undefined
   projects?: Project[] | undefined
@@ -50,6 +53,8 @@ interface TaskCardProps {
 }
 
 export function TaskCard({
+  isSharedWorkspace = false,
+  workspaceUsers = [],
   task,
   project,
   projects = [],
@@ -152,6 +157,11 @@ export function TaskCard({
                 className={styles.cardResourceMeter}
                 value={taskResource}
               />
+            </span>
+          ) : null}
+          {task.assigneeDisplayName ? (
+            <span className={styles.metaChip}>
+              Исполнитель: {task.assigneeDisplayName}
             </span>
           ) : null}
         </div>
@@ -264,12 +274,14 @@ export function TaskCard({
 
       {isEditing ? (
         <TaskEditDialog
+          isSharedWorkspace={isSharedWorkspace}
           task={task}
           projects={projects}
           uploadedIcons={uploadedIcons}
           isPending={isPending}
           onClose={() => setIsEditing(false)}
           onUpdate={onUpdate}
+          workspaceUsers={workspaceUsers}
         />
       ) : null}
     </article>
@@ -277,22 +289,27 @@ export function TaskCard({
 }
 
 interface TaskEditDialogProps {
+  isSharedWorkspace?: boolean | undefined
   task: Task
   projects: Project[]
   uploadedIcons: UploadedIconAsset[]
-  isPending: boolean
+  workspaceUsers?: WorkspaceUserRecord[] | undefined
+  isPending?: boolean | undefined
   onClose: () => void
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
 }
 
 export function TaskEditDialog({
+  isSharedWorkspace = false,
   task,
   projects,
   uploadedIcons,
-  isPending,
+  workspaceUsers = [],
+  isPending = false,
   onClose,
   onUpdate,
 }: TaskEditDialogProps) {
+  const [assigneeUserId, setAssigneeUserId] = useState(task.assigneeUserId ?? '')
   const [title, setTitle] = useState(task.title)
   const [projectId, setProjectId] = useState(task.projectId ?? '')
   const [plannedDate, setPlannedDate] = useState(task.plannedDate ?? '')
@@ -335,6 +352,7 @@ export function TaskEditDialog({
       projects.find((project) => project.id === projectId) ?? null
     const hasPlannedDate = Boolean(plannedDate)
     const isUpdated = await onUpdate(task.id, {
+      assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
       dueDate: task.dueDate ?? null,
       icon,
       importance: getTaskImportanceFromType(taskType),
@@ -470,6 +488,25 @@ export function TaskEditDialog({
                 onChange={setProjectId}
               />
             </section>
+
+            {isSharedWorkspace ? (
+              <section className={styles.editorSection}>
+                <label className={styles.field}>
+                  <span>Исполнитель</span>
+                  <select
+                    value={assigneeUserId}
+                    onChange={(event) => setAssigneeUserId(event.target.value)}
+                  >
+                    <option value="">Без исполнителя</option>
+                    {workspaceUsers.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+            ) : null}
 
             <section className={styles.editorSection}>
               <TaskTypePicker

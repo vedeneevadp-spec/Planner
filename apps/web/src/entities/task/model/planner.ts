@@ -236,6 +236,8 @@ export function addTask(
     plannedEndTime: input.plannedEndTime,
   })
   const task: Task = {
+    assigneeDisplayName: null,
+    assigneeUserId: input.assigneeUserId ?? null,
     id: createId(),
     icon: (input.icon ?? '').trim(),
     importance: input.importance ?? 'not_important',

@@ -5,6 +5,12 @@ import {
   createSharedWorkspaceInputSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
+  workspaceInvitationCreateInputSchema,
+  workspaceInvitationListResponseSchema,
+  workspaceInvitationRecordSchema,
+  workspaceUserGroupRoleUpdateInputSchema,
+  workspaceUserListResponseSchema,
+  workspaceUserRecordSchema,
 } from '@planner/contracts'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -23,16 +29,24 @@ const authSessionHeadersSchema = z.object({
   'x-workspace-id': z.string().min(1).optional(),
 })
 
-const adminAuthHeadersSchema = z.object({
+const requiredSessionAuthHeadersSchema = z.object({
   'x-workspace-id': z.string().min(1),
 })
 
-const adminLegacyHeadersSchema = adminAuthHeadersSchema.extend({
+const requiredSessionLegacyHeadersSchema = requiredSessionAuthHeadersSchema.extend({
   'x-actor-user-id': z.string().min(1),
 })
 
 const userParamsSchema = z.object({
   userId: z.string().min(1),
+})
+
+const membershipParamsSchema = z.object({
+  membershipId: z.string().min(1),
+})
+
+const invitationParamsSchema = z.object({
+  invitationId: z.string().min(1),
 })
 
 export function registerSessionRoutes(
@@ -61,14 +75,14 @@ export function registerSessionRoutes(
   })
 
   app.get('/api/v1/admin/users', async (request) => {
-    const context = resolveAdminSessionContext(request)
+    const context = resolveRequiredSessionContext(request)
     const users = await service.listAdminUsers(context)
 
     return adminUserListResponseSchema.parse({ users })
   })
 
   app.patch('/api/v1/admin/users/:userId/role', async (request) => {
-    const context = resolveAdminSessionContext(request)
+    const context = resolveRequiredSessionContext(request)
     const params = parseOrThrow(
       userParamsSchema,
       request.params,
@@ -87,6 +101,87 @@ export function registerSessionRoutes(
 
     return adminUserRecordSchema.parse(user)
   })
+
+  app.get('/api/v1/workspace-users', async (request) => {
+    const context = resolveRequiredSessionContext(request)
+    const users = await service.listWorkspaceUsers(context)
+
+    return workspaceUserListResponseSchema.parse({ users })
+  })
+
+  app.patch(
+    '/api/v1/workspace-users/:membershipId/group-role',
+    async (request) => {
+      const context = resolveRequiredSessionContext(request)
+      const params = parseOrThrow(
+        membershipParamsSchema,
+        request.params,
+        'invalid_params',
+      )
+      const input = parseOrThrow(
+        workspaceUserGroupRoleUpdateInputSchema,
+        request.body,
+        'invalid_body',
+      )
+      const user = await service.updateWorkspaceUserGroupRole(
+        context,
+        params.membershipId,
+        input.groupRole,
+      )
+
+      return workspaceUserRecordSchema.parse(user)
+    },
+  )
+
+  app.delete('/api/v1/workspace-users/:membershipId', async (request, reply) => {
+    const context = resolveRequiredSessionContext(request)
+    const params = parseOrThrow(
+      membershipParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+
+    await service.removeWorkspaceUser(context, params.membershipId)
+
+    return reply.code(204).send()
+  })
+
+  app.get('/api/v1/workspace-invitations', async (request) => {
+    const context = resolveRequiredSessionContext(request)
+    const invitations = await service.listWorkspaceInvitations(context)
+
+    return workspaceInvitationListResponseSchema.parse({ invitations })
+  })
+
+  app.post('/api/v1/workspace-invitations', async (request, reply) => {
+    const context = resolveRequiredSessionContext(request)
+    const input = parseOrThrow(
+      workspaceInvitationCreateInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const invitation = await service.createWorkspaceInvitation(context, input)
+
+    reply.code(201)
+
+    return workspaceInvitationRecordSchema.parse(invitation)
+  })
+
+  app.delete(
+    '/api/v1/workspace-invitations/:invitationId',
+    async (request, reply) => {
+      const context = resolveRequiredSessionContext(request)
+      const params = parseOrThrow(
+        invitationParamsSchema,
+        request.params,
+        'invalid_params',
+      )
+
+      await service.revokeWorkspaceInvitation(context, params.invitationId)
+
+      return reply.code(204).send()
+    },
+  )
 }
 
 function resolveOptionalSessionContext(request: FastifyRequest) {
@@ -127,12 +222,12 @@ function resolveOptionalSessionContext(request: FastifyRequest) {
   }
 }
 
-function resolveAdminSessionContext(request: FastifyRequest) {
+function resolveRequiredSessionContext(request: FastifyRequest) {
   const authContext = getRequestAuth(request)
 
   if (authContext) {
     const headers = parseOrThrow(
-      adminAuthHeadersSchema,
+      requiredSessionAuthHeadersSchema,
       request.headers,
       'invalid_headers',
     )
@@ -145,7 +240,7 @@ function resolveAdminSessionContext(request: FastifyRequest) {
   }
 
   const headers = parseOrThrow(
-    adminLegacyHeadersSchema,
+    requiredSessionLegacyHeadersSchema,
     request.headers,
     'invalid_headers',
   )

@@ -4,6 +4,8 @@ import type {
   DailyPlanUnloadResponse,
   DailyPlanUpsertInput,
   EnergyMode,
+  WorkspaceGroupRole,
+  WorkspaceKind,
   WorkspaceRole,
 } from '@planner/contracts'
 
@@ -14,14 +16,18 @@ export type StoredDailyPlanRecord = DailyPlanRecord
 export interface DailyPlanReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 
 export interface DailyPlanWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 

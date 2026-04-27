@@ -11,7 +11,7 @@ import {
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
-import { usePlannerSession } from '@/features/session'
+import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
 import { TaskComposer } from '@/features/task-create'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import pageStyles from '@/shared/ui/Page'
@@ -246,6 +246,8 @@ function SharedTodayPage() {
     updateTask,
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
+  const workspaceUsersQuery = useWorkspaceUsers()
+  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const todayTasks = useMemo(
@@ -294,8 +296,10 @@ function SharedTodayPage() {
         key={key}
         title={title}
         tasks={sectionTasks}
+        isSharedWorkspace
         projects={projects}
         uploadedIcons={uploadedIcons}
+        workspaceUsers={workspaceUsers}
         emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
         tone={tone}

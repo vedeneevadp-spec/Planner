@@ -1,4 +1,5 @@
 import { HttpError } from '../../bootstrap/http-error.js'
+import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   CreateLifeSphereCommand,
   LifeSphereReadContext,
@@ -45,11 +46,11 @@ export class LifeSphereService {
 }
 
 function assertCanWriteLifeSpheres(context: LifeSphereWriteContext): void {
-  if (context.role === 'guest') {
+  if (!canWriteWorkspaceContent(context)) {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
-      'The current workspace role cannot write life spheres.',
+      'The current workspace access cannot write life spheres.',
     )
   }
 }

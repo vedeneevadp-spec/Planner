@@ -23,6 +23,7 @@ const WORKSPACE_ID = 'workspace-1'
 const ACTOR_USER_ID = 'user-1'
 
 const createInput: NewTaskInput = {
+  assigneeUserId: null,
   dueDate: null,
   id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b2',
   note: '',
@@ -173,6 +174,8 @@ function createPlannerApiClientMock(
 
 function createTaskRecord(taskId: string): TaskRecord {
   return {
+    assigneeDisplayName: null,
+    assigneeUserId: null,
     completedAt: null,
     createdAt: '2026-04-20T00:00:00.000Z',
     deletedAt: null,

@@ -9,6 +9,7 @@ import {
   useCreateSharedWorkspace,
   usePlannerSession,
   useSessionAuth,
+  WorkspaceParticipantsDialog,
 } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
@@ -38,6 +39,8 @@ export function Sidebar() {
   const [moreSheetPathname, setMoreSheetPathname] = useState<string | null>(
     null,
   )
+  const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
+    useState(false)
   const todayKey = getDateKey(new Date())
   const summary = getPlannerSummary(tasks, todayKey)
   const isSharedWorkspace = session?.workspace.kind === 'shared'
@@ -214,23 +217,43 @@ export function Sidebar() {
                   </span>
                 </div>
 
-                <button
-                  className={cx(
-                    styles.createWorkspaceButton,
-                    styles.mobileCreateWorkspaceButton,
-                  )}
-                  type="button"
-                  disabled={
-                    createSharedWorkspaceMutation.isPending ||
-                    sharedWorkspaceCount >= 3
-                  }
-                  onClick={() => {
-                    createSharedWorkspaceMutation.mutate()
-                  }}
-                >
-                  <PlusIcon size={18} strokeWidth={2.15} />
-                  <span>Создать пространство</span>
-                </button>
+                <div className={styles.mobileWorkspaceActions}>
+                  <button
+                    className={cx(
+                      styles.createWorkspaceButton,
+                      styles.mobileCreateWorkspaceButton,
+                    )}
+                    type="button"
+                    disabled={
+                      createSharedWorkspaceMutation.isPending ||
+                      sharedWorkspaceCount >= 3
+                    }
+                    onClick={() => {
+                      createSharedWorkspaceMutation.mutate()
+                    }}
+                  >
+                    <PlusIcon size={18} strokeWidth={2.15} />
+                    <span>Создать пространство</span>
+                  </button>
+
+                  {isSharedWorkspace ? (
+                    <button
+                      className={cx(
+                        styles.createWorkspaceButton,
+                        styles.mobileCreateWorkspaceButton,
+                        styles.secondaryWorkspaceButton,
+                      )}
+                      type="button"
+                      onClick={() => {
+                        setMoreSheetPathname(null)
+                        setIsWorkspaceParticipantsOpen(true)
+                      }}
+                    >
+                      <UserIcon size={18} strokeWidth={2.1} />
+                      <span>Участники</span>
+                    </button>
+                  ) : null}
+                </div>
 
                 {createSharedWorkspaceMutation.error ? (
                   <p className={styles.connectionError}>
@@ -356,6 +379,22 @@ export function Sidebar() {
               >
                 + Создать пространство
               </button>
+
+              {isSharedWorkspace ? (
+                <button
+                  className={cx(
+                    styles.createWorkspaceButton,
+                    styles.secondaryWorkspaceButton,
+                  )}
+                  type="button"
+                  onClick={() => {
+                    setIsWorkspaceParticipantsOpen(true)
+                  }}
+                >
+                  <UserIcon size={18} strokeWidth={2.1} />
+                  <span>Участники</span>
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -447,6 +486,15 @@ export function Sidebar() {
           </div>
         </section>
       </aside>
+
+      {isWorkspaceParticipantsOpen && isSharedWorkspace ? (
+        <WorkspaceParticipantsDialog
+          isOpen={isWorkspaceParticipantsOpen}
+          onClose={() => {
+            setIsWorkspaceParticipantsOpen(false)
+          }}
+        />
+      ) : null}
     </>
   )
 }

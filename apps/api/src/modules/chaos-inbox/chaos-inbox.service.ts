@@ -1,6 +1,7 @@
 import type { NewTaskInput } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type { TaskService } from '../tasks/index.js'
 import type {
   BulkDeleteChaosInboxItemsCommand,
@@ -115,6 +116,7 @@ function buildTaskInput(
   item: Awaited<ReturnType<ChaosInboxRepository['getById']>>,
 ): NewTaskInput {
   return {
+    assigneeUserId: null,
     dueDate: item.dueDate,
     icon: '',
     importance: item.priority === 'high' ? 'important' : 'not_important',
@@ -132,11 +134,11 @@ function buildTaskInput(
 }
 
 function assertCanWriteChaosInbox(context: ChaosInboxWriteContext): void {
-  if (context.role === 'guest') {
+  if (!canWriteWorkspaceContent(context)) {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
-      'The current workspace role cannot write chaos inbox.',
+      'The current workspace access cannot write chaos inbox.',
     )
   }
 }

@@ -227,6 +227,7 @@ describe('plannerApi', () => {
 
     await expect(
       api.createTask({
+        assigneeUserId: null,
         dueDate: null,
         note: '',
         plannedDate: null,
@@ -266,6 +267,8 @@ describe('plannerApi', () => {
           createdAt: '2026-04-16T03:00:00.000Z',
           deletedAt: null,
           dueDate: null,
+          assigneeDisplayName: null,
+          assigneeUserId: null,
           id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b2',
           note: '',
           plannedDate: null,
@@ -287,6 +290,7 @@ describe('plannerApi', () => {
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
 
     await api.createTask({
+      assigneeUserId: null,
       dueDate: null,
       note: '',
       plannedDate: null,
@@ -405,6 +409,8 @@ describe('plannerApi', () => {
             createdAt: '2026-04-16T02:00:00.000Z',
             deletedAt: null,
             dueDate: null,
+            assigneeDisplayName: null,
+            assigneeUserId: null,
             icon: '',
             id: 'task-1',
             importance: 'important',
@@ -433,6 +439,8 @@ describe('plannerApi', () => {
             createdAt: '2026-04-16T02:00:00.000Z',
             deletedAt: null,
             dueDate: null,
+            assigneeDisplayName: null,
+            assigneeUserId: null,
             icon: '',
             id: 'task-1',
             importance: 'important',
@@ -458,6 +466,7 @@ describe('plannerApi', () => {
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
 
     await api.updateTask('task-1', {
+      assigneeUserId: null,
       dueDate: null,
       expectedVersion: 1,
       icon: '',

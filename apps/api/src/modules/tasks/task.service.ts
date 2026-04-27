@@ -1,4 +1,5 @@
 import { HttpError } from '../../bootstrap/http-error.js'
+import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
@@ -25,6 +26,7 @@ export class TaskService {
 
   createTask(context: TaskWriteContext, input: CreateTaskCommand['input']) {
     assertCanWriteTasks(context)
+    assertCanAssignTask(context, input.assigneeUserId)
 
     return this.repository.create({ context, input })
   }
@@ -35,6 +37,7 @@ export class TaskService {
     input: UpdateTaskCommand['input'],
   ) {
     assertCanWriteTasks(context)
+    assertCanAssignTask(context, input.assigneeUserId)
 
     const command: UpdateTaskCommand = {
       context,
@@ -112,11 +115,28 @@ export class TaskService {
 }
 
 function assertCanWriteTasks(context: TaskWriteContext): void {
-  if (context.role === 'guest') {
+  if (!canWriteWorkspaceContent(context)) {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
-      'The current workspace role cannot write tasks.',
+      'The current workspace access cannot write tasks.',
+    )
+  }
+}
+
+function assertCanAssignTask(
+  context: TaskWriteContext,
+  assigneeUserId: string | null,
+): void {
+  if (!assigneeUserId) {
+    return
+  }
+
+  if (context.workspaceKind !== 'shared') {
+    throw new HttpError(
+      400,
+      'task_assignee_shared_workspace_required',
+      'Tasks can only be assigned inside shared workspaces.',
     )
   }
 }

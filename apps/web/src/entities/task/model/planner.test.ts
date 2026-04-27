@@ -11,6 +11,8 @@ import {
 } from '@/entities/task'
 
 const baseTask: Task = {
+  assigneeDisplayName: null,
+  assigneeUserId: null,
   id: 'task-1',
   icon: '',
   importance: 'not_important',
@@ -35,6 +37,7 @@ describe('planner model', () => {
     const tasks = addTask(
       [baseTask],
       {
+        assigneeUserId: null,
         title: '  Review CI  ',
         note: '  tighten checks  ',
         project: '  Ops  ',

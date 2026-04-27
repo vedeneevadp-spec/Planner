@@ -1,3 +1,5 @@
+import type { WorkspaceUserRecord } from '@planner/contracts'
+
 import type { Project } from '@/entities/project'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
@@ -8,8 +10,10 @@ import styles from './TaskSection.module.css'
 interface TaskSectionProps {
   title: string
   tasks: Task[]
+  isSharedWorkspace?: boolean | undefined
   projects?: Project[] | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
+  workspaceUsers?: WorkspaceUserRecord[] | undefined
   emptyMessage: string
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
@@ -22,8 +26,10 @@ interface TaskSectionProps {
 export function TaskSection({
   title,
   tasks,
+  isSharedWorkspace = false,
   projects = [],
   uploadedIcons = [],
+  workspaceUsers = [],
   emptyMessage,
   tone = 'default',
   isTaskPending,
@@ -52,7 +58,9 @@ export function TaskSection({
                 (project) => project.id === task.projectId,
               )}
               isPending={isTaskPending?.(task.id)}
+              isSharedWorkspace={isSharedWorkspace}
               uploadedIcons={uploadedIcons}
+              workspaceUsers={workspaceUsers}
               tone={tone}
               onRemove={onRemove}
               onSetPlannedDate={onSetPlannedDate}

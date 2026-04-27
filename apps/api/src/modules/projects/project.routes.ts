@@ -92,15 +92,6 @@ export function registerProjectRoutes(
   })
 }
 
-function createLegacyWriteContext(headers: z.infer<typeof writeHeadersSchema>) {
-  return {
-    actorUserId: headers['x-actor-user-id'],
-    auth: null,
-    role: undefined,
-    workspaceId: headers['x-workspace-id'],
-  }
-}
-
 function parseHeadersForWrite(request: FastifyRequest) {
   const authContext = getRequestAuth(request)
 
@@ -136,7 +127,9 @@ async function resolveReadContext(
   return {
     actorUserId: session.actorUserId,
     auth: authContext,
+    groupRole: session.groupRole,
     role: session.role,
+    workspaceKind: session.workspace.kind,
     workspaceId: session.workspaceId,
   }
 }
@@ -151,9 +144,21 @@ async function resolveWriteContext(
   const authContext = getRequestAuth(request)
 
   if (!authContext) {
-    return createLegacyWriteContext(
-      headers as z.infer<typeof writeHeadersSchema>,
-    )
+    const legacyHeaders = headers as z.infer<typeof writeHeadersSchema>
+    const session = await sessionService.resolveSession({
+      actorUserId: legacyHeaders['x-actor-user-id'],
+      auth: null,
+      workspaceId: legacyHeaders['x-workspace-id'],
+    })
+
+    return {
+      actorUserId: session.actorUserId,
+      auth: null,
+      groupRole: session.groupRole,
+      role: session.role,
+      workspaceKind: session.workspace.kind,
+      workspaceId: session.workspaceId,
+    }
   }
 
   const session = await sessionService.resolveSession({
@@ -165,7 +170,9 @@ async function resolveWriteContext(
   return {
     actorUserId: session.actorUserId,
     auth: authContext,
+    groupRole: session.groupRole,
     role: session.role,
+    workspaceKind: session.workspace.kind,
     workspaceId: session.workspaceId,
   }
 }

@@ -26,6 +26,8 @@ export const taskIconSchema = z
   .transform((value) => value?.trim() ?? '')
 
 export const taskSchema = z.object({
+  assigneeDisplayName: nullableStringWithDefault,
+  assigneeUserId: nullableStringWithDefault,
   id: z.string(),
   title: z.string().min(1),
   note: z.string(),
@@ -54,6 +56,7 @@ export const taskScheduleInputSchema = z.object({
 })
 
 export const newTaskInputSchema = z.object({
+  assigneeUserId: nullableStringWithDefault,
   id: uuidV7Schema.optional(),
   title: z.string().min(1),
   note: z.string(),

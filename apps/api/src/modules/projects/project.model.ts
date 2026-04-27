@@ -2,6 +2,8 @@ import type {
   NewProjectInput,
   ProjectRecord,
   ProjectUpdateInput,
+  WorkspaceGroupRole,
+  WorkspaceKind,
   WorkspaceRole,
 } from '@planner/contracts'
 
@@ -17,14 +19,18 @@ export interface StoredProjectRecord extends ProjectRecord {
 export interface ProjectReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 
 export interface ProjectWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 

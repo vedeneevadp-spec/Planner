@@ -4,6 +4,8 @@ import type {
   NewLifeSphereInput,
   SphereStatsWeekly,
   WeeklySphereStatsResponse,
+  WorkspaceGroupRole,
+  WorkspaceKind,
   WorkspaceRole,
 } from '@planner/contracts'
 
@@ -14,14 +16,18 @@ export type StoredLifeSphereRecord = LifeSphereRecord
 export interface LifeSphereReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 
 export interface LifeSphereWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 

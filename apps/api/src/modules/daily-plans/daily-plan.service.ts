@@ -1,4 +1,5 @@
 import { HttpError } from '../../bootstrap/http-error.js'
+import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   AutoBuildDailyPlanCommand,
   DailyPlanReadContext,
@@ -39,11 +40,11 @@ export class DailyPlanService {
 }
 
 function assertCanWriteDailyPlan(context: DailyPlanWriteContext): void {
-  if (context.role === 'guest') {
+  if (!canWriteWorkspaceContent(context)) {
     throw new HttpError(
       403,
       'workspace_write_forbidden',
-      'The current workspace role cannot write daily plans.',
+      'The current workspace access cannot write daily plans.',
     )
   }
 }

@@ -6,6 +6,7 @@ export type TimeColumn = ColumnType<string, string, string>
 export type TimestampColumn = ColumnType<string, string | Date, string | Date>
 
 export interface AppTasksTable {
+  assignee_user_id: string | null
   completed_at: TimestampColumn | null
   created_at: Generated<TimestampColumn>
   created_by: string | null
@@ -143,6 +144,20 @@ export interface AppWorkspaceMembersTable {
   role: 'owner' | 'admin' | 'user' | 'guest'
   updated_at: Generated<TimestampColumn>
   user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppWorkspaceInvitationsTable {
+  accepted_at: TimestampColumn | null
+  accepted_by: string | null
+  created_at: Generated<TimestampColumn>
+  deleted_at: TimestampColumn | null
+  email: string
+  group_role: 'group_admin' | 'senior_member' | 'member'
+  id: Generated<string>
+  invited_by: string | null
+  updated_at: Generated<TimestampColumn>
   version: Generated<number>
   workspace_id: string
 }
@@ -291,6 +306,7 @@ export interface DatabaseSchema {
   'app.task_time_blocks': AppTaskTimeBlocksTable
   'app.tasks': AppTasksTable
   'app.users': AppUsersTable
+  'app.workspace_invitations': AppWorkspaceInvitationsTable
   'app.workspace_members': AppWorkspaceMembersTable
   'app.workspaces': AppWorkspacesTable
 }

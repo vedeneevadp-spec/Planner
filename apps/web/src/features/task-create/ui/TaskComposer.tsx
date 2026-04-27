@@ -16,6 +16,7 @@ import {
 import type { TaskTemplate } from '@/entities/task-template'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import {
@@ -103,6 +104,7 @@ function buildTaskInputFromTemplate(
   const plannedDate = initialPlannedDate ?? template.plannedDate
 
   return {
+    assigneeUserId: null,
     dueDate: null,
     note: template.note,
     icon: template.icon,
@@ -224,6 +226,14 @@ export function TaskComposer({
     removeTaskTemplate,
     taskTemplates,
   } = usePlanner()
+  const [isOpen, setIsOpen] = useState(false)
+  const sessionQuery = usePlannerSession()
+  const session = sessionQuery.data
+  const isSharedWorkspace = session?.workspace.kind === 'shared'
+  const workspaceUsersQuery = useWorkspaceUsers({
+    enabled: isOpen && isSharedWorkspace,
+  })
+  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const { uploadedIcons } = useUploadedIconAssets()
   const titleId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
@@ -231,12 +241,12 @@ export function TaskComposer({
   const titleInputRef = useRef<HTMLInputElement>(null)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
-  const [isOpen, setIsOpen] = useState(false)
   const [title, setTitle] = useState('')
   const [icon, setIcon] = useState('')
   const [taskType, setTaskType] = useState<TaskTypeValue>('')
   const [resource, setResource] = useState<ResourceValue>('')
   const [projectId, setProjectId] = useState('')
+  const [assigneeUserId, setAssigneeUserId] = useState('')
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
   const [plannedEndTime, setPlannedEndTime] = useState('')
@@ -286,6 +296,7 @@ export function TaskComposer({
     setTaskType(openDraft.taskType ?? '')
     setResource(openDraft.resource ?? '')
     setProjectId(openDraft.projectId ?? '')
+    setAssigneeUserId('')
     setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
@@ -317,6 +328,7 @@ export function TaskComposer({
     const hasPlannedDate = Boolean(plannedDate)
 
     return {
+      assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
       dueDate: null,
       icon,
       importance: getTaskImportanceFromType(taskType),
@@ -340,6 +352,7 @@ export function TaskComposer({
     setTaskType('')
     setResource('')
     setProjectId('')
+    setAssigneeUserId('')
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
@@ -399,6 +412,7 @@ export function TaskComposer({
     setTaskType(getTaskTypeValue(template))
     setResource('')
     setProjectId(knownProject?.id ?? '')
+    setAssigneeUserId('')
     setPlannedDate(plannedDateFromTemplate ?? '')
     setPlannedStartTime(
       plannedDateFromTemplate ? (template.plannedStartTime ?? '') : '',
@@ -787,6 +801,27 @@ export function TaskComposer({
                         onChange={setProjectId}
                       />
                     </section>
+
+                    {isSharedWorkspace ? (
+                      <section className={styles.columnSection}>
+                        <label className={styles.field}>
+                          <span>Исполнитель</span>
+                          <select
+                            value={assigneeUserId}
+                            onChange={(event) =>
+                              setAssigneeUserId(event.target.value)
+                            }
+                          >
+                            <option value="">Без исполнителя</option>
+                            {workspaceUsers.map((user) => (
+                              <option key={user.id} value={user.id}>
+                                {user.displayName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </section>
+                    ) : null}
 
                     <section
                       className={cx(styles.columnSection, styles.typeSection)}

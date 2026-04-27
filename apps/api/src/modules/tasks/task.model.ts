@@ -6,6 +6,8 @@ import type {
   TaskScheduleInput,
   TaskStatus,
   TaskUpdateInput,
+  WorkspaceGroupRole,
+  WorkspaceKind,
   WorkspaceRole,
 } from '@planner/contracts'
 
@@ -38,14 +40,18 @@ export type TaskEventFilters = TaskEventListFilters
 export interface TaskReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 
 export interface TaskWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
+  workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
 }
 
