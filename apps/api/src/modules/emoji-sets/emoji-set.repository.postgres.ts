@@ -32,8 +32,25 @@ import {
 
 type EmojiSetRow = Selectable<DatabaseSchema['app.emoji_sets']>
 type EmojiAssetRow = Selectable<DatabaseSchema['app.emoji_assets']>
+type LoadedEmojiAssetRow = Pick<
+  EmojiAssetRow,
+  | 'emoji_set_id'
+  | 'id'
+  | 'keywords'
+  | 'kind'
+  | 'label'
+  | 'shortcode'
+  | 'sort_order'
+  | 'value'
+  | 'workspace_id'
+> & {
+  created_at: string
+  deleted_at: string | null
+  updated_at: string
+  version: number
+}
 type EmojiSetAggregateRow = {
-  assets: EmojiAssetRow[]
+  assets: LoadedEmojiAssetRow[]
   emoji_set: EmojiSetRow
 }
 
@@ -50,7 +67,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
         const emojiSetRows = await executor
           .selectFrom('app.emoji_sets')
           .selectAll()
-          .where('workspace_id', '=', context.workspaceId)
           .where('deleted_at', 'is', null)
           .where('status', '=', 'active')
           .orderBy('title', 'asc')
@@ -59,7 +75,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
         const assetRows = await this.loadEmojiAssetRows(
           executor,
-          context.workspaceId,
           emojiSetRows.map((emojiSet) => emojiSet.id),
         )
 
@@ -77,21 +92,13 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
       this.db,
       context.auth,
       async (executor) => {
-        const emojiSetRow = await this.loadActiveEmojiSet(
-          executor,
-          context.workspaceId,
-          emojiSetId,
-        )
+        const emojiSetRow = await this.loadActiveEmojiSet(executor, emojiSetId)
 
         if (!emojiSetRow) {
           return null
         }
 
-        const assetRows = await this.loadEmojiAssetRows(
-          executor,
-          context.workspaceId,
-          [emojiSetRow.id],
-        )
+        const assetRows = await this.loadEmojiAssetRows(executor, [emojiSetRow.id])
 
         return this.mapEmojiSetRecord(emojiSetRow, assetRows)
       },
@@ -168,7 +175,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           ? insertedEmojiSet
           : await this.loadActiveEmojiSet(
               trx,
-              command.context.workspaceId,
               emojiSetId,
             )
 
@@ -178,7 +184,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
         const assetRows = await this.loadEmojiAssetRows(
           trx,
-          command.context.workspaceId,
           [emojiSet.id],
         )
 
@@ -201,7 +206,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
       async (executor) => {
         const emojiSet = await this.loadActiveEmojiSet(
           executor,
-          command.context.workspaceId,
           command.emojiSetId,
         )
 
@@ -211,7 +215,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
         const assetStats = await this.loadEmojiAssetStats(
           executor,
-          command.context.workspaceId,
           command.emojiSetId,
         )
         const normalizedItems = command.input.items.map((item, index) =>
@@ -247,7 +250,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
         const assetRows = await this.loadEmojiAssetRows(
           executor,
-          command.context.workspaceId,
           [emojiSet.id],
         )
 
@@ -336,7 +338,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             select emoji_set.*
             from app.emoji_sets as emoji_set
             where emoji_set.id = ${params.emojiSetId}
-              and emoji_set.workspace_id = ${command.context.workspaceId}
               and emoji_set.deleted_at is null
               and emoji_set.status = 'active'
               and not exists (select 1 from inserted_emoji_set)
@@ -395,8 +396,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
             select asset.*
             from app.emoji_assets as asset
-            where asset.workspace_id = ${command.context.workspaceId}
-              and asset.emoji_set_id = ${params.emojiSetId}
+            where asset.emoji_set_id = ${params.emojiSetId}
               and asset.deleted_at is null
               and not exists (select 1 from inserted_emoji_set)
           )
@@ -459,7 +459,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             select *
             from app.emoji_sets
             where id = ${command.emojiSetId}
-              and workspace_id = ${command.context.workspaceId}
               and deleted_at is null
               and status = 'active'
           ),
@@ -468,8 +467,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
               count(*)::integer as asset_count,
               coalesce(max(sort_order), -1)::integer as max_sort_order
             from app.emoji_assets
-            where workspace_id = ${command.context.workspaceId}
-              and emoji_set_id = ${command.emojiSetId}
+            where emoji_set_id = ${command.emojiSetId}
           ),
           input_assets(
             id,
@@ -519,8 +517,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           asset_rows as (
             select asset.*
             from app.emoji_assets as asset
-            where asset.workspace_id = ${command.context.workspaceId}
-              and asset.emoji_set_id = ${command.emojiSetId}
+            where asset.emoji_set_id = ${command.emojiSetId}
               and asset.deleted_at is null
 
             union all
@@ -563,7 +560,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
       async (executor) => {
         const emojiSet = await this.loadActiveEmojiSet(
           executor,
-          command.context.workspaceId,
           command.emojiSetId,
         )
 
@@ -571,11 +567,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           throw new EmojiSetNotFoundError(command.emojiSetId)
         }
 
-        const assetRows = await this.loadEmojiAssetRows(
-          executor,
-          command.context.workspaceId,
-          [emojiSet.id],
-        )
+        const assetRows = await this.loadEmojiAssetRows(executor, [emojiSet.id])
         const deletedAt = new Date()
 
         await executor
@@ -584,7 +576,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             deleted_at: deletedAt,
             updated_by: command.context.actorUserId,
           })
-          .where('workspace_id', '=', command.context.workspaceId)
           .where('emoji_set_id', '=', command.emojiSetId)
           .where('deleted_at', 'is', null)
           .execute()
@@ -596,7 +587,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             updated_by: command.context.actorUserId,
           })
           .where('id', '=', command.emojiSetId)
-          .where('workspace_id', '=', command.context.workspaceId)
           .where('deleted_at', 'is', null)
           .where('status', '=', 'active')
           .returningAll()
@@ -621,7 +611,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
       async (executor) => {
         const emojiSet = await this.loadActiveEmojiSet(
           executor,
-          command.context.workspaceId,
           command.emojiSetId,
         )
 
@@ -637,7 +626,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             updated_by: command.context.actorUserId,
           })
           .where('id', '=', command.iconAssetId)
-          .where('workspace_id', '=', command.context.workspaceId)
           .where('emoji_set_id', '=', command.emojiSetId)
           .where('deleted_at', 'is', null)
           .returningAll()
@@ -655,14 +643,12 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
   private loadActiveEmojiSet(
     executor: DatabaseExecutor,
-    workspaceId: string,
     emojiSetId: string,
   ): Promise<EmojiSetRow | undefined> {
     return executor
       .selectFrom('app.emoji_sets')
       .selectAll()
       .where('id', '=', emojiSetId)
-      .where('workspace_id', '=', workspaceId)
       .where('deleted_at', 'is', null)
       .where('status', '=', 'active')
       .executeTakeFirst()
@@ -670,7 +656,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
   private async loadEmojiAssetStats(
     executor: DatabaseExecutor,
-    workspaceId: string,
     emojiSetId: string,
   ): Promise<{ count: number; maxSortOrder: number }> {
     const row = await executor
@@ -679,7 +664,6 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
         (eb) => eb.fn.countAll<string>().as('asset_count'),
         (eb) => eb.fn.max<number>('sort_order').as('max_sort_order'),
       ])
-      .where('workspace_id', '=', workspaceId)
       .where('emoji_set_id', '=', emojiSetId)
       .executeTakeFirstOrThrow()
 
@@ -692,17 +676,29 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
   private loadEmojiAssetRows(
     executor: DatabaseExecutor,
-    workspaceId: string,
     emojiSetIds: string[],
-  ): Promise<EmojiAssetRow[]> {
+  ): Promise<LoadedEmojiAssetRow[]> {
     if (emojiSetIds.length === 0) {
       return Promise.resolve([])
     }
 
     return executor
       .selectFrom('app.emoji_assets')
-      .selectAll()
-      .where('workspace_id', '=', workspaceId)
+      .select([
+        'id',
+        'workspace_id',
+        'emoji_set_id',
+        'shortcode',
+        'label',
+        'kind',
+        'value',
+        'keywords',
+        'sort_order',
+        sql<string>`created_at::text`.as('created_at'),
+        sql<string>`updated_at::text`.as('updated_at'),
+        sql<string | null>`deleted_at::text`.as('deleted_at'),
+        sql<number>`version::int`.as('version'),
+      ])
       .where('emoji_set_id', 'in', emojiSetIds)
       .where('deleted_at', 'is', null)
       .orderBy('sort_order', 'asc')
@@ -712,7 +708,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
   private mapEmojiSetRows(
     emojiSetRows: EmojiSetRow[],
-    assetRows: EmojiAssetRow[],
+    assetRows: LoadedEmojiAssetRow[],
   ): StoredEmojiSetRecord[] {
     const assetsBySetId = new Map<string, StoredEmojiAssetRecord[]>()
 
@@ -736,7 +732,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
   private mapEmojiSetRecord(
     emojiSet: EmojiSetRow,
-    assetRows: EmojiAssetRow[] | StoredEmojiAssetRecord[],
+    assetRows: LoadedEmojiAssetRow[] | StoredEmojiAssetRecord[],
   ): StoredEmojiSetRecord {
     const items = assetRows.map((asset) =>
       'emoji_set_id' in asset ? this.mapEmojiAssetRecord(asset) : asset,
@@ -757,7 +753,9 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
     }
   }
 
-  private mapEmojiAssetRecord(asset: EmojiAssetRow): StoredEmojiAssetRecord {
+  private mapEmojiAssetRecord(
+    asset: LoadedEmojiAssetRow | EmojiAssetRow,
+  ): StoredEmojiAssetRecord {
     return {
       createdAt: serializeTimestamp(asset.created_at),
       deletedAt: serializeNullableTimestamp(asset.deleted_at),

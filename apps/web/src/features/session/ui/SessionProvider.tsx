@@ -21,6 +21,10 @@ import {
   readSupabaseStoredSession,
 } from '../lib/supabase-browser'
 import {
+  clearLastActorUserId,
+  clearSelectedWorkspaceId,
+} from '../lib/workspace-selection'
+import {
   type PasswordSignUpInput,
   SessionAuthContext,
   type SessionAuthState,
@@ -65,6 +69,8 @@ export function SessionProvider({ children }: PropsWithChildren) {
       pendingSignOutNoticeRef.current = notice
       setAuthNotice(notice === false ? null : notice)
       setIsPasswordRecovery(false)
+      clearSelectedWorkspaceId(snapshot.userId)
+      clearLastActorUserId()
       setSnapshot({
         ...INITIAL_AUTH_SNAPSHOT,
         isLoading: false,
@@ -82,7 +88,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         pendingSignOutNoticeRef.current = null
       }
     },
-    [supabase],
+    [snapshot.userId, supabase],
   )
 
   const handleUnrecoverableSessionError = useCallback(

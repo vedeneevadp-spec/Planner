@@ -29,7 +29,7 @@ export function useCreateSharedWorkspace() {
       })
     },
     onSuccess: async (workspace) => {
-      setSelectedWorkspaceId(workspace.id)
+      setSelectedWorkspaceId(workspace.id, sessionQuery.data?.actorUserId)
       await queryClient.invalidateQueries({ queryKey: ['planner', 'session'] })
     },
   })

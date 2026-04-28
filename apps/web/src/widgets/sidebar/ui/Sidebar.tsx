@@ -119,7 +119,7 @@ export function Sidebar() {
               value={session?.workspaceId ?? ''}
               disabled={!session}
               onChange={(event) => {
-                setSelectedWorkspaceId(event.target.value)
+                setSelectedWorkspaceId(event.target.value, session?.actorUserId)
               }}
             >
               {session ? (
@@ -355,7 +355,7 @@ export function Sidebar() {
                 <select
                   value={session.workspaceId}
                   onChange={(event) => {
-                    setSelectedWorkspaceId(event.target.value)
+                    setSelectedWorkspaceId(event.target.value, session.actorUserId)
                   }}
                 >
                   {session.workspaces.map((workspace) => (

@@ -638,7 +638,7 @@ void describe('buildApiApp', () => {
     assert.equal(deleteResponse.statusCode, 204)
   })
 
-  void it('creates and lists icon sets via the HTTP API', async () => {
+  void it('creates, lists and manages global icon sets via the HTTP API', async () => {
     const iconAssetDirectory = await mkdtemp(
       path.join(tmpdir(), 'planner-icon-assets-'),
     )
@@ -739,10 +739,27 @@ void describe('buildApiApp', () => {
     assert.equal(emojiSets.length, 1)
     assert.equal(emojiSets[0]?.id, createdEmojiSet.id)
 
+    const crossWorkspaceListResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-2',
+      },
+      method: 'GET',
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(crossWorkspaceListResponse.statusCode, 200)
+
+    const emojiSetsFromOtherWorkspace = emojiSetListResponseSchema.parse(
+      crossWorkspaceListResponse.json(),
+    )
+
+    assert.equal(emojiSetsFromOtherWorkspace.length, 1)
+    assert.equal(emojiSetsFromOtherWorkspace[0]?.id, createdEmojiSet.id)
+
     const addItemsResponse = await app.inject({
       headers: {
         'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-1',
+        'x-workspace-id': 'workspace-2',
       },
       method: 'POST',
       payload: {
@@ -762,6 +779,7 @@ void describe('buildApiApp', () => {
 
     assert.equal(updatedEmojiSet.items.length, 3)
     assert.equal(updatedEmojiSet.items[2]?.shortcode, 'icon-3')
+    assert.equal(updatedEmojiSet.items[2]?.workspaceId, createdEmojiSet.workspaceId)
 
     const addedIconAsset = updatedEmojiSet.items[2]
 
@@ -770,7 +788,7 @@ void describe('buildApiApp', () => {
     const deleteItemResponse = await app.inject({
       headers: {
         'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-1',
+        'x-workspace-id': 'workspace-2',
       },
       method: 'DELETE',
       url: `/api/v1/emoji-sets/${createdEmojiSet.id}/items/${addedIconAsset.id}`,
@@ -805,7 +823,7 @@ void describe('buildApiApp', () => {
     const deleteSetResponse = await app.inject({
       headers: {
         'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-1',
+        'x-workspace-id': 'workspace-2',
       },
       method: 'DELETE',
       url: `/api/v1/emoji-sets/${createdEmojiSet.id}`,
@@ -942,6 +960,144 @@ void describe('buildApiApp', () => {
     const body = apiErrorSchema.parse(response.json())
 
     assert.equal(body.error.code, 'app_admin_required')
+  })
+
+  void it('allows non-admin application roles to read global icon sets', async () => {
+    const repository = new MemoryEmojiSetRepository()
+
+    await repository.create({
+      context: {
+        actorUserId: 'user-1',
+        auth: null,
+        workspaceId: 'workspace-owner',
+      },
+      input: {
+        description: 'Uploaded icons for everyone',
+        items: [
+          {
+            label: 'Focus',
+            value: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        ],
+        title: 'Shared icons',
+      },
+    })
+
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      emojiSetService: new EmojiSetService(repository),
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(guestSessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-guest',
+      },
+      method: 'GET',
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = emojiSetListResponseSchema.parse(response.json())
+
+    assert.equal(body.length, 1)
+    assert.equal(body[0]?.title, 'Shared icons')
+    assert.equal(body[0]?.workspaceId, 'workspace-owner')
+  })
+
+  void it('reads global icon sets without resolving an authenticated session', async () => {
+    const repository = new MemoryEmojiSetRepository()
+
+    await repository.create({
+      context: {
+        actorUserId: 'user-1',
+        auth: null,
+        workspaceId: 'workspace-owner',
+      },
+      input: {
+        description: 'Uploaded icons for everyone',
+        items: [
+          {
+            label: 'Focus',
+            value: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        ],
+        title: 'Shared icons',
+      },
+    })
+
+    const failingSessionRepository: SessionRepository = {
+      resolve() {
+        return Promise.reject(
+          Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+        )
+      },
+      createSharedWorkspace() {
+        throw new Error('createSharedWorkspace should not be called.')
+      },
+      listWorkspaceUsers() {
+        throw new Error('listWorkspaceUsers should not be called.')
+      },
+      listWorkspaceInvitations() {
+        throw new Error('listWorkspaceInvitations should not be called.')
+      },
+      createWorkspaceInvitation() {
+        throw new Error('createWorkspaceInvitation should not be called.')
+      },
+      updateWorkspaceUserGroupRole() {
+        throw new Error('updateWorkspaceUserGroupRole should not be called.')
+      },
+      removeWorkspaceUser() {
+        throw new Error('removeWorkspaceUser should not be called.')
+      },
+      revokeWorkspaceInvitation() {
+        throw new Error('revokeWorkspaceInvitation should not be called.')
+      },
+      listAdminUsers() {
+        throw new Error('listAdminUsers should not be called.')
+      },
+      updateAdminUserRole() {
+        throw new Error('updateAdminUserRole should not be called.')
+      },
+    }
+
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      emojiSetService: new EmojiSetService(repository),
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(failingSessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-guest',
+      },
+      method: 'GET',
+      url: '/api/v1/emoji-sets',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = emojiSetListResponseSchema.parse(response.json())
+
+    assert.equal(body.length, 1)
+    assert.equal(body[0]?.title, 'Shared icons')
   })
 
   void it('returns a typed validation error for malformed requests', async () => {

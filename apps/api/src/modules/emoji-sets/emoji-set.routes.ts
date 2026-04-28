@@ -39,7 +39,7 @@ export function registerEmojiSetRoutes(
       request.headers,
       'invalid_headers',
     )
-    const context = await resolveReadContext(request, sessionService, headers)
+    const context = resolveReadContext(request, headers)
     const emojiSets = await service.listEmojiSets(context)
 
     return emojiSetListResponseSchema.parse(emojiSets)
@@ -56,7 +56,7 @@ export function registerEmojiSetRoutes(
       request.params,
       'invalid_params',
     )
-    const context = await resolveReadContext(request, sessionService, headers)
+    const context = resolveReadContext(request, headers)
     const emojiSet = await service.getEmojiSet(context, params.emojiSetId)
 
     return emojiSetRecordSchema.parse(emojiSet)
@@ -160,9 +160,8 @@ function parseHeadersForWrite(request: FastifyRequest) {
   )
 }
 
-async function resolveReadContext(
+function resolveReadContext(
   request: FastifyRequest,
-  sessionService: SessionService,
   headers: z.infer<typeof readHeadersSchema>,
 ) {
   const authContext = getRequestAuth(request)
@@ -176,17 +175,11 @@ async function resolveReadContext(
     }
   }
 
-  const session = await sessionService.resolveSession({
-    actorUserId: undefined,
+  return {
+    appRole: undefined,
+    actorUserId: authContext.claims.sub,
     auth: authContext,
     workspaceId: headers['x-workspace-id'],
-  })
-
-  return {
-    appRole: session.appRole,
-    actorUserId: session.actorUserId,
-    auth: authContext,
-    workspaceId: session.workspaceId,
   }
 }
 

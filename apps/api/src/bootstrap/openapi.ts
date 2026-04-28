@@ -93,7 +93,7 @@ function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'session',
       },
       {
-        description: 'Workspace icon sets and reusable uploaded icons.',
+        description: 'Global icon sets and reusable uploaded icons.',
         name: 'emojiSets',
       },
       {
@@ -333,7 +333,7 @@ function createPaths(): OpenAPIV3.PathsObject {
           503: errorResponse(),
         },
         security: [{ bearerAuth: [] }, {}],
-        summary: 'List icon sets in a workspace',
+        summary: 'List global icon sets',
         tags: ['emojiSets'],
       },
       post: {

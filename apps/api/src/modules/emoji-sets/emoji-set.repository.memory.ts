@@ -23,25 +23,21 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
   private readonly emojiSets = new Map<string, StoredEmojiSetRecord>()
 
   listByWorkspace(
-    context: EmojiSetReadContext,
+    _context: EmojiSetReadContext,
   ): Promise<StoredEmojiSetRecord[]> {
     const emojiSets = [...this.emojiSets.values()].filter(
       (emojiSet) =>
-        emojiSet.workspaceId === context.workspaceId &&
-        emojiSet.deletedAt === null &&
-        emojiSet.status === 'active',
+        emojiSet.deletedAt === null && emojiSet.status === 'active',
     )
 
     return Promise.resolve(sortStoredEmojiSets(emojiSets))
   }
 
   getById(
-    context: EmojiSetReadContext,
+    _context: EmojiSetReadContext,
     emojiSetId: string,
   ): Promise<StoredEmojiSetRecord> {
-    return Promise.resolve(
-      this.getEmojiSetOrThrow(emojiSetId, context.workspaceId),
-    )
+    return Promise.resolve(this.getEmojiSetOrThrow(emojiSetId))
   }
 
   create(command: CreateEmojiSetCommand): Promise<StoredEmojiSetRecord> {
@@ -49,11 +45,7 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
       ? this.emojiSets.get(command.input.id)
       : undefined
 
-    if (
-      existingEmojiSet &&
-      existingEmojiSet.workspaceId === command.context.workspaceId &&
-      existingEmojiSet.deletedAt === null
-    ) {
+    if (existingEmojiSet && existingEmojiSet.deletedAt === null) {
       return Promise.resolve(existingEmojiSet)
     }
 
@@ -67,10 +59,7 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
   }
 
   addItems(command: AddEmojiSetItemsCommand): Promise<StoredEmojiSetRecord> {
-    const emojiSet = this.getEmojiSetOrThrow(
-      command.emojiSetId,
-      command.context.workspaceId,
-    )
+    const emojiSet = this.getEmojiSetOrThrow(command.emojiSetId)
     const now = new Date().toISOString()
     const addedItems = command.input.items.map((item, index) =>
       createStoredEmojiAssetRecord(
@@ -79,7 +68,7 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
           emojiSetId: emojiSet.id,
           now,
           sortOrder: emojiSet.items.length + index,
-          workspaceId: command.context.workspaceId,
+          workspaceId: emojiSet.workspaceId,
         },
       ),
     )
@@ -96,10 +85,7 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
   }
 
   deleteSet(command: DeleteEmojiSetCommand): Promise<StoredEmojiSetRecord> {
-    const emojiSet = this.getEmojiSetOrThrow(
-      command.emojiSetId,
-      command.context.workspaceId,
-    )
+    const emojiSet = this.getEmojiSetOrThrow(command.emojiSetId)
     const now = new Date().toISOString()
     const deletedEmojiSet: StoredEmojiSetRecord = {
       ...emojiSet,
@@ -122,10 +108,7 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
   deleteItem(
     command: DeleteEmojiSetItemCommand,
   ): Promise<StoredEmojiAssetRecord> {
-    const emojiSet = this.getEmojiSetOrThrow(
-      command.emojiSetId,
-      command.context.workspaceId,
-    )
+    const emojiSet = this.getEmojiSetOrThrow(command.emojiSetId)
     const iconAsset = emojiSet.items.find(
       (item) => item.id === command.iconAssetId && item.deletedAt === null,
     )
@@ -153,15 +136,11 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
     return Promise.resolve(deletedIconAsset)
   }
 
-  private getEmojiSetOrThrow(
-    emojiSetId: string,
-    workspaceId: string,
-  ): StoredEmojiSetRecord {
+  private getEmojiSetOrThrow(emojiSetId: string): StoredEmojiSetRecord {
     const emojiSet = this.emojiSets.get(emojiSetId)
 
     if (
       !emojiSet ||
-      emojiSet.workspaceId !== workspaceId ||
       emojiSet.deletedAt !== null ||
       emojiSet.status !== 'active'
     ) {
