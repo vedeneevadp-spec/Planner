@@ -1,5 +1,9 @@
-import type { WorkspaceUserRecord } from '@planner/contracts'
-import { type FormEvent, useState } from 'react'
+import type {
+  WorkspaceGroupRole,
+  WorkspaceRole,
+  WorkspaceUserRecord,
+} from '@planner/contracts'
+import { type FormEvent, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { Project } from '@/entities/project'
@@ -38,7 +42,10 @@ import {
 } from './TaskMetaPickers'
 
 interface TaskCardProps {
+  currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
+  sharedWorkspaceGroupRole?: WorkspaceGroupRole | null | undefined
+  sharedWorkspaceRole?: WorkspaceRole | undefined
   workspaceUsers?: WorkspaceUserRecord[] | undefined
   task: Task
   project?: Project | undefined
@@ -53,7 +60,10 @@ interface TaskCardProps {
 }
 
 export function TaskCard({
+  currentActorUserId,
   isSharedWorkspace = false,
+  sharedWorkspaceGroupRole,
+  sharedWorkspaceRole,
   workspaceUsers = [],
   task,
   project,
@@ -74,8 +84,39 @@ export function TaskCard({
   const taskResource = getTaskResource(task)
   const isActiveTask = task.status !== 'done'
   const isInProgress = task.status === 'in_progress'
+  const isReadyForReview = task.status === 'ready_for_review'
   const canPostponeTask =
     task.plannedDate === todayKey || task.plannedDate === tomorrowKey
+  const isTaskAuthor =
+    task.authorUserId !== null && task.authorUserId === currentActorUserId
+  const isTaskAssignee =
+    task.assigneeUserId !== null && task.assigneeUserId === currentActorUserId
+  const isSharedWorkspaceManager =
+    sharedWorkspaceRole === 'owner' ||
+    sharedWorkspaceGroupRole === 'group_admin'
+  const isAuthorManagedTask = !isSharedWorkspace || isTaskAuthor
+  const canManageSharedTask =
+    isAuthorManagedTask || (!isTaskAssignee && isSharedWorkspaceManager)
+  const isLimitedSharedAssignee =
+    isSharedWorkspace && isTaskAssignee && !isTaskAuthor
+  const canToggleReview =
+    isSharedWorkspace &&
+    isActiveTask &&
+    (canManageSharedTask || isTaskAssignee)
+  const canManageSchedule = !isSharedWorkspace || canManageSharedTask
+  const canManageWorkStatus =
+    !isSharedWorkspace || canManageSharedTask || isTaskAssignee
+  const canCompleteTask =
+    !isSharedWorkspace ||
+    (canManageSharedTask && (!task.requiresConfirmation || isTaskAuthor))
+  const canReopenTask = !isSharedWorkspace || canManageSharedTask
+  const canEditTask = !isSharedWorkspace || canManageSharedTask
+  const canDeleteTask =
+    !isSharedWorkspace ||
+    isTaskAuthor ||
+    (!isTaskAssignee &&
+      (sharedWorkspaceRole === 'owner' ||
+        sharedWorkspaceGroupRole === 'group_admin'))
   const toneClass =
     tone === 'warning'
       ? styles.warning
@@ -159,16 +200,29 @@ export function TaskCard({
               />
             </span>
           ) : null}
+          {isSharedWorkspace && task.authorDisplayName ? (
+            <span className={styles.metaChip}>Автор: {task.authorDisplayName}</span>
+          ) : null}
           {task.assigneeDisplayName ? (
             <span className={styles.metaChip}>
               Исполнитель: {task.assigneeDisplayName}
+            </span>
+          ) : null}
+          {isSharedWorkspace && task.requiresConfirmation ? (
+            <span className={cx(styles.metaChip, styles.confirmationChip)}>
+              Требуется подтверждение
+            </span>
+          ) : null}
+          {isReadyForReview ? (
+            <span className={cx(styles.metaChip, styles.reviewChip)}>
+              Готово к проверке
             </span>
           ) : null}
         </div>
       </div>
 
       <div className={styles.actions}>
-        {isActiveTask ? (
+        {isActiveTask && canManageSchedule ? (
           <div className={styles.scheduleActions}>
             {task.plannedDate !== todayKey ? (
               <button
@@ -204,7 +258,7 @@ export function TaskCard({
         ) : null}
 
         <div className={styles.cardMainActions}>
-          {isActiveTask ? (
+          {isActiveTask && canManageWorkStatus ? (
             <button
               className={cx(
                 styles.button,
@@ -212,28 +266,64 @@ export function TaskCard({
                 isInProgress && styles.workButtonActive,
               )}
               type="button"
-              disabled={isPending}
+              disabled={isPending || (isLimitedSharedAssignee && isInProgress)}
               aria-pressed={isInProgress}
               onClick={() =>
-                onSetStatus(task.id, isInProgress ? 'todo' : 'in_progress')
+                onSetStatus(
+                  task.id,
+                  isLimitedSharedAssignee
+                    ? 'in_progress'
+                    : isInProgress
+                      ? 'todo'
+                      : 'in_progress',
+                )
               }
             >
               В работе
             </button>
           ) : null}
 
-          {isActiveTask ? (
+          {canToggleReview ? (
             <button
-              className={cx(styles.button, styles.iconButton)}
+              className={cx(
+                styles.button,
+                styles.reviewButton,
+                isReadyForReview && styles.reviewButtonActive,
+              )}
               type="button"
               disabled={isPending}
-              aria-label="Завершить задачу"
-              title="Завершить"
-              onClick={() => onSetStatus(task.id, 'done')}
+              aria-pressed={isReadyForReview}
+              onClick={() =>
+                onSetStatus(
+                  task.id,
+                  isReadyForReview ? 'in_progress' : 'ready_for_review',
+                )
+              }
             >
-              <CheckIcon size={18} />
+              На проверку
             </button>
-          ) : (
+          ) : null}
+
+          {isActiveTask ? (
+            canCompleteTask ? (
+              <button
+                className={cx(styles.button, styles.iconButton)}
+                type="button"
+                disabled={isPending}
+                aria-label={
+                  task.requiresConfirmation
+                    ? 'Подтвердить выполнение задачи'
+                    : 'Завершить задачу'
+                }
+                title={
+                  task.requiresConfirmation ? 'Подтвердить выполнение' : 'Завершить'
+                }
+                onClick={() => onSetStatus(task.id, 'done')}
+              >
+                <CheckIcon size={18} />
+              </button>
+            ) : null
+          ) : canReopenTask ? (
             <button
               className={styles.button}
               type="button"
@@ -242,38 +332,43 @@ export function TaskCard({
             >
               Вернуть
             </button>
-          )}
+          ) : null}
 
-          <button
-            className={cx(styles.button, styles.iconButton)}
-            type="button"
-            disabled={isPending}
-            aria-label="Редактировать задачу"
-            title="Редактировать"
-            onClick={() => setIsEditing(true)}
-          >
-            <EditIcon size={18} />
-          </button>
+          {canEditTask ? (
+            <button
+              className={cx(styles.button, styles.iconButton)}
+              type="button"
+              disabled={isPending}
+              aria-label="Редактировать задачу"
+              title="Редактировать"
+              onClick={() => setIsEditing(true)}
+            >
+              <EditIcon size={18} />
+            </button>
+          ) : null}
 
-          <button
-            className={cx(
-              styles.button,
-              styles.iconButton,
-              styles.dangerButton,
-            )}
-            type="button"
-            disabled={isPending}
-            aria-label="Удалить задачу"
-            title="Удалить"
-            onClick={() => onRemove(task.id)}
-          >
-            <TrashIcon size={18} />
-          </button>
+          {canDeleteTask ? (
+            <button
+              className={cx(
+                styles.button,
+                styles.iconButton,
+                styles.dangerButton,
+              )}
+              type="button"
+              disabled={isPending}
+              aria-label="Удалить задачу"
+              title="Удалить"
+              onClick={() => onRemove(task.id)}
+            >
+              <TrashIcon size={18} />
+            </button>
+          ) : null}
         </div>
       </div>
 
       {isEditing ? (
         <TaskEditDialog
+          currentActorUserId={currentActorUserId}
           isSharedWorkspace={isSharedWorkspace}
           task={task}
           projects={projects}
@@ -289,6 +384,7 @@ export function TaskCard({
 }
 
 interface TaskEditDialogProps {
+  currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
   task: Task
   projects: Project[]
@@ -300,6 +396,7 @@ interface TaskEditDialogProps {
 }
 
 export function TaskEditDialog({
+  currentActorUserId,
   isSharedWorkspace = false,
   task,
   projects,
@@ -309,7 +406,11 @@ export function TaskEditDialog({
   onClose,
   onUpdate,
 }: TaskEditDialogProps) {
+  const confirmationFieldId = useId()
   const [assigneeUserId, setAssigneeUserId] = useState(task.assigneeUserId ?? '')
+  const [requiresConfirmation, setRequiresConfirmation] = useState(
+    task.requiresConfirmation,
+  )
   const [title, setTitle] = useState(task.title)
   const [projectId, setProjectId] = useState(task.projectId ?? '')
   const [plannedDate, setPlannedDate] = useState(task.plannedDate ?? '')
@@ -329,6 +430,8 @@ export function TaskEditDialog({
     getTaskTypeValue(task),
   )
   const [note, setNote] = useState(task.note)
+  const canManageConfirmation =
+    task.authorUserId !== null && task.authorUserId === currentActorUserId
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -364,6 +467,7 @@ export function TaskEditDialog({
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
       resource: getResourceFromValue(resource),
+      requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
       sphereId: task.sphereId,
       title: normalizedTitle,
       urgency: getTaskUrgencyFromType(taskType),
@@ -505,6 +609,33 @@ export function TaskEditDialog({
                     ))}
                   </select>
                 </label>
+              </section>
+            ) : null}
+
+            {isSharedWorkspace ? (
+              <section className={styles.editorSection}>
+                <div className={styles.checkboxField}>
+                  <input
+                    id={confirmationFieldId}
+                    type="checkbox"
+                    checked={requiresConfirmation}
+                    disabled={!canManageConfirmation}
+                    onChange={(event) =>
+                      setRequiresConfirmation(event.target.checked)
+                    }
+                  />
+                  <span className={styles.checkboxCopy}>
+                    <label
+                      className={styles.checkboxLabel}
+                      htmlFor={confirmationFieldId}
+                    >
+                      Требуется подтверждение
+                    </label>
+                    <small id={`${confirmationFieldId}-hint`}>
+                      Завершить такую задачу сможет только её автор.
+                    </small>
+                  </span>
+                </div>
               </section>
             ) : null}
 

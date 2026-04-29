@@ -44,6 +44,7 @@ type TaskTimeBlockRow = Selectable<DatabaseSchema['app.task_time_blocks']>
 type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
 type TaskListRow = TaskRow & {
   assignee_display_name?: string | null
+  author_display_name?: string | null
   project_title?: ProjectRow['title'] | null
   time_block_ends_at: TaskTimeBlockRow['ends_at'] | null
   time_block_starts_at: TaskTimeBlockRow['starts_at'] | null
@@ -63,6 +64,7 @@ const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
 const MANUAL_TIME_BLOCK_SOURCE = 'manual'
 const TASK_ICON_KEY = 'taskIcon'
 const TASK_IMPORTANCE_KEY = 'taskImportance'
+const TASK_REQUIRES_CONFIRMATION_KEY = 'taskRequiresConfirmation'
 const TASK_URGENCY_KEY = 'taskUrgency'
 const DEFAULT_TASK_IMPORTANCE = 'not_important'
 const DEFAULT_TASK_URGENCY = 'not_urgent'
@@ -95,6 +97,48 @@ export class PostgresTaskRepository implements TaskRepository {
         ? taskRecords.filter((task) => task.project === filters.project)
         : taskRecords,
     )
+  }
+
+  async findById(
+    context: TaskReadContext,
+    taskId: string,
+  ): Promise<StoredTaskRecord | null> {
+    const taskRows = await withOptionalRls(
+      this.db,
+      context.auth,
+      async (executor) => {
+        const taskRow = await executor
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('id', '=', taskId)
+          .where('workspace_id', '=', context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        if (!taskRow) {
+          return null
+        }
+
+        const [timeBlock, projectTitle, assigneeDisplayName, authorDisplayName] =
+          await Promise.all([
+            this.loadPrimaryTimeBlock(executor, context.workspaceId, taskId),
+            this.loadProjectTitle(executor, context.workspaceId, taskRow.project_id),
+            this.loadAssigneeDisplayName(executor, taskRow.assignee_user_id),
+            this.loadUserDisplayName(executor, taskRow.created_by),
+          ])
+
+        return this.mapTaskRecord(
+          taskRow,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+          authorDisplayName,
+        )
+      },
+      context.actorUserId,
+    )
+
+    return taskRows
   }
 
   async listEventsByWorkspace(
@@ -240,11 +284,16 @@ export class PostgresTaskRepository implements TaskRepository {
           trx,
           task.assignee_user_id,
         )
+        const authorDisplayName =
+          task.created_by === command.context.actorUserId
+            ? command.context.actorDisplayName
+            : await this.loadUserDisplayName(trx, task.created_by)
         const record = this.mapTaskRecord(
           task,
           timeBlock,
           projectTitle,
           assigneeDisplayName,
+          authorDisplayName,
         )
 
         if (insertedTask) {
@@ -394,11 +443,16 @@ export class PostgresTaskRepository implements TaskRepository {
           trx,
           updatedTask.assignee_user_id,
         )
+        const authorDisplayName = await this.loadUserDisplayName(
+          trx,
+          updatedTask.created_by,
+        )
         const record = this.mapTaskRecord(
           updatedTask,
           timeBlock,
           projectTitle,
           assigneeDisplayName,
+          authorDisplayName,
         )
 
         await this.writeTaskMutationArtifacts(trx, {
@@ -488,11 +542,16 @@ export class PostgresTaskRepository implements TaskRepository {
           trx,
           updatedTask.assignee_user_id,
         )
+        const authorDisplayName = await this.loadUserDisplayName(
+          trx,
+          updatedTask.created_by,
+        )
         const record = this.mapTaskRecord(
           updatedTask,
           timeBlock,
           projectTitle,
           assigneeDisplayName,
+          authorDisplayName,
         )
 
         await this.writeTaskMutationArtifacts(trx, {
@@ -613,11 +672,16 @@ export class PostgresTaskRepository implements TaskRepository {
           trx,
           updatedTask.assignee_user_id,
         )
+        const authorDisplayName = await this.loadUserDisplayName(
+          trx,
+          updatedTask.created_by,
+        )
         const record = this.mapTaskRecord(
           updatedTask,
           timeBlock,
           projectTitle,
           assigneeDisplayName,
+          authorDisplayName,
         )
 
         await this.writeTaskMutationArtifacts(trx, {
@@ -863,6 +927,7 @@ export class PostgresTaskRepository implements TaskRepository {
             select
               selected_task.*,
               assignee_user.display_name as assignee_display_name,
+              author_user.display_name as author_display_name,
               project.title as project_title,
               time_block.starts_at as time_block_starts_at,
               time_block.ends_at as time_block_ends_at
@@ -870,6 +935,9 @@ export class PostgresTaskRepository implements TaskRepository {
             left join app.users as assignee_user
               on assignee_user.id = selected_task.assignee_user_id
               and assignee_user.deleted_at is null
+            left join app.users as author_user
+              on author_user.id = selected_task.created_by
+              and author_user.deleted_at is null
             left join app.projects as project
               on project.id = selected_task.project_id
               and project.workspace_id = selected_task.workspace_id
@@ -925,6 +993,10 @@ export class PostgresTaskRepository implements TaskRepository {
                   task_with_time_block.assignee_display_name,
                   'assigneeUserId',
                   task_with_time_block.assignee_user_id,
+                  'authorDisplayName',
+                  task_with_time_block.author_display_name,
+                  'authorUserId',
+                  task_with_time_block.created_by,
                   'id',
                   task_with_time_block.id,
                   'icon',
@@ -961,6 +1033,11 @@ export class PostgresTaskRepository implements TaskRepository {
                     task_with_time_block.project_title,
                     task_with_time_block.metadata ->> 'legacyProjectName',
                     ''
+                  ),
+                  'requiresConfirmation',
+                  coalesce(
+                    (task_with_time_block.metadata ->> 'taskRequiresConfirmation')::boolean,
+                    false
                   ),
                   'status',
                   cast(task_with_time_block.status as text),
@@ -1121,6 +1198,7 @@ export class PostgresTaskRepository implements TaskRepository {
           select
             updated_task.*,
             assignee_user.display_name as assignee_display_name,
+            author_user.display_name as author_display_name,
             project.title as project_title,
             inserted_time_block.starts_at as time_block_starts_at,
             inserted_time_block.ends_at as time_block_ends_at
@@ -1128,6 +1206,9 @@ export class PostgresTaskRepository implements TaskRepository {
           left join app.users as assignee_user
             on assignee_user.id = updated_task.assignee_user_id
             and assignee_user.deleted_at is null
+          left join app.users as author_user
+            on author_user.id = updated_task.created_by
+            and author_user.deleted_at is null
           left join app.projects as project
             on project.id = updated_task.project_id
             and project.workspace_id = updated_task.workspace_id
@@ -1208,12 +1289,21 @@ export class PostgresTaskRepository implements TaskRepository {
           select
             updated_task.*,
             assignee_user.display_name as assignee_display_name,
+            author_user.display_name as author_display_name,
+            project.title as project_title,
             time_block.starts_at as time_block_starts_at,
             time_block.ends_at as time_block_ends_at
           from updated_task
           left join app.users as assignee_user
             on assignee_user.id = updated_task.assignee_user_id
             and assignee_user.deleted_at is null
+          left join app.users as author_user
+            on author_user.id = updated_task.created_by
+            and author_user.deleted_at is null
+          left join app.projects as project
+            on project.id = updated_task.project_id
+            and project.workspace_id = updated_task.workspace_id
+            and project.deleted_at is null
           left join lateral (
             select starts_at, ends_at
             from app.task_time_blocks
@@ -1357,12 +1447,21 @@ export class PostgresTaskRepository implements TaskRepository {
           select
             updated_task.*,
             assignee_user.display_name as assignee_display_name,
+            author_user.display_name as author_display_name,
+            project.title as project_title,
             inserted_time_block.starts_at as time_block_starts_at,
             inserted_time_block.ends_at as time_block_ends_at
           from updated_task
           left join app.users as assignee_user
             on assignee_user.id = updated_task.assignee_user_id
             and assignee_user.deleted_at is null
+          left join app.users as author_user
+            on author_user.id = updated_task.created_by
+            and author_user.deleted_at is null
+          left join app.projects as project
+            on project.id = updated_task.project_id
+            and project.workspace_id = updated_task.workspace_id
+            and project.deleted_at is null
           left join inserted_time_block on true
         `.execute(executor)
 
@@ -1515,10 +1614,16 @@ export class PostgresTaskRepository implements TaskRepository {
       return []
     }
 
-    const [primaryTimeBlocks, projectTitles, assigneeDisplayNames] = await Promise.all([
+    const [
+      primaryTimeBlocks,
+      projectTitles,
+      assigneeDisplayNames,
+      authorDisplayNames,
+    ] = await Promise.all([
       this.loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
       this.loadProjectTitlesForTasks(executor, workspaceId, taskRows),
       this.loadAssigneeDisplayNamesForTasks(executor, taskRows),
+      this.loadAuthorDisplayNamesForTasks(executor, taskRows),
     ])
 
     return taskRows.map((taskRow) => {
@@ -1528,6 +1633,9 @@ export class PostgresTaskRepository implements TaskRepository {
         ...taskRow,
         assignee_display_name: taskRow.assignee_user_id
           ? (assigneeDisplayNames.get(taskRow.assignee_user_id) ?? null)
+          : null,
+        author_display_name: taskRow.created_by
+          ? (authorDisplayNames.get(taskRow.created_by) ?? null)
           : null,
         project_title: taskRow.project_id
           ? (projectTitles.get(taskRow.project_id) ?? null)
@@ -1666,31 +1774,26 @@ export class PostgresTaskRepository implements TaskRepository {
     executor: DatabaseExecutor,
     taskRows: TaskRow[],
   ): Promise<Map<string, string>> {
-    const assigneeUserIds = [
-      ...new Set(
-        taskRows
-          .map((taskRow) => taskRow.assignee_user_id)
-          .filter((userId): userId is string => userId !== null),
-      ),
-    ]
+    const assigneeUserIds = getDistinctTaskUserIds(taskRows, (taskRow) => taskRow.assignee_user_id)
 
     if (assigneeUserIds.length === 0) {
       return new Map()
     }
 
-    const assigneeRows = await executor
-      .selectFrom('app.users')
-      .select(['id', 'display_name'])
-      .where('id', 'in', assigneeUserIds)
-      .where('deleted_at', 'is', null)
-      .execute()
+    return this.loadUserDisplayNames(executor, assigneeUserIds)
+  }
 
-    return new Map(
-      assigneeRows.map((assigneeRow) => [
-        assigneeRow.id,
-        assigneeRow.display_name,
-      ]),
-    )
+  private async loadAuthorDisplayNamesForTasks(
+    executor: DatabaseExecutor,
+    taskRows: TaskRow[],
+  ): Promise<Map<string, string>> {
+    const authorUserIds = getDistinctTaskUserIds(taskRows, (taskRow) => taskRow.created_by)
+
+    if (authorUserIds.length === 0) {
+      return new Map()
+    }
+
+    return this.loadUserDisplayNames(executor, authorUserIds)
   }
 
   private loadPrimaryTimeBlock(
@@ -1830,18 +1933,39 @@ export class PostgresTaskRepository implements TaskRepository {
     executor: DatabaseExecutor,
     assigneeUserId: string | null,
   ): Promise<string | null> {
-    if (!assigneeUserId) {
+    return this.loadUserDisplayName(executor, assigneeUserId)
+  }
+
+  private async loadUserDisplayName(
+    executor: DatabaseExecutor,
+    userId: string | null,
+  ): Promise<string | null> {
+    if (!userId) {
       return null
     }
 
-    const assignee = await executor
+    const user = await executor
       .selectFrom('app.users')
       .select('display_name')
-      .where('id', '=', assigneeUserId)
+      .where('id', '=', userId)
       .where('deleted_at', 'is', null)
       .executeTakeFirst()
 
-    return assignee?.display_name ?? null
+    return user?.display_name ?? null
+  }
+
+  private async loadUserDisplayNames(
+    executor: DatabaseExecutor,
+    userIds: string[],
+  ): Promise<Map<string, string>> {
+    const rows = await executor
+      .selectFrom('app.users')
+      .select(['id', 'display_name'])
+      .where('id', 'in', userIds)
+      .where('deleted_at', 'is', null)
+      .execute()
+
+    return new Map(rows.map((row) => [row.id, row.display_name]))
   }
 
   private mapTaskRecord(
@@ -1849,10 +1973,13 @@ export class PostgresTaskRepository implements TaskRepository {
     timeBlock: TaskTimeBlockRow | undefined,
     projectTitle: string | null,
     assigneeDisplayName: string | null,
+    authorDisplayName: string | null,
   ): StoredTaskRecord {
     return {
       assigneeDisplayName,
       assigneeUserId: task.assignee_user_id,
+      authorDisplayName,
+      authorUserId: task.created_by,
       completedAt: serializeNullableTimestamp(task.completed_at),
       createdAt: serializeTimestamp(task.created_at),
       deletedAt: serializeNullableTimestamp(task.deleted_at),
@@ -1871,6 +1998,7 @@ export class PostgresTaskRepository implements TaskRepository {
       project: projectTitle ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
       resource: task.resource,
+      requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
       sphereId: task.project_id ?? task.sphere_id,
       status: task.status,
       title: task.title,
@@ -1885,6 +2013,8 @@ export class PostgresTaskRepository implements TaskRepository {
     return {
       assigneeDisplayName: task.assignee_display_name ?? null,
       assigneeUserId: task.assignee_user_id,
+      authorDisplayName: task.author_display_name ?? null,
+      authorUserId: task.created_by,
       completedAt: serializeNullableTimestamp(task.completed_at),
       createdAt: serializeTimestamp(task.created_at),
       deletedAt: serializeNullableTimestamp(task.deleted_at),
@@ -1905,6 +2035,7 @@ export class PostgresTaskRepository implements TaskRepository {
       project: task.project_title ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
       resource: task.resource,
+      requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
       sphereId: task.project_id ?? task.sphere_id,
       status: task.status,
       title: task.title,
@@ -1917,7 +2048,10 @@ export class PostgresTaskRepository implements TaskRepository {
 
   private buildTaskMetadata(
     projectName: string,
-    input: Pick<StoredTaskRecord, 'icon' | 'importance' | 'urgency'>,
+    input: Pick<
+      StoredTaskRecord,
+      'icon' | 'importance' | 'requiresConfirmation' | 'urgency'
+    >,
   ): JsonObject {
     const metadata: JsonObject = {}
 
@@ -1931,6 +2065,10 @@ export class PostgresTaskRepository implements TaskRepository {
 
     if (input.importance !== DEFAULT_TASK_IMPORTANCE) {
       metadata[TASK_IMPORTANCE_KEY] = input.importance
+    }
+
+    if (input.requiresConfirmation) {
+      metadata[TASK_REQUIRES_CONFIRMATION_KEY] = true
     }
 
     if (input.urgency !== DEFAULT_TASK_URGENCY) {
@@ -1960,6 +2098,10 @@ export class PostgresTaskRepository implements TaskRepository {
     return value === 'important' || value === 'not_important'
       ? value
       : DEFAULT_TASK_IMPORTANCE
+  }
+
+  private readTaskRequiresConfirmation(metadata: JsonObject): boolean {
+    return metadata[TASK_REQUIRES_CONFIRMATION_KEY] === true
   }
 
   private readTaskUrgency(metadata: JsonObject): StoredTaskRecord['urgency'] {
@@ -2054,6 +2196,19 @@ export class PostgresTaskRepository implements TaskRepository {
       .where('deleted_at', 'is', null)
       .executeTakeFirst()
   }
+}
+
+function getDistinctTaskUserIds(
+  taskRows: TaskRow[],
+  selector: (taskRow: TaskRow) => string | null,
+): string[] {
+  return [
+    ...new Set(
+      taskRows
+        .map(selector)
+        .filter((userId): userId is string => userId !== null),
+    ),
+  ]
 }
 
 function serializeNullableTimestamp(value: unknown): string | null {

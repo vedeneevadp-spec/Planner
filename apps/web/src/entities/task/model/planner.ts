@@ -114,11 +114,15 @@ function getTaskStatusWeight(status: TaskStatus): number {
     return 0
   }
 
-  if (status === 'todo') {
+  if (status === 'ready_for_review') {
     return 1
   }
 
-  return 2
+  if (status === 'todo') {
+    return 2
+  }
+
+  return 3
 }
 
 function parseTimeKey(value: string): number {
@@ -238,6 +242,8 @@ export function addTask(
   const task: Task = {
     assigneeDisplayName: null,
     assigneeUserId: input.assigneeUserId ?? null,
+    authorDisplayName: null,
+    authorUserId: null,
     id: createId(),
     icon: (input.icon ?? '').trim(),
     importance: input.importance ?? 'not_important',
@@ -246,6 +252,7 @@ export function addTask(
     project: input.project.trim(),
     projectId: input.projectId,
     resource: input.resource,
+    requiresConfirmation: input.requiresConfirmation ?? false,
     sphereId: input.sphereId,
     status: 'todo',
     plannedDate: schedule.plannedDate,

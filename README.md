@@ -233,6 +233,8 @@ npm run deploy:prod
 
 ## Документация
 
+- [docs/shared-workspace.md](docs/shared-workspace.md) - модель `Shared
+Workspace`: роли, права, жизненный цикл и правила обновления документации
 - [docs/architecture.md](docs/architecture.md) - слои web-клиента и стратегия
   состояния
 - [docs/release-workflow.md](docs/release-workflow.md) - пошаговый workflow от

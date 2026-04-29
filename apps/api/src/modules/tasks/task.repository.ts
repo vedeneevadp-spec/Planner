@@ -16,6 +16,10 @@ export interface TaskRepository {
     context: TaskReadContext,
     filters?: TaskListFilters,
   ): Promise<StoredTaskRecord[]>
+  findById(
+    context: TaskReadContext,
+    taskId: string,
+  ): Promise<StoredTaskRecord | null>
   listEventsByWorkspace(
     context: TaskReadContext,
     filters?: TaskEventFilters,

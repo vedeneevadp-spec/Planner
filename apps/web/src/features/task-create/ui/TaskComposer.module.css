@@ -483,6 +483,35 @@
   min-width: 0;
 }
 
+.checkboxField {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.checkboxField input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0.15rem 0 0;
+  accent-color: var(--accent);
+}
+
+.checkboxCopy {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.checkboxLabel {
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.checkboxField small {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
 .fieldType {
   --control-height: var(--hero-control-height);
   align-items: stretch;

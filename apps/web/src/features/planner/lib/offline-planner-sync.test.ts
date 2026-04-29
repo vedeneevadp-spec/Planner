@@ -33,6 +33,7 @@ const createInput: NewTaskInput = {
   project: '',
   projectId: null,
   resource: null,
+  requiresConfirmation: false,
   sphereId: null,
   title: 'Offline task',
 }
@@ -176,6 +177,8 @@ function createTaskRecord(taskId: string): TaskRecord {
   return {
     assigneeDisplayName: null,
     assigneeUserId: null,
+    authorDisplayName: null,
+    authorUserId: null,
     completedAt: null,
     createdAt: '2026-04-20T00:00:00.000Z',
     deletedAt: null,
@@ -190,6 +193,7 @@ function createTaskRecord(taskId: string): TaskRecord {
     project: '',
     projectId: null,
     resource: null,
+    requiresConfirmation: false,
     sphereId: null,
     status: 'todo',
     title: 'Offline task',

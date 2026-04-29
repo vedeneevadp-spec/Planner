@@ -23,7 +23,7 @@ export interface AppTasksTable {
   resource: number | null
   sphere_id: string | null
   sort_key: string
-  status: 'todo' | 'in_progress' | 'done'
+  status: 'todo' | 'in_progress' | 'ready_for_review' | 'done'
   title: string
   updated_at: Generated<TimestampColumn>
   updated_by: string | null

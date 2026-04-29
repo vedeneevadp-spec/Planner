@@ -589,6 +589,774 @@ void describe('buildApiApp', () => {
     assert.equal(body.error.code, 'task_assignee_shared_workspace_required')
   })
 
+  void it('enforces shared task confirmation workflow and delete permissions', async () => {
+    const sessionRepository = new MemorySessionRepository()
+    const groupAdminAuthContext = {
+      accessToken: 'planner-group-admin-token',
+      claims: {
+        email: 'group-admin@planner.local',
+        payload: {
+          email: 'group-admin@planner.local',
+          role: 'authenticated',
+          sub: '55555555-5555-4555-8555-555555555555',
+        },
+        role: 'authenticated' as const,
+        sub: '55555555-5555-4555-8555-555555555555',
+      },
+    }
+    const observerAuthContext = {
+      accessToken: 'planner-observer-token',
+      claims: {
+        email: 'observer@planner.local',
+        payload: {
+          email: 'observer@planner.local',
+          role: 'authenticated',
+          sub: '66666666-6666-4666-8666-666666666666',
+        },
+        role: 'authenticated' as const,
+        sub: '66666666-6666-4666-8666-666666666666',
+      },
+    }
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const ownerId = '11111111-1111-4111-8111-111111111111'
+    const readerId = '44444444-4444-4444-8444-444444444444'
+    const groupAdminId = groupAdminAuthContext.claims.sub
+    const observerId = observerAuthContext.claims.sub
+    const ownerSession = await sessionRepository.resolve({
+      actorUserId: ownerId,
+      auth: null,
+      workspaceId: undefined,
+    })
+    const sharedWorkspace = await sessionRepository.createSharedWorkspace(
+      ownerSession,
+      {
+        name: 'Team Workspace',
+      },
+    )
+    const sharedSession = await sessionRepository.resolve({
+      actorUserId: ownerId,
+      auth: null,
+      workspaceId: sharedWorkspace.id,
+    })
+
+    await sessionRepository.createWorkspaceInvitation(sharedSession, {
+      email: 'reader@planner.local',
+      groupRole: 'member',
+    })
+    await sessionRepository.resolve({
+      actorUserId: undefined,
+      auth: READER_AUTH_CONTEXT,
+      workspaceId: sharedWorkspace.id,
+    })
+    await sessionRepository.createWorkspaceInvitation(sharedSession, {
+      email: groupAdminAuthContext.claims.email,
+      groupRole: 'group_admin',
+    })
+    await sessionRepository.resolve({
+      actorUserId: undefined,
+      auth: groupAdminAuthContext,
+      workspaceId: sharedWorkspace.id,
+    })
+    await sessionRepository.createWorkspaceInvitation(sharedSession, {
+      email: observerAuthContext.claims.email,
+      groupRole: 'member',
+    })
+    await sessionRepository.resolve({
+      actorUserId: undefined,
+      auth: observerAuthContext,
+      workspaceId: sharedWorkspace.id,
+    })
+    const sessionRepositoryInternals = sessionRepository as unknown as {
+      memberships: Array<{
+        groupRole: string | null
+        role: string
+        userId: string
+        workspaceId: string
+      }>
+    }
+    const observerMembership = sessionRepositoryInternals.memberships.find(
+      (membership) =>
+        membership.userId === observerId &&
+        membership.workspaceId === sharedWorkspace.id,
+    )
+
+    assert.ok(observerMembership)
+
+    observerMembership.role = 'admin'
+    observerMembership.groupRole = 'member'
+
+    const createResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': ownerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'POST',
+      payload: {
+        assigneeUserId: readerId,
+        dueDate: null,
+        note: 'Awaiting implementation',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: true,
+        resource: null,
+        sphereId: null,
+        title: 'Prepare review',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(createResponse.statusCode, 201)
+
+    const createdTask = taskRecordSchema.parse(createResponse.json())
+
+    assert.equal(createdTask.authorDisplayName, 'Tikondra')
+    assert.equal(createdTask.authorUserId, ownerId)
+    assert.equal(createdTask.requiresConfirmation, true)
+
+    const forbiddenTaskUpdateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        assigneeUserId: readerId,
+        dueDate: null,
+        expectedVersion: createdTask.version,
+        icon: '',
+        importance: 'not_important',
+        note: 'Attempt to edit confirmed task',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: true,
+        resource: null,
+        sphereId: null,
+        title: 'Prepare review',
+        urgency: 'not_urgent',
+      },
+      url: `/api/v1/tasks/${createdTask.id}`,
+    })
+
+    assert.equal(forbiddenTaskUpdateResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(forbiddenTaskUpdateResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const forbiddenScheduleResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: createdTask.version,
+        schedule: {
+          plannedDate: '2026-04-30',
+          plannedEndTime: null,
+          plannedStartTime: null,
+        },
+      },
+      url: `/api/v1/tasks/${createdTask.id}/schedule`,
+    })
+
+    assert.equal(forbiddenScheduleResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(forbiddenScheduleResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const forbiddenConfirmationUpdateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        assigneeUserId: readerId,
+        dueDate: null,
+        expectedVersion: createdTask.version,
+        icon: '',
+        importance: 'not_important',
+        note: 'Attempt to bypass review',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: false,
+        resource: null,
+        sphereId: null,
+        title: 'Prepare review',
+        urgency: 'not_urgent',
+      },
+      url: `/api/v1/tasks/${createdTask.id}`,
+    })
+
+    assert.equal(forbiddenConfirmationUpdateResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(forbiddenConfirmationUpdateResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const workStatusResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: createdTask.version,
+        status: 'in_progress',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(workStatusResponse.statusCode, 200)
+
+    const inProgressTask = taskRecordSchema.parse(workStatusResponse.json())
+
+    assert.equal(inProgressTask.status, 'in_progress')
+
+    const groupAdminScheduleResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': groupAdminId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: inProgressTask.version,
+        schedule: {
+          plannedDate: '2026-04-30',
+          plannedEndTime: null,
+          plannedStartTime: null,
+        },
+      },
+      url: `/api/v1/tasks/${createdTask.id}/schedule`,
+    })
+
+    assert.equal(groupAdminScheduleResponse.statusCode, 200)
+
+    const groupAdminScheduledTask = taskRecordSchema.parse(
+      groupAdminScheduleResponse.json(),
+    )
+
+    assert.equal(groupAdminScheduledTask.plannedDate, '2026-04-30')
+
+    const groupAdminDoneResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': groupAdminId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: groupAdminScheduledTask.version,
+        status: 'done',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(groupAdminDoneResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(groupAdminDoneResponse.json()).error.code,
+      'task_confirmation_required',
+    )
+
+    const readyForReviewResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: groupAdminScheduledTask.version,
+        status: 'ready_for_review',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(readyForReviewResponse.statusCode, 200)
+
+    const readyForReviewTask = taskRecordSchema.parse(
+      readyForReviewResponse.json(),
+    )
+
+    assert.equal(readyForReviewTask.status, 'ready_for_review')
+    assert.equal(readyForReviewTask.completedAt, null)
+
+    const backToInProgressResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: readyForReviewTask.version,
+        status: 'in_progress',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(backToInProgressResponse.statusCode, 200)
+
+    const reviewedBackTask = taskRecordSchema.parse(backToInProgressResponse.json())
+
+    assert.equal(reviewedBackTask.status, 'in_progress')
+
+    const forbiddenTodoResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: reviewedBackTask.version,
+        status: 'todo',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(forbiddenTodoResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(forbiddenTodoResponse.json()).error.code,
+      'task_status_forbidden',
+    )
+
+    const reviewAgainResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: reviewedBackTask.version,
+        status: 'ready_for_review',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(reviewAgainResponse.statusCode, 200)
+
+    const reviewedAgainTask = taskRecordSchema.parse(reviewAgainResponse.json())
+
+    assert.equal(reviewedAgainTask.status, 'ready_for_review')
+
+    const forbiddenDoneResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: reviewedAgainTask.version,
+        status: 'done',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(forbiddenDoneResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(forbiddenDoneResponse.json()).error.code,
+      'task_status_forbidden',
+    )
+
+    const forbiddenDeleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'DELETE',
+      url: `/api/v1/tasks/${createdTask.id}?expectedVersion=${reviewedAgainTask.version}`,
+    })
+
+    assert.equal(forbiddenDeleteResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(forbiddenDeleteResponse.json()).error.code,
+      'task_delete_forbidden',
+    )
+
+    const ownerDoneResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': ownerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: reviewedAgainTask.version,
+        status: 'done',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(ownerDoneResponse.statusCode, 200)
+    assert.equal(taskRecordSchema.parse(ownerDoneResponse.json()).status, 'done')
+
+    const groupAdminAssignedTaskResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': ownerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'POST',
+      payload: {
+        assigneeUserId: groupAdminId,
+        dueDate: null,
+        note: 'Assigned admin task',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: true,
+        resource: null,
+        sphereId: null,
+        title: 'Admin assignee task',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(groupAdminAssignedTaskResponse.statusCode, 201)
+
+    const groupAdminAssignedTask = taskRecordSchema.parse(
+      groupAdminAssignedTaskResponse.json(),
+    )
+
+    const groupAdminAssignedUpdateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': groupAdminId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        assigneeUserId: groupAdminId,
+        dueDate: null,
+        expectedVersion: groupAdminAssignedTask.version,
+        icon: '',
+        importance: 'not_important',
+        note: 'Admin assignee edit attempt',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: true,
+        resource: null,
+        sphereId: null,
+        title: 'Admin assignee task',
+        urgency: 'not_urgent',
+      },
+      url: `/api/v1/tasks/${groupAdminAssignedTask.id}`,
+    })
+
+    assert.equal(groupAdminAssignedUpdateResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(groupAdminAssignedUpdateResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const groupAdminAssignedScheduleResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': groupAdminId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: groupAdminAssignedTask.version,
+        schedule: {
+          plannedDate: '2026-05-02',
+          plannedEndTime: null,
+          plannedStartTime: null,
+        },
+      },
+      url: `/api/v1/tasks/${groupAdminAssignedTask.id}/schedule`,
+    })
+
+    assert.equal(groupAdminAssignedScheduleResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(groupAdminAssignedScheduleResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const groupAdminAssignedWorkResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': groupAdminId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: groupAdminAssignedTask.version,
+        status: 'in_progress',
+      },
+      url: `/api/v1/tasks/${groupAdminAssignedTask.id}/status`,
+    })
+
+    assert.equal(groupAdminAssignedWorkResponse.statusCode, 200)
+
+    const groupAdminAssignedInProgress = taskRecordSchema.parse(
+      groupAdminAssignedWorkResponse.json(),
+    )
+
+    assert.equal(groupAdminAssignedInProgress.status, 'in_progress')
+
+    const groupAdminAssignedDeleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': groupAdminId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'DELETE',
+      url: `/api/v1/tasks/${groupAdminAssignedTask.id}?expectedVersion=${groupAdminAssignedInProgress.version}`,
+    })
+
+    assert.equal(groupAdminAssignedDeleteResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(groupAdminAssignedDeleteResponse.json()).error.code,
+      'task_delete_forbidden',
+    )
+
+    const openSharedTaskResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': ownerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'POST',
+      payload: {
+        assigneeUserId: readerId,
+        dueDate: null,
+        note: 'Open shared task',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: false,
+        resource: null,
+        sphereId: null,
+        title: 'Shared task',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(openSharedTaskResponse.statusCode, 201)
+
+    const openSharedTask = taskRecordSchema.parse(openSharedTaskResponse.json())
+
+    const observerUpdateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': observerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        assigneeUserId: readerId,
+        dueDate: null,
+        expectedVersion: openSharedTask.version,
+        icon: '',
+        importance: 'not_important',
+        note: 'Observer edit attempt',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: false,
+        resource: null,
+        sphereId: null,
+        title: 'Shared task',
+        urgency: 'not_urgent',
+      },
+      url: `/api/v1/tasks/${openSharedTask.id}`,
+    })
+
+    assert.equal(observerUpdateResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(observerUpdateResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const observerStatusResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': observerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: openSharedTask.version,
+        status: 'ready_for_review',
+      },
+      url: `/api/v1/tasks/${openSharedTask.id}/status`,
+    })
+
+    assert.equal(observerStatusResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(observerStatusResponse.json()).error.code,
+      'task_status_forbidden',
+    )
+
+    const observerDeleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': observerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'DELETE',
+      url: `/api/v1/tasks/${openSharedTask.id}?expectedVersion=${openSharedTask.version}`,
+    })
+
+    assert.equal(observerDeleteResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(observerDeleteResponse.json()).error.code,
+      'task_delete_forbidden',
+    )
+
+    const assigneeUpdateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        assigneeUserId: readerId,
+        dueDate: null,
+        expectedVersion: openSharedTask.version,
+        icon: '',
+        importance: 'not_important',
+        note: 'Assignee edit attempt',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: false,
+        resource: null,
+        sphereId: null,
+        title: 'Shared task',
+        urgency: 'not_urgent',
+      },
+      url: `/api/v1/tasks/${openSharedTask.id}`,
+    })
+
+    assert.equal(assigneeUpdateResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(assigneeUpdateResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const assigneeScheduleResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: openSharedTask.version,
+        schedule: {
+          plannedDate: '2026-05-01',
+          plannedEndTime: null,
+          plannedStartTime: null,
+        },
+      },
+      url: `/api/v1/tasks/${openSharedTask.id}/schedule`,
+    })
+
+    assert.equal(assigneeScheduleResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(assigneeScheduleResponse.json()).error.code,
+      'task_manage_forbidden',
+    )
+
+    const assigneeOpenWorkResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: openSharedTask.version,
+        status: 'in_progress',
+      },
+      url: `/api/v1/tasks/${openSharedTask.id}/status`,
+    })
+
+    assert.equal(assigneeOpenWorkResponse.statusCode, 200)
+
+    const openSharedTaskInProgress = taskRecordSchema.parse(
+      assigneeOpenWorkResponse.json(),
+    )
+
+    assert.equal(openSharedTaskInProgress.status, 'in_progress')
+
+    const assigneeOpenTodoResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: openSharedTaskInProgress.version,
+        status: 'todo',
+      },
+      url: `/api/v1/tasks/${openSharedTask.id}/status`,
+    })
+
+    assert.equal(assigneeOpenTodoResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(assigneeOpenTodoResponse.json()).error.code,
+      'task_status_forbidden',
+    )
+
+    const readerTaskResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': readerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'POST',
+      payload: {
+        assigneeUserId: null,
+        dueDate: null,
+        note: '',
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+        project: '',
+        projectId: null,
+        requiresConfirmation: false,
+        resource: null,
+        sphereId: null,
+        title: 'Reader task',
+      },
+      url: '/api/v1/tasks',
+    })
+
+    assert.equal(readerTaskResponse.statusCode, 201)
+
+    const readerTask = taskRecordSchema.parse(readerTaskResponse.json())
+
+    assert.equal(readerTask.authorUserId, readerId)
+
+    const ownerDeleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': ownerId,
+        'x-workspace-id': sharedWorkspace.id,
+      },
+      method: 'DELETE',
+      url: `/api/v1/tasks/${readerTask.id}?expectedVersion=${readerTask.version}`,
+    })
+
+    assert.equal(ownerDeleteResponse.statusCode, 204)
+  })
+
   void it('creates, updates and lists projects via the HTTP API', async () => {
     app = buildApiApp({
       config: createTestConfig(),

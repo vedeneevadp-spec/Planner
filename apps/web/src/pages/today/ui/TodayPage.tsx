@@ -236,6 +236,7 @@ function PersonalTodayPage() {
 }
 
 function SharedTodayPage() {
+  const { data: session } = usePlannerSession()
   const {
     tasks,
     projects,
@@ -296,7 +297,10 @@ function SharedTodayPage() {
         key={key}
         title={title}
         tasks={sectionTasks}
+        currentActorUserId={session?.actorUserId}
         isSharedWorkspace
+        sharedWorkspaceGroupRole={session?.groupRole}
+        sharedWorkspaceRole={session?.role}
         projects={projects}
         uploadedIcons={uploadedIcons}
         workspaceUsers={workspaceUsers}

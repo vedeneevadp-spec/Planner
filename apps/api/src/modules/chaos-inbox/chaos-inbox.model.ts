@@ -25,6 +25,7 @@ export interface ChaosInboxReadContext {
 
 export interface ChaosInboxWriteContext {
   actorUserId: string
+  actorDisplayName: string
   auth: AuthenticatedRequestContext | null
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined

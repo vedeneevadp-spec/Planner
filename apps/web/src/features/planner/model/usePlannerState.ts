@@ -106,6 +106,8 @@ function toPlannerTask(task: TaskRecord): Task {
   return {
     assigneeDisplayName: task.assigneeDisplayName,
     assigneeUserId: task.assigneeUserId,
+    authorDisplayName: task.authorDisplayName,
+    authorUserId: task.authorUserId,
     completedAt: task.completedAt,
     createdAt: task.createdAt,
     dueDate: task.dueDate,
@@ -119,6 +121,7 @@ function toPlannerTask(task: TaskRecord): Task {
     project: task.project,
     projectId: task.projectId,
     resource: task.resource,
+    requiresConfirmation: task.requiresConfirmation,
     sphereId: task.sphereId,
     status: task.status,
     title: task.title,
@@ -212,7 +215,11 @@ function normalizeSchedule({
 
 function createOptimisticTaskRecord(
   input: NewTaskInput,
-  workspaceId: string,
+  options: {
+    authorDisplayName: string | null
+    authorUserId: string | null
+    workspaceId: string
+  },
 ): TaskRecord {
   const now = new Date().toISOString()
   const schedule = normalizeSchedule({
@@ -224,6 +231,8 @@ function createOptimisticTaskRecord(
   return {
     assigneeDisplayName: null,
     assigneeUserId: input.assigneeUserId ?? null,
+    authorDisplayName: options.authorDisplayName,
+    authorUserId: options.authorUserId,
     completedAt: null,
     createdAt: now,
     deletedAt: null,
@@ -238,13 +247,14 @@ function createOptimisticTaskRecord(
     project: input.project.trim(),
     projectId: input.projectId,
     resource: input.resource,
+    requiresConfirmation: input.requiresConfirmation ?? false,
     sphereId: input.sphereId,
     status: 'todo',
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',
     updatedAt: now,
     version: 1,
-    workspaceId,
+    workspaceId: options.workspaceId,
   }
 }
 
@@ -1060,7 +1070,11 @@ export function usePlannerState(): PlannerState {
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
       const optimisticTask = createOptimisticTaskRecord(
         input,
-        session?.workspaceId ?? 'pending',
+        {
+          authorDisplayName: session?.actor.displayName ?? null,
+          authorUserId: session?.actorUserId ?? null,
+          workspaceId: session?.workspaceId ?? 'pending',
+        },
       )
 
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => [
@@ -1133,6 +1147,7 @@ export function usePlannerState(): PlannerState {
           project: input.project.trim(),
           projectId: input.projectId,
           resource: input.resource,
+          requiresConfirmation: input.requiresConfirmation ?? false,
           sphereId: input.sphereId,
           title: input.title.trim(),
           urgency: input.urgency ?? 'not_urgent',

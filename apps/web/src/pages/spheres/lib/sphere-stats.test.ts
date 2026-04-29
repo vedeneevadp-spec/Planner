@@ -27,6 +27,8 @@ function createTask(overrides: Partial<Task> = {}): Task {
   return {
     assigneeDisplayName: null,
     assigneeUserId: null,
+    authorDisplayName: null,
+    authorUserId: null,
     completedAt: null,
     createdAt: '2026-04-20T08:00:00.000Z',
     dueDate: null,
@@ -40,6 +42,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     project: 'Работа',
     projectId: 'work',
     resource: null,
+    requiresConfirmation: false,
     sphereId: null,
     status: 'todo',
     title: 'Task',

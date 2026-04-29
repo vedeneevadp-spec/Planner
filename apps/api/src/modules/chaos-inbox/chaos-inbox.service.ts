@@ -127,6 +127,7 @@ function buildTaskInput(
     project: '',
     projectId: item.sphereId,
     resource: item.priority === 'high' ? 3 : item.priority === 'low' ? 1 : 2,
+    requiresConfirmation: false,
     sphereId: item.sphereId,
     title: item.text,
     urgency: item.priority === 'high' ? 'urgent' : 'not_urgent',

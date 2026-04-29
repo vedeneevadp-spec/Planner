@@ -206,6 +206,7 @@ async function resolveWriteContext(
 
     return {
       actorUserId: session.actorUserId,
+      actorDisplayName: session.actor.displayName,
       auth: null,
       groupRole: session.groupRole,
       role: session.role,
@@ -222,6 +223,7 @@ async function resolveWriteContext(
 
   return {
     actorUserId: session.actorUserId,
+    actorDisplayName: session.actor.displayName,
     auth: authContext,
     groupRole: session.groupRole,
     role: session.role,

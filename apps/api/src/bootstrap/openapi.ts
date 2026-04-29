@@ -924,6 +924,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
         projectId: nullableStringSchema(),
+        requiresConfirmation: {
+          type: 'boolean',
+        },
         title: {
           minLength: 1,
           type: 'string',
@@ -941,6 +944,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'plannedStartTime',
         'project',
         'projectId',
+        'requiresConfirmation',
         'title',
       ],
       type: 'object',
@@ -1733,6 +1737,8 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       properties: {
         assigneeDisplayName: nullableStringSchema(),
         assigneeUserId: nullableStringSchema(),
+        authorDisplayName: nullableStringSchema(),
+        authorUserId: nullableStringSchema(),
         completedAt: nullableStringSchema(),
         createdAt: {
           format: 'date-time',
@@ -1758,6 +1764,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
         projectId: nullableStringSchema(),
+        requiresConfirmation: {
+          type: 'boolean',
+        },
         status: {
           $ref: '#/components/schemas/TaskStatus',
         },
@@ -1772,6 +1781,8 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       required: [
         'assigneeDisplayName',
         'assigneeUserId',
+        'authorDisplayName',
+        'authorUserId',
         'completedAt',
         'createdAt',
         'dueDate',
@@ -1784,6 +1795,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'plannedStartTime',
         'project',
         'projectId',
+        'requiresConfirmation',
         'status',
         'title',
         'urgency',
@@ -1816,7 +1828,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       type: 'object',
     },
     TaskStatus: {
-      enum: ['done', 'in_progress', 'todo'],
+      enum: ['done', 'in_progress', 'ready_for_review', 'todo'],
       type: 'string',
     },
     TaskStatusUpdateInput: {

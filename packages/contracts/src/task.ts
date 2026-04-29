@@ -8,7 +8,17 @@ const nullableStringWithDefault = z
   .optional()
   .transform((value) => value ?? null)
 
-export const taskStatusSchema = z.enum(['todo', 'in_progress', 'done'])
+const booleanWithDefault = z
+  .boolean()
+  .optional()
+  .transform((value) => value ?? false)
+
+export const taskStatusSchema = z.enum([
+  'todo',
+  'in_progress',
+  'ready_for_review',
+  'done',
+])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
 export const taskResourceSchema = z
@@ -28,6 +38,8 @@ export const taskIconSchema = z
 export const taskSchema = z.object({
   assigneeDisplayName: nullableStringWithDefault,
   assigneeUserId: nullableStringWithDefault,
+  authorDisplayName: nullableStringWithDefault,
+  authorUserId: nullableStringWithDefault,
   id: z.string(),
   title: z.string().min(1),
   note: z.string(),
@@ -39,6 +51,7 @@ export const taskSchema = z.object({
   project: z.string(),
   status: taskStatusSchema,
   resource: taskResourceSchema,
+  requiresConfirmation: booleanWithDefault,
   plannedDate: nullableStringWithDefault,
   plannedStartTime: nullableStringWithDefault,
   plannedEndTime: nullableStringWithDefault,
@@ -67,6 +80,7 @@ export const newTaskInputSchema = z.object({
   sphereId: nullableStringWithDefault,
   project: z.string(),
   resource: taskResourceSchema,
+  requiresConfirmation: booleanWithDefault,
   plannedDate: nullableStringWithDefault,
   plannedStartTime: nullableStringWithDefault,
   plannedEndTime: nullableStringWithDefault,

@@ -48,6 +48,7 @@ export interface TaskReadContext {
 
 export interface TaskWriteContext {
   actorUserId: string
+  actorDisplayName: string
   auth: AuthenticatedRequestContext | null
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined

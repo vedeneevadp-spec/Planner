@@ -3,6 +3,7 @@ import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
+  StoredTaskRecord,
   TaskEventFilters,
   TaskListFilters,
   TaskReadContext,
@@ -26,6 +27,7 @@ export class TaskService {
 
   createTask(context: TaskWriteContext, input: CreateTaskCommand['input']) {
     assertCanWriteTasks(context)
+    assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
 
     return this.repository.create({ context, input })
@@ -37,19 +39,29 @@ export class TaskService {
     input: UpdateTaskCommand['input'],
   ) {
     assertCanWriteTasks(context)
+    assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
 
-    const command: UpdateTaskCommand = {
-      context,
-      input,
-      taskId,
-    }
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+      }
 
-    if (input.expectedVersion !== undefined) {
-      command.expectedVersion = input.expectedVersion
-    }
+      assertCanManageSharedTask(context, task)
+      assertCanManageTaskConfirmation(context, task, input.requiresConfirmation)
 
-    return this.repository.update(command)
+      const command: UpdateTaskCommand = {
+        context,
+        input,
+        taskId,
+      }
+
+      if (input.expectedVersion !== undefined) {
+        command.expectedVersion = input.expectedVersion
+      }
+
+      return this.repository.update(command)
+    })
   }
 
   setTaskStatus(
@@ -59,18 +71,28 @@ export class TaskService {
     expectedVersion?: number,
   ) {
     assertCanWriteTasks(context)
+    assertCanUseSharedReviewStatus(context, status)
 
-    const command: UpdateTaskStatusCommand = {
-      context,
-      taskId,
-      status,
-    }
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+      }
 
-    if (expectedVersion !== undefined) {
-      command.expectedVersion = expectedVersion
-    }
+      assertCanManageSharedTaskStatus(context, task, status)
+      assertCanCompleteConfirmedSharedTask(context, task, status)
 
-    return this.repository.updateStatus(command)
+      const command: UpdateTaskStatusCommand = {
+        context,
+        taskId,
+        status,
+      }
+
+      if (expectedVersion !== undefined) {
+        command.expectedVersion = expectedVersion
+      }
+
+      return this.repository.updateStatus(command)
+    })
   }
 
   setTaskSchedule(
@@ -81,17 +103,25 @@ export class TaskService {
   ) {
     assertCanWriteTasks(context)
 
-    const command: UpdateTaskScheduleCommand = {
-      context,
-      taskId,
-      schedule,
-    }
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+      }
 
-    if (expectedVersion !== undefined) {
-      command.expectedVersion = expectedVersion
-    }
+      assertCanManageSharedTask(context, task)
 
-    return this.repository.updateSchedule(command)
+      const command: UpdateTaskScheduleCommand = {
+        context,
+        taskId,
+        schedule,
+      }
+
+      if (expectedVersion !== undefined) {
+        command.expectedVersion = expectedVersion
+      }
+
+      return this.repository.updateSchedule(command)
+    })
   }
 
   removeTask(
@@ -101,16 +131,26 @@ export class TaskService {
   ) {
     assertCanWriteTasks(context)
 
-    const command: DeleteTaskCommand = {
-      context,
-      taskId,
-    }
+    return Promise.resolve().then(async () => {
+      const task = await this.repository.findById(context, taskId)
 
-    if (expectedVersion !== undefined) {
-      command.expectedVersion = expectedVersion
-    }
+      if (!task) {
+        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+      }
 
-    return this.repository.remove(command)
+      assertCanDeleteSharedWorkspaceTask(context, task)
+
+      const command: DeleteTaskCommand = {
+        context,
+        taskId,
+      }
+
+      if (expectedVersion !== undefined) {
+        command.expectedVersion = expectedVersion
+      }
+
+      return this.repository.remove(command)
+    })
   }
 }
 
@@ -139,4 +179,180 @@ function assertCanAssignTask(
       'Tasks can only be assigned inside shared workspaces.',
     )
   }
+}
+
+function assertCanUseSharedReviewWorkflow(
+  context: TaskWriteContext,
+  requiresConfirmation: boolean,
+): void {
+  if (!requiresConfirmation || context.workspaceKind === 'shared') {
+    return
+  }
+
+  throw new HttpError(
+    400,
+    'task_confirmation_shared_workspace_required',
+    'Confirmation workflow is supported only inside shared workspaces.',
+  )
+}
+
+function assertCanUseSharedReviewStatus(
+  context: TaskWriteContext,
+  status: UpdateTaskStatusCommand['status'],
+): void {
+  if (status !== 'ready_for_review' || context.workspaceKind === 'shared') {
+    return
+  }
+
+  throw new HttpError(
+    400,
+    'task_review_status_shared_workspace_required',
+    'Review status is supported only inside shared workspaces.',
+  )
+}
+
+function assertCanCompleteConfirmedSharedTask(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+  status: UpdateTaskStatusCommand['status'],
+): void {
+  if (
+    context.workspaceKind !== 'shared' ||
+    !task.requiresConfirmation ||
+    status !== 'done'
+  ) {
+    return
+  }
+
+  if (task.authorUserId === context.actorUserId) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_confirmation_required',
+    'Only the task author can complete this task when confirmation is required.',
+  )
+}
+
+function assertCanManageSharedTask(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+): void {
+  if (context.workspaceKind !== 'shared' || canManageSharedTask(context, task)) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_manage_forbidden',
+    'Only the task author, workspace owner, or group admin can edit or reschedule this shared workspace task.',
+  )
+}
+
+function assertCanManageSharedTaskStatus(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+  status: UpdateTaskStatusCommand['status'],
+): void {
+  if (context.workspaceKind !== 'shared') {
+    return
+  }
+
+  if (
+    canManageSharedTask(context, task) ||
+    canAssigneeChangeSharedTaskStatus(context, task, status)
+  ) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_status_forbidden',
+    'Only the task author, assignee, workspace owner, or group admin can change this shared workspace task status. The assignee may only switch it to in progress or ready for review.',
+  )
+}
+
+function assertCanManageTaskConfirmation(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+  nextRequiresConfirmation: boolean,
+): void {
+  if (
+    context.workspaceKind !== 'shared' ||
+    task.requiresConfirmation === nextRequiresConfirmation
+  ) {
+    return
+  }
+
+  if (task.authorUserId === context.actorUserId) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_confirmation_manage_forbidden',
+    'Only the task author can change confirmation requirements.',
+  )
+}
+
+function canManageSharedTask(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+): boolean {
+  if (task.authorUserId === context.actorUserId) {
+    return true
+  }
+
+  if (task.assigneeUserId === context.actorUserId) {
+    return false
+  }
+
+  return (
+    context.role === 'owner' ||
+    context.groupRole === 'group_admin'
+  )
+}
+
+function canAssigneeChangeSharedTaskStatus(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+  status: UpdateTaskStatusCommand['status'],
+): boolean {
+  if (task.assigneeUserId !== context.actorUserId) {
+    return false
+  }
+
+  if (status === 'in_progress') {
+    return task.status !== 'done'
+  }
+
+  if (status === 'ready_for_review') {
+    return task.status === 'todo' || task.status === 'in_progress'
+  }
+
+  return false
+}
+
+function assertCanDeleteSharedWorkspaceTask(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+): void {
+  if (context.workspaceKind !== 'shared') {
+    return
+  }
+
+  if (
+    task.authorUserId === context.actorUserId ||
+    (task.assigneeUserId !== context.actorUserId &&
+      (context.role === 'owner' || context.groupRole === 'group_admin'))
+  ) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_delete_forbidden',
+    'Only the task author, workspace owner, or group admin can delete this task.',
+  )
 }

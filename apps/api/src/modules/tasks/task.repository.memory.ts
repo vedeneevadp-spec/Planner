@@ -43,6 +43,19 @@ export class MemoryTaskRepository implements TaskRepository {
     return Promise.resolve(sortStoredTasks(tasks))
   }
 
+  findById(
+    context: TaskReadContext,
+    taskId: string,
+  ): Promise<StoredTaskRecord | null> {
+    const task = this.tasks.get(taskId)
+
+    if (!task || task.workspaceId !== context.workspaceId || task.deletedAt !== null) {
+      return Promise.resolve(null)
+    }
+
+    return Promise.resolve(task)
+  }
+
   listEventsByWorkspace(
     context: TaskReadContext,
     filters: TaskEventFilters = {},
@@ -77,6 +90,8 @@ export class MemoryTaskRepository implements TaskRepository {
     }
 
     const task = createStoredTaskRecord(command.input, {
+      authorDisplayName: command.context.actorDisplayName,
+      authorUserId: command.context.actorUserId,
       workspaceId: command.context.workspaceId,
     })
 

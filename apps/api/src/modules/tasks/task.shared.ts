@@ -17,6 +17,7 @@ export interface NormalizedTaskInput extends NewTaskInput {
   project: string
   projectId: string | null
   resource: NewTaskInput['resource']
+  requiresConfirmation: boolean
   sphereId: string | null
   title: string
   urgency: NonNullable<NewTaskInput['urgency']>
@@ -67,6 +68,7 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     project: input.project.trim(),
     projectId: input.projectId,
     resource: input.resource,
+    requiresConfirmation: input.requiresConfirmation ?? false,
     sphereId: input.sphereId,
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',
@@ -97,11 +99,15 @@ function getTaskStatusWeight(status: TaskStatus): number {
     return 0
   }
 
-  if (status === 'todo') {
+  if (status === 'ready_for_review') {
     return 1
   }
 
-  return 2
+  if (status === 'todo') {
+    return 2
+  }
+
+  return 3
 }
 
 export function compareStoredTasks(
@@ -142,6 +148,8 @@ export function sortStoredTasks(tasks: StoredTaskRecord[]): StoredTaskRecord[] {
 export function createStoredTaskRecord(
   input: NewTaskInput,
   options: {
+    authorDisplayName: string
+    authorUserId: string
     id?: string
     now?: string
     workspaceId: string
@@ -154,6 +162,8 @@ export function createStoredTaskRecord(
   return {
     assigneeDisplayName: null,
     assigneeUserId: normalizedInput.assigneeUserId,
+    authorDisplayName: options.authorDisplayName,
+    authorUserId: options.authorUserId,
     completedAt: null,
     createdAt: now,
     deletedAt: null,
@@ -168,6 +178,7 @@ export function createStoredTaskRecord(
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
     resource: normalizedInput.resource,
+    requiresConfirmation: normalizedInput.requiresConfirmation,
     sphereId: normalizedInput.sphereId,
     status: 'todo',
     title: normalizedInput.title,
@@ -234,6 +245,7 @@ export function applyTaskUpdate(
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
     resource: normalizedInput.resource,
+    requiresConfirmation: normalizedInput.requiresConfirmation,
     sphereId: normalizedInput.sphereId,
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,

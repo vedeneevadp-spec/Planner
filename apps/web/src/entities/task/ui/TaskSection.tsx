@@ -1,4 +1,8 @@
-import type { WorkspaceUserRecord } from '@planner/contracts'
+import type {
+  WorkspaceGroupRole,
+  WorkspaceRole,
+  WorkspaceUserRecord,
+} from '@planner/contracts'
 
 import type { Project } from '@/entities/project'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
@@ -10,7 +14,10 @@ import styles from './TaskSection.module.css'
 interface TaskSectionProps {
   title: string
   tasks: Task[]
+  currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
+  sharedWorkspaceGroupRole?: WorkspaceGroupRole | null | undefined
+  sharedWorkspaceRole?: WorkspaceRole | undefined
   projects?: Project[] | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
   workspaceUsers?: WorkspaceUserRecord[] | undefined
@@ -26,7 +33,10 @@ interface TaskSectionProps {
 export function TaskSection({
   title,
   tasks,
+  currentActorUserId,
   isSharedWorkspace = false,
+  sharedWorkspaceGroupRole,
+  sharedWorkspaceRole,
   projects = [],
   uploadedIcons = [],
   workspaceUsers = [],
@@ -59,6 +69,9 @@ export function TaskSection({
               )}
               isPending={isTaskPending?.(task.id)}
               isSharedWorkspace={isSharedWorkspace}
+              currentActorUserId={currentActorUserId}
+              sharedWorkspaceGroupRole={sharedWorkspaceGroupRole}
+              sharedWorkspaceRole={sharedWorkspaceRole}
               uploadedIcons={uploadedIcons}
               workspaceUsers={workspaceUsers}
               tone={tone}

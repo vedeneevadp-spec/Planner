@@ -115,6 +115,7 @@ function buildTaskInputFromTemplate(
     project: project.project,
     projectId: project.projectId,
     resource: 0,
+    requiresConfirmation: false,
     sphereId: null,
     title: template.title,
     urgency: template.urgency,
@@ -236,6 +237,7 @@ export function TaskComposer({
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const { uploadedIcons } = useUploadedIconAssets()
   const titleId = useId()
+  const confirmationFieldId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
   const openDraftRequestIdRef = useRef<string | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
@@ -247,6 +249,7 @@ export function TaskComposer({
   const [resource, setResource] = useState<ResourceValue>('')
   const [projectId, setProjectId] = useState('')
   const [assigneeUserId, setAssigneeUserId] = useState('')
+  const [requiresConfirmation, setRequiresConfirmation] = useState(false)
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
   const [plannedEndTime, setPlannedEndTime] = useState('')
@@ -297,6 +300,7 @@ export function TaskComposer({
     setResource(openDraft.resource ?? '')
     setProjectId(openDraft.projectId ?? '')
     setAssigneeUserId('')
+    setRequiresConfirmation(false)
     setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
@@ -340,6 +344,7 @@ export function TaskComposer({
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
       resource: getResourceFromValue(resource),
+      requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
       sphereId: null,
       title: normalizedTitle,
       urgency: getTaskUrgencyFromType(taskType),
@@ -353,6 +358,7 @@ export function TaskComposer({
     setResource('')
     setProjectId('')
     setAssigneeUserId('')
+    setRequiresConfirmation(false)
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
@@ -413,6 +419,7 @@ export function TaskComposer({
     setResource('')
     setProjectId(knownProject?.id ?? '')
     setAssigneeUserId('')
+    setRequiresConfirmation(false)
     setPlannedDate(plannedDateFromTemplate ?? '')
     setPlannedStartTime(
       plannedDateFromTemplate ? (template.plannedStartTime ?? '') : '',
@@ -820,6 +827,32 @@ export function TaskComposer({
                             ))}
                           </select>
                         </label>
+                      </section>
+                    ) : null}
+
+                    {isSharedWorkspace ? (
+                      <section className={styles.columnSection}>
+                        <div className={styles.checkboxField}>
+                          <input
+                            id={confirmationFieldId}
+                            type="checkbox"
+                            checked={requiresConfirmation}
+                            onChange={(event) =>
+                              setRequiresConfirmation(event.target.checked)
+                            }
+                          />
+                          <span className={styles.checkboxCopy}>
+                            <label
+                              className={styles.checkboxLabel}
+                              htmlFor={confirmationFieldId}
+                            >
+                              Требуется подтверждение
+                            </label>
+                            <small id={`${confirmationFieldId}-hint`}>
+                              Завершить такую задачу сможет только её автор.
+                            </small>
+                          </span>
+                        </div>
                       </section>
                     ) : null}
 

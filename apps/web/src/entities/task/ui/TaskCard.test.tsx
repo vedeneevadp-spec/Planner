@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
@@ -9,6 +10,8 @@ function createTask(overrides: Partial<Task> = {}): Task {
   return {
     assigneeDisplayName: null,
     assigneeUserId: null,
+    authorDisplayName: null,
+    authorUserId: null,
     completedAt: null,
     createdAt: '2026-04-20T08:00:00.000Z',
     dueDate: null,
@@ -22,6 +25,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     project: '',
     projectId: null,
     resource: null,
+    requiresConfirmation: false,
     sphereId: null,
     status: 'todo',
     title: 'Task',
@@ -30,7 +34,10 @@ function createTask(overrides: Partial<Task> = {}): Task {
   }
 }
 
-function renderTaskCard(task: Task) {
+function renderTaskCard(
+  task: Task,
+  props: Partial<ComponentProps<typeof TaskCard>> = {},
+) {
   return render(
     <TaskCard
       task={task}
@@ -38,6 +45,7 @@ function renderTaskCard(task: Task) {
       onSetPlannedDate={vi.fn()}
       onSetStatus={vi.fn()}
       onUpdate={vi.fn(() => Promise.resolve(true))}
+      {...props}
     />,
   )
 }
@@ -78,6 +86,179 @@ describe('TaskCard', () => {
 
     expect(
       screen.queryByRole('button', { name: 'Отложить' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows review action for shared workspace assignees', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Assignee',
+        assigneeUserId: 'user-2',
+      }),
+      {
+        currentActorUserId: 'user-2',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'member',
+      },
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'На проверку' }),
+    ).toBeInTheDocument()
+  })
+
+  it('limits shared task assignees to work and review status changes', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Assignee',
+        assigneeUserId: 'user-2',
+        authorDisplayName: 'Author',
+        authorUserId: 'user-1',
+      }),
+      {
+        currentActorUserId: 'user-2',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'member',
+      },
+    )
+
+    expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'На проверку' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Отложить' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Завершить задачу' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Подтвердить выполнение задачи' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Редактировать задачу' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Удалить задачу' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows shared workspace tasks as read-only for unrelated members', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Assignee',
+        assigneeUserId: 'user-2',
+        authorDisplayName: 'Author',
+        authorUserId: 'user-1',
+      }),
+      {
+        currentActorUserId: 'user-3',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'member',
+      },
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'В работе' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'На проверку' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Отложить' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Редактировать задачу' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Удалить задачу' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not treat shared workspace role admin as task manager without group_admin', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Assignee',
+        assigneeUserId: 'user-2',
+        authorDisplayName: 'Author',
+        authorUserId: 'user-1',
+      }),
+      {
+        currentActorUserId: 'user-3',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'member',
+        sharedWorkspaceRole: 'admin',
+      },
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'В работе' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'На проверку' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Отложить' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Редактировать задачу' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Удалить задачу' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('allows shared workspace admins to edit and move confirmed tasks without completing them', () => {
+    renderTaskCard(
+      createTask({
+        authorDisplayName: 'Author',
+        authorUserId: 'user-1',
+        requiresConfirmation: true,
+      }),
+      {
+        currentActorUserId: 'user-2',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'group_admin',
+      },
+    )
+
+    expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Отложить' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Редактировать задачу' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Подтвердить выполнение задачи' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps shared workspace admins limited to status actions on tasks assigned to them', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Admin Assignee',
+        assigneeUserId: 'user-2',
+        authorDisplayName: 'Author',
+        authorUserId: 'user-1',
+        requiresConfirmation: true,
+      }),
+      {
+        currentActorUserId: 'user-2',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'group_admin',
+      },
+    )
+
+    expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'На проверку' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Отложить' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Редактировать задачу' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Удалить задачу' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Подтвердить выполнение задачи' }),
     ).not.toBeInTheDocument()
   })
 })
