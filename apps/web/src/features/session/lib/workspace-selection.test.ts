@@ -7,6 +7,7 @@ import {
   getSelectedWorkspaceId,
   setLastActorUserId,
   setSelectedWorkspaceId,
+  setSelectedWorkspaceIdForActors,
 } from './workspace-selection'
 
 describe('workspace-selection', () => {
@@ -31,6 +32,13 @@ describe('workspace-selection', () => {
 
     expect(getSelectedWorkspaceId('user-a')).toBe('workspace-a')
     expect(getSelectedWorkspaceId('user-b')).toBeNull()
+  })
+
+  it('stores selected workspace for multiple actor ids', () => {
+    setSelectedWorkspaceIdForActors('workspace-shared', ['user-a', 'user-b'])
+
+    expect(getSelectedWorkspaceId('user-a')).toBe('workspace-shared')
+    expect(getSelectedWorkspaceId('user-b')).toBe('workspace-shared')
   })
 
   it('clears the last actor user id', () => {

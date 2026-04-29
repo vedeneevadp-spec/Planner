@@ -33,6 +33,7 @@ export {
   clearSelectedWorkspaceId,
   getSelectedWorkspaceId,
   setSelectedWorkspaceId,
+  setSelectedWorkspaceIdForActors,
   useSelectedWorkspaceId,
 } from './lib/workspace-selection'
 export {

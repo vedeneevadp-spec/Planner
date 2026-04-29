@@ -5,7 +5,7 @@ import { getPlannerSummary } from '@/entities/task'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
-  setSelectedWorkspaceId,
+  setSelectedWorkspaceIdForActors,
   useCreateSharedWorkspace,
   usePlannerSession,
   useSessionAuth,
@@ -119,7 +119,10 @@ export function Sidebar() {
               value={session?.workspaceId ?? ''}
               disabled={!session}
               onChange={(event) => {
-                setSelectedWorkspaceId(event.target.value, session?.actorUserId)
+                setSelectedWorkspaceIdForActors(event.target.value, [
+                  auth.userId,
+                  session?.actorUserId,
+                ])
               }}
             >
               {session ? (
@@ -355,7 +358,10 @@ export function Sidebar() {
                 <select
                   value={session.workspaceId}
                   onChange={(event) => {
-                    setSelectedWorkspaceId(event.target.value, session.actorUserId)
+                    setSelectedWorkspaceIdForActors(event.target.value, [
+                      auth.userId,
+                      session.actorUserId,
+                    ])
                   }}
                 >
                   {session.workspaces.map((workspace) => (

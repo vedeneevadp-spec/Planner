@@ -41,6 +41,33 @@ export function setSelectedWorkspaceId(
   emitWorkspaceSelectionChange()
 }
 
+export function setSelectedWorkspaceIdForActors(
+  workspaceId: string,
+  actorUserIds: Array<string | null | undefined>,
+): void {
+  const normalizedActorUserIds = Array.from(
+    new Set(
+      actorUserIds
+        .map((actorUserId) => normalizeActorUserId(actorUserId))
+        .filter((actorUserId): actorUserId is string => Boolean(actorUserId)),
+    ),
+  )
+
+  if (normalizedActorUserIds.length === 0) {
+    return
+  }
+
+  const nextMap = readSelectedWorkspaceIdMap()
+
+  for (const actorUserId of normalizedActorUserIds) {
+    nextMap[actorUserId] = workspaceId
+  }
+
+  writeSelectedWorkspaceIdMap(nextMap)
+  removeStorageValue(LEGACY_SELECTED_WORKSPACE_ID_KEY)
+  emitWorkspaceSelectionChange()
+}
+
 export function clearSelectedWorkspaceId(actorUserId?: string | null): void {
   const normalizedActorUserId = normalizeActorUserId(actorUserId)
 

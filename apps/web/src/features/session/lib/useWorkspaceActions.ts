@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { usePlannerSession } from '@/features/session/lib/usePlannerSession'
 import { useSessionAuth } from '@/features/session/lib/useSessionAuth'
-import { setSelectedWorkspaceId } from '@/features/session/lib/workspace-selection'
+import { setSelectedWorkspaceIdForActors } from '@/features/session/lib/workspace-selection'
 
 import {
   createSharedWorkspace,
@@ -29,7 +29,10 @@ export function useCreateSharedWorkspace() {
       })
     },
     onSuccess: async (workspace) => {
-      setSelectedWorkspaceId(workspace.id, sessionQuery.data?.actorUserId)
+      setSelectedWorkspaceIdForActors(workspace.id, [
+        auth.userId,
+        sessionQuery.data?.actorUserId,
+      ])
       await queryClient.invalidateQueries({ queryKey: ['planner', 'session'] })
     },
   })
