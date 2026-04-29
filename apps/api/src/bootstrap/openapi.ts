@@ -202,6 +202,26 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/admin/workspace-settings': {
+      patch: {
+        operationId: 'updateWorkspaceSettings',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('WorkspaceSettingsUpdateInput'),
+        responses: {
+          200: jsonResponse('WorkspaceSettings'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Update admin-configurable settings for the current workspace',
+        tags: ['session'],
+      },
+    },
     '/api/v1/workspace-users': {
       get: {
         operationId: 'listWorkspaceUsers',
@@ -1265,6 +1285,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         workspaceId: {
           type: 'string',
         },
+        workspaceSettings: {
+          $ref: '#/components/schemas/WorkspaceSettings',
+        },
         workspaces: {
           items: {
             $ref: '#/components/schemas/SessionWorkspaceMembership',
@@ -1281,6 +1304,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'source',
         'workspace',
         'workspaceId',
+        'workspaceSettings',
         'workspaces',
       ],
       type: 'object',
@@ -1329,6 +1353,16 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
     WorkspaceKind: {
       enum: ['personal', 'shared'],
       type: 'string',
+    },
+    WorkspaceSettings: {
+      additionalProperties: false,
+      properties: {
+        taskCompletionConfettiEnabled: {
+          type: 'boolean',
+        },
+      },
+      required: ['taskCompletionConfettiEnabled'],
+      type: 'object',
     },
     WorkspaceRole: {
       enum: ['admin', 'guest', 'owner', 'user'],
@@ -1390,13 +1424,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
       },
-      required: [
-        'appRole',
-        'displayName',
-        'email',
-        'id',
-        'updatedAt',
-      ],
+      required: ['appRole', 'displayName', 'email', 'id', 'updatedAt'],
       type: 'object',
     },
     AdminUserRoleUpdateInput: {
@@ -1407,6 +1435,16 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: ['role'],
+      type: 'object',
+    },
+    WorkspaceSettingsUpdateInput: {
+      additionalProperties: false,
+      properties: {
+        taskCompletionConfettiEnabled: {
+          type: 'boolean',
+        },
+      },
+      required: ['taskCompletionConfettiEnabled'],
       type: 'object',
     },
     WorkspaceUserListResponse: {

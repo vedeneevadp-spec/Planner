@@ -21,6 +21,8 @@ import type {
   SessionSnapshot,
   WorkspaceInvitationCreateInput,
   WorkspaceInvitationRecord,
+  WorkspaceSettings,
+  WorkspaceSettingsUpdateInput,
   WorkspaceUserGroupRole,
   WorkspaceUserRecord,
 } from './session.model.js'
@@ -33,6 +35,7 @@ interface SessionRow {
   appRole: AppRole
   groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
+  taskCompletionConfettiEnabled: boolean
   workspaceId: string
   workspaceKind: WorkspaceKind
   workspaceName: string
@@ -123,7 +126,9 @@ export class PostgresSessionRepository implements SessionRepository {
     const session = context.workspaceId
       ? await this.resolveExplicitSession(this.db, context, authenticatedActor)
       : await this.resolveDefaultSession(this.db, context, authenticatedActor)
-    const workspaces = await this.loadSessionWorkspacesWithRetry(session.actorId)
+    const workspaces = await this.loadSessionWorkspacesWithRetry(
+      session.actorId,
+    )
 
     return this.mapSessionSnapshot(context, session, workspaces)
   }
@@ -163,6 +168,7 @@ export class PostgresSessionRepository implements SessionRepository {
           name: workspaceName,
           owner_user_id: session.actorUserId,
           slug: workspaceSlug,
+          task_completion_confetti_enabled: true,
         })
         .returning(['id', 'kind', 'name', 'slug'])
         .executeTakeFirstOrThrow()
@@ -192,7 +198,10 @@ export class PostgresSessionRepository implements SessionRepository {
   async listWorkspaceUsers(
     session: SessionSnapshot,
   ): Promise<WorkspaceUserRecord[]> {
-    const rows = await this.createWorkspaceUserQuery(this.db, session.workspaceId)
+    const rows = await this.createWorkspaceUserQuery(
+      this.db,
+      session.workspaceId,
+    )
       .orderBy(
         sql<number>`case
           when membership.role = 'owner' then 0
@@ -408,7 +417,9 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async listAdminUsers(_session: SessionSnapshot): Promise<AdminUserRecord[]> {
     const rows = await this.createAdminUserQuery(this.db)
-      .orderBy(sql<number>`case when actor.app_role = 'owner' then 0 else 1 end`)
+      .orderBy(
+        sql<number>`case when actor.app_role = 'owner' then 0 else 1 end`,
+      )
       .orderBy('actor.display_name', 'asc')
       .orderBy('actor.email', 'asc')
       .execute()
@@ -461,6 +472,36 @@ export class PostgresSessionRepository implements SessionRepository {
     })
   }
 
+  async updateWorkspaceSettings(
+    session: SessionSnapshot,
+    input: WorkspaceSettingsUpdateInput,
+  ): Promise<WorkspaceSettings> {
+    const updatedWorkspace = await this.db
+      .updateTable('app.workspaces')
+      .set({
+        task_completion_confetti_enabled: input.taskCompletionConfettiEnabled,
+      })
+      .where('id', '=', session.workspaceId)
+      .where('deleted_at', 'is', null)
+      .returning(
+        'task_completion_confetti_enabled as taskCompletionConfettiEnabled',
+      )
+      .executeTakeFirst()
+
+    if (!updatedWorkspace) {
+      throw new HttpError(
+        404,
+        'workspace_not_found',
+        'Workspace was not found.',
+      )
+    }
+
+    return {
+      taskCompletionConfettiEnabled:
+        updatedWorkspace.taskCompletionConfettiEnabled,
+    }
+  }
+
   private createBaseQuery(executor: DatabaseExecutor) {
     return executor
       .selectFrom('app.workspace_members as membership')
@@ -477,6 +518,7 @@ export class PostgresSessionRepository implements SessionRepository {
         'actor.app_role as appRole',
         'membership.group_role as groupRole',
         'membership.role as role',
+        'workspace.task_completion_confetti_enabled as taskCompletionConfettiEnabled',
         'workspace.id as workspaceId',
         'workspace.kind as workspaceKind',
         'workspace.name as workspaceName',
@@ -605,11 +647,7 @@ export class PostgresSessionRepository implements SessionRepository {
   ): Promise<ExistingWorkspaceMemberRow | undefined> {
     return executor
       .selectFrom('app.workspace_members')
-      .select([
-        'deleted_at as deletedAt',
-        'id',
-        'role',
-      ])
+      .select(['deleted_at as deletedAt', 'id', 'role'])
       .where('workspace_id', '=', workspaceId)
       .where('user_id', '=', userId)
       .executeTakeFirst()
@@ -1183,6 +1221,9 @@ export class PostgresSessionRepository implements SessionRepository {
         slug: session.workspaceSlug,
       },
       workspaceId: session.workspaceId,
+      workspaceSettings: {
+        taskCompletionConfettiEnabled: session.taskCompletionConfettiEnabled,
+      },
       workspaces,
     }
   }

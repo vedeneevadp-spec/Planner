@@ -8,6 +8,8 @@ import {
   workspaceInvitationCreateInputSchema,
   workspaceInvitationListResponseSchema,
   workspaceInvitationRecordSchema,
+  workspaceSettingsSchema,
+  workspaceSettingsUpdateInputSchema,
   workspaceUserGroupRoleUpdateInputSchema,
   workspaceUserListResponseSchema,
   workspaceUserRecordSchema,
@@ -33,9 +35,10 @@ const requiredSessionAuthHeadersSchema = z.object({
   'x-workspace-id': z.string().min(1),
 })
 
-const requiredSessionLegacyHeadersSchema = requiredSessionAuthHeadersSchema.extend({
-  'x-actor-user-id': z.string().min(1),
-})
+const requiredSessionLegacyHeadersSchema =
+  requiredSessionAuthHeadersSchema.extend({
+    'x-actor-user-id': z.string().min(1),
+  })
 
 const userParamsSchema = z.object({
   userId: z.string().min(1),
@@ -102,6 +105,18 @@ export function registerSessionRoutes(
     return adminUserRecordSchema.parse(user)
   })
 
+  app.patch('/api/v1/admin/workspace-settings', async (request) => {
+    const context = resolveRequiredSessionContext(request)
+    const input = parseOrThrow(
+      workspaceSettingsUpdateInputSchema,
+      request.body,
+      'invalid_body',
+    )
+    const settings = await service.updateWorkspaceSettings(context, input)
+
+    return workspaceSettingsSchema.parse(settings)
+  })
+
   app.get('/api/v1/workspace-users', async (request) => {
     const context = resolveRequiredSessionContext(request)
     const users = await service.listWorkspaceUsers(context)
@@ -133,18 +148,21 @@ export function registerSessionRoutes(
     },
   )
 
-  app.delete('/api/v1/workspace-users/:membershipId', async (request, reply) => {
-    const context = resolveRequiredSessionContext(request)
-    const params = parseOrThrow(
-      membershipParamsSchema,
-      request.params,
-      'invalid_params',
-    )
+  app.delete(
+    '/api/v1/workspace-users/:membershipId',
+    async (request, reply) => {
+      const context = resolveRequiredSessionContext(request)
+      const params = parseOrThrow(
+        membershipParamsSchema,
+        request.params,
+        'invalid_params',
+      )
 
-    await service.removeWorkspaceUser(context, params.membershipId)
+      await service.removeWorkspaceUser(context, params.membershipId)
 
-    return reply.code(204).send()
-  })
+      return reply.code(204).send()
+    },
+  )
 
   app.get('/api/v1/workspace-invitations', async (request) => {
     const context = resolveRequiredSessionContext(request)
@@ -207,7 +225,9 @@ function resolveOptionalSessionContext(request: FastifyRequest) {
     'invalid_headers',
   )
 
-  if (Boolean(headers['x-actor-user-id']) !== Boolean(headers['x-workspace-id'])) {
+  if (
+    Boolean(headers['x-actor-user-id']) !== Boolean(headers['x-workspace-id'])
+  ) {
     throw new HttpError(
       400,
       'invalid_headers',

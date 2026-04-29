@@ -10,6 +10,8 @@ import type {
   SessionWorkspaceMembership,
   WorkspaceInvitationCreateInput,
   WorkspaceInvitationRecord,
+  WorkspaceSettings,
+  WorkspaceSettingsUpdateInput,
   WorkspaceUserGroupRole,
   WorkspaceUserRecord,
 } from './session.model.js'
@@ -47,4 +49,8 @@ export interface SessionRepository {
     userId: string,
     role: AssignableAppRole,
   ): Promise<AdminUserRecord>
+  updateWorkspaceSettings(
+    session: SessionSnapshot,
+    input: WorkspaceSettingsUpdateInput,
+  ): Promise<WorkspaceSettings>
 }

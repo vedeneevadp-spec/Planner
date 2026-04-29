@@ -130,6 +130,7 @@ export interface AppWorkspacesTable {
   name: string
   owner_user_id: string
   slug: string
+  task_completion_confetti_enabled: boolean
   updated_at: Generated<TimestampColumn>
   version: Generated<number>
 }

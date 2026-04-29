@@ -106,6 +106,10 @@ export const sessionWorkspaceMembershipSchema = sessionWorkspaceSchema.extend({
   role: workspaceRoleSchema,
 })
 
+export const workspaceSettingsSchema = z.object({
+  taskCompletionConfettiEnabled: z.boolean(),
+})
+
 export const sessionResponseSchema = z.object({
   actor: sessionActorSchema,
   actorUserId: z.string(),
@@ -115,6 +119,7 @@ export const sessionResponseSchema = z.object({
   source: z.enum(['access_token', 'default', 'headers']),
   workspace: sessionWorkspaceSchema,
   workspaceId: z.string(),
+  workspaceSettings: workspaceSettingsSchema,
   workspaces: z.array(sessionWorkspaceMembershipSchema),
 })
 
@@ -172,6 +177,10 @@ export const workspaceInvitationCreateInputSchema = z.object({
 
 export const createSharedWorkspaceInputSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
+})
+
+export const workspaceSettingsUpdateInputSchema = z.object({
+  taskCompletionConfettiEnabled: z.boolean(),
 })
 
 export const taskListFiltersSchema = z.object({
@@ -287,6 +296,7 @@ export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
 export type SessionWorkspaceMembership = z.infer<
   typeof sessionWorkspaceMembershipSchema
 >
+export type WorkspaceSettings = z.infer<typeof workspaceSettingsSchema>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
 export type WorkspaceGroupRole = z.infer<typeof workspaceGroupRoleSchema>
 export type WorkspaceKind = z.infer<typeof workspaceKindSchema>
@@ -308,6 +318,9 @@ export type WorkspaceUserGroupRoleUpdateInput = z.infer<
 >
 export type CreateSharedWorkspaceInput = z.infer<
   typeof createSharedWorkspaceInputSchema
+>
+export type WorkspaceSettingsUpdateInput = z.infer<
+  typeof workspaceSettingsUpdateInputSchema
 >
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
 export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>

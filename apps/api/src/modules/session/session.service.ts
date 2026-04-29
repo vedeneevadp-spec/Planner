@@ -9,6 +9,7 @@ import type {
   SessionContext,
   SessionSnapshot,
   WorkspaceInvitationCreateInput,
+  WorkspaceSettingsUpdateInput,
   WorkspaceUserGroupRole,
 } from './session.model.js'
 import type { SessionRepository } from './session.repository.js'
@@ -58,7 +59,9 @@ export class SessionService {
 
     assertCanManageAdminUsers(session)
 
-    return withRepositoryErrorMapping(() => this.repository.listAdminUsers(session))
+    return withRepositoryErrorMapping(() =>
+      this.repository.listAdminUsers(session),
+    )
   }
 
   async createSharedWorkspace(
@@ -183,6 +186,23 @@ export class SessionService {
 
     return user
   }
+
+  async updateWorkspaceSettings(
+    context: SessionContext,
+    input: WorkspaceSettingsUpdateInput,
+  ) {
+    const session = await this.resolveSession(context)
+
+    assertCanManageWorkspaceSettings(session)
+
+    const settings = await withRepositoryErrorMapping(() =>
+      this.repository.updateWorkspaceSettings(session, input),
+    )
+
+    this.authSessionCache.clear()
+
+    return settings
+  }
 }
 
 async function withRepositoryErrorMapping<T>(
@@ -252,5 +272,17 @@ function assertCanManageAdminUsers(session: SessionSnapshot): void {
     403,
     'owner_required',
     'Only the global owner can manage application users.',
+  )
+}
+
+function assertCanManageWorkspaceSettings(session: SessionSnapshot): void {
+  if (session.appRole === 'admin' || session.appRole === 'owner') {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'workspace_settings_manage_forbidden',
+    'Only application admins can update workspace settings.',
   )
 }

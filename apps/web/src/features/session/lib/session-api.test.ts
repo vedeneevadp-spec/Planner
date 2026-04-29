@@ -26,6 +26,9 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
       slug: 'personal',
     },
     workspaceId: 'workspace-1',
+    workspaceSettings: {
+      taskCompletionConfettiEnabled: true,
+    },
     workspaces: [
       {
         groupRole: null,
@@ -41,9 +44,11 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
 
 describe('sessionApi', () => {
   it('loads the current session', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
-    )
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
+      )
 
     const session = await resolvePlannerSession({}, fetchMock)
 
@@ -52,9 +57,11 @@ describe('sessionApi', () => {
   })
 
   it('forwards abort signal when resolving session', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
-    )
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
+      )
     const signal = new AbortController().signal
 
     await resolvePlannerSession(
@@ -90,9 +97,11 @@ describe('sessionApi', () => {
   })
 
   it('includes workspace and actor headers for legacy workspace selection', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
-    )
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify(createSessionPayload()), { status: 200 }),
+      )
 
     await resolvePlannerSession(
       {

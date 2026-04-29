@@ -1,4 +1,7 @@
-import type { SessionResponse, SessionWorkspaceMembership } from '@planner/contracts'
+import type {
+  SessionResponse,
+  SessionWorkspaceMembership,
+} from '@planner/contracts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SessionApiError } from './session-api'
@@ -117,19 +120,17 @@ describe('loadPlannerSession', () => {
   })
 })
 
-function createSessionResponse(
-  input: {
-    actor?: SessionResponse['actor']
-    actorUserId: string
-    appRole?: SessionResponse['appRole']
-    groupRole?: SessionResponse['groupRole']
-    role: SessionResponse['role']
-    source?: SessionResponse['source']
-    workspace: SessionResponse['workspace']
-    workspaceId: string
-    workspaces: SessionResponse['workspaces']
-  },
-): SessionResponse {
+function createSessionResponse(input: {
+  actor?: SessionResponse['actor']
+  actorUserId: string
+  appRole?: SessionResponse['appRole']
+  groupRole?: SessionResponse['groupRole']
+  role: SessionResponse['role']
+  source?: SessionResponse['source']
+  workspace: SessionResponse['workspace']
+  workspaceId: string
+  workspaces: SessionResponse['workspaces']
+}): SessionResponse {
   const {
     actor,
     actorUserId,
@@ -155,6 +156,9 @@ function createSessionResponse(
     source,
     workspace,
     workspaceId,
+    workspaceSettings: {
+      taskCompletionConfettiEnabled: true,
+    },
     workspaces,
   }
 }

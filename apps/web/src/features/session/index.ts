@@ -1,4 +1,7 @@
-export { AdminUsersApiError, createAdminUsersApiClient } from './lib/admin-users-api'
+export {
+  AdminUsersApiError,
+  createAdminUsersApiClient,
+} from './lib/admin-users-api'
 export {
   createSharedWorkspace,
   isUnauthorizedSessionApiError,
@@ -21,6 +24,7 @@ export {
   useWorkspaceInvitations,
   useWorkspaceUsers,
 } from './lib/useWorkspaceParticipants'
+export { useUpdateWorkspaceSettings } from './lib/useWorkspaceSettings'
 export {
   createWorkspaceParticipantsApiClient,
   WorkspaceParticipantsApiError,
@@ -31,6 +35,10 @@ export {
   setSelectedWorkspaceId,
   useSelectedWorkspaceId,
 } from './lib/workspace-selection'
+export {
+  createWorkspaceSettingsApiClient,
+  WorkspaceSettingsApiError,
+} from './lib/workspace-settings-api'
 export { AuthGate } from './ui/AuthGate'
 export { SessionProvider } from './ui/SessionProvider'
 export { WorkspaceParticipantsDialog } from './ui/WorkspaceParticipantsDialog'

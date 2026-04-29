@@ -21,6 +21,7 @@ import {
   taskTemplateRecordSchema,
   workspaceInvitationListResponseSchema,
   workspaceInvitationRecordSchema,
+  workspaceSettingsSchema,
   workspaceUserListResponseSchema,
   workspaceUserRecordSchema,
 } from '@planner/contracts'
@@ -113,6 +114,9 @@ const guestSessionRepository: SessionRepository = {
         slug: 'guest',
       },
       workspaceId: 'workspace-guest',
+      workspaceSettings: {
+        taskCompletionConfettiEnabled: true,
+      },
       workspaces: [
         {
           groupRole: null,
@@ -174,6 +178,13 @@ const guestSessionRepository: SessionRepository = {
       403,
       'owner_required',
       'Only the global owner can manage application users.',
+    )
+  },
+  updateWorkspaceSettings() {
+    throw new HttpError(
+      403,
+      'workspace_settings_manage_forbidden',
+      'Only application admins can update workspace settings.',
     )
   },
 }
@@ -284,6 +295,83 @@ void describe('buildApiApp', () => {
     const body = apiErrorSchema.parse(response.json())
 
     assert.equal(body.error.code, 'owner_required')
+  })
+
+  void it('updates workspace settings for application admins', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'PATCH',
+      payload: {
+        taskCompletionConfettiEnabled: false,
+      },
+      url: '/api/v1/admin/workspace-settings',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(workspaceSettingsSchema.parse(response.json()), {
+      taskCompletionConfettiEnabled: false,
+    })
+
+    const sessionResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(sessionResponse.statusCode, 200)
+    assert.equal(
+      sessionResponseSchema.parse(sessionResponse.json()).workspaceSettings
+        .taskCompletionConfettiEnabled,
+      false,
+    )
+  })
+
+  void it('forbids workspace settings updates for non-admin roles', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'supabase',
+        SUPABASE_PROJECT_REF: 'planner-test-project',
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(guestSessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+        'x-workspace-id': 'workspace-guest',
+      },
+      method: 'PATCH',
+      payload: {
+        taskCompletionConfettiEnabled: false,
+      },
+      url: '/api/v1/admin/workspace-settings',
+    })
+
+    assert.equal(response.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(response.json()).error.code,
+      'workspace_settings_manage_forbidden',
+    )
   })
 
   void it('creates, updates and lists tasks via the HTTP API', async () => {
@@ -779,7 +867,10 @@ void describe('buildApiApp', () => {
 
     assert.equal(updatedEmojiSet.items.length, 3)
     assert.equal(updatedEmojiSet.items[2]?.shortcode, 'icon-3')
-    assert.equal(updatedEmojiSet.items[2]?.workspaceId, createdEmojiSet.workspaceId)
+    assert.equal(
+      updatedEmojiSet.items[2]?.workspaceId,
+      createdEmojiSet.workspaceId,
+    )
 
     const addedIconAsset = updatedEmojiSet.items[2]
 
@@ -1068,6 +1159,9 @@ void describe('buildApiApp', () => {
       updateAdminUserRole() {
         throw new Error('updateAdminUserRole should not be called.')
       },
+      updateWorkspaceSettings() {
+        throw new Error('updateWorkspaceSettings should not be called.')
+      },
     }
 
     app = buildApiApp({
@@ -1319,6 +1413,9 @@ void describe('buildApiApp', () => {
         throw new Error('Not implemented.')
       },
       updateAdminUserRole() {
+        throw new Error('Not implemented.')
+      },
+      updateWorkspaceSettings() {
         throw new Error('Not implemented.')
       },
     }
@@ -1596,7 +1693,9 @@ void describe('buildApiApp', () => {
 
     assert.equal(session.workspaceId, workspace.id)
     assert.equal(session.actor.email, AUTH_CONTEXT.claims.email)
-    assert.ok(session.workspaces.some((candidate) => candidate.id === workspace.id))
+    assert.ok(
+      session.workspaces.some((candidate) => candidate.id === workspace.id),
+    )
 
     const verifyApp = buildApiApp({
       config: createTestConfig(),
@@ -1619,7 +1718,9 @@ void describe('buildApiApp', () => {
     const users = workspaceUserListResponseSchema.parse(usersResponse.json())
 
     assert.ok(
-      users.users.some((candidate) => candidate.email === AUTH_CONTEXT.claims.email),
+      users.users.some(
+        (candidate) => candidate.email === AUTH_CONTEXT.claims.email,
+      ),
     )
 
     const invitationsResponse = await verifyApp.inject({

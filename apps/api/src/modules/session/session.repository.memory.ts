@@ -27,6 +27,7 @@ interface MemoryWorkspace {
   name: string
   ownerUserId: string
   slug: string
+  taskCompletionConfettiEnabled: boolean
 }
 
 interface MemoryMembership {
@@ -64,6 +65,7 @@ const DEFAULT_MEMORY_WORKSPACE: MemoryWorkspace = {
   name: 'Personal Workspace',
   ownerUserId: DEFAULT_ACTOR_ID,
   slug: 'personal',
+  taskCompletionConfettiEnabled: true,
 }
 
 export class MemorySessionRepository implements SessionRepository {
@@ -83,7 +85,7 @@ export class MemorySessionRepository implements SessionRepository {
       updatedAt: new Date(0).toISOString(),
     },
   ]
-  private workspaces: MemoryWorkspace[] = [DEFAULT_MEMORY_WORKSPACE]
+  private workspaces: MemoryWorkspace[] = [{ ...DEFAULT_MEMORY_WORKSPACE }]
   private memberships: MemoryMembership[] = [
     {
       deletedAt: null,
@@ -103,7 +105,8 @@ export class MemorySessionRepository implements SessionRepository {
     if (context.auth) {
       const actor = this.resolveAuthenticatedActor(
         context.auth.claims.sub,
-        context.auth.claims.email ?? `${context.auth.claims.sub}@users.planner.local`,
+        context.auth.claims.email ??
+          `${context.auth.claims.sub}@users.planner.local`,
       )
 
       this.claimWorkspaceInvitations(actor)
@@ -136,8 +139,10 @@ export class MemorySessionRepository implements SessionRepository {
   ): Promise<SessionWorkspaceMembership> {
     const sharedWorkspaceCount = this.listMembershipsForUser(
       session.actorUserId,
-    ).filter((membership) => this.getWorkspaceById(membership.workspaceId)?.kind === 'shared')
-      .length
+    ).filter(
+      (membership) =>
+        this.getWorkspaceById(membership.workspaceId)?.kind === 'shared',
+    ).length
 
     if (sharedWorkspaceCount >= 3) {
       throw new HttpError(
@@ -153,9 +158,11 @@ export class MemorySessionRepository implements SessionRepository {
       createdAt: now,
       id,
       kind: 'shared',
-      name: input.name?.trim() || `Shared Workspace ${sharedWorkspaceCount + 1}`,
+      name:
+        input.name?.trim() || `Shared Workspace ${sharedWorkspaceCount + 1}`,
       ownerUserId: session.actorUserId,
       slug: `shared-${id.replaceAll('-', '').slice(-8)}`,
+      taskCompletionConfettiEnabled: true,
     }
 
     this.workspaces = [...this.workspaces, workspace]
@@ -174,14 +181,17 @@ export class MemorySessionRepository implements SessionRepository {
       },
     ]
 
-    return Promise.resolve(this.toWorkspaceMembership(workspace, 'owner', 'group_admin'))
+    return Promise.resolve(
+      this.toWorkspaceMembership(workspace, 'owner', 'group_admin'),
+    )
   }
 
   listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]> {
     const users = this.memberships
       .filter(
         (membership) =>
-          membership.workspaceId === session.workspaceId && membership.deletedAt === null,
+          membership.workspaceId === session.workspaceId &&
+          membership.deletedAt === null,
       )
       .map((membership) => {
         const user = this.getUserById(membership.userId)
@@ -223,8 +233,10 @@ export class MemorySessionRepository implements SessionRepository {
         invitedAt: invitation.invitedAt,
         updatedAt: invitation.updatedAt,
       }))
-      .sort((left, right) =>
-        right.invitedAt.localeCompare(left.invitedAt) || left.email.localeCompare(right.email),
+      .sort(
+        (left, right) =>
+          right.invitedAt.localeCompare(left.invitedAt) ||
+          left.email.localeCompare(right.email),
       )
 
     return Promise.resolve(invitations)
@@ -251,7 +263,8 @@ export class MemorySessionRepository implements SessionRepository {
     const now = new Date().toISOString()
     const existingInvitation = this.invitations.find(
       (invitation) =>
-        invitation.workspaceId === session.workspaceId && invitation.email === normalizedEmail,
+        invitation.workspaceId === session.workspaceId &&
+        invitation.email === normalizedEmail,
     )
 
     if (existingInvitation) {
@@ -262,7 +275,9 @@ export class MemorySessionRepository implements SessionRepository {
       existingInvitation.invitedBy = session.actorUserId
       existingInvitation.updatedAt = now
 
-      return Promise.resolve(this.toWorkspaceInvitationRecord(existingInvitation))
+      return Promise.resolve(
+        this.toWorkspaceInvitationRecord(existingInvitation),
+      )
     }
 
     const invitation: MemoryInvitation = {
@@ -433,6 +448,28 @@ export class MemorySessionRepository implements SessionRepository {
     return Promise.resolve(currentUser)
   }
 
+  updateWorkspaceSettings(
+    session: SessionSnapshot,
+    input: { taskCompletionConfettiEnabled: boolean },
+  ) {
+    const workspace = this.getWorkspaceById(session.workspaceId)
+
+    if (!workspace) {
+      throw new HttpError(
+        404,
+        'workspace_not_found',
+        'Workspace was not found.',
+      )
+    }
+
+    workspace.taskCompletionConfettiEnabled =
+      input.taskCompletionConfettiEnabled
+
+    return Promise.resolve({
+      taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
+    })
+  }
+
   private buildSnapshot(
     actor: AdminUserRecord,
     requestedWorkspaceId: string | undefined,
@@ -447,7 +484,9 @@ export class MemorySessionRepository implements SessionRepository {
     }
 
     const selectedMembership = requestedWorkspaceId
-      ? memberships.find((membership) => membership.workspaceId === requestedWorkspaceId)
+      ? memberships.find(
+          (membership) => membership.workspaceId === requestedWorkspaceId,
+        )
       : memberships[0]
 
     if (!selectedMembership) {
@@ -472,7 +511,9 @@ export class MemorySessionRepository implements SessionRepository {
     const workspace = this.getWorkspaceById(selectedMembership.workspaceId)
 
     if (!workspace) {
-      throw new Error(`Missing memory workspace "${selectedMembership.workspaceId}".`)
+      throw new Error(
+        `Missing memory workspace "${selectedMembership.workspaceId}".`,
+      )
     }
 
     return {
@@ -493,11 +534,18 @@ export class MemorySessionRepository implements SessionRepository {
         slug: workspace.slug,
       },
       workspaceId: workspace.id,
+      workspaceSettings: {
+        taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
+      },
       workspaces: memberships.map((membership) => {
-        const membershipWorkspace = this.getWorkspaceById(membership.workspaceId)
+        const membershipWorkspace = this.getWorkspaceById(
+          membership.workspaceId,
+        )
 
         if (!membershipWorkspace) {
-          throw new Error(`Missing memory workspace "${membership.workspaceId}".`)
+          throw new Error(
+            `Missing memory workspace "${membership.workspaceId}".`,
+          )
         }
 
         return this.toWorkspaceMembership(
@@ -524,10 +572,14 @@ export class MemorySessionRepository implements SessionRepository {
     const workspaceMemberships =
       memberships.length > 0
         ? memberships.map((membership) => {
-            const membershipWorkspace = this.getWorkspaceById(membership.workspaceId)
+            const membershipWorkspace = this.getWorkspaceById(
+              membership.workspaceId,
+            )
 
             if (!membershipWorkspace) {
-              throw new Error(`Missing memory workspace "${membership.workspaceId}".`)
+              throw new Error(
+                `Missing memory workspace "${membership.workspaceId}".`,
+              )
             }
 
             return this.toWorkspaceMembership(
@@ -556,6 +608,10 @@ export class MemorySessionRepository implements SessionRepository {
         slug: fallbackWorkspace.slug,
       },
       workspaceId: fallbackWorkspace.id,
+      workspaceSettings: {
+        taskCompletionConfettiEnabled:
+          fallbackWorkspace.taskCompletionConfettiEnabled,
+      },
       workspaces: workspaceMemberships,
     }
   }
@@ -573,7 +629,9 @@ export class MemorySessionRepository implements SessionRepository {
       return existingById
     }
 
-    const existingByEmail = this.users.find((user) => user.email === normalizedEmail)
+    const existingByEmail = this.users.find(
+      (user) => user.email === normalizedEmail,
+    )
 
     if (existingByEmail) {
       return existingByEmail
@@ -625,7 +683,8 @@ export class MemorySessionRepository implements SessionRepository {
     for (const invitation of matchingInvitations) {
       const membership = this.memberships.find(
         (candidate) =>
-          candidate.workspaceId === invitation.workspaceId && candidate.userId === actor.id,
+          candidate.workspaceId === invitation.workspaceId &&
+          candidate.userId === actor.id,
       )
 
       if (!membership) {
@@ -660,29 +719,36 @@ export class MemorySessionRepository implements SessionRepository {
 
   private hasAnyWorkspaceMembership(actorUserId: string): boolean {
     return this.memberships.some(
-      (membership) => membership.userId === actorUserId && membership.deletedAt === null,
+      (membership) =>
+        membership.userId === actorUserId && membership.deletedAt === null,
     )
   }
 
   private listMembershipsForUser(actorUserId: string): MemoryMembership[] {
     return this.memberships
       .filter(
-        (membership) => membership.userId === actorUserId && membership.deletedAt === null,
+        (membership) =>
+          membership.userId === actorUserId && membership.deletedAt === null,
       )
       .sort((left, right) => {
         const leftWorkspace = this.getWorkspaceById(left.workspaceId)
         const rightWorkspace = this.getWorkspaceById(right.workspaceId)
 
         return (
-          (leftWorkspace?.createdAt ?? '').localeCompare(rightWorkspace?.createdAt ?? '') ||
-          left.joinedAt.localeCompare(right.joinedAt)
+          (leftWorkspace?.createdAt ?? '').localeCompare(
+            rightWorkspace?.createdAt ?? '',
+          ) || left.joinedAt.localeCompare(right.joinedAt)
         )
       })
   }
 
-  private provisionPersonalWorkspace(actorUserId: string, displayName: string): void {
+  private provisionPersonalWorkspace(
+    actorUserId: string,
+    displayName: string,
+  ): void {
     const existingPersonalWorkspace = this.workspaces.find(
-      (workspace) => workspace.kind === 'personal' && workspace.ownerUserId === actorUserId,
+      (workspace) =>
+        workspace.kind === 'personal' && workspace.ownerUserId === actorUserId,
     )
 
     if (existingPersonalWorkspace) {
@@ -722,6 +788,7 @@ export class MemorySessionRepository implements SessionRepository {
       name: `${displayName}'s Workspace`,
       ownerUserId: actorUserId,
       slug: `personal-${actorUserId.replaceAll('-', '').slice(0, 12)}`,
+      taskCompletionConfettiEnabled: true,
     }
 
     this.workspaces = [...this.workspaces, workspace]
@@ -794,7 +861,10 @@ export class MemorySessionRepository implements SessionRepository {
     email: string,
   ): MemoryMembership | undefined {
     return this.memberships.find((membership) => {
-      if (membership.workspaceId !== workspaceId || membership.deletedAt !== null) {
+      if (
+        membership.workspaceId !== workspaceId ||
+        membership.deletedAt !== null
+      ) {
         return false
       }
 
@@ -850,7 +920,10 @@ function compareWorkspaceUserRole(
     member: 3,
     owner: 0,
     senior_member: 2,
-  } satisfies Record<'group_admin' | 'member' | 'owner' | 'senior_member', number>
+  } satisfies Record<
+    'group_admin' | 'member' | 'owner' | 'senior_member',
+    number
+  >
 
   const leftKey = leftIsOwner ? 'owner' : (leftGroupRole ?? 'member')
   const rightKey = rightIsOwner ? 'owner' : (rightGroupRole ?? 'member')

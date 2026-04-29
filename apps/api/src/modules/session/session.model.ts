@@ -8,6 +8,8 @@ import type {
   WorkspaceInvitationRecord as ContractWorkspaceInvitationRecord,
   WorkspaceKind,
   WorkspaceRole,
+  WorkspaceSettings as ContractWorkspaceSettings,
+  WorkspaceSettingsUpdateInput as ContractWorkspaceSettingsUpdateInput,
   WorkspaceUserRecord as ContractWorkspaceUserRecord,
 } from '@planner/contracts'
 
@@ -35,6 +37,7 @@ export interface SessionSnapshot {
   source: 'access_token' | 'default' | 'headers'
   workspace: SessionWorkspace
   workspaceId: string
+  workspaceSettings: WorkspaceSettings
   workspaces: SessionWorkspaceMembership[]
 }
 
@@ -46,6 +49,8 @@ export interface SessionContext {
 
 export type SessionWorkspaceMembership = ContractSessionWorkspaceMembership
 export type AdminUserRecord = ContractAdminUserRecord
+export type WorkspaceSettings = ContractWorkspaceSettings
+export type WorkspaceSettingsUpdateInput = ContractWorkspaceSettingsUpdateInput
 export type WorkspaceInvitationCreateInput =
   ContractWorkspaceInvitationCreateInput
 export type WorkspaceInvitationRecord = ContractWorkspaceInvitationRecord

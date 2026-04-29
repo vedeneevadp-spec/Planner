@@ -56,6 +56,7 @@ import {
   type PlannerApiClient,
   PlannerApiError,
 } from '../lib/planner-api'
+import { useTaskCompletionConfetti } from '../lib/task-completion-confetti'
 import type { PlannerState } from './planner.types'
 
 interface PlannerMutationContext {
@@ -539,6 +540,9 @@ export function usePlannerState(): PlannerState {
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const actorUserId = session?.actorUserId
+  const fireTaskCompletionConfetti = useTaskCompletionConfetti()
+  const isTaskCompletionConfettiEnabled =
+    session?.workspaceSettings.taskCompletionConfettiEnabled ?? true
   const workspaceId = session?.workspaceId
   const queryClient = useQueryClient()
   const [mutationErrorMessage, setMutationErrorMessage] = useState<
@@ -1693,8 +1697,9 @@ export function usePlannerState(): PlannerState {
       return false
     }
 
-    return runTaskMutation(taskId, () =>
-      runMutation(
+    return runTaskMutation(taskId, async () => {
+      const didCompleteTask = task.status !== 'done' && status === 'done'
+      const didUpdate = await runMutation(
         () =>
           setTaskStatusMutation.mutateAsync({
             expectedVersion: task.version,
@@ -1715,8 +1720,14 @@ export function usePlannerState(): PlannerState {
             workspaceId,
           })
         },
-      ),
-    )
+      )
+
+      if (didUpdate && didCompleteTask && isTaskCompletionConfettiEnabled) {
+        fireTaskCompletionConfetti()
+      }
+
+      return didUpdate
+    })
   }
 
   async function setTaskPlannedDate(
