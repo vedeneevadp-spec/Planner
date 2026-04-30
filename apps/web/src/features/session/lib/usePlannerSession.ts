@@ -4,6 +4,10 @@ import { useQuery } from '@tanstack/react-query'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import {
+  getCachedPlannerSession,
+  setCachedPlannerSession,
+} from './planner-session-cache'
+import {
   isUnauthorizedSessionApiError,
   resolvePlannerSession,
   SessionApiError,
@@ -30,18 +34,26 @@ export function usePlannerSession() {
     config: plannerApiConfig,
     isAuthEnabled: auth.isAuthEnabled,
   })
+  const cachedPlannerSession = getCachedPlannerSession({
+    actorUserId: selectedWorkspaceActorUserId,
+    workspaceId: selectedWorkspaceId ?? plannerApiConfig.workspaceIdOverride,
+  })
 
   return useQuery({
     enabled: canLoadPlannerSession,
-    queryFn: ({ signal }) =>
-      loadPlannerSession({
+    queryFn: async ({ signal }) => {
+      const session = await loadPlannerSession({
         accessToken: auth.accessToken ?? undefined,
         legacyActorUserId:
           getLastActorUserId() ?? plannerApiConfig.actorUserIdOverride,
         selectedWorkspaceActorUserId,
         selectedWorkspaceId,
         signal,
-      }),
+      })
+      setCachedPlannerSession(session)
+
+      return session
+    },
     queryKey: [
       'planner',
       'session',
@@ -51,6 +63,12 @@ export function usePlannerSession() {
       selectedWorkspaceActorUserId ?? 'default',
       selectedWorkspaceId ?? 'default',
     ] as const,
+    ...(cachedPlannerSession
+      ? {
+          placeholderData: cachedPlannerSession,
+        }
+      : {}),
+    refetchOnMount: 'always',
     retry: (failureCount, error) =>
       !isUnauthorizedSessionApiError(error) && failureCount < 2,
     staleTime: 5 * 60_000,

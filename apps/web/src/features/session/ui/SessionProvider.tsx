@@ -15,6 +15,7 @@ import {
   getNativeAppIsActive,
   isNativeSessionPersistenceRuntime,
 } from '../lib/native-session-storage'
+import { clearCachedPlannerSession } from '../lib/planner-session-cache'
 import {
   clearSupabaseBrowserAuthStorage,
   getSupabaseBrowserClient,
@@ -23,6 +24,7 @@ import {
 import {
   clearLastActorUserId,
   clearSelectedWorkspaceId,
+  getLastActorUserId,
 } from '../lib/workspace-selection'
 import {
   type PasswordSignUpInput,
@@ -69,6 +71,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       pendingSignOutNoticeRef.current = notice
       setAuthNotice(notice === false ? null : notice)
       setIsPasswordRecovery(false)
+      clearCachedPlannerSession(snapshot.userId ?? getLastActorUserId())
       clearSelectedWorkspaceId(snapshot.userId)
       clearLastActorUserId()
       setSnapshot({
@@ -235,6 +238,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }
 
     async function bootstrapAuthSession() {
+      const storedSession = await readSupabaseStoredSession()
+
+      if (isActive && storedSession) {
+        setAuthNotice(null)
+        setSnapshot(toAuthSnapshot(storedSession, false))
+      }
+
       if (isNativeSessionRuntime) {
         const appIsActive = await getNativeAppIsActive().catch((error) => {
           console.warn('Failed to resolve native app state.', error)

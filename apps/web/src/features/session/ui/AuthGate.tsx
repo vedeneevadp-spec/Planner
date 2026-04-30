@@ -185,6 +185,10 @@ export function AuthGate({ children }: PropsWithChildren) {
   }
 
   if (isLoading) {
+    if (plannerSessionQuery.data) {
+      return children
+    }
+
     return (
       <AuthStatusPanel
         copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."

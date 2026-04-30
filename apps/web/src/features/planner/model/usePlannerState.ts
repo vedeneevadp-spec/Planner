@@ -549,6 +549,8 @@ export function usePlannerState(): PlannerState {
   const { accessToken, isAuthEnabled, recoverSession } = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
+  const isPlannerApiReady =
+    Boolean(session) && (!isAuthEnabled || Boolean(accessToken))
   const actorUserId = session?.actorUserId
   const fireTaskCompletionConfetti = useTaskCompletionConfetti()
   const isTaskCompletionConfettiEnabled =
@@ -567,7 +569,7 @@ export function usePlannerState(): PlannerState {
   const [queuedMutationCount, setQueuedMutationCount] = useState(0)
   const [conflictedMutationCount, setConflictedMutationCount] = useState(0)
   const plannerApi = useMemo(() => {
-    if (!session) {
+    if (!session || !isPlannerApiReady) {
       return null
     }
 
@@ -577,7 +579,7 @@ export function usePlannerState(): PlannerState {
       apiBaseUrl: plannerApiConfig.apiBaseUrl,
       workspaceId: session.workspaceId,
     })
-  }, [accessToken, session])
+  }, [accessToken, isPlannerApiReady, session])
   const taskQueryKey = useMemo(
     () => ['planner', 'tasks', workspaceId ?? 'pending'] as const,
     [workspaceId],
