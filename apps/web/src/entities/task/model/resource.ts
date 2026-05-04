@@ -1,11 +1,13 @@
 import type { Task } from './task.types'
 
 export const DEFAULT_TASK_RESOURCE = 2
-export const MIN_TASK_RESOURCE = -5
-export const MAX_TASK_RESOURCE = 5
+export const MAX_TASK_RESOURCE = 4
+export const MIN_TASK_RESOURCE = -MAX_TASK_RESOURCE
 export const EMPTY_TASK_RESOURCE = 0
+export const TASK_RESOURCE_STEPS = [1, 2, 3, 4] as const
+export type TaskResourceLevel = (typeof TASK_RESOURCE_STEPS)[number]
 
-function clampTaskResource(value: number): number {
+export function clampTaskResource(value: number): number {
   return Math.max(MIN_TASK_RESOURCE, Math.min(MAX_TASK_RESOURCE, value))
 }
 
@@ -55,7 +57,7 @@ export function getTaskResource(
   >,
 ): number {
   if (task.resource !== null) {
-    return task.resource
+    return clampTaskResource(task.resource)
   }
 
   return EMPTY_TASK_RESOURCE

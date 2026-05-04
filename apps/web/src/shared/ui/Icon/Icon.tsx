@@ -199,6 +199,17 @@ export function CalendarIcon(props: IconProps) {
   )
 }
 
+export function ShoppingBagIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M6.5 8.25H17.5L18.65 18.3C18.78 19.43 17.9 20.42 16.76 20.42H7.24C6.1 20.42 5.22 19.43 5.35 18.3L6.5 8.25Z" />
+      <path d="M9 9V7.25C9 5.59 10.34 4.25 12 4.25C13.66 4.25 15 5.59 15 7.25V9" />
+      <path d="M9.25 11.75V12.25" />
+      <path d="M14.75 11.75V12.25" />
+    </SvgIcon>
+  )
+}
+
 export function ChatIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

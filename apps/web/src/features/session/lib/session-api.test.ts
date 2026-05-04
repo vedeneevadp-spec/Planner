@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   createSharedWorkspace,
+  deleteSharedWorkspace,
   isUnauthorizedSessionApiError,
   resolvePlannerSession,
   SessionApiError,
+  updateSharedWorkspace,
 } from './session-api'
 
 function createSessionPayload(source: 'access_token' | 'default' = 'default') {
@@ -143,11 +145,103 @@ describe('sessionApi', () => {
 
     const [, requestInit] = fetchMock.mock.calls[0]!
     const headers = new Headers(requestInit?.headers)
+    const body = parseJsonBody(requestInit) as { name?: string }
 
     expect(workspace.kind).toBe('shared')
     expect(workspace.groupRole).toBe('group_admin')
+    expect(body.name).toBeUndefined()
     expect(headers.get('x-actor-user-id')).toBe('user-1')
     expect(headers.get('x-workspace-id')).toBe('workspace-1')
+  })
+
+  it('creates a shared workspace with a provided name', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          groupRole: 'group_admin',
+          id: 'workspace-shared',
+          kind: 'shared',
+          name: 'Family Workspace',
+          role: 'owner',
+          slug: 'family-workspace',
+        }),
+        { status: 201 },
+      ),
+    )
+
+    await createSharedWorkspace(
+      {
+        actorUserId: 'user-1',
+        input: {
+          name: 'Family Workspace',
+        },
+        workspaceId: 'workspace-1',
+      },
+      fetchMock,
+    )
+
+    const [, requestInit] = fetchMock.mock.calls[0]!
+    const body = parseJsonBody(requestInit) as { name: string }
+
+    expect(body.name).toBe('Family Workspace')
+  })
+
+  it('updates a shared workspace name', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          groupRole: 'group_admin',
+          id: 'workspace-shared',
+          kind: 'shared',
+          name: 'Renamed Workspace',
+          role: 'owner',
+          slug: 'shared-workspace',
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const workspace = await updateSharedWorkspace(
+      {
+        actorUserId: 'user-1',
+        input: {
+          name: 'Renamed Workspace',
+        },
+        workspaceId: 'workspace-shared',
+      },
+      fetchMock,
+    )
+
+    const [, requestInit] = fetchMock.mock.calls[0]!
+    const headers = new Headers(requestInit?.headers)
+    const body = parseJsonBody(requestInit) as { name: string }
+
+    expect(workspace.name).toBe('Renamed Workspace')
+    expect(requestInit?.method).toBe('PATCH')
+    expect(body.name).toBe('Renamed Workspace')
+    expect(headers.get('x-actor-user-id')).toBe('user-1')
+    expect(headers.get('x-workspace-id')).toBe('workspace-shared')
+  })
+
+  it('deletes a shared workspace', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 204 }))
+
+    await deleteSharedWorkspace(
+      {
+        actorUserId: 'user-1',
+        workspaceId: 'workspace-shared',
+      },
+      fetchMock,
+    )
+
+    const [, requestInit] = fetchMock.mock.calls[0]!
+    const headers = new Headers(requestInit?.headers)
+
+    expect(requestInit?.method).toBe('DELETE')
+    expect(headers.get('x-actor-user-id')).toBe('user-1')
+    expect(headers.get('x-workspace-id')).toBe('workspace-shared')
   })
 
   it('throws typed error on failed resolve', async () => {
@@ -180,3 +274,13 @@ describe('sessionApi', () => {
     )
   })
 })
+
+function parseJsonBody(requestInit: RequestInit | undefined): unknown {
+  const body = requestInit?.body
+
+  if (typeof body !== 'string') {
+    throw new Error('Expected request body to be a JSON string.')
+  }
+
+  return JSON.parse(body) as unknown
+}

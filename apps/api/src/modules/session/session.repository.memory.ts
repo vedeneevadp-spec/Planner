@@ -3,6 +3,7 @@ import {
   type AssignableAppRole,
   type CreateSharedWorkspaceInput,
   generateUuidV7,
+  type UpdateSharedWorkspaceInput,
   type WorkspaceGroupRole,
   type WorkspaceKind,
   type WorkspaceRole,
@@ -184,6 +185,35 @@ export class MemorySessionRepository implements SessionRepository {
     return Promise.resolve(
       this.toWorkspaceMembership(workspace, 'owner', 'group_admin'),
     )
+  }
+
+  updateSharedWorkspace(
+    session: SessionSnapshot,
+    input: UpdateSharedWorkspaceInput,
+  ): Promise<SessionWorkspaceMembership> {
+    const workspace = this.requireOwnedSharedWorkspace(session)
+
+    workspace.name = input.name.trim()
+
+    return Promise.resolve(
+      this.toWorkspaceMembership(workspace, session.role, session.groupRole),
+    )
+  }
+
+  deleteSharedWorkspace(session: SessionSnapshot): Promise<void> {
+    const workspace = this.requireOwnedSharedWorkspace(session)
+
+    this.workspaces = this.workspaces.filter(
+      (candidate) => candidate.id !== workspace.id,
+    )
+    this.memberships = this.memberships.filter(
+      (membership) => membership.workspaceId !== workspace.id,
+    )
+    this.invitations = this.invitations.filter(
+      (invitation) => invitation.workspaceId !== workspace.id,
+    )
+
+    return Promise.resolve()
   }
 
   listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]> {
@@ -880,6 +910,38 @@ export class MemorySessionRepository implements SessionRepository {
 
   private getWorkspaceById(workspaceId: string): MemoryWorkspace | undefined {
     return this.workspaces.find((workspace) => workspace.id === workspaceId)
+  }
+
+  private requireOwnedSharedWorkspace(
+    session: SessionSnapshot,
+  ): MemoryWorkspace {
+    const workspace = this.getWorkspaceById(session.workspaceId)
+
+    if (!workspace) {
+      throw new HttpError(
+        404,
+        'workspace_not_found',
+        'Workspace was not found.',
+      )
+    }
+
+    if (workspace.kind !== 'shared') {
+      throw new HttpError(
+        400,
+        'shared_workspace_required',
+        'Only shared workspaces can be renamed or deleted.',
+      )
+    }
+
+    if (workspace.ownerUserId !== session.actorUserId) {
+      throw new HttpError(
+        403,
+        'shared_workspace_creator_required',
+        'Only the workspace creator can rename or delete it.',
+      )
+    }
+
+    return workspace
   }
 
   private getDefaultActor(): AdminUserRecord {

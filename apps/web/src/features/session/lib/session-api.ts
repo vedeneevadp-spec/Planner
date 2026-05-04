@@ -6,6 +6,8 @@ import {
   sessionResponseSchema,
   type SessionWorkspaceMembership,
   sessionWorkspaceMembershipSchema,
+  type UpdateSharedWorkspaceInput,
+  updateSharedWorkspaceInputSchema,
 } from '@planner/contracts'
 
 import {
@@ -100,13 +102,92 @@ export async function createSharedWorkspace(
       method: 'POST',
     },
   )
-  const payload = (await response.json()) as unknown
+  const payload = await readResponsePayload(response)
 
   if (!response.ok) {
     throwSessionApiError(response, payload, 'Failed to create workspace.')
   }
 
   return sessionWorkspaceMembershipSchema.parse(payload)
+}
+
+export interface UpdateSharedWorkspaceOptions {
+  accessToken?: string
+  actorUserId?: string | undefined
+  input: UpdateSharedWorkspaceInput
+  workspaceId?: string | undefined
+}
+
+export async function updateSharedWorkspace(
+  options: UpdateSharedWorkspaceOptions,
+  fetchFn: typeof fetch = fetch,
+): Promise<SessionWorkspaceMembership> {
+  const headers = getPlannerSessionOverrideHeaders({
+    accessToken: options.accessToken,
+    actorUserId: options.actorUserId,
+    workspaceId: options.workspaceId,
+  })
+  const requestHeaders = new Headers(headers)
+  requestHeaders.set('content-type', 'application/json')
+  const input = updateSharedWorkspaceInputSchema.parse(options.input)
+  const response = await fetchFn(
+    new URL('/api/v1/workspaces/shared', plannerApiConfig.apiBaseUrl),
+    {
+      body: JSON.stringify(input),
+      headers: requestHeaders,
+      method: 'PATCH',
+    },
+  )
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throwSessionApiError(response, payload, 'Failed to rename workspace.')
+  }
+
+  return sessionWorkspaceMembershipSchema.parse(payload)
+}
+
+export interface DeleteSharedWorkspaceOptions {
+  accessToken?: string
+  actorUserId?: string | undefined
+  workspaceId?: string | undefined
+}
+
+export async function deleteSharedWorkspace(
+  options: DeleteSharedWorkspaceOptions,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  const headers = getPlannerSessionOverrideHeaders({
+    accessToken: options.accessToken,
+    actorUserId: options.actorUserId,
+    workspaceId: options.workspaceId,
+  })
+  const response = await fetchFn(
+    new URL('/api/v1/workspaces/shared', plannerApiConfig.apiBaseUrl),
+    {
+      ...(headers ? { headers } : {}),
+      method: 'DELETE',
+    },
+  )
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throwSessionApiError(response, payload, 'Failed to delete workspace.')
+  }
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const text = await response.text()
+
+  if (!text) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
+  }
 }
 
 function throwSessionApiError(

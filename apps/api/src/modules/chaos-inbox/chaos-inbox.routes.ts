@@ -6,6 +6,7 @@ import {
   chaosInboxItemUpdateInputSchema,
   chaosInboxListFiltersSchema,
   chaosInboxListRecordResponseSchema,
+  createChaosInboxItemsInputSchema,
 } from '@planner/contracts'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
@@ -27,19 +28,6 @@ const itemParamsSchema = z.object({
   id: z.string().min(1),
 })
 
-const createBodySchema = z.object({
-  items: z
-    .array(
-      z.object({
-        id: z.string().optional(),
-        source: z.enum(['manual', 'quick_add', 'widget', 'voice']).default('manual'),
-        text: z.string().trim().min(1).max(5000),
-      }),
-    )
-    .min(1)
-    .max(100),
-})
-
 const idsBodySchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(200),
 })
@@ -51,7 +39,11 @@ export function registerChaosInboxRoutes(
 ): void {
   app.post('/api/v1/chaos-inbox', async (request, reply) => {
     const headers = parseHeadersForWrite(request)
-    const input = parseOrThrow(createBodySchema, request.body, 'invalid_body')
+    const input = parseOrThrow(
+      createChaosInboxItemsInputSchema,
+      request.body,
+      'invalid_body',
+    )
     const context = await resolveWriteContext(request, sessionService, headers)
     const items = await service.createItems(context, input)
 
@@ -79,7 +71,11 @@ export function registerChaosInboxRoutes(
 
   app.patch('/api/v1/chaos-inbox/:id', async (request) => {
     const headers = parseHeadersForWrite(request)
-    const params = parseOrThrow(itemParamsSchema, request.params, 'invalid_params')
+    const params = parseOrThrow(
+      itemParamsSchema,
+      request.params,
+      'invalid_params',
+    )
     const input = parseOrThrow(
       chaosInboxItemUpdateInputSchema,
       request.body,
@@ -93,7 +89,11 @@ export function registerChaosInboxRoutes(
 
   app.delete('/api/v1/chaos-inbox/:id', async (request, reply) => {
     const headers = parseHeadersForWrite(request)
-    const params = parseOrThrow(itemParamsSchema, request.params, 'invalid_params')
+    const params = parseOrThrow(
+      itemParamsSchema,
+      request.params,
+      'invalid_params',
+    )
     const context = await resolveWriteContext(request, sessionService, headers)
 
     await service.removeItem(context, params.id)
@@ -104,7 +104,11 @@ export function registerChaosInboxRoutes(
 
   app.post('/api/v1/chaos-inbox/:id/convert-to-task', async (request) => {
     const headers = parseHeadersForWrite(request)
-    const params = parseOrThrow(itemParamsSchema, request.params, 'invalid_params')
+    const params = parseOrThrow(
+      itemParamsSchema,
+      request.params,
+      'invalid_params',
+    )
     const context = await resolveWriteContext(request, sessionService, headers)
     const result = await service.convertToTask(context, params.id)
 

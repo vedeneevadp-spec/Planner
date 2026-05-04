@@ -28,10 +28,10 @@ import {
 import { getTaskResource } from '../model/resource'
 import {
   getResourceFromValue,
+  getResourceValueFromTaskResource,
   getTaskImportanceFromType,
   getTaskTypeValue,
   getTaskUrgencyFromType,
-  type ResourceValue,
   type TaskTypeValue,
 } from '../model/task-meta'
 import styles from './TaskCard.module.css'
@@ -40,6 +40,32 @@ import {
   TaskResourceMeter,
   TaskTypePicker,
 } from './TaskMetaPickers'
+
+const LEGACY_EMPTY_PROJECT_TITLES = new Set(['Без сферы', 'No sphere'])
+
+function getEmptyProjectLabel(isSharedWorkspace: boolean): string {
+  return isSharedWorkspace ? 'Без проекта' : 'Без сферы'
+}
+
+function getProjectPickerLabel(isSharedWorkspace: boolean): string {
+  return isSharedWorkspace ? 'Проект' : 'Сфера'
+}
+
+function getProjectDisplayTitle(
+  projectTitle: string,
+  isSharedWorkspace: boolean,
+): string {
+  const normalizedProjectTitle = projectTitle.trim()
+
+  if (
+    !normalizedProjectTitle ||
+    LEGACY_EMPTY_PROJECT_TITLES.has(normalizedProjectTitle)
+  ) {
+    return getEmptyProjectLabel(isSharedWorkspace)
+  }
+
+  return normalizedProjectTitle
+}
 
 interface TaskCardProps {
   currentActorUserId?: string | undefined
@@ -79,7 +105,13 @@ export function TaskCard({
   const [isEditing, setIsEditing] = useState(false)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
-  const projectTitle = project?.title ?? task.project.trim()
+  const rawProjectTitle = project?.title ?? task.project
+  const projectTitle = getProjectDisplayTitle(rawProjectTitle, false)
+  const normalizedRawProjectTitle = rawProjectTitle.trim()
+  const hasProject =
+    !isSharedWorkspace &&
+    Boolean(normalizedRawProjectTitle) &&
+    !LEGACY_EMPTY_PROJECT_TITLES.has(normalizedRawProjectTitle)
   const taskType = getTaskTypeValue(task)
   const taskResource = getTaskResource(task)
   const isActiveTask = task.status !== 'done'
@@ -101,6 +133,7 @@ export function TaskCard({
     isSharedWorkspace && isTaskAssignee && !isTaskAuthor
   const canToggleReview =
     isSharedWorkspace &&
+    task.requiresConfirmation &&
     isActiveTask &&
     (canManageSharedTask || isTaskAssignee)
   const canManageSchedule = !isSharedWorkspace || canManageSharedTask
@@ -135,7 +168,7 @@ export function TaskCard({
     >
       <div className={styles.main}>
         <div className={styles.copy}>
-          {projectTitle ? (
+          {hasProject ? (
             <span className={styles.projectBadge}>
               {project ? (
                 <span
@@ -151,9 +184,9 @@ export function TaskCard({
               ) : null}
               <span>{projectTitle}</span>
             </span>
-          ) : (
-            <span className={styles.projectBadgeMuted}>Без сферы</span>
-          )}
+          ) : !isSharedWorkspace ? (
+            <span className={styles.projectBadgeMuted}>{projectTitle}</span>
+          ) : null}
 
           <div className={styles.titleRow}>
             {task.icon ? (
@@ -201,7 +234,9 @@ export function TaskCard({
             </span>
           ) : null}
           {isSharedWorkspace && task.authorDisplayName ? (
-            <span className={styles.metaChip}>Автор: {task.authorDisplayName}</span>
+            <span className={styles.metaChip}>
+              Автор: {task.authorDisplayName}
+            </span>
           ) : null}
           {task.assigneeDisplayName ? (
             <span className={styles.metaChip}>
@@ -316,7 +351,9 @@ export function TaskCard({
                     : 'Завершить задачу'
                 }
                 title={
-                  task.requiresConfirmation ? 'Подтвердить выполнение' : 'Завершить'
+                  task.requiresConfirmation
+                    ? 'Подтвердить выполнение'
+                    : 'Завершить'
                 }
                 onClick={() => onSetStatus(task.id, 'done')}
               >
@@ -407,7 +444,9 @@ export function TaskEditDialog({
   onUpdate,
 }: TaskEditDialogProps) {
   const confirmationFieldId = useId()
-  const [assigneeUserId, setAssigneeUserId] = useState(task.assigneeUserId ?? '')
+  const [assigneeUserId, setAssigneeUserId] = useState(
+    task.assigneeUserId ?? '',
+  )
   const [requiresConfirmation, setRequiresConfirmation] = useState(
     task.requiresConfirmation,
   )
@@ -422,9 +461,7 @@ export function TaskEditDialog({
   )
   const [icon, setIcon] = useState(task.icon)
   const [resource, setResource] = useState(
-    task.resource === null || task.resource === 0
-      ? ''
-      : (String(task.resource) as ResourceValue),
+    getResourceValueFromTaskResource(task.resource),
   )
   const [taskType, setTaskType] = useState<TaskTypeValue>(
     getTaskTypeValue(task),
@@ -453,6 +490,15 @@ export function TaskEditDialog({
 
     const selectedProject =
       projects.find((project) => project.id === projectId) ?? null
+    const projectInput = isSharedWorkspace
+      ? {
+          project: '',
+          projectId: null,
+        }
+      : {
+          project: selectedProject?.title ?? '',
+          projectId: selectedProject?.id ?? null,
+        }
     const hasPlannedDate = Boolean(plannedDate)
     const isUpdated = await onUpdate(task.id, {
       assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
@@ -464,8 +510,8 @@ export function TaskEditDialog({
       plannedEndTime:
         hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
-      project: selectedProject?.title ?? '',
-      projectId: selectedProject?.id ?? null,
+      project: projectInput.project,
+      projectId: projectInput.projectId,
       resource: getResourceFromValue(resource),
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
       sphereId: task.sphereId,
@@ -583,15 +629,19 @@ export function TaskEditDialog({
           </div>
 
           <div className={styles.editorColumnPanel}>
-            <section className={styles.editorSection}>
-              <ProjectPicker
-                className={styles.fieldProject}
-                projects={projects}
-                uploadedIcons={uploadedIcons}
-                value={projectId}
-                onChange={setProjectId}
-              />
-            </section>
+            {!isSharedWorkspace ? (
+              <section className={styles.editorSection}>
+                <ProjectPicker
+                  className={styles.fieldProject}
+                  emptyLabel={getEmptyProjectLabel(false)}
+                  label={getProjectPickerLabel(false)}
+                  projects={projects}
+                  uploadedIcons={uploadedIcons}
+                  value={projectId}
+                  onChange={setProjectId}
+                />
+              </section>
+            ) : null}
 
             {isSharedWorkspace ? (
               <section className={styles.editorSection}>

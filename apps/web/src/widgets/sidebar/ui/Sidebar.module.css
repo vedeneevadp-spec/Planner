@@ -78,6 +78,76 @@
   margin-top: 1rem;
 }
 
+.workspaceInlineForm {
+  display: grid;
+  gap: 0.72rem;
+  padding: 0.82rem;
+  border-radius: 16px;
+  border: 1px solid rgba(37, 45, 37, 0.08);
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.workspaceFormField {
+  display: grid;
+  gap: 0.34rem;
+}
+
+.workspaceFormField span {
+  font-size: 0.76rem;
+  color: var(--text-soft);
+}
+
+.workspaceFormField input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.72rem 0.9rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.82);
+  font: inherit;
+}
+
+.workspaceFormActions,
+.workspaceOwnerActions {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.workspaceFormActions {
+  flex-wrap: wrap;
+}
+
+.workspaceOwnerActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.inlinePrimaryButton,
+.inlineGhostButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.85rem;
+  border-radius: 14px;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.inlinePrimaryButton {
+  border: 1px solid rgba(33, 78, 66, 0.16);
+  padding: 0.72rem 0.95rem;
+  color: #f7f2e8;
+  background: linear-gradient(135deg, #214e42, #16372f);
+}
+
+.inlineGhostButton {
+  border: 1px solid rgba(33, 78, 66, 0.12);
+  padding: 0.72rem 0.95rem;
+  color: var(--accent);
+  background: rgba(33, 78, 66, 0.06);
+}
+
 .workspaceSelect {
   min-width: 0;
 }
@@ -124,6 +194,16 @@
   background: rgba(255, 255, 255, 0.78);
 }
 
+.workspaceActionButton {
+  width: 100%;
+}
+
+.workspaceDeleteButton {
+  color: #8a3a21;
+  background: rgba(173, 78, 47, 0.08);
+  border-color: rgba(173, 78, 47, 0.14);
+}
+
 .createWorkspaceButton:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -133,6 +213,18 @@
   background: rgba(33, 78, 66, 0.1);
   border-color: rgba(33, 78, 66, 0.18);
   color: var(--accent-strong);
+}
+
+.workspaceDeleteButton:not(:disabled):hover {
+  background: rgba(173, 78, 47, 0.12);
+  border-color: rgba(173, 78, 47, 0.2);
+  color: #7b3018;
+}
+
+.inlinePrimaryButton:disabled,
+.inlineGhostButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .accountRow {
@@ -430,6 +522,17 @@
 
   .mobileCreateWorkspaceButton span {
     white-space: nowrap;
+  }
+
+  .workspaceFormActions,
+  .workspaceOwnerActions {
+    flex-direction: column;
+    display: flex;
+  }
+
+  .inlinePrimaryButton,
+  .inlineGhostButton {
+    width: 100%;
   }
 
   .mobileSheetSection {

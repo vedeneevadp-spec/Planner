@@ -22,6 +22,11 @@ describe('getTaskResource', () => {
     expect(getTaskResource({ ...baseTask, resource: 2 })).toBe(2)
   })
 
+  it('clamps legacy resource values to the current limit', () => {
+    expect(getTaskResource({ ...baseTask, resource: -5 })).toBe(-4)
+    expect(getTaskResource({ ...baseTask, resource: 5 })).toBe(4)
+  })
+
   it('estimates draining resource for important and urgent tasks', () => {
     expect(
       getEstimatedTaskResource({
@@ -32,7 +37,7 @@ describe('getTaskResource', () => {
     ).toBe(-4)
   })
 
-  it('caps heavy scheduled tasks at 5 draining points', () => {
+  it('caps heavy scheduled tasks at 4 draining points', () => {
     expect(
       getEstimatedTaskResource({
         ...baseTask,
@@ -41,6 +46,6 @@ describe('getTaskResource', () => {
         plannedStartTime: '09:00',
         urgency: 'urgent',
       }),
-    ).toBe(-5)
+    ).toBe(-4)
   })
 })

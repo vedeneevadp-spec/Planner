@@ -3,6 +3,11 @@ import { useId } from 'react'
 import { cx } from '@/shared/lib/classnames'
 import { LightningIcon } from '@/shared/ui/Icon'
 
+import {
+  MAX_TASK_RESOURCE,
+  TASK_RESOURCE_STEPS,
+  type TaskResourceLevel,
+} from '../model/resource'
 import type { ResourceValue, TaskTypeValue } from '../model/task-meta'
 import styles from './TaskMetaPickers.module.css'
 
@@ -10,12 +15,11 @@ const IMPORTANT_ICON_SRC =
   'https://chaotika.ru/api/v1/icon-assets/019db853-b277-7b05-a00f-36487fbb5cdb.webp'
 const ROUTINE_ICON_SRC =
   'https://chaotika.ru/api/v1/icon-assets/019db853-b277-7e73-8b26-6bc63220c18b.webp'
-const RESOURCE_COLORS: Record<1 | 2 | 3 | 4 | 5, string> = {
+const RESOURCE_COLORS: Record<TaskResourceLevel, string> = {
   1: '#2f9e44',
   2: '#6da83f',
   3: '#d2a72c',
   4: '#de7b35',
-  5: '#c84534',
 }
 const RESTORE_RESOURCE_COLOR = '#2f9e44'
 
@@ -219,8 +223,11 @@ export function ResourcePicker({
   )
 }
 
-function getResourceMagnitude(value: number): 1 | 2 | 3 | 4 | 5 {
-  return Math.max(1, Math.min(5, Math.abs(value))) as 1 | 2 | 3 | 4 | 5
+function getResourceMagnitude(value: number): TaskResourceLevel {
+  return Math.max(
+    1,
+    Math.min(MAX_TASK_RESOURCE, Math.abs(value)),
+  ) as TaskResourceLevel
 }
 
 export function TaskResourceMeter({
@@ -249,7 +256,7 @@ export function TaskResourceMeter({
       aria-label={normalizedLabel}
       title={normalizedLabel}
     >
-      {[1, 2, 3, 4, 5].map((item) => (
+      {TASK_RESOURCE_STEPS.map((item) => (
         <span
           key={item}
           className={item > magnitude ? styles.resourceBoltMuted : undefined}

@@ -94,6 +94,7 @@ describe('TaskCard', () => {
       createTask({
         assigneeDisplayName: 'Assignee',
         assigneeUserId: 'user-2',
+        requiresConfirmation: true,
       }),
       {
         currentActorUserId: 'user-2',
@@ -107,6 +108,40 @@ describe('TaskCard', () => {
     ).toBeInTheDocument()
   })
 
+  it('hides review action when confirmation is not required', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Assignee',
+        assigneeUserId: 'user-2',
+        requiresConfirmation: false,
+      }),
+      {
+        currentActorUserId: 'user-2',
+        isSharedWorkspace: true,
+        sharedWorkspaceGroupRole: 'member',
+      },
+    )
+
+    expect(
+      screen.queryByRole('button', { name: 'На проверку' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('hides project metadata in shared workspace task cards', () => {
+    renderTaskCard(
+      createTask({
+        project: 'Семья',
+      }),
+      {
+        isSharedWorkspace: true,
+      },
+    )
+
+    expect(screen.queryByText('Семья')).not.toBeInTheDocument()
+    expect(screen.queryByText('Без проекта')).not.toBeInTheDocument()
+    expect(screen.queryByText('Без сферы')).not.toBeInTheDocument()
+  })
+
   it('limits shared task assignees to work and review status changes', () => {
     renderTaskCard(
       createTask({
@@ -114,6 +149,7 @@ describe('TaskCard', () => {
         assigneeUserId: 'user-2',
         authorDisplayName: 'Author',
         authorUserId: 'user-1',
+        requiresConfirmation: true,
       }),
       {
         currentActorUserId: 'user-2',
@@ -123,7 +159,9 @@ describe('TaskCard', () => {
     )
 
     expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'На проверку' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'На проверку' }),
+    ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Отложить' }),
     ).not.toBeInTheDocument()
@@ -247,7 +285,9 @@ describe('TaskCard', () => {
     )
 
     expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'На проверку' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'На проверку' }),
+    ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Отложить' }),
     ).not.toBeInTheDocument()

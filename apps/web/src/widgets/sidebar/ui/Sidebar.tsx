@@ -1,22 +1,32 @@
-import { useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getPlannerSummary } from '@/entities/task'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
+  getDeleteSharedWorkspaceErrorMessage,
+  getUpdateSharedWorkspaceErrorMessage,
   setSelectedWorkspaceIdForActors,
   useCreateSharedWorkspace,
+  useDeleteSharedWorkspace,
   usePlannerSession,
   useSessionAuth,
+  useUpdateSharedWorkspace,
   WorkspaceParticipantsDialog,
 } from '@/features/session'
+import { useShoppingListSummary } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
 import {
   CalendarIcon,
+  CheckIcon,
+  CloseIcon,
+  EditIcon,
   PlusIcon,
   SettingsIcon,
+  ShoppingBagIcon,
+  TrashIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
 
@@ -24,6 +34,7 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
+  { to: '/shopping', label: 'Покупки' },
   { to: '/spheres', label: 'Сферы' },
   { to: '/timeline', label: 'Таймлайн' },
   { to: '/admin', label: 'Admin' },
@@ -32,24 +43,41 @@ const navigation = [
 export function Sidebar() {
   const { errorMessage, isLoading, isSyncing, projects, refresh, tasks } =
     usePlanner()
+  const shoppingListSummary = useShoppingListSummary()
   const location = useLocation()
   const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
   const createSharedWorkspaceMutation = useCreateSharedWorkspace()
+  const updateSharedWorkspaceMutation = useUpdateSharedWorkspace()
+  const deleteSharedWorkspaceMutation = useDeleteSharedWorkspace()
   const [moreSheetPathname, setMoreSheetPathname] = useState<string | null>(
     null,
   )
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
+  const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
+    useState(false)
+  const [createWorkspaceName, setCreateWorkspaceName] = useState('')
+  const [createWorkspaceFormError, setCreateWorkspaceFormError] = useState<
+    string | null
+  >(null)
+  const [isRenameWorkspaceFormOpen, setIsRenameWorkspaceFormOpen] =
+    useState(false)
+  const [renameWorkspaceName, setRenameWorkspaceName] = useState('')
+  const [workspaceManageError, setWorkspaceManageError] = useState<
+    string | null
+  >(null)
   const todayKey = getDateKey(new Date())
   const summary = getPlannerSummary(tasks, todayKey)
   const isSharedWorkspace = session?.workspace.kind === 'shared'
+  const canManageCurrentSharedWorkspace =
+    session?.workspace.kind === 'shared' && session.role === 'owner'
   const sharedWorkspaceCount =
     session?.workspaces.filter((workspace) => workspace.kind === 'shared')
       .length ?? 0
   const visibleNavigation = navigation.filter(
     (item) =>
-      (!isSharedWorkspace || item.to === '/today') &&
+      (!isSharedWorkspace || item.to === '/today' || item.to === '/shopping') &&
       (item.to !== '/admin' ||
         session?.appRole === 'admin' ||
         session?.appRole === 'owner'),
@@ -77,6 +105,24 @@ export function Sidebar() {
     mobileSecondaryNavigation.some((item) =>
       matchesRoute(location.pathname, item.to),
     )
+  const createWorkspaceError =
+    createWorkspaceFormError ||
+    (createSharedWorkspaceMutation.error
+      ? getCreateSharedWorkspaceErrorMessage(
+          createSharedWorkspaceMutation.error,
+        )
+      : null)
+  const workspaceOwnerActionError =
+    workspaceManageError ||
+    (updateSharedWorkspaceMutation.error
+      ? getUpdateSharedWorkspaceErrorMessage(
+          updateSharedWorkspaceMutation.error,
+        )
+      : deleteSharedWorkspaceMutation.error
+        ? getDeleteSharedWorkspaceErrorMessage(
+            deleteSharedWorkspaceMutation.error,
+          )
+        : null)
 
   useEffect(() => {
     if (!isMoreOpen) {
@@ -107,6 +153,309 @@ export function Sidebar() {
       window.removeEventListener('resize', handleResize)
     }
   }, [isMoreOpen])
+
+  function closeCreateWorkspaceForm() {
+    setIsCreateWorkspaceFormOpen(false)
+    setCreateWorkspaceName('')
+    setCreateWorkspaceFormError(null)
+    createSharedWorkspaceMutation.reset()
+  }
+
+  function openCreateWorkspaceForm() {
+    setIsCreateWorkspaceFormOpen(true)
+    setCreateWorkspaceFormError(null)
+    createSharedWorkspaceMutation.reset()
+  }
+
+  async function handleCreateWorkspaceSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    const name = createWorkspaceName.trim()
+
+    if (!name) {
+      setCreateWorkspaceFormError('Введите название пространства.')
+      return
+    }
+
+    setCreateWorkspaceFormError(null)
+
+    try {
+      await createSharedWorkspaceMutation.mutateAsync({ name })
+      closeCreateWorkspaceForm()
+    } catch (error) {
+      setCreateWorkspaceFormError(getCreateSharedWorkspaceErrorMessage(error))
+    }
+  }
+
+  function closeRenameWorkspaceForm() {
+    setIsRenameWorkspaceFormOpen(false)
+    setWorkspaceManageError(null)
+    setRenameWorkspaceName(session?.workspace.name ?? '')
+    updateSharedWorkspaceMutation.reset()
+    deleteSharedWorkspaceMutation.reset()
+  }
+
+  function openRenameWorkspaceForm() {
+    if (!session) {
+      return
+    }
+
+    setIsRenameWorkspaceFormOpen(true)
+    setWorkspaceManageError(null)
+    setRenameWorkspaceName(session.workspace.name)
+    updateSharedWorkspaceMutation.reset()
+    deleteSharedWorkspaceMutation.reset()
+  }
+
+  async function handleRenameWorkspaceSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault()
+
+    if (!session) {
+      return
+    }
+
+    const name = renameWorkspaceName.trim()
+
+    if (!name) {
+      setWorkspaceManageError('Введите новое название пространства.')
+      return
+    }
+
+    if (name === session.workspace.name.trim()) {
+      closeRenameWorkspaceForm()
+      return
+    }
+
+    setWorkspaceManageError(null)
+
+    try {
+      await updateSharedWorkspaceMutation.mutateAsync({ name })
+      closeRenameWorkspaceForm()
+    } catch (error) {
+      setWorkspaceManageError(getUpdateSharedWorkspaceErrorMessage(error))
+    }
+  }
+
+  async function handleDeleteWorkspace() {
+    if (!session) {
+      return
+    }
+
+    if (
+      !window.confirm(
+        `Удалить пространство «${session.workspace.name}» вместе со всеми данными?`,
+      )
+    ) {
+      return
+    }
+
+    setWorkspaceManageError(null)
+    updateSharedWorkspaceMutation.reset()
+    deleteSharedWorkspaceMutation.reset()
+
+    try {
+      await deleteSharedWorkspaceMutation.mutateAsync()
+      setIsWorkspaceParticipantsOpen(false)
+      setIsRenameWorkspaceFormOpen(false)
+      setMoreSheetPathname(null)
+    } catch (error) {
+      setWorkspaceManageError(getDeleteSharedWorkspaceErrorMessage(error))
+    }
+  }
+
+  function renderCreateWorkspaceControls(extraClassName?: string) {
+    return (
+      <>
+        <button
+          className={cx(styles.createWorkspaceButton, extraClassName)}
+          type="button"
+          aria-expanded={isCreateWorkspaceFormOpen}
+          disabled={
+            createSharedWorkspaceMutation.isPending || sharedWorkspaceCount >= 3
+          }
+          onClick={() => {
+            if (isCreateWorkspaceFormOpen) {
+              closeCreateWorkspaceForm()
+              return
+            }
+
+            openCreateWorkspaceForm()
+          }}
+        >
+          <PlusIcon size={18} strokeWidth={2.15} />
+          <span>Создать пространство</span>
+        </button>
+
+        {isCreateWorkspaceFormOpen ? (
+          <form
+            className={styles.workspaceInlineForm}
+            onSubmit={(event) => {
+              void handleCreateWorkspaceSubmit(event)
+            }}
+          >
+            <label className={styles.workspaceFormField}>
+              <span>Название</span>
+              <input
+                type="text"
+                value={createWorkspaceName}
+                maxLength={80}
+                placeholder="Например, Семья"
+                onChange={(event) => {
+                  setCreateWorkspaceName(event.target.value)
+                  setCreateWorkspaceFormError(null)
+                }}
+              />
+            </label>
+
+            <div className={styles.workspaceFormActions}>
+              <button
+                className={styles.inlinePrimaryButton}
+                type="submit"
+                disabled={createSharedWorkspaceMutation.isPending}
+              >
+                <CheckIcon size={16} strokeWidth={2.15} />
+                <span>
+                  {createSharedWorkspaceMutation.isPending
+                    ? 'Создаём...'
+                    : 'Создать'}
+                </span>
+              </button>
+
+              <button
+                className={styles.inlineGhostButton}
+                type="button"
+                disabled={createSharedWorkspaceMutation.isPending}
+                onClick={() => {
+                  closeCreateWorkspaceForm()
+                }}
+              >
+                <CloseIcon size={16} strokeWidth={2.15} />
+                <span>Отмена</span>
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {createWorkspaceError ? (
+          <p className={styles.connectionError}>{createWorkspaceError}</p>
+        ) : null}
+      </>
+    )
+  }
+
+  function renderWorkspaceOwnerControls(extraClassName?: string) {
+    if (!canManageCurrentSharedWorkspace || !session) {
+      return null
+    }
+
+    return (
+      <>
+        <div className={styles.workspaceOwnerActions}>
+          <button
+            className={cx(
+              styles.createWorkspaceButton,
+              styles.secondaryWorkspaceButton,
+              styles.workspaceActionButton,
+              extraClassName,
+            )}
+            type="button"
+            aria-expanded={isRenameWorkspaceFormOpen}
+            disabled={updateSharedWorkspaceMutation.isPending}
+            onClick={() => {
+              if (isRenameWorkspaceFormOpen) {
+                closeRenameWorkspaceForm()
+                return
+              }
+
+              openRenameWorkspaceForm()
+            }}
+          >
+            <EditIcon size={18} strokeWidth={2.1} />
+            <span>Переименовать</span>
+          </button>
+
+          <button
+            className={cx(
+              styles.createWorkspaceButton,
+              styles.workspaceDeleteButton,
+              styles.workspaceActionButton,
+              extraClassName,
+            )}
+            type="button"
+            disabled={deleteSharedWorkspaceMutation.isPending}
+            onClick={() => {
+              void handleDeleteWorkspace()
+            }}
+          >
+            <TrashIcon size={18} strokeWidth={2.1} />
+            <span>
+              {deleteSharedWorkspaceMutation.isPending
+                ? 'Удаляем...'
+                : 'Удалить'}
+            </span>
+          </button>
+        </div>
+
+        {isRenameWorkspaceFormOpen ? (
+          <form
+            className={styles.workspaceInlineForm}
+            onSubmit={(event) => {
+              void handleRenameWorkspaceSubmit(event)
+            }}
+          >
+            <label className={styles.workspaceFormField}>
+              <span>Новое название</span>
+              <input
+                type="text"
+                value={renameWorkspaceName}
+                maxLength={80}
+                placeholder="Название пространства"
+                onChange={(event) => {
+                  setRenameWorkspaceName(event.target.value)
+                  setWorkspaceManageError(null)
+                }}
+              />
+            </label>
+
+            <div className={styles.workspaceFormActions}>
+              <button
+                className={styles.inlinePrimaryButton}
+                type="submit"
+                disabled={updateSharedWorkspaceMutation.isPending}
+              >
+                <CheckIcon size={16} strokeWidth={2.15} />
+                <span>
+                  {updateSharedWorkspaceMutation.isPending
+                    ? 'Сохраняем...'
+                    : 'Сохранить'}
+                </span>
+              </button>
+
+              <button
+                className={styles.inlineGhostButton}
+                type="button"
+                disabled={updateSharedWorkspaceMutation.isPending}
+                onClick={() => {
+                  closeRenameWorkspaceForm()
+                }}
+              >
+                <CloseIcon size={16} strokeWidth={2.15} />
+                <span>Отмена</span>
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        {workspaceOwnerActionError ? (
+          <p className={styles.connectionError}>{workspaceOwnerActionError}</p>
+        ) : null}
+      </>
+    )
+  }
 
   return (
     <>
@@ -221,23 +570,13 @@ export function Sidebar() {
                 </div>
 
                 <div className={styles.mobileWorkspaceActions}>
-                  <button
-                    className={cx(
-                      styles.createWorkspaceButton,
-                      styles.mobileCreateWorkspaceButton,
-                    )}
-                    type="button"
-                    disabled={
-                      createSharedWorkspaceMutation.isPending ||
-                      sharedWorkspaceCount >= 3
-                    }
-                    onClick={() => {
-                      createSharedWorkspaceMutation.mutate()
-                    }}
-                  >
-                    <PlusIcon size={18} strokeWidth={2.15} />
-                    <span>Создать пространство</span>
-                  </button>
+                  {renderCreateWorkspaceControls(
+                    styles.mobileCreateWorkspaceButton,
+                  )}
+
+                  {renderWorkspaceOwnerControls(
+                    styles.mobileCreateWorkspaceButton,
+                  )}
 
                   {isSharedWorkspace ? (
                     <button
@@ -257,14 +596,6 @@ export function Sidebar() {
                     </button>
                   ) : null}
                 </div>
-
-                {createSharedWorkspaceMutation.error ? (
-                  <p className={styles.connectionError}>
-                    {getCreateSharedWorkspaceErrorMessage(
-                      createSharedWorkspaceMutation.error,
-                    )}
-                  </p>
-                ) : null}
               </div>
 
               {accountLabel || mobileSecondaryNavigation.length > 0 ? (
@@ -372,19 +703,9 @@ export function Sidebar() {
                 </select>
               </label>
 
-              <button
-                className={styles.createWorkspaceButton}
-                type="button"
-                disabled={
-                  createSharedWorkspaceMutation.isPending ||
-                  sharedWorkspaceCount >= 3
-                }
-                onClick={() => {
-                  createSharedWorkspaceMutation.mutate()
-                }}
-              >
-                + Создать пространство
-              </button>
+              {renderCreateWorkspaceControls()}
+
+              {renderWorkspaceOwnerControls()}
 
               {isSharedWorkspace ? (
                 <button
@@ -402,14 +723,6 @@ export function Sidebar() {
                 </button>
               ) : null}
             </div>
-          ) : null}
-
-          {createSharedWorkspaceMutation.error ? (
-            <p className={styles.connectionError}>
-              {getCreateSharedWorkspaceErrorMessage(
-                createSharedWorkspaceMutation.error,
-              )}
-            </p>
           ) : null}
 
           {auth.isAuthEnabled && accountLabel ? (
@@ -448,11 +761,13 @@ export function Sidebar() {
             const count =
               item.to === '/today'
                 ? summary.focusCount + summary.overdueCount
-                : item.to === '/timeline'
-                  ? summary.timelineCount
-                  : item.to === '/spheres'
-                    ? projects.length
-                    : (session?.appRole ?? 'Admin')
+                : item.to === '/shopping'
+                  ? shoppingListSummary.activeItemCount
+                  : item.to === '/timeline'
+                    ? summary.timelineCount
+                    : item.to === '/spheres'
+                      ? projects.length
+                      : (session?.appRole ?? 'Admin')
 
             return (
               <NavLink
@@ -512,6 +827,10 @@ function matchesRoute(pathname: string, route: string): boolean {
 function renderMobileNavIcon(route: string) {
   if (route === '/today') {
     return <CalendarIcon size={20} strokeWidth={1.9} />
+  }
+
+  if (route === '/shopping') {
+    return <ShoppingBagIcon size={20} strokeWidth={1.9} />
   }
 
   if (route === '/spheres') {

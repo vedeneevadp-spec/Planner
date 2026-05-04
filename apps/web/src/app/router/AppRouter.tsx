@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 
 import { usePlannerSession } from '@/features/session'
 import { AdminPage } from '@/pages/admin'
+import { ShoppingPage } from '@/pages/shopping'
 import { SpherePage, SpheresPage } from '@/pages/spheres'
 import { TimelinePage } from '@/pages/timeline'
 import { TodayPage } from '@/pages/today'
@@ -14,6 +15,7 @@ export function AppRouter() {
       <Routes>
         <Route path="/" element={<Navigate replace to="/today" />} />
         <Route path="/today" element={<TodayPage />} />
+        <Route path="/shopping" element={<ShoppingPage />} />
         <Route path="*" element={<Navigate replace to="/today" />} />
       </Routes>
     )
@@ -23,6 +25,7 @@ export function AppRouter() {
     <Routes>
       <Route path="/" element={<Navigate replace to="/today" />} />
       <Route path="/today" element={<TodayPage />} />
+      <Route path="/shopping" element={<ShoppingPage />} />
       <Route path="/timeline" element={<TimelinePage />} />
       <Route path="/spheres" element={<SpheresPage />} />
       <Route path="/spheres/:sphereId" element={<SpherePage />} />

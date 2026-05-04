@@ -1,3 +1,4 @@
+import { clampTaskResource } from './resource'
 import type { NewTaskInput, Task } from './task.types'
 
 export type TaskTypeValue = '' | 'important' | 'routine'
@@ -7,12 +8,10 @@ export type ResourceValue =
   | '-2'
   | '-3'
   | '-4'
-  | '-5'
   | '1'
   | '2'
   | '3'
   | '4'
-  | '5'
 
 export function getTaskTypeValue(
   value:
@@ -43,5 +42,15 @@ export function getTaskUrgencyFromType(
 }
 
 export function getResourceFromValue(value: ResourceValue): Task['resource'] {
-  return value ? Number(value) : 0
+  return value ? clampTaskResource(Number(value)) : 0
+}
+
+export function getResourceValueFromTaskResource(
+  value: Task['resource'],
+): ResourceValue {
+  if (value === null || value === 0) {
+    return ''
+  }
+
+  return String(clampTaskResource(value)) as Exclude<ResourceValue, ''>
 }

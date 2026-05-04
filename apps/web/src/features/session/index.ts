@@ -4,8 +4,10 @@ export {
 } from './lib/admin-users-api'
 export {
   createSharedWorkspace,
+  deleteSharedWorkspace,
   isUnauthorizedSessionApiError,
   SessionApiError,
+  updateSharedWorkspace,
 } from './lib/session-api'
 export { getSupabaseBrowserClient } from './lib/supabase-browser'
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
@@ -13,7 +15,11 @@ export { usePlannerSession } from './lib/usePlannerSession'
 export { useSessionAuth } from './lib/useSessionAuth'
 export {
   getCreateSharedWorkspaceErrorMessage,
+  getDeleteSharedWorkspaceErrorMessage,
+  getUpdateSharedWorkspaceErrorMessage,
   useCreateSharedWorkspace,
+  useDeleteSharedWorkspace,
+  useUpdateSharedWorkspace,
 } from './lib/useWorkspaceActions'
 export {
   getWorkspaceParticipantsErrorMessage,

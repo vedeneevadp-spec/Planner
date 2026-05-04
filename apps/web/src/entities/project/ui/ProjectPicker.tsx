@@ -8,6 +8,7 @@ import styles from './ProjectPicker.module.css'
 
 interface ProjectPickerProps {
   className?: string | undefined
+  emptyLabel?: string | undefined
   label?: string | undefined
   projects: Project[]
   uploadedIcons?: UploadedIconAsset[] | undefined
@@ -17,6 +18,7 @@ interface ProjectPickerProps {
 
 export function ProjectPicker({
   className,
+  emptyLabel = 'Без сферы',
   label = 'Сфера',
   projects,
   uploadedIcons = [],
@@ -55,6 +57,7 @@ export function ProjectPicker({
         onClick={() => setIsOpen((value) => !value)}
       >
         <ProjectOptionContent
+          emptyLabel={emptyLabel}
           project={selectedProject}
           uploadedIcons={uploadedIcons}
         />
@@ -73,6 +76,7 @@ export function ProjectPicker({
             onClick={() => selectProject('')}
           >
             <ProjectOptionContent
+              emptyLabel={emptyLabel}
               project={null}
               uploadedIcons={uploadedIcons}
             />
@@ -90,6 +94,7 @@ export function ProjectPicker({
               onClick={() => selectProject(project.id)}
             >
               <ProjectOptionContent
+                emptyLabel={emptyLabel}
                 project={project}
                 uploadedIcons={uploadedIcons}
               />
@@ -102,11 +107,13 @@ export function ProjectPicker({
 }
 
 interface ProjectOptionContentProps {
+  emptyLabel: string
   project: Project | null
   uploadedIcons: UploadedIconAsset[]
 }
 
 function ProjectOptionContent({
+  emptyLabel,
   project,
   uploadedIcons,
 }: ProjectOptionContentProps) {
@@ -114,7 +121,7 @@ function ProjectOptionContent({
     return (
       <>
         <span className={styles.emptyIcon} aria-hidden="true" />
-        <span className={styles.title}>Без сферы</span>
+        <span className={styles.title}>{emptyLabel}</span>
       </>
     )
   }

@@ -3,6 +3,7 @@ import type {
   AppRole,
   AssignableWorkspaceGroupRole,
   SessionWorkspaceMembership as ContractSessionWorkspaceMembership,
+  UpdateSharedWorkspaceInput as ContractUpdateSharedWorkspaceInput,
   WorkspaceGroupRole,
   WorkspaceInvitationCreateInput as ContractWorkspaceInvitationCreateInput,
   WorkspaceInvitationRecord as ContractWorkspaceInvitationRecord,
@@ -51,6 +52,7 @@ export type SessionWorkspaceMembership = ContractSessionWorkspaceMembership
 export type AdminUserRecord = ContractAdminUserRecord
 export type WorkspaceSettings = ContractWorkspaceSettings
 export type WorkspaceSettingsUpdateInput = ContractWorkspaceSettingsUpdateInput
+export type UpdateSharedWorkspaceInput = ContractUpdateSharedWorkspaceInput
 export type WorkspaceInvitationCreateInput =
   ContractWorkspaceInvitationCreateInput
 export type WorkspaceInvitationRecord = ContractWorkspaceInvitationRecord

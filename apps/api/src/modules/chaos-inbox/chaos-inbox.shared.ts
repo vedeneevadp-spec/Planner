@@ -20,7 +20,7 @@ export function createStoredChaosInboxItemRecord(
     deletedAt: null,
     dueDate: null,
     id: input.id ?? options.id ?? generateUuidV7(),
-    kind: 'unknown',
+    kind: input.kind ?? 'unknown',
     linkedTaskDeleted: false,
     priority: null,
     source: input.source ?? 'manual',

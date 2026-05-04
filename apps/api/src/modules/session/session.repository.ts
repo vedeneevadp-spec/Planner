@@ -1,6 +1,7 @@
 import type {
   AssignableAppRole,
   CreateSharedWorkspaceInput,
+  UpdateSharedWorkspaceInput,
 } from '@planner/contracts'
 
 import type {
@@ -22,6 +23,11 @@ export interface SessionRepository {
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,
   ): Promise<SessionWorkspaceMembership>
+  updateSharedWorkspace(
+    session: SessionSnapshot,
+    input: UpdateSharedWorkspaceInput,
+  ): Promise<SessionWorkspaceMembership>
+  deleteSharedWorkspace(session: SessionSnapshot): Promise<void>
   listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]>
   listWorkspaceInvitations(
     session: SessionSnapshot,

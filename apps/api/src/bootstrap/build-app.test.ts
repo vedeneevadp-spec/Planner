@@ -136,6 +136,20 @@ const guestSessionRepository: SessionRepository = {
       'The current workspace role cannot create shared workspaces.',
     )
   },
+  updateSharedWorkspace() {
+    throw new HttpError(
+      403,
+      'shared_workspace_creator_required',
+      'Only the workspace creator can rename or delete it.',
+    )
+  },
+  deleteSharedWorkspace() {
+    throw new HttpError(
+      403,
+      'shared_workspace_creator_required',
+      'Only the workspace creator can rename or delete it.',
+    )
+  },
   listWorkspaceUsers() {
     return Promise.resolve([])
   },
@@ -1903,6 +1917,12 @@ void describe('buildApiApp', () => {
       createSharedWorkspace() {
         throw new Error('createSharedWorkspace should not be called.')
       },
+      updateSharedWorkspace() {
+        throw new Error('updateSharedWorkspace should not be called.')
+      },
+      deleteSharedWorkspace() {
+        throw new Error('deleteSharedWorkspace should not be called.')
+      },
       listWorkspaceUsers() {
         throw new Error('listWorkspaceUsers should not be called.')
       },
@@ -2159,6 +2179,12 @@ void describe('buildApiApp', () => {
       createSharedWorkspace() {
         throw new Error('Not implemented.')
       },
+      updateSharedWorkspace() {
+        throw new Error('Not implemented.')
+      },
+      deleteSharedWorkspace() {
+        throw new Error('Not implemented.')
+      },
       listWorkspaceUsers() {
         throw new Error('Not implemented.')
       },
@@ -2237,6 +2263,187 @@ void describe('buildApiApp', () => {
     assert.equal(workspace.groupRole, 'group_admin')
     assert.equal(workspace.role, 'owner')
     assert.equal(workspace.name, 'Family Workspace')
+  })
+
+  void it('renames a shared workspace for its creator', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Family Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+    const renameResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        name: 'Renamed Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    assert.equal(renameResponse.statusCode, 200)
+
+    const renamedWorkspace = sessionWorkspaceMembershipSchema.parse(
+      renameResponse.json(),
+    )
+
+    assert.equal(renamedWorkspace.name, 'Renamed Workspace')
+
+    const sessionResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(sessionResponse.statusCode, 200)
+    assert.equal(
+      sessionResponseSchema.parse(sessionResponse.json()).workspace.name,
+      'Renamed Workspace',
+    )
+  })
+
+  void it('deletes a shared workspace for its creator', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Family Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+    const deleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'DELETE',
+      url: '/api/v1/workspaces/shared',
+    })
+
+    assert.equal(deleteResponse.statusCode, 204)
+
+    const sessionRepositoryInternals = sessionRepository as unknown as {
+      memberships: Array<{ workspaceId: string }>
+      workspaces: Array<{ id: string }>
+    }
+    const currentWorkspaces = sessionRepositoryInternals.workspaces.map(
+      (item) => item.id,
+    )
+
+    assert.equal(currentWorkspaces.includes(workspace.id), false)
+    assert.equal(
+      sessionRepositoryInternals.memberships.some(
+        (item) => item.workspaceId === workspace.id,
+      ),
+      false,
+    )
+  })
+
+  void it('forbids renaming a shared workspace for non-creators', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Team Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+
+    const inviteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'POST',
+      payload: {
+        email: READER_AUTH_CONTEXT.claims.email,
+        groupRole: 'member',
+      },
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(inviteResponse.statusCode, 201)
+
+    await sessionRepository.resolve({
+      actorUserId: undefined,
+      auth: READER_AUTH_CONTEXT,
+      workspaceId: workspace.id,
+    })
+
+    const renameResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': READER_AUTH_CONTEXT.claims.sub,
+        'x-workspace-id': workspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        name: 'Renamed by Admin',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    assert.equal(renameResponse.statusCode, 403)
+    assert.equal(
+      apiErrorSchema.parse(renameResponse.json()).error.code,
+      'shared_workspace_creator_required',
+    )
   })
 
   void it('creates and lists workspace invitations for a shared workspace', async () => {

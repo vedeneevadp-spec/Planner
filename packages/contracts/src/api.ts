@@ -179,6 +179,10 @@ export const createSharedWorkspaceInputSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
 })
 
+export const updateSharedWorkspaceInputSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+})
+
 export const workspaceSettingsUpdateInputSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
 })
@@ -318,6 +322,9 @@ export type WorkspaceUserGroupRoleUpdateInput = z.infer<
 >
 export type CreateSharedWorkspaceInput = z.infer<
   typeof createSharedWorkspaceInputSchema
+>
+export type UpdateSharedWorkspaceInput = z.infer<
+  typeof updateSharedWorkspaceInputSchema
 >
 export type WorkspaceSettingsUpdateInput = z.infer<
   typeof workspaceSettingsUpdateInputSchema

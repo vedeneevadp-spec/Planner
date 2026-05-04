@@ -32,6 +32,7 @@ export type {
 export type { ResourceValue, TaskTypeValue } from './model/task-meta'
 export {
   getResourceFromValue,
+  getResourceValueFromTaskResource,
   getTaskImportanceFromType,
   getTaskTypeValue,
   getTaskUrgencyFromType,

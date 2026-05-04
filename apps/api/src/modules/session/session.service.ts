@@ -1,6 +1,7 @@
 import type {
   AssignableAppRole,
   CreateSharedWorkspaceInput,
+  UpdateSharedWorkspaceInput,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -76,6 +77,35 @@ export class SessionService {
     this.authSessionCache.clear()
 
     return workspace
+  }
+
+  async updateSharedWorkspace(
+    context: SessionContext,
+    input: UpdateSharedWorkspaceInput,
+  ) {
+    const session = await this.resolveSession(context)
+
+    assertCanManageSharedWorkspace(session)
+
+    const workspace = await withRepositoryErrorMapping(() =>
+      this.repository.updateSharedWorkspace(session, input),
+    )
+
+    this.authSessionCache.clear()
+
+    return workspace
+  }
+
+  async deleteSharedWorkspace(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    assertCanManageSharedWorkspace(session)
+
+    await withRepositoryErrorMapping(() =>
+      this.repository.deleteSharedWorkspace(session),
+    )
+
+    this.authSessionCache.clear()
   }
 
   async listWorkspaceUsers(context: SessionContext) {
@@ -260,6 +290,26 @@ function assertCanManageWorkspaceParticipants(session: SessionSnapshot): void {
     403,
     'workspace_participants_manage_forbidden',
     'Only workspace owners and group admins can manage participants.',
+  )
+}
+
+function assertCanManageSharedWorkspace(session: SessionSnapshot): void {
+  if (session.workspace.kind !== 'shared') {
+    throw new HttpError(
+      400,
+      'shared_workspace_required',
+      'Only shared workspaces can be renamed or deleted.',
+    )
+  }
+
+  if (session.role === 'owner') {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'shared_workspace_creator_required',
+    'Only the workspace creator can rename or delete it.',
   )
 }
 

@@ -5,6 +5,7 @@ import {
   createSharedWorkspaceInputSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
+  updateSharedWorkspaceInputSchema,
   workspaceInvitationCreateInputSchema,
   workspaceInvitationListResponseSchema,
   workspaceInvitationRecordSchema,
@@ -75,6 +76,26 @@ export function registerSessionRoutes(
     reply.code(201)
 
     return sessionWorkspaceMembershipSchema.parse(workspace)
+  })
+
+  app.patch('/api/v1/workspaces/shared', async (request) => {
+    const context = resolveRequiredSessionContext(request)
+    const input = parseOrThrow(
+      updateSharedWorkspaceInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const workspace = await service.updateSharedWorkspace(context, input)
+
+    return sessionWorkspaceMembershipSchema.parse(workspace)
+  })
+
+  app.delete('/api/v1/workspaces/shared', async (request, reply) => {
+    const context = resolveRequiredSessionContext(request)
+
+    await service.deleteSharedWorkspace(context)
+
+    return reply.code(204).send()
   })
 
   app.get('/api/v1/admin/users', async (request) => {

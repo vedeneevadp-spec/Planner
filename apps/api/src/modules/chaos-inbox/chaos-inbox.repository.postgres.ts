@@ -23,12 +23,17 @@ import type {
 import type { ChaosInboxRepository } from './chaos-inbox.repository.js'
 
 type ChaosInboxRow = Selectable<DatabaseSchema['app.chaos_inbox_items']>
-type TaskRow = Pick<Selectable<DatabaseSchema['app.tasks']>, 'deleted_at' | 'id'>
+type TaskRow = Pick<
+  Selectable<DatabaseSchema['app.tasks']>,
+  'deleted_at' | 'id'
+>
 
 export class PostgresChaosInboxRepository implements ChaosInboxRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
-  async list(command: ListChaosInboxItemsCommand): Promise<ChaosInboxListResult> {
+  async list(
+    command: ListChaosInboxItemsCommand,
+  ): Promise<ChaosInboxListResult> {
     const page = command.filters?.page ?? 1
     const limit = command.filters?.limit ?? 50
     const offset = (page - 1) * limit
@@ -36,7 +41,11 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       this.db,
       command.context.auth,
       async (executor) => {
-        let query = this.baseListQuery(executor, command.context, command.filters)
+        let query = this.baseListQuery(
+          executor,
+          command.context,
+          command.filters,
+        )
         const countQuery = this.baseCountQuery(
           executor,
           command.context,
@@ -85,7 +94,9 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       )
     }
 
-    const deletedTaskIds = await this.loadDeletedConvertedTaskIds(context, [row])
+    const deletedTaskIds = await this.loadDeletedConvertedTaskIds(context, [
+      row,
+    ])
 
     return this.mapItemRecord(row, deletedTaskIds)
   }
@@ -104,7 +115,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
               created_by: command.context.actorUserId,
               deleted_at: null,
               id: item.id ?? generateUuidV7(),
-              kind: 'unknown' as const,
+              kind: item.kind,
               source: item.source,
               status: 'new' as const,
               text: normalizeText(item.text),
@@ -128,9 +139,12 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const updated = await this.applyUpdateQuery(trx, command.context, [
-          command.id,
-        ], command.input)
+        const updated = await this.applyUpdateQuery(
+          trx,
+          command.context,
+          [command.id],
+          command.input,
+        )
           .returningAll()
           .executeTakeFirst()
 
@@ -374,7 +388,13 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
 
     return new Set(
       taskRows
-        .filter((task): task is TaskRow & { deleted_at: NonNullable<TaskRow['deleted_at']> } => task.deleted_at !== null)
+        .filter(
+          (
+            task,
+          ): task is TaskRow & {
+            deleted_at: NonNullable<TaskRow['deleted_at']>
+          } => task.deleted_at !== null,
+        )
         .map((task) => task.id),
     )
   }
@@ -392,7 +412,8 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       id: row.id,
       kind: row.kind,
       linkedTaskDeleted:
-        row.converted_task_id !== null && deletedTaskIds.has(row.converted_task_id),
+        row.converted_task_id !== null &&
+        deletedTaskIds.has(row.converted_task_id),
       priority: row.priority,
       source: row.source,
       sphereId: row.sphere_id,

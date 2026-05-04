@@ -5,6 +5,7 @@ import {
   type CreateSharedWorkspaceInput,
   generateUuidV7,
   type SessionWorkspaceMembership,
+  type UpdateSharedWorkspaceInput,
   type WorkspaceGroupRole,
   type WorkspaceKind,
   type WorkspaceRole,
@@ -193,6 +194,61 @@ export class PostgresSessionRepository implements SessionRepository {
         slug: workspace.slug,
       }
     })
+  }
+
+  async updateSharedWorkspace(
+    session: SessionSnapshot,
+    input: UpdateSharedWorkspaceInput,
+  ): Promise<SessionWorkspaceMembership> {
+    return this.db.transaction().execute(async (trx) => {
+      const workspace = await trx
+        .updateTable('app.workspaces')
+        .set({
+          name: input.name.trim(),
+        })
+        .where('id', '=', session.workspaceId)
+        .where('kind', '=', 'shared')
+        .where('owner_user_id', '=', session.actorUserId)
+        .where('deleted_at', 'is', null)
+        .returning(['id', 'kind', 'name', 'slug'])
+        .executeTakeFirst()
+
+      if (!workspace) {
+        throw new HttpError(
+          403,
+          'shared_workspace_creator_required',
+          'Only the workspace creator can rename or delete it.',
+        )
+      }
+
+      return {
+        groupRole: session.groupRole,
+        id: workspace.id,
+        kind: workspace.kind,
+        name: workspace.name,
+        role: session.role,
+        slug: workspace.slug,
+      }
+    })
+  }
+
+  async deleteSharedWorkspace(session: SessionSnapshot): Promise<void> {
+    const deletedWorkspace = await this.db
+      .deleteFrom('app.workspaces')
+      .where('id', '=', session.workspaceId)
+      .where('kind', '=', 'shared')
+      .where('owner_user_id', '=', session.actorUserId)
+      .where('deleted_at', 'is', null)
+      .returning('id')
+      .executeTakeFirst()
+
+    if (!deletedWorkspace) {
+      throw new HttpError(
+        403,
+        'shared_workspace_creator_required',
+        'Only the workspace creator can rename or delete it.',
+      )
+    }
   }
 
   async listWorkspaceUsers(

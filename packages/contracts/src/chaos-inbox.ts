@@ -49,6 +49,7 @@ export const chaosInboxItemSchema = z.object({
 
 export const newChaosInboxItemInputSchema = z.object({
   id: uuidV7Schema.optional(),
+  kind: chaosInboxKindSchema.optional().default('unknown'),
   text: z.string().trim().min(1).max(5000),
   source: chaosInboxSourceSchema.optional().default('manual'),
 })
