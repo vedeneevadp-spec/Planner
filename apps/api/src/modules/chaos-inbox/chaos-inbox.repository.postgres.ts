@@ -192,7 +192,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const updated = await trx
+        const updated = trx
           .updateTable('app.chaos_inbox_items')
           .set({
             converted_task_id: command.convertedTaskId,
@@ -201,13 +201,15 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
             updated_by: command.context.actorUserId,
           })
           .where('workspace_id', '=', command.context.workspaceId)
-          .where('user_id', '=', command.context.actorUserId)
           .where('id', '=', command.id)
           .where('deleted_at', 'is', null)
-          .returningAll()
-          .executeTakeFirst()
+        const scopedUpdate =
+          command.context.workspaceKind === 'shared'
+            ? updated
+            : updated.where('user_id', '=', command.context.actorUserId)
+        const row = await scopedUpdate.returningAll().executeTakeFirst()
 
-        if (!updated) {
+        if (!row) {
           throw new HttpError(
             404,
             'chaos_inbox_item_not_found',
@@ -215,7 +217,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
           )
         }
 
-        return updated
+        return row
       },
       command.context.actorUserId,
     )
@@ -242,7 +244,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       .where('workspace_id', '=', context.workspaceId)
       .where('deleted_at', 'is', null)
 
-    if (context.actorUserId) {
+    if (context.actorUserId && context.workspaceKind !== 'shared') {
       query = query.where('user_id', '=', context.actorUserId)
     }
 
@@ -272,7 +274,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       .where('workspace_id', '=', context.workspaceId)
       .where('deleted_at', 'is', null)
 
-    if (context.actorUserId) {
+    if (context.actorUserId && context.workspaceKind !== 'shared') {
       query = query.where('user_id', '=', context.actorUserId)
     }
 
@@ -303,7 +305,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       .where('id', '=', id)
       .where('deleted_at', 'is', null)
 
-    if (context.actorUserId) {
+    if (context.actorUserId && context.workspaceKind !== 'shared') {
       query = query.where('user_id', '=', context.actorUserId)
     }
 
@@ -316,7 +318,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
     ids: string[],
     patch: UpdateChaosInboxItemCommand['input'],
   ) {
-    return executor
+    let query = executor
       .updateTable('app.chaos_inbox_items')
       .set({
         ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
@@ -327,9 +329,14 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
         updated_by: context.actorUserId,
       })
       .where('workspace_id', '=', context.workspaceId)
-      .where('user_id', '=', context.actorUserId)
       .where('id', 'in', ids)
       .where('deleted_at', 'is', null)
+
+    if (context.workspaceKind !== 'shared') {
+      query = query.where('user_id', '=', context.actorUserId)
+    }
+
+    return query
   }
 
   private async softDelete(
@@ -341,18 +348,22 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
     await withWriteTransaction(
       this.db,
       context.auth,
-      (trx) =>
-        trx
+      async (trx) => {
+        let query = trx
           .updateTable('app.chaos_inbox_items')
           .set({
             deleted_at: deletedAt,
             updated_by: context.actorUserId,
           })
           .where('workspace_id', '=', context.workspaceId)
-          .where('user_id', '=', context.actorUserId)
           .where('id', 'in', ids)
           .where('deleted_at', 'is', null)
-          .execute(),
+        if (context.workspaceKind !== 'shared') {
+          query = query.where('user_id', '=', context.actorUserId)
+        }
+
+        await query.execute()
+      },
       context.actorUserId,
     )
   }

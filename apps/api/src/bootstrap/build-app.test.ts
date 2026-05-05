@@ -7,6 +7,9 @@ import { afterEach, describe, it } from 'node:test'
 import {
   adminUserListResponseSchema,
   apiErrorSchema,
+  chaosInboxCreatedRecordResponseSchema,
+  chaosInboxItemRecordSchema,
+  chaosInboxListRecordResponseSchema,
   emojiSetListResponseSchema,
   emojiSetRecordSchema,
   healthResponseSchema,
@@ -26,6 +29,10 @@ import {
   workspaceUserRecordSchema,
 } from '@planner/contracts'
 
+import {
+  ChaosInboxService,
+  MemoryChaosInboxRepository,
+} from '../modules/chaos-inbox/index.js'
 import {
   type EmojiSetRepository,
   EmojiSetService,
@@ -823,7 +830,8 @@ void describe('buildApiApp', () => {
 
     assert.equal(forbiddenConfirmationUpdateResponse.statusCode, 403)
     assert.equal(
-      apiErrorSchema.parse(forbiddenConfirmationUpdateResponse.json()).error.code,
+      apiErrorSchema.parse(forbiddenConfirmationUpdateResponse.json()).error
+        .code,
       'task_manage_forbidden',
     )
 
@@ -927,7 +935,9 @@ void describe('buildApiApp', () => {
 
     assert.equal(backToInProgressResponse.statusCode, 200)
 
-    const reviewedBackTask = taskRecordSchema.parse(backToInProgressResponse.json())
+    const reviewedBackTask = taskRecordSchema.parse(
+      backToInProgressResponse.json(),
+    )
 
     assert.equal(reviewedBackTask.status, 'in_progress')
 
@@ -1017,7 +1027,10 @@ void describe('buildApiApp', () => {
     })
 
     assert.equal(ownerDoneResponse.statusCode, 200)
-    assert.equal(taskRecordSchema.parse(ownerDoneResponse.json()).status, 'done')
+    assert.equal(
+      taskRecordSchema.parse(ownerDoneResponse.json()).status,
+      'done',
+    )
 
     const groupAdminAssignedTaskResponse = await app.inject({
       headers: {
@@ -1100,7 +1113,8 @@ void describe('buildApiApp', () => {
 
     assert.equal(groupAdminAssignedScheduleResponse.statusCode, 403)
     assert.equal(
-      apiErrorSchema.parse(groupAdminAssignedScheduleResponse.json()).error.code,
+      apiErrorSchema.parse(groupAdminAssignedScheduleResponse.json()).error
+        .code,
       'task_manage_forbidden',
     )
 
@@ -2444,6 +2458,127 @@ void describe('buildApiApp', () => {
       apiErrorSchema.parse(renameResponse.json()).error.code,
       'shared_workspace_creator_required',
     )
+  })
+
+  void it('allows all shared workspace participants to collaborate on shopping list items', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      chaosInboxService: new ChaosInboxService(
+        new MemoryChaosInboxRepository(),
+        new TaskService(new MemoryTaskRepository()),
+      ),
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const workspaceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      payload: {
+        name: 'Family Workspace',
+      },
+      url: '/api/v1/workspaces/shared',
+    })
+
+    const workspace = sessionWorkspaceMembershipSchema.parse(
+      workspaceResponse.json(),
+    )
+
+    const inviteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'POST',
+      payload: {
+        email: READER_AUTH_CONTEXT.claims.email,
+        groupRole: 'member',
+      },
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(inviteResponse.statusCode, 201)
+
+    await sessionRepository.resolve({
+      actorUserId: undefined,
+      auth: READER_AUTH_CONTEXT,
+      workspaceId: workspace.id,
+    })
+
+    const createResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'POST',
+      payload: {
+        items: [
+          {
+            kind: 'shopping',
+            text: 'Milk',
+          },
+        ],
+      },
+      url: '/api/v1/chaos-inbox',
+    })
+
+    assert.equal(createResponse.statusCode, 201)
+
+    const createdItem = chaosInboxCreatedRecordResponseSchema.parse(
+      createResponse.json(),
+    ).items[0]!
+
+    const listResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': READER_AUTH_CONTEXT.claims.sub,
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/chaos-inbox?kind=shopping&limit=200',
+    })
+
+    assert.equal(listResponse.statusCode, 200)
+    assert.equal(
+      chaosInboxListRecordResponseSchema.parse(listResponse.json()).items
+        .length,
+      1,
+    )
+
+    const updateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': READER_AUTH_CONTEXT.claims.sub,
+        'x-workspace-id': workspace.id,
+      },
+      method: 'PATCH',
+      payload: {
+        status: 'archived',
+      },
+      url: `/api/v1/chaos-inbox/${createdItem.id}`,
+    })
+
+    assert.equal(updateResponse.statusCode, 200)
+    assert.equal(
+      chaosInboxItemRecordSchema.parse(updateResponse.json()).status,
+      'archived',
+    )
+
+    const deleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': READER_AUTH_CONTEXT.claims.sub,
+        'x-workspace-id': workspace.id,
+      },
+      method: 'DELETE',
+      url: `/api/v1/chaos-inbox/${createdItem.id}`,
+    })
+
+    assert.equal(deleteResponse.statusCode, 204)
   })
 
   void it('creates and lists workspace invitations for a shared workspace', async () => {

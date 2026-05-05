@@ -147,7 +147,11 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
   ): StoredChaosInboxItemRecord {
     const item = this.items.get(id)
 
-    if (!item || !this.matchesContext(item, context) || item.deletedAt !== null) {
+    if (
+      !item ||
+      !this.matchesContext(item, context) ||
+      item.deletedAt !== null
+    ) {
       throw new HttpError(
         404,
         'chaos_inbox_item_not_found',
@@ -164,7 +168,9 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
   ): boolean {
     return (
       item.workspaceId === context.workspaceId &&
-      (!context.actorUserId || item.userId === context.actorUserId)
+      (!context.actorUserId ||
+        context.workspaceKind === 'shared' ||
+        item.userId === context.actorUserId)
     )
   }
 }
