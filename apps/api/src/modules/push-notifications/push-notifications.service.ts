@@ -1,6 +1,8 @@
 import { HttpError } from '../../bootstrap/http-error.js'
 import type {
   PushDeviceUpsertInput,
+  PushNotificationMessage,
+  PushNotificationRecipient,
   PushNotificationSender,
   PushNotificationSession,
   PushTestNotificationInput,
@@ -22,9 +24,13 @@ export class PushNotificationsService {
     return this.repository.removeDevice(session, installationId)
   }
 
-  async sendTestNotification(
-    session: PushNotificationSession,
-    input: PushTestNotificationInput,
+  isAvailable(): boolean {
+    return this.sender.isAvailable()
+  }
+
+  async sendNotification(
+    recipient: PushNotificationRecipient,
+    message: PushNotificationMessage,
   ): Promise<PushTestNotificationResponse> {
     if (!this.sender.isAvailable()) {
       throw new HttpError(
@@ -34,7 +40,7 @@ export class PushNotificationsService {
       )
     }
 
-    const tokens = await this.repository.listActiveTokens(session)
+    const tokens = await this.repository.listActiveTokens(recipient)
 
     if (tokens.length === 0) {
       return {
@@ -44,11 +50,7 @@ export class PushNotificationsService {
       }
     }
 
-    const result = await this.sender.sendToTokens(tokens, {
-      body: input.body,
-      data: input.data,
-      title: input.title,
-    })
+    const result = await this.sender.sendToTokens(tokens, message)
 
     if (result.invalidTokens.length > 0) {
       await this.repository.deactivateTokens(result.invalidTokens)
@@ -59,5 +61,22 @@ export class PushNotificationsService {
       failedCount: result.failedCount,
       invalidTokenCount: result.invalidTokens.length,
     }
+  }
+
+  async sendTestNotification(
+    session: PushNotificationSession,
+    input: PushTestNotificationInput,
+  ): Promise<PushTestNotificationResponse> {
+    return this.sendNotification(
+      {
+        userId: session.actorUserId,
+        workspaceId: session.workspaceId,
+      },
+      {
+        body: input.body,
+        data: input.data,
+        title: input.title,
+      },
+    )
   }
 }

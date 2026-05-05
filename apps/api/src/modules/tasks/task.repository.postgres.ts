@@ -64,6 +64,7 @@ const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
 const MANUAL_TIME_BLOCK_SOURCE = 'manual'
 const TASK_ICON_KEY = 'taskIcon'
 const TASK_IMPORTANCE_KEY = 'taskImportance'
+const TASK_REMIND_BEFORE_START_KEY = 'taskRemindBeforeStart'
 const TASK_REQUIRES_CONFIRMATION_KEY = 'taskRequiresConfirmation'
 const TASK_URGENCY_KEY = 'taskUrgency'
 const DEFAULT_TASK_IMPORTANCE = 'not_important'
@@ -214,6 +215,7 @@ export class PostgresTaskRepository implements TaskRepository {
         normalizedInput,
         normalizedSchedule,
         projectId: project?.id ?? null,
+        reminderTimeZone: normalizedInput.reminderTimeZone,
         startsAt,
         taskId,
       })
@@ -297,6 +299,16 @@ export class PostgresTaskRepository implements TaskRepository {
         )
 
         if (insertedTask) {
+          await this.syncTaskReminder(trx, {
+            isActive: true,
+            plannedDate: record.plannedDate,
+            plannedStartTime: record.plannedStartTime,
+            remindBeforeStart: record.remindBeforeStart === true,
+            reminderTimeZone: normalizedInput.reminderTimeZone,
+            taskId: task.id,
+            userId: task.created_by ?? command.context.actorUserId,
+            workspaceId: command.context.workspaceId,
+          })
           await this.writeTaskMutationArtifacts(trx, {
             actorUserId: command.context.actorUserId,
             eventType: 'task.created',
@@ -360,6 +372,7 @@ export class PostgresTaskRepository implements TaskRepository {
         normalizedInput,
         normalizedSchedule,
         projectId: project?.id ?? null,
+        reminderTimeZone: normalizedInput.reminderTimeZone,
         startsAt,
       })
     }
@@ -455,6 +468,16 @@ export class PostgresTaskRepository implements TaskRepository {
           authorDisplayName,
         )
 
+        await this.syncTaskReminder(trx, {
+          isActive: true,
+          plannedDate: record.plannedDate,
+          plannedStartTime: record.plannedStartTime,
+          remindBeforeStart: record.remindBeforeStart === true,
+          reminderTimeZone: normalizedInput.reminderTimeZone,
+          taskId: command.taskId,
+          userId: updatedTask.created_by ?? command.context.actorUserId,
+          workspaceId: command.context.workspaceId,
+        })
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
           eventType: 'task.updated',
@@ -554,6 +577,16 @@ export class PostgresTaskRepository implements TaskRepository {
           authorDisplayName,
         )
 
+        await this.syncTaskReminder(trx, {
+          isActive: record.status !== 'done',
+          plannedDate: record.plannedDate,
+          plannedStartTime: record.plannedStartTime,
+          remindBeforeStart: record.remindBeforeStart === true,
+          reminderTimeZone: undefined,
+          taskId: command.taskId,
+          userId: updatedTask.created_by ?? command.context.actorUserId,
+          workspaceId: command.context.workspaceId,
+        })
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
           eventType: 'task.status_changed',
@@ -608,6 +641,7 @@ export class PostgresTaskRepository implements TaskRepository {
         let updateQuery = trx
           .updateTable('app.tasks')
           .set({
+            metadata: buildScheduleUpdateMetadataValue(normalizedSchedule),
             planned_on: normalizedSchedule.plannedDate,
             updated_by: command.context.actorUserId,
           })
@@ -684,6 +718,16 @@ export class PostgresTaskRepository implements TaskRepository {
           authorDisplayName,
         )
 
+        await this.syncTaskReminder(trx, {
+          isActive: true,
+          plannedDate: record.plannedDate,
+          plannedStartTime: record.plannedStartTime,
+          remindBeforeStart: record.remindBeforeStart === true,
+          reminderTimeZone: undefined,
+          taskId: command.taskId,
+          userId: updatedTask.created_by ?? command.context.actorUserId,
+          workspaceId: command.context.workspaceId,
+        })
         await this.writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
           eventType: 'task.updated',
@@ -732,9 +776,7 @@ export class PostgresTaskRepository implements TaskRepository {
           )
         }
 
-        const updatedTask = await updateQuery
-          .returning(['id', 'version'])
-          .executeTakeFirst()
+        const updatedTask = await updateQuery.returningAll().executeTakeFirst()
 
         if (!updatedTask) {
           const currentTask = await this.loadCurrentTask(trx, command)
@@ -767,6 +809,16 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
           .execute()
 
+        await this.syncTaskReminder(trx, {
+          isActive: false,
+          plannedDate: null,
+          plannedStartTime: null,
+          remindBeforeStart: false,
+          reminderTimeZone: undefined,
+          taskId: command.taskId,
+          userId: updatedTask.created_by ?? command.context.actorUserId,
+          workspaceId: command.context.workspaceId,
+        })
         await trx
           .insertInto('app.task_events')
           .values({
@@ -815,6 +867,7 @@ export class PostgresTaskRepository implements TaskRepository {
       normalizedInput: ReturnType<typeof normalizeTaskInput>
       normalizedSchedule: ReturnType<typeof normalizeTaskSchedule>
       projectId: string | null
+      reminderTimeZone: string | undefined
       startsAt: string | null
       taskId: string
     },
@@ -1068,7 +1121,24 @@ export class PostgresTaskRepository implements TaskRepository {
           from task_with_time_block
         `.execute(executor)
 
-        return result.rows[0]
+        const createdTask = result.rows[0]
+
+        if (createdTask) {
+          const record = this.mapTaskRecordFromListRow(createdTask)
+
+          await this.syncTaskReminder(executor, {
+            isActive: record.status !== 'done',
+            plannedDate: record.plannedDate,
+            plannedStartTime: record.plannedStartTime,
+            remindBeforeStart: record.remindBeforeStart === true,
+            reminderTimeZone: params.reminderTimeZone,
+            taskId: createdTask.id,
+            userId: createdTask.created_by ?? command.context.actorUserId,
+            workspaceId: createdTask.workspace_id,
+          })
+        }
+
+        return createdTask
       },
     )
 
@@ -1089,6 +1159,7 @@ export class PostgresTaskRepository implements TaskRepository {
       normalizedInput: ReturnType<typeof normalizeTaskInput>
       normalizedSchedule: ReturnType<typeof normalizeTaskSchedule>
       projectId: string | null
+      reminderTimeZone: string | undefined
       startsAt: string | null
     },
   ): Promise<StoredTaskRecord> {
@@ -1179,6 +1250,27 @@ export class PostgresTaskRepository implements TaskRepository {
             returning id
           ),
           ${insertedTimeBlockCte}
+          task_with_time_block as (
+            select
+              updated_task.*,
+              assignee_user.display_name as assignee_display_name,
+              author_user.display_name as author_display_name,
+              project.title as project_title,
+              inserted_time_block.starts_at as time_block_starts_at,
+              inserted_time_block.ends_at as time_block_ends_at
+            from updated_task
+            left join app.users as assignee_user
+              on assignee_user.id = updated_task.assignee_user_id
+              and assignee_user.deleted_at is null
+            left join app.users as author_user
+              on author_user.id = updated_task.created_by
+              and author_user.deleted_at is null
+            left join app.projects as project
+              on project.id = updated_task.project_id
+              and project.workspace_id = updated_task.workspace_id
+              and project.deleted_at is null
+            left join inserted_time_block on true
+          ),
           event_insert as (
             insert into app.task_events (
               actor_user_id,
@@ -1195,28 +1287,28 @@ export class PostgresTaskRepository implements TaskRepository {
               updated_task.workspace_id
             from updated_task
           )
-          select
-            updated_task.*,
-            assignee_user.display_name as assignee_display_name,
-            author_user.display_name as author_display_name,
-            project.title as project_title,
-            inserted_time_block.starts_at as time_block_starts_at,
-            inserted_time_block.ends_at as time_block_ends_at
-          from updated_task
-          left join app.users as assignee_user
-            on assignee_user.id = updated_task.assignee_user_id
-            and assignee_user.deleted_at is null
-          left join app.users as author_user
-            on author_user.id = updated_task.created_by
-            and author_user.deleted_at is null
-          left join app.projects as project
-            on project.id = updated_task.project_id
-            and project.workspace_id = updated_task.workspace_id
-            and project.deleted_at is null
-          left join inserted_time_block on true
+          select *
+          from task_with_time_block
         `.execute(executor)
 
-        return result.rows[0]
+        const updatedTask = result.rows[0]
+
+        if (updatedTask) {
+          const record = this.mapTaskRecordFromListRow(updatedTask)
+
+          await this.syncTaskReminder(executor, {
+            isActive: record.status !== 'done',
+            plannedDate: record.plannedDate,
+            plannedStartTime: record.plannedStartTime,
+            remindBeforeStart: record.remindBeforeStart === true,
+            reminderTimeZone: params.reminderTimeZone,
+            taskId: updatedTask.id,
+            userId: updatedTask.created_by ?? command.context.actorUserId,
+            workspaceId: updatedTask.workspace_id,
+          })
+        }
+
+        return updatedTask
       },
     )
 
@@ -1265,6 +1357,35 @@ export class PostgresTaskRepository implements TaskRepository {
               ${expectedVersionFilter}
             returning *
           ),
+          task_with_time_block as (
+            select
+              updated_task.*,
+              assignee_user.display_name as assignee_display_name,
+              author_user.display_name as author_display_name,
+              project.title as project_title,
+              time_block.starts_at as time_block_starts_at,
+              time_block.ends_at as time_block_ends_at
+            from updated_task
+            left join app.users as assignee_user
+              on assignee_user.id = updated_task.assignee_user_id
+              and assignee_user.deleted_at is null
+            left join app.users as author_user
+              on author_user.id = updated_task.created_by
+              and author_user.deleted_at is null
+            left join app.projects as project
+              on project.id = updated_task.project_id
+              and project.workspace_id = updated_task.workspace_id
+              and project.deleted_at is null
+            left join lateral (
+              select starts_at, ends_at
+              from app.task_time_blocks
+              where workspace_id = updated_task.workspace_id
+                and task_id = updated_task.id
+                and deleted_at is null
+              order by position asc, starts_at asc
+              limit 1
+            ) as time_block on true
+          ),
           event_insert as (
             insert into app.task_events (
               actor_user_id,
@@ -1286,36 +1407,28 @@ export class PostgresTaskRepository implements TaskRepository {
               updated_task.workspace_id
             from updated_task
           )
-          select
-            updated_task.*,
-            assignee_user.display_name as assignee_display_name,
-            author_user.display_name as author_display_name,
-            project.title as project_title,
-            time_block.starts_at as time_block_starts_at,
-            time_block.ends_at as time_block_ends_at
-          from updated_task
-          left join app.users as assignee_user
-            on assignee_user.id = updated_task.assignee_user_id
-            and assignee_user.deleted_at is null
-          left join app.users as author_user
-            on author_user.id = updated_task.created_by
-            and author_user.deleted_at is null
-          left join app.projects as project
-            on project.id = updated_task.project_id
-            and project.workspace_id = updated_task.workspace_id
-            and project.deleted_at is null
-          left join lateral (
-            select starts_at, ends_at
-            from app.task_time_blocks
-            where workspace_id = updated_task.workspace_id
-              and task_id = updated_task.id
-              and deleted_at is null
-            order by position asc, starts_at asc
-            limit 1
-          ) as time_block on true
+          select *
+          from task_with_time_block
         `.execute(executor)
 
-        return result.rows[0]
+        const updatedTask = result.rows[0]
+
+        if (updatedTask) {
+          const record = this.mapTaskRecordFromListRow(updatedTask)
+
+          await this.syncTaskReminder(executor, {
+            isActive: record.status !== 'done',
+            plannedDate: record.plannedDate,
+            plannedStartTime: record.plannedStartTime,
+            remindBeforeStart: record.remindBeforeStart === true,
+            reminderTimeZone: undefined,
+            taskId: updatedTask.id,
+            userId: updatedTask.created_by ?? command.context.actorUserId,
+            workspaceId: updatedTask.workspace_id,
+          })
+        }
+
+        return updatedTask
       },
     )
 
@@ -1399,6 +1512,12 @@ export class PostgresTaskRepository implements TaskRepository {
           with updated_task as (
             update app.tasks
             set
+              metadata = case
+                when cast(${params.normalizedSchedule.plannedDate} as date) is null
+                  or cast(${params.normalizedSchedule.plannedStartTime} as time) is null
+                then coalesce(metadata, '{}'::jsonb) - '${TASK_REMIND_BEFORE_START_KEY}'
+                else metadata
+              end,
               planned_on = cast(${params.normalizedSchedule.plannedDate} as date),
               updated_by = ${command.context.actorUserId}
             where id = ${command.taskId}
@@ -1419,6 +1538,27 @@ export class PostgresTaskRepository implements TaskRepository {
             returning id
           ),
           ${insertedTimeBlockCte}
+          task_with_time_block as (
+            select
+              updated_task.*,
+              assignee_user.display_name as assignee_display_name,
+              author_user.display_name as author_display_name,
+              project.title as project_title,
+              inserted_time_block.starts_at as time_block_starts_at,
+              inserted_time_block.ends_at as time_block_ends_at
+            from updated_task
+            left join app.users as assignee_user
+              on assignee_user.id = updated_task.assignee_user_id
+              and assignee_user.deleted_at is null
+            left join app.users as author_user
+              on author_user.id = updated_task.created_by
+              and author_user.deleted_at is null
+            left join app.projects as project
+              on project.id = updated_task.project_id
+              and project.workspace_id = updated_task.workspace_id
+              and project.deleted_at is null
+            left join inserted_time_block on true
+          ),
           event_insert as (
             insert into app.task_events (
               actor_user_id,
@@ -1444,28 +1584,28 @@ export class PostgresTaskRepository implements TaskRepository {
               updated_task.workspace_id
             from updated_task
           )
-          select
-            updated_task.*,
-            assignee_user.display_name as assignee_display_name,
-            author_user.display_name as author_display_name,
-            project.title as project_title,
-            inserted_time_block.starts_at as time_block_starts_at,
-            inserted_time_block.ends_at as time_block_ends_at
-          from updated_task
-          left join app.users as assignee_user
-            on assignee_user.id = updated_task.assignee_user_id
-            and assignee_user.deleted_at is null
-          left join app.users as author_user
-            on author_user.id = updated_task.created_by
-            and author_user.deleted_at is null
-          left join app.projects as project
-            on project.id = updated_task.project_id
-            and project.workspace_id = updated_task.workspace_id
-            and project.deleted_at is null
-          left join inserted_time_block on true
+          select *
+          from task_with_time_block
         `.execute(executor)
 
-        return result.rows[0]
+        const updatedTask = result.rows[0]
+
+        if (updatedTask) {
+          const record = this.mapTaskRecordFromListRow(updatedTask)
+
+          await this.syncTaskReminder(executor, {
+            isActive: true,
+            plannedDate: record.plannedDate,
+            plannedStartTime: record.plannedStartTime,
+            remindBeforeStart: record.remindBeforeStart === true,
+            reminderTimeZone: undefined,
+            taskId: updatedTask.id,
+            userId: updatedTask.created_by ?? command.context.actorUserId,
+            workspaceId: updatedTask.workspace_id,
+          })
+        }
+
+        return updatedTask
       },
     )
 
@@ -1549,7 +1689,22 @@ export class PostgresTaskRepository implements TaskRepository {
           from updated_task
         `.execute(executor)
 
-        return result.rows[0]
+        const removedTask = result.rows[0]
+
+        if (removedTask) {
+          await this.syncTaskReminder(executor, {
+            isActive: false,
+            plannedDate: null,
+            plannedStartTime: null,
+            remindBeforeStart: false,
+            reminderTimeZone: undefined,
+            taskId: command.taskId,
+            userId: command.context.actorUserId,
+            workspaceId: command.context.workspaceId,
+          })
+        }
+
+        return removedTask
       },
     )
 
@@ -1997,6 +2152,7 @@ export class PostgresTaskRepository implements TaskRepository {
         : null,
       project: projectTitle ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
+      remindBeforeStart: this.readTaskRemindBeforeStart(task.metadata),
       resource: task.resource,
       requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
       sphereId: task.project_id ?? task.sphere_id,
@@ -2034,6 +2190,7 @@ export class PostgresTaskRepository implements TaskRepository {
         : null,
       project: task.project_title ?? this.readLegacyProjectName(task.metadata),
       projectId: task.project_id,
+      remindBeforeStart: this.readTaskRemindBeforeStart(task.metadata),
       resource: task.resource,
       requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
       sphereId: task.project_id ?? task.sphere_id,
@@ -2050,7 +2207,11 @@ export class PostgresTaskRepository implements TaskRepository {
     projectName: string,
     input: Pick<
       StoredTaskRecord,
-      'icon' | 'importance' | 'requiresConfirmation' | 'urgency'
+      | 'icon'
+      | 'importance'
+      | 'remindBeforeStart'
+      | 'requiresConfirmation'
+      | 'urgency'
     >,
   ): JsonObject {
     const metadata: JsonObject = {}
@@ -2065,6 +2226,10 @@ export class PostgresTaskRepository implements TaskRepository {
 
     if (input.importance !== DEFAULT_TASK_IMPORTANCE) {
       metadata[TASK_IMPORTANCE_KEY] = input.importance
+    }
+
+    if (input.remindBeforeStart) {
+      metadata[TASK_REMIND_BEFORE_START_KEY] = true
     }
 
     if (input.requiresConfirmation) {
@@ -2098,6 +2263,12 @@ export class PostgresTaskRepository implements TaskRepository {
     return value === 'important' || value === 'not_important'
       ? value
       : DEFAULT_TASK_IMPORTANCE
+  }
+
+  private readTaskRemindBeforeStart(
+    metadata: JsonObject,
+  ): true | undefined {
+    return metadata[TASK_REMIND_BEFORE_START_KEY] === true ? true : undefined
   }
 
   private readTaskRequiresConfirmation(metadata: JsonObject): boolean {
@@ -2142,6 +2313,33 @@ export class PostgresTaskRepository implements TaskRepository {
       })
       .returningAll()
       .executeTakeFirst()
+  }
+
+  private async syncTaskReminder(
+    executor: DatabaseExecutor,
+    params: {
+      isActive: boolean
+      plannedDate: string | null
+      plannedStartTime: string | null
+      remindBeforeStart: boolean
+      reminderTimeZone: string | undefined
+      taskId: string
+      userId: string
+      workspaceId: string
+    },
+  ): Promise<void> {
+    await sql`
+      select app.sync_task_reminder(
+        cast(${params.taskId} as uuid),
+        cast(${params.workspaceId} as uuid),
+        cast(${params.userId} as uuid),
+        ${params.remindBeforeStart},
+        cast(${params.plannedDate} as date),
+        cast(${params.plannedStartTime} as time),
+        cast(${params.reminderTimeZone ?? null} as text),
+        ${params.isActive}
+      )
+    `.execute(executor)
   }
 
   private async writeTaskMutationArtifacts(
@@ -2209,6 +2407,19 @@ function getDistinctTaskUserIds(
         .filter((userId): userId is string => userId !== null),
     ),
   ]
+}
+
+function buildScheduleUpdateMetadataValue(
+  schedule: ReturnType<typeof normalizeTaskSchedule>,
+) {
+  return sql<JsonObject>`
+    case
+      when cast(${schedule.plannedDate} as date) is null
+        or cast(${schedule.plannedStartTime} as time) is null
+      then coalesce(metadata, '{}'::jsonb) - '${TASK_REMIND_BEFORE_START_KEY}'
+      else metadata
+    end
+  `
 }
 
 function serializeNullableTimestamp(value: unknown): string | null {

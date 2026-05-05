@@ -16,6 +16,8 @@ export interface NormalizedTaskInput extends NewTaskInput {
   note: string
   project: string
   projectId: string | null
+  remindBeforeStart: boolean
+  reminderTimeZone: string | undefined
   resource: NewTaskInput['resource']
   requiresConfirmation: boolean
   sphereId: string | null
@@ -67,6 +69,8 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
+    remindBeforeStart: input.remindBeforeStart === true,
+    reminderTimeZone: input.reminderTimeZone?.trim() || undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
     sphereId: input.sphereId,
@@ -177,6 +181,7 @@ export function createStoredTaskRecord(
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
+    remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
     sphereId: normalizedInput.sphereId,
@@ -209,12 +214,17 @@ export function applyTaskSchedule(
   now: string = new Date().toISOString(),
 ): StoredTaskRecord {
   const normalizedSchedule = normalizeTaskSchedule(schedule)
+  const remindBeforeStart =
+    normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+      ? task.remindBeforeStart
+      : undefined
 
   return {
     ...task,
     plannedDate: normalizedSchedule.plannedDate,
     plannedEndTime: normalizedSchedule.plannedEndTime,
     plannedStartTime: normalizedSchedule.plannedStartTime,
+    remindBeforeStart,
     updatedAt: now,
     version: task.version + 1,
   }
@@ -244,6 +254,7 @@ export function applyTaskUpdate(
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
+    remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
     sphereId: normalizedInput.sphereId,

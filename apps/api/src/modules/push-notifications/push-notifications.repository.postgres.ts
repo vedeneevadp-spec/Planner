@@ -4,6 +4,7 @@ import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   PushDeviceRecord,
   PushDeviceUpsertInput,
+  PushNotificationRecipient,
   PushNotificationSession,
 } from './push-notifications.model.js'
 import type { PushNotificationsRepository } from './push-notifications.repository.js'
@@ -79,12 +80,14 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
       .execute()
   }
 
-  async listActiveTokens(session: PushNotificationSession): Promise<string[]> {
+  async listActiveTokens(
+    recipient: PushNotificationRecipient | PushNotificationSession,
+  ): Promise<string[]> {
     const rows = await this.db
       .selectFrom('app.push_devices')
       .select('token')
-      .where('user_id', '=', session.actorUserId)
-      .where('workspace_id', '=', session.workspaceId)
+      .where('user_id', '=', resolveRecipientUserId(recipient))
+      .where('workspace_id', '=', recipient.workspaceId)
       .where('deleted_at', 'is', null)
       .orderBy('last_registered_at', 'desc')
       .execute()
@@ -106,6 +109,12 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
       .where('deleted_at', 'is', null)
       .execute()
   }
+}
+
+function resolveRecipientUserId(
+  recipient: PushNotificationRecipient | PushNotificationSession,
+): string {
+  return 'actorUserId' in recipient ? recipient.actorUserId : recipient.userId
 }
 
 function mapPushDeviceRecord(row: PushDeviceRow): PushDeviceRecord {

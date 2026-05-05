@@ -924,6 +924,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
         projectId: nullableStringSchema(),
+        remindBeforeStart: {
+          type: 'boolean',
+        },
+        reminderTimeZone: {
+          type: 'string',
+        },
         requiresConfirmation: {
           type: 'boolean',
         },
@@ -1764,6 +1770,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
         projectId: nullableStringSchema(),
+        remindBeforeStart: {
+          type: 'boolean',
+        },
         requiresConfirmation: {
           type: 'boolean',
         },

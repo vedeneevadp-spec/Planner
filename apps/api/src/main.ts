@@ -52,6 +52,11 @@ import {
   SessionService,
 } from './modules/session/index.js'
 import {
+  PostgresTaskReminderRepository,
+  TaskRemindersPoller,
+  TaskRemindersService,
+} from './modules/task-reminders/index.js'
+import {
   MemoryTaskTemplateRepository,
   PostgresTaskTemplateRepository,
   TaskTemplateService,
@@ -66,6 +71,7 @@ export interface ApiKernel {
   app: FastifyInstance
   config: ReturnType<typeof createApiConfig>
   database: DatabaseConnection | null
+  stopBackgroundJobs: () => Promise<void>
 }
 
 export function createApiKernel(
@@ -130,6 +136,7 @@ export function createApiKernel(
     taskService,
   )
   const dailyPlanService = new DailyPlanService(dailyPlanRepository)
+  const backgroundJobs: Array<{ stop: () => Promise<void> }> = []
   const requestAuthenticator =
     config.authMode === 'supabase' && config.supabaseAuth
       ? new SupabaseRequestAuthenticator(config.supabaseAuth)
@@ -149,14 +156,38 @@ export function createApiKernel(
     taskService,
   })
 
+  if (
+    database &&
+    config.appEnv !== 'test' &&
+    pushNotificationsService.isAvailable()
+  ) {
+    const taskRemindersService = new TaskRemindersService(
+      new PostgresTaskReminderRepository(database.db),
+      pushNotificationsService,
+    )
+    const taskRemindersPoller = new TaskRemindersPoller(
+      taskRemindersService,
+      app.log,
+    )
+
+    taskRemindersPoller.start()
+    backgroundJobs.push(taskRemindersPoller)
+  }
+
   return {
     app,
     config,
     database,
+    stopBackgroundJobs: async () => {
+      for (const job of backgroundJobs) {
+        await job.stop()
+      }
+    },
   }
 }
 
 export async function destroyApiKernel(kernel: ApiKernel): Promise<void> {
+  await kernel.stopBackgroundJobs()
   await kernel.app.close()
 
   if (kernel.database) {

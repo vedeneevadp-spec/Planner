@@ -251,6 +251,7 @@ export function addTask(
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
+    remindBeforeStart: input.remindBeforeStart ? true : undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
     sphereId: input.sphereId,
@@ -306,6 +307,7 @@ export function setTaskPlannedDate(
           plannedStartTime: plannedDate ? task.plannedStartTime : null,
           plannedEndTime: plannedDate ? task.plannedEndTime : null,
         }),
+        remindBeforeStart: plannedDate ? task.remindBeforeStart : undefined,
       }
     }),
   )
@@ -319,14 +321,18 @@ export function setTaskSchedule(
   const normalizedSchedule = normalizeTaskSchedule(schedule)
 
   return sortTasks(
-    tasks.map((task) =>
-      task.id === taskId
-        ? {
-            ...task,
-            ...normalizedSchedule,
-          }
-        : task,
-    ),
+      tasks.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              ...normalizedSchedule,
+              remindBeforeStart:
+                normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+                  ? task.remindBeforeStart
+                  : undefined,
+            }
+          : task,
+      ),
   )
 }
 

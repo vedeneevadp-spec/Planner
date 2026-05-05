@@ -7,6 +7,7 @@ import {
   getPlannerSummary,
   groupTasksByProject,
   setTaskPlannedDate,
+  setTaskSchedule,
   setTaskStatus,
 } from '@/entities/task'
 
@@ -89,6 +90,29 @@ describe('planner model', () => {
       plannedDate: null,
       plannedStartTime: null,
       plannedEndTime: null,
+    })
+  })
+
+  it('clears reminder flag when schedule no longer has a start time', () => {
+    const tasks = setTaskSchedule(
+      [
+        {
+          ...baseTask,
+          remindBeforeStart: true,
+        },
+      ],
+      baseTask.id,
+      {
+        plannedDate: null,
+        plannedEndTime: null,
+        plannedStartTime: null,
+      },
+    )
+
+    expect(tasks[0]).toMatchObject({
+      plannedDate: null,
+      plannedStartTime: null,
+      remindBeforeStart: undefined,
     })
   })
 

@@ -13,6 +13,10 @@ const booleanWithDefault = z
   .optional()
   .transform((value) => value ?? false)
 
+const optionalBoolean = z.boolean().optional()
+
+const optionalTimeZone = z.string().trim().min(1).max(100).optional()
+
 export const taskStatusSchema = z.enum([
   'todo',
   'in_progress',
@@ -46,6 +50,7 @@ export const taskSchema = z.object({
   icon: taskIconSchema,
   importance: taskImportanceSchema.optional().default('not_important'),
   urgency: taskUrgencySchema.optional().default('not_urgent'),
+  remindBeforeStart: optionalBoolean,
   projectId: nullableStringWithDefault,
   sphereId: nullableStringWithDefault,
   project: z.string(),
@@ -76,6 +81,8 @@ export const newTaskInputSchema = z.object({
   icon: z.string().optional(),
   importance: taskImportanceSchema.optional(),
   urgency: taskUrgencySchema.optional(),
+  remindBeforeStart: optionalBoolean,
+  reminderTimeZone: optionalTimeZone,
   projectId: nullableStringWithDefault,
   sphereId: nullableStringWithDefault,
   project: z.string(),

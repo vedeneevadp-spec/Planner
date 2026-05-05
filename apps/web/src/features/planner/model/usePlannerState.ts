@@ -120,6 +120,7 @@ function toPlannerTask(task: TaskRecord): Task {
     plannedStartTime: task.plannedStartTime,
     project: task.project,
     projectId: task.projectId,
+    remindBeforeStart: task.remindBeforeStart,
     resource: task.resource,
     requiresConfirmation: task.requiresConfirmation,
     sphereId: task.sphereId,
@@ -246,6 +247,7 @@ function createOptimisticTaskRecord(
     plannedStartTime: schedule.plannedStartTime,
     project: input.project.trim(),
     projectId: input.projectId,
+    remindBeforeStart: input.remindBeforeStart ? true : undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
     sphereId: input.sphereId,
@@ -1148,6 +1150,7 @@ export function usePlannerState(): PlannerState {
           plannedStartTime: normalizedSchedule.plannedStartTime,
           project: input.project.trim(),
           projectId: input.projectId,
+          remindBeforeStart: input.remindBeforeStart ? true : undefined,
           resource: input.resource,
           requiresConfirmation: input.requiresConfirmation ?? false,
           sphereId: input.sphereId,
@@ -1307,6 +1310,10 @@ export function usePlannerState(): PlannerState {
           plannedDate: normalizedSchedule.plannedDate,
           plannedEndTime: normalizedSchedule.plannedEndTime,
           plannedStartTime: normalizedSchedule.plannedStartTime,
+          remindBeforeStart:
+            normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+              ? task.remindBeforeStart
+              : undefined,
           updatedAt: now,
           version: task.version + 1,
         })),

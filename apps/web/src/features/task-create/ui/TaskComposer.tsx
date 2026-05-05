@@ -121,6 +121,14 @@ function getTemplateProject(
   )
 }
 
+function resolveClientTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
+  } catch {
+    return undefined
+  }
+}
+
 function buildTaskInputFromTemplate(
   template: TaskTemplate,
   projects: Project[],
@@ -145,6 +153,13 @@ function buildTaskInputFromTemplate(
     plannedStartTime: plannedDate ? template.plannedStartTime : null,
     project: isSharedWorkspace ? '' : project.project,
     projectId: isSharedWorkspace ? null : project.projectId,
+    remindBeforeStart: Boolean(
+      !isSharedWorkspace && plannedDate && template.plannedStartTime,
+    ),
+    reminderTimeZone:
+      !isSharedWorkspace && plannedDate && template.plannedStartTime
+        ? resolveClientTimeZone()
+        : undefined,
     resource: 0,
     requiresConfirmation: false,
     sphereId: null,
@@ -271,6 +286,7 @@ export function TaskComposer({
   const confirmationFieldId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
   const openDraftRequestIdRef = useRef<string | null>(null)
+  const reminderAvailabilityRef = useRef(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
@@ -284,6 +300,7 @@ export function TaskComposer({
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
   const [plannedEndTime, setPlannedEndTime] = useState('')
+  const [remindBeforeStart, setRemindBeforeStart] = useState(false)
   const [note, setNote] = useState('')
   const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(
     null,
@@ -335,12 +352,35 @@ export function TaskComposer({
     setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
+    setRemindBeforeStart(false)
+    reminderAvailabilityRef.current = false
     setNote(openDraft.note ?? '')
     setSelectedTemplateId(null)
     setTemplateNotice(null)
     setIsTemplatesExpanded(false)
     setIsOpen(true)
   }, [initialPlannedDate, isSharedWorkspace, openDraft])
+
+  const isReminderAvailable =
+    !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
+
+  useEffect(() => {
+    const wasAvailable = reminderAvailabilityRef.current
+
+    if (!isReminderAvailable) {
+      if (wasAvailable || remindBeforeStart) {
+        setRemindBeforeStart(false)
+      }
+      reminderAvailabilityRef.current = false
+      return
+    }
+
+    if (!wasAvailable) {
+      setRemindBeforeStart(true)
+    }
+
+    reminderAvailabilityRef.current = true
+  }, [isReminderAvailable, remindBeforeStart])
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -383,6 +423,11 @@ export function TaskComposer({
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: projectInput.project,
       projectId: projectInput.projectId,
+      remindBeforeStart: isSharedWorkspace ? false : remindBeforeStart,
+      reminderTimeZone:
+        !isSharedWorkspace && remindBeforeStart
+          ? resolveClientTimeZone()
+          : undefined,
       resource: getResourceFromValue(resource),
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
       sphereId: null,
@@ -402,6 +447,8 @@ export function TaskComposer({
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
+    setRemindBeforeStart(false)
+    reminderAvailabilityRef.current = false
     setNote('')
     setSelectedTemplateId(null)
     setTemplateNotice(null)
@@ -469,6 +516,8 @@ export function TaskComposer({
         ? (template.plannedEndTime ?? '')
         : '',
     )
+    setRemindBeforeStart(false)
+    reminderAvailabilityRef.current = false
     setNote(template.note)
     setSelectedTemplateId(template.id)
     setTemplateNotice(`Шаблон «${template.title}» подставлен в форму.`)
@@ -865,6 +914,33 @@ export function TaskComposer({
                           value={projectId}
                           onChange={setProjectId}
                         />
+                      </section>
+                    ) : null}
+
+                    {!isSharedWorkspace ? (
+                      <section className={styles.columnSection}>
+                        <div className={styles.checkboxField}>
+                          <input
+                            id={`${confirmationFieldId}-reminder`}
+                            type="checkbox"
+                            checked={remindBeforeStart}
+                            disabled={!isReminderAvailable}
+                            onChange={(event) =>
+                              setRemindBeforeStart(event.target.checked)
+                            }
+                          />
+                          <span className={styles.checkboxCopy}>
+                            <label
+                              className={styles.checkboxLabel}
+                              htmlFor={`${confirmationFieldId}-reminder`}
+                            >
+                              Напомнить за 15 минут
+                            </label>
+                            <small>
+                              Доступно, когда у задачи указан старт.
+                            </small>
+                          </span>
+                        </div>
                       </section>
                     ) : null}
 

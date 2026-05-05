@@ -13,6 +13,7 @@ import type {
   UpdateTaskStatusCommand,
 } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
+import { normalizeTaskSchedule } from './task.shared.js'
 
 export class TaskService {
   constructor(private readonly repository: TaskRepository) {}
@@ -29,6 +30,7 @@ export class TaskService {
     assertCanWriteTasks(context)
     assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
+    assertCanUseTaskReminder(context, input.remindBeforeStart, input)
 
     return this.repository.create({ context, input })
   }
@@ -41,6 +43,7 @@ export class TaskService {
     assertCanWriteTasks(context)
     assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
+    assertCanUseTaskReminder(context, input.remindBeforeStart, input)
 
     return this.repository.findById(context, taskId).then((task) => {
       if (!task) {
@@ -177,6 +180,55 @@ function assertCanAssignTask(
       400,
       'task_assignee_shared_workspace_required',
       'Tasks can only be assigned inside shared workspaces.',
+    )
+  }
+}
+
+function assertCanUseTaskReminder(
+  context: TaskWriteContext,
+  remindBeforeStart: boolean | undefined,
+  scheduleInput: {
+    plannedDate: string | null
+    plannedEndTime: string | null
+    plannedStartTime: string | null
+    reminderTimeZone?: string | undefined
+  },
+): void {
+  if (!remindBeforeStart) {
+    return
+  }
+
+  if (context.workspaceKind !== 'personal') {
+    throw new HttpError(
+      400,
+      'task_reminder_personal_workspace_required',
+      'Task reminders are supported only inside personal workspaces.',
+    )
+  }
+
+  const normalizedSchedule = normalizeTaskSchedule(scheduleInput)
+
+  if (!normalizedSchedule.plannedDate || !normalizedSchedule.plannedStartTime) {
+    throw new HttpError(
+      400,
+      'task_reminder_start_time_required',
+      'Task reminders require both a planned date and a planned start time.',
+    )
+  }
+
+  if (!scheduleInput.reminderTimeZone) {
+    return
+  }
+
+  try {
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: scheduleInput.reminderTimeZone,
+    }).format(new Date())
+  } catch {
+    throw new HttpError(
+      400,
+      'task_reminder_invalid_timezone',
+      'Task reminder timezone is invalid.',
     )
   }
 }

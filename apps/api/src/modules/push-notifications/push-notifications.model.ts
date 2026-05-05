@@ -17,6 +17,11 @@ export type PushNotificationSession = Pick<
   'actorUserId' | 'workspaceId'
 >
 
+export interface PushNotificationRecipient {
+  userId: string
+  workspaceId: string
+}
+
 export interface PushNotificationMessage {
   body: string
   data?: Record<string, string> | undefined

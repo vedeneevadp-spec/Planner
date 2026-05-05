@@ -3,7 +3,7 @@ import type {
   WorkspaceRole,
   WorkspaceUserRecord,
 } from '@planner/contracts'
-import { type FormEvent, useId, useState } from 'react'
+import { type FormEvent, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { Project } from '@/entities/project'
@@ -65,6 +65,14 @@ function getProjectDisplayTitle(
   }
 
   return normalizedProjectTitle
+}
+
+function resolveClientTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
+  } catch {
+    return undefined
+  }
 }
 
 interface TaskCardProps {
@@ -242,6 +250,12 @@ export function TaskCard({
             <span className={styles.metaChip}>
               Исполнитель: {task.assigneeDisplayName}
             </span>
+          ) : null}
+          {!isSharedWorkspace &&
+          task.remindBeforeStart &&
+          task.plannedDate &&
+          task.plannedStartTime ? (
+            <span className={styles.metaChip}>Напомнить за 15 минут</span>
           ) : null}
           {isSharedWorkspace && task.requiresConfirmation ? (
             <span className={cx(styles.metaChip, styles.confirmationChip)}>
@@ -444,6 +458,10 @@ export function TaskEditDialog({
   onUpdate,
 }: TaskEditDialogProps) {
   const confirmationFieldId = useId()
+  const reminderFieldId = useId()
+  const reminderAvailabilityRef = useRef(
+    !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
+  )
   const [assigneeUserId, setAssigneeUserId] = useState(
     task.assigneeUserId ?? '',
   )
@@ -459,6 +477,9 @@ export function TaskEditDialog({
   const [plannedEndTime, setPlannedEndTime] = useState(
     task.plannedEndTime ?? '',
   )
+  const [remindBeforeStart, setRemindBeforeStart] = useState(
+    task.remindBeforeStart === true,
+  )
   const [icon, setIcon] = useState(task.icon)
   const [resource, setResource] = useState(
     getResourceValueFromTaskResource(task.resource),
@@ -469,6 +490,8 @@ export function TaskEditDialog({
   const [note, setNote] = useState(task.note)
   const canManageConfirmation =
     task.authorUserId !== null && task.authorUserId === currentActorUserId
+  const isReminderAvailable =
+    !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -476,6 +499,23 @@ export function TaskEditDialog({
     if (!nextPlannedDate) {
       setPlannedStartTime('')
       setPlannedEndTime('')
+      setRemindBeforeStart(false)
+      reminderAvailabilityRef.current = false
+    }
+  }
+
+  function handlePlannedStartTimeChange(nextStartTime: string) {
+    const wasAvailable = reminderAvailabilityRef.current
+    const nextAvailable = !isSharedWorkspace && Boolean(plannedDate && nextStartTime)
+
+    setPlannedStartTime(nextStartTime)
+
+    if (!nextAvailable) {
+      setRemindBeforeStart(false)
+      reminderAvailabilityRef.current = false
+    } else if (!wasAvailable) {
+      setRemindBeforeStart(true)
+      reminderAvailabilityRef.current = true
     }
   }
 
@@ -512,6 +552,11 @@ export function TaskEditDialog({
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: projectInput.project,
       projectId: projectInput.projectId,
+      remindBeforeStart: isSharedWorkspace ? false : remindBeforeStart,
+      reminderTimeZone:
+        !isSharedWorkspace && remindBeforeStart
+          ? resolveClientTimeZone()
+          : undefined,
       resource: getResourceFromValue(resource),
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
       sphereId: task.sphereId,
@@ -586,7 +631,7 @@ export function TaskEditDialog({
                     value={plannedStartTime}
                     disabled={!plannedDate}
                     onChange={(event) =>
-                      setPlannedStartTime(event.target.value)
+                      handlePlannedStartTimeChange(event.target.value)
                     }
                   />
                 </label>
@@ -640,6 +685,31 @@ export function TaskEditDialog({
                   value={projectId}
                   onChange={setProjectId}
                 />
+              </section>
+            ) : null}
+
+            {!isSharedWorkspace ? (
+              <section className={styles.editorSection}>
+                <div className={styles.checkboxField}>
+                  <input
+                    id={reminderFieldId}
+                    type="checkbox"
+                    checked={remindBeforeStart}
+                    disabled={!isReminderAvailable}
+                    onChange={(event) =>
+                      setRemindBeforeStart(event.target.checked)
+                    }
+                  />
+                  <span className={styles.checkboxCopy}>
+                    <label
+                      className={styles.checkboxLabel}
+                      htmlFor={reminderFieldId}
+                    >
+                      Напомнить за 15 минут
+                    </label>
+                    <small>Доступно, когда у задачи указан старт.</small>
+                  </span>
+                </div>
               </section>
             ) : null}
 

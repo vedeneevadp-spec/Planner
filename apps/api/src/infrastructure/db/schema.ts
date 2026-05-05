@@ -247,6 +247,23 @@ export interface AppTaskEventsTable {
   workspace_id: string
 }
 
+export interface AppTaskRemindersTable {
+  canceled_at: TimestampColumn | null
+  claimed_at: TimestampColumn | null
+  created_at: Generated<TimestampColumn>
+  id: Generated<string>
+  planned_date: DateColumn
+  planned_start_time: TimeColumn
+  remind_offset_minutes: number
+  sent_at: TimestampColumn | null
+  task_id: string
+  time_zone: string
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppTaskAttachmentsTable {
   content_type: string
   created_at: Generated<TimestampColumn>
@@ -321,6 +338,7 @@ export interface DatabaseSchema {
   'app.projects': AppProjectsTable
   'app.task_attachments': AppTaskAttachmentsTable
   'app.task_events': AppTaskEventsTable
+  'app.task_reminders': AppTaskRemindersTable
   'app.task_templates': AppTaskTemplatesTable
   'app.task_time_blocks': AppTaskTimeBlocksTable
   'app.tasks': AppTasksTable
