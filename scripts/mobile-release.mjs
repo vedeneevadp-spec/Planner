@@ -52,6 +52,11 @@ async function main() {
 
   ensureUrl(apiUrl)
 
+  await assertReleaseApiHealth(apiUrl, {
+    dryRun: options.dryRun,
+    skip: options.skipApiHealthCheck,
+  })
+
   const mobileWebBuild = await resolveMobileWebBuildEnv({
     apiUrl,
     repoRoot,
@@ -539,6 +544,7 @@ function parseArgs(args) {
     iosExportOptionsPath: undefined,
     open: undefined,
     requireAndroidSigning: false,
+    skipApiHealthCheck: process.env.MOBILE_SKIP_API_HEALTH_CHECK === 'true',
     version: undefined,
   }
 
@@ -560,6 +566,11 @@ function parseArgs(args) {
 
     if (arg === '--require-android-signing') {
       options.requireAndroidSigning = true
+      continue
+    }
+
+    if (arg === '--skip-api-health-check') {
+      options.skipApiHealthCheck = true
       continue
     }
 
@@ -642,11 +653,89 @@ function parseArgs(args) {
 }
 
 function ensureUrl(value) {
+  let url
+
   try {
-    new URL(value)
+    url = new URL(value)
   } catch {
     throw new Error(`Invalid API URL: ${value}`)
   }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`API URL must use http or https: ${value}`)
+  }
+}
+
+async function assertReleaseApiHealth(apiUrl, { dryRun, skip }) {
+  const healthUrl = new URL('/api/health', apiUrl)
+
+  if (skip) {
+    console.log(
+      `[mobile-release] Skipping API health check: ${healthUrl.toString()}`,
+    )
+    return
+  }
+
+  if (dryRun) {
+    console.log(
+      `[mobile-release] Dry run: would check API health at ${healthUrl.toString()}`,
+    )
+    return
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
+  let response
+
+  try {
+    response = await fetch(healthUrl, {
+      headers: {
+        accept: 'application/json',
+      },
+      signal: controller.signal,
+    })
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'unknown network error'
+
+    throw new Error(
+      `API health check failed for ${healthUrl.toString()}: ${message}`,
+    )
+  } finally {
+    clearTimeout(timeout)
+  }
+
+  let payload
+
+  try {
+    payload = (await response.json()) ?? null
+  } catch {
+    payload = null
+  }
+
+  if (!response.ok || !isHealthyApiPayload(payload)) {
+    throw new Error(
+      [
+        `API health check failed for ${healthUrl.toString()}.`,
+        `HTTP ${response.status}.`,
+        `Response: ${JSON.stringify(payload)}`,
+      ].join(' '),
+    )
+  }
+
+  console.log(
+    `[mobile-release] API is healthy: ${healthUrl.toString()} (${payload.databaseStatus})`,
+  )
+}
+
+function isHealthyApiPayload(payload) {
+  return (
+    payload !== null &&
+    typeof payload === 'object' &&
+    payload.status === 'ok' &&
+    payload.databaseStatus !== 'down'
+  )
 }
 
 function parseBuildNumber(value) {
@@ -857,6 +946,7 @@ Options:
   --android-sdk=<path>         Override Android SDK path used for android/local.properties.
   --android-java-home=<path>   Override Java 21 home used for Android Gradle build.
   --require-android-signing    Fail if Android release signing is not configured.
+  --skip-api-health-check      Skip GET /api/health before building.
   --ios-developer-dir=<path>   Override DEVELOPER_DIR for xcodebuild.
   --ios-export-options=<path>  Export IPA using the given ExportOptions.plist after archive.
   --open=<target>              Open ios, android, all, or none after sync/build.

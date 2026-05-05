@@ -556,10 +556,19 @@ function clearSupabaseAuthUrlFragment() {
 }
 
 function isRetryableSupabaseAuthError(error: unknown): boolean {
-  return (
+  if (
     typeof error === 'object' &&
     error !== null &&
     'name' in error &&
     error.name === 'AuthRetryableFetchError'
-  )
+  ) {
+    return true
+  }
+
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const status = (error as { status: unknown }).status
+    return typeof status === 'number' && (status === 429 || status >= 500)
+  }
+
+  return false
 }

@@ -122,6 +122,7 @@ export function AuthGate({ children }: PropsWithChildren) {
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
   const modeContent = AUTH_MODE_CONTENT[screenMode]
   const shouldShowRememberMe = !isNativeSessionPersistenceRuntime()
+  const [isRecovering, setIsRecovering] = useState(false)
   const plannerSessionError = plannerSessionQuery.error
   const refetchPlannerSession = plannerSessionQuery.refetch
   const canResolvePlannerSession = canBootstrapPlannerSession({
@@ -146,12 +147,20 @@ export function AuthGate({ children }: PropsWithChildren) {
     }
 
     handledUnauthorizedTokenRef.current = accessToken
-    void recoverSession().then((result) => {
-      if (result === 'recovered') {
-        handledUnauthorizedTokenRef.current = null
-        void refetchPlannerSession()
-      }
-    })
+    setIsRecovering(true)
+    void recoverSession()
+      .then((result) => {
+        if (result === 'recovered') {
+          handledUnauthorizedTokenRef.current = null
+          void refetchPlannerSession()
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to recover session.', error)
+      })
+      .finally(() => {
+        setIsRecovering(false)
+      })
   }, [
     accessToken,
     isAuthEnabled,
@@ -200,6 +209,15 @@ export function AuthGate({ children }: PropsWithChildren) {
   if (shouldResolvePlannerSession) {
     if (isUnauthorizedSessionApiError(plannerSessionQuery.error)) {
       if (isAuthEnabled) {
+        if (isRecovering) {
+          return (
+            <AuthStatusPanel
+              copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
+              title="Проверяем сохраненный вход"
+            />
+          )
+        }
+
         return (
           <AuthStatusPanel
             copy="Текущая сессия больше не действует. Войдите снова, чтобы продолжить работу."
@@ -902,7 +920,7 @@ function getFriendlyAuthErrorMessage(
 function getFriendlyPlannerSessionErrorMessage(error: unknown): string {
   if (error instanceof SessionApiError) {
     if (error.status >= 500) {
-      return 'Сервис временно недоступен. Попробуйте еще раз позже.'
+      return 'Не удалось связаться с сервером. Проверьте соединение и попробуйте еще раз.'
     }
 
     if (error.status === 403) {
