@@ -7,10 +7,17 @@ import type { SupabaseAuthRuntimeConfig } from '../infrastructure/auth/supabase-
 
 export type ApiAuthMode = 'disabled' | 'supabase'
 
+export interface FirebasePushConfig {
+  clientEmail: string
+  privateKey: string
+  projectId: string
+}
+
 export interface ApiConfig {
   appEnv: string
   authMode: ApiAuthMode
   corsOrigin: string
+  firebasePush: FirebasePushConfig | null
   host: string
   iconAssetDirectory: string
   port: number
@@ -63,6 +70,66 @@ function parseAuthMode(value: string | undefined): ApiAuthMode {
   }
 
   throw new Error(`Invalid API auth mode: ${value}`)
+}
+
+function createFirebasePushConfig(
+  env: NodeJS.ProcessEnv,
+): FirebasePushConfig | null {
+  const jsonValue = env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()
+  const pathValue = env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim()
+  const directProjectId = env.FIREBASE_PROJECT_ID?.trim()
+  const directClientEmail = env.FIREBASE_CLIENT_EMAIL?.trim()
+  const directPrivateKey = env.FIREBASE_PRIVATE_KEY?.trim()
+
+  if (!jsonValue && !pathValue) {
+    if (!directProjectId && !directClientEmail && !directPrivateKey) {
+      return null
+    }
+
+    if (!directProjectId || !directClientEmail || !directPrivateKey) {
+      throw new Error(
+        'FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, and FIREBASE_PRIVATE_KEY must be configured together.',
+      )
+    }
+
+    return {
+      clientEmail: directClientEmail,
+      privateKey: directPrivateKey.replace(/\\n/g, '\n'),
+      projectId: directProjectId,
+    }
+  }
+
+  if (jsonValue && pathValue) {
+    throw new Error(
+      'Configure either FIREBASE_SERVICE_ACCOUNT_JSON or FIREBASE_SERVICE_ACCOUNT_PATH, not both.',
+    )
+  }
+
+  const rawValue = jsonValue ?? readFileSync(pathValue!, 'utf8')
+  const parsedValue = JSON.parse(rawValue) as {
+    client_email?: unknown
+    private_key?: unknown
+    project_id?: unknown
+  }
+
+  if (
+    typeof parsedValue.project_id !== 'string' ||
+    typeof parsedValue.client_email !== 'string' ||
+    typeof parsedValue.private_key !== 'string' ||
+    parsedValue.project_id.trim().length === 0 ||
+    parsedValue.client_email.trim().length === 0 ||
+    parsedValue.private_key.trim().length === 0
+  ) {
+    throw new Error(
+      'Firebase service account credentials must include project_id, client_email, and private_key.',
+    )
+  }
+
+  return {
+    clientEmail: parsedValue.client_email.trim(),
+    privateKey: parsedValue.private_key.replace(/\\n/g, '\n'),
+    projectId: parsedValue.project_id.trim(),
+  }
 }
 
 function resolveSupabaseProjectUrl(env: NodeJS.ProcessEnv): string | null {
@@ -143,6 +210,7 @@ export function createApiConfig(
     appEnv,
     authMode,
     corsOrigin: env.API_CORS_ORIGIN ?? '*',
+    firebasePush: createFirebasePushConfig(env),
     host: env.API_HOST ?? '0.0.0.0',
     iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
     port: parsePort(env.API_PORT ?? env.PORT),

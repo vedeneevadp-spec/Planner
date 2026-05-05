@@ -206,13 +206,50 @@ export const updateUserProfileInputSchema = z
       path: ['displayName'],
     },
   )
-  .refine(
-    (value) => !(value.removeAvatar && value.avatarDataUrl),
-    {
-      message: 'Avatar upload and avatar removal are mutually exclusive.',
-      path: ['avatarDataUrl'],
-    },
-  )
+  .refine((value) => !(value.removeAvatar && value.avatarDataUrl), {
+    message: 'Avatar upload and avatar removal are mutually exclusive.',
+    path: ['avatarDataUrl'],
+  })
+
+export const pushPlatformSchema = z.enum(['android'])
+
+export const pushDeviceUpsertInputSchema = z.object({
+  appVersion: z.string().trim().min(1).max(32).optional(),
+  deviceName: z.string().trim().min(1).max(120).optional(),
+  installationId: z.string().trim().min(1).max(120),
+  locale: z.string().trim().min(1).max(35).optional(),
+  platform: pushPlatformSchema,
+  token: z.string().trim().min(1).max(4096),
+})
+
+export const pushDeviceRecordSchema = z.object({
+  appVersion: z.string().nullable(),
+  createdAt: z.string(),
+  deletedAt: z.string().nullable(),
+  deviceName: z.string().nullable(),
+  id: z.string(),
+  installationId: z.string(),
+  lastRegisteredAt: z.string(),
+  locale: z.string().nullable(),
+  platform: pushPlatformSchema,
+  token: z.string(),
+  updatedAt: z.string(),
+  userId: z.string(),
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
+})
+
+export const pushTestNotificationInputSchema = z.object({
+  body: z.string().trim().min(1).max(500),
+  data: z.record(z.string(), z.string()).optional(),
+  title: z.string().trim().min(1).max(120),
+})
+
+export const pushTestNotificationResponseSchema = z.object({
+  deliveredCount: z.number().int().nonnegative(),
+  failedCount: z.number().int().nonnegative(),
+  invalidTokenCount: z.number().int().nonnegative(),
+})
 
 export const taskListFiltersSchema = z.object({
   plannedDate: z.string().optional(),
@@ -350,6 +387,15 @@ export type WorkspaceUserGroupRoleUpdateInput = z.infer<
 >
 export type CreateSharedWorkspaceInput = z.infer<
   typeof createSharedWorkspaceInputSchema
+>
+export type PushPlatform = z.infer<typeof pushPlatformSchema>
+export type PushDeviceUpsertInput = z.infer<typeof pushDeviceUpsertInputSchema>
+export type PushDeviceRecord = z.infer<typeof pushDeviceRecordSchema>
+export type PushTestNotificationInput = z.infer<
+  typeof pushTestNotificationInputSchema
+>
+export type PushTestNotificationResponse = z.infer<
+  typeof pushTestNotificationResponseSchema
 >
 export type UpdateSharedWorkspaceInput = z.infer<
   typeof updateSharedWorkspaceInputSchema

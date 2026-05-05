@@ -1,5 +1,9 @@
 import { PlannerProvider, PlannerQueryProvider } from '@/features/planner'
-import { AuthGate, SessionProvider } from '@/features/session'
+import {
+  AuthGate,
+  NativePushRegistration,
+  SessionProvider,
+} from '@/features/session'
 import { Sidebar } from '@/widgets/sidebar'
 
 import styles from './App.module.css'
@@ -10,6 +14,7 @@ function App() {
     <SessionProvider>
       <PlannerQueryProvider>
         <AuthGate>
+          <NativePushRegistration />
           <PlannerProvider>
             <div className={styles.shell}>
               <Sidebar />

@@ -39,6 +39,13 @@ import {
   ProjectService,
 } from './modules/projects/index.js'
 import {
+  FirebasePushNotificationSender,
+  MemoryPushNotificationsRepository,
+  NoopPushNotificationSender,
+  PostgresPushNotificationsRepository,
+  PushNotificationsService,
+} from './modules/push-notifications/index.js'
+import {
   LocalProfileAvatarStorage,
   MemorySessionRepository,
   PostgresSessionRepository,
@@ -90,6 +97,9 @@ export function createApiKernel(
   const lifeSphereRepository = database
     ? new PostgresLifeSphereRepository(database.db)
     : new MemoryLifeSphereRepository()
+  const pushNotificationsRepository = database
+    ? new PostgresPushNotificationsRepository(database.db)
+    : new MemoryPushNotificationsRepository()
   const sessionRepository = database
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
@@ -106,6 +116,12 @@ export function createApiKernel(
     iconAssetStorage,
   )
   const lifeSphereService = new LifeSphereService(lifeSphereRepository)
+  const pushNotificationsService = new PushNotificationsService(
+    pushNotificationsRepository,
+    config.firebasePush
+      ? new FirebasePushNotificationSender(config.firebasePush)
+      : new NoopPushNotificationSender(),
+  )
   const projectService = new ProjectService(projectRepository)
   const taskTemplateService = new TaskTemplateService(taskTemplateRepository)
   const taskService = new TaskService(taskRepository)
@@ -125,6 +141,7 @@ export function createApiKernel(
     database,
     emojiSetService,
     lifeSphereService,
+    pushNotificationsService,
     projectService,
     requestAuthenticator,
     sessionService,

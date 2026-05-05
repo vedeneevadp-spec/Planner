@@ -10,6 +10,7 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import { unregisterStoredNativePushDevice } from '../lib/native-push-notifications'
 import {
   addNativeAppStateChangeListener,
   getNativeAppIsActive,
@@ -68,6 +69,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const clearAuthSession = useCallback(
     async (notice: string | false | null) => {
+      await unregisterStoredNativePushDevice({
+        accessToken: snapshot.sessionAccessToken,
+        actorUserId: snapshot.userId,
+        apiBaseUrl: plannerApiConfig.apiBaseUrl,
+      })
+
       pendingSignOutNoticeRef.current = notice
       setAuthNotice(notice === false ? null : notice)
       setIsPasswordRecovery(false)
@@ -91,7 +98,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         pendingSignOutNoticeRef.current = null
       }
     },
-    [snapshot.userId, supabase],
+    [snapshot.sessionAccessToken, snapshot.userId, supabase],
   )
 
   const handleUnrecoverableSessionError = useCallback(
@@ -130,34 +137,35 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [],
   )
 
-  const restoreSession = useCallback(async (): Promise<SessionRecoveryResult> => {
-    if (!supabase) {
-      return 'signed_out'
-    }
-
-    const { data, error } = await supabase.auth.getSession()
-
-    if (error) {
-      const deferredSession = await keepStoredSession(
-        error,
-        'Supabase session restore deferred.',
-      )
-
-      if (deferredSession) {
-        return deferredSession
+  const restoreSession =
+    useCallback(async (): Promise<SessionRecoveryResult> => {
+      if (!supabase) {
+        return 'signed_out'
       }
 
-      return handleUnrecoverableSessionError(
-        error,
-        'Failed to restore Supabase session.',
-      )
-    }
+      const { data, error } = await supabase.auth.getSession()
 
-    setAuthNotice(null)
-    setSnapshot(toAuthSnapshot(data.session, false))
+      if (error) {
+        const deferredSession = await keepStoredSession(
+          error,
+          'Supabase session restore deferred.',
+        )
 
-    return data.session ? 'recovered' : 'signed_out'
-  }, [handleUnrecoverableSessionError, keepStoredSession, supabase])
+        if (deferredSession) {
+          return deferredSession
+        }
+
+        return handleUnrecoverableSessionError(
+          error,
+          'Failed to restore Supabase session.',
+        )
+      }
+
+      setAuthNotice(null)
+      setSnapshot(toAuthSnapshot(data.session, false))
+
+      return data.session ? 'recovered' : 'signed_out'
+    }, [handleUnrecoverableSessionError, keepStoredSession, supabase])
 
   const clearAuthNotice = useCallback(() => {
     setAuthNotice(null)
@@ -170,49 +178,50 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [clearAuthSession],
   )
 
-  const recoverSession = useCallback(async (): Promise<SessionRecoveryResult> => {
-    if (!supabase) {
-      return 'signed_out'
-    }
+  const recoverSession =
+    useCallback(async (): Promise<SessionRecoveryResult> => {
+      if (!supabase) {
+        return 'signed_out'
+      }
 
-    if (sessionRecoveryRef.current) {
-      return sessionRecoveryRef.current
-    }
+      if (sessionRecoveryRef.current) {
+        return sessionRecoveryRef.current
+      }
 
-    const recovery = (async () => {
-      setAuthNotice(null)
+      const recovery = (async () => {
+        setAuthNotice(null)
 
-      const { data, error } = await supabase.auth.refreshSession()
+        const { data, error } = await supabase.auth.refreshSession()
 
-      if (error) {
-        const deferredSession = await keepStoredSession(
-          error,
-          'Supabase session refresh deferred.',
-        )
+        if (error) {
+          const deferredSession = await keepStoredSession(
+            error,
+            'Supabase session refresh deferred.',
+          )
 
-        if (deferredSession) {
-          return deferredSession
+          if (deferredSession) {
+            return deferredSession
+          }
+
+          await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
+          return 'signed_out' as const
         }
 
-        await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
-        return 'signed_out' as const
-      }
+        if (!data.session) {
+          await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
+          return 'signed_out' as const
+        }
 
-      if (!data.session) {
-        await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
-        return 'signed_out' as const
-      }
+        setSnapshot(toAuthSnapshot(data.session, false))
+        return 'recovered' as const
+      })().finally(() => {
+        sessionRecoveryRef.current = null
+      })
 
-      setSnapshot(toAuthSnapshot(data.session, false))
-      return 'recovered' as const
-    })().finally(() => {
-      sessionRecoveryRef.current = null
-    })
+      sessionRecoveryRef.current = recovery
 
-    sessionRecoveryRef.current = recovery
-
-    return recovery
-  }, [clearAuthSession, keepStoredSession, supabase])
+      return recovery
+    }, [clearAuthSession, keepStoredSession, supabase])
 
   useEffect(() => {
     if (!supabase) {

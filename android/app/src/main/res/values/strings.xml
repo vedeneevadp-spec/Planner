@@ -4,4 +4,5 @@
     <string name="title_activity_main">Chaotika</string>
     <string name="package_name">ru.chaotika.app</string>
     <string name="custom_url_scheme">ru.chaotika.app</string>
+    <string name="push_notification_channel_id">chaotika-general</string>
 </resources>

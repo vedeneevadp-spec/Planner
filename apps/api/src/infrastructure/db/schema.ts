@@ -277,6 +277,23 @@ export interface AppDeviceSessionsTable {
   workspace_id: string
 }
 
+export interface AppPushDevicesTable {
+  app_version: string | null
+  created_at: Generated<TimestampColumn>
+  deleted_at: TimestampColumn | null
+  device_name: string | null
+  id: Generated<string>
+  installation_id: string
+  last_registered_at: TimestampColumn
+  locale: string | null
+  platform: 'android'
+  token: string
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppOutboxTable {
   aggregate_id: string
   aggregate_type: string
@@ -300,6 +317,7 @@ export interface DatabaseSchema {
   'app.emoji_sets': AppEmojiSetsTable
   'app.life_spheres': AppLifeSpheresTable
   'app.outbox': AppOutboxTable
+  'app.push_devices': AppPushDevicesTable
   'app.projects': AppProjectsTable
   'app.task_attachments': AppTaskAttachmentsTable
   'app.task_events': AppTaskEventsTable

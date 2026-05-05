@@ -24,6 +24,8 @@ import type { LifeSphereService } from '../modules/life-spheres/index.js'
 import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
 import type { ProjectService } from '../modules/projects/index.js'
 import { registerProjectRoutes } from '../modules/projects/index.js'
+import type { PushNotificationsService } from '../modules/push-notifications/index.js'
+import { registerPushNotificationsRoutes } from '../modules/push-notifications/index.js'
 import type { SessionService } from '../modules/session/index.js'
 import {
   registerProfileAvatarRoutes,
@@ -49,6 +51,7 @@ export interface BuildApiAppOptions {
   dailyPlanService?: DailyPlanService
   emojiSetService?: EmojiSetService
   lifeSphereService?: LifeSphereService
+  pushNotificationsService?: PushNotificationsService
   projectService: ProjectService
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
@@ -63,6 +66,7 @@ export function buildApiApp({
   dailyPlanService,
   emojiSetService,
   lifeSphereService,
+  pushNotificationsService,
   projectService,
   sessionService,
   taskTemplateService,
@@ -116,6 +120,13 @@ export function buildApiApp({
     }
     if (lifeSphereService) {
       registerLifeSphereRoutes(instance, sessionService, lifeSphereService)
+    }
+    if (pushNotificationsService) {
+      registerPushNotificationsRoutes(
+        instance,
+        sessionService,
+        pushNotificationsService,
+      )
     }
     registerProjectRoutes(instance, sessionService, projectService)
     if (taskTemplateService) {

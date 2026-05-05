@@ -138,6 +138,9 @@ life-spheres API.
 - Supabase transaction pooler runtime по умолчанию отключает DB RLS context,
   backend policies остаются обязательным первым уровнем защиты
 - `API_ICON_ASSET_DIR` задает локальное хранилище загруженных иконок
+- Android push через FCM включается, если API runtime видит либо
+  `FIREBASE_SERVICE_ACCOUNT_PATH`, либо trio
+  `FIREBASE_PROJECT_ID`/`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`
 
 Для managed Supabase runtime используйте `SUPABASE_RUNTIME_DATABASE_URL`; если
 он не задан, scripts берут fallback из `SUPABASE_DB_URL` или legacy
@@ -197,6 +200,10 @@ Web-клиент работает через backend HTTP API и не пишет
   а для физического устройства обычно нужен публичный `https` URL
 - production API CORS должен разрешать origin нативной оболочки Capacitor:
   минимум `https://localhost` для Android и `capacitor://localhost` для iOS
+- для Android push нужно добавить Firebase Android app config в
+  `android/app/google-services.json`, затем выполнить `npm run mobile:sync:android`
+- Android-клиент сам регистрирует FCM token после входа в приложение и может
+  принимать тестовый push через `POST /api/v1/push/test`
 
 ## Supabase Platform
 
