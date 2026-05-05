@@ -4,6 +4,8 @@ import {
   type CreateSharedWorkspaceInput,
   generateUuidV7,
   type UpdateSharedWorkspaceInput,
+  type UpdateUserProfileInput,
+  type UserProfile,
   type WorkspaceGroupRole,
   type WorkspaceKind,
   type WorkspaceRole,
@@ -56,6 +58,10 @@ interface MemoryInvitation {
   workspaceId: string
 }
 
+interface MemoryUser extends AdminUserRecord {
+  avatarUrl: string | null
+}
+
 const DEFAULT_ACTOR_ID = '11111111-1111-4111-8111-111111111111'
 const DEFAULT_WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 
@@ -70,9 +76,10 @@ const DEFAULT_MEMORY_WORKSPACE: MemoryWorkspace = {
 }
 
 export class MemorySessionRepository implements SessionRepository {
-  private users: AdminUserRecord[] = [
+  private users: MemoryUser[] = [
     {
       appRole: 'owner',
+      avatarUrl: null,
       displayName: 'Tikondra',
       email: 'dev@planner.local',
       id: DEFAULT_ACTOR_ID,
@@ -80,6 +87,7 @@ export class MemorySessionRepository implements SessionRepository {
     },
     {
       appRole: 'user',
+      avatarUrl: null,
       displayName: 'Planner Reader',
       email: 'reader@planner.local',
       id: '44444444-4444-4444-8444-444444444444',
@@ -438,7 +446,7 @@ export class MemorySessionRepository implements SessionRepository {
   }
 
   listAdminUsers() {
-    return Promise.resolve(this.users)
+    return Promise.resolve(this.users.map(mapAdminUserRecord))
   }
 
   updateAdminUserRole(
@@ -500,8 +508,33 @@ export class MemorySessionRepository implements SessionRepository {
     })
   }
 
+  updateUserProfile(
+    session: SessionSnapshot,
+    input: UpdateUserProfileInput & {
+      avatarUrl: string | null
+    },
+  ): Promise<UserProfile> {
+    const user = this.getUserById(session.actorUserId)
+
+    if (!user) {
+      throw new HttpError(404, 'user_profile_not_found', 'User was not found.')
+    }
+
+    user.avatarUrl = input.avatarUrl
+    user.displayName = input.displayName?.trim() ?? user.displayName
+    user.updatedAt = new Date().toISOString()
+
+    return Promise.resolve({
+      avatarUrl: user.avatarUrl,
+      displayName: user.displayName,
+      email: user.email,
+      id: user.id,
+      updatedAt: user.updatedAt,
+    })
+  }
+
   private buildSnapshot(
-    actor: AdminUserRecord,
+    actor: MemoryUser,
     requestedWorkspaceId: string | undefined,
     source: SessionSnapshot['source'],
     isAuthSession: boolean,
@@ -548,6 +581,7 @@ export class MemorySessionRepository implements SessionRepository {
 
     return {
       actor: {
+        avatarUrl: actor.avatarUrl,
         displayName: actor.displayName,
         email: actor.email,
         id: actor.id,
@@ -588,7 +622,7 @@ export class MemorySessionRepository implements SessionRepository {
   }
 
   private buildFallbackSnapshot(
-    actor: AdminUserRecord,
+    actor: MemoryUser,
     workspaceId: string,
     source: SessionSnapshot['source'],
     memberships: MemoryMembership[],
@@ -622,6 +656,7 @@ export class MemorySessionRepository implements SessionRepository {
 
     return {
       actor: {
+        avatarUrl: actor.avatarUrl,
         displayName: actor.displayName,
         email: actor.email,
         id: actor.id,
@@ -649,7 +684,7 @@ export class MemorySessionRepository implements SessionRepository {
   private resolveAuthenticatedActor(
     actorUserId: string,
     email: string,
-  ): AdminUserRecord {
+  ): MemoryUser {
     const normalizedEmail = normalizeEmail(email)
     const existingById = this.getUserById(actorUserId)
 
@@ -667,8 +702,9 @@ export class MemorySessionRepository implements SessionRepository {
       return existingByEmail
     }
 
-    const createdUser: AdminUserRecord = {
+    const createdUser: MemoryUser = {
       appRole: 'user',
+      avatarUrl: null,
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
       email: normalizedEmail,
       id: actorUserId,
@@ -680,15 +716,16 @@ export class MemorySessionRepository implements SessionRepository {
     return createdUser
   }
 
-  private resolveLegacyActor(actorUserId: string): AdminUserRecord {
+  private resolveLegacyActor(actorUserId: string): MemoryUser {
     const existingUser = this.getUserById(actorUserId)
 
     if (existingUser) {
       return existingUser
     }
 
-    const createdUser: AdminUserRecord = {
+    const createdUser: MemoryUser = {
       appRole: 'user',
+      avatarUrl: null,
       displayName: 'Planner User',
       email: `${actorUserId}@planner.local`,
       id: actorUserId,
@@ -700,7 +737,7 @@ export class MemorySessionRepository implements SessionRepository {
     return createdUser
   }
 
-  private claimWorkspaceInvitations(actor: AdminUserRecord): void {
+  private claimWorkspaceInvitations(actor: MemoryUser): void {
     const matchingInvitations = this.invitations.filter(
       (invitation) =>
         invitation.email === actor.email &&
@@ -904,7 +941,7 @@ export class MemorySessionRepository implements SessionRepository {
     })
   }
 
-  private getUserById(userId: string): AdminUserRecord | undefined {
+  private getUserById(userId: string): MemoryUser | undefined {
     return this.users.find((user) => user.id === userId)
   }
 
@@ -944,7 +981,7 @@ export class MemorySessionRepository implements SessionRepository {
     return workspace
   }
 
-  private getDefaultActor(): AdminUserRecord {
+  private getDefaultActor(): MemoryUser {
     const actor = this.getUserById(DEFAULT_ACTOR_ID)
 
     if (!actor) {
@@ -952,6 +989,16 @@ export class MemorySessionRepository implements SessionRepository {
     }
 
     return actor
+  }
+}
+
+function mapAdminUserRecord(user: MemoryUser): AdminUserRecord {
+  return {
+    appRole: user.appRole,
+    displayName: user.displayName,
+    email: user.email,
+    id: user.id,
+    updatedAt: user.updatedAt,
   }
 }
 

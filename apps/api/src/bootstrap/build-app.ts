@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import cors from '@fastify/cors'
 import type {
   ApiError,
@@ -23,7 +25,10 @@ import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
 import type { ProjectService } from '../modules/projects/index.js'
 import { registerProjectRoutes } from '../modules/projects/index.js'
 import type { SessionService } from '../modules/session/index.js'
-import { registerSessionRoutes } from '../modules/session/index.js'
+import {
+  registerProfileAvatarRoutes,
+  registerSessionRoutes,
+} from '../modules/session/index.js'
 import type { TaskTemplateService } from '../modules/task-templates/index.js'
 import { registerTaskTemplateRoutes } from '../modules/task-templates/index.js'
 import type { TaskService } from '../modules/tasks/index.js'
@@ -77,6 +82,10 @@ export function buildApiApp({
   })
   registerOpenApi(app, config)
   registerIconAssetRoutes(app, config.iconAssetDirectory)
+  registerProfileAvatarRoutes(
+    app,
+    path.join(config.iconAssetDirectory, 'profiles'),
+  )
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
     const databaseStatus = await getDatabaseStatus(database)
@@ -178,6 +187,7 @@ function isPublicRequest(method: string, url: string): boolean {
   return (
     path === '/api/health' ||
     path.startsWith('/api/v1/icon-assets/') ||
+    path.startsWith('/api/v1/profile-assets/') ||
     path === '/api/openapi.json' ||
     path === '/api/docs' ||
     path.startsWith('/api/docs/')

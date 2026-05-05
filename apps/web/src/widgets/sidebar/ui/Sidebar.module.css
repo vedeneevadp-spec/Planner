@@ -230,15 +230,65 @@
 .accountRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.accountBlock {
+  display: grid;
   gap: 0.75rem;
   margin-top: 0.95rem;
+}
+
+.accountCopy,
+.mobileInfoCopy {
+  display: grid;
+  min-width: 0;
+  gap: 0.18rem;
+}
+
+.accountCopy {
+  flex: 1 1 auto;
+}
+
+.accountCopy strong,
+.mobileInfoCopy strong {
+  font-size: 0.94rem;
+}
+
+.accountAvatarPlaceholder {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 18px;
+  color: #214e42;
+  background: rgba(33, 78, 66, 0.08);
+}
+
+.accountIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgba(33, 78, 66, 0.12);
+  border-radius: 14px;
+  color: var(--accent);
+  background: rgba(33, 78, 66, 0.06);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
 }
 
 .accountEmail {
   font-size: 0.88rem;
   color: var(--text-soft);
   overflow-wrap: anywhere;
+}
+
+.accountIconButton:hover {
+  background: rgba(33, 78, 66, 0.12);
+  border-color: rgba(33, 78, 66, 0.18);
 }
 
 .connectionError {
@@ -566,6 +616,12 @@
   .mobileSheetLink svg {
     flex: none;
     color: var(--text-soft);
+  }
+
+  .mobileInfoCopy span {
+    font-size: 0.9rem;
+    color: var(--text-soft);
+    overflow-wrap: anywhere;
   }
 
   .mobileSignOutButton {

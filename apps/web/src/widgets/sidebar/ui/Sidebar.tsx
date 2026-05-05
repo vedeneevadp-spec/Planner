@@ -7,10 +7,12 @@ import {
   getCreateSharedWorkspaceErrorMessage,
   getDeleteSharedWorkspaceErrorMessage,
   getUpdateSharedWorkspaceErrorMessage,
+  ProfileDialog,
   setSelectedWorkspaceIdForActors,
   useCreateSharedWorkspace,
   useDeleteSharedWorkspace,
   usePlannerSession,
+  UserAvatar,
   useSessionAuth,
   useUpdateSharedWorkspace,
   WorkspaceParticipantsDialog,
@@ -55,6 +57,7 @@ export function Sidebar() {
   )
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
     useState(false)
   const [createWorkspaceName, setCreateWorkspaceName] = useState('')
@@ -604,9 +607,35 @@ export function Sidebar() {
 
                   {accountLabel ? (
                     <div className={styles.mobileInfoRow}>
-                      <UserIcon size={18} strokeWidth={2.1} />
-                      <span>{accountLabel}</span>
+                      {session ? (
+                        <UserAvatar
+                          avatarUrl={session.actor.avatarUrl}
+                          displayName={session.actor.displayName}
+                          email={session.actor.email}
+                          size="sm"
+                        />
+                      ) : (
+                        <UserIcon size={18} strokeWidth={2.1} />
+                      )}
+                      <div className={styles.mobileInfoCopy}>
+                        <strong>{session?.actor.displayName ?? 'Профиль'}</strong>
+                        <span>{accountLabel}</span>
+                      </div>
                     </div>
+                  ) : null}
+
+                  {session ? (
+                    <button
+                      className={styles.mobileSheetLink}
+                      type="button"
+                      onClick={() => {
+                        setMoreSheetPathname(null)
+                        setIsProfileOpen(true)
+                      }}
+                    >
+                      <EditIcon size={18} strokeWidth={2.1} />
+                      <span>Профиль</span>
+                    </button>
                   ) : null}
 
                   {mobileSecondaryNavigation.map((item) => (
@@ -726,8 +755,39 @@ export function Sidebar() {
           ) : null}
 
           {auth.isAuthEnabled && accountLabel ? (
-            <div className={styles.accountRow}>
-              <span className={styles.accountEmail}>{accountLabel}</span>
+            <div className={styles.accountBlock}>
+              <div className={styles.accountRow}>
+                {session ? (
+                  <UserAvatar
+                    avatarUrl={session.actor.avatarUrl}
+                    displayName={session.actor.displayName}
+                    email={session.actor.email}
+                  />
+                ) : (
+                  <div className={styles.accountAvatarPlaceholder}>
+                    <UserIcon size={18} strokeWidth={2.1} />
+                  </div>
+                )}
+
+                <div className={styles.accountCopy}>
+                  <strong>{session?.actor.displayName ?? 'Профиль'}</strong>
+                  <span className={styles.accountEmail}>{accountLabel}</span>
+                </div>
+
+                {session ? (
+                  <button
+                    className={styles.accountIconButton}
+                    type="button"
+                    aria-label="Открыть профиль"
+                    onClick={() => {
+                      setIsProfileOpen(true)
+                    }}
+                  >
+                    <EditIcon size={16} strokeWidth={2.1} />
+                  </button>
+                ) : null}
+              </div>
+
               <button
                 className={styles.signOutButton}
                 type="button"
@@ -813,6 +873,15 @@ export function Sidebar() {
           isOpen={isWorkspaceParticipantsOpen}
           onClose={() => {
             setIsWorkspaceParticipantsOpen(false)
+          }}
+        />
+      ) : null}
+
+      {isProfileOpen ? (
+        <ProfileDialog
+          isOpen={isProfileOpen}
+          onClose={() => {
+            setIsProfileOpen(false)
           }}
         />
       ) : null}

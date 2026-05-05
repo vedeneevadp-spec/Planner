@@ -8,11 +8,16 @@ export {
   isUnauthorizedSessionApiError,
   SessionApiError,
   updateSharedWorkspace,
+  updateUserProfile,
 } from './lib/session-api'
 export { getSupabaseBrowserClient } from './lib/supabase-browser'
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { useSessionAuth } from './lib/useSessionAuth'
+export {
+  getUpdateUserProfileErrorMessage,
+  useUpdateUserProfile,
+} from './lib/useUserProfile'
 export {
   getCreateSharedWorkspaceErrorMessage,
   getDeleteSharedWorkspaceErrorMessage,
@@ -47,5 +52,7 @@ export {
   WorkspaceSettingsApiError,
 } from './lib/workspace-settings-api'
 export { AuthGate } from './ui/AuthGate'
+export { ProfileDialog } from './ui/ProfileDialog'
 export { SessionProvider } from './ui/SessionProvider'
+export { UserAvatar } from './ui/UserAvatar'
 export { WorkspaceParticipantsDialog } from './ui/WorkspaceParticipantsDialog'

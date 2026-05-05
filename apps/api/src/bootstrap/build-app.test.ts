@@ -22,6 +22,7 @@ import {
   taskRecordSchema,
   taskTemplateListResponseSchema,
   taskTemplateRecordSchema,
+  userProfileSchema,
   workspaceInvitationListResponseSchema,
   workspaceInvitationRecordSchema,
   workspaceSettingsSchema,
@@ -44,6 +45,7 @@ import {
   ProjectService,
 } from '../modules/projects/index.js'
 import {
+  LocalProfileAvatarStorage,
   MemorySessionRepository,
   type SessionRepository,
   SessionService,
@@ -105,6 +107,7 @@ const guestSessionRepository: SessionRepository = {
   resolve() {
     return Promise.resolve({
       actor: {
+        avatarUrl: null,
         displayName: 'Planner Guest',
         email: 'guest@planner.local',
         id: AUTH_CONTEXT.claims.sub,
@@ -206,6 +209,13 @@ const guestSessionRepository: SessionRepository = {
       403,
       'workspace_settings_manage_forbidden',
       'Only application admins can update workspace settings.',
+    )
+  },
+  updateUserProfile() {
+    throw new HttpError(
+      403,
+      'workspace_access_denied',
+      'The current user is not allowed to update this profile.',
     )
   },
 }
@@ -1742,6 +1752,96 @@ void describe('buildApiApp', () => {
     assert.equal(emojiSetsAfterSetDelete.length, 0)
   })
 
+  void it('updates the current user profile and serves uploaded avatars', async () => {
+    const profileAssetDirectory = await mkdtemp(
+      path.join(tmpdir(), 'planner-profile-assets-'),
+    )
+
+    temporaryDirectories.push(profileAssetDirectory)
+
+    app = buildApiApp({
+      config: createTestConfig({
+        API_ICON_ASSET_DIR: profileAssetDirectory,
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(
+        new MemorySessionRepository(),
+        new LocalProfileAvatarStorage(path.join(profileAssetDirectory, 'profiles')),
+      ),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const actorUserId = '11111111-1111-4111-8111-111111111111'
+    const workspaceId = '22222222-2222-4222-8222-222222222222'
+    const updateResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': actorUserId,
+        'x-workspace-id': workspaceId,
+      },
+      method: 'PATCH',
+      payload: {
+        avatarDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
+        displayName: 'Planner Captain',
+      },
+      url: '/api/v1/profile',
+    })
+
+    assert.equal(updateResponse.statusCode, 200)
+
+    const profile = userProfileSchema.parse(updateResponse.json())
+
+    assert.equal(profile.displayName, 'Planner Captain')
+    assert.match(profile.avatarUrl ?? '', /^\/api\/v1\/profile-assets\/.+\.png$/)
+
+    const avatarResponse = await app.inject({
+      method: 'GET',
+      url: profile.avatarUrl ?? '',
+    })
+
+    assert.equal(avatarResponse.statusCode, 200)
+    assert.match(String(avatarResponse.headers['content-type']), /^image\/png/)
+
+    const sessionResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': actorUserId,
+        'x-workspace-id': workspaceId,
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    const session = sessionResponseSchema.parse(sessionResponse.json())
+
+    assert.equal(session.actor.displayName, 'Planner Captain')
+    assert.equal(session.actor.avatarUrl, profile.avatarUrl)
+
+    const removeAvatarResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': actorUserId,
+        'x-workspace-id': workspaceId,
+      },
+      method: 'PATCH',
+      payload: {
+        removeAvatar: true,
+      },
+      url: '/api/v1/profile',
+    })
+
+    assert.equal(removeAvatarResponse.statusCode, 200)
+
+    const removedProfile = userProfileSchema.parse(removeAvatarResponse.json())
+
+    assert.equal(removedProfile.avatarUrl, null)
+
+    const removedAvatarResponse = await app.inject({
+      method: 'GET',
+      url: profile.avatarUrl ?? '',
+    })
+
+    assert.equal(removedAvatarResponse.statusCode, 404)
+  })
+
   void it('returns a retryable error when icon set repository times out', async () => {
     const timeoutRepository: EmojiSetRepository = {
       addItems() {
@@ -1963,6 +2063,9 @@ void describe('buildApiApp', () => {
       },
       updateWorkspaceSettings() {
         throw new Error('updateWorkspaceSettings should not be called.')
+      },
+      updateUserProfile() {
+        throw new Error('updateUserProfile should not be called.')
       },
     }
 
@@ -2224,6 +2327,9 @@ void describe('buildApiApp', () => {
         throw new Error('Not implemented.')
       },
       updateWorkspaceSettings() {
+        throw new Error('Not implemented.')
+      },
+      updateUserProfile() {
         throw new Error('Not implemented.')
       },
     }

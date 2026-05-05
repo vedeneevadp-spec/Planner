@@ -89,9 +89,14 @@ export const emojiSetRecordSchema = emojiSetSchema.extend({
 })
 
 export const sessionActorSchema = z.object({
+  avatarUrl: z.string().nullable(),
   id: z.string(),
   email: z.string(),
   displayName: z.string(),
+})
+
+export const userProfileSchema = sessionActorSchema.extend({
+  updatedAt: z.string(),
 })
 
 export const sessionWorkspaceSchema = z.object({
@@ -186,6 +191,28 @@ export const updateSharedWorkspaceInputSchema = z.object({
 export const workspaceSettingsUpdateInputSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
 })
+
+export const updateUserProfileInputSchema = z
+  .object({
+    avatarDataUrl: z.string().trim().min(1).optional(),
+    displayName: z.string().trim().min(1).max(80).optional(),
+    removeAvatar: z.boolean().optional(),
+  })
+  .refine(
+    (value) =>
+      value.removeAvatar || Boolean(value.avatarDataUrl || value.displayName),
+    {
+      message: 'At least one profile field must be updated.',
+      path: ['displayName'],
+    },
+  )
+  .refine(
+    (value) => !(value.removeAvatar && value.avatarDataUrl),
+    {
+      message: 'Avatar upload and avatar removal are mutually exclusive.',
+      path: ['avatarDataUrl'],
+    },
+  )
 
 export const taskListFiltersSchema = z.object({
   plannedDate: z.string().optional(),
@@ -300,6 +327,7 @@ export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
 export type SessionWorkspaceMembership = z.infer<
   typeof sessionWorkspaceMembershipSchema
 >
+export type UserProfile = z.infer<typeof userProfileSchema>
 export type WorkspaceSettings = z.infer<typeof workspaceSettingsSchema>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
 export type WorkspaceGroupRole = z.infer<typeof workspaceGroupRoleSchema>
@@ -328,6 +356,9 @@ export type UpdateSharedWorkspaceInput = z.infer<
 >
 export type WorkspaceSettingsUpdateInput = z.infer<
   typeof workspaceSettingsUpdateInputSchema
+>
+export type UpdateUserProfileInput = z.infer<
+  typeof updateUserProfileInputSchema
 >
 export type ProjectRecord = z.infer<typeof projectRecordSchema>
 export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>

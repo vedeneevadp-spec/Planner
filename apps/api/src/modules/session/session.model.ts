@@ -4,6 +4,8 @@ import type {
   AssignableWorkspaceGroupRole,
   SessionWorkspaceMembership as ContractSessionWorkspaceMembership,
   UpdateSharedWorkspaceInput as ContractUpdateSharedWorkspaceInput,
+  UpdateUserProfileInput as ContractUpdateUserProfileInput,
+  UserProfile as ContractUserProfile,
   WorkspaceGroupRole,
   WorkspaceInvitationCreateInput as ContractWorkspaceInvitationCreateInput,
   WorkspaceInvitationRecord as ContractWorkspaceInvitationRecord,
@@ -17,6 +19,7 @@ import type {
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 
 export interface SessionActor {
+  avatarUrl: string | null
   displayName: string
   email: string
   id: string
@@ -53,6 +56,8 @@ export type AdminUserRecord = ContractAdminUserRecord
 export type WorkspaceSettings = ContractWorkspaceSettings
 export type WorkspaceSettingsUpdateInput = ContractWorkspaceSettingsUpdateInput
 export type UpdateSharedWorkspaceInput = ContractUpdateSharedWorkspaceInput
+export type UpdateUserProfileInput = ContractUpdateUserProfileInput
+export type UserProfile = ContractUserProfile
 export type WorkspaceInvitationCreateInput =
   ContractWorkspaceInvitationCreateInput
 export type WorkspaceInvitationRecord = ContractWorkspaceInvitationRecord

@@ -1,3 +1,5 @@
+import path from 'node:path'
+
 import type { FastifyInstance } from 'fastify'
 
 import { buildApiApp } from './bootstrap/build-app.js'
@@ -37,6 +39,7 @@ import {
   ProjectService,
 } from './modules/projects/index.js'
 import {
+  LocalProfileAvatarStorage,
   MemorySessionRepository,
   PostgresSessionRepository,
   SessionService,
@@ -91,7 +94,13 @@ export function createApiKernel(
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
   const iconAssetStorage = new LocalIconAssetStorage(config.iconAssetDirectory)
-  const sessionService = new SessionService(sessionRepository)
+  const profileAvatarStorage = new LocalProfileAvatarStorage(
+    path.join(config.iconAssetDirectory, 'profiles'),
+  )
+  const sessionService = new SessionService(
+    sessionRepository,
+    profileAvatarStorage,
+  )
   const emojiSetService = new EmojiSetService(
     emojiSetRepository,
     iconAssetStorage,

@@ -7,11 +7,13 @@ import {
   resolvePlannerSession,
   SessionApiError,
   updateSharedWorkspace,
+  updateUserProfile,
 } from './session-api'
 
 function createSessionPayload(source: 'access_token' | 'default' = 'default') {
   return {
     actor: {
+      avatarUrl: '/api/v1/profile-assets/user-1.webp',
       displayName: 'Planner Dev User',
       email: 'dev@planner.local',
       id: 'user-1',
@@ -55,6 +57,9 @@ describe('sessionApi', () => {
     const session = await resolvePlannerSession({}, fetchMock)
 
     expect(session.workspace.name).toBe('Personal Workspace')
+    expect(session.actor.avatarUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/profile-assets/user-1.webp',
+    )
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
@@ -221,6 +226,45 @@ describe('sessionApi', () => {
     expect(body.name).toBe('Renamed Workspace')
     expect(headers.get('x-actor-user-id')).toBe('user-1')
     expect(headers.get('x-workspace-id')).toBe('workspace-shared')
+  })
+
+  it('updates the current user profile', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          avatarUrl: '/api/v1/profile-assets/user-1-new.webp',
+          displayName: 'Planner Captain',
+          email: 'dev@planner.local',
+          id: 'user-1',
+          updatedAt: '2026-05-05T12:00:00.000Z',
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const profile = await updateUserProfile(
+      {
+        actorUserId: 'user-1',
+        input: {
+          displayName: 'Planner Captain',
+        },
+        workspaceId: 'workspace-1',
+      },
+      fetchMock,
+    )
+
+    const [, requestInit] = fetchMock.mock.calls[0]!
+    const headers = new Headers(requestInit?.headers)
+    const body = parseJsonBody(requestInit) as { displayName: string }
+
+    expect(profile.avatarUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/profile-assets/user-1-new.webp',
+    )
+    expect(profile.displayName).toBe('Planner Captain')
+    expect(requestInit?.method).toBe('PATCH')
+    expect(body.displayName).toBe('Planner Captain')
+    expect(headers.get('x-actor-user-id')).toBe('user-1')
+    expect(headers.get('x-workspace-id')).toBe('workspace-1')
   })
 
   it('deletes a shared workspace', async () => {

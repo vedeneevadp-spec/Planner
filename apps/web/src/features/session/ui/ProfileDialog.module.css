@@ -1,0 +1,241 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(31, 36, 30, 0.34);
+  backdrop-filter: blur(10px);
+}
+
+.dialog {
+  width: min(100%, 34rem);
+  max-height: min(88vh, 40rem);
+  overflow: auto;
+  border-radius: 30px;
+  padding: 1.3rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 251, 243, 0.98),
+      rgba(247, 242, 232, 0.96)
+    ),
+    rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(37, 45, 37, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 28px 64px rgba(63, 53, 31, 0.18);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.headerCopy,
+.form,
+.fields,
+.field,
+.avatarActions {
+  display: grid;
+}
+
+.headerCopy {
+  gap: 0.42rem;
+}
+
+.kicker,
+.headerCopy p,
+.field span {
+  color: var(--text-soft);
+}
+
+.kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+
+.headerCopy h2 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  line-height: 1;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.03em;
+}
+
+.headerCopy p,
+.errorText {
+  margin: 0;
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  border: 1px solid rgba(37, 45, 37, 0.1);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.form {
+  gap: 1rem;
+  margin-top: 1.15rem;
+}
+
+.avatarPanel,
+.fields {
+  border-radius: 24px;
+  border: 1px solid var(--line);
+  background: rgba(255, 251, 243, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 10px 24px rgba(82, 68, 37, 0.08);
+}
+
+.avatarPanel {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.avatarActions {
+  gap: 0.7rem;
+  flex: 1 1 auto;
+}
+
+.fields {
+  gap: 0.82rem;
+  padding: 1rem;
+}
+
+.field {
+  gap: 0.35rem;
+}
+
+.field span {
+  font-size: 0.76rem;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  padding: 0.72rem 0.9rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.82);
+  font: inherit;
+}
+
+.field input:disabled {
+  color: var(--text-soft);
+  background: rgba(244, 239, 231, 0.82);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.primaryButton,
+.ghostButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  border-radius: 15px;
+  font: inherit;
+  white-space: nowrap;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.primaryButton {
+  border: 1px solid rgba(33, 78, 66, 0.16);
+  padding: 0.78rem 1rem;
+  color: #f7f2e8;
+  background: linear-gradient(135deg, #214e42, #16372f);
+  cursor: pointer;
+}
+
+.ghostButton {
+  border: 1px solid rgba(33, 78, 66, 0.12);
+  padding: 0.72rem 0.95rem;
+  color: var(--accent);
+  background: rgba(33, 78, 66, 0.06);
+}
+
+.removeButton {
+  color: #8a3a21;
+  background: rgba(173, 78, 47, 0.08);
+  border-color: rgba(173, 78, 47, 0.14);
+}
+
+.primaryButton:disabled,
+.ghostButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.primaryButton:not(:disabled):hover,
+.ghostButton:not(:disabled):hover,
+.closeButton:hover {
+  transform: translateY(-1px);
+}
+
+.ghostButton:not(:disabled):hover,
+.closeButton:hover {
+  background: rgba(33, 78, 66, 0.1);
+  border-color: rgba(33, 78, 66, 0.18);
+}
+
+.removeButton:not(:disabled):hover {
+  background: rgba(173, 78, 47, 0.12);
+  border-color: rgba(173, 78, 47, 0.18);
+  color: #7b3018;
+}
+
+.errorText {
+  color: #8a3a21;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .dialog {
+    width: min(100%, 32rem);
+    border-radius: 24px;
+    padding: 1rem;
+  }
+
+  .avatarPanel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .avatarActions,
+  .footer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .footer {
+    display: grid;
+  }
+}

@@ -6,6 +6,8 @@ import {
   generateUuidV7,
   type SessionWorkspaceMembership,
   type UpdateSharedWorkspaceInput,
+  type UpdateUserProfileInput,
+  type UserProfile,
   type WorkspaceGroupRole,
   type WorkspaceKind,
   type WorkspaceRole,
@@ -30,6 +32,7 @@ import type {
 import type { SessionRepository } from './session.repository.js'
 
 interface SessionRow {
+  actorAvatarUrl: string | null
   actorDisplayName: string
   actorEmail: string
   actorId: string
@@ -77,6 +80,14 @@ interface WorkspaceInvitationRow {
   groupRole: WorkspaceGroupRole
   id: string
   invitedAt: unknown
+  updatedAt: unknown
+}
+
+interface UserProfileRow {
+  avatarUrl: string | null
+  displayName: string
+  email: string
+  id: string
   updatedAt: unknown
 }
 
@@ -558,6 +569,36 @@ export class PostgresSessionRepository implements SessionRepository {
     }
   }
 
+  async updateUserProfile(
+    session: SessionSnapshot,
+    input: UpdateUserProfileInput & {
+      avatarUrl: string | null
+    },
+  ): Promise<UserProfile> {
+    const updatedProfile = await this.db
+      .updateTable('app.users')
+      .set({
+        avatar_url: input.avatarUrl,
+        display_name: input.displayName?.trim() ?? session.actor.displayName,
+      })
+      .where('id', '=', session.actorUserId)
+      .where('deleted_at', 'is', null)
+      .returning([
+        'avatar_url as avatarUrl',
+        'display_name as displayName',
+        'email',
+        'id',
+        'updated_at as updatedAt',
+      ])
+      .executeTakeFirst()
+
+    if (!updatedProfile) {
+      throw new HttpError(404, 'user_profile_not_found', 'User was not found.')
+    }
+
+    return mapUserProfileRecord(updatedProfile)
+  }
+
   private createBaseQuery(executor: DatabaseExecutor) {
     return executor
       .selectFrom('app.workspace_members as membership')
@@ -568,6 +609,7 @@ export class PostgresSessionRepository implements SessionRepository {
         'membership.workspace_id',
       )
       .select([
+        'actor.avatar_url as actorAvatarUrl',
         'actor.display_name as actorDisplayName',
         'actor.email as actorEmail',
         'actor.id as actorId',
@@ -1070,16 +1112,10 @@ export class PostgresSessionRepository implements SessionRepository {
     authContext: AuthenticatedRequestContext,
   ): Promise<AppActorRow> {
     const desiredEmail = this.resolveAuthEmail(authContext)
-    const desiredDisplayName =
-      this.resolveAuthProvidedDisplayName(authContext) ?? actor.displayName
 
-    if (
-      actor.email === desiredEmail &&
-      actor.displayName === desiredDisplayName
-    ) {
+    if (actor.email === desiredEmail) {
       return {
         ...actor,
-        displayName: desiredDisplayName,
         email: desiredEmail,
       }
     }
@@ -1087,7 +1123,6 @@ export class PostgresSessionRepository implements SessionRepository {
     await executor
       .updateTable('app.users')
       .set({
-        display_name: desiredDisplayName,
         email: desiredEmail,
       })
       .where('id', '=', actor.id)
@@ -1095,7 +1130,6 @@ export class PostgresSessionRepository implements SessionRepository {
 
     return {
       ...actor,
-      displayName: desiredDisplayName,
       email: desiredEmail,
     }
   }
@@ -1257,6 +1291,7 @@ export class PostgresSessionRepository implements SessionRepository {
   ): SessionSnapshot {
     return {
       actor: {
+        avatarUrl: session.actorAvatarUrl,
         displayName: session.actorDisplayName,
         email: session.actorEmail,
         id: session.actorId,
@@ -1415,6 +1450,16 @@ function mapWorkspaceInvitationRecord(
     groupRole: row.groupRole,
     id: row.id,
     invitedAt: serializeTimestamp(row.invitedAt),
+    updatedAt: serializeTimestamp(row.updatedAt),
+  }
+}
+
+function mapUserProfileRecord(row: UserProfileRow): UserProfile {
+  return {
+    avatarUrl: row.avatarUrl,
+    displayName: row.displayName,
+    email: row.email,
+    id: row.id,
     updatedAt: serializeTimestamp(row.updatedAt),
   }
 }

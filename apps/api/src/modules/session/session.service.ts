@@ -6,9 +6,15 @@ import type {
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import { isTransientDatabaseError } from '../../infrastructure/db/errors.js'
+import {
+  NoopProfileAvatarStorage,
+  type ProfileAvatarStorage,
+} from './profile-avatar.storage.js'
 import type {
   SessionContext,
   SessionSnapshot,
+  UpdateUserProfileInput,
+  UserProfile,
   WorkspaceInvitationCreateInput,
   WorkspaceSettingsUpdateInput,
   WorkspaceUserGroupRole,
@@ -24,10 +30,15 @@ interface CachedSessionSnapshot {
 
 export class SessionService {
   private readonly authSessionCache = new Map<string, CachedSessionSnapshot>()
+  private readonly profileAvatarStorage: ProfileAvatarStorage
   private readonly repository: SessionRepository
 
-  constructor(repository: SessionRepository) {
+  constructor(
+    repository: SessionRepository,
+    profileAvatarStorage: ProfileAvatarStorage = new NoopProfileAvatarStorage(),
+  ) {
     this.repository = repository
+    this.profileAvatarStorage = profileAvatarStorage
   }
 
   async resolveSession(context: SessionContext) {
@@ -232,6 +243,57 @@ export class SessionService {
     this.authSessionCache.clear()
 
     return settings
+  }
+
+  async updateUserProfile(
+    context: SessionContext,
+    input: UpdateUserProfileInput,
+  ): Promise<UserProfile> {
+    const session = await this.resolveSession(context)
+    const previousAvatarUrl = session.actor.avatarUrl
+    let nextAvatarUrl = previousAvatarUrl
+    let storedAvatarUrl: string | null = null
+
+    if (input.avatarDataUrl) {
+      storedAvatarUrl = await this.profileAvatarStorage.storeProfileAvatar({
+        dataUrl: input.avatarDataUrl,
+        userId: session.actorUserId,
+      })
+      nextAvatarUrl = storedAvatarUrl
+    } else if (input.removeAvatar) {
+      nextAvatarUrl = null
+    }
+
+    try {
+      const profile = await withRepositoryErrorMapping(() =>
+        this.repository.updateUserProfile(session, {
+          ...input,
+          avatarUrl: nextAvatarUrl,
+        }),
+      )
+
+      this.authSessionCache.clear()
+
+      if (
+        previousAvatarUrl &&
+        previousAvatarUrl !== nextAvatarUrl &&
+        !previousAvatarUrl.startsWith('data:')
+      ) {
+        await this.profileAvatarStorage.deleteProfileAvatar(previousAvatarUrl)
+      }
+
+      return profile
+    } catch (error) {
+      if (storedAvatarUrl) {
+        try {
+          await this.profileAvatarStorage.deleteProfileAvatar(storedAvatarUrl)
+        } catch {
+          // Best-effort cleanup for freshly uploaded avatars.
+        }
+      }
+
+      throw error
+    }
   }
 }
 

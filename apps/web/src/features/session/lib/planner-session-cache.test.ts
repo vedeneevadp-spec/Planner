@@ -200,6 +200,7 @@ function createSessionResponse(input: {
 
   return {
     actor: actor ?? {
+      avatarUrl: null,
       displayName: 'Test User',
       email: 'test@example.com',
       id: actorUserId,

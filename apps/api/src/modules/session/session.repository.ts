@@ -9,6 +9,8 @@ import type {
   SessionContext,
   SessionSnapshot,
   SessionWorkspaceMembership,
+  UpdateUserProfileInput,
+  UserProfile,
   WorkspaceInvitationCreateInput,
   WorkspaceInvitationRecord,
   WorkspaceSettings,
@@ -59,4 +61,10 @@ export interface SessionRepository {
     session: SessionSnapshot,
     input: WorkspaceSettingsUpdateInput,
   ): Promise<WorkspaceSettings>
+  updateUserProfile(
+    session: SessionSnapshot,
+    input: UpdateUserProfileInput & {
+      avatarUrl: string | null
+    },
+  ): Promise<UserProfile>
 }

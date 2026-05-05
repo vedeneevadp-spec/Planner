@@ -8,6 +8,10 @@ import {
   sessionWorkspaceMembershipSchema,
   type UpdateSharedWorkspaceInput,
   updateSharedWorkspaceInputSchema,
+  type UpdateUserProfileInput,
+  updateUserProfileInputSchema,
+  type UserProfile,
+  userProfileSchema,
 } from '@planner/contracts'
 
 import {
@@ -72,7 +76,7 @@ export async function resolvePlannerSession(
     throwSessionApiError(response, payload, 'Failed to resolve planner session.')
   }
 
-  return sessionResponseSchema.parse(payload)
+  return resolveSessionAssetUrls(sessionResponseSchema.parse(payload))
 }
 
 export interface CreateSharedWorkspaceOptions {
@@ -118,6 +122,13 @@ export interface UpdateSharedWorkspaceOptions {
   workspaceId?: string | undefined
 }
 
+export interface UpdateUserProfileOptions {
+  accessToken?: string
+  actorUserId?: string | undefined
+  input: UpdateUserProfileInput
+  workspaceId?: string | undefined
+}
+
 export async function updateSharedWorkspace(
   options: UpdateSharedWorkspaceOptions,
   fetchFn: typeof fetch = fetch,
@@ -145,6 +156,35 @@ export async function updateSharedWorkspace(
   }
 
   return sessionWorkspaceMembershipSchema.parse(payload)
+}
+
+export async function updateUserProfile(
+  options: UpdateUserProfileOptions,
+  fetchFn: typeof fetch = fetch,
+): Promise<UserProfile> {
+  const headers = getPlannerSessionOverrideHeaders({
+    accessToken: options.accessToken,
+    actorUserId: options.actorUserId,
+    workspaceId: options.workspaceId,
+  })
+  const requestHeaders = new Headers(headers)
+  requestHeaders.set('content-type', 'application/json')
+  const input = updateUserProfileInputSchema.parse(options.input)
+  const response = await fetchFn(
+    new URL('/api/v1/profile', plannerApiConfig.apiBaseUrl),
+    {
+      body: JSON.stringify(input),
+      headers: requestHeaders,
+      method: 'PATCH',
+    },
+  )
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throwSessionApiError(response, payload, 'Failed to update profile.')
+  }
+
+  return resolveUserProfileAssetUrls(userProfileSchema.parse(payload))
 }
 
 export interface DeleteSharedWorkspaceOptions {
@@ -210,4 +250,28 @@ function throwSessionApiError(
     details: payload,
     status: response.status,
   })
+}
+
+function resolveSessionAssetUrls(session: SessionResponse): SessionResponse {
+  return {
+    ...session,
+    actor: resolveUserProfileAssetUrls(session.actor),
+  }
+}
+
+function resolveUserProfileAssetUrls<T extends { avatarUrl: string | null }>(
+  profile: T,
+): T {
+  return {
+    ...profile,
+    avatarUrl: resolveAssetUrl(profile.avatarUrl),
+  }
+}
+
+function resolveAssetUrl(value: string | null): string | null {
+  if (!value || !value.startsWith('/api/')) {
+    return value
+  }
+
+  return `${plannerApiConfig.apiBaseUrl.replace(/\/$/, '')}${value}`
 }
