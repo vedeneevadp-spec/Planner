@@ -105,6 +105,10 @@ export function SessionProvider({ children }: PropsWithChildren) {
     async (error: unknown, logMessage: string) => {
       console.error(logMessage, error)
       await clearSupabaseBrowserAuthStorage()
+      const lastActorUserId = getLastActorUserId()
+      clearCachedPlannerSession(lastActorUserId)
+      clearSelectedWorkspaceId(lastActorUserId)
+      clearLastActorUserId()
       setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
       setSnapshot({
         ...INITIAL_AUTH_SNAPSHOT,
@@ -556,18 +560,31 @@ function clearSupabaseAuthUrlFragment() {
 }
 
 function isRetryableSupabaseAuthError(error: unknown): boolean {
+  if (error instanceof DOMException || error instanceof TypeError) {
+    return true
+  }
+
   if (
     typeof error === 'object' &&
     error !== null &&
     'name' in error &&
-    error.name === 'AuthRetryableFetchError'
+    (error.name === 'AuthRetryableFetchError' ||
+      error.name === 'NetworkError' ||
+      error.name === 'TimeoutError')
   ) {
     return true
   }
 
   if (typeof error === 'object' && error !== null && 'status' in error) {
     const status = (error as { status: unknown }).status
-    return typeof status === 'number' && (status === 429 || status >= 500)
+    return (
+      typeof status === 'number' &&
+      (status === 0 || status === 408 || status === 429 || status >= 500)
+    )
+  }
+
+  if (error instanceof Error) {
+    return /failed to fetch|network|timeout/i.test(error.message)
   }
 
   return false

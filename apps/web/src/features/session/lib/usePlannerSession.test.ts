@@ -2,19 +2,67 @@ import type {
   SessionResponse,
   SessionWorkspaceMembership,
 } from '@planner/contracts'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen } from '@testing-library/react'
+import { createElement, type PropsWithChildren, type ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import {
+  SessionAuthContext,
+  type SessionAuthState,
+} from '../model/session-auth-context'
+import { setCachedPlannerSession } from './planner-session-cache'
 import { SessionApiError } from './session-api'
-import { loadPlannerSession } from './usePlannerSession'
+import { loadPlannerSession, usePlannerSession } from './usePlannerSession'
 import {
   getLastActorUserId,
   getSelectedWorkspaceId,
+  setLastActorUserId,
   setSelectedWorkspaceId,
 } from './workspace-selection'
 
 describe('loadPlannerSession', () => {
   beforeEach(() => {
     window.localStorage.clear()
+  })
+
+  it('exposes the cached session before auth storage restore finishes', () => {
+    const session = createSessionResponse({
+      actorUserId: 'user-a',
+      role: 'owner',
+      workspace: createWorkspaceMembership({
+        id: 'workspace-a',
+        kind: 'personal',
+        name: 'User A',
+        role: 'owner',
+        slug: 'user-a',
+      }),
+      workspaceId: 'workspace-a',
+      workspaces: [
+        createWorkspaceMembership({
+          id: 'workspace-a',
+          kind: 'personal',
+          name: 'User A',
+          role: 'owner',
+          slug: 'user-a',
+        }),
+      ],
+    })
+
+    setLastActorUserId('user-a')
+    setCachedPlannerSession(session)
+
+    renderWithPlannerSession(
+      createElement(CachedSessionProbe),
+      createAuthState({
+        accessToken: null,
+        isAuthEnabled: true,
+        isLoading: true,
+        userId: null,
+      }),
+    )
+
+    expect(screen.getByTestId('workspace-id')).toHaveTextContent('workspace-a')
   })
 
   it('retries without a stale selected workspace after 403', async () => {
@@ -119,6 +167,65 @@ describe('loadPlannerSession', () => {
     expect(getLastActorUserId()).toBe('user-a')
   })
 })
+
+function CachedSessionProbe() {
+  const sessionQuery = usePlannerSession()
+
+  return createElement(
+    'output',
+    { 'data-testid': 'workspace-id' },
+    sessionQuery.data?.workspaceId ?? 'none',
+  )
+}
+
+function renderWithPlannerSession(
+  element: ReactElement,
+  authState: SessionAuthState,
+) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  })
+
+  function Providers({ children }: PropsWithChildren) {
+    return createElement(
+      SessionAuthContext.Provider,
+      { value: authState },
+      createElement(QueryClientProvider, { client: queryClient }, children),
+    )
+  }
+
+  return render(element, { wrapper: Providers })
+}
+
+function createAuthState(
+  overrides: Partial<SessionAuthState> = {},
+): SessionAuthState {
+  return {
+    accessToken: 'token',
+    authNotice: null,
+    clearAuthNotice: vi.fn(),
+    email: 'test@example.com',
+    expireSession: vi.fn().mockResolvedValue(undefined),
+    isAuthEnabled: true,
+    isLoading: false,
+    isPasswordRecovery: false,
+    recoverSession: vi.fn().mockResolvedValue('recovered'),
+    requestPasswordReset: vi.fn().mockResolvedValue(undefined),
+    signInWithOtp: vi.fn().mockResolvedValue(undefined),
+    signInWithPassword: vi.fn().mockResolvedValue(undefined),
+    signOut: vi.fn().mockResolvedValue(undefined),
+    signUpWithPassword: vi.fn().mockResolvedValue({
+      requiresEmailConfirmation: false,
+    }),
+    updatePassword: vi.fn().mockResolvedValue(undefined),
+    userId: 'user-a',
+    ...overrides,
+  }
+}
 
 function createSessionResponse(input: {
   actor?: SessionResponse['actor']

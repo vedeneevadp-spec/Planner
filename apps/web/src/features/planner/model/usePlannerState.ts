@@ -102,6 +102,13 @@ interface RemoveTaskMutationVariables {
   taskId: string
 }
 
+class PlannerApiUnavailableError extends Error {
+  constructor() {
+    super('Planner session is not ready.')
+    this.name = 'PlannerApiUnavailableError'
+  }
+}
+
 function toPlannerTask(task: TaskRecord): Task {
   return {
     assigneeDisplayName: task.assigneeDisplayName,
@@ -517,7 +524,9 @@ function getErrorMessage(error: unknown): string {
 
 function shouldKeepOptimisticMutation(error: unknown): boolean {
   return (
-    isPlannerOfflineStorageAvailable() && isQueueablePlannerMutationError(error)
+    isPlannerOfflineStorageAvailable() &&
+    (error instanceof PlannerApiUnavailableError ||
+      isQueueablePlannerMutationError(error))
   )
 }
 
@@ -525,7 +534,7 @@ function requirePlannerApi(
   plannerApi: PlannerApiClient | null,
 ): PlannerApiClient {
   if (!plannerApi) {
-    throw new Error('Planner session is not ready.')
+    throw new PlannerApiUnavailableError()
   }
 
   return plannerApi

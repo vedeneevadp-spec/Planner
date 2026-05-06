@@ -65,7 +65,8 @@ export function usePlannerSession() {
     ] as const,
     ...(cachedPlannerSession
       ? {
-          placeholderData: cachedPlannerSession,
+          initialData: cachedPlannerSession,
+          initialDataUpdatedAt: 0,
         }
       : {}),
     refetchOnMount: 'always',

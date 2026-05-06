@@ -11,13 +11,18 @@ import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
 
 export function NativePushRegistration() {
-  const { accessToken } = useSessionAuth()
+  const { accessToken, isAuthEnabled } = useSessionAuth()
   const { data: session } = usePlannerSession()
   const actorUserId = session?.actorUserId ?? null
   const workspaceId = session?.workspaceId ?? null
 
   useEffect(() => {
-    if (!actorUserId || !workspaceId || !isAndroidPushNotificationsRuntime()) {
+    if (
+      !actorUserId ||
+      !workspaceId ||
+      (isAuthEnabled && !accessToken) ||
+      !isAndroidPushNotificationsRuntime()
+    ) {
       return
     }
 
@@ -55,7 +60,7 @@ export function NativePushRegistration() {
         void cleanup()
       }
     }
-  }, [accessToken, actorUserId, workspaceId])
+  }, [accessToken, actorUserId, isAuthEnabled, workspaceId])
 
   return null
 }
