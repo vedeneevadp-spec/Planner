@@ -1,4 +1,10 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -50,6 +56,27 @@ function renderTaskCard(
   )
 }
 
+function openTaskActionMenu(taskTitle = 'Task') {
+  const menuName = `Действия с задачей ${taskTitle}`
+  const openMenu = screen.queryByRole('menu', {
+    name: menuName,
+  })
+
+  if (openMenu) {
+    return openMenu
+  }
+
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: menuName,
+    }),
+  )
+
+  return screen.getByRole('menu', {
+    name: menuName,
+  })
+}
+
 describe('TaskCard', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -66,7 +93,11 @@ describe('TaskCard', () => {
       createTask({ plannedDate: '2026-04-23' }),
     )
 
-    expect(screen.getByRole('button', { name: 'Отложить' })).toBeInTheDocument()
+    expect(
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'Отложить',
+      }),
+    ).toBeInTheDocument()
 
     rerender(
       <TaskCard
@@ -78,14 +109,19 @@ describe('TaskCard', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: 'Отложить' })).toBeInTheDocument()
+    expect(
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'Отложить',
+      }),
+    ).toBeInTheDocument()
   })
 
   it('hides postpone action for tasks planned after tomorrow', () => {
     renderTaskCard(createTask({ plannedDate: '2026-04-27' }))
+    const actionMenu = openTaskActionMenu()
 
     expect(
-      screen.queryByRole('button', { name: 'Отложить' }),
+      within(actionMenu).queryByRole('menuitem', { name: 'Отложить' }),
     ).not.toBeInTheDocument()
   })
 
@@ -104,7 +140,9 @@ describe('TaskCard', () => {
     )
 
     expect(
-      screen.getByRole('button', { name: 'На проверку' }),
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'На проверку',
+      }),
     ).toBeInTheDocument()
   })
 
@@ -121,9 +159,10 @@ describe('TaskCard', () => {
         sharedWorkspaceGroupRole: 'member',
       },
     )
+    const actionMenu = openTaskActionMenu()
 
     expect(
-      screen.queryByRole('button', { name: 'На проверку' }),
+      within(actionMenu).queryByRole('menuitem', { name: 'На проверку' }),
     ).not.toBeInTheDocument()
   })
 
@@ -158,12 +197,16 @@ describe('TaskCard', () => {
       },
     )
 
-    expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
+    const actionMenu = openTaskActionMenu()
+
     expect(
-      screen.getByRole('button', { name: 'На проверку' }),
+      within(actionMenu).getByRole('menuitem', { name: 'В работе' }),
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Отложить' }),
+      within(actionMenu).getByRole('menuitem', { name: 'На проверку' }),
+    ).toBeInTheDocument()
+    expect(
+      within(actionMenu).queryByRole('menuitem', { name: 'Отложить' }),
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Завершить задачу' }),
@@ -172,10 +215,10 @@ describe('TaskCard', () => {
       screen.queryByRole('button', { name: 'Подтвердить выполнение задачи' }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Редактировать задачу' }),
+      within(actionMenu).queryByRole('menuitem', { name: 'Редактировать' }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Удалить задачу' }),
+      within(actionMenu).queryByRole('menuitem', { name: 'Удалить' }),
     ).not.toBeInTheDocument()
   })
 
@@ -201,13 +244,7 @@ describe('TaskCard', () => {
       screen.queryByRole('button', { name: 'На проверку' }),
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Отложить' }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Редактировать задачу' }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'Удалить задачу' }),
+      screen.queryByRole('button', { name: 'Действия с задачей Task' }),
     ).not.toBeInTheDocument()
   })
 
@@ -258,10 +295,16 @@ describe('TaskCard', () => {
       },
     )
 
-    expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Отложить' })).toBeInTheDocument()
+    const actionMenu = openTaskActionMenu()
+
     expect(
-      screen.getByRole('button', { name: 'Редактировать задачу' }),
+      within(actionMenu).getByRole('menuitem', { name: 'В работе' }),
+    ).toBeInTheDocument()
+    expect(
+      within(actionMenu).getByRole('menuitem', { name: 'Отложить' }),
+    ).toBeInTheDocument()
+    expect(
+      within(actionMenu).getByRole('menuitem', { name: 'Редактировать' }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Подтвердить выполнение задачи' }),
@@ -284,9 +327,13 @@ describe('TaskCard', () => {
       },
     )
 
-    expect(screen.getByRole('button', { name: 'В работе' })).toBeInTheDocument()
+    const actionMenu = openTaskActionMenu()
+
     expect(
-      screen.getByRole('button', { name: 'На проверку' }),
+      within(actionMenu).getByRole('menuitem', { name: 'В работе' }),
+    ).toBeInTheDocument()
+    expect(
+      within(actionMenu).getByRole('menuitem', { name: 'На проверку' }),
     ).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Отложить' }),

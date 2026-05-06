@@ -3,7 +3,7 @@ import type {
   WorkspaceRole,
   WorkspaceUserRecord,
 } from '@planner/contracts'
-import { type FormEvent, useId, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { Project } from '@/entities/project'
@@ -18,10 +18,8 @@ import {
 } from '@/shared/lib/date'
 import {
   CheckIcon,
-  EditIcon,
   IconChoicePicker,
   IconMark,
-  TrashIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 
@@ -91,6 +89,9 @@ interface TaskCardProps {
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   onRemove: (taskId: string) => void
+  onActionMenuOpenChange?:
+    | ((taskId: string, isOpen: boolean) => void)
+    | undefined
 }
 
 export function TaskCard({
@@ -109,8 +110,11 @@ export function TaskCard({
   onSetPlannedDate,
   onUpdate,
   onRemove,
+  onActionMenuOpenChange,
 }: TaskCardProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false)
+  const actionMenuRef = useRef<HTMLDivElement | null>(null)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const rawProjectTitle = project?.title ?? task.project
@@ -158,12 +162,81 @@ export function TaskCard({
     (!isTaskAssignee &&
       (sharedWorkspaceRole === 'owner' ||
         sharedWorkspaceGroupRole === 'group_admin'))
+  const scheduleDetails = [
+    task.plannedStartTime
+      ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
+      : null,
+    task.plannedDate ? formatShortDate(task.plannedDate) : null,
+    task.dueDate ? `Дедлайн ${formatShortDate(task.dueDate)}` : null,
+  ].filter((value): value is string => Boolean(value))
+  const hasScheduleActions =
+    isActiveTask &&
+    canManageSchedule &&
+    (task.plannedDate !== todayKey ||
+      task.plannedDate !== tomorrowKey ||
+      canPostponeTask)
+  const hasWorkAction = isActiveTask && canManageWorkStatus
+  const hasReviewAction = canToggleReview
+  const hasReopenAction = !isActiveTask && canReopenTask
+  const hasActionMenu =
+    hasScheduleActions ||
+    hasWorkAction ||
+    hasReviewAction ||
+    hasReopenAction ||
+    canEditTask ||
+    canDeleteTask
   const toneClass =
     tone === 'warning'
       ? styles.warning
       : tone === 'success'
         ? styles.success
         : undefined
+
+  useEffect(() => {
+    if (!isActionMenuOpen) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (
+        event.target instanceof Node &&
+        actionMenuRef.current?.contains(event.target)
+      ) {
+        return
+      }
+
+      setIsActionMenuOpen(false)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsActionMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isActionMenuOpen])
+
+  useEffect(() => {
+    onActionMenuOpenChange?.(task.id, isActionMenuOpen)
+
+    return () => {
+      if (isActionMenuOpen) {
+        onActionMenuOpenChange?.(task.id, false)
+      }
+    }
+  }, [isActionMenuOpen, onActionMenuOpenChange, task.id])
+
+  function runMenuAction(action: () => void) {
+    setIsActionMenuOpen(false)
+    action()
+  }
 
   return (
     <article
@@ -172,10 +245,221 @@ export function TaskCard({
         toneClass,
         task.importance === 'important' && styles.important,
         isInProgress && styles.inProgress,
+        isActionMenuOpen && styles.cardMenuOpen,
       )}
     >
       <div className={styles.main}>
-        <div className={styles.copy}>
+        <div className={styles.cardHeader}>
+          <div className={styles.titleRow}>
+            {task.icon ? (
+              <IconMark
+                className={styles.taskIcon}
+                value={task.icon}
+                uploadedIcons={uploadedIcons}
+              />
+            ) : null}
+            <h4>{task.title}</h4>
+          </div>
+
+          <div className={styles.quickActions}>
+            {isActiveTask ? (
+              canCompleteTask ? (
+                <button
+                  className={cx(styles.button, styles.iconButton)}
+                  type="button"
+                  disabled={isPending}
+                  aria-label={
+                    task.requiresConfirmation
+                      ? 'Подтвердить выполнение задачи'
+                      : 'Завершить задачу'
+                  }
+                  title={
+                    task.requiresConfirmation
+                      ? 'Подтвердить выполнение'
+                      : 'Завершить'
+                  }
+                  onClick={() => onSetStatus(task.id, 'done')}
+                >
+                  <CheckIcon size={18} />
+                </button>
+              ) : null
+            ) : null}
+
+            {hasActionMenu ? (
+              <div ref={actionMenuRef} className={styles.actionMenuWrap}>
+                <button
+                  className={cx(styles.button, styles.iconButton)}
+                  type="button"
+                  aria-expanded={isActionMenuOpen}
+                  aria-haspopup="menu"
+                  aria-label={`Действия с задачей ${task.title}`}
+                  title="Действия"
+                  onClick={() => setIsActionMenuOpen((value) => !value)}
+                >
+                  <MoreHorizontalIcon />
+                </button>
+
+                {isActionMenuOpen ? (
+                  <div
+                    className={styles.actionMenu}
+                    role="menu"
+                    aria-label={`Действия с задачей ${task.title}`}
+                  >
+                    {isActiveTask && canManageSchedule ? (
+                      <>
+                        {task.plannedDate !== todayKey ? (
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            disabled={isPending}
+                            onClick={() =>
+                              runMenuAction(() =>
+                                onSetPlannedDate(task.id, todayKey),
+                              )
+                            }
+                          >
+                            На сегодня
+                          </button>
+                        ) : null}
+                        {task.plannedDate !== tomorrowKey ? (
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            disabled={isPending}
+                            onClick={() =>
+                              runMenuAction(() =>
+                                onSetPlannedDate(task.id, tomorrowKey),
+                              )
+                            }
+                          >
+                            На завтра
+                          </button>
+                        ) : null}
+                        {canPostponeTask ? (
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            disabled={isPending}
+                            onClick={() =>
+                              runMenuAction(() =>
+                                onSetPlannedDate(task.id, null),
+                              )
+                            }
+                          >
+                            Отложить
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    {isActiveTask && canManageWorkStatus ? (
+                      <button
+                        className={cx(
+                          styles.menuItem,
+                          isInProgress && styles.menuItemActive,
+                        )}
+                        type="button"
+                        role="menuitem"
+                        disabled={
+                          isPending || (isLimitedSharedAssignee && isInProgress)
+                        }
+                        aria-pressed={isInProgress}
+                        onClick={() =>
+                          runMenuAction(() =>
+                            onSetStatus(
+                              task.id,
+                              isLimitedSharedAssignee
+                                ? 'in_progress'
+                                : isInProgress
+                                  ? 'todo'
+                                  : 'in_progress',
+                            ),
+                          )
+                        }
+                      >
+                        В работе
+                      </button>
+                    ) : null}
+
+                    {canToggleReview ? (
+                      <button
+                        className={cx(
+                          styles.menuItem,
+                          isReadyForReview && styles.menuItemActive,
+                        )}
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        aria-pressed={isReadyForReview}
+                        onClick={() =>
+                          runMenuAction(() =>
+                            onSetStatus(
+                              task.id,
+                              isReadyForReview
+                                ? 'in_progress'
+                                : 'ready_for_review',
+                            ),
+                          )
+                        }
+                      >
+                        На проверку
+                      </button>
+                    ) : null}
+
+                    {!isActiveTask && canReopenTask ? (
+                      <button
+                        className={styles.menuItem}
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() =>
+                          runMenuAction(() => onSetStatus(task.id, 'todo'))
+                        }
+                      >
+                        Вернуть
+                      </button>
+                    ) : null}
+
+                    {canEditTask ? (
+                      <button
+                        className={styles.menuItem}
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() =>
+                          runMenuAction(() => {
+                            setIsEditing(true)
+                          })
+                        }
+                      >
+                        Редактировать
+                      </button>
+                    ) : null}
+
+                    {canDeleteTask ? (
+                      <button
+                        className={cx(styles.menuItem, styles.menuItemDanger)}
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() => runMenuAction(() => onRemove(task.id))}
+                      >
+                        Удалить
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {task.note ? <p className={styles.note}>{task.note}</p> : null}
+
+        <div className={styles.detailRow}>
           {hasProject ? (
             <span className={styles.projectBadge}>
               {project ? (
@@ -195,36 +479,14 @@ export function TaskCard({
           ) : !isSharedWorkspace ? (
             <span className={styles.projectBadgeMuted}>{projectTitle}</span>
           ) : null}
-
-          <div className={styles.titleRow}>
-            {task.icon ? (
-              <IconMark
-                className={styles.taskIcon}
-                value={task.icon}
-                uploadedIcons={uploadedIcons}
-              />
-            ) : null}
-            <h4>{task.title}</h4>
-          </div>
-          {task.note ? <p>{task.note}</p> : null}
+          {scheduleDetails.length > 0 ? (
+            <span className={styles.detailText}>
+              {scheduleDetails.join(' • ')}
+            </span>
+          ) : null}
         </div>
 
         <div className={styles.meta}>
-          {task.plannedStartTime ? (
-            <span className={styles.metaChip}>
-              Time {formatTimeRange(task.plannedStartTime, task.plannedEndTime)}
-            </span>
-          ) : null}
-          {task.plannedDate ? (
-            <span className={styles.metaChip}>
-              Plan {formatShortDate(task.plannedDate)}
-            </span>
-          ) : null}
-          {task.dueDate ? (
-            <span className={styles.metaChip}>
-              Due {formatShortDate(task.dueDate)}
-            </span>
-          ) : null}
           {taskType === 'important' ? (
             <span className={cx(styles.metaChip, styles.markerChipStrong)}>
               Важное
@@ -270,153 +532,6 @@ export function TaskCard({
         </div>
       </div>
 
-      <div className={styles.actions}>
-        {isActiveTask && canManageSchedule ? (
-          <div className={styles.scheduleActions}>
-            {task.plannedDate !== todayKey ? (
-              <button
-                className={styles.button}
-                type="button"
-                disabled={isPending}
-                onClick={() => onSetPlannedDate(task.id, todayKey)}
-              >
-                На сегодня
-              </button>
-            ) : null}
-            {task.plannedDate !== tomorrowKey ? (
-              <button
-                className={styles.button}
-                type="button"
-                disabled={isPending}
-                onClick={() => onSetPlannedDate(task.id, tomorrowKey)}
-              >
-                На завтра
-              </button>
-            ) : null}
-            {canPostponeTask ? (
-              <button
-                className={styles.button}
-                type="button"
-                disabled={isPending}
-                onClick={() => onSetPlannedDate(task.id, null)}
-              >
-                Отложить
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-
-        <div className={styles.cardMainActions}>
-          {isActiveTask && canManageWorkStatus ? (
-            <button
-              className={cx(
-                styles.button,
-                styles.workButton,
-                isInProgress && styles.workButtonActive,
-              )}
-              type="button"
-              disabled={isPending || (isLimitedSharedAssignee && isInProgress)}
-              aria-pressed={isInProgress}
-              onClick={() =>
-                onSetStatus(
-                  task.id,
-                  isLimitedSharedAssignee
-                    ? 'in_progress'
-                    : isInProgress
-                      ? 'todo'
-                      : 'in_progress',
-                )
-              }
-            >
-              В работе
-            </button>
-          ) : null}
-
-          {canToggleReview ? (
-            <button
-              className={cx(
-                styles.button,
-                styles.reviewButton,
-                isReadyForReview && styles.reviewButtonActive,
-              )}
-              type="button"
-              disabled={isPending}
-              aria-pressed={isReadyForReview}
-              onClick={() =>
-                onSetStatus(
-                  task.id,
-                  isReadyForReview ? 'in_progress' : 'ready_for_review',
-                )
-              }
-            >
-              На проверку
-            </button>
-          ) : null}
-
-          {isActiveTask ? (
-            canCompleteTask ? (
-              <button
-                className={cx(styles.button, styles.iconButton)}
-                type="button"
-                disabled={isPending}
-                aria-label={
-                  task.requiresConfirmation
-                    ? 'Подтвердить выполнение задачи'
-                    : 'Завершить задачу'
-                }
-                title={
-                  task.requiresConfirmation
-                    ? 'Подтвердить выполнение'
-                    : 'Завершить'
-                }
-                onClick={() => onSetStatus(task.id, 'done')}
-              >
-                <CheckIcon size={18} />
-              </button>
-            ) : null
-          ) : canReopenTask ? (
-            <button
-              className={styles.button}
-              type="button"
-              disabled={isPending}
-              onClick={() => onSetStatus(task.id, 'todo')}
-            >
-              Вернуть
-            </button>
-          ) : null}
-
-          {canEditTask ? (
-            <button
-              className={cx(styles.button, styles.iconButton)}
-              type="button"
-              disabled={isPending}
-              aria-label="Редактировать задачу"
-              title="Редактировать"
-              onClick={() => setIsEditing(true)}
-            >
-              <EditIcon size={18} />
-            </button>
-          ) : null}
-
-          {canDeleteTask ? (
-            <button
-              className={cx(
-                styles.button,
-                styles.iconButton,
-                styles.dangerButton,
-              )}
-              type="button"
-              disabled={isPending}
-              aria-label="Удалить задачу"
-              title="Удалить"
-              onClick={() => onRemove(task.id)}
-            >
-              <TrashIcon size={18} />
-            </button>
-          ) : null}
-        </div>
-      </div>
-
       {isEditing ? (
         <TaskEditDialog
           currentActorUserId={currentActorUserId}
@@ -431,6 +546,23 @@ export function TaskCard({
         />
       ) : null}
     </article>
+  )
+}
+
+function MoreHorizontalIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <circle cx="6" cy="12" r="1.85" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.85" fill="currentColor" />
+      <circle cx="18" cy="12" r="1.85" fill="currentColor" />
+    </svg>
   )
 }
 
@@ -506,7 +638,8 @@ export function TaskEditDialog({
 
   function handlePlannedStartTimeChange(nextStartTime: string) {
     const wasAvailable = reminderAvailabilityRef.current
-    const nextAvailable = !isSharedWorkspace && Boolean(plannedDate && nextStartTime)
+    const nextAvailable =
+      !isSharedWorkspace && Boolean(plannedDate && nextStartTime)
 
     setPlannedStartTime(nextStartTime)
 

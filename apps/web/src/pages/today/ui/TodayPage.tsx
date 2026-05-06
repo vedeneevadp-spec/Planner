@@ -326,7 +326,6 @@ function SharedTodayPage() {
       <div className={styles.fixedTop}>
         <PageHeader
           kicker="Shared Today"
-          title="Сегодня"
           actions={<TaskComposer initialPlannedDate={todayKey} />}
         />
       </div>
