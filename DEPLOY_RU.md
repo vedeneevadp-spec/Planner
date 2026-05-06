@@ -163,7 +163,9 @@ npm run deploy:prod
 3. Создает/проверяет production-директории на сервере.
 4. Копирует проект через rsync.
 5. Копирует apps/api/tmp/icon-assets, если папка есть.
-6. На сервере запускает npm ci --include=dev.
+6. На сервере запускает npm ci --include=dev --ignore-scripts и затем
+   точечно rebuild для install-скриптов, нужных сборке/runtime. Это не дает
+   dev-пакету supabase скачивать CLI с GitHub во время production deploy.
 7. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
 8. Копирует deploy/systemd/planner-api.service.
 9. Копирует deploy/caddy/Caddyfile.

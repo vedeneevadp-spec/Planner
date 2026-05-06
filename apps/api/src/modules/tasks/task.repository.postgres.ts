@@ -1463,7 +1463,7 @@ export class PostgresTaskRepository implements TaskRepository {
 
     const expectedVersionFilter =
       command.expectedVersion !== undefined
-        ? sql`and version = ${command.expectedVersion}`
+        ? sql`and task.version = cast(${command.expectedVersion} as bigint)`
         : sql``
     const insertedTimeBlockCte =
       params.startsAt && params.endsAt
@@ -1482,15 +1482,15 @@ export class PostgresTaskRepository implements TaskRepository {
                 workspace_id
               )
               select
-                ${command.context.actorUserId},
+                cast(${command.context.actorUserId} as uuid),
                 cast(${params.endsAt} as timestamptz),
                 '{}'::jsonb,
                 0,
-                ${MANUAL_TIME_BLOCK_SOURCE},
+                cast(${MANUAL_TIME_BLOCK_SOURCE} as text),
                 cast(${params.startsAt} as timestamptz),
                 updated_task.id,
                 'UTC',
-                ${command.context.actorUserId},
+                cast(${command.context.actorUserId} as uuid),
                 updated_task.workspace_id
               from updated_task
               returning starts_at, ends_at
@@ -1509,30 +1509,47 @@ export class PostgresTaskRepository implements TaskRepository {
       command.context.actorUserId,
       async (executor) => {
         const result = await sql<TaskListRow>`
-          with updated_task as (
-            update app.tasks
+          with raw_schedule_input as (
+            select
+              cast(${params.normalizedSchedule.plannedDate} as text) as planned_date,
+              cast(${params.normalizedSchedule.plannedStartTime} as text) as planned_start_time,
+              cast(${params.normalizedSchedule.plannedEndTime} as text) as planned_end_time
+          ),
+          schedule_input as (
+            select
+              cast(planned_date as date) as planned_date,
+              cast(planned_start_time as time) as planned_start_time,
+              cast(planned_end_time as time) as planned_end_time,
+              planned_date as planned_date_text,
+              planned_start_time as planned_start_time_text,
+              planned_end_time as planned_end_time_text
+            from raw_schedule_input
+          ),
+          updated_task as (
+            update app.tasks as task
             set
               metadata = case
-                when cast(${params.normalizedSchedule.plannedDate} as date) is null
-                  or cast(${params.normalizedSchedule.plannedStartTime} as time) is null
-                then coalesce(metadata, '{}'::jsonb) - '${TASK_REMIND_BEFORE_START_KEY}'
-                else metadata
+                when schedule_input.planned_date is null
+                  or schedule_input.planned_start_time is null
+                then coalesce(task.metadata, '{}'::jsonb) - cast(${TASK_REMIND_BEFORE_START_KEY} as text)
+                else task.metadata
               end,
-              planned_on = cast(${params.normalizedSchedule.plannedDate} as date),
-              updated_by = ${command.context.actorUserId}
-            where id = ${command.taskId}
-              and workspace_id = ${command.context.workspaceId}
-              and deleted_at is null
+              planned_on = schedule_input.planned_date,
+              updated_by = cast(${command.context.actorUserId} as uuid)
+            from schedule_input
+            where task.id = cast(${command.taskId} as uuid)
+              and task.workspace_id = cast(${command.context.workspaceId} as uuid)
+              and task.deleted_at is null
               ${expectedVersionFilter}
-            returning *
+            returning task.*
           ),
           retired_time_blocks as (
             update app.task_time_blocks
             set
-              deleted_at = ${params.deletedAt},
-              updated_by = ${command.context.actorUserId}
-            where workspace_id = ${command.context.workspaceId}
-              and task_id = ${command.taskId}
+              deleted_at = cast(${params.deletedAt} as timestamptz),
+              updated_by = cast(${command.context.actorUserId} as uuid)
+            where workspace_id = cast(${command.context.workspaceId} as uuid)
+              and task_id = cast(${command.taskId} as uuid)
               and deleted_at is null
               and exists (select 1 from updated_task)
             returning id
@@ -1568,21 +1585,22 @@ export class PostgresTaskRepository implements TaskRepository {
               workspace_id
             )
             select
-              ${command.context.actorUserId},
+              cast(${command.context.actorUserId} as uuid),
               'task.updated'::app.task_event_type,
               jsonb_build_object(
                 'plannedDate',
-                cast(${params.normalizedSchedule.plannedDate} as text),
+                schedule_input.planned_date_text,
                 'plannedEndTime',
-                cast(${params.normalizedSchedule.plannedEndTime} as text),
+                schedule_input.planned_end_time_text,
                 'plannedStartTime',
-                cast(${params.normalizedSchedule.plannedStartTime} as text),
+                schedule_input.planned_start_time_text,
                 'version',
                 updated_task.version
               ),
               updated_task.id,
               updated_task.workspace_id
             from updated_task
+            cross join schedule_input
           )
           select *
           from task_with_time_block
@@ -2416,7 +2434,7 @@ function buildScheduleUpdateMetadataValue(
     case
       when cast(${schedule.plannedDate} as date) is null
         or cast(${schedule.plannedStartTime} as time) is null
-      then coalesce(metadata, '{}'::jsonb) - '${TASK_REMIND_BEFORE_START_KEY}'
+      then coalesce(metadata, '{}'::jsonb) - cast(${TASK_REMIND_BEFORE_START_KEY} as text)
       else metadata
     end
   `

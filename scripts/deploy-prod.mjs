@@ -215,7 +215,8 @@ cd ${shellQuote(config.remoteRoot)}
 
 chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
 
-runuser -u planner -- env HUSKY=0 npm ci --include=dev
+runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
+runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
 
 runuser -u planner -- env \\
   VITE_API_BASE_URL=${shellQuote(`https://${config.domain}`)} \\
