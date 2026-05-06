@@ -508,7 +508,7 @@ function getErrorMessage(error: unknown): string {
     isUnauthorizedPlannerApiError(error) ||
     isUnauthorizedSessionApiError(error)
   ) {
-    return 'Сессия истекла. Войдите заново.'
+    return 'Не удалось подтвердить серверную сессию. Можно продолжать локально, изменения синхронизируются после восстановления входа.'
   }
 
   if (error instanceof PlannerApiError) {

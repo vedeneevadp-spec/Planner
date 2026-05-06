@@ -50,6 +50,7 @@ const INITIAL_AUTH_SNAPSHOT: AuthSnapshot = {
 
 const DEFAULT_EXPIRED_SESSION_MESSAGE =
   'Сессия истекла или больше не принимается сервером. Войдите заново.'
+const ACCESS_TOKEN_EXPIRY_GRACE_MS = 30_000
 
 export function SessionProvider({ children }: PropsWithChildren) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), [])
@@ -69,17 +70,19 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const clearAuthSession = useCallback(
     async (notice: string | false | null) => {
+      const actorUserId = snapshot.userId ?? getLastActorUserId()
+
       await unregisterStoredNativePushDevice({
         accessToken: snapshot.sessionAccessToken,
-        actorUserId: snapshot.userId,
+        actorUserId,
         apiBaseUrl: plannerApiConfig.apiBaseUrl,
       })
 
       pendingSignOutNoticeRef.current = notice
       setAuthNotice(notice === false ? null : notice)
       setIsPasswordRecovery(false)
-      clearCachedPlannerSession(snapshot.userId ?? getLastActorUserId())
-      clearSelectedWorkspaceId(snapshot.userId)
+      clearCachedPlannerSession(actorUserId)
+      clearSelectedWorkspaceId(actorUserId)
       clearLastActorUserId()
       setSnapshot({
         ...INITIAL_AUTH_SNAPSHOT,
@@ -101,21 +104,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [snapshot.sessionAccessToken, snapshot.userId, supabase],
   )
 
-  const handleUnrecoverableSessionError = useCallback(
-    async (error: unknown, logMessage: string) => {
-      console.error(logMessage, error)
-      await clearSupabaseBrowserAuthStorage()
-      const lastActorUserId = getLastActorUserId()
-      clearCachedPlannerSession(lastActorUserId)
-      clearSelectedWorkspaceId(lastActorUserId)
-      clearLastActorUserId()
-      setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
+  const keepDeviceSession = useCallback(
+    (error: unknown, logMessage: string) => {
+      console.warn(logMessage, error)
+      setAuthNotice(null)
       setSnapshot({
         ...INITIAL_AUTH_SNAPSHOT,
         isLoading: false,
       })
 
-      return 'signed_out' as const
+      return 'deferred' as const
     },
     [],
   )
@@ -159,9 +157,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
           return deferredSession
         }
 
-        return handleUnrecoverableSessionError(
+        return keepDeviceSession(
           error,
-          'Failed to restore Supabase session.',
+          'Supabase session restore deferred to device session.',
         )
       }
 
@@ -169,7 +167,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setSnapshot(toAuthSnapshot(data.session, false))
 
       return data.session ? 'recovered' : 'signed_out'
-    }, [handleUnrecoverableSessionError, keepStoredSession, supabase])
+    }, [keepDeviceSession, keepStoredSession, supabase])
 
   const clearAuthNotice = useCallback(() => {
     setAuthNotice(null)
@@ -207,13 +205,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
             return deferredSession
           }
 
-          await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
-          return 'signed_out' as const
+          return keepDeviceSession(
+            error,
+            'Supabase session refresh deferred to device session.',
+          )
         }
 
         if (!data.session) {
-          await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
-          return 'signed_out' as const
+          return keepDeviceSession(
+            new Error('Supabase refresh did not return a session.'),
+            'Supabase session refresh deferred to device session.',
+          )
         }
 
         setSnapshot(toAuthSnapshot(data.session, false))
@@ -225,7 +227,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       sessionRecoveryRef.current = recovery
 
       return recovery
-    }, [clearAuthSession, keepStoredSession, supabase])
+    }, [keepDeviceSession, keepStoredSession, supabase])
 
   useEffect(() => {
     if (!supabase) {
@@ -319,11 +321,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       if (event === 'SIGNED_OUT') {
         const pendingNotice = pendingSignOutNoticeRef.current
         pendingSignOutNoticeRef.current = null
-        setAuthNotice(
-          pendingNotice === false
-            ? null
-            : (pendingNotice ?? DEFAULT_EXPIRED_SESSION_MESSAGE),
-        )
+        setAuthNotice(pendingNotice === false ? null : pendingNotice)
       }
 
       setSnapshot(toAuthSnapshot(session, false))
@@ -515,9 +513,23 @@ function toAuthSnapshot(
   return {
     email: sessionUser?.email ?? null,
     isLoading,
-    sessionAccessToken: session.access_token,
+    sessionAccessToken: getUsableSessionAccessToken(session),
     userId: sessionUser?.id ?? null,
   }
+}
+
+function getUsableSessionAccessToken(session: Session): string | null {
+  if (!session.expires_at) {
+    return session.access_token
+  }
+
+  const expiresAtMs = session.expires_at * 1000
+
+  if (expiresAtMs <= Date.now() + ACCESS_TOKEN_EXPIRY_GRACE_MS) {
+    return null
+  }
+
+  return session.access_token
 }
 
 function createEmailSignUpOptions(input: PasswordSignUpInput) {
