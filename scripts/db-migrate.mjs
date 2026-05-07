@@ -12,16 +12,14 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
-const migrationsDirectory = path.join(repoRoot, 'supabase', 'migrations')
+const migrationsDirectory = path.join(repoRoot, 'db', 'migrations')
 const connectionString =
   process.env.DATABASE_URL ??
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 const retries = 30
 const retryDelayMs = 1000
 const statementRetries = 5
-const useStatelessMode =
-  process.env.DB_MIGRATE_MODE === 'stateless' ||
-  connectionString.includes('pooler.supabase.com')
+const useStatelessMode = process.env.DB_MIGRATE_MODE === 'stateless'
 
 async function main() {
   const migrationFiles = (await readdir(migrationsDirectory))

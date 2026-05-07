@@ -61,9 +61,7 @@ async function main() {
     apiUrl,
     repoRoot,
   })
-  const authMode = mobileWebBuild.env.VITE_SUPABASE_URL
-    ? 'supabase'
-    : 'legacy overrides'
+  const authMode = mobileWebBuild.env.VITE_AUTH_PROVIDER ?? 'legacy overrides'
 
   const version = options.version ?? process.env.MOBILE_VERSION ?? undefined
   const buildNumberInput =

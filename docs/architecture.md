@@ -50,7 +50,7 @@ Composition root приложения.
 
 Текущие примеры:
 
-- `session` - Supabase browser auth, access token lifecycle и session query
+- `session` - Chaotika Auth, access token lifecycle и session query
 - `planner` - planner provider, HTTP API client, TanStack Query state,
   optimistic mutations, offline queue и task-event cursor sync
 - `task-create` - composer для создания задач
@@ -99,14 +99,13 @@ runtime.
 
 ## Стратегия состояния
 
-Главный источник истины - backend API и Postgres/Supabase schema. Web хранит
+Главный источник истины - backend API и PostgreSQL schema. Web хранит
 только server-state cache, offline snapshots и очередь операций.
 
 Текущий расклад:
 
 - session сначала резолвится через `/api/v1/session`
-- Supabase browser auth включается только при наличии
-  `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY`
+- Chaotika Auth включается через `VITE_AUTH_PROVIDER=planner`
 - данные задач, сфер, templates, inbox и daily plan читаются через backend API
 - TanStack Query отвечает за server-state cache и invalidation
 - planner feature держит optimistic mutations, чтобы UI-компоненты не зависели

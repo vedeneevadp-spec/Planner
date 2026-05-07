@@ -12,7 +12,7 @@ export type RlsStrategy =
   | 'session_connection'
   | 'transaction_local'
 
-let hasLoggedPoolerRlsMode = false
+let hasLoggedSessionConnectionRlsMode = false
 
 export async function withOptionalRls<T>(
   db: Kysely<DatabaseSchema>,
@@ -32,7 +32,7 @@ export async function withOptionalRls<T>(
 
   if (strategy === 'session_connection') {
     return db.connection().execute(async (connection) => {
-      logPoolerRlsMode()
+      logSessionConnectionRlsMode()
       await applySessionRlsContext(connection, authContext, actorUserIdOverride)
 
       try {
@@ -70,7 +70,7 @@ export async function withWriteTransaction<T>(
 
   if (strategy === 'session_connection') {
     return db.connection().execute(async (connection) => {
-      logPoolerRlsMode()
+      logSessionConnectionRlsMode()
       await applySessionRlsContext(
         connection,
         resolvedAuthContext,
@@ -119,37 +119,16 @@ export function resolveRlsStrategyForEnvironment(
     return 'disabled'
   }
 
-  if (isSupabasePoolerRuntimeEnvironment(env)) {
-    return 'disabled'
-  }
-
   return 'transaction_local'
 }
 
-export function isSupabasePoolerRuntimeEnvironment(
-  env: NodeJS.ProcessEnv,
-): boolean {
-  return resolveDatabaseUrlForRls(env).includes('pooler.supabase.com')
-}
-
-function resolveDatabaseUrlForRls(env: NodeJS.ProcessEnv): string {
-  return (
-    env.DATABASE_URL ??
-    env.SUPABASE_RUNTIME_DATABASE_URL ??
-    env.SUPABASE_SESSION_POOLER_URL ??
-    ''
-  )
-}
-
-function logPoolerRlsMode(): void {
-  if (hasLoggedPoolerRlsMode) {
+function logSessionConnectionRlsMode(): void {
+  if (hasLoggedSessionConnectionRlsMode) {
     return
   }
 
-  hasLoggedPoolerRlsMode = true
-  console.warn(
-    '[db] Using session-connection Postgres RLS context for Supabase pooler runtime.',
-  )
+  hasLoggedSessionConnectionRlsMode = true
+  console.warn('[db] Using session-connection Postgres RLS context.')
 }
 
 async function applyTransactionLocalRlsContext(

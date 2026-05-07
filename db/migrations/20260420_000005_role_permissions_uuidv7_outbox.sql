@@ -284,24 +284,6 @@ for each row execute function app.enqueue_task_event_outbox();
 
 alter table app.task_events replica identity full;
 
-do $$
-begin
-  if exists (
-    select 1
-    from pg_publication
-    where pubname = 'supabase_realtime'
-  ) and not exists (
-    select 1
-    from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'app'
-      and tablename = 'task_events'
-  ) then
-    alter publication supabase_realtime add table app.task_events;
-  end if;
-end;
-$$;
-
 create or replace function app.prune_completed_outbox(
   retention interval default interval '14 days'
 )

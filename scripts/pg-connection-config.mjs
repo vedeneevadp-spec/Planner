@@ -9,22 +9,7 @@ export function createPgConnectionConfig(connectionString) {
     query_timeout: readPositiveIntegerEnv('PG_QUERY_TIMEOUT_MS', 30_000),
   }
 
-  if (!connectionString.includes('pooler.supabase.com')) {
-    return config
-  }
-
-  const url = new URL(connectionString)
-
-  url.searchParams.delete('sslmode')
-  url.searchParams.delete('uselibpqcompat')
-
-  return {
-    ...config,
-    connectionString: url.toString(),
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  }
+  return config
 }
 
 export async function preparePgAdminConnection(client) {

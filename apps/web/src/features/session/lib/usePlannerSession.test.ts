@@ -215,7 +215,6 @@ function createAuthState(
     isPasswordRecovery: false,
     recoverSession: vi.fn().mockResolvedValue('recovered'),
     requestPasswordReset: vi.fn().mockResolvedValue(undefined),
-    signInWithOtp: vi.fn().mockResolvedValue(undefined),
     signInWithPassword: vi.fn().mockResolvedValue(undefined),
     signOut: vi.fn().mockResolvedValue(undefined),
     signUpWithPassword: vi.fn().mockResolvedValue({

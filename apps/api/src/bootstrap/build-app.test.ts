@@ -302,8 +302,8 @@ void describe('buildApiApp', () => {
   void it('forbids application user management for non-owner role', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
@@ -376,8 +376,8 @@ void describe('buildApiApp', () => {
   void it('forbids workspace settings updates for non-admin roles', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
@@ -1767,7 +1767,9 @@ void describe('buildApiApp', () => {
       projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(
         new MemorySessionRepository(),
-        new LocalProfileAvatarStorage(path.join(profileAssetDirectory, 'profiles')),
+        new LocalProfileAvatarStorage(
+          path.join(profileAssetDirectory, 'profiles'),
+        ),
       ),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -1792,7 +1794,10 @@ void describe('buildApiApp', () => {
     const profile = userProfileSchema.parse(updateResponse.json())
 
     assert.equal(profile.displayName, 'Planner Captain')
-    assert.match(profile.avatarUrl ?? '', /^\/api\/v1\/profile-assets\/.+\.png$/)
+    assert.match(
+      profile.avatarUrl ?? '',
+      /^\/api\/v1\/profile-assets\/.+\.png$/,
+    )
 
     const avatarResponse = await app.inject({
       method: 'GET',
@@ -1912,8 +1917,8 @@ void describe('buildApiApp', () => {
   void it('forbids icon set management for guest application role', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       emojiSetService: new EmojiSetService(new MemoryEmojiSetRepository()),
@@ -1972,8 +1977,8 @@ void describe('buildApiApp', () => {
 
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       emojiSetService: new EmojiSetService(repository),
@@ -2071,8 +2076,8 @@ void describe('buildApiApp', () => {
 
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       emojiSetService: new EmojiSetService(repository),
@@ -2884,8 +2889,8 @@ void describe('buildApiApp', () => {
 
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
@@ -2962,8 +2967,8 @@ void describe('buildApiApp', () => {
   void it('serves OpenAPI JSON without request authentication', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
@@ -3009,8 +3014,8 @@ void describe('buildApiApp', () => {
   void it('requires a bearer token when request authentication is enabled', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
@@ -3034,8 +3039,8 @@ void describe('buildApiApp', () => {
   void it('resolves session and task writes from authenticated requests', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),
@@ -3089,8 +3094,8 @@ void describe('buildApiApp', () => {
   void it('forbids task writes for guest workspace role', async () => {
     app = buildApiApp({
       config: createTestConfig({
-        API_AUTH_MODE: 'supabase',
-        SUPABASE_PROJECT_REF: 'planner-test-project',
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
       projectService: new ProjectService(new MemoryProjectRepository()),

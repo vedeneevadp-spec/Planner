@@ -95,7 +95,7 @@ export function Sidebar() {
   const accountLabel =
     auth.email ??
     session?.actor.email ??
-    (auth.accessToken ? 'Supabase session' : null)
+    (auth.accessToken ? 'Chaotika session' : null)
   const mobilePrimaryNavigation = visibleNavigation.filter(
     (item) => item.to !== '/admin',
   )
@@ -618,7 +618,9 @@ export function Sidebar() {
                         <UserIcon size={18} strokeWidth={2.1} />
                       )}
                       <div className={styles.mobileInfoCopy}>
-                        <strong>{session?.actor.displayName ?? 'Профиль'}</strong>
+                        <strong>
+                          {session?.actor.displayName ?? 'Профиль'}
+                        </strong>
                         <span>{accountLabel}</span>
                       </div>
                     </div>

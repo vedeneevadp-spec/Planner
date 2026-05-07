@@ -49,14 +49,6 @@ npm run dev:api
 npm run dev
 ```
 
-Managed Supabase runtime:
-
-```bash
-cp .env.supabase.example .env.supabase.local
-npm run db:setup:supabase
-npm run dev:supabase
-```
-
 Что проверить:
 
 1. web открывается локально через Vite
@@ -90,21 +82,26 @@ npm run check
 ```
 
 Если релиз затрагивает backend schema, `npm run deploy:prod` сам миграции не
-запускает. Production schema нужно обновить отдельным шагом через текущий
-Supabase flow проекта, например после `supabase link`:
+запускает. Production schema нужно обновить отдельным осознанным шагом против
+целевого PostgreSQL:
 
 ```bash
-npm run db:migrate:supabase
+DATABASE_URL="postgres://..." npm run db:migrate
 ```
 
-или, если для конкретного изменения принят push-based flow:
+Для текущего production окружения это обычно безопаснее делать на VPS, чтобы
+использовать тот же сетевой контур и `/etc/planner/planner.env`:
 
 ```bash
-npm run db:push:supabase
+ssh root@147.45.158.186
+cd /opt/planner
+set -a
+. /etc/planner/planner.env
+set +a
+npm run db:migrate
 ```
 
-Этот шаг нужно делать осознанно и только против целевого production/staging
-проекта Supabase.
+Этот шаг нужно делать только против целевой production/staging базы.
 
 ## 3. Проверить production browser build и PWA локально
 

@@ -4,7 +4,6 @@ import { type Kysely, type Selectable, sql } from 'kysely'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
   type DatabaseExecutor,
-  isSupabasePoolerRuntimeEnvironment,
   withOptionalRls,
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
@@ -98,7 +97,9 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           return null
         }
 
-        const assetRows = await this.loadEmojiAssetRows(executor, [emojiSetRow.id])
+        const assetRows = await this.loadEmojiAssetRows(executor, [
+          emojiSetRow.id,
+        ])
 
         return this.mapEmojiSetRecord(emojiSetRow, assetRows)
       },
@@ -173,19 +174,13 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
 
         const emojiSet = insertedEmojiSet
           ? insertedEmojiSet
-          : await this.loadActiveEmojiSet(
-              trx,
-              emojiSetId,
-            )
+          : await this.loadActiveEmojiSet(trx, emojiSetId)
 
         if (!emojiSet) {
           throw new Error('Failed to create icon set record.')
         }
 
-        const assetRows = await this.loadEmojiAssetRows(
-          trx,
-          [emojiSet.id],
-        )
+        const assetRows = await this.loadEmojiAssetRows(trx, [emojiSet.id])
 
         return this.mapEmojiSetRecord(emojiSet, assetRows)
       },
@@ -248,10 +243,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           )
           .execute()
 
-        const assetRows = await this.loadEmojiAssetRows(
-          executor,
-          [emojiSet.id],
-        )
+        const assetRows = await this.loadEmojiAssetRows(executor, [emojiSet.id])
 
         return this.mapEmojiSetRecord(emojiSet, assetRows)
       },
@@ -260,7 +252,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
   }
 
   private shouldUsePoolerWriteFallback(): boolean {
-    return isSupabasePoolerRuntimeEnvironment(process.env)
+    return process.env.API_DB_WRITE_FALLBACK === 'pooler'
   }
 
   private executePoolerWriteStatement<T>(

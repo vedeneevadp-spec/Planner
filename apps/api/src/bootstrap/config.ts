@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs'
 
 import type { StorageDriver } from '@planner/contracts'
-import type { JSONWebKeySet } from 'jose'
 
-import type { SupabaseAuthRuntimeConfig } from '../infrastructure/auth/supabase-request-authenticator.js'
+import type { JwtAuthRuntimeConfig } from '../infrastructure/auth/jwt-request-authenticator.js'
+import type { PlannerAuthRuntimeConfig } from '../modules/auth/index.js'
 
-export type ApiAuthMode = 'disabled' | 'supabase'
+export type ApiAuthMode = 'disabled' | 'jwt'
 
 export interface FirebasePushConfig {
   clientEmail: string
@@ -20,8 +20,9 @@ export interface ApiConfig {
   firebasePush: FirebasePushConfig | null
   host: string
   iconAssetDirectory: string
+  jwtAuth: JwtAuthRuntimeConfig | null
+  plannerAuth: PlannerAuthRuntimeConfig | null
   port: number
-  supabaseAuth: SupabaseAuthRuntimeConfig | null
   storageDriver: StorageDriver
 }
 
@@ -65,8 +66,8 @@ function parseAuthMode(value: string | undefined): ApiAuthMode {
     return 'disabled'
   }
 
-  if (value === 'supabase') {
-    return 'supabase'
+  if (value === 'jwt') {
+    return 'jwt'
   }
 
   throw new Error(`Invalid API auth mode: ${value}`)
@@ -132,72 +133,100 @@ function createFirebasePushConfig(
   }
 }
 
-function resolveSupabaseProjectUrl(env: NodeJS.ProcessEnv): string | null {
-  const explicitUrl = env.SUPABASE_URL?.trim()
-
-  if (explicitUrl) {
-    return explicitUrl.replace(/\/$/, '')
-  }
-
-  const projectRef = env.SUPABASE_PROJECT_REF?.trim()
-
-  if (!projectRef) {
-    return null
-  }
-
-  return `https://${projectRef}.supabase.co`
-}
-
-function createSupabaseAuthConfig(
+function createJwtAuthConfig(
   env: NodeJS.ProcessEnv,
   authMode: ApiAuthMode,
-): SupabaseAuthRuntimeConfig | null {
-  if (authMode !== 'supabase') {
+): JwtAuthRuntimeConfig | null {
+  if (authMode !== 'jwt') {
     return null
   }
 
-  const projectUrl = resolveSupabaseProjectUrl(env)
+  const secret = env.AUTH_JWT_SECRET?.trim()
 
-  if (!projectUrl) {
+  if (!secret || secret.length < 32) {
     throw new Error(
-      'SUPABASE_URL or SUPABASE_PROJECT_REF must be configured when API_AUTH_MODE=supabase.',
+      'AUTH_JWT_SECRET with at least 32 characters must be configured when API_AUTH_MODE=jwt.',
     )
   }
 
   return {
-    issuer: `${projectUrl}/auth/v1`,
-    jwksJson: readSupabaseJwksJson(env),
-    jwksUrl: `${projectUrl}/auth/v1/.well-known/jwks.json`,
-    jwtSecret: env.SUPABASE_JWT_SECRET?.trim() || undefined,
-    projectUrl,
-    publishableKey:
-      env.SUPABASE_PUBLISHABLE_KEY?.trim() ||
-      env.SUPABASE_ANON_KEY?.trim() ||
-      undefined,
+    audience: env.AUTH_JWT_AUDIENCE?.trim() || 'authenticated',
+    issuer: env.AUTH_JWT_ISSUER?.trim() || 'planner-api',
+    secret,
   }
 }
 
-function readSupabaseJwksJson(
+function createPlannerAuthConfig(
   env: NodeJS.ProcessEnv,
-): JSONWebKeySet | undefined {
-  const jwksPath = env.SUPABASE_JWKS_PATH?.trim()
-
-  if (!jwksPath) {
-    return undefined
+  jwtAuth: JwtAuthRuntimeConfig | null,
+): PlannerAuthRuntimeConfig | null {
+  if (!jwtAuth) {
+    return null
   }
 
-  const value = JSON.parse(readFileSync(jwksPath, 'utf8')) as unknown
+  return {
+    accessTokenTtlSeconds: parsePositiveInteger(
+      env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
+      3600,
+      'AUTH_ACCESS_TOKEN_TTL_SECONDS',
+    ),
+    emailFrom: env.AUTH_EMAIL_FROM?.trim() || 'Chaotika <no-reply@chaotika.ru>',
+    jwt: jwtAuth,
+    passwordResetTtlSeconds: parsePositiveInteger(
+      env.AUTH_PASSWORD_RESET_TTL_SECONDS,
+      3600,
+      'AUTH_PASSWORD_RESET_TTL_SECONDS',
+    ),
+    publicAppUrl: (
+      env.AUTH_PUBLIC_APP_URL?.trim() || 'http://localhost:5173'
+    ).replace(/\/$/, ''),
+    refreshTokenTtlSeconds: parsePositiveInteger(
+      env.AUTH_REFRESH_TOKEN_TTL_SECONDS,
+      60 * 60 * 24 * 30,
+      'AUTH_REFRESH_TOKEN_TTL_SECONDS',
+    ),
+    smtp: createSmtpConfig(env),
+  }
+}
 
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    !Array.isArray((value as { keys?: unknown }).keys)
-  ) {
-    throw new Error('SUPABASE_JWKS_PATH must point to a JWKS JSON object.')
+function createSmtpConfig(
+  env: NodeJS.ProcessEnv,
+): PlannerAuthRuntimeConfig['smtp'] {
+  const host = env.AUTH_SMTP_HOST?.trim()
+
+  if (!host) {
+    return null
   }
 
-  return value as JSONWebKeySet
+  return {
+    host,
+    password: env.AUTH_SMTP_PASSWORD?.trim() || undefined,
+    port: parsePositiveInteger(env.AUTH_SMTP_PORT, 587, 'AUTH_SMTP_PORT'),
+    secure: parseBoolean(env.AUTH_SMTP_SECURE),
+    user: env.AUTH_SMTP_USER?.trim() || undefined,
+  }
+}
+
+function parseBoolean(value: string | undefined): boolean {
+  return typeof value === 'string' && /^(1|true|yes)$/i.test(value.trim())
+}
+
+function parsePositiveInteger(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+): number {
+  if (!value) {
+    return fallback
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid ${name}: ${value}`)
+  }
+
+  return parsed
 }
 
 export function createApiConfig(
@@ -205,6 +234,7 @@ export function createApiConfig(
 ): ApiConfig {
   const appEnv = env.NODE_ENV ?? 'development'
   const authMode = parseAuthMode(env.API_AUTH_MODE)
+  const jwtAuth = createJwtAuthConfig(env, authMode)
 
   return {
     appEnv,
@@ -213,8 +243,9 @@ export function createApiConfig(
     firebasePush: createFirebasePushConfig(env),
     host: env.API_HOST ?? '0.0.0.0',
     iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
+    jwtAuth,
+    plannerAuth: createPlannerAuthConfig(env, jwtAuth),
     port: parsePort(env.API_PORT ?? env.PORT),
-    supabaseAuth: createSupabaseAuthConfig(env, authMode),
     storageDriver: parseStorageDriver(env.API_STORAGE_DRIVER, appEnv),
   }
 }

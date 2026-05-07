@@ -1,4 +1,3 @@
-import type { Session } from '@supabase/supabase-js'
 import {
   type PropsWithChildren,
   useCallback,
@@ -10,6 +9,22 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import {
+  confirmPasswordReset,
+  isUnauthorizedAuthApiError,
+  refreshAuthSession,
+  requestPasswordReset as requestPasswordResetApi,
+  signInWithPassword as signInWithPasswordApi,
+  signOutAuthSession,
+  signUpWithPassword as signUpWithPasswordApi,
+  updatePassword as updatePasswordApi,
+} from '../lib/auth-api'
+import {
+  clearStoredAuthSession,
+  readStoredAuthSession,
+  type StoredAuthSession,
+  writeStoredAuthSession,
+} from '../lib/auth-session-storage'
 import { unregisterStoredNativePushDevice } from '../lib/native-push-notifications'
 import {
   addNativeAppStateChangeListener,
@@ -17,11 +32,6 @@ import {
   isNativeSessionPersistenceRuntime,
 } from '../lib/native-session-storage'
 import { clearCachedPlannerSession } from '../lib/planner-session-cache'
-import {
-  clearSupabaseBrowserAuthStorage,
-  getSupabaseBrowserClient,
-  readSupabaseStoredSession,
-} from '../lib/supabase-browser'
 import {
   clearLastActorUserId,
   clearSelectedWorkspaceId,
@@ -36,14 +46,18 @@ import {
 
 interface AuthSnapshot {
   email: string | null
+  expiresAt: string | null
   isLoading: boolean
+  refreshToken: string | null
   sessionAccessToken: string | null
   userId: string | null
 }
 
 const INITIAL_AUTH_SNAPSHOT: AuthSnapshot = {
   email: null,
+  expiresAt: null,
   isLoading: false,
+  refreshToken: null,
   sessionAccessToken: null,
   userId: null,
 }
@@ -53,25 +67,50 @@ const DEFAULT_EXPIRED_SESSION_MESSAGE =
 const ACCESS_TOKEN_EXPIRY_GRACE_MS = 30_000
 
 export function SessionProvider({ children }: PropsWithChildren) {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), [])
-  const isAuthEnabled = supabase !== null
+  const isAuthEnabled = plannerApiConfig.authProvider === 'planner'
   const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
-  const [isPasswordRecovery, setIsPasswordRecovery] = useState(
+  const refreshTimerRef = useRef<number | null>(null)
+  const [passwordResetToken, setPasswordResetToken] = useState<string | null>(
     () =>
-      typeof window !== 'undefined' && hasRecoveryUrlParams(window.location),
+      typeof window === 'undefined'
+        ? null
+        : readPasswordResetToken(window.location),
   )
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const [snapshot, setSnapshot] = useState<AuthSnapshot>({
     ...INITIAL_AUTH_SNAPSHOT,
     isLoading: isAuthEnabled,
   })
+  const isPasswordRecovery = passwordResetToken !== null
+
+  const clearRefreshTimer = useCallback(() => {
+    if (refreshTimerRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(refreshTimerRef.current)
+    refreshTimerRef.current = null
+  }, [])
+
+  const persistAuthSession = useCallback(
+    async (session: StoredAuthSession): Promise<void> => {
+      await writeStoredAuthSession(session)
+      setPasswordResetToken(null)
+      clearPasswordResetUrlParams()
+      setAuthNotice(null)
+      setSnapshot(toAuthSnapshot(session, false))
+    },
+    [],
+  )
 
   const clearAuthSession = useCallback(
     async (notice: string | false | null) => {
       const actorUserId = snapshot.userId ?? getLastActorUserId()
+      const refreshToken = snapshot.refreshToken
 
+      clearRefreshTimer()
       await unregisterStoredNativePushDevice({
         accessToken: snapshot.sessionAccessToken,
         actorUserId,
@@ -80,28 +119,32 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       pendingSignOutNoticeRef.current = notice
       setAuthNotice(notice === false ? null : notice)
-      setIsPasswordRecovery(false)
+      setPasswordResetToken(null)
       clearCachedPlannerSession(actorUserId)
       clearSelectedWorkspaceId(actorUserId)
       clearLastActorUserId()
+      await clearStoredAuthSession()
       setSnapshot({
         ...INITIAL_AUTH_SNAPSHOT,
         isLoading: false,
       })
 
-      if (!supabase) {
-        return
+      if (refreshToken) {
+        await signOutAuthSession({ refreshToken }).catch((error) => {
+          if (!isUnauthorizedAuthApiError(error)) {
+            console.error('Failed to revoke auth session.', error)
+          }
+        })
       }
 
-      const { error } = await supabase.auth.signOut()
-
-      if (error) {
-        console.error('Failed to clear Supabase session.', error)
-        await clearSupabaseBrowserAuthStorage()
-        pendingSignOutNoticeRef.current = null
-      }
+      pendingSignOutNoticeRef.current = null
     },
-    [snapshot.sessionAccessToken, snapshot.userId, supabase],
+    [
+      clearRefreshTimer,
+      snapshot.refreshToken,
+      snapshot.sessionAccessToken,
+      snapshot.userId,
+    ],
   )
 
   const keepDeviceSession = useCallback(
@@ -118,56 +161,47 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [],
   )
 
-  const keepStoredSession = useCallback(
-    async (error: unknown, logMessage: string) => {
-      if (!isRetryableSupabaseAuthError(error)) {
-        return null
-      }
-
-      const storedSession = await readSupabaseStoredSession()
-
-      if (!storedSession) {
-        return null
-      }
-
-      console.warn(logMessage, error)
-      setAuthNotice(null)
-      setSnapshot(toAuthSnapshot(storedSession, false))
-
-      return 'deferred' as const
-    },
-    [],
-  )
-
   const restoreSession =
     useCallback(async (): Promise<SessionRecoveryResult> => {
-      if (!supabase) {
+      if (!isAuthEnabled) {
         return 'signed_out'
       }
 
-      const { data, error } = await supabase.auth.getSession()
+      const storedSession = await readStoredAuthSession()
 
-      if (error) {
-        const deferredSession = await keepStoredSession(
-          error,
-          'Supabase session restore deferred.',
-        )
-
-        if (deferredSession) {
-          return deferredSession
-        }
-
-        return keepDeviceSession(
-          error,
-          'Supabase session restore deferred to device session.',
-        )
+      if (!storedSession) {
+        setSnapshot({
+          ...INITIAL_AUTH_SNAPSHOT,
+          isLoading: false,
+        })
+        return 'signed_out'
       }
 
-      setAuthNotice(null)
-      setSnapshot(toAuthSnapshot(data.session, false))
+      if (isAccessTokenUsable(storedSession.expiresAt)) {
+        setAuthNotice(null)
+        setSnapshot(toAuthSnapshot(storedSession, false))
+        return 'recovered'
+      }
 
-      return data.session ? 'recovered' : 'signed_out'
-    }, [keepDeviceSession, keepStoredSession, supabase])
+      try {
+        const refreshedSession = await refreshAuthSession({
+          refreshToken: storedSession.refreshToken,
+        })
+        await persistAuthSession(toStoredAuthSession(refreshedSession))
+
+        return 'recovered'
+      } catch (error) {
+        if (isRetryableAuthError(error)) {
+          return keepDeviceSession(
+            error,
+            'Auth session restore deferred to device session.',
+          )
+        }
+
+        await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
+        return 'signed_out'
+      }
+    }, [clearAuthSession, isAuthEnabled, keepDeviceSession, persistAuthSession])
 
   const clearAuthNotice = useCallback(() => {
     setAuthNotice(null)
@@ -182,7 +216,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
   const recoverSession =
     useCallback(async (): Promise<SessionRecoveryResult> => {
-      if (!supabase) {
+      if (!isAuthEnabled) {
         return 'signed_out'
       }
 
@@ -193,33 +227,30 @@ export function SessionProvider({ children }: PropsWithChildren) {
       const recovery = (async () => {
         setAuthNotice(null)
 
-        const { data, error } = await supabase.auth.refreshSession()
+        const storedSession = await readStoredAuthSession()
+        const refreshToken =
+          storedSession?.refreshToken ?? snapshot.refreshToken
 
-        if (error) {
-          const deferredSession = await keepStoredSession(
-            error,
-            'Supabase session refresh deferred.',
-          )
+        if (!refreshToken) {
+          return 'signed_out' as const
+        }
 
-          if (deferredSession) {
-            return deferredSession
+        try {
+          const refreshedSession = await refreshAuthSession({ refreshToken })
+          await persistAuthSession(toStoredAuthSession(refreshedSession))
+
+          return 'recovered' as const
+        } catch (error) {
+          if (isRetryableAuthError(error)) {
+            return keepDeviceSession(
+              error,
+              'Auth session refresh deferred to device session.',
+            )
           }
 
-          return keepDeviceSession(
-            error,
-            'Supabase session refresh deferred to device session.',
-          )
+          await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
+          return 'signed_out' as const
         }
-
-        if (!data.session) {
-          return keepDeviceSession(
-            new Error('Supabase refresh did not return a session.'),
-            'Supabase session refresh deferred to device session.',
-          )
-        }
-
-        setSnapshot(toAuthSnapshot(data.session, false))
-        return 'recovered' as const
       })().finally(() => {
         sessionRecoveryRef.current = null
       })
@@ -227,53 +258,43 @@ export function SessionProvider({ children }: PropsWithChildren) {
       sessionRecoveryRef.current = recovery
 
       return recovery
-    }, [keepDeviceSession, keepStoredSession, supabase])
+    }, [
+      clearAuthSession,
+      isAuthEnabled,
+      keepDeviceSession,
+      persistAuthSession,
+      snapshot.refreshToken,
+    ])
 
   useEffect(() => {
-    if (!supabase) {
+    if (!isAuthEnabled) {
       return
     }
 
-    const authClient = supabase
     let isActive = true
     let removeAppStateListener: (() => Promise<void>) | null = null
 
     async function syncNativeAppState(nextIsActive: boolean) {
-      if (!isNativeSessionRuntime) {
+      if (!isNativeSessionRuntime || !nextIsActive) {
         return
       }
 
-      if (nextIsActive) {
-        await authClient.auth.startAutoRefresh()
-        await restoreSession()
-        return
-      }
-
-      await authClient.auth.stopAutoRefresh()
+      await restoreSession()
     }
 
     async function bootstrapAuthSession() {
-      const storedSession = await readSupabaseStoredSession()
-
-      if (isActive && storedSession) {
-        setAuthNotice(null)
-        setSnapshot(toAuthSnapshot(storedSession, false))
-      }
-
       if (isNativeSessionRuntime) {
         const appIsActive = await getNativeAppIsActive().catch((error) => {
           console.warn('Failed to resolve native app state.', error)
           return true
         })
 
-        if (!isActive) {
+        if (!isActive || !appIsActive) {
+          setSnapshot((currentSnapshot) => ({
+            ...currentSnapshot,
+            isLoading: false,
+          }))
           return
-        }
-
-        if (appIsActive) {
-          await authClient.auth.startAutoRefresh()
-        } else {
-          await authClient.auth.stopAutoRefresh()
         }
       }
 
@@ -299,133 +320,69 @@ export function SessionProvider({ children }: PropsWithChildren) {
       })
     }
 
-    const {
-      data: { subscription },
-    } = authClient.auth.onAuthStateChange((event, session) => {
-      if (!isActive) {
-        return
-      }
-
-      if (event === 'PASSWORD_RECOVERY') {
-        setAuthNotice(null)
-        setIsPasswordRecovery(true)
-        clearSupabaseAuthUrlFragment()
-      } else if (event === 'SIGNED_OUT' || event === 'USER_UPDATED') {
-        setIsPasswordRecovery(false)
-      }
-
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setAuthNotice(null)
-      }
-
-      if (event === 'SIGNED_OUT') {
-        const pendingNotice = pendingSignOutNoticeRef.current
-        pendingSignOutNoticeRef.current = null
-        setAuthNotice(pendingNotice === false ? null : pendingNotice)
-      }
-
-      setSnapshot(toAuthSnapshot(session, false))
-    })
-
     return () => {
       isActive = false
-      subscription.unsubscribe()
 
       if (removeAppStateListener) {
         void removeAppStateListener()
       }
-
-      if (isNativeSessionRuntime) {
-        void authClient.auth.stopAutoRefresh()
-      }
     }
-  }, [isNativeSessionRuntime, restoreSession, supabase])
+  }, [isAuthEnabled, isNativeSessionRuntime, restoreSession])
 
-  const requestPasswordReset = useCallback(
-    async (email: string) => {
-      if (!supabase) {
-        throw new Error('Supabase browser auth is not configured.')
-      }
+  useEffect(() => {
+    clearRefreshTimer()
 
-      setAuthNotice(null)
+    if (!isAuthEnabled || !snapshot.expiresAt || !snapshot.refreshToken) {
+      return
+    }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
-      })
+    const refreshDelayMs = Math.max(
+      new Date(snapshot.expiresAt).getTime() -
+        Date.now() -
+        ACCESS_TOKEN_EXPIRY_GRACE_MS,
+      5_000,
+    )
 
-      if (error) {
-        throw error
-      }
-    },
-    [supabase],
-  )
+    refreshTimerRef.current = window.setTimeout(() => {
+      void recoverSession()
+    }, refreshDelayMs)
+
+    return clearRefreshTimer
+  }, [
+    clearRefreshTimer,
+    isAuthEnabled,
+    recoverSession,
+    snapshot.expiresAt,
+    snapshot.refreshToken,
+  ])
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    setAuthNotice(null)
+    await requestPasswordResetApi({ email })
+  }, [])
 
   const signInWithPassword = useCallback(
     async (email: string, password: string) => {
-      if (!supabase) {
-        throw new Error('Supabase browser auth is not configured.')
-      }
-
       setAuthNotice(null)
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
-      }
+      const session = await signInWithPasswordApi({ email, password })
+      await persistAuthSession(toStoredAuthSession(session))
     },
-    [supabase],
-  )
-
-  const signInWithOtp = useCallback(
-    async (email: string) => {
-      if (!supabase) {
-        throw new Error('Supabase browser auth is not configured.')
-      }
-
-      setAuthNotice(null)
-
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          emailRedirectTo: window.location.origin,
-        },
-      })
-
-      if (error) {
-        throw error
-      }
-    },
-    [supabase],
+    [persistAuthSession],
   )
 
   const signUpWithPassword = useCallback(
     async (input: PasswordSignUpInput) => {
-      if (!supabase) {
-        throw new Error('Supabase browser auth is not configured.')
-      }
-
       setAuthNotice(null)
 
-      const signUpOptions = createEmailSignUpOptions(input)
-      const { data, error } = await supabase.auth.signUp({
-        email: input.email,
-        options: signUpOptions,
-        password: input.password,
-      })
-
-      if (error) {
-        throw error
-      }
+      const session = await signUpWithPasswordApi(input)
+      await persistAuthSession(toStoredAuthSession(session))
 
       return {
-        requiresEmailConfirmation: data.session === null,
+        requiresEmailConfirmation: false,
       }
     },
-    [supabase],
+    [persistAuthSession],
   )
 
   const signOut = useCallback(async () => {
@@ -433,20 +390,37 @@ export function SessionProvider({ children }: PropsWithChildren) {
   }, [clearAuthSession])
 
   const updatePassword = useCallback(
-    async (password: string) => {
-      if (!supabase) {
-        throw new Error('Supabase browser auth is not configured.')
-      }
-
+    async (password: string, currentPassword?: string) => {
       setAuthNotice(null)
 
-      const { error } = await supabase.auth.updateUser({ password })
-
-      if (error) {
-        throw error
+      if (passwordResetToken) {
+        const session = await confirmPasswordReset({
+          password,
+          token: passwordResetToken,
+        })
+        await persistAuthSession(toStoredAuthSession(session))
+        return
       }
+
+      if (!snapshot.sessionAccessToken || !currentPassword) {
+        throw new Error('Current password is required.')
+      }
+
+      await updatePasswordApi(
+        {
+          currentPassword,
+          password,
+        },
+        snapshot.sessionAccessToken,
+      )
+      await recoverSession()
     },
-    [supabase],
+    [
+      passwordResetToken,
+      persistAuthSession,
+      recoverSession,
+      snapshot.sessionAccessToken,
+    ],
   )
 
   const value: SessionAuthState = useMemo(
@@ -463,7 +437,6 @@ export function SessionProvider({ children }: PropsWithChildren) {
       isPasswordRecovery,
       recoverSession,
       requestPasswordReset,
-      signInWithOtp,
       signInWithPassword,
       signOut,
       signUpWithPassword,
@@ -478,7 +451,6 @@ export function SessionProvider({ children }: PropsWithChildren) {
       isPasswordRecovery,
       recoverSession,
       requestPasswordReset,
-      signInWithOtp,
       signInWithPassword,
       signOut,
       signUpWithPassword,
@@ -497,8 +469,26 @@ export function SessionProvider({ children }: PropsWithChildren) {
   )
 }
 
+function toStoredAuthSession(session: {
+  accessToken: string
+  expiresAt: string
+  refreshToken: string
+  user: {
+    email: string
+    id: string
+  }
+}): StoredAuthSession {
+  return {
+    accessToken: session.accessToken,
+    email: session.user.email,
+    expiresAt: session.expiresAt,
+    refreshToken: session.refreshToken,
+    userId: session.user.id,
+  }
+}
+
 function toAuthSnapshot(
-  session: Session | null,
+  session: StoredAuthSession | null,
   isLoading: boolean,
 ): AuthSnapshot {
   if (!session) {
@@ -508,82 +498,51 @@ function toAuthSnapshot(
     }
   }
 
-  const sessionUser = session.user ?? null
-
   return {
-    email: sessionUser?.email ?? null,
+    email: session.email,
+    expiresAt: session.expiresAt,
     isLoading,
-    sessionAccessToken: getUsableSessionAccessToken(session),
-    userId: sessionUser?.id ?? null,
+    refreshToken: session.refreshToken,
+    sessionAccessToken: isAccessTokenUsable(session.expiresAt)
+      ? session.accessToken
+      : null,
+    userId: session.userId,
   }
 }
 
-function getUsableSessionAccessToken(session: Session): string | null {
-  if (!session.expires_at) {
-    return session.access_token
-  }
-
-  const expiresAtMs = session.expires_at * 1000
-
-  if (expiresAtMs <= Date.now() + ACCESS_TOKEN_EXPIRY_GRACE_MS) {
-    return null
-  }
-
-  return session.access_token
-}
-
-function createEmailSignUpOptions(input: PasswordSignUpInput) {
-  const normalizedDisplayName = input.displayName?.trim()
-
-  return {
-    ...(normalizedDisplayName
-      ? {
-          data: {
-            display_name: normalizedDisplayName,
-            name: normalizedDisplayName,
-          },
-        }
-      : {}),
-    emailRedirectTo: window.location.origin,
-  }
-}
-
-function hasRecoveryUrlParams(location: Location): boolean {
+function isAccessTokenUsable(expiresAt: string): boolean {
   return (
-    location.hash.includes('type=recovery') ||
-    location.search.includes('type=recovery')
+    new Date(expiresAt).getTime() > Date.now() + ACCESS_TOKEN_EXPIRY_GRACE_MS
   )
 }
 
-function clearSupabaseAuthUrlFragment() {
+function readPasswordResetToken(location: Location): string | null {
+  const searchToken = new URLSearchParams(location.search).get('reset_token')
+
+  if (searchToken) {
+    return searchToken
+  }
+
+  return new URLSearchParams(location.hash.replace(/^#/, '')).get('reset_token')
+}
+
+function clearPasswordResetUrlParams() {
   if (typeof window === 'undefined') {
     return
   }
 
-  if (!window.location.hash.includes('access_token')) {
+  if (
+    !window.location.search.includes('reset_token') &&
+    !window.location.hash.includes('reset_token')
+  ) {
     return
   }
 
-  window.history.replaceState(
-    {},
-    document.title,
-    `${window.location.pathname}${window.location.search}`,
-  )
+  window.history.replaceState({}, document.title, window.location.pathname)
 }
 
-function isRetryableSupabaseAuthError(error: unknown): boolean {
+function isRetryableAuthError(error: unknown): boolean {
   if (error instanceof DOMException || error instanceof TypeError) {
-    return true
-  }
-
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    'name' in error &&
-    (error.name === 'AuthRetryableFetchError' ||
-      error.name === 'NetworkError' ||
-      error.name === 'TimeoutError')
-  ) {
     return true
   }
 

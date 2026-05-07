@@ -24,12 +24,11 @@ export interface SessionAuthState {
   recoverSession: () => Promise<SessionRecoveryResult>
   requestPasswordReset: (email: string) => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
-  signInWithOtp: (email: string) => Promise<void>
   signUpWithPassword: (
     input: PasswordSignUpInput,
   ) => Promise<PasswordSignUpResult>
   signOut: () => Promise<void>
-  updatePassword: (password: string) => Promise<void>
+  updatePassword: (password: string, currentPassword?: string) => Promise<void>
   userId: string | null
 }
 

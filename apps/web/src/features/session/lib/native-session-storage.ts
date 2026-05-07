@@ -1,15 +1,20 @@
 import { App } from '@capacitor/app'
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
-import type { SupportedStorage } from '@supabase/supabase-js'
 
 const NATIVE_AUTH_STORAGE_PREFIX = 'planner.auth.'
+
+export interface AuthStorage {
+  getItem: (key: string) => Promise<string | null> | string | null
+  removeItem: (key: string) => Promise<void> | void
+  setItem: (key: string, value: string) => Promise<void> | void
+}
 
 export function isNativeSessionPersistenceRuntime(): boolean {
   return Capacitor.isNativePlatform()
 }
 
-export function createNativeSessionStorage(): SupportedStorage {
+export function createNativeSessionStorage(): AuthStorage {
   return {
     async getItem(key) {
       const { value } = await Preferences.get({

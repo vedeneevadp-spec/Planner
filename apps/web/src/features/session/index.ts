@@ -10,7 +10,6 @@ export {
   updateSharedWorkspace,
   updateUserProfile,
 } from './lib/session-api'
-export { getSupabaseBrowserClient } from './lib/supabase-browser'
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { useSessionAuth } from './lib/useSessionAuth'

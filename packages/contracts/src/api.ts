@@ -51,6 +51,53 @@ export const healthResponseSchema = z.object({
   timestamp: z.string(),
 })
 
+export const authEmailSchema = z.string().trim().toLowerCase().email().max(320)
+
+export const authPasswordSchema = z.string().min(6).max(128)
+
+export const authUserSchema = z.object({
+  email: authEmailSchema,
+  id: z.string().uuid(),
+})
+
+export const authTokenResponseSchema = z.object({
+  accessToken: z.string().min(1),
+  expiresAt: z.string(),
+  refreshToken: z.string().min(1),
+  user: authUserSchema,
+})
+
+export const authSignInInputSchema = z.object({
+  email: authEmailSchema,
+  password: z.string().min(1).max(128),
+})
+
+export const authSignUpInputSchema = z.object({
+  displayName: z.string().trim().min(1).max(80).optional(),
+  email: authEmailSchema,
+  password: authPasswordSchema,
+})
+
+export const authRefreshInputSchema = z.object({
+  refreshToken: z.string().min(1),
+})
+
+export const authSignOutInputSchema = authRefreshInputSchema
+
+export const authPasswordResetRequestInputSchema = z.object({
+  email: authEmailSchema,
+})
+
+export const authPasswordResetConfirmInputSchema = z.object({
+  password: authPasswordSchema,
+  token: z.string().min(1),
+})
+
+export const authPasswordUpdateInputSchema = z.object({
+  currentPassword: z.string().min(1).max(128),
+  password: authPasswordSchema,
+})
+
 export const taskRecordSchema = taskSchema.extend({
   workspaceId: z.string(),
   updatedAt: z.string(),
@@ -338,6 +385,21 @@ export type AdminUserRoleUpdateInput = z.infer<
   typeof adminUserRoleUpdateInputSchema
 >
 export type AppRole = z.infer<typeof appRoleSchema>
+export type AuthPasswordResetConfirmInput = z.infer<
+  typeof authPasswordResetConfirmInputSchema
+>
+export type AuthPasswordResetRequestInput = z.infer<
+  typeof authPasswordResetRequestInputSchema
+>
+export type AuthPasswordUpdateInput = z.infer<
+  typeof authPasswordUpdateInputSchema
+>
+export type AuthRefreshInput = z.infer<typeof authRefreshInputSchema>
+export type AuthSignInInput = z.infer<typeof authSignInInputSchema>
+export type AuthSignOutInput = z.infer<typeof authSignOutInputSchema>
+export type AuthSignUpInput = z.infer<typeof authSignUpInputSchema>
+export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>
+export type AuthUser = z.infer<typeof authUserSchema>
 export type AssignableAppRole = z.infer<typeof assignableAppRoleSchema>
 export type AssignableWorkspaceGroupRole = z.infer<
   typeof assignableWorkspaceGroupRoleSchema

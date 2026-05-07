@@ -9,6 +9,7 @@ import {
 
 const BASE_CONFIG: PlannerApiConfig = {
   apiBaseUrl: 'https://chaotika.ru',
+  authProvider: 'disabled',
 }
 
 describe('session bootstrap', () => {

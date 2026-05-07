@@ -9,16 +9,16 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import {
+  getRememberSessionPreference,
+  setRememberSessionPreference,
+} from '../lib/auth-session-storage'
 import { isNativeSessionPersistenceRuntime } from '../lib/native-session-storage'
 import {
   isUnauthorizedSessionApiError,
   SessionApiError,
 } from '../lib/session-api'
 import { canBootstrapPlannerSession } from '../lib/session-bootstrap'
-import {
-  getRememberSessionPreference,
-  setRememberSessionPreference,
-} from '../lib/supabase-browser'
 import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
 import styles from './AuthGate.module.css'
@@ -47,8 +47,7 @@ const AUTH_MODE_CONTENT: Record<
   },
   register: {
     copy: 'Зарегистрируйтесь и начните собирать свои дела, списки и планы в одном месте.',
-    helper:
-      'Если нужно подтверждение email, после регистрации придет письмо с инструкцией.',
+    helper: 'Аккаунт создается сразу и защищается паролем.',
     pendingLabel: 'Создаем аккаунт...',
     submitLabel: 'Создать аккаунт',
     title: 'Создайте аккаунт',
@@ -184,8 +183,8 @@ export function AuthGate({ children }: PropsWithChildren) {
         title="Сборка без настройки входа"
       >
         <p className={styles.errorBanner} role="alert">
-          Для мобильной сборки нужны VITE_SUPABASE_URL и
-          VITE_SUPABASE_PUBLISHABLE_KEY. Служебный режим возможен только через
+          Для входа через Chaotika Auth нужна настройка
+          VITE_AUTH_PROVIDER=planner. Служебный режим возможен только через
           VITE_API_ACCESS_TOKEN либо VITE_ACTOR_USER_ID вместе с
           VITE_WORKSPACE_ID.
         </p>
@@ -866,6 +865,30 @@ function getFriendlyAuthErrorMessage(
 ): string {
   if (error instanceof SessionApiError) {
     return getFriendlyPlannerSessionErrorMessage(error)
+  }
+
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 'auth_invalid_credentials'
+  ) {
+    return 'Неверный email или пароль.'
+  }
+
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 'auth_email_taken'
+  ) {
+    return 'Такой email уже зарегистрирован.'
+  }
+
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 'auth_password_reset_token_invalid'
+  ) {
+    return 'Ссылка восстановления устарела. Запросите письмо еще раз.'
   }
 
   const message = error instanceof Error ? error.message.toLowerCase() : ''

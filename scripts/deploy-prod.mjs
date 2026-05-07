@@ -218,10 +218,19 @@ chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.ic
 runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
 runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
 
+WEB_AUTH_PROVIDER="$(grep '^WEB_AUTH_PROVIDER=' /etc/planner/planner.env | cut -d= -f2- || true)"
+if [ -z "$WEB_AUTH_PROVIDER" ]; then
+  API_AUTH_MODE_VALUE="$(grep '^API_AUTH_MODE=' /etc/planner/planner.env | cut -d= -f2- || true)"
+  if [ "$API_AUTH_MODE_VALUE" = "jwt" ]; then
+    WEB_AUTH_PROVIDER="planner"
+  else
+    WEB_AUTH_PROVIDER="disabled"
+  fi
+fi
+
 runuser -u planner -- env \\
   VITE_API_BASE_URL=${shellQuote(`https://${config.domain}`)} \\
-  VITE_SUPABASE_URL="$(grep '^SUPABASE_URL=' /etc/planner/planner.env | cut -d= -f2-)" \\
-  VITE_SUPABASE_PUBLISHABLE_KEY="$(grep '^SUPABASE_PUBLISHABLE_KEY=' /etc/planner/planner.env | cut -d= -f2-)" \\
+  VITE_AUTH_PROVIDER="$WEB_AUTH_PROVIDER" \\
   npm run build
 
 cp ${shellQuote(`${config.remoteRoot}/deploy/systemd/planner-api.service`)} /etc/systemd/system/planner-api.service

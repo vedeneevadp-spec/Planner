@@ -11,7 +11,7 @@
 ## Ключевые принципы
 
 - backend остается единственной точкой чтения и записи; web не пишет напрямую в
-  Postgres/Supabase
+  Postgres
 - доступ проверяется в двух слоях: прикладные проверки в API и Postgres
   RLS, когда он включен
 - любой пользователь работает внутри конкретного `workspace`, выбранного в
@@ -318,12 +318,12 @@ personal workspace.
 1. Контракты:
    - `packages/contracts/src/api.ts`
 2. Миграции и DB-модель:
-   - `supabase/migrations/20260423_000015_shared_workspaces.sql`
-   - `supabase/migrations/20260427_000017_workspace_invitations.sql`
-   - `supabase/migrations/20260427_000018_workspace_group_roles_and_task_assignees.sql`
-   - `supabase/migrations/20260423_000014_workspace_roles_admin_users.sql`
-   - `supabase/migrations/20260424_000016_app_roles.sql`
-   - `supabase/migrations/20260416_000003_auth_rls_foundation.sql`
+   - `db/migrations/20260423_000015_shared_workspaces.sql`
+   - `db/migrations/20260427_000017_workspace_invitations.sql`
+   - `db/migrations/20260427_000018_workspace_group_roles_and_task_assignees.sql`
+   - `db/migrations/20260423_000014_workspace_roles_admin_users.sql`
+   - `db/migrations/20260424_000016_app_roles.sql`
+   - `db/migrations/20260416_000003_auth_rls_foundation.sql`
 3. Серверные проверки доступа и session flow:
    - `apps/api/src/shared/workspace-access.ts`
    - `apps/api/src/modules/session/session.service.ts`

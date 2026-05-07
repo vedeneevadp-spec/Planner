@@ -25,7 +25,6 @@ import type {
   TaskTemplate,
 } from '@/entities/task-template'
 import {
-  getSupabaseBrowserClient,
   isUnauthorizedSessionApiError,
   usePlannerSession,
   useSessionAuth,
@@ -943,38 +942,6 @@ export function usePlannerState(): PlannerState {
     }
   }, [syncTaskEventCursor, workspaceId])
 
-  useEffect(() => {
-    if (!workspaceId || !plannerApiConfig.supabaseRealtimeEnabled) {
-      return
-    }
-
-    const supabase = getSupabaseBrowserClient()
-
-    if (!supabase) {
-      return
-    }
-
-    const channel = supabase
-      .channel(`planner-task-events-${workspaceId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          filter: `workspace_id=eq.${workspaceId}`,
-          schema: 'app',
-          table: 'task_events',
-        },
-        () => {
-          void syncTaskEventCursor()
-        },
-      )
-      .subscribe()
-
-    return () => {
-      void supabase.removeChannel(channel)
-    }
-  }, [syncTaskEventCursor, workspaceId])
-
   const createProjectMutation = useMutation({
     mutationFn: (input: NewProjectInput) =>
       requirePlannerApi(plannerApi).createProject(input),
@@ -1112,14 +1079,11 @@ export function usePlannerState(): PlannerState {
 
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-      const optimisticTask = createOptimisticTaskRecord(
-        input,
-        {
-          authorDisplayName: session?.actor.displayName ?? null,
-          authorUserId: session?.actorUserId ?? null,
-          workspaceId: session?.workspaceId ?? 'pending',
-        },
-      )
+      const optimisticTask = createOptimisticTaskRecord(input, {
+        authorDisplayName: session?.actor.displayName ?? null,
+        authorUserId: session?.actorUserId ?? null,
+        workspaceId: session?.workspaceId ?? 'pending',
+      })
 
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => [
         optimisticTask,
@@ -1351,7 +1315,8 @@ export function usePlannerState(): PlannerState {
           plannedEndTime: normalizedSchedule.plannedEndTime,
           plannedStartTime: normalizedSchedule.plannedStartTime,
           remindBeforeStart:
-            normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+            normalizedSchedule.plannedDate &&
+            normalizedSchedule.plannedStartTime
               ? task.remindBeforeStart
               : undefined,
           updatedAt: now,

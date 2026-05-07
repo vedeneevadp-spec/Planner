@@ -1,35 +1,21 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import {
-  isSupabasePoolerRuntimeEnvironment,
-  resolveRlsStrategyForEnvironment,
-} from './db/rls.js'
+import { resolveRlsStrategyForEnvironment } from './db/rls.js'
 
 void describe('resolveRlsStrategyForEnvironment', () => {
-  void it('disables DB RLS context for Supabase pooler runtime by default', () => {
+  void it('uses transaction-local RLS by default', () => {
     const strategy = resolveRlsStrategyForEnvironment({
-      DATABASE_URL:
-        'postgres://user:password@aws-0-eu-west-1.pooler.supabase.com:6543/postgres',
+      DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
     } as NodeJS.ProcessEnv)
 
-    assert.equal(strategy, 'disabled')
-  })
-
-  void it('disables DB RLS context when the runtime url comes from the supabase env alias', () => {
-    const strategy = resolveRlsStrategyForEnvironment({
-      SUPABASE_RUNTIME_DATABASE_URL:
-        'postgres://user:password@aws-0-eu-west-1.pooler.supabase.com:6543/postgres',
-    } as NodeJS.ProcessEnv)
-
-    assert.equal(strategy, 'disabled')
+    assert.equal(strategy, 'transaction_local')
   })
 
   void it('allows explicit disabling regardless of database host', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       API_DB_RLS_MODE: 'disabled',
-      DATABASE_URL:
-        'postgres://user:password@aws-0-eu-west-1.pooler.supabase.com:6543/postgres',
+      DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
     } as NodeJS.ProcessEnv)
 
     assert.equal(strategy, 'disabled')
@@ -38,8 +24,7 @@ void describe('resolveRlsStrategyForEnvironment', () => {
   void it('allows forcing transaction-local RLS when the runtime supports it', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       API_DB_RLS_MODE: 'enabled',
-      DATABASE_URL:
-        'postgres://user:password@aws-0-eu-west-1.pooler.supabase.com:6543/postgres',
+      DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
     } as NodeJS.ProcessEnv)
 
     assert.equal(strategy, 'transaction_local')
@@ -52,24 +37,5 @@ void describe('resolveRlsStrategyForEnvironment', () => {
     } as NodeJS.ProcessEnv)
 
     assert.equal(strategy, 'session_connection')
-  })
-
-  void it('uses transaction-local RLS for non-pooler connections', () => {
-    const strategy = resolveRlsStrategyForEnvironment({
-      DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
-    } as NodeJS.ProcessEnv)
-
-    assert.equal(strategy, 'transaction_local')
-  })
-
-  void it('detects Supabase pooler runtime independently from RLS strategy', () => {
-    assert.equal(
-      isSupabasePoolerRuntimeEnvironment({
-        API_DB_RLS_MODE: 'disabled',
-        DATABASE_URL:
-          'postgres://user:password@aws-0-eu-west-1.pooler.supabase.com:6543/postgres',
-      } as NodeJS.ProcessEnv),
-      true,
-    )
   })
 })

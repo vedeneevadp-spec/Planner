@@ -83,32 +83,7 @@ function createPgPoolConfig(connectionString: string): PoolConfig {
     query_timeout: queryTimeout,
   }
 
-  if (!connectionString.includes('pooler.supabase.com')) {
-    return config
-  }
-
-  const url = new URL(connectionString)
-
-  url.searchParams.delete('sslmode')
-  url.searchParams.delete('uselibpqcompat')
-
-  return {
-    ...config,
-    connectionString: url.toString(),
-    idleTimeoutMillis: 5_000,
-    idle_in_transaction_session_timeout: 5_000,
-    keepAlive: false,
-    lock_timeout: 5_000,
-    max: readPositiveIntegerEnv('API_DB_POOL_MAX', 8),
-    maxUses: 1,
-    statement_timeout: readPositiveIntegerEnv(
-      'API_DB_STATEMENT_TIMEOUT_MS',
-      queryTimeout,
-    ),
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  }
+  return config
 }
 
 function readPositiveIntegerEnv(name: string, fallback: number): number {

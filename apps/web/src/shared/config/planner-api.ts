@@ -4,26 +4,13 @@ const LOCAL_DEVELOPMENT_DEFAULTS = {
   apiBaseUrl: 'http://127.0.0.1:3001',
 } as const
 
-const plannerApiConfigSchema = z
-  .object({
-    apiAccessToken: z.string().min(1).optional(),
-    actorUserIdOverride: z.string().min(1).optional(),
-    apiBaseUrl: z.string().url(),
-    supabasePublishableKey: z.string().min(1).optional(),
-    supabaseRealtimeEnabled: z.boolean().optional(),
-    supabaseUrl: z.string().url().optional(),
-    workspaceIdOverride: z.string().min(1).optional(),
-  })
-  .refine(
-    (value) =>
-      (Boolean(value.supabaseUrl) && Boolean(value.supabasePublishableKey)) ||
-      (!value.supabaseUrl && !value.supabasePublishableKey),
-    {
-      message:
-        'VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY must be configured together.',
-      path: ['supabaseUrl'],
-    },
-  )
+const plannerApiConfigSchema = z.object({
+  apiAccessToken: z.string().min(1).optional(),
+  actorUserIdOverride: z.string().min(1).optional(),
+  apiBaseUrl: z.string().url(),
+  authProvider: z.enum(['disabled', 'planner']),
+  workspaceIdOverride: z.string().min(1).optional(),
+})
 
 export type PlannerApiConfig = z.infer<typeof plannerApiConfigSchema>
 
@@ -35,10 +22,6 @@ function readOptionalEnvValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
-function readOptionalBooleanEnvValue(value: unknown): boolean {
-  return typeof value === 'string' && /^(1|true|yes)$/i.test(value.trim())
-}
-
 export const plannerApiConfig: PlannerApiConfig = plannerApiConfigSchema.parse({
   apiAccessToken: readOptionalEnvValue(import.meta.env.VITE_API_ACCESS_TOKEN),
   actorUserIdOverride: readOptionalEnvValue(import.meta.env.VITE_ACTOR_USER_ID),
@@ -46,30 +29,18 @@ export const plannerApiConfig: PlannerApiConfig = plannerApiConfigSchema.parse({
     import.meta.env.VITE_API_BASE_URL,
     LOCAL_DEVELOPMENT_DEFAULTS.apiBaseUrl,
   ),
-  supabasePublishableKey: readOptionalEnvValue(
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-  ),
-  supabaseRealtimeEnabled: readOptionalBooleanEnvValue(
-    import.meta.env.VITE_SUPABASE_REALTIME_ENABLED,
-  ),
-  supabaseUrl: readOptionalEnvValue(import.meta.env.VITE_SUPABASE_URL),
+  authProvider:
+    readOptionalEnvValue(import.meta.env.VITE_AUTH_PROVIDER) ?? 'disabled',
   workspaceIdOverride: readOptionalEnvValue(import.meta.env.VITE_WORKSPACE_ID),
 })
 
-export function hasSupabaseBrowserAuthConfig(
-  config: PlannerApiConfig,
-): config is PlannerApiConfig & {
-  supabasePublishableKey: string
-  supabaseUrl: string
-} {
-  return Boolean(config.supabaseUrl && config.supabasePublishableKey)
-}
-
-export function getPlannerSessionOverrideHeaders(options: {
-  accessToken?: string | undefined
-  actorUserId?: string | undefined
-  workspaceId?: string | undefined
-} = {}): HeadersInit | undefined {
+export function getPlannerSessionOverrideHeaders(
+  options: {
+    accessToken?: string | undefined
+    actorUserId?: string | undefined
+    workspaceId?: string | undefined
+  } = {},
+): HeadersInit | undefined {
   const headers: Record<string, string> = {}
 
   const resolvedAccessToken =

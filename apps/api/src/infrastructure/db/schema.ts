@@ -121,6 +121,41 @@ export interface AppUsersTable {
   version: Generated<number>
 }
 
+export interface AppAuthCredentialsTable {
+  created_at: Generated<TimestampColumn>
+  deleted_at: TimestampColumn | null
+  email: string
+  password_hash: string
+  password_updated_at: Generated<TimestampColumn>
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+  version: Generated<number>
+}
+
+export interface AppAuthRefreshTokensTable {
+  created_at: Generated<TimestampColumn>
+  expires_at: TimestampColumn
+  id: Generated<string>
+  ip_address: string | null
+  last_used_at: TimestampColumn | null
+  revoked_at: TimestampColumn | null
+  session_id: string
+  token_hash: string
+  user_agent: string | null
+  user_id: string
+}
+
+export interface AppAuthPasswordResetTokensTable {
+  created_at: Generated<TimestampColumn>
+  expires_at: TimestampColumn
+  id: Generated<string>
+  ip_address: string | null
+  token_hash: string
+  used_at: TimestampColumn | null
+  user_agent: string | null
+  user_id: string
+}
+
 export interface AppWorkspacesTable {
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null
@@ -327,6 +362,9 @@ export interface AppOutboxTable {
 }
 
 export interface DatabaseSchema {
+  'app.auth_credentials': AppAuthCredentialsTable
+  'app.auth_password_reset_tokens': AppAuthPasswordResetTokensTable
+  'app.auth_refresh_tokens': AppAuthRefreshTokensTable
   'app.chaos_inbox_items': AppChaosInboxItemsTable
   'app.device_sessions': AppDeviceSessionsTable
   'app.daily_plans': AppDailyPlansTable

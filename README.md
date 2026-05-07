@@ -1,7 +1,7 @@
 # Planner
 
 Monorepo для Planner/Chaotika: React-клиент, Fastify API, shared contracts и
-SQL-first схема Postgres/Supabase.
+SQL-first схема PostgreSQL.
 
 ## Стек
 
@@ -9,7 +9,7 @@ SQL-first схема Postgres/Supabase.
 - TypeScript strict mode
 - Fastify 5, Kysely, PostgreSQL
 - Timeweb Managed PostgreSQL как production data store
-- Supabase Auth/CLI как временный Auth/runtime tooling слой
+- Chaotika Auth: email/password, JWT, refresh tokens и password reset
 - TanStack Query и Dexie на клиенте
 - Vitest, Node test runner, ESLint, Prettier, Husky, lint-staged
 - GitHub Actions CI
@@ -36,57 +36,39 @@ npm run dev
 `npm run dev:api` поднимает API на `http://127.0.0.1:3001`, а `npm run dev`
 поднимает web через Vite. Значения для web можно взять из
 `apps/web/.env.example`; без `.env` клиент использует локальный API по
-умолчанию.
-
-Managed Supabase:
-
-```bash
-cp .env.supabase.example .env.supabase.local
-npm run db:setup:supabase
-npm run dev:supabase
-```
-
-`dev:supabase` запускает API и web вместе, подбирает свободные локальные порты и
-передает web Supabase Auth config из `.env.supabase.local`.
+умолчанию. Production runtime использует Timeweb PostgreSQL и Chaotika Auth.
 
 ## Основные скрипты
 
 Полный список находится в `package.json`.
 
-| Команда                                            | Назначение                                             |
-| -------------------------------------------------- | ------------------------------------------------------ |
-| `npm run dev` / `npm run start`                    | dev-сервер web-приложения                              |
-| `npm run preview`                                  | preview production-сборки web                          |
-| `npm run dev:supabase`                             | web + API поверх managed Supabase Postgres             |
-| `npm run dev:api`                                  | API в watch-режиме                                     |
-| `npm run dev:api:postgres`                         | API с локальным Docker Postgres                        |
-| `npm run dev:api:supabase`                         | API с `.env.supabase.local`                            |
-| `npm run start:api`                                | единичный запуск API                                   |
-| `npm run db:up` / `npm run db:down`                | поднять/остановить локальный Postgres                  |
-| `npm run db:migrate` / `npm run db:seed`           | применить миграции и dev seed локально                 |
-| `npm run db:setup`                                 | `db:up` + migrations + seed                            |
-| `npm run db:migrate:supabase`                      | применить SQL-миграции к Supabase Postgres             |
-| `npm run db:push:supabase`                         | выполнить `supabase db push` через локальный wrapper   |
-| `npm run db:seed:supabase`                         | загрузить seed в Supabase Postgres                     |
-| `npm run db:setup:supabase`                        | migrations + seed для Supabase                         |
-| `npm run supabase:login` / `npm run supabase:link` | CLI login/link через env                               |
-| `npm run outbox:run`                               | обработать одну пачку outbox-сообщений                 |
-| `npm run lint` / `npm run lint:fix`                | ESLint                                                 |
-| `npm run format:check` / `npm run format`          | Prettier                                               |
-| `npm run typecheck`                                | typecheck web, contracts и API                         |
-| `npm run test:web:run` / `npm run test:api`        | web/API тесты                                          |
-| `npm run test:run`                                 | web + API тесты                                        |
-| `npm run coverage`                                 | web coverage                                           |
-| `npm run build`                                    | production-сборка web                                  |
-| `npm run mobile:sync`                              | production build web + sync в `ios/` и `android/`      |
-| `npm run mobile:release -- --api-url=...`          | подготовить и при флагах собрать native release        |
-| `npm run mobile:release:rustore -- --api-url=...`  | собрать signed APK для RuStore                         |
-| `npm run mobile:assets`                            | пересобрать нативные icons/splash из `assets/logo.png` |
-| `npm run mobile:open:ios` / `mobile:open:android`  | открыть нативный проект в Xcode / Android Studio       |
-| `npm run mobile:doctor`                            | проверить состояние Capacitor toolchain                |
-| `npm run check`                                    | lint + typecheck + tests                               |
-| `npm run ci`                                       | локальный CI: check + build                            |
-| `npm run deploy:prod`                              | production deploy на текущий VPS                       |
+| Команда                                           | Назначение                                             |
+| ------------------------------------------------- | ------------------------------------------------------ |
+| `npm run dev` / `npm run start`                   | dev-сервер web-приложения                              |
+| `npm run preview`                                 | preview production-сборки web                          |
+| `npm run dev:api`                                 | API в watch-режиме                                     |
+| `npm run dev:api:postgres`                        | API с локальным Docker Postgres                        |
+| `npm run start:api`                               | единичный запуск API                                   |
+| `npm run db:up` / `npm run db:down`               | поднять/остановить локальный Postgres                  |
+| `npm run db:migrate` / `npm run db:seed`          | применить миграции и dev seed локально                 |
+| `npm run db:setup`                                | `db:up` + migrations + seed                            |
+| `npm run outbox:run`                              | обработать одну пачку outbox-сообщений                 |
+| `npm run lint` / `npm run lint:fix`               | ESLint                                                 |
+| `npm run format:check` / `npm run format`         | Prettier                                               |
+| `npm run typecheck`                               | typecheck web, contracts и API                         |
+| `npm run test:web:run` / `npm run test:api`       | web/API тесты                                          |
+| `npm run test:run`                                | web + API тесты                                        |
+| `npm run coverage`                                | web coverage                                           |
+| `npm run build`                                   | production-сборка web                                  |
+| `npm run mobile:sync`                             | production build web + sync в `ios/` и `android/`      |
+| `npm run mobile:release -- --api-url=...`         | подготовить и при флагах собрать native release        |
+| `npm run mobile:release:rustore -- --api-url=...` | собрать signed APK для RuStore                         |
+| `npm run mobile:assets`                           | пересобрать нативные icons/splash из `assets/logo.png` |
+| `npm run mobile:open:ios` / `mobile:open:android` | открыть нативный проект в Xcode / Android Studio       |
+| `npm run mobile:doctor`                           | проверить состояние Capacitor toolchain                |
+| `npm run check`                                   | lint + typecheck + tests                               |
+| `npm run ci`                                      | локальный CI: check + build                            |
+| `npm run deploy:prod`                             | production deploy на текущий VPS                       |
 
 ## Структура
 
@@ -96,12 +78,12 @@ apps/
   api/         Fastify API и backend-модули
 packages/
   contracts/   shared DTO, zod-схемы и API-контракты
-supabase/
-  migrations/  SQL-миграции Postgres/Supabase
+db/
+  migrations/  SQL-миграции PostgreSQL
 deploy/
   caddy/       production Caddyfile
   systemd/     production systemd unit для API
-scripts/       локальные, Supabase и deploy workflows
+scripts/       локальные DB, mobile и deploy workflows
 ```
 
 ## API Runtime
@@ -132,29 +114,26 @@ life-spheres API.
   разрешен только в тестах
 - `API_AUTH_MODE=disabled` - локальный legacy flow через
   `x-workspace-id`/`x-actor-user-id`
-- `API_AUTH_MODE=supabase` - bearer token из Supabase Auth, workspace передается
-  через `x-workspace-id`
+- `API_AUTH_MODE=jwt` - Chaotika Auth через email/password и собственные JWT
 - `API_DB_RLS_MODE` переопределяет RLS strategy:
   `disabled`, `enabled`, `transaction_local`, `session_connection`
-- Supabase transaction pooler runtime по умолчанию отключает DB RLS context,
+- по умолчанию backend передает DB RLS context через transaction-local settings;
   backend policies остаются обязательным первым уровнем защиты
 - `API_ICON_ASSET_DIR` задает локальное хранилище загруженных иконок
 - Android push через FCM включается, если API runtime видит либо
   `FIREBASE_SERVICE_ACCOUNT_PATH`, либо trio
   `FIREBASE_PROJECT_ID`/`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`
 
-Для managed Supabase runtime используйте `SUPABASE_RUNTIME_DATABASE_URL`; если
-он не задан, scripts берут fallback из `SUPABASE_DB_URL` или legacy
-`SUPABASE_SESSION_POOLER_URL`.
+Для production Timeweb PostgreSQL используйте обычный `DATABASE_URL` с
+`sslmode=require`.
 
 ## Web Runtime
 
-Web-клиент работает через backend HTTP API и не пишет напрямую в Supabase.
+Web-клиент работает через backend HTTP API и не пишет напрямую в Postgres.
 
 - server state хранится в TanStack Query
 - session резолвится через `GET /api/v1/session`
-- Supabase browser auth включается только если заданы
-  `VITE_SUPABASE_URL` и `VITE_SUPABASE_PUBLISHABLE_KEY`
+- Chaotika Auth включается через `VITE_AUTH_PROVIDER=planner`
 - `VITE_API_ACCESS_TOKEN` можно использовать для локальной разработки против
   authenticated backend runtime
 - `VITE_ACTOR_USER_ID` + `VITE_WORKSPACE_ID` принудительно задают legacy
@@ -165,9 +144,7 @@ Web-клиент работает через backend HTTP API и не пишет
   `task_version_conflict`, `project_version_conflict` и
   `life_sphere_version_conflict` остаются в конфликтном состоянии
 - cursor sync читает `/api/v1/task-events`, хранит последний event id локально и
-  инвалидирует query cache при новых событиях; polling включен по умолчанию,
-  legacy Supabase Realtime signal включается только через
-  `VITE_SUPABASE_REALTIME_ENABLED`
+  инвалидирует query cache при новых событиях; polling включен по умолчанию
 
 Текущие экраны: `/today`, `/timeline`, `/inbox`, `/spheres`,
 `/spheres/:sphereId`, `/admin`.
@@ -213,15 +190,15 @@ Web-клиент работает через backend HTTP API и не пишет
 Production-данные приложения живут в Timeweb Managed PostgreSQL, а backend
 остается единственной точкой чтения и записи для UI.
 
-- `supabase/migrations` - источник истины для SQL-схемы
-- Supabase Auth пока проверяется на backend boundary
-- Supabase Realtime остается optional legacy-сигналом; основной sync идет через
-  polling `/api/v1/task-events` и backend API
+- `db/migrations` - источник истины для SQL-схемы
+- Auth полностью обслуживается backend: email/password, JWT, refresh tokens и
+  password reset
+- основной sync идет через polling `/api/v1/task-events` и backend API
 - Storage подготовлен приватным bucket `task-attachments`; UI не пишет туда
   напрямую
-- PGMQ/pg_cron hooks активируются условно в managed Supabase migrations
+- PGMQ/pg_cron hooks активируются условно при наличии расширений в PostgreSQL
 - иконки emoji library сейчас хранятся локально через API в
-  `API_ICON_ASSET_DIR`, а не в Supabase Storage
+  `API_ICON_ASSET_DIR`, а не во внешнем storage
 
 ## Production Deploy
 

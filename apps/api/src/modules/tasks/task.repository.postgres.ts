@@ -5,7 +5,6 @@ import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
   type DatabaseExecutor,
-  isSupabasePoolerRuntimeEnvironment,
   withOptionalRls,
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
@@ -120,13 +119,21 @@ export class PostgresTaskRepository implements TaskRepository {
           return null
         }
 
-        const [timeBlock, projectTitle, assigneeDisplayName, authorDisplayName] =
-          await Promise.all([
-            this.loadPrimaryTimeBlock(executor, context.workspaceId, taskId),
-            this.loadProjectTitle(executor, context.workspaceId, taskRow.project_id),
-            this.loadAssigneeDisplayName(executor, taskRow.assignee_user_id),
-            this.loadUserDisplayName(executor, taskRow.created_by),
-          ])
+        const [
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+          authorDisplayName,
+        ] = await Promise.all([
+          this.loadPrimaryTimeBlock(executor, context.workspaceId, taskId),
+          this.loadProjectTitle(
+            executor,
+            context.workspaceId,
+            taskRow.project_id,
+          ),
+          this.loadAssigneeDisplayName(executor, taskRow.assignee_user_id),
+          this.loadUserDisplayName(executor, taskRow.created_by),
+        ])
 
         return this.mapTaskRecord(
           taskRow,
@@ -841,7 +848,7 @@ export class PostgresTaskRepository implements TaskRepository {
     authContext: AuthenticatedRequestContext | null,
   ): authContext is AuthenticatedRequestContext {
     return (
-      authContext !== null && isSupabasePoolerRuntimeEnvironment(process.env)
+      authContext !== null && process.env.API_DB_WRITE_FALLBACK === 'pooler'
     )
   }
 
@@ -1947,7 +1954,10 @@ export class PostgresTaskRepository implements TaskRepository {
     executor: DatabaseExecutor,
     taskRows: TaskRow[],
   ): Promise<Map<string, string>> {
-    const assigneeUserIds = getDistinctTaskUserIds(taskRows, (taskRow) => taskRow.assignee_user_id)
+    const assigneeUserIds = getDistinctTaskUserIds(
+      taskRows,
+      (taskRow) => taskRow.assignee_user_id,
+    )
 
     if (assigneeUserIds.length === 0) {
       return new Map()
@@ -1960,7 +1970,10 @@ export class PostgresTaskRepository implements TaskRepository {
     executor: DatabaseExecutor,
     taskRows: TaskRow[],
   ): Promise<Map<string, string>> {
-    const authorUserIds = getDistinctTaskUserIds(taskRows, (taskRow) => taskRow.created_by)
+    const authorUserIds = getDistinctTaskUserIds(
+      taskRows,
+      (taskRow) => taskRow.created_by,
+    )
 
     if (authorUserIds.length === 0) {
       return new Map()
@@ -2091,10 +2104,7 @@ export class PostgresTaskRepository implements TaskRepository {
     return executor
       .selectFrom('app.workspace_members as membership')
       .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
-      .select([
-        'actor.display_name as displayName',
-        'actor.id as id',
-      ])
+      .select(['actor.display_name as displayName', 'actor.id as id'])
       .where('membership.workspace_id', '=', workspaceId)
       .where('membership.user_id', '=', assigneeUserId)
       .where('membership.deleted_at', 'is', null)
@@ -2283,9 +2293,7 @@ export class PostgresTaskRepository implements TaskRepository {
       : DEFAULT_TASK_IMPORTANCE
   }
 
-  private readTaskRemindBeforeStart(
-    metadata: JsonObject,
-  ): true | undefined {
+  private readTaskRemindBeforeStart(metadata: JsonObject): true | undefined {
     return metadata[TASK_REMIND_BEFORE_START_KEY] === true ? true : undefined
   }
 

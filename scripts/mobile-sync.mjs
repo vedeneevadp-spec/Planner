@@ -1,8 +1,8 @@
 import path from 'node:path'
 import process from 'node:process'
 
+import { npmCommand, npxCommand, runCommand } from './command-utils.mjs'
 import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
-import { npmCommand, npxCommand, runCommand } from './supabase-utils.mjs'
 
 const [targetPlatform] = process.argv.slice(2)
 
