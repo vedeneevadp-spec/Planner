@@ -10,6 +10,7 @@ const plannerApiConfigSchema = z
     actorUserIdOverride: z.string().min(1).optional(),
     apiBaseUrl: z.string().url(),
     supabasePublishableKey: z.string().min(1).optional(),
+    supabaseRealtimeEnabled: z.boolean().optional(),
     supabaseUrl: z.string().url().optional(),
     workspaceIdOverride: z.string().min(1).optional(),
   })
@@ -34,6 +35,10 @@ function readOptionalEnvValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined
 }
 
+function readOptionalBooleanEnvValue(value: unknown): boolean {
+  return typeof value === 'string' && /^(1|true|yes)$/i.test(value.trim())
+}
+
 export const plannerApiConfig: PlannerApiConfig = plannerApiConfigSchema.parse({
   apiAccessToken: readOptionalEnvValue(import.meta.env.VITE_API_ACCESS_TOKEN),
   actorUserIdOverride: readOptionalEnvValue(import.meta.env.VITE_ACTOR_USER_ID),
@@ -43,6 +48,9 @@ export const plannerApiConfig: PlannerApiConfig = plannerApiConfigSchema.parse({
   ),
   supabasePublishableKey: readOptionalEnvValue(
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  ),
+  supabaseRealtimeEnabled: readOptionalBooleanEnvValue(
+    import.meta.env.VITE_SUPABASE_REALTIME_ENABLED,
   ),
   supabaseUrl: readOptionalEnvValue(import.meta.env.VITE_SUPABASE_URL),
   workspaceIdOverride: readOptionalEnvValue(import.meta.env.VITE_WORKSPACE_ID),

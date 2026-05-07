@@ -102,6 +102,8 @@ interface RemoveTaskMutationVariables {
   taskId: string
 }
 
+const TASK_EVENT_POLL_INTERVAL_MS = 15_000
+
 class PlannerApiUnavailableError extends Error {
   constructor() {
     super('Planner session is not ready.')
@@ -914,6 +916,35 @@ export function usePlannerState(): PlannerState {
 
   useEffect(() => {
     if (!workspaceId) {
+      return
+    }
+
+    void syncTaskEventCursor()
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') {
+        return
+      }
+
+      void syncTaskEventCursor()
+    }, TASK_EVENT_POLL_INTERVAL_MS)
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+        void syncTaskEventCursor()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [syncTaskEventCursor, workspaceId])
+
+  useEffect(() => {
+    if (!workspaceId || !plannerApiConfig.supabaseRealtimeEnabled) {
       return
     }
 

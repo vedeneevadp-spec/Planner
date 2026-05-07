@@ -8,7 +8,8 @@ SQL-first схема Postgres/Supabase.
 - React 19, React Router 7, Vite 8
 - TypeScript strict mode
 - Fastify 5, Kysely, PostgreSQL
-- Supabase Auth/Realtime/CLI как managed platform вокруг Postgres
+- Timeweb Managed PostgreSQL как production data store
+- Supabase Auth/CLI как временный Auth/runtime tooling слой
 - TanStack Query и Dexie на клиенте
 - Vitest, Node test runner, ESLint, Prettier, Husky, lint-staged
 - GitHub Actions CI
@@ -164,7 +165,9 @@ Web-клиент работает через backend HTTP API и не пишет
   `task_version_conflict`, `project_version_conflict` и
   `life_sphere_version_conflict` остаются в конфликтном состоянии
 - cursor sync читает `/api/v1/task-events`, хранит последний event id локально и
-  инвалидирует query cache при новых событиях
+  инвалидирует query cache при новых событиях; polling включен по умолчанию,
+  legacy Supabase Realtime signal включается только через
+  `VITE_SUPABASE_REALTIME_ENABLED`
 
 Текущие экраны: `/today`, `/timeline`, `/inbox`, `/spheres`,
 `/spheres/:sphereId`, `/admin`.
@@ -205,15 +208,15 @@ Web-клиент работает через backend HTTP API и не пишет
 - Android-клиент сам регистрирует FCM token после входа в приложение и может
   принимать тестовый push через `POST /api/v1/push/test`
 
-## Supabase Platform
+## Production Data Platform
 
-Supabase используется как managed platform, но backend остается единственной
-точкой чтения и записи для UI.
+Production-данные приложения живут в Timeweb Managed PostgreSQL, а backend
+остается единственной точкой чтения и записи для UI.
 
 - `supabase/migrations` - источник истины для SQL-схемы
-- Supabase Auth проверяется на backend boundary
-- Realtime notification используется как сигнал для последующей синхронизации
-  через backend API
+- Supabase Auth пока проверяется на backend boundary
+- Supabase Realtime остается optional legacy-сигналом; основной sync идет через
+  polling `/api/v1/task-events` и backend API
 - Storage подготовлен приватным bucket `task-attachments`; UI не пишет туда
   напрямую
 - PGMQ/pg_cron hooks активируются условно в managed Supabase migrations

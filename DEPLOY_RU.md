@@ -5,6 +5,7 @@
 ```text
 Домен: chaotika.ru
 VPS: 147.45.158.186
+Database: Timeweb Managed PostgreSQL `Brainy Amalthea`
 Локальный проект: /Users/daryavedeneeva/ Projects  /Planner
 Production root: /opt/planner
 Production env: /etc/planner/planner.env
@@ -17,8 +18,12 @@ Icon assets: /var/lib/planner/icon-assets
 ## Что важно
 
 - Web-сайт и API живут на VPS за Caddy.
-- База и auth в текущей production-конфигурации остаются в managed Supabase.
+- База приложения живет в Timeweb Managed PostgreSQL.
+- Supabase пока используется только для Auth/JWT, но не как production data
+  store.
 - UI не ходит в Postgres напрямую: все чтение и запись идут через backend API.
+- Supabase Realtime не является production dependency; web синхронизируется
+  через `/api/v1/task-events`.
 - Загруженные иконки emoji library хранятся в локальной папке API:
   `/var/lib/planner/icon-assets`.
 - Повторные выкладки выполняются локально командой `npm run deploy:prod`.
@@ -118,20 +123,26 @@ API_HOST=127.0.0.1
 API_PORT=3001
 API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost
 API_ICON_ASSET_DIR=/var/lib/planner/icon-assets
-DATABASE_URL=<resolved SUPABASE_RUNTIME_DATABASE_URL>
+DATABASE_URL=<Timeweb Managed PostgreSQL URL>
 SUPABASE_URL=<https://project-ref.supabase.co>
 SUPABASE_PUBLISHABLE_KEY=<sb_publishable_...>
 SUPABASE_JWT_SECRET=
 FIREBASE_SERVICE_ACCOUNT_PATH=/etc/planner/firebase-service-account.json
 ```
 
-Чтобы быстро получить готовый текст из локального `.env.supabase.local`, на Mac
-можно выполнить:
+`DATABASE_URL` должен указывать на Timeweb PostgreSQL, например:
 
-```bash
-cd "/Users/daryavedeneeva/ Projects  /Planner"
-node --env-file=.env.supabase.local --input-type=module -e 'import { getSupabaseRuntimeDatabaseUrl } from "./scripts/supabase-utils.mjs"; console.log(["NODE_ENV=production","API_AUTH_MODE=supabase","API_STORAGE_DRIVER=postgres","API_DB_RLS_MODE=disabled","API_HOST=127.0.0.1","API_PORT=3001","API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost","API_ICON_ASSET_DIR=/var/lib/planner/icon-assets","DATABASE_URL=" + getSupabaseRuntimeDatabaseUrl(),"SUPABASE_URL=" + process.env.SUPABASE_URL,"SUPABASE_PUBLISHABLE_KEY=" + process.env.SUPABASE_PUBLISHABLE_KEY,"SUPABASE_JWT_SECRET=" + (process.env.SUPABASE_JWT_SECRET ?? ""),"FIREBASE_SERVICE_ACCOUNT_PATH=/etc/planner/firebase-service-account.json"].join("\n"))'
+```text
+postgresql://gen_user:<password>@<public-db-host>:5432/default_db?sslmode=require&uselibpqcompat=true
 ```
+
+Timeweb firewall для Managed PostgreSQL должен разрешать входящий `TCP 5432`
+только с production VPS `147.45.158.186/32`. Если база недоступна по публичному
+адресу, production VPS должен быть подключен к той же приватной сети, что и
+кластер PostgreSQL.
+
+Для Supabase Auth значения `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` и при
+наличии `SUPABASE_JWT_SECRET` остаются из Supabase project settings.
 
 На сервере создать файл:
 
