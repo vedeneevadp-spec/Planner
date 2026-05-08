@@ -1,5 +1,5 @@
 import type { FastifyRequest } from 'fastify'
-import { errors as joseErrors, type JWTPayload,jwtVerify } from 'jose'
+import { errors as joseErrors, type JWTPayload, jwtVerify } from 'jose'
 import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -53,6 +53,7 @@ export class JwtRequestAuthenticator implements RequestAuthenticator {
   ): Promise<AuthenticatedRequestClaims> {
     try {
       const { payload } = await jwtVerify(accessToken, this.secretKey, {
+        algorithms: ['HS256'],
         audience: this.config.audience,
         issuer: this.config.issuer,
       })
@@ -113,6 +114,7 @@ function invalidAccessTokenError(): HttpError {
 function isJoseAuthError(error: unknown): boolean {
   return (
     error instanceof joseErrors.JWTExpired ||
+    error instanceof joseErrors.JOSEAlgNotAllowed ||
     error instanceof joseErrors.JWTInvalid ||
     error instanceof joseErrors.JWSInvalid ||
     error instanceof joseErrors.JWSSignatureVerificationFailed

@@ -891,6 +891,14 @@ function getFriendlyAuthErrorMessage(
     return 'Ссылка восстановления устарела. Запросите письмо еще раз.'
   }
 
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 'auth_invalid_credentials'
+  ) {
+    return 'Неверный email или пароль.'
+  }
+
   const message = error instanceof Error ? error.message.toLowerCase() : ''
 
   if (message.includes('invalid login credentials')) {

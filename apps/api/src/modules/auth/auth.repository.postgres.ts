@@ -1,6 +1,6 @@
 import { generateUuidV7 } from '@planner/contracts'
-import type { Selectable } from 'kysely'
 import type { Kysely } from 'kysely'
+import { type Selectable,sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { DatabaseExecutor } from '../../infrastructure/db/rls.js'
@@ -134,7 +134,10 @@ export class PostgresAuthRepository implements AuthRepository {
   }
 
   async createRefreshToken(command: CreateRefreshTokenCommand): Promise<void> {
-    await this.insertRefreshToken(this.db, command)
+    await this.db.transaction().execute(async (trx) => {
+      await useFastAuthTokenCommit(trx)
+      await this.insertRefreshToken(trx, command)
+    })
   }
 
   async rotateRefreshToken(
@@ -142,6 +145,8 @@ export class PostgresAuthRepository implements AuthRepository {
     nextRefreshToken: CreateRefreshTokenPayload,
   ): Promise<AuthSessionTokenRecord | null> {
     return this.db.transaction().execute(async (trx) => {
+      await useFastAuthTokenCommit(trx)
+
       const currentToken = await trx
         .selectFrom('app.auth_refresh_tokens as token')
         .innerJoin('app.users as user', 'user.id', 'token.user_id')
@@ -210,6 +215,8 @@ export class PostgresAuthRepository implements AuthRepository {
     command: CreatePasswordResetTokenCommand,
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
+      await useFastAuthTokenCommit(trx)
+
       await trx
         .updateTable('app.auth_password_reset_tokens')
         .set({
@@ -237,6 +244,8 @@ export class PostgresAuthRepository implements AuthRepository {
     command: CompletePasswordResetCommand,
   ): Promise<AuthSessionTokenRecord | null> {
     return this.db.transaction().execute(async (trx) => {
+      await useFastAuthTokenCommit(trx)
+
       const resetToken = await trx
         .selectFrom('app.auth_password_reset_tokens as token')
         .innerJoin('app.users as user', 'user.id', 'token.user_id')
@@ -392,6 +401,12 @@ function mapAuthUserRow(row: AuthUserRow): AuthUserRecord {
     email: row.email,
     id: row.id,
   }
+}
+
+async function useFastAuthTokenCommit(
+  executor: DatabaseExecutor,
+): Promise<void> {
+  await sql`set local synchronous_commit = off`.execute(executor)
 }
 
 function normalizeEmail(email: string): string {

@@ -79,8 +79,16 @@ function createPgPoolConfig(connectionString: string): PoolConfig {
   const config: PoolConfig = {
     connectionTimeoutMillis,
     connectionString,
+    idle_in_transaction_session_timeout: readPositiveIntegerEnv(
+      'API_DB_IDLE_TRANSACTION_TIMEOUT_MS',
+      30_000,
+    ),
     keepAlive: true,
     query_timeout: queryTimeout,
+    statement_timeout: readPositiveIntegerEnv(
+      'API_DB_STATEMENT_TIMEOUT_MS',
+      Math.max(queryTimeout - 1_000, 1_000),
+    ),
   }
 
   return config
