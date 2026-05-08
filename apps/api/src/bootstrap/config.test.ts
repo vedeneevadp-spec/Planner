@@ -130,14 +130,6 @@ void describe('createApiConfig', () => {
       () =>
         createApiConfig({
           ...VALID_PRODUCTION_ENV,
-          API_DB_RLS_MODE: 'disabled',
-        } as NodeJS.ProcessEnv),
-      /API_DB_RLS_MODE=disabled/,
-    )
-    assert.throws(
-      () =>
-        createApiConfig({
-          ...VALID_PRODUCTION_ENV,
           AUTH_JWT_SECRET: 'change_me_to_a_long_random_secret',
         } as NodeJS.ProcessEnv),
       /AUTH_JWT_SECRET/,

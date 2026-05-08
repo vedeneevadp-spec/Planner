@@ -123,6 +123,8 @@ export function registerOAuthRoutes(
       const redirectUrl = new URL(parsedForm.data.redirect_uri)
 
       redirectUrl.searchParams.set('code', code)
+      redirectUrl.searchParams.set('client_id', parsedForm.data.client_id)
+      redirectUrl.searchParams.set('scope', parsedForm.data.scope)
 
       if (parsedForm.data.state) {
         redirectUrl.searchParams.set('state', parsedForm.data.state)

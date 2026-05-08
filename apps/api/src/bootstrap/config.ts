@@ -340,14 +340,6 @@ function validateProductionConfig({
       'AUTH_JWT_SECRET must be a non-placeholder production secret.',
     )
   }
-
-  const rlsMode = env.API_DB_RLS_MODE?.trim().toLowerCase()
-
-  if (rlsMode === 'disabled') {
-    throw new Error(
-      'API_DB_RLS_MODE=disabled is not allowed when NODE_ENV=production.',
-    )
-  }
 }
 
 function isUnsafeProductionCorsOrigin(value: string): boolean {

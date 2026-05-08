@@ -89,6 +89,8 @@ void describe('OAuth routes', () => {
     const code = redirectUrl.searchParams.get('code')
 
     assert.equal(redirectUrl.origin + redirectUrl.pathname, ALICE_REDIRECT_URI)
+    assert.equal(redirectUrl.searchParams.get('client_id'), ALICE_CLIENT_ID)
+    assert.equal(redirectUrl.searchParams.get('scope'), 'tasks shopping')
     assert.equal(redirectUrl.searchParams.get('state'), 'yandex-state')
 
     if (!code) {

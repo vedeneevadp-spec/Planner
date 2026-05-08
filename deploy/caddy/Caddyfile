@@ -13,7 +13,7 @@ chaotika.ru {
   }
 
   header {
-    Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self' https://social.yandex.net https://social.yandex.ru; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
     X-Content-Type-Options nosniff
     X-Frame-Options DENY
