@@ -58,6 +58,70 @@ export class AuthService {
     return this.createSession(credential, metadata)
   }
 
+  async createOAuthAuthorizationCode(
+    input: {
+      clientId: string
+      email: string
+      expiresAt: Date
+      password: string
+      redirectUri: string
+      scope: string
+    },
+    metadata: AuthRequestMetadata,
+  ): Promise<string> {
+    const credential = await this.repository.findCredentialByEmail(input.email)
+
+    if (
+      !credential ||
+      !(await verifyPassword(input.password, credential.passwordHash))
+    ) {
+      throw invalidCredentialsError()
+    }
+
+    const code = createOpaqueToken()
+
+    await this.repository.createOAuthAuthorizationCode({
+      clientId: input.clientId,
+      codeHash: hashOpaqueToken(code),
+      expiresAt: input.expiresAt,
+      metadata,
+      redirectUri: input.redirectUri,
+      scope: input.scope,
+      userId: credential.id,
+    })
+
+    return code
+  }
+
+  async exchangeOAuthAuthorizationCode(
+    input: {
+      clientId: string
+      code: string
+      redirectUri: string
+    },
+    metadata: AuthRequestMetadata,
+  ): Promise<AuthTokenResponse> {
+    const refreshToken = createOpaqueToken()
+    const sessionId = generateUuidV7()
+    const user = await this.repository.exchangeOAuthAuthorizationCode({
+      clientId: input.clientId,
+      codeHash: hashOpaqueToken(input.code),
+      redirectUri: input.redirectUri,
+      refreshToken: {
+        expiresAt: this.createRefreshTokenExpiresAt(),
+        metadata,
+        refreshTokenHash: hashOpaqueToken(refreshToken),
+        sessionId,
+      },
+    })
+
+    if (!user) {
+      throw invalidOAuthGrantError()
+    }
+
+    return this.createTokenResponse(user, refreshToken, user.sessionId)
+  }
+
   async signUp(
     input: { displayName?: string; email: string; password: string },
     metadata: AuthRequestMetadata,
@@ -350,5 +414,13 @@ function invalidRefreshTokenError(): HttpError {
     401,
     'auth_refresh_token_invalid',
     'Refresh token is invalid or expired.',
+  )
+}
+
+function invalidOAuthGrantError(): HttpError {
+  return new HttpError(
+    400,
+    'oauth_invalid_grant',
+    'Authorization code is invalid, expired, or already used.',
   )
 }

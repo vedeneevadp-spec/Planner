@@ -73,7 +73,11 @@ export async function resolvePlannerSession(
   const payload = (await response.json()) as unknown
 
   if (!response.ok) {
-    throwSessionApiError(response, payload, 'Failed to resolve planner session.')
+    throwSessionApiError(
+      response,
+      payload,
+      'Failed to resolve planner session.',
+    )
   }
 
   return resolveSessionAssetUrls(sessionResponseSchema.parse(payload))

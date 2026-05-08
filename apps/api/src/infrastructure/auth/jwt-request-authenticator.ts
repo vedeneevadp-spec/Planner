@@ -23,11 +23,7 @@ export interface JwtAuthRuntimeConfig {
 }
 
 export class JwtRequestAuthenticator implements RequestAuthenticator {
-  private readonly secretKey: Uint8Array
-
-  constructor(private readonly config: JwtAuthRuntimeConfig) {
-    this.secretKey = new TextEncoder().encode(config.secret)
-  }
+  constructor(private readonly config: JwtAuthRuntimeConfig) {}
 
   async authenticate(
     request: FastifyRequest,
@@ -51,21 +47,30 @@ export class JwtRequestAuthenticator implements RequestAuthenticator {
   private async verifyAccessToken(
     accessToken: string,
   ): Promise<AuthenticatedRequestClaims> {
-    try {
-      const { payload } = await jwtVerify(accessToken, this.secretKey, {
-        algorithms: ['HS256'],
-        audience: this.config.audience,
-        issuer: this.config.issuer,
-      })
+    return verifyJwtAccessToken(accessToken, this.config)
+  }
+}
 
-      return normalizeVerifiedClaims(payload)
-    } catch (error) {
-      if (isJoseAuthError(error)) {
-        throw invalidAccessTokenError()
-      }
+export async function verifyJwtAccessToken(
+  accessToken: string,
+  config: JwtAuthRuntimeConfig,
+): Promise<AuthenticatedRequestClaims> {
+  const secretKey = new TextEncoder().encode(config.secret)
 
-      throw error
+  try {
+    const { payload } = await jwtVerify(accessToken, secretKey, {
+      algorithms: ['HS256'],
+      audience: config.audience,
+      issuer: config.issuer,
+    })
+
+    return normalizeVerifiedClaims(payload)
+  } catch (error) {
+    if (isJoseAuthError(error)) {
+      throw invalidAccessTokenError()
     }
+
+    throw error
   }
 }
 

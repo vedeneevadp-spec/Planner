@@ -117,7 +117,7 @@ chmod 750 /etc/planner
 NODE_ENV=production
 API_AUTH_MODE=jwt
 API_STORAGE_DRIVER=postgres
-API_DB_RLS_MODE=disabled
+API_DB_RLS_MODE=transaction_local
 API_HOST=127.0.0.1
 API_PORT=3001
 API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost
@@ -136,6 +136,10 @@ AUTH_SMTP_PORT=587
 AUTH_SMTP_SECURE=false
 AUTH_SMTP_USER=<smtp-user>
 AUTH_SMTP_PASSWORD=<smtp-password>
+ALICE_OAUTH_CLIENT_ID=<alice-client-id>
+ALICE_OAUTH_CLIENT_SECRET=<long-random-alice-oauth-secret>
+ALICE_OAUTH_REDIRECT_URI=https://social.yandex.net/broker/redirect
+ALICE_OAUTH_CODE_TTL_SECONDS=300
 WEB_AUTH_PROVIDER=planner
 FIREBASE_SERVICE_ACCOUNT_PATH=/etc/planner/firebase-service-account.json
 ```
@@ -205,6 +209,37 @@ curl https://chaotika.ru/api/health
 ```text
 "status":"ok"
 ```
+
+## 4.1. Проверить webhook Алисы
+
+Backend URL для навыка в Яндекс Диалогах:
+
+```text
+https://chaotika.ru/api/v1/alice/webhook
+```
+
+OAuth URLs для связки аккаунта в настройках навыка:
+
+```text
+Authorization URL: https://chaotika.ru/api/v1/oauth/alice/authorize
+Token URL: https://chaotika.ru/api/v1/oauth/alice/token
+Client ID: значение ALICE_OAUTH_CLIENT_ID
+Client Secret: значение ALICE_OAUTH_CLIENT_SECRET
+```
+
+Быстрая проверка без авторизации должна вернуть корректный ответ навыка и
+top-level `start_account_linking`:
+
+```bash
+curl -s https://chaotika.ru/api/v1/alice/webhook \
+  -H 'Content-Type: application/json' \
+  -d '{"meta":{"interfaces":{"account_linking":{}},"timezone":"Europe/Moscow"},"request":{"command":"добавь задачу купить молоко","type":"SimpleUtterance"},"session":{"new":false},"version":"1.0"}'
+```
+
+После настройки связки аккаунта навык поддерживает два типа команд:
+
+- `надо купить молоко` - добавляет `молоко` в список покупок;
+- `добавь задачу позвонить завтра` - добавляет обычную задачу.
 
 Один раз после первого deploy включить автозапуск API после reboot:
 

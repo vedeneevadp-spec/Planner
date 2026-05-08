@@ -1,12 +1,12 @@
-import type { SessionResponse, UpdateUserProfileInput } from '@planner/contracts'
+import type {
+  SessionResponse,
+  UpdateUserProfileInput,
+} from '@planner/contracts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
-import {
-  type SessionApiError,
-  updateUserProfile,
-} from './session-api'
+import { type SessionApiError, updateUserProfile } from './session-api'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 
@@ -52,7 +52,7 @@ export function useUpdateUserProfile() {
                   ...current.actor,
                   avatarUrl: input.removeAvatar
                     ? null
-                    : input.avatarDataUrl ?? current.actor.avatarUrl,
+                    : (input.avatarDataUrl ?? current.actor.avatarUrl),
                   displayName:
                     input.displayName?.trim() ?? current.actor.displayName,
                 },

@@ -83,14 +83,15 @@ describe('workspaceParticipantsApi', () => {
   })
 
   it('removes a workspace user without requiring a response body', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(null, { status: 204 }),
-    )
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 204 }))
 
     await expect(
-      createWorkspaceParticipantsApiClient(API_CONFIG, fetchMock).removeWorkspaceUser(
-        'membership-1',
-      ),
+      createWorkspaceParticipantsApiClient(
+        API_CONFIG,
+        fetchMock,
+      ).removeWorkspaceUser('membership-1'),
     ).resolves.toBeUndefined()
   })
 
@@ -108,12 +109,13 @@ describe('workspaceParticipantsApi', () => {
     )
 
     await expect(
-      createWorkspaceParticipantsApiClient(API_CONFIG, fetchMock).createWorkspaceInvitation(
-        {
-          email: 'teammate@example.com',
-          groupRole: 'member',
-        },
-      ),
+      createWorkspaceParticipantsApiClient(
+        API_CONFIG,
+        fetchMock,
+      ).createWorkspaceInvitation({
+        email: 'teammate@example.com',
+        groupRole: 'member',
+      }),
     ).rejects.toThrow(WorkspaceParticipantsApiError)
   })
 })

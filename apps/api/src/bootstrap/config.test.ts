@@ -3,18 +3,26 @@ import { describe, it } from 'node:test'
 
 import { createApiConfig } from './config.js'
 
+const VALID_PRODUCTION_ENV = {
+  API_AUTH_MODE: 'jwt',
+  API_CORS_ORIGIN: 'https://chaotika.ru',
+  API_DB_RLS_MODE: 'transaction_local',
+  AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
+  NODE_ENV: 'production',
+} satisfies NodeJS.ProcessEnv
+
 void describe('createApiConfig', () => {
   void it('resolves the API port from API_PORT, PORT, or the local default', () => {
     const defaultConfig = createApiConfig({
       NODE_ENV: 'development',
     } as NodeJS.ProcessEnv)
     const platformPortConfig = createApiConfig({
-      NODE_ENV: 'production',
+      ...VALID_PRODUCTION_ENV,
       PORT: '10000',
     } as NodeJS.ProcessEnv)
     const explicitPortConfig = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
       API_PORT: '3001',
-      NODE_ENV: 'production',
       PORT: '10000',
     } as NodeJS.ProcessEnv)
 
@@ -50,10 +58,10 @@ void describe('createApiConfig', () => {
 
   void it('builds Firebase push config from explicit env vars', () => {
     const config = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
       FIREBASE_CLIENT_EMAIL: 'firebase-admin@example.iam.gserviceaccount.com',
       FIREBASE_PRIVATE_KEY: 'line1\\nline2',
       FIREBASE_PROJECT_ID: 'planner-mobile',
-      NODE_ENV: 'production',
     } as NodeJS.ProcessEnv)
 
     assert.deepEqual(config.firebasePush, {
@@ -67,10 +75,72 @@ void describe('createApiConfig', () => {
     assert.throws(
       () =>
         createApiConfig({
+          ...VALID_PRODUCTION_ENV,
           FIREBASE_PROJECT_ID: 'planner-mobile',
-          NODE_ENV: 'production',
         } as NodeJS.ProcessEnv),
       /must be configured together/,
+    )
+  })
+
+  void it('builds Alice OAuth config when client credentials are configured', () => {
+    const config = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
+      ALICE_OAUTH_CLIENT_ID: 'alice-client',
+      ALICE_OAUTH_CLIENT_SECRET: 'alice-secret',
+    } as NodeJS.ProcessEnv)
+
+    assert.deepEqual(config.aliceOAuth, {
+      authorizationCodeTtlSeconds: 300,
+      clientId: 'alice-client',
+      clientSecret: 'alice-secret',
+      redirectUri: 'https://social.yandex.net/broker/redirect',
+    })
+  })
+
+  void it('requires a complete Alice OAuth env var set when enabled', () => {
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          ALICE_OAUTH_CLIENT_ID: 'alice-client',
+        } as NodeJS.ProcessEnv),
+      /ALICE_OAUTH_CLIENT_ID/,
+    )
+  })
+
+  void it('rejects unsafe production runtime configuration', () => {
+    assert.throws(
+      () =>
+        createApiConfig({
+          API_CORS_ORIGIN: 'https://chaotika.ru',
+          AUTH_JWT_SECRET: VALID_PRODUCTION_ENV.AUTH_JWT_SECRET,
+          NODE_ENV: 'production',
+        } as NodeJS.ProcessEnv),
+      /API_AUTH_MODE=jwt/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          API_CORS_ORIGIN: '*',
+        } as NodeJS.ProcessEnv),
+      /API_CORS_ORIGIN/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          API_DB_RLS_MODE: 'disabled',
+        } as NodeJS.ProcessEnv),
+      /API_DB_RLS_MODE=disabled/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          AUTH_JWT_SECRET: 'change_me_to_a_long_random_secret',
+        } as NodeJS.ProcessEnv),
+      /AUTH_JWT_SECRET/,
     )
   })
 })

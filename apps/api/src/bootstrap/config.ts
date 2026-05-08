@@ -13,7 +13,15 @@ export interface FirebasePushConfig {
   projectId: string
 }
 
+export interface AliceOAuthConfig {
+  authorizationCodeTtlSeconds: number
+  clientId: string
+  clientSecret: string
+  redirectUri: string
+}
+
 export interface ApiConfig {
+  aliceOAuth: AliceOAuthConfig | null
   appEnv: string
   authMode: ApiAuthMode
   corsOrigin: string
@@ -24,6 +32,14 @@ export interface ApiConfig {
   plannerAuth: PlannerAuthRuntimeConfig | null
   port: number
   storageDriver: StorageDriver
+}
+
+interface ProductionConfigValidationInput {
+  appEnv: string
+  authMode: ApiAuthMode
+  corsOrigin: string
+  env: NodeJS.ProcessEnv
+  jwtAuth: JwtAuthRuntimeConfig | null
 }
 
 function parsePort(value: string | undefined): number {
@@ -189,6 +205,36 @@ function createPlannerAuthConfig(
   }
 }
 
+function createAliceOAuthConfig(
+  env: NodeJS.ProcessEnv,
+): AliceOAuthConfig | null {
+  const clientId = env.ALICE_OAUTH_CLIENT_ID?.trim()
+  const clientSecret = env.ALICE_OAUTH_CLIENT_SECRET?.trim()
+
+  if (!clientId && !clientSecret) {
+    return null
+  }
+
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'ALICE_OAUTH_CLIENT_ID and ALICE_OAUTH_CLIENT_SECRET must be configured together.',
+    )
+  }
+
+  return {
+    authorizationCodeTtlSeconds: parsePositiveInteger(
+      env.ALICE_OAUTH_CODE_TTL_SECONDS,
+      300,
+      'ALICE_OAUTH_CODE_TTL_SECONDS',
+    ),
+    clientId,
+    clientSecret,
+    redirectUri:
+      env.ALICE_OAUTH_REDIRECT_URI?.trim() ||
+      'https://social.yandex.net/broker/redirect',
+  }
+}
+
 function createSmtpConfig(
   env: NodeJS.ProcessEnv,
 ): PlannerAuthRuntimeConfig['smtp'] {
@@ -235,11 +281,21 @@ export function createApiConfig(
   const appEnv = env.NODE_ENV ?? 'development'
   const authMode = parseAuthMode(env.API_AUTH_MODE)
   const jwtAuth = createJwtAuthConfig(env, authMode)
+  const corsOrigin = env.API_CORS_ORIGIN ?? '*'
 
-  return {
+  validateProductionConfig({
     appEnv,
     authMode,
-    corsOrigin: env.API_CORS_ORIGIN ?? '*',
+    corsOrigin,
+    env,
+    jwtAuth,
+  })
+
+  return {
+    aliceOAuth: createAliceOAuthConfig(env),
+    appEnv,
+    authMode,
+    corsOrigin,
     firebasePush: createFirebasePushConfig(env),
     host: env.API_HOST ?? '0.0.0.0',
     iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
@@ -248,4 +304,57 @@ export function createApiConfig(
     port: parsePort(env.API_PORT ?? env.PORT),
     storageDriver: parseStorageDriver(env.API_STORAGE_DRIVER, appEnv),
   }
+}
+
+function validateProductionConfig({
+  appEnv,
+  authMode,
+  corsOrigin,
+  env,
+  jwtAuth,
+}: ProductionConfigValidationInput): void {
+  if (appEnv !== 'production') {
+    return
+  }
+
+  if (authMode !== 'jwt' || !jwtAuth) {
+    throw new Error(
+      'API_AUTH_MODE=jwt must be configured when NODE_ENV=production.',
+    )
+  }
+
+  if (isUnsafeProductionCorsOrigin(corsOrigin)) {
+    throw new Error(
+      'API_CORS_ORIGIN must explicitly list allowed origins when NODE_ENV=production.',
+    )
+  }
+
+  const jwtSecret = env.AUTH_JWT_SECRET?.trim()
+
+  if (
+    !jwtSecret ||
+    jwtSecret === 'change_me_to_a_long_random_secret' ||
+    /^change[_-]?me/i.test(jwtSecret)
+  ) {
+    throw new Error(
+      'AUTH_JWT_SECRET must be a non-placeholder production secret.',
+    )
+  }
+
+  const rlsMode = env.API_DB_RLS_MODE?.trim().toLowerCase()
+
+  if (rlsMode === 'disabled') {
+    throw new Error(
+      'API_DB_RLS_MODE=disabled is not allowed when NODE_ENV=production.',
+    )
+  }
+}
+
+function isUnsafeProductionCorsOrigin(value: string): boolean {
+  const origins = value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+
+  return origins.length === 0 || origins.includes('*')
 }

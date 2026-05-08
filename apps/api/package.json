@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
-    "test": "node --import tsx --test src/**/*.test.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "outbox:run": "tsx src/workers/outbox.ts"
   },
@@ -15,7 +15,6 @@
     "@fastify/swagger-ui": "^5.2.5",
     "@planner/contracts": "file:../../packages/contracts",
     "fastify": "^5.8.5",
-    "firebase-admin": "^13.8.0",
     "jose": "^6.2.2",
     "kysely": "^0.28.16",
     "pg": "^8.20.0"

@@ -12,7 +12,6 @@ const DIRECT_ICON_MIME_TYPES = new Set([
   'image/gif',
   'image/jpeg',
   PNG_MIME_TYPE,
-  'image/svg+xml',
   'image/webp',
 ])
 const CONVERTIBLE_ICON_MIME_TYPES = new Set([WEBM_MIME_TYPE, TGS_MIME_TYPE])
@@ -25,7 +24,6 @@ const SUPPORTED_ICON_EXTENSIONS = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.jpg', 'image/jpeg'],
   ['.png', PNG_MIME_TYPE],
-  ['.svg', 'image/svg+xml'],
   ['.tgs', TGS_MIME_TYPE],
   ['.webm', WEBM_MIME_TYPE],
   ['.webp', 'image/webp'],
@@ -45,7 +43,7 @@ export function validateIconFile(file: File): string | null {
   const mimeType = getSupportedIconMimeType(file)
 
   if (!mimeType) {
-    return 'Поддерживаются только PNG, SVG, WebP, JPG, GIF, WebM и TGS.'
+    return 'Поддерживаются только PNG, WebP, JPG, GIF, WebM и TGS.'
   }
 
   const maxSize = getMaxSourceFileSize(mimeType)
@@ -123,7 +121,10 @@ function getMaxSourceFileSize(mimeType: string): number {
     : MAX_ICON_ASSET_BYTES
 }
 
-function readFileAsDataUrl(file: File, fallbackMimeType: string): Promise<string> {
+function readFileAsDataUrl(
+  file: File,
+  fallbackMimeType: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -260,9 +261,8 @@ function isGzipBuffer(buffer: ArrayBuffer): boolean {
 async function renderLottieFirstFrameToPng(
   animationData: unknown,
 ): Promise<string> {
-  const { default: lottie } = await import(
-    'lottie-web/build/player/lottie_light_canvas'
-  )
+  const { default: lottie } =
+    await import('lottie-web/build/player/lottie_light_canvas')
   const container = document.createElement('div')
   let animation: AnimationItem | null = null
 
@@ -353,9 +353,7 @@ function assertIconDataUrlFits(dataUrl: string, wasConverted: boolean): void {
         ? `После конвертации иконка должна быть не больше ${formatFileSize(
             MAX_ICON_ASSET_BYTES,
           )}.`
-        : `Файл должен быть не больше ${formatFileSize(
-            MAX_ICON_ASSET_BYTES,
-          )}.`,
+        : `Файл должен быть не больше ${formatFileSize(MAX_ICON_ASSET_BYTES)}.`,
     )
   }
 }

@@ -26,8 +26,7 @@ export class MemoryEmojiSetRepository implements EmojiSetRepository {
     _context: EmojiSetReadContext,
   ): Promise<StoredEmojiSetRecord[]> {
     const emojiSets = [...this.emojiSets.values()].filter(
-      (emojiSet) =>
-        emojiSet.deletedAt === null && emojiSet.status === 'active',
+      (emojiSet) => emojiSet.deletedAt === null && emojiSet.status === 'active',
     )
 
     return Promise.resolve(sortStoredEmojiSets(emojiSets))

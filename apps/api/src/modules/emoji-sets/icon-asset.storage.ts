@@ -4,13 +4,12 @@ import path from 'node:path'
 export const MAX_ICON_ASSET_BYTES = 1024 * 1024
 
 const ICON_DATA_URL_PATTERN =
-  /^data:(image\/(?:gif|jpeg|png|svg\+xml|webp));base64,([a-z0-9+/=\s]+)$/iu
+  /^data:(image\/(?:gif|jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/iu
 
 const ICON_EXTENSIONS_BY_MIME_TYPE = new Map<string, string>([
   ['image/gif', 'gif'],
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
-  ['image/svg+xml', 'svg'],
   ['image/webp', 'webp'],
 ])
 

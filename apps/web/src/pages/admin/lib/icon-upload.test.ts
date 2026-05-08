@@ -94,7 +94,7 @@ describe('iconUpload', () => {
 
   it('rejects unsupported files', () => {
     expect(validateIconFile(createFile('notes.txt'))).toBe(
-      'Поддерживаются только PNG, SVG, WebP, JPG, GIF, WebM и TGS.',
+      'Поддерживаются только PNG, WebP, JPG, GIF, WebM и TGS.',
     )
   })
 })

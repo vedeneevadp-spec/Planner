@@ -126,7 +126,11 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
     const sphere = this.spheres.get(sphereId)
 
     if (!sphere || sphere.workspaceId !== workspaceId || sphere.deletedAt) {
-      throw new HttpError(404, 'life_sphere_not_found', 'Life sphere not found.')
+      throw new HttpError(
+        404,
+        'life_sphere_not_found',
+        'Life sphere not found.',
+      )
     }
 
     return sphere

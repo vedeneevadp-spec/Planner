@@ -18,9 +18,7 @@ export function IconMark({
   uploadedIcons = [],
   value,
 }: IconMarkProps) {
-  const rootClassName = className
-    ? `${styles.mark} ${className}`
-    : styles.mark
+  const rootClassName = className ? `${styles.mark} ${className}` : styles.mark
   const imageAssetId = getImageIconAssetId(value)
 
   if (imageAssetId) {

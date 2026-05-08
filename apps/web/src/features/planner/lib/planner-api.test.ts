@@ -201,9 +201,7 @@ describe('plannerApi', () => {
       createRequestInit,
     )
 
-    expect(createRequestUrl).toBe(
-      'http://127.0.0.1:3001/api/v1/life-spheres',
-    )
+    expect(createRequestUrl).toBe('http://127.0.0.1:3001/api/v1/life-spheres')
     expect(updateRequestUrl).toBe(
       'http://127.0.0.1:3001/api/v1/life-spheres/project-1',
     )

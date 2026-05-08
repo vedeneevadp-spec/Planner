@@ -313,9 +313,7 @@ export function TimelinePage() {
 
   return (
     <section className={pageStyles.page}>
-      <PageHeader
-        kicker="Timeline"
-      />
+      <PageHeader kicker="Timeline" />
 
       <section className={styles.toolbar}>
         <div className={styles.dateControls}>

@@ -321,18 +321,19 @@ export function setTaskSchedule(
   const normalizedSchedule = normalizeTaskSchedule(schedule)
 
   return sortTasks(
-      tasks.map((task) =>
-        task.id === taskId
-          ? {
-              ...task,
-              ...normalizedSchedule,
-              remindBeforeStart:
-                normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
-                  ? task.remindBeforeStart
-                  : undefined,
-            }
-          : task,
-      ),
+    tasks.map((task) =>
+      task.id === taskId
+        ? {
+            ...task,
+            ...normalizedSchedule,
+            remindBeforeStart:
+              normalizedSchedule.plannedDate &&
+              normalizedSchedule.plannedStartTime
+                ? task.remindBeforeStart
+                : undefined,
+          }
+        : task,
+    ),
   )
 }
 

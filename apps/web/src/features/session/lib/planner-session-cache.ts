@@ -36,9 +36,7 @@ export function setCachedPlannerSession(session: SessionResponse): void {
   writeCachedPlannerSessionMap(nextCacheMap)
 }
 
-export function clearCachedPlannerSession(
-  actorUserId?: string | null,
-): void {
+export function clearCachedPlannerSession(actorUserId?: string | null): void {
   const normalizedActorUserId = normalizeActorUserId(actorUserId)
 
   if (!normalizedActorUserId) {
@@ -102,7 +100,11 @@ function readCachedPlannerSessionMap(): PlannerSessionCacheMap {
   try {
     const parsedValue = JSON.parse(rawValue) as unknown
 
-    if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) {
+    if (
+      !parsedValue ||
+      typeof parsedValue !== 'object' ||
+      Array.isArray(parsedValue)
+    ) {
       return {}
     }
 

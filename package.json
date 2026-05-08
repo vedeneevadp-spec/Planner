@@ -14,6 +14,7 @@
   "scripts": {
     "start": "vite --config apps/web/vite.config.ts",
     "dev": "vite --config apps/web/vite.config.ts",
+    "dev:local": "node ./scripts/dev-local.mjs",
     "dev:api": "npm run -w apps/api dev",
     "dev:api:postgres": "API_STORAGE_DRIVER=postgres DATABASE_URL=postgres://planner:planner@127.0.0.1:54329/planner_development npm run -w apps/api dev",
     "start:api": "npm run -w apps/api start",
@@ -50,7 +51,7 @@
     "test:api": "npm run -w apps/api test",
     "test:run": "npm run test:web:run && npm run test:api",
     "coverage": "node ./scripts/coverage.mjs --config apps/web/vite.config.ts",
-    "check": "npm run lint && npm run typecheck && npm run test:run",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm run test:run",
     "ci": "npm run check && npm run build",
     "prepare": "husky",
     "outbox:run": "npm run -w apps/api outbox:run",

@@ -223,7 +223,7 @@ export function createPlannerApiClient(
       return undefined as TResponse
     }
 
-    const payload = (await response.json()) as unknown
+    const payload = await readResponsePayload(response)
 
     if (!response.ok) {
       const parsedError = apiErrorSchema.safeParse(payload)
@@ -507,5 +507,19 @@ export function createPlannerApiClient(
         writeAccess: true,
       })
     },
+  }
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const text = await response.text()
+
+  if (!text) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text
   }
 }

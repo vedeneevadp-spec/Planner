@@ -28,7 +28,9 @@ export function usePlannerSession() {
     getLastActorUserId() ??
     plannerApiConfig.actorUserIdOverride ??
     null
-  const selectedWorkspaceId = useSelectedWorkspaceId(selectedWorkspaceActorUserId)
+  const selectedWorkspaceId = useSelectedWorkspaceId(
+    selectedWorkspaceActorUserId,
+  )
   const canLoadPlannerSession = canBootstrapPlannerSession({
     accessToken: auth.accessToken,
     config: plannerApiConfig,

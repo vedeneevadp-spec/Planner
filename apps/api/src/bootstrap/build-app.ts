@@ -11,8 +11,12 @@ import Fastify from 'fastify'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
+import { registerAliceRoutes } from '../modules/alice/index.js'
 import type { AuthService } from '../modules/auth/index.js'
-import { registerAuthRoutes } from '../modules/auth/index.js'
+import {
+  registerAuthRoutes,
+  registerOAuthRoutes,
+} from '../modules/auth/index.js'
 import type { ChaosInboxService } from '../modules/chaos-inbox/index.js'
 import { registerChaosInboxRoutes } from '../modules/chaos-inbox/index.js'
 import type { DailyPlanService } from '../modules/daily-plans/index.js'
@@ -106,6 +110,12 @@ export function buildApiApp({
       timestamp: new Date().toISOString(),
     })
   })
+  registerAliceRoutes(app, {
+    ...(chaosInboxService ? { chaosInboxService } : {}),
+    jwtAuth: config.jwtAuth,
+    sessionService,
+    taskService,
+  })
 
   app.decorateRequest('authContext', null)
 
@@ -120,6 +130,10 @@ export function buildApiApp({
   app.register((instance) => {
     if (authService) {
       registerAuthRoutes(instance, authService)
+      registerOAuthRoutes(instance, {
+        aliceOAuth: config.aliceOAuth,
+        service: authService,
+      })
     }
     registerSessionRoutes(instance, sessionService)
     if (emojiSetService) {
@@ -210,6 +224,9 @@ function isPublicRequest(method: string, url: string): boolean {
     path === '/api/v1/auth/refresh' ||
     path === '/api/v1/auth/password-reset/request' ||
     path === '/api/v1/auth/password-reset/confirm' ||
+    path === '/api/v1/alice/webhook' ||
+    path === '/api/v1/oauth/alice/authorize' ||
+    path === '/api/v1/oauth/alice/token' ||
     path.startsWith('/api/v1/icon-assets/') ||
     path.startsWith('/api/v1/profile-assets/') ||
     path === '/api/openapi.json' ||

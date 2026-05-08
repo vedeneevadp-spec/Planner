@@ -52,7 +52,9 @@ export interface WorkspaceParticipantsApiClient {
   listWorkspaceInvitations: (
     signal?: RequestSignal,
   ) => Promise<WorkspaceInvitationListResponse>
-  listWorkspaceUsers: (signal?: RequestSignal) => Promise<WorkspaceUserListResponse>
+  listWorkspaceUsers: (
+    signal?: RequestSignal,
+  ) => Promise<WorkspaceUserListResponse>
   removeWorkspaceUser: (membershipId: string) => Promise<void>
   revokeWorkspaceInvitation: (invitationId: string) => Promise<void>
   updateWorkspaceUserGroupRole: (

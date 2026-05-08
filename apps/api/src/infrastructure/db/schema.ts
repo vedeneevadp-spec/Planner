@@ -156,6 +156,20 @@ export interface AppAuthPasswordResetTokensTable {
   user_id: string
 }
 
+export interface AppOAuthAuthorizationCodesTable {
+  client_id: string
+  code_hash: string
+  consumed_at: TimestampColumn | null
+  created_at: Generated<TimestampColumn>
+  expires_at: TimestampColumn
+  id: Generated<string>
+  ip_address: string | null
+  redirect_uri: string
+  scope: string
+  user_agent: string | null
+  user_id: string
+}
+
 export interface AppWorkspacesTable {
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null
@@ -372,6 +386,7 @@ export interface DatabaseSchema {
   'app.emoji_sets': AppEmojiSetsTable
   'app.life_spheres': AppLifeSpheresTable
   'app.outbox': AppOutboxTable
+  'app.oauth_authorization_codes': AppOAuthAuthorizationCodesTable
   'app.push_devices': AppPushDevicesTable
   'app.projects': AppProjectsTable
   'app.task_attachments': AppTaskAttachmentsTable

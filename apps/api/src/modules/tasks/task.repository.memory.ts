@@ -49,7 +49,11 @@ export class MemoryTaskRepository implements TaskRepository {
   ): Promise<StoredTaskRecord | null> {
     const task = this.tasks.get(taskId)
 
-    if (!task || task.workspaceId !== context.workspaceId || task.deletedAt !== null) {
+    if (
+      !task ||
+      task.workspaceId !== context.workspaceId ||
+      task.deletedAt !== null
+    ) {
       return Promise.resolve(null)
     }
 

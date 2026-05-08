@@ -36,7 +36,12 @@ const devMembership = {
 const seedStatements = [
   {
     name: 'dev user',
-    parameters: [devUser.id, devUser.email, devUser.displayName, devUser.appRole],
+    parameters: [
+      devUser.id,
+      devUser.email,
+      devUser.displayName,
+      devUser.appRole,
+    ],
     sql: `
       insert into app.users (
         id,

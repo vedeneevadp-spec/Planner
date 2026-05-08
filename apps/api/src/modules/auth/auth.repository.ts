@@ -4,9 +4,11 @@ import type {
   AuthUserRecord,
   CompletePasswordResetCommand,
   CreateAuthUserCommand,
+  CreateOAuthAuthorizationCodeCommand,
   CreatePasswordResetTokenCommand,
   CreateRefreshTokenCommand,
   CreateRefreshTokenPayload,
+  ExchangeOAuthAuthorizationCodeCommand,
   UpdatePasswordCommand,
 } from './auth.model.js'
 
@@ -18,9 +20,15 @@ export interface AuthRepository {
     command: CreatePasswordResetTokenCommand,
   ) => Promise<void>
   createRefreshToken: (command: CreateRefreshTokenCommand) => Promise<void>
+  createOAuthAuthorizationCode: (
+    command: CreateOAuthAuthorizationCodeCommand,
+  ) => Promise<void>
   createUserWithCredential: (
     command: CreateAuthUserCommand,
   ) => Promise<AuthUserRecord>
+  exchangeOAuthAuthorizationCode: (
+    command: ExchangeOAuthAuthorizationCodeCommand,
+  ) => Promise<AuthSessionTokenRecord | null>
   findCredentialByEmail: (email: string) => Promise<AuthCredentialRecord | null>
   findCredentialByUserId: (
     userId: string,

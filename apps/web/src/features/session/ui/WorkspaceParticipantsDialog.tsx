@@ -294,7 +294,9 @@ export function WorkspaceParticipantsDialog({
                   </button>
                 </form>
 
-                {formError ? <p className={styles.errorText}>{formError}</p> : null}
+                {formError ? (
+                  <p className={styles.errorText}>{formError}</p>
+                ) : null}
               </section>
             ) : (
               <section className={styles.infoCard}>
@@ -305,8 +307,12 @@ export function WorkspaceParticipantsDialog({
               </section>
             )}
 
-            {actionError ? <p className={styles.errorText}>{actionError}</p> : null}
-            {usersError ? <p className={styles.errorText}>{usersError}</p> : null}
+            {actionError ? (
+              <p className={styles.errorText}>{actionError}</p>
+            ) : null}
+            {usersError ? (
+              <p className={styles.errorText}>{usersError}</p>
+            ) : null}
             {invitationsError ? (
               <p className={styles.errorText}>{invitationsError}</p>
             ) : null}
@@ -339,7 +345,10 @@ export function WorkspaceParticipantsDialog({
                         user.membershipId
 
                     return (
-                      <article key={user.membershipId} className={styles.listItem}>
+                      <article
+                        key={user.membershipId}
+                        className={styles.listItem}
+                      >
                         <div className={styles.userLead}>
                           <div className={styles.avatar} aria-hidden="true">
                             <UserIcon size={18} strokeWidth={2.1} />
@@ -360,7 +369,9 @@ export function WorkspaceParticipantsDialog({
                               >
                                 {user.isOwner
                                   ? GROUP_ROLE_LABELS.owner
-                                  : GROUP_ROLE_LABELS[user.groupRole ?? 'member']}
+                                  : GROUP_ROLE_LABELS[
+                                      user.groupRole ?? 'member'
+                                    ]}
                               </span>
                               {isCurrentUser ? (
                                 <span className={styles.meBadge}>Вы</span>
@@ -379,7 +390,9 @@ export function WorkspaceParticipantsDialog({
                               <span>Групповая роль</span>
                               <select
                                 value={user.groupRole ?? 'member'}
-                                disabled={isUpdatingThisUser || isRemovingThisUser}
+                                disabled={
+                                  isUpdatingThisUser || isRemovingThisUser
+                                }
                                 onChange={(event) => {
                                   void handleRoleChange(
                                     user,
@@ -401,7 +414,9 @@ export function WorkspaceParticipantsDialog({
                             <button
                               className={styles.ghostButton}
                               type="button"
-                              disabled={isUpdatingThisUser || isRemovingThisUser}
+                              disabled={
+                                isUpdatingThisUser || isRemovingThisUser
+                              }
                               onClick={() => {
                                 void handleRemoveUser(user)
                               }}
@@ -444,7 +459,10 @@ export function WorkspaceParticipantsDialog({
                         revokeWorkspaceInvitation.variables === invitation.id
 
                       return (
-                        <article key={invitation.id} className={styles.listItem}>
+                        <article
+                          key={invitation.id}
+                          className={styles.listItem}
+                        >
                           <div className={styles.userLead}>
                             <div className={styles.avatar} aria-hidden="true">
                               <PlusIcon size={18} strokeWidth={2.15} />
@@ -463,7 +481,8 @@ export function WorkspaceParticipantsDialog({
                                 </span>
                               </div>
                               <small>
-                                Приглашён {formatTimestamp(invitation.invitedAt)}
+                                Приглашён{' '}
+                                {formatTimestamp(invitation.invitedAt)}
                               </small>
                             </div>
                           </div>

@@ -47,7 +47,11 @@ export class TaskService {
 
     return this.repository.findById(context, taskId).then((task) => {
       if (!task) {
-        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
       }
 
       assertCanManageSharedTask(context, task)
@@ -78,7 +82,11 @@ export class TaskService {
 
     return this.repository.findById(context, taskId).then((task) => {
       if (!task) {
-        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
       }
 
       assertCanManageSharedTaskStatus(context, task, status)
@@ -108,7 +116,11 @@ export class TaskService {
 
     return this.repository.findById(context, taskId).then((task) => {
       if (!task) {
-        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
       }
 
       assertCanManageSharedTask(context, task)
@@ -138,7 +150,11 @@ export class TaskService {
       const task = await this.repository.findById(context, taskId)
 
       if (!task) {
-        throw new HttpError(404, 'task_not_found', `Task "${taskId}" was not found.`)
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
       }
 
       assertCanDeleteSharedWorkspaceTask(context, task)
@@ -291,7 +307,10 @@ function assertCanManageSharedTask(
   context: TaskWriteContext,
   task: StoredTaskRecord,
 ): void {
-  if (context.workspaceKind !== 'shared' || canManageSharedTask(context, task)) {
+  if (
+    context.workspaceKind !== 'shared' ||
+    canManageSharedTask(context, task)
+  ) {
     return
   }
 
@@ -360,10 +379,7 @@ function canManageSharedTask(
     return false
   }
 
-  return (
-    context.role === 'owner' ||
-    context.groupRole === 'group_admin'
-  )
+  return context.role === 'owner' || context.groupRole === 'group_admin'
 }
 
 function canAssigneeChangeSharedTaskStatus(

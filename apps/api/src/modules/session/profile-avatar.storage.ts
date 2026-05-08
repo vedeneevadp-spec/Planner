@@ -5,13 +5,12 @@ export const MAX_PROFILE_AVATAR_BYTES = 2 * 1024 * 1024
 export const PROFILE_AVATAR_PUBLIC_PATH_PREFIX = '/api/v1/profile-assets/'
 
 const PROFILE_AVATAR_DATA_URL_PATTERN =
-  /^data:(image\/(?:gif|jpeg|png|svg\+xml|webp));base64,([a-z0-9+/=\s]+)$/iu
+  /^data:(image\/(?:gif|jpeg|png|webp));base64,([a-z0-9+/=\s]+)$/iu
 
 const PROFILE_AVATAR_EXTENSIONS_BY_MIME_TYPE = new Map<string, string>([
   ['image/gif', 'gif'],
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
-  ['image/svg+xml', 'svg'],
   ['image/webp', 'webp'],
 ])
 
@@ -103,10 +102,7 @@ export function parseUploadedProfileAvatarDataUrl(
 
   const buffer = Buffer.from(base64Payload.replace(/\s/g, ''), 'base64')
 
-  if (
-    buffer.byteLength === 0 ||
-    buffer.byteLength > MAX_PROFILE_AVATAR_BYTES
-  ) {
+  if (buffer.byteLength === 0 || buffer.byteLength > MAX_PROFILE_AVATAR_BYTES) {
     return null
   }
 

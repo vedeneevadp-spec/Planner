@@ -31,7 +31,9 @@ export function canWriteWorkspaceContent(
   if (context.workspaceKind === 'shared') {
     return (
       context.role === 'owner' ||
-      (context.groupRole ? SHARED_WRITE_GROUP_ROLES.has(context.groupRole) : false)
+      (context.groupRole
+        ? SHARED_WRITE_GROUP_ROLES.has(context.groupRole)
+        : false)
     )
   }
 

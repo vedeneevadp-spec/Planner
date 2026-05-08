@@ -61,7 +61,9 @@ export class MemoryDailyPlanRepository implements DailyPlanRepository {
     return Promise.resolve(plan)
   }
 
-  autoBuild(command: AutoBuildDailyPlanCommand): Promise<StoredDailyPlanRecord> {
+  autoBuild(
+    command: AutoBuildDailyPlanCommand,
+  ): Promise<StoredDailyPlanRecord> {
     return this.upsert({
       context: command.context,
       date: command.input.date,

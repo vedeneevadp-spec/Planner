@@ -4,19 +4,18 @@ import type {
 } from '@planner/contracts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
-import { usePlannerSession } from '@/features/session/lib/usePlannerSession'
-import { useSessionAuth } from '@/features/session/lib/useSessionAuth'
-import {
-  clearSelectedWorkspaceId,
-  setSelectedWorkspaceIdForActors,
-} from '@/features/session/lib/workspace-selection'
-
 import {
   createSharedWorkspace,
   deleteSharedWorkspace,
   type SessionApiError,
   updateSharedWorkspace,
 } from './session-api'
+import { usePlannerSession } from './usePlannerSession'
+import { useSessionAuth } from './useSessionAuth'
+import {
+  clearSelectedWorkspaceId,
+  setSelectedWorkspaceIdForActors,
+} from './workspace-selection'
 
 export function useCreateSharedWorkspace() {
   const auth = useSessionAuth()
@@ -141,7 +140,5 @@ function getWorkspaceActionErrorMessage(
     return 'Эта операция доступна только для общего пространства.'
   }
 
-  return error instanceof Error
-    ? error.message
-    : options.fallback
+  return error instanceof Error ? error.message : options.fallback
 }

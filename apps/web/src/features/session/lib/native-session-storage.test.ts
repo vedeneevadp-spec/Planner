@@ -93,10 +93,7 @@ describe('native session storage', () => {
 
     capacitorMocks.getState.mockResolvedValue({ isActive: true })
     capacitorMocks.addListener.mockImplementation(
-      (
-        _event: string,
-        callback: (state: { isActive: boolean }) => void,
-      ) => {
+      (_event: string, callback: (state: { isActive: boolean }) => void) => {
         callback({ isActive: false })
 
         return Promise.resolve({ remove })

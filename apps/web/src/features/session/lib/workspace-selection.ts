@@ -93,7 +93,9 @@ export function clearLastActorUserId(): void {
   removeStorageValue(LAST_ACTOR_USER_ID_KEY)
 }
 
-export function useSelectedWorkspaceId(actorUserId?: string | null): string | null {
+export function useSelectedWorkspaceId(
+  actorUserId?: string | null,
+): string | null {
   return useSyncExternalStore(
     subscribeWorkspaceSelection,
     () => getSelectedWorkspaceId(actorUserId),
@@ -131,7 +133,11 @@ function readSelectedWorkspaceIdMap(): SelectedWorkspaceIdMap {
   try {
     const parsedValue = JSON.parse(rawValue) as unknown
 
-    if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) {
+    if (
+      !parsedValue ||
+      typeof parsedValue !== 'object' ||
+      Array.isArray(parsedValue)
+    ) {
       return {}
     }
 

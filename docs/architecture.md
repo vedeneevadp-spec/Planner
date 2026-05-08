@@ -28,10 +28,10 @@ Composition root приложения.
 Текущие страницы:
 
 - `today` - фокус дня, ресурсный план и быстрые изменения задач
+- `shopping` - общий список покупок поверх `chaos-inbox`
 - `timeline` - задачи на временной линии
-- `inbox` - chaos dump, разбор входящих и конвертация в задачи
 - `spheres` - список сфер жизни и недельный баланс
-- `admin` - администрирование icon/emoji assets
+- `admin` - пользователи, настройки workspace и icon/emoji assets
 
 Страницы собирают экран из widgets, features и entities. Бизнес-логику, которую
 можно переиспользовать или тестировать отдельно, нужно выносить в `features`,
@@ -55,6 +55,7 @@ Composition root приложения.
   optimistic mutations, offline queue и task-event cursor sync
 - `task-create` - composer для создания задач
 - `emoji-library` - загрузка и чтение custom icon assets
+- `shopping-list` - API/query-обвязка списка покупок
 
 Feature-код может зависеть от `entities` и `shared`.
 

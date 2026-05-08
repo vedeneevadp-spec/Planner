@@ -1,6 +1,6 @@
 import { generateUuidV7 } from '@planner/contracts'
 import type { Kysely } from 'kysely'
-import { type Selectable,sql } from 'kysely'
+import { type Selectable, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { DatabaseExecutor } from '../../infrastructure/db/rls.js'
@@ -11,9 +11,11 @@ import type {
   AuthUserRecord,
   CompletePasswordResetCommand,
   CreateAuthUserCommand,
+  CreateOAuthAuthorizationCodeCommand,
   CreatePasswordResetTokenCommand,
   CreateRefreshTokenCommand,
   CreateRefreshTokenPayload,
+  ExchangeOAuthAuthorizationCodeCommand,
   UpdatePasswordCommand,
 } from './auth.model.js'
 import type { AuthRepository } from './auth.repository.js'
@@ -137,6 +139,90 @@ export class PostgresAuthRepository implements AuthRepository {
     await this.db.transaction().execute(async (trx) => {
       await useFastAuthTokenCommit(trx)
       await this.insertRefreshToken(trx, command)
+    })
+  }
+
+  async createOAuthAuthorizationCode(
+    command: CreateOAuthAuthorizationCodeCommand,
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      await useFastAuthTokenCommit(trx)
+
+      await trx
+        .insertInto('app.oauth_authorization_codes')
+        .values({
+          client_id: command.clientId,
+          code_hash: command.codeHash,
+          expires_at: command.expiresAt,
+          id: generateUuidV7(),
+          ip_address: command.metadata.ipAddress ?? null,
+          redirect_uri: command.redirectUri,
+          scope: command.scope,
+          user_agent: command.metadata.userAgent ?? null,
+          user_id: command.userId,
+        })
+        .execute()
+    })
+  }
+
+  async exchangeOAuthAuthorizationCode(
+    command: ExchangeOAuthAuthorizationCodeCommand,
+  ): Promise<AuthSessionTokenRecord | null> {
+    return this.db.transaction().execute(async (trx) => {
+      await useFastAuthTokenCommit(trx)
+
+      const authorizationCode = await trx
+        .selectFrom('app.oauth_authorization_codes as code')
+        .innerJoin('app.users as user', 'user.id', 'code.user_id')
+        .select([
+          'code.client_id as clientId',
+          'code.consumed_at as consumedAt',
+          'code.expires_at as expiresAt',
+          'code.id as codeId',
+          'code.redirect_uri as redirectUri',
+          'user.deleted_at as userDeletedAt',
+          'user.display_name as displayName',
+          'user.email',
+          'user.id',
+        ])
+        .where('code.code_hash', '=', command.codeHash)
+        .executeTakeFirst()
+
+      if (
+        !authorizationCode ||
+        authorizationCode.clientId !== command.clientId ||
+        authorizationCode.redirectUri !== command.redirectUri ||
+        authorizationCode.consumedAt ||
+        authorizationCode.userDeletedAt ||
+        new Date(authorizationCode.expiresAt).getTime() <= Date.now()
+      ) {
+        return null
+      }
+
+      const updateResult = await trx
+        .updateTable('app.oauth_authorization_codes')
+        .set({
+          consumed_at: new Date(),
+        })
+        .where('id', '=', authorizationCode.codeId)
+        .where('consumed_at', 'is', null)
+        .executeTakeFirst()
+
+      if (Number(updateResult.numUpdatedRows) !== 1) {
+        return null
+      }
+
+      await this.insertRefreshToken(trx, {
+        ...command.refreshToken,
+        userId: authorizationCode.id,
+      })
+
+      return {
+        displayName: authorizationCode.displayName,
+        email: authorizationCode.email,
+        id: authorizationCode.id,
+        sessionId: command.refreshToken.sessionId,
+      }
     })
   }
 

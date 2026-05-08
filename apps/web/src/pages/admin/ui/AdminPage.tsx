@@ -594,9 +594,8 @@ export function AdminPage() {
                       </small>
                     ) : (
                       <small className={styles.fileHint}>
-                        PNG, SVG, WebP, JPG, GIF, WebM или TGS; WebM/TGS
-                        сохраняются как PNG до{' '}
-                        {formatFileSize(MAX_ICON_ASSET_BYTES)}.
+                        PNG, WebP, JPG, GIF, WebM или TGS; WebM/TGS сохраняются
+                        как PNG до {formatFileSize(MAX_ICON_ASSET_BYTES)}.
                       </small>
                     )}
                   </label>

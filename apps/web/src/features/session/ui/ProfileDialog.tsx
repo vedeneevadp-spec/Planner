@@ -8,12 +8,7 @@ import {
 } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
-import {
-  CheckIcon,
-  CloseIcon,
-  TrashIcon,
-  UploadIcon,
-} from '@/shared/ui/Icon'
+import { CheckIcon, CloseIcon, TrashIcon, UploadIcon } from '@/shared/ui/Icon'
 
 import {
   ACCEPTED_PROFILE_AVATAR_TYPES,
@@ -146,9 +141,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
     try {
       await mutateAsync({
         ...(hasAvatarRemoval ? { removeAvatar: true } : {}),
-        ...(hasAvatarUpload && avatarDataUrl
-          ? { avatarDataUrl }
-          : {}),
+        ...(hasAvatarUpload && avatarDataUrl ? { avatarDataUrl } : {}),
         ...(hasDisplayNameChange ? { displayName: trimmedDisplayName } : {}),
       })
       onClose()
@@ -193,7 +186,10 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
           </button>
         </header>
 
-        <form className={styles.form} onSubmit={(event) => void handleSubmit(event)}>
+        <form
+          className={styles.form}
+          onSubmit={(event) => void handleSubmit(event)}
+        >
           <section className={styles.avatarPanel}>
             <UserAvatar
               avatarUrl={resolvedAvatarUrl}
@@ -259,7 +255,9 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
             </label>
           </section>
 
-          {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
+          {errorMessage ? (
+            <p className={styles.errorText}>{errorMessage}</p>
+          ) : null}
 
           <footer className={styles.footer}>
             <button
@@ -280,9 +278,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
               disabled={isPending || !session}
             >
               <CheckIcon size={16} strokeWidth={2.1} />
-              <span>
-                {isPending ? 'Сохраняем...' : 'Сохранить'}
-              </span>
+              <span>{isPending ? 'Сохраняем...' : 'Сохранить'}</span>
             </button>
           </footer>
         </form>

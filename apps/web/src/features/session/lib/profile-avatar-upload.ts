@@ -4,7 +4,6 @@ const SUPPORTED_PROFILE_AVATAR_MIME_TYPES = new Set([
   'image/gif',
   'image/jpeg',
   'image/png',
-  'image/svg+xml',
   'image/webp',
 ])
 
@@ -13,7 +12,6 @@ const SUPPORTED_PROFILE_AVATAR_EXTENSIONS = new Map([
   ['.jpeg', 'image/jpeg'],
   ['.jpg', 'image/jpeg'],
   ['.png', 'image/png'],
-  ['.svg', 'image/svg+xml'],
   ['.webp', 'image/webp'],
 ])
 
@@ -24,7 +22,7 @@ export const ACCEPTED_PROFILE_AVATAR_TYPES = [
 
 export function validateProfileAvatarFile(file: File): string | null {
   if (!getSupportedProfileAvatarMimeType(file)) {
-    return 'Поддерживаются PNG, SVG, WebP, JPG и GIF.'
+    return 'Поддерживаются PNG, WebP, JPG и GIF.'
   }
 
   if (file.size > MAX_PROFILE_AVATAR_BYTES) {
@@ -59,7 +57,10 @@ function getSupportedProfileAvatarMimeType(file: File): string | null {
     : null
 }
 
-function readFileAsDataUrl(file: File, fallbackMimeType: string): Promise<string> {
+function readFileAsDataUrl(
+  file: File,
+  fallbackMimeType: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 

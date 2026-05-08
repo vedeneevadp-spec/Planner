@@ -1,4 +1,15 @@
 dist
 node_modules
 .idea
+.claude
 package-lock.json
+android/.gradle
+android/app/build
+android/app/src/main/assets
+android/build
+android/capacitor-cordova-android-plugins/build
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/App/App/public
+ios/App/build
+ios/App/output

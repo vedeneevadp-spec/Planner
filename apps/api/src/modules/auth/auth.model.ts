@@ -62,6 +62,23 @@ export interface CreatePasswordResetTokenCommand {
   userId: string
 }
 
+export interface CreateOAuthAuthorizationCodeCommand {
+  clientId: string
+  codeHash: string
+  expiresAt: Date
+  metadata: AuthRequestMetadata
+  redirectUri: string
+  scope: string
+  userId: string
+}
+
+export interface ExchangeOAuthAuthorizationCodeCommand {
+  clientId: string
+  codeHash: string
+  redirectUri: string
+  refreshToken: CreateRefreshTokenPayload
+}
+
 export interface CompletePasswordResetCommand {
   metadata: AuthRequestMetadata
   passwordHash: string
