@@ -5,4 +5,30 @@
     <string name="package_name">ru.chaotika.app</string>
     <string name="custom_url_scheme">ru.chaotika.app</string>
     <string name="push_notification_channel_id">chaotika-general</string>
+    <string name="planner_today_widget_name">План на сегодня</string>
+    <string name="planner_today_widget_title">Сегодня</string>
+    <string name="planner_today_widget_description">Краткий список задач Chaotika на сегодня.</string>
+    <string name="planner_widget_done_summary">%1$d/%2$d выполнено</string>
+    <string name="planner_widget_empty_today">На сегодня нет активных задач.</string>
+    <string name="planner_widget_no_snapshot_empty">Откройте Chaotika, чтобы обновить виджет.</string>
+    <string name="planner_widget_no_snapshot_summary">Ждет данных из приложения</string>
+    <string name="planner_widget_no_today_tasks">Нет задач на сегодня</string>
+    <string name="planner_widget_overdue_task">Требует внимания: %1$s</string>
+    <string name="planner_widget_preview_date">сегодня</string>
+    <string name="planner_widget_stale_empty">Откройте приложение, чтобы обновить задачи.</string>
+    <string name="planner_widget_stale_summary">Данные за прошлый день</string>
+    <string name="planner_widget_stale_title">Нужно обновить</string>
+    <string name="planner_widget_timed_task">%1$s  %2$s</string>
+    <plurals name="planner_widget_more_tasks">
+        <item quantity="one">+%1$d еще в приложении</item>
+        <item quantity="few">+%1$d еще в приложении</item>
+        <item quantity="many">+%1$d еще в приложении</item>
+        <item quantity="other">+%1$d еще в приложении</item>
+    </plurals>
+    <plurals name="planner_widget_overdue_summary">
+        <item quantity="one">%1$d требует внимания</item>
+        <item quantity="few">%1$d требуют внимания</item>
+        <item quantity="many">%1$d требуют внимания</item>
+        <item quantity="other">%1$d требуют внимания</item>
+    </plurals>
 </resources>

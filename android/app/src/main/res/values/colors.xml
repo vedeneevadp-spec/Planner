@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#214E42</color>
+    <color name="colorPrimaryDark">#16372F</color>
+    <color name="colorAccent">#7FB3A4</color>
+    <color name="planner_widget_accent">#214E42</color>
+    <color name="planner_widget_line">#242D241F</color>
+    <color name="planner_widget_progress_track">#DFD4C1</color>
+    <color name="planner_widget_surface">#FFFBF3</color>
+    <color name="planner_widget_text">#1F241E</color>
+    <color name="planner_widget_text_soft">#576056</color>
+    <color name="planner_widget_warning">#8C4B24</color>
+</resources>

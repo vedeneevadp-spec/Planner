@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/planner_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/planner_widget_background"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <TextView
+        android:id="@+id/planner_widget_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:text="@string/planner_today_widget_title"
+        android:textColor="@color/planner_widget_text"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/planner_widget_date"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="1dp"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:text="@string/planner_widget_preview_date"
+        android:textColor="@color/planner_widget_text_soft"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/planner_widget_summary"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:text="@string/planner_widget_no_snapshot_summary"
+        android:textColor="@color/planner_widget_text"
+        android:textSize="13sp" />
+
+    <ProgressBar
+        android:id="@+id/planner_widget_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="5dp"
+        android:layout_marginTop="6dp"
+        android:indeterminate="false"
+        android:max="100"
+        android:progress="0"
+        android:progressDrawable="@drawable/planner_widget_progress" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_1"
+        style="@style/PlannerWidgetTaskText"
+        android:layout_marginTop="9dp"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_2"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_3"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_4"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_5"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_empty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:ellipsize="end"
+        android:singleLine="true"
+        android:text="@string/planner_widget_no_snapshot_empty"
+        android:textColor="@color/planner_widget_text_soft"
+        android:textSize="13sp" />
+</LinearLayout>

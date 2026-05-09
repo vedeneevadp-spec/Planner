@@ -1,3 +1,4 @@
 export { usePlanner } from './lib/usePlanner'
 export { usePlannerApiClient } from './lib/usePlannerApiClient'
+export { NativePlannerWidgetSync } from './ui/NativePlannerWidgetSync'
 export { PlannerProvider, PlannerQueryProvider } from './ui/PlannerProvider'

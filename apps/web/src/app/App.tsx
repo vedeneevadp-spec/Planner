@@ -1,4 +1,8 @@
-import { PlannerProvider, PlannerQueryProvider } from '@/features/planner'
+import {
+  NativePlannerWidgetSync,
+  PlannerProvider,
+  PlannerQueryProvider,
+} from '@/features/planner'
 import {
   AuthGate,
   NativePushRegistration,
@@ -16,6 +20,7 @@ function App() {
         <AuthGate>
           <NativePushRegistration />
           <PlannerProvider>
+            <NativePlannerWidgetSync />
             <div className={styles.shell}>
               <Sidebar />
               <main className={styles.main}>
