@@ -1,4 +1,4 @@
-import type { AuthTokenResponse } from '@planner/contracts'
+import { authPasswordSchema, type AuthTokenResponse } from '@planner/contracts'
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
@@ -20,7 +20,9 @@ const authorizationQuerySchema = z.object({
 })
 
 const authorizationFormSchema = authorizationQuerySchema.extend({
+  displayName: z.string().trim().max(80).optional().default(''),
   email: z.string().trim().email().max(320),
+  mode: z.enum(['login', 'register']).optional().default('login'),
   password: z.string().min(1).max(128),
 })
 
@@ -34,7 +36,9 @@ const tokenRequestSchema = z.object({
 })
 
 type AuthorizationQuery = z.infer<typeof authorizationQuerySchema>
+type AuthorizationForm = z.infer<typeof authorizationFormSchema>
 type TokenRequest = z.infer<typeof tokenRequestSchema>
+type OAuthAuthorizeMode = AuthorizationForm['mode']
 
 interface RegisterOAuthRoutesOptions {
   aliceOAuth: AliceOAuthConfig | null
@@ -86,11 +90,16 @@ export function registerOAuthRoutes(
         .send(
           renderAuthorizePage({
             errorMessage: 'Проверьте email и пароль.',
+            values: readAuthorizePageValues(request.body),
           }),
         )
     }
 
     const validationError = validateAuthorizeRequest(parsedForm.data, options)
+    const pageState = {
+      query: parsedForm.data,
+      values: getAuthorizePageValues(parsedForm.data),
+    }
 
     if (validationError) {
       return reply
@@ -99,7 +108,7 @@ export function registerOAuthRoutes(
         .send(
           renderAuthorizePage({
             errorMessage: validationError,
-            query: parsedForm.data,
+            ...pageState,
           }),
         )
     }
@@ -107,6 +116,37 @@ export function registerOAuthRoutes(
     assertOAuthAuthorizeRateLimit(request, parsedForm.data.email)
 
     try {
+      const metadata = getRequestMetadata(request)
+
+      if (parsedForm.data.mode === 'register') {
+        const passwordValidation = authPasswordSchema.safeParse(
+          parsedForm.data.password,
+        )
+
+        if (!passwordValidation.success) {
+          return reply
+            .code(400)
+            .type('text/html; charset=utf-8')
+            .send(
+              renderAuthorizePage({
+                errorMessage: 'Пароль должен быть не короче 6 символов.',
+                ...pageState,
+              }),
+            )
+        }
+
+        await options.service.signUp(
+          {
+            ...(parsedForm.data.displayName
+              ? { displayName: parsedForm.data.displayName }
+              : {}),
+            email: parsedForm.data.email,
+            password: parsedForm.data.password,
+          },
+          metadata,
+        )
+      }
+
       const code = await options.service.createOAuthAuthorizationCode(
         {
           clientId: parsedForm.data.client_id,
@@ -118,7 +158,7 @@ export function registerOAuthRoutes(
           redirectUri: parsedForm.data.redirect_uri,
           scope: parsedForm.data.scope,
         },
-        getRequestMetadata(request),
+        metadata,
       )
       const redirectUrl = new URL(parsedForm.data.redirect_uri)
 
@@ -142,7 +182,20 @@ export function registerOAuthRoutes(
           .send(
             renderAuthorizePage({
               errorMessage: 'Неверный email или пароль.',
-              query: parsedForm.data,
+              ...pageState,
+            }),
+          )
+      }
+
+      if (error instanceof HttpError && error.code === 'auth_email_taken') {
+        return reply
+          .code(409)
+          .type('text/html; charset=utf-8')
+          .send(
+            renderAuthorizePage({
+              errorMessage:
+                'Аккаунт с таким email уже есть. Войдите или используйте другой email.',
+              ...pageState,
             }),
           )
       }
@@ -363,10 +416,13 @@ function sendOAuthError(
 function renderAuthorizePage({
   errorMessage,
   query,
+  values,
 }: {
   errorMessage?: string | undefined
   query?: Partial<AuthorizationQuery> | undefined
+  values?: AuthorizePageValues | undefined
 }): string {
+  const pageValues = values ?? {}
   const hiddenFieldEntries: Array<[string, string]> = [
     ['response_type', query?.response_type ?? 'code'],
     ['client_id', query?.client_id ?? ''],
@@ -385,6 +441,10 @@ function renderAuthorizePage({
   const errorBlock = errorMessage
     ? `<p class="error">${escapeHtml(errorMessage)}</p>`
     : ''
+  const modeCopy =
+    pageValues.mode === 'register'
+      ? 'Создайте аккаунт Chaotika и сразу свяжите его с навыком.'
+      : 'Войдите в существующий аккаунт Chaotika или создайте новый.'
 
   return `<!doctype html>
 <html lang="ru">
@@ -398,30 +458,72 @@ function renderAuthorizePage({
     main { width: min(420px, calc(100vw - 32px)); background: #fff; border: 1px solid #d8dee8; border-radius: 8px; padding: 24px; box-shadow: 0 12px 28px rgba(25, 35, 55, 0.08); }
     h1 { margin: 0 0 8px; font-size: 24px; line-height: 1.2; }
     p { margin: 0 0 18px; color: #526071; line-height: 1.45; }
+    .hint { margin-top: 14px; margin-bottom: 0; font-size: 13px; }
     label { display: grid; gap: 6px; margin: 14px 0; font-size: 14px; color: #2e3a47; }
     input { width: 100%; box-sizing: border-box; border: 1px solid #c7d0dd; border-radius: 6px; padding: 11px 12px; font: inherit; }
-    button { width: 100%; border: 0; border-radius: 6px; padding: 12px; margin-top: 8px; background: #1f6feb; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    .actions { display: grid; gap: 8px; margin-top: 8px; }
+    button { width: 100%; border: 0; border-radius: 6px; padding: 12px; background: #1f6feb; color: white; font: inherit; font-weight: 600; cursor: pointer; }
+    button.secondary { background: #eef2f7; color: #1f2937; border: 1px solid #c7d0dd; }
     .error { color: #a42020; background: #fff0f0; border: 1px solid #ffc9c9; border-radius: 6px; padding: 10px 12px; }
   </style>
 </head>
 <body>
   <main>
     <h1>Связать Chaotika с Алисой</h1>
-    <p>Войдите в Chaotika, чтобы Алиса могла добавлять задачи и покупки в ваш аккаунт.</p>
+    <p>${escapeHtml(modeCopy)}</p>
     ${errorBlock}
     <form method="post" action="/api/v1/oauth/alice/authorize">
       ${hiddenFields}
+      <label>Имя
+        <input type="text" name="displayName" autocomplete="name" maxlength="80" value="${escapeHtml(
+          pageValues.displayName ?? '',
+        )}">
+      </label>
       <label>Email
-        <input type="email" name="email" autocomplete="email" required>
+        <input type="email" name="email" autocomplete="email" value="${escapeHtml(
+          pageValues.email ?? '',
+        )}" required>
       </label>
       <label>Пароль
         <input type="password" name="password" autocomplete="current-password" required>
       </label>
-      <button type="submit">Связать аккаунт</button>
+      <div class="actions">
+        <button type="submit" name="mode" value="login">Войти и связать</button>
+        <button class="secondary" type="submit" name="mode" value="register">Создать и связать</button>
+      </div>
+      <p class="hint">Для нового аккаунта укажите пароль от 6 символов.</p>
     </form>
   </main>
 </body>
 </html>`
+}
+
+interface AuthorizePageValues {
+  displayName?: string
+  email?: string
+  mode?: OAuthAuthorizeMode
+}
+
+function getAuthorizePageValues(input: AuthorizationForm): AuthorizePageValues {
+  return {
+    displayName: input.displayName,
+    email: input.email,
+    mode: input.mode,
+  }
+}
+
+function readAuthorizePageValues(body: unknown): AuthorizePageValues {
+  if (!isRecord(body)) {
+    return {}
+  }
+
+  return {
+    displayName:
+      typeof body.displayName === 'string' ? body.displayName.trim() : '',
+    email: typeof body.email === 'string' ? body.email.trim() : '',
+    mode:
+      body.mode === 'login' || body.mode === 'register' ? body.mode : 'login',
+  }
 }
 
 function registerUrlEncodedFormParser(app: FastifyInstance): void {
@@ -480,4 +582,8 @@ function escapeHtml(value: string): string {
         return character
     }
   })
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

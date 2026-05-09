@@ -156,6 +156,76 @@ void describe('OAuth routes', () => {
     )
   })
 
+  void it('creates a new account from the Alice account-linking page', async () => {
+    const setup = await createOAuthTestApp()
+
+    app = setup.app
+
+    const authorizeResponse = await app.inject({
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      method: 'POST',
+      payload: createFormBody({
+        client_id: ALICE_CLIENT_ID,
+        displayName: 'Alice Moderator',
+        email: 'moderator@planner.local',
+        mode: 'register',
+        password: 'secret-password',
+        redirect_uri: ALICE_REDIRECT_URI,
+        response_type: 'code',
+        scope: 'tasks shopping',
+        state: 'yandex-state',
+      }),
+      url: '/api/v1/oauth/alice/authorize',
+    })
+
+    assert.equal(authorizeResponse.statusCode, 302)
+
+    const redirectLocationHeader = authorizeResponse.headers.location
+
+    if (typeof redirectLocationHeader !== 'string') {
+      throw new Error('OAuth authorize response must include Location header.')
+    }
+
+    const code = new URL(redirectLocationHeader).searchParams.get('code')
+
+    if (!code) {
+      throw new Error('OAuth redirect must include authorization code.')
+    }
+
+    const tokenResponse = await app.inject({
+      headers: {
+        authorization: `Basic ${Buffer.from(
+          `${ALICE_CLIENT_ID}:${ALICE_CLIENT_SECRET}`,
+        ).toString('base64')}`,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      method: 'POST',
+      payload: createFormBody({
+        client_id: ALICE_CLIENT_ID,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: ALICE_REDIRECT_URI,
+      }),
+      url: '/api/v1/oauth/alice/token',
+    })
+
+    assert.equal(tokenResponse.statusCode, 200)
+
+    const token = oauthTokenResponseSchema.parse(tokenResponse.json())
+    const sessionResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${token.access_token}`,
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+    const session = sessionResponseSchema.parse(sessionResponse.json())
+
+    assert.equal(session.actor.email, 'moderator@planner.local')
+  })
+
   void it('refreshes Alice account-linking tokens', async () => {
     const setup = await createOAuthTestApp()
 

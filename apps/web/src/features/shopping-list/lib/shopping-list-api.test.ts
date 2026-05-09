@@ -77,14 +77,18 @@ describe('shoppingListApi', () => {
     )
     const api = createShoppingListApiClient(TEST_CONFIG, fetchMock)
 
-    await api.createItem('Milk')
+    await api.createItem({
+      id: '0196941c-62c1-7d84-9fdb-f5fd1d7540f1',
+      text: 'Milk',
+    })
 
     const [, requestInit] = fetchMock.mock.calls[0]!
     const body = parseJsonBody(requestInit) as {
-      items: Array<{ kind: string; text: string }>
+      items: Array<{ id: string; kind: string; text: string }>
     }
 
     expect(requestInit?.method).toBe('POST')
+    expect(body.items[0]?.id).toBe('0196941c-62c1-7d84-9fdb-f5fd1d7540f1')
     expect(body.items[0]?.kind).toBe('shopping')
     expect(body.items[0]?.text).toBe('Milk')
     expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBe(

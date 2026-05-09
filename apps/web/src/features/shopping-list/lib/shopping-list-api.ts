@@ -44,8 +44,15 @@ export interface ShoppingListApiClientConfig {
   workspaceId: string
 }
 
+export interface ShoppingListItemCreateInput {
+  id?: string
+  text: string
+}
+
 export interface ShoppingListApiClient {
-  createItem: (text: string) => Promise<ChaosInboxItemRecord>
+  createItem: (
+    input: string | ShoppingListItemCreateInput,
+  ) => Promise<ChaosInboxItemRecord>
   listItems: (signal?: RequestSignal) => Promise<ChaosInboxItemRecord[]>
   removeItem: (itemId: string) => Promise<void>
   updateItem: (
@@ -169,14 +176,15 @@ export function createShoppingListApiClient(
   }
 
   return {
-    async createItem(text) {
+    async createItem(input) {
+      const itemInput = normalizeCreateItemInput(input)
       const validatedInput = createChaosInboxItemsInputSchema.parse({
         items: [
           {
-            id: generateUuidV7(),
+            id: itemInput.id ?? generateUuidV7(),
             kind: 'shopping',
             source: 'manual',
-            text,
+            text: itemInput.text,
           },
         ],
       })
@@ -222,4 +230,16 @@ export function createShoppingListApiClient(
       })
     },
   }
+}
+
+function normalizeCreateItemInput(
+  input: string | ShoppingListItemCreateInput,
+): ShoppingListItemCreateInput {
+  if (typeof input === 'string') {
+    return {
+      text: input,
+    }
+  }
+
+  return input
 }

@@ -7,9 +7,8 @@ import {
   useUpdateShoppingListItem,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
-import { PlusIcon, ShoppingBagIcon, TrashIcon } from '@/shared/ui/Icon'
+import { CheckIcon, TrashIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
-import { PageHeader } from '@/shared/ui/PageHeader'
 
 import styles from './ShoppingPage.module.css'
 
@@ -71,17 +70,6 @@ export function ShoppingPage() {
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
       <div className={styles.fixedTop}>
-        <PageHeader
-          kicker="Shopping"
-          title="Список покупок"
-          actions={
-            <div className={styles.headerStat}>
-              <ShoppingBagIcon size={18} strokeWidth={1.9} />
-              <strong>{activeItems.length}</strong>
-            </div>
-          }
-        />
-
         <form
           className={styles.composer}
           onSubmit={(event) => {
@@ -102,11 +90,13 @@ export function ShoppingPage() {
             />
           </div>
 
-          <button className={styles.addButton} type="submit" disabled={isBusy}>
-            <PlusIcon size={18} strokeWidth={2.1} />
-            <span>
-              {createItemMutation.isPending ? 'Добавляем...' : 'Добавить'}
-            </span>
+          <button
+            className={styles.addButton}
+            type="submit"
+            aria-label="Добавить покупку"
+            disabled={isBusy}
+          >
+            <CheckIcon size={18} strokeWidth={2.15} />
           </button>
         </form>
 
@@ -117,14 +107,6 @@ export function ShoppingPage() {
 
       <div className={styles.content}>
         <section className={styles.panel}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.panelLabel}>Нужно купить</p>
-              <h3>Активные</h3>
-            </div>
-            <span className={styles.countChip}>{activeItems.length}</span>
-          </div>
-
           {shoppingListQuery.isLoading ? (
             <p className={styles.emptyCopy}>Загружаем список...</p>
           ) : activeItems.length === 0 ? (
@@ -165,20 +147,8 @@ export function ShoppingPage() {
           )}
         </section>
 
-        <section className={cx(styles.panel, styles.completedPanel)}>
-          <div className={styles.panelHeader}>
-            <div>
-              <p className={styles.panelLabel}>Уже куплено</p>
-              <h3>Завершённые</h3>
-            </div>
-            <span className={styles.countChip}>{completedItems.length}</span>
-          </div>
-
-          {shoppingListQuery.isLoading ? (
-            <p className={styles.emptyCopy}>Загружаем список...</p>
-          ) : completedItems.length === 0 ? (
-            <p className={styles.emptyCopy}>Пока ничего не отмечено.</p>
-          ) : (
+        {completedItems.length > 0 ? (
+          <section className={cx(styles.panel, styles.completedPanel)}>
             <div className={styles.itemList}>
               {completedItems.map((item) => (
                 <div
@@ -218,8 +188,8 @@ export function ShoppingPage() {
                 </div>
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        ) : null}
       </div>
     </section>
   )
