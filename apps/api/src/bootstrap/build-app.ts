@@ -11,7 +11,10 @@ import Fastify from 'fastify'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
-import { registerAliceRoutes } from '../modules/alice/index.js'
+import {
+  createAliceCommandParser,
+  registerAliceRoutes,
+} from '../modules/alice/index.js'
 import type { AuthService } from '../modules/auth/index.js'
 import {
   registerAuthRoutes,
@@ -121,6 +124,7 @@ export function buildApiApp({
   })
   registerAliceRoutes(app, {
     ...(chaosInboxService ? { chaosInboxService } : {}),
+    commandParser: createAliceCommandParser(config.aliceCommandLlm),
     jwtAuth: config.jwtAuth,
     sessionService,
     taskService,

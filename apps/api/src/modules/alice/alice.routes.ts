@@ -1,4 +1,4 @@
-import type { NewTaskInput } from '@planner/contracts'
+import type { NewTaskInput, Task } from '@planner/contracts'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
@@ -10,10 +10,21 @@ import type { ChaosInboxService } from '../chaos-inbox/index.js'
 import type { SessionService } from '../session/index.js'
 import type { SessionSnapshot } from '../session/session.model.js'
 import type { TaskService } from '../tasks/index.js'
+import type {
+  AliceCommandParser,
+  AliceCommandParserInput,
+  AliceParsedCreateTaskCommand,
+  AliceParsedListTasksCommand,
+  AliceParsedShoppingCommand,
+} from './alice-command-parser.js'
+import {
+  addDaysToDateKey,
+  getDateKeyInTimeZone,
+  normalizeTimeZone,
+} from './alice-command-parser.js'
 
 const ALICE_PROTOCOL_VERSION = '1.0'
 const MAX_ALICE_TEXT_LENGTH = 1024
-const DEFAULT_TIME_ZONE = 'Europe/Moscow'
 
 const aliceNluEntitySchema = z
   .object({
@@ -87,6 +98,7 @@ type AliceWebhookRequest = z.infer<typeof aliceWebhookRequestSchema>
 
 interface RegisterAliceRoutesOptions {
   chaosInboxService?: ChaosInboxService
+  commandParser: AliceCommandParser
   jwtAuth: JwtAuthRuntimeConfig | null
   sessionService: SessionService
   taskService: TaskService
@@ -113,24 +125,6 @@ interface AliceAccountLinkingResponse {
 }
 
 type AliceResponse = AliceAccountLinkingResponse | AliceTextResponse
-
-interface TaskDraft {
-  plannedDate: string | null
-  plannedEndTime: string | null
-  plannedStartTime: string | null
-  reminderTimeZone: string | undefined
-  title: string
-}
-
-interface ShoppingDraft {
-  text: string
-}
-
-interface ScheduleDraft {
-  plannedDate: string | null
-  plannedStartTime: string | null
-  reminderTimeZone: string | undefined
-}
 
 export function registerAliceRoutes(
   app: FastifyInstance,
@@ -170,17 +164,27 @@ async function handleAliceRequest(
   body: AliceWebhookRequest,
   options: RegisterAliceRoutesOptions,
 ): Promise<AliceResponse> {
-  const command = getNormalizedCommand(body)
+  const parserInput = createParserInput(body)
+  const parsedCommand = await options.commandParser.parse(parserInput)
 
-  if (isPingCommand(command, body)) {
+  request.log.info(
+    {
+      confidence: parsedCommand.confidence,
+      intent: parsedCommand.intent,
+      source: parsedCommand.source,
+    },
+    'Alice command parsed.',
+  )
+
+  if (parsedCommand.intent === 'ping') {
     return createTextResponse('pong', { endSession: true })
   }
 
-  if (isExitCommand(command)) {
+  if (parsedCommand.intent === 'exit') {
     return createTextResponse('Готово, выхожу.', { endSession: true })
   }
 
-  if (isHelpCommand(command)) {
+  if (parsedCommand.intent === 'help') {
     return createHelpResponse()
   }
 
@@ -199,7 +203,7 @@ async function handleAliceRequest(
     )
   }
 
-  if (!command || body.session?.new) {
+  if (!parserInput.command) {
     return createTextResponse(
       'Могу добавить задачу или покупку. Например: добавь задачу позвонить завтра в 9. Или: надо купить молоко.',
       {
@@ -212,15 +216,15 @@ async function handleAliceRequest(
     )
   }
 
-  const shoppingDraft = createShoppingDraft(command)
-
-  if (shoppingDraft) {
-    return createShoppingListItem(shoppingDraft, body, authContext, options)
+  if (parsedCommand.intent === 'list_tasks') {
+    return createTaskListResponse(parsedCommand, body, authContext, options)
   }
 
-  const taskDraft = createTaskDraft(body)
+  if (parsedCommand.intent === 'add_shopping_item') {
+    return createShoppingListItem(parsedCommand, body, authContext, options)
+  }
 
-  if (!taskDraft) {
+  if (parsedCommand.intent !== 'create_task') {
     return createTextResponse(
       'Что добавить? Скажите, например: добавь задачу позвонить завтра. Или: надо купить молоко.',
       {
@@ -232,6 +236,15 @@ async function handleAliceRequest(
     )
   }
 
+  return createPlannerTask(parsedCommand, body, authContext, options)
+}
+
+async function createPlannerTask(
+  draft: AliceParsedCreateTaskCommand,
+  body: AliceWebhookRequest,
+  authContext: AuthenticatedRequestContext,
+  options: RegisterAliceRoutesOptions,
+): Promise<AliceTextResponse> {
   const session = await options.sessionService.resolveSession({
     actorUserId: undefined,
     auth: authContext,
@@ -239,7 +252,7 @@ async function handleAliceRequest(
   })
   const task = await options.taskService.createTask(
     createTaskWriteContext(session, authContext),
-    createNewTaskInput(taskDraft),
+    createNewTaskInput(draft),
   )
 
   return createTextResponse(
@@ -264,7 +277,7 @@ function createHelpResponse(): AliceTextResponse {
 }
 
 async function createShoppingListItem(
-  draft: ShoppingDraft,
+  draft: AliceParsedShoppingCommand,
   body: AliceWebhookRequest,
   authContext: AuthenticatedRequestContext,
   options: RegisterAliceRoutesOptions,
@@ -298,6 +311,55 @@ async function createShoppingListItem(
       buttons: [{ hide: true, title: 'Добавить еще покупку' }],
     },
   )
+}
+
+async function createTaskListResponse(
+  command: AliceParsedListTasksCommand,
+  body: AliceWebhookRequest,
+  authContext: AuthenticatedRequestContext,
+  options: RegisterAliceRoutesOptions,
+): Promise<AliceTextResponse> {
+  const session = await options.sessionService.resolveSession({
+    actorUserId: undefined,
+    auth: authContext,
+    workspaceId: getRequestedWorkspaceId(body),
+  })
+  const tasks = await options.taskService.listTasks(
+    createTaskReadContext(session, authContext),
+    {
+      plannedDate: command.plannedDate,
+    },
+  )
+  const activeTasks = tasks.filter((task) => task.status !== 'done')
+  const label = command.range === 'today' ? 'сегодня' : 'завтра'
+
+  if (activeTasks.length === 0) {
+    return createTextResponse(`На ${label} задач нет.`, {
+      buttons: [
+        { hide: true, title: 'Добавь задачу позвонить завтра' },
+        { hide: true, title: 'Надо купить молоко' },
+      ],
+    })
+  }
+
+  const visibleTasks = activeTasks.slice(0, 5)
+  const taskList = visibleTasks
+    .map((task, index) => formatTaskForSpeech(index, task))
+    .join('. ')
+  const hiddenCount = activeTasks.length - visibleTasks.length
+  const hiddenSuffix =
+    hiddenCount > 0 ? ` И еще ${formatTaskCount(hiddenCount)}.` : ''
+
+  return createTextResponse(`На ${label}: ${taskList}.${hiddenSuffix}`, {
+    buttons: [
+      {
+        hide: true,
+        title:
+          command.range === 'today' ? 'Задачи на завтра' : 'Задачи на сегодня',
+      },
+      { hide: true, title: 'Добавить задачу' },
+    ],
+  })
 }
 
 async function resolveAliceAuthContext(
@@ -387,26 +449,27 @@ function createTextResponse(
   }
 }
 
-function createTaskDraft(body: AliceWebhookRequest): TaskDraft | null {
-  const command = getNormalizedCommand(body)
-  const strippedTitle = stripTaskCommand(command)
-  const schedule = resolveSchedule(body)
-  const title = stripSchedulePhrases(strippedTitle)
-
-  if (!title) {
-    return null
-  }
-
+function createParserInput(body: AliceWebhookRequest): AliceCommandParserInput {
   return {
-    plannedDate: schedule.plannedDate,
-    plannedEndTime: null,
-    plannedStartTime: schedule.plannedStartTime,
-    reminderTimeZone: schedule.reminderTimeZone,
-    title,
+    command: body.request?.command?.trim() ?? '',
+    entities: (body.request?.nlu?.entities ?? []).map((entity) => {
+      if ('value' in entity) {
+        return {
+          type: entity.type,
+          value: entity.value,
+        }
+      }
+
+      return {
+        type: entity.type,
+      }
+    }),
+    originalUtterance: body.request?.original_utterance,
+    timeZone: body.meta?.timezone,
   }
 }
 
-function createNewTaskInput(draft: TaskDraft): NewTaskInput {
+function createNewTaskInput(draft: AliceParsedCreateTaskCommand): NewTaskInput {
   return {
     assigneeUserId: null,
     dueDate: null,
@@ -435,6 +498,20 @@ function createTaskWriteContext(
   return createWriteContext(session, authContext)
 }
 
+function createTaskReadContext(
+  session: SessionSnapshot,
+  authContext: AuthenticatedRequestContext,
+) {
+  return {
+    actorUserId: session.actorUserId,
+    auth: authContext,
+    groupRole: session.groupRole,
+    role: session.role,
+    workspaceId: session.workspaceId,
+    workspaceKind: session.workspace.kind,
+  }
+}
+
 function createWriteContext(
   session: SessionSnapshot,
   authContext: AuthenticatedRequestContext,
@@ -450,221 +527,25 @@ function createWriteContext(
   }
 }
 
-function createShoppingDraft(command: string): ShoppingDraft | null {
-  if (isExplicitTaskCommand(command)) {
-    return null
-  }
+function formatTaskForSpeech(index: number, task: Task): string {
+  const timePrefix = task.plannedStartTime ? `в ${task.plannedStartTime} ` : ''
 
-  const text = stripShoppingCommand(command)
-
-  if (!text) {
-    return null
-  }
-
-  return { text }
+  return `${index + 1}. ${timePrefix}${task.title}`
 }
 
-function isExplicitTaskCommand(command: string): boolean {
-  return /^(?:пожалуйста\s+)?(?:добавь|добавить|создай|создать|запиши|записать|поставь|поставить|запланируй|запланировать)\s+(?:мне\s+)?(?:задачу|дело)\b/u.test(
-    command,
-  )
-}
+function formatTaskCount(count: number): string {
+  const lastDigit = count % 10
+  const lastTwoDigits = count % 100
+  const word =
+    lastDigit === 1 && lastTwoDigits !== 11
+      ? 'задача'
+      : lastDigit >= 2 &&
+          lastDigit <= 4 &&
+          (lastTwoDigits < 12 || lastTwoDigits > 14)
+        ? 'задачи'
+        : 'задач'
 
-function stripShoppingCommand(command: string): string {
-  const normalized = normalizeRussianText(command)
-  const patterns = [
-    /^(?:пожалуйста\s+)?(?:мне\s+)?(?:надо|нужно|нужна|нужен|нужны)\s+купить\s+/u,
-    /^(?:пожалуйста\s+)?(?:купи|купить)\s+/u,
-    /^(?:пожалуйста\s+)?(?:добавь|добавить|запиши|записать)\s+(?:мне\s+)?(?:в\s+)?(?:список\s+)?покуп(?:ок|ки)\s+/u,
-    /^(?:пожалуйста\s+)?(?:добавь|добавить|запиши|записать)\s+(?:мне\s+)?(?:в\s+)?список\s+покупок\s+/u,
-  ]
-
-  for (const pattern of patterns) {
-    const text = normalizeWhitespace(normalized.replace(pattern, ''))
-
-    if (text !== normalized) {
-      return text
-    }
-  }
-
-  return ''
-}
-
-function resolveSchedule(body: AliceWebhookRequest): ScheduleDraft {
-  const timeZone = normalizeTimeZone(body.meta?.timezone)
-  const todayKey = getDateKeyInTimeZone(new Date(), timeZone)
-  const nluSchedule = resolveNluSchedule(body, todayKey)
-  const command = getNormalizedCommand(body)
-  const plannedDate =
-    nluSchedule.plannedDate ?? resolveTextDate(command, todayKey)
-  const plannedStartTime =
-    nluSchedule.plannedStartTime ?? resolveTextTime(command)
-
-  return {
-    plannedDate: plannedDate ?? (plannedStartTime ? todayKey : null),
-    plannedStartTime,
-    reminderTimeZone: timeZone,
-  }
-}
-
-function resolveNluSchedule(
-  body: AliceWebhookRequest,
-  todayKey: string,
-): {
-  plannedDate?: string | null
-  plannedStartTime?: string | null
-} {
-  const dateTimeEntity = body.request?.nlu?.entities?.find(
-    (entity) => entity.type === 'YANDEX.DATETIME',
-  )
-
-  if (!dateTimeEntity || !isRecord(dateTimeEntity.value)) {
-    return {}
-  }
-
-  return parseYandexDateTimeValue(dateTimeEntity.value, todayKey)
-}
-
-function parseYandexDateTimeValue(
-  value: Record<string, unknown>,
-  todayKey: string,
-): {
-  plannedDate?: string | null
-  plannedStartTime?: string | null
-} {
-  const result: {
-    plannedDate?: string | null
-    plannedStartTime?: string | null
-  } = {}
-  const day = readInteger(value.day)
-  const month = readInteger(value.month)
-  const year = readInteger(value.year)
-  const hour = readInteger(value.hour)
-  const minute = readInteger(value.minute)
-
-  if (day !== undefined && value.day_is_relative === true) {
-    result.plannedDate = addDaysToDateKey(todayKey, day)
-  } else if (day !== undefined && month !== undefined) {
-    const resolvedYear = year ?? resolveYearForMonthDay(todayKey, month, day)
-    result.plannedDate = formatDateKey(resolvedYear, month, day)
-  }
-
-  if (hour !== undefined && value.hour_is_relative !== true) {
-    result.plannedStartTime = formatTimeKey(hour, minute ?? 0)
-  }
-
-  return result
-}
-
-function resolveTextDate(command: string, todayKey: string): string | null {
-  const normalized = normalizeRussianText(command)
-
-  if (/(?:^|\s)послезавтра(?=$|\s)/u.test(normalized)) {
-    return addDaysToDateKey(todayKey, 2)
-  }
-
-  if (/(?:^|\s)завтра(?=$|\s)/u.test(normalized)) {
-    return addDaysToDateKey(todayKey, 1)
-  }
-
-  if (/(?:^|\s)сегодня(?=$|\s)/u.test(normalized)) {
-    return todayKey
-  }
-
-  const targetWeekday = findTargetWeekday(normalized)
-
-  if (targetWeekday === null) {
-    return null
-  }
-
-  return addDaysToDateKey(
-    todayKey,
-    getDaysUntilWeekday(todayKey, targetWeekday),
-  )
-}
-
-function resolveTextTime(command: string): string | null {
-  const normalized = normalizeRussianText(command)
-  const timeWithMinutes = normalized.match(
-    /(?:^|\s)(?:в|к|на)\s+(\d{1,2})(?::|\s+)(\d{1,2})(?:\s*(утра|дня|вечера|ночи))?(?=$|\s)/u,
-  )
-
-  if (timeWithMinutes) {
-    return formatMatchedTime(timeWithMinutes[1], timeWithMinutes[2], [
-      timeWithMinutes[3],
-    ])
-  }
-
-  const timeWithHour = normalized.match(
-    /(?:^|\s)(?:в|к|на)\s+(\d{1,2})(?:\s*(час(?:а|ов)?))?(?:\s*(утра|дня|вечера|ночи))?(?=$|\s)/u,
-  )
-
-  if (!timeWithHour || (!timeWithHour[2] && !timeWithHour[3])) {
-    return null
-  }
-
-  return formatMatchedTime(timeWithHour[1], '0', [timeWithHour[3]])
-}
-
-function formatMatchedTime(
-  rawHour: string | undefined,
-  rawMinute: string | undefined,
-  rawPeriods: Array<string | undefined>,
-): string | null {
-  let hour = Number(rawHour)
-  const minute = Number(rawMinute ?? '0')
-  const period = rawPeriods.find((value) => Boolean(value))
-
-  if (!Number.isInteger(hour) || !Number.isInteger(minute)) {
-    return null
-  }
-
-  if (period === 'вечера' || period === 'дня') {
-    if (hour >= 1 && hour <= 11) {
-      hour += 12
-    }
-  }
-
-  if (period === 'ночи' && hour === 12) {
-    hour = 0
-  }
-
-  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-    return null
-  }
-
-  return formatTimeKey(hour, minute)
-}
-
-function stripTaskCommand(command: string): string {
-  return normalizeWhitespace(
-    command
-      .replace(
-        /^(?:пожалуйста\s+)?(?:добавь|добавить|создай|создать|запиши|записать|поставь|поставить|запланируй|запланировать)\s+(?:мне\s+)?(?:(?:задачу|дело|напоминание)\s+)?/u,
-        '',
-      )
-      .replace(/^(?:пожалуйста\s+)?напомни\s+(?:мне\s+)?/u, '')
-      .replace(/^новая\s+задача\s+/u, ''),
-  )
-}
-
-function stripSchedulePhrases(value: string): string {
-  return normalizeWhitespace(
-    normalizeRussianText(value)
-      .replace(/(?:^|\s)(?:сегодня|завтра|послезавтра)(?=$|\s)/gu, ' ')
-      .replace(
-        /(?:^|\s)(?:в|во|на|к)\s+(?:понедельник|понедельника|вторник|вторника|среду|среда|четверг|четверга|пятницу|пятница|субботу|суббота|воскресенье|воскресенья)(?=$|\s)/gu,
-        ' ',
-      )
-      .replace(
-        /(?:^|\s)(?:в|к|на)\s+\d{1,2}(?::|\s+)\d{1,2}(?:\s*(?:утра|дня|вечера|ночи))?(?=$|\s)/gu,
-        ' ',
-      )
-      .replace(
-        /(?:^|\s)(?:в|к|на)\s+\d{1,2}(?:(?:\s*час(?:а|ов)?)?(?:\s*(?:утра|дня|вечера|ночи))|\s*час(?:а|ов)?)(?=$|\s)/gu,
-        ' ',
-      ),
-  )
+  return `${count} ${word}`
 }
 
 function formatScheduleSuffix(
@@ -706,27 +587,8 @@ function formatDateForSpeech(dateKey: string, todayKey: string): string {
   return `${day}.${month}.${year}`
 }
 
-function isPingCommand(command: string, body: AliceWebhookRequest): boolean {
-  return (
-    command === 'ping' ||
-    normalizeRussianText(body.request?.original_utterance ?? '') === 'ping'
-  )
-}
-
-function isExitCommand(command: string): boolean {
-  return /^(?:выход|выйти|закончить|стоп|хватит|отмена|спасибо)$/.test(command)
-}
-
-function isHelpCommand(command: string): boolean {
-  return /^(?:помощь|помоги|что ты умеешь|что умеешь|что можно)$/.test(command)
-}
-
 function supportsAccountLinking(body: AliceWebhookRequest): boolean {
   return body.meta?.interfaces?.account_linking !== undefined
-}
-
-function getNormalizedCommand(body: AliceWebhookRequest): string {
-  return normalizeWhitespace(body.request?.command ?? '').toLowerCase()
 }
 
 function getRequestedWorkspaceId(
@@ -767,129 +629,10 @@ function readBearerToken(
   return token
 }
 
-function normalizeRussianText(value: string): string {
-  return normalizeWhitespace(value).toLowerCase().replaceAll('ё', 'е')
-}
-
-function normalizeWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
 function truncateAliceText(value: string): string {
   if (value.length <= MAX_ALICE_TEXT_LENGTH) {
     return value
   }
 
   return value.slice(0, MAX_ALICE_TEXT_LENGTH - 1).trimEnd()
-}
-
-function normalizeTimeZone(value: string | undefined): string {
-  const timeZone = value?.trim() || DEFAULT_TIME_ZONE
-
-  try {
-    new Intl.DateTimeFormat('ru-RU', { timeZone }).format(new Date())
-    return timeZone
-  } catch {
-    return DEFAULT_TIME_ZONE
-  }
-}
-
-function getDateKeyInTimeZone(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    day: '2-digit',
-    month: '2-digit',
-    timeZone,
-    year: 'numeric',
-  }).formatToParts(date)
-
-  return formatDateKey(
-    Number(getDatePart(parts, 'year')),
-    Number(getDatePart(parts, 'month')),
-    Number(getDatePart(parts, 'day')),
-  )
-}
-
-function getDatePart(
-  parts: Intl.DateTimeFormatPart[],
-  type: Intl.DateTimeFormatPartTypes,
-): string {
-  return parts.find((part) => part.type === type)?.value ?? '0'
-}
-
-function addDaysToDateKey(dateKey: string, days: number): string {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1))
-
-  date.setUTCDate(date.getUTCDate() + days)
-
-  return formatDateKey(
-    date.getUTCFullYear(),
-    date.getUTCMonth() + 1,
-    date.getUTCDate(),
-  )
-}
-
-function resolveYearForMonthDay(
-  todayKey: string,
-  month: number,
-  day: number,
-): number {
-  const [currentYear = 1970] = todayKey.split('-').map(Number)
-  const candidate = formatDateKey(currentYear, month, day)
-
-  return candidate < todayKey ? currentYear + 1 : currentYear
-}
-
-function formatDateKey(year: number, month: number, day: number): string {
-  return [
-    String(year).padStart(4, '0'),
-    String(month).padStart(2, '0'),
-    String(day).padStart(2, '0'),
-  ].join('-')
-}
-
-function formatTimeKey(hour: number, minute: number): string {
-  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-}
-
-function findTargetWeekday(value: string): number | null {
-  const weekdays: Array<{ aliases: string[]; day: number }> = [
-    { aliases: ['понедельник', 'понедельника'], day: 1 },
-    { aliases: ['вторник', 'вторника'], day: 2 },
-    { aliases: ['среду', 'среда'], day: 3 },
-    { aliases: ['четверг', 'четверга'], day: 4 },
-    { aliases: ['пятницу', 'пятница'], day: 5 },
-    { aliases: ['субботу', 'суббота'], day: 6 },
-    { aliases: ['воскресенье', 'воскресенья'], day: 7 },
-  ]
-
-  for (const weekday of weekdays) {
-    if (
-      weekday.aliases.some((alias) =>
-        new RegExp(`(?:^|\\s)(?:в|во|на|к)?\\s*${alias}(?=$|\\s)`, 'u').test(
-          value,
-        ),
-      )
-    ) {
-      return weekday.day
-    }
-  }
-
-  return null
-}
-
-function getDaysUntilWeekday(todayKey: string, targetWeekday: number): number {
-  const [year, month, day] = todayKey.split('-').map(Number)
-  const date = new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1))
-  const currentWeekday = date.getUTCDay() === 0 ? 7 : date.getUTCDay()
-
-  return (targetWeekday - currentWeekday + 7) % 7
-}
-
-function readInteger(value: unknown): number | undefined {
-  return Number.isInteger(value) ? (value as number) : undefined
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

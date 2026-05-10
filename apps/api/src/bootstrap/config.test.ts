@@ -108,6 +108,32 @@ void describe('createApiConfig', () => {
     )
   })
 
+  void it('builds Alice LLM parser config when model credentials are configured', () => {
+    const config = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
+      ALICE_LLM_API_KEY: 'llm-key',
+      ALICE_LLM_MODEL: 'planner-parser-model',
+    } as NodeJS.ProcessEnv)
+
+    assert.deepEqual(config.aliceCommandLlm, {
+      apiKey: 'llm-key',
+      endpoint: 'https://api.openai.com/v1/responses',
+      model: 'planner-parser-model',
+      timeoutMs: 2500,
+    })
+  })
+
+  void it('requires a complete Alice LLM parser env var set when enabled', () => {
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          ALICE_LLM_API_KEY: 'llm-key',
+        } as NodeJS.ProcessEnv),
+      /ALICE_LLM_API_KEY/,
+    )
+  })
+
   void it('rejects unsafe production runtime configuration', () => {
     assert.throws(
       () =>

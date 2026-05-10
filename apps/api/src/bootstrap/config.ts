@@ -28,7 +28,15 @@ export interface AliceOAuthConfig {
   redirectUri: string
 }
 
+export interface AliceCommandLlmConfig {
+  apiKey: string
+  endpoint: string
+  model: string
+  timeoutMs: number
+}
+
 export interface ApiConfig {
+  aliceCommandLlm: AliceCommandLlmConfig | null
   aliceOAuth: AliceOAuthConfig | null
   appEnv: string
   authMode: ApiAuthMode
@@ -299,6 +307,36 @@ function createAliceOAuthConfig(
   }
 }
 
+function createAliceCommandLlmConfig(
+  env: NodeJS.ProcessEnv,
+): AliceCommandLlmConfig | null {
+  const apiKey = env.ALICE_LLM_API_KEY?.trim()
+  const model = env.ALICE_LLM_MODEL?.trim()
+  const endpoint =
+    env.ALICE_LLM_ENDPOINT?.trim() || 'https://api.openai.com/v1/responses'
+
+  if (!apiKey && !model && !env.ALICE_LLM_ENDPOINT?.trim()) {
+    return null
+  }
+
+  if (!apiKey || !model) {
+    throw new Error(
+      'ALICE_LLM_API_KEY and ALICE_LLM_MODEL must be configured together.',
+    )
+  }
+
+  return {
+    apiKey,
+    endpoint,
+    model,
+    timeoutMs: parsePositiveInteger(
+      env.ALICE_LLM_TIMEOUT_MS,
+      2500,
+      'ALICE_LLM_TIMEOUT_MS',
+    ),
+  }
+}
+
 function createSmtpConfig(
   env: NodeJS.ProcessEnv,
 ): PlannerAuthRuntimeConfig['smtp'] {
@@ -358,6 +396,7 @@ export function createApiConfig(
   validateAuthModeForEnvironment(appEnv, authMode)
 
   return {
+    aliceCommandLlm: createAliceCommandLlmConfig(env),
     aliceOAuth: createAliceOAuthConfig(env),
     appEnv,
     authMode,

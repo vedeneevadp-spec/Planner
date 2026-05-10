@@ -205,6 +205,120 @@ void describe('alice routes', () => {
     assert.equal(shoppingList.items[0]?.source, 'voice')
     assert.equal(shoppingList.items[0]?.text, 'молоко')
   })
+
+  void it('understands reversed shopping phrasing', async () => {
+    const config = createTestConfig()
+    const token = await createAccessToken(config)
+
+    app = buildTestApp(config)
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: {
+        meta: {
+          interfaces: {
+            account_linking: {},
+          },
+          timezone: 'UTC',
+        },
+        request: {
+          command: 'запиши молоко в покупки',
+          type: 'SimpleUtterance',
+        },
+        session: {
+          new: false,
+          user: {
+            access_token: token,
+          },
+        },
+        version: '1.0',
+      },
+      url: '/api/v1/alice/webhook',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.match(
+      aliceResponseSchema.parse(response.json()).response?.text ?? '',
+      /список покупок/u,
+    )
+  })
+
+  void it('reads planned tasks for tomorrow', async () => {
+    const config = createTestConfig()
+    const token = await createAccessToken(config)
+
+    app = buildTestApp(config)
+
+    const createResponse = await app.inject({
+      method: 'POST',
+      payload: {
+        meta: {
+          interfaces: {
+            account_linking: {},
+          },
+          timezone: 'UTC',
+        },
+        request: {
+          command: 'добавь задачу позвонить маме завтра в 9 часов',
+          nlu: {
+            entities: [
+              {
+                type: 'YANDEX.DATETIME',
+                value: {
+                  day: 1,
+                  day_is_relative: true,
+                  hour: 9,
+                  minute: 0,
+                },
+              },
+            ],
+          },
+          type: 'SimpleUtterance',
+        },
+        session: {
+          new: false,
+          user: {
+            access_token: token,
+          },
+        },
+        version: '1.0',
+      },
+      url: '/api/v1/alice/webhook',
+    })
+
+    assert.equal(createResponse.statusCode, 200)
+
+    const listResponse = await app.inject({
+      method: 'POST',
+      payload: {
+        meta: {
+          interfaces: {
+            account_linking: {},
+          },
+          timezone: 'UTC',
+        },
+        request: {
+          command: 'прочитай задачи на завтра',
+          type: 'SimpleUtterance',
+        },
+        session: {
+          new: false,
+          user: {
+            access_token: token,
+          },
+        },
+        version: '1.0',
+      },
+      url: '/api/v1/alice/webhook',
+    })
+    const responseText =
+      aliceResponseSchema.parse(listResponse.json()).response?.text ?? ''
+
+    assert.equal(listResponse.statusCode, 200)
+    assert.match(responseText, /На завтра/u)
+    assert.match(responseText, /позвонить маме/u)
+    assert.match(responseText, /09:00/u)
+  })
 })
 
 function buildTestApp(config = createTestConfig()): FastifyInstance {

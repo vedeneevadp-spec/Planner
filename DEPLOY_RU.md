@@ -142,6 +142,10 @@ ALICE_OAUTH_CLIENT_ID=<alice-client-id>
 ALICE_OAUTH_CLIENT_SECRET=<long-random-alice-oauth-secret>
 ALICE_OAUTH_REDIRECT_URI=https://social.yandex.net/broker/redirect
 ALICE_OAUTH_CODE_TTL_SECONDS=300
+ALICE_LLM_API_KEY=<optional-llm-api-key>
+ALICE_LLM_MODEL=<optional-llm-model>
+ALICE_LLM_ENDPOINT=https://api.openai.com/v1/responses
+ALICE_LLM_TIMEOUT_MS=2500
 WEB_AUTH_PROVIDER=planner
 FIREBASE_SERVICE_ACCOUNT_PATH=/etc/planner/firebase-service-account.json
 ```
@@ -253,10 +257,11 @@ curl -s https://chaotika.ru/api/v1/alice/webhook \
   -d '{"meta":{"interfaces":{"account_linking":{}},"timezone":"Europe/Moscow"},"request":{"command":"добавь задачу купить молоко","type":"SimpleUtterance"},"session":{"new":false},"version":"1.0"}'
 ```
 
-После настройки связки аккаунта навык поддерживает два типа команд:
+После настройки связки аккаунта навык поддерживает основные типы команд:
 
 - `надо купить молоко` - добавляет `молоко` в список покупок;
 - `добавь задачу позвонить завтра` - добавляет обычную задачу.
+- `прочитай задачи на сегодня` - зачитывает активные задачи на выбранный день.
 
 Один раз после первого deploy включить автозапуск API после reboot:
 
