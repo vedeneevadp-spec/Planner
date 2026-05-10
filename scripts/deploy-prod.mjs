@@ -36,6 +36,8 @@ const config = {
 const dryRun = args.has('--dry-run')
 const skipChecks =
   args.has('--skip-checks') || process.env.DEPLOY_SKIP_CHECKS === '1'
+const skipDbBackup =
+  args.has('--skip-db-backup') || process.env.DEPLOY_SKIP_DB_BACKUP === '1'
 const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
 
@@ -51,7 +53,7 @@ async function main() {
   if (skipChecks) {
     console.log('[deploy] Skipping local checks.')
   } else {
-    await run('npm', ['run', 'check'])
+    await run('npm', ['run', 'ci'])
   }
 
   if (dryRun) {
@@ -89,7 +91,9 @@ Usage:
   npm run deploy:prod
 
 Options:
-  --skip-checks  Do not run npm run check before deploy.
+  --skip-checks  Do not run npm run ci before deploy.
+  --skip-db-backup
+                 Do not run pg_dump before production migrations.
   --skip-icons   Do not copy local uploaded icon assets.
   --dry-run      Run checks and rsync dry-run, but do not build/restart remote services.
 
@@ -211,12 +215,116 @@ wait_for_url() {
   return 1
 }
 
+env_file="/etc/planner/planner.env"
+
+read_env_value() {
+  key="$1"
+  value="$(grep -E "^\${key}=" "$env_file" | tail -n 1 | cut -d= -f2- || true)"
+
+  case "$value" in
+    \\"*\\")
+      value="\${value#\\"}"
+      value="\${value%\\"}"
+      ;;
+    \\'*\\')
+      value="\${value#\\'}"
+      value="\${value%\\'}"
+      ;;
+  esac
+
+  printf '%s' "$value"
+}
+
+require_env_value() {
+  key="$1"
+  value="$(read_env_value "$key")"
+
+  if [ -z "$value" ]; then
+    echo "Missing required production env value: $key" >&2
+    return 1
+  fi
+
+  printf '%s' "$value"
+}
+
+validate_production_env() {
+  if [ ! -f "$env_file" ]; then
+    echo "Missing production env file: $env_file" >&2
+    return 1
+  fi
+
+  node_env_value="$(require_env_value NODE_ENV)"
+  api_auth_mode_value="$(require_env_value API_AUTH_MODE)"
+  api_db_rls_mode_value="$(require_env_value API_DB_RLS_MODE)"
+  api_task_reminders_runtime_value="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
+  api_cors_origin_value="$(require_env_value API_CORS_ORIGIN)"
+  auth_jwt_secret_value="$(require_env_value AUTH_JWT_SECRET)"
+  database_url_value="$(require_env_value DATABASE_URL)"
+
+  if [ "$node_env_value" != "production" ]; then
+    echo "NODE_ENV must be production in $env_file." >&2
+    return 1
+  fi
+
+  if [ "$api_auth_mode_value" != "jwt" ]; then
+    echo "API_AUTH_MODE must be jwt in production." >&2
+    return 1
+  fi
+
+  if [ "$api_db_rls_mode_value" = "disabled" ]; then
+    echo "API_DB_RLS_MODE=disabled is not allowed in production." >&2
+    return 1
+  fi
+
+  case "$api_task_reminders_runtime_value" in
+    ""|api|worker|disabled)
+      ;;
+    *)
+      echo "API_TASK_REMINDERS_RUNTIME must be api, worker, or disabled." >&2
+      return 1
+      ;;
+  esac
+
+  case "$auth_jwt_secret_value" in
+    changeme|change-me|your-secret|replace-me|__AUTH_JWT_SECRET__)
+      echo "AUTH_JWT_SECRET still looks like a placeholder." >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$api_cors_origin_value" = "*" ]; then
+    echo "API_CORS_ORIGIN=* is not allowed in production deploy." >&2
+    return 1
+  fi
+
+  if [ -z "$database_url_value" ]; then
+    echo "DATABASE_URL must be configured." >&2
+    return 1
+  fi
+}
+
 cd ${shellQuote(config.remoteRoot)}
+
+validate_production_env
 
 chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
 
 runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
 runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
+
+DATABASE_URL_VALUE="$(require_env_value DATABASE_URL)"
+if [ "${skipDbBackup ? '1' : '0'}" != "1" ]; then
+  runuser -u planner -- env HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" DB_BACKUP_DIR=${shellQuote(`${config.remoteRoot}/backups`)} npm run db:backup
+fi
+
+DB_MIGRATE_MODE_VALUE="$(read_env_value DB_MIGRATE_MODE)"
+MIGRATE_ENV=(HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE")
+if [ -n "$DB_MIGRATE_MODE_VALUE" ]; then
+  MIGRATE_ENV+=(DB_MIGRATE_MODE="$DB_MIGRATE_MODE_VALUE")
+fi
+
+runuser -u planner -- env "\${MIGRATE_ENV[@]}" npm run db:migrate
+runuser -u planner -- env HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" npm run db:security:check
 
 WEB_AUTH_PROVIDER="$(grep '^WEB_AUTH_PROVIDER=' /etc/planner/planner.env | cut -d= -f2- || true)"
 if [ -z "$WEB_AUTH_PROVIDER" ]; then
@@ -234,11 +342,28 @@ runuser -u planner -- env \\
   npm run build
 
 cp ${shellQuote(`${config.remoteRoot}/deploy/systemd/planner-api.service`)} /etc/systemd/system/planner-api.service
+cp ${shellQuote(`${config.remoteRoot}/deploy/systemd/planner-task-reminders.service`)} /etc/systemd/system/planner-task-reminders.service
 cp ${shellQuote(`${config.remoteRoot}/deploy/caddy/Caddyfile`)} /etc/caddy/Caddyfile
 
 systemctl daemon-reload
 systemctl restart planner-api
 wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
+
+TASK_REMINDERS_RUNTIME_VALUE="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
+if [ -z "$TASK_REMINDERS_RUNTIME_VALUE" ]; then
+  TASK_REMINDERS_RUNTIME_VALUE="api"
+fi
+
+if [ "$TASK_REMINDERS_RUNTIME_VALUE" = "worker" ]; then
+  systemctl enable planner-task-reminders
+  systemctl restart planner-task-reminders
+  systemctl is-active --quiet planner-task-reminders
+else
+  systemctl stop planner-task-reminders || true
+  systemctl disable planner-task-reminders || true
+  systemctl reset-failed planner-task-reminders || true
+fi
+
 caddy fmt --overwrite /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 systemctl reload caddy

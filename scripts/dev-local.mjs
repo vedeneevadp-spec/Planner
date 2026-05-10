@@ -35,6 +35,7 @@ async function main() {
   console.log('')
 
   const api = startLongRunningCommand('api', ['run', 'dev:api:postgres'], {
+    API_AUTH_MODE: 'disabled',
     API_PORT: '3001',
   })
   const web = startLongRunningCommand(

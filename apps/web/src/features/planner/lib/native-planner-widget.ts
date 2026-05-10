@@ -39,8 +39,7 @@ export interface NativePlannerWidgetSnapshot {
   version: 1
 }
 
-const NativePlannerWidget =
-  registerPlugin<PlannerWidgetPlugin>('PlannerWidget')
+const NativePlannerWidget = registerPlugin<PlannerWidgetPlugin>('PlannerWidget')
 
 export function isAndroidPlannerWidgetRuntime(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'

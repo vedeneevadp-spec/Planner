@@ -87,6 +87,8 @@ export default tseslint.config(
     ignores: [
       'coverage',
       'dist',
+      'playwright-report',
+      'test-results',
       'node_modules',
       'android/**',
       'capacitor.config.ts',

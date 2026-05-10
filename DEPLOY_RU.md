@@ -72,7 +72,7 @@ ssh root@147.45.158.186
 ```bash
 apt update
 apt upgrade -y
-apt install -y curl git ufw caddy rsync
+apt install -y curl git ufw caddy rsync postgresql-client
 ```
 
 Установить Node.js 24:
@@ -118,6 +118,8 @@ NODE_ENV=production
 API_AUTH_MODE=jwt
 API_STORAGE_DRIVER=postgres
 API_DB_RLS_MODE=transaction_local
+API_TRUST_PROXY_HOPS=1
+API_TASK_REMINDERS_RUNTIME=worker
 API_HOST=127.0.0.1
 API_PORT=3001
 API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost
@@ -184,18 +186,28 @@ npm run deploy:prod
 
 ```text
 1. Проверяет рабочее дерево и предупреждает о незакоммиченных изменениях.
-2. Запускает npm run check.
+2. Запускает npm run ci.
 3. Создает/проверяет production-директории на сервере.
 4. Копирует проект через rsync.
 5. Копирует apps/api/tmp/icon-assets, если папка есть.
 6. На сервере запускает npm ci --include=dev --ignore-scripts и затем
    точечно rebuild для install-скриптов, нужных сборке/runtime.
-7. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
-8. Копирует deploy/systemd/planner-api.service.
-9. Копирует deploy/caddy/Caddyfile.
-10. Перезапускает planner-api.
-11. Валидирует и перезагружает Caddy.
-12. Проверяет http://127.0.0.1:3001/api/health и https://chaotika.ru/api/health.
+7. Валидирует production env: `NODE_ENV=production`, `API_AUTH_MODE=jwt`,
+   включенный RLS mode, явный CORS, неплейсхолдерный JWT secret и
+   `DATABASE_URL`.
+8. Перед миграциями снимает `pg_dump` backup в `/opt/planner/backups`.
+9. Запускает production DB migrations через `npm run db:migrate`; runner
+   проверяет checksum уже примененных файлов и берет PostgreSQL advisory lock.
+10. Проверяет RLS/security-инварианты через `npm run db:security:check`.
+11. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
+12. Копирует deploy/systemd/planner-api.service и
+    deploy/systemd/planner-task-reminders.service.
+13. Копирует deploy/caddy/Caddyfile.
+14. Перезапускает planner-api.
+15. Если `API_TASK_REMINDERS_RUNTIME=worker`, включает и перезапускает
+    planner-task-reminders; иначе останавливает отдельный worker.
+16. Валидирует и перезагружает Caddy.
+17. Проверяет http://127.0.0.1:3001/api/health и https://chaotika.ru/api/health.
 ```
 
 После успешного deploy проверить:
@@ -209,6 +221,11 @@ curl https://chaotika.ru/api/health
 ```text
 "status":"ok"
 ```
+
+`npm run smoke:api:prod` по умолчанию работает только с локальным API. Если
+нужно осознанно запустить его против удаленного окружения, используйте
+`SMOKE_API_BASE_URL=https://... ALLOW_REMOTE_SMOKE=1`, учитывая что smoke
+создает тестового пользователя, workspace и задачу.
 
 ## 4.1. Проверить webhook Алисы
 
@@ -244,7 +261,7 @@ curl -s https://chaotika.ru/api/v1/alice/webhook \
 Один раз после первого deploy включить автозапуск API после reboot:
 
 ```bash
-ssh root@147.45.158.186 "systemctl enable planner-api && systemctl enable caddy"
+ssh root@147.45.158.186 "systemctl enable planner-api && systemctl enable planner-task-reminders && systemctl enable caddy"
 ```
 
 ## 5. Проверить Chaotika Auth
@@ -279,6 +296,12 @@ npm run deploy:prod -- --skip-checks
 
 ```bash
 npm run deploy:prod -- --skip-icons
+```
+
+Без backup перед миграциями, только если backup уже снят другим способом:
+
+```bash
+npm run deploy:prod -- --skip-db-backup
 ```
 
 Dry run:
@@ -324,7 +347,10 @@ API на сервере:
 ```bash
 systemctl status planner-api
 journalctl -u planner-api -n 100 --no-pager
+systemctl status planner-task-reminders
+journalctl -u planner-task-reminders -n 100 --no-pager
 curl http://127.0.0.1:3001/api/health
+curl http://127.0.0.1:3001/api/metrics
 ```
 
 Caddy/HTTPS:

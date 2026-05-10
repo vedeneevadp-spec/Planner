@@ -89,6 +89,10 @@ function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'health',
       },
       {
+        description: 'Email/password authentication and token lifecycle.',
+        name: 'auth',
+      },
+      {
         description: 'Current actor/workspace resolution.',
         name: 'session',
       },
@@ -122,6 +126,65 @@ function createPaths(): OpenAPIV3.PathsObject {
         },
         summary: 'Get API health status',
         tags: ['health'],
+      },
+    },
+    '/api/metrics': {
+      get: {
+        operationId: 'getMetrics',
+        responses: {
+          200: {
+            content: {
+              'text/plain': {
+                schema: {
+                  type: 'string',
+                },
+              },
+            },
+            description: 'Prometheus-compatible API metrics.',
+          },
+        },
+        summary: 'Get API runtime metrics',
+        tags: ['health'],
+      },
+    },
+    '/api/v1/auth/sign-in': {
+      post: {
+        operationId: 'signIn',
+        requestBody: jsonRequestBody('AuthSignInInput'),
+        responses: {
+          200: jsonResponse('AuthTokenResponse'),
+          400: errorResponse(),
+          429: errorResponse(),
+        },
+        summary: 'Sign in with email and password',
+        tags: ['auth'],
+      },
+    },
+    '/api/v1/auth/sign-up': {
+      post: {
+        operationId: 'signUp',
+        requestBody: jsonRequestBody('AuthSignUpInput'),
+        responses: {
+          201: jsonResponse('AuthTokenResponse'),
+          400: errorResponse(),
+          409: errorResponse(),
+          429: errorResponse(),
+        },
+        summary: 'Create an account with email and password',
+        tags: ['auth'],
+      },
+    },
+    '/api/v1/auth/refresh': {
+      post: {
+        operationId: 'refreshAuthToken',
+        requestBody: jsonRequestBody('AuthRefreshInput'),
+        responses: {
+          200: jsonResponse('AuthTokenResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+        },
+        summary: 'Refresh an auth session',
+        tags: ['auth'],
       },
     },
     '/api/v1/session': {
@@ -597,6 +660,74 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    '/api/v1/tasks/page': {
+      get: {
+        operationId: 'listTasksPage',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          {
+            in: 'query',
+            name: 'limit',
+            required: false,
+            schema: {
+              maximum: 100,
+              minimum: 1,
+              type: 'integer',
+            },
+          },
+          {
+            in: 'query',
+            name: 'offset',
+            required: false,
+            schema: {
+              minimum: 0,
+              type: 'integer',
+            },
+          },
+          {
+            in: 'query',
+            name: 'plannedDate',
+            required: false,
+            schema: {
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'projectId',
+            required: false,
+            schema: {
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'sphereId',
+            required: false,
+            schema: {
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'status',
+            required: false,
+            schema: {
+              $ref: '#/components/schemas/TaskStatus',
+            },
+          },
+        ],
+        responses: {
+          200: jsonResponse('TaskListPageResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List tasks in a workspace with pagination metadata',
+        tags: ['tasks'],
+      },
+    },
     '/api/v1/task-events': {
       get: {
         operationId: 'listTaskEvents',
@@ -786,6 +917,87 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: ['error'],
+      type: 'object',
+    },
+    AuthRefreshInput: {
+      additionalProperties: false,
+      properties: {
+        refreshToken: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['refreshToken'],
+      type: 'object',
+    },
+    AuthSignInInput: {
+      additionalProperties: false,
+      properties: {
+        email: {
+          format: 'email',
+          type: 'string',
+        },
+        password: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['email', 'password'],
+      type: 'object',
+    },
+    AuthSignUpInput: {
+      additionalProperties: false,
+      properties: {
+        displayName: {
+          maxLength: 80,
+          minLength: 1,
+          type: 'string',
+        },
+        email: {
+          format: 'email',
+          type: 'string',
+        },
+        password: {
+          maxLength: 128,
+          minLength: 6,
+          type: 'string',
+        },
+      },
+      required: ['email', 'password'],
+      type: 'object',
+    },
+    AuthTokenResponse: {
+      additionalProperties: false,
+      properties: {
+        accessToken: {
+          minLength: 1,
+          type: 'string',
+        },
+        expiresAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        refreshToken: {
+          minLength: 1,
+          type: 'string',
+        },
+        user: {
+          additionalProperties: false,
+          properties: {
+            email: {
+              format: 'email',
+              type: 'string',
+            },
+            id: {
+              format: 'uuid',
+              type: 'string',
+            },
+          },
+          required: ['email', 'id'],
+          type: 'object',
+        },
+      },
+      required: ['accessToken', 'expiresAt', 'refreshToken', 'user'],
       type: 'object',
     },
     HealthResponse: {
@@ -1577,6 +1789,36 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         $ref: '#/components/schemas/TaskRecord',
       },
       type: 'array',
+    },
+    TaskListPageResponse: {
+      additionalProperties: false,
+      properties: {
+        hasMore: {
+          type: 'boolean',
+        },
+        items: {
+          items: {
+            $ref: '#/components/schemas/TaskRecord',
+          },
+          type: 'array',
+        },
+        limit: {
+          maximum: 100,
+          minimum: 1,
+          type: 'integer',
+        },
+        nextOffset: {
+          minimum: 0,
+          nullable: true,
+          type: 'integer',
+        },
+        offset: {
+          minimum: 0,
+          type: 'integer',
+        },
+      },
+      required: ['hasMore', 'items', 'limit', 'nextOffset', 'offset'],
+      type: 'object',
     },
     TaskTemplateListResponse: {
       items: {

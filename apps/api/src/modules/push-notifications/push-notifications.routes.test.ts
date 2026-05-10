@@ -200,12 +200,13 @@ void describe('push notifications routes', () => {
     })
 
     assert.equal(response.statusCode, 503)
-    assert.deepEqual(apiErrorSchema.parse(response.json()), {
-      error: {
-        code: 'push_notifications_not_configured',
-        message:
-          'Firebase push notifications are not configured on the server.',
-      },
-    })
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'push_notifications_not_configured')
+    assert.equal(
+      body.error.message,
+      'Firebase push notifications are not configured on the server.',
+    )
+    assert.equal(typeof body.error.details, 'object')
   })
 })

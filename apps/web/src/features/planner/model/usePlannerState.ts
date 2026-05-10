@@ -36,7 +36,6 @@ import {
   countRetryablePlannerOfflineMutations,
   enqueuePlannerOfflineMutation,
   getLastTaskEventId,
-  isPlannerOfflineStorageAvailable,
   loadCachedProjectRecords,
   loadCachedTaskRecords,
   loadCachedTaskTemplateRecords,
@@ -52,11 +51,15 @@ import {
 import {
   createPlannerApiClient,
   isUnauthorizedPlannerApiError,
-  type PlannerApiClient,
   PlannerApiError,
 } from '../lib/planner-api'
 import { useTaskCompletionConfetti } from '../lib/task-completion-confetti'
 import type { PlannerState } from './planner.types'
+import {
+  getErrorMessage,
+  requirePlannerApi,
+  shouldKeepOptimisticMutation,
+} from './planner-error-policy'
 
 interface PlannerMutationContext {
   optimisticTaskId: string | undefined
@@ -102,13 +105,6 @@ interface RemoveTaskMutationVariables {
 }
 
 const TASK_EVENT_POLL_INTERVAL_MS = 15_000
-
-class PlannerApiUnavailableError extends Error {
-  constructor() {
-    super('Planner session is not ready.')
-    this.name = 'PlannerApiUnavailableError'
-  }
-}
 
 function toPlannerTask(task: TaskRecord): Task {
   return {
@@ -502,43 +498,6 @@ function getTaskRecord(
   taskId: string,
 ): TaskRecord | undefined {
   return taskRecords.find((task) => task.id === taskId)
-}
-
-function getErrorMessage(error: unknown): string {
-  if (
-    isUnauthorizedPlannerApiError(error) ||
-    isUnauthorizedSessionApiError(error)
-  ) {
-    return 'Не удалось подтвердить серверную сессию. Можно продолжать локально, изменения синхронизируются после восстановления входа.'
-  }
-
-  if (error instanceof PlannerApiError) {
-    return error.message
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Не удалось синхронизировать данные.'
-}
-
-function shouldKeepOptimisticMutation(error: unknown): boolean {
-  return (
-    isPlannerOfflineStorageAvailable() &&
-    (error instanceof PlannerApiUnavailableError ||
-      isQueueablePlannerMutationError(error))
-  )
-}
-
-function requirePlannerApi(
-  plannerApi: PlannerApiClient | null,
-): PlannerApiClient {
-  if (!plannerApi) {
-    throw new PlannerApiUnavailableError()
-  }
-
-  return plannerApi
 }
 
 function toggleTaskId(

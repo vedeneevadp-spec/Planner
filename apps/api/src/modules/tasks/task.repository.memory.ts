@@ -9,6 +9,7 @@ import type {
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
+  TaskListPageResult,
   TaskReadContext,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
@@ -41,6 +42,30 @@ export class MemoryTaskRepository implements TaskRepository {
     )
 
     return Promise.resolve(sortStoredTasks(tasks))
+  }
+
+  listPageByWorkspace(
+    context: TaskReadContext,
+    filters: TaskListFilters = {},
+  ): Promise<TaskListPageResult> {
+    const offset = filters.offset ?? 0
+    const limit = filters.limit ?? 100
+    const tasks = [...this.tasks.values()].filter(
+      (task) =>
+        task.workspaceId === context.workspaceId &&
+        matchesTaskFilters(task, filters),
+    )
+    const sortedTasks = sortStoredTasks(tasks)
+    const items = sortedTasks.slice(offset, offset + limit)
+    const nextOffset = offset + items.length
+
+    return Promise.resolve({
+      hasMore: nextOffset < sortedTasks.length,
+      items,
+      limit,
+      nextOffset: nextOffset < sortedTasks.length ? nextOffset : null,
+      offset,
+    })
   }
 
   findById(

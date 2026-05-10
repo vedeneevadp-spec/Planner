@@ -49,16 +49,25 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run dev:api`                                 | API в watch-режиме                                      |
 | `npm run dev:api:postgres`                        | API с локальным Docker Postgres                         |
 | `npm run start:api`                               | единичный запуск API                                    |
+| `npm run smoke:api:prod`                          | production-mode smoke API против локального Postgres    |
 | `npm run db:up` / `npm run db:down`               | поднять/остановить локальный Postgres                   |
+| `npm run db:backup`                               | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR` |
 | `npm run db:migrate` / `npm run db:seed`          | применить миграции и dev seed локально                  |
+| `npm run db:security:check`                       | проверить RLS/security-инварианты PostgreSQL            |
 | `npm run db:setup`                                | `db:up` + migrations + seed                             |
 | `npm run outbox:run`                              | обработать одну пачку outbox-сообщений                  |
+| `npm run task-reminders:worker`                   | отдельный long-running worker напоминаний               |
 | `npm run lint` / `npm run lint:fix`               | ESLint                                                  |
 | `npm run format:check` / `npm run format`         | Prettier                                                |
 | `npm run typecheck`                               | typecheck web, contracts и API                          |
 | `npm run test:web:run` / `npm run test:api`       | web/API тесты                                           |
+| `npm run test:api:postgres`                       | Postgres/RLS integration-тесты API                      |
+| `npm run test:e2e`                                | Playwright smoke web + API auth/tasks                   |
 | `npm run test:run`                                | web + API тесты                                         |
 | `npm run coverage`                                | web coverage                                            |
+| `npm run openapi:check`                           | контрактная проверка `/api/openapi.json`                |
+| `npm run audit:prod`                              | audit runtime-зависимостей без dev tooling              |
+| `npm run audit:dev-tooling`                       | контроль известных dev-only audit исключений            |
 | `npm run build`                                   | production-сборка web                                   |
 | `npm run mobile:sync`                             | production build web + sync в `ios/` и `android/`       |
 | `npm run mobile:release -- --api-url=...`         | подготовить и при флагах собрать native release         |
@@ -66,8 +75,9 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run mobile:assets`                           | пересобрать нативные icons/splash из `assets/logo.png`  |
 | `npm run mobile:open:ios` / `mobile:open:android` | открыть нативный проект в Xcode / Android Studio        |
 | `npm run mobile:doctor`                           | проверить состояние Capacitor toolchain                 |
+| `npm run mobile:ci-check`                         | проверить app id, версии и PWA/mobile config            |
 | `npm run check`                                   | lint + typecheck + tests                                |
-| `npm run ci`                                      | локальный CI: check + build                             |
+| `npm run ci`                                      | audit + check + OpenAPI + mobile config + build         |
 | `npm run deploy:prod`                             | production deploy на текущий VPS                        |
 
 ## Структура
@@ -82,7 +92,7 @@ db/
   migrations/  SQL-миграции PostgreSQL
 deploy/
   caddy/       production Caddyfile
-  systemd/     production systemd unit для API
+  systemd/     production systemd units для API и workers
 scripts/       локальные DB, mobile и deploy workflows
 ```
 
@@ -90,10 +100,10 @@ scripts/       локальные DB, mobile и deploy workflows
 
 API строится как modular monolith поверх Fastify. Основные route-группы:
 
-- public: `/api/health`, `/api/openapi.json`, `/api/docs`,
+- public: `/api/health`, `/api/metrics`, `/api/openapi.json`, `/api/docs`,
   `/api/v1/icon-assets/:fileName`, `/api/v1/alice/webhook`
 - session: `/api/v1/session`
-- planner: `/api/v1/tasks`, `/api/v1/task-events`
+- planner: `/api/v1/tasks`, `/api/v1/tasks/page`, `/api/v1/task-events`
 - сферы: `/api/v1/life-spheres`, `/api/v1/life-spheres/weekly-stats`
 - compatibility project API: `/api/v1/projects`
 - templates: `/api/v1/task-templates`
@@ -153,15 +163,28 @@ life-spheres API.
 - `API_STORAGE_DRIVER=postgres` - единственный application runtime; `memory`
   разрешен только в тестах
 - `API_AUTH_MODE=disabled` - локальный legacy flow через
-  `x-workspace-id`/`x-actor-user-id`
+  `x-workspace-id`/`x-actor-user-id`; разрешен только в `development` и `test`
 - `API_AUTH_MODE=jwt` - Chaotika Auth через email/password и собственные JWT
 - production runtime требует `API_AUTH_MODE=jwt`, явный `API_CORS_ORIGIN`,
-  неплейсхолдерный `AUTH_JWT_SECRET` и включенный RLS mode
+  неплейсхолдерный `AUTH_JWT_SECRET` и включенный RLS mode; с
+  `API_DB_RLS_MODE=disabled` API не стартует
 - `API_DB_RLS_MODE` переопределяет RLS strategy:
   `disabled`, `enabled`, `transaction_local`, `session_connection`
+- `API_TRUST_PROXY_HOPS=1` явно доверяет одному reverse proxy hop; без этой
+  настройки API не читает `x-forwarded-for` напрямую
+- `API_TASK_REMINDERS_RUNTIME` управляет напоминаниями:
+  `api` запускает poller внутри API процесса, `worker` запускает отдельный
+  production systemd service `planner-task-reminders`, `disabled` полностью
+  выключает poller
 - по умолчанию backend передает DB RLS context через transaction-local settings;
   backend policies остаются обязательным первым уровнем защиты
+- `npm run smoke:api:prod` поднимает API локально с `NODE_ENV=production`,
+  `API_AUTH_MODE=jwt`, `API_DB_RLS_MODE=transaction_local` и проверяет реальные
+  `health`, `auth`, `session` и `tasks` запросы; перед запуском используйте
+  `npm run db:setup`
 - `API_ICON_ASSET_DIR` задает локальное хранилище загруженных иконок
+- каждый ответ получает `x-request-id`; `/api/metrics` отдает lightweight
+  runtime counters в Prometheus-compatible text format
 - Android push через FCM включается, если API runtime видит либо
   `FIREBASE_SERVICE_ACCOUNT_PATH`, либо trio
   `FIREBASE_PROJECT_ID`/`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`
@@ -233,6 +256,10 @@ Production-данные приложения живут в Timeweb Managed Postg
 остается единственной точкой чтения и записи для UI.
 
 - `db/migrations` - источник истины для SQL-схемы
+- runner миграций хранит checksum и количество statements, берет advisory lock и
+  падает при изменении уже примененной migration
+- production deploy перед миграциями делает `pg_dump` backup в `/opt/planner/backups`
+- `npm run db:security:check` проверяет, что protected tables остаются под RLS
 - Auth полностью обслуживается backend: email/password, JWT, refresh tokens и
   password reset
 - основной sync идет через polling `/api/v1/task-events` и backend API
@@ -250,6 +277,8 @@ Production-данные приложения живут в Timeweb Managed Postg
 - VPS `147.45.158.186`
 - Caddy как HTTPS reverse proxy
 - systemd service `planner-api`
+- systemd service `planner-task-reminders`, если
+  `API_TASK_REMINDERS_RUNTIME=worker`
 - production env в `/etc/planner/planner.env`
 - web build обслуживается из `/opt/planner/apps/web/dist`
 - загруженные иконки лежат в `/var/lib/planner/icon-assets`
@@ -276,6 +305,13 @@ Workspace`: роли, права, жизненный цикл и правила 
 
 - pre-commit hook запускает `lint-staged`
 - CI запускает `npm run ci`
+- CI дополнительно поднимает PostgreSQL, применяет миграции, запускает
+  `npm run db:security:check`, `npm run test:api:postgres`,
+  `npm run smoke:api:prod` и `npm run test:e2e`
 - shared contracts валидируются через `zod`
 - web unit-тесты запускаются через Vitest
+- web coverage имеет минимальные thresholds в `apps/web/vite.config.ts`
 - API тесты запускаются через встроенный Node test runner с `tsx`
+- `npm run audit:prod` и `npm run audit:dev-tooling` должны оставаться чистыми;
+  tooling для native assets запускается из isolated `npx`, чтобы не держать
+  уязвимые transient dev-dependencies в lockfile

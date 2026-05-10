@@ -36,6 +36,8 @@ import {
   taskEventListResponseSchema,
   type TaskListFilters,
   taskListFiltersSchema,
+  type TaskListPageResponse,
+  taskListPageResponseSchema,
   taskListResponseSchema,
   type TaskRecord,
   taskRecordSchema,
@@ -136,6 +138,10 @@ export interface PlannerApiClient {
     filters?: TaskListFilters,
     signal?: RequestSignal,
   ) => Promise<TaskRecord[]>
+  listTasksPage: (
+    filters?: TaskListFilters,
+    signal?: RequestSignal,
+  ) => Promise<TaskListPageResponse>
   listTaskTemplates: (signal?: RequestSignal) => Promise<TaskTemplateRecord[]>
   removeTaskTemplate: (templateId: string) => Promise<void>
   removeLifeSphere: (sphereId: string) => Promise<void>
@@ -411,6 +417,16 @@ export function createPlannerApiClient(
         path: '/api/v1/tasks',
         query: validatedFilters,
         responseSchema: taskListResponseSchema,
+        signal,
+      })
+    },
+    async listTasksPage(filters = {}, signal) {
+      const validatedFilters = taskListFiltersSchema.parse(filters)
+
+      return request({
+        path: '/api/v1/tasks/page',
+        query: validatedFilters,
+        responseSchema: taskListPageResponseSchema,
         signal,
       })
     },

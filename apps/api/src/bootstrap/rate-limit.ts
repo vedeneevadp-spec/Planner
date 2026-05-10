@@ -47,16 +47,8 @@ export function assertInMemoryRateLimit({
 }
 
 export function getClientAddress(request: FastifyRequest): string {
-  const forwardedFor = request.headers['x-forwarded-for']
-
-  if (typeof forwardedFor === 'string') {
-    return forwardedFor.split(',')[0]?.trim() || request.ip
-  }
-
-  if (Array.isArray(forwardedFor) && forwardedFor[0]) {
-    return forwardedFor[0].split(',')[0]?.trim() || request.ip
-  }
-
+  // Fastify applies the explicit trustProxy policy before exposing request.ip.
+  // Do not read x-forwarded-for directly here: unauthenticated clients can spoof it.
   return request.ip
 }
 

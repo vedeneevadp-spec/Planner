@@ -22,12 +22,17 @@ import type {
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
+  TaskListPageResult,
   TaskReadContext,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
 } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
+import {
+  syncTaskReminder,
+  writeTaskMutationArtifacts,
+} from './task.repository.postgres.artifacts.js'
 import {
   buildDefaultEndTime,
   buildTimestampFromDateAndTime,
@@ -97,6 +102,56 @@ export class PostgresTaskRepository implements TaskRepository {
         ? taskRecords.filter((task) => task.project === filters.project)
         : taskRecords,
     )
+  }
+
+  async listPageByWorkspace(
+    context: TaskReadContext,
+    filters: TaskListFilters = {},
+  ): Promise<TaskListPageResult> {
+    const offset = filters.offset ?? 0
+    const limit = filters.limit ?? 100
+
+    if (filters.project) {
+      const records = await this.listByWorkspace(context, filters)
+      const items = records.slice(offset, offset + limit)
+      const nextOffset = offset + items.length
+
+      return {
+        hasMore: nextOffset < records.length,
+        items,
+        limit,
+        nextOffset: nextOffset < records.length ? nextOffset : null,
+        offset,
+      }
+    }
+
+    const taskRows = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        this.loadTaskRowsPageWithPrimaryTimeBlock(
+          executor,
+          context.workspaceId,
+          {
+            ...filters,
+            limit: limit + 1,
+            offset,
+          },
+        ),
+      context.actorUserId,
+    )
+    const hasMore = taskRows.length > limit
+    const items = taskRows
+      .slice(0, limit)
+      .map((taskRow) => this.mapTaskRecordFromListRow(taskRow))
+
+    return {
+      hasMore,
+      items: sortStoredTasks(items),
+      limit,
+      nextOffset: hasMore ? offset + items.length : null,
+      offset,
+    }
   }
 
   async findById(
@@ -306,7 +361,7 @@ export class PostgresTaskRepository implements TaskRepository {
         )
 
         if (insertedTask) {
-          await this.syncTaskReminder(trx, {
+          await syncTaskReminder(trx, {
             isActive: true,
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
@@ -316,7 +371,7 @@ export class PostgresTaskRepository implements TaskRepository {
             userId: task.created_by ?? command.context.actorUserId,
             workspaceId: command.context.workspaceId,
           })
-          await this.writeTaskMutationArtifacts(trx, {
+          await writeTaskMutationArtifacts(trx, {
             actorUserId: command.context.actorUserId,
             eventType: 'task.created',
             payload: {
@@ -475,7 +530,7 @@ export class PostgresTaskRepository implements TaskRepository {
           authorDisplayName,
         )
 
-        await this.syncTaskReminder(trx, {
+        await syncTaskReminder(trx, {
           isActive: true,
           plannedDate: record.plannedDate,
           plannedStartTime: record.plannedStartTime,
@@ -485,7 +540,7 @@ export class PostgresTaskRepository implements TaskRepository {
           userId: updatedTask.created_by ?? command.context.actorUserId,
           workspaceId: command.context.workspaceId,
         })
-        await this.writeTaskMutationArtifacts(trx, {
+        await writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
           eventType: 'task.updated',
           payload: {
@@ -584,7 +639,7 @@ export class PostgresTaskRepository implements TaskRepository {
           authorDisplayName,
         )
 
-        await this.syncTaskReminder(trx, {
+        await syncTaskReminder(trx, {
           isActive: record.status !== 'done',
           plannedDate: record.plannedDate,
           plannedStartTime: record.plannedStartTime,
@@ -594,7 +649,7 @@ export class PostgresTaskRepository implements TaskRepository {
           userId: updatedTask.created_by ?? command.context.actorUserId,
           workspaceId: command.context.workspaceId,
         })
-        await this.writeTaskMutationArtifacts(trx, {
+        await writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
           eventType: 'task.status_changed',
           payload: {
@@ -725,7 +780,7 @@ export class PostgresTaskRepository implements TaskRepository {
           authorDisplayName,
         )
 
-        await this.syncTaskReminder(trx, {
+        await syncTaskReminder(trx, {
           isActive: true,
           plannedDate: record.plannedDate,
           plannedStartTime: record.plannedStartTime,
@@ -735,7 +790,7 @@ export class PostgresTaskRepository implements TaskRepository {
           userId: updatedTask.created_by ?? command.context.actorUserId,
           workspaceId: command.context.workspaceId,
         })
-        await this.writeTaskMutationArtifacts(trx, {
+        await writeTaskMutationArtifacts(trx, {
           actorUserId: command.context.actorUserId,
           eventType: 'task.updated',
           payload: {
@@ -816,7 +871,7 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
           .execute()
 
-        await this.syncTaskReminder(trx, {
+        await syncTaskReminder(trx, {
           isActive: false,
           plannedDate: null,
           plannedStartTime: null,
@@ -1133,7 +1188,7 @@ export class PostgresTaskRepository implements TaskRepository {
         if (createdTask) {
           const record = this.mapTaskRecordFromListRow(createdTask)
 
-          await this.syncTaskReminder(executor, {
+          await syncTaskReminder(executor, {
             isActive: record.status !== 'done',
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
@@ -1303,7 +1358,7 @@ export class PostgresTaskRepository implements TaskRepository {
         if (updatedTask) {
           const record = this.mapTaskRecordFromListRow(updatedTask)
 
-          await this.syncTaskReminder(executor, {
+          await syncTaskReminder(executor, {
             isActive: record.status !== 'done',
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
@@ -1423,7 +1478,7 @@ export class PostgresTaskRepository implements TaskRepository {
         if (updatedTask) {
           const record = this.mapTaskRecordFromListRow(updatedTask)
 
-          await this.syncTaskReminder(executor, {
+          await syncTaskReminder(executor, {
             isActive: record.status !== 'done',
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
@@ -1618,7 +1673,7 @@ export class PostgresTaskRepository implements TaskRepository {
         if (updatedTask) {
           const record = this.mapTaskRecordFromListRow(updatedTask)
 
-          await this.syncTaskReminder(executor, {
+          await syncTaskReminder(executor, {
             isActive: true,
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
@@ -1717,7 +1772,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const removedTask = result.rows[0]
 
         if (removedTask) {
-          await this.syncTaskReminder(executor, {
+          await syncTaskReminder(executor, {
             isActive: false,
             plannedDate: null,
             plannedStartTime: null,
@@ -1824,6 +1879,90 @@ export class PostgresTaskRepository implements TaskRepository {
         time_block_starts_at: timeBlock?.starts_at ?? null,
       }
     })
+  }
+
+  private async loadTaskRowsPageWithPrimaryTimeBlock(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    filters: TaskListFilters & { limit: number; offset: number },
+  ): Promise<TaskListRow[]> {
+    const taskRows = await this.loadTaskRowsPage(executor, workspaceId, filters)
+
+    if (taskRows.length === 0) {
+      return []
+    }
+
+    const [
+      primaryTimeBlocks,
+      projectTitles,
+      assigneeDisplayNames,
+      authorDisplayNames,
+    ] = await Promise.all([
+      this.loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
+      this.loadProjectTitlesForTasks(executor, workspaceId, taskRows),
+      this.loadAssigneeDisplayNamesForTasks(executor, taskRows),
+      this.loadAuthorDisplayNamesForTasks(executor, taskRows),
+    ])
+
+    return taskRows.map((taskRow) => {
+      const timeBlock = primaryTimeBlocks.get(taskRow.id)
+
+      return {
+        ...taskRow,
+        assignee_display_name: taskRow.assignee_user_id
+          ? (assigneeDisplayNames.get(taskRow.assignee_user_id) ?? null)
+          : null,
+        author_display_name: taskRow.created_by
+          ? (authorDisplayNames.get(taskRow.created_by) ?? null)
+          : null,
+        project_title: taskRow.project_id
+          ? (projectTitles.get(taskRow.project_id) ?? null)
+          : null,
+        time_block_ends_at: timeBlock?.ends_at ?? null,
+        time_block_starts_at: timeBlock?.starts_at ?? null,
+      }
+    })
+  }
+
+  private loadTaskRowsPage(
+    executor: DatabaseExecutor,
+    workspaceId: string,
+    filters: TaskListFilters & { limit: number; offset: number },
+  ): Promise<TaskRow[]> {
+    let query = executor
+      .selectFrom('app.tasks')
+      .selectAll()
+      .where('workspace_id', '=', workspaceId)
+      .where('deleted_at', 'is', null)
+      .orderBy('created_at', 'asc')
+      .orderBy('id', 'asc')
+      .limit(filters.limit)
+      .offset(filters.offset)
+
+    if (filters.status) {
+      query = query.where('status', '=', filters.status)
+    }
+
+    if (filters.plannedDate) {
+      query = query.where('planned_on', '=', filters.plannedDate)
+    }
+
+    if (filters.projectId) {
+      query = query.where('project_id', '=', filters.projectId)
+    }
+
+    if (filters.sphereId) {
+      const sphereId = filters.sphereId
+
+      query = query.where((expressionBuilder) =>
+        expressionBuilder.or([
+          expressionBuilder('project_id', '=', sphereId),
+          expressionBuilder('sphere_id', '=', sphereId),
+        ]),
+      )
+    }
+
+    return query.execute()
   }
 
   private async loadTaskRowsInBatches(
@@ -2338,55 +2477,6 @@ export class PostgresTaskRepository implements TaskRepository {
         workspace_id: params.workspaceId,
       })
       .returningAll()
-      .executeTakeFirst()
-  }
-
-  private async syncTaskReminder(
-    executor: DatabaseExecutor,
-    params: {
-      isActive: boolean
-      plannedDate: string | null
-      plannedStartTime: string | null
-      remindBeforeStart: boolean
-      reminderTimeZone: string | undefined
-      taskId: string
-      userId: string
-      workspaceId: string
-    },
-  ): Promise<void> {
-    await sql`
-      select app.sync_task_reminder(
-        cast(${params.taskId} as uuid),
-        cast(${params.workspaceId} as uuid),
-        cast(${params.userId} as uuid),
-        ${params.remindBeforeStart},
-        cast(${params.plannedDate} as date),
-        cast(${params.plannedStartTime} as time),
-        cast(${params.reminderTimeZone ?? null} as text),
-        ${params.isActive}
-      )
-    `.execute(executor)
-  }
-
-  private async writeTaskMutationArtifacts(
-    executor: DatabaseExecutor,
-    params: {
-      actorUserId: string
-      eventType: string
-      payload: JsonObject
-      taskId: string
-      workspaceId: string
-    },
-  ): Promise<void> {
-    await executor
-      .insertInto('app.task_events')
-      .values({
-        actor_user_id: params.actorUserId,
-        event_type: params.eventType,
-        payload: params.payload,
-        task_id: params.taskId,
-        workspace_id: params.workspaceId,
-      })
       .executeTakeFirst()
   }
 

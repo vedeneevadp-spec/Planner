@@ -22,6 +22,10 @@ export class TaskService {
     return this.repository.listByWorkspace(context, filters)
   }
 
+  listTaskPage(context: TaskReadContext, filters?: TaskListFilters) {
+    return this.repository.listPageByWorkspace(context, filters)
+  }
+
   listTaskEvents(context: TaskReadContext, filters?: TaskEventFilters) {
     return this.repository.listEventsByWorkspace(context, filters)
   }

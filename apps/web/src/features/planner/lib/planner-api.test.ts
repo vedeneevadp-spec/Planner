@@ -81,6 +81,65 @@ describe('plannerApi', () => {
     expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBeNull()
   })
 
+  it('requests paginated task list with pagination metadata', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          hasMore: true,
+          items: [
+            {
+              assigneeDisplayName: null,
+              assigneeUserId: null,
+              authorDisplayName: null,
+              authorUserId: null,
+              completedAt: null,
+              createdAt: '2026-04-15T10:00:00.000Z',
+              deletedAt: null,
+              dueDate: null,
+              id: 'task-1',
+              icon: '',
+              importance: 'not_important',
+              note: '',
+              plannedDate: '2026-04-15',
+              plannedEndTime: null,
+              plannedStartTime: null,
+              project: '',
+              projectId: null,
+              resource: null,
+              requiresConfirmation: false,
+              sphereId: null,
+              status: 'todo',
+              title: 'Inbox',
+              urgency: 'not_urgent',
+              updatedAt: '2026-04-15T10:00:00.000Z',
+              version: 1,
+              workspaceId: 'workspace-1',
+            },
+          ],
+          limit: 1,
+          nextOffset: 1,
+          offset: 0,
+        }),
+        {
+          status: 200,
+        },
+      ),
+    )
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    const page = await api.listTasksPage({ limit: 1, offset: 0 })
+
+    expect(page.items).toHaveLength(1)
+    expect(page.nextOffset).toBe(1)
+
+    const [url] = fetchMock.mock.calls[0]!
+    const requestUrl = url instanceof URL ? url.href : url
+
+    expect(requestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/tasks/page?limit=1&offset=0',
+    )
+  })
+
   it('forwards abort signals for query-driven task fetches', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify([]), {

@@ -158,6 +158,7 @@ function createPlannerApiClientMock(
     listTaskEvents: vi.fn(),
     listProjects: vi.fn(),
     listTasks: vi.fn(),
+    listTasksPage: vi.fn(),
     listTaskTemplates: vi.fn(),
     removeLifeSphere: vi.fn(),
     removeTask: vi.fn(),

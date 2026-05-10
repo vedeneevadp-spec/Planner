@@ -18,6 +18,7 @@ import {
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
   taskEventListResponseSchema,
+  taskListPageResponseSchema,
   taskListResponseSchema,
   taskRecordSchema,
   taskTemplateListResponseSchema,
@@ -269,6 +270,35 @@ void describe('buildApiApp', () => {
     assert.equal(body.appEnv, 'test')
     assert.equal(body.databaseStatus, 'disabled')
     assert.equal(body.storageDriver, 'memory')
+  })
+
+  void it('returns request diagnostics and runtime metrics', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const healthResponse = await app.inject({
+      headers: {
+        'x-request-id': 'test-request-id',
+      },
+      method: 'GET',
+      url: '/api/health',
+    })
+
+    assert.equal(healthResponse.headers['x-request-id'], 'test-request-id')
+
+    const metricsResponse = await app.inject({
+      method: 'GET',
+      url: '/api/metrics',
+    })
+
+    assert.equal(metricsResponse.statusCode, 200)
+    assert.match(metricsResponse.body, /planner_api_requests_total/)
+    assert.match(metricsResponse.body, /planner_api_responses_total/)
   })
 
   void it('lists all application users for the global owner', async () => {
@@ -534,6 +564,23 @@ void describe('buildApiApp', () => {
 
     assert.equal(tasks.length, 1)
     assert.equal(tasks[0]?.id, createdTask.id)
+
+    const pageResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/tasks/page?status=done&limit=1&offset=0',
+    })
+
+    assert.equal(pageResponse.statusCode, 200)
+
+    const taskPage = taskListPageResponseSchema.parse(pageResponse.json())
+
+    assert.equal(taskPage.items.length, 1)
+    assert.equal(taskPage.items[0]?.id, createdTask.id)
+    assert.equal(taskPage.hasMore, false)
+    assert.equal(taskPage.nextOffset, null)
 
     const deleteResponse = await app.inject({
       headers: {

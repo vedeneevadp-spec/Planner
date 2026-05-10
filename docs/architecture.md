@@ -144,5 +144,5 @@ project names допустимы только как compatibility boundary.
 - API client, offline queue и session helpers покрываются web-тестами через
   Vitest
 - backend modules и bootstrap покрываются Node test runner с `tsx`
-- e2e smoke-тестов пока нет; добавлять их стоит после стабилизации основных
-  пользовательских сценариев
+- e2e smoke покрыт Playwright-сценарием auth + создание задачи; новые критичные
+  пользовательские flows нужно добавлять в `tests/e2e`

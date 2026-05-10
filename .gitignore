@@ -8,6 +8,8 @@ tmp
 out-tsc
 dist
 coverage
+test-results
+playwright-report
 node_modules
 apps/*/dist
 apps/*/coverage

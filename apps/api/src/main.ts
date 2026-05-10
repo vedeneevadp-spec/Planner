@@ -176,6 +176,7 @@ export function createApiKernel(
   if (
     database &&
     config.appEnv !== 'test' &&
+    config.taskRemindersRuntime === 'api' &&
     pushNotificationsService.isAvailable()
   ) {
     const taskRemindersService = new TaskRemindersService(

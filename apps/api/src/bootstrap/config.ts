@@ -6,6 +6,8 @@ import type { JwtAuthRuntimeConfig } from '../infrastructure/auth/jwt-request-au
 import type { PlannerAuthRuntimeConfig } from '../modules/auth/index.js'
 
 export type ApiAuthMode = 'disabled' | 'jwt'
+export type ApiTrustedProxyHops = false | number
+export type TaskRemindersRuntimeMode = 'api' | 'disabled' | 'worker'
 
 export interface FirebasePushConfig {
   clientEmail: string
@@ -32,6 +34,8 @@ export interface ApiConfig {
   plannerAuth: PlannerAuthRuntimeConfig | null
   port: number
   storageDriver: StorageDriver
+  taskRemindersRuntime: TaskRemindersRuntimeMode
+  trustedProxyHops: ApiTrustedProxyHops
 }
 
 interface ProductionConfigValidationInput {
@@ -87,6 +91,38 @@ function parseAuthMode(value: string | undefined): ApiAuthMode {
   }
 
   throw new Error(`Invalid API auth mode: ${value}`)
+}
+
+function parseTrustedProxyHops(value: string | undefined): ApiTrustedProxyHops {
+  if (!value || value === '0' || value === 'false') {
+    return false
+  }
+
+  if (value === 'true') {
+    return 1
+  }
+
+  const parsed = Number(value)
+
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) {
+    throw new Error(`Invalid API_TRUST_PROXY_HOPS: ${value}`)
+  }
+
+  return parsed
+}
+
+function parseTaskRemindersRuntime(
+  value: string | undefined,
+): TaskRemindersRuntimeMode {
+  if (!value || value === 'api') {
+    return 'api'
+  }
+
+  if (value === 'worker' || value === 'disabled') {
+    return value
+  }
+
+  throw new Error(`Invalid API_TASK_REMINDERS_RUNTIME: ${value}`)
 }
 
 function createFirebasePushConfig(
@@ -290,6 +326,7 @@ export function createApiConfig(
     env,
     jwtAuth,
   })
+  validateAuthModeForEnvironment(appEnv, authMode)
 
   return {
     aliceOAuth: createAliceOAuthConfig(env),
@@ -303,6 +340,26 @@ export function createApiConfig(
     plannerAuth: createPlannerAuthConfig(env, jwtAuth),
     port: parsePort(env.API_PORT ?? env.PORT),
     storageDriver: parseStorageDriver(env.API_STORAGE_DRIVER, appEnv),
+    taskRemindersRuntime: parseTaskRemindersRuntime(
+      env.API_TASK_REMINDERS_RUNTIME,
+    ),
+    trustedProxyHops: parseTrustedProxyHops(env.API_TRUST_PROXY_HOPS),
+  }
+}
+
+function validateAuthModeForEnvironment(
+  appEnv: string,
+  authMode: ApiAuthMode,
+): void {
+  if (
+    authMode === 'disabled' &&
+    appEnv !== 'development' &&
+    appEnv !== 'test' &&
+    appEnv !== 'production'
+  ) {
+    throw new Error(
+      'API_AUTH_MODE=disabled is supported only in development and test runtimes.',
+    )
   }
 }
 
@@ -326,6 +383,12 @@ function validateProductionConfig({
   if (isUnsafeProductionCorsOrigin(corsOrigin)) {
     throw new Error(
       'API_CORS_ORIGIN must explicitly list allowed origins when NODE_ENV=production.',
+    )
+  }
+
+  if (env.API_DB_RLS_MODE?.trim().toLowerCase() === 'disabled') {
+    throw new Error(
+      'API_DB_RLS_MODE=disabled is not allowed when NODE_ENV=production.',
     )
   }
 

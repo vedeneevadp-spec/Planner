@@ -11,6 +11,21 @@ jobs:
   quality:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: planner_ci
+          POSTGRES_PASSWORD: planner
+          POSTGRES_USER: planner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U planner -d planner_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
     steps:
       - uses: actions/checkout@v4
 
@@ -21,3 +36,24 @@ jobs:
 
       - run: npm ci
       - run: npm run ci
+      - run: npm run db:migrate
+        env:
+          DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/planner_ci
+      - run: npm run db:security:check
+        env:
+          DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/planner_ci
+      - run: npm run test:api:postgres
+        env:
+          API_DB_RLS_MODE: transaction_local
+          DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/planner_ci
+      - run: npm run smoke:api:prod
+        env:
+          API_AUTH_MODE: jwt
+          API_CORS_ORIGIN: http://127.0.0.1:5173
+          API_DB_RLS_MODE: transaction_local
+          AUTH_JWT_SECRET: planner-ci-jwt-secret-with-at-least-32-chars
+          DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/planner_ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/planner_ci

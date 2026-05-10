@@ -21,11 +21,21 @@ export interface StoredTaskRecord extends Task {
 }
 
 export interface TaskListFilters {
+  limit?: number | undefined
+  offset?: number | undefined
   plannedDate?: string | undefined
   projectId?: string | undefined
   project?: string | undefined
   sphereId?: string | undefined
   status?: TaskStatus | undefined
+}
+
+export interface TaskListPageResult {
+  hasMore: boolean
+  items: StoredTaskRecord[]
+  limit: number
+  nextOffset: number | null
+  offset: number
 }
 
 export type StoredTaskEventRecord = TaskEventRecord

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,6 +21,7 @@ const retries = 30
 const retryDelayMs = 1000
 const statementRetries = 5
 const useStatelessMode = process.env.DB_MIGRATE_MODE === 'stateless'
+const migrationLockKey = 7_334_202_605
 
 async function main() {
   const migrationFiles = (await readdir(migrationsDirectory))
@@ -48,17 +50,25 @@ async function runTransactionalMigrations(migrationFiles) {
 
   try {
     await ensureSchemaMigrationsTable(client)
+    await acquireMigrationLock(client)
 
     for (const fileName of migrationFiles) {
-      const alreadyApplied = await hasMigration(client, fileName)
+      const filePath = path.join(migrationsDirectory, fileName)
+      const sql = await readFile(filePath, 'utf8')
+      const checksum = createMigrationChecksum(sql)
+      const alreadyApplied = await getMigrationRecord(client, fileName)
 
       if (alreadyApplied) {
+        await assertMigrationChecksum(
+          client,
+          fileName,
+          checksum,
+          alreadyApplied,
+        )
         console.log(`Skipping already applied migration: ${fileName}`)
         continue
       }
 
-      const filePath = path.join(migrationsDirectory, fileName)
-      const sql = await readFile(filePath, 'utf8')
       const statements = splitSqlStatements(sql)
 
       console.log(`Applying migration: ${fileName}`)
@@ -70,7 +80,11 @@ async function runTransactionalMigrations(migrationFiles) {
           )
           await client.query(statement)
         }
-        await recordMigration(client, fileName)
+        await recordMigration(client, {
+          checksum,
+          fileName,
+          statementCount: statements.length,
+        })
         await client.query('commit')
       } catch (error) {
         await client.query('rollback')
@@ -78,6 +92,7 @@ async function runTransactionalMigrations(migrationFiles) {
       }
     }
   } finally {
+    await releaseMigrationLock(client).catch(() => undefined)
     await closePgClient(client)
   }
 }
@@ -91,17 +106,21 @@ async function runStatelessMigrations(migrationFiles) {
   )
 
   for (const fileName of migrationFiles) {
+    const filePath = path.join(migrationsDirectory, fileName)
+    const sql = await readFile(filePath, 'utf8')
+    const checksum = createMigrationChecksum(sql)
     const alreadyApplied = await withConnectedClient((client) =>
-      hasMigration(client, fileName),
+      getMigrationRecord(client, fileName),
     )
 
     if (alreadyApplied) {
+      await withConnectedClient((client) =>
+        assertMigrationChecksum(client, fileName, checksum, alreadyApplied),
+      )
       console.log(`Skipping already applied migration: ${fileName}`)
       continue
     }
 
-    const filePath = path.join(migrationsDirectory, fileName)
-    const sql = await readFile(filePath, 'utf8')
     const statements = splitSqlStatements(sql)
 
     console.log(`Applying migration: ${fileName}`)
@@ -113,7 +132,13 @@ async function runStatelessMigrations(migrationFiles) {
       await runStatementWithRetry(statement)
     }
 
-    await withConnectedClient((client) => recordMigration(client, fileName))
+    await withConnectedClient((client) =>
+      recordMigration(client, {
+        checksum,
+        fileName,
+        statementCount: statements.length,
+      }),
+    )
   }
 }
 
@@ -235,6 +260,7 @@ async function ensureSchemaMigrationsTable(client) {
   )
 
   if (tableResult.rows[0]?.exists) {
+    await ensureSchemaMigrationMetadataColumns(client)
     return
   }
 
@@ -244,17 +270,32 @@ async function ensureSchemaMigrationsTable(client) {
     create table if not exists app.schema_migrations (
       id bigserial primary key,
       name text not null unique,
+      checksum text,
+      statement_count integer,
       applied_at timestamptz not null default now()
     )
   `,
   )
+
+  await ensureSchemaMigrationMetadataColumns(client)
 }
 
-async function hasMigration(client, fileName) {
+async function ensureSchemaMigrationMetadataColumns(client) {
+  await client.query(
+    // noinspection SqlNoDataSourceInspection
+    `
+      alter table app.schema_migrations
+        add column if not exists checksum text,
+        add column if not exists statement_count integer
+    `,
+  )
+}
+
+async function getMigrationRecord(client, fileName) {
   const result = await client.query(
     // noinspection SqlNoDataSourceInspection
     `
-      select 1
+      select checksum, statement_count
       from app.schema_migrations
       where name = $1
       limit 1
@@ -262,19 +303,59 @@ async function hasMigration(client, fileName) {
     [fileName],
   )
 
-  return result.rowCount > 0
+  return result.rows[0] ?? null
 }
 
-async function recordMigration(client, fileName) {
+async function recordMigration(client, { checksum, fileName, statementCount }) {
   await client.query(
     // noinspection SqlNoDataSourceInspection
     `
-      insert into app.schema_migrations (name)
-      values ($1)
-      on conflict (name) do nothing
+      insert into app.schema_migrations (name, checksum, statement_count)
+      values ($1, $2, $3)
+      on conflict (name) do update
+        set checksum = excluded.checksum,
+            statement_count = excluded.statement_count
     `,
-    [fileName],
+    [fileName, checksum, statementCount],
   )
+}
+
+async function assertMigrationChecksum(client, fileName, checksum, record) {
+  if (!record.checksum) {
+    await client.query(
+      // noinspection SqlNoDataSourceInspection
+      `
+        update app.schema_migrations
+        set checksum = $2
+        where name = $1
+          and checksum is null
+      `,
+      [fileName, checksum],
+    )
+    return
+  }
+
+  if (record.checksum !== checksum) {
+    throw new Error(
+      [
+        `Migration checksum mismatch for ${fileName}.`,
+        `Database has ${record.checksum}, file has ${checksum}.`,
+        'Create a new migration instead of editing an applied one.',
+      ].join(' '),
+    )
+  }
+}
+
+async function acquireMigrationLock(client) {
+  await client.query('select pg_advisory_lock($1)', [migrationLockKey])
+}
+
+async function releaseMigrationLock(client) {
+  await client.query('select pg_advisory_unlock($1)', [migrationLockKey])
+}
+
+function createMigrationChecksum(sql) {
+  return createHash('sha256').update(sql).digest('hex')
 }
 
 function wait(durationMs) {

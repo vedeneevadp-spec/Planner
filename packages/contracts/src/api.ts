@@ -299,6 +299,8 @@ export const pushTestNotificationResponseSchema = z.object({
 })
 
 export const taskListFiltersSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  offset: z.coerce.number().int().nonnegative().optional(),
   plannedDate: z.string().optional(),
   projectId: z.string().optional(),
   sphereId: z.string().optional(),
@@ -307,6 +309,13 @@ export const taskListFiltersSchema = z.object({
 })
 
 export const taskListResponseSchema = z.array(taskRecordSchema)
+export const taskListPageResponseSchema = z.object({
+  hasMore: z.boolean(),
+  items: z.array(taskRecordSchema),
+  limit: z.number().int().min(1).max(100),
+  nextOffset: z.number().int().nonnegative().nullable(),
+  offset: z.number().int().nonnegative(),
+})
 export const chaosInboxItemRecordSchema = chaosInboxItemSchema.extend({
   workspaceId: z.string(),
   deletedAt: z.string().nullable(),
@@ -473,6 +482,7 @@ export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>
 export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
 export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>
 export type TaskListFilters = z.infer<typeof taskListFiltersSchema>
+export type TaskListPageResponse = z.infer<typeof taskListPageResponseSchema>
 export type TaskRecord = z.infer<typeof taskRecordSchema>
 export type TaskTemplateRecord = z.infer<typeof taskTemplateRecordSchema>
 export type TaskScheduleUpdateInput = z.infer<

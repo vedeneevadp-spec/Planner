@@ -43,6 +43,12 @@ import type { TaskService } from '../modules/tasks/index.js'
 import { registerTaskRoutes } from '../modules/tasks/index.js'
 import type { ApiConfig } from './config.js'
 import { HttpError } from './http-error.js'
+import {
+  createErrorDiagnostics,
+  createRequestId,
+  recordUnhandledRequestError,
+  registerApiObservability,
+} from './observability.js'
 import { registerOpenApi } from './openapi.js'
 import {
   NoopRequestAuthenticator,
@@ -82,16 +88,19 @@ export function buildApiApp({
 }: BuildApiAppOptions) {
   const app = Fastify({
     bodyLimit: 25 * 1024 * 1024,
+    genReqId: createRequestId,
     logger: config.appEnv !== 'test',
     routerOptions: {
       maxParamLength: 260,
     },
+    trustProxy: config.trustedProxyHops,
   })
 
   app.register(cors, {
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: resolveCorsOrigin(config.corsOrigin),
   })
+  registerApiObservability(app)
   registerOpenApi(app, config)
   registerIconAssetRoutes(app, config.iconAssetDirectory)
   registerProfileAvatarRoutes(
@@ -163,8 +172,14 @@ export function buildApiApp({
   })
 
   app.setErrorHandler((error, request, reply) => {
+    const diagnostics = createErrorDiagnostics(request, reply)
+
     if (!(error instanceof HttpError)) {
-      request.log.error({ err: error }, 'Unhandled request error.')
+      recordUnhandledRequestError(app)
+      request.log.error(
+        { err: error, ...diagnostics },
+        'Unhandled request error.',
+      )
     }
 
     const httpError =
@@ -175,7 +190,14 @@ export function buildApiApp({
     const payload: ApiError = {
       error: {
         code: httpError.code,
-        details: httpError.details,
+        details: {
+          ...(isRecord(httpError.details) ? httpError.details : {}),
+          errorId: diagnostics.errorId,
+          requestId: diagnostics.requestId,
+          ...(httpError.details !== undefined && !isRecord(httpError.details)
+            ? { cause: httpError.details }
+            : {}),
+        },
         message: httpError.message,
       },
     }
@@ -218,6 +240,7 @@ function isPublicRequest(method: string, url: string): boolean {
 
   return (
     path === '/api/health' ||
+    path === '/api/metrics' ||
     path === '/api/v1/auth/sign-in' ||
     path === '/api/v1/auth/sign-out' ||
     path === '/api/v1/auth/sign-up' ||
@@ -233,6 +256,10 @@ function isPublicRequest(method: string, url: string): boolean {
     path === '/api/docs' ||
     path.startsWith('/api/docs/')
   )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function getDatabaseStatus(

@@ -6,8 +6,10 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
+    "test:postgres": "node --import tsx --test \"src/**/*.postgres-spec.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "outbox:run": "tsx src/workers/outbox.ts"
+    "outbox:run": "tsx src/workers/outbox.ts",
+    "task-reminders:worker": "tsx src/workers/task-reminders.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

@@ -134,5 +134,52 @@ void describe('createApiConfig', () => {
         } as NodeJS.ProcessEnv),
       /AUTH_JWT_SECRET/,
     )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          API_DB_RLS_MODE: 'disabled',
+        } as NodeJS.ProcessEnv),
+      /API_DB_RLS_MODE=disabled/,
+    )
+  })
+
+  void it('keeps disabled auth restricted to development and test runtimes', () => {
+    assert.throws(
+      () =>
+        createApiConfig({
+          API_AUTH_MODE: 'disabled',
+          NODE_ENV: 'staging',
+        } as NodeJS.ProcessEnv),
+      /API_AUTH_MODE=disabled/,
+    )
+  })
+
+  void it('parses explicit proxy trust and reminder runtime settings', () => {
+    const config = createApiConfig({
+      NODE_ENV: 'development',
+      API_TRUST_PROXY_HOPS: '1',
+      API_TASK_REMINDERS_RUNTIME: 'worker',
+    } as NodeJS.ProcessEnv)
+
+    assert.equal(config.trustedProxyHops, 1)
+    assert.equal(config.taskRemindersRuntime, 'worker')
+
+    assert.throws(
+      () =>
+        createApiConfig({
+          NODE_ENV: 'development',
+          API_TRUST_PROXY_HOPS: 'many',
+        } as NodeJS.ProcessEnv),
+      /API_TRUST_PROXY_HOPS/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          NODE_ENV: 'development',
+          API_TASK_REMINDERS_RUNTIME: 'cron',
+        } as NodeJS.ProcessEnv),
+      /API_TASK_REMINDERS_RUNTIME/,
+    )
   })
 })

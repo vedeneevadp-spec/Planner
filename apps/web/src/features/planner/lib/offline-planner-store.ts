@@ -161,6 +161,8 @@ const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
   'pending',
   'syncing',
 ]
+export const PLANNER_OFFLINE_DATABASE_NAME = 'planner-offline'
+export const PLANNER_OFFLINE_SCHEMA_VERSION = 3
 
 class PlannerOfflineDatabase extends Dexie {
   cachedProjects!: Table<PlannerCachedProjectRow, string>
@@ -170,7 +172,7 @@ class PlannerOfflineDatabase extends Dexie {
   syncMetadata!: Table<PlannerSyncMetadataRow, string>
 
   constructor() {
-    super('planner-offline')
+    super(PLANNER_OFFLINE_DATABASE_NAME)
 
     this.version(1).stores({
       cachedTasks: 'key, workspaceId, taskId, updatedAt',
@@ -183,7 +185,7 @@ class PlannerOfflineDatabase extends Dexie {
       mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
       syncMetadata: 'key, workspaceId, updatedAt',
     })
-    this.version(3).stores({
+    this.version(PLANNER_OFFLINE_SCHEMA_VERSION).stores({
       cachedProjects: 'key, workspaceId, projectId, updatedAt',
       cachedTaskTemplates: 'key, workspaceId, templateId, updatedAt',
       cachedTasks: 'key, workspaceId, taskId, updatedAt',
@@ -204,7 +206,7 @@ export async function resetPlannerOfflineDatabaseForTests(): Promise<void> {
   database = null
 
   if (isPlannerOfflineStorageAvailable()) {
-    await Dexie.delete('planner-offline')
+    await Dexie.delete(PLANNER_OFFLINE_DATABASE_NAME)
   }
 }
 

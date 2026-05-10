@@ -4,6 +4,7 @@ import {
   taskEventListFiltersSchema,
   taskEventListResponseSchema,
   taskListFiltersSchema,
+  taskListPageResponseSchema,
   taskListResponseSchema,
   taskRecordSchema,
   taskScheduleUpdateInputSchema,
@@ -50,6 +51,23 @@ export function registerTaskRoutes(
     const tasks = await service.listTasks(context, filters)
 
     return taskListResponseSchema.parse(tasks)
+  })
+
+  app.get('/api/v1/tasks/page', async (request) => {
+    const headers = parseOrThrow(
+      readHeadersSchema,
+      request.headers,
+      'invalid_headers',
+    )
+    const filters = parseOrThrow(
+      taskListFiltersSchema,
+      request.query,
+      'invalid_query',
+    )
+    const context = await resolveReadContext(request, sessionService, headers)
+    const result = await service.listTaskPage(context, filters)
+
+    return taskListPageResponseSchema.parse(result)
   })
 
   app.get('/api/v1/task-events', async (request) => {

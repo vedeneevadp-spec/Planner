@@ -18,6 +18,7 @@ export class TaskRemindersPoller {
     private readonly options: {
       batchSize?: number | undefined
       intervalMs?: number | undefined
+      unrefTimer?: boolean | undefined
     } = {},
   ) {}
 
@@ -31,7 +32,10 @@ export class TaskRemindersPoller {
     this.timer = setInterval(() => {
       void this.runOnce()
     }, this.options.intervalMs ?? DEFAULT_INTERVAL_MS)
-    this.timer.unref?.()
+
+    if (this.options.unrefTimer !== false) {
+      this.timer.unref?.()
+    }
   }
 
   async stop(): Promise<void> {

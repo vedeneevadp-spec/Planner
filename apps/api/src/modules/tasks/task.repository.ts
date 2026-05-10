@@ -5,6 +5,7 @@ import type {
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
+  TaskListPageResult,
   TaskReadContext,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
@@ -16,6 +17,10 @@ export interface TaskRepository {
     context: TaskReadContext,
     filters?: TaskListFilters,
   ): Promise<StoredTaskRecord[]>
+  listPageByWorkspace(
+    context: TaskReadContext,
+    filters?: TaskListFilters,
+  ): Promise<TaskListPageResult>
   findById(
     context: TaskReadContext,
     taskId: string,
