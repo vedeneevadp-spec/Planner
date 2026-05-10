@@ -59,7 +59,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
   const [removeAvatar, setRemoveAvatar] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [widgetBackgroundOpacity, setWidgetBackgroundOpacity] =
-    useState<NativePlannerWidgetBackgroundOpacity>(100)
+    useState<NativePlannerWidgetBackgroundOpacity>(85)
   const isWidgetSettingsAvailable = useMemo(
     () => isAndroidPlannerWidgetRuntime(),
     [],

@@ -25,7 +25,7 @@ import { formatTimeRange, getDateKey } from '@/shared/lib/date'
 const PLANNER_WIDGET_SNAPSHOT_KEY = 'planner.widget.today.snapshot'
 const PLANNER_WIDGET_BACKGROUND_OPACITY_KEY =
   'planner.widget.background.opacityPercent'
-const DEFAULT_WIDGET_BACKGROUND_OPACITY = 100
+const DEFAULT_WIDGET_BACKGROUND_OPACITY = 85
 
 export const NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS = [
   40, 55, 70, 85, 100,

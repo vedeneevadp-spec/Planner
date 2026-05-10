@@ -3,49 +3,76 @@
     android:id="@+id/planner_widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/planner_widget_background"
+    android:background="@drawable/planner_widget_background_85"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="18dp">
 
-    <TextView
-        android:id="@+id/planner_widget_title"
+    <LinearLayout
+        android:id="@+id/planner_widget_header"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:singleLine="true"
-        android:text="@string/planner_today_widget_title"
-        android:textColor="@color/planner_widget_text"
-        android:textSize="17sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <TextView
-        android:id="@+id/planner_widget_date"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="1dp"
-        android:ellipsize="end"
-        android:singleLine="true"
-        android:text="@string/planner_widget_preview_date"
-        android:textColor="@color/planner_widget_text_soft"
-        android:textSize="12sp" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/planner_widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/planner_today_widget_title"
+                android:textColor="@color/planner_widget_text"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/planner_widget_date"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="@string/planner_widget_preview_date"
+                android:textColor="@color/planner_widget_text_soft"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/planner_widget_opacity_button"
+            android:layout_width="48dp"
+            android:layout_height="34dp"
+            android:background="@drawable/planner_widget_control_background"
+            android:gravity="center"
+            android:singleLine="true"
+            android:text="@string/planner_widget_background_opacity_default"
+            android:textColor="@color/planner_widget_accent"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/planner_widget_summary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
         android:ellipsize="end"
         android:singleLine="true"
         android:text="@string/planner_widget_no_snapshot_summary"
         android:textColor="@color/planner_widget_text"
-        android:textSize="13sp" />
+        android:textSize="15sp" />
 
     <ProgressBar
         android:id="@+id/planner_widget_progress"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="5dp"
-        android:layout_marginTop="6dp"
+        android:layout_height="7dp"
+        android:layout_marginTop="8dp"
         android:indeterminate="false"
         android:max="100"
         android:progress="0"
@@ -54,7 +81,7 @@
     <TextView
         android:id="@+id/planner_widget_task_1"
         style="@style/PlannerWidgetTaskText"
-        android:layout_marginTop="9dp"
+        android:layout_marginTop="13dp"
         android:visibility="gone" />
 
     <TextView
@@ -121,5 +148,5 @@
         android:singleLine="true"
         android:text="@string/planner_widget_no_snapshot_empty"
         android:textColor="@color/planner_widget_text_soft"
-        android:textSize="13sp" />
+        android:textSize="15sp" />
 </LinearLayout>

@@ -16,6 +16,7 @@ import java.util.TimeZone;
 final class PlannerWidgetStorage {
 
     static final String ACTION_COMPLETE_TASK = "ru.chaotika.app.action.COMPLETE_TASK_FROM_WIDGET";
+    static final String ACTION_CYCLE_BACKGROUND_OPACITY = "ru.chaotika.app.action.CYCLE_WIDGET_BACKGROUND_OPACITY";
     static final String ACTION_OPEN_TODAY = "ru.chaotika.app.action.OPEN_TODAY_FROM_WIDGET";
     static final String ACTION_REFRESH_WIDGET = "ru.chaotika.app.action.REFRESH_WIDGET";
     static final String EXTRA_WIDGET_TASK_ID = "ru.chaotika.app.extra.WIDGET_TASK_ID";
@@ -23,7 +24,7 @@ final class PlannerWidgetStorage {
     static final String SNAPSHOT_KEY = "planner.widget.today.snapshot";
     static final String TODAY_ROUTE = "/today";
 
-    private static final int DEFAULT_BACKGROUND_OPACITY_PERCENT = 100;
+    private static final int DEFAULT_BACKGROUND_OPACITY_PERCENT = 85;
     private static final String BACKGROUND_OPACITY_KEY = "planner.widget.background.opacityPercent";
     private static final String PENDING_COMPLETED_TASK_IDS_KEY = "planner.widget.pending-completed-task-ids";
     private static final String PENDING_ROUTE_KEY = "planner.widget.pending-route";
@@ -76,6 +77,14 @@ final class PlannerWidgetStorage {
         } catch (NumberFormatException exception) {
             return DEFAULT_BACKGROUND_OPACITY_PERCENT;
         }
+    }
+
+    static int cycleBackgroundOpacityPercent(Context context) {
+        int nextOpacity = getNextBackgroundOpacityPercent(readBackgroundOpacityPercent(context));
+
+        getPreferences(context).edit().putString(BACKGROUND_OPACITY_KEY, String.valueOf(nextOpacity)).apply();
+
+        return nextOpacity;
     }
 
     static void markTaskCompletedInSnapshot(Context context, String taskId) {
@@ -148,6 +157,26 @@ final class PlannerWidgetStorage {
 
         if (value <= 92) {
             return 85;
+        }
+
+        return 100;
+    }
+
+    private static int getNextBackgroundOpacityPercent(int value) {
+        if (value >= 100) {
+            return 85;
+        }
+
+        if (value >= 85) {
+            return 70;
+        }
+
+        if (value >= 70) {
+            return 55;
+        }
+
+        if (value >= 55) {
+            return 40;
         }
 
         return 100;

@@ -8,6 +8,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
 import java.text.ParseException;
@@ -52,6 +53,12 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent == null ? null : intent.getAction();
+
+        if (PlannerWidgetStorage.ACTION_CYCLE_BACKGROUND_OPACITY.equals(action)) {
+            PlannerWidgetStorage.cycleBackgroundOpacityPercent(context);
+            updateAllWidgets(context);
+            return;
+        }
 
         if (PlannerWidgetStorage.ACTION_COMPLETE_TASK.equals(action)) {
             handleCompleteTask(context, intent);
@@ -110,11 +117,24 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             todayKey
         );
         PlannerWidgetSnapshot snapshot = state.snapshot;
+        int backgroundOpacityPercent = PlannerWidgetStorage.readBackgroundOpacityPercent(context);
 
         views.setInt(
             R.id.planner_widget_root,
             "setBackgroundResource",
-            getBackgroundResource(PlannerWidgetStorage.readBackgroundOpacityPercent(context))
+            getBackgroundResource(backgroundOpacityPercent)
+        );
+        views.setTextViewText(R.id.planner_widget_opacity_button, backgroundOpacityPercent + "%");
+        views.setContentDescription(
+            R.id.planner_widget_opacity_button,
+            context.getString(
+                R.string.planner_widget_background_opacity_content_description,
+                backgroundOpacityPercent
+            )
+        );
+        views.setOnClickPendingIntent(
+            R.id.planner_widget_opacity_button,
+            createCycleBackgroundOpacityPendingIntent(context)
         );
         applyDisplayOptions(views, displayOptions);
         views.setOnClickPendingIntent(R.id.planner_widget_root, createOpenTodayPendingIntent(context));
@@ -201,8 +221,9 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             int taskViewId = TASK_VIEW_IDS[index];
             String taskText = buildTaskText(context, task);
 
-            views.setTextViewText(taskViewId, context.getString(R.string.planner_widget_task_action_prefix, taskText));
+            views.setTextViewText(taskViewId, buildTaskDisplayText(context, task, taskText));
             views.setTextColor(taskViewId, getTaskTextColor(context, task, defaultTextColor, warningTextColor));
+            views.setTextViewTextSize(taskViewId, TypedValue.COMPLEX_UNIT_SP, displayOptions.taskTextSizeSp);
             views.setContentDescription(
                 taskViewId,
                 context.getString(R.string.planner_widget_complete_task_content_description, taskText)
@@ -245,6 +266,26 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         }
 
         return task.title;
+    }
+
+    private static String buildTaskDisplayText(Context context, PlannerWidgetTask task, String taskText) {
+        if ("in_progress".equals(task.visualTone)) {
+            return context.getString(R.string.planner_widget_task_in_progress, taskText);
+        }
+
+        if ("review".equals(task.visualTone)) {
+            return context.getString(R.string.planner_widget_task_review, taskText);
+        }
+
+        if ("urgent".equals(task.visualTone)) {
+            return context.getString(R.string.planner_widget_task_urgent, taskText);
+        }
+
+        if ("overdue".equals(task.visualTone) || task.isOverdue) {
+            return context.getString(R.string.planner_widget_task_overdue, taskText);
+        }
+
+        return context.getString(R.string.planner_widget_task_default, taskText);
     }
 
     private static int getTaskTextColor(
@@ -320,6 +361,15 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         return PendingIntent.getActivity(context, 1007, intent, flags);
     }
 
+    private static PendingIntent createCycleBackgroundOpacityPendingIntent(Context context) {
+        Intent intent = new Intent(context, PlannerWidgetProvider.class);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+
+        intent.setAction(PlannerWidgetStorage.ACTION_CYCLE_BACKGROUND_OPACITY);
+
+        return PendingIntent.getBroadcast(context, 1009, intent, flags);
+    }
+
     private static PendingIntent createRefreshPendingIntent(Context context) {
         Intent intent = new Intent(context, PlannerWidgetProvider.class);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
@@ -373,11 +423,16 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         int minHeight = options == null
             ? DEFAULT_WIDGET_HEIGHT_DP
             : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, DEFAULT_WIDGET_HEIGHT_DP);
-        boolean showDate = minHeight >= 130;
-        boolean showProgress = minHeight >= 125;
-        int taskLimit = Math.max(1, Math.min(MAX_TASKS, (minHeight - 70) / 24));
+        int maxHeight = options == null
+            ? minHeight
+            : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, minHeight);
+        int effectiveHeight = Math.max(minHeight, maxHeight);
+        boolean showDate = effectiveHeight >= 130;
+        boolean showProgress = effectiveHeight >= 125;
+        int taskLimit = Math.max(1, Math.min(MAX_TASKS, (effectiveHeight - 96) / 31));
+        float taskTextSizeSp = effectiveHeight >= 260 ? 17f : 16f;
 
-        return new WidgetDisplayOptions(taskLimit, showDate, showProgress);
+        return new WidgetDisplayOptions(taskLimit, taskTextSizeSp, showDate, showProgress);
     }
 
     private static void applyDisplayOptions(RemoteViews views, WidgetDisplayOptions displayOptions) {
@@ -427,9 +482,11 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         final boolean showDate;
         final boolean showProgress;
         final int taskLimit;
+        final float taskTextSizeSp;
 
-        WidgetDisplayOptions(int taskLimit, boolean showDate, boolean showProgress) {
+        WidgetDisplayOptions(int taskLimit, float taskTextSizeSp, boolean showDate, boolean showProgress) {
             this.taskLimit = taskLimit;
+            this.taskTextSizeSp = taskTextSizeSp;
             this.showDate = showDate;
             this.showProgress = showProgress;
         }
