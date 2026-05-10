@@ -101,7 +101,15 @@ export async function consumePendingNativePlannerWidgetRoute(): Promise<
 
   const { path } = await NativePlannerWidget.consumePendingRoute()
 
-  return typeof path === 'string' && path.startsWith('/') ? path : null
+  if (typeof path !== 'string' || !path.startsWith('/')) {
+    return null
+  }
+
+  if (path.startsWith('/today?createTask=')) {
+    return `/today?createTask=widget-${Date.now()}`
+  }
+
+  return path
 }
 
 export async function consumePendingNativePlannerWidgetCompletedTasks(): Promise<

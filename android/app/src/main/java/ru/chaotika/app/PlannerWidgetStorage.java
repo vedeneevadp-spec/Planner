@@ -16,12 +16,14 @@ import java.util.TimeZone;
 final class PlannerWidgetStorage {
 
     static final String ACTION_COMPLETE_TASK = "ru.chaotika.app.action.COMPLETE_TASK_FROM_WIDGET";
+    static final String ACTION_ADD_TASK = "ru.chaotika.app.action.ADD_TASK_FROM_WIDGET";
     static final String ACTION_CYCLE_BACKGROUND_OPACITY = "ru.chaotika.app.action.CYCLE_WIDGET_BACKGROUND_OPACITY";
     static final String ACTION_OPEN_TODAY = "ru.chaotika.app.action.OPEN_TODAY_FROM_WIDGET";
     static final String ACTION_REFRESH_WIDGET = "ru.chaotika.app.action.REFRESH_WIDGET";
     static final String EXTRA_WIDGET_TASK_ID = "ru.chaotika.app.extra.WIDGET_TASK_ID";
     static final String EXTRA_WIDGET_ROUTE = "ru.chaotika.app.extra.WIDGET_ROUTE";
     static final String SNAPSHOT_KEY = "planner.widget.today.snapshot";
+    static final String ADD_TASK_ROUTE = "/today?createTask=widget";
     static final String TODAY_ROUTE = "/today";
 
     private static final int DEFAULT_BACKGROUND_OPACITY_PERCENT = 85;

@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/planner_widget_background_85"
     android:orientation="vertical"
-    android:padding="18dp">
+    android:padding="16dp">
 
     <LinearLayout
         android:id="@+id/planner_widget_header"
@@ -18,6 +18,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_marginEnd="10dp"
             android:orientation="vertical">
 
             <TextView
@@ -28,7 +29,7 @@
                 android:singleLine="true"
                 android:text="@string/planner_today_widget_title"
                 android:textColor="@color/planner_widget_text"
-                android:textSize="20sp"
+                android:textSize="21sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -43,17 +44,33 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <TextView
-            android:id="@+id/planner_widget_opacity_button"
-            android:layout_width="48dp"
-            android:layout_height="34dp"
-            android:background="@drawable/planner_widget_control_background"
-            android:gravity="center"
-            android:singleLine="true"
-            android:text="@string/planner_widget_background_opacity_default"
-            android:textColor="@color/planner_widget_accent"
-            android:textSize="12sp"
-            android:textStyle="bold" />
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageButton
+                android:id="@+id/planner_widget_add_button"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/planner_widget_control_background"
+                android:contentDescription="@string/planner_widget_add_task_content_description"
+                android:padding="9dp"
+                android:scaleType="center"
+                android:src="@drawable/planner_widget_icon_add" />
+
+            <ImageButton
+                android:id="@+id/planner_widget_settings_button"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/planner_widget_control_background"
+                android:contentDescription="@string/planner_widget_settings_button_content_description"
+                android:padding="9dp"
+                android:scaleType="center"
+                android:src="@drawable/planner_widget_icon_settings" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
@@ -64,7 +81,7 @@
         android:ellipsize="end"
         android:singleLine="true"
         android:text="@string/planner_widget_no_snapshot_summary"
-        android:textColor="@color/planner_widget_text"
+        android:textColor="@color/planner_widget_text_soft"
         android:textSize="15sp" />
 
     <ProgressBar
@@ -81,7 +98,7 @@
     <TextView
         android:id="@+id/planner_widget_task_1"
         style="@style/PlannerWidgetTaskText"
-        android:layout_marginTop="13dp"
+        android:layout_marginTop="12dp"
         android:visibility="gone" />
 
     <TextView

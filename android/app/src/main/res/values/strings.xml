@@ -5,9 +5,10 @@
     <string name="package_name">ru.chaotika.app</string>
     <string name="custom_url_scheme">ru.chaotika.app</string>
     <string name="push_notification_channel_id">chaotika-general</string>
-    <string name="planner_today_widget_name">План на сегодня</string>
-    <string name="planner_today_widget_title">Сегодня</string>
-    <string name="planner_today_widget_description">Краткий список задач Chaotika на сегодня.</string>
+    <string name="planner_today_widget_name">Все задачи</string>
+    <string name="planner_today_widget_title">Все задачи</string>
+    <string name="planner_today_widget_description">Краткий список задач Chaotika.</string>
+    <string name="planner_widget_add_task_content_description">Добавить задачу</string>
     <string name="planner_widget_background_opacity_content_description">Непрозрачность фона %1$d процентов. Нажмите, чтобы изменить.</string>
     <string name="planner_widget_background_opacity_default">85%</string>
     <string name="planner_widget_complete_task_content_description">Отметить выполненной: %1$s</string>
@@ -18,6 +19,8 @@
     <string name="planner_widget_no_today_tasks">Нет задач на сегодня</string>
     <string name="planner_widget_overdue_task">Требует внимания: %1$s</string>
     <string name="planner_widget_preview_date">сегодня</string>
+    <string name="planner_widget_settings_button_content_description">Настройки фона</string>
+    <string name="planner_widget_settings_content_description">Настройки фона. Непрозрачность %1$d процентов. Нажмите, чтобы изменить.</string>
     <string name="planner_widget_stale_empty">Откройте приложение, чтобы обновить задачи.</string>
     <string name="planner_widget_stale_summary">Данные за прошлый день</string>
     <string name="planner_widget_stale_title">Нужно обновить</string>

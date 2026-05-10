@@ -124,21 +124,27 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             "setBackgroundResource",
             getBackgroundResource(backgroundOpacityPercent)
         );
-        views.setTextViewText(R.id.planner_widget_opacity_button, backgroundOpacityPercent + "%");
         views.setContentDescription(
-            R.id.planner_widget_opacity_button,
+            R.id.planner_widget_settings_button,
             context.getString(
-                R.string.planner_widget_background_opacity_content_description,
+                R.string.planner_widget_settings_content_description,
                 backgroundOpacityPercent
             )
         );
         views.setOnClickPendingIntent(
-            R.id.planner_widget_opacity_button,
+            R.id.planner_widget_settings_button,
             createCycleBackgroundOpacityPendingIntent(context)
+        );
+        views.setOnClickPendingIntent(
+            R.id.planner_widget_add_button,
+            createAddTaskPendingIntent(context)
         );
         applyDisplayOptions(views, displayOptions);
         views.setOnClickPendingIntent(R.id.planner_widget_root, createOpenTodayPendingIntent(context));
-        views.setTextViewText(R.id.planner_widget_date, formatDateLabel(snapshot == null ? todayKey : snapshot.dateKey));
+        views.setTextViewText(
+            R.id.planner_widget_date,
+            formatDateLabel(snapshot == null ? todayKey : snapshot.dateKey)
+        );
 
         if (state.kind == PlannerWidgetStateKind.NO_SNAPSHOT) {
             bindUnavailableState(context, views, displayOptions);
@@ -148,8 +154,14 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         bindProgress(views, snapshot);
 
         if (state.kind == PlannerWidgetStateKind.STALE) {
-            views.setTextViewText(R.id.planner_widget_title, context.getString(R.string.planner_widget_stale_title));
-            views.setTextViewText(R.id.planner_widget_summary, context.getString(R.string.planner_widget_stale_summary));
+            views.setTextViewText(
+                R.id.planner_widget_title,
+                context.getString(R.string.planner_widget_stale_title)
+            );
+            views.setTextViewText(
+                R.id.planner_widget_summary,
+                context.getString(R.string.planner_widget_stale_summary)
+            );
             bindTaskRows(
                 context,
                 views,
@@ -351,14 +363,37 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
     }
 
     private static PendingIntent createOpenTodayPendingIntent(Context context) {
+        return createOpenRoutePendingIntent(
+            context,
+            PlannerWidgetStorage.TODAY_ROUTE,
+            1007,
+            PlannerWidgetStorage.ACTION_OPEN_TODAY
+        );
+    }
+
+    private static PendingIntent createAddTaskPendingIntent(Context context) {
+        return createOpenRoutePendingIntent(
+            context,
+            PlannerWidgetStorage.ADD_TASK_ROUTE,
+            1010,
+            PlannerWidgetStorage.ACTION_ADD_TASK
+        );
+    }
+
+    private static PendingIntent createOpenRoutePendingIntent(
+        Context context,
+        String route,
+        int requestCode,
+        String action
+    ) {
         Intent intent = new Intent(context, MainActivity.class);
         int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
 
-        intent.setAction(PlannerWidgetStorage.ACTION_OPEN_TODAY);
-        intent.putExtra(PlannerWidgetStorage.EXTRA_WIDGET_ROUTE, PlannerWidgetStorage.TODAY_ROUTE);
+        intent.setAction(action);
+        intent.putExtra(PlannerWidgetStorage.EXTRA_WIDGET_ROUTE, route);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
-        return PendingIntent.getActivity(context, 1007, intent, flags);
+        return PendingIntent.getActivity(context, requestCode, intent, flags);
     }
 
     private static PendingIntent createCycleBackgroundOpacityPendingIntent(Context context) {
@@ -429,8 +464,8 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         int effectiveHeight = Math.max(minHeight, maxHeight);
         boolean showDate = effectiveHeight >= 130;
         boolean showProgress = effectiveHeight >= 125;
-        int taskLimit = Math.max(1, Math.min(MAX_TASKS, (effectiveHeight - 96) / 31));
-        float taskTextSizeSp = effectiveHeight >= 260 ? 17f : 16f;
+        int taskLimit = Math.max(1, Math.min(MAX_TASKS, (effectiveHeight - 105) / 32));
+        float taskTextSizeSp = effectiveHeight >= 260 ? 18f : 17f;
 
         return new WidgetDisplayOptions(taskLimit, taskTextSizeSp, showDate, showProgress);
     }

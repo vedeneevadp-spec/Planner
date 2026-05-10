@@ -1,4 +1,5 @@
 import { type ReactElement, useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   selectDoneTodayTasks,
@@ -12,7 +13,7 @@ import {
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
 import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
-import { TaskComposer } from '@/features/task-create'
+import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
@@ -57,6 +58,34 @@ function renderTaskSectionGroup(
   return <div className={pageStyles.gridTwo}>{visibleSections}</div>
 }
 
+function useWidgetTaskComposerDraft(
+  todayKey: string,
+): TaskComposerDraft | null {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const createTaskRequestId = searchParams.get('createTask')
+
+  useEffect(() => {
+    if (!createTaskRequestId) {
+      return
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete('createTask')
+    setSearchParams(nextSearchParams, { replace: true })
+  }, [createTaskRequestId, searchParams, setSearchParams])
+
+  return useMemo(
+    () =>
+      createTaskRequestId
+        ? {
+            plannedDate: todayKey,
+            requestId: createTaskRequestId,
+          }
+        : null,
+    [createTaskRequestId, todayKey],
+  )
+}
+
 export function TodayPage() {
   const { data: session } = usePlannerSession()
 
@@ -80,6 +109,7 @@ function PersonalTodayPage() {
   const { uploadedIcons } = useUploadedIconAssets()
   const [energyMode, setEnergyMode] = useState<EnergyMode>(readStoredEnergyMode)
   const todayKey = getDateKey(new Date())
+  const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   useEffect(() => {
     window.localStorage.setItem(ENERGY_MODE_STORAGE_KEY, energyMode)
@@ -168,7 +198,12 @@ function PersonalTodayPage() {
       <div className={styles.fixedTop}>
         <PageHeader
           kicker="Focus"
-          actions={<TaskComposer initialPlannedDate={todayKey} />}
+          actions={
+            <TaskComposer
+              initialPlannedDate={todayKey}
+              openDraft={widgetTaskComposerDraft}
+            />
+          }
         />
       </div>
 
@@ -250,6 +285,7 @@ function SharedTodayPage() {
   const workspaceUsersQuery = useWorkspaceUsers()
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const todayKey = getDateKey(new Date())
+  const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const todayTasks = useMemo(
     () => selectTodayTasks(tasks, todayKey),
@@ -326,7 +362,12 @@ function SharedTodayPage() {
       <div className={styles.fixedTop}>
         <PageHeader
           kicker="Shared Today"
-          actions={<TaskComposer initialPlannedDate={todayKey} />}
+          actions={
+            <TaskComposer
+              initialPlannedDate={todayKey}
+              openDraft={widgetTaskComposerDraft}
+            />
+          }
         />
       </div>
 
