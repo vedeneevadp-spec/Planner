@@ -169,7 +169,10 @@ life-spheres API.
   неплейсхолдерный `AUTH_JWT_SECRET` и включенный RLS mode; с
   `API_DB_RLS_MODE=disabled` API не стартует
 - `API_DB_RLS_MODE` переопределяет RLS strategy:
-  `disabled`, `enabled`, `transaction_local`, `session_connection`
+  `disabled`, `claims_only`, `enabled`, `transaction_local`,
+  `session_connection`. `transaction_local` требует, чтобы runtime DB user мог
+  `SET ROLE authenticated`; `claims_only` сохраняет JWT claims в DB context без
+  переключения Postgres role
 - `API_TRUST_PROXY_HOPS=1` явно доверяет одному reverse proxy hop; без этой
   настройки API не читает `x-forwarded-for` напрямую
 - `API_TASK_REMINDERS_RUNTIME` управляет напоминаниями:
@@ -177,7 +180,8 @@ life-spheres API.
   production systemd service `planner-task-reminders`, `disabled` полностью
   выключает poller
 - по умолчанию backend передает DB RLS context через transaction-local settings;
-  backend policies остаются обязательным первым уровнем защиты
+  перед включением этого режима на production надо прогнать
+  `npm run db:security:check` с production `DATABASE_URL` и `API_DB_RLS_MODE`
 - `npm run smoke:api:prod` поднимает API локально с `NODE_ENV=production`,
   `API_AUTH_MODE=jwt`, `API_DB_RLS_MODE=transaction_local` и проверяет реальные
   `health`, `auth`, `session` и `tasks` запросы; перед запуском используйте

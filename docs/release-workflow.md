@@ -230,11 +230,14 @@ npm run deploy:prod
 6. запускает `npm run db:migrate` и `npm run db:security:check`
 7. собирает production web с `VITE_API_BASE_URL=https://chaotika.ru`
 8. перезапускает API
-9. включает и перезапускает `planner-task-reminders`, если
-   `API_TASK_REMINDERS_RUNTIME=worker`; иначе останавливает отдельный worker
-10. reload-ит Caddy
-11. проверяет `http://127.0.0.1:3001/api/health`
-12. проверяет `https://chaotika.ru/api/health`
+9. запускает `npm run smoke:api:prod` против уже поднятого API на
+   `http://127.0.0.1:3001`, чтобы проверить authenticated запросы, а не только
+   `/api/health`
+10. включает и перезапускает `planner-task-reminders`, если
+    `API_TASK_REMINDERS_RUNTIME=worker`; иначе останавливает отдельный worker
+11. reload-ит Caddy
+12. проверяет `http://127.0.0.1:3001/api/health`
+13. проверяет `https://chaotika.ru/api/health`
 
 После deploy проверить вручную:
 

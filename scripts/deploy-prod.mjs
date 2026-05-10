@@ -271,10 +271,18 @@ validate_production_env() {
     return 1
   fi
 
-  if [ "$api_db_rls_mode_value" = "disabled" ]; then
-    echo "API_DB_RLS_MODE=disabled is not allowed in production." >&2
-    return 1
-  fi
+  case "$api_db_rls_mode_value" in
+    claims_only|enabled|session_connection|transaction_local)
+      ;;
+    disabled)
+      echo "API_DB_RLS_MODE=disabled is not allowed in production." >&2
+      return 1
+      ;;
+    *)
+      echo "API_DB_RLS_MODE must be claims_only, enabled, session_connection, or transaction_local in production." >&2
+      return 1
+      ;;
+  esac
 
   case "$api_task_reminders_runtime_value" in
     ""|api|worker|disabled)
@@ -324,7 +332,12 @@ if [ -n "$DB_MIGRATE_MODE_VALUE" ]; then
 fi
 
 runuser -u planner -- env "\${MIGRATE_ENV[@]}" npm run db:migrate
-runuser -u planner -- env HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" npm run db:security:check
+runuser -u planner -- env \\
+  HUSKY=0 \\
+  DATABASE_URL="$DATABASE_URL_VALUE" \\
+  NODE_ENV="$node_env_value" \\
+  API_DB_RLS_MODE="$api_db_rls_mode_value" \\
+  npm run db:security:check
 
 WEB_AUTH_PROVIDER="$(grep '^WEB_AUTH_PROVIDER=' /etc/planner/planner.env | cut -d= -f2- || true)"
 if [ -z "$WEB_AUTH_PROVIDER" ]; then
@@ -348,6 +361,12 @@ cp ${shellQuote(`${config.remoteRoot}/deploy/caddy/Caddyfile`)} /etc/caddy/Caddy
 systemctl daemon-reload
 systemctl restart planner-api
 wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
+runuser -u planner -- env \\
+  HUSKY=0 \\
+  DATABASE_URL="$DATABASE_URL_VALUE" \\
+  SMOKE_API_BASE_URL=http://127.0.0.1:3001 \\
+  SMOKE_CLEANUP_DATABASE=1 \\
+  npm run smoke:api:prod
 
 TASK_REMINDERS_RUNTIME_VALUE="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
 if [ -z "$TASK_REMINDERS_RUNTIME_VALUE" ]; then

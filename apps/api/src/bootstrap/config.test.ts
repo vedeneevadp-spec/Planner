@@ -142,6 +142,14 @@ void describe('createApiConfig', () => {
         } as NodeJS.ProcessEnv),
       /API_DB_RLS_MODE=disabled/,
     )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          API_DB_RLS_MODE: 'maybe',
+        } as NodeJS.ProcessEnv),
+      /Invalid API_DB_RLS_MODE/,
+    )
   })
 
   void it('keeps disabled auth restricted to development and test runtimes', () => {

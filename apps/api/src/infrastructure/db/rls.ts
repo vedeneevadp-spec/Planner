@@ -8,6 +8,7 @@ export type DatabaseExecutor =
   | Transaction<DatabaseSchema>
 
 export type RlsStrategy =
+  | 'claims_only'
   | 'disabled'
   | 'session_connection'
   | 'transaction_local'
@@ -28,6 +29,18 @@ export async function withOptionalRls<T>(
 
   if (strategy === 'disabled') {
     return callback(db)
+  }
+
+  if (strategy === 'claims_only') {
+    return db.transaction().execute(async (trx) => {
+      await applyTransactionLocalClaimsContext(
+        trx,
+        authContext,
+        actorUserIdOverride,
+      )
+
+      return callback(trx)
+    })
   }
 
   if (strategy === 'session_connection') {
@@ -66,6 +79,18 @@ export async function withWriteTransaction<T>(
 
   if (!resolvedAuthContext) {
     return db.transaction().execute(callback)
+  }
+
+  if (strategy === 'claims_only') {
+    return db.transaction().execute(async (trx) => {
+      await applyTransactionLocalClaimsContext(
+        trx,
+        resolvedAuthContext,
+        actorUserIdOverride,
+      )
+
+      return callback(trx)
+    })
   }
 
   if (strategy === 'session_connection') {
@@ -111,6 +136,10 @@ export function resolveRlsStrategyForEnvironment(
     return 'transaction_local'
   }
 
+  if (explicitMode === 'claims_only') {
+    return 'claims_only'
+  }
+
   if (explicitMode === 'session_connection') {
     return 'session_connection'
   }
@@ -136,16 +165,28 @@ async function applyTransactionLocalRlsContext(
   authContext: AuthenticatedRequestContext,
   actorUserIdOverride?: string,
 ): Promise<void> {
+  await applyTransactionLocalClaimsContext(
+    executor,
+    authContext,
+    actorUserIdOverride,
+  )
+
+  await sql`
+    set local role authenticated
+  `.execute(executor)
+}
+
+async function applyTransactionLocalClaimsContext(
+  executor: DatabaseExecutor,
+  authContext: AuthenticatedRequestContext,
+  actorUserIdOverride?: string,
+): Promise<void> {
   await sql`
     select set_config(
       'request.jwt.claims',
       ${JSON.stringify(buildEffectiveClaims(authContext, actorUserIdOverride))},
       true
     )
-  `.execute(executor)
-
-  await sql`
-    set local role authenticated
   `.execute(executor)
 }
 

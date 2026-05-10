@@ -2,6 +2,8 @@ import { spawn } from 'node:child_process'
 import process from 'node:process'
 import { setTimeout as wait } from 'node:timers/promises'
 
+import { Client } from 'pg'
+
 const defaultPort = process.env.SMOKE_API_PORT ?? process.env.API_PORT ?? '3101'
 const baseUrl = normalizeBaseUrl(
   process.env.SMOKE_API_BASE_URL ?? `http://127.0.0.1:${defaultPort}`,
@@ -216,11 +218,75 @@ async function runSmoke(targetBaseUrl, health) {
     },
   )
 
+  try {
+    await cleanupSmokeDatabase({
+      email,
+      userId: auth.user.id,
+      workspaceId: session.workspaceId,
+    })
+  } catch (error) {
+    console.warn(`Production smoke cleanup skipped: ${formatError(error)}`)
+  }
+
   return {
     appEnv: health.appEnv,
     databaseStatus: health.databaseStatus,
     userId: auth.user.id,
     workspaceId: session.workspaceId,
+  }
+}
+
+async function cleanupSmokeDatabase({ email, userId, workspaceId }) {
+  if (process.env.SMOKE_CLEANUP_DATABASE !== '1') {
+    return
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error('SMOKE_CLEANUP_DATABASE=1 requires DATABASE_URL.')
+  }
+
+  if (!email.startsWith('prod-smoke-') || !email.endsWith('@example.test')) {
+    throw new Error(`Refusing to cleanup non-smoke user: ${email}`)
+  }
+
+  const client = new Client({
+    connectionString: process.env.DATABASE_URL,
+    connectionTimeoutMillis: 10_000,
+    query_timeout: 30_000,
+  })
+
+  await client.connect()
+  try {
+    await client.query('begin')
+    await client.query('reset role')
+    await client.query("select set_config('request.jwt.claims', '{}', false)")
+    await client.query(
+      `
+        delete from app.workspaces
+        where id = $1
+          and owner_user_id = $2
+          and slug = $3
+      `,
+      [
+        workspaceId,
+        userId,
+        `personal-${userId.replaceAll('-', '').slice(0, 12)}`,
+      ],
+    )
+    await client.query(
+      `
+        delete from app.users
+        where id = $1
+          and email = $2
+      `,
+      [userId, email],
+    )
+    await client.query('commit')
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    throw error
+  } finally {
+    await client.end()
   }
 }
 

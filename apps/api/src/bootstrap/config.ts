@@ -6,6 +6,12 @@ import type { JwtAuthRuntimeConfig } from '../infrastructure/auth/jwt-request-au
 import type { PlannerAuthRuntimeConfig } from '../modules/auth/index.js'
 
 export type ApiAuthMode = 'disabled' | 'jwt'
+export type ApiDatabaseRlsMode =
+  | 'claims_only'
+  | 'disabled'
+  | 'enabled'
+  | 'session_connection'
+  | 'transaction_local'
 export type ApiTrustedProxyHops = false | number
 export type TaskRemindersRuntimeMode = 'api' | 'disabled' | 'worker'
 
@@ -91,6 +97,28 @@ function parseAuthMode(value: string | undefined): ApiAuthMode {
   }
 
   throw new Error(`Invalid API auth mode: ${value}`)
+}
+
+function parseDatabaseRlsMode(
+  value: string | undefined,
+): ApiDatabaseRlsMode | null {
+  if (!value) {
+    return null
+  }
+
+  const normalized = value.trim().toLowerCase()
+
+  if (
+    normalized === 'claims_only' ||
+    normalized === 'disabled' ||
+    normalized === 'enabled' ||
+    normalized === 'session_connection' ||
+    normalized === 'transaction_local'
+  ) {
+    return normalized
+  }
+
+  throw new Error(`Invalid API_DB_RLS_MODE: ${value}`)
 }
 
 function parseTrustedProxyHops(value: string | undefined): ApiTrustedProxyHops {
@@ -316,6 +344,7 @@ export function createApiConfig(
 ): ApiConfig {
   const appEnv = env.NODE_ENV ?? 'development'
   const authMode = parseAuthMode(env.API_AUTH_MODE)
+  parseDatabaseRlsMode(env.API_DB_RLS_MODE)
   const jwtAuth = createJwtAuthConfig(env, authMode)
   const corsOrigin = env.API_CORS_ORIGIN ?? '*'
 

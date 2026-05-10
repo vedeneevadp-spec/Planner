@@ -5,6 +5,7 @@ import path from 'node:path'
 const connectionString =
   process.env.DATABASE_URL ??
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
+const pgDumpConnectionString = createPgDumpConnectionString(connectionString)
 const backupDirectory = process.env.DB_BACKUP_DIR ?? 'backups'
 const timestamp = new Date().toISOString().replaceAll(/[:.]/g, '-')
 const outputPath = path.join(backupDirectory, `planner-${timestamp}.dump`)
@@ -16,7 +17,7 @@ await run('pg_dump', [
   '--no-privileges',
   '--file',
   outputPath,
-  connectionString,
+  pgDumpConnectionString,
 ])
 
 console.log(`Database backup written to ${outputPath}`)
@@ -47,9 +48,46 @@ async function run(command, args) {
 
       reject(
         new Error(
-          `${command} ${args.join(' ')} failed with exit code ${code ?? 'unknown'}`,
+          `${formatCommand(command, args)} failed with exit code ${code ?? 'unknown'}`,
         ),
       )
     })
   })
+}
+
+function createPgDumpConnectionString(value) {
+  try {
+    const url = new URL(value)
+
+    url.searchParams.delete('uselibpqcompat')
+
+    return url.toString()
+  } catch {
+    return value
+      .replace(/([?&])uselibpqcompat=true(&|$)/, '$1')
+      .replace(/[?&]$/, '')
+  }
+}
+
+function formatCommand(command, args) {
+  return [
+    command,
+    ...args.map((arg) =>
+      arg === pgDumpConnectionString ? redactConnectionString(arg) : arg,
+    ),
+  ].join(' ')
+}
+
+function redactConnectionString(value) {
+  try {
+    const url = new URL(value)
+
+    if (url.password) {
+      url.password = '***'
+    }
+
+    return url.toString()
+  } catch {
+    return '<redacted-database-url>'
+  }
 }

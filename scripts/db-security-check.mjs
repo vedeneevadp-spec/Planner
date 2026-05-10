@@ -10,6 +10,7 @@ const connectionString =
   process.env.DATABASE_URL ??
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 const requireRuntimeNonOwner = process.env.DB_SECURITY_REQUIRE_NON_OWNER === '1'
+const rlsMode = normalizeRlsMode(process.env.API_DB_RLS_MODE)
 
 const protectedTables = [
   'chaos_inbox_items',
@@ -78,7 +79,74 @@ try {
     console.warn(`[db-security] ${message}`)
   }
 
+  await verifyRuntimeRlsMode(client, rlsMode)
+
   console.log('Database security check passed.')
 } finally {
   await closePgClient(client)
+}
+
+function normalizeRlsMode(value) {
+  const normalized = value?.trim().toLowerCase() || 'transaction_local'
+
+  if (normalized === 'enabled') {
+    return 'transaction_local'
+  }
+
+  if (
+    normalized === 'claims_only' ||
+    normalized === 'disabled' ||
+    normalized === 'session_connection' ||
+    normalized === 'transaction_local'
+  ) {
+    return normalized
+  }
+
+  throw new Error(`Invalid API_DB_RLS_MODE: ${value}`)
+}
+
+async function verifyRuntimeRlsMode(client, mode) {
+  if (mode === 'disabled') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'API_DB_RLS_MODE=disabled is not allowed when NODE_ENV=production.',
+      )
+    }
+
+    console.warn(
+      '[db-security] API_DB_RLS_MODE=disabled skips DB RLS runtime enforcement.',
+    )
+    return
+  }
+
+  if (mode === 'claims_only') {
+    console.warn(
+      '[db-security] API_DB_RLS_MODE=claims_only sets request.jwt.claims but does not SET ROLE authenticated. Use transaction_local after the runtime DB role can SET ROLE authenticated.',
+    )
+    return
+  }
+
+  const roleResult = await client.query(
+    `
+      select
+        pg_has_role(current_user, 'authenticated', 'member') as is_member,
+        pg_has_role(current_user, 'authenticated', 'set') as can_set_role
+    `,
+  )
+  const roleState = roleResult.rows[0]
+
+  if (!roleState?.is_member || !roleState.can_set_role) {
+    throw new Error(
+      'API_DB_RLS_MODE=transaction_local requires the runtime DB user to be a member of role authenticated and to be allowed to SET ROLE authenticated.',
+    )
+  }
+
+  await client.query('begin')
+  try {
+    await client.query('set local role authenticated')
+    await client.query('rollback')
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    throw error
+  }
 }
