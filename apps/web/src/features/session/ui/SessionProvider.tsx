@@ -161,59 +161,6 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [],
   )
 
-  const restoreSession =
-    useCallback(async (): Promise<SessionRecoveryResult> => {
-      if (!isAuthEnabled) {
-        return 'signed_out'
-      }
-
-      const storedSession = await readStoredAuthSession()
-
-      if (!storedSession) {
-        setSnapshot({
-          ...INITIAL_AUTH_SNAPSHOT,
-          isLoading: false,
-        })
-        return 'signed_out'
-      }
-
-      if (isAccessTokenUsable(storedSession.expiresAt)) {
-        setAuthNotice(null)
-        setSnapshot(toAuthSnapshot(storedSession, false))
-        return 'recovered'
-      }
-
-      try {
-        const refreshedSession = await refreshAuthSession({
-          refreshToken: storedSession.refreshToken,
-        })
-        await persistAuthSession(toStoredAuthSession(refreshedSession))
-
-        return 'recovered'
-      } catch (error) {
-        if (isRetryableAuthError(error)) {
-          return keepDeviceSession(
-            error,
-            'Auth session restore deferred to device session.',
-          )
-        }
-
-        await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
-        return 'signed_out'
-      }
-    }, [clearAuthSession, isAuthEnabled, keepDeviceSession, persistAuthSession])
-
-  const clearAuthNotice = useCallback(() => {
-    setAuthNotice(null)
-  }, [])
-
-  const expireSession = useCallback(
-    async (message = DEFAULT_EXPIRED_SESSION_MESSAGE) => {
-      await clearAuthSession(message)
-    },
-    [clearAuthSession],
-  )
-
   const recoverSession =
     useCallback(async (): Promise<SessionRecoveryResult> => {
       if (!isAuthEnabled) {
@@ -265,6 +212,42 @@ export function SessionProvider({ children }: PropsWithChildren) {
       persistAuthSession,
       snapshot.refreshToken,
     ])
+
+  const restoreSession =
+    useCallback(async (): Promise<SessionRecoveryResult> => {
+      if (!isAuthEnabled) {
+        return 'signed_out'
+      }
+
+      const storedSession = await readStoredAuthSession()
+
+      if (!storedSession) {
+        setSnapshot({
+          ...INITIAL_AUTH_SNAPSHOT,
+          isLoading: false,
+        })
+        return 'signed_out'
+      }
+
+      if (isAccessTokenUsable(storedSession.expiresAt)) {
+        setAuthNotice(null)
+        setSnapshot(toAuthSnapshot(storedSession, false))
+        return 'recovered'
+      }
+
+      return recoverSession()
+    }, [isAuthEnabled, recoverSession])
+
+  const clearAuthNotice = useCallback(() => {
+    setAuthNotice(null)
+  }, [])
+
+  const expireSession = useCallback(
+    async (message = DEFAULT_EXPIRED_SESSION_MESSAGE) => {
+      await clearAuthSession(message)
+    },
+    [clearAuthSession],
+  )
 
   useEffect(() => {
     if (!isAuthEnabled) {
