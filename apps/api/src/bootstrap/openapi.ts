@@ -1641,12 +1641,29 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         id: {
           type: 'string',
         },
+        lastSeenAt: {
+          format: 'date-time',
+          nullable: true,
+          type: 'string',
+        },
+        taskCount: {
+          minimum: 0,
+          type: 'integer',
+        },
         updatedAt: {
           format: 'date-time',
           type: 'string',
         },
       },
-      required: ['appRole', 'displayName', 'email', 'id', 'updatedAt'],
+      required: [
+        'appRole',
+        'displayName',
+        'email',
+        'id',
+        'lastSeenAt',
+        'taskCount',
+        'updatedAt',
+      ],
       type: 'object',
     },
     AdminUserRoleUpdateInput: {

@@ -83,6 +83,8 @@ export class MemorySessionRepository implements SessionRepository {
       displayName: 'Tikondra',
       email: 'dev@planner.local',
       id: DEFAULT_ACTOR_ID,
+      lastSeenAt: null,
+      taskCount: 0,
       updatedAt: new Date(0).toISOString(),
     },
     {
@@ -91,6 +93,8 @@ export class MemorySessionRepository implements SessionRepository {
       displayName: 'Planner Reader',
       email: 'reader@planner.local',
       id: '44444444-4444-4444-8444-444444444444',
+      lastSeenAt: null,
+      taskCount: 0,
       updatedAt: new Date(0).toISOString(),
     },
   ]
@@ -708,6 +712,8 @@ export class MemorySessionRepository implements SessionRepository {
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
       email: normalizedEmail,
       id: actorUserId,
+      lastSeenAt: null,
+      taskCount: 0,
       updatedAt: new Date().toISOString(),
     }
 
@@ -729,6 +735,8 @@ export class MemorySessionRepository implements SessionRepository {
       displayName: 'Planner User',
       email: `${actorUserId}@planner.local`,
       id: actorUserId,
+      lastSeenAt: null,
+      taskCount: 0,
       updatedAt: new Date().toISOString(),
     }
 
@@ -998,6 +1006,8 @@ function mapAdminUserRecord(user: MemoryUser): AdminUserRecord {
     displayName: user.displayName,
     email: user.email,
     id: user.id,
+    lastSeenAt: user.lastSeenAt,
+    taskCount: user.taskCount,
     updatedAt: user.updatedAt,
   }
 }

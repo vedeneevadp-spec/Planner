@@ -326,6 +326,8 @@ void describe('buildApiApp', () => {
     assert.equal(body.users.length, 2)
     assert.equal(body.users[0]?.id, '11111111-1111-4111-8111-111111111111')
     assert.equal(body.users[0]?.appRole, 'owner')
+    assert.equal(body.users[0]?.lastSeenAt, null)
+    assert.equal(body.users[0]?.taskCount, 0)
     assert.equal(body.users[1]?.appRole, 'user')
   })
 

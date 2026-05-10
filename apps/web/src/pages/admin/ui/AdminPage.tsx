@@ -79,6 +79,25 @@ function canManageAdmin(role: AppRole | undefined): boolean {
   return role === 'admin' || role === 'owner'
 }
 
+function formatAdminUserLastSeen(value: string | null): string {
+  if (!value) {
+    return 'Не заходил'
+  }
+
+  const parsedDate = new Date(value)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return value
+  }
+
+  return `Заходил ${new Intl.DateTimeFormat('ru-RU', {
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: 'short',
+  }).format(parsedDate)}`
+}
+
 export function AdminPage() {
   const sessionQuery = usePlannerSession()
   const iconSetsQuery = useEmojiSets()
@@ -437,6 +456,17 @@ export function AdminPage() {
                     <span>{user.email}</span>
                   </div>
                   <div className={styles.userMeta}>
+                    <span className={styles.statusBadge}>
+                      Задач: {user.taskCount}
+                    </span>
+                    <span
+                      className={cx(
+                        styles.statusBadge,
+                        !user.lastSeenAt && styles.statusBadgeMuted,
+                      )}
+                    >
+                      {formatAdminUserLastSeen(user.lastSeenAt)}
+                    </span>
                     {user.id === session?.actorUserId ? (
                       <span className={styles.currentUserBadge}>вы</span>
                     ) : null}

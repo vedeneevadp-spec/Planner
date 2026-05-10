@@ -51,6 +51,8 @@ interface AdminUserRow {
   displayName: string
   email: string
   id: string
+  lastSeenAt: unknown
+  taskCount: number
   updatedAt: unknown
 }
 
@@ -636,6 +638,17 @@ export class PostgresSessionRepository implements SessionRepository {
         'actor.email as email',
         'actor.id as id',
         'actor.updated_at as updatedAt',
+        sql<unknown>`(
+          select max(coalesce(token.last_used_at, token.created_at))
+          from app.auth_refresh_tokens as token
+          where token.user_id = actor.id
+        )`.as('lastSeenAt'),
+        sql<number>`(
+          select count(*)::int
+          from app.tasks as task
+          where task.created_by = actor.id
+            and task.deleted_at is null
+        )`.as('taskCount'),
       ])
       .where('actor.deleted_at', 'is', null)
   }
@@ -1425,6 +1438,8 @@ function mapAdminUserRecord(row: AdminUserRow): AdminUserRecord {
     displayName: row.displayName,
     email: row.email,
     id: row.id,
+    lastSeenAt: serializeNullableTimestamp(row.lastSeenAt),
+    taskCount: row.taskCount,
     updatedAt: serializeTimestamp(row.updatedAt),
   }
 }
@@ -1466,6 +1481,10 @@ function mapUserProfileRecord(row: UserProfileRow): UserProfile {
 
 function serializeTimestamp(value: unknown): string {
   return value instanceof Date ? value.toISOString() : String(value)
+}
+
+function serializeNullableTimestamp(value: unknown): string | null {
+  return value === null ? null : serializeTimestamp(value)
 }
 
 function normalizeEmail(email: string): string {

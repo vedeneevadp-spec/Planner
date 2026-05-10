@@ -95,7 +95,7 @@
 
 .userRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(8rem, 10rem);
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, auto) minmax(8rem, 10rem);
   align-items: center;
   gap: 0.65rem;
   border: 1px solid var(--line);
@@ -126,6 +126,7 @@
 .userMeta {
   display: inline-flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.35rem;
 }
@@ -136,6 +137,7 @@
   background: rgba(33, 78, 66, 0.08);
   color: var(--accent-strong);
   font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .statusBadge {
@@ -144,6 +146,7 @@
   background: rgba(33, 78, 66, 0.08);
   color: var(--accent-strong);
   font-size: 0.78rem;
+  white-space: nowrap;
 }
 
 .statusBadgeMuted {
@@ -563,6 +566,7 @@
 .countBadge {
   display: inline-flex;
   min-width: 2rem;
+  align-self: flex-start;
   align-items: center;
   justify-content: center;
   border-radius: 999px;

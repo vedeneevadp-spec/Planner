@@ -180,6 +180,8 @@ export const adminUserRecordSchema = z.object({
   email: z.string(),
   id: z.string(),
   appRole: appRoleSchema,
+  lastSeenAt: z.string().nullable().default(null),
+  taskCount: z.number().int().nonnegative().default(0),
   updatedAt: z.string(),
 })
 
