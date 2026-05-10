@@ -6,8 +6,11 @@
     <color name="planner_widget_accent">#214E42</color>
     <color name="planner_widget_line">#242D241F</color>
     <color name="planner_widget_progress_track">#DFD4C1</color>
+    <color name="planner_widget_in_progress">#214E42</color>
+    <color name="planner_widget_review">#4C5D99</color>
     <color name="planner_widget_surface">#FFFBF3</color>
     <color name="planner_widget_text">#1F241E</color>
     <color name="planner_widget_text_soft">#576056</color>
+    <color name="planner_widget_urgent">#AD4E2F</color>
     <color name="planner_widget_warning">#8C4B24</color>
 </resources>

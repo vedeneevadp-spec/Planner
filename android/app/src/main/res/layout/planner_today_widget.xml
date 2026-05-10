@@ -78,6 +78,41 @@
         android:visibility="gone" />
 
     <TextView
+        android:id="@+id/planner_widget_task_6"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_7"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_8"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_9"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_10"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_11"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_12"
+        style="@style/PlannerWidgetTaskText"
+        android:visibility="gone" />
+
+    <TextView
         android:id="@+id/planner_widget_empty"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

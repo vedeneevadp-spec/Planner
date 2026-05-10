@@ -5,9 +5,25 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.util.List;
+import org.json.JSONArray;
 
 @CapacitorPlugin(name = "PlannerWidget")
 public class PlannerWidgetPlugin extends Plugin {
+
+    @PluginMethod
+    public void consumePendingCompletedTasks(PluginCall call) {
+        List<String> taskIds = PlannerWidgetStorage.consumePendingCompletedTaskIds(getContext());
+        JSONArray taskIdValues = new JSONArray();
+        JSObject response = new JSObject();
+
+        for (String taskId : taskIds) {
+            taskIdValues.put(taskId);
+        }
+
+        response.put("taskIds", taskIdValues);
+        call.resolve(response);
+    }
 
     @PluginMethod
     public void consumePendingRoute(PluginCall call) {

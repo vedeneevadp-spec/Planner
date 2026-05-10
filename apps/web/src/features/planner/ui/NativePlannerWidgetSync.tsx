@@ -1,9 +1,10 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
   addNativePlannerWidgetResumeListener,
   buildNativePlannerWidgetSnapshot,
+  consumePendingNativePlannerWidgetCompletedTasks,
   consumePendingNativePlannerWidgetRoute,
   isAndroidPlannerWidgetRuntime,
   persistNativePlannerWidgetSnapshot,
@@ -11,20 +12,69 @@ import {
 import { usePlanner } from '../lib/usePlanner'
 
 export function NativePlannerWidgetSync() {
-  const { isLoading, tasks } = usePlanner()
+  const { isLoading, isSyncing, setTaskStatus, tasks } = usePlanner()
   const navigate = useNavigate()
+  const plannerRef = useRef({ isLoading, setTaskStatus, tasks })
+  const wasSyncingRef = useRef(false)
+
+  useEffect(() => {
+    plannerRef.current = { isLoading, setTaskStatus, tasks }
+  }, [isLoading, setTaskStatus, tasks])
 
   const syncSnapshot = useCallback(() => {
-    if (isLoading || !isAndroidPlannerWidgetRuntime()) {
+    const planner = plannerRef.current
+
+    if (planner.isLoading || !isAndroidPlannerWidgetRuntime()) {
       return
     }
 
-    const snapshot = buildNativePlannerWidgetSnapshot(tasks)
+    const snapshot = buildNativePlannerWidgetSnapshot(planner.tasks)
 
     void persistNativePlannerWidgetSnapshot(snapshot).catch((error) => {
       console.warn('Failed to update Android planner widget.', error)
     })
-  }, [isLoading, tasks])
+  }, [])
+
+  const consumePendingCompletedTasks =
+    useCallback(async (): Promise<boolean> => {
+      const planner = plannerRef.current
+
+      if (planner.isLoading || !isAndroidPlannerWidgetRuntime()) {
+        return false
+      }
+
+      const taskIds = await consumePendingNativePlannerWidgetCompletedTasks()
+      let didCompleteTask = false
+
+      for (const taskId of new Set(taskIds)) {
+        const task = planner.tasks.find((candidate) => candidate.id === taskId)
+
+        if (!task || task.status === 'done') {
+          continue
+        }
+
+        didCompleteTask =
+          (await planner.setTaskStatus(taskId, 'done')) || didCompleteTask
+      }
+
+      return didCompleteTask
+    }, [])
+
+  const syncFromNativeWidget = useCallback(() => {
+    if (!isAndroidPlannerWidgetRuntime()) {
+      return
+    }
+
+    void consumePendingCompletedTasks()
+      .then((didCompleteTask) => {
+        if (!didCompleteTask) {
+          syncSnapshot()
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to sync Android planner widget.', error)
+      })
+  }, [consumePendingCompletedTasks, syncSnapshot])
 
   const consumePendingRoute = useCallback(() => {
     if (!isAndroidPlannerWidgetRuntime()) {
@@ -43,12 +93,56 @@ export function NativePlannerWidgetSync() {
   }, [navigate])
 
   useEffect(() => {
-    syncSnapshot()
-  }, [syncSnapshot])
+    syncFromNativeWidget()
+  }, [isLoading, syncFromNativeWidget, tasks])
 
   useEffect(() => {
     consumePendingRoute()
   }, [consumePendingRoute])
+
+  useEffect(() => {
+    if (!isAndroidPlannerWidgetRuntime()) {
+      return
+    }
+
+    if (wasSyncingRef.current && !isSyncing) {
+      syncFromNativeWidget()
+    }
+
+    wasSyncingRef.current = isSyncing
+  }, [isSyncing, syncFromNativeWidget])
+
+  useEffect(() => {
+    if (!isAndroidPlannerWidgetRuntime()) {
+      return
+    }
+
+    let timeoutId: number | undefined
+
+    function scheduleNextDaySync() {
+      const now = new Date()
+      const nextDay = new Date(now)
+
+      nextDay.setDate(now.getDate() + 1)
+      nextDay.setHours(0, 0, 5, 0)
+
+      timeoutId = window.setTimeout(
+        () => {
+          syncFromNativeWidget()
+          scheduleNextDaySync()
+        },
+        Math.max(1_000, nextDay.getTime() - now.getTime()),
+      )
+    }
+
+    scheduleNextDaySync()
+
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId)
+      }
+    }
+  }, [syncFromNativeWidget])
 
   useEffect(() => {
     if (!isAndroidPlannerWidgetRuntime()) {
@@ -62,7 +156,7 @@ export function NativePlannerWidgetSync() {
       }
 
       consumePendingRoute()
-      syncSnapshot()
+      syncFromNativeWidget()
     })
 
     return () => {
@@ -75,7 +169,7 @@ export function NativePlannerWidgetSync() {
           console.warn('Failed to remove planner widget listener.', error)
         })
     }
-  }, [consumePendingRoute, syncSnapshot])
+  }, [consumePendingRoute, syncFromNativeWidget])
 
   return null
 }

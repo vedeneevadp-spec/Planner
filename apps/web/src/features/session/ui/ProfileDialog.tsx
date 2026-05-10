@@ -7,6 +7,13 @@ import {
   useState,
 } from 'react'
 
+import {
+  getNativePlannerWidgetBackgroundOpacity,
+  isAndroidPlannerWidgetRuntime,
+  NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS,
+  type NativePlannerWidgetBackgroundOpacity,
+  setNativePlannerWidgetBackgroundOpacity,
+} from '@/features/planner'
 import { cx } from '@/shared/lib/classnames'
 import { CheckIcon, CloseIcon, TrashIcon, UploadIcon } from '@/shared/ui/Icon'
 
@@ -51,6 +58,12 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
   const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null)
   const [removeAvatar, setRemoveAvatar] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [widgetBackgroundOpacity, setWidgetBackgroundOpacity] =
+    useState<NativePlannerWidgetBackgroundOpacity>(100)
+  const isWidgetSettingsAvailable = useMemo(
+    () => isAndroidPlannerWidgetRuntime(),
+    [],
+  )
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -69,6 +82,28 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])
+
+  useEffect(() => {
+    if (!isWidgetSettingsAvailable) {
+      return
+    }
+
+    let isActive = true
+
+    void getNativePlannerWidgetBackgroundOpacity()
+      .then((opacity) => {
+        if (isActive) {
+          setWidgetBackgroundOpacity(opacity)
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to read Android planner widget settings.', error)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [isWidgetSettingsAvailable])
 
   const resolvedAvatarUrl = useMemo(() => {
     if (avatarDataUrl) {
@@ -147,6 +182,23 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
       onClose()
     } catch (error) {
       setErrorMessage(getUpdateUserProfileErrorMessage(error))
+    }
+  }
+
+  async function handleWidgetBackgroundOpacityChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const nextOpacity = Number(event.target.value)
+
+    setErrorMessage(null)
+
+    try {
+      setWidgetBackgroundOpacity(
+        await setNativePlannerWidgetBackgroundOpacity(nextOpacity),
+      )
+    } catch (error) {
+      console.warn('Failed to update Android planner widget settings.', error)
+      setErrorMessage('Не удалось обновить фон виджета.')
     }
   }
 
@@ -254,6 +306,44 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
               />
             </label>
           </section>
+
+          {isWidgetSettingsAvailable ? (
+            <section
+              className={cx(styles.fields, styles.widgetPanel)}
+              aria-labelledby="profile-widget-settings-title"
+            >
+              <div className={styles.rangeHeader}>
+                <h3 id="profile-widget-settings-title">Виджет Android</h3>
+                <output
+                  className={styles.rangeValue}
+                  htmlFor="planner-widget-background-opacity"
+                >
+                  {widgetBackgroundOpacity}%
+                </output>
+              </div>
+
+              <label className={cx(styles.field, styles.rangeField)}>
+                <span>Непрозрачность фона</span>
+                <input
+                  id="planner-widget-background-opacity"
+                  className={styles.rangeInput}
+                  type="range"
+                  min={NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS[0]}
+                  max={
+                    NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS[
+                      NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS.length -
+                        1
+                    ]
+                  }
+                  step={15}
+                  value={widgetBackgroundOpacity}
+                  onChange={(event) => {
+                    void handleWidgetBackgroundOpacityChange(event)
+                  }}
+                />
+              </label>
+            </section>
+          ) : null}
 
           {errorMessage ? (
             <p className={styles.errorText}>{errorMessage}</p>

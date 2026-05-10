@@ -22,6 +22,15 @@ interface MockUpdateUserProfileResult {
 const mockUsePlannerSession = vi.fn<() => MockSessionResult>()
 const mockUseUpdateUserProfile = vi.fn<() => MockUpdateUserProfileResult>()
 
+vi.mock('@/features/planner', () => ({
+  getNativePlannerWidgetBackgroundOpacity: vi.fn(() => Promise.resolve(100)),
+  isAndroidPlannerWidgetRuntime: vi.fn(() => false),
+  NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS: [40, 55, 70, 85, 100],
+  setNativePlannerWidgetBackgroundOpacity: vi.fn((opacity: number) =>
+    Promise.resolve(opacity),
+  ),
+}))
+
 vi.mock('../lib/usePlannerSession', () => ({
   usePlannerSession: () => mockUsePlannerSession(),
 }))
