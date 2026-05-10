@@ -141,32 +141,6 @@
   background: rgba(244, 239, 231, 0.82);
 }
 
-.rangeHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.rangeHeader h3 {
-  margin: 0;
-  font-size: 0.98rem;
-}
-
-.rangeValue {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.rangeField {
-  gap: 0.65rem;
-}
-
-.rangeInput {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
 .hiddenInput {
   display: none;
 }

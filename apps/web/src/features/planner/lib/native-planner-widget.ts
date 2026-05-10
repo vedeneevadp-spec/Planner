@@ -14,6 +14,7 @@ import {
   type NativePlannerWidgetTaskVisualTone,
 } from '@planner/contracts'
 
+import type { Project } from '@/entities/project'
 import {
   selectDoneTodayTasks,
   selectOverdueTasks,
@@ -23,16 +24,6 @@ import {
 import { formatTimeRange, getDateKey } from '@/shared/lib/date'
 
 const PLANNER_WIDGET_SNAPSHOT_KEY = 'planner.widget.today.snapshot'
-const PLANNER_WIDGET_BACKGROUND_OPACITY_KEY =
-  'planner.widget.background.opacityPercent'
-const DEFAULT_WIDGET_BACKGROUND_OPACITY = 85
-
-export const NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS = [
-  40, 55, 70, 85, 100,
-] as const
-
-export type NativePlannerWidgetBackgroundOpacity =
-  (typeof NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS)[number]
 
 interface PlannerWidgetPlugin {
   consumePendingCompletedTasks: () => Promise<{ taskIds: string[] }>
@@ -50,16 +41,23 @@ export function isAndroidPlannerWidgetRuntime(): boolean {
 
 export function buildNativePlannerWidgetSnapshot(
   tasks: Task[],
-  now: Date = new Date(),
+  projectsOrNow: Project[] | Date = [],
+  maybeNow?: Date,
 ): NativePlannerWidgetSnapshot {
+  const { now, projects } = resolveSnapshotContext(projectsOrNow, maybeNow)
   const dateKey = getDateKey(now)
+  const projectLookup = createProjectLookup(projects)
   const todayTasks = selectTodayTasks(tasks, dateKey)
   const overdueTasks = selectOverdueTasks(tasks, dateKey)
   const doneTodayTasks = selectDoneTodayTasks(tasks, dateKey)
   const widgetTasks = [...overdueTasks, ...todayTasks]
     .sort((left, right) => compareWidgetTasks(left, right, dateKey))
     .map((task) =>
-      toNativePlannerWidgetTask(task, task.plannedDate !== dateKey),
+      toNativePlannerWidgetTask(
+        task,
+        task.plannedDate !== dateKey,
+        projectLookup,
+      ),
     )
   const snapshot = {
     dateKey,
@@ -128,36 +126,6 @@ export async function consumePendingNativePlannerWidgetCompletedTasks(): Promise
     : []
 }
 
-export async function getNativePlannerWidgetBackgroundOpacity(): Promise<NativePlannerWidgetBackgroundOpacity> {
-  if (!isAndroidPlannerWidgetRuntime()) {
-    return DEFAULT_WIDGET_BACKGROUND_OPACITY
-  }
-
-  const { value } = await Preferences.get({
-    key: PLANNER_WIDGET_BACKGROUND_OPACITY_KEY,
-  })
-
-  return normalizeWidgetBackgroundOpacity(value)
-}
-
-export async function setNativePlannerWidgetBackgroundOpacity(
-  opacity: number,
-): Promise<NativePlannerWidgetBackgroundOpacity> {
-  const normalizedOpacity = normalizeWidgetBackgroundOpacity(opacity)
-
-  if (!isAndroidPlannerWidgetRuntime()) {
-    return normalizedOpacity
-  }
-
-  await Preferences.set({
-    key: PLANNER_WIDGET_BACKGROUND_OPACITY_KEY,
-    value: String(normalizedOpacity),
-  })
-  await NativePlannerWidget.refresh()
-
-  return normalizedOpacity
-}
-
 export async function addNativePlannerWidgetResumeListener(
   listener: () => void,
 ): Promise<PluginListenerHandle> {
@@ -171,8 +139,13 @@ export async function addNativePlannerWidgetResumeListener(
 function toNativePlannerWidgetTask(
   task: Task,
   isOverdue: boolean,
+  projectLookup: WidgetProjectLookup,
 ): NativePlannerWidgetTask {
+  const project = findWidgetProject(task, projectLookup)
+
   return {
+    color: normalizeWidgetColor(project?.color),
+    icon: normalizeWidgetIcon(task.icon) || normalizeWidgetIcon(project?.icon),
     id: task.id,
     isOverdue,
     timeLabel:
@@ -182,6 +155,73 @@ function toNativePlannerWidgetTask(
     title: normalizeWidgetTaskTitle(task.title),
     visualTone: getWidgetTaskVisualTone(task, isOverdue),
   }
+}
+
+interface WidgetProjectLookup {
+  byId: Map<string, Project>
+  byTitle: Map<string, Project>
+}
+
+function resolveSnapshotContext(
+  projectsOrNow: Project[] | Date,
+  maybeNow: Date | undefined,
+): { now: Date; projects: Project[] } {
+  if (projectsOrNow instanceof Date) {
+    return {
+      now: projectsOrNow,
+      projects: [],
+    }
+  }
+
+  return {
+    now: maybeNow ?? new Date(),
+    projects: projectsOrNow,
+  }
+}
+
+function createProjectLookup(projects: Project[]): WidgetProjectLookup {
+  return {
+    byId: new Map(projects.map((project) => [project.id, project])),
+    byTitle: new Map(
+      projects.map((project) => [
+        normalizeProjectTitle(project.title),
+        project,
+      ]),
+    ),
+  }
+}
+
+function findWidgetProject(
+  task: Task,
+  projectLookup: WidgetProjectLookup,
+): Project | undefined {
+  const projectId = task.projectId ?? task.sphereId
+
+  if (projectId) {
+    const project = projectLookup.byId.get(projectId)
+
+    if (project) {
+      return project
+    }
+  }
+
+  return projectLookup.byTitle.get(normalizeProjectTitle(task.project))
+}
+
+function normalizeProjectTitle(title: string): string {
+  return title.trim().toLowerCase()
+}
+
+function normalizeWidgetColor(color: string | undefined): string {
+  const normalizedColor = color?.trim()
+
+  return normalizedColor && /^#[0-9a-f]{6}$/i.test(normalizedColor)
+    ? normalizedColor.toUpperCase()
+    : '#8EE7C8'
+}
+
+function normalizeWidgetIcon(icon: string | undefined): string {
+  return icon?.trim() ?? ''
 }
 
 function normalizeWidgetTaskTitle(title: string): string {
@@ -305,22 +345,4 @@ function getWidgetTaskVisualTone(
   }
 
   return 'default'
-}
-
-function normalizeWidgetBackgroundOpacity(
-  value: number | string | null,
-): NativePlannerWidgetBackgroundOpacity {
-  const numericValue = typeof value === 'number' ? value : Number(value)
-
-  if (!Number.isFinite(numericValue)) {
-    return DEFAULT_WIDGET_BACKGROUND_OPACITY
-  }
-
-  return NATIVE_PLANNER_WIDGET_BACKGROUND_OPACITY_OPTIONS.reduce(
-    (nearest, option) =>
-      Math.abs(option - numericValue) < Math.abs(nearest - numericValue)
-        ? option
-        : nearest,
-    DEFAULT_WIDGET_BACKGROUND_OPACITY,
-  )
 }

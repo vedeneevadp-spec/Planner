@@ -2,14 +2,16 @@ package ru.chaotika.app;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 final class PlannerWidgetContract {
 
+    static final String DEFAULT_TASK_COLOR = "#8EE7C8";
     static final int MAX_SNAPSHOT_TASKS = 12;
-    static final int SNAPSHOT_VERSION = 3;
+    static final int SNAPSHOT_VERSION = 4;
 
     private PlannerWidgetContract() {}
 
@@ -128,6 +130,7 @@ final class PlannerWidgetContract {
         }
 
         String id = value.optString("id", "").trim();
+        String icon = value.optString("icon", "").trim();
         String title = value.optString("title", "").trim();
 
         if (!isSupportedTaskId(id) || title.isEmpty()) {
@@ -139,10 +142,22 @@ final class PlannerWidgetContract {
         return new PlannerWidgetTask(
             id,
             title,
+            icon,
+            parseColor(value.optString("color", DEFAULT_TASK_COLOR)),
             timeLabel,
             value.optBoolean("isOverdue", false),
             parseVisualTone(value.optString("visualTone", "default"))
         );
+    }
+
+    private static String parseColor(String value) {
+        String color = value == null ? "" : value.trim();
+
+        if (color.matches("^#[0-9a-fA-F]{6}$")) {
+            return color.toUpperCase(Locale.US);
+        }
+
+        return DEFAULT_TASK_COLOR;
     }
 
     private static String parseVisualTone(String value) {
@@ -210,14 +225,26 @@ final class PlannerWidgetSnapshot {
 
 final class PlannerWidgetTask {
     final String id;
+    final String color;
+    final String icon;
     final boolean isOverdue;
     final String timeLabel;
     final String title;
     final String visualTone;
 
-    PlannerWidgetTask(String id, String title, String timeLabel, boolean isOverdue, String visualTone) {
+    PlannerWidgetTask(
+        String id,
+        String title,
+        String icon,
+        String color,
+        String timeLabel,
+        boolean isOverdue,
+        String visualTone
+    ) {
         this.id = id;
         this.title = title;
+        this.icon = icon;
+        this.color = color;
         this.timeLabel = timeLabel;
         this.isOverdue = isOverdue;
         this.visualTone = visualTone;

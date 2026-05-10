@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const NATIVE_PLANNER_WIDGET_SNAPSHOT_VERSION = 3
+export const NATIVE_PLANNER_WIDGET_SNAPSHOT_VERSION = 4
 export const NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS = 12
 
 const dateKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -15,6 +15,8 @@ export const nativePlannerWidgetTaskVisualToneSchema = z.enum([
 ])
 
 export const nativePlannerWidgetTaskSchema = z.object({
+  color: z.string().trim().min(1).default('#8EE7C8'),
+  icon: z.string().trim().default(''),
   id: z.string().trim().min(1),
   isOverdue: z.boolean(),
   timeLabel: z.string().trim().min(1).nullable(),

@@ -25,6 +25,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PlannerWidgetConfigurationActivity"
+            android:exported="true"
+            android:label="@string/planner_widget_configuration_title"
+            android:theme="@style/PlannerWidgetConfigurationTheme">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".PlannerWidgetProvider"
             android:exported="false"
@@ -33,13 +43,28 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="android.intent.action.DATE_CHANGED" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
-                <action android:name="ru.chaotika.app.action.CYCLE_WIDGET_BACKGROUND_OPACITY" />
                 <action android:name="ru.chaotika.app.action.COMPLETE_TASK_FROM_WIDGET" />
                 <action android:name="ru.chaotika.app.action.REFRESH_WIDGET" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/planner_today_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".PlannerTimelineWidgetProvider"
+            android:exported="false"
+            android:label="@string/planner_timeline_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="ru.chaotika.app.action.COMPLETE_TASK_FROM_WIDGET" />
+                <action android:name="ru.chaotika.app.action.REFRESH_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/planner_timeline_widget_info" />
         </receiver>
 
         <provider

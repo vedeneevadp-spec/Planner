@@ -8,7 +8,6 @@
     <color name="planner_widget_progress_track">#33FFFFFF</color>
     <color name="planner_widget_in_progress">#8EE7C8</color>
     <color name="planner_widget_review">#B9B3FF</color>
-    <color name="planner_widget_surface">#14171C</color>
     <color name="planner_widget_text">#FFF9F0</color>
     <color name="planner_widget_text_soft">#C8FFFFFF</color>
     <color name="planner_widget_urgent">#FFD166</color>

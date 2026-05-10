@@ -17,7 +17,6 @@ final class PlannerWidgetStorage {
 
     static final String ACTION_COMPLETE_TASK = "ru.chaotika.app.action.COMPLETE_TASK_FROM_WIDGET";
     static final String ACTION_ADD_TASK = "ru.chaotika.app.action.ADD_TASK_FROM_WIDGET";
-    static final String ACTION_CYCLE_BACKGROUND_OPACITY = "ru.chaotika.app.action.CYCLE_WIDGET_BACKGROUND_OPACITY";
     static final String ACTION_OPEN_TODAY = "ru.chaotika.app.action.OPEN_TODAY_FROM_WIDGET";
     static final String ACTION_REFRESH_WIDGET = "ru.chaotika.app.action.REFRESH_WIDGET";
     static final String EXTRA_WIDGET_TASK_ID = "ru.chaotika.app.extra.WIDGET_TASK_ID";
@@ -81,12 +80,12 @@ final class PlannerWidgetStorage {
         }
     }
 
-    static int cycleBackgroundOpacityPercent(Context context) {
-        int nextOpacity = getNextBackgroundOpacityPercent(readBackgroundOpacityPercent(context));
+    static int writeBackgroundOpacityPercent(Context context, int value) {
+        int opacity = normalizeBackgroundOpacityPercent(value);
 
-        getPreferences(context).edit().putString(BACKGROUND_OPACITY_KEY, String.valueOf(nextOpacity)).apply();
+        getPreferences(context).edit().putString(BACKGROUND_OPACITY_KEY, String.valueOf(opacity)).apply();
 
-        return nextOpacity;
+        return opacity;
     }
 
     static void markTaskCompletedInSnapshot(Context context, String taskId) {
@@ -159,26 +158,6 @@ final class PlannerWidgetStorage {
 
         if (value <= 92) {
             return 85;
-        }
-
-        return 100;
-    }
-
-    private static int getNextBackgroundOpacityPercent(int value) {
-        if (value >= 100) {
-            return 85;
-        }
-
-        if (value >= 85) {
-            return 70;
-        }
-
-        if (value >= 70) {
-            return 55;
-        }
-
-        if (value >= 55) {
-            return 40;
         }
 
         return 100;

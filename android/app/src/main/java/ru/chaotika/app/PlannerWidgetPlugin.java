@@ -36,7 +36,7 @@ public class PlannerWidgetPlugin extends Plugin {
 
     @PluginMethod
     public void refresh(PluginCall call) {
-        PlannerWidgetProvider.updateAllWidgets(getContext());
+        PlannerWidgetUpdateDispatcher.updateAllWidgets(getContext());
         call.resolve();
     }
 }

@@ -20,17 +20,95 @@
         <item name="android:background">@drawable/splash</item>
     </style>
 
-    <style name="PlannerWidgetTaskText">
+    <style name="PlannerWidgetConfigurationTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">@color/planner_widget_accent</item>
+    </style>
+
+    <style name="PlannerWidgetTaskRow">
         <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_height">32dp</item>
         <item name="android:layout_marginTop">6dp</item>
         <item name="android:background">@drawable/planner_widget_task_row_background</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:paddingBottom">6dp</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="PlannerWidgetTaskIcon">
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:layout_marginEnd">9dp</item>
+        <item name="android:contentDescription">@null</item>
+        <item name="android:scaleType">center</item>
+    </style>
+
+    <style name="PlannerWidgetTaskTitle">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
         <item name="android:ellipsize">end</item>
         <item name="android:includeFontPadding">false</item>
-        <item name="android:paddingBottom">7dp</item>
-        <item name="android:paddingTop">2dp</item>
         <item name="android:singleLine">true</item>
         <item name="android:textColor">@color/planner_widget_text</item>
         <item name="android:textSize">17sp</item>
+    </style>
+
+    <style name="PlannerWidgetTaskCheckbox">
+        <item name="android:layout_width">24dp</item>
+        <item name="android:layout_height">24dp</item>
+        <item name="android:layout_marginStart">10dp</item>
+        <item name="android:contentDescription">@null</item>
+        <item name="android:scaleType">center</item>
+    </style>
+
+    <style name="PlannerTimelineTaskRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">42dp</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:background">@drawable/planner_timeline_row_background</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <style name="PlannerTimelineTaskIcon">
+        <item name="android:layout_width">28dp</item>
+        <item name="android:layout_height">28dp</item>
+        <item name="android:layout_marginEnd">10dp</item>
+        <item name="android:contentDescription">@null</item>
+        <item name="android:scaleType">center</item>
+    </style>
+
+    <style name="PlannerTimelineTaskCopy">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="PlannerTimelineTaskTime">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">@color/planner_widget_text_soft</item>
+        <item name="android:textSize">11sp</item>
+    </style>
+
+    <style name="PlannerTimelineTaskTitle">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">1dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:includeFontPadding">false</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:textColor">@color/planner_widget_text</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
     </style>
 </resources>

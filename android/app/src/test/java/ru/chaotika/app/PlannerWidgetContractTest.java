@@ -11,7 +11,7 @@ import org.junit.Test;
 public class PlannerWidgetContractTest {
 
     @Test
-    public void parseSnapshot_acceptsVersion2Snapshot() {
+    public void parseSnapshot_acceptsCurrentSnapshot() {
         PlannerWidgetSnapshot snapshot = PlannerWidgetContract.parseSnapshot(createSnapshot("2026-05-09"));
 
         assertNotNull(snapshot);
@@ -22,9 +22,13 @@ public class PlannerWidgetContractTest {
         assertEquals(3, snapshot.hiddenTaskCount);
         assertEquals(2, snapshot.tasks.size());
         assertEquals("task-overdue", snapshot.tasks.get(0).id);
+        assertEquals("#AD4E2F", snapshot.tasks.get(0).color);
+        assertEquals("svg:bell", snapshot.tasks.get(0).icon);
         assertEquals(true, snapshot.tasks.get(0).isOverdue);
         assertEquals("overdue", snapshot.tasks.get(0).visualTone);
         assertEquals("task-today", snapshot.tasks.get(1).id);
+        assertEquals("#2F6F62", snapshot.tasks.get(1).color);
+        assertEquals("🎯", snapshot.tasks.get(1).icon);
         assertEquals("09:00 - 10:00", snapshot.tasks.get(1).timeLabel);
         assertEquals("urgent", snapshot.tasks.get(1).visualTone);
     }
@@ -73,7 +77,7 @@ public class PlannerWidgetContractTest {
 
     private static String createSnapshot(String dateKey) {
         return "{"
-            + "\"version\":3,"
+            + "\"version\":4,"
             + "\"dateKey\":\"" + dateKey + "\","
             + "\"generatedAt\":\"2026-05-09T09:00:00.000Z\","
             + "\"todayCount\":2,"
@@ -83,6 +87,8 @@ public class PlannerWidgetContractTest {
             + "\"tasks\":["
             + "{"
             + "\"id\":\"task-overdue\","
+            + "\"color\":\"#ad4e2f\","
+            + "\"icon\":\"svg:bell\","
             + "\"title\":\"Просроченная\","
             + "\"timeLabel\":null,"
             + "\"isOverdue\":true,"
@@ -90,6 +96,8 @@ public class PlannerWidgetContractTest {
             + "},"
             + "{"
             + "\"id\":\"task-today\","
+            + "\"color\":\"#2f6f62\","
+            + "\"icon\":\"🎯\","
             + "\"title\":\"Фокус\","
             + "\"timeLabel\":\"09:00 - 10:00\","
             + "\"isOverdue\":false,"

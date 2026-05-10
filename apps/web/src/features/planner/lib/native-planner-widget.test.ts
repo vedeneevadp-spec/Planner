@@ -24,6 +24,7 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }))
 
+import type { Project } from '@/entities/project'
 import type { Task } from '@/entities/task'
 
 import { buildNativePlannerWidgetSnapshot } from './native-planner-widget'
@@ -52,6 +53,20 @@ const baseTask: Task = {
   status: 'todo',
   title: 'Утренний фокус',
   urgency: 'not_urgent',
+}
+
+const baseProject: Project = {
+  color: '#2f6f62',
+  createdAt: '2026-05-01T10:00:00.000Z',
+  deletedAt: null,
+  description: '',
+  icon: 'svg:folder',
+  id: 'project-1',
+  status: 'active',
+  title: 'Фокус',
+  updatedAt: '2026-05-01T10:00:00.000Z',
+  version: 1,
+  workspaceId: 'workspace-1',
 }
 
 describe('native planner widget snapshot', () => {
@@ -88,10 +103,12 @@ describe('native planner widget snapshot', () => {
       hiddenTaskCount: 0,
       overdueCount: 1,
       todayCount: 1,
-      version: 3,
+      version: 4,
     })
     expect(snapshot.tasks).toEqual([
       {
+        color: '#8EE7C8',
+        icon: '',
         id: 'task-2',
         isOverdue: true,
         timeLabel: null,
@@ -99,6 +116,8 @@ describe('native planner widget snapshot', () => {
         visualTone: 'overdue',
       },
       {
+        color: '#8EE7C8',
+        icon: '',
         id: 'task-1',
         isOverdue: false,
         timeLabel: '09:00 - 10:00',
@@ -191,5 +210,26 @@ describe('native planner widget snapshot', () => {
 
     expect(snapshot.tasks).toHaveLength(12)
     expect(snapshot.hiddenTaskCount).toBe(1)
+  })
+
+  it('adds task icons and project colors to the native payload', () => {
+    const snapshot = buildNativePlannerWidgetSnapshot(
+      [
+        {
+          ...baseTask,
+          icon: '🎯',
+          project: 'Фокус',
+          projectId: baseProject.id,
+        },
+      ],
+      [baseProject],
+      new Date(2026, 4, 9, 12),
+    )
+
+    expect(snapshot.tasks[0]).toMatchObject({
+      color: '#2F6F62',
+      icon: '🎯',
+      id: 'task-1',
+    })
   })
 })

@@ -12,14 +12,14 @@ import {
 import { usePlanner } from '../lib/usePlanner'
 
 export function NativePlannerWidgetSync() {
-  const { isLoading, isSyncing, setTaskStatus, tasks } = usePlanner()
+  const { isLoading, isSyncing, projects, setTaskStatus, tasks } = usePlanner()
   const navigate = useNavigate()
-  const plannerRef = useRef({ isLoading, setTaskStatus, tasks })
+  const plannerRef = useRef({ isLoading, projects, setTaskStatus, tasks })
   const wasSyncingRef = useRef(false)
 
   useEffect(() => {
-    plannerRef.current = { isLoading, setTaskStatus, tasks }
-  }, [isLoading, setTaskStatus, tasks])
+    plannerRef.current = { isLoading, projects, setTaskStatus, tasks }
+  }, [isLoading, projects, setTaskStatus, tasks])
 
   const syncSnapshot = useCallback(() => {
     const planner = plannerRef.current
@@ -28,7 +28,10 @@ export function NativePlannerWidgetSync() {
       return
     }
 
-    const snapshot = buildNativePlannerWidgetSnapshot(planner.tasks)
+    const snapshot = buildNativePlannerWidgetSnapshot(
+      planner.tasks,
+      planner.projects,
+    )
 
     void persistNativePlannerWidgetSnapshot(snapshot).catch((error) => {
       console.warn('Failed to update Android planner widget.', error)
@@ -94,7 +97,7 @@ export function NativePlannerWidgetSync() {
 
   useEffect(() => {
     syncFromNativeWidget()
-  }, [isLoading, syncFromNativeWidget, tasks])
+  }, [isLoading, projects, syncFromNativeWidget, tasks])
 
   useEffect(() => {
     consumePendingRoute()

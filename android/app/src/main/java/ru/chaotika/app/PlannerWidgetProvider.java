@@ -8,7 +8,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.util.TypedValue;
 import android.view.View;
 import android.widget.RemoteViews;
 import java.text.ParseException;
@@ -25,19 +24,61 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
     private static final int MAX_TASKS = PlannerWidgetContract.MAX_SNAPSHOT_TASKS;
     private static final int NEXT_DAY_REFRESH_REQUEST_CODE = 1008;
     private static final Locale RU_LOCALE = Locale.forLanguageTag("ru-RU");
-    private static final int[] TASK_VIEW_IDS = {
-        R.id.planner_widget_task_1,
-        R.id.planner_widget_task_2,
-        R.id.planner_widget_task_3,
-        R.id.planner_widget_task_4,
-        R.id.planner_widget_task_5,
-        R.id.planner_widget_task_6,
-        R.id.planner_widget_task_7,
-        R.id.planner_widget_task_8,
-        R.id.planner_widget_task_9,
-        R.id.planner_widget_task_10,
-        R.id.planner_widget_task_11,
-        R.id.planner_widget_task_12,
+    private static final int[] TASK_ROW_IDS = {
+        R.id.planner_widget_task_row_1,
+        R.id.planner_widget_task_row_2,
+        R.id.planner_widget_task_row_3,
+        R.id.planner_widget_task_row_4,
+        R.id.planner_widget_task_row_5,
+        R.id.planner_widget_task_row_6,
+        R.id.planner_widget_task_row_7,
+        R.id.planner_widget_task_row_8,
+        R.id.planner_widget_task_row_9,
+        R.id.planner_widget_task_row_10,
+        R.id.planner_widget_task_row_11,
+        R.id.planner_widget_task_row_12,
+    };
+    private static final int[] TASK_ICON_IDS = {
+        R.id.planner_widget_task_icon_1,
+        R.id.planner_widget_task_icon_2,
+        R.id.planner_widget_task_icon_3,
+        R.id.planner_widget_task_icon_4,
+        R.id.planner_widget_task_icon_5,
+        R.id.planner_widget_task_icon_6,
+        R.id.planner_widget_task_icon_7,
+        R.id.planner_widget_task_icon_8,
+        R.id.planner_widget_task_icon_9,
+        R.id.planner_widget_task_icon_10,
+        R.id.planner_widget_task_icon_11,
+        R.id.planner_widget_task_icon_12,
+    };
+    private static final int[] TASK_TITLE_IDS = {
+        R.id.planner_widget_task_title_1,
+        R.id.planner_widget_task_title_2,
+        R.id.planner_widget_task_title_3,
+        R.id.planner_widget_task_title_4,
+        R.id.planner_widget_task_title_5,
+        R.id.planner_widget_task_title_6,
+        R.id.planner_widget_task_title_7,
+        R.id.planner_widget_task_title_8,
+        R.id.planner_widget_task_title_9,
+        R.id.planner_widget_task_title_10,
+        R.id.planner_widget_task_title_11,
+        R.id.planner_widget_task_title_12,
+    };
+    private static final int[] TASK_CHECKBOX_IDS = {
+        R.id.planner_widget_task_checkbox_1,
+        R.id.planner_widget_task_checkbox_2,
+        R.id.planner_widget_task_checkbox_3,
+        R.id.planner_widget_task_checkbox_4,
+        R.id.planner_widget_task_checkbox_5,
+        R.id.planner_widget_task_checkbox_6,
+        R.id.planner_widget_task_checkbox_7,
+        R.id.planner_widget_task_checkbox_8,
+        R.id.planner_widget_task_checkbox_9,
+        R.id.planner_widget_task_checkbox_10,
+        R.id.planner_widget_task_checkbox_11,
+        R.id.planner_widget_task_checkbox_12,
     };
 
     @Override
@@ -54,12 +95,6 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
     public void onReceive(Context context, Intent intent) {
         String action = intent == null ? null : intent.getAction();
 
-        if (PlannerWidgetStorage.ACTION_CYCLE_BACKGROUND_OPACITY.equals(action)) {
-            PlannerWidgetStorage.cycleBackgroundOpacityPercent(context);
-            updateAllWidgets(context);
-            return;
-        }
-
         if (PlannerWidgetStorage.ACTION_COMPLETE_TASK.equals(action)) {
             handleCompleteTask(context, intent);
             return;
@@ -70,7 +105,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             Intent.ACTION_DATE_CHANGED.equals(action) ||
             Intent.ACTION_TIMEZONE_CHANGED.equals(action)
         ) {
-            updateAllWidgets(context);
+            PlannerWidgetUpdateDispatcher.updateAllWidgets(context);
             scheduleNextDayRefresh(context);
             return;
         }
@@ -123,17 +158,6 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             R.id.planner_widget_root,
             "setBackgroundResource",
             getBackgroundResource(backgroundOpacityPercent)
-        );
-        views.setContentDescription(
-            R.id.planner_widget_settings_button,
-            context.getString(
-                R.string.planner_widget_settings_content_description,
-                backgroundOpacityPercent
-            )
-        );
-        views.setOnClickPendingIntent(
-            R.id.planner_widget_settings_button,
-            createCycleBackgroundOpacityPendingIntent(context)
         );
         views.setOnClickPendingIntent(
             R.id.planner_widget_add_button,
@@ -224,24 +248,36 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         int warningTextColor = context.getColor(R.color.planner_widget_warning);
         int visibleTaskCount = Math.min(tasks.size(), displayOptions.taskLimit);
 
-        for (int taskViewId : TASK_VIEW_IDS) {
-            views.setViewVisibility(taskViewId, View.GONE);
+        for (int taskRowId : TASK_ROW_IDS) {
+            views.setViewVisibility(taskRowId, View.GONE);
         }
 
         for (int index = 0; index < visibleTaskCount; index += 1) {
             PlannerWidgetTask task = tasks.get(index);
-            int taskViewId = TASK_VIEW_IDS[index];
+            int taskRowId = TASK_ROW_IDS[index];
+            int taskTitleId = TASK_TITLE_IDS[index];
+            int taskCheckboxId = TASK_CHECKBOX_IDS[index];
+            int taskAccentColor = PlannerWidgetVisuals.getTaskAccentColor(context, task);
             String taskText = buildTaskText(context, task);
 
-            views.setTextViewText(taskViewId, buildTaskDisplayText(context, task, taskText));
-            views.setTextColor(taskViewId, getTaskTextColor(context, task, defaultTextColor, warningTextColor));
-            views.setTextViewTextSize(taskViewId, TypedValue.COMPLEX_UNIT_SP, displayOptions.taskTextSizeSp);
+            views.setImageViewBitmap(
+                TASK_ICON_IDS[index],
+                PlannerWidgetVisuals.createTaskIconBitmap(context, task)
+            );
+            views.setImageViewBitmap(
+                taskCheckboxId,
+                PlannerWidgetVisuals.createCheckboxBitmap(context, taskAccentColor)
+            );
+            views.setTextViewText(taskTitleId, taskText);
+            views.setTextColor(taskTitleId, getTaskTextColor(context, task, defaultTextColor, warningTextColor));
+            views.setFloat(taskTitleId, "setTextSize", displayOptions.taskTextSizeSp);
             views.setContentDescription(
-                taskViewId,
+                taskRowId,
                 context.getString(R.string.planner_widget_complete_task_content_description, taskText)
             );
-            views.setOnClickPendingIntent(taskViewId, createCompleteTaskPendingIntent(context, task));
-            views.setViewVisibility(taskViewId, View.VISIBLE);
+            views.setOnClickPendingIntent(taskRowId, createCompleteTaskPendingIntent(context, task));
+            views.setOnClickPendingIntent(taskCheckboxId, createCompleteTaskPendingIntent(context, task));
+            views.setViewVisibility(taskRowId, View.VISIBLE);
         }
 
         if (visibleTaskCount == 0) {
@@ -278,26 +314,6 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         }
 
         return task.title;
-    }
-
-    private static String buildTaskDisplayText(Context context, PlannerWidgetTask task, String taskText) {
-        if ("in_progress".equals(task.visualTone)) {
-            return context.getString(R.string.planner_widget_task_in_progress, taskText);
-        }
-
-        if ("review".equals(task.visualTone)) {
-            return context.getString(R.string.planner_widget_task_review, taskText);
-        }
-
-        if ("urgent".equals(task.visualTone)) {
-            return context.getString(R.string.planner_widget_task_urgent, taskText);
-        }
-
-        if ("overdue".equals(task.visualTone) || task.isOverdue) {
-            return context.getString(R.string.planner_widget_task_overdue, taskText);
-        }
-
-        return context.getString(R.string.planner_widget_task_default, taskText);
     }
 
     private static int getTaskTextColor(
@@ -349,7 +365,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             PlannerWidgetStorage.markTaskCompletedInSnapshot(context, taskId);
         }
 
-        updateAllWidgets(context);
+        PlannerWidgetUpdateDispatcher.updateAllWidgets(context);
     }
 
     private static PendingIntent createCompleteTaskPendingIntent(Context context, PlannerWidgetTask task) {
@@ -362,7 +378,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         return PendingIntent.getBroadcast(context, task.id.hashCode(), intent, flags);
     }
 
-    private static PendingIntent createOpenTodayPendingIntent(Context context) {
+    static PendingIntent createOpenTodayPendingIntent(Context context) {
         return createOpenRoutePendingIntent(
             context,
             PlannerWidgetStorage.TODAY_ROUTE,
@@ -371,7 +387,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         );
     }
 
-    private static PendingIntent createAddTaskPendingIntent(Context context) {
+    static PendingIntent createAddTaskPendingIntent(Context context) {
         return createOpenRoutePendingIntent(
             context,
             PlannerWidgetStorage.ADD_TASK_ROUTE,
@@ -394,15 +410,6 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
         return PendingIntent.getActivity(context, requestCode, intent, flags);
-    }
-
-    private static PendingIntent createCycleBackgroundOpacityPendingIntent(Context context) {
-        Intent intent = new Intent(context, PlannerWidgetProvider.class);
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
-
-        intent.setAction(PlannerWidgetStorage.ACTION_CYCLE_BACKGROUND_OPACITY);
-
-        return PendingIntent.getBroadcast(context, 1009, intent, flags);
     }
 
     private static PendingIntent createRefreshPendingIntent(Context context) {

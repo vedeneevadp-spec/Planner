@@ -17,8 +17,8 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:layout_marginEnd="10dp"
+            android:layout_weight="1"
             android:orientation="vertical">
 
             <TextView
@@ -44,33 +44,15 @@
                 android:textSize="13sp" />
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageButton
-                android:id="@+id/planner_widget_add_button"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:background="@drawable/planner_widget_control_background"
-                android:contentDescription="@string/planner_widget_add_task_content_description"
-                android:padding="9dp"
-                android:scaleType="center"
-                android:src="@drawable/planner_widget_icon_add" />
-
-            <ImageButton
-                android:id="@+id/planner_widget_settings_button"
-                android:layout_width="38dp"
-                android:layout_height="38dp"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/planner_widget_control_background"
-                android:contentDescription="@string/planner_widget_settings_button_content_description"
-                android:padding="9dp"
-                android:scaleType="center"
-                android:src="@drawable/planner_widget_icon_settings" />
-        </LinearLayout>
+        <ImageButton
+            android:id="@+id/planner_widget_add_button"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/planner_widget_control_background"
+            android:contentDescription="@string/planner_widget_add_task_content_description"
+            android:padding="9dp"
+            android:scaleType="center"
+            android:src="@drawable/planner_widget_icon_add" />
     </LinearLayout>
 
     <TextView
@@ -95,66 +77,80 @@
         android:progress="0"
         android:progressDrawable="@drawable/planner_widget_progress" />
 
-    <TextView
-        android:id="@+id/planner_widget_task_1"
-        style="@style/PlannerWidgetTaskText"
-        android:layout_marginTop="12dp"
-        android:visibility="gone" />
+    <LinearLayout
+        android:id="@+id/planner_widget_task_row_1"
+        style="@style/PlannerWidgetTaskRow"
+        android:layout_marginTop="12dp">
+        <ImageView android:id="@+id/planner_widget_task_icon_1" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_1" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_1" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_2"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_2" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_2" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_2" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_2" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_3"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_3" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_3" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_3" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_3" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_4"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_4" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_4" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_4" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_4" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_5"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_5" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_5" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_5" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_5" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_6"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_6" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_6" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_6" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_6" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_7"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_7" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_7" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_7" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_7" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_8"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_8" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_8" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_8" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_8" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_9"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_9" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_9" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_9" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_9" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_10"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_10" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_10" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_10" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_10" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_11"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_11" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_11" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_11" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_11" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
-    <TextView
-        android:id="@+id/planner_widget_task_12"
-        style="@style/PlannerWidgetTaskText"
-        android:visibility="gone" />
+    <LinearLayout android:id="@+id/planner_widget_task_row_12" style="@style/PlannerWidgetTaskRow">
+        <ImageView android:id="@+id/planner_widget_task_icon_12" style="@style/PlannerWidgetTaskIcon" />
+        <TextView android:id="@+id/planner_widget_task_title_12" style="@style/PlannerWidgetTaskTitle" />
+        <ImageView android:id="@+id/planner_widget_task_checkbox_12" style="@style/PlannerWidgetTaskCheckbox" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/planner_widget_empty"
