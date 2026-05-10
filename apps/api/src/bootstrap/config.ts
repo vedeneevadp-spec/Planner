@@ -28,10 +28,15 @@ export interface AliceOAuthConfig {
   redirectUri: string
 }
 
+export type AliceCommandLlmApiFormat = 'chat_completions' | 'responses'
+export type AliceCommandLlmProvider = 'openai' | 'openai-compatible' | 'yandex'
+
 export interface AliceCommandLlmConfig {
-  apiKey: string
+  apiFormat: AliceCommandLlmApiFormat
+  apiKey: string | null
   endpoint: string
   model: string
+  provider: AliceCommandLlmProvider
   timeoutMs: number
 }
 
@@ -310,30 +315,136 @@ function createAliceOAuthConfig(
 function createAliceCommandLlmConfig(
   env: NodeJS.ProcessEnv,
 ): AliceCommandLlmConfig | null {
-  const apiKey = env.ALICE_LLM_API_KEY?.trim()
-  const model = env.ALICE_LLM_MODEL?.trim()
-  const endpoint =
-    env.ALICE_LLM_ENDPOINT?.trim() || 'https://api.openai.com/v1/responses'
+  const rawProvider = env.ALICE_LLM_PROVIDER?.trim()
+  const rawApiKey = env.ALICE_LLM_API_KEY?.trim()
+  const rawEndpoint = env.ALICE_LLM_ENDPOINT?.trim()
+  const rawModel = env.ALICE_LLM_MODEL?.trim()
+  const rawYandexFolderId = env.ALICE_LLM_YANDEX_FOLDER_ID?.trim()
+  const provider = parseAliceCommandLlmProvider(rawProvider)
+  const hasYandexAliasConfig =
+    provider === 'yandex' &&
+    Boolean(rawProvider) &&
+    Boolean(env.YANDEX_API_KEY?.trim() || env.YANDEX_FOLDER_ID?.trim())
 
-  if (!apiKey && !model && !env.ALICE_LLM_ENDPOINT?.trim()) {
+  if (!rawApiKey && !rawModel && !rawYandexFolderId && !hasYandexAliasConfig) {
     return null
   }
 
-  if (!apiKey || !model) {
+  const apiKey = resolveAliceCommandLlmApiKey(env, provider)
+  const model = resolveAliceCommandLlmModel(env, provider)
+  const endpoint = rawEndpoint || getDefaultAliceCommandLlmEndpoint(provider)
+
+  if (!endpoint) {
     throw new Error(
-      'ALICE_LLM_API_KEY and ALICE_LLM_MODEL must be configured together.',
+      'ALICE_LLM_ENDPOINT must be configured when ALICE_LLM_PROVIDER=openai-compatible.',
+    )
+  }
+
+  if (!model) {
+    throw new Error(
+      'ALICE_LLM_MODEL must be configured for Alice LLM parsing. For YandexGPT Lite you can set ALICE_LLM_YANDEX_FOLDER_ID instead.',
+    )
+  }
+
+  if (!apiKey && provider !== 'openai-compatible') {
+    throw new Error(
+      'ALICE_LLM_API_KEY must be configured for Alice LLM parsing. For Yandex you can also provide YANDEX_API_KEY.',
     )
   }
 
   return {
+    apiFormat: getAliceCommandLlmApiFormat(provider),
     apiKey,
     endpoint,
     model,
+    provider,
     timeoutMs: parsePositiveInteger(
       env.ALICE_LLM_TIMEOUT_MS,
       2500,
       'ALICE_LLM_TIMEOUT_MS',
     ),
+  }
+}
+
+function parseAliceCommandLlmProvider(
+  value: string | undefined,
+): AliceCommandLlmProvider {
+  if (!value) {
+    return 'yandex'
+  }
+
+  const normalized = value.trim().toLowerCase()
+
+  if (
+    normalized === 'openai' ||
+    normalized === 'openai-compatible' ||
+    normalized === 'yandex'
+  ) {
+    return normalized
+  }
+
+  throw new Error(`Invalid ALICE_LLM_PROVIDER: ${value}`)
+}
+
+function resolveAliceCommandLlmApiKey(
+  env: NodeJS.ProcessEnv,
+  provider: AliceCommandLlmProvider,
+): string | null {
+  const apiKey = env.ALICE_LLM_API_KEY?.trim()
+
+  if (apiKey) {
+    return apiKey
+  }
+
+  if (provider === 'yandex') {
+    return env.YANDEX_API_KEY?.trim() || null
+  }
+
+  return null
+}
+
+function resolveAliceCommandLlmModel(
+  env: NodeJS.ProcessEnv,
+  provider: AliceCommandLlmProvider,
+): string | null {
+  const model = env.ALICE_LLM_MODEL?.trim()
+
+  if (model) {
+    return model
+  }
+
+  if (provider !== 'yandex') {
+    return null
+  }
+
+  const folderId =
+    env.ALICE_LLM_YANDEX_FOLDER_ID?.trim() || env.YANDEX_FOLDER_ID?.trim()
+
+  return folderId ? `gpt://${folderId}/yandexgpt-5-lite` : null
+}
+
+function getDefaultAliceCommandLlmEndpoint(
+  provider: AliceCommandLlmProvider,
+): string | null {
+  switch (provider) {
+    case 'openai':
+      return 'https://api.openai.com/v1/responses'
+    case 'yandex':
+      return 'https://ai.api.cloud.yandex.net/v1/chat/completions'
+    case 'openai-compatible':
+      return null
+  }
+}
+
+function getAliceCommandLlmApiFormat(
+  provider: AliceCommandLlmProvider,
+): AliceCommandLlmApiFormat {
+  switch (provider) {
+    case 'openai':
+      return 'responses'
+    case 'openai-compatible':
+    case 'yandex':
+      return 'chat_completions'
   }
 }
 

@@ -108,17 +108,55 @@ void describe('createApiConfig', () => {
     )
   })
 
-  void it('builds Alice LLM parser config when model credentials are configured', () => {
+  void it('builds Alice YandexGPT Lite parser config when model credentials are configured', () => {
     const config = createApiConfig({
       ...VALID_PRODUCTION_ENV,
       ALICE_LLM_API_KEY: 'llm-key',
-      ALICE_LLM_MODEL: 'planner-parser-model',
+      ALICE_LLM_YANDEX_FOLDER_ID: 'folder-id',
     } as NodeJS.ProcessEnv)
 
     assert.deepEqual(config.aliceCommandLlm, {
+      apiFormat: 'chat_completions',
       apiKey: 'llm-key',
-      endpoint: 'https://api.openai.com/v1/responses',
-      model: 'planner-parser-model',
+      endpoint: 'https://ai.api.cloud.yandex.net/v1/chat/completions',
+      model: 'gpt://folder-id/yandexgpt-5-lite',
+      provider: 'yandex',
+      timeoutMs: 2500,
+    })
+  })
+
+  void it('builds Alice YandexGPT Lite parser config from Yandex aliases when provider is selected', () => {
+    const config = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
+      ALICE_LLM_PROVIDER: 'yandex',
+      YANDEX_API_KEY: 'yandex-key',
+      YANDEX_FOLDER_ID: 'folder-id',
+    } as NodeJS.ProcessEnv)
+
+    assert.deepEqual(config.aliceCommandLlm, {
+      apiFormat: 'chat_completions',
+      apiKey: 'yandex-key',
+      endpoint: 'https://ai.api.cloud.yandex.net/v1/chat/completions',
+      model: 'gpt://folder-id/yandexgpt-5-lite',
+      provider: 'yandex',
+      timeoutMs: 2500,
+    })
+  })
+
+  void it('supports explicit OpenAI-compatible Alice LLM parser config', () => {
+    const config = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
+      ALICE_LLM_ENDPOINT: 'http://127.0.0.1:11434/v1/chat/completions',
+      ALICE_LLM_MODEL: 'local-parser-model',
+      ALICE_LLM_PROVIDER: 'openai-compatible',
+    } as NodeJS.ProcessEnv)
+
+    assert.deepEqual(config.aliceCommandLlm, {
+      apiFormat: 'chat_completions',
+      apiKey: null,
+      endpoint: 'http://127.0.0.1:11434/v1/chat/completions',
+      model: 'local-parser-model',
+      provider: 'openai-compatible',
       timeoutMs: 2500,
     })
   })
@@ -130,8 +168,18 @@ void describe('createApiConfig', () => {
           ...VALID_PRODUCTION_ENV,
           ALICE_LLM_API_KEY: 'llm-key',
         } as NodeJS.ProcessEnv),
-      /ALICE_LLM_API_KEY/,
+      /ALICE_LLM_MODEL/,
     )
+  })
+
+  void it('does not enable Alice LLM parsing from provider defaults alone', () => {
+    const config = createApiConfig({
+      ...VALID_PRODUCTION_ENV,
+      ALICE_LLM_ENDPOINT: 'https://ai.api.cloud.yandex.net/v1/chat/completions',
+      ALICE_LLM_PROVIDER: 'yandex',
+    } as NodeJS.ProcessEnv)
+
+    assert.equal(config.aliceCommandLlm, null)
   })
 
   void it('rejects unsafe production runtime configuration', () => {

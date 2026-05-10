@@ -142,9 +142,11 @@ ALICE_OAUTH_CLIENT_ID=<alice-client-id>
 ALICE_OAUTH_CLIENT_SECRET=<long-random-alice-oauth-secret>
 ALICE_OAUTH_REDIRECT_URI=https://social.yandex.net/broker/redirect
 ALICE_OAUTH_CODE_TTL_SECONDS=300
-ALICE_LLM_API_KEY=<optional-llm-api-key>
-ALICE_LLM_MODEL=<optional-llm-model>
-ALICE_LLM_ENDPOINT=https://api.openai.com/v1/responses
+ALICE_LLM_PROVIDER=yandex
+ALICE_LLM_API_KEY=<optional-yandex-api-key>
+ALICE_LLM_YANDEX_FOLDER_ID=<optional-yandex-folder-id>
+ALICE_LLM_MODEL=
+ALICE_LLM_ENDPOINT=https://ai.api.cloud.yandex.net/v1/chat/completions
 ALICE_LLM_TIMEOUT_MS=2500
 WEB_AUTH_PROVIDER=planner
 FIREBASE_SERVICE_ACCOUNT_PATH=/etc/planner/firebase-service-account.json
@@ -163,6 +165,11 @@ Timeweb firewall для Managed PostgreSQL должен разрешать вх�
 
 `AUTH_JWT_SECRET` должен быть длинным случайным секретом, минимум 32 символа.
 SMTP нужен для рабочих писем восстановления пароля.
+`ALICE_LLM_*` необязательны: без них навык работает на rules parser. Если
+включать fallback, основной production-вариант для доступности в РФ -
+`ALICE_LLM_PROVIDER=yandex` и YandexGPT Lite. Можно указать либо готовый
+`ALICE_LLM_MODEL`, либо только `ALICE_LLM_YANDEX_FOLDER_ID`: тогда backend
+соберет модель `gpt://<folder_ID>/yandexgpt-5-lite`.
 
 На сервере создать файл:
 

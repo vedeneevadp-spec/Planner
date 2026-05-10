@@ -156,8 +156,12 @@ refresh token на Chaotika-compatible JWT, который затем прихо
 
 Команды Алисы разбираются гибридным парсером: явные сценарии покрывают быстрые
 правила, а неочевидные фразы могут уходить в LLM fallback, если настроены
-`ALICE_LLM_API_KEY` и `ALICE_LLM_MODEL`. LLM возвращает только структурированный
-intent, исполнение остается в backend-сервисах Chaotika.
+provider-neutral LLM параметры. По умолчанию fallback рассчитан на YandexGPT
+Lite через OpenAI-compatible Chat Completions: `ALICE_LLM_PROVIDER=yandex`,
+`ALICE_LLM_API_KEY` или `YANDEX_API_KEY`, и `ALICE_LLM_YANDEX_FOLDER_ID`
+либо явный `ALICE_LLM_MODEL=gpt://<folder_ID>/yandexgpt-5-lite`. LLM возвращает
+только структурированный intent, исполнение остается в backend-сервисах
+Chaotika.
 
 `/api/v1/life-spheres` - текущий основной API для сфер жизни. `projects`
 остаются compatibility-моделью: web пока использует project-термины в части

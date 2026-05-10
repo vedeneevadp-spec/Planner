@@ -100,6 +100,12 @@ interface ScheduleDraft {
   reminderTimeZone: string | undefined
 }
 
+interface AliceCommandLlmClient {
+  createCommandCompletion(
+    input: AliceCommandParserInput,
+  ): Promise<string | null>
+}
+
 interface LlmAliceCommandParser {
   parse(input: AliceCommandParserInput): Promise<AliceParsedCommand | null>
 }
@@ -212,7 +218,9 @@ export function createAliceCommandParser(
   llmConfig: AliceCommandLlmConfig | null,
 ): AliceCommandParser {
   const llmParser = llmConfig
-    ? new ResponsesApiAliceCommandParser(llmConfig)
+    ? new ProviderBackedAliceCommandParser(
+        createAliceCommandLlmClient(llmConfig),
+      )
     : null
 
   return {
@@ -764,15 +772,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-class ResponsesApiAliceCommandParser implements LlmAliceCommandParser {
-  constructor(private readonly config: AliceCommandLlmConfig) {}
+class ProviderBackedAliceCommandParser implements LlmAliceCommandParser {
+  constructor(private readonly client: AliceCommandLlmClient) {}
 
   async parse(
     input: AliceCommandParserInput,
   ): Promise<AliceParsedCommand | null> {
     try {
-      const response = await this.createResponse(input)
-      const outputText = readResponsesApiOutputText(response)
+      const outputText = await this.client.createCommandCompletion(input)
 
       if (!outputText) {
         return null
@@ -785,6 +792,29 @@ class ResponsesApiAliceCommandParser implements LlmAliceCommandParser {
     } catch {
       return null
     }
+  }
+}
+
+function createAliceCommandLlmClient(
+  config: AliceCommandLlmConfig,
+): AliceCommandLlmClient {
+  switch (config.apiFormat) {
+    case 'responses':
+      return new ResponsesApiAliceCommandLlmClient(config)
+    case 'chat_completions':
+      return new ChatCompletionsAliceCommandLlmClient(config)
+  }
+}
+
+class ResponsesApiAliceCommandLlmClient implements AliceCommandLlmClient {
+  constructor(private readonly config: AliceCommandLlmConfig) {}
+
+  async createCommandCompletion(
+    input: AliceCommandParserInput,
+  ): Promise<string | null> {
+    const response = await this.createResponse(input)
+
+    return readResponsesApiOutputText(response)
   }
 
   private async createResponse(
@@ -803,15 +833,13 @@ class ResponsesApiAliceCommandParser implements LlmAliceCommandParser {
         body: JSON.stringify({
           input: [
             {
-              content:
-                'Ты классифицируешь русские голосовые команды для планера Chaotika. Верни только JSON по схеме. Не исполняй команды. Неиспользуемые поля заполняй null. Покупкой считай фразы про список покупок или намерение купить предметы. Задачей считай просьбу добавить дело, задачу или напоминание. Для запросов прочитать задачи верни list_tasks. Даты возвращай как YYYY-MM-DD в локальной дате пользователя, время как HH:MM.',
+              content: ALICE_COMMAND_LLM_SYSTEM_PROMPT,
               role: 'system',
             },
             {
-              content: JSON.stringify({
-                command: input.command,
-                timezone: timeZone,
-                today: todayKey,
+              content: createAliceCommandLlmUserContent(input, {
+                timeZone,
+                todayKey,
               }),
               role: 'user',
             },
@@ -828,7 +856,7 @@ class ResponsesApiAliceCommandParser implements LlmAliceCommandParser {
           },
         }),
         headers: {
-          authorization: `Bearer ${this.config.apiKey}`,
+          ...createAliceCommandLlmHeaders(this.config),
           'content-type': 'application/json',
         },
         method: 'POST',
@@ -844,6 +872,92 @@ class ResponsesApiAliceCommandParser implements LlmAliceCommandParser {
       clearTimeout(timeoutId)
     }
   }
+}
+
+class ChatCompletionsAliceCommandLlmClient implements AliceCommandLlmClient {
+  constructor(private readonly config: AliceCommandLlmConfig) {}
+
+  async createCommandCompletion(
+    input: AliceCommandParserInput,
+  ): Promise<string | null> {
+    const timeZone = normalizeTimeZone(input.timeZone)
+    const todayKey = getDateKeyInTimeZone(new Date(), timeZone)
+    const abortController = new AbortController()
+    const timeoutId = setTimeout(
+      () => abortController.abort(),
+      this.config.timeoutMs,
+    )
+
+    try {
+      const response = await fetch(this.config.endpoint, {
+        body: JSON.stringify({
+          messages: [
+            {
+              content: ALICE_COMMAND_LLM_SYSTEM_PROMPT,
+              role: 'system',
+            },
+            {
+              content: createAliceCommandLlmUserContent(input, {
+                timeZone,
+                todayKey,
+              }),
+              role: 'user',
+            },
+          ],
+          model: this.config.model,
+          response_format: {
+            json_schema: {
+              name: 'alice_command_parse',
+              schema: llmStructuredOutputSchema,
+              strict: true,
+            },
+            type: 'json_schema',
+          },
+          temperature: 0,
+        }),
+        headers: {
+          ...createAliceCommandLlmHeaders(this.config),
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+        signal: abortController.signal,
+      })
+
+      if (!response.ok) {
+        return null
+      }
+
+      return readChatCompletionsOutputText(await response.json())
+    } finally {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
+const ALICE_COMMAND_LLM_SYSTEM_PROMPT =
+  'Ты классифицируешь русские голосовые команды для планера Chaotika. Верни только JSON по схеме. Не исполняй команды. Неиспользуемые поля заполняй null. Покупкой считай фразы про список покупок или намерение купить предметы. Задачей считай просьбу добавить дело, задачу или напоминание. Для запросов прочитать задачи верни list_tasks. Даты возвращай как YYYY-MM-DD в локальной дате пользователя, время как HH:MM.'
+
+function createAliceCommandLlmUserContent(
+  input: AliceCommandParserInput,
+  context: { timeZone: string; todayKey: string },
+): string {
+  return JSON.stringify({
+    command: input.command,
+    timezone: context.timeZone,
+    today: context.todayKey,
+  })
+}
+
+function createAliceCommandLlmHeaders(
+  config: AliceCommandLlmConfig,
+): Record<string, string> {
+  if (!config.apiKey) {
+    return {}
+  }
+
+  const scheme = config.provider === 'yandex' ? 'Api-Key' : 'Bearer'
+
+  return { authorization: `${scheme} ${config.apiKey}` }
 }
 
 function normalizeLlmCommand(
@@ -928,6 +1042,36 @@ function readResponsesApiOutputText(value: unknown): string | null {
     }
 
     for (const contentItem of outputItem.content) {
+      if (isRecord(contentItem) && typeof contentItem.text === 'string') {
+        return contentItem.text
+      }
+    }
+  }
+
+  return null
+}
+
+function readChatCompletionsOutputText(value: unknown): string | null {
+  if (!isRecord(value) || !Array.isArray(value.choices)) {
+    return null
+  }
+
+  for (const choice of value.choices) {
+    if (!isRecord(choice) || !isRecord(choice.message)) {
+      continue
+    }
+
+    const { content } = choice.message
+
+    if (typeof content === 'string') {
+      return content
+    }
+
+    if (!Array.isArray(content)) {
+      continue
+    }
+
+    for (const contentItem of content) {
       if (isRecord(contentItem) && typeof contentItem.text === 'string') {
         return contentItem.text
       }
