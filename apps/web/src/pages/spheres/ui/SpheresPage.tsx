@@ -92,7 +92,7 @@ export function SpheresPage() {
               {stats.length > 0 ? buildHeadline(stats) : 'Сферы пока не заданы'}
             </h3>
             <p>
-              {formatShortDate(week.from)} - {formatShortDate(week.to)} · ресурс
+              {formatShortDate(week.from)} - {formatShortDate(week.to)} · доля
               считается по задачам недели.
             </p>
           </div>

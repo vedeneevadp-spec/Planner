@@ -6,7 +6,12 @@ import type {
 } from '@/entities/task'
 import type { TaskTemplate } from '@/entities/task-template'
 
-export const LEGACY_EMPTY_PROJECT_TITLES = new Set(['Без сферы', 'No sphere'])
+export const LEGACY_EMPTY_PROJECT_TITLES = new Set([
+  'Без сферы',
+  'Без проекта',
+  'No sphere',
+  'No project',
+])
 
 export interface TaskComposerDraft {
   dueDate?: string | null | undefined
@@ -25,25 +30,22 @@ interface ProjectFields {
   projectId: string | null
 }
 
-export function getProjectPickerLabel(isSharedWorkspace: boolean): string {
-  return isSharedWorkspace ? 'Проект' : 'Сфера'
+export function getProjectPickerLabel(): string {
+  return 'Сфера'
 }
 
-export function getEmptyProjectLabel(isSharedWorkspace: boolean): string {
-  return isSharedWorkspace ? 'Без проекта' : 'Без сферы'
+export function getEmptyProjectLabel(): string {
+  return 'Без сферы'
 }
 
-export function getProjectDisplayTitle(
-  projectTitle: string,
-  isSharedWorkspace: boolean,
-): string {
+export function getProjectDisplayTitle(projectTitle: string): string {
   const normalizedProjectTitle = projectTitle.trim()
 
   if (
     !normalizedProjectTitle ||
     LEGACY_EMPTY_PROJECT_TITLES.has(normalizedProjectTitle)
   ) {
-    return getEmptyProjectLabel(isSharedWorkspace)
+    return getEmptyProjectLabel()
   }
 
   return normalizedProjectTitle
@@ -118,8 +120,8 @@ export function buildTaskInputFromTemplate(
     plannedDate,
     plannedEndTime: plannedDate ? template.plannedEndTime : null,
     plannedStartTime: plannedDate ? template.plannedStartTime : null,
-    project: isSharedWorkspace ? '' : project.project,
-    projectId: isSharedWorkspace ? null : project.projectId,
+    project: project.project,
+    projectId: project.projectId,
     remindBeforeStart: Boolean(
       !isSharedWorkspace && plannedDate && template.plannedStartTime,
     ),

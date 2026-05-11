@@ -311,6 +311,7 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     }
 
     let hasUnassigned = false
+    const weeklyLoadBySphereId = new Map<string, number>()
 
     for (const task of taskRows) {
       const sphereId =
@@ -328,15 +329,20 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
         statsBySphereId.set(sphereId, createEmptyStats(sphereId))
       }
 
-      updateStats(statsBySphereId.get(sphereId)!, task, {
+      const weeklyLoad = updateStats(statsBySphereId.get(sphereId)!, task, {
         from: command.from,
         today: getDateKey(new Date()),
         to: command.to,
       })
+
+      weeklyLoadBySphereId.set(
+        sphereId,
+        (weeklyLoadBySphereId.get(sphereId) ?? 0) + weeklyLoad,
+      )
     }
 
-    const totalWeeklyResource = [...statsBySphereId.values()].reduce(
-      (sum, stats) => sum + stats.totalResource,
+    const totalWeeklyLoad = [...weeklyLoadBySphereId.values()].reduce(
+      (sum, weeklyLoad) => sum + weeklyLoad,
       0,
     )
     const stats = [...statsBySphereId.values()].map((statsItem) => {
@@ -356,8 +362,12 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
           plannedCount: statsItem.plannedCount,
         }),
         weeklyShare:
-          totalWeeklyResource > 0
-            ? Math.round((statsItem.totalResource / totalWeeklyResource) * 100)
+          totalWeeklyLoad > 0
+            ? Math.round(
+                ((weeklyLoadBySphereId.get(statsItem.sphereId) ?? 0) /
+                  totalWeeklyLoad) *
+                  100,
+              )
             : 0,
       }
     })
@@ -469,7 +479,7 @@ function updateStats(
   stats: StoredSphereStatsWeekly,
   task: TaskRow,
   dates: { from: string; today: string; to: string },
-): void {
+): number {
   const completedDate =
     serializeNullableTimestamp(task.completed_at)?.slice(0, 10) ?? null
   const createdDate = serializeTimestamp(task.created_at).slice(0, 10)
@@ -480,6 +490,7 @@ function updateStats(
     .filter((value): value is string => value !== null)
     .sort()
     .at(-1)!
+  let weeklyLoad = 0
 
   if (task.status !== 'done' && isInRange(plannedDate ?? dueDate, dates)) {
     stats.plannedCount += 1
@@ -498,12 +509,17 @@ function updateStats(
   }
 
   if (isInRange(weekAnchor, dates)) {
-    stats.totalResource += Math.max(0, -(task.resource ?? 0))
+    const taskResource = Math.max(0, -(task.resource ?? 0))
+
+    stats.totalResource += taskResource
+    weeklyLoad = taskResource > 0 ? taskResource : 1
   }
 
   if (!stats.lastActivityAt || latestActivity > stats.lastActivityAt) {
     stats.lastActivityAt = latestActivity
   }
+
+  return weeklyLoad
 }
 
 function isInRange(

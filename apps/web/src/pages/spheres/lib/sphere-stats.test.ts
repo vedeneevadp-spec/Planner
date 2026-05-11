@@ -23,6 +23,13 @@ const project: Project = {
   workspaceId: 'workspace',
 }
 
+const homeProject: Project = {
+  ...project,
+  color: '#8f7530',
+  id: 'home',
+  title: 'Дом',
+}
+
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
     assigneeDisplayName: null,
@@ -79,6 +86,41 @@ describe('sphere stats', () => {
     expect(stats?.plannedCount).toBe(2)
     expect(stats?.completedCount).toBe(1)
     expect(stats?.overdueCount).toBe(1)
+  })
+
+  it('uses weekly task count for balance when tasks have no resource', () => {
+    const stats = buildSphereStats(
+      [project, homeProject],
+      [
+        createTask({ id: 'work-1', projectId: 'work', resource: null }),
+        createTask({ id: 'work-2', projectId: 'work', resource: 0 }),
+        createTask({ id: 'home-1', projectId: 'home', resource: null }),
+      ],
+      { from: '2026-04-20', to: '2026-04-26' },
+      '2026-04-22',
+    )
+    const statsBySphereId = new Map(stats.map((stat) => [stat.sphereId, stat]))
+
+    expect(statsBySphereId.get('work')?.totalResource).toBe(0)
+    expect(statsBySphereId.get('work')?.weeklyShare).toBe(67)
+    expect(statsBySphereId.get('home')?.weeklyShare).toBe(33)
+  })
+
+  it('weights weekly balance by resource when resource is set', () => {
+    const stats = buildSphereStats(
+      [project, homeProject],
+      [
+        createTask({ id: 'work-1', projectId: 'work', resource: null }),
+        createTask({ id: 'home-1', projectId: 'home', resource: -3 }),
+      ],
+      { from: '2026-04-20', to: '2026-04-26' },
+      '2026-04-22',
+    )
+    const statsBySphereId = new Map(stats.map((stat) => [stat.sphereId, stat]))
+
+    expect(statsBySphereId.get('home')?.totalResource).toBe(3)
+    expect(statsBySphereId.get('home')?.weeklyShare).toBe(75)
+    expect(statsBySphereId.get('work')?.weeklyShare).toBe(25)
   })
 
   it('creates an unassigned sphere for tasks without project', () => {

@@ -41,7 +41,8 @@ const TEMPLATE = {
 
 describe('task-composer-model', () => {
   it('normalizes legacy empty project titles', () => {
-    expect(getProjectDisplayTitle('Без сферы', false)).toBe('Без сферы')
+    expect(getProjectDisplayTitle('Без сферы')).toBe('Без сферы')
+    expect(getProjectDisplayTitle('Без проекта')).toBe('Без сферы')
     expect(resolveProjectFields([], null, 'No sphere')).toEqual({
       project: '',
       projectId: null,
@@ -57,11 +58,11 @@ describe('task-composer-model', () => {
     expect(input.plannedStartTime).toBe('10:00')
   })
 
-  it('strips project and reminder fields for shared workspace template tasks', () => {
+  it('keeps project and strips reminder fields for shared workspace template tasks', () => {
     const input = buildTaskInputFromTemplate(TEMPLATE, [PROJECT], null, true)
 
-    expect(input.project).toBe('')
-    expect(input.projectId).toBe(null)
+    expect(input.project).toBe('Работа')
+    expect(input.projectId).toBe('project-1')
     expect(input.remindBeforeStart).toBe(false)
     expect(input.reminderTimeZone).toBeUndefined()
   })

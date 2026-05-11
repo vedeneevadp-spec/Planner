@@ -26,6 +26,7 @@ export interface SphereStats {
   sphereId: string
   title: string
   totalResource: number
+  weeklyLoad: number
   weeklyShare: number
 }
 
@@ -123,6 +124,7 @@ function createProjectStats(project: Project): SphereStats {
     sphereId: project.id,
     title: project.title,
     totalResource: 0,
+    weeklyLoad: 0,
     weeklyShare: 0,
   }
 }
@@ -142,6 +144,7 @@ function createUnassignedStats(): SphereStats {
     sphereId: UNSPHERED_ID,
     title: 'Без сферы',
     totalResource: 0,
+    weeklyLoad: 0,
     weeklyShare: 0,
   }
 }
@@ -193,7 +196,10 @@ export function buildSphereStats(
     }
 
     if (isInWeek(weekAnchor, week)) {
-      stats.totalResource += Math.max(0, -getTaskResource(task))
+      const taskResource = Math.max(0, -getTaskResource(task))
+
+      stats.totalResource += taskResource
+      stats.weeklyLoad += taskResource > 0 ? taskResource : 1
     }
 
     if (!stats.lastActivityAt || latestActivityDate > stats.lastActivityAt) {
@@ -201,8 +207,8 @@ export function buildSphereStats(
     }
   }
 
-  const totalWeeklyResource = [...statsBySphereId.values()].reduce(
-    (sum, stats) => sum + stats.totalResource,
+  const totalWeeklyLoad = [...statsBySphereId.values()].reduce(
+    (sum, stats) => sum + stats.weeklyLoad,
     0,
   )
 
@@ -222,8 +228,8 @@ export function buildSphereStats(
         }),
         idleDays,
         weeklyShare:
-          totalWeeklyResource > 0
-            ? Math.round((stats.totalResource / totalWeeklyResource) * 100)
+          totalWeeklyLoad > 0
+            ? Math.round((stats.weeklyLoad / totalWeeklyLoad) * 100)
             : 0,
       }
     })

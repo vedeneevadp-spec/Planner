@@ -83,11 +83,11 @@ export function Sidebar() {
     string | null
   >(null)
   const todayKey = getDateKey(new Date())
+  const isSharedWorkspace = session?.workspace.kind === 'shared'
   const habitsTodayQuery = useHabitsToday(todayKey, {
-    enabled: Boolean(session),
+    enabled: Boolean(session) && !isSharedWorkspace,
   })
   const summary = getPlannerSummary(tasks, todayKey)
-  const isSharedWorkspace = session?.workspace.kind === 'shared'
   const canManageCurrentSharedWorkspace =
     session?.workspace.kind === 'shared' && session.role === 'owner'
   const sharedWorkspaceCount =
@@ -97,7 +97,6 @@ export function Sidebar() {
     (item) =>
       (!isSharedWorkspace ||
         item.to === '/today' ||
-        item.to === '/habits' ||
         item.to === '/shopping' ||
         item.to === '/timeline' ||
         item.to === '/spheres') &&

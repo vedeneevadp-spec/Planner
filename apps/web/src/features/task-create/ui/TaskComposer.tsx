@@ -227,7 +227,7 @@ export function TaskComposer({
     setIcon(openDraft.icon ?? '')
     setTaskType(openDraft.taskType ?? '')
     setResource(openDraft.resource ?? '')
-    setProjectId(isSharedWorkspace ? '' : (openDraft.projectId ?? ''))
+    setProjectId(openDraft.projectId ?? '')
     setAssigneeUserId('')
     setRequiresConfirmation(false)
     setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
@@ -281,15 +281,10 @@ export function TaskComposer({
 
     const selectedProject =
       projects.find((project) => project.id === projectId) ?? null
-    const projectInput = isSharedWorkspace
-      ? {
-          project: '',
-          projectId: null,
-        }
-      : {
-          project: selectedProject?.title ?? '',
-          projectId: selectedProject?.id ?? null,
-        }
+    const projectInput = {
+      project: selectedProject?.title ?? '',
+      projectId: selectedProject?.id ?? null,
+    }
     const hasPlannedDate = Boolean(plannedDate)
 
     return {
@@ -385,7 +380,7 @@ export function TaskComposer({
     setIcon(template.icon)
     setTaskType(getTaskTypeValue(template))
     setResource('')
-    setProjectId(isSharedWorkspace ? '' : (knownProject?.id ?? ''))
+    setProjectId(knownProject?.id ?? '')
     setAssigneeUserId('')
     setRequiresConfirmation(false)
     setPlannedDate(plannedDateFromTemplate ?? '')
@@ -673,10 +668,7 @@ export function TaskComposer({
                                   ))
                               const templateProjectTitle =
                                 templateProject?.title ??
-                                getProjectDisplayTitle(
-                                  template.project,
-                                  isSharedWorkspace,
-                                )
+                                getProjectDisplayTitle(template.project)
 
                               return (
                                 <article
@@ -712,34 +704,30 @@ export function TaskComposer({
                                       ) : null}
                                     </span>
 
-                                    {!isSharedWorkspace ? (
-                                      <span
-                                        className={cx(
-                                          styles.templateProjectChip,
-                                          !hasTemplateProject &&
-                                            styles.templateProjectChipMuted,
-                                        )}
-                                      >
-                                        {templateProject ? (
-                                          <span
-                                            className={
-                                              styles.templateProjectIcon
-                                            }
-                                            style={{
-                                              backgroundColor:
-                                                templateProject.color,
-                                            }}
-                                            aria-hidden="true"
-                                          >
-                                            <IconMark
-                                              value={templateProject.icon}
-                                              uploadedIcons={uploadedIcons}
-                                            />
-                                          </span>
-                                        ) : null}
-                                        {templateProjectTitle}
-                                      </span>
-                                    ) : null}
+                                    <span
+                                      className={cx(
+                                        styles.templateProjectChip,
+                                        !hasTemplateProject &&
+                                          styles.templateProjectChipMuted,
+                                      )}
+                                    >
+                                      {templateProject ? (
+                                        <span
+                                          className={styles.templateProjectIcon}
+                                          style={{
+                                            backgroundColor:
+                                              templateProject.color,
+                                          }}
+                                          aria-hidden="true"
+                                        >
+                                          <IconMark
+                                            value={templateProject.icon}
+                                            uploadedIcons={uploadedIcons}
+                                          />
+                                        </span>
+                                      ) : null}
+                                      {templateProjectTitle}
+                                    </span>
                                   </button>
 
                                   <div className={styles.templateActions}>
@@ -779,24 +767,22 @@ export function TaskComposer({
                   </div>
 
                   <div className={styles.columnPanel}>
-                    {!isSharedWorkspace ? (
-                      <section
-                        className={cx(
-                          styles.columnSection,
-                          styles.projectSection,
-                        )}
-                      >
-                        <ProjectPicker
-                          className={styles.fieldProject}
-                          emptyLabel={getEmptyProjectLabel(false)}
-                          label={getProjectPickerLabel(false)}
-                          projects={projects}
-                          uploadedIcons={uploadedIcons}
-                          value={projectId}
-                          onChange={setProjectId}
-                        />
-                      </section>
-                    ) : null}
+                    <section
+                      className={cx(
+                        styles.columnSection,
+                        styles.projectSection,
+                      )}
+                    >
+                      <ProjectPicker
+                        className={styles.fieldProject}
+                        emptyLabel={getEmptyProjectLabel()}
+                        label={getProjectPickerLabel()}
+                        projects={projects}
+                        uploadedIcons={uploadedIcons}
+                        value={projectId}
+                        onChange={setProjectId}
+                      />
+                    </section>
 
                     {!isSharedWorkspace ? (
                       <section className={styles.columnSection}>

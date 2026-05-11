@@ -378,8 +378,6 @@ function SharedTodayPage() {
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
-          <HabitsTodayPanel date={todayKey} />
-
           {buildTaskSection(
             'today',
             'Сегодня',

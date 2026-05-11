@@ -40,27 +40,29 @@ import {
   TaskTypePicker,
 } from './TaskMetaPickers'
 
-const LEGACY_EMPTY_PROJECT_TITLES = new Set(['Без сферы', 'No sphere'])
+const LEGACY_EMPTY_PROJECT_TITLES = new Set([
+  'Без сферы',
+  'Без проекта',
+  'No sphere',
+  'No project',
+])
 
-function getEmptyProjectLabel(isSharedWorkspace: boolean): string {
-  return isSharedWorkspace ? 'Без проекта' : 'Без сферы'
+function getEmptyProjectLabel(): string {
+  return 'Без сферы'
 }
 
-function getProjectPickerLabel(isSharedWorkspace: boolean): string {
-  return isSharedWorkspace ? 'Проект' : 'Сфера'
+function getProjectPickerLabel(): string {
+  return 'Сфера'
 }
 
-function getProjectDisplayTitle(
-  projectTitle: string,
-  isSharedWorkspace: boolean,
-): string {
+function getProjectDisplayTitle(projectTitle: string): string {
   const normalizedProjectTitle = projectTitle.trim()
 
   if (
     !normalizedProjectTitle ||
     LEGACY_EMPTY_PROJECT_TITLES.has(normalizedProjectTitle)
   ) {
-    return getEmptyProjectLabel(isSharedWorkspace)
+    return getEmptyProjectLabel()
   }
 
   return normalizedProjectTitle
@@ -119,7 +121,7 @@ export function TaskCard({
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const rawProjectTitle = project?.title ?? task.project
-  const projectTitle = getProjectDisplayTitle(rawProjectTitle, false)
+  const projectTitle = getProjectDisplayTitle(rawProjectTitle)
   const normalizedRawProjectTitle = rawProjectTitle.trim()
   const hasProject =
     !isSharedWorkspace &&
@@ -638,15 +640,10 @@ export function TaskEditDialog({
 
     const selectedProject =
       projects.find((project) => project.id === projectId) ?? null
-    const projectInput = isSharedWorkspace
-      ? {
-          project: '',
-          projectId: null,
-        }
-      : {
-          project: selectedProject?.title ?? '',
-          projectId: selectedProject?.id ?? null,
-        }
+    const projectInput = {
+      project: selectedProject?.title ?? '',
+      projectId: selectedProject?.id ?? null,
+    }
     const hasPlannedDate = Boolean(plannedDate)
     const isUpdated = await onUpdate(task.id, {
       assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
@@ -782,19 +779,17 @@ export function TaskEditDialog({
           </div>
 
           <div className={styles.editorColumnPanel}>
-            {!isSharedWorkspace ? (
-              <section className={styles.editorSection}>
-                <ProjectPicker
-                  className={styles.fieldProject}
-                  emptyLabel={getEmptyProjectLabel(false)}
-                  label={getProjectPickerLabel(false)}
-                  projects={projects}
-                  uploadedIcons={uploadedIcons}
-                  value={projectId}
-                  onChange={setProjectId}
-                />
-              </section>
-            ) : null}
+            <section className={styles.editorSection}>
+              <ProjectPicker
+                className={styles.fieldProject}
+                emptyLabel={getEmptyProjectLabel()}
+                label={getProjectPickerLabel()}
+                projects={projects}
+                uploadedIcons={uploadedIcons}
+                value={projectId}
+                onChange={setProjectId}
+              />
+            </section>
 
             {!isSharedWorkspace ? (
               <section className={styles.editorSection}>
