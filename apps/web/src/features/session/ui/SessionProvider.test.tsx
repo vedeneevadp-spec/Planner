@@ -74,7 +74,7 @@ interface StoredAuthSession {
   accessToken: string
   email: string
   expiresAt: string
-  refreshToken: string
+  refreshToken?: string
   userId: string
 }
 
@@ -228,6 +228,50 @@ describe('SessionProvider', () => {
       userId: 'user-1',
     })
   })
+
+  it('persists the fresh session returned after a password update', async () => {
+    nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createUsableBrowserStoredSession(),
+    )
+    const tokenResponse = createTokenResponse()
+    authApiMocks.updatePassword.mockResolvedValue(tokenResponse)
+
+    render(
+      <SessionProvider>
+        <UpdatePasswordProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Update password' }),
+      ).not.toBeDisabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Update password' }))
+
+    await waitFor(() => {
+      expect(authApiMocks.updatePassword).toHaveBeenCalledWith(
+        {
+          currentPassword: 'old-password',
+          password: 'new-password',
+        },
+        'old-access-token',
+        {
+          rememberSession: true,
+          tokenTransport: 'cookie',
+        },
+      )
+    })
+    expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalledWith({
+      accessToken: 'new-access-token',
+      email: 'mobile@example.com',
+      expiresAt: tokenResponse.expiresAt,
+      userId: 'user-1',
+    })
+    expect(authApiMocks.refreshAuthSession).not.toHaveBeenCalled()
+  })
 })
 
 function SignInProbe() {
@@ -245,12 +289,37 @@ function SignInProbe() {
   )
 }
 
+function UpdatePasswordProbe() {
+  const auth = useSessionAuth()
+
+  return (
+    <button
+      disabled={!auth.accessToken}
+      type="button"
+      onClick={() => {
+        void auth.updatePassword('new-password', 'old-password')
+      }}
+    >
+      Update password
+    </button>
+  )
+}
+
 function createExpiredStoredSession(): StoredAuthSession {
   return {
     accessToken: 'old-access-token',
     email: 'mobile@example.com',
     expiresAt: new Date(Date.now() - 60_000).toISOString(),
     refreshToken: 'old-refresh-token',
+    userId: 'user-1',
+  }
+}
+
+function createUsableBrowserStoredSession(): StoredAuthSession {
+  return {
+    accessToken: 'old-access-token',
+    email: 'mobile@example.com',
+    expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
     userId: 'user-1',
   }
 }

@@ -4,6 +4,7 @@ import {
   refreshAuthSession,
   signInWithPassword,
   signOutAuthSession,
+  updatePassword,
 } from './auth-api'
 
 describe('auth-api', () => {
@@ -114,6 +115,46 @@ describe('auth-api', () => {
         body: '{}',
         credentials: 'include',
         method: 'POST',
+      }),
+    )
+  })
+
+  it('returns a fresh session when updating the password', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        accessToken: 'next-access-token',
+        expiresAt: '2026-04-20T09:00:00.000Z',
+        refreshToken: 'next-refresh-token',
+        user: {
+          email: 'native@example.test',
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await updatePassword(
+      {
+        currentPassword: 'old-password',
+        password: 'new-password',
+      },
+      'current-access-token',
+      {
+        tokenTransport: 'body',
+      },
+    )
+
+    expect(response.refreshToken).toBe('next-refresh-token')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(URL),
+      expect.objectContaining({
+        credentials: 'include',
+        headers: {
+          authorization: 'Bearer current-access-token',
+          'content-type': 'application/json',
+          'x-auth-token-transport': 'body',
+        },
+        method: 'PATCH',
       }),
     )
   })

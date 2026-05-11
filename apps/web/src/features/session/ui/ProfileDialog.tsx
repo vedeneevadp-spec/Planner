@@ -16,12 +16,15 @@ import {
   validateProfileAvatarFile,
 } from '../lib/profile-avatar-upload'
 import { usePlannerSession } from '../lib/usePlannerSession'
+import { useSessionAuth } from '../lib/useSessionAuth'
 import {
   getUpdateUserProfileErrorMessage,
   useUpdateUserProfile,
 } from '../lib/useUserProfile'
 import styles from './ProfileDialog.module.css'
 import { UserAvatar } from './UserAvatar'
+
+const MIN_PASSWORD_LENGTH = 6
 
 interface ProfileDialogProps {
   isOpen: boolean
@@ -43,6 +46,7 @@ interface ProfileDialogContentProps {
 function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
   const avatarInputId = useId()
   const session = usePlannerSession().data
+  const { isAuthEnabled, updatePassword } = useSessionAuth()
   const updateUserProfile = useUpdateUserProfile()
   const { isPending, mutateAsync } = updateUserProfile
   const [displayName, setDisplayName] = useState(
@@ -50,7 +54,12 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
   )
   const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null)
   const [removeAvatar, setRemoveAvatar] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const isSubmitting = isPending || isUpdatingPassword
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -130,23 +139,55 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
     const hasAvatarUpload = Boolean(avatarDataUrl)
     const hasAvatarRemoval =
       !hasAvatarUpload && removeAvatar && Boolean(session.actor.avatarUrl)
+    const hasPasswordChange =
+      isAuthEnabled &&
+      (currentPassword.length > 0 ||
+        newPassword.length > 0 ||
+        newPasswordConfirmation.length > 0)
+    const passwordValidationError = hasPasswordChange
+      ? validatePasswordChange({
+          currentPassword,
+          newPassword,
+          newPasswordConfirmation,
+        })
+      : null
 
-    if (!hasDisplayNameChange && !hasAvatarUpload && !hasAvatarRemoval) {
+    if (passwordValidationError) {
+      setErrorMessage(passwordValidationError)
+      return
+    }
+
+    if (
+      !hasDisplayNameChange &&
+      !hasAvatarUpload &&
+      !hasAvatarRemoval &&
+      !hasPasswordChange
+    ) {
       onClose()
       return
     }
 
     setErrorMessage(null)
+    setIsUpdatingPassword(hasPasswordChange)
 
     try {
-      await mutateAsync({
-        ...(hasAvatarRemoval ? { removeAvatar: true } : {}),
-        ...(hasAvatarUpload && avatarDataUrl ? { avatarDataUrl } : {}),
-        ...(hasDisplayNameChange ? { displayName: trimmedDisplayName } : {}),
-      })
+      if (hasDisplayNameChange || hasAvatarUpload || hasAvatarRemoval) {
+        await mutateAsync({
+          ...(hasAvatarRemoval ? { removeAvatar: true } : {}),
+          ...(hasAvatarUpload && avatarDataUrl ? { avatarDataUrl } : {}),
+          ...(hasDisplayNameChange ? { displayName: trimmedDisplayName } : {}),
+        })
+      }
+
+      if (hasPasswordChange) {
+        await updatePassword(newPassword, currentPassword)
+      }
+
       onClose()
     } catch (error) {
-      setErrorMessage(getUpdateUserProfileErrorMessage(error))
+      setErrorMessage(getProfileDialogErrorMessage(error))
+    } finally {
+      setIsUpdatingPassword(false)
     }
   }
 
@@ -255,6 +296,57 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
             </label>
           </section>
 
+          {isAuthEnabled ? (
+            <section className={styles.fields}>
+              <div className={styles.sectionHeader}>
+                <h3>Смена пароля</h3>
+                <p>Заполните эти поля, если хотите обновить пароль.</p>
+              </div>
+
+              <label className={styles.field}>
+                <span>Текущий пароль</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  autoComplete="current-password"
+                  placeholder="Введите текущий пароль"
+                  onChange={(event) => {
+                    setCurrentPassword(event.target.value)
+                    setErrorMessage(null)
+                  }}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Новый пароль</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  autoComplete="new-password"
+                  placeholder="Минимум 6 символов"
+                  onChange={(event) => {
+                    setNewPassword(event.target.value)
+                    setErrorMessage(null)
+                  }}
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>Повторите новый пароль</span>
+                <input
+                  type="password"
+                  value={newPasswordConfirmation}
+                  autoComplete="new-password"
+                  placeholder="Повторите пароль"
+                  onChange={(event) => {
+                    setNewPasswordConfirmation(event.target.value)
+                    setErrorMessage(null)
+                  }}
+                />
+              </label>
+            </section>
+          ) : null}
+
           {errorMessage ? (
             <p className={styles.errorText}>{errorMessage}</p>
           ) : null}
@@ -263,7 +355,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
             <button
               className={styles.ghostButton}
               type="button"
-              disabled={isPending}
+              disabled={isSubmitting}
               onClick={() => {
                 onClose()
               }}
@@ -275,14 +367,58 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
             <button
               className={styles.primaryButton}
               type="submit"
-              disabled={isPending || !session}
+              disabled={isSubmitting || !session}
             >
               <CheckIcon size={16} strokeWidth={2.1} />
-              <span>{isPending ? 'Сохраняем...' : 'Сохранить'}</span>
+              <span>{isSubmitting ? 'Сохраняем...' : 'Сохранить'}</span>
             </button>
           </footer>
         </form>
       </section>
     </div>
   )
+}
+
+function validatePasswordChange({
+  currentPassword,
+  newPassword,
+  newPasswordConfirmation,
+}: {
+  currentPassword: string
+  newPassword: string
+  newPasswordConfirmation: string
+}): string | null {
+  if (!currentPassword) {
+    return 'Введите текущий пароль.'
+  }
+
+  if (!newPassword) {
+    return 'Введите новый пароль.'
+  }
+
+  if (newPassword.length < MIN_PASSWORD_LENGTH) {
+    return `Пароль должен содержать минимум ${MIN_PASSWORD_LENGTH} символов.`
+  }
+
+  if (!newPasswordConfirmation) {
+    return 'Повторите новый пароль.'
+  }
+
+  if (newPassword !== newPasswordConfirmation) {
+    return 'Пароли не совпадают.'
+  }
+
+  return null
+}
+
+function getProfileDialogErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 'auth_invalid_credentials'
+  ) {
+    return 'Текущий пароль указан неверно.'
+  }
+
+  return getUpdateUserProfileErrorMessage(error)
 }

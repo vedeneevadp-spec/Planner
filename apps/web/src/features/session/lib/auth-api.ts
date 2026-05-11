@@ -121,7 +121,8 @@ export function confirmPasswordReset(
 export async function updatePassword(
   input: AuthPasswordUpdateInput,
   accessToken: string,
-): Promise<void> {
+  options: AuthRequestOptions = {},
+): Promise<AuthTokenResponse> {
   const response = await fetch(
     new URL('/api/v1/auth/password', plannerApiConfig.apiBaseUrl),
     {
@@ -129,7 +130,7 @@ export async function updatePassword(
       credentials: 'include',
       headers: {
         authorization: `Bearer ${accessToken}`,
-        'content-type': 'application/json',
+        ...createAuthHeaders(options),
       },
       method: 'PATCH',
     },
@@ -139,6 +140,8 @@ export async function updatePassword(
   if (!response.ok) {
     throwAuthApiError(response, payload, 'Failed to update password.')
   }
+
+  return authTokenResponseSchema.parse(payload)
 }
 
 async function postAuthJson<TInput>(

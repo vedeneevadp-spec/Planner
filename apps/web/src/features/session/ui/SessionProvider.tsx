@@ -441,20 +441,23 @@ export function SessionProvider({ children }: PropsWithChildren) {
         throw new Error('Current password is required.')
       }
 
-      await updatePasswordApi(
+      const session = await updatePasswordApi(
         {
           currentPassword,
           password,
         },
         snapshot.sessionAccessToken,
+        {
+          rememberSession: getRememberSessionPreference(),
+          tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+        },
       )
-      await recoverSession()
+      await persistAuthSession(session)
     },
     [
       isNativeSessionRuntime,
       passwordResetToken,
       persistAuthSession,
-      recoverSession,
       snapshot.sessionAccessToken,
     ],
   )

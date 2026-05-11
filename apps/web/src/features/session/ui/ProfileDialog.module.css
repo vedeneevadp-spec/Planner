@@ -40,7 +40,8 @@
 .form,
 .fields,
 .field,
-.avatarActions {
+.avatarActions,
+.sectionHeader {
   display: grid;
 }
 
@@ -48,9 +49,14 @@
   gap: 0.42rem;
 }
 
+.sectionHeader {
+  gap: 0.24rem;
+}
+
 .kicker,
 .headerCopy p,
-.field span {
+.field span,
+.sectionHeader p {
   color: var(--text-soft);
 }
 
@@ -70,8 +76,18 @@
 }
 
 .headerCopy p,
-.errorText {
+.errorText,
+.sectionHeader h3,
+.sectionHeader p {
   margin: 0;
+}
+
+.sectionHeader h3 {
+  font-size: 0.98rem;
+}
+
+.sectionHeader p {
+  font-size: 0.82rem;
 }
 
 .closeButton {

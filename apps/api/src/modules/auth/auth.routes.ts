@@ -167,9 +167,13 @@ export function registerAuthRoutes(
       'invalid_body',
     )
 
-    await service.updatePassword(authContext.claims.sub, input)
+    const response = await service.updatePassword(
+      authContext.claims.sub,
+      input,
+      getRequestMetadata(request),
+    )
 
-    return reply.code(204).send()
+    return sendAuthTokenResponse(reply, request, response, options)
   })
 }
 

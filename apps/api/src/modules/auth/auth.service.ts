@@ -222,7 +222,8 @@ export class AuthService {
   async updatePassword(
     userId: string,
     input: { currentPassword: string; password: string },
-  ): Promise<void> {
+    metadata: AuthRequestMetadata,
+  ): Promise<AuthTokenResponse> {
     const credential = await this.repository.findCredentialByUserId(userId)
 
     if (
@@ -236,6 +237,8 @@ export class AuthService {
       passwordHash: await hashPassword(input.password),
       userId,
     })
+
+    return this.createSession(credential, metadata)
   }
 
   private async createSession(

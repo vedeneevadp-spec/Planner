@@ -275,7 +275,7 @@ function createCookieAuthService() {
       return Promise.resolve(createResponse())
     },
     updatePassword() {
-      return Promise.resolve()
+      return Promise.resolve(createResponse())
     },
   } as unknown as AuthService & {
     refreshTokens: string[]
@@ -2483,6 +2483,40 @@ void describe('buildApiApp', () => {
       'refresh-token-1',
     )
     assert.equal(response.headers['set-cookie'], undefined)
+  })
+
+  void it('issues a fresh browser session after password updates', async () => {
+    app = buildApiApp({
+      authService: createCookieAuthService(),
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+      },
+      method: 'PATCH',
+      payload: {
+        currentPassword: 'old-password',
+        password: 'new-password',
+      },
+      url: '/api/v1/auth/password',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = authTokenResponseSchema.parse(response.json())
+    const setCookie = String(response.headers['set-cookie'])
+
+    assert.equal(body.accessToken, 'access-token-1')
+    assert.equal(body.refreshToken, undefined)
+    assert.match(setCookie, /planner_refresh_token=refresh-token-1/)
+    assert.match(setCookie, /HttpOnly/)
   })
 
   void it('uses session cookies when remember-session is disabled', async () => {
