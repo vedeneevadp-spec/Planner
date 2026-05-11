@@ -29,6 +29,7 @@ import {
   PlusIcon,
   SettingsIcon,
   ShoppingBagIcon,
+  SpheresIcon,
   TrashIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
@@ -43,6 +44,15 @@ const navigation = [
   { to: '/timeline', label: 'Таймлайн' },
   { to: '/admin', label: 'Admin' },
 ] as const
+
+type NavigationRoute = (typeof navigation)[number]['to']
+
+const mobilePrimaryRoutes: readonly NavigationRoute[] = [
+  '/today',
+  '/shopping',
+  '/timeline',
+  '/spheres',
+]
 
 export function Sidebar() {
   const { errorMessage, isLoading, isSyncing, projects, refresh, tasks } =
@@ -88,7 +98,9 @@ export function Sidebar() {
       (!isSharedWorkspace ||
         item.to === '/today' ||
         item.to === '/habits' ||
-        item.to === '/shopping') &&
+        item.to === '/shopping' ||
+        item.to === '/timeline' ||
+        item.to === '/spheres') &&
       (item.to !== '/admin' ||
         session?.appRole === 'admin' ||
         session?.appRole === 'owner'),
@@ -104,9 +116,11 @@ export function Sidebar() {
     auth.email ??
     session?.actor.email ??
     (auth.accessToken ? 'Chaotika session' : null)
-  const mobilePrimaryNavigation = visibleNavigation.filter(
-    (item) => item.to !== '/admin',
-  )
+  const mobilePrimaryNavigation = mobilePrimaryRoutes.flatMap((route) => {
+    const item = visibleNavigation.find((candidate) => candidate.to === route)
+
+    return item ? [item] : []
+  })
   const mobileSecondaryNavigation = visibleNavigation.filter(
     (item) => item.to === '/admin',
   )
@@ -919,32 +933,10 @@ function renderMobileNavIcon(route: string) {
   }
 
   if (route === '/spheres') {
-    return <SpheresIcon />
+    return <SpheresIcon size={20} strokeWidth={1.9} />
   }
 
   return <TimelineIcon />
-}
-
-function SpheresIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="8" cy="8" r="2.25" />
-      <circle cx="16" cy="8" r="2.25" />
-      <circle cx="8" cy="16" r="2.25" />
-      <circle cx="16" cy="16" r="2.25" />
-    </svg>
-  )
 }
 
 function TimelineIcon() {

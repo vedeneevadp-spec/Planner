@@ -210,6 +210,17 @@ export function ShoppingBagIcon(props: IconProps) {
   )
 }
 
+export function SpheresIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <circle cx="8" cy="8" r="2.25" />
+      <circle cx="16" cy="8" r="2.25" />
+      <circle cx="8" cy="16" r="2.25" />
+      <circle cx="16" cy="16" r="2.25" />
+    </SvgIcon>
+  )
+}
+
 export function ChatIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

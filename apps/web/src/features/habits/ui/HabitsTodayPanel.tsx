@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   getHabitEntryValueLabel,
@@ -105,9 +106,13 @@ export function HabitsTodayPanel({ className, date }: HabitsTodayPanelProps) {
     >
       <div className={styles.header}>
         <div>
-          <p id="habits-today-title" className={styles.eyebrow}>
+          <Link
+            id="habits-today-title"
+            className={styles.eyebrowLink}
+            to="/habits"
+          >
             Привычки
-          </p>
+          </Link>
           {isExpanded ? <h3>Ритм дня</h3> : null}
         </div>
         <div className={styles.headerControls}>
@@ -140,9 +145,12 @@ export function HabitsTodayPanel({ className, date }: HabitsTodayPanelProps) {
       ) : habitsTodayQuery.isPending ? (
         <p className={styles.emptyText}>Загружаем привычки...</p>
       ) : items.length === 0 ? (
-        <p className={styles.emptyText}>
-          На сегодня нет активных привычек. Добавь первую на странице привычек.
-        </p>
+        <div className={styles.emptyState}>
+          <p className={styles.emptyText}>Привычек нет. Создайте первую.</p>
+          <Link className={styles.emptyAction} to="/habits">
+            Создать привычку
+          </Link>
+        </div>
       ) : (
         <div className={styles.list}>
           {items.map((item) => (

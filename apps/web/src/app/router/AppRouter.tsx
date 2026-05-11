@@ -38,6 +38,9 @@ export function AppRouter() {
           <Route path="/today" element={<TodayPage />} />
           <Route path="/habits" element={<HabitsPage />} />
           <Route path="/shopping" element={<ShoppingPage />} />
+          <Route path="/timeline" element={<TimelinePage />} />
+          <Route path="/spheres" element={<SpheresPage />} />
+          <Route path="/spheres/:sphereId" element={<SpherePage />} />
           <Route path="*" element={<Navigate replace to="/today" />} />
         </Routes>
       </Suspense>

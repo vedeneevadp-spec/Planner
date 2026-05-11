@@ -43,11 +43,13 @@
   gap: 0.42rem;
 }
 
-.eyebrow {
+.eyebrowLink {
+  display: inline-flex;
   margin: 0;
   color: var(--text-soft);
   font-size: 0.74rem;
   font-weight: 800;
+  text-decoration: none;
   text-transform: uppercase;
 }
 
@@ -257,6 +259,23 @@
   color: var(--text-soft);
 }
 
+.emptyState {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.emptyAction {
+  justify-self: start;
+  border: 1px solid rgba(33, 78, 66, 0.16);
+  border-radius: 999px;
+  padding: 0.58rem 0.82rem;
+  background: rgba(33, 78, 66, 0.09);
+  color: var(--accent);
+  font-size: 0.84rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
 .errorText {
   color: var(--warning);
   font-weight: 700;
@@ -285,6 +304,10 @@
 }
 
 @media (max-width: 620px) {
+  .headerControls {
+    gap: 0.34rem;
+  }
+
   .row {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -296,6 +319,7 @@
   }
 
   .counter {
-    max-width: 9rem;
+    max-width: 7.8rem;
+    min-width: 0;
   }
 }
