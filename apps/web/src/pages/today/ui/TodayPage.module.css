@@ -27,6 +27,19 @@
   padding: 2px;
 }
 
+.topWidgetGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.78rem;
+  align-items: start;
+}
+
+@media (max-width: 920px) {
+  .topWidgetGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 560px) {
   .todayPage {
     gap: 0.48rem;
@@ -39,5 +52,9 @@
   .taskScrollInner {
     gap: 0.68rem;
     padding-right: 0;
+  }
+
+  .topWidgetGrid {
+    gap: 0.68rem;
   }
 }

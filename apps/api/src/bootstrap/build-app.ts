@@ -29,6 +29,8 @@ import {
   registerEmojiSetRoutes,
   registerIconAssetRoutes,
 } from '../modules/emoji-sets/index.js'
+import type { HabitService } from '../modules/habits/index.js'
+import { registerHabitRoutes } from '../modules/habits/index.js'
 import type { LifeSphereService } from '../modules/life-spheres/index.js'
 import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
 import type { ProjectService } from '../modules/projects/index.js'
@@ -67,6 +69,7 @@ export interface BuildApiAppOptions {
   chaosInboxService?: ChaosInboxService
   dailyPlanService?: DailyPlanService
   emojiSetService?: EmojiSetService
+  habitService?: HabitService
   lifeSphereService?: LifeSphereService
   pushNotificationsService?: PushNotificationsService
   projectService: ProjectService
@@ -83,6 +86,7 @@ export function buildApiApp({
   chaosInboxService,
   dailyPlanService,
   emojiSetService,
+  habitService,
   lifeSphereService,
   pushNotificationsService,
   projectService,
@@ -161,6 +165,9 @@ export function buildApiApp({
     }
     if (lifeSphereService) {
       registerLifeSphereRoutes(instance, sessionService, lifeSphereService)
+    }
+    if (habitService) {
+      registerHabitRoutes(instance, sessionService, habitService)
     }
     if (pushNotificationsService) {
       registerPushNotificationsRoutes(

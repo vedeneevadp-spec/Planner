@@ -1,0 +1,333 @@
+.summaryBand,
+.syncBanner,
+.form,
+.habitCard {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.summaryBand {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.summaryBand div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.summaryBand span,
+.eyebrow,
+.field span,
+.daysGroup > span,
+.colorGroup > span,
+.cardStats span {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.summaryBand strong {
+  color: var(--accent);
+  font-size: 1.55rem;
+}
+
+.syncBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+}
+
+.syncBanner div {
+  display: grid;
+  gap: 0.16rem;
+}
+
+.syncBanner strong {
+  color: var(--accent);
+}
+
+.syncBanner span {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.syncBannerWarning {
+  border-color: rgba(199, 44, 44, 0.28);
+  background: rgba(199, 44, 44, 0.07);
+}
+
+.syncBannerWarning strong {
+  color: #8b1f1f;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.formHeader,
+.cardHeader,
+.cardActions,
+.visualRow,
+.swatches,
+.daysList,
+.inlineGrid,
+.activeToggle {
+  display: flex;
+  align-items: center;
+}
+
+.formHeader,
+.cardHeader,
+.cardActions {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.formHeader h3,
+.cardBody h3 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 0.18rem;
+}
+
+.formGrid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.72rem 0.8rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.inlineGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.daysGroup {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.daysList,
+.swatches {
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.dayToggle {
+  position: relative;
+}
+
+.dayToggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dayToggle span {
+  display: inline-grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--text-soft);
+  font-weight: 800;
+}
+
+.dayToggleActive span {
+  border-color: rgba(33, 78, 66, 0.35);
+  background: rgba(33, 78, 66, 0.11);
+  color: var(--accent);
+}
+
+.activeToggle {
+  align-self: end;
+  gap: 0.5rem;
+  min-height: 2.88rem;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.visualRow {
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.colorGroup {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.swatch {
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.swatchActive {
+  border-color: var(--text);
+}
+
+.iconPicker {
+  min-width: min(100%, 22rem);
+}
+
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  min-height: 2.65rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 1rem;
+  font-weight: 800;
+}
+
+.primaryButton {
+  justify-self: start;
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.secondaryButton {
+  background: var(--surface-strong);
+  color: var(--accent);
+}
+
+.dangerButton {
+  background: rgba(199, 44, 44, 0.08);
+  color: #8b1f1f;
+}
+
+.errorText {
+  margin: 0;
+  color: var(--warning);
+  font-weight: 800;
+}
+
+.habitGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.habitCard {
+  display: grid;
+  gap: 1rem;
+  border-radius: 18px;
+  padding: 1rem;
+}
+
+.habitIcon {
+  display: grid;
+  place-items: center;
+  width: 2.7rem;
+  height: 2.7rem;
+  border-radius: 14px;
+  color: #fff;
+}
+
+.statusBadge {
+  border-radius: 999px;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.statusBadgeActive {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.statusBadgePaused {
+  color: var(--text-soft);
+  background: rgba(87, 96, 86, 0.1);
+}
+
+.cardBody {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.cardBody p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.cardStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.cardStats div {
+  display: grid;
+  gap: 0.1rem;
+  border-radius: 12px;
+  padding: 0.68rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.cardStats strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .summaryBand,
+  .inlineGrid,
+  .cardStats {
+    grid-template-columns: 1fr;
+  }
+
+  .formHeader,
+  .cardActions,
+  .syncBanner {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .primaryButton,
+  .secondaryButton,
+  .dangerButton {
+    width: 100%;
+  }
+}

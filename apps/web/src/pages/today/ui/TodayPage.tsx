@@ -11,6 +11,7 @@ import {
   TaskSection,
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
+import { HabitsTodayPanel } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
@@ -209,15 +210,19 @@ function PersonalTodayPage() {
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
-          <ResourcePlanPanel
-            energyMode={energyMode}
-            isTaskPending={isTaskPending}
-            tasks={resourceTasks}
-            onEnergyModeChange={setEnergyMode}
-            onMoveTaskTomorrow={(taskId) => {
-              void setTaskPlannedDate(taskId, tomorrowKey)
-            }}
-          />
+          <div className={styles.topWidgetGrid}>
+            <ResourcePlanPanel
+              energyMode={energyMode}
+              isTaskPending={isTaskPending}
+              tasks={resourceTasks}
+              onEnergyModeChange={setEnergyMode}
+              onMoveTaskTomorrow={(taskId) => {
+                void setTaskPlannedDate(taskId, tomorrowKey)
+              }}
+            />
+
+            <HabitsTodayPanel date={todayKey} />
+          </div>
 
           {renderTaskSectionGroup([
             buildTaskSection(
@@ -373,6 +378,8 @@ function SharedTodayPage() {
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
+          <HabitsTodayPanel date={todayKey} />
+
           {buildTaskSection(
             'today',
             'Сегодня',

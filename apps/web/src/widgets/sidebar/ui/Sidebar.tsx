@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getPlannerSummary } from '@/entities/task'
+import { useHabitsToday } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
@@ -36,6 +37,7 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
+  { to: '/habits', label: 'Привычки' },
   { to: '/shopping', label: 'Покупки' },
   { to: '/spheres', label: 'Сферы' },
   { to: '/timeline', label: 'Таймлайн' },
@@ -71,6 +73,9 @@ export function Sidebar() {
     string | null
   >(null)
   const todayKey = getDateKey(new Date())
+  const habitsTodayQuery = useHabitsToday(todayKey, {
+    enabled: Boolean(session),
+  })
   const summary = getPlannerSummary(tasks, todayKey)
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const canManageCurrentSharedWorkspace =
@@ -80,7 +85,10 @@ export function Sidebar() {
       .length ?? 0
   const visibleNavigation = navigation.filter(
     (item) =>
-      (!isSharedWorkspace || item.to === '/today' || item.to === '/shopping') &&
+      (!isSharedWorkspace ||
+        item.to === '/today' ||
+        item.to === '/habits' ||
+        item.to === '/shopping') &&
       (item.to !== '/admin' ||
         session?.appRole === 'admin' ||
         session?.appRole === 'owner'),
@@ -823,13 +831,15 @@ export function Sidebar() {
             const count =
               item.to === '/today'
                 ? summary.focusCount + summary.overdueCount
-                : item.to === '/shopping'
-                  ? shoppingListSummary.activeItemCount
-                  : item.to === '/timeline'
-                    ? summary.timelineCount
-                    : item.to === '/spheres'
-                      ? projects.length
-                      : (session?.appRole ?? 'Admin')
+                : item.to === '/habits'
+                  ? (habitsTodayQuery.data?.items.length ?? 0)
+                  : item.to === '/shopping'
+                    ? shoppingListSummary.activeItemCount
+                    : item.to === '/timeline'
+                      ? summary.timelineCount
+                      : item.to === '/spheres'
+                        ? projects.length
+                        : (session?.appRole ?? 'Admin')
 
             return (
               <NavLink
@@ -902,6 +912,10 @@ function renderMobileNavIcon(route: string) {
 
   if (route === '/shopping') {
     return <ShoppingBagIcon size={20} strokeWidth={1.9} />
+  }
+
+  if (route === '/habits') {
+    return <CheckIcon size={20} strokeWidth={1.9} />
   }
 
   if (route === '/spheres') {

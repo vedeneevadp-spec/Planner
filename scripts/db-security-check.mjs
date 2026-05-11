@@ -17,6 +17,8 @@ const protectedTables = [
   'daily_plans',
   'emoji_assets',
   'emoji_sets',
+  'habit_entries',
+  'habits',
   'life_spheres',
   'projects',
   'push_devices',

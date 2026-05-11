@@ -8,6 +8,7 @@ import {
 } from './chaos-inbox.js'
 import { dailyPlanSchema } from './daily-plan.js'
 import { emojiAssetSchema, emojiSetSchema } from './emoji-set.js'
+import { habitEntrySchema, habitSchema, habitStatsSchema } from './habit.js'
 import {
   lifeSphereSchema,
   weeklySphereStatsResponseSchema,
@@ -345,6 +346,34 @@ export const lifeSphereRecordSchema = lifeSphereSchema.extend({
   deletedAt: z.string().nullable(),
   version: z.number().int().positive(),
 })
+export const habitRecordSchema = habitSchema.extend({
+  workspaceId: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+export const habitEntryRecordSchema = habitEntrySchema.extend({
+  workspaceId: z.string(),
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+})
+export const habitListResponseSchema = z.array(habitRecordSchema)
+export const habitStatsResponseSchema = z.object({
+  from: z.string(),
+  habits: z.array(habitRecordSchema),
+  stats: z.array(habitStatsSchema),
+  to: z.string(),
+})
+export const habitTodayItemSchema = z.object({
+  entry: habitEntryRecordSchema.nullable(),
+  habit: habitRecordSchema,
+  isDueToday: z.boolean(),
+  progressPercent: z.number().int().min(0).max(100),
+  stats: habitStatsSchema,
+})
+export const habitTodayResponseSchema = z.object({
+  date: z.string(),
+  items: z.array(habitTodayItemSchema),
+})
 export const lifeSphereListRecordResponseSchema = z.array(
   lifeSphereRecordSchema,
 )
@@ -430,6 +459,12 @@ export type ChaosInboxConvertToTaskRecordResponse = z.infer<
 export type DailyPlanRecord = z.infer<typeof dailyPlanRecordSchema>
 export type EmojiAssetRecord = z.infer<typeof emojiAssetRecordSchema>
 export type EmojiSetRecord = z.infer<typeof emojiSetRecordSchema>
+export type HabitEntryRecord = z.infer<typeof habitEntryRecordSchema>
+export type HabitListResponse = z.infer<typeof habitListResponseSchema>
+export type HabitRecord = z.infer<typeof habitRecordSchema>
+export type HabitStatsResponse = z.infer<typeof habitStatsResponseSchema>
+export type HabitTodayItem = z.infer<typeof habitTodayItemSchema>
+export type HabitTodayResponse = z.infer<typeof habitTodayResponseSchema>
 export type LifeSphereRecord = z.infer<typeof lifeSphereRecordSchema>
 export type SessionActor = z.infer<typeof sessionActorSchema>
 export type SessionResponse = z.infer<typeof sessionResponseSchema>

@@ -35,6 +35,11 @@ import {
   PostgresEmojiSetRepository,
 } from './modules/emoji-sets/index.js'
 import {
+  HabitService,
+  MemoryHabitRepository,
+  PostgresHabitRepository,
+} from './modules/habits/index.js'
+import {
   LifeSphereService,
   MemoryLifeSphereRepository,
   PostgresLifeSphereRepository,
@@ -109,6 +114,9 @@ export function createApiKernel(
   const lifeSphereRepository = database
     ? new PostgresLifeSphereRepository(database.db)
     : new MemoryLifeSphereRepository()
+  const habitRepository = database
+    ? new PostgresHabitRepository(database.db)
+    : new MemoryHabitRepository()
   const pushNotificationsRepository = database
     ? new PostgresPushNotificationsRepository(database.db)
     : new MemoryPushNotificationsRepository()
@@ -138,6 +146,7 @@ export function createApiKernel(
     iconAssetStorage,
   )
   const lifeSphereService = new LifeSphereService(lifeSphereRepository)
+  const habitService = new HabitService(habitRepository)
   const pushNotificationsService = new PushNotificationsService(
     pushNotificationsRepository,
     config.firebasePush
@@ -164,6 +173,7 @@ export function createApiKernel(
     dailyPlanService,
     database,
     emojiSetService,
+    habitService,
     lifeSphereService,
     pushNotificationsService,
     projectService,

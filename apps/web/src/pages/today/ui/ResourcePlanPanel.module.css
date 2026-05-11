@@ -22,9 +22,11 @@
 }
 
 .panelCollapsed {
+  box-sizing: border-box;
   gap: 0;
-  padding: 0.58rem 0.68rem;
+  height: 3rem;
   margin: 1px;
+  padding: 0.5rem 0.64rem;
 }
 
 .loadHeader,
@@ -45,6 +47,7 @@
 .panelCollapsed .header {
   align-items: center;
   flex-direction: row;
+  min-height: 1.86rem;
 }
 
 .headerControls {
@@ -239,7 +242,8 @@
   }
 
   .panelCollapsed {
-    padding: 0.54rem 0.64rem;
+    height: 3rem;
+    padding: 0.5rem 0.64rem;
   }
 
   .header,

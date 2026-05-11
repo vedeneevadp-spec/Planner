@@ -1,0 +1,301 @@
+.panel {
+  display: grid;
+  gap: 0.68rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.78rem;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(82, 68, 37, 0.08);
+}
+
+.panelCollapsed {
+  position: relative;
+  box-sizing: border-box;
+  gap: 0;
+  height: 3rem;
+  margin: 1px;
+  padding: 0.5rem 0.64rem;
+}
+
+.header,
+.row,
+.rowTitleLine,
+.metaLine,
+.actions,
+.syncLine {
+  display: flex;
+  align-items: center;
+}
+
+.header {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.panelCollapsed .header {
+  min-height: 1.86rem;
+}
+
+.headerControls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.header h3,
+.row h4 {
+  margin: 0;
+}
+
+.counter {
+  max-width: 11rem;
+  min-width: 3.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  padding: 0.28rem 0.58rem;
+  text-align: center;
+  color: var(--accent);
+  background: rgba(33, 78, 66, 0.09);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collapseToggle {
+  display: inline-grid;
+  width: 1.86rem;
+  height: 1.86rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgba(33, 78, 66, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.48);
+  color: var(--text);
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.collapseChevron {
+  display: block;
+  width: 0.48rem;
+  height: 0.48rem;
+  border-right: 1.8px solid currentColor;
+  border-bottom: 1.8px solid currentColor;
+  transform: translateY(-0.1rem) rotate(45deg);
+}
+
+.collapseChevronExpanded {
+  transform: translateY(0.12rem) rotate(225deg);
+}
+
+.collapseToggle:hover {
+  transform: translateY(-1px);
+  border-color: rgba(33, 78, 66, 0.34);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.collapseToggleActive {
+  border-color: rgba(33, 78, 66, 0.34);
+  background: rgba(33, 78, 66, 0.12);
+  color: var(--accent-strong);
+}
+
+.compactMeter {
+  position: absolute;
+  right: 0.64rem;
+  bottom: 0.22rem;
+  left: 0.64rem;
+  height: 0.24rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(37, 45, 37, 0.08);
+}
+
+.compactMeter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.list {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.row {
+  gap: 0.75rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.72rem;
+  background: rgba(255, 251, 243, 0.58);
+}
+
+.rowDone {
+  border-color: rgba(35, 80, 63, 0.24);
+  background: var(--success-bg);
+}
+
+.rowSkipped {
+  background: rgba(87, 96, 86, 0.08);
+}
+
+.iconWrap {
+  display: grid;
+  place-items: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: #fff;
+}
+
+.rowBody {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.rowTitleLine {
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.rowTitleLine h4 {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.98rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowTitleLine span,
+.metaLine {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.metaLine {
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.progressTrack {
+  height: 0.35rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(37, 45, 37, 0.08);
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.actions {
+  gap: 0.45rem;
+  flex: 0 0 auto;
+}
+
+.iconButton,
+.skipButton {
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+}
+
+.skipButton {
+  min-height: 2rem;
+  border-radius: 999px;
+  padding: 0 0.65rem;
+  font-size: 0.78rem;
+}
+
+.valueInput {
+  width: 4.25rem;
+  min-height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 0.45rem;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text);
+  font-weight: 800;
+}
+
+.emptyText,
+.errorText {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.errorText {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.syncLine {
+  justify-content: space-between;
+  gap: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: rgba(33, 78, 66, 0.06);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.syncLine button {
+  min-height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 0.65rem;
+  background: var(--surface-strong);
+  color: var(--accent);
+  font-weight: 800;
+}
+
+@media (max-width: 620px) {
+  .row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .counter {
+    max-width: 9rem;
+  }
+}

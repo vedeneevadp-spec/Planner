@@ -70,6 +70,50 @@ export interface AppDailyPlansTable {
   workspace_id: string
 }
 
+export interface AppHabitsTable {
+  color: string
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  days_of_week: ColumnType<number[], number[] | string, number[] | string>
+  deleted_at: TimestampColumn | null
+  description: string
+  end_date: DateColumn | null
+  frequency: 'daily' | 'weekly' | 'custom'
+  icon: string
+  id: Generated<string>
+  is_active: boolean
+  reminder_time: TimeColumn | null
+  sort_order: number
+  sphere_id: string | null
+  start_date: DateColumn
+  target_type: 'check' | 'count' | 'duration'
+  target_value: number
+  title: string
+  unit: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppHabitEntriesTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  date: DateColumn
+  deleted_at: TimestampColumn | null
+  habit_id: string
+  id: Generated<string>
+  note: string
+  status: 'done' | 'skipped'
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  value: number
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppLifeSpheresTable {
   color: string | null
   created_at: Generated<TimestampColumn>
@@ -384,6 +428,8 @@ export interface DatabaseSchema {
   'app.daily_plans': AppDailyPlansTable
   'app.emoji_assets': AppEmojiAssetsTable
   'app.emoji_sets': AppEmojiSetsTable
+  'app.habit_entries': AppHabitEntriesTable
+  'app.habits': AppHabitsTable
   'app.life_spheres': AppLifeSpheresTable
   'app.outbox': AppOutboxTable
   'app.oauth_authorization_codes': AppOAuthAuthorizationCodesTable
