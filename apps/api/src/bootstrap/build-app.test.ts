@@ -7,6 +7,8 @@ import { afterEach, describe, it } from 'node:test'
 import {
   adminUserListResponseSchema,
   apiErrorSchema,
+  type AuthTokenResponse,
+  authTokenResponseSchema,
   chaosInboxCreatedRecordResponseSchema,
   chaosInboxItemRecordSchema,
   chaosInboxListRecordResponseSchema,
@@ -31,6 +33,7 @@ import {
   workspaceUserRecordSchema,
 } from '@planner/contracts'
 
+import type { AuthService } from '../modules/auth/index.js'
 import {
   ChaosInboxService,
   MemoryChaosInboxRepository,
@@ -227,6 +230,57 @@ function createTestConfig(env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv) {
     NODE_ENV: 'test',
     ...env,
   } as NodeJS.ProcessEnv)
+}
+
+function createCookieAuthService() {
+  let issuedTokenCounter = 0
+  const refreshTokens: string[] = []
+  const revokedRefreshTokens: string[] = []
+
+  function createResponse(): AuthTokenResponse & { refreshToken: string } {
+    issuedTokenCounter += 1
+
+    return {
+      accessToken: `access-token-${issuedTokenCounter}`,
+      expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+      refreshToken: `refresh-token-${issuedTokenCounter}`,
+      user: {
+        email: 'auth@example.test',
+        id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      },
+    }
+  }
+
+  return {
+    refreshTokens,
+    revokedRefreshTokens,
+    confirmPasswordReset() {
+      return Promise.resolve(createResponse())
+    },
+    refresh(refreshToken: string) {
+      refreshTokens.push(refreshToken)
+      return Promise.resolve(createResponse())
+    },
+    requestPasswordReset() {
+      return Promise.resolve()
+    },
+    signIn() {
+      return Promise.resolve(createResponse())
+    },
+    signOut(refreshToken: string) {
+      revokedRefreshTokens.push(refreshToken)
+      return Promise.resolve()
+    },
+    signUp() {
+      return Promise.resolve(createResponse())
+    },
+    updatePassword() {
+      return Promise.resolve()
+    },
+  } as unknown as AuthService & {
+    refreshTokens: string[]
+    revokedRefreshTokens: string[]
+  }
 }
 
 void describe('buildApiApp', () => {
@@ -2315,6 +2369,149 @@ void describe('buildApiApp', () => {
       response.headers['access-control-allow-origin'],
       'https://staging.chaotika.ru',
     )
+    assert.equal(response.headers['access-control-allow-credentials'], 'true')
+  })
+
+  void it('stores browser refresh sessions in an HttpOnly cookie', async () => {
+    app = buildApiApp({
+      authService: createCookieAuthService(),
+      config: createTestConfig({
+        API_CORS_ORIGIN: 'http://127.0.0.1:5173',
+      }),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        origin: 'http://127.0.0.1:5173',
+      },
+      method: 'POST',
+      payload: {
+        email: 'auth@example.test',
+        password: 'secret-password',
+      },
+      url: '/api/v1/auth/sign-in',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = authTokenResponseSchema.parse(response.json())
+    const setCookie = String(response.headers['set-cookie'])
+
+    assert.equal(body.accessToken, 'access-token-1')
+    assert.equal(body.refreshToken, undefined)
+    assert.match(setCookie, /planner_refresh_token=refresh-token-1/)
+    assert.match(setCookie, /HttpOnly/)
+    assert.match(setCookie, /SameSite=Lax/)
+    assert.match(setCookie, /Path=\/api\/v1\/auth/)
+  })
+
+  void it('refreshes and clears browser sessions through the refresh cookie', async () => {
+    const authService = createCookieAuthService()
+
+    app = buildApiApp({
+      authService,
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const refreshResponse = await app.inject({
+      headers: {
+        cookie: 'planner_refresh_token=refresh-token-cookie',
+      },
+      method: 'POST',
+      payload: {},
+      url: '/api/v1/auth/refresh',
+    })
+
+    assert.equal(refreshResponse.statusCode, 200)
+    assert.deepEqual(authService.refreshTokens, ['refresh-token-cookie'])
+    assert.equal(
+      authTokenResponseSchema.parse(refreshResponse.json()).refreshToken,
+      undefined,
+    )
+    assert.match(
+      String(refreshResponse.headers['set-cookie']),
+      /planner_refresh_token=refresh-token-1/,
+    )
+
+    const signOutResponse = await app.inject({
+      headers: {
+        cookie: 'planner_refresh_token=refresh-token-1',
+      },
+      method: 'POST',
+      payload: {},
+      url: '/api/v1/auth/sign-out',
+    })
+
+    assert.equal(signOutResponse.statusCode, 204)
+    assert.deepEqual(authService.revokedRefreshTokens, ['refresh-token-1'])
+    assert.match(String(signOutResponse.headers['set-cookie']), /Max-Age=0/)
+  })
+
+  void it('keeps body refresh tokens for native auth clients', async () => {
+    app = buildApiApp({
+      authService: createCookieAuthService(),
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-auth-token-transport': 'body',
+      },
+      method: 'POST',
+      payload: {
+        email: 'auth@example.test',
+        password: 'secret-password',
+      },
+      url: '/api/v1/auth/sign-in',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.equal(
+      authTokenResponseSchema.parse(response.json()).refreshToken,
+      'refresh-token-1',
+    )
+    assert.equal(response.headers['set-cookie'], undefined)
+  })
+
+  void it('uses session cookies when remember-session is disabled', async () => {
+    app = buildApiApp({
+      authService: createCookieAuthService(),
+      config: createTestConfig(),
+      database: null,
+      projectService: new ProjectService(new MemoryProjectRepository()),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-auth-session-persistence': 'session',
+      },
+      method: 'POST',
+      payload: {
+        email: 'auth@example.test',
+        password: 'secret-password',
+      },
+      url: '/api/v1/auth/sign-in',
+    })
+    const setCookie = String(response.headers['set-cookie'])
+
+    assert.equal(response.statusCode, 200)
+    assert.match(setCookie, /planner_refresh_token=refresh-token-1/)
+    assert.doesNotMatch(setCookie, /Max-Age=/)
+    assert.match(setCookie, /HttpOnly/)
   })
 
   void it('resolves a session without explicit headers', async () => {

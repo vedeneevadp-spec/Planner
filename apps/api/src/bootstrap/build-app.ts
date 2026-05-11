@@ -57,6 +57,7 @@ import {
   NoopRequestAuthenticator,
   type RequestAuthenticator,
 } from './request-auth.js'
+import { registerApiRouteRegistry } from './route-registry.js'
 
 export interface BuildApiAppOptions {
   config: ApiConfig
@@ -100,9 +101,11 @@ export function buildApiApp({
   })
 
   app.register(cors, {
+    credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     origin: resolveCorsOrigin(config.corsOrigin),
   })
+  registerApiRouteRegistry(app)
   registerApiObservability(app)
   registerOpenApi(app, config)
   registerIconAssetRoutes(app, config.iconAssetDirectory)
@@ -142,7 +145,11 @@ export function buildApiApp({
 
   app.register((instance) => {
     if (authService) {
-      registerAuthRoutes(instance, authService)
+      registerAuthRoutes(instance, authService, {
+        isSecureCookie: config.appEnv === 'production',
+        refreshCookieMaxAgeSeconds:
+          config.plannerAuth?.refreshTokenTtlSeconds ?? 60 * 60 * 24 * 30,
+      })
       registerOAuthRoutes(instance, {
         aliceOAuth: config.aliceOAuth,
         service: authService,

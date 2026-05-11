@@ -259,6 +259,13 @@ describe('plannerApi', () => {
     const createBody = parseJsonRequestBody<{ id: string; name: string }>(
       createRequestInit,
     )
+    const updateBody = parseJsonRequestBody<{
+      color: string
+      description: string
+      expectedVersion: number
+      icon: string
+      name: string
+    }>(updateRequestInit)
 
     expect(createRequestUrl).toBe('http://127.0.0.1:3001/api/v1/life-spheres')
     expect(updateRequestUrl).toBe(
@@ -266,6 +273,13 @@ describe('plannerApi', () => {
     )
     expect(isUuidV7(createBody.id)).toBe(true)
     expect(createBody.name).toBe('Planner')
+    expect(updateBody).toEqual({
+      color: '#3f5f9f',
+      description: 'Updated',
+      expectedVersion: 1,
+      icon: 'target',
+      name: 'Planner App',
+    })
     expect(new Headers(createRequestInit?.headers).get('x-actor-user-id')).toBe(
       'user-1',
     )

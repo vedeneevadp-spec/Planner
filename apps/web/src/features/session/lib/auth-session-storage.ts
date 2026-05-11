@@ -14,7 +14,7 @@ export interface StoredAuthSession {
   accessToken: string
   email: string
   expiresAt: string
-  refreshToken: string
+  refreshToken?: string | undefined
   userId: string
 }
 
@@ -196,12 +196,11 @@ function isStoredAuthSession(value: unknown): value is StoredAuthSession {
     'accessToken' in value &&
     'email' in value &&
     'expiresAt' in value &&
-    'refreshToken' in value &&
     'userId' in value &&
     typeof value.accessToken === 'string' &&
     typeof value.email === 'string' &&
     typeof value.expiresAt === 'string' &&
-    typeof value.refreshToken === 'string' &&
+    (!('refreshToken' in value) || typeof value.refreshToken === 'string') &&
     typeof value.userId === 'string'
   )
 }

@@ -394,6 +394,14 @@ function readClientCredentials(
 }
 
 function sendOAuthTokenResponse(reply: FastifyReply, token: AuthTokenResponse) {
+  if (!token.refreshToken) {
+    throw new HttpError(
+      500,
+      'oauth_refresh_token_missing',
+      'OAuth token response is missing a refresh token.',
+    )
+  }
+
   return reply.send({
     access_token: token.accessToken,
     expires_in: Math.max(

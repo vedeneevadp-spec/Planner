@@ -1,5 +1,10 @@
 import { generateUuidV7 } from '@planner/contracts'
-import { type Kysely, type Selectable, sql } from 'kysely'
+import {
+  type Kysely,
+  type Selectable,
+  type SelectQueryBuilder,
+  sql,
+} from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -46,6 +51,7 @@ type TaskRow = Selectable<DatabaseSchema['app.tasks']>
 type ProjectRow = Selectable<DatabaseSchema['app.projects']>
 type TaskTimeBlockRow = Selectable<DatabaseSchema['app.task_time_blocks']>
 type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
+type TaskRowsQuery = SelectQueryBuilder<DatabaseSchema, 'app.tasks', TaskRow>
 type TaskListRow = TaskRow & {
   assignee_display_name?: string | null
   author_display_name?: string | null
@@ -110,20 +116,6 @@ export class PostgresTaskRepository implements TaskRepository {
   ): Promise<TaskListPageResult> {
     const offset = filters.offset ?? 0
     const limit = filters.limit ?? 100
-
-    if (filters.project) {
-      const records = await this.listByWorkspace(context, filters)
-      const items = records.slice(offset, offset + limit)
-      const nextOffset = offset + items.length
-
-      return {
-        hasMore: nextOffset < records.length,
-        items,
-        limit,
-        nextOffset: nextOffset < records.length ? nextOffset : null,
-        offset,
-      }
-    }
 
     const taskRows = await withOptionalRls(
       this.db,
@@ -1929,38 +1921,18 @@ export class PostgresTaskRepository implements TaskRepository {
     workspaceId: string,
     filters: TaskListFilters & { limit: number; offset: number },
   ): Promise<TaskRow[]> {
-    let query = executor
-      .selectFrom('app.tasks')
-      .selectAll()
-      .where('workspace_id', '=', workspaceId)
-      .where('deleted_at', 'is', null)
+    const query = applyTaskListFilters(
+      executor
+        .selectFrom('app.tasks')
+        .selectAll()
+        .where('workspace_id', '=', workspaceId)
+        .where('deleted_at', 'is', null),
+      filters,
+    )
       .orderBy('created_at', 'asc')
       .orderBy('id', 'asc')
       .limit(filters.limit)
       .offset(filters.offset)
-
-    if (filters.status) {
-      query = query.where('status', '=', filters.status)
-    }
-
-    if (filters.plannedDate) {
-      query = query.where('planned_on', '=', filters.plannedDate)
-    }
-
-    if (filters.projectId) {
-      query = query.where('project_id', '=', filters.projectId)
-    }
-
-    if (filters.sphereId) {
-      const sphereId = filters.sphereId
-
-      query = query.where((expressionBuilder) =>
-        expressionBuilder.or([
-          expressionBuilder('project_id', '=', sphereId),
-          expressionBuilder('sphere_id', '=', sphereId),
-        ]),
-      )
-    }
 
     return query.execute()
   }
@@ -1974,38 +1946,18 @@ export class PostgresTaskRepository implements TaskRepository {
     let offset = 0
 
     for (;;) {
-      let query = executor
-        .selectFrom('app.tasks')
-        .selectAll()
-        .where('workspace_id', '=', workspaceId)
-        .where('deleted_at', 'is', null)
+      const query = applyTaskListFilters(
+        executor
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('workspace_id', '=', workspaceId)
+          .where('deleted_at', 'is', null),
+        filters,
+      )
         .orderBy('created_at', 'asc')
         .orderBy('id', 'asc')
         .limit(TASK_LIST_BATCH_SIZE)
         .offset(offset)
-
-      if (filters?.status) {
-        query = query.where('status', '=', filters.status)
-      }
-
-      if (filters?.plannedDate) {
-        query = query.where('planned_on', '=', filters.plannedDate)
-      }
-
-      if (filters?.projectId) {
-        query = query.where('project_id', '=', filters.projectId)
-      }
-
-      if (filters?.sphereId) {
-        const sphereId = filters.sphereId
-
-        query = query.where((expressionBuilder) =>
-          expressionBuilder.or([
-            expressionBuilder('project_id', '=', sphereId),
-            expressionBuilder('sphere_id', '=', sphereId),
-          ]),
-        )
-      }
 
       const batch = await query.execute()
 
@@ -2523,6 +2475,64 @@ function getDistinctTaskUserIds(
         .filter((userId): userId is string => userId !== null),
     ),
   ]
+}
+
+function applyTaskListFilters(
+  query: TaskRowsQuery,
+  filters?: TaskListFilters,
+): TaskRowsQuery {
+  if (!filters) {
+    return query
+  }
+
+  let filteredQuery = query
+
+  if (filters.status) {
+    filteredQuery = filteredQuery.where('status', '=', filters.status)
+  }
+
+  if (filters.plannedDate) {
+    filteredQuery = filteredQuery.where('planned_on', '=', filters.plannedDate)
+  }
+
+  if (filters.project) {
+    filteredQuery = filteredQuery.where(
+      buildLegacyProjectTitleFilter(filters.project),
+    )
+  }
+
+  if (filters.projectId) {
+    filteredQuery = filteredQuery.where('project_id', '=', filters.projectId)
+  }
+
+  if (filters.sphereId) {
+    const sphereId = filters.sphereId
+
+    filteredQuery = filteredQuery.where((expressionBuilder) =>
+      expressionBuilder.or([
+        expressionBuilder('project_id', '=', sphereId),
+        expressionBuilder('sphere_id', '=', sphereId),
+      ]),
+    )
+  }
+
+  return filteredQuery
+}
+
+function buildLegacyProjectTitleFilter(projectTitle: string) {
+  return sql<boolean>`
+    (
+      app.tasks.metadata ->> ${LEGACY_PROJECT_NAME_KEY} = ${projectTitle}
+      or exists (
+        select 1
+        from app.projects
+        where app.projects.id = app.tasks.project_id
+          and app.projects.workspace_id = app.tasks.workspace_id
+          and app.projects.deleted_at is null
+          and app.projects.title = ${projectTitle}
+      )
+    )
+  `
 }
 
 function buildScheduleUpdateMetadataValue(

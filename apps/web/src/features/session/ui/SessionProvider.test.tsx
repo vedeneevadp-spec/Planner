@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const authApiMocks = vi.hoisted(() => ({
@@ -67,6 +67,7 @@ vi.mock('../lib/native-session-storage', () => ({
     nativeSessionMocks.isNativeSessionPersistenceRuntime,
 }))
 
+import { useSessionAuth } from '../lib/useSessionAuth'
 import { SessionProvider } from './SessionProvider'
 
 interface StoredAuthSession {
@@ -188,7 +189,61 @@ describe('SessionProvider', () => {
 
     unmount()
   })
+
+  it('does not persist refresh tokens in browser session storage', async () => {
+    nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(null)
+    const tokenResponse = createTokenResponse()
+    authApiMocks.signInWithPassword.mockResolvedValue(tokenResponse)
+
+    render(
+      <SessionProvider>
+        <SignInProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authStorageMocks.readStoredAuthSession).toHaveBeenCalled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await waitFor(() => {
+      expect(authApiMocks.signInWithPassword).toHaveBeenCalledWith(
+        {
+          email: 'web@example.test',
+          password: 'password',
+        },
+        {
+          rememberSession: true,
+          tokenTransport: 'cookie',
+        },
+      )
+    })
+
+    expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalledWith({
+      accessToken: 'new-access-token',
+      email: 'mobile@example.com',
+      expiresAt: tokenResponse.expiresAt,
+      userId: 'user-1',
+    })
+  })
 })
+
+function SignInProbe() {
+  const auth = useSessionAuth()
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void auth.signInWithPassword('web@example.test', 'password')
+      }}
+    >
+      Sign in
+    </button>
+  )
+}
 
 function createExpiredStoredSession(): StoredAuthSession {
   return {

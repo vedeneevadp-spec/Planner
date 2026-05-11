@@ -63,7 +63,7 @@ export const authUserSchema = z.object({
 export const authTokenResponseSchema = z.object({
   accessToken: z.string().min(1),
   expiresAt: z.string(),
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional(),
   user: authUserSchema,
 })
 
@@ -79,7 +79,7 @@ export const authSignUpInputSchema = z.object({
 })
 
 export const authRefreshInputSchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: z.string().min(1).optional(),
 })
 
 export const authSignOutInputSchema = authRefreshInputSchema

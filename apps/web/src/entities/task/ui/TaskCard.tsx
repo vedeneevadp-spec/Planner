@@ -24,6 +24,7 @@ import {
 } from '@/shared/ui/Icon'
 
 import { getTaskResource } from '../model/resource'
+import { resolveTaskCardActionPolicy } from '../model/task-card-policy'
 import {
   getResourceFromValue,
   getResourceValueFromTaskResource,
@@ -126,42 +127,32 @@ export function TaskCard({
     !LEGACY_EMPTY_PROJECT_TITLES.has(normalizedRawProjectTitle)
   const taskType = getTaskTypeValue(task)
   const taskResource = getTaskResource(task)
-  const isActiveTask = task.status !== 'done'
-  const isInProgress = task.status === 'in_progress'
-  const isReadyForReview = task.status === 'ready_for_review'
-  const canPostponeTask =
-    task.plannedDate === todayKey || task.plannedDate === tomorrowKey
-  const isTaskAuthor =
-    task.authorUserId !== null && task.authorUserId === currentActorUserId
-  const isTaskAssignee =
-    task.assigneeUserId !== null && task.assigneeUserId === currentActorUserId
-  const isSharedWorkspaceManager =
-    sharedWorkspaceRole === 'owner' ||
-    sharedWorkspaceGroupRole === 'group_admin'
-  const isAuthorManagedTask = !isSharedWorkspace || isTaskAuthor
-  const canManageSharedTask =
-    isAuthorManagedTask || (!isTaskAssignee && isSharedWorkspaceManager)
-  const isLimitedSharedAssignee =
-    isSharedWorkspace && isTaskAssignee && !isTaskAuthor
-  const canToggleReview =
-    isSharedWorkspace &&
-    task.requiresConfirmation &&
-    isActiveTask &&
-    (canManageSharedTask || isTaskAssignee)
-  const canManageSchedule = !isSharedWorkspace || canManageSharedTask
-  const canManageWorkStatus =
-    !isSharedWorkspace || canManageSharedTask || isTaskAssignee
-  const canCompleteTask =
-    !isSharedWorkspace ||
-    (canManageSharedTask && (!task.requiresConfirmation || isTaskAuthor))
-  const canReopenTask = !isSharedWorkspace || canManageSharedTask
-  const canEditTask = !isSharedWorkspace || canManageSharedTask
-  const canDeleteTask =
-    !isSharedWorkspace ||
-    isTaskAuthor ||
-    (!isTaskAssignee &&
-      (sharedWorkspaceRole === 'owner' ||
-        sharedWorkspaceGroupRole === 'group_admin'))
+  const actionPolicy = resolveTaskCardActionPolicy({
+    currentActorUserId,
+    isSharedWorkspace,
+    sharedWorkspaceGroupRole,
+    sharedWorkspaceRole,
+    task,
+    todayKey,
+    tomorrowKey,
+  })
+  const {
+    canCompleteTask,
+    canDeleteTask,
+    canEditTask,
+    canManageSchedule,
+    canManageWorkStatus,
+    canReopenTask,
+    hasActionMenu,
+    hasMoveToTodayAction,
+    hasMoveToTomorrowAction,
+    hasPostponeAction,
+    hasReviewAction,
+    isActiveTask,
+    isInProgress,
+    isLimitedSharedAssignee,
+    isReadyForReview,
+  } = actionPolicy
   const scheduleDetails = [
     task.plannedStartTime
       ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
@@ -169,22 +160,6 @@ export function TaskCard({
     task.plannedDate ? formatShortDate(task.plannedDate) : null,
     task.dueDate ? `Дедлайн ${formatShortDate(task.dueDate)}` : null,
   ].filter((value): value is string => Boolean(value))
-  const hasScheduleActions =
-    isActiveTask &&
-    canManageSchedule &&
-    (task.plannedDate !== todayKey ||
-      task.plannedDate !== tomorrowKey ||
-      canPostponeTask)
-  const hasWorkAction = isActiveTask && canManageWorkStatus
-  const hasReviewAction = canToggleReview
-  const hasReopenAction = !isActiveTask && canReopenTask
-  const hasActionMenu =
-    hasScheduleActions ||
-    hasWorkAction ||
-    hasReviewAction ||
-    hasReopenAction ||
-    canEditTask ||
-    canDeleteTask
   const toneClass =
     tone === 'warning'
       ? styles.warning
@@ -307,7 +282,7 @@ export function TaskCard({
                   >
                     {isActiveTask && canManageSchedule ? (
                       <>
-                        {task.plannedDate !== todayKey ? (
+                        {hasMoveToTodayAction ? (
                           <button
                             className={styles.menuItem}
                             type="button"
@@ -322,7 +297,7 @@ export function TaskCard({
                             На сегодня
                           </button>
                         ) : null}
-                        {task.plannedDate !== tomorrowKey ? (
+                        {hasMoveToTomorrowAction ? (
                           <button
                             className={styles.menuItem}
                             type="button"
@@ -337,7 +312,7 @@ export function TaskCard({
                             На завтра
                           </button>
                         ) : null}
-                        {canPostponeTask ? (
+                        {hasPostponeAction ? (
                           <button
                             className={styles.menuItem}
                             type="button"
@@ -384,7 +359,7 @@ export function TaskCard({
                       </button>
                     ) : null}
 
-                    {canToggleReview ? (
+                    {hasReviewAction ? (
                       <button
                         className={cx(
                           styles.menuItem,

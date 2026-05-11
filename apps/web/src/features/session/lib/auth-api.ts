@@ -20,6 +20,13 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+export type AuthTokenTransport = 'body' | 'cookie'
+
+interface AuthRequestOptions {
+  rememberSession?: boolean | undefined
+  tokenTransport?: AuthTokenTransport | undefined
+}
+
 export class AuthApiError extends Error {
   readonly code: string
   readonly details?: unknown
@@ -49,37 +56,45 @@ export function isUnauthorizedAuthApiError(
 
 export function signInWithPassword(
   input: AuthSignInInput,
+  options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
   return postAuthJson(
     '/api/v1/auth/sign-in',
     authSignInInputSchema.parse(input),
+    options,
   )
 }
 
 export function signUpWithPassword(
   input: AuthSignUpInput,
+  options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
   return postAuthJson(
     '/api/v1/auth/sign-up',
     authSignUpInputSchema.parse(input),
+    options,
   )
 }
 
 export function refreshAuthSession(
-  input: AuthRefreshInput,
+  input: AuthRefreshInput = {},
+  options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
   return postAuthJson(
     '/api/v1/auth/refresh',
     authRefreshInputSchema.parse(input),
+    options,
   )
 }
 
 export async function signOutAuthSession(
-  input: AuthSignOutInput,
+  input: AuthSignOutInput = {},
+  options: AuthRequestOptions = {},
 ): Promise<void> {
   await postAuthNoContent(
     '/api/v1/auth/sign-out',
     authSignOutInputSchema.parse(input),
+    options,
   )
 }
 
@@ -94,10 +109,12 @@ export async function requestPasswordReset(
 
 export function confirmPasswordReset(
   input: AuthPasswordResetConfirmInput,
+  options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
   return postAuthJson(
     '/api/v1/auth/password-reset/confirm',
     authPasswordResetConfirmInputSchema.parse(input),
+    options,
   )
 }
 
@@ -109,6 +126,7 @@ export async function updatePassword(
     new URL('/api/v1/auth/password', plannerApiConfig.apiBaseUrl),
     {
       body: JSON.stringify(authPasswordUpdateInputSchema.parse(input)),
+      credentials: 'include',
       headers: {
         authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
@@ -126,12 +144,12 @@ export async function updatePassword(
 async function postAuthJson<TInput>(
   path: string,
   input: TInput,
+  options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
   const response = await fetch(new URL(path, plannerApiConfig.apiBaseUrl), {
     body: JSON.stringify(input),
-    headers: {
-      'content-type': 'application/json',
-    },
+    credentials: 'include',
+    headers: createAuthHeaders(options),
     method: 'POST',
   })
   const payload = await readResponsePayload(response)
@@ -146,12 +164,12 @@ async function postAuthJson<TInput>(
 async function postAuthNoContent<TInput>(
   path: string,
   input: TInput,
+  options: AuthRequestOptions = {},
 ): Promise<void> {
   const response = await fetch(new URL(path, plannerApiConfig.apiBaseUrl), {
     body: JSON.stringify(input),
-    headers: {
-      'content-type': 'application/json',
-    },
+    credentials: 'include',
+    headers: createAuthHeaders(options),
     method: 'POST',
   })
   const payload = await readResponsePayload(response)
@@ -159,6 +177,22 @@ async function postAuthNoContent<TInput>(
   if (!response.ok) {
     throwAuthApiError(response, payload, 'Auth request failed.')
   }
+}
+
+function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+  }
+
+  if (options.tokenTransport === 'body') {
+    headers['x-auth-token-transport'] = 'body'
+  }
+
+  if (options.rememberSession === false) {
+    headers['x-auth-session-persistence'] = 'session'
+  }
+
+  return headers
 }
 
 async function readResponsePayload(response: Response): Promise<unknown> {

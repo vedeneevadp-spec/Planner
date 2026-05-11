@@ -819,6 +819,26 @@ function createPaths(): OpenAPIV3.PathsObject {
       },
     },
     '/api/v1/tasks/{taskId}': {
+      patch: {
+        operationId: 'updateTask',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskDetailsUpdateInput'),
+        responses: {
+          200: jsonResponse('TaskRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Update task details',
+        tags: ['tasks'],
+      },
       delete: {
         operationId: 'deleteTask',
         parameters: [
@@ -923,11 +943,12 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       additionalProperties: false,
       properties: {
         refreshToken: {
+          description:
+            'Optional for browser clients that use the HttpOnly refresh cookie.',
           minLength: 1,
           type: 'string',
         },
       },
-      required: ['refreshToken'],
       type: 'object',
     },
     AuthSignInInput: {
@@ -978,6 +999,8 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'string',
         },
         refreshToken: {
+          description:
+            'Returned only for native clients that request body token transport.',
           minLength: 1,
           type: 'string',
         },
@@ -997,7 +1020,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'object',
         },
       },
-      required: ['accessToken', 'expiresAt', 'refreshToken', 'user'],
+      required: ['accessToken', 'expiresAt', 'user'],
       type: 'object',
     },
     HealthResponse: {
@@ -1142,9 +1165,13 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         reminderTimeZone: {
           type: 'string',
         },
+        resource: {
+          $ref: '#/components/schemas/TaskResource',
+        },
         requiresConfirmation: {
           type: 'boolean',
         },
+        sphereId: nullableStringSchema(),
         title: {
           minLength: 1,
           type: 'string',
@@ -2032,9 +2059,13 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         remindBeforeStart: {
           type: 'boolean',
         },
+        resource: {
+          $ref: '#/components/schemas/TaskResource',
+        },
         requiresConfirmation: {
           type: 'boolean',
         },
+        sphereId: nullableStringSchema(),
         status: {
           $ref: '#/components/schemas/TaskStatus',
         },
@@ -2063,7 +2094,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'plannedStartTime',
         'project',
         'projectId',
+        'resource',
         'requiresConfirmation',
+        'sphereId',
         'status',
         'title',
         'urgency',
@@ -2073,6 +2106,26 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
     TaskImportance: {
       enum: ['important', 'not_important'],
       type: 'string',
+    },
+    TaskResource: {
+      maximum: 5,
+      minimum: -5,
+      nullable: true,
+      type: 'integer',
+    },
+    TaskDetailsUpdateInput: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/NewTaskInput',
+        },
+        {
+          additionalProperties: false,
+          properties: {
+            expectedVersion: positiveIntegerSchema(),
+          },
+          type: 'object',
+        },
+      ],
     },
     TaskScheduleInput: {
       additionalProperties: false,

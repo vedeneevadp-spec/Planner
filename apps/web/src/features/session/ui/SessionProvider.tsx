@@ -21,6 +21,7 @@ import {
 } from '../lib/auth-api'
 import {
   clearStoredAuthSession,
+  getRememberSessionPreference,
   readStoredAuthSession,
   type StoredAuthSession,
   writeStoredAuthSession,
@@ -95,20 +96,34 @@ export function SessionProvider({ children }: PropsWithChildren) {
   }, [])
 
   const persistAuthSession = useCallback(
-    async (session: StoredAuthSession): Promise<void> => {
-      await writeStoredAuthSession(session)
+    async (session: {
+      accessToken: string
+      expiresAt: string
+      refreshToken?: string | undefined
+      user: {
+        email: string
+        id: string
+      }
+    }): Promise<void> => {
+      const storedSession = toStoredAuthSession(session, {
+        includeRefreshToken: isNativeSessionRuntime,
+      })
+
+      await writeStoredAuthSession(storedSession)
       setPasswordResetToken(null)
       clearPasswordResetUrlParams()
       setAuthNotice(null)
-      setSnapshot(toAuthSnapshot(session, false))
+      setSnapshot(toAuthSnapshot(storedSession, false, isNativeSessionRuntime))
     },
-    [],
+    [isNativeSessionRuntime],
   )
 
   const clearAuthSession = useCallback(
     async (notice: string | false | null) => {
       const actorUserId = snapshot.userId ?? getLastActorUserId()
-      const refreshToken = snapshot.refreshToken
+      const refreshToken = isNativeSessionRuntime
+        ? snapshot.refreshToken
+        : undefined
 
       clearRefreshTimer()
       await unregisterStoredNativePushDevice({
@@ -129,8 +144,10 @@ export function SessionProvider({ children }: PropsWithChildren) {
         isLoading: false,
       })
 
-      if (refreshToken) {
-        await signOutAuthSession({ refreshToken }).catch((error) => {
+      if (!isNativeSessionRuntime || refreshToken) {
+        await signOutAuthSession(refreshToken ? { refreshToken } : {}, {
+          tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+        }).catch((error) => {
           if (!isUnauthorizedAuthApiError(error)) {
             console.error('Failed to revoke auth session.', error)
           }
@@ -141,6 +158,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     },
     [
       clearRefreshTimer,
+      isNativeSessionRuntime,
       snapshot.refreshToken,
       snapshot.sessionAccessToken,
       snapshot.userId,
@@ -175,20 +193,27 @@ export function SessionProvider({ children }: PropsWithChildren) {
         setAuthNotice(null)
 
         const storedSession = await readStoredAuthSession()
-        const refreshToken =
-          storedSession?.refreshToken ?? snapshot.refreshToken
+        const refreshToken = isNativeSessionRuntime
+          ? (storedSession?.refreshToken ?? snapshot.refreshToken)
+          : storedSession?.refreshToken
 
-        if (!refreshToken) {
+        if (isNativeSessionRuntime && !refreshToken) {
           return 'signed_out' as const
         }
 
         try {
-          const refreshedSession = await refreshAuthSession({ refreshToken })
-          await persistAuthSession(toStoredAuthSession(refreshedSession))
+          const refreshedSession = await refreshAuthSession(
+            refreshToken ? { refreshToken } : {},
+            {
+              rememberSession: getRememberSessionPreference(),
+              tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+            },
+          )
+          await persistAuthSession(refreshedSession)
 
           return 'recovered' as const
         } catch (error) {
-          if (isRetryableAuthError(error)) {
+          if (isNativeSessionRuntime && isRetryableAuthError(error)) {
             return keepDeviceSession(
               error,
               'Auth session refresh deferred to device session.',
@@ -208,6 +233,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }, [
       clearAuthSession,
       isAuthEnabled,
+      isNativeSessionRuntime,
       keepDeviceSession,
       persistAuthSession,
       snapshot.refreshToken,
@@ -229,14 +255,20 @@ export function SessionProvider({ children }: PropsWithChildren) {
         return 'signed_out'
       }
 
+      if (!isNativeSessionRuntime && storedSession.refreshToken) {
+        return recoverSession()
+      }
+
       if (isAccessTokenUsable(storedSession.expiresAt)) {
         setAuthNotice(null)
-        setSnapshot(toAuthSnapshot(storedSession, false))
+        setSnapshot(
+          toAuthSnapshot(storedSession, false, isNativeSessionRuntime),
+        )
         return 'recovered'
       }
 
       return recoverSession()
-    }, [isAuthEnabled, recoverSession])
+    }, [isAuthEnabled, isNativeSessionRuntime, recoverSession])
 
   const clearAuthNotice = useCallback(() => {
     setAuthNotice(null)
@@ -315,7 +347,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     clearRefreshTimer()
 
-    if (!isAuthEnabled || !snapshot.expiresAt || !snapshot.refreshToken) {
+    if (
+      !isAuthEnabled ||
+      !snapshot.expiresAt ||
+      (isNativeSessionRuntime && !snapshot.refreshToken)
+    ) {
       return
     }
 
@@ -334,6 +370,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   }, [
     clearRefreshTimer,
     isAuthEnabled,
+    isNativeSessionRuntime,
     recoverSession,
     snapshot.expiresAt,
     snapshot.refreshToken,
@@ -348,24 +385,33 @@ export function SessionProvider({ children }: PropsWithChildren) {
     async (email: string, password: string) => {
       setAuthNotice(null)
 
-      const session = await signInWithPasswordApi({ email, password })
-      await persistAuthSession(toStoredAuthSession(session))
+      const session = await signInWithPasswordApi(
+        { email, password },
+        {
+          rememberSession: getRememberSessionPreference(),
+          tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+        },
+      )
+      await persistAuthSession(session)
     },
-    [persistAuthSession],
+    [isNativeSessionRuntime, persistAuthSession],
   )
 
   const signUpWithPassword = useCallback(
     async (input: PasswordSignUpInput) => {
       setAuthNotice(null)
 
-      const session = await signUpWithPasswordApi(input)
-      await persistAuthSession(toStoredAuthSession(session))
+      const session = await signUpWithPasswordApi(input, {
+        rememberSession: getRememberSessionPreference(),
+        tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+      })
+      await persistAuthSession(session)
 
       return {
         requiresEmailConfirmation: false,
       }
     },
-    [persistAuthSession],
+    [isNativeSessionRuntime, persistAuthSession],
   )
 
   const signOut = useCallback(async () => {
@@ -377,11 +423,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setAuthNotice(null)
 
       if (passwordResetToken) {
-        const session = await confirmPasswordReset({
-          password,
-          token: passwordResetToken,
-        })
-        await persistAuthSession(toStoredAuthSession(session))
+        const session = await confirmPasswordReset(
+          {
+            password,
+            token: passwordResetToken,
+          },
+          {
+            rememberSession: getRememberSessionPreference(),
+            tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+          },
+        )
+        await persistAuthSession(session)
         return
       }
 
@@ -399,6 +451,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       await recoverSession()
     },
     [
+      isNativeSessionRuntime,
       passwordResetToken,
       persistAuthSession,
       recoverSession,
@@ -452,20 +505,27 @@ export function SessionProvider({ children }: PropsWithChildren) {
   )
 }
 
-function toStoredAuthSession(session: {
-  accessToken: string
-  expiresAt: string
-  refreshToken: string
-  user: {
-    email: string
-    id: string
-  }
-}): StoredAuthSession {
+function toStoredAuthSession(
+  session: {
+    accessToken: string
+    expiresAt: string
+    refreshToken?: string | undefined
+    user: {
+      email: string
+      id: string
+    }
+  },
+  options: {
+    includeRefreshToken: boolean
+  },
+): StoredAuthSession {
   return {
     accessToken: session.accessToken,
     email: session.user.email,
     expiresAt: session.expiresAt,
-    refreshToken: session.refreshToken,
+    ...(options.includeRefreshToken && session.refreshToken
+      ? { refreshToken: session.refreshToken }
+      : {}),
     userId: session.user.id,
   }
 }
@@ -473,6 +533,7 @@ function toStoredAuthSession(session: {
 function toAuthSnapshot(
   session: StoredAuthSession | null,
   isLoading: boolean,
+  includeRefreshToken: boolean,
 ): AuthSnapshot {
   if (!session) {
     return {
@@ -485,7 +546,7 @@ function toAuthSnapshot(
     email: session.email,
     expiresAt: session.expiresAt,
     isLoading,
-    refreshToken: session.refreshToken,
+    refreshToken: includeRefreshToken ? (session.refreshToken ?? null) : null,
     sessionAccessToken: isAccessTokenUsable(session.expiresAt)
       ? session.accessToken
       : null,

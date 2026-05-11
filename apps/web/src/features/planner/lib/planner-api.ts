@@ -52,6 +52,12 @@ import {
   type WeeklySphereStatsResponse,
 } from '@planner/contracts'
 
+import {
+  mapLifeSphereToProjectRecord,
+  mapNewProjectInputToLifeSphereInput,
+  mapProjectUpdateInputToLifeSphereUpdateInput,
+} from './sphere-project-compat'
+
 type FetchFn = typeof fetch
 type RequestSignal = AbortSignal | undefined
 
@@ -80,22 +86,6 @@ export function isUnauthorizedPlannerApiError(
   error: unknown,
 ): error is PlannerApiError {
   return error instanceof PlannerApiError && error.status === 401
-}
-
-function mapLifeSphereToProjectRecord(sphere: LifeSphereRecord): ProjectRecord {
-  return {
-    color: sphere.color,
-    createdAt: sphere.createdAt,
-    deletedAt: sphere.deletedAt,
-    description: sphere.description,
-    icon: sphere.icon,
-    id: sphere.id,
-    status: sphere.isActive ? 'active' : 'archived',
-    title: sphere.name,
-    updatedAt: sphere.updatedAt,
-    version: sphere.version,
-    workspaceId: sphere.workspaceId,
-  }
 }
 
 export interface PlannerApiClientConfig {
@@ -364,15 +354,10 @@ export function createPlannerApiClient(
         ...input,
         id: input.id ?? generateUuidV7(),
       })
+      const sphereInput = mapNewProjectInputToLifeSphereInput(validatedInput)
 
       const sphere = await request({
-        body: {
-          color: validatedInput.color,
-          description: validatedInput.description,
-          icon: validatedInput.icon,
-          id: validatedInput.id,
-          name: validatedInput.title,
-        },
+        body: sphereInput,
         method: 'POST',
         path: '/api/v1/life-spheres',
         responseSchema: lifeSphereRecordSchema,
@@ -383,25 +368,11 @@ export function createPlannerApiClient(
     },
     async updateProject(projectId, input) {
       const validatedInput = projectUpdateInputSchema.parse(input)
+      const sphereInput =
+        mapProjectUpdateInputToLifeSphereUpdateInput(validatedInput)
 
       const sphere = await request({
-        body: {
-          ...(validatedInput.expectedVersion !== undefined
-            ? { expectedVersion: validatedInput.expectedVersion }
-            : {}),
-          ...(validatedInput.title !== undefined
-            ? { name: validatedInput.title }
-            : {}),
-          ...(validatedInput.description !== undefined
-            ? { description: validatedInput.description }
-            : {}),
-          ...(validatedInput.color !== undefined
-            ? { color: validatedInput.color }
-            : {}),
-          ...(validatedInput.icon !== undefined
-            ? { icon: validatedInput.icon }
-            : {}),
-        },
+        body: sphereInput,
         method: 'PATCH',
         path: `/api/v1/life-spheres/${encodeURIComponent(projectId)}`,
         responseSchema: lifeSphereRecordSchema,

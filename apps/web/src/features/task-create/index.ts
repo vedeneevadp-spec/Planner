@@ -1,2 +1,2 @@
-export type { TaskComposerDraft } from './ui/TaskComposer'
+export type { TaskComposerDraft } from './model/task-composer-model'
 export { TaskComposer } from './ui/TaskComposer'
