@@ -20,8 +20,23 @@ export {
   sortTasks,
 } from './model/planner'
 export { getTaskResource } from './model/resource'
+export {
+  buildRoutineTaskFromForm,
+  createDefaultRoutineTaskForm,
+  createRoutineTaskFormFromRoutine,
+  getRoutineTaskFrequencyLabel,
+  getRoutineTaskTargetLabel,
+  isRoutineHabitTask,
+  resolveRoutineTaskDaysOfWeek,
+  ROUTINE_TASK_DEFAULT_DAYS,
+  ROUTINE_TASK_WEEKDAYS,
+  type RoutineTaskFormState,
+  routineTaskWeekdayLabels,
+} from './model/routine-task'
 export type {
   NewTaskInput,
+  RoutineTask,
+  RoutineTaskInput,
   Task,
   TaskImportance,
   TaskResource,
@@ -37,6 +52,7 @@ export {
   getTaskTypeValue,
   getTaskUrgencyFromType,
 } from './model/task-meta'
+export { RoutineTaskFields } from './ui/RoutineTaskFields'
 export { TaskCard, TaskEditDialog } from './ui/TaskCard'
 export {
   ResourcePicker,

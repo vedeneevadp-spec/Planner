@@ -34,6 +34,7 @@ export interface PlannerState {
     projectId: string,
     input: ProjectUpdateInput,
   ) => Promise<boolean>
+  removeProject: (projectId: string) => Promise<boolean>
   setTaskStatus: (taskId: string, status: TaskStatus) => Promise<boolean>
   setTaskPlannedDate: (
     taskId: string,

@@ -80,3 +80,34 @@ void test('TaskService requires a start time for task reminders', async () => {
       error.code === 'task_reminder_start_time_required',
   )
 })
+
+void test('TaskService creates the next routine occurrence after completion', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    routine: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      frequency: 'daily',
+      seriesId: '019db853-b277-7000-8000-000000000001',
+      targetType: 'check',
+      targetValue: 1,
+      unit: '',
+    },
+    title: 'Умыться',
+    urgency: 'urgent',
+  })
+
+  await service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'done', task.version)
+
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+  const nextTask = tasks.find(
+    (candidate) =>
+      candidate.id !== task.id &&
+      candidate.routine?.seriesId === task.routine?.seriesId,
+  )
+
+  assert.equal(nextTask?.status, 'todo')
+  assert.equal(nextTask?.plannedDate, '2099-01-02')
+  assert.equal(nextTask?.title, 'Умыться')
+})

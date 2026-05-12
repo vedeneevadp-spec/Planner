@@ -275,6 +275,7 @@
   border-radius: 14px;
   color: var(--accent);
   background: rgba(33, 78, 66, 0.06);
+  text-decoration: none;
   transition:
     background 160ms ease,
     border-color 160ms ease;
@@ -617,6 +618,16 @@
   .mobileSheetLink svg {
     flex: none;
     color: var(--text-soft);
+  }
+
+  .mobileSheetLinkActive {
+    border-color: rgba(33, 78, 66, 0.16);
+    background: rgba(33, 78, 66, 0.08);
+    color: var(--accent);
+  }
+
+  .mobileSheetLinkActive svg {
+    color: currentColor;
   }
 
   .mobileInfoCopy span {

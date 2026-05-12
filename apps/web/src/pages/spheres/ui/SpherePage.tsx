@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import { TaskSection } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
@@ -14,10 +14,12 @@ import styles from './SpheresPage.module.css'
 
 export function SpherePage() {
   const { sphereId } = useParams()
+  const navigate = useNavigate()
   const {
     isLoading,
     isTaskPending,
     projects: spheres,
+    removeProject,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
@@ -38,6 +40,26 @@ export function SpherePage() {
     () => tasks.filter((task) => task.projectId === sphereId),
     [sphereId, tasks],
   )
+
+  async function handleRemoveSphere() {
+    if (!sphere) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Удалить сферу «${sphere.title}»? Задачи останутся без сферы.`,
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    const isRemoved = await removeProject(sphere.id)
+
+    if (isRemoved) {
+      void navigate('/spheres')
+    }
+  }
 
   if (!sphere) {
     return (
@@ -91,6 +113,15 @@ export function SpherePage() {
               onClick={() => setIsEditing((value) => !value)}
             >
               {isEditing ? 'Закрыть' : 'Редактировать'}
+            </button>
+            <button
+              className={styles.dangerButton}
+              type="button"
+              onClick={() => {
+                void handleRemoveSphere()
+              }}
+            >
+              Удалить
             </button>
           </div>
         </div>

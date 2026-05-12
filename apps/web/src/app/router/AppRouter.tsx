@@ -10,6 +10,9 @@ const AdminPage = lazy(() =>
 const HabitsPage = lazy(() =>
   import('@/pages/habits').then((module) => ({ default: module.HabitsPage })),
 )
+const ProfilePage = lazy(() =>
+  import('@/pages/profile').then((module) => ({ default: module.ProfilePage })),
+)
 const ShoppingPage = lazy(() =>
   import('@/pages/shopping').then((module) => ({
     default: module.ShoppingPage,
@@ -52,6 +55,7 @@ export function AppRouter() {
         <Route path="/" element={<Navigate replace to="/today" />} />
         <Route path="/today" element={<TodayPage />} />
         <Route path="/habits" element={<HabitsPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
         <Route path="/shopping" element={<ShoppingPage />} />
         <Route path="/timeline" element={<TimelinePage />} />
         <Route path="/spheres" element={<SpheresPage />} />

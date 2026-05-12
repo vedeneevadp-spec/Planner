@@ -52,7 +52,7 @@ export {
 } from './lib/workspace-settings-api'
 export { AuthGate } from './ui/AuthGate'
 export { NativePushRegistration } from './ui/NativePushRegistration'
-export { ProfileDialog } from './ui/ProfileDialog'
+export { ProfileAccountPanel, ProfileDialog } from './ui/ProfileDialog'
 export { SessionProvider } from './ui/SessionProvider'
 export { UserAvatar } from './ui/UserAvatar'
 export { WorkspaceParticipantsDialog } from './ui/WorkspaceParticipantsDialog'

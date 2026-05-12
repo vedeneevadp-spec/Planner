@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { uuidV7Schema } from './uuid.js'
+import {
+  habitFrequencySchema,
+  habitTargetTypeSchema,
+  isoWeekdaySchema,
+} from './habit.js'
+import { generateUuidV7, uuidV7Schema } from './uuid.js'
 
 const nullableStringWithDefault = z
   .string()
@@ -39,6 +44,38 @@ export const taskIconSchema = z
   .optional()
   .transform((value) => value?.trim() ?? '')
 
+const routineDaysOfWeekSchema = z
+  .array(isoWeekdaySchema)
+  .min(1)
+  .max(7)
+  .transform((days) => [...new Set(days)].sort((left, right) => left - right))
+
+export const routineTaskSchema = z.object({
+  daysOfWeek: routineDaysOfWeekSchema,
+  frequency: habitFrequencySchema,
+  seriesId: z.string().min(1),
+  targetType: habitTargetTypeSchema,
+  targetValue: z.number().int().positive(),
+  unit: z.string(),
+})
+
+export const routineTaskInputSchema = z
+  .object({
+    daysOfWeek: routineDaysOfWeekSchema.optional(),
+    frequency: habitFrequencySchema.optional().default('daily'),
+    seriesId: uuidV7Schema.optional(),
+    targetType: habitTargetTypeSchema.optional().default('check'),
+    targetValue: z.coerce.number().int().positive().optional().default(1),
+    unit: z.string().trim().max(24).optional().default(''),
+  })
+  .transform((value) => ({
+    ...value,
+    daysOfWeek:
+      value.daysOfWeek ??
+      (value.frequency === 'daily' ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5]),
+    seriesId: value.seriesId ?? generateUuidV7(),
+  }))
+
 export const taskSchema = z.object({
   assigneeDisplayName: nullableStringWithDefault,
   assigneeUserId: nullableStringWithDefault,
@@ -54,6 +91,7 @@ export const taskSchema = z.object({
   projectId: nullableStringWithDefault,
   sphereId: nullableStringWithDefault,
   project: z.string(),
+  routine: routineTaskSchema.nullable().optional(),
   status: taskStatusSchema,
   resource: taskResourceSchema,
   requiresConfirmation: booleanWithDefault,
@@ -86,6 +124,7 @@ export const newTaskInputSchema = z.object({
   projectId: nullableStringWithDefault,
   sphereId: nullableStringWithDefault,
   project: z.string(),
+  routine: routineTaskInputSchema.nullable().optional(),
   resource: taskResourceSchema,
   requiresConfirmation: booleanWithDefault,
   plannedDate: nullableStringWithDefault,
@@ -119,6 +158,8 @@ export const taskDeleteSchema = z.object({
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>
 export type TaskImportance = z.infer<typeof taskImportanceSchema>
+export type RoutineTask = z.infer<typeof routineTaskSchema>
+export type RoutineTaskInput = z.input<typeof routineTaskInputSchema>
 export type TaskUrgency = z.infer<typeof taskUrgencySchema>
 export type TaskResource = z.infer<typeof taskResourceSchema>
 export type Task = z.infer<typeof taskSchema>

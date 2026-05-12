@@ -63,8 +63,11 @@ import {
   createOptimisticProjectRecord,
   createOptimisticTaskRecord,
   createOptimisticTaskTemplateRecord,
+  detachProjectFromTaskRecords,
+  detachProjectFromTaskTemplateRecords,
   getTaskRecord,
   normalizeSchedule,
+  removeProjectRecord,
   removeTaskRecord,
   removeTaskTemplateRecord,
   replaceOptimisticProjectRecord,
@@ -640,6 +643,30 @@ export function usePlannerState(): PlannerState {
     },
   })
 
+  const removeProjectMutation = useMutation({
+    mutationFn: (projectId: string) =>
+      requirePlannerApi(plannerApi).removeLifeSphere(projectId),
+    onSuccess: (_result, projectId) => {
+      queryClient.setQueryData<ProjectRecord[]>(
+        projectQueryKey,
+        (current = []) => removeProjectRecord(current, projectId),
+      )
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        detachProjectFromTaskRecords(current, projectId),
+      )
+      queryClient.setQueryData<TaskTemplateRecord[]>(
+        taskTemplateQueryKey,
+        (current = []) =>
+          detachProjectFromTaskTemplateRecords(current, projectId),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
   const createTaskMutation = useMutation({
     mutationFn: (input: NewTaskInput) =>
       requirePlannerApi(plannerApi).createTask(input),
@@ -727,6 +754,7 @@ export function usePlannerState(): PlannerState {
           remindBeforeStart: input.remindBeforeStart ? true : undefined,
           resource: input.resource,
           requiresConfirmation: input.requiresConfirmation ?? false,
+          routine: input.routine ?? null,
           sphereId: input.sphereId,
           title: input.title.trim(),
           urgency: input.urgency ?? 'not_urgent',
@@ -997,6 +1025,7 @@ export function usePlannerState(): PlannerState {
       createProjectMutation.error ??
       createTaskTemplateMutation.error ??
       updateProjectMutation.error ??
+      removeProjectMutation.error ??
       createTaskMutation.error ??
       updateTaskMutation.error ??
       removeTaskTemplateMutation.error ??
@@ -1029,6 +1058,7 @@ export function usePlannerState(): PlannerState {
     isAuthEnabled,
     projectsQuery.error,
     recoverSession,
+    removeProjectMutation.error,
     removeTaskMutation.error,
     removeTaskTemplateMutation.error,
     sessionQuery.error,
@@ -1182,6 +1212,10 @@ export function usePlannerState(): PlannerState {
       },
       persistCurrentProjectRecords,
     )
+  }
+
+  async function removeProject(projectId: string): Promise<boolean> {
+    return runMutation(() => removeProjectMutation.mutateAsync(projectId))
   }
 
   async function addTask(input: NewTaskInput): Promise<boolean> {
@@ -1489,6 +1523,7 @@ export function usePlannerState(): PlannerState {
       queuedMutationCount > 0 ||
       createProjectMutation.isPending ||
       updateProjectMutation.isPending ||
+      removeProjectMutation.isPending ||
       createTaskMutation.isPending ||
       updateTaskMutation.isPending ||
       createTaskTemplateMutation.isPending ||
@@ -1500,6 +1535,7 @@ export function usePlannerState(): PlannerState {
     projects,
     queuedMutationCount,
     refresh,
+    removeProject,
     removeTask,
     removeTaskTemplate,
     setTaskPlannedDate,

@@ -261,12 +261,15 @@
   width: 2.7rem;
   height: 2.7rem;
   border-radius: 14px;
+  background: var(--accent);
   color: #fff;
 }
 
 .statusBadge {
   border-radius: 999px;
   padding: 0.28rem 0.6rem;
+  background: rgba(33, 78, 66, 0.08);
+  color: var(--accent);
   font-size: 0.74rem;
   font-weight: 800;
 }
@@ -309,6 +312,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cardFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 @media (max-width: 700px) {

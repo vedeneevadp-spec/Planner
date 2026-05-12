@@ -33,6 +33,7 @@ export function toPlannerTask(task: TaskRecord): Task {
     remindBeforeStart: task.remindBeforeStart,
     resource: task.resource,
     requiresConfirmation: task.requiresConfirmation,
+    routine: task.routine ?? null,
     sphereId: task.sphereId,
     status: task.status,
     title: task.title,
@@ -162,6 +163,7 @@ export function createOptimisticTaskRecord(
     remindBeforeStart: input.remindBeforeStart ? true : undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
+    routine: input.routine ?? null,
     sphereId: input.sphereId,
     status: 'todo',
     title: input.title.trim(),
@@ -385,6 +387,44 @@ export function updateTaskTemplateProjectRecords(
         }
       : template,
   )
+}
+
+export function detachProjectFromTaskRecords(
+  taskRecords: TaskRecord[],
+  projectId: string,
+): TaskRecord[] {
+  return taskRecords.map((task) =>
+    task.projectId === projectId || task.sphereId === projectId
+      ? {
+          ...task,
+          project: '',
+          projectId: null,
+          sphereId: null,
+        }
+      : task,
+  )
+}
+
+export function detachProjectFromTaskTemplateRecords(
+  templateRecords: TaskTemplateRecord[],
+  projectId: string,
+): TaskTemplateRecord[] {
+  return templateRecords.map((template) =>
+    template.projectId === projectId
+      ? {
+          ...template,
+          project: '',
+          projectId: null,
+        }
+      : template,
+  )
+}
+
+export function removeProjectRecord(
+  projectRecords: ProjectRecord[],
+  projectId: string,
+): ProjectRecord[] {
+  return projectRecords.filter((project) => project.id !== projectId)
 }
 
 export function removeTaskRecord(

@@ -31,37 +31,22 @@ interface ProfileDialogProps {
   onClose: () => void
 }
 
+interface ProfileAccountPanelProps {
+  ariaModal?: boolean | undefined
+  cancelLabel?: string | undefined
+  role?: 'dialog' | undefined
+  showCloseButton?: boolean | undefined
+  variant?: 'dialog' | 'page' | undefined
+  onCancel?: (() => void) | undefined
+  onSaved?: (() => void) | undefined
+}
+
 export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
-  if (!isOpen) {
-    return null
-  }
-
-  return <ProfileDialogContent onClose={onClose} />
-}
-
-interface ProfileDialogContentProps {
-  onClose: () => void
-}
-
-function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
-  const avatarInputId = useId()
-  const session = usePlannerSession().data
-  const { isAuthEnabled, updatePassword } = useSessionAuth()
-  const updateUserProfile = useUpdateUserProfile()
-  const { isPending, mutateAsync } = updateUserProfile
-  const [displayName, setDisplayName] = useState(
-    () => session?.actor.displayName ?? '',
-  )
-  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null)
-  const [removeAvatar, setRemoveAvatar] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
-  const isSubmitting = isPending || isUpdatingPassword
-
   useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
     const previousOverflow = document.body.style.overflow
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -77,7 +62,63 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose])
+  }, [isOpen, onClose])
+
+  if (!isOpen) {
+    return null
+  }
+
+  return (
+    <div
+      className={styles.overlay}
+      role="presentation"
+      onClick={() => {
+        onClose()
+      }}
+    >
+      <div
+        onClick={(event) => {
+          event.stopPropagation()
+        }}
+      >
+        <ProfileAccountPanel
+          ariaModal
+          role="dialog"
+          onCancel={onClose}
+          onSaved={onClose}
+        />
+      </div>
+    </div>
+  )
+}
+
+export function ProfileAccountPanel({
+  ariaModal = false,
+  cancelLabel = 'Отмена',
+  role,
+  showCloseButton = true,
+  variant = 'dialog',
+  onCancel,
+  onSaved,
+}: ProfileAccountPanelProps) {
+  const avatarInputId = useId()
+  const headingId = useId()
+  const session = usePlannerSession().data
+  const { isAuthEnabled, updatePassword } = useSessionAuth()
+  const updateUserProfile = useUpdateUserProfile()
+  const { isPending, mutateAsync } = updateUserProfile
+  const [displayName, setDisplayName] = useState(
+    () => session?.actor.displayName ?? '',
+  )
+  const [avatarDataUrl, setAvatarDataUrl] = useState<string | null>(null)
+  const [removeAvatar, setRemoveAvatar] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirmation, setNewPasswordConfirmation] = useState('')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false)
+  const isSubmitting = isPending || isUpdatingPassword
 
   const resolvedAvatarUrl = useMemo(() => {
     if (avatarDataUrl) {
@@ -91,6 +132,11 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
     return session?.actor.avatarUrl ?? null
   }, [avatarDataUrl, removeAvatar, session?.actor.avatarUrl])
 
+  function clearMessages() {
+    setErrorMessage(null)
+    setSuccessMessage(null)
+  }
+
   async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -103,6 +149,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
 
     if (validationError) {
       setErrorMessage(validationError)
+      setSuccessMessage(null)
       return
     }
 
@@ -110,8 +157,9 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
       const preparedAvatar = await prepareProfileAvatarUpload(file)
       setAvatarDataUrl(preparedAvatar)
       setRemoveAvatar(false)
-      setErrorMessage(null)
+      clearMessages()
     } catch (error) {
+      setSuccessMessage(null)
       setErrorMessage(
         error instanceof Error
           ? error.message
@@ -131,6 +179,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
 
     if (!trimmedDisplayName) {
       setErrorMessage('Введите никнейм.')
+      setSuccessMessage(null)
       return
     }
 
@@ -154,6 +203,7 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
 
     if (passwordValidationError) {
       setErrorMessage(passwordValidationError)
+      setSuccessMessage(null)
       return
     }
 
@@ -163,11 +213,17 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
       !hasAvatarRemoval &&
       !hasPasswordChange
     ) {
-      onClose()
+      if (onSaved) {
+        onSaved()
+        return
+      }
+
+      setErrorMessage(null)
+      setSuccessMessage('Изменений нет.')
       return
     }
 
-    setErrorMessage(null)
+    clearMessages()
     setIsUpdatingPassword(hasPasswordChange)
 
     try {
@@ -181,10 +237,22 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
 
       if (hasPasswordChange) {
         await updatePassword(newPassword, currentPassword)
+        setCurrentPassword('')
+        setNewPassword('')
+        setNewPasswordConfirmation('')
       }
 
-      onClose()
+      setAvatarDataUrl(null)
+      setRemoveAvatar(false)
+
+      if (onSaved) {
+        onSaved()
+        return
+      }
+
+      setSuccessMessage('Профиль сохранен.')
     } catch (error) {
+      setSuccessMessage(null)
       setErrorMessage(getProfileDialogErrorMessage(error))
     } finally {
       setIsUpdatingPassword(false)
@@ -192,190 +260,183 @@ function ProfileDialogContent({ onClose }: ProfileDialogContentProps) {
   }
 
   return (
-    <div
-      className={styles.overlay}
-      role="presentation"
-      onClick={() => {
-        onClose()
-      }}
+    <section
+      className={cx(styles.dialog, variant === 'page' && styles.pageDialog)}
+      {...(role ? { role } : {})}
+      {...(ariaModal ? { 'aria-modal': true } : {})}
+      aria-labelledby={headingId}
     >
-      <section
-        className={styles.dialog}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="profile-dialog-title"
-        onClick={(event) => {
-          event.stopPropagation()
-        }}
-      >
-        <header className={styles.header}>
-          <div className={styles.headerCopy}>
-            <p className={styles.kicker}>Профиль</p>
-            <h2 id="profile-dialog-title">Аккаунт</h2>
-            <p>Никнейм и аватар используются в вашем workspace.</p>
-          </div>
+      <header className={styles.header}>
+        <div className={styles.headerCopy}>
+          <p className={styles.kicker}>Профиль</p>
+          <h2 id={headingId}>Аккаунт</h2>
+          <p>Никнейм и аватар используются в вашем workspace.</p>
+        </div>
 
+        {showCloseButton && onCancel ? (
           <button
             className={styles.closeButton}
             type="button"
             aria-label="Закрыть профиль"
-            onClick={() => {
-              onClose()
-            }}
+            onClick={onCancel}
           >
             <CloseIcon size={18} strokeWidth={2.2} />
           </button>
-        </header>
+        ) : null}
+      </header>
 
-        <form
-          className={styles.form}
-          onSubmit={(event) => void handleSubmit(event)}
-        >
-          <section className={styles.avatarPanel}>
-            <UserAvatar
-              avatarUrl={resolvedAvatarUrl}
-              displayName={displayName || session?.actor.displayName || 'User'}
-              email={session?.actor.email}
-              size="lg"
+      <form
+        className={styles.form}
+        onSubmit={(event) => void handleSubmit(event)}
+      >
+        <section className={styles.avatarPanel}>
+          <UserAvatar
+            avatarUrl={resolvedAvatarUrl}
+            displayName={displayName || session?.actor.displayName || 'User'}
+            email={session?.actor.email}
+            size="lg"
+          />
+
+          <div className={styles.avatarActions}>
+            <label className={styles.primaryButton} htmlFor={avatarInputId}>
+              <UploadIcon size={17} strokeWidth={2.1} />
+              <span>Загрузить</span>
+            </label>
+            <input
+              id={avatarInputId}
+              className={styles.hiddenInput}
+              type="file"
+              accept={ACCEPTED_PROFILE_AVATAR_TYPES}
+              onChange={(event) => {
+                void handleAvatarChange(event)
+              }}
             />
 
-            <div className={styles.avatarActions}>
-              <label className={styles.primaryButton} htmlFor={avatarInputId}>
-                <UploadIcon size={17} strokeWidth={2.1} />
-                <span>Загрузить</span>
-              </label>
-              <input
-                id={avatarInputId}
-                className={styles.hiddenInput}
-                type="file"
-                accept={ACCEPTED_PROFILE_AVATAR_TYPES}
-                onChange={(event) => {
-                  void handleAvatarChange(event)
-                }}
-              />
+            <button
+              className={cx(styles.ghostButton, styles.removeButton)}
+              type="button"
+              disabled={!resolvedAvatarUrl}
+              onClick={() => {
+                setAvatarDataUrl(null)
+                setRemoveAvatar(true)
+                clearMessages()
+              }}
+            >
+              <TrashIcon size={17} strokeWidth={2.05} />
+              <span>Убрать</span>
+            </button>
+          </div>
+        </section>
 
-              <button
-                className={cx(styles.ghostButton, styles.removeButton)}
-                type="button"
-                disabled={!resolvedAvatarUrl}
-                onClick={() => {
-                  setAvatarDataUrl(null)
-                  setRemoveAvatar(true)
-                  setErrorMessage(null)
-                }}
-              >
-                <TrashIcon size={17} strokeWidth={2.05} />
-                <span>Убрать</span>
-              </button>
-            </div>
-          </section>
+        <section className={styles.fields}>
+          <label className={styles.field}>
+            <span>Никнейм</span>
+            <input
+              type="text"
+              value={displayName}
+              maxLength={80}
+              placeholder="Ваше имя"
+              onChange={(event) => {
+                setDisplayName(event.target.value)
+                clearMessages()
+              }}
+            />
+          </label>
 
+          <label className={styles.field}>
+            <span>Email</span>
+            <input
+              type="email"
+              value={session?.actor.email ?? ''}
+              disabled
+              readOnly
+            />
+          </label>
+        </section>
+
+        {isAuthEnabled ? (
           <section className={styles.fields}>
+            <div className={styles.sectionHeader}>
+              <h3>Смена пароля</h3>
+              <p>Заполните эти поля, если хотите обновить пароль.</p>
+            </div>
+
             <label className={styles.field}>
-              <span>Никнейм</span>
+              <span>Текущий пароль</span>
               <input
-                type="text"
-                value={displayName}
-                maxLength={80}
-                placeholder="Ваше имя"
+                type="password"
+                value={currentPassword}
+                autoComplete="current-password"
+                placeholder="Введите текущий пароль"
                 onChange={(event) => {
-                  setDisplayName(event.target.value)
-                  setErrorMessage(null)
+                  setCurrentPassword(event.target.value)
+                  clearMessages()
                 }}
               />
             </label>
 
             <label className={styles.field}>
-              <span>Email</span>
+              <span>Новый пароль</span>
               <input
-                type="email"
-                value={session?.actor.email ?? ''}
-                disabled
-                readOnly
+                type="password"
+                value={newPassword}
+                autoComplete="new-password"
+                placeholder="Минимум 6 символов"
+                onChange={(event) => {
+                  setNewPassword(event.target.value)
+                  clearMessages()
+                }}
+              />
+            </label>
+
+            <label className={styles.field}>
+              <span>Повторите новый пароль</span>
+              <input
+                type="password"
+                value={newPasswordConfirmation}
+                autoComplete="new-password"
+                placeholder="Повторите пароль"
+                onChange={(event) => {
+                  setNewPasswordConfirmation(event.target.value)
+                  clearMessages()
+                }}
               />
             </label>
           </section>
+        ) : null}
 
-          {isAuthEnabled ? (
-            <section className={styles.fields}>
-              <div className={styles.sectionHeader}>
-                <h3>Смена пароля</h3>
-                <p>Заполните эти поля, если хотите обновить пароль.</p>
-              </div>
+        {errorMessage ? (
+          <p className={styles.errorText}>{errorMessage}</p>
+        ) : null}
 
-              <label className={styles.field}>
-                <span>Текущий пароль</span>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  autoComplete="current-password"
-                  placeholder="Введите текущий пароль"
-                  onChange={(event) => {
-                    setCurrentPassword(event.target.value)
-                    setErrorMessage(null)
-                  }}
-                />
-              </label>
+        {successMessage ? (
+          <p className={styles.successText}>{successMessage}</p>
+        ) : null}
 
-              <label className={styles.field}>
-                <span>Новый пароль</span>
-                <input
-                  type="password"
-                  value={newPassword}
-                  autoComplete="new-password"
-                  placeholder="Минимум 6 символов"
-                  onChange={(event) => {
-                    setNewPassword(event.target.value)
-                    setErrorMessage(null)
-                  }}
-                />
-              </label>
-
-              <label className={styles.field}>
-                <span>Повторите новый пароль</span>
-                <input
-                  type="password"
-                  value={newPasswordConfirmation}
-                  autoComplete="new-password"
-                  placeholder="Повторите пароль"
-                  onChange={(event) => {
-                    setNewPasswordConfirmation(event.target.value)
-                    setErrorMessage(null)
-                  }}
-                />
-              </label>
-            </section>
-          ) : null}
-
-          {errorMessage ? (
-            <p className={styles.errorText}>{errorMessage}</p>
-          ) : null}
-
-          <footer className={styles.footer}>
+        <footer className={styles.footer}>
+          {onCancel ? (
             <button
               className={styles.ghostButton}
               type="button"
               disabled={isSubmitting}
-              onClick={() => {
-                onClose()
-              }}
+              onClick={onCancel}
             >
               <CloseIcon size={16} strokeWidth={2.1} />
-              <span>Отмена</span>
+              <span>{cancelLabel}</span>
             </button>
+          ) : null}
 
-            <button
-              className={styles.primaryButton}
-              type="submit"
-              disabled={isSubmitting || !session}
-            >
-              <CheckIcon size={16} strokeWidth={2.1} />
-              <span>{isSubmitting ? 'Сохраняем...' : 'Сохранить'}</span>
-            </button>
-          </footer>
-        </form>
-      </section>
-    </div>
+          <button
+            className={styles.primaryButton}
+            type="submit"
+            disabled={isSubmitting || !session}
+          >
+            <CheckIcon size={16} strokeWidth={2.1} />
+            <span>{isSubmitting ? 'Сохраняем...' : 'Сохранить'}</span>
+          </button>
+        </footer>
+      </form>
+    </section>
   )
 }
 

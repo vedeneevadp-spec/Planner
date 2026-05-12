@@ -24,6 +24,13 @@ import {
 } from '@/shared/ui/Icon'
 
 import { getTaskResource } from '../model/resource'
+import {
+  buildRoutineTaskFromForm,
+  createRoutineTaskFormFromRoutine,
+  getRoutineTaskFrequencyLabel,
+  getRoutineTaskTargetLabel,
+  type RoutineTaskFormState,
+} from '../model/routine-task'
 import { resolveTaskCardActionPolicy } from '../model/task-card-policy'
 import {
   getResourceFromValue,
@@ -33,6 +40,7 @@ import {
   getTaskUrgencyFromType,
   type TaskTypeValue,
 } from '../model/task-meta'
+import { RoutineTaskFields } from './RoutineTaskFields'
 import styles from './TaskCard.module.css'
 import {
   ResourcePicker,
@@ -472,6 +480,16 @@ export function TaskCard({
           {taskType === 'routine' ? (
             <span className={styles.metaChip}>Рутина</span>
           ) : null}
+          {task.routine ? (
+            <span className={styles.metaChip}>
+              {getRoutineTaskFrequencyLabel(task.routine)}
+            </span>
+          ) : null}
+          {task.routine ? (
+            <span className={styles.metaChip}>
+              {getRoutineTaskTargetLabel(task.routine)}
+            </span>
+          ) : null}
           {taskResource !== 0 ? (
             <span className={cx(styles.metaChip, styles.resourceChip)}>
               <TaskResourceMeter
@@ -571,6 +589,7 @@ export function TaskEditDialog({
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
   )
+  const todayKey = getDateKey(new Date())
   const [assigneeUserId, setAssigneeUserId] = useState(
     task.assigneeUserId ?? '',
   )
@@ -595,6 +614,9 @@ export function TaskEditDialog({
   )
   const [taskType, setTaskType] = useState<TaskTypeValue>(
     getTaskTypeValue(task),
+  )
+  const [routineForm, setRoutineForm] = useState<RoutineTaskFormState>(() =>
+    createRoutineTaskFormFromRoutine(task.routine),
   )
   const [note, setNote] = useState(task.note)
   const canManageConfirmation =
@@ -626,6 +648,14 @@ export function TaskEditDialog({
     } else if (!wasAvailable) {
       setRemindBeforeStart(true)
       reminderAvailabilityRef.current = true
+    }
+  }
+
+  function handleTaskTypeChange(nextTaskType: TaskTypeValue) {
+    setTaskType(nextTaskType)
+
+    if (nextTaskType === 'routine' && !plannedDate) {
+      setPlannedDate(todayKey)
     }
   }
 
@@ -664,6 +694,10 @@ export function TaskEditDialog({
           : undefined,
       resource: getResourceFromValue(resource),
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
+      routine:
+        taskType === 'routine'
+          ? buildRoutineTaskFromForm(routineForm, task.routine?.seriesId)
+          : null,
       sphereId: task.sphereId,
       title: normalizedTitle,
       urgency: getTaskUrgencyFromType(taskType),
@@ -866,9 +900,18 @@ export function TaskEditDialog({
               <TaskTypePicker
                 className={styles.fieldType}
                 value={taskType}
-                onChange={setTaskType}
+                onChange={handleTaskTypeChange}
               />
             </section>
+
+            {taskType === 'routine' ? (
+              <section className={styles.editorSection}>
+                <RoutineTaskFields
+                  value={routineForm}
+                  onChange={setRoutineForm}
+                />
+              </section>
+            ) : null}
 
             <section className={styles.editorSection}>
               <ResourcePicker

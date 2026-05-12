@@ -1,5 +1,7 @@
 export type {
   NewTaskInput,
+  RoutineTask,
+  RoutineTaskInput,
   Task,
   TaskImportance,
   TaskResource,

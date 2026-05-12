@@ -1,0 +1,9 @@
+.profilePage {
+  align-items: flex-start;
+}
+
+@media (max-width: 820px) {
+  .profilePage {
+    padding-bottom: calc(var(--mobile-main-bottom-clearance) + 1rem);
+  }
+}

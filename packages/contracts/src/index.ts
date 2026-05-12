@@ -287,6 +287,8 @@ export {
 } from './project.js'
 export type {
   NewTaskInput,
+  RoutineTask,
+  RoutineTaskInput,
   Task,
   TaskDelete,
   TaskImportance,
@@ -300,6 +302,8 @@ export type {
 } from './task.js'
 export {
   newTaskInputSchema,
+  routineTaskInputSchema,
+  routineTaskSchema,
   taskDeleteSchema,
   taskIconSchema,
   taskImportanceSchema,

@@ -234,6 +234,7 @@ describe('plannerApi', () => {
           { status: 200 },
         ),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
 
     await api.createProject({
@@ -249,13 +250,17 @@ describe('plannerApi', () => {
       icon: 'target',
       title: 'Planner App',
     })
+    await api.removeLifeSphere('project-1')
 
     const [createUrl, createRequestInit] = fetchMock.mock.calls[0]!
     const [updateUrl, updateRequestInit] = fetchMock.mock.calls[1]!
+    const [deleteUrl, deleteRequestInit] = fetchMock.mock.calls[2]!
     const createRequestUrl =
       createUrl instanceof URL ? createUrl.href : createUrl
     const updateRequestUrl =
       updateUrl instanceof URL ? updateUrl.href : updateUrl
+    const deleteRequestUrl =
+      deleteUrl instanceof URL ? deleteUrl.href : deleteUrl
     const createBody = parseJsonRequestBody<{ id: string; name: string }>(
       createRequestInit,
     )
@@ -271,6 +276,10 @@ describe('plannerApi', () => {
     expect(updateRequestUrl).toBe(
       'http://127.0.0.1:3001/api/v1/life-spheres/project-1',
     )
+    expect(deleteRequestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/life-spheres/project-1',
+    )
+    expect(deleteRequestInit?.method).toBe('DELETE')
     expect(isUuidV7(createBody.id)).toBe(true)
     expect(createBody.name).toBe('Planner')
     expect(updateBody).toEqual({
@@ -284,6 +293,9 @@ describe('plannerApi', () => {
       'user-1',
     )
     expect(new Headers(updateRequestInit?.headers).get('x-actor-user-id')).toBe(
+      'user-1',
+    )
+    expect(new Headers(deleteRequestInit?.headers).get('x-actor-user-id')).toBe(
       'user-1',
     )
   })

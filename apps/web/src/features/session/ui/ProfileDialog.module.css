@@ -29,6 +29,12 @@
     0 28px 64px rgba(63, 53, 31, 0.18);
 }
 
+.pageDialog {
+  width: min(100%, 42rem);
+  max-height: none;
+  overflow: visible;
+}
+
 .header {
   display: flex;
   align-items: flex-start;
@@ -224,8 +230,13 @@
   color: #7b3018;
 }
 
-.errorText {
+.errorText,
+.successText {
   color: #8a3a21;
+}
+
+.successText {
+  color: var(--success);
 }
 
 .footer {

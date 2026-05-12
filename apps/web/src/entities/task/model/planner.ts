@@ -254,6 +254,7 @@ export function addTask(
     remindBeforeStart: input.remindBeforeStart ? true : undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
+    routine: input.routine ?? null,
     sphereId: input.sphereId,
     status: 'todo',
     plannedDate: schedule.plannedDate,

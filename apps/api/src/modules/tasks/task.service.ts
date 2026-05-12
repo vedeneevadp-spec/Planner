@@ -106,7 +106,13 @@ export class TaskService {
         command.expectedVersion = expectedVersion
       }
 
-      return this.repository.updateStatus(command)
+      return this.repository.updateStatus(command).then(async (updatedTask) => {
+        if (task.status !== 'done' && status === 'done') {
+          await this.createNextRoutineOccurrence(context, updatedTask)
+        }
+
+        return updatedTask
+      })
     })
   }
 
@@ -175,6 +181,101 @@ export class TaskService {
       return this.repository.remove(command)
     })
   }
+
+  private async createNextRoutineOccurrence(
+    context: TaskWriteContext,
+    completedTask: StoredTaskRecord,
+  ): Promise<void> {
+    const routine = completedTask.routine
+
+    if (!routine) {
+      return
+    }
+
+    const nextPlannedDate = getNextRoutineDate(
+      getRoutineReferenceDate(completedTask),
+      routine.daysOfWeek,
+    )
+
+    if (!nextPlannedDate) {
+      return
+    }
+
+    const workspaceTasks = await this.repository.listByWorkspace(context)
+    const hasExistingNextOccurrence = workspaceTasks.some(
+      (task) =>
+        task.id !== completedTask.id &&
+        task.status !== 'done' &&
+        task.plannedDate === nextPlannedDate &&
+        task.routine?.seriesId === routine.seriesId,
+    )
+
+    if (hasExistingNextOccurrence) {
+      return
+    }
+
+    await this.repository.create({
+      context,
+      input: {
+        assigneeUserId: completedTask.assigneeUserId,
+        dueDate:
+          completedTask.dueDate === completedTask.plannedDate
+            ? nextPlannedDate
+            : null,
+        icon: completedTask.icon,
+        importance: completedTask.importance,
+        note: completedTask.note,
+        plannedDate: nextPlannedDate,
+        plannedEndTime: completedTask.plannedEndTime,
+        plannedStartTime: completedTask.plannedStartTime,
+        project: completedTask.project,
+        projectId: completedTask.projectId,
+        remindBeforeStart: completedTask.remindBeforeStart === true,
+        resource: completedTask.resource,
+        requiresConfirmation: completedTask.requiresConfirmation,
+        routine,
+        sphereId: completedTask.sphereId,
+        title: completedTask.title,
+        urgency: completedTask.urgency,
+      },
+    })
+  }
+}
+
+function getRoutineReferenceDate(task: StoredTaskRecord): string {
+  const completedDate = task.completedAt
+    ? task.completedAt.slice(0, 10)
+    : new Date().toISOString().slice(0, 10)
+
+  if (!task.plannedDate) {
+    return completedDate
+  }
+
+  return task.plannedDate > completedDate ? task.plannedDate : completedDate
+}
+
+function getNextRoutineDate(
+  referenceDate: string,
+  daysOfWeek: number[],
+): string | null {
+  const scheduledDays = new Set(daysOfWeek)
+  const cursor = new Date(`${referenceDate}T00:00:00.000Z`)
+
+  for (let offset = 1; offset <= 366; offset += 1) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+
+    if (scheduledDays.has(getIsoWeekday(cursor))) {
+      return cursor.toISOString().slice(0, 10)
+    }
+  }
+
+  return null
+}
+
+function getIsoWeekday(date: Date): number {
+  const weekday = date.getUTCDay()
+
+  return weekday === 0 ? 7 : weekday
 }
 
 function assertCanWriteTasks(context: TaskWriteContext): void {

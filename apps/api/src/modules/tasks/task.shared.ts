@@ -1,5 +1,6 @@
 import type {
   NewTaskInput,
+  RoutineTask,
   TaskScheduleInput,
   TaskStatus,
   TaskUpdateInput,
@@ -20,6 +21,7 @@ export interface NormalizedTaskInput extends NewTaskInput {
   reminderTimeZone: string | undefined
   resource: NewTaskInput['resource']
   requiresConfirmation: boolean
+  routine: RoutineTask | null
   sphereId: string | null
   title: string
   urgency: NonNullable<NewTaskInput['urgency']>
@@ -73,10 +75,38 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     reminderTimeZone: input.reminderTimeZone?.trim() || undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
+    routine: normalizeRoutineTask(input.routine),
     sphereId: input.sphereId,
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',
   }
+}
+
+function normalizeRoutineTask(
+  routine: NewTaskInput['routine'],
+): RoutineTask | null {
+  if (!routine) {
+    return null
+  }
+
+  return {
+    daysOfWeek: normalizeRoutineDaysOfWeek(routine.daysOfWeek),
+    frequency: routine.frequency,
+    seriesId: routine.seriesId ?? generateUuidV7(),
+    targetType: routine.targetType,
+    targetValue: routine.targetValue,
+    unit: routine.unit.trim(),
+  }
+}
+
+function normalizeRoutineDaysOfWeek(daysOfWeek: number[]): number[] {
+  const normalized = [...new Set(daysOfWeek)].filter(
+    (day) => Number.isInteger(day) && day >= 1 && day <= 7,
+  )
+
+  return normalized.length > 0
+    ? normalized.sort((left, right) => left - right)
+    : [1, 2, 3, 4, 5, 6, 7]
 }
 
 function compareNullableTime(
@@ -184,6 +214,7 @@ export function createStoredTaskRecord(
     remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
+    routine: normalizedInput.routine,
     sphereId: normalizedInput.sphereId,
     status: 'todo',
     title: normalizedInput.title,
@@ -257,6 +288,7 @@ export function applyTaskUpdate(
     remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
+    routine: normalizedInput.routine,
     sphereId: normalizedInput.sphereId,
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,

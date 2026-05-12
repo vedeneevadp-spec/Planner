@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, routineTaskSchema } from '@planner/contracts'
 import {
   type Kysely,
   type Selectable,
@@ -76,6 +76,7 @@ const TASK_ICON_KEY = 'taskIcon'
 const TASK_IMPORTANCE_KEY = 'taskImportance'
 const TASK_REMIND_BEFORE_START_KEY = 'taskRemindBeforeStart'
 const TASK_REQUIRES_CONFIRMATION_KEY = 'taskRequiresConfirmation'
+const TASK_ROUTINE_KEY = 'taskRoutine'
 const TASK_URGENCY_KEY = 'taskUrgency'
 const DEFAULT_TASK_IMPORTANCE = 'not_important'
 const DEFAULT_TASK_URGENCY = 'not_urgent'
@@ -2274,6 +2275,7 @@ export class PostgresTaskRepository implements TaskRepository {
       remindBeforeStart: this.readTaskRemindBeforeStart(task.metadata),
       resource: task.resource,
       requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
+      routine: this.readTaskRoutine(task.metadata),
       sphereId: task.project_id ?? task.sphere_id,
       status: task.status,
       title: task.title,
@@ -2312,6 +2314,7 @@ export class PostgresTaskRepository implements TaskRepository {
       remindBeforeStart: this.readTaskRemindBeforeStart(task.metadata),
       resource: task.resource,
       requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
+      routine: this.readTaskRoutine(task.metadata),
       sphereId: task.project_id ?? task.sphere_id,
       status: task.status,
       title: task.title,
@@ -2330,6 +2333,7 @@ export class PostgresTaskRepository implements TaskRepository {
       | 'importance'
       | 'remindBeforeStart'
       | 'requiresConfirmation'
+      | 'routine'
       | 'urgency'
     >,
   ): JsonObject {
@@ -2353,6 +2357,10 @@ export class PostgresTaskRepository implements TaskRepository {
 
     if (input.requiresConfirmation) {
       metadata[TASK_REQUIRES_CONFIRMATION_KEY] = true
+    }
+
+    if (input.routine) {
+      metadata[TASK_ROUTINE_KEY] = input.routine
     }
 
     if (input.urgency !== DEFAULT_TASK_URGENCY) {
@@ -2390,6 +2398,15 @@ export class PostgresTaskRepository implements TaskRepository {
 
   private readTaskRequiresConfirmation(metadata: JsonObject): boolean {
     return metadata[TASK_REQUIRES_CONFIRMATION_KEY] === true
+  }
+
+  private readTaskRoutine(
+    metadata: JsonObject,
+  ): StoredTaskRecord['routine'] | null {
+    const value = metadata[TASK_ROUTINE_KEY]
+    const parsed = routineTaskSchema.safeParse(value)
+
+    return parsed.success ? parsed.data : null
   }
 
   private readTaskUrgency(metadata: JsonObject): StoredTaskRecord['urgency'] {

@@ -1,14 +1,12 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
-import { getPlannerSummary } from '@/entities/task'
-import { useHabitsToday } from '@/features/habits'
+import { getPlannerSummary, isRoutineHabitTask } from '@/entities/task'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
   getDeleteSharedWorkspaceErrorMessage,
   getUpdateSharedWorkspaceErrorMessage,
-  ProfileDialog,
   setSelectedWorkspaceIdForActors,
   useCreateSharedWorkspace,
   useDeleteSharedWorkspace,
@@ -38,9 +36,9 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
-  { to: '/habits', label: 'Привычки' },
   { to: '/shopping', label: 'Покупки' },
   { to: '/spheres', label: 'Сферы' },
+  { to: '/habits', label: 'Привычки' },
   { to: '/timeline', label: 'Таймлайн' },
   { to: '/admin', label: 'Admin' },
 ] as const
@@ -51,7 +49,12 @@ const mobilePrimaryRoutes: readonly NavigationRoute[] = [
   '/today',
   '/shopping',
   '/timeline',
+]
+
+const mobileMoreRoutes: readonly NavigationRoute[] = [
   '/spheres',
+  '/habits',
+  '/admin',
 ]
 
 export function Sidebar() {
@@ -69,7 +72,6 @@ export function Sidebar() {
   )
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
-  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
     useState(false)
   const [createWorkspaceName, setCreateWorkspaceName] = useState('')
@@ -84,10 +86,13 @@ export function Sidebar() {
   >(null)
   const todayKey = getDateKey(new Date())
   const isSharedWorkspace = session?.workspace.kind === 'shared'
-  const habitsTodayQuery = useHabitsToday(todayKey, {
-    enabled: Boolean(session) && !isSharedWorkspace,
-  })
   const summary = getPlannerSummary(tasks, todayKey)
+  const routineHabitTodayCount = tasks.filter(
+    (task) =>
+      task.status !== 'done' &&
+      task.plannedDate === todayKey &&
+      isRoutineHabitTask(task),
+  ).length
   const canManageCurrentSharedWorkspace =
     session?.workspace.kind === 'shared' && session.role === 'owner'
   const sharedWorkspaceCount =
@@ -115,18 +120,23 @@ export function Sidebar() {
     auth.email ??
     session?.actor.email ??
     (auth.accessToken ? 'Chaotika session' : null)
+  const isProfileNavigationVisible = Boolean(session && !isSharedWorkspace)
   const mobilePrimaryNavigation = mobilePrimaryRoutes.flatMap((route) => {
     const item = visibleNavigation.find((candidate) => candidate.to === route)
 
     return item ? [item] : []
   })
-  const mobileSecondaryNavigation = visibleNavigation.filter(
-    (item) => item.to === '/admin',
-  )
+  const mobileMoreNavigation = mobileMoreRoutes.flatMap((route) => {
+    const item = visibleNavigation.find((candidate) => candidate.to === route)
+
+    return item ? [item] : []
+  })
   const isMoreOpen = moreSheetPathname === location.pathname
   const isMoreActive =
     isMoreOpen ||
-    mobileSecondaryNavigation.some((item) =>
+    (isProfileNavigationVisible &&
+      matchesRoute(location.pathname, '/profile')) ||
+    mobileMoreNavigation.some((item) =>
       matchesRoute(location.pathname, item.to),
     )
   const createWorkspaceError =
@@ -622,7 +632,7 @@ export function Sidebar() {
                 </div>
               </div>
 
-              {accountLabel || mobileSecondaryNavigation.length > 0 ? (
+              {accountLabel || mobileMoreNavigation.length > 0 ? (
                 <section className={styles.mobileSheetSection}>
                   <p className={styles.mobileSectionLabel}>Аккаунт</p>
 
@@ -647,30 +657,65 @@ export function Sidebar() {
                     </div>
                   ) : null}
 
-                  {session ? (
-                    <button
-                      className={styles.mobileSheetLink}
-                      type="button"
+                  {mobileMoreNavigation
+                    .filter((item) => item.to !== '/admin')
+                    .map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) =>
+                          cx(
+                            styles.mobileSheetLink,
+                            isActive && styles.mobileSheetLinkActive,
+                          )
+                        }
+                        onClick={() => {
+                          setMoreSheetPathname(null)
+                        }}
+                      >
+                        {renderMobileNavIcon(item.to)}
+                        <span>{item.label}</span>
+                      </NavLink>
+                    ))}
+
+                  {isProfileNavigationVisible ? (
+                    <NavLink
+                      to="/profile"
+                      className={({ isActive }) =>
+                        cx(
+                          styles.mobileSheetLink,
+                          isActive && styles.mobileSheetLinkActive,
+                        )
+                      }
                       onClick={() => {
                         setMoreSheetPathname(null)
-                        setIsProfileOpen(true)
                       }}
                     >
                       <EditIcon size={18} strokeWidth={2.1} />
                       <span>Профиль</span>
-                    </button>
+                    </NavLink>
                   ) : null}
 
-                  {mobileSecondaryNavigation.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      className={cx(styles.mobileSheetLink)}
-                    >
-                      <SettingsIcon size={18} strokeWidth={2.1} />
-                      <span>{item.label}</span>
-                    </NavLink>
-                  ))}
+                  {mobileMoreNavigation
+                    .filter((item) => item.to === '/admin')
+                    .map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) =>
+                          cx(
+                            styles.mobileSheetLink,
+                            isActive && styles.mobileSheetLinkActive,
+                          )
+                        }
+                        onClick={() => {
+                          setMoreSheetPathname(null)
+                        }}
+                      >
+                        <SettingsIcon size={18} strokeWidth={2.1} />
+                        <span>{item.label}</span>
+                      </NavLink>
+                    ))}
 
                   {auth.isAuthEnabled && accountLabel ? (
                     <button
@@ -797,17 +842,14 @@ export function Sidebar() {
                   <span className={styles.accountEmail}>{accountLabel}</span>
                 </div>
 
-                {session ? (
-                  <button
-                    className={styles.accountIconButton}
-                    type="button"
+                {isProfileNavigationVisible ? (
+                  <NavLink
+                    to="/profile"
+                    className={cx(styles.accountIconButton)}
                     aria-label="Открыть профиль"
-                    onClick={() => {
-                      setIsProfileOpen(true)
-                    }}
                   >
                     <EditIcon size={16} strokeWidth={2.1} />
-                  </button>
+                  </NavLink>
                 ) : null}
               </div>
 
@@ -845,7 +887,7 @@ export function Sidebar() {
               item.to === '/today'
                 ? summary.focusCount + summary.overdueCount
                 : item.to === '/habits'
-                  ? (habitsTodayQuery.data?.items.length ?? 0)
+                  ? routineHabitTodayCount
                   : item.to === '/shopping'
                     ? shoppingListSummary.activeItemCount
                     : item.to === '/timeline'
@@ -898,15 +940,6 @@ export function Sidebar() {
           isOpen={isWorkspaceParticipantsOpen}
           onClose={() => {
             setIsWorkspaceParticipantsOpen(false)
-          }}
-        />
-      ) : null}
-
-      {isProfileOpen ? (
-        <ProfileDialog
-          isOpen={isProfileOpen}
-          onClose={() => {
-            setIsProfileOpen(false)
           }}
         />
       ) : null}

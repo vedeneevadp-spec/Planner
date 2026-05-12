@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 
 import { ProjectPicker } from '@/entities/project'
 import {
+  buildRoutineTaskFromForm,
+  createDefaultRoutineTaskForm,
   getResourceFromValue,
   getTaskImportanceFromType,
   getTaskTypeValue,
@@ -10,6 +12,8 @@ import {
   type NewTaskInput,
   ResourcePicker,
   type ResourceValue,
+  RoutineTaskFields,
+  type RoutineTaskFormState,
   TaskTypePicker,
   type TaskTypeValue,
 } from '@/entities/task'
@@ -46,6 +50,7 @@ interface TaskComposerProps {
   openDraft?: TaskComposerDraft | null | undefined
   openButtonLabel?: string | undefined
   showTimeFields?: boolean
+  defaultTaskType?: TaskTypeValue | undefined
   onTaskCreated?: ((input: NewTaskInput) => Promise<void> | void) | undefined
 }
 
@@ -145,6 +150,7 @@ export function TaskComposer({
   openDraft,
   openButtonLabel = 'Новая задача',
   showTimeFields = true,
+  defaultTaskType = '',
   onTaskCreated,
 }: TaskComposerProps) {
   const {
@@ -173,8 +179,11 @@ export function TaskComposer({
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const [title, setTitle] = useState('')
   const [icon, setIcon] = useState('')
-  const [taskType, setTaskType] = useState<TaskTypeValue>('')
+  const [taskType, setTaskType] = useState<TaskTypeValue>(defaultTaskType)
   const [resource, setResource] = useState<ResourceValue>('')
+  const [routineForm, setRoutineForm] = useState<RoutineTaskFormState>(() =>
+    createDefaultRoutineTaskForm(),
+  )
   const [projectId, setProjectId] = useState('')
   const [assigneeUserId, setAssigneeUserId] = useState('')
   const [requiresConfirmation, setRequiresConfirmation] = useState(false)
@@ -225,8 +234,9 @@ export function TaskComposer({
     openDraftRequestIdRef.current = openDraft.requestId
     setTitle(openDraft.title ?? '')
     setIcon(openDraft.icon ?? '')
-    setTaskType(openDraft.taskType ?? '')
+    setTaskType(openDraft.taskType ?? defaultTaskType)
     setResource(openDraft.resource ?? '')
+    setRoutineForm(createDefaultRoutineTaskForm())
     setProjectId(openDraft.projectId ?? '')
     setAssigneeUserId('')
     setRequiresConfirmation(false)
@@ -240,7 +250,7 @@ export function TaskComposer({
     setTemplateNotice(null)
     setIsTemplatesExpanded(false)
     setIsOpen(true)
-  }, [initialPlannedDate, isSharedWorkspace, openDraft])
+  }, [defaultTaskType, initialPlannedDate, isSharedWorkspace, openDraft])
 
   const isReminderAvailable =
     !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
@@ -269,6 +279,14 @@ export function TaskComposer({
     if (!nextPlannedDate) {
       setPlannedStartTime('')
       setPlannedEndTime('')
+    }
+  }
+
+  function handleTaskTypeChange(nextTaskType: TaskTypeValue) {
+    setTaskType(nextTaskType)
+
+    if (nextTaskType === 'routine' && !plannedDate) {
+      setPlannedDate(initialPlannedDate ?? todayKey)
     }
   }
 
@@ -306,6 +324,8 @@ export function TaskComposer({
           : undefined,
       resource: getResourceFromValue(resource),
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
+      routine:
+        taskType === 'routine' ? buildRoutineTaskFromForm(routineForm) : null,
       sphereId: null,
       title: normalizedTitle,
       urgency: getTaskUrgencyFromType(taskType),
@@ -315,8 +335,9 @@ export function TaskComposer({
   function resetForm() {
     setTitle('')
     setIcon('')
-    setTaskType('')
+    setTaskType(defaultTaskType)
     setResource('')
+    setRoutineForm(createDefaultRoutineTaskForm())
     setProjectId('')
     setAssigneeUserId('')
     setRequiresConfirmation(false)
@@ -380,6 +401,7 @@ export function TaskComposer({
     setIcon(template.icon)
     setTaskType(getTaskTypeValue(template))
     setResource('')
+    setRoutineForm(createDefaultRoutineTaskForm())
     setProjectId(knownProject?.id ?? '')
     setAssigneeUserId('')
     setRequiresConfirmation(false)
@@ -496,7 +518,11 @@ export function TaskComposer({
                 }}
               >
                 <div className={styles.modalHeader}>
-                  <h2 id={titleId}>Новая задача</h2>
+                  <h2 id={titleId}>
+                    {defaultTaskType === 'routine'
+                      ? 'Новая рутина'
+                      : 'Новая задача'}
+                  </h2>
                   <button
                     className={styles.closeButton}
                     type="button"
@@ -864,9 +890,18 @@ export function TaskComposer({
                       <TaskTypePicker
                         className={styles.fieldType}
                         value={taskType}
-                        onChange={setTaskType}
+                        onChange={handleTaskTypeChange}
                       />
                     </section>
+
+                    {taskType === 'routine' ? (
+                      <section className={styles.columnSection}>
+                        <RoutineTaskFields
+                          value={routineForm}
+                          onChange={setRoutineForm}
+                        />
+                      </section>
+                    ) : null}
 
                     <section
                       className={cx(

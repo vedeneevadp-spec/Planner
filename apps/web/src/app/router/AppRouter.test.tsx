@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppRouter } from './AppRouter'
 
@@ -30,6 +30,10 @@ vi.mock('@/pages/habits', () => ({
   HabitsPage: () => <div>Habits page</div>,
 }))
 
+vi.mock('@/pages/profile', () => ({
+  ProfilePage: () => <div>Profile page</div>,
+}))
+
 vi.mock('@/pages/shopping', () => ({
   ShoppingPage: () => <div>Shopping page</div>,
 }))
@@ -46,6 +50,10 @@ vi.mock('@/pages/timeline', () => ({
 describe('AppRouter', () => {
   beforeEach(() => {
     mockUsePlannerSession.mockReset()
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it('redirects shared workspaces away from habits', async () => {
@@ -83,5 +91,42 @@ describe('AppRouter', () => {
     )
 
     expect(await screen.findByText('Habits page')).toBeVisible()
+  })
+
+  it('redirects shared workspaces away from profile', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'shared',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/profile']}>
+        <AppRouter />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Today page')).toBeVisible()
+    expect(screen.queryByText('Profile page')).not.toBeInTheDocument()
+  })
+
+  it('keeps profile available in personal workspaces', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'personal',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/profile']}>
+        <AppRouter />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Profile page')).toBeVisible()
   })
 })

@@ -383,7 +383,8 @@
 }
 
 .primaryButton,
-.secondaryButton {
+.secondaryButton,
+.dangerButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -409,8 +410,15 @@
   color: inherit;
 }
 
+.dangerButton {
+  background: rgba(173, 78, 47, 0.08);
+  border-color: rgba(173, 78, 47, 0.16);
+  color: #8a3a21;
+}
+
 .primaryButton:hover,
-.secondaryButton:hover {
+.secondaryButton:hover,
+.dangerButton:hover {
   transform: translateY(-1px);
 }
 
@@ -521,7 +529,8 @@
   }
 
   .primaryButton,
-  .secondaryButton {
+  .secondaryButton,
+  .dangerButton {
     width: 100%;
   }
 
