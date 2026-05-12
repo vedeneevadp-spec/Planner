@@ -85,9 +85,12 @@ vi.mock('@/features/shopping-list', () => ({
 }))
 
 vi.mock('@/features/session', () => ({
-  getCreateSharedWorkspaceErrorMessage: () => 'Не удалось создать пространство.',
-  getDeleteSharedWorkspaceErrorMessage: () => 'Не удалось удалить пространство.',
-  getUpdateSharedWorkspaceErrorMessage: () => 'Не удалось обновить пространство.',
+  getCreateSharedWorkspaceErrorMessage: () =>
+    'Не удалось создать пространство.',
+  getDeleteSharedWorkspaceErrorMessage: () =>
+    'Не удалось удалить пространство.',
+  getUpdateSharedWorkspaceErrorMessage: () =>
+    'Не удалось обновить пространство.',
   ProfileDialog: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div role="dialog">Профиль</div> : null,
   setSelectedWorkspaceIdForActors: mocks.setSelectedWorkspaceIdForActors,
@@ -197,8 +200,12 @@ describe('Sidebar', () => {
       name: 'Mobile navigation',
     })
 
-    expect(within(mobileNavigation).queryByText('Сферы')).not.toBeInTheDocument()
-    expect(within(mobileNavigation).queryByText('Привычки')).not.toBeInTheDocument()
+    expect(
+      within(mobileNavigation).queryByText('Сферы'),
+    ).not.toBeInTheDocument()
+    expect(
+      within(mobileNavigation).queryByText('Привычки'),
+    ).not.toBeInTheDocument()
 
     const moreSheet = within(openMobileMoreSheet())
 
@@ -216,7 +223,9 @@ describe('Sidebar', () => {
       name: 'Main navigation',
     })
 
-    expect(within(mainNavigation).queryByText('Привычки')).not.toBeInTheDocument()
+    expect(
+      within(mainNavigation).queryByText('Привычки'),
+    ).not.toBeInTheDocument()
     expect(within(mainNavigation).queryByText('Admin')).not.toBeInTheDocument()
 
     const moreSheet = within(openMobileMoreSheet())

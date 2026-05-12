@@ -178,7 +178,9 @@ function isRoutineScheduledOnDate(
   firstDate: string,
   dateKey: string,
 ): boolean {
-  return dateKey >= firstDate && routine.daysOfWeek.includes(getIsoWeekday(dateKey))
+  return (
+    dateKey >= firstDate && routine.daysOfWeek.includes(getIsoWeekday(dateKey))
+  )
 }
 
 function calculateCurrentStreak(

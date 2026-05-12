@@ -18,7 +18,7 @@
     "@planner/contracts": "file:../../packages/contracts",
     "fastify": "^5.8.5",
     "jose": "^6.2.2",
-    "kysely": "^0.28.16",
+    "kysely": "^0.28.17",
     "pg": "^8.20.0"
   },
   "devDependencies": {
