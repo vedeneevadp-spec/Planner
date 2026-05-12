@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   type AssignableWorkspaceGroupRole,
   type WorkspaceInvitationCreateInput,
   workspaceInvitationCreateInputSchema,
@@ -14,8 +13,14 @@ import {
   workspaceUserRecordSchema,
 } from '@planner/contracts'
 
-type FetchFn = typeof fetch
-type RequestSignal = AbortSignal | undefined
+import {
+  type ApiClientFetch,
+  type ApiRequestSignal,
+  createApiRequester,
+} from '@/shared/lib/api-client'
+
+type FetchFn = ApiClientFetch
+type RequestSignal = ApiRequestSignal
 
 export class WorkspaceParticipantsApiError extends Error {
   readonly code: string
@@ -67,83 +72,16 @@ export function createWorkspaceParticipantsApiClient(
   config: WorkspaceParticipantsApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): WorkspaceParticipantsApiClient {
-  const baseUrl = config.apiBaseUrl.replace(/\/$/, '')
-
-  async function request<TResponse>(options: {
-    body?: unknown
-    method?: 'DELETE' | 'GET' | 'PATCH' | 'POST'
-    path: string
-    responseSchema?: { parse: (value: unknown) => TResponse }
-    signal?: RequestSignal
-  }): Promise<TResponse> {
-    const headers = new Headers({
-      'x-workspace-id': config.workspaceId,
-    })
-
-    if (config.accessToken) {
-      headers.set('authorization', `Bearer ${config.accessToken}`)
-    } else {
-      headers.set('x-actor-user-id', config.actorUserId)
-    }
-
-    if (options.body !== undefined) {
-      headers.set('content-type', 'application/json')
-    }
-
-    const response = await fetchFn(`${baseUrl}${options.path}`, {
-      body: options.body === undefined ? null : JSON.stringify(options.body),
-      headers,
-      method: options.method ?? 'GET',
-      ...(options.signal ? { signal: options.signal } : {}),
-    })
-    const payload = await readResponsePayload(response)
-
-    if (!response.ok) {
-      throwApiError(response, payload)
-    }
-
-    if (!options.responseSchema) {
-      return undefined as TResponse
-    }
-
-    return options.responseSchema.parse(payload)
-  }
-
-  async function readResponsePayload(response: Response): Promise<unknown> {
-    const text = await response.text()
-
-    if (!text) {
-      return undefined
-    }
-
-    try {
-      return JSON.parse(text) as unknown
-    } catch {
-      return text
-    }
-  }
-
-  function throwApiError(response: Response, payload: unknown): never {
-    const parsedError = apiErrorSchema.safeParse(payload)
-
-    if (parsedError.success) {
-      throw new WorkspaceParticipantsApiError(parsedError.data.error.message, {
-        code: parsedError.data.error.code,
-        details: parsedError.data.error.details,
-        status: response.status,
-      })
-    }
-
-    throw new WorkspaceParticipantsApiError('Request failed.', {
-      code: 'request_failed',
-      details: payload,
-      status: response.status,
-    })
-  }
+  const { request } = createApiRequester(
+    config,
+    (message, options) => new WorkspaceParticipantsApiError(message, options),
+    fetchFn,
+  )
 
   return {
     createWorkspaceInvitation(input) {
       return request({
+        actorHeader: 'always',
         body: workspaceInvitationCreateInputSchema.parse(input),
         method: 'POST',
         path: '/api/v1/workspace-invitations',
@@ -152,6 +90,7 @@ export function createWorkspaceParticipantsApiClient(
     },
     listWorkspaceInvitations(signal) {
       return request({
+        actorHeader: 'always',
         path: '/api/v1/workspace-invitations',
         responseSchema: workspaceInvitationListResponseSchema,
         signal,
@@ -159,6 +98,7 @@ export function createWorkspaceParticipantsApiClient(
     },
     listWorkspaceUsers(signal) {
       return request({
+        actorHeader: 'always',
         path: '/api/v1/workspace-users',
         responseSchema: workspaceUserListResponseSchema,
         signal,
@@ -166,18 +106,21 @@ export function createWorkspaceParticipantsApiClient(
     },
     removeWorkspaceUser(membershipId) {
       return request({
+        actorHeader: 'always',
         method: 'DELETE',
         path: `/api/v1/workspace-users/${encodeURIComponent(membershipId)}`,
       })
     },
     revokeWorkspaceInvitation(invitationId) {
       return request({
+        actorHeader: 'always',
         method: 'DELETE',
         path: `/api/v1/workspace-invitations/${encodeURIComponent(invitationId)}`,
       })
     },
     updateWorkspaceUserGroupRole(membershipId, groupRole) {
       return request({
+        actorHeader: 'always',
         body: workspaceUserGroupRoleUpdateInputSchema.parse({ groupRole }),
         method: 'PATCH',
         path: `/api/v1/workspace-users/${encodeURIComponent(membershipId)}/group-role`,

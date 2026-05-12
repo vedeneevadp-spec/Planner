@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   type DailyPlanAutoBuildInput,
   dailyPlanAutoBuildInputSchema,
   type DailyPlanRecord,
@@ -53,13 +52,19 @@ import {
 } from '@planner/contracts'
 
 import {
+  type ApiClientFetch,
+  type ApiRequestSignal,
+  createApiRequester,
+} from '@/shared/lib/api-client'
+
+import {
   mapLifeSphereToProjectRecord,
   mapNewProjectInputToLifeSphereInput,
   mapProjectUpdateInputToLifeSphereUpdateInput,
 } from './sphere-project-compat'
 
-type FetchFn = typeof fetch
-type RequestSignal = AbortSignal | undefined
+type FetchFn = ApiClientFetch
+type RequestSignal = ApiRequestSignal
 
 export class PlannerApiError extends Error {
   readonly code: string
@@ -169,80 +174,11 @@ export function createPlannerApiClient(
   config: PlannerApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): PlannerApiClient {
-  const baseUrl = config.apiBaseUrl.replace(/\/$/, '')
-
-  async function request<TResponse>(options: {
-    body?: unknown
-    method?: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT'
-    path: string
-    query?: Record<string, string | number | undefined> | undefined
-    responseSchema?: { parse: (value: unknown) => TResponse }
-    signal?: RequestSignal
-    writeAccess?: boolean
-  }): Promise<TResponse> {
-    const url = new URL(`${baseUrl}${options.path}`)
-
-    if (options.query) {
-      for (const [key, value] of Object.entries(options.query)) {
-        if (value === undefined) {
-          continue
-        }
-
-        url.searchParams.set(key, String(value))
-      }
-    }
-
-    const headers = new Headers({
-      'x-workspace-id': config.workspaceId,
-    })
-
-    if (config.accessToken) {
-      headers.set('authorization', `Bearer ${config.accessToken}`)
-    }
-
-    if (options.writeAccess && !config.accessToken) {
-      headers.set('x-actor-user-id', config.actorUserId)
-    }
-
-    if (options.body !== undefined) {
-      headers.set('content-type', 'application/json')
-    }
-
-    const response = await fetchFn(url, {
-      body: options.body === undefined ? null : JSON.stringify(options.body),
-      headers,
-      method: options.method ?? 'GET',
-      ...(options.signal ? { signal: options.signal } : {}),
-    })
-
-    if (response.status === 204) {
-      return undefined as TResponse
-    }
-
-    const payload = await readResponsePayload(response)
-
-    if (!response.ok) {
-      const parsedError = apiErrorSchema.safeParse(payload)
-
-      if (parsedError.success) {
-        throw new PlannerApiError(parsedError.data.error.message, {
-          code: parsedError.data.error.code,
-          details: parsedError.data.error.details,
-          status: response.status,
-        })
-      }
-
-      throw new PlannerApiError('Request failed.', {
-        code: 'request_failed',
-        details: payload,
-        status: response.status,
-      })
-    }
-
-    return options.responseSchema
-      ? options.responseSchema.parse(payload)
-      : (payload as TResponse)
-  }
+  const { request } = createApiRequester(
+    config,
+    (message, options) => new PlannerApiError(message, options),
+    fetchFn,
+  )
 
   return {
     async getDailyPlan(date, signal) {
@@ -494,19 +430,5 @@ export function createPlannerApiClient(
         writeAccess: true,
       })
     },
-  }
-}
-
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-
-  if (!text) {
-    return undefined
-  }
-
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return text
   }
 }

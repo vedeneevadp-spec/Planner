@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   type AuthPasswordResetConfirmInput,
   authPasswordResetConfirmInputSchema,
   type AuthPasswordResetRequestInput,
@@ -19,6 +18,7 @@ import {
 } from '@planner/contracts'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
 
 export type AuthTokenTransport = 'body' | 'cookie'
 
@@ -198,38 +198,16 @@ function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
   return headers
 }
 
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-
-  if (!text) {
-    return undefined
-  }
-
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return text
-  }
-}
-
 function throwAuthApiError(
   response: Response,
   payload: unknown,
   fallbackMessage: string,
 ): never {
-  const parsedError = apiErrorSchema.safeParse(payload)
-
-  if (parsedError.success) {
-    throw new AuthApiError(parsedError.data.error.message, {
-      code: parsedError.data.error.code,
-      details: parsedError.data.error.details,
-      status: response.status,
-    })
-  }
-
-  throw new AuthApiError(fallbackMessage, {
-    code: 'auth_request_failed',
-    details: payload,
-    status: response.status,
+  throwApiError({
+    createError: (message, options) => new AuthApiError(message, options),
+    fallbackCode: 'auth_request_failed',
+    fallbackMessage,
+    payload,
+    response,
   })
 }

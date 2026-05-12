@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   type CreateSharedWorkspaceInput,
   createSharedWorkspaceInputSchema,
   type SessionResponse,
@@ -18,6 +17,7 @@ import {
   getPlannerSessionOverrideHeaders,
   plannerApiConfig,
 } from '@/shared/config/planner-api'
+import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
 
 export class SessionApiError extends Error {
   readonly code: string
@@ -220,39 +220,17 @@ export async function deleteSharedWorkspace(
   }
 }
 
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-
-  if (!text) {
-    return undefined
-  }
-
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return text
-  }
-}
-
 function throwSessionApiError(
   response: Response,
   payload: unknown,
   fallbackMessage: string,
 ): never {
-  const parsedError = apiErrorSchema.safeParse(payload)
-
-  if (parsedError.success) {
-    throw new SessionApiError(parsedError.data.error.message, {
-      code: parsedError.data.error.code,
-      details: parsedError.data.error.details,
-      status: response.status,
-    })
-  }
-
-  throw new SessionApiError(fallbackMessage, {
-    code: 'session_request_failed',
-    details: payload,
-    status: response.status,
+  throwApiError({
+    createError: (message, options) => new SessionApiError(message, options),
+    fallbackCode: 'session_request_failed',
+    fallbackMessage,
+    payload,
+    response,
   })
 }
 

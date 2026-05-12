@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   type HabitEntryDeleteInput,
   type HabitEntryRecord,
   habitEntryRecordSchema,
@@ -18,8 +17,14 @@ import {
   newHabitInputSchema,
 } from '@planner/contracts'
 
-type FetchFn = typeof fetch
-type RequestSignal = AbortSignal | undefined
+import {
+  type ApiClientFetch,
+  type ApiRequestSignal,
+  createApiRequester,
+} from '@/shared/lib/api-client'
+
+type FetchFn = ApiClientFetch
+type RequestSignal = ApiRequestSignal
 
 export class HabitsApiError extends Error {
   readonly code: string
@@ -82,82 +87,15 @@ export function createHabitsApiClient(
   config: HabitsApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): HabitsApiClient {
-  const baseUrl = config.apiBaseUrl.replace(/\/$/, '')
-
-  async function request<TResponse>(options: {
-    body?: unknown
-    method?: 'GET' | 'PATCH' | 'POST' | 'PUT'
-    path: string
-    query?: Record<string, string | number | undefined> | undefined
-    responseSchema: { parse: (value: unknown) => TResponse }
-    signal?: RequestSignal
-    writeAccess?: boolean
-  }): Promise<TResponse> {
-    const response = await sendRequest(options)
-    const payload = await readResponsePayload(response)
-
-    if (!response.ok) {
-      throwApiError(response, payload)
-    }
-
-    return options.responseSchema.parse(payload)
-  }
-
-  async function requestVoid(options: {
-    body?: unknown
-    method: 'DELETE'
-    path: string
-    writeAccess?: boolean
-  }): Promise<void> {
-    const response = await sendRequest(options)
-    const payload = await readResponsePayload(response)
-
-    if (!response.ok) {
-      throwApiError(response, payload)
-    }
-  }
-
-  async function sendRequest(options: {
-    body?: unknown
-    method?: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT'
-    path: string
-    query?: Record<string, string | number | undefined> | undefined
-    signal?: RequestSignal
-    writeAccess?: boolean
-  }): Promise<Response> {
-    const url = new URL(`${baseUrl}${options.path}`)
-
-    if (options.query) {
-      for (const [key, value] of Object.entries(options.query)) {
-        if (value !== undefined) {
-          url.searchParams.set(key, String(value))
-        }
-      }
-    }
-
-    const headers = new Headers({
-      'x-workspace-id': config.workspaceId,
-    })
-
-    if (config.accessToken) {
-      headers.set('authorization', `Bearer ${config.accessToken}`)
-    }
-
-    if (options.writeAccess && !config.accessToken) {
-      headers.set('x-actor-user-id', config.actorUserId)
-    }
-
-    if (options.body !== undefined) {
-      headers.set('content-type', 'application/json')
-    }
-
-    return fetchFn(url, {
-      body: options.body === undefined ? null : JSON.stringify(options.body),
-      headers,
-      method: options.method ?? 'GET',
-      ...(options.signal ? { signal: options.signal } : {}),
-    })
-  }
+  const { request } = createApiRequester(
+    config,
+    (message, options) => new HabitsApiError(message, options),
+    fetchFn,
+    {
+      fallbackErrorCode: 'habit_request_failed',
+      fallbackErrorMessage: 'Habit request failed.',
+    },
+  )
 
   return {
     createHabit(input) {
@@ -193,7 +131,7 @@ export function createHabitsApiClient(
       })
     },
     removeEntry(habitId, date, input = {}) {
-      return requestVoid({
+      return request<void>({
         body: input,
         method: 'DELETE',
         path: `/api/v1/habits/${encodeURIComponent(habitId)}/entries/${encodeURIComponent(date)}`,
@@ -201,7 +139,7 @@ export function createHabitsApiClient(
       })
     },
     removeHabit(habitId) {
-      return requestVoid({
+      return request<void>({
         method: 'DELETE',
         path: `/api/v1/habits/${encodeURIComponent(habitId)}`,
         writeAccess: true,
@@ -226,36 +164,4 @@ export function createHabitsApiClient(
       })
     },
   }
-}
-
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-
-  if (!text) {
-    return undefined
-  }
-
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return text
-  }
-}
-
-function throwApiError(response: Response, payload: unknown): never {
-  const parsedError = apiErrorSchema.safeParse(payload)
-
-  if (parsedError.success) {
-    throw new HabitsApiError(parsedError.data.error.message, {
-      code: parsedError.data.error.code,
-      details: parsedError.data.error.details,
-      status: response.status,
-    })
-  }
-
-  throw new HabitsApiError('Habit request failed.', {
-    code: 'habit_request_failed',
-    details: payload,
-    status: response.status,
-  })
 }

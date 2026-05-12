@@ -1,15 +1,7 @@
-import { generateUuidV7, routineTaskSchema } from '@planner/contracts'
-import {
-  type Kysely,
-  type Selectable,
-  type SelectQueryBuilder,
-  sql,
-} from 'kysely'
+import { generateUuidV7 } from '@planner/contracts'
+import { type Kysely, sql } from 'kysely'
 
-import { HttpError } from '../../bootstrap/http-error.js'
-import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
-  type DatabaseExecutor,
   withOptionalRls,
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
@@ -17,12 +9,10 @@ import type {
   DatabaseSchema,
   JsonObject,
 } from '../../infrastructure/db/schema.js'
-import { ProjectNotFoundError } from '../projects/project.errors.js'
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
   CreateTaskCommand,
   DeleteTaskCommand,
-  StoredTaskEventRecord,
   StoredTaskRecord,
   TaskEventFilters,
   TaskEventListResult,
@@ -39,48 +29,42 @@ import {
   writeTaskMutationArtifacts,
 } from './task.repository.postgres.artifacts.js'
 import {
+  buildTaskMetadata,
+  mapTaskEventRecord,
+  mapTaskRecord,
+  mapTaskRecordFromListRow,
+} from './task.repository.postgres.mapper.js'
+import {
+  buildScheduleUpdateMetadataValue,
+  executePoolerWriteStatement,
+  insertPrimaryTimeBlock,
+  resolveTaskWriteConflict,
+  shouldUsePoolerWriteFallback,
+} from './task.repository.postgres.mutations.js'
+import {
+  loadAssigneeDisplayName,
+  loadCurrentTask,
+  loadPrimaryTimeBlock,
+  loadProjectTitle,
+  loadTaskRowsPageWithPrimaryTimeBlock,
+  loadTaskRowsWithPrimaryTimeBlock,
+  loadUserDisplayName,
+  resolveTaskAssignee,
+  resolveTaskProject,
+} from './task.repository.postgres.queries.js'
+import {
+  MANUAL_TIME_BLOCK_SOURCE,
+  TASK_REMIND_BEFORE_START_KEY,
+  type TaskListRow,
+  type TaskRow,
+} from './task.repository.postgres.types.js'
+import {
   buildDefaultEndTime,
   buildTimestampFromDateAndTime,
-  extractTimeFromTimestamp,
   normalizeTaskInput,
   normalizeTaskSchedule,
   sortStoredTasks,
 } from './task.shared.js'
-
-type TaskRow = Selectable<DatabaseSchema['app.tasks']>
-type ProjectRow = Selectable<DatabaseSchema['app.projects']>
-type TaskTimeBlockRow = Selectable<DatabaseSchema['app.task_time_blocks']>
-type TaskEventRow = Selectable<DatabaseSchema['app.task_events']>
-type TaskRowsQuery = SelectQueryBuilder<DatabaseSchema, 'app.tasks', TaskRow>
-type TaskListRow = TaskRow & {
-  assignee_display_name?: string | null
-  author_display_name?: string | null
-  project_title?: ProjectRow['title'] | null
-  time_block_ends_at: TaskTimeBlockRow['ends_at'] | null
-  time_block_starts_at: TaskTimeBlockRow['starts_at'] | null
-}
-
-interface ResolvedTaskProject {
-  id: string
-  title: string
-}
-
-interface ResolvedTaskAssignee {
-  displayName: string
-  id: string
-}
-
-const LEGACY_PROJECT_NAME_KEY = 'legacyProjectName'
-const MANUAL_TIME_BLOCK_SOURCE = 'manual'
-const TASK_ICON_KEY = 'taskIcon'
-const TASK_IMPORTANCE_KEY = 'taskImportance'
-const TASK_REMIND_BEFORE_START_KEY = 'taskRemindBeforeStart'
-const TASK_REQUIRES_CONFIRMATION_KEY = 'taskRequiresConfirmation'
-const TASK_ROUTINE_KEY = 'taskRoutine'
-const TASK_URGENCY_KEY = 'taskUrgency'
-const DEFAULT_TASK_IMPORTANCE = 'not_important'
-const DEFAULT_TASK_URGENCY = 'not_urgent'
-const TASK_LIST_BATCH_SIZE = 20
 
 export class PostgresTaskRepository implements TaskRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -93,7 +77,7 @@ export class PostgresTaskRepository implements TaskRepository {
       this.db,
       context.auth,
       (executor) =>
-        this.loadTaskRowsWithPrimaryTimeBlock(
+        loadTaskRowsWithPrimaryTimeBlock(
           executor,
           context.workspaceId,
           filters,
@@ -101,7 +85,7 @@ export class PostgresTaskRepository implements TaskRepository {
       context.actorUserId,
     )
     const taskRecords = taskRows.map((taskRow) =>
-      this.mapTaskRecordFromListRow(taskRow),
+      mapTaskRecordFromListRow(taskRow),
     )
 
     return sortStoredTasks(
@@ -122,21 +106,17 @@ export class PostgresTaskRepository implements TaskRepository {
       this.db,
       context.auth,
       (executor) =>
-        this.loadTaskRowsPageWithPrimaryTimeBlock(
-          executor,
-          context.workspaceId,
-          {
-            ...filters,
-            limit: limit + 1,
-            offset,
-          },
-        ),
+        loadTaskRowsPageWithPrimaryTimeBlock(executor, context.workspaceId, {
+          ...filters,
+          limit: limit + 1,
+          offset,
+        }),
       context.actorUserId,
     )
     const hasMore = taskRows.length > limit
     const items = taskRows
       .slice(0, limit)
-      .map((taskRow) => this.mapTaskRecordFromListRow(taskRow))
+      .map((taskRow) => mapTaskRecordFromListRow(taskRow))
 
     return {
       hasMore,
@@ -173,17 +153,13 @@ export class PostgresTaskRepository implements TaskRepository {
           assigneeDisplayName,
           authorDisplayName,
         ] = await Promise.all([
-          this.loadPrimaryTimeBlock(executor, context.workspaceId, taskId),
-          this.loadProjectTitle(
-            executor,
-            context.workspaceId,
-            taskRow.project_id,
-          ),
-          this.loadAssigneeDisplayName(executor, taskRow.assignee_user_id),
-          this.loadUserDisplayName(executor, taskRow.created_by),
+          loadPrimaryTimeBlock(executor, context.workspaceId, taskId),
+          loadProjectTitle(executor, context.workspaceId, taskRow.project_id),
+          loadAssigneeDisplayName(executor, taskRow.assignee_user_id),
+          loadUserDisplayName(executor, taskRow.created_by),
         ])
 
-        return this.mapTaskRecord(
+        return mapTaskRecord(
           taskRow,
           timeBlock,
           projectTitle,
@@ -217,9 +193,7 @@ export class PostgresTaskRepository implements TaskRepository {
           .execute(),
       context.actorUserId,
     )
-    const events = eventRows.map((eventRow) =>
-      this.mapTaskEventRecord(eventRow),
-    )
+    const events = eventRows.map((eventRow) => mapTaskEventRecord(eventRow))
     const nextEventId = events.at(-1)?.id ?? afterEventId
 
     return {
@@ -233,15 +207,17 @@ export class PostgresTaskRepository implements TaskRepository {
     const normalizedSchedule = normalizeTaskSchedule(command.input)
     const sphereProjectId =
       normalizedInput.projectId ?? normalizedInput.sphereId
-    const project = await this.resolveTaskProject(
+    const project = await resolveTaskProject(
+      this.db,
       command.context,
       sphereProjectId,
     )
-    const assignee = await this.resolveTaskAssignee(
+    const assignee = await resolveTaskAssignee(
+      this.db,
       command.context,
       normalizedInput.assigneeUserId,
     )
-    const metadata = this.buildTaskMetadata(
+    const metadata = buildTaskMetadata(
       project ? '' : normalizedInput.project,
       normalizedInput,
     )
@@ -262,7 +238,7 @@ export class PostgresTaskRepository implements TaskRepository {
           )
         : null
 
-    if (this.shouldUsePoolerWriteFallback(command.context.auth)) {
+    if (shouldUsePoolerWriteFallback(command.context.auth)) {
       return this.createWithPoolerWriteFallback(command, {
         endsAt,
         metadata,
@@ -320,32 +296,32 @@ export class PostgresTaskRepository implements TaskRepository {
         }
 
         const timeBlock = insertedTask
-          ? await this.insertPrimaryTimeBlock(trx, {
+          ? await insertPrimaryTimeBlock(trx, {
               actorUserId: command.context.actorUserId,
               endsAt,
               startsAt,
               taskId: task.id,
               workspaceId: command.context.workspaceId,
             })
-          : await this.loadPrimaryTimeBlock(
+          : await loadPrimaryTimeBlock(
               trx,
               command.context.workspaceId,
               task.id,
             )
-        const projectTitle = await this.loadProjectTitle(
+        const projectTitle = await loadProjectTitle(
           trx,
           command.context.workspaceId,
           task.project_id,
         )
-        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+        const assigneeDisplayName = await loadAssigneeDisplayName(
           trx,
           task.assignee_user_id,
         )
         const authorDisplayName =
           task.created_by === command.context.actorUserId
             ? command.context.actorDisplayName
-            : await this.loadUserDisplayName(trx, task.created_by)
-        const record = this.mapTaskRecord(
+            : await loadUserDisplayName(trx, task.created_by)
+        const record = mapTaskRecord(
           task,
           timeBlock,
           projectTitle,
@@ -389,15 +365,17 @@ export class PostgresTaskRepository implements TaskRepository {
     const normalizedSchedule = normalizeTaskSchedule(normalizedInput)
     const sphereProjectId =
       normalizedInput.projectId ?? normalizedInput.sphereId
-    const project = await this.resolveTaskProject(
+    const project = await resolveTaskProject(
+      this.db,
       command.context,
       sphereProjectId,
     )
-    const assignee = await this.resolveTaskAssignee(
+    const assignee = await resolveTaskAssignee(
+      this.db,
       command.context,
       normalizedInput.assigneeUserId,
     )
-    const metadata = this.buildTaskMetadata(
+    const metadata = buildTaskMetadata(
       project ? '' : normalizedInput.project,
       normalizedInput,
     )
@@ -418,7 +396,7 @@ export class PostgresTaskRepository implements TaskRepository {
           )
         : null
 
-    if (this.shouldUsePoolerWriteFallback(command.context.auth)) {
+    if (shouldUsePoolerWriteFallback(command.context.auth)) {
       return this.updateWithPoolerWriteFallback(command, {
         deletedAt,
         endsAt,
@@ -465,7 +443,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = await updateQuery.returningAll().executeTakeFirst()
 
         if (!updatedTask) {
-          const currentTask = await this.loadCurrentTask(trx, command)
+          const currentTask = await loadCurrentTask(trx, command)
 
           if (!currentTask) {
             throw new TaskNotFoundError(command.taskId)
@@ -495,27 +473,27 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
           .execute()
 
-        const timeBlock = await this.insertPrimaryTimeBlock(trx, {
+        const timeBlock = await insertPrimaryTimeBlock(trx, {
           actorUserId: command.context.actorUserId,
           endsAt,
           startsAt,
           taskId: command.taskId,
           workspaceId: command.context.workspaceId,
         })
-        const projectTitle = await this.loadProjectTitle(
+        const projectTitle = await loadProjectTitle(
           trx,
           command.context.workspaceId,
           updatedTask.project_id,
         )
-        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+        const assigneeDisplayName = await loadAssigneeDisplayName(
           trx,
           updatedTask.assignee_user_id,
         )
-        const authorDisplayName = await this.loadUserDisplayName(
+        const authorDisplayName = await loadUserDisplayName(
           trx,
           updatedTask.created_by,
         )
-        const record = this.mapTaskRecord(
+        const record = mapTaskRecord(
           updatedTask,
           timeBlock,
           projectTitle,
@@ -556,7 +534,7 @@ export class PostgresTaskRepository implements TaskRepository {
     const completedAt =
       command.status === 'done' ? new Date().toISOString() : null
 
-    if (this.shouldUsePoolerWriteFallback(command.context.auth)) {
+    if (shouldUsePoolerWriteFallback(command.context.auth)) {
       return this.updateStatusWithPoolerWriteFallback(command, completedAt)
     }
 
@@ -586,7 +564,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = await updateQuery.returningAll().executeTakeFirst()
 
         if (!updatedTask) {
-          const currentTask = await this.loadCurrentTask(trx, command)
+          const currentTask = await loadCurrentTask(trx, command)
 
           if (!currentTask) {
             throw new TaskNotFoundError(command.taskId)
@@ -606,25 +584,25 @@ export class PostgresTaskRepository implements TaskRepository {
           throw new Error(`Task "${command.taskId}" was not updated.`)
         }
 
-        const timeBlock = await this.loadPrimaryTimeBlock(
+        const timeBlock = await loadPrimaryTimeBlock(
           trx,
           command.context.workspaceId,
           command.taskId,
         )
-        const projectTitle = await this.loadProjectTitle(
+        const projectTitle = await loadProjectTitle(
           trx,
           command.context.workspaceId,
           updatedTask.project_id,
         )
-        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+        const assigneeDisplayName = await loadAssigneeDisplayName(
           trx,
           updatedTask.assignee_user_id,
         )
-        const authorDisplayName = await this.loadUserDisplayName(
+        const authorDisplayName = await loadUserDisplayName(
           trx,
           updatedTask.created_by,
         )
-        const record = this.mapTaskRecord(
+        const record = mapTaskRecord(
           updatedTask,
           timeBlock,
           projectTitle,
@@ -680,7 +658,7 @@ export class PostgresTaskRepository implements TaskRepository {
           )
         : null
 
-    if (this.shouldUsePoolerWriteFallback(command.context.auth)) {
+    if (shouldUsePoolerWriteFallback(command.context.auth)) {
       return this.updateScheduleWithPoolerWriteFallback(command, {
         deletedAt,
         endsAt,
@@ -715,7 +693,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = await updateQuery.returningAll().executeTakeFirst()
 
         if (!updatedTask) {
-          const currentTask = await this.loadCurrentTask(trx, command)
+          const currentTask = await loadCurrentTask(trx, command)
 
           if (!currentTask) {
             throw new TaskNotFoundError(command.taskId)
@@ -745,27 +723,27 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('deleted_at', 'is', null)
           .execute()
 
-        const timeBlock = await this.insertPrimaryTimeBlock(trx, {
+        const timeBlock = await insertPrimaryTimeBlock(trx, {
           actorUserId: command.context.actorUserId,
           endsAt,
           startsAt,
           taskId: command.taskId,
           workspaceId: command.context.workspaceId,
         })
-        const projectTitle = await this.loadProjectTitle(
+        const projectTitle = await loadProjectTitle(
           trx,
           command.context.workspaceId,
           updatedTask.project_id,
         )
-        const assigneeDisplayName = await this.loadAssigneeDisplayName(
+        const assigneeDisplayName = await loadAssigneeDisplayName(
           trx,
           updatedTask.assignee_user_id,
         )
-        const authorDisplayName = await this.loadUserDisplayName(
+        const authorDisplayName = await loadUserDisplayName(
           trx,
           updatedTask.created_by,
         )
-        const record = this.mapTaskRecord(
+        const record = mapTaskRecord(
           updatedTask,
           timeBlock,
           projectTitle,
@@ -805,7 +783,7 @@ export class PostgresTaskRepository implements TaskRepository {
   async remove(command: DeleteTaskCommand): Promise<void> {
     const deletedAt = new Date().toISOString()
 
-    if (this.shouldUsePoolerWriteFallback(command.context.auth)) {
+    if (shouldUsePoolerWriteFallback(command.context.auth)) {
       return this.removeWithPoolerWriteFallback(command, deletedAt)
     }
 
@@ -834,7 +812,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = await updateQuery.returningAll().executeTakeFirst()
 
         if (!updatedTask) {
-          const currentTask = await this.loadCurrentTask(trx, command)
+          const currentTask = await loadCurrentTask(trx, command)
 
           if (!currentTask) {
             throw new TaskNotFoundError(command.taskId)
@@ -889,27 +867,6 @@ export class PostgresTaskRepository implements TaskRepository {
           .executeTakeFirst()
       },
       command.context.actorUserId,
-    )
-  }
-
-  private shouldUsePoolerWriteFallback(
-    authContext: AuthenticatedRequestContext | null,
-  ): authContext is AuthenticatedRequestContext {
-    return (
-      authContext !== null && process.env.API_DB_WRITE_FALLBACK === 'pooler'
-    )
-  }
-
-  private executePoolerWriteStatement<T>(
-    authContext: AuthenticatedRequestContext,
-    actorUserId: string,
-    callback: (executor: Kysely<DatabaseSchema>) => Promise<T>,
-  ): Promise<T> {
-    return withOptionalRls(
-      this.db,
-      authContext,
-      (executor) => callback(executor as Kysely<DatabaseSchema>),
-      actorUserId,
     )
   }
 
@@ -972,7 +929,8 @@ export class PostgresTaskRepository implements TaskRepository {
               where false
             ),
           `
-    const createdTask = await this.executePoolerWriteStatement(
+    const createdTask = await executePoolerWriteStatement(
+      this.db,
       authContext,
       command.context.actorUserId,
       async (executor) => {
@@ -1179,7 +1137,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const createdTask = result.rows[0]
 
         if (createdTask) {
-          const record = this.mapTaskRecordFromListRow(createdTask)
+          const record = mapTaskRecordFromListRow(createdTask)
 
           await syncTaskReminder(executor, {
             isActive: record.status !== 'done',
@@ -1201,7 +1159,7 @@ export class PostgresTaskRepository implements TaskRepository {
       throw new Error('Failed to create task record.')
     }
 
-    return this.mapTaskRecordFromListRow(createdTask)
+    return mapTaskRecordFromListRow(createdTask)
   }
 
   private async updateWithPoolerWriteFallback(
@@ -1269,7 +1227,8 @@ export class PostgresTaskRepository implements TaskRepository {
               from updated_task
             ),
           `
-    const updatedTask = await this.executePoolerWriteStatement(
+    const updatedTask = await executePoolerWriteStatement(
+      this.db,
       authContext,
       command.context.actorUserId,
       async (executor) => {
@@ -1349,7 +1308,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = result.rows[0]
 
         if (updatedTask) {
-          const record = this.mapTaskRecordFromListRow(updatedTask)
+          const record = mapTaskRecordFromListRow(updatedTask)
 
           await syncTaskReminder(executor, {
             isActive: record.status !== 'done',
@@ -1368,7 +1327,8 @@ export class PostgresTaskRepository implements TaskRepository {
     )
 
     if (!updatedTask) {
-      return this.resolvePoolerWriteConflict(
+      return resolveTaskWriteConflict(
+        this.db,
         authContext,
         command.context.actorUserId,
         command,
@@ -1376,7 +1336,7 @@ export class PostgresTaskRepository implements TaskRepository {
       )
     }
 
-    return this.mapTaskRecordFromListRow(updatedTask)
+    return mapTaskRecordFromListRow(updatedTask)
   }
 
   private async updateStatusWithPoolerWriteFallback(
@@ -1395,7 +1355,8 @@ export class PostgresTaskRepository implements TaskRepository {
       command.expectedVersion !== undefined
         ? sql`and version = ${command.expectedVersion}`
         : sql``
-    const updatedTask = await this.executePoolerWriteStatement(
+    const updatedTask = await executePoolerWriteStatement(
+      this.db,
       authContext,
       command.context.actorUserId,
       async (executor) => {
@@ -1469,7 +1430,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = result.rows[0]
 
         if (updatedTask) {
-          const record = this.mapTaskRecordFromListRow(updatedTask)
+          const record = mapTaskRecordFromListRow(updatedTask)
 
           await syncTaskReminder(executor, {
             isActive: record.status !== 'done',
@@ -1488,7 +1449,8 @@ export class PostgresTaskRepository implements TaskRepository {
     )
 
     if (!updatedTask) {
-      return this.resolvePoolerWriteConflict(
+      return resolveTaskWriteConflict(
+        this.db,
         authContext,
         command.context.actorUserId,
         command,
@@ -1496,7 +1458,7 @@ export class PostgresTaskRepository implements TaskRepository {
       )
     }
 
-    return this.mapTaskRecordFromListRow(updatedTask)
+    return mapTaskRecordFromListRow(updatedTask)
   }
 
   private async updateScheduleWithPoolerWriteFallback(
@@ -1559,7 +1521,8 @@ export class PostgresTaskRepository implements TaskRepository {
               from updated_task
             ),
           `
-    const updatedTask = await this.executePoolerWriteStatement(
+    const updatedTask = await executePoolerWriteStatement(
+      this.db,
       authContext,
       command.context.actorUserId,
       async (executor) => {
@@ -1664,7 +1627,7 @@ export class PostgresTaskRepository implements TaskRepository {
         const updatedTask = result.rows[0]
 
         if (updatedTask) {
-          const record = this.mapTaskRecordFromListRow(updatedTask)
+          const record = mapTaskRecordFromListRow(updatedTask)
 
           await syncTaskReminder(executor, {
             isActive: true,
@@ -1683,7 +1646,8 @@ export class PostgresTaskRepository implements TaskRepository {
     )
 
     if (!updatedTask) {
-      return this.resolvePoolerWriteConflict(
+      return resolveTaskWriteConflict(
+        this.db,
         authContext,
         command.context.actorUserId,
         command,
@@ -1691,7 +1655,7 @@ export class PostgresTaskRepository implements TaskRepository {
       )
     }
 
-    return this.mapTaskRecordFromListRow(updatedTask)
+    return mapTaskRecordFromListRow(updatedTask)
   }
 
   private async removeWithPoolerWriteFallback(
@@ -1706,7 +1670,8 @@ export class PostgresTaskRepository implements TaskRepository {
       )
     }
 
-    const updatedTask = await this.executePoolerWriteStatement(
+    const updatedTask = await executePoolerWriteStatement(
+      this.db,
       authContext,
       command.context.actorUserId,
       async (executor) => {
@@ -1782,7 +1747,8 @@ export class PostgresTaskRepository implements TaskRepository {
     )
 
     if (!updatedTask) {
-      return this.resolvePoolerWriteConflict(
+      return resolveTaskWriteConflict(
+        this.db,
         authContext,
         command.context.actorUserId,
         command,
@@ -1790,819 +1756,4 @@ export class PostgresTaskRepository implements TaskRepository {
       )
     }
   }
-
-  private async resolvePoolerWriteConflict(
-    authContext: AuthenticatedRequestContext,
-    actorUserId: string,
-    command: {
-      context: {
-        workspaceId: string
-      }
-      expectedVersion?: number
-      taskId: string
-    },
-    message: string,
-  ): Promise<never> {
-    const currentTask = await this.executePoolerWriteStatement(
-      authContext,
-      actorUserId,
-      (executor) => this.loadCurrentTask(executor, command),
-    )
-
-    if (!currentTask) {
-      throw new TaskNotFoundError(command.taskId)
-    }
-
-    if (
-      command.expectedVersion !== undefined &&
-      Number(currentTask.version) !== command.expectedVersion
-    ) {
-      throw new TaskVersionConflictError(
-        command.taskId,
-        command.expectedVersion,
-        Number(currentTask.version),
-      )
-    }
-
-    throw new Error(message)
-  }
-
-  private async loadTaskRowsWithPrimaryTimeBlock(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    filters?: TaskListFilters,
-  ): Promise<TaskListRow[]> {
-    const taskRows = await this.loadTaskRowsInBatches(
-      executor,
-      workspaceId,
-      filters,
-    )
-
-    if (taskRows.length === 0) {
-      return []
-    }
-
-    const [
-      primaryTimeBlocks,
-      projectTitles,
-      assigneeDisplayNames,
-      authorDisplayNames,
-    ] = await Promise.all([
-      this.loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
-      this.loadProjectTitlesForTasks(executor, workspaceId, taskRows),
-      this.loadAssigneeDisplayNamesForTasks(executor, taskRows),
-      this.loadAuthorDisplayNamesForTasks(executor, taskRows),
-    ])
-
-    return taskRows.map((taskRow) => {
-      const timeBlock = primaryTimeBlocks.get(taskRow.id)
-
-      return {
-        ...taskRow,
-        assignee_display_name: taskRow.assignee_user_id
-          ? (assigneeDisplayNames.get(taskRow.assignee_user_id) ?? null)
-          : null,
-        author_display_name: taskRow.created_by
-          ? (authorDisplayNames.get(taskRow.created_by) ?? null)
-          : null,
-        project_title: taskRow.project_id
-          ? (projectTitles.get(taskRow.project_id) ?? null)
-          : null,
-        time_block_ends_at: timeBlock?.ends_at ?? null,
-        time_block_starts_at: timeBlock?.starts_at ?? null,
-      }
-    })
-  }
-
-  private async loadTaskRowsPageWithPrimaryTimeBlock(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    filters: TaskListFilters & { limit: number; offset: number },
-  ): Promise<TaskListRow[]> {
-    const taskRows = await this.loadTaskRowsPage(executor, workspaceId, filters)
-
-    if (taskRows.length === 0) {
-      return []
-    }
-
-    const [
-      primaryTimeBlocks,
-      projectTitles,
-      assigneeDisplayNames,
-      authorDisplayNames,
-    ] = await Promise.all([
-      this.loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
-      this.loadProjectTitlesForTasks(executor, workspaceId, taskRows),
-      this.loadAssigneeDisplayNamesForTasks(executor, taskRows),
-      this.loadAuthorDisplayNamesForTasks(executor, taskRows),
-    ])
-
-    return taskRows.map((taskRow) => {
-      const timeBlock = primaryTimeBlocks.get(taskRow.id)
-
-      return {
-        ...taskRow,
-        assignee_display_name: taskRow.assignee_user_id
-          ? (assigneeDisplayNames.get(taskRow.assignee_user_id) ?? null)
-          : null,
-        author_display_name: taskRow.created_by
-          ? (authorDisplayNames.get(taskRow.created_by) ?? null)
-          : null,
-        project_title: taskRow.project_id
-          ? (projectTitles.get(taskRow.project_id) ?? null)
-          : null,
-        time_block_ends_at: timeBlock?.ends_at ?? null,
-        time_block_starts_at: timeBlock?.starts_at ?? null,
-      }
-    })
-  }
-
-  private loadTaskRowsPage(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    filters: TaskListFilters & { limit: number; offset: number },
-  ): Promise<TaskRow[]> {
-    const query = applyTaskListFilters(
-      executor
-        .selectFrom('app.tasks')
-        .selectAll()
-        .where('workspace_id', '=', workspaceId)
-        .where('deleted_at', 'is', null),
-      filters,
-    )
-      .orderBy('created_at', 'asc')
-      .orderBy('id', 'asc')
-      .limit(filters.limit)
-      .offset(filters.offset)
-
-    return query.execute()
-  }
-
-  private async loadTaskRowsInBatches(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    filters?: TaskListFilters,
-  ): Promise<TaskRow[]> {
-    const taskRows: TaskRow[] = []
-    let offset = 0
-
-    for (;;) {
-      const query = applyTaskListFilters(
-        executor
-          .selectFrom('app.tasks')
-          .selectAll()
-          .where('workspace_id', '=', workspaceId)
-          .where('deleted_at', 'is', null),
-        filters,
-      )
-        .orderBy('created_at', 'asc')
-        .orderBy('id', 'asc')
-        .limit(TASK_LIST_BATCH_SIZE)
-        .offset(offset)
-
-      const batch = await query.execute()
-
-      taskRows.push(...batch)
-
-      if (batch.length < TASK_LIST_BATCH_SIZE) {
-        return taskRows
-      }
-
-      offset += TASK_LIST_BATCH_SIZE
-    }
-  }
-
-  private async loadPrimaryTimeBlocksForTasks(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    taskRows: TaskRow[],
-  ): Promise<Map<string, Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at'>>> {
-    const taskIds = taskRows.map((taskRow) => taskRow.id)
-
-    if (taskIds.length === 0) {
-      return new Map()
-    }
-
-    const timeBlockRows = await executor
-      .selectFrom('app.task_time_blocks')
-      .select(['task_id', 'starts_at', 'ends_at'])
-      .where('workspace_id', '=', workspaceId)
-      .where('task_id', 'in', taskIds)
-      .where('deleted_at', 'is', null)
-      .orderBy('task_id', 'asc')
-      .orderBy('position', 'asc')
-      .orderBy('starts_at', 'asc')
-      .execute()
-    const primaryTimeBlocks = new Map<
-      string,
-      Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at'>
-    >()
-
-    for (const timeBlockRow of timeBlockRows) {
-      if (primaryTimeBlocks.has(timeBlockRow.task_id)) {
-        continue
-      }
-
-      primaryTimeBlocks.set(timeBlockRow.task_id, {
-        ends_at: timeBlockRow.ends_at,
-        starts_at: timeBlockRow.starts_at,
-      })
-    }
-
-    return primaryTimeBlocks
-  }
-
-  private async loadProjectTitlesForTasks(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    taskRows: TaskRow[],
-  ): Promise<Map<string, string>> {
-    const projectIds = [
-      ...new Set(
-        taskRows
-          .map((taskRow) => taskRow.project_id)
-          .filter((projectId): projectId is string => projectId !== null),
-      ),
-    ]
-
-    if (projectIds.length === 0) {
-      return new Map()
-    }
-
-    const projectRows = await executor
-      .selectFrom('app.projects')
-      .select(['id', 'title'])
-      .where('workspace_id', '=', workspaceId)
-      .where('id', 'in', projectIds)
-      .where('deleted_at', 'is', null)
-      .execute()
-
-    return new Map(
-      projectRows.map((projectRow) => [projectRow.id, projectRow.title]),
-    )
-  }
-
-  private async loadAssigneeDisplayNamesForTasks(
-    executor: DatabaseExecutor,
-    taskRows: TaskRow[],
-  ): Promise<Map<string, string>> {
-    const assigneeUserIds = getDistinctTaskUserIds(
-      taskRows,
-      (taskRow) => taskRow.assignee_user_id,
-    )
-
-    if (assigneeUserIds.length === 0) {
-      return new Map()
-    }
-
-    return this.loadUserDisplayNames(executor, assigneeUserIds)
-  }
-
-  private async loadAuthorDisplayNamesForTasks(
-    executor: DatabaseExecutor,
-    taskRows: TaskRow[],
-  ): Promise<Map<string, string>> {
-    const authorUserIds = getDistinctTaskUserIds(
-      taskRows,
-      (taskRow) => taskRow.created_by,
-    )
-
-    if (authorUserIds.length === 0) {
-      return new Map()
-    }
-
-    return this.loadUserDisplayNames(executor, authorUserIds)
-  }
-
-  private loadPrimaryTimeBlock(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    taskId: string,
-  ): Promise<TaskTimeBlockRow | undefined> {
-    return executor
-      .selectFrom('app.task_time_blocks')
-      .selectAll()
-      .where('workspace_id', '=', workspaceId)
-      .where('task_id', '=', taskId)
-      .where('deleted_at', 'is', null)
-      .orderBy('position', 'asc')
-      .orderBy('starts_at', 'asc')
-      .executeTakeFirst()
-  }
-
-  private async resolveTaskProject(
-    context: CreateTaskCommand['context'],
-    projectId: string | null,
-  ): Promise<ResolvedTaskProject | null> {
-    if (!projectId) {
-      return null
-    }
-
-    const project = await withOptionalRls(
-      this.db,
-      context.auth,
-      (executor) =>
-        this.loadActiveProject(executor, context.workspaceId, projectId),
-      context.actorUserId,
-    )
-
-    if (!project) {
-      throw new ProjectNotFoundError(projectId)
-    }
-
-    return {
-      id: project.id,
-      title: project.title,
-    }
-  }
-
-  private async resolveTaskAssignee(
-    context: CreateTaskCommand['context'],
-    assigneeUserId: string | null,
-  ): Promise<ResolvedTaskAssignee | null> {
-    if (!assigneeUserId) {
-      return null
-    }
-
-    if (context.workspaceKind !== 'shared') {
-      throw new HttpError(
-        400,
-        'task_assignee_shared_workspace_required',
-        'Task assignees are supported only in shared workspaces.',
-      )
-    }
-
-    const assignee = await withOptionalRls(
-      this.db,
-      context.auth,
-      (executor) =>
-        this.loadActiveWorkspaceAssignee(
-          executor,
-          context.workspaceId,
-          assigneeUserId,
-        ),
-      context.actorUserId,
-    )
-
-    if (!assignee) {
-      throw new HttpError(
-        400,
-        'task_assignee_not_found',
-        'The selected assignee is not a participant of this workspace.',
-      )
-    }
-
-    return assignee
-  }
-
-  private async loadProjectTitle(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    projectId: string | null,
-  ): Promise<string | null> {
-    if (!projectId) {
-      return null
-    }
-
-    const project = await this.loadActiveProject(
-      executor,
-      workspaceId,
-      projectId,
-    )
-
-    return project?.title ?? null
-  }
-
-  private loadActiveProject(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    projectId: string,
-  ): Promise<Pick<ProjectRow, 'id' | 'title'> | undefined> {
-    return executor
-      .selectFrom('app.projects')
-      .select(['id', 'title'])
-      .where('id', '=', projectId)
-      .where('workspace_id', '=', workspaceId)
-      .where('deleted_at', 'is', null)
-      .where('status', '=', 'active')
-      .executeTakeFirst()
-  }
-
-  private loadActiveWorkspaceAssignee(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    assigneeUserId: string,
-  ): Promise<ResolvedTaskAssignee | undefined> {
-    return executor
-      .selectFrom('app.workspace_members as membership')
-      .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
-      .select(['actor.display_name as displayName', 'actor.id as id'])
-      .where('membership.workspace_id', '=', workspaceId)
-      .where('membership.user_id', '=', assigneeUserId)
-      .where('membership.deleted_at', 'is', null)
-      .where('actor.deleted_at', 'is', null)
-      .executeTakeFirst()
-  }
-
-  private async loadAssigneeDisplayName(
-    executor: DatabaseExecutor,
-    assigneeUserId: string | null,
-  ): Promise<string | null> {
-    return this.loadUserDisplayName(executor, assigneeUserId)
-  }
-
-  private async loadUserDisplayName(
-    executor: DatabaseExecutor,
-    userId: string | null,
-  ): Promise<string | null> {
-    if (!userId) {
-      return null
-    }
-
-    const user = await executor
-      .selectFrom('app.users')
-      .select('display_name')
-      .where('id', '=', userId)
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst()
-
-    return user?.display_name ?? null
-  }
-
-  private async loadUserDisplayNames(
-    executor: DatabaseExecutor,
-    userIds: string[],
-  ): Promise<Map<string, string>> {
-    const rows = await executor
-      .selectFrom('app.users')
-      .select(['id', 'display_name'])
-      .where('id', 'in', userIds)
-      .where('deleted_at', 'is', null)
-      .execute()
-
-    return new Map(rows.map((row) => [row.id, row.display_name]))
-  }
-
-  private mapTaskRecord(
-    task: TaskRow,
-    timeBlock: TaskTimeBlockRow | undefined,
-    projectTitle: string | null,
-    assigneeDisplayName: string | null,
-    authorDisplayName: string | null,
-  ): StoredTaskRecord {
-    return {
-      assigneeDisplayName,
-      assigneeUserId: task.assignee_user_id,
-      authorDisplayName,
-      authorUserId: task.created_by,
-      completedAt: serializeNullableTimestamp(task.completed_at),
-      createdAt: serializeTimestamp(task.created_at),
-      deletedAt: serializeNullableTimestamp(task.deleted_at),
-      dueDate: serializeNullableDate(task.due_on),
-      id: task.id,
-      icon: this.readTaskIcon(task.metadata),
-      importance: this.readTaskImportance(task.metadata),
-      note: task.description,
-      plannedDate: serializeNullableDate(task.planned_on),
-      plannedEndTime: timeBlock
-        ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.ends_at))
-        : null,
-      plannedStartTime: timeBlock
-        ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.starts_at))
-        : null,
-      project: projectTitle ?? this.readLegacyProjectName(task.metadata),
-      projectId: task.project_id,
-      remindBeforeStart: this.readTaskRemindBeforeStart(task.metadata),
-      resource: task.resource,
-      requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
-      routine: this.readTaskRoutine(task.metadata),
-      sphereId: task.project_id ?? task.sphere_id,
-      status: task.status,
-      title: task.title,
-      urgency: this.readTaskUrgency(task.metadata),
-      updatedAt: serializeTimestamp(task.updated_at),
-      version: Number(task.version),
-      workspaceId: task.workspace_id,
-    }
-  }
-
-  private mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
-    return {
-      assigneeDisplayName: task.assignee_display_name ?? null,
-      assigneeUserId: task.assignee_user_id,
-      authorDisplayName: task.author_display_name ?? null,
-      authorUserId: task.created_by,
-      completedAt: serializeNullableTimestamp(task.completed_at),
-      createdAt: serializeTimestamp(task.created_at),
-      deletedAt: serializeNullableTimestamp(task.deleted_at),
-      dueDate: serializeNullableDate(task.due_on),
-      id: task.id,
-      icon: this.readTaskIcon(task.metadata),
-      importance: this.readTaskImportance(task.metadata),
-      note: task.description,
-      plannedDate: serializeNullableDate(task.planned_on),
-      plannedEndTime: task.time_block_ends_at
-        ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_ends_at))
-        : null,
-      plannedStartTime: task.time_block_starts_at
-        ? extractTimeFromTimestamp(
-            serializeTimestamp(task.time_block_starts_at),
-          )
-        : null,
-      project: task.project_title ?? this.readLegacyProjectName(task.metadata),
-      projectId: task.project_id,
-      remindBeforeStart: this.readTaskRemindBeforeStart(task.metadata),
-      resource: task.resource,
-      requiresConfirmation: this.readTaskRequiresConfirmation(task.metadata),
-      routine: this.readTaskRoutine(task.metadata),
-      sphereId: task.project_id ?? task.sphere_id,
-      status: task.status,
-      title: task.title,
-      urgency: this.readTaskUrgency(task.metadata),
-      updatedAt: serializeTimestamp(task.updated_at),
-      version: Number(task.version),
-      workspaceId: task.workspace_id,
-    }
-  }
-
-  private buildTaskMetadata(
-    projectName: string,
-    input: Pick<
-      StoredTaskRecord,
-      | 'icon'
-      | 'importance'
-      | 'remindBeforeStart'
-      | 'requiresConfirmation'
-      | 'routine'
-      | 'urgency'
-    >,
-  ): JsonObject {
-    const metadata: JsonObject = {}
-
-    if (projectName) {
-      metadata[LEGACY_PROJECT_NAME_KEY] = projectName
-    }
-
-    if (input.icon) {
-      metadata[TASK_ICON_KEY] = input.icon
-    }
-
-    if (input.importance !== DEFAULT_TASK_IMPORTANCE) {
-      metadata[TASK_IMPORTANCE_KEY] = input.importance
-    }
-
-    if (input.remindBeforeStart) {
-      metadata[TASK_REMIND_BEFORE_START_KEY] = true
-    }
-
-    if (input.requiresConfirmation) {
-      metadata[TASK_REQUIRES_CONFIRMATION_KEY] = true
-    }
-
-    if (input.routine) {
-      metadata[TASK_ROUTINE_KEY] = input.routine
-    }
-
-    if (input.urgency !== DEFAULT_TASK_URGENCY) {
-      metadata[TASK_URGENCY_KEY] = input.urgency
-    }
-
-    return metadata
-  }
-
-  private readLegacyProjectName(metadata: JsonObject): string {
-    const value = metadata[LEGACY_PROJECT_NAME_KEY]
-
-    return typeof value === 'string' ? value : ''
-  }
-
-  private readTaskIcon(metadata: JsonObject): string {
-    const value = metadata[TASK_ICON_KEY]
-
-    return typeof value === 'string' ? value : ''
-  }
-
-  private readTaskImportance(
-    metadata: JsonObject,
-  ): StoredTaskRecord['importance'] {
-    const value = metadata[TASK_IMPORTANCE_KEY]
-
-    return value === 'important' || value === 'not_important'
-      ? value
-      : DEFAULT_TASK_IMPORTANCE
-  }
-
-  private readTaskRemindBeforeStart(metadata: JsonObject): true | undefined {
-    return metadata[TASK_REMIND_BEFORE_START_KEY] === true ? true : undefined
-  }
-
-  private readTaskRequiresConfirmation(metadata: JsonObject): boolean {
-    return metadata[TASK_REQUIRES_CONFIRMATION_KEY] === true
-  }
-
-  private readTaskRoutine(
-    metadata: JsonObject,
-  ): StoredTaskRecord['routine'] | null {
-    const value = metadata[TASK_ROUTINE_KEY]
-    const parsed = routineTaskSchema.safeParse(value)
-
-    return parsed.success ? parsed.data : null
-  }
-
-  private readTaskUrgency(metadata: JsonObject): StoredTaskRecord['urgency'] {
-    const value = metadata[TASK_URGENCY_KEY]
-
-    return value === 'urgent' || value === 'not_urgent'
-      ? value
-      : DEFAULT_TASK_URGENCY
-  }
-
-  private insertPrimaryTimeBlock(
-    executor: DatabaseExecutor,
-    params: {
-      actorUserId: string
-      endsAt: string | null
-      startsAt: string | null
-      taskId: string
-      workspaceId: string
-    },
-  ): Promise<TaskTimeBlockRow | undefined> {
-    if (!params.startsAt || !params.endsAt) {
-      return Promise.resolve(undefined)
-    }
-
-    return executor
-      .insertInto('app.task_time_blocks')
-      .values({
-        created_by: params.actorUserId,
-        ends_at: params.endsAt,
-        metadata: {},
-        position: 0,
-        source: MANUAL_TIME_BLOCK_SOURCE,
-        starts_at: params.startsAt,
-        task_id: params.taskId,
-        timezone: 'UTC',
-        updated_by: params.actorUserId,
-        workspace_id: params.workspaceId,
-      })
-      .returningAll()
-      .executeTakeFirst()
-  }
-
-  private mapTaskEventRecord(event: TaskEventRow): StoredTaskEventRecord {
-    return {
-      actorUserId: event.actor_user_id,
-      eventId: event.event_id,
-      eventType: event.event_type,
-      id: Number(event.id),
-      occurredAt: serializeTimestamp(event.occurred_at),
-      payload: normalizeJsonObject(event.payload),
-      taskId: event.task_id,
-      workspaceId: event.workspace_id,
-    }
-  }
-
-  private loadCurrentTask(
-    executor: DatabaseExecutor,
-    command: {
-      context: {
-        workspaceId: string
-      }
-      taskId: string
-    },
-  ): Promise<Pick<TaskRow, 'id' | 'version'> | undefined> {
-    return executor
-      .selectFrom('app.tasks')
-      .select(['id', 'version'])
-      .where('id', '=', command.taskId)
-      .where('workspace_id', '=', command.context.workspaceId)
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst()
-  }
-}
-
-function getDistinctTaskUserIds(
-  taskRows: TaskRow[],
-  selector: (taskRow: TaskRow) => string | null,
-): string[] {
-  return [
-    ...new Set(
-      taskRows
-        .map(selector)
-        .filter((userId): userId is string => userId !== null),
-    ),
-  ]
-}
-
-function applyTaskListFilters(
-  query: TaskRowsQuery,
-  filters?: TaskListFilters,
-): TaskRowsQuery {
-  if (!filters) {
-    return query
-  }
-
-  let filteredQuery = query
-
-  if (filters.status) {
-    filteredQuery = filteredQuery.where('status', '=', filters.status)
-  }
-
-  if (filters.plannedDate) {
-    filteredQuery = filteredQuery.where('planned_on', '=', filters.plannedDate)
-  }
-
-  if (filters.project) {
-    filteredQuery = filteredQuery.where(
-      buildLegacyProjectTitleFilter(filters.project),
-    )
-  }
-
-  if (filters.projectId) {
-    filteredQuery = filteredQuery.where('project_id', '=', filters.projectId)
-  }
-
-  if (filters.sphereId) {
-    const sphereId = filters.sphereId
-
-    filteredQuery = filteredQuery.where((expressionBuilder) =>
-      expressionBuilder.or([
-        expressionBuilder('project_id', '=', sphereId),
-        expressionBuilder('sphere_id', '=', sphereId),
-      ]),
-    )
-  }
-
-  return filteredQuery
-}
-
-function buildLegacyProjectTitleFilter(projectTitle: string) {
-  return sql<boolean>`
-    (
-      app.tasks.metadata ->> ${LEGACY_PROJECT_NAME_KEY} = ${projectTitle}
-      or exists (
-        select 1
-        from app.projects
-        where app.projects.id = app.tasks.project_id
-          and app.projects.workspace_id = app.tasks.workspace_id
-          and app.projects.deleted_at is null
-          and app.projects.title = ${projectTitle}
-      )
-    )
-  `
-}
-
-function buildScheduleUpdateMetadataValue(
-  schedule: ReturnType<typeof normalizeTaskSchedule>,
-) {
-  return sql<JsonObject>`
-    case
-      when cast(${schedule.plannedDate} as date) is null
-        or cast(${schedule.plannedStartTime} as time) is null
-      then coalesce(metadata, '{}'::jsonb) - cast(${TASK_REMIND_BEFORE_START_KEY} as text)
-      else metadata
-    end
-  `
-}
-
-function serializeNullableTimestamp(value: unknown): string | null {
-  return value === null ? null : serializeTimestamp(value)
-}
-
-function serializeNullableDate(value: unknown): string | null {
-  if (value === null) {
-    return null
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (value instanceof Date) {
-    const year = value.getFullYear()
-    const month = String(value.getMonth() + 1).padStart(2, '0')
-    const day = String(value.getDate()).padStart(2, '0')
-
-    return `${year}-${month}-${day}`
-  }
-
-  throw new TypeError(`Unexpected date value: ${typeof value}`)
-}
-
-function serializeTimestamp(value: unknown): string {
-  return value instanceof Date ? value.toISOString() : String(value)
-}
-
-function normalizeJsonObject(value: unknown): JsonObject {
-  if (typeof value === 'string') {
-    const parsedValue = JSON.parse(value) as unknown
-
-    return normalizeJsonObject(parsedValue)
-  }
-
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as JsonObject
-  }
-
-  return {}
 }

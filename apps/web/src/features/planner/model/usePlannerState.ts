@@ -1,11 +1,6 @@
-import {
-  generateUuidV7,
-  type ProjectRecord,
-  type TaskRecord,
-  type TaskTemplateRecord,
-} from '@planner/contracts'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { generateUuidV7, type TaskRecord } from '@planner/contracts'
+import { useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   NewProjectInput,
@@ -30,23 +25,7 @@ import {
 } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
-import {
-  countConflictedPlannerOfflineMutations,
-  countRetryablePlannerOfflineMutations,
-  enqueuePlannerOfflineMutation,
-  getLastTaskEventId,
-  loadCachedProjectRecords,
-  loadCachedTaskRecords,
-  loadCachedTaskTemplateRecords,
-  replaceCachedProjectRecords,
-  replaceCachedTaskRecords,
-  replaceCachedTaskTemplateRecords,
-  setLastTaskEventId,
-} from '../lib/offline-planner-store'
-import {
-  drainPlannerOfflineQueue,
-  isQueueablePlannerMutationError,
-} from '../lib/offline-planner-sync'
+import { enqueuePlannerOfflineMutation } from '../lib/offline-planner-store'
 import {
   createPlannerApiClient,
   isUnauthorizedPlannerApiError,
@@ -56,79 +35,19 @@ import { useTaskCompletionConfetti } from '../lib/task-completion-confetti'
 import type { PlannerState } from './planner.types'
 import {
   getErrorMessage,
-  requirePlannerApi,
   shouldKeepOptimisticMutation,
 } from './planner-error-policy'
+import { usePlannerMutations } from './planner-mutations'
+import { usePlannerOfflineSync } from './planner-offline'
+import { usePlannerQueries } from './planner-queries'
 import {
-  createOptimisticProjectRecord,
-  createOptimisticTaskRecord,
-  createOptimisticTaskTemplateRecord,
-  detachProjectFromTaskRecords,
-  detachProjectFromTaskTemplateRecords,
   getTaskRecord,
-  normalizeSchedule,
-  removeProjectRecord,
-  removeTaskRecord,
-  removeTaskTemplateRecord,
-  replaceOptimisticProjectRecord,
-  replaceOptimisticTaskRecord,
-  replaceOptimisticTaskTemplateRecord,
-  replaceProjectRecord,
-  replaceTaskRecord,
   sortProjects,
   sortTaskTemplates,
   toggleTaskId,
   toPlannerTask,
   toPlannerTaskTemplate,
-  updateTaskProjectRecords,
-  updateTaskRecord,
-  updateTaskTemplateProjectRecords,
 } from './planner-records'
-
-interface PlannerMutationContext {
-  optimisticTaskId: string | undefined
-  previousTaskRecords: TaskRecord[] | undefined
-}
-
-interface ProjectMutationContext {
-  optimisticProjectId: string | undefined
-  previousProjectRecords: ProjectRecord[] | undefined
-}
-
-interface TaskTemplateMutationContext {
-  optimisticTemplateId: string | undefined
-  previousTemplateRecords: TaskTemplateRecord[] | undefined
-}
-
-interface UpdateProjectMutationVariables {
-  input: ProjectUpdateInput
-  projectId: string
-}
-
-interface ScheduleMutationVariables {
-  expectedVersion: number
-  schedule: TaskScheduleInput
-  taskId: string
-}
-
-interface StatusMutationVariables {
-  expectedVersion: number
-  status: TaskStatus
-  taskId: string
-}
-
-interface UpdateTaskMutationVariables {
-  expectedVersion: number
-  input: TaskUpdateInput
-  taskId: string
-}
-
-interface RemoveTaskMutationVariables {
-  expectedVersion: number
-  taskId: string
-}
-
-const TASK_EVENT_POLL_INTERVAL_MS = 15_000
 
 export function usePlannerState(): PlannerState {
   const { accessToken, isAuthEnabled, recoverSession } = useSessionAuth()
@@ -145,14 +64,10 @@ export function usePlannerState(): PlannerState {
   const [mutationErrorMessage, setMutationErrorMessage] = useState<
     string | null
   >(null)
-  const [isDrainingOfflineQueue, setIsDrainingOfflineQueue] = useState(false)
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(
     () => new Set(),
   )
   const pendingTaskIdsRef = useRef<Set<string>>(new Set())
-  const taskEventCursorSyncRef = useRef<Promise<void> | null>(null)
-  const [queuedMutationCount, setQueuedMutationCount] = useState(0)
-  const [conflictedMutationCount, setConflictedMutationCount] = useState(0)
   const plannerApi = useMemo(() => {
     if (!session || !isPlannerApiReady) {
       return null
@@ -165,855 +80,60 @@ export function usePlannerState(): PlannerState {
       workspaceId: session.workspaceId,
     })
   }, [accessToken, isPlannerApiReady, session])
-  const taskQueryKey = useMemo(
-    () => ['planner', 'tasks', workspaceId ?? 'pending'] as const,
-    [workspaceId],
-  )
-  const projectQueryKey = useMemo(
-    () => ['planner', 'projects', workspaceId ?? 'pending'] as const,
-    [workspaceId],
-  )
-  const taskTemplateQueryKey = useMemo(
-    () => ['planner', 'task-templates', workspaceId ?? 'pending'] as const,
-    [workspaceId],
-  )
-  const invalidatePlannerQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] }),
-      queryClient.invalidateQueries({
-        queryKey: ['planner', 'task-templates'],
-      }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'tasks'] }),
-    ])
-  }, [queryClient])
-
-  const tasksQuery = useQuery({
-    enabled: plannerApi !== null,
-    queryFn: ({ signal }) =>
-      requirePlannerApi(plannerApi).listTasks({}, signal),
-    queryKey: taskQueryKey,
-    retry: (failureCount, error) =>
-      !isUnauthorizedPlannerApiError(error) && failureCount < 2,
+  const {
+    invalidatePlannerQueries,
+    projectQueryKey,
+    projectsQuery,
+    taskQueryKey,
+    taskTemplateQueryKey,
+    taskTemplatesQuery,
+    tasksQuery,
+  } = usePlannerQueries({
+    plannerApi,
+    queryClient,
+    workspaceId,
   })
-  const projectsQuery = useQuery({
-    enabled: plannerApi !== null,
-    queryFn: ({ signal }) => requirePlannerApi(plannerApi).listProjects(signal),
-    queryKey: projectQueryKey,
-    retry: (failureCount, error) =>
-      !isUnauthorizedPlannerApiError(error) && failureCount < 2,
-  })
-  const taskTemplatesQuery = useQuery({
-    enabled: plannerApi !== null,
-    queryFn: ({ signal }) =>
-      requirePlannerApi(plannerApi).listTaskTemplates(signal),
-    queryKey: taskTemplateQueryKey,
-    retry: (failureCount, error) =>
-      !isUnauthorizedPlannerApiError(error) && failureCount < 2,
-  })
-  const refreshQueuedMutationCount = useCallback(async () => {
-    if (!workspaceId) {
-      setQueuedMutationCount(0)
-      setConflictedMutationCount(0)
-
-      return
-    }
-
-    setQueuedMutationCount(
-      await countRetryablePlannerOfflineMutations(workspaceId),
-    )
-    setConflictedMutationCount(
-      await countConflictedPlannerOfflineMutations(workspaceId),
-    )
-  }, [workspaceId])
-  const persistCurrentTaskRecords = useCallback(async () => {
-    if (!workspaceId) {
-      return
-    }
-
-    const currentTaskRecords =
-      queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-
-    if (currentTaskRecords) {
-      await replaceCachedTaskRecords(workspaceId, currentTaskRecords)
-    }
-  }, [queryClient, taskQueryKey, workspaceId])
-  const persistCurrentProjectRecords = useCallback(async () => {
-    if (!workspaceId) {
-      return
-    }
-
-    const currentProjectRecords =
-      queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
-
-    if (currentProjectRecords) {
-      await replaceCachedProjectRecords(workspaceId, currentProjectRecords)
-    }
-  }, [projectQueryKey, queryClient, workspaceId])
-  const persistCurrentTaskTemplateRecords = useCallback(async () => {
-    if (!workspaceId) {
-      return
-    }
-
-    const currentTemplateRecords =
-      queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
-
-    if (currentTemplateRecords) {
-      await replaceCachedTaskTemplateRecords(
-        workspaceId,
-        currentTemplateRecords,
-      )
-    }
-  }, [queryClient, taskTemplateQueryKey, workspaceId])
-  const syncTaskEventCursor = useCallback(async () => {
-    if (taskEventCursorSyncRef.current) {
-      try {
-        await taskEventCursorSyncRef.current
-      } catch {
-        // The owner call reports the sync error.
-      }
-
-      return
-    }
-
-    if (!plannerApi || !workspaceId) {
-      return
-    }
-
-    taskEventCursorSyncRef.current = (async () => {
-      const afterEventId = await getLastTaskEventId(workspaceId)
-      const result = await plannerApi.listTaskEvents({
-        afterEventId,
-        limit: 500,
-      })
-
-      if (result.nextEventId > afterEventId) {
-        await setLastTaskEventId(workspaceId, result.nextEventId)
-        await queryClient.invalidateQueries({ queryKey: taskQueryKey })
-      }
-    })()
-
-    try {
-      await taskEventCursorSyncRef.current
-    } catch (error) {
-      if (isUnauthorizedPlannerApiError(error)) {
-        const recoveryResult = await recoverSession()
-
-        if (recoveryResult === 'recovered') {
-          await invalidatePlannerQueries()
-        }
-
-        return
-      }
-
-      if (!isQueueablePlannerMutationError(error)) {
-        setMutationErrorMessage(getErrorMessage(error))
-      }
-    } finally {
-      taskEventCursorSyncRef.current = null
-    }
-  }, [
+  const {
+    conflictedMutationCount,
+    isDrainingOfflineQueue,
+    persistCurrentProjectRecords,
+    persistCurrentTaskRecords,
+    persistCurrentTaskTemplateRecords,
+    queuedMutationCount,
+    refreshQueuedMutationCount,
+  } = usePlannerOfflineSync({
     invalidatePlannerQueries,
     plannerApi,
+    projectQueryKey,
+    projects: projectsQuery.data,
     queryClient,
     recoverSession,
+    setMutationErrorMessage,
     taskQueryKey,
+    taskTemplateQueryKey,
+    taskTemplates: taskTemplatesQuery.data,
+    tasks: tasksQuery.data,
     workspaceId,
-  ])
-  const drainQueuedMutations = useCallback(async () => {
-    if (!plannerApi || !workspaceId) {
-      return
-    }
-
-    setIsDrainingOfflineQueue(true)
-
-    try {
-      const result = await drainPlannerOfflineQueue({
-        api: plannerApi,
-        onProjectSynced: (project) => {
-          queryClient.setQueryData<ProjectRecord[]>(
-            projectQueryKey,
-            (current = []) => replaceProjectRecord(current, project),
-          )
-          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            updateTaskProjectRecords(current, project),
-          )
-          queryClient.setQueryData<TaskTemplateRecord[]>(
-            taskTemplateQueryKey,
-            (current = []) =>
-              updateTaskTemplateProjectRecords(current, project),
-          )
-        },
-        onTaskDeleted: (taskId) => {
-          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            removeTaskRecord(current, taskId),
-          )
-        },
-        onTaskSynced: (task) => {
-          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            replaceTaskRecord(current, task),
-          )
-        },
-        workspaceId,
-      })
-
-      if (result.synced > 0 || result.conflicted > 0) {
-        await queryClient.invalidateQueries({ queryKey: projectQueryKey })
-        await queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
-        await queryClient.invalidateQueries({ queryKey: taskQueryKey })
-      }
-
-      if (result.conflicted > 0) {
-        setMutationErrorMessage(
-          'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
-        )
-      }
-
-      if (result.processed > 0 && result.failed === 0) {
-        await syncTaskEventCursor()
-      }
-    } finally {
-      await refreshQueuedMutationCount()
-      setIsDrainingOfflineQueue(false)
-    }
-  }, [
+  })
+  const {
+    createProjectMutation,
+    createTaskMutation,
+    createTaskTemplateMutation,
+    removeProjectMutation,
+    removeTaskMutation,
+    removeTaskTemplateMutation,
+    setTaskScheduleMutation,
+    setTaskStatusMutation,
+    updateProjectMutation,
+    updateTaskMutation,
+  } = usePlannerMutations({
     plannerApi,
     projectQueryKey,
     queryClient,
-    refreshQueuedMutationCount,
-    syncTaskEventCursor,
-    taskTemplateQueryKey,
+    session,
+    setMutationErrorMessage,
     taskQueryKey,
-    workspaceId,
-  ])
-
-  useEffect(() => {
-    if (!workspaceId) {
-      return
-    }
-
-    let isActive = true
-
-    void loadCachedTaskRecords(workspaceId).then((cachedTaskRecords) => {
-      if (!isActive || cachedTaskRecords.length === 0) {
-        return
-      }
-
-      queryClient.setQueryData<TaskRecord[]>(
-        taskQueryKey,
-        (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
-      )
-    })
-    void loadCachedProjectRecords(workspaceId).then((cachedProjectRecords) => {
-      if (!isActive || cachedProjectRecords.length === 0) {
-        return
-      }
-
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (currentProjectRecords) =>
-          currentProjectRecords ?? cachedProjectRecords,
-      )
-    })
-    void loadCachedTaskTemplateRecords(workspaceId).then(
-      (cachedTemplateRecords) => {
-        if (!isActive || cachedTemplateRecords.length === 0) {
-          return
-        }
-
-        queryClient.setQueryData<TaskTemplateRecord[]>(
-          taskTemplateQueryKey,
-          (currentTemplateRecords) =>
-            currentTemplateRecords ?? cachedTemplateRecords,
-        )
-      },
-    )
-    void refreshQueuedMutationCount()
-
-    return () => {
-      isActive = false
-    }
-  }, [
-    projectQueryKey,
-    queryClient,
-    refreshQueuedMutationCount,
     taskTemplateQueryKey,
-    taskQueryKey,
-    workspaceId,
-  ])
-
-  useEffect(() => {
-    if (!workspaceId || !tasksQuery.data) {
-      return
-    }
-
-    void replaceCachedTaskRecords(workspaceId, tasksQuery.data)
-  }, [tasksQuery.data, workspaceId])
-
-  useEffect(() => {
-    if (!workspaceId || !projectsQuery.data) {
-      return
-    }
-
-    void replaceCachedProjectRecords(workspaceId, projectsQuery.data)
-  }, [projectsQuery.data, workspaceId])
-
-  useEffect(() => {
-    if (!workspaceId || !taskTemplatesQuery.data) {
-      return
-    }
-
-    void replaceCachedTaskTemplateRecords(workspaceId, taskTemplatesQuery.data)
-  }, [taskTemplatesQuery.data, workspaceId])
-
-  useEffect(() => {
-    void drainQueuedMutations()
-  }, [drainQueuedMutations])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    function handleOnline() {
-      void drainQueuedMutations()
-    }
-
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [drainQueuedMutations])
-
-  useEffect(() => {
-    if (!workspaceId) {
-      return
-    }
-
-    void syncTaskEventCursor()
-
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState === 'hidden') {
-        return
-      }
-
-      void syncTaskEventCursor()
-    }, TASK_EVENT_POLL_INTERVAL_MS)
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-        void syncTaskEventCursor()
-      }
-    }
-
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      window.clearInterval(intervalId)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [syncTaskEventCursor, workspaceId])
-
-  const createProjectMutation = useMutation({
-    mutationFn: (input: NewProjectInput) =>
-      requirePlannerApi(plannerApi).createProject(input),
-    onMutate: async (input): Promise<ProjectMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: projectQueryKey })
-
-      const previousProjectRecords =
-        queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
-      const optimisticProject = createOptimisticProjectRecord(
-        input,
-        session?.workspaceId ?? 'pending',
-      )
-
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) => sortProjects([optimisticProject, ...current]),
-      )
-
-      return {
-        optimisticProjectId: optimisticProject.id,
-        previousProjectRecords,
-      }
-    },
-    onError: (error, _input, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousProjectRecords) {
-        queryClient.setQueryData(
-          projectQueryKey,
-          context.previousProjectRecords,
-        )
-      }
-    },
-    onSuccess: (project, _input, context) => {
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) =>
-          replaceOptimisticProjectRecord(
-            current,
-            context?.optimisticProjectId,
-            project,
-          ),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
-    },
-  })
-
-  const updateProjectMutation = useMutation({
-    mutationFn: ({ input, projectId }: UpdateProjectMutationVariables) =>
-      requirePlannerApi(plannerApi).updateProject(projectId, input),
-    onMutate: async ({ input, projectId }): Promise<ProjectMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: projectQueryKey })
-
-      const previousProjectRecords =
-        queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
-      const now = new Date().toISOString()
-
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) =>
-          sortProjects(
-            current.map((project) =>
-              project.id === projectId
-                ? {
-                    ...project,
-                    ...(input.title !== undefined
-                      ? { title: input.title.trim() }
-                      : {}),
-                    ...(input.description !== undefined
-                      ? { description: input.description.trim() }
-                      : {}),
-                    ...(input.color !== undefined
-                      ? { color: input.color.trim() }
-                      : {}),
-                    ...(input.icon !== undefined
-                      ? { icon: input.icon.trim() }
-                      : {}),
-                    updatedAt: now,
-                    version: project.version + 1,
-                  }
-                : project,
-            ),
-          ),
-      )
-
-      return {
-        optimisticProjectId: undefined,
-        previousProjectRecords,
-      }
-    },
-    onError: (error, _variables, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousProjectRecords) {
-        queryClient.setQueryData(
-          projectQueryKey,
-          context.previousProjectRecords,
-        )
-      }
-    },
-    onSuccess: (project) => {
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) => replaceProjectRecord(current, project),
-      )
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskProjectRecords(current, project),
-      )
-      queryClient.setQueryData<TaskTemplateRecord[]>(
-        taskTemplateQueryKey,
-        (current = []) => updateTaskTemplateProjectRecords(current, project),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
-      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const removeProjectMutation = useMutation({
-    mutationFn: (projectId: string) =>
-      requirePlannerApi(plannerApi).removeLifeSphere(projectId),
-    onSuccess: (_result, projectId) => {
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) => removeProjectRecord(current, projectId),
-      )
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        detachProjectFromTaskRecords(current, projectId),
-      )
-      queryClient.setQueryData<TaskTemplateRecord[]>(
-        taskTemplateQueryKey,
-        (current = []) =>
-          detachProjectFromTaskTemplateRecords(current, projectId),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
-      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const createTaskMutation = useMutation({
-    mutationFn: (input: NewTaskInput) =>
-      requirePlannerApi(plannerApi).createTask(input),
-    onMutate: async (input): Promise<PlannerMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskQueryKey })
-
-      const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-      const optimisticTask = createOptimisticTaskRecord(input, {
-        authorDisplayName: session?.actor.displayName ?? null,
-        authorUserId: session?.actorUserId ?? null,
-        workspaceId: session?.workspaceId ?? 'pending',
-      })
-
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => [
-        optimisticTask,
-        ...current,
-      ])
-
-      return {
-        optimisticTaskId: optimisticTask.id,
-        previousTaskRecords,
-      }
-    },
-    onError: (error, _input, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
-    },
-    onSuccess: (task, _input, context) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        replaceOptimisticTaskRecord(current, context?.optimisticTaskId, task),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const updateTaskMutation = useMutation({
-    mutationFn: ({
-      expectedVersion,
-      input,
-      taskId,
-    }: UpdateTaskMutationVariables) =>
-      requirePlannerApi(plannerApi).updateTask(taskId, {
-        ...input,
-        expectedVersion,
-      }),
-    onMutate: async ({
-      input,
-      taskId,
-    }: UpdateTaskMutationVariables): Promise<PlannerMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskQueryKey })
-
-      const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-      const normalizedSchedule = normalizeSchedule({
-        plannedDate: input.plannedDate,
-        plannedEndTime: input.plannedEndTime,
-        plannedStartTime: input.plannedStartTime,
-      })
-      const now = new Date().toISOString()
-
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskRecord(current, taskId, (task) => ({
-          ...task,
-          assigneeDisplayName: null,
-          assigneeUserId: input.assigneeUserId ?? null,
-          dueDate: input.dueDate,
-          icon: (input.icon ?? '').trim(),
-          importance: input.importance ?? 'not_important',
-          note: input.note.trim(),
-          plannedDate: normalizedSchedule.plannedDate,
-          plannedEndTime: normalizedSchedule.plannedEndTime,
-          plannedStartTime: normalizedSchedule.plannedStartTime,
-          project: input.project.trim(),
-          projectId: input.projectId,
-          remindBeforeStart: input.remindBeforeStart ? true : undefined,
-          resource: input.resource,
-          requiresConfirmation: input.requiresConfirmation ?? false,
-          routine: input.routine ?? null,
-          sphereId: input.sphereId,
-          title: input.title.trim(),
-          urgency: input.urgency ?? 'not_urgent',
-          updatedAt: now,
-          version: task.version + 1,
-        })),
-      )
-
-      return {
-        optimisticTaskId: undefined,
-        previousTaskRecords,
-      }
-    },
-    onError: (error, _variables, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
-    },
-    onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        replaceTaskRecord(current, task),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const createTaskTemplateMutation = useMutation({
-    mutationFn: (input: NewTaskTemplateInput) =>
-      requirePlannerApi(plannerApi).createTaskTemplate(input),
-    onMutate: async (input): Promise<TaskTemplateMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskTemplateQueryKey })
-
-      const previousTemplateRecords =
-        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
-      const optimisticTemplate = createOptimisticTaskTemplateRecord(
-        input,
-        session?.workspaceId ?? 'pending',
-      )
-
-      queryClient.setQueryData<TaskTemplateRecord[]>(
-        taskTemplateQueryKey,
-        (current = []) => sortTaskTemplates([optimisticTemplate, ...current]),
-      )
-
-      return {
-        optimisticTemplateId: optimisticTemplate.id,
-        previousTemplateRecords,
-      }
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previousTemplateRecords) {
-        queryClient.setQueryData(
-          taskTemplateQueryKey,
-          context.previousTemplateRecords,
-        )
-      }
-    },
-    onSuccess: (template, _input, context) => {
-      queryClient.setQueryData<TaskTemplateRecord[]>(
-        taskTemplateQueryKey,
-        (current = []) =>
-          replaceOptimisticTaskTemplateRecord(
-            current,
-            context?.optimisticTemplateId,
-            template,
-          ),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
-    },
-  })
-
-  const setTaskStatusMutation = useMutation({
-    mutationFn: ({
-      expectedVersion,
-      status,
-      taskId,
-    }: StatusMutationVariables) =>
-      requirePlannerApi(plannerApi).setTaskStatus(taskId, {
-        expectedVersion,
-        status,
-      }),
-    onMutate: async ({ status, taskId }): Promise<PlannerMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskQueryKey })
-
-      const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-      const now = new Date().toISOString()
-
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskRecord(current, taskId, (task) => ({
-          ...task,
-          completedAt: status === 'done' ? now : null,
-          status,
-          updatedAt: now,
-          version: task.version + 1,
-        })),
-      )
-
-      return {
-        optimisticTaskId: undefined,
-        previousTaskRecords,
-      }
-    },
-    onError: (error, _variables, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
-    },
-    onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        replaceTaskRecord(current, task),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const setTaskScheduleMutation = useMutation({
-    mutationFn: ({
-      expectedVersion,
-      schedule,
-      taskId,
-    }: ScheduleMutationVariables) =>
-      requirePlannerApi(plannerApi).setTaskSchedule(taskId, {
-        expectedVersion,
-        schedule,
-      }),
-    onMutate: async ({ schedule, taskId }): Promise<PlannerMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskQueryKey })
-
-      const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-      const normalizedSchedule = normalizeSchedule(schedule)
-      const now = new Date().toISOString()
-
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskRecord(current, taskId, (task) => ({
-          ...task,
-          plannedDate: normalizedSchedule.plannedDate,
-          plannedEndTime: normalizedSchedule.plannedEndTime,
-          plannedStartTime: normalizedSchedule.plannedStartTime,
-          remindBeforeStart:
-            normalizedSchedule.plannedDate &&
-            normalizedSchedule.plannedStartTime
-              ? task.remindBeforeStart
-              : undefined,
-          updatedAt: now,
-          version: task.version + 1,
-        })),
-      )
-
-      return {
-        optimisticTaskId: undefined,
-        previousTaskRecords,
-      }
-    },
-    onError: (error, _variables, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
-    },
-    onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        replaceTaskRecord(current, task),
-      )
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const removeTaskMutation = useMutation({
-    mutationFn: ({ expectedVersion, taskId }: RemoveTaskMutationVariables) =>
-      requirePlannerApi(plannerApi).removeTask(taskId, expectedVersion),
-    onMutate: async ({
-      taskId,
-    }: RemoveTaskMutationVariables): Promise<PlannerMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskQueryKey })
-
-      const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
-
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        removeTaskRecord(current, taskId),
-      )
-
-      return {
-        optimisticTaskId: undefined,
-        previousTaskRecords,
-      }
-    },
-    onError: (error, _taskId, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
-    },
-  })
-
-  const removeTaskTemplateMutation = useMutation({
-    mutationFn: (templateId: string) =>
-      requirePlannerApi(plannerApi).removeTaskTemplate(templateId),
-    onMutate: async (
-      templateId: string,
-    ): Promise<TaskTemplateMutationContext> => {
-      setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: taskTemplateQueryKey })
-
-      const previousTemplateRecords =
-        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
-
-      queryClient.setQueryData<TaskTemplateRecord[]>(
-        taskTemplateQueryKey,
-        (current = []) => removeTaskTemplateRecord(current, templateId),
-      )
-
-      return {
-        optimisticTemplateId: undefined,
-        previousTemplateRecords,
-      }
-    },
-    onError: (_error, _templateId, context) => {
-      if (context?.previousTemplateRecords) {
-        queryClient.setQueryData(
-          taskTemplateQueryKey,
-          context.previousTemplateRecords,
-        )
-      }
-    },
-    onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
-    },
   })
 
   useEffect(() => {

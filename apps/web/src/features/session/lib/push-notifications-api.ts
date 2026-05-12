@@ -1,5 +1,4 @@
 import {
-  apiErrorSchema,
   type PushDeviceRecord,
   pushDeviceRecordSchema,
   type PushDeviceUpsertInput,
@@ -10,7 +9,12 @@ import {
   pushTestNotificationResponseSchema,
 } from '@planner/contracts'
 
-type FetchFn = typeof fetch
+import {
+  type ApiClientFetch,
+  createApiRequester,
+} from '@/shared/lib/api-client'
+
+type FetchFn = ApiClientFetch
 
 export class PushNotificationsApiError extends Error {
   readonly code: string
@@ -52,58 +56,23 @@ export function createPushNotificationsApiClient(
   config: PushNotificationsApiClientConfig,
   fetchFn: FetchFn = fetch,
 ): PushNotificationsApiClient {
-  const baseUrl = config.apiBaseUrl.replace(/\/$/, '')
-
-  async function request<TResponse>(options: {
-    body?: unknown
-    method: 'DELETE' | 'POST' | 'PUT'
-    path: string
-    responseSchema?: { parse: (value: unknown) => TResponse }
-  }): Promise<TResponse> {
-    const headers = new Headers({
-      'x-workspace-id': config.workspaceId,
-    })
-
-    if (config.accessToken) {
-      headers.set('authorization', `Bearer ${config.accessToken}`)
-    } else {
-      headers.set('x-actor-user-id', config.actorUserId)
-    }
-
-    if (options.body !== undefined) {
-      headers.set('content-type', 'application/json')
-    }
-
-    const response = await fetchFn(`${baseUrl}${options.path}`, {
-      body: options.body === undefined ? null : JSON.stringify(options.body),
-      headers,
-      method: options.method,
-    })
-
-    if (response.status === 204) {
-      return undefined as TResponse
-    }
-
-    const payload = await readResponsePayload(response)
-
-    if (!response.ok) {
-      throwApiError(response, payload)
-    }
-
-    return options.responseSchema
-      ? options.responseSchema.parse(payload)
-      : (payload as TResponse)
-  }
+  const { request } = createApiRequester(
+    config,
+    (message, options) => new PushNotificationsApiError(message, options),
+    fetchFn,
+  )
 
   return {
     removeDevice(installationId) {
       return request({
+        actorHeader: 'always',
         method: 'DELETE',
         path: `/api/v1/push/devices/${encodeURIComponent(installationId)}`,
       })
     },
     sendTestNotification(input) {
       return request({
+        actorHeader: 'always',
         body: pushTestNotificationInputSchema.parse(input),
         method: 'POST',
         path: '/api/v1/push/test',
@@ -112,6 +81,7 @@ export function createPushNotificationsApiClient(
     },
     upsertDevice(input) {
       return request({
+        actorHeader: 'always',
         body: pushDeviceUpsertInputSchema.parse(input),
         method: 'PUT',
         path: '/api/v1/push/devices',
@@ -119,36 +89,4 @@ export function createPushNotificationsApiClient(
       })
     },
   }
-}
-
-async function readResponsePayload(response: Response): Promise<unknown> {
-  const text = await response.text()
-
-  if (!text) {
-    return undefined
-  }
-
-  try {
-    return JSON.parse(text) as unknown
-  } catch {
-    return text
-  }
-}
-
-function throwApiError(response: Response, payload: unknown): never {
-  const parsedError = apiErrorSchema.safeParse(payload)
-
-  if (parsedError.success) {
-    throw new PushNotificationsApiError(parsedError.data.error.message, {
-      code: parsedError.data.error.code,
-      details: parsedError.data.error.details,
-      status: response.status,
-    })
-  }
-
-  throw new PushNotificationsApiError('Request failed.', {
-    code: 'request_failed',
-    details: payload,
-    status: response.status,
-  })
 }
