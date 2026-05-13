@@ -2,6 +2,7 @@ import { type ReactElement, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import {
+  selectDoneBeforeTodayTasks,
   selectDoneTodayTasks,
   selectOverdueTasks,
   selectTodayTasks,
@@ -23,6 +24,13 @@ import { ResourcePlanPanel } from './ResourcePlanPanel'
 import styles from './TodayPage.module.css'
 
 const ENERGY_MODE_STORAGE_KEY = 'planner.today.energyMode'
+
+type TaskSectionTone = 'default' | 'warning' | 'success'
+
+interface TaskSectionOptions {
+  defaultCollapsed?: boolean
+  tone?: TaskSectionTone
+}
 
 function isRoutineTask(task: Task): boolean {
   return task.urgency === 'urgent'
@@ -123,6 +131,10 @@ function PersonalTodayPage() {
     () => selectDoneTodayTasks(tasks, todayKey),
     [tasks, todayKey],
   )
+  const doneHistoryTasks = useMemo(
+    () => selectDoneBeforeTodayTasks(tasks, todayKey),
+    [tasks, todayKey],
+  )
   const routineTasks = useMemo(
     () => todayTasks.filter((task) => isRoutineTask(task)),
     [todayTasks],
@@ -163,7 +175,7 @@ function PersonalTodayPage() {
     title: string,
     sectionTasks: Task[],
     emptyMessage: string,
-    tone: 'default' | 'warning' | 'success' = 'default',
+    options: TaskSectionOptions = {},
   ): ReactElement | null {
     if (sectionTasks.length === 0) {
       return null
@@ -178,7 +190,8 @@ function PersonalTodayPage() {
         uploadedIcons={uploadedIcons}
         emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
-        tone={tone}
+        defaultCollapsed={options.defaultCollapsed}
+        tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
         }}
@@ -239,7 +252,7 @@ function PersonalTodayPage() {
             'Требуют внимания',
             overdueTasks,
             'Просроченных задач сейчас нет.',
-            'warning',
+            { tone: 'warning' },
           )}
 
           {renderTaskSectionGroup([
@@ -248,12 +261,14 @@ function PersonalTodayPage() {
               'Завтра',
               tomorrowTasks,
               'На завтра пока ничего нет.',
+              { defaultCollapsed: true },
             ),
             buildTaskSection(
               'other',
               'Остальные задачи',
               otherTasks,
               'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
+              { defaultCollapsed: true },
             ),
           ])}
 
@@ -262,7 +277,15 @@ function PersonalTodayPage() {
             'Выполнено сегодня',
             doneTodayTasks,
             'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
-            'success',
+            { defaultCollapsed: true, tone: 'success' },
+          )}
+
+          {buildTaskSection(
+            'done-history',
+            'История задач',
+            doneHistoryTasks,
+            'Выполненные раньше задачи появятся здесь.',
+            { defaultCollapsed: true, tone: 'success' },
           )}
         </div>
       </div>
@@ -303,6 +326,10 @@ function SharedTodayPage() {
     () => selectDoneTodayTasks(tasks, todayKey),
     [tasks, todayKey],
   )
+  const doneHistoryTasks = useMemo(
+    () => selectDoneBeforeTodayTasks(tasks, todayKey),
+    [tasks, todayKey],
+  )
   const visibleTaskIds = useMemo(
     () =>
       new Set([
@@ -322,7 +349,7 @@ function SharedTodayPage() {
     title: string,
     sectionTasks: Task[],
     emptyMessage: string,
-    tone: 'default' | 'warning' | 'success' = 'default',
+    options: TaskSectionOptions = {},
   ): ReactElement | null {
     if (sectionTasks.length === 0) {
       return null
@@ -342,7 +369,8 @@ function SharedTodayPage() {
         workspaceUsers={workspaceUsers}
         emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
-        tone={tone}
+        defaultCollapsed={options.defaultCollapsed}
+        tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
         }}
@@ -385,7 +413,7 @@ function SharedTodayPage() {
             'Требуют внимания',
             overdueTasks,
             'Просроченных задач сейчас нет.',
-            'warning',
+            { tone: 'warning' },
           )}
 
           {renderTaskSectionGroup([
@@ -394,12 +422,14 @@ function SharedTodayPage() {
               'Завтра',
               tomorrowTasks,
               'На завтра в общем workspace пока ничего нет.',
+              { defaultCollapsed: true },
             ),
             buildTaskSection(
               'other',
               'Остальные задачи',
               otherTasks,
               'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
+              { defaultCollapsed: true },
             ),
           ])}
 
@@ -408,7 +438,15 @@ function SharedTodayPage() {
             'Выполнено сегодня',
             doneTodayTasks,
             'Закрытые сегодня задачи общего workspace появятся здесь.',
-            'success',
+            { defaultCollapsed: true, tone: 'success' },
+          )}
+
+          {buildTaskSection(
+            'done-history',
+            'История задач',
+            doneHistoryTasks,
+            'Закрытые раньше задачи общего workspace появятся здесь.',
+            { defaultCollapsed: true, tone: 'success' },
           )}
         </div>
       </div>

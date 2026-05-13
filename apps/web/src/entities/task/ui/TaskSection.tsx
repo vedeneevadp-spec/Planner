@@ -24,6 +24,7 @@ interface TaskSectionProps {
   uploadedIcons?: UploadedIconAsset[] | undefined
   workspaceUsers?: WorkspaceUserRecord[] | undefined
   emptyMessage: string
+  defaultCollapsed?: boolean | undefined
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
@@ -43,6 +44,7 @@ export function TaskSection({
   uploadedIcons = [],
   workspaceUsers = [],
   emptyMessage,
+  defaultCollapsed = false,
   tone = 'default',
   isTaskPending,
   onSetStatus,
@@ -50,7 +52,7 @@ export function TaskSection({
   onUpdate,
   onRemove,
 }: TaskSectionProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
   const [openActionMenuTaskId, setOpenActionMenuTaskId] = useState<
     string | null
   >(null)

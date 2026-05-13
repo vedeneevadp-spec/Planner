@@ -5,6 +5,7 @@ export {
   getPlannerSummary,
   groupTasksByProject,
   removeTask,
+  selectDoneBeforeTodayTasks,
   selectDoneTasks,
   selectDoneTodayTasks,
   selectInboxTasks,

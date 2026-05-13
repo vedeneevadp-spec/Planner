@@ -103,6 +103,23 @@ describe('TaskSection', () => {
     expect(screen.queryByText('Задач нет')).not.toBeInTheDocument()
   })
 
+  it('can start collapsed by default', () => {
+    renderTaskSection({
+      defaultCollapsed: true,
+      tasks: [createTask({ title: 'Разобрать архив' })],
+    })
+
+    const collapseButton = screen.getByRole('button', { name: 'Сегодня' })
+
+    expect(collapseButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Разобрать архив')).not.toBeInTheDocument()
+
+    fireEvent.click(collapseButton)
+
+    expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Разобрать архив')).toBeInTheDocument()
+  })
+
   it('renders tasks with matching project and pending state', () => {
     renderTaskSection({
       isTaskPending: (taskId) => taskId === 'task-1',

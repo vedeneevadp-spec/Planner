@@ -392,6 +392,17 @@ export function selectDoneTodayTasks(tasks: Task[], todayKey: string): Task[] {
   )
 }
 
+export function selectDoneBeforeTodayTasks(
+  tasks: Task[],
+  todayKey: string,
+): Task[] {
+  return selectDoneTasks(tasks).filter(
+    (task) =>
+      task.completedAt !== null &&
+      isBeforeDate(getDateKey(new Date(task.completedAt)), todayKey),
+  )
+}
+
 export function buildTimelineLayout(
   tasks: Task[],
   dateKey: string,

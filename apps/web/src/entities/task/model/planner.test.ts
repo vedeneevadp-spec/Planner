@@ -6,6 +6,7 @@ import {
   buildTimelineLayout,
   getPlannerSummary,
   groupTasksByProject,
+  selectDoneBeforeTodayTasks,
   setTaskPlannedDate,
   setTaskSchedule,
   setTaskStatus,
@@ -81,6 +82,38 @@ describe('planner model', () => {
       status: 'done',
       completedAt: '2026-04-15T11:00:00.000Z',
     })
+  })
+
+  it('selects completed tasks before today for history', () => {
+    const tasks = [
+      {
+        ...baseTask,
+        id: 'done-earlier',
+        status: 'done' as const,
+        completedAt: '2026-04-14T12:00:00',
+      },
+      {
+        ...baseTask,
+        id: 'done-today',
+        status: 'done' as const,
+        completedAt: '2026-04-15T12:00:00',
+      },
+      {
+        ...baseTask,
+        id: 'done-without-date',
+        status: 'done' as const,
+        completedAt: null,
+      },
+      {
+        ...baseTask,
+        id: 'todo-earlier',
+        completedAt: '2026-04-14T12:00:00',
+      },
+    ]
+
+    expect(
+      selectDoneBeforeTodayTasks(tasks, '2026-04-15').map((task) => task.id),
+    ).toEqual(['done-earlier'])
   })
 
   it('moves a task back to inbox when the planned date is cleared', () => {
