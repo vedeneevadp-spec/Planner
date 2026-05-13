@@ -8,6 +8,7 @@ import {
   type CleaningTaskStateRecord,
   type CleaningTaskWithState,
   type CleaningZoneRecord,
+  type CleaningZoneUpdateInput,
   type NewCleaningTaskInput,
 } from '@planner/contracts'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
@@ -380,24 +381,7 @@ export function CleaningPage() {
 
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
-      <PageHeader
-        kicker="Уборка"
-        actions={
-          zones.length === 0 ? (
-            <button
-              className={styles.primaryButton}
-              type="button"
-              disabled={isBusy}
-              onClick={() => {
-                void handleSeedTemplates()
-              }}
-            >
-              <PlusIcon size={18} strokeWidth={2.15} />
-              <span>{isSeeding ? 'Добавляем...' : 'Добавить шаблоны'}</span>
-            </button>
-          ) : null
-        }
-      />
+      <PageHeader kicker="Уборка" />
 
       {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
 
@@ -807,6 +791,31 @@ export function CleaningSettingsPage() {
     }
   }
 
+  function handleUpdateZone(
+    input: CleaningZoneUpdateInput,
+    options: { closeEditorOnSuccess?: boolean } = {},
+  ) {
+    if (!selectedZone) {
+      return
+    }
+
+    setFormError(null)
+
+    void updateZoneMutation
+      .mutateAsync({
+        input,
+        zoneId: selectedZone.id,
+      })
+      .then(() => {
+        if (options.closeEditorOnSuccess) {
+          setIsZoneEditOpen(false)
+        }
+      })
+      .catch(() => {
+        // mutation state renders the error
+      })
+  }
+
   async function handleSeedTemplates() {
     setIsSeeding(true)
     setFormError(null)
@@ -1048,11 +1057,11 @@ export function CleaningSettingsPage() {
                       void removeZoneMutation.mutateAsync(selectedZone.id)
                     }
                   }}
+                  onSave={(input) => {
+                    handleUpdateZone(input, { closeEditorOnSuccess: true })
+                  }}
                   onUpdate={(input) => {
-                    void updateZoneMutation.mutateAsync({
-                      input,
-                      zoneId: selectedZone.id,
-                    })
+                    handleUpdateZone(input)
                   }}
                 />
               ) : null}
@@ -1585,12 +1594,8 @@ function ZoneSettings(props: {
   disabled: boolean
   zone: CleaningZoneRecord
   onRemove: () => void
-  onUpdate: (input: {
-    dayOfWeek?: number
-    description?: string
-    isActive?: boolean
-    title?: string
-  }) => void
+  onSave: (input: CleaningZoneUpdateInput) => void
+  onUpdate: (input: CleaningZoneUpdateInput) => void
 }) {
   const [title, setTitle] = useState(props.zone.title)
   const [description, setDescription] = useState(props.zone.description)
@@ -1601,7 +1606,7 @@ function ZoneSettings(props: {
       className={styles.zoneSettings}
       onSubmit={(event) => {
         event.preventDefault()
-        props.onUpdate({
+        props.onSave({
           dayOfWeek,
           description: description.trim(),
           title: title.trim(),

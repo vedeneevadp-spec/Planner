@@ -526,6 +526,17 @@
 
   .mobileSheet {
     width: 100%;
+    max-height: 86vh;
+    max-height: min(
+      86vh,
+      calc(100vh - var(--safe-area-top) - var(--mobile-tabbar-edge-offset))
+    );
+    max-height: min(
+      86dvh,
+      calc(100dvh - var(--safe-area-top) - var(--mobile-tabbar-edge-offset))
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
     border-radius: 32px 32px 0 0;
     padding: 0.7rem 0.9rem
       calc(
@@ -535,12 +546,39 @@
     box-shadow: 0 -18px 48px rgba(82, 68, 37, 0.18);
   }
 
+  .mobileSheetHeader {
+    position: sticky;
+    top: -0.7rem;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr) 2.75rem;
+    align-items: center;
+    margin: -0.7rem -0.9rem 0.9rem;
+    padding: 0.7rem 0.9rem 0.2rem;
+    border-radius: 32px 32px 0 0;
+    background: rgba(255, 251, 243, 0.96);
+  }
+
   .mobileSheetHandle {
+    grid-column: 2;
     width: 3.1rem;
     height: 0.3rem;
-    margin: 0 auto 0.9rem;
+    margin: 0 auto;
     border-radius: 999px;
     background: rgba(37, 45, 37, 0.18);
+  }
+
+  .mobileSheetCloseButton {
+    grid-column: 3;
+    display: inline-grid;
+    place-items: center;
+    width: 2.45rem;
+    height: 2.45rem;
+    border: 1px solid rgba(33, 78, 66, 0.12);
+    border-radius: 14px;
+    color: var(--accent);
+    background: rgba(33, 78, 66, 0.07);
+    cursor: pointer;
   }
 
   .mobileSheetCard {

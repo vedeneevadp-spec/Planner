@@ -49,6 +49,11 @@ const navigation = [
 
 type NavigationRoute = (typeof navigation)[number]['to']
 
+interface MobileMoreSheetLocation {
+  key: string
+  pathname: string
+}
+
 const mobilePrimaryRoutes: readonly NavigationRoute[] = [
   '/today',
   '/shopping',
@@ -73,9 +78,8 @@ export function Sidebar() {
   const createSharedWorkspaceMutation = useCreateSharedWorkspace()
   const updateSharedWorkspaceMutation = useUpdateSharedWorkspace()
   const deleteSharedWorkspaceMutation = useDeleteSharedWorkspace()
-  const [moreSheetPathname, setMoreSheetPathname] = useState<string | null>(
-    null,
-  )
+  const [moreSheetLocation, setMoreSheetLocation] =
+    useState<MobileMoreSheetLocation | null>(null)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
   const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
@@ -138,7 +142,9 @@ export function Sidebar() {
 
     return item ? [item] : []
   })
-  const isMoreOpen = moreSheetPathname === location.pathname
+  const isMoreOpen =
+    moreSheetLocation?.pathname === location.pathname &&
+    moreSheetLocation.key === location.key
   const isMoreActive =
     isMoreOpen ||
     (isProfileNavigationVisible &&
@@ -174,13 +180,13 @@ export function Sidebar() {
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setMoreSheetPathname(null)
+        setMoreSheetLocation(null)
       }
     }
 
     function handleResize() {
       if (window.innerWidth > 820) {
-        setMoreSheetPathname(null)
+        setMoreSheetLocation(null)
       }
     }
 
@@ -302,7 +308,7 @@ export function Sidebar() {
       await deleteSharedWorkspaceMutation.mutateAsync()
       setIsWorkspaceParticipantsOpen(false)
       setIsRenameWorkspaceFormOpen(false)
-      setMoreSheetPathname(null)
+      setMoreSheetLocation(null)
     } catch (error) {
       setWorkspaceManageError(getDeleteSharedWorkspaceErrorMessage(error))
     }
@@ -553,8 +559,11 @@ export function Sidebar() {
             aria-expanded={isMoreOpen}
             aria-controls="mobile-more-sheet"
             onClick={() => {
-              setMoreSheetPathname((current) =>
-                current === location.pathname ? null : location.pathname,
+              setMoreSheetLocation((current) =>
+                current?.pathname === location.pathname &&
+                current.key === location.key
+                  ? null
+                  : { key: location.key, pathname: location.pathname },
               )
             }}
           >
@@ -570,7 +579,7 @@ export function Sidebar() {
             className={styles.mobileSheetBackdrop}
             role="presentation"
             onClick={() => {
-              setMoreSheetPathname(null)
+              setMoreSheetLocation(null)
             }}
           >
             <section
@@ -583,7 +592,19 @@ export function Sidebar() {
                 event.stopPropagation()
               }}
             >
-              <div className={styles.mobileSheetHandle} aria-hidden="true" />
+              <div className={styles.mobileSheetHeader}>
+                <div className={styles.mobileSheetHandle} aria-hidden="true" />
+                <button
+                  className={styles.mobileSheetCloseButton}
+                  type="button"
+                  aria-label="Закрыть меню"
+                  onClick={() => {
+                    setMoreSheetLocation(null)
+                  }}
+                >
+                  <CloseIcon size={18} strokeWidth={2.1} />
+                </button>
+              </div>
 
               <div className={styles.mobileSheetCard}>
                 <div className={styles.connectionHeader}>
@@ -627,7 +648,7 @@ export function Sidebar() {
                       )}
                       type="button"
                       onClick={() => {
-                        setMoreSheetPathname(null)
+                        setMoreSheetLocation(null)
                         setIsWorkspaceParticipantsOpen(true)
                       }}
                     >
@@ -676,7 +697,7 @@ export function Sidebar() {
                           )
                         }
                         onClick={() => {
-                          setMoreSheetPathname(null)
+                          setMoreSheetLocation(null)
                         }}
                       >
                         {renderMobileNavIcon(item.to)}
@@ -694,7 +715,7 @@ export function Sidebar() {
                         )
                       }
                       onClick={() => {
-                        setMoreSheetPathname(null)
+                        setMoreSheetLocation(null)
                       }}
                     >
                       <EditIcon size={18} strokeWidth={2.1} />
@@ -715,7 +736,7 @@ export function Sidebar() {
                           )
                         }
                         onClick={() => {
-                          setMoreSheetPathname(null)
+                          setMoreSheetLocation(null)
                         }}
                       >
                         <SettingsIcon size={18} strokeWidth={2.1} />
@@ -728,7 +749,7 @@ export function Sidebar() {
                       className={styles.mobileSignOutButton}
                       type="button"
                       onClick={() => {
-                        setMoreSheetPathname(null)
+                        setMoreSheetLocation(null)
                         void auth.signOut()
                       }}
                     >

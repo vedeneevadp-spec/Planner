@@ -5,7 +5,7 @@ import {
   screen,
   within,
 } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Sidebar } from './Sidebar'
@@ -147,7 +147,14 @@ function createMutationStub(): MutationStub {
   }
 }
 
-function renderSidebar(session: SidebarSessionStub) {
+function renderSidebar(
+  session: SidebarSessionStub,
+  options: {
+    includeNativeBackButton?: boolean
+    initialEntries?: string[]
+    initialIndex?: number
+  } = {},
+) {
   mocks.usePlanner.mockReturnValue({
     errorMessage: null,
     isLoading: false,
@@ -181,9 +188,30 @@ function renderSidebar(session: SidebarSessionStub) {
   mocks.useUpdateSharedWorkspace.mockReturnValue(createMutationStub())
 
   return render(
-    <MemoryRouter initialEntries={['/today']}>
+    <MemoryRouter
+      initialEntries={options.initialEntries ?? ['/today']}
+      {...(options.initialIndex !== undefined
+        ? { initialIndex: options.initialIndex }
+        : {})}
+    >
       <Sidebar />
+      {options.includeNativeBackButton ? <NativeBackButton /> : null}
     </MemoryRouter>,
+  )
+}
+
+function NativeBackButton() {
+  const navigate = useNavigate()
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigate(-1)
+      }}
+    >
+      Native back
+    </button>
   )
 }
 
@@ -244,5 +272,40 @@ describe('Sidebar', () => {
     expect(moreSheet.queryByText('Привычки')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Профиль')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Admin')).not.toBeInTheDocument()
+  })
+
+  it('closes the mobile more sheet from the sheet header', () => {
+    renderSidebar(createSession('personal'))
+
+    const moreSheet = openMobileMoreSheet()
+
+    fireEvent.click(
+      within(moreSheet).getByRole('button', { name: 'Закрыть меню' }),
+    )
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Ещё' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not reopen the mobile more sheet after route history navigation', () => {
+    renderSidebar(createSession('personal'), {
+      includeNativeBackButton: true,
+      initialEntries: ['/shopping', '/today'],
+      initialIndex: 1,
+    })
+
+    openMobileMoreSheet()
+    fireEvent.click(screen.getByRole('button', { name: 'Native back' }))
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Ещё' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: 'Сегодня' }))
+
+    expect(
+      screen.queryByRole('dialog', { name: 'Ещё' }),
+    ).not.toBeInTheDocument()
   })
 })
