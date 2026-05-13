@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { getPlannerSummary, isRoutineHabitTask } from '@/entities/task'
+import { useCleaningSummary } from '@/features/cleaning'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
@@ -24,6 +25,7 @@ import {
   CheckIcon,
   CloseIcon,
   EditIcon,
+  HomeIcon,
   PlusIcon,
   SettingsIcon,
   ShoppingBagIcon,
@@ -31,12 +33,14 @@ import {
   TrashIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
+import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
   { to: '/shopping', label: 'Покупки' },
+  { to: '/cleaning', label: 'Уборка' },
   { to: '/spheres', label: 'Сферы' },
   { to: '/habits', label: 'Привычки' },
   { to: '/timeline', label: 'Таймлайн' },
@@ -48,10 +52,11 @@ type NavigationRoute = (typeof navigation)[number]['to']
 const mobilePrimaryRoutes: readonly NavigationRoute[] = [
   '/today',
   '/shopping',
-  '/timeline',
+  '/cleaning',
 ]
 
 const mobileMoreRoutes: readonly NavigationRoute[] = [
+  '/timeline',
   '/spheres',
   '/habits',
   '/admin',
@@ -60,6 +65,7 @@ const mobileMoreRoutes: readonly NavigationRoute[] = [
 export function Sidebar() {
   const { errorMessage, isLoading, isSyncing, projects, refresh, tasks } =
     usePlanner()
+  const cleaningSummary = useCleaningSummary()
   const shoppingListSummary = useShoppingListSummary()
   const location = useLocation()
   const auth = useSessionAuth()
@@ -102,6 +108,7 @@ export function Sidebar() {
     (item) =>
       (!isSharedWorkspace ||
         item.to === '/today' ||
+        item.to === '/cleaning' ||
         item.to === '/shopping' ||
         item.to === '/timeline' ||
         item.to === '/spheres') &&
@@ -497,28 +504,27 @@ export function Sidebar() {
         <header className={styles.mobileTopBar}>
           <h1>Chaotika</h1>
 
-          <label className={styles.mobileWorkspaceSelect}>
-            <select
-              value={session?.workspaceId ?? ''}
-              disabled={!session}
-              onChange={(event) => {
-                setSelectedWorkspaceIdForActors(event.target.value, [
-                  auth.userId,
-                  session?.actorUserId,
-                ])
-              }}
-            >
-              {session ? (
-                session.workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </option>
-                ))
-              ) : (
-                <option value="">Workspace</option>
-              )}
-            </select>
-          </label>
+          <SelectPicker
+            className={styles.mobileWorkspaceSelect}
+            ariaLabel="Workspace"
+            value={session?.workspaceId ?? ''}
+            disabled={!session}
+            placeholder="Workspace"
+            options={
+              session
+                ? session.workspaces.map((workspace) => ({
+                    label: workspace.name,
+                    value: workspace.id,
+                  }))
+                : []
+            }
+            onChange={(nextWorkspaceId) => {
+              setSelectedWorkspaceIdForActors(nextWorkspaceId, [
+                auth.userId,
+                session?.actorUserId,
+              ])
+            }}
+          />
         </header>
 
         <nav aria-label="Mobile navigation" className={styles.mobileTabBar}>
@@ -782,23 +788,21 @@ export function Sidebar() {
 
           {session ? (
             <div className={styles.workspaceControls}>
-              <label className={styles.workspaceSelect}>
-                <select
-                  value={session.workspaceId}
-                  onChange={(event) => {
-                    setSelectedWorkspaceIdForActors(event.target.value, [
-                      auth.userId,
-                      session.actorUserId,
-                    ])
-                  }}
-                >
-                  {session.workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>
-                      {workspace.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SelectPicker
+                className={styles.workspaceSelect}
+                ariaLabel="Workspace"
+                value={session.workspaceId}
+                options={session.workspaces.map((workspace) => ({
+                  label: workspace.name,
+                  value: workspace.id,
+                }))}
+                onChange={(nextWorkspaceId) => {
+                  setSelectedWorkspaceIdForActors(nextWorkspaceId, [
+                    auth.userId,
+                    session.actorUserId,
+                  ])
+                }}
+              />
 
               {renderCreateWorkspaceControls()}
 
@@ -886,15 +890,17 @@ export function Sidebar() {
             const count =
               item.to === '/today'
                 ? summary.focusCount + summary.overdueCount
-                : item.to === '/habits'
-                  ? routineHabitTodayCount
-                  : item.to === '/shopping'
-                    ? shoppingListSummary.activeItemCount
-                    : item.to === '/timeline'
-                      ? summary.timelineCount
-                      : item.to === '/spheres'
-                        ? projects.length
-                        : (session?.appRole ?? 'Admin')
+                : item.to === '/cleaning'
+                  ? cleaningSummary.urgentCount || cleaningSummary.dueCount
+                  : item.to === '/habits'
+                    ? routineHabitTodayCount
+                    : item.to === '/shopping'
+                      ? shoppingListSummary.activeItemCount
+                      : item.to === '/timeline'
+                        ? summary.timelineCount
+                        : item.to === '/spheres'
+                          ? projects.length
+                          : (session?.appRole ?? 'Admin')
 
             return (
               <NavLink
@@ -958,6 +964,10 @@ function renderMobileNavIcon(route: string) {
 
   if (route === '/shopping') {
     return <ShoppingBagIcon size={20} strokeWidth={1.9} />
+  }
+
+  if (route === '/cleaning') {
+    return <HomeIcon size={20} strokeWidth={1.9} />
   }
 
   if (route === '/habits') {

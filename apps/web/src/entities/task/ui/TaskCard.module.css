@@ -420,15 +420,15 @@
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
+  --select-picker-height: var(--control-height);
 }
 
-.field span {
+.field > span {
   color: var(--text-soft);
   font-size: 0.78rem;
 }
 
 .field input,
-.field select,
 .field textarea {
   width: 100%;
   box-sizing: border-box;
@@ -441,13 +441,11 @@
     background 150ms ease;
 }
 
-.field input,
-.field select {
+.field input {
   min-height: var(--control-height);
 }
 
 .field input:focus,
-.field select:focus,
 .field textarea:focus {
   outline: none;
   border-color: rgba(33, 78, 66, 0.5);

@@ -1,6 +1,7 @@
 import type { HabitFrequency, HabitTargetType } from '@planner/contracts'
 
 import { cx } from '@/shared/lib/classnames'
+import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
   ROUTINE_TASK_DEFAULT_DAYS,
@@ -51,33 +52,33 @@ export function RoutineTaskFields({
   return (
     <section className={cx(styles.panel, className)}>
       <div className={styles.grid}>
-        <label className={styles.field}>
-          <span>Частота</span>
-          <select
-            value={value.frequency}
-            onChange={(event) =>
-              handleFrequencyChange(event.target.value as HabitFrequency)
-            }
-          >
-            <option value="daily">Каждый день</option>
-            <option value="weekly">Будни</option>
-            <option value="custom">Выбрать дни</option>
-          </select>
-        </label>
+        <SelectPicker
+          className={styles.field}
+          label="Частота"
+          value={value.frequency}
+          options={[
+            { label: 'Каждый день', value: 'daily' },
+            { label: 'Будни', value: 'weekly' },
+            { label: 'Выбрать дни', value: 'custom' },
+          ]}
+          onChange={(nextValue) => {
+            handleFrequencyChange(nextValue)
+          }}
+        />
 
-        <label className={styles.field}>
-          <span>Тип цели</span>
-          <select
-            value={value.targetType}
-            onChange={(event) =>
-              handleTargetTypeChange(event.target.value as HabitTargetType)
-            }
-          >
-            <option value="check">Отметка</option>
-            <option value="count">Количество</option>
-            <option value="duration">Минуты</option>
-          </select>
-        </label>
+        <SelectPicker
+          className={styles.field}
+          label="Тип цели"
+          value={value.targetType}
+          options={[
+            { label: 'Отметка', value: 'check' },
+            { label: 'Количество', value: 'count' },
+            { label: 'Минуты', value: 'duration' },
+          ]}
+          onChange={(nextValue) => {
+            handleTargetTypeChange(nextValue)
+          }}
+        />
 
         <label className={styles.field}>
           <span>Цель</span>

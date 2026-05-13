@@ -30,6 +30,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from '@/shared/ui/Icon'
+import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
   buildTaskInputFromTemplate,
@@ -839,22 +840,19 @@ export function TaskComposer({
 
                     {isSharedWorkspace ? (
                       <section className={styles.columnSection}>
-                        <label className={styles.field}>
-                          <span>Исполнитель</span>
-                          <select
-                            value={assigneeUserId}
-                            onChange={(event) =>
-                              setAssigneeUserId(event.target.value)
-                            }
-                          >
-                            <option value="">Без исполнителя</option>
-                            {workspaceUsers.map((user) => (
-                              <option key={user.id} value={user.id}>
-                                {user.displayName}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <SelectPicker
+                          className={styles.field}
+                          label="Исполнитель"
+                          value={assigneeUserId}
+                          options={[
+                            { label: 'Без исполнителя', value: '' },
+                            ...workspaceUsers.map((user) => ({
+                              label: user.displayName,
+                              value: user.id,
+                            })),
+                          ]}
+                          onChange={setAssigneeUserId}
+                        />
                       </section>
                     ) : null}
 

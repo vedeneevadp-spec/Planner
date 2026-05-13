@@ -12,9 +12,12 @@
 .field {
   display: grid;
   gap: 0.38rem;
+  --select-picker-height: 2.75rem;
+  --select-picker-radius: 14px;
+  --select-picker-padding: 0.72rem 0.8rem;
 }
 
-.field span,
+.field > span,
 .daysGroup > span {
   color: var(--text-soft);
   font-size: 0.74rem;
@@ -22,8 +25,7 @@
   text-transform: uppercase;
 }
 
-.field input,
-.field select {
+.field input {
   width: 100%;
   min-height: 2.75rem;
   box-sizing: border-box;

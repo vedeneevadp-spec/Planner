@@ -22,6 +22,8 @@ import {
 } from '../modules/auth/index.js'
 import type { ChaosInboxService } from '../modules/chaos-inbox/index.js'
 import { registerChaosInboxRoutes } from '../modules/chaos-inbox/index.js'
+import type { CleaningService } from '../modules/cleaning/index.js'
+import { registerCleaningRoutes } from '../modules/cleaning/index.js'
 import type { DailyPlanService } from '../modules/daily-plans/index.js'
 import { registerDailyPlanRoutes } from '../modules/daily-plans/index.js'
 import type { EmojiSetService } from '../modules/emoji-sets/index.js'
@@ -67,6 +69,7 @@ export interface BuildApiAppOptions {
   requestAuthenticator?: RequestAuthenticator
   authService?: AuthService
   chaosInboxService?: ChaosInboxService
+  cleaningService?: CleaningService
   dailyPlanService?: DailyPlanService
   emojiSetService?: EmojiSetService
   habitService?: HabitService
@@ -84,6 +87,7 @@ export function buildApiApp({
   requestAuthenticator = new NoopRequestAuthenticator(),
   authService,
   chaosInboxService,
+  cleaningService,
   dailyPlanService,
   emojiSetService,
   habitService,
@@ -168,6 +172,9 @@ export function buildApiApp({
     }
     if (habitService) {
       registerHabitRoutes(instance, sessionService, habitService)
+    }
+    if (cleaningService) {
+      registerCleaningRoutes(instance, sessionService, cleaningService)
     }
     if (pushNotificationsService) {
       registerPushNotificationsRoutes(

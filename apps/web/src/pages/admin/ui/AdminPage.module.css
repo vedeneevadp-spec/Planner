@@ -169,7 +169,14 @@
   gap: 0.45rem;
 }
 
-.field span,
+.field,
+.roleSelect {
+  --select-picker-height: 2.55rem;
+  --select-picker-radius: 16px;
+  --select-picker-padding: 0.72rem 0.82rem;
+}
+
+.field > span,
 .nameField span,
 .uploadField > span:first-child,
 .eyebrow,
@@ -188,7 +195,6 @@
 
 .field input,
 .field textarea,
-.field select,
 .nameField input,
 .roleSelect {
   width: 100%;
@@ -210,9 +216,8 @@
 
 .field input:focus,
 .field textarea:focus,
-.field select:focus,
 .nameField input:focus,
-.roleSelect:focus {
+.roleSelect:focus-within {
   outline: none;
   border-color: rgba(33, 78, 66, 0.5);
   background: rgba(255, 255, 255, 0.92);

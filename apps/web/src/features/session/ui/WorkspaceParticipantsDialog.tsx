@@ -6,6 +6,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { CloseIcon, PlusIcon, TrashIcon, UserIcon } from '@/shared/ui/Icon'
+import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import { usePlannerSession } from '../lib/usePlannerSession'
 import {
@@ -25,12 +26,12 @@ const MANAGEABLE_WORKSPACE_ROLES = [
   'member',
 ] satisfies AssignableWorkspaceGroupRole[]
 
-const GROUP_ROLE_LABELS: Record<string, string> = {
+const GROUP_ROLE_LABELS = {
   group_admin: 'Group Admin',
   member: 'Member',
   owner: 'Owner',
   senior_member: 'Senior Member',
-}
+} satisfies Record<AssignableWorkspaceGroupRole | 'owner', string>
 
 interface WorkspaceParticipantsDialogProps {
   isOpen: boolean
@@ -262,23 +263,18 @@ export function WorkspaceParticipantsDialog({
                     />
                   </label>
 
-                  <label className={styles.field}>
-                    <span>Групповая роль</span>
-                    <select
-                      value={inviteGroupRole}
-                      onChange={(event) => {
-                        setInviteGroupRole(
-                          event.target.value as AssignableWorkspaceGroupRole,
-                        )
-                      }}
-                    >
-                      {MANAGEABLE_WORKSPACE_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {GROUP_ROLE_LABELS[role]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <SelectPicker
+                    className={styles.field}
+                    label="Групповая роль"
+                    value={inviteGroupRole}
+                    options={MANAGEABLE_WORKSPACE_ROLES.map((role) => ({
+                      label: GROUP_ROLE_LABELS[role],
+                      value: role,
+                    }))}
+                    onChange={(nextRole) => {
+                      setInviteGroupRole(nextRole)
+                    }}
+                  />
 
                   <button
                     className={styles.primaryButton}
@@ -386,28 +382,23 @@ export function WorkspaceParticipantsDialog({
 
                         <div className={styles.userActions}>
                           {canEdit ? (
-                            <label className={styles.inlineField}>
-                              <span>Групповая роль</span>
-                              <select
-                                value={user.groupRole ?? 'member'}
-                                disabled={
-                                  isUpdatingThisUser || isRemovingThisUser
-                                }
-                                onChange={(event) => {
-                                  void handleRoleChange(
-                                    user,
-                                    event.target
-                                      .value as AssignableWorkspaceGroupRole,
-                                  )
-                                }}
-                              >
-                                {MANAGEABLE_WORKSPACE_ROLES.map((role) => (
-                                  <option key={role} value={role}>
-                                    {GROUP_ROLE_LABELS[role]}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                            <SelectPicker
+                              className={styles.inlineField}
+                              label="Групповая роль"
+                              value={user.groupRole ?? 'member'}
+                              disabled={
+                                isUpdatingThisUser || isRemovingThisUser
+                              }
+                              options={MANAGEABLE_WORKSPACE_ROLES.map(
+                                (role) => ({
+                                  label: GROUP_ROLE_LABELS[role],
+                                  value: role,
+                                }),
+                              )}
+                              onChange={(nextRole) => {
+                                void handleRoleChange(user, nextRole)
+                              }}
+                            />
                           ) : null}
 
                           {canEdit ? (

@@ -150,16 +150,9 @@
 
 .workspaceSelect {
   min-width: 0;
-}
-
-.workspaceSelect select {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  padding: 0.72rem 0.9rem;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.78);
-  font: inherit;
+  --select-picker-height: 2.75rem;
+  --select-picker-radius: 15px;
+  --select-picker-padding: 0.72rem 0.9rem;
 }
 
 .createWorkspaceButton {
@@ -455,18 +448,10 @@
     flex: 1 1 auto;
     max-width: min(58vw, 16rem);
     margin-left: auto;
-  }
-
-  .mobileWorkspaceSelect select {
-    width: 100%;
-    min-height: 2.25rem;
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 0.42rem 0.68rem;
-    background: rgba(255, 255, 255, 0.78);
-    color: var(--text);
-    font: inherit;
-    font-size: 0.88rem;
+    --select-picker-height: 2.25rem;
+    --select-picker-radius: 12px;
+    --select-picker-padding: 0.42rem 0.68rem;
+    --select-picker-font-size: 0.88rem;
   }
 
   .mobileTabBar {

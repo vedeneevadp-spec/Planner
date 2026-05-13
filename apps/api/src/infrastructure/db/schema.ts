@@ -114,6 +114,82 @@ export interface AppHabitEntriesTable {
   workspace_id: string
 }
 
+export interface AppCleaningZonesTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  day_of_week: number
+  deleted_at: TimestampColumn | null
+  description: string
+  id: Generated<string>
+  is_active: boolean
+  sort_order: number
+  title: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppCleaningTasksTable {
+  assignee: 'self' | 'partner' | 'child' | 'anyone'
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  custom_interval_days: number | null
+  deleted_at: TimestampColumn | null
+  depth: 'minimum' | 'regular' | 'deep'
+  description: string
+  energy: 'low' | 'normal' | 'high'
+  estimated_minutes: number | null
+  frequency_interval: number
+  frequency_type: 'weekly' | 'monthly' | 'custom'
+  id: Generated<string>
+  impact_score: number
+  is_active: boolean
+  is_seasonal: boolean
+  priority: 'low' | 'normal' | 'high'
+  season_months: ColumnType<number[], number[] | string, number[] | string>
+  sort_order: number
+  tags: ColumnType<string[], string[] | string, string[] | string>
+  title: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+  zone_id: string
+}
+
+export interface AppCleaningTaskStatesTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  last_completed_at: TimestampColumn | null
+  last_postponed_at: TimestampColumn | null
+  last_skipped_at: TimestampColumn | null
+  next_due_at: DateColumn | null
+  postpone_count: number
+  task_id: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppCleaningTaskHistoryTable {
+  action: 'completed' | 'postponed' | 'skipped'
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  date: DateColumn
+  id: Generated<string>
+  note: string
+  target_date: DateColumn | null
+  task_id: string
+  user_id: string
+  workspace_id: string
+  zone_id: string
+}
+
 export interface AppLifeSpheresTable {
   color: string | null
   created_at: Generated<TimestampColumn>
@@ -424,6 +500,10 @@ export interface DatabaseSchema {
   'app.auth_password_reset_tokens': AppAuthPasswordResetTokensTable
   'app.auth_refresh_tokens': AppAuthRefreshTokensTable
   'app.chaos_inbox_items': AppChaosInboxItemsTable
+  'app.cleaning_task_history': AppCleaningTaskHistoryTable
+  'app.cleaning_task_states': AppCleaningTaskStatesTable
+  'app.cleaning_tasks': AppCleaningTasksTable
+  'app.cleaning_zones': AppCleaningZonesTable
   'app.device_sessions': AppDeviceSessionsTable
   'app.daily_plans': AppDailyPlansTable
   'app.emoji_assets': AppEmojiAssetsTable

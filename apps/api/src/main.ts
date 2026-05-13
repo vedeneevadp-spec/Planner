@@ -24,6 +24,11 @@ import {
   PostgresChaosInboxRepository,
 } from './modules/chaos-inbox/index.js'
 import {
+  CleaningService,
+  MemoryCleaningRepository,
+  PostgresCleaningRepository,
+} from './modules/cleaning/index.js'
+import {
   DailyPlanService,
   MemoryDailyPlanRepository,
   PostgresDailyPlanRepository,
@@ -102,6 +107,9 @@ export function createApiKernel(
   const dailyPlanRepository = database
     ? new PostgresDailyPlanRepository(database.db)
     : new MemoryDailyPlanRepository()
+  const cleaningRepository = database
+    ? new PostgresCleaningRepository(database.db)
+    : new MemoryCleaningRepository()
   const taskTemplateRepository = database
     ? new PostgresTaskTemplateRepository(database.db)
     : new MemoryTaskTemplateRepository()
@@ -147,6 +155,7 @@ export function createApiKernel(
   )
   const lifeSphereService = new LifeSphereService(lifeSphereRepository)
   const habitService = new HabitService(habitRepository)
+  const cleaningService = new CleaningService(cleaningRepository)
   const pushNotificationsService = new PushNotificationsService(
     pushNotificationsRepository,
     config.firebasePush
@@ -170,6 +179,7 @@ export function createApiKernel(
     config,
     ...(authService ? { authService } : {}),
     chaosInboxService,
+    cleaningService,
     dailyPlanService,
     database,
     emojiSetService,

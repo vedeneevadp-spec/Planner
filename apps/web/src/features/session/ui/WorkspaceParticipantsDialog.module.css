@@ -150,16 +150,17 @@
 .inlineField {
   display: grid;
   gap: 0.35rem;
+  --select-picker-height: 2.55rem;
+  --select-picker-radius: 15px;
+  --select-picker-padding: 0.72rem 0.9rem;
 }
 
-.field span,
-.inlineField span {
+.field > span,
+.inlineField > span {
   font-size: 0.76rem;
 }
 
-.field input,
-.field select,
-.inlineField select {
+.field input {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 15px;

@@ -18,6 +18,7 @@ import {
 import { cx } from '@/shared/lib/classnames'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
+import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
   ACCEPTED_ICON_TYPES,
@@ -476,23 +477,19 @@ export function AdminPage() {
                       {ROLE_LABELS[user.appRole]}
                     </span>
                   ) : (
-                    <select
+                    <SelectPicker
                       className={styles.roleSelect}
                       value={user.appRole}
                       disabled={isUpdatingUsers}
-                      onChange={(event) => {
-                        void handleUserRoleChange(
-                          user.id,
-                          event.target.value as AssignableAppRole,
-                        )
+                      ariaLabel={`Роль ${user.displayName}`}
+                      options={MANAGEABLE_APP_ROLES.map((role) => ({
+                        label: ROLE_LABELS[role],
+                        value: role,
+                      }))}
+                      onChange={(nextRole) => {
+                        void handleUserRoleChange(user.id, nextRole)
                       }}
-                    >
-                      {MANAGEABLE_APP_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {ROLE_LABELS[role]}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   )}
                 </div>
               ))}
@@ -531,22 +528,22 @@ export function AdminPage() {
             </div>
 
             <div className={styles.formGrid}>
-              <label className={styles.field}>
-                <span>Куда добавить</span>
-                <select
-                  value={targetSetId}
-                  onChange={(event) => setTargetSetId(event.target.value)}
-                >
-                  <option value={NEW_ICON_SET_TARGET}>
-                    Создать новый набор
-                  </option>
-                  {iconSets.map((iconSet) => (
-                    <option key={iconSet.id} value={iconSet.id}>
-                      {iconSet.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <SelectPicker
+                className={styles.field}
+                label="Куда добавить"
+                value={targetSetId}
+                options={[
+                  {
+                    label: 'Создать новый набор',
+                    value: NEW_ICON_SET_TARGET,
+                  },
+                  ...iconSets.map((iconSet) => ({
+                    label: iconSet.title,
+                    value: iconSet.id,
+                  })),
+                ]}
+                onChange={setTargetSetId}
+              />
 
               {isCreatingNewSet ? (
                 <label className={styles.field}>

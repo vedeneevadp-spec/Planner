@@ -69,6 +69,7 @@ const mocks = vi.hoisted(() => ({
   signOut: vi.fn<() => Promise<void>>(),
   useCreateSharedWorkspace: vi.fn<() => MutationStub>(),
   useDeleteSharedWorkspace: vi.fn<() => MutationStub>(),
+  useCleaningSummary: vi.fn<() => { dueCount: number; urgentCount: number }>(),
   usePlanner: vi.fn<() => PlannerStub>(),
   usePlannerSession: vi.fn<() => { data: SidebarSessionStub }>(),
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
@@ -78,6 +79,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/planner', () => ({
   usePlanner: () => mocks.usePlanner(),
+}))
+
+vi.mock('@/features/cleaning', () => ({
+  useCleaningSummary: () => mocks.useCleaningSummary(),
 }))
 
 vi.mock('@/features/shopping-list', () => ({
@@ -156,6 +161,10 @@ function renderSidebar(session: SidebarSessionStub) {
   })
   mocks.useShoppingListSummary.mockReturnValue({
     activeItemCount: 0,
+  })
+  mocks.useCleaningSummary.mockReturnValue({
+    dueCount: 0,
+    urgentCount: 0,
   })
   mocks.usePlannerSession.mockReturnValue({
     data: session,

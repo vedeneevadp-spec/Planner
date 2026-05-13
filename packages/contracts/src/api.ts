@@ -6,6 +6,12 @@ import {
   chaosInboxItemSchema,
   chaosInboxListResponseSchema,
 } from './chaos-inbox.js'
+import {
+  cleaningTaskHistoryItemSchema,
+  cleaningTaskSchema,
+  cleaningTaskStateSchema,
+  cleaningZoneSchema,
+} from './cleaning.js'
 import { dailyPlanSchema } from './daily-plan.js'
 import { emojiAssetSchema, emojiSetSchema } from './emoji-set.js'
 import { habitEntrySchema, habitSchema, habitStatsSchema } from './habit.js'
@@ -374,6 +380,65 @@ export const habitTodayResponseSchema = z.object({
   date: z.string(),
   items: z.array(habitTodayItemSchema),
 })
+
+export const cleaningZoneRecordSchema = cleaningZoneSchema.extend({
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
+})
+export const cleaningTaskRecordSchema = cleaningTaskSchema.extend({
+  deletedAt: z.string().nullable(),
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
+})
+export const cleaningTaskStateRecordSchema = cleaningTaskStateSchema.extend({
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
+})
+export const cleaningTaskHistoryItemRecordSchema =
+  cleaningTaskHistoryItemSchema.extend({
+    workspaceId: z.string(),
+  })
+export const cleaningTaskWithStateSchema = z.object({
+  isDue: z.boolean(),
+  isOverdue: z.boolean(),
+  reasons: z.array(z.string()),
+  score: z.number(),
+  state: cleaningTaskStateRecordSchema,
+  task: cleaningTaskRecordSchema,
+  zone: cleaningZoneRecordSchema,
+})
+export const cleaningSummarySchema = z.object({
+  accumulatedCount: z.number().int().nonnegative(),
+  activeZoneCount: z.number().int().nonnegative(),
+  completedTodayCount: z.number().int().nonnegative(),
+  dueCount: z.number().int().nonnegative(),
+  quickCount: z.number().int().nonnegative(),
+  seasonalCount: z.number().int().nonnegative(),
+  urgentCount: z.number().int().nonnegative(),
+})
+export const cleaningListResponseSchema = z.object({
+  history: z.array(cleaningTaskHistoryItemRecordSchema),
+  states: z.array(cleaningTaskStateRecordSchema),
+  tasks: z.array(cleaningTaskRecordSchema),
+  zones: z.array(cleaningZoneRecordSchema),
+})
+export const cleaningTodayResponseSchema = z.object({
+  accumulatedItems: z.array(cleaningTaskWithStateSchema),
+  date: z.string(),
+  dayOfWeek: z.number().int().min(1).max(7),
+  history: z.array(cleaningTaskHistoryItemRecordSchema),
+  items: z.array(cleaningTaskWithStateSchema),
+  quickItems: z.array(cleaningTaskWithStateSchema),
+  seasonalItems: z.array(cleaningTaskWithStateSchema),
+  summary: cleaningSummarySchema,
+  urgentItems: z.array(cleaningTaskWithStateSchema),
+  zones: z.array(cleaningZoneRecordSchema),
+})
+export const cleaningTaskActionResponseSchema = z.object({
+  historyItem: cleaningTaskHistoryItemRecordSchema,
+  state: cleaningTaskStateRecordSchema,
+})
 export const lifeSphereListRecordResponseSchema = z.array(
   lifeSphereRecordSchema,
 )
@@ -456,6 +521,21 @@ export type ChaosInboxCreatedRecordResponse = z.infer<
 export type ChaosInboxConvertToTaskRecordResponse = z.infer<
   typeof chaosInboxConvertToTaskRecordResponseSchema
 >
+export type CleaningListResponse = z.infer<typeof cleaningListResponseSchema>
+export type CleaningSummary = z.infer<typeof cleaningSummarySchema>
+export type CleaningTaskActionResponse = z.infer<
+  typeof cleaningTaskActionResponseSchema
+>
+export type CleaningTaskHistoryItemRecord = z.infer<
+  typeof cleaningTaskHistoryItemRecordSchema
+>
+export type CleaningTaskRecord = z.infer<typeof cleaningTaskRecordSchema>
+export type CleaningTaskStateRecord = z.infer<
+  typeof cleaningTaskStateRecordSchema
+>
+export type CleaningTaskWithState = z.infer<typeof cleaningTaskWithStateSchema>
+export type CleaningTodayResponse = z.infer<typeof cleaningTodayResponseSchema>
+export type CleaningZoneRecord = z.infer<typeof cleaningZoneRecordSchema>
 export type DailyPlanRecord = z.infer<typeof dailyPlanRecordSchema>
 export type EmojiAssetRecord = z.infer<typeof emojiAssetRecordSchema>
 export type EmojiSetRecord = z.infer<typeof emojiSetRecordSchema>
