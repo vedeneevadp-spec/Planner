@@ -145,14 +145,12 @@ export class AuthService {
     metadata: AuthRequestMetadata,
   ): Promise<AuthTokenResponse> {
     const nextRefreshToken = createOpaqueToken()
-    const sessionId = generateUuidV7()
     const user = await this.repository.rotateRefreshToken(
       hashOpaqueToken(refreshToken),
       {
         expiresAt: this.createRefreshTokenExpiresAt(),
         metadata,
         refreshTokenHash: hashOpaqueToken(nextRefreshToken),
-        sessionId,
       },
     )
 
@@ -278,6 +276,7 @@ export class AuthService {
       .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
       .setIssuedAt()
       .setIssuer(this.config.jwt.issuer)
+      .setJti(generateUuidV7())
       .setSubject(user.id)
       .sign(this.jwtSecretKey)
 

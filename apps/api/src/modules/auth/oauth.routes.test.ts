@@ -21,8 +21,8 @@ import type {
   CreateOAuthAuthorizationCodeCommand,
   CreatePasswordResetTokenCommand,
   CreateRefreshTokenCommand,
-  CreateRefreshTokenPayload,
   ExchangeOAuthAuthorizationCodeCommand,
+  RotateRefreshTokenPayload,
   UpdatePasswordCommand,
 } from './auth.model.js'
 import type { AuthRepository } from './auth.repository.js'
@@ -281,6 +281,26 @@ void describe('OAuth routes', () => {
 
     assert.notEqual(refreshedToken.access_token, initialToken.access_token)
     assert.notEqual(refreshedToken.refresh_token, initialToken.refresh_token)
+
+    const retryResponse = await app.inject({
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      method: 'POST',
+      payload: createFormBody({
+        client_id: ALICE_CLIENT_ID,
+        client_secret: ALICE_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: initialToken.refresh_token,
+      }),
+      url: '/api/v1/oauth/alice/token',
+    })
+
+    assert.equal(retryResponse.statusCode, 200)
+
+    const retriedToken = oauthTokenResponseSchema.parse(retryResponse.json())
+
+    assert.notEqual(retriedToken.refresh_token, initialToken.refresh_token)
   })
 })
 
@@ -332,6 +352,7 @@ function createFormBody(values: Record<string, string>): string {
 interface StoredRefreshToken {
   expiresAt: Date
   refreshTokenHash: string
+  rotatedAt: Date | null
   revokedAt: Date | null
   sessionId: string
   userId: string
@@ -356,6 +377,7 @@ class TestAuthRepository implements AuthRepository {
     this.refreshTokens.push({
       expiresAt: command.expiresAt,
       refreshTokenHash: command.refreshTokenHash,
+      rotatedAt: null,
       revokedAt: null,
       sessionId: command.sessionId,
       userId: command.userId,
@@ -473,8 +495,16 @@ class TestAuthRepository implements AuthRepository {
   }
 
   revokeRefreshToken(refreshTokenHash: string): Promise<void> {
+    const sessionId = this.refreshTokens.find(
+      (token) => token.refreshTokenHash === refreshTokenHash,
+    )?.sessionId
+
+    if (!sessionId) {
+      return Promise.resolve()
+    }
+
     for (const token of this.refreshTokens) {
-      if (token.refreshTokenHash === refreshTokenHash) {
+      if (token.sessionId === sessionId) {
         token.revokedAt = new Date()
       }
     }
@@ -484,7 +514,7 @@ class TestAuthRepository implements AuthRepository {
 
   rotateRefreshToken(
     currentRefreshTokenHash: string,
-    nextRefreshToken: CreateRefreshTokenPayload,
+    nextRefreshToken: RotateRefreshTokenPayload,
   ): Promise<AuthSessionTokenRecord | null> {
     const currentToken = this.refreshTokens.find(
       (token) => token.refreshTokenHash === currentRefreshTokenHash,
@@ -506,9 +536,40 @@ class TestAuthRepository implements AuthRepository {
       return Promise.resolve(null)
     }
 
-    currentToken.revokedAt = new Date()
+    const now = new Date()
+
+    if (
+      currentToken.rotatedAt &&
+      now.getTime() - currentToken.rotatedAt.getTime() > 24 * 60 * 60 * 1000
+    ) {
+      for (const token of this.refreshTokens) {
+        if (token.sessionId === currentToken.sessionId) {
+          token.revokedAt = now
+        }
+      }
+
+      return Promise.resolve(null)
+    }
+
+    const tokenToRotate =
+      currentToken.rotatedAt === null
+        ? currentToken
+        : this.refreshTokens.find(
+            (token) =>
+              token.sessionId === currentToken.sessionId &&
+              !token.revokedAt &&
+              !token.rotatedAt &&
+              token.expiresAt.getTime() > now.getTime(),
+          )
+
+    if (!tokenToRotate) {
+      return Promise.resolve(null)
+    }
+
+    tokenToRotate.rotatedAt = now
     this.storeRefreshToken({
       ...nextRefreshToken,
+      sessionId: tokenToRotate.sessionId,
       userId: user.id,
     })
 
@@ -516,7 +577,7 @@ class TestAuthRepository implements AuthRepository {
       displayName: user.displayName,
       email: user.email,
       id: user.id,
-      sessionId: nextRefreshToken.sessionId,
+      sessionId: currentToken.sessionId,
     })
   }
 

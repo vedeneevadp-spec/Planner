@@ -135,31 +135,31 @@ export function usePlannerState(): PlannerState {
     taskQueryKey,
     taskTemplateQueryKey,
   })
+  const authError =
+    sessionQuery.error ??
+    projectsQuery.error ??
+    taskTemplatesQuery.error ??
+    tasksQuery.error ??
+    createProjectMutation.error ??
+    createTaskTemplateMutation.error ??
+    updateProjectMutation.error ??
+    removeProjectMutation.error ??
+    createTaskMutation.error ??
+    updateTaskMutation.error ??
+    removeTaskTemplateMutation.error ??
+    setTaskStatusMutation.error ??
+    setTaskScheduleMutation.error ??
+    removeTaskMutation.error
+  const hasUnauthorizedAuthError =
+    isUnauthorizedSessionApiError(authError) ||
+    isUnauthorizedPlannerApiError(authError)
 
   useEffect(() => {
-    const authError =
-      sessionQuery.error ??
-      projectsQuery.error ??
-      taskTemplatesQuery.error ??
-      tasksQuery.error ??
-      createProjectMutation.error ??
-      createTaskTemplateMutation.error ??
-      updateProjectMutation.error ??
-      removeProjectMutation.error ??
-      createTaskMutation.error ??
-      updateTaskMutation.error ??
-      removeTaskTemplateMutation.error ??
-      setTaskStatusMutation.error ??
-      setTaskScheduleMutation.error ??
-      removeTaskMutation.error
-
     if (
       !isAuthEnabled ||
       !accessToken ||
-      !(
-        isUnauthorizedSessionApiError(authError) ||
-        isUnauthorizedPlannerApiError(authError)
-      )
+      !authError ||
+      !hasUnauthorizedAuthError
     ) {
       return
     }
@@ -171,23 +171,11 @@ export function usePlannerState(): PlannerState {
     })
   }, [
     accessToken,
-    createProjectMutation.error,
-    createTaskMutation.error,
-    createTaskTemplateMutation.error,
+    authError,
+    hasUnauthorizedAuthError,
     invalidatePlannerQueries,
     isAuthEnabled,
-    projectsQuery.error,
     recoverSession,
-    removeProjectMutation.error,
-    removeTaskMutation.error,
-    removeTaskTemplateMutation.error,
-    sessionQuery.error,
-    setTaskScheduleMutation.error,
-    setTaskStatusMutation.error,
-    taskTemplatesQuery.error,
-    tasksQuery.error,
-    updateProjectMutation.error,
-    updateTaskMutation.error,
   ])
 
   const projects = useMemo<Project[]>(
@@ -608,6 +596,14 @@ export function usePlannerState(): PlannerState {
 
   async function refresh(): Promise<void> {
     setMutationErrorMessage(null)
+
+    if (isAuthEnabled && (!accessToken || hasUnauthorizedAuthError)) {
+      const recoveryResult = await recoverSession()
+
+      if (recoveryResult === 'signed_out') {
+        return
+      }
+    }
 
     await invalidatePlannerQueries()
   }

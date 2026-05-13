@@ -7,8 +7,8 @@ import type {
   CreateOAuthAuthorizationCodeCommand,
   CreatePasswordResetTokenCommand,
   CreateRefreshTokenCommand,
-  CreateRefreshTokenPayload,
   ExchangeOAuthAuthorizationCodeCommand,
+  RotateRefreshTokenPayload,
   UpdatePasswordCommand,
 } from './auth.model.js'
 
@@ -37,7 +37,7 @@ export interface AuthRepository {
   revokeRefreshToken: (refreshTokenHash: string) => Promise<void>
   rotateRefreshToken: (
     currentRefreshTokenHash: string,
-    nextRefreshToken: CreateRefreshTokenPayload,
+    nextRefreshToken: RotateRefreshTokenPayload,
   ) => Promise<AuthSessionTokenRecord | null>
   updatePassword: (command: UpdatePasswordCommand) => Promise<void>
 }

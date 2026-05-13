@@ -14,11 +14,13 @@ import type {
   CreateOAuthAuthorizationCodeCommand,
   CreatePasswordResetTokenCommand,
   CreateRefreshTokenCommand,
-  CreateRefreshTokenPayload,
   ExchangeOAuthAuthorizationCodeCommand,
+  RotateRefreshTokenPayload,
   UpdatePasswordCommand,
 } from './auth.model.js'
 import type { AuthRepository } from './auth.repository.js'
+
+const REFRESH_TOKEN_REUSE_GRACE_MS = 24 * 60 * 60 * 1000
 
 type AuthUserRow = Pick<
   Selectable<DatabaseSchema['app.users']>,
@@ -228,7 +230,7 @@ export class PostgresAuthRepository implements AuthRepository {
 
   async rotateRefreshToken(
     currentRefreshTokenHash: string,
-    nextRefreshToken: CreateRefreshTokenPayload,
+    nextRefreshToken: RotateRefreshTokenPayload,
   ): Promise<AuthSessionTokenRecord | null> {
     return this.db.transaction().execute(async (trx) => {
       await useFastAuthTokenCommit(trx)
@@ -239,6 +241,7 @@ export class PostgresAuthRepository implements AuthRepository {
         .select([
           'token.expires_at as expiresAt',
           'token.id as tokenId',
+          'token.rotated_at as rotatedAt',
           'token.revoked_at as revokedAt',
           'token.session_id as sessionId',
           'user.deleted_at as userDeletedAt',
@@ -247,6 +250,7 @@ export class PostgresAuthRepository implements AuthRepository {
           'user.id',
         ])
         .where('token.token_hash', '=', currentRefreshTokenHash)
+        .forUpdate()
         .executeTakeFirst()
 
       if (
@@ -258,14 +262,39 @@ export class PostgresAuthRepository implements AuthRepository {
         return null
       }
 
+      const now = new Date()
+      const rotatedAt = currentToken.rotatedAt
+
+      if (
+        rotatedAt &&
+        !isWithinRefreshTokenReuseGrace(new Date(rotatedAt), now)
+      ) {
+        await this.revokeRefreshTokenSession(trx, currentToken.sessionId, now)
+
+        return null
+      }
+
+      const tokenToRotate = rotatedAt
+        ? await this.findActiveRefreshTokenForSession(trx, {
+            sessionId: currentToken.sessionId,
+            userId: currentToken.id,
+          })
+        : currentToken
+
+      if (!tokenToRotate) {
+        return null
+      }
+
+      const nextTokenId = generateUuidV7()
       const updateResult = await trx
         .updateTable('app.auth_refresh_tokens')
         .set({
-          last_used_at: new Date(),
-          revoked_at: new Date(),
+          last_used_at: now,
+          rotated_at: now,
         })
-        .where('id', '=', currentToken.tokenId)
+        .where('id', '=', tokenToRotate.tokenId)
         .where('revoked_at', 'is', null)
+        .where('rotated_at', 'is', null)
         .executeTakeFirst()
 
       if (Number(updateResult.numUpdatedRows) !== 1) {
@@ -274,27 +303,42 @@ export class PostgresAuthRepository implements AuthRepository {
 
       await this.insertRefreshToken(trx, {
         ...nextRefreshToken,
+        id: nextTokenId,
         userId: currentToken.id,
+        sessionId: currentToken.sessionId,
       })
+
+      await trx
+        .updateTable('app.auth_refresh_tokens')
+        .set({
+          replaced_by_token_id: nextTokenId,
+        })
+        .where('id', '=', tokenToRotate.tokenId)
+        .execute()
 
       return {
         displayName: currentToken.displayName,
         email: currentToken.email,
         id: currentToken.id,
-        sessionId: nextRefreshToken.sessionId,
+        sessionId: currentToken.sessionId,
       }
     })
   }
 
   async revokeRefreshToken(refreshTokenHash: string): Promise<void> {
-    await this.db
-      .updateTable('app.auth_refresh_tokens')
-      .set({
-        revoked_at: new Date(),
-      })
-      .where('token_hash', '=', refreshTokenHash)
-      .where('revoked_at', 'is', null)
-      .execute()
+    await this.db.transaction().execute(async (trx) => {
+      const token = await trx
+        .selectFrom('app.auth_refresh_tokens')
+        .select('session_id as sessionId')
+        .where('token_hash', '=', refreshTokenHash)
+        .executeTakeFirst()
+
+      if (!token) {
+        return
+      }
+
+      await this.revokeRefreshTokenSession(trx, token.sessionId, new Date())
+    })
   }
 
   async createPasswordResetToken(
@@ -424,13 +468,13 @@ export class PostgresAuthRepository implements AuthRepository {
 
   private async insertRefreshToken(
     executor: DatabaseExecutor,
-    command: CreateRefreshTokenCommand,
+    command: CreateRefreshTokenCommand & { id?: string | undefined },
   ): Promise<void> {
     await executor
       .insertInto('app.auth_refresh_tokens')
       .values({
         expires_at: command.expiresAt,
-        id: generateUuidV7(),
+        id: command.id ?? generateUuidV7(),
         ip_address: command.metadata.ipAddress ?? null,
         session_id: command.sessionId,
         token_hash: command.refreshTokenHash,
@@ -479,6 +523,43 @@ export class PostgresAuthRepository implements AuthRepository {
       .where('revoked_at', 'is', null)
       .execute()
   }
+
+  private async findActiveRefreshTokenForSession(
+    executor: DatabaseExecutor,
+    input: {
+      sessionId: string
+      userId: string
+    },
+  ): Promise<{ tokenId: string } | null> {
+    const token = await executor
+      .selectFrom('app.auth_refresh_tokens')
+      .select('id as tokenId')
+      .where('session_id', '=', input.sessionId)
+      .where('user_id', '=', input.userId)
+      .where('revoked_at', 'is', null)
+      .where('rotated_at', 'is', null)
+      .where('expires_at', '>', new Date().toISOString())
+      .orderBy('created_at', 'desc')
+      .forUpdate()
+      .executeTakeFirst()
+
+    return token ?? null
+  }
+
+  private async revokeRefreshTokenSession(
+    executor: DatabaseExecutor,
+    sessionId: string,
+    revokedAt: Date,
+  ): Promise<void> {
+    await executor
+      .updateTable('app.auth_refresh_tokens')
+      .set({
+        revoked_at: revokedAt,
+      })
+      .where('session_id', '=', sessionId)
+      .where('revoked_at', 'is', null)
+      .execute()
+  }
 }
 
 function mapAuthUserRow(row: AuthUserRow): AuthUserRecord {
@@ -487,6 +568,10 @@ function mapAuthUserRow(row: AuthUserRow): AuthUserRecord {
     email: row.email,
     id: row.id,
   }
+}
+
+function isWithinRefreshTokenReuseGrace(rotatedAt: Date, now: Date): boolean {
+  return now.getTime() - rotatedAt.getTime() <= REFRESH_TOKEN_REUSE_GRACE_MS
 }
 
 async function useFastAuthTokenCommit(

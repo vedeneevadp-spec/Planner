@@ -96,6 +96,14 @@ deploy/
 scripts/       локальные DB, mobile и deploy workflows
 ```
 
+## Документация
+
+- [docs/architecture.md](docs/architecture.md) - архитектурные границы проекта
+- [docs/release-workflow.md](docs/release-workflow.md) - цикл разработки и
+  релиза
+- [docs/release-notes.md](docs/release-notes.md) - пользовательские заметки к
+  релизам
+
 ## API Runtime
 
 API строится как modular monolith поверх Fastify. Основные route-группы:

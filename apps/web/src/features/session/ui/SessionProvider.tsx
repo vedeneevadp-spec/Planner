@@ -166,17 +166,25 @@ export function SessionProvider({ children }: PropsWithChildren) {
   )
 
   const keepDeviceSession = useCallback(
-    (error: unknown, logMessage: string) => {
+    (
+      error: unknown,
+      logMessage: string,
+      storedSession: StoredAuthSession | null,
+    ) => {
       console.warn(logMessage, error)
       setAuthNotice(null)
-      setSnapshot({
-        ...INITIAL_AUTH_SNAPSHOT,
-        isLoading: false,
-      })
+      setSnapshot((currentSnapshot) =>
+        storedSession
+          ? toAuthSnapshot(storedSession, false, isNativeSessionRuntime)
+          : {
+              ...currentSnapshot,
+              isLoading: false,
+            },
+      )
 
       return 'deferred' as const
     },
-    [],
+    [isNativeSessionRuntime],
   )
 
   const recoverSession =
@@ -217,7 +225,38 @@ export function SessionProvider({ children }: PropsWithChildren) {
             return keepDeviceSession(
               error,
               'Auth session refresh deferred to device session.',
+              storedSession,
             )
+          }
+
+          if (isNativeSessionRuntime && refreshToken) {
+            const latestStoredSession = await readStoredAuthSession().catch(
+              (storageError) => {
+                console.warn(
+                  'Failed to re-read native auth session after refresh error.',
+                  storageError,
+                )
+                return null
+              },
+            )
+
+            if (
+              latestStoredSession?.refreshToken &&
+              latestStoredSession.refreshToken !== refreshToken
+            ) {
+              setAuthNotice(null)
+              setSnapshot(
+                toAuthSnapshot(
+                  latestStoredSession,
+                  false,
+                  isNativeSessionRuntime,
+                ),
+              )
+
+              return isAccessTokenUsable(latestStoredSession.expiresAt)
+                ? ('recovered' as const)
+                : ('deferred' as const)
+            }
           }
 
           await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)

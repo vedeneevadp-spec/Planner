@@ -55,6 +55,12 @@ export interface CreateRefreshTokenCommand extends CreateRefreshTokenPayload {
   userId: string
 }
 
+export interface RotateRefreshTokenPayload {
+  expiresAt: Date
+  metadata: AuthRequestMetadata
+  refreshTokenHash: string
+}
+
 export interface CreatePasswordResetTokenCommand {
   expiresAt: Date
   metadata: AuthRequestMetadata

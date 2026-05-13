@@ -1,5 +1,12 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const authApiMocks = vi.hoisted(() => ({
   confirmPasswordReset: vi.fn(),
@@ -90,6 +97,10 @@ interface AuthTokenResponse {
 
 describe('SessionProvider', () => {
   let appStateListener: ((isActive: boolean) => void) | null = null
+
+  afterEach(() => {
+    cleanup()
+  })
 
   beforeEach(() => {
     appStateListener = null
@@ -188,6 +199,66 @@ describe('SessionProvider', () => {
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
 
     unmount()
+  })
+
+  it('keeps the native account snapshot when refresh is deferred by a retryable error', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createExpiredStoredSession(),
+    )
+    authApiMocks.refreshAuthSession.mockRejectedValue(
+      new TypeError('Network request failed'),
+    )
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalled()
+      expect(screen.getByTestId('auth-email')).toHaveTextContent(
+        'mobile@example.com',
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+    })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+  })
+
+  it('does not clear native storage when a failed refresh used a stale token', async () => {
+    const oldSession = createExpiredStoredSession()
+    const newerSession = createUsableNativeStoredSession()
+
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(newerSession)
+    authStorageMocks.readStoredAuthSession
+      .mockResolvedValueOnce(oldSession)
+      .mockResolvedValueOnce(oldSession)
+      .mockResolvedValueOnce(newerSession)
+    authApiMocks.refreshAuthSession.mockRejectedValue({
+      status: 401,
+    })
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledWith(
+        { refreshToken: 'old-refresh-token' },
+        {
+          rememberSession: true,
+          tokenTransport: 'body',
+        },
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'newer-access-token',
+      )
+    })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
   })
 
   it('does not persist refresh tokens in browser session storage', async () => {
@@ -305,6 +376,19 @@ function UpdatePasswordProbe() {
   )
 }
 
+function AuthSnapshotProbe() {
+  const auth = useSessionAuth()
+
+  return (
+    <>
+      <output data-testid="auth-email">{auth.email ?? 'none'}</output>
+      <output data-testid="auth-access-token">
+        {auth.accessToken ?? 'none'}
+      </output>
+    </>
+  )
+}
+
 function createExpiredStoredSession(): StoredAuthSession {
   return {
     accessToken: 'old-access-token',
@@ -320,6 +404,16 @@ function createUsableBrowserStoredSession(): StoredAuthSession {
     accessToken: 'old-access-token',
     email: 'mobile@example.com',
     expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    userId: 'user-1',
+  }
+}
+
+function createUsableNativeStoredSession(): StoredAuthSession {
+  return {
+    accessToken: 'newer-access-token',
+    email: 'mobile@example.com',
+    expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+    refreshToken: 'newer-refresh-token',
     userId: 'user-1',
   }
 }

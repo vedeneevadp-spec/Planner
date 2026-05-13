@@ -258,7 +258,9 @@ export interface AppAuthRefreshTokensTable {
   id: Generated<string>
   ip_address: string | null
   last_used_at: TimestampColumn | null
+  replaced_by_token_id: string | null
   revoked_at: TimestampColumn | null
+  rotated_at: TimestampColumn | null
   session_id: string
   token_hash: string
   user_agent: string | null
