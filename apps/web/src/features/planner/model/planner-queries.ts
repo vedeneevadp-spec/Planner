@@ -18,15 +18,22 @@ import { requirePlannerApi } from './planner-error-policy'
 
 export const TASK_EVENT_POLL_INTERVAL_MS = 15_000
 
-export type PlannerTaskQueryKey = readonly ['planner', 'tasks', string]
-export type PlannerProjectQueryKey = readonly ['planner', 'projects', string]
+export type PlannerTaskQueryKey = readonly ['planner', 'tasks', string, number]
+export type PlannerProjectQueryKey = readonly [
+  'planner',
+  'projects',
+  string,
+  number,
+]
 export type PlannerTaskTemplateQueryKey = readonly [
   'planner',
   'task-templates',
   string,
+  number,
 ]
 
 interface PlannerQueriesParams {
+  authSessionVersion: number
   plannerApi: PlannerApiClient | null
   queryClient: QueryClient
   workspaceId: string | undefined
@@ -44,38 +51,47 @@ interface PlannerQueries {
 
 export function getPlannerTaskQueryKey(
   workspaceId: string | undefined,
+  authSessionVersion: number,
 ): PlannerTaskQueryKey {
-  return ['planner', 'tasks', workspaceId ?? 'pending']
+  return ['planner', 'tasks', workspaceId ?? 'pending', authSessionVersion]
 }
 
 export function getPlannerProjectQueryKey(
   workspaceId: string | undefined,
+  authSessionVersion: number,
 ): PlannerProjectQueryKey {
-  return ['planner', 'projects', workspaceId ?? 'pending']
+  return ['planner', 'projects', workspaceId ?? 'pending', authSessionVersion]
 }
 
 export function getPlannerTaskTemplateQueryKey(
   workspaceId: string | undefined,
+  authSessionVersion: number,
 ): PlannerTaskTemplateQueryKey {
-  return ['planner', 'task-templates', workspaceId ?? 'pending']
+  return [
+    'planner',
+    'task-templates',
+    workspaceId ?? 'pending',
+    authSessionVersion,
+  ]
 }
 
 export function usePlannerQueries({
+  authSessionVersion,
   plannerApi,
   queryClient,
   workspaceId,
 }: PlannerQueriesParams): PlannerQueries {
   const taskQueryKey = useMemo(
-    () => getPlannerTaskQueryKey(workspaceId),
-    [workspaceId],
+    () => getPlannerTaskQueryKey(workspaceId, authSessionVersion),
+    [authSessionVersion, workspaceId],
   )
   const projectQueryKey = useMemo(
-    () => getPlannerProjectQueryKey(workspaceId),
-    [workspaceId],
+    () => getPlannerProjectQueryKey(workspaceId, authSessionVersion),
+    [authSessionVersion, workspaceId],
   )
   const taskTemplateQueryKey = useMemo(
-    () => getPlannerTaskTemplateQueryKey(workspaceId),
-    [workspaceId],
+    () => getPlannerTaskTemplateQueryKey(workspaceId, authSessionVersion),
+    [authSessionVersion, workspaceId],
   )
   const invalidatePlannerQueries = useCallback(async () => {
     await Promise.all([

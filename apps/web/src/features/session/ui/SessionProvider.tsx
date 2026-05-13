@@ -1,5 +1,6 @@
 import {
   type PropsWithChildren,
+  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
@@ -73,6 +74,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
+  const restoreSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
+    Promise.resolve('signed_out'),
+  )
   const [passwordResetToken, setPasswordResetToken] = useState<string | null>(
     () =>
       typeof window === 'undefined'
@@ -84,7 +88,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
     ...INITIAL_AUTH_SNAPSHOT,
     isLoading: isAuthEnabled,
   })
+  const [sessionVersion, setSessionVersion] = useState(0)
   const isPasswordRecovery = passwordResetToken !== null
+
+  const commitAuthSnapshot = useCallback(
+    (nextSnapshot: SetStateAction<AuthSnapshot>) => {
+      setSnapshot(nextSnapshot)
+      setSessionVersion((currentVersion) => currentVersion + 1)
+    },
+    [],
+  )
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current === null) {
@@ -113,9 +126,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setPasswordResetToken(null)
       clearPasswordResetUrlParams()
       setAuthNotice(null)
-      setSnapshot(toAuthSnapshot(storedSession, false, isNativeSessionRuntime))
+      commitAuthSnapshot(
+        toAuthSnapshot(storedSession, false, isNativeSessionRuntime),
+      )
     },
-    [isNativeSessionRuntime],
+    [commitAuthSnapshot, isNativeSessionRuntime],
   )
 
   const clearAuthSession = useCallback(
@@ -139,7 +154,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       clearSelectedWorkspaceId(actorUserId)
       clearLastActorUserId()
       await clearStoredAuthSession()
-      setSnapshot({
+      commitAuthSnapshot({
         ...INITIAL_AUTH_SNAPSHOT,
         isLoading: false,
       })
@@ -158,6 +173,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     },
     [
       clearRefreshTimer,
+      commitAuthSnapshot,
       isNativeSessionRuntime,
       snapshot.refreshToken,
       snapshot.sessionAccessToken,
@@ -173,7 +189,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     ) => {
       console.warn(logMessage, error)
       setAuthNotice(null)
-      setSnapshot((currentSnapshot) =>
+      commitAuthSnapshot((currentSnapshot) =>
         storedSession
           ? toAuthSnapshot(storedSession, false, isNativeSessionRuntime)
           : {
@@ -184,7 +200,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       return 'deferred' as const
     },
-    [isNativeSessionRuntime],
+    [commitAuthSnapshot, isNativeSessionRuntime],
   )
 
   const recoverSession =
@@ -245,7 +261,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
               latestStoredSession.refreshToken !== refreshToken
             ) {
               setAuthNotice(null)
-              setSnapshot(
+              commitAuthSnapshot(
                 toAuthSnapshot(
                   latestStoredSession,
                   false,
@@ -271,6 +287,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       return recovery
     }, [
       clearAuthSession,
+      commitAuthSnapshot,
       isAuthEnabled,
       isNativeSessionRuntime,
       keepDeviceSession,
@@ -287,7 +304,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       const storedSession = await readStoredAuthSession()
 
       if (!storedSession) {
-        setSnapshot({
+        commitAuthSnapshot({
           ...INITIAL_AUTH_SNAPSHOT,
           isLoading: false,
         })
@@ -300,14 +317,23 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       if (isAccessTokenUsable(storedSession.expiresAt)) {
         setAuthNotice(null)
-        setSnapshot(
+        commitAuthSnapshot(
           toAuthSnapshot(storedSession, false, isNativeSessionRuntime),
         )
         return 'recovered'
       }
 
       return recoverSession()
-    }, [isAuthEnabled, isNativeSessionRuntime, recoverSession])
+    }, [
+      commitAuthSnapshot,
+      isAuthEnabled,
+      isNativeSessionRuntime,
+      recoverSession,
+    ])
+
+  useEffect(() => {
+    restoreSessionRef.current = restoreSession
+  }, [restoreSession])
 
   const clearAuthNotice = useCallback(() => {
     setAuthNotice(null)
@@ -333,7 +359,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         return
       }
 
-      await restoreSession()
+      await restoreSessionRef.current()
     }
 
     async function bootstrapAuthSession() {
@@ -344,7 +370,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         })
 
         if (!isActive || !appIsActive) {
-          setSnapshot((currentSnapshot) => ({
+          commitAuthSnapshot((currentSnapshot) => ({
             ...currentSnapshot,
             isLoading: false,
           }))
@@ -352,7 +378,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         }
       }
 
-      await restoreSession()
+      await restoreSessionRef.current()
     }
 
     void bootstrapAuthSession()
@@ -381,7 +407,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         void removeAppStateListener()
       }
     }
-  }, [isAuthEnabled, isNativeSessionRuntime, restoreSession])
+  }, [commitAuthSnapshot, isAuthEnabled, isNativeSessionRuntime])
 
   useEffect(() => {
     clearRefreshTimer()
@@ -515,6 +541,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       isPasswordRecovery,
       recoverSession,
       requestPasswordReset,
+      sessionVersion,
       signInWithPassword,
       signOut,
       signUpWithPassword,
@@ -529,6 +556,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       isPasswordRecovery,
       recoverSession,
       requestPasswordReset,
+      sessionVersion,
       signInWithPassword,
       signOut,
       signUpWithPassword,

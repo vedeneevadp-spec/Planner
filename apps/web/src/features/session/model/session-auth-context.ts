@@ -23,6 +23,7 @@ export interface SessionAuthState {
   isPasswordRecovery: boolean
   recoverSession: () => Promise<SessionRecoveryResult>
   requestPasswordReset: (email: string) => Promise<void>
+  sessionVersion: number
   signInWithPassword: (email: string, password: string) => Promise<void>
   signUpWithPassword: (
     input: PasswordSignUpInput,

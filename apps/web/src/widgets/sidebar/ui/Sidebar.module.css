@@ -10,7 +10,9 @@
   height: 100%;
   border-radius: 28px;
   padding: 1.5rem;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   backdrop-filter: blur(18px);
   background: var(--surface);
   border: 1px solid var(--line);

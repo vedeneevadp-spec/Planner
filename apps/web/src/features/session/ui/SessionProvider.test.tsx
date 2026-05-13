@@ -226,6 +226,37 @@ describe('SessionProvider', () => {
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
   })
 
+  it('bumps the native session version when the app resumes with a device session', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createUsableNativeStoredSession(),
+    )
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(appStateListener).not.toBeNull()
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'newer-access-token',
+      )
+      expect(screen.getByTestId('auth-session-version')).toHaveTextContent('1')
+    })
+
+    await act(async () => {
+      appStateListener?.(false)
+      appStateListener?.(true)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-session-version')).toHaveTextContent('2')
+    })
+    expect(authApiMocks.refreshAuthSession).not.toHaveBeenCalled()
+  })
+
   it('does not clear native storage when a failed refresh used a stale token', async () => {
     const oldSession = createExpiredStoredSession()
     const newerSession = createUsableNativeStoredSession()
@@ -385,6 +416,7 @@ function AuthSnapshotProbe() {
       <output data-testid="auth-access-token">
         {auth.accessToken ?? 'none'}
       </output>
+      <output data-testid="auth-session-version">{auth.sessionVersion}</output>
     </>
   )
 }

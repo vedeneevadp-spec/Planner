@@ -60,6 +60,7 @@ export function usePlannerSession() {
       'planner',
       'session',
       auth.userId ?? 'anonymous',
+      auth.sessionVersion,
       plannerApiConfig.actorUserIdOverride ?? 'default',
       plannerApiConfig.workspaceIdOverride ?? 'default',
       selectedWorkspaceActorUserId ?? 'default',

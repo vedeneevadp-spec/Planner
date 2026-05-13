@@ -3,7 +3,7 @@ import type {
   SessionWorkspaceMembership,
 } from '@planner/contracts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { createElement, type PropsWithChildren, type ReactElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -63,6 +63,97 @@ describe('loadPlannerSession', () => {
     )
 
     expect(screen.getByTestId('workspace-id')).toHaveTextContent('workspace-a')
+  })
+
+  it('reloads the planner session when the auth session version changes', async () => {
+    const session = createSessionResponse({
+      actorUserId: 'user-a',
+      role: 'owner',
+      workspace: createWorkspaceMembership({
+        id: 'workspace-a',
+        kind: 'personal',
+        name: 'User A',
+        role: 'owner',
+        slug: 'user-a',
+      }),
+      workspaceId: 'workspace-a',
+      workspaces: [
+        createWorkspaceMembership({
+          id: 'workspace-a',
+          kind: 'personal',
+          name: 'User A',
+          role: 'owner',
+          slug: 'user-a',
+        }),
+      ],
+    })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(session), {
+          headers: {
+            'content-type': 'application/json',
+          },
+          status: 200,
+        }),
+      ),
+    )
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+
+    function renderProbe(authState: SessionAuthState) {
+      return createElement(
+        SessionAuthContext.Provider,
+        { value: authState },
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(CachedSessionProbe),
+        ),
+      )
+    }
+
+    const { rerender } = render(
+      renderProbe(
+        createAuthState({
+          accessToken: 'old-token',
+          sessionVersion: 1,
+        }),
+      ),
+    )
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    })
+
+    rerender(
+      renderProbe(
+        createAuthState({
+          accessToken: 'new-token',
+          sessionVersion: 2,
+        }),
+      ),
+    )
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      headers: {
+        authorization: 'Bearer old-token',
+      },
+    })
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      headers: {
+        authorization: 'Bearer new-token',
+      },
+    })
+
+    fetchMock.mockRestore()
   })
 
   it('retries without a stale selected workspace after 403', async () => {
@@ -215,6 +306,7 @@ function createAuthState(
     isPasswordRecovery: false,
     recoverSession: vi.fn().mockResolvedValue('recovered'),
     requestPasswordReset: vi.fn().mockResolvedValue(undefined),
+    sessionVersion: 0,
     signInWithPassword: vi.fn().mockResolvedValue(undefined),
     signOut: vi.fn().mockResolvedValue(undefined),
     signUpWithPassword: vi.fn().mockResolvedValue({

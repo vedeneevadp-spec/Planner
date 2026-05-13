@@ -50,7 +50,8 @@ import {
 } from './planner-records'
 
 export function usePlannerState(): PlannerState {
-  const { accessToken, isAuthEnabled, recoverSession } = useSessionAuth()
+  const { accessToken, isAuthEnabled, recoverSession, sessionVersion } =
+    useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const isPlannerApiReady =
@@ -89,6 +90,7 @@ export function usePlannerState(): PlannerState {
     taskTemplatesQuery,
     tasksQuery,
   } = usePlannerQueries({
+    authSessionVersion: sessionVersion,
     plannerApi,
     queryClient,
     workspaceId,
