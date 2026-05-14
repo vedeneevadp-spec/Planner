@@ -25,6 +25,8 @@ import { formatLongDate, getDateKey } from '@/shared/lib/date'
 import {
   CalendarIcon,
   CheckIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CloseIcon,
   EditIcon,
   HomeIcon,
@@ -41,6 +43,7 @@ import styles from './Sidebar.module.css'
 
 const navigation = [
   { to: '/today', label: 'Сегодня' },
+  { to: '/calendar', label: 'Календарь' },
   { to: '/shopping', label: 'Покупки' },
   { to: '/cleaning', label: 'Уборка' },
   { to: '/spheres', label: 'Сферы' },
@@ -56,8 +59,14 @@ interface MobileMoreSheetLocation {
   pathname: string
 }
 
+interface SidebarProps {
+  isCollapsed?: boolean
+  onCollapsedChange?: (isCollapsed: boolean) => void
+}
+
 const mobilePrimaryRoutes: readonly NavigationRoute[] = [
   '/today',
+  '/calendar',
   '/shopping',
   '/cleaning',
 ]
@@ -69,7 +78,10 @@ const mobileMoreRoutes: readonly NavigationRoute[] = [
   '/admin',
 ]
 
-export function Sidebar() {
+export function Sidebar({
+  isCollapsed = false,
+  onCollapsedChange,
+}: SidebarProps) {
   const { errorMessage, isLoading, isSyncing, refresh, spheres, tasks } =
     usePlanner()
   const cleaningSummary = useCleaningSummary()
@@ -99,6 +111,9 @@ export function Sidebar() {
   const todayKey = getDateKey(new Date())
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const summary = getPlannerSummary(tasks, todayKey)
+  const plannedTaskCount = tasks.filter(
+    (task) => task.status !== 'done' && task.plannedDate !== null,
+  ).length
   const habitsTodayQuery = useHabitsToday(todayKey)
   const pendingHabitTodayCount = (habitsTodayQuery.data?.items ?? []).filter(
     (item) =>
@@ -114,6 +129,7 @@ export function Sidebar() {
     (item) =>
       (!isSharedWorkspace ||
         item.to === '/today' ||
+        item.to === '/calendar' ||
         item.to === '/cleaning' ||
         item.to === '/shopping' ||
         item.to === '/timeline' ||
@@ -780,9 +796,27 @@ export function Sidebar() {
         ) : null}
       </div>
 
-      <aside className={styles.sidebar}>
+      <aside
+        className={cx(styles.sidebar, isCollapsed && styles.sidebarCollapsed)}
+      >
         <div className={styles.brandBlock}>
           <h1>Chaotika</h1>
+          <button
+            className={styles.sidebarCollapseButton}
+            type="button"
+            aria-label={isCollapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}
+            aria-pressed={isCollapsed}
+            title={isCollapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}
+            onClick={() => {
+              onCollapsedChange?.(!isCollapsed)
+            }}
+          >
+            {isCollapsed ? (
+              <ChevronRightIcon size={18} strokeWidth={2.15} />
+            ) : (
+              <ChevronLeftIcon size={18} strokeWidth={2.15} />
+            )}
+          </button>
         </div>
 
         <section className={styles.connectionCard}>
@@ -913,28 +947,34 @@ export function Sidebar() {
             const count =
               item.to === '/today'
                 ? summary.focusCount + summary.overdueCount
-                : item.to === '/cleaning'
-                  ? cleaningSummary.urgentCount || cleaningSummary.dueCount
-                  : item.to === '/habits'
-                    ? pendingHabitTodayCount
-                    : item.to === '/shopping'
-                      ? shoppingListSummary.activeItemCount
-                      : item.to === '/timeline'
-                        ? summary.timelineCount
-                        : item.to === '/spheres'
-                          ? spheres.length
-                          : (session?.appRole ?? 'Admin')
+                : item.to === '/calendar'
+                  ? plannedTaskCount
+                  : item.to === '/cleaning'
+                    ? cleaningSummary.urgentCount || cleaningSummary.dueCount
+                    : item.to === '/habits'
+                      ? pendingHabitTodayCount
+                      : item.to === '/shopping'
+                        ? shoppingListSummary.activeItemCount
+                        : item.to === '/timeline'
+                          ? summary.timelineCount
+                          : item.to === '/spheres'
+                            ? spheres.length
+                            : (session?.appRole ?? 'Admin')
 
             return (
               <NavLink
                 key={item.to}
                 to={item.to}
+                title={isCollapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   cx(styles.navItem, isActive && styles.navItemActive)
                 }
               >
-                <span>{item.label}</span>
-                <strong>{count}</strong>
+                <span className={styles.navIcon} aria-hidden="true">
+                  {renderNavIcon(item.to)}
+                </span>
+                <span className={styles.navLabel}>{item.label}</span>
+                <strong className={styles.navCount}>{count}</strong>
               </NavLink>
             )
           })}
@@ -980,8 +1020,12 @@ function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
 }
 
-function renderMobileNavIcon(route: string) {
+function renderNavIcon(route: string) {
   if (route === '/today') {
+    return <CheckIcon size={20} strokeWidth={1.9} />
+  }
+
+  if (route === '/calendar') {
     return <CalendarIcon size={20} strokeWidth={1.9} />
   }
 
@@ -1001,7 +1045,15 @@ function renderMobileNavIcon(route: string) {
     return <SpheresIcon size={20} strokeWidth={1.9} />
   }
 
+  if (route === '/admin') {
+    return <SettingsIcon size={20} strokeWidth={1.9} />
+  }
+
   return <TimelineIcon />
+}
+
+function renderMobileNavIcon(route: string) {
+  return renderNavIcon(route)
 }
 
 function TimelineIcon() {

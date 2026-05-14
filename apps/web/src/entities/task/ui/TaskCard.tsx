@@ -136,7 +136,6 @@ export function TaskCard({
       ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
       : null,
     task.plannedDate ? formatShortDate(task.plannedDate) : null,
-    task.dueDate ? `Дедлайн ${formatShortDate(task.dueDate)}` : null,
   ].filter((value): value is string => Boolean(value))
   const toneClass =
     tone === 'warning'

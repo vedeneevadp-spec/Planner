@@ -65,10 +65,7 @@ function getTaskCompletedDate(task: Pick<Task, 'completedAt'>): string | null {
 
 function getTaskWeekAnchor(task: Task): string {
   return (
-    task.plannedDate ??
-    task.dueDate ??
-    getTaskCompletedDate(task) ??
-    getTaskCreatedDate(task)
+    task.plannedDate ?? getTaskCompletedDate(task) ?? getTaskCreatedDate(task)
   )
 }
 
@@ -79,7 +76,6 @@ function isInWeek(value: string | null, week: WeekRange): boolean {
 function getLatestActivityDate(task: Task): string {
   return [
     task.plannedDate,
-    task.dueDate,
     getTaskCompletedDate(task),
     getTaskCreatedDate(task),
   ]
@@ -176,10 +172,7 @@ export function buildSphereStats(
     const weekAnchor = getTaskWeekAnchor(task)
     const latestActivityDate = getLatestActivityDate(task)
 
-    if (
-      task.status !== 'done' &&
-      isInWeek(task.plannedDate ?? task.dueDate, week)
-    ) {
+    if (task.status !== 'done' && isInWeek(task.plannedDate, week)) {
       stats.plannedCount += 1
     }
 

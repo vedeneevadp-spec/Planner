@@ -1347,6 +1347,17 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       }),
     },
+    '/api/v1/preferences': {
+      patch: createJsonOperation({
+        operationId: 'updateUserPreferences',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'UserPreferencesUpdateInput',
+        responseSchema: 'UserPreferences',
+        security: authenticatedSecurity(),
+        summary: 'Update current user preferences',
+        tags: ['session'],
+      }),
+    },
     '/api/v1/profile-assets/{fileName}': {
       get: createBinaryAssetOperation(
         'getProfileAvatarAsset',
@@ -2165,6 +2176,9 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           enum: ['access_token', 'default', 'headers'],
           type: 'string',
         },
+        userPreferences: {
+          $ref: '#/components/schemas/UserPreferences',
+        },
         workspace: {
           $ref: '#/components/schemas/SessionWorkspace',
         },
@@ -2188,6 +2202,7 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         'groupRole',
         'role',
         'source',
+        'userPreferences',
         'workspace',
         'workspaceId',
         'workspaceSettings',
@@ -2248,6 +2263,27 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: ['taskCompletionConfettiEnabled'],
+      type: 'object',
+    },
+    CalendarViewMode: {
+      enum: ['month', 'schedule', 'week'],
+      type: 'string',
+    },
+    EnergyMode: {
+      enum: ['maximum', 'minimum', 'normal'],
+      type: 'string',
+    },
+    UserPreferences: {
+      additionalProperties: false,
+      properties: {
+        calendarViewMode: {
+          $ref: '#/components/schemas/CalendarViewMode',
+        },
+        energyMode: {
+          $ref: '#/components/schemas/EnergyMode',
+        },
+      },
+      required: ['calendarViewMode', 'energyMode'],
       type: 'object',
     },
     WorkspaceRole: {
@@ -2348,6 +2384,18 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         },
       },
       required: ['taskCompletionConfettiEnabled'],
+      type: 'object',
+    },
+    UserPreferencesUpdateInput: {
+      additionalProperties: false,
+      properties: {
+        calendarViewMode: {
+          $ref: '#/components/schemas/CalendarViewMode',
+        },
+        energyMode: {
+          $ref: '#/components/schemas/EnergyMode',
+        },
+      },
       type: 'object',
     },
     WorkspaceUserListResponse: {

@@ -7,6 +7,8 @@ import {
   sessionWorkspaceMembershipSchema,
   updateSharedWorkspaceInputSchema,
   updateUserProfileInputSchema,
+  userPreferencesSchema,
+  userPreferencesUpdateInputSchema,
   userProfileSchema,
   workspaceInvitationCreateInputSchema,
   workspaceInvitationListResponseSchema,
@@ -76,6 +78,18 @@ export function registerSessionRoutes(
     const profile = await service.updateUserProfile(context, input)
 
     return userProfileSchema.parse(profile)
+  })
+
+  app.patch('/api/v1/preferences', async (request) => {
+    const context = resolveRequiredSessionContext(request)
+    const input = parseOrThrow(
+      userPreferencesUpdateInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const preferences = await service.updateUserPreferences(context, input)
+
+    return userPreferencesSchema.parse(preferences)
   })
 
   app.post('/api/v1/workspaces/shared', async (request, reply) => {

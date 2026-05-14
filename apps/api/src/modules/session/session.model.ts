@@ -5,6 +5,8 @@ import type {
   SessionWorkspaceMembership as ContractSessionWorkspaceMembership,
   UpdateSharedWorkspaceInput as ContractUpdateSharedWorkspaceInput,
   UpdateUserProfileInput as ContractUpdateUserProfileInput,
+  UserPreferences as ContractUserPreferences,
+  UserPreferencesUpdateInput as ContractUserPreferencesUpdateInput,
   UserProfile as ContractUserProfile,
   WorkspaceGroupRole,
   WorkspaceInvitationCreateInput as ContractWorkspaceInvitationCreateInput,
@@ -43,6 +45,7 @@ export interface SessionSnapshot {
   workspaceId: string
   workspaceSettings: WorkspaceSettings
   workspaces: SessionWorkspaceMembership[]
+  userPreferences: UserPreferences
 }
 
 export interface SessionContext {
@@ -55,6 +58,8 @@ export type SessionWorkspaceMembership = ContractSessionWorkspaceMembership
 export type AdminUserRecord = ContractAdminUserRecord
 export type WorkspaceSettings = ContractWorkspaceSettings
 export type WorkspaceSettingsUpdateInput = ContractWorkspaceSettingsUpdateInput
+export type UserPreferences = ContractUserPreferences
+export type UserPreferencesUpdateInput = ContractUserPreferencesUpdateInput
 export type UpdateSharedWorkspaceInput = ContractUpdateSharedWorkspaceInput
 export type UpdateUserProfileInput = ContractUpdateUserProfileInput
 export type UserProfile = ContractUserProfile

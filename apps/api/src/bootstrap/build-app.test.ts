@@ -25,6 +25,7 @@ import {
   taskRecordSchema,
   taskTemplateListResponseSchema,
   taskTemplateRecordSchema,
+  userPreferencesSchema,
   userProfileSchema,
   workspaceInvitationListResponseSchema,
   workspaceInvitationRecordSchema,
@@ -121,6 +122,10 @@ const guestSessionRepository: SessionRepository = {
       groupRole: null,
       role: 'guest',
       source: 'access_token',
+      userPreferences: {
+        calendarViewMode: 'week',
+        energyMode: 'normal',
+      },
       workspace: {
         id: 'workspace-guest',
         kind: 'personal',
@@ -214,6 +219,12 @@ const guestSessionRepository: SessionRepository = {
       'workspace_settings_manage_forbidden',
       'Only application admins can update workspace settings.',
     )
+  },
+  updateUserPreferences(_session, input) {
+    return Promise.resolve({
+      calendarViewMode: input.calendarViewMode ?? 'week',
+      energyMode: input.energyMode ?? 'normal',
+    })
   },
   updateUserProfile() {
     throw new HttpError(
@@ -451,6 +462,71 @@ void describe('buildApiApp', () => {
       sessionResponseSchema.parse(sessionResponse.json()).workspaceSettings
         .taskCompletionConfettiEnabled,
       false,
+    )
+  })
+
+  void it('updates user preferences for the current actor', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'PATCH',
+      payload: {
+        calendarViewMode: 'schedule',
+      },
+      url: '/api/v1/preferences',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(userPreferencesSchema.parse(response.json()), {
+      calendarViewMode: 'schedule',
+      energyMode: 'normal',
+    })
+
+    const energyResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'PATCH',
+      payload: {
+        energyMode: 'maximum',
+      },
+      url: '/api/v1/preferences',
+    })
+
+    assert.equal(energyResponse.statusCode, 200)
+    assert.deepEqual(userPreferencesSchema.parse(energyResponse.json()), {
+      calendarViewMode: 'schedule',
+      energyMode: 'maximum',
+    })
+
+    const sessionResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(sessionResponse.statusCode, 200)
+    assert.deepEqual(
+      sessionResponseSchema.parse(sessionResponse.json()).userPreferences,
+      {
+        calendarViewMode: 'schedule',
+        energyMode: 'maximum',
+      },
     )
   })
 
@@ -2165,6 +2241,9 @@ void describe('buildApiApp', () => {
       updateWorkspaceSettings() {
         throw new Error('updateWorkspaceSettings should not be called.')
       },
+      updateUserPreferences() {
+        throw new Error('updateUserPreferences should not be called.')
+      },
       updateUserProfile() {
         throw new Error('updateUserProfile should not be called.')
       },
@@ -2593,6 +2672,9 @@ void describe('buildApiApp', () => {
         throw new Error('Not implemented.')
       },
       updateWorkspaceSettings() {
+        throw new Error('Not implemented.')
+      },
+      updateUserPreferences() {
         throw new Error('Not implemented.')
       },
       updateUserProfile() {

@@ -167,11 +167,6 @@ function TimelineTaskItem({
             ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
             : 'Без времени'}
         </span>
-        {task.dueDate ? (
-          <span className={styles.metaChip}>
-            Дедлайн {formatShortDate(task.dueDate)}
-          </span>
-        ) : null}
         {task.importance === 'important' ? (
           <span className={cx(styles.metaChip, styles.importantChip)}>
             Важно

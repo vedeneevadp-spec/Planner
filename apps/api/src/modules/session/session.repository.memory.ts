@@ -1,7 +1,9 @@
 import {
   type AdminUserRecord,
   type AssignableAppRole,
+  type CalendarViewMode,
   type CreateSharedWorkspaceInput,
+  type EnergyMode,
   generateUuidV7,
   type UpdateSharedWorkspaceInput,
   type UpdateUserProfileInput,
@@ -60,6 +62,8 @@ interface MemoryInvitation {
 
 interface MemoryUser extends AdminUserRecord {
   avatarUrl: string | null
+  calendarViewMode: CalendarViewMode
+  energyMode: EnergyMode
 }
 
 const DEFAULT_ACTOR_ID = '11111111-1111-4111-8111-111111111111'
@@ -80,6 +84,8 @@ export class MemorySessionRepository implements SessionRepository {
     {
       appRole: 'owner',
       avatarUrl: null,
+      calendarViewMode: 'week',
+      energyMode: 'normal',
       displayName: 'Tikondra',
       email: 'dev@planner.local',
       id: DEFAULT_ACTOR_ID,
@@ -90,6 +96,8 @@ export class MemorySessionRepository implements SessionRepository {
     {
       appRole: 'user',
       avatarUrl: null,
+      calendarViewMode: 'week',
+      energyMode: 'normal',
       displayName: 'Planner Reader',
       email: 'reader@planner.local',
       id: '44444444-4444-4444-8444-444444444444',
@@ -512,6 +520,30 @@ export class MemorySessionRepository implements SessionRepository {
     })
   }
 
+  updateUserPreferences(
+    session: SessionSnapshot,
+    input: { calendarViewMode?: CalendarViewMode; energyMode?: EnergyMode },
+  ) {
+    const user = this.getUserById(session.actorUserId)
+
+    if (!user) {
+      throw new HttpError(
+        404,
+        'user_preferences_not_found',
+        'User was not found.',
+      )
+    }
+
+    user.calendarViewMode = input.calendarViewMode ?? user.calendarViewMode
+    user.energyMode = input.energyMode ?? user.energyMode
+    user.updatedAt = new Date().toISOString()
+
+    return Promise.resolve({
+      calendarViewMode: user.calendarViewMode,
+      energyMode: user.energyMode,
+    })
+  }
+
   updateUserProfile(
     session: SessionSnapshot,
     input: UpdateUserProfileInput & {
@@ -595,6 +627,10 @@ export class MemorySessionRepository implements SessionRepository {
       groupRole: selectedMembership.groupRole,
       role: selectedMembership.role,
       source,
+      userPreferences: {
+        calendarViewMode: actor.calendarViewMode,
+        energyMode: actor.energyMode,
+      },
       workspace: {
         id: workspace.id,
         kind: workspace.kind,
@@ -670,6 +706,10 @@ export class MemorySessionRepository implements SessionRepository {
       groupRole: null,
       role: 'owner',
       source,
+      userPreferences: {
+        calendarViewMode: actor.calendarViewMode,
+        energyMode: actor.energyMode,
+      },
       workspace: {
         id: fallbackWorkspace.id,
         kind: fallbackWorkspace.kind,
@@ -709,6 +749,8 @@ export class MemorySessionRepository implements SessionRepository {
     const createdUser: MemoryUser = {
       appRole: 'user',
       avatarUrl: null,
+      calendarViewMode: 'week',
+      energyMode: 'normal',
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
       email: normalizedEmail,
       id: actorUserId,
@@ -732,6 +774,8 @@ export class MemorySessionRepository implements SessionRepository {
     const createdUser: MemoryUser = {
       appRole: 'user',
       avatarUrl: null,
+      calendarViewMode: 'week',
+      energyMode: 'normal',
       displayName: 'Planner User',
       email: `${actorUserId}@planner.local`,
       id: actorUserId,

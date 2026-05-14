@@ -230,10 +230,12 @@ export interface AppTaskTemplatesTable {
 export interface AppUsersTable {
   app_role: 'owner' | 'admin' | 'user' | 'guest'
   avatar_url: string | null
+  calendar_view_mode: Generated<'week' | 'month' | 'schedule'>
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null
   display_name: string
   email: string
+  energy_mode: Generated<'minimum' | 'normal' | 'maximum'>
   id: Generated<string>
   locale: string
   timezone: string

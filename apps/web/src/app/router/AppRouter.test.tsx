@@ -26,6 +26,10 @@ vi.mock('@/pages/admin', () => ({
   AdminPage: () => <div>Admin page</div>,
 }))
 
+vi.mock('@/pages/calendar', () => ({
+  CalendarPage: () => <div>Calendar page</div>,
+}))
+
 vi.mock('@/pages/habits', () => ({
   HabitsPage: () => <div>Habits page</div>,
 }))
@@ -91,6 +95,24 @@ describe('AppRouter', () => {
     )
 
     expect(await screen.findByText('Habits page')).toBeVisible()
+  })
+
+  it('keeps calendar available in shared workspaces', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'shared',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/calendar']}>
+        <AppRouter />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Calendar page')).toBeVisible()
   })
 
   it('redirects shared workspaces away from profile', async () => {

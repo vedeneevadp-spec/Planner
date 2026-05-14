@@ -353,6 +353,10 @@ function createSessionResponse(input: {
     groupRole,
     role,
     source,
+    userPreferences: {
+      calendarViewMode: 'week',
+      energyMode: 'normal',
+    },
     workspace,
     workspaceId,
     workspaceSettings: {

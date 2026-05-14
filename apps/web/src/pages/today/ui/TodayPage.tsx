@@ -31,7 +31,11 @@ import {
   useUpsertHabitEntry,
 } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
-import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
+import {
+  usePlannerSession,
+  useUpdateUserPreferences,
+  useWorkspaceUsers,
+} from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import pageStyles from '@/shared/ui/Page'
@@ -40,8 +44,6 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 import type { EnergyMode } from '../lib/resource-plan'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
 import styles from './TodayPage.module.css'
-
-const ENERGY_MODE_STORAGE_KEY = 'planner.today.energyMode'
 
 type TaskSectionTone = 'default' | 'warning' | 'success'
 
@@ -54,18 +56,6 @@ interface TaskSectionOptions {
 
 function isRoutineTask(task: Task): boolean {
   return Boolean(task.routine)
-}
-
-function readStoredEnergyMode(): EnergyMode {
-  if (typeof window === 'undefined') {
-    return 'normal'
-  }
-
-  const value = window.localStorage.getItem(ENERGY_MODE_STORAGE_KEY)
-
-  return value === 'minimum' || value === 'maximum' || value === 'normal'
-    ? value
-    : 'normal'
 }
 
 function renderTaskSectionGroup(
@@ -185,6 +175,8 @@ export function TodayPage() {
 }
 
 function PersonalTodayPage() {
+  const sessionQuery = usePlannerSession()
+  const updateUserPreferencesMutation = useUpdateUserPreferences()
   const {
     tasks,
     spheres,
@@ -195,14 +187,30 @@ function PersonalTodayPage() {
     updateTask,
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
-  const [energyMode, setEnergyMode] = useState<EnergyMode>(readStoredEnergyMode)
+  const persistedEnergyMode =
+    sessionQuery.data?.userPreferences.energyMode ?? 'normal'
+  const [energyMode, setEnergyMode] = useState<EnergyMode>(persistedEnergyMode)
   const todayKey = getDateKey(new Date())
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
+
   useEffect(() => {
-    window.localStorage.setItem(ENERGY_MODE_STORAGE_KEY, energyMode)
-  }, [energyMode])
+    setEnergyMode(persistedEnergyMode)
+  }, [persistedEnergyMode])
+
+  function selectEnergyMode(nextEnergyMode: EnergyMode) {
+    setEnergyMode(nextEnergyMode)
+
+    if (
+      sessionQuery.data &&
+      nextEnergyMode !== sessionQuery.data.userPreferences.energyMode
+    ) {
+      updateUserPreferencesMutation.mutate({
+        energyMode: nextEnergyMode,
+      })
+    }
+  }
 
   const todayTasks = useMemo(
     () => selectTodayTasks(tasks, todayKey),
@@ -338,7 +346,7 @@ function PersonalTodayPage() {
             energyMode={energyMode}
             isTaskPending={isTaskPending}
             tasks={resourceTasks}
-            onEnergyModeChange={setEnergyMode}
+            onEnergyModeChange={selectEnergyMode}
             onMoveTaskTomorrow={(taskId) => {
               void setTaskPlannedDate(taskId, tomorrowKey)
             }}

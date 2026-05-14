@@ -12,7 +12,7 @@ import {
   cleaningTaskStateSchema,
   cleaningZoneSchema,
 } from './cleaning.js'
-import { dailyPlanSchema } from './daily-plan.js'
+import { dailyPlanSchema, energyModeSchema } from './daily-plan.js'
 import { emojiAssetSchema, emojiSetSchema } from './emoji-set.js'
 import { habitEntrySchema, habitSchema, habitStatsSchema } from './habit.js'
 import {
@@ -161,6 +161,13 @@ export const workspaceSettingsSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
 })
 
+export const calendarViewModeSchema = z.enum(['week', 'month', 'schedule'])
+
+export const userPreferencesSchema = z.object({
+  calendarViewMode: calendarViewModeSchema,
+  energyMode: energyModeSchema,
+})
+
 export const sessionResponseSchema = z.object({
   actor: sessionActorSchema,
   actorUserId: z.string(),
@@ -168,6 +175,7 @@ export const sessionResponseSchema = z.object({
   groupRole: workspaceGroupRoleSchema.nullable(),
   role: workspaceRoleSchema,
   source: z.enum(['access_token', 'default', 'headers']),
+  userPreferences: userPreferencesSchema,
   workspace: sessionWorkspaceSchema,
   workspaceId: z.string(),
   workspaceSettings: workspaceSettingsSchema,
@@ -239,6 +247,16 @@ export const updateSharedWorkspaceInputSchema = z.object({
 export const workspaceSettingsUpdateInputSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
 })
+
+export const userPreferencesUpdateInputSchema = z
+  .object({
+    calendarViewMode: calendarViewModeSchema.optional(),
+    energyMode: energyModeSchema.optional(),
+  })
+  .refine(
+    (value) => Boolean(value.calendarViewMode || value.energyMode),
+    'At least one preference must be updated.',
+  )
 
 export const updateUserProfileInputSchema = z
   .object({
@@ -543,6 +561,8 @@ export type SessionWorkspace = z.infer<typeof sessionWorkspaceSchema>
 export type SessionWorkspaceMembership = z.infer<
   typeof sessionWorkspaceMembershipSchema
 >
+export type CalendarViewMode = z.infer<typeof calendarViewModeSchema>
+export type UserPreferences = z.infer<typeof userPreferencesSchema>
 export type UserProfile = z.infer<typeof userProfileSchema>
 export type WorkspaceSettings = z.infer<typeof workspaceSettingsSchema>
 export type StorageDriver = z.infer<typeof storageDriverSchema>
@@ -581,6 +601,9 @@ export type UpdateSharedWorkspaceInput = z.infer<
 >
 export type WorkspaceSettingsUpdateInput = z.infer<
   typeof workspaceSettingsUpdateInputSchema
+>
+export type UserPreferencesUpdateInput = z.infer<
+  typeof userPreferencesUpdateInputSchema
 >
 export type UpdateUserProfileInput = z.infer<
   typeof updateUserProfileInputSchema

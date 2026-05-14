@@ -2,7 +2,9 @@ import {
   type AdminUserRecord,
   type AppRole,
   type AssignableAppRole,
+  type CalendarViewMode,
   type CreateSharedWorkspaceInput,
+  type EnergyMode,
   generateUuidV7,
   type SessionWorkspaceMembership,
   type UpdateSharedWorkspaceInput,
@@ -33,6 +35,8 @@ import type { SessionRepository } from './session.repository.js'
 
 interface SessionRow {
   actorAvatarUrl: string | null
+  calendarViewMode: CalendarViewMode
+  energyMode: EnergyMode
   actorDisplayName: string
   actorEmail: string
   actorId: string
@@ -110,6 +114,8 @@ interface ExistingWorkspaceMemberRow {
 interface AppActorRow {
   appRole: AppRole
   avatarUrl: string | null
+  calendarViewMode: CalendarViewMode
+  energyMode: EnergyMode
   displayName: string
   email: string
   id: string
@@ -571,6 +577,41 @@ export class PostgresSessionRepository implements SessionRepository {
     }
   }
 
+  async updateUserPreferences(
+    session: SessionSnapshot,
+    input: { calendarViewMode?: CalendarViewMode; energyMode?: EnergyMode },
+  ) {
+    const update = {
+      ...(input.calendarViewMode
+        ? { calendar_view_mode: input.calendarViewMode }
+        : {}),
+      ...(input.energyMode ? { energy_mode: input.energyMode } : {}),
+    }
+    const updatedPreferences = await this.db
+      .updateTable('app.users')
+      .set(update)
+      .where('id', '=', session.actorUserId)
+      .where('deleted_at', 'is', null)
+      .returning([
+        'calendar_view_mode as calendarViewMode',
+        'energy_mode as energyMode',
+      ])
+      .executeTakeFirst()
+
+    if (!updatedPreferences) {
+      throw new HttpError(
+        404,
+        'user_preferences_not_found',
+        'User was not found.',
+      )
+    }
+
+    return {
+      calendarViewMode: updatedPreferences.calendarViewMode,
+      energyMode: updatedPreferences.energyMode,
+    }
+  }
+
   async updateUserProfile(
     session: SessionSnapshot,
     input: UpdateUserProfileInput & {
@@ -612,6 +653,8 @@ export class PostgresSessionRepository implements SessionRepository {
       )
       .select([
         'actor.avatar_url as actorAvatarUrl',
+        'actor.calendar_view_mode as calendarViewMode',
+        'actor.energy_mode as energyMode',
         'actor.display_name as actorDisplayName',
         'actor.email as actorEmail',
         'actor.id as actorId',
@@ -927,6 +970,8 @@ export class PostgresSessionRepository implements SessionRepository {
       .select([
         'app_role as appRole',
         'avatar_url as avatarUrl',
+        'calendar_view_mode as calendarViewMode',
+        'energy_mode as energyMode',
         'display_name as displayName',
         'email',
         'id',
@@ -947,6 +992,8 @@ export class PostgresSessionRepository implements SessionRepository {
       .select([
         'app_role as appRole',
         'avatar_url as avatarUrl',
+        'calendar_view_mode as calendarViewMode',
+        'energy_mode as energyMode',
         'display_name as displayName',
         'email',
         'id',
@@ -1155,6 +1202,8 @@ export class PostgresSessionRepository implements SessionRepository {
       this.createActorRecord(executor, {
         appRole,
         avatarUrl: null,
+        calendarViewMode: 'week',
+        energyMode: 'normal',
         displayName: this.resolveAuthDisplayName(authContext),
         email: this.resolveAuthEmail(authContext),
         id: authContext.claims.sub,
@@ -1204,6 +1253,8 @@ export class PostgresSessionRepository implements SessionRepository {
       .values({
         app_role: actor.appRole,
         avatar_url: actor.avatarUrl,
+        calendar_view_mode: actor.calendarViewMode,
+        energy_mode: actor.energyMode,
         display_name: actor.displayName,
         email: actor.email,
         id: actor.id,
@@ -1214,6 +1265,8 @@ export class PostgresSessionRepository implements SessionRepository {
       .returning([
         'app_role as appRole',
         'avatar_url as avatarUrl',
+        'calendar_view_mode as calendarViewMode',
+        'energy_mode as energyMode',
         'display_name as displayName',
         'email',
         'id',
@@ -1318,6 +1371,10 @@ export class PostgresSessionRepository implements SessionRepository {
         : context.actorUserId && context.workspaceId
           ? 'headers'
           : 'default',
+      userPreferences: {
+        calendarViewMode: session.calendarViewMode,
+        energyMode: session.energyMode,
+      },
       workspace: {
         id: session.workspaceId,
         kind: session.workspaceKind,

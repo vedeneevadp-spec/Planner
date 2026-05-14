@@ -23,6 +23,10 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
     groupRole: null,
     role: 'owner',
     source,
+    userPreferences: {
+      calendarViewMode: 'week',
+      energyMode: 'normal',
+    },
     workspace: {
       id: 'workspace-1',
       kind: 'personal',

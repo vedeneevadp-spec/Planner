@@ -196,8 +196,8 @@ export function sortTasks(tasks: Task[]): Task[] {
       )
     }
 
-    const leftAnchor = left.plannedDate ?? left.dueDate ?? left.createdAt
-    const rightAnchor = right.plannedDate ?? right.dueDate ?? right.createdAt
+    const leftAnchor = left.plannedDate ?? left.createdAt
+    const rightAnchor = right.plannedDate ?? right.createdAt
 
     if (leftAnchor !== rightAnchor) {
       return leftAnchor < rightAnchor ? -1 : 1

@@ -7,6 +7,11 @@ import { TodayPage } from '@/pages/today'
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
 )
+const CalendarPage = lazy(() =>
+  import('@/pages/calendar').then((module) => ({
+    default: module.CalendarPage,
+  })),
+)
 const CleaningPage = lazy(() =>
   import('@/pages/cleaning').then((module) => ({
     default: module.CleaningPage,
@@ -60,6 +65,7 @@ export function AppRouter() {
         <Routes>
           <Route path="/" element={<Navigate replace to="/today" />} />
           <Route path="/today" element={<TodayPage />} />
+          <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/cleaning" element={<CleaningPage />} />
           <Route path="/cleaning/settings" element={<CleaningSettingsPage />} />
           <Route
@@ -85,6 +91,7 @@ export function AppRouter() {
       <Routes>
         <Route path="/" element={<Navigate replace to="/today" />} />
         <Route path="/today" element={<TodayPage />} />
+        <Route path="/calendar" element={<CalendarPage />} />
         <Route path="/cleaning" element={<CleaningPage />} />
         <Route path="/cleaning/settings" element={<CleaningSettingsPage />} />
         <Route

@@ -9,6 +9,11 @@
     calc(1.5rem + var(--safe-area-left));
 }
 
+.shellSidebarCollapsed {
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 1rem;
+}
+
 @supports (height: 100dvh) {
   .shell {
     height: 100dvh;
@@ -26,6 +31,10 @@
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr);
     gap: 0;
+  }
+
+  .shellSidebarCollapsed {
+    grid-template-columns: 1fr;
   }
 
   .main {

@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import {
   NativePlannerWidgetSync,
   PlannerProvider,
@@ -8,12 +10,15 @@ import {
   NativePushRegistration,
   SessionProvider,
 } from '@/features/session'
+import { cx } from '@/shared/lib/classnames'
 import { Sidebar } from '@/widgets/sidebar'
 
 import styles from './App.module.css'
 import { AppRouter } from './router'
 
 function App() {
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
   return (
     <SessionProvider>
       <PlannerQueryProvider>
@@ -21,8 +26,16 @@ function App() {
           <NativePushRegistration />
           <PlannerProvider>
             <NativePlannerWidgetSync />
-            <div className={styles.shell}>
-              <Sidebar />
+            <div
+              className={cx(
+                styles.shell,
+                isSidebarCollapsed && styles.shellSidebarCollapsed,
+              )}
+            >
+              <Sidebar
+                isCollapsed={isSidebarCollapsed}
+                onCollapsedChange={setIsSidebarCollapsed}
+              />
               <main className={styles.main}>
                 <AppRouter />
               </main>

@@ -14,6 +14,7 @@ import type {
   SessionContext,
   SessionSnapshot,
   UpdateUserProfileInput,
+  UserPreferencesUpdateInput,
   UserProfile,
   WorkspaceInvitationCreateInput,
   WorkspaceSettingsUpdateInput,
@@ -243,6 +244,20 @@ export class SessionService {
     this.authSessionCache.clear()
 
     return settings
+  }
+
+  async updateUserPreferences(
+    context: SessionContext,
+    input: UserPreferencesUpdateInput,
+  ) {
+    const session = await this.resolveSession(context)
+    const preferences = await withRepositoryErrorMapping(() =>
+      this.repository.updateUserPreferences(session, input),
+    )
+
+    this.authSessionCache.clear()
+
+    return preferences
   }
 
   async updateUserProfile(

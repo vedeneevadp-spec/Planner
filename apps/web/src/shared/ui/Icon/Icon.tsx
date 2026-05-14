@@ -199,6 +199,22 @@ export function CalendarIcon(props: IconProps) {
   )
 }
 
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M15 18L9 12L15 6" />
+    </SvgIcon>
+  )
+}
+
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M9 6L15 12L9 18" />
+    </SvgIcon>
+  )
+}
+
 export function ShoppingBagIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>
