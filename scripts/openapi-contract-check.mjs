@@ -48,7 +48,7 @@ try {
     '/api/v1/auth/sign-up',
     '/api/v1/session',
     '/api/v1/emoji-sets',
-    '/api/v1/projects',
+    '/api/v1/life-spheres',
     '/api/v1/tasks',
     '/api/v1/tasks/page',
     '/api/v1/tasks/{taskId}/status',
@@ -62,7 +62,7 @@ try {
     'TaskListPageResponse',
     'TaskTemplateRecord',
     'EmojiSetRecord',
-    'ProjectRecord',
+    'LifeSphereRecord',
   ]
 
   for (const path of requiredPaths) {

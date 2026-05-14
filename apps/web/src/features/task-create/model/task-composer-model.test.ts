@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import type { TaskTemplate } from '@/entities/task-template'
 
 import {
   buildTaskInputFromTemplate,
-  getProjectDisplayTitle,
+  getSphereDisplayTitle,
   resolveProjectFields,
 } from './task-composer-model'
 
@@ -16,12 +16,15 @@ const PROJECT = {
   description: '',
   icon: 'target',
   id: 'project-1',
-  status: 'active',
-  title: 'Работа',
+  isActive: true,
+  isDefault: false,
+  name: 'Работа',
+  sortOrder: 0,
   updatedAt: '2026-04-20T08:00:00.000Z',
+  userId: 'user-1',
   version: 1,
   workspaceId: 'workspace-1',
-} satisfies Project
+} satisfies Sphere
 
 const TEMPLATE = {
   createdAt: '2026-04-20T08:00:00.000Z',
@@ -41,8 +44,8 @@ const TEMPLATE = {
 
 describe('task-composer-model', () => {
   it('normalizes legacy empty project titles', () => {
-    expect(getProjectDisplayTitle('Без сферы')).toBe('Без сферы')
-    expect(getProjectDisplayTitle('Без проекта')).toBe('Без сферы')
+    expect(getSphereDisplayTitle('Без сферы')).toBe('Без сферы')
+    expect(getSphereDisplayTitle('Без проекта')).toBe('Без сферы')
     expect(resolveProjectFields([], null, 'No sphere')).toEqual({
       project: '',
       projectId: null,
@@ -54,6 +57,7 @@ describe('task-composer-model', () => {
 
     expect(input.project).toBe('Работа')
     expect(input.projectId).toBe('project-1')
+    expect(input.sphereId).toBe('project-1')
     expect(input.remindBeforeStart).toBe(true)
     expect(input.plannedStartTime).toBe('10:00')
   })
@@ -63,6 +67,7 @@ describe('task-composer-model', () => {
 
     expect(input.project).toBe('Работа')
     expect(input.projectId).toBe('project-1')
+    expect(input.sphereId).toBe('project-1')
     expect(input.remindBeforeStart).toBe(false)
     expect(input.reminderTimeZone).toBeUndefined()
   })

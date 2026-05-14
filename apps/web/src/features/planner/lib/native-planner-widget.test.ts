@@ -24,7 +24,7 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }))
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import type { Task } from '@/entities/task'
 
 import { buildNativePlannerWidgetSnapshot } from './native-planner-widget'
@@ -55,16 +55,19 @@ const baseTask: Task = {
   urgency: 'not_urgent',
 }
 
-const baseProject: Project = {
+const baseProject: Sphere = {
   color: '#2f6f62',
   createdAt: '2026-05-01T10:00:00.000Z',
   deletedAt: null,
   description: '',
   icon: 'svg:folder',
   id: 'project-1',
-  status: 'active',
-  title: 'Фокус',
+  isActive: true,
+  isDefault: false,
+  name: 'Фокус',
+  sortOrder: 0,
   updatedAt: '2026-05-01T10:00:00.000Z',
+  userId: 'user-1',
   version: 1,
   workspaceId: 'workspace-1',
 }

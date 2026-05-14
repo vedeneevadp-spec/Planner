@@ -19,7 +19,6 @@ import {
   lifeSphereSchema,
   weeklySphereStatsResponseSchema,
 } from './life-sphere.js'
-import { projectSchema } from './project.js'
 import {
   taskScheduleInputSchema,
   taskSchema,
@@ -113,13 +112,6 @@ export const taskRecordSchema = taskSchema.extend({
 })
 
 export const taskTemplateRecordSchema = taskTemplateSchema.extend({
-  workspaceId: z.string(),
-  updatedAt: z.string(),
-  deletedAt: z.string().nullable(),
-  version: z.number().int().positive(),
-})
-
-export const projectRecordSchema = projectSchema.extend({
   workspaceId: z.string(),
   updatedAt: z.string(),
   deletedAt: z.string().nullable(),
@@ -447,7 +439,6 @@ export const weeklySphereStatsRecordResponseSchema =
     spheres: z.array(lifeSphereRecordSchema),
   })
 export const taskTemplateListResponseSchema = z.array(taskTemplateRecordSchema)
-export const projectListResponseSchema = z.array(projectRecordSchema)
 export const emojiSetListResponseSchema = z.array(emojiSetRecordSchema)
 
 export const taskEventRecordSchema = z.object({
@@ -594,7 +585,6 @@ export type WorkspaceSettingsUpdateInput = z.infer<
 export type UpdateUserProfileInput = z.infer<
   typeof updateUserProfileInputSchema
 >
-export type ProjectRecord = z.infer<typeof projectRecordSchema>
 export type TaskEventListFilters = z.infer<typeof taskEventListFiltersSchema>
 export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
 export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>

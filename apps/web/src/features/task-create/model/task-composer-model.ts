@@ -1,4 +1,4 @@
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import type {
   NewTaskInput,
   ResourceValue,
@@ -30,7 +30,7 @@ interface ProjectFields {
   projectId: string | null
 }
 
-export function getProjectPickerLabel(): string {
+export function getSpherePickerLabel(): string {
   return 'Сфера'
 }
 
@@ -38,7 +38,7 @@ export function getEmptyProjectLabel(): string {
   return 'Без сферы'
 }
 
-export function getProjectDisplayTitle(projectTitle: string): string {
+export function getSphereDisplayTitle(projectTitle: string): string {
   const normalizedProjectTitle = projectTitle.trim()
 
   if (
@@ -52,17 +52,17 @@ export function getProjectDisplayTitle(projectTitle: string): string {
 }
 
 export function resolveProjectFields(
-  projects: Project[],
+  spheres: Sphere[],
   projectId: string | null,
   fallbackProject: string,
 ): ProjectFields {
   const project = projectId
-    ? projects.find((candidate) => candidate.id === projectId)
+    ? spheres.find((candidate) => candidate.id === projectId)
     : null
 
   if (project) {
     return {
-      project: project.title,
+      project: project.name,
       projectId: project.id,
     }
   }
@@ -79,14 +79,14 @@ export function resolveProjectFields(
 
 export function getTemplateProject(
   template: TaskTemplate,
-  projects: Project[],
-): Project | null {
+  spheres: Sphere[],
+): Sphere | null {
   if (!template.projectId) {
     return null
   }
 
   return (
-    projects.find((candidate) => candidate.id === template.projectId) ?? null
+    spheres.find((candidate) => candidate.id === template.projectId) ?? null
   )
 }
 
@@ -100,12 +100,12 @@ export function resolveClientTimeZone(): string | undefined {
 
 export function buildTaskInputFromTemplate(
   template: TaskTemplate,
-  projects: Project[],
+  spheres: Sphere[],
   initialPlannedDate: string | null,
   isSharedWorkspace: boolean,
 ): NewTaskInput {
   const project = resolveProjectFields(
-    projects,
+    spheres,
     template.projectId,
     template.project,
   )
@@ -131,7 +131,7 @@ export function buildTaskInputFromTemplate(
         : undefined,
     resource: 0,
     requiresConfirmation: false,
-    sphereId: null,
+    sphereId: project.projectId,
     title: template.title,
     urgency: template.urgency,
   }

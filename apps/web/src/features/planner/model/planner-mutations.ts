@@ -1,11 +1,14 @@
 import {
-  type ProjectRecord,
+  type LifeSphereRecord,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
 import { type QueryClient, useMutation } from '@tanstack/react-query'
 
-import type { NewProjectInput, ProjectUpdateInput } from '@/entities/project'
+import type {
+  LifeSphereUpdateInput,
+  NewLifeSphereInput,
+} from '@/entities/sphere'
 import type {
   NewTaskInput,
   TaskScheduleInput,
@@ -20,30 +23,30 @@ import {
   shouldKeepOptimisticMutation,
 } from './planner-error-policy'
 import type {
-  PlannerProjectQueryKey,
+  PlannerSphereQueryKey,
   PlannerTaskQueryKey,
   PlannerTaskTemplateQueryKey,
 } from './planner-queries'
 import {
-  createOptimisticProjectRecord,
+  createOptimisticLifeSphereRecord,
   createOptimisticTaskRecord,
   createOptimisticTaskTemplateRecord,
-  detachProjectFromTaskRecords,
-  detachProjectFromTaskTemplateRecords,
+  detachLifeSphereFromTaskRecords,
+  detachLifeSphereFromTaskTemplateRecords,
   normalizeSchedule,
-  removeProjectRecord,
+  removeLifeSphereRecord,
   removeTaskRecord,
   removeTaskTemplateRecord,
-  replaceOptimisticProjectRecord,
+  replaceLifeSphereRecord,
+  replaceOptimisticLifeSphereRecord,
   replaceOptimisticTaskRecord,
   replaceOptimisticTaskTemplateRecord,
-  replaceProjectRecord,
   replaceTaskRecord,
-  sortProjects,
+  sortSpheres,
   sortTaskTemplates,
-  updateTaskProjectRecords,
+  updateTaskLifeSphereRecords,
   updateTaskRecord,
-  updateTaskTemplateProjectRecords,
+  updateTaskTemplateLifeSphereRecords,
 } from './planner-records'
 
 interface PlannerMutationContext {
@@ -51,9 +54,9 @@ interface PlannerMutationContext {
   previousTaskRecords: TaskRecord[] | undefined
 }
 
-interface ProjectMutationContext {
-  optimisticProjectId: string | undefined
-  previousProjectRecords: ProjectRecord[] | undefined
+interface SphereMutationContext {
+  optimisticSphereId: string | undefined
+  previousSphereRecords: LifeSphereRecord[] | undefined
 }
 
 interface TaskTemplateMutationContext {
@@ -61,9 +64,9 @@ interface TaskTemplateMutationContext {
   previousTemplateRecords: TaskTemplateRecord[] | undefined
 }
 
-interface UpdateProjectMutationVariables {
-  input: ProjectUpdateInput
-  projectId: string
+interface UpdateSphereMutationVariables {
+  input: LifeSphereUpdateInput
+  sphereId: string
 }
 
 export interface ScheduleMutationVariables {
@@ -99,45 +102,45 @@ interface PlannerMutationSession {
 
 interface PlannerMutationsParams {
   plannerApi: PlannerApiClient | null
-  projectQueryKey: PlannerProjectQueryKey
   queryClient: QueryClient
   session: PlannerMutationSession | undefined
   setMutationErrorMessage: (message: string | null) => void
+  sphereQueryKey: PlannerSphereQueryKey
   taskQueryKey: PlannerTaskQueryKey
   taskTemplateQueryKey: PlannerTaskTemplateQueryKey
 }
 
 export function usePlannerMutations({
   plannerApi,
-  projectQueryKey,
   queryClient,
   session,
   setMutationErrorMessage,
+  sphereQueryKey,
   taskQueryKey,
   taskTemplateQueryKey,
 }: PlannerMutationsParams) {
-  const createProjectMutation = useMutation({
-    mutationFn: (input: NewProjectInput) =>
-      requirePlannerApi(plannerApi).createProject(input),
-    onMutate: async (input): Promise<ProjectMutationContext> => {
+  const createLifeSphereMutation = useMutation({
+    mutationFn: (input: NewLifeSphereInput) =>
+      requirePlannerApi(plannerApi).createLifeSphere(input),
+    onMutate: async (input): Promise<SphereMutationContext> => {
       setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: projectQueryKey })
+      await queryClient.cancelQueries({ queryKey: sphereQueryKey })
 
-      const previousProjectRecords =
-        queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
-      const optimisticProject = createOptimisticProjectRecord(
-        input,
-        session?.workspaceId ?? 'pending',
-      )
+      const previousSphereRecords =
+        queryClient.getQueryData<LifeSphereRecord[]>(sphereQueryKey)
+      const optimisticSphere = createOptimisticLifeSphereRecord(input, {
+        actorUserId: session?.actorUserId ?? 'pending',
+        workspaceId: session?.workspaceId ?? 'pending',
+      })
 
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) => sortProjects([optimisticProject, ...current]),
+      queryClient.setQueryData<LifeSphereRecord[]>(
+        sphereQueryKey,
+        (current = []) => sortSpheres([optimisticSphere, ...current]),
       )
 
       return {
-        optimisticProjectId: optimisticProject.id,
-        previousProjectRecords,
+        optimisticSphereId: optimisticSphere.id,
+        previousSphereRecords,
       }
     },
     onError: (error, _input, context) => {
@@ -145,50 +148,47 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousProjectRecords) {
-        queryClient.setQueryData(
-          projectQueryKey,
-          context.previousProjectRecords,
-        )
+      if (context?.previousSphereRecords) {
+        queryClient.setQueryData(sphereQueryKey, context.previousSphereRecords)
       }
     },
-    onSuccess: (project, _input, context) => {
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
+    onSuccess: (sphere, _input, context) => {
+      queryClient.setQueryData<LifeSphereRecord[]>(
+        sphereQueryKey,
         (current = []) =>
-          replaceOptimisticProjectRecord(
+          replaceOptimisticLifeSphereRecord(
             current,
-            context?.optimisticProjectId,
-            project,
+            context?.optimisticSphereId,
+            sphere,
           ),
       )
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+      void queryClient.invalidateQueries({ queryKey: sphereQueryKey })
     },
   })
 
-  const updateProjectMutation = useMutation({
-    mutationFn: ({ input, projectId }: UpdateProjectMutationVariables) =>
-      requirePlannerApi(plannerApi).updateProject(projectId, input),
-    onMutate: async ({ input, projectId }): Promise<ProjectMutationContext> => {
+  const updateLifeSphereMutation = useMutation({
+    mutationFn: ({ input, sphereId }: UpdateSphereMutationVariables) =>
+      requirePlannerApi(plannerApi).updateLifeSphere(sphereId, input),
+    onMutate: async ({ input, sphereId }): Promise<SphereMutationContext> => {
       setMutationErrorMessage(null)
-      await queryClient.cancelQueries({ queryKey: projectQueryKey })
+      await queryClient.cancelQueries({ queryKey: sphereQueryKey })
 
-      const previousProjectRecords =
-        queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
+      const previousSphereRecords =
+        queryClient.getQueryData<LifeSphereRecord[]>(sphereQueryKey)
       const now = new Date().toISOString()
 
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
+      queryClient.setQueryData<LifeSphereRecord[]>(
+        sphereQueryKey,
         (current = []) =>
-          sortProjects(
-            current.map((project) =>
-              project.id === projectId
+          sortSpheres(
+            current.map((sphere) =>
+              sphere.id === sphereId
                 ? {
-                    ...project,
-                    ...(input.title !== undefined
-                      ? { title: input.title.trim() }
+                    ...sphere,
+                    ...(input.name !== undefined
+                      ? { name: input.name.trim() }
                       : {}),
                     ...(input.description !== undefined
                       ? { description: input.description.trim() }
@@ -199,17 +199,23 @@ export function usePlannerMutations({
                     ...(input.icon !== undefined
                       ? { icon: input.icon.trim() }
                       : {}),
+                    ...(input.isActive !== undefined
+                      ? { isActive: input.isActive }
+                      : {}),
+                    ...(input.sortOrder !== undefined
+                      ? { sortOrder: input.sortOrder }
+                      : {}),
                     updatedAt: now,
-                    version: project.version + 1,
+                    version: sphere.version + 1,
                   }
-                : project,
+                : sphere,
             ),
           ),
       )
 
       return {
-        optimisticProjectId: undefined,
-        previousProjectRecords,
+        optimisticSphereId: undefined,
+        previousSphereRecords,
       }
     },
     onError: (error, _variables, context) => {
@@ -217,52 +223,49 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousProjectRecords) {
-        queryClient.setQueryData(
-          projectQueryKey,
-          context.previousProjectRecords,
-        )
+      if (context?.previousSphereRecords) {
+        queryClient.setQueryData(sphereQueryKey, context.previousSphereRecords)
       }
     },
-    onSuccess: (project) => {
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) => replaceProjectRecord(current, project),
+    onSuccess: (sphere) => {
+      queryClient.setQueryData<LifeSphereRecord[]>(
+        sphereQueryKey,
+        (current = []) => replaceLifeSphereRecord(current, sphere),
       )
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskProjectRecords(current, project),
+        updateTaskLifeSphereRecords(current, sphere),
       )
       queryClient.setQueryData<TaskTemplateRecord[]>(
         taskTemplateQueryKey,
-        (current = []) => updateTaskTemplateProjectRecords(current, project),
+        (current = []) => updateTaskTemplateLifeSphereRecords(current, sphere),
       )
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+      void queryClient.invalidateQueries({ queryKey: sphereQueryKey })
       void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
       void queryClient.invalidateQueries({ queryKey: taskQueryKey })
     },
   })
 
-  const removeProjectMutation = useMutation({
-    mutationFn: (projectId: string) =>
-      requirePlannerApi(plannerApi).removeLifeSphere(projectId),
-    onSuccess: (_result, projectId) => {
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (current = []) => removeProjectRecord(current, projectId),
+  const removeLifeSphereMutation = useMutation({
+    mutationFn: (sphereId: string) =>
+      requirePlannerApi(plannerApi).removeLifeSphere(sphereId),
+    onSuccess: (_result, sphereId) => {
+      queryClient.setQueryData<LifeSphereRecord[]>(
+        sphereQueryKey,
+        (current = []) => removeLifeSphereRecord(current, sphereId),
       )
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        detachProjectFromTaskRecords(current, projectId),
+        detachLifeSphereFromTaskRecords(current, sphereId),
       )
       queryClient.setQueryData<TaskTemplateRecord[]>(
         taskTemplateQueryKey,
         (current = []) =>
-          detachProjectFromTaskTemplateRecords(current, projectId),
+          detachLifeSphereFromTaskTemplateRecords(current, sphereId),
       )
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: projectQueryKey })
+      void queryClient.invalidateQueries({ queryKey: sphereQueryKey })
       void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
       void queryClient.invalidateQueries({ queryKey: taskQueryKey })
     },
@@ -619,15 +622,15 @@ export function usePlannerMutations({
   })
 
   return {
-    createProjectMutation,
+    createLifeSphereMutation,
     createTaskMutation,
     createTaskTemplateMutation,
-    removeProjectMutation,
+    removeLifeSphereMutation,
     removeTaskMutation,
     removeTaskTemplateMutation,
     setTaskScheduleMutation,
     setTaskStatusMutation,
-    updateProjectMutation,
+    updateLifeSphereMutation,
     updateTaskMutation,
   }
 }

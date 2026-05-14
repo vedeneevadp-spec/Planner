@@ -32,7 +32,7 @@ const publicApiModules = [
   'features/task-create',
   'entities/emoji-set',
   'entities/habit',
-  'entities/project',
+  'entities/sphere',
   'entities/task',
   'entities/task-template',
   'shared/lib/classnames',

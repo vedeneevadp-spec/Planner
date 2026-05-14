@@ -41,7 +41,6 @@ export type {
   HealthDatabaseStatus,
   HealthResponse,
   LifeSphereRecord,
-  ProjectRecord,
   PushDeviceRecord,
   PushDeviceUpsertInput,
   PushPlatform,
@@ -124,8 +123,6 @@ export {
   healthResponseSchema,
   lifeSphereListRecordResponseSchema,
   lifeSphereRecordSchema,
-  projectListResponseSchema,
-  projectRecordSchema,
   pushDeviceRecordSchema,
   pushDeviceUpsertInputSchema,
   pushPlatformSchema,
@@ -331,18 +328,6 @@ export {
   nativePlannerWidgetTaskSchema,
   nativePlannerWidgetTaskVisualToneSchema,
 } from './planner-widget.js'
-export type {
-  NewProjectInput,
-  Project,
-  ProjectStatus,
-  ProjectUpdateInput,
-} from './project.js'
-export {
-  newProjectInputSchema,
-  projectSchema,
-  projectStatusSchema,
-  projectUpdateInputSchema,
-} from './project.js'
 export type {
   NewTaskInput,
   RoutineTask,

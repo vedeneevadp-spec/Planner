@@ -50,11 +50,6 @@ import {
   PostgresLifeSphereRepository,
 } from './modules/life-spheres/index.js'
 import {
-  MemoryProjectRepository,
-  PostgresProjectRepository,
-  ProjectService,
-} from './modules/projects/index.js'
-import {
   FirebasePushNotificationSender,
   MemoryPushNotificationsRepository,
   NoopPushNotificationSender,
@@ -113,9 +108,6 @@ export function createApiKernel(
   const taskTemplateRepository = database
     ? new PostgresTaskTemplateRepository(database.db)
     : new MemoryTaskTemplateRepository()
-  const projectRepository = database
-    ? new PostgresProjectRepository(database.db)
-    : new MemoryProjectRepository()
   const emojiSetRepository = database
     ? new PostgresEmojiSetRepository(database.db)
     : new MemoryEmojiSetRepository()
@@ -162,7 +154,6 @@ export function createApiKernel(
       ? new FirebasePushNotificationSender(config.firebasePush)
       : new NoopPushNotificationSender(),
   )
-  const projectService = new ProjectService(projectRepository)
   const taskTemplateService = new TaskTemplateService(taskTemplateRepository)
   const taskService = new TaskService(taskRepository)
   const chaosInboxService = new ChaosInboxService(
@@ -186,7 +177,6 @@ export function createApiKernel(
     habitService,
     lifeSphereService,
     pushNotificationsService,
-    projectService,
     requestAuthenticator,
     sessionService,
     taskTemplateService,

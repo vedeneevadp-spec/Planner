@@ -35,8 +35,6 @@ import type { HabitService } from '../modules/habits/index.js'
 import { registerHabitRoutes } from '../modules/habits/index.js'
 import type { LifeSphereService } from '../modules/life-spheres/index.js'
 import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
-import type { ProjectService } from '../modules/projects/index.js'
-import { registerProjectRoutes } from '../modules/projects/index.js'
 import type { PushNotificationsService } from '../modules/push-notifications/index.js'
 import { registerPushNotificationsRoutes } from '../modules/push-notifications/index.js'
 import type { SessionService } from '../modules/session/index.js'
@@ -75,7 +73,6 @@ export interface BuildApiAppOptions {
   habitService?: HabitService
   lifeSphereService?: LifeSphereService
   pushNotificationsService?: PushNotificationsService
-  projectService: ProjectService
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
   taskService: TaskService
@@ -93,7 +90,6 @@ export function buildApiApp({
   habitService,
   lifeSphereService,
   pushNotificationsService,
-  projectService,
   sessionService,
   taskTemplateService,
   taskService,
@@ -183,7 +179,6 @@ export function buildApiApp({
         pushNotificationsService,
       )
     }
-    registerProjectRoutes(instance, sessionService, projectService)
     if (taskTemplateService) {
       registerTaskTemplateRoutes(instance, sessionService, taskTemplateService)
     }

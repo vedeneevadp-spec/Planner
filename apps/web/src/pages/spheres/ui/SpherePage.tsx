@@ -18,13 +18,13 @@ export function SpherePage() {
   const {
     isLoading,
     isTaskPending,
-    projects: spheres,
-    removeProject,
+    removeSphere,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
+    spheres,
     tasks,
-    updateProject,
+    updateSphere,
     updateTask,
   } = usePlanner()
   const { data: session } = usePlannerSession()
@@ -47,14 +47,14 @@ export function SpherePage() {
     }
 
     const confirmed = window.confirm(
-      `Удалить сферу «${sphere.title}»? Задачи останутся без сферы.`,
+      `Удалить сферу «${sphere.name}»? Задачи останутся без сферы.`,
     )
 
     if (!confirmed) {
       return
     }
 
-    const isRemoved = await removeProject(sphere.id)
+    const isRemoved = await removeSphere(sphere.id)
 
     if (isRemoved) {
       void navigate('/spheres')
@@ -84,7 +84,7 @@ export function SpherePage() {
     <section className={pageStyles.page}>
       <PageHeader
         kicker="Sphere"
-        title={sphere.title}
+        title={sphere.name}
         description={sphere.description || 'Описание сферы пока пустое.'}
       />
 
@@ -99,7 +99,7 @@ export function SpherePage() {
             </span>
             <div>
               <p className={styles.eyebrow}>Marker</p>
-              <h3>{sphere.title}</h3>
+              <h3>{sphere.name}</h3>
             </div>
           </div>
 
@@ -133,7 +133,7 @@ export function SpherePage() {
             uploadedIcons={uploadedIcons}
             onCancel={() => setIsEditing(false)}
             onSubmit={async (values) => {
-              const isSaved = await updateProject(sphere.id, {
+              const isSaved = await updateSphere(sphere.id, {
                 ...values,
                 expectedVersion: sphere.version,
               })
@@ -152,7 +152,7 @@ export function SpherePage() {
         title="Задачи сферы"
         tasks={sphereTasks}
         isSharedWorkspace={isSharedWorkspace}
-        projects={spheres}
+        spheres={spheres}
         uploadedIcons={uploadedIcons}
         workspaceUsers={workspaceUsers}
         emptyMessage="В этой сфере пока нет задач."

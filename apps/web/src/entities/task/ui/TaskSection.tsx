@@ -5,7 +5,7 @@ import type {
 } from '@planner/contracts'
 import { type ReactNode, useCallback, useId, useState } from 'react'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
@@ -20,7 +20,7 @@ interface TaskSectionProps {
   isSharedWorkspace?: boolean | undefined
   sharedWorkspaceGroupRole?: WorkspaceGroupRole | null | undefined
   sharedWorkspaceRole?: WorkspaceRole | undefined
-  projects?: Project[] | undefined
+  spheres?: Sphere[] | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
   workspaceUsers?: WorkspaceUserRecord[] | undefined
   emptyMessage: string
@@ -42,7 +42,7 @@ export function TaskSection({
   isSharedWorkspace = false,
   sharedWorkspaceGroupRole,
   sharedWorkspaceRole,
-  projects = [],
+  spheres = [],
   uploadedIcons = [],
   workspaceUsers = [],
   emptyMessage,
@@ -111,9 +111,9 @@ export function TaskSection({
                 <TaskCard
                   key={task.id}
                   task={task}
-                  projects={projects}
-                  project={projects.find(
-                    (project) => project.id === task.projectId,
+                  spheres={spheres}
+                  sphere={spheres.find(
+                    (sphere) => sphere.id === task.projectId,
                   )}
                   isPending={isTaskPending?.(task.id)}
                   isSharedWorkspace={isSharedWorkspace}

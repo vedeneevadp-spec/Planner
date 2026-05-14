@@ -1,11 +1,11 @@
 import {
   generateUuidV7,
-  type ProjectRecord,
+  type LifeSphereRecord,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
 
-import type { NewProjectInput } from '@/entities/project'
+import type { NewLifeSphereInput } from '@/entities/sphere'
 import type { NewTaskInput, Task, TaskScheduleInput } from '@/entities/task'
 import type {
   NewTaskTemplateInput,
@@ -62,10 +62,14 @@ export function toPlannerTaskTemplate(
   }
 }
 
-export function sortProjects(projects: ProjectRecord[]): ProjectRecord[] {
-  return [...projects].sort((left, right) => {
-    if (left.title !== right.title) {
-      return left.title.localeCompare(right.title)
+export function sortSpheres(spheres: LifeSphereRecord[]): LifeSphereRecord[] {
+  return [...spheres].sort((left, right) => {
+    if (left.sortOrder !== right.sortOrder) {
+      return left.sortOrder - right.sortOrder
+    }
+
+    if (left.name !== right.name) {
+      return left.name.localeCompare(right.name)
     }
 
     if (left.createdAt === right.createdAt) {
@@ -208,69 +212,75 @@ export function createOptimisticTaskTemplateRecord(
   }
 }
 
-export function createOptimisticProjectRecord(
-  input: NewProjectInput,
-  workspaceId: string,
-): ProjectRecord {
+export function createOptimisticLifeSphereRecord(
+  input: NewLifeSphereInput,
+  options: {
+    actorUserId: string
+    workspaceId: string
+  },
+): LifeSphereRecord {
   const now = new Date().toISOString()
 
   return {
-    color: input.color.trim(),
+    color: input.color?.trim() ?? '#2f6f62',
     createdAt: now,
     deletedAt: null,
-    description: input.description.trim(),
-    icon: input.icon.trim(),
+    description: input.description?.trim() ?? '',
+    icon: input.icon?.trim() ?? 'folder',
     id: input.id ?? generateUuidV7(),
-    status: 'active',
-    title: input.title.trim(),
+    isActive: true,
+    isDefault: false,
+    name: input.name.trim(),
+    sortOrder: 0,
     updatedAt: now,
+    userId: options.actorUserId,
     version: 1,
-    workspaceId,
+    workspaceId: options.workspaceId,
   }
 }
 
-export function replaceProjectRecord(
-  projectRecords: ProjectRecord[],
-  nextProject: ProjectRecord,
-): ProjectRecord[] {
-  const existingIndex = projectRecords.findIndex(
-    (project) => project.id === nextProject.id,
+export function replaceLifeSphereRecord(
+  sphereRecords: LifeSphereRecord[],
+  nextSphere: LifeSphereRecord,
+): LifeSphereRecord[] {
+  const existingIndex = sphereRecords.findIndex(
+    (sphere) => sphere.id === nextSphere.id,
   )
 
   if (existingIndex === -1) {
-    return sortProjects([nextProject, ...projectRecords])
+    return sortSpheres([nextSphere, ...sphereRecords])
   }
 
-  return sortProjects(
-    projectRecords.map((project) =>
-      project.id === nextProject.id ? nextProject : project,
+  return sortSpheres(
+    sphereRecords.map((sphere) =>
+      sphere.id === nextSphere.id ? nextSphere : sphere,
     ),
   )
 }
 
-export function replaceOptimisticProjectRecord(
-  projectRecords: ProjectRecord[],
-  optimisticProjectId: string | undefined,
-  nextProject: ProjectRecord,
-): ProjectRecord[] {
-  if (!optimisticProjectId) {
-    return replaceProjectRecord(projectRecords, nextProject)
+export function replaceOptimisticLifeSphereRecord(
+  sphereRecords: LifeSphereRecord[],
+  optimisticSphereId: string | undefined,
+  nextSphere: LifeSphereRecord,
+): LifeSphereRecord[] {
+  if (!optimisticSphereId) {
+    return replaceLifeSphereRecord(sphereRecords, nextSphere)
   }
 
   let replaced = false
-  const nextProjectRecords = projectRecords.map((project) => {
-    if (project.id !== optimisticProjectId) {
-      return project
+  const nextLifeSphereRecords = sphereRecords.map((sphere) => {
+    if (sphere.id !== optimisticSphereId) {
+      return sphere
     }
 
     replaced = true
 
-    return nextProject
+    return nextSphere
   })
 
   return replaced
-    ? sortProjects(nextProjectRecords)
-    : replaceProjectRecord(nextProjectRecords, nextProject)
+    ? sortSpheres(nextLifeSphereRecords)
+    : replaceLifeSphereRecord(nextLifeSphereRecords, nextSphere)
 }
 
 function replaceTaskTemplateRecord(
@@ -363,40 +373,40 @@ export function updateTaskRecord(
   return taskRecords.map((task) => (task.id === taskId ? updater(task) : task))
 }
 
-export function updateTaskProjectRecords(
+export function updateTaskLifeSphereRecords(
   taskRecords: TaskRecord[],
-  project: ProjectRecord,
+  sphere: LifeSphereRecord,
 ): TaskRecord[] {
   return taskRecords.map((task) =>
-    task.projectId === project.id
+    task.projectId === sphere.id || task.sphereId === sphere.id
       ? {
           ...task,
-          project: project.title,
+          project: sphere.name,
         }
       : task,
   )
 }
 
-export function updateTaskTemplateProjectRecords(
+export function updateTaskTemplateLifeSphereRecords(
   templateRecords: TaskTemplateRecord[],
-  project: ProjectRecord,
+  sphere: LifeSphereRecord,
 ): TaskTemplateRecord[] {
   return templateRecords.map((template) =>
-    template.projectId === project.id
+    template.projectId === sphere.id
       ? {
           ...template,
-          project: project.title,
+          project: sphere.name,
         }
       : template,
   )
 }
 
-export function detachProjectFromTaskRecords(
+export function detachLifeSphereFromTaskRecords(
   taskRecords: TaskRecord[],
-  projectId: string,
+  sphereId: string,
 ): TaskRecord[] {
   return taskRecords.map((task) =>
-    task.projectId === projectId || task.sphereId === projectId
+    task.projectId === sphereId || task.sphereId === sphereId
       ? {
           ...task,
           project: '',
@@ -407,12 +417,12 @@ export function detachProjectFromTaskRecords(
   )
 }
 
-export function detachProjectFromTaskTemplateRecords(
+export function detachLifeSphereFromTaskTemplateRecords(
   templateRecords: TaskTemplateRecord[],
-  projectId: string,
+  sphereId: string,
 ): TaskTemplateRecord[] {
   return templateRecords.map((template) =>
-    template.projectId === projectId
+    template.projectId === sphereId
       ? {
           ...template,
           project: '',
@@ -422,11 +432,11 @@ export function detachProjectFromTaskTemplateRecords(
   )
 }
 
-export function removeProjectRecord(
-  projectRecords: ProjectRecord[],
-  projectId: string,
-): ProjectRecord[] {
-  return projectRecords.filter((project) => project.id !== projectId)
+export function removeLifeSphereRecord(
+  sphereRecords: LifeSphereRecord[],
+  sphereId: string,
+): LifeSphereRecord[] {
+  return sphereRecords.filter((sphere) => sphere.id !== sphereId)
 }
 
 export function removeTaskRecord(

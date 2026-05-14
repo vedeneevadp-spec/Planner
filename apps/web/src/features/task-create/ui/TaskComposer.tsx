@@ -2,7 +2,7 @@ import type { NewHabitInput } from '@planner/contracts'
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { ProjectPicker } from '@/entities/project'
+import { SpherePicker } from '@/entities/sphere'
 import {
   buildRoutineTaskFromForm,
   buildTaskRecurrenceFromForm,
@@ -41,8 +41,8 @@ import { SelectPicker } from '@/shared/ui/SelectPicker'
 import {
   buildTaskInputFromTemplate,
   getEmptyProjectLabel,
-  getProjectDisplayTitle,
-  getProjectPickerLabel,
+  getSphereDisplayTitle,
+  getSpherePickerLabel,
   getTemplateProject,
   LEGACY_EMPTY_PROJECT_TITLES,
   resolveClientTimeZone,
@@ -78,8 +78,8 @@ export function TaskComposer({
   const {
     addTask,
     addTaskTemplate,
-    projects,
     removeTaskTemplate,
+    spheres,
     taskTemplates,
   } = usePlanner()
   const createHabitMutation = useCreateHabit()
@@ -258,9 +258,9 @@ export function TaskComposer({
     }
 
     const selectedProject =
-      projects.find((project) => project.id === projectId) ?? null
+      spheres.find((project) => project.id === projectId) ?? null
     const projectInput = {
-      project: selectedProject?.title ?? '',
+      project: selectedProject?.name ?? '',
       projectId: selectedProject?.id ?? null,
     }
     const resolvedPlannedDate =
@@ -296,7 +296,7 @@ export function TaskComposer({
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
       routine:
         taskType === 'routine' ? buildRoutineTaskFromForm(routineForm) : null,
-      sphereId: null,
+      sphereId: projectInput.projectId,
       title: normalizedTitle,
       urgency: getTaskUrgencyFromType(taskType),
     }
@@ -310,7 +310,7 @@ export function TaskComposer({
     }
 
     const selectedProject =
-      projects.find((project) => project.id === projectId) ?? null
+      spheres.find((project) => project.id === projectId) ?? null
     const routine = buildRoutineTaskFromForm(routineForm)
 
     return {
@@ -411,7 +411,7 @@ export function TaskComposer({
   function handleApplyTemplate(template: TaskTemplate) {
     const plannedDateFromTemplate = initialPlannedDate ?? template.plannedDate
     const knownProject = template.projectId
-      ? projects.find((project) => project.id === template.projectId)
+      ? spheres.find((project) => project.id === template.projectId)
       : null
 
     setTitle(template.title)
@@ -447,7 +447,7 @@ export function TaskComposer({
 
     const input = buildTaskInputFromTemplate(
       template,
-      projects,
+      spheres,
       initialPlannedDate,
       isSharedWorkspace,
     )
@@ -704,7 +704,7 @@ export function TaskComposer({
                             {taskTemplates.map((template) => {
                               const templateProject = getTemplateProject(
                                 template,
-                                projects,
+                                spheres,
                               )
                               const normalizedTemplateProjectTitle =
                                 template.project.trim()
@@ -715,8 +715,8 @@ export function TaskComposer({
                                     normalizedTemplateProjectTitle,
                                   ))
                               const templateProjectTitle =
-                                templateProject?.title ??
-                                getProjectDisplayTitle(template.project)
+                                templateProject?.name ??
+                                getSphereDisplayTitle(template.project)
 
                               return (
                                 <article
@@ -826,11 +826,11 @@ export function TaskComposer({
                         styles.projectSection,
                       )}
                     >
-                      <ProjectPicker
+                      <SpherePicker
                         className={styles.fieldProject}
                         emptyLabel={getEmptyProjectLabel()}
-                        label={getProjectPickerLabel()}
-                        projects={projects}
+                        label={getSpherePickerLabel()}
+                        spheres={spheres}
                         uploadedIcons={uploadedIcons}
                         value={projectId}
                         onChange={setProjectId}

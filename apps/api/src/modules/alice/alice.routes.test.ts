@@ -17,7 +17,6 @@ import {
   ChaosInboxService,
   MemoryChaosInboxRepository,
 } from '../chaos-inbox/index.js'
-import { MemoryProjectRepository, ProjectService } from '../projects/index.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
 import { MemoryTaskRepository, TaskService } from '../tasks/index.js'
 
@@ -331,7 +330,6 @@ function buildTestApp(config = createTestConfig()): FastifyInstance {
     ),
     config,
     database: null,
-    projectService: new ProjectService(new MemoryProjectRepository()),
     requestAuthenticator: new JwtRequestAuthenticator(config.jwtAuth!),
     sessionService: new SessionService(new MemorySessionRepository()),
     taskService,

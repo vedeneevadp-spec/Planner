@@ -10,7 +10,7 @@ import type {
   DatabaseSchema,
   JsonObject,
 } from '../../infrastructure/db/schema.js'
-import { ProjectNotFoundError } from '../projects/project.errors.js'
+import { LifeSphereNotFoundError } from '../life-spheres/life-sphere.errors.js'
 import { TaskTemplateNotFoundError } from './task-template.errors.js'
 import type {
   CreateTaskTemplateCommand,
@@ -214,7 +214,7 @@ export class PostgresTaskTemplateRepository implements TaskTemplateRepository {
     )
 
     if (!project) {
-      throw new ProjectNotFoundError(projectId)
+      throw new LifeSphereNotFoundError(projectId)
     }
 
     return {

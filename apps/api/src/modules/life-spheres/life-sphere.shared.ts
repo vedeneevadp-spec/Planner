@@ -20,6 +20,17 @@ export const DEFAULT_LIFE_SPHERES: Array<{
   { name: 'Финансы', description: '', color: '#596b3f', icon: 'wallet' },
 ]
 
+export function buildLifeSphereSlug(name: string, sphereId: string): string {
+  const baseSlug =
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'sphere'
+
+  return `${baseSlug}-${sphereId.slice(0, 8)}`
+}
+
 export function createStoredLifeSphereRecord(
   input: NewLifeSphereInput,
   options: {

@@ -70,7 +70,7 @@ const mobileMoreRoutes: readonly NavigationRoute[] = [
 ]
 
 export function Sidebar() {
-  const { errorMessage, isLoading, isSyncing, projects, refresh, tasks } =
+  const { errorMessage, isLoading, isSyncing, refresh, spheres, tasks } =
     usePlanner()
   const cleaningSummary = useCleaningSummary()
   const shoppingListSummary = useShoppingListSummary()
@@ -922,7 +922,7 @@ export function Sidebar() {
                       : item.to === '/timeline'
                         ? summary.timelineCount
                         : item.to === '/spheres'
-                          ? projects.length
+                          ? spheres.length
                           : (session?.appRole ?? 'Admin')
 
             return (

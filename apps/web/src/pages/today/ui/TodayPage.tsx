@@ -187,7 +187,7 @@ export function TodayPage() {
 function PersonalTodayPage() {
   const {
     tasks,
-    projects,
+    spheres,
     isTaskPending,
     removeTask,
     setTaskPlannedDate,
@@ -296,7 +296,7 @@ function PersonalTodayPage() {
         key={key}
         title={title}
         tasks={sectionTasks}
-        projects={projects}
+        spheres={spheres}
         uploadedIcons={uploadedIcons}
         emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
@@ -418,7 +418,7 @@ function SharedTodayPage() {
   const { data: session } = usePlannerSession()
   const {
     tasks,
-    projects,
+    spheres,
     isTaskPending,
     removeTask,
     setTaskPlannedDate,
@@ -524,7 +524,7 @@ function SharedTodayPage() {
         isSharedWorkspace
         sharedWorkspaceGroupRole={session?.groupRole}
         sharedWorkspaceRole={session?.role}
-        projects={projects}
+        spheres={spheres}
         uploadedIcons={uploadedIcons}
         workspaceUsers={workspaceUsers}
         emptyMessage={emptyMessage}

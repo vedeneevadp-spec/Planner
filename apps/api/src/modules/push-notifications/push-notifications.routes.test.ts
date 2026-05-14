@@ -9,7 +9,6 @@ import {
 
 import { buildApiApp } from '../../bootstrap/build-app.js'
 import { createApiConfig } from '../../bootstrap/config.js'
-import { MemoryProjectRepository, ProjectService } from '../projects/index.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
 import { MemoryTaskRepository, TaskService } from '../tasks/index.js'
 import {
@@ -76,7 +75,6 @@ void describe('push notifications routes', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       pushNotificationsService: new PushNotificationsService(
         new MemoryPushNotificationsRepository(),
         sender,
@@ -177,7 +175,6 @@ void describe('push notifications routes', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       pushNotificationsService: new PushNotificationsService(
         new MemoryPushNotificationsRepository(),
         new NoopPushNotificationSender(),

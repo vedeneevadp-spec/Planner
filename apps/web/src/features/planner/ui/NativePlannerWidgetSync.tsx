@@ -12,14 +12,14 @@ import {
 import { usePlanner } from '../lib/usePlanner'
 
 export function NativePlannerWidgetSync() {
-  const { isLoading, isSyncing, projects, setTaskStatus, tasks } = usePlanner()
+  const { isLoading, isSyncing, setTaskStatus, spheres, tasks } = usePlanner()
   const navigate = useNavigate()
-  const plannerRef = useRef({ isLoading, projects, setTaskStatus, tasks })
+  const plannerRef = useRef({ isLoading, setTaskStatus, spheres, tasks })
   const wasSyncingRef = useRef(false)
 
   useEffect(() => {
-    plannerRef.current = { isLoading, projects, setTaskStatus, tasks }
-  }, [isLoading, projects, setTaskStatus, tasks])
+    plannerRef.current = { isLoading, setTaskStatus, spheres, tasks }
+  }, [isLoading, setTaskStatus, spheres, tasks])
 
   const syncSnapshot = useCallback(() => {
     const planner = plannerRef.current
@@ -30,7 +30,7 @@ export function NativePlannerWidgetSync() {
 
     const snapshot = buildNativePlannerWidgetSnapshot(
       planner.tasks,
-      planner.projects,
+      planner.spheres,
     )
 
     void persistNativePlannerWidgetSnapshot(snapshot).catch((error) => {
@@ -97,7 +97,7 @@ export function NativePlannerWidgetSync() {
 
   useEffect(() => {
     syncFromNativeWidget()
-  }, [isLoading, projects, syncFromNativeWidget, tasks])
+  }, [isLoading, spheres, syncFromNativeWidget, tasks])
 
   useEffect(() => {
     consumePendingRoute()

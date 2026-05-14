@@ -1,9 +1,9 @@
 import 'fake-indexeddb/auto'
 
 import type {
-  NewProjectInput,
+  LifeSphereRecord,
+  NewLifeSphereInput,
   NewTaskInput,
-  ProjectRecord,
   TaskRecord,
 } from '@planner/contracts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,7 @@ import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   enqueuePlannerOfflineMutation,
-  loadCachedProjectRecords,
+  loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
   resetPlannerOfflineDatabaseForTests,
 } from './offline-planner-store'
@@ -38,12 +38,12 @@ const createInput: NewTaskInput = {
   title: 'Offline task',
 }
 
-const createProjectInput: NewProjectInput = {
+const createSphereInput: NewLifeSphereInput = {
   color: '#2f6f62',
-  description: 'Offline project',
+  description: 'Offline sphere',
   icon: 'folder',
   id: '01963dd0-7f58-7de6-9c7f-9a5f7bdfd8b3',
-  title: 'Offline project',
+  name: 'Offline sphere',
 }
 
 describe('offline planner sync', () => {
@@ -114,17 +114,17 @@ describe('offline planner sync', () => {
     expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(1)
   })
 
-  it('replays queued project creates through the API and caches the server record', async () => {
-    const projectRecord = createProjectRecord(createProjectInput.id!)
+  it('replays queued sphere creates through the API and caches the server record', async () => {
+    const sphereRecord = createLifeSphereRecord(createSphereInput.id!)
     const api = createPlannerApiClientMock({
-      createProject: vi.fn().mockResolvedValue(projectRecord),
+      createLifeSphere: vi.fn().mockResolvedValue(sphereRecord),
     })
 
     await enqueuePlannerOfflineMutation({
       actorUserId: ACTOR_USER_ID,
-      input: createProjectInput,
-      projectId: createProjectInput.id!,
-      type: 'project.create',
+      input: createSphereInput,
+      sphereId: createSphereInput.id!,
+      type: 'lifeSphere.create',
       workspaceId: WORKSPACE_ID,
     })
 
@@ -134,10 +134,10 @@ describe('offline planner sync', () => {
     })
 
     expect(result.synced).toBe(1)
-    expect(api.createProject).toHaveBeenCalledWith(createProjectInput)
+    expect(api.createLifeSphere).toHaveBeenCalledWith(createSphereInput)
     expect(await countRetryablePlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
-    expect(await loadCachedProjectRecords(WORKSPACE_ID)).toEqual([
-      projectRecord,
+    expect(await loadCachedLifeSphereRecords(WORKSPACE_ID)).toEqual([
+      sphereRecord,
     ])
   })
 })
@@ -148,15 +148,12 @@ function createPlannerApiClientMock(
   return {
     autoBuildDailyPlan: vi.fn(),
     createLifeSphere: vi.fn(),
-    createProject: vi.fn(),
     createTask: vi.fn(),
     createTaskTemplate: vi.fn(),
     getDailyPlan: vi.fn(),
     getLifeSphereWeeklyStats: vi.fn(),
-    getProject: vi.fn(),
     listLifeSpheres: vi.fn(),
     listTaskEvents: vi.fn(),
-    listProjects: vi.fn(),
     listTasks: vi.fn(),
     listTasksPage: vi.fn(),
     listTaskTemplates: vi.fn(),
@@ -166,7 +163,6 @@ function createPlannerApiClientMock(
     saveDailyPlan: vi.fn(),
     setTaskSchedule: vi.fn(),
     setTaskStatus: vi.fn(),
-    updateProject: vi.fn(),
     updateLifeSphere: vi.fn(),
     updateTask: vi.fn(),
     unloadDailyPlan: vi.fn(),
@@ -205,17 +201,20 @@ function createTaskRecord(taskId: string): TaskRecord {
   }
 }
 
-function createProjectRecord(projectId: string): ProjectRecord {
+function createLifeSphereRecord(sphereId: string): LifeSphereRecord {
   return {
     color: '#2f6f62',
     createdAt: '2026-04-20T00:00:00.000Z',
     deletedAt: null,
-    description: 'Offline project',
+    description: 'Offline sphere',
     icon: 'folder',
-    id: projectId,
-    status: 'active',
-    title: 'Offline project',
+    id: sphereId,
+    isActive: true,
+    isDefault: false,
+    name: 'Offline sphere',
+    sortOrder: 0,
     updatedAt: '2026-04-20T00:00:00.000Z',
+    userId: ACTOR_USER_ID,
     version: 1,
     workspaceId: WORKSPACE_ID,
   }

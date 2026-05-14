@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import type { Task } from '@/entities/task'
 
 import {
@@ -9,25 +9,29 @@ import {
   UNSPHERED_ID,
 } from './sphere-stats'
 
-const project: Project = {
+const project: Sphere = {
   color: '#214e42',
   createdAt: '2026-04-01T00:00:00.000Z',
   deletedAt: null,
   description: '',
   icon: 'svg:folder',
   id: 'work',
-  status: 'active',
-  title: 'Работа',
+  isActive: true,
+  isDefault: false,
+  name: 'Работа',
+  sortOrder: 0,
   updatedAt: '2026-04-01T00:00:00.000Z',
+  userId: 'user-1',
   version: 1,
   workspaceId: 'workspace',
 }
 
-const homeProject: Project = {
+const homeProject: Sphere = {
   ...project,
   color: '#8f7530',
   id: 'home',
-  title: 'Дом',
+  name: 'Дом',
+  sortOrder: 1,
 }
 
 function createTask(overrides: Partial<Task> = {}): Task {

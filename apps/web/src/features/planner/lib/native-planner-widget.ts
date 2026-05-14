@@ -14,7 +14,7 @@ import {
   type NativePlannerWidgetTaskVisualTone,
 } from '@planner/contracts'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import {
   selectDoneTodayTasks,
   selectOverdueTasks,
@@ -41,12 +41,12 @@ export function isAndroidPlannerWidgetRuntime(): boolean {
 
 export function buildNativePlannerWidgetSnapshot(
   tasks: Task[],
-  projectsOrNow: Project[] | Date = [],
+  spheresOrNow: Sphere[] | Date = [],
   maybeNow?: Date,
 ): NativePlannerWidgetSnapshot {
-  const { now, projects } = resolveSnapshotContext(projectsOrNow, maybeNow)
+  const { now, spheres } = resolveSnapshotContext(spheresOrNow, maybeNow)
   const dateKey = getDateKey(now)
-  const projectLookup = createProjectLookup(projects)
+  const sphereLookup = createSphereLookup(spheres)
   const todayTasks = selectTodayTasks(tasks, dateKey)
   const overdueTasks = selectOverdueTasks(tasks, dateKey)
   const doneTodayTasks = selectDoneTodayTasks(tasks, dateKey)
@@ -56,7 +56,7 @@ export function buildNativePlannerWidgetSnapshot(
       toNativePlannerWidgetTask(
         task,
         task.plannedDate !== dateKey,
-        projectLookup,
+        sphereLookup,
       ),
     )
   const snapshot = {
@@ -139,13 +139,13 @@ export async function addNativePlannerWidgetResumeListener(
 function toNativePlannerWidgetTask(
   task: Task,
   isOverdue: boolean,
-  projectLookup: WidgetProjectLookup,
+  sphereLookup: WidgetSphereLookup,
 ): NativePlannerWidgetTask {
-  const project = findWidgetProject(task, projectLookup)
+  const sphere = findWidgetSphere(task, sphereLookup)
 
   return {
-    color: normalizeWidgetColor(project?.color),
-    icon: normalizeWidgetIcon(task.icon) || normalizeWidgetIcon(project?.icon),
+    color: normalizeWidgetColor(sphere?.color),
+    icon: normalizeWidgetIcon(task.icon) || normalizeWidgetIcon(sphere?.icon),
     id: task.id,
     isOverdue,
     timeLabel:
@@ -157,59 +157,56 @@ function toNativePlannerWidgetTask(
   }
 }
 
-interface WidgetProjectLookup {
-  byId: Map<string, Project>
-  byTitle: Map<string, Project>
+interface WidgetSphereLookup {
+  byId: Map<string, Sphere>
+  byTitle: Map<string, Sphere>
 }
 
 function resolveSnapshotContext(
-  projectsOrNow: Project[] | Date,
+  spheresOrNow: Sphere[] | Date,
   maybeNow: Date | undefined,
-): { now: Date; projects: Project[] } {
-  if (projectsOrNow instanceof Date) {
+): { now: Date; spheres: Sphere[] } {
+  if (spheresOrNow instanceof Date) {
     return {
-      now: projectsOrNow,
-      projects: [],
+      now: spheresOrNow,
+      spheres: [],
     }
   }
 
   return {
     now: maybeNow ?? new Date(),
-    projects: projectsOrNow,
+    spheres: spheresOrNow,
   }
 }
 
-function createProjectLookup(projects: Project[]): WidgetProjectLookup {
+function createSphereLookup(spheres: Sphere[]): WidgetSphereLookup {
   return {
-    byId: new Map(projects.map((project) => [project.id, project])),
+    byId: new Map(spheres.map((sphere) => [sphere.id, sphere])),
     byTitle: new Map(
-      projects.map((project) => [
-        normalizeProjectTitle(project.title),
-        project,
-      ]),
+      spheres.map((sphere) => [normalizeSphereName(sphere.name), sphere]),
     ),
   }
 }
 
-function findWidgetProject(
+function findWidgetSphere(
   task: Task,
-  projectLookup: WidgetProjectLookup,
-): Project | undefined {
-  const projectId = task.projectId ?? task.sphereId
+  sphereLookup: WidgetSphereLookup,
+): Sphere | undefined {
+  const sphereId = task.sphereId ?? task.projectId
 
-  if (projectId) {
-    const project = projectLookup.byId.get(projectId)
+  if (sphereId) {
+    const sphere = sphereLookup.byId.get(sphereId)
 
-    if (project) {
-      return project
+    if (sphere) {
+      return sphere
     }
   }
 
-  return projectLookup.byTitle.get(normalizeProjectTitle(task.project))
+  return sphereLookup.byTitle.get(normalizeSphereName(task.project))
 }
 
-function normalizeProjectTitle(title: string): string {
-  return title.trim().toLowerCase()
+function normalizeSphereName(name: string): string {
+  return name.trim().toLowerCase()
 }
 
 function normalizeWidgetColor(color: string | undefined): string {

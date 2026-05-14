@@ -15,8 +15,8 @@ import {
   emojiSetListResponseSchema,
   emojiSetRecordSchema,
   healthResponseSchema,
-  projectListResponseSchema,
-  projectRecordSchema,
+  lifeSphereListRecordResponseSchema,
+  lifeSphereRecordSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
   taskEventListResponseSchema,
@@ -45,9 +45,9 @@ import {
   MemoryEmojiSetRepository,
 } from '../modules/emoji-sets/index.js'
 import {
-  MemoryProjectRepository,
-  ProjectService,
-} from '../modules/projects/index.js'
+  LifeSphereService,
+  MemoryLifeSphereRepository,
+} from '../modules/life-spheres/index.js'
 import {
   LocalProfileAvatarStorage,
   MemorySessionRepository,
@@ -307,7 +307,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -330,7 +329,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -359,7 +357,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -392,7 +389,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -420,7 +416,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(sessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -466,7 +461,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -495,12 +489,14 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
+      lifeSphereService: new LifeSphereService(
+        new MemoryLifeSphereRepository(),
+      ),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
 
-    const projectResponse = await app.inject({
+    const sphereResponse = await app.inject({
       headers: {
         'x-actor-user-id': 'user-1',
         'x-workspace-id': 'workspace-1',
@@ -510,11 +506,11 @@ void describe('buildApiApp', () => {
         color: '#2f6f62',
         description: 'Inbox processing',
         icon: 'folder',
-        title: 'Inbox',
+        name: 'Inbox',
       },
-      url: '/api/v1/projects',
+      url: '/api/v1/life-spheres',
     })
-    const project = projectRecordSchema.parse(projectResponse.json())
+    const sphere = lifeSphereRecordSchema.parse(sphereResponse.json())
 
     const createResponse = await app.inject({
       headers: {
@@ -531,7 +527,8 @@ void describe('buildApiApp', () => {
         plannedEndTime: '10:00',
         plannedStartTime: '09:00',
         project: 'Inbox',
-        projectId: project.id,
+        projectId: sphere.id,
+        sphereId: sphere.id,
         title: 'Prepare planner backend',
         urgency: 'urgent',
       },
@@ -545,7 +542,7 @@ void describe('buildApiApp', () => {
     assert.equal(createdTask.version, 1)
     assert.equal(createdTask.icon, 'svg:calendar')
     assert.equal(createdTask.importance, 'important')
-    assert.equal(createdTask.projectId, project.id)
+    assert.equal(createdTask.sphereId, sphere.id)
     assert.equal(createdTask.urgency, 'urgent')
     assert.equal(createdTask.workspaceId, 'workspace-1')
 
@@ -689,7 +686,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -755,7 +751,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(sessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -1498,11 +1493,13 @@ void describe('buildApiApp', () => {
     assert.equal(ownerDeleteResponse.statusCode, 204)
   })
 
-  void it('creates, updates and lists projects via the HTTP API', async () => {
+  void it('creates, updates and lists life spheres via the HTTP API', async () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
+      lifeSphereService: new LifeSphereService(
+        new MemoryLifeSphereRepository(),
+      ),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -1517,17 +1514,17 @@ void describe('buildApiApp', () => {
         color: '#2f6f62',
         description: 'Planner product work',
         icon: 'folder',
-        title: 'Planner',
+        name: 'Planner',
       },
-      url: '/api/v1/projects',
+      url: '/api/v1/life-spheres',
     })
 
     assert.equal(createResponse.statusCode, 201)
 
-    const createdProject = projectRecordSchema.parse(createResponse.json())
+    const createdSphere = lifeSphereRecordSchema.parse(createResponse.json())
 
-    assert.equal(createdProject.title, 'Planner')
-    assert.equal(createdProject.workspaceId, 'workspace-1')
+    assert.equal(createdSphere.name, 'Planner')
+    assert.equal(createdSphere.workspaceId, 'workspace-1')
 
     const updateResponse = await app.inject({
       headers: {
@@ -1537,42 +1534,43 @@ void describe('buildApiApp', () => {
       method: 'PATCH',
       payload: {
         color: '#3f5f9f',
-        description: 'Updated project context',
-        expectedVersion: createdProject.version,
+        description: 'Updated sphere context',
+        expectedVersion: createdSphere.version,
         icon: 'target',
-        title: 'Planner App',
+        name: 'Planner App',
       },
-      url: `/api/v1/projects/${createdProject.id}`,
+      url: `/api/v1/life-spheres/${createdSphere.id}`,
     })
 
     assert.equal(updateResponse.statusCode, 200)
 
-    const updatedProject = projectRecordSchema.parse(updateResponse.json())
+    const updatedSphere = lifeSphereRecordSchema.parse(updateResponse.json())
 
-    assert.equal(updatedProject.title, 'Planner App')
-    assert.equal(updatedProject.version, 2)
+    assert.equal(updatedSphere.name, 'Planner App')
+    assert.equal(updatedSphere.version, 2)
 
     const listResponse = await app.inject({
       headers: {
         'x-workspace-id': 'workspace-1',
       },
       method: 'GET',
-      url: '/api/v1/projects',
+      url: '/api/v1/life-spheres',
     })
 
     assert.equal(listResponse.statusCode, 200)
 
-    const projects = projectListResponseSchema.parse(listResponse.json())
+    const spheres = lifeSphereListRecordResponseSchema.parse(
+      listResponse.json(),
+    )
 
-    assert.equal(projects.length, 1)
-    assert.equal(projects[0]?.id, createdProject.id)
+    assert.equal(spheres.length, 1)
+    assert.equal(spheres[0]?.id, createdSphere.id)
   })
 
   void it('creates, lists and deletes task templates via the HTTP API', async () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
       taskTemplateService: new TaskTemplateService(
@@ -1651,7 +1649,6 @@ void describe('buildApiApp', () => {
         new MemoryEmojiSetRepository(),
         new LocalIconAssetStorage(iconAssetDirectory),
       ),
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -1867,7 +1864,6 @@ void describe('buildApiApp', () => {
         API_ICON_ASSET_DIR: profileAssetDirectory,
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(
         new MemorySessionRepository(),
         new LocalProfileAvatarStorage(
@@ -1988,7 +1984,6 @@ void describe('buildApiApp', () => {
       config: createTestConfig(),
       database: null,
       emojiSetService: new EmojiSetService(timeoutRepository),
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2025,7 +2020,6 @@ void describe('buildApiApp', () => {
       }),
       database: null,
       emojiSetService: new EmojiSetService(new MemoryEmojiSetRepository()),
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -2085,7 +2079,6 @@ void describe('buildApiApp', () => {
       }),
       database: null,
       emojiSetService: new EmojiSetService(repository),
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -2184,7 +2177,6 @@ void describe('buildApiApp', () => {
       }),
       database: null,
       emojiSetService: new EmojiSetService(repository),
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(failingSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -2211,7 +2203,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2235,7 +2226,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2262,7 +2252,6 @@ void describe('buildApiApp', () => {
         API_CORS_ORIGIN: 'http://127.0.0.1:5173',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2306,7 +2295,6 @@ void describe('buildApiApp', () => {
         API_CORS_ORIGIN: 'https://chaotika.ru',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2350,7 +2338,6 @@ void describe('buildApiApp', () => {
         API_CORS_ORIGIN: 'https://chaotika.ru, https://staging.chaotika.ru',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2379,7 +2366,6 @@ void describe('buildApiApp', () => {
         API_CORS_ORIGIN: 'http://127.0.0.1:5173',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2416,7 +2402,6 @@ void describe('buildApiApp', () => {
       authService,
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2460,7 +2445,6 @@ void describe('buildApiApp', () => {
       authService: createCookieAuthService(),
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2490,7 +2474,6 @@ void describe('buildApiApp', () => {
       authService: createCookieAuthService(),
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -2524,7 +2507,6 @@ void describe('buildApiApp', () => {
       authService: createCookieAuthService(),
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2552,7 +2534,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2622,7 +2603,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(timeoutRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2643,7 +2623,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2674,7 +2653,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2736,7 +2714,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(sessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2790,7 +2767,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(sessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2861,7 +2837,6 @@ void describe('buildApiApp', () => {
       ),
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(sessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -2976,7 +2951,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -3043,7 +3017,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService: new SessionService(sessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -3130,7 +3103,6 @@ void describe('buildApiApp', () => {
     const setupApp = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService,
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -3173,7 +3145,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService,
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -3201,7 +3172,6 @@ void describe('buildApiApp', () => {
     const verifyApp = buildApiApp({
       config: createTestConfig(),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       sessionService,
       taskService: new TaskService(new MemoryTaskRepository()),
     })
@@ -3251,7 +3221,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -3276,8 +3245,9 @@ void describe('buildApiApp', () => {
     assert.ok(
       body.paths?.['/api/v1/emoji-sets/{emojiSetId}/items/{iconAssetId}'],
     )
-    assert.ok(body.paths?.['/api/v1/projects'])
-    assert.ok(body.paths?.['/api/v1/projects/{projectId}'])
+    assert.ok(body.paths?.['/api/v1/life-spheres'])
+    assert.ok(body.paths?.['/api/v1/life-spheres/{sphereId}'])
+    assert.ok(body.paths?.['/api/v1/life-spheres/weekly-stats'])
     assert.ok(body.paths?.['/api/v1/task-events'])
     assert.ok(body.paths?.['/api/v1/task-templates'])
     assert.ok(body.paths?.['/api/v1/task-templates/{templateId}'])
@@ -3298,7 +3268,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -3323,7 +3292,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
@@ -3378,7 +3346,6 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: authRequestAuthenticator,
       sessionService: new SessionService(guestSessionRepository),
       taskService: new TaskService(new MemoryTaskRepository()),

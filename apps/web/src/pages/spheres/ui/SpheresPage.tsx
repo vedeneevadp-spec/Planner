@@ -52,7 +52,7 @@ function getLastActivityLabel(
 }
 
 export function SpheresPage() {
-  const { addProject, projects: spheres, tasks } = usePlanner()
+  const { addSphere, spheres, tasks } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
   const week = getCurrentWeekRange(new Date())
   const todayKey = getDateKey(new Date())
@@ -155,7 +155,7 @@ export function SpheresPage() {
 
       <SphereComposer
         uploadedIcons={uploadedIcons}
-        onCreate={(values) => addProject(values)}
+        onCreate={(values) => addSphere(values)}
       />
 
       {spheres.length === 0 ? (
@@ -193,7 +193,7 @@ export function SpheresPage() {
 
                 <div>
                   <p className={styles.eyebrow}>Sphere</p>
-                  <h3>{sphere.title}</h3>
+                  <h3>{sphere.name}</h3>
                   {sphere.description ? (
                     <p className={styles.sphereDescription}>
                       {sphere.description}

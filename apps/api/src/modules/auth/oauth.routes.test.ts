@@ -8,7 +8,6 @@ import { z } from 'zod'
 import { buildApiApp } from '../../bootstrap/build-app.js'
 import { createApiConfig } from '../../bootstrap/config.js'
 import { JwtRequestAuthenticator } from '../../infrastructure/auth/jwt-request-authenticator.js'
-import { MemoryProjectRepository, ProjectService } from '../projects/index.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
 import { MemoryTaskRepository, TaskService } from '../tasks/index.js'
 import { NoopAuthEmailSender } from './auth.email.js'
@@ -336,7 +335,6 @@ async function createOAuthTestApp(): Promise<{
       authService: service,
       config,
       database: null,
-      projectService: new ProjectService(new MemoryProjectRepository()),
       requestAuthenticator: new JwtRequestAuthenticator(config.jwtAuth!),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),

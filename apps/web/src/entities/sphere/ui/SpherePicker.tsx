@@ -3,34 +3,33 @@ import { useState } from 'react'
 import { cx } from '@/shared/lib/classnames'
 import { IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 
-import type { Project } from '../model/project.types'
-import styles from './ProjectPicker.module.css'
+import type { Sphere } from '../model/sphere.types'
+import styles from './SpherePicker.module.css'
 
-interface ProjectPickerProps {
+interface SpherePickerProps {
   className?: string | undefined
   emptyLabel?: string | undefined
   label?: string | undefined
-  projects: Project[]
+  spheres: Sphere[]
   uploadedIcons?: UploadedIconAsset[] | undefined
   value: string
-  onChange: (projectId: string) => void
+  onChange: (sphereId: string) => void
 }
 
-export function ProjectPicker({
+export function SpherePicker({
   className,
   emptyLabel = 'Без сферы',
   label = 'Сфера',
-  projects,
+  spheres,
   uploadedIcons = [],
   value,
   onChange,
-}: ProjectPickerProps) {
+}: SpherePickerProps) {
   const [isOpen, setIsOpen] = useState(false)
-  const selectedProject =
-    projects.find((project) => project.id === value) ?? null
+  const selectedSphere = spheres.find((sphere) => sphere.id === value) ?? null
 
-  function selectProject(projectId: string) {
-    onChange(projectId)
+  function selectSphere(sphereId: string) {
+    onChange(sphereId)
     setIsOpen(false)
   }
 
@@ -56,9 +55,9 @@ export function ProjectPicker({
         aria-haspopup="listbox"
         onClick={() => setIsOpen((value) => !value)}
       >
-        <ProjectOptionContent
+        <SphereOptionContent
           emptyLabel={emptyLabel}
-          project={selectedProject}
+          sphere={selectedSphere}
           uploadedIcons={uploadedIcons}
         />
         <span className={styles.chevron} aria-hidden="true">
@@ -69,33 +68,33 @@ export function ProjectPicker({
       {isOpen ? (
         <div className={styles.menu} role="listbox" tabIndex={-1}>
           <button
-            className={cx(styles.option, !selectedProject && styles.active)}
+            className={cx(styles.option, !selectedSphere && styles.active)}
             type="button"
             role="option"
-            aria-selected={!selectedProject}
-            onClick={() => selectProject('')}
+            aria-selected={!selectedSphere}
+            onClick={() => selectSphere('')}
           >
-            <ProjectOptionContent
+            <SphereOptionContent
               emptyLabel={emptyLabel}
-              project={null}
+              sphere={null}
               uploadedIcons={uploadedIcons}
             />
           </button>
-          {projects.map((project) => (
+          {spheres.map((sphere) => (
             <button
-              key={project.id}
+              key={sphere.id}
               className={cx(
                 styles.option,
-                selectedProject?.id === project.id && styles.active,
+                selectedSphere?.id === sphere.id && styles.active,
               )}
               type="button"
               role="option"
-              aria-selected={selectedProject?.id === project.id}
-              onClick={() => selectProject(project.id)}
+              aria-selected={selectedSphere?.id === sphere.id}
+              onClick={() => selectSphere(sphere.id)}
             >
-              <ProjectOptionContent
+              <SphereOptionContent
                 emptyLabel={emptyLabel}
-                project={project}
+                sphere={sphere}
                 uploadedIcons={uploadedIcons}
               />
             </button>
@@ -106,18 +105,18 @@ export function ProjectPicker({
   )
 }
 
-interface ProjectOptionContentProps {
+interface SphereOptionContentProps {
   emptyLabel: string
-  project: Project | null
+  sphere: Sphere | null
   uploadedIcons: UploadedIconAsset[]
 }
 
-function ProjectOptionContent({
+function SphereOptionContent({
   emptyLabel,
-  project,
+  sphere,
   uploadedIcons,
-}: ProjectOptionContentProps) {
-  if (!project) {
+}: SphereOptionContentProps) {
+  if (!sphere) {
     return (
       <>
         <span className={styles.emptyIcon} aria-hidden="true" />
@@ -129,13 +128,13 @@ function ProjectOptionContent({
   return (
     <>
       <span
-        className={styles.projectIcon}
-        style={{ backgroundColor: project.color }}
+        className={styles.sphereIcon}
+        style={{ backgroundColor: sphere.color }}
         aria-hidden="true"
       >
-        <IconMark value={project.icon} uploadedIcons={uploadedIcons} />
+        <IconMark value={sphere.icon} uploadedIcons={uploadedIcons} />
       </span>
-      <span className={styles.title}>{project.title}</span>
+      <span className={styles.title}>{sphere.name}</span>
     </>
   )
 }

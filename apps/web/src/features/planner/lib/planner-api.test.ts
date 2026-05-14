@@ -237,18 +237,18 @@ describe('plannerApi', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
     const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
 
-    await api.createProject({
+    await api.createLifeSphere({
       color: '#2f6f62',
       description: '',
       icon: 'folder',
-      title: 'Planner',
+      name: 'Planner',
     })
-    await api.updateProject('project-1', {
+    await api.updateLifeSphere('project-1', {
       color: '#3f5f9f',
       description: 'Updated',
       expectedVersion: 1,
       icon: 'target',
-      title: 'Planner App',
+      name: 'Planner App',
     })
     await api.removeLifeSphere('project-1')
 

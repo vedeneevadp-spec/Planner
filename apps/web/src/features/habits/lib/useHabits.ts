@@ -927,7 +927,7 @@ async function drainQueuedHabitMutations(input: {
 
 async function invalidateHabits(queryClient: QueryClient, workspaceId: string) {
   await queryClient.invalidateQueries({ queryKey: ['habits', workspaceId] })
-  await queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] })
+  await queryClient.invalidateQueries({ queryKey: ['planner', 'spheres'] })
 }
 
 async function refreshHabitOfflineStatus(

@@ -2,8 +2,8 @@ import type { WorkspaceUserRecord } from '@planner/contracts'
 import { type FormEvent, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import type { Project } from '@/entities/project'
-import { ProjectPicker } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
+import { SpherePicker } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
 import { getDateKey } from '@/shared/lib/date'
 import { IconChoicePicker, type UploadedIconAsset } from '@/shared/ui/Icon'
@@ -37,7 +37,7 @@ interface TaskEditDialogProps {
   currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
   task: Task
-  projects: Project[]
+  spheres: Sphere[]
   uploadedIcons: UploadedIconAsset[]
   workspaceUsers?: WorkspaceUserRecord[] | undefined
   isPending?: boolean | undefined
@@ -49,7 +49,7 @@ export function TaskEditDialog({
   currentActorUserId,
   isSharedWorkspace = false,
   task,
-  projects,
+  spheres,
   uploadedIcons,
   workspaceUsers = [],
   isPending = false,
@@ -156,11 +156,11 @@ export function TaskEditDialog({
       return
     }
 
-    const selectedProject =
-      projects.find((project) => project.id === projectId) ?? null
+    const selectedSphere =
+      spheres.find((sphere) => sphere.id === projectId) ?? null
     const projectInput = {
-      project: selectedProject?.title ?? '',
-      projectId: selectedProject?.id ?? null,
+      project: selectedSphere?.name ?? '',
+      projectId: selectedSphere?.id ?? null,
     }
     const resolvedPlannedDate =
       canEditRecurrence && recurrenceForm.isEnabled && !plannedDate
@@ -313,11 +313,11 @@ export function TaskEditDialog({
 
           <div className={styles.editorColumnPanel}>
             <section className={styles.editorSection}>
-              <ProjectPicker
+              <SpherePicker
                 className={styles.fieldProject}
                 emptyLabel={getEmptyProjectLabel()}
-                label={getProjectPickerLabel()}
-                projects={projects}
+                label={getSpherePickerLabel()}
+                spheres={spheres}
                 uploadedIcons={uploadedIcons}
                 value={projectId}
                 onChange={setProjectId}
@@ -452,7 +452,7 @@ function getEmptyProjectLabel(): string {
   return 'Без сферы'
 }
 
-function getProjectPickerLabel(): string {
+function getSpherePickerLabel(): string {
   return 'Сфера'
 }
 

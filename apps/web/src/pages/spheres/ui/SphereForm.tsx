@@ -1,6 +1,6 @@
 import { type FormEvent, useId, useState } from 'react'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
 import {
   createSvgIconValue,
@@ -45,13 +45,13 @@ export interface SphereFormValues {
   color: string
   description: string
   icon: string
-  title: string
+  name: string
 }
 
 interface SphereFormProps {
   autoFocusTitle?: boolean | undefined
   embedded?: boolean | undefined
-  sphere?: Project | undefined
+  sphere?: Sphere | undefined
   showHeader?: boolean | undefined
   submitLabel: string
   uploadedIcons?: UploadedIconAsset[] | undefined
@@ -70,7 +70,7 @@ export function SphereForm({
   onSubmit,
 }: SphereFormProps) {
   const titleId = useId()
-  const [title, setTitle] = useState(sphere?.title ?? '')
+  const [name, setName] = useState(sphere?.name ?? '')
   const [description, setDescription] = useState(sphere?.description ?? '')
   const [color, setColor] = useState(sphere?.color ?? SPHERE_COLORS[0])
   const [icon, setIcon] = useState(sphere?.icon ?? DEFAULT_SPHERE_ICON)
@@ -78,9 +78,9 @@ export function SphereForm({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    const normalizedTitle = title.trim()
+    const normalizedName = name.trim()
 
-    if (!normalizedTitle) {
+    if (!normalizedName) {
       return
     }
 
@@ -88,14 +88,14 @@ export function SphereForm({
       color,
       description,
       icon,
-      title: normalizedTitle,
+      name: normalizedName,
     })
 
     if (!isSaved || sphere) {
       return
     }
 
-    setTitle('')
+    setName('')
     setDescription('')
     setColor(SPHERE_COLORS[0])
     setIcon(DEFAULT_SPHERE_ICON)
@@ -130,9 +130,9 @@ export function SphereForm({
           <input
             autoFocus={autoFocusTitle}
             required
-            value={title}
+            value={name}
             placeholder="Например: здоровье"
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => setName(event.target.value)}
           />
         </label>
 

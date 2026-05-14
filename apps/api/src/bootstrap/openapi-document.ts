@@ -85,10 +85,6 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'taskTemplates',
       },
       {
-        description: 'Independent project catalog and project mutations.',
-        name: 'projects',
-      },
-      {
         description: 'Life sphere catalog and weekly balance statistics.',
         name: 'lifeSpheres',
       },
@@ -542,77 +538,6 @@ function createPaths(): OpenAPIV3.PathsObject {
         security: [{ bearerAuth: [] }, {}],
         summary: 'Delete an icon from an icon set',
         tags: ['emojiSets'],
-      },
-    },
-    '/api/v1/projects': {
-      get: {
-        operationId: 'listProjects',
-        parameters: [parameter('requiredWorkspaceIdHeader')],
-        responses: {
-          200: jsonResponse('ProjectListResponse'),
-          400: errorResponse(),
-          401: errorResponse(),
-          403: errorResponse(),
-        },
-        security: [{ bearerAuth: [] }, {}],
-        summary: 'List projects in a workspace',
-        tags: ['projects'],
-      },
-      post: {
-        operationId: 'createProject',
-        parameters: [
-          parameter('requiredWorkspaceIdHeader'),
-          parameter('actorUserIdHeader'),
-        ],
-        requestBody: jsonRequestBody('NewProjectInput'),
-        responses: {
-          201: jsonResponse('ProjectRecord'),
-          400: errorResponse(),
-          401: errorResponse(),
-          403: errorResponse(),
-        },
-        security: [{ bearerAuth: [] }, {}],
-        summary: 'Create a project',
-        tags: ['projects'],
-      },
-    },
-    '/api/v1/projects/{projectId}': {
-      get: {
-        operationId: 'getProject',
-        parameters: [
-          projectIdParameter(),
-          parameter('requiredWorkspaceIdHeader'),
-        ],
-        responses: {
-          200: jsonResponse('ProjectRecord'),
-          400: errorResponse(),
-          401: errorResponse(),
-          403: errorResponse(),
-          404: errorResponse(),
-        },
-        security: [{ bearerAuth: [] }, {}],
-        summary: 'Get a project',
-        tags: ['projects'],
-      },
-      patch: {
-        operationId: 'updateProject',
-        parameters: [
-          projectIdParameter(),
-          parameter('requiredWorkspaceIdHeader'),
-          parameter('actorUserIdHeader'),
-        ],
-        requestBody: jsonRequestBody('ProjectUpdateInput'),
-        responses: {
-          200: jsonResponse('ProjectRecord'),
-          400: errorResponse(),
-          401: errorResponse(),
-          403: errorResponse(),
-          404: errorResponse(),
-          409: errorResponse(),
-        },
-        security: [{ bearerAuth: [] }, {}],
-        summary: 'Update a project',
-        tags: ['projects'],
       },
     },
     '/api/v1/tasks': {
@@ -2070,33 +1995,6 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       ],
       type: 'object',
     },
-    NewProjectInput: {
-      additionalProperties: false,
-      properties: {
-        color: {
-          minLength: 1,
-          type: 'string',
-        },
-        description: {
-          type: 'string',
-        },
-        icon: {
-          minLength: 1,
-          type: 'string',
-        },
-        id: {
-          pattern:
-            '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-          type: 'string',
-        },
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['color', 'description', 'icon', 'title'],
-      type: 'object',
-    },
     EmojiAssetKind: {
       enum: ['image'],
       type: 'string',
@@ -2230,98 +2128,6 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
     EmojiSetSource: {
       enum: ['custom'],
       type: 'string',
-    },
-    ProjectListResponse: {
-      items: {
-        $ref: '#/components/schemas/ProjectRecord',
-      },
-      type: 'array',
-    },
-    ProjectRecord: {
-      allOf: [
-        {
-          $ref: '#/components/schemas/Project',
-        },
-        {
-          additionalProperties: false,
-          properties: {
-            deletedAt: nullableStringSchema(),
-            updatedAt: {
-              format: 'date-time',
-              type: 'string',
-            },
-            version: positiveIntegerSchema(),
-            workspaceId: {
-              type: 'string',
-            },
-          },
-          required: ['deletedAt', 'updatedAt', 'version', 'workspaceId'],
-          type: 'object',
-        },
-      ],
-    },
-    Project: {
-      additionalProperties: false,
-      properties: {
-        color: {
-          minLength: 1,
-          type: 'string',
-        },
-        createdAt: {
-          format: 'date-time',
-          type: 'string',
-        },
-        description: {
-          type: 'string',
-        },
-        icon: {
-          minLength: 1,
-          type: 'string',
-        },
-        id: {
-          type: 'string',
-        },
-        status: {
-          enum: ['active', 'archived'],
-          type: 'string',
-        },
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: [
-        'color',
-        'createdAt',
-        'description',
-        'icon',
-        'id',
-        'status',
-        'title',
-      ],
-      type: 'object',
-    },
-    ProjectUpdateInput: {
-      additionalProperties: false,
-      properties: {
-        color: {
-          minLength: 1,
-          type: 'string',
-        },
-        description: {
-          type: 'string',
-        },
-        expectedVersion: positiveIntegerSchema(),
-        icon: {
-          minLength: 1,
-          type: 'string',
-        },
-        title: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      type: 'object',
     },
     SessionActor: {
       additionalProperties: false,
@@ -3142,17 +2948,6 @@ function habitIdParameter(): OpenAPIV3.ParameterObject {
 
 function installationIdParameter(): OpenAPIV3.ParameterObject {
   return idPathParameter('installationId')
-}
-
-function projectIdParameter(): OpenAPIV3.ParameterObject {
-  return {
-    in: 'path',
-    name: 'projectId',
-    required: true,
-    schema: {
-      type: 'string',
-    },
-  }
 }
 
 function sphereIdParameter(): OpenAPIV3.ParameterObject {

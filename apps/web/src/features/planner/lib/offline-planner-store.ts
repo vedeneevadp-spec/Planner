@@ -1,9 +1,9 @@
 import {
   generateUuidV7,
-  type NewProjectInput,
+  type LifeSphereRecord,
+  type LifeSphereUpdateInput,
+  type NewLifeSphereInput,
   type NewTaskInput,
-  type ProjectRecord,
-  type ProjectUpdateInput,
   type TaskRecord,
   type TaskScheduleInput,
   type TaskStatus,
@@ -26,10 +26,10 @@ interface PlannerCachedTaskRow {
   workspaceId: string
 }
 
-interface PlannerCachedProjectRow {
+interface PlannerCachedLifeSphereRow {
   key: string
-  project: ProjectRecord
-  projectId: string
+  sphere: LifeSphereRecord
+  sphereId: string
   updatedAt: string
   workspaceId: string
 }
@@ -64,14 +64,14 @@ interface PlannerOfflineMutationBase {
 
 export type PlannerOfflineMutationRecord =
   | (PlannerOfflineMutationBase & {
-      input: NewProjectInput
-      projectId: string
-      type: 'project.create'
+      input: NewLifeSphereInput
+      sphereId: string
+      type: 'lifeSphere.create'
     })
   | (PlannerOfflineMutationBase & {
-      input: ProjectUpdateInput
-      projectId: string
-      type: 'project.update'
+      input: LifeSphereUpdateInput
+      sphereId: string
+      type: 'lifeSphere.update'
     })
   | (PlannerOfflineMutationBase & {
       input: NewTaskInput
@@ -105,16 +105,16 @@ export type PlannerOfflineMutationRecord =
 export type PlannerOfflineMutationInput =
   | {
       actorUserId: string
-      input: NewProjectInput
-      projectId: string
-      type: 'project.create'
+      input: NewLifeSphereInput
+      sphereId: string
+      type: 'lifeSphere.create'
       workspaceId: string
     }
   | {
       actorUserId: string
-      input: ProjectUpdateInput
-      projectId: string
-      type: 'project.update'
+      input: LifeSphereUpdateInput
+      sphereId: string
+      type: 'lifeSphere.update'
       workspaceId: string
     }
   | {
@@ -162,10 +162,10 @@ const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
   'syncing',
 ]
 export const PLANNER_OFFLINE_DATABASE_NAME = 'planner-offline'
-export const PLANNER_OFFLINE_SCHEMA_VERSION = 3
+export const PLANNER_OFFLINE_SCHEMA_VERSION = 4
 
 class PlannerOfflineDatabase extends Dexie {
-  cachedProjects!: Table<PlannerCachedProjectRow, string>
+  cachedLifeSpheres!: Table<PlannerCachedLifeSphereRow, string>
   cachedTaskTemplates!: Table<PlannerCachedTaskTemplateRow, string>
   cachedTasks!: Table<PlannerCachedTaskRow, string>
   mutationQueue!: Table<PlannerOfflineMutationRecord, string>
@@ -186,7 +186,7 @@ class PlannerOfflineDatabase extends Dexie {
       syncMetadata: 'key, workspaceId, updatedAt',
     })
     this.version(PLANNER_OFFLINE_SCHEMA_VERSION).stores({
-      cachedProjects: 'key, workspaceId, projectId, updatedAt',
+      cachedLifeSpheres: 'key, workspaceId, sphereId, updatedAt',
       cachedTaskTemplates: 'key, workspaceId, templateId, updatedAt',
       cachedTasks: 'key, workspaceId, taskId, updatedAt',
       mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
@@ -227,21 +227,21 @@ export async function loadCachedTaskRecords(
   return rows.map((row) => row.task)
 }
 
-export async function loadCachedProjectRecords(
+export async function loadCachedLifeSphereRecords(
   workspaceId: string,
-): Promise<ProjectRecord[]> {
+): Promise<LifeSphereRecord[]> {
   const db = getPlannerOfflineDatabase()
 
   if (!db) {
     return []
   }
 
-  const rows = await db.cachedProjects
+  const rows = await db.cachedLifeSpheres
     .where('workspaceId')
     .equals(workspaceId)
     .toArray()
 
-  return rows.map((row) => row.project)
+  return rows.map((row) => row.sphere)
 }
 
 export async function loadCachedTaskTemplateRecords(
@@ -291,9 +291,9 @@ export async function replaceCachedTaskRecords(
   })
 }
 
-export async function replaceCachedProjectRecords(
+export async function replaceCachedLifeSphereRecords(
   workspaceId: string,
-  projects: ProjectRecord[],
+  spheres: LifeSphereRecord[],
 ): Promise<void> {
   const db = getPlannerOfflineDatabase()
 
@@ -302,21 +302,21 @@ export async function replaceCachedProjectRecords(
   }
 
   const updatedAt = new Date().toISOString()
-  const rows = projects.map(
-    (project): PlannerCachedProjectRow => ({
-      key: createCachedProjectKey(workspaceId, project.id),
-      project,
-      projectId: project.id,
+  const rows = spheres.map(
+    (sphere): PlannerCachedLifeSphereRow => ({
+      key: createCachedLifeSphereKey(workspaceId, sphere.id),
+      sphere,
+      sphereId: sphere.id,
       updatedAt,
       workspaceId,
     }),
   )
 
-  await db.transaction('rw', db.cachedProjects, async () => {
-    await db.cachedProjects.where('workspaceId').equals(workspaceId).delete()
+  await db.transaction('rw', db.cachedLifeSpheres, async () => {
+    await db.cachedLifeSpheres.where('workspaceId').equals(workspaceId).delete()
 
     if (rows.length > 0) {
-      await db.cachedProjects.bulkPut(rows)
+      await db.cachedLifeSpheres.bulkPut(rows)
     }
   })
 }
@@ -373,9 +373,9 @@ export async function upsertCachedTaskRecord(
   })
 }
 
-export async function upsertCachedProjectRecord(
+export async function upsertCachedLifeSphereRecord(
   workspaceId: string,
-  project: ProjectRecord,
+  sphere: LifeSphereRecord,
 ): Promise<void> {
   const db = getPlannerOfflineDatabase()
 
@@ -383,10 +383,10 @@ export async function upsertCachedProjectRecord(
     return
   }
 
-  await db.cachedProjects.put({
-    key: createCachedProjectKey(workspaceId, project.id),
-    project,
-    projectId: project.id,
+  await db.cachedLifeSpheres.put({
+    key: createCachedLifeSphereKey(workspaceId, sphere.id),
+    sphere,
+    sphereId: sphere.id,
     updatedAt: new Date().toISOString(),
     workspaceId,
   })
@@ -595,11 +595,11 @@ function createCachedTaskKey(workspaceId: string, taskId: string): string {
   return `${workspaceId}:${taskId}`
 }
 
-function createCachedProjectKey(
+function createCachedLifeSphereKey(
   workspaceId: string,
-  projectId: string,
+  sphereId: string,
 ): string {
-  return `${workspaceId}:${projectId}`
+  return `${workspaceId}:${sphereId}`
 }
 
 function createCachedTaskTemplateKey(

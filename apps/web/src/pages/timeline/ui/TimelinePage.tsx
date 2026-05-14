@@ -1,6 +1,6 @@
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import {
   buildTimelineLayout,
   selectPlannedTasks,
@@ -77,7 +77,7 @@ function getTimelineBlockStyle(
 
 interface TimelineTaskItemProps {
   task: Task
-  projects: Project[]
+  spheres: Sphere[]
   isPending?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
   onRemove: (taskId: string) => void
@@ -89,7 +89,7 @@ interface TimelineTaskItemProps {
 
 function TimelineTaskItem({
   task,
-  projects,
+  spheres,
   isPending = false,
   uploadedIcons = [],
   onRemove,
@@ -269,7 +269,7 @@ function TimelineTaskItem({
       {isEditing ? (
         <TaskEditDialog
           task={task}
-          projects={projects}
+          spheres={spheres}
           uploadedIcons={uploadedIcons}
           isPending={isPending}
           onClose={() => setIsEditing(false)}
@@ -283,7 +283,7 @@ function TimelineTaskItem({
 export function TimelinePage() {
   const {
     isTaskPending,
-    projects,
+    spheres,
     tasks,
     removeTask,
     setTaskPlannedDate,
@@ -486,7 +486,7 @@ export function TimelinePage() {
                 <TimelineTaskItem
                   key={`${task.id}:${task.plannedStartTime ?? ''}:${task.plannedEndTime ?? ''}`}
                   task={task}
-                  projects={projects}
+                  spheres={spheres}
                   isPending={isTaskPending(task.id)}
                   uploadedIcons={uploadedIcons}
                   onRemove={(taskId) => {

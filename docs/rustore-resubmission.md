@@ -46,7 +46,7 @@ test credentials in the moderation comment.
    - only backend API calls should go to `https://chaotika.ru/api/...`.
 
 5. Prepare test credentials for moderators. The account should already contain
-   several tasks, a shopping list, spheres/projects, and a reminder/push flow if
+   several tasks, a shopping list, life spheres, and a reminder/push flow if
    push notifications are declared in the listing.
 
 ## Moderation comment template

@@ -48,9 +48,9 @@ interface PlannerStub {
   errorMessage: string | null
   isLoading: boolean
   isSyncing: boolean
-  projects: Array<{
+  spheres: Array<{
     id: string
-    title: string
+    name: string
   }>
   refresh: () => void
   tasks: []
@@ -164,9 +164,9 @@ function renderSidebar(
     errorMessage: null,
     isLoading: false,
     isSyncing: false,
-    projects: [
-      { id: 'project-1', title: 'Работа' },
-      { id: 'project-2', title: 'Здоровье' },
+    spheres: [
+      { id: 'sphere-1', name: 'Работа' },
+      { id: 'sphere-2', name: 'Здоровье' },
     ],
     refresh: vi.fn(),
     tasks: [],

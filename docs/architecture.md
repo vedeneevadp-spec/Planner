@@ -111,11 +111,11 @@ runtime.
 - TanStack Query отвечает за server-state cache и invalidation
 - planner feature держит optimistic mutations, чтобы UI-компоненты не зависели
   от HTTP details
-- IndexedDB через Dexie хранит последние snapshots задач, spheres/compat
-  projects, templates и offline mutation queue
+- IndexedDB через Dexie хранит последние snapshots задач, spheres, templates и
+  offline mutation queue
 - queued mutations replay-ятся через тот же backend API
-- stale writes получают `409 task_version_conflict`,
-  `409 project_version_conflict` или `409 life_sphere_version_conflict`
+- stale writes получают `409 task_version_conflict` или
+  `409 life_sphere_version_conflict`
 - cursor sync читает `/api/v1/task-events`, сохраняет последний обработанный id
   локально и инвалидирует query cache
 
@@ -126,17 +126,15 @@ runtime.
 - `features/planner/model/usePlannerState` - query/mutation orchestration
 - `packages/contracts` - DTO и zod-схемы между web и API
 
-## Сферы и compatibility projects
+## Сферы
 
 Пользовательская модель сейчас называется "сферы жизни" и ходит в backend через
 `/api/v1/life-spheres`.
 
-В web еще есть compatibility-термины `Project`/`projects` в planner state и
-части UI props. Этот слой мапит `LifeSphereRecord` в `ProjectRecord`, чтобы не
-ломать старые task components и offline cache за один большой рефактор.
-
-Новую пользовательскую функциональность нужно проектировать вокруг сфер. Старые
-project names допустимы только как compatibility boundary.
+Planner state, contracts, OpenAPI и offline queue используют `LifeSphere` /
+`spheres`. Старые task-поля `project` и `projectId` остаются только как
+совместимый payload для существующих задач и БД; новая пользовательская
+функциональность проектируется вокруг `sphereId`.
 
 ## Стратегия тестирования
 

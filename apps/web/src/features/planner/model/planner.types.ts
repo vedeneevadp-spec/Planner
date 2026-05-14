@@ -1,8 +1,8 @@
 import type {
-  NewProjectInput,
-  Project,
-  ProjectUpdateInput,
-} from '@/entities/project'
+  LifeSphereUpdateInput,
+  NewLifeSphereInput,
+  Sphere,
+} from '@/entities/sphere'
 import type {
   NewTaskInput,
   Task,
@@ -16,7 +16,7 @@ import type {
 } from '@/entities/task-template'
 
 export interface PlannerState {
-  projects: Project[]
+  spheres: Sphere[]
   tasks: Task[]
   taskTemplates: TaskTemplate[]
   conflictedMutationCount: number
@@ -26,15 +26,15 @@ export interface PlannerState {
   errorMessage: string | null
   isTaskPending: (taskId: string) => boolean
   refresh: () => Promise<void>
-  addProject: (input: NewProjectInput) => Promise<boolean>
+  addSphere: (input: NewLifeSphereInput) => Promise<boolean>
   addTask: (input: NewTaskInput) => Promise<boolean>
   addTaskTemplate: (input: NewTaskTemplateInput) => Promise<boolean>
   updateTask: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
-  updateProject: (
-    projectId: string,
-    input: ProjectUpdateInput,
+  updateSphere: (
+    sphereId: string,
+    input: LifeSphereUpdateInput,
   ) => Promise<boolean>
-  removeProject: (projectId: string) => Promise<boolean>
+  removeSphere: (sphereId: string) => Promise<boolean>
   setTaskStatus: (taskId: string, status: TaskStatus) => Promise<boolean>
   setTaskPlannedDate: (
     taskId: string,

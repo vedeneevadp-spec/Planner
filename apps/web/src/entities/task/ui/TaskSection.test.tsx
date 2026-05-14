@@ -10,17 +10,17 @@ vi.mock('./TaskCard', () => ({
   TaskCard: ({
     isPending,
     onActionMenuOpenChange,
-    project,
+    sphere,
     task,
   }: {
     isPending?: boolean
     onActionMenuOpenChange: (taskId: string, isOpen: boolean) => void
-    project?: { title: string }
+    sphere?: { name: string }
     task: Task
   }) => (
     <article data-testid={`task-${task.id}`}>
       <span>{task.title}</span>
-      <span>{project?.title ?? 'no-project'}</span>
+      <span>{sphere?.name ?? 'no-project'}</span>
       <span>{isPending ? 'pending' : 'ready'}</span>
       <button
         type="button"
@@ -123,7 +123,7 @@ describe('TaskSection', () => {
   it('renders tasks with matching project and pending state', () => {
     renderTaskSection({
       isTaskPending: (taskId) => taskId === 'task-1',
-      projects: [
+      spheres: [
         {
           color: '#2f80ed',
           createdAt: '2026-04-20T08:00:00.000Z',
@@ -131,9 +131,12 @@ describe('TaskSection', () => {
           description: '',
           icon: '🏠',
           id: 'project-1',
-          status: 'active',
-          title: 'Дом',
+          isActive: true,
+          isDefault: false,
+          name: 'Дом',
+          sortOrder: 0,
           updatedAt: '2026-04-20T08:00:00.000Z',
+          userId: 'user-1',
           version: 1,
           workspaceId: 'workspace-1',
         },

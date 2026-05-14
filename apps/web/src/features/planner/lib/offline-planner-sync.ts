@@ -1,4 +1,4 @@
-import type { ProjectRecord, TaskRecord } from '@planner/contracts'
+import type { LifeSphereRecord, TaskRecord } from '@planner/contracts'
 
 import {
   drainOfflineMutations,
@@ -15,7 +15,7 @@ import {
   markPlannerOfflineMutationSyncing,
   type PlannerOfflineMutationRecord,
   removeCachedTaskRecord,
-  upsertCachedProjectRecord,
+  upsertCachedLifeSphereRecord,
   upsertCachedTaskRecord,
 } from './offline-planner-store'
 import { type PlannerApiClient, PlannerApiError } from './planner-api'
@@ -29,21 +29,21 @@ export interface PlannerOfflineDrainResult {
 
 export interface DrainPlannerOfflineQueueOptions {
   api: PlannerApiClient
-  onProjectSynced?: (project: ProjectRecord) => void
+  onLifeSphereSynced?: (sphere: LifeSphereRecord) => void
   onTaskDeleted?: (taskId: string) => void
   onTaskSynced?: (task: TaskRecord) => void
   workspaceId: string
 }
 
 interface OfflineMutationCallbacks {
-  onProjectSynced?: (project: ProjectRecord) => void
+  onLifeSphereSynced?: (sphere: LifeSphereRecord) => void
   onTaskDeleted?: (taskId: string) => void
   onTaskSynced?: (task: TaskRecord) => void
 }
 
 export async function drainPlannerOfflineQueue({
   api,
-  onProjectSynced,
+  onLifeSphereSynced,
   onTaskDeleted,
   onTaskSynced,
   workspaceId,
@@ -57,8 +57,8 @@ export async function drainPlannerOfflineQueue({
   const mutations = await listRetryablePlannerOfflineMutations(workspaceId)
   const callbacks: OfflineMutationCallbacks = {}
 
-  if (onProjectSynced) {
-    callbacks.onProjectSynced = onProjectSynced
+  if (onLifeSphereSynced) {
+    callbacks.onLifeSphereSynced = onLifeSphereSynced
   }
 
   if (onTaskDeleted) {
@@ -111,20 +111,20 @@ async function applyOfflineMutation(
   mutation: PlannerOfflineMutationRecord,
   callbacks: OfflineMutationCallbacks,
 ): Promise<void> {
-  if (mutation.type === 'project.create') {
-    const project = await api.createProject(mutation.input)
+  if (mutation.type === 'lifeSphere.create') {
+    const sphere = await api.createLifeSphere(mutation.input)
 
-    await upsertCachedProjectRecord(mutation.workspaceId, project)
-    callbacks.onProjectSynced?.(project)
+    await upsertCachedLifeSphereRecord(mutation.workspaceId, sphere)
+    callbacks.onLifeSphereSynced?.(sphere)
 
     return
   }
 
-  if (mutation.type === 'project.update') {
-    const project = await api.updateProject(mutation.projectId, mutation.input)
+  if (mutation.type === 'lifeSphere.update') {
+    const sphere = await api.updateLifeSphere(mutation.sphereId, mutation.input)
 
-    await upsertCachedProjectRecord(mutation.workspaceId, project)
-    callbacks.onProjectSynced?.(project)
+    await upsertCachedLifeSphereRecord(mutation.workspaceId, sphere)
+    callbacks.onLifeSphereSynced?.(sphere)
 
     return
   }
@@ -174,16 +174,24 @@ async function applyOfflineMutation(
     return
   }
 
-  await api.removeTask(mutation.taskId, mutation.expectedVersion)
-  await removeCachedTaskRecord(mutation.workspaceId, mutation.taskId)
-  callbacks.onTaskDeleted?.(mutation.taskId)
+  if (mutation.type === 'task.delete') {
+    await api.removeTask(mutation.taskId, mutation.expectedVersion)
+    await removeCachedTaskRecord(mutation.workspaceId, mutation.taskId)
+    callbacks.onTaskDeleted?.(mutation.taskId)
+
+    return
+  }
+
+  const unsupportedMutation = mutation as { type: string }
+  throw new Error(
+    `Unsupported offline mutation type "${unsupportedMutation.type}".`,
+  )
 }
 
 function isVersionConflict(error: unknown): error is PlannerApiError {
   return (
     error instanceof PlannerApiError &&
-    (error.code === 'project_version_conflict' ||
-      error.code === 'life_sphere_version_conflict' ||
+    (error.code === 'life_sphere_version_conflict' ||
       error.code === 'task_version_conflict')
   )
 }

@@ -1,5 +1,5 @@
 import {
-  type ProjectRecord,
+  type LifeSphereRecord,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
@@ -19,9 +19,9 @@ import { requirePlannerApi } from './planner-error-policy'
 export const TASK_EVENT_POLL_INTERVAL_MS = 15_000
 
 export type PlannerTaskQueryKey = readonly ['planner', 'tasks', string, number]
-export type PlannerProjectQueryKey = readonly [
+export type PlannerSphereQueryKey = readonly [
   'planner',
-  'projects',
+  'spheres',
   string,
   number,
 ]
@@ -41,8 +41,8 @@ interface PlannerQueriesParams {
 
 interface PlannerQueries {
   invalidatePlannerQueries: () => Promise<void>
-  projectQueryKey: PlannerProjectQueryKey
-  projectsQuery: UseQueryResult<ProjectRecord[], Error>
+  sphereQueryKey: PlannerSphereQueryKey
+  spheresQuery: UseQueryResult<LifeSphereRecord[], Error>
   taskQueryKey: PlannerTaskQueryKey
   taskTemplateQueryKey: PlannerTaskTemplateQueryKey
   taskTemplatesQuery: UseQueryResult<TaskTemplateRecord[], Error>
@@ -56,11 +56,11 @@ export function getPlannerTaskQueryKey(
   return ['planner', 'tasks', workspaceId ?? 'pending', authSessionVersion]
 }
 
-export function getPlannerProjectQueryKey(
+export function getPlannerSphereQueryKey(
   workspaceId: string | undefined,
   authSessionVersion: number,
-): PlannerProjectQueryKey {
-  return ['planner', 'projects', workspaceId ?? 'pending', authSessionVersion]
+): PlannerSphereQueryKey {
+  return ['planner', 'spheres', workspaceId ?? 'pending', authSessionVersion]
 }
 
 export function getPlannerTaskTemplateQueryKey(
@@ -85,8 +85,8 @@ export function usePlannerQueries({
     () => getPlannerTaskQueryKey(workspaceId, authSessionVersion),
     [authSessionVersion, workspaceId],
   )
-  const projectQueryKey = useMemo(
-    () => getPlannerProjectQueryKey(workspaceId, authSessionVersion),
+  const sphereQueryKey = useMemo(
+    () => getPlannerSphereQueryKey(workspaceId, authSessionVersion),
     [authSessionVersion, workspaceId],
   )
   const taskTemplateQueryKey = useMemo(
@@ -96,7 +96,7 @@ export function usePlannerQueries({
   const invalidatePlannerQueries = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'projects'] }),
+      queryClient.invalidateQueries({ queryKey: ['planner', 'spheres'] }),
       queryClient.invalidateQueries({
         queryKey: ['planner', 'task-templates'],
       }),
@@ -112,10 +112,11 @@ export function usePlannerQueries({
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
-  const projectsQuery = useQuery<ProjectRecord[], Error>({
+  const spheresQuery = useQuery<LifeSphereRecord[], Error>({
     enabled: plannerApi !== null,
-    queryFn: ({ signal }) => requirePlannerApi(plannerApi).listProjects(signal),
-    queryKey: projectQueryKey,
+    queryFn: ({ signal }) =>
+      requirePlannerApi(plannerApi).listLifeSpheres(signal),
+    queryKey: sphereQueryKey,
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
@@ -130,8 +131,8 @@ export function usePlannerQueries({
 
   return {
     invalidatePlannerQueries,
-    projectQueryKey,
-    projectsQuery,
+    sphereQueryKey,
+    spheresQuery,
     taskQueryKey,
     taskTemplateQueryKey,
     taskTemplatesQuery,

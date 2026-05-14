@@ -8,7 +8,6 @@ import {
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
-import { buildProjectSlug } from '../projects/project.shared.js'
 import type {
   CreateLifeSphereCommand,
   DeleteLifeSphereCommand,
@@ -20,7 +19,11 @@ import type {
   WeeklySphereStatsResult,
 } from './life-sphere.model.js'
 import type { LifeSphereRepository } from './life-sphere.repository.js'
-import { resolveSphereHealth, UNSPHERED_ID } from './life-sphere.shared.js'
+import {
+  buildLifeSphereSlug,
+  resolveSphereHealth,
+  UNSPHERED_ID,
+} from './life-sphere.shared.js'
 
 type ProjectRow = Selectable<DatabaseSchema['app.projects']>
 type TaskRow = Pick<
@@ -85,7 +88,7 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     const color = command.input.color.trim()
     const icon = command.input.icon.trim()
     const sphereId = command.input.id ?? generateUuidV7()
-    const slug = buildProjectSlug(name, sphereId)
+    const slug = buildLifeSphereSlug(name, sphereId)
 
     return withWriteTransaction(
       this.db,

@@ -76,7 +76,7 @@
   background: rgba(33, 78, 66, 0.08);
 }
 
-.projectIcon,
+.sphereIcon,
 .emptyIcon {
   display: inline-grid;
   width: 1.55rem;
@@ -87,11 +87,11 @@
   line-height: 1;
 }
 
-.projectIcon {
+.sphereIcon {
   color: #fffdf8;
 }
 
-.projectIcon > span {
+.sphereIcon > span {
   display: grid;
   width: 1rem;
   height: 1rem;

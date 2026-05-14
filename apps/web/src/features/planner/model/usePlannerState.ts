@@ -3,10 +3,10 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
-  NewProjectInput,
-  Project,
-  ProjectUpdateInput,
-} from '@/entities/project'
+  LifeSphereUpdateInput,
+  NewLifeSphereInput,
+  Sphere,
+} from '@/entities/sphere'
 import type {
   NewTaskInput,
   TaskScheduleInput,
@@ -42,7 +42,7 @@ import { usePlannerOfflineSync } from './planner-offline'
 import { usePlannerQueries } from './planner-queries'
 import {
   getTaskRecord,
-  sortProjects,
+  sortSpheres,
   sortTaskTemplates,
   toggleTaskId,
   toPlannerTask,
@@ -83,8 +83,8 @@ export function usePlannerState(): PlannerState {
   }, [accessToken, isPlannerApiReady, session])
   const {
     invalidatePlannerQueries,
-    projectQueryKey,
-    projectsQuery,
+    sphereQueryKey,
+    spheresQuery,
     taskQueryKey,
     taskTemplateQueryKey,
     taskTemplatesQuery,
@@ -98,7 +98,7 @@ export function usePlannerState(): PlannerState {
   const {
     conflictedMutationCount,
     isDrainingOfflineQueue,
-    persistCurrentProjectRecords,
+    persistCurrentLifeSphereRecords,
     persistCurrentTaskRecords,
     persistCurrentTaskTemplateRecords,
     queuedMutationCount,
@@ -106,11 +106,11 @@ export function usePlannerState(): PlannerState {
   } = usePlannerOfflineSync({
     invalidatePlannerQueries,
     plannerApi,
-    projectQueryKey,
-    projects: projectsQuery.data,
+    sphereQueryKey,
     queryClient,
     recoverSession,
     setMutationErrorMessage,
+    spheres: spheresQuery.data,
     taskQueryKey,
     taskTemplateQueryKey,
     taskTemplates: taskTemplatesQuery.data,
@@ -118,19 +118,19 @@ export function usePlannerState(): PlannerState {
     workspaceId,
   })
   const {
-    createProjectMutation,
+    createLifeSphereMutation,
     createTaskMutation,
     createTaskTemplateMutation,
-    removeProjectMutation,
+    removeLifeSphereMutation,
     removeTaskMutation,
     removeTaskTemplateMutation,
     setTaskScheduleMutation,
     setTaskStatusMutation,
-    updateProjectMutation,
+    updateLifeSphereMutation,
     updateTaskMutation,
   } = usePlannerMutations({
     plannerApi,
-    projectQueryKey,
+    sphereQueryKey,
     queryClient,
     session,
     setMutationErrorMessage,
@@ -139,13 +139,13 @@ export function usePlannerState(): PlannerState {
   })
   const authError =
     sessionQuery.error ??
-    projectsQuery.error ??
+    spheresQuery.error ??
     taskTemplatesQuery.error ??
     tasksQuery.error ??
-    createProjectMutation.error ??
+    createLifeSphereMutation.error ??
     createTaskTemplateMutation.error ??
-    updateProjectMutation.error ??
-    removeProjectMutation.error ??
+    updateLifeSphereMutation.error ??
+    removeLifeSphereMutation.error ??
     createTaskMutation.error ??
     updateTaskMutation.error ??
     removeTaskTemplateMutation.error ??
@@ -180,9 +180,9 @@ export function usePlannerState(): PlannerState {
     recoverSession,
   ])
 
-  const projects = useMemo<Project[]>(
-    () => sortProjects(projectsQuery.data ?? []),
-    [projectsQuery.data],
+  const spheres = useMemo<Sphere[]>(
+    () => sortSpheres(spheresQuery.data ?? []),
+    [spheresQuery.data],
   )
   const taskTemplates = useMemo<TaskTemplate[]>(
     () =>
@@ -196,7 +196,7 @@ export function usePlannerState(): PlannerState {
     [tasksQuery.data],
   )
   const hasTaskRecords = tasksQuery.data !== undefined
-  const hasProjectRecords = projectsQuery.data !== undefined
+  const hasLifeSphereRecords = spheresQuery.data !== undefined
   const hasTaskTemplateRecords = taskTemplatesQuery.data !== undefined
 
   function setTaskPending(taskId: string, isPending: boolean): void {
@@ -254,10 +254,9 @@ export function usePlannerState(): PlannerState {
 
       if (
         error instanceof PlannerApiError &&
-        (error.code === 'project_version_conflict' ||
-          error.code === 'life_sphere_version_conflict')
+        error.code === 'life_sphere_version_conflict'
       ) {
-        await queryClient.invalidateQueries({ queryKey: projectQueryKey })
+        await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
         setMutationErrorMessage(
           'Сфера уже изменилась на сервере. Обновили данные, повторите действие.',
         )
@@ -271,15 +270,15 @@ export function usePlannerState(): PlannerState {
     }
   }
 
-  async function addProject(input: NewProjectInput): Promise<boolean> {
-    const projectId = input.id ?? generateUuidV7()
+  async function addSphere(input: NewLifeSphereInput): Promise<boolean> {
+    const sphereId = input.id ?? generateUuidV7()
     const inputWithId = {
       ...input,
-      id: projectId,
+      id: sphereId,
     }
 
     return runMutation(
-      () => createProjectMutation.mutateAsync(inputWithId),
+      () => createLifeSphereMutation.mutateAsync(inputWithId),
       async () => {
         if (!actorUserId || !workspaceId) {
           throw new Error('Planner session is not ready.')
@@ -288,24 +287,24 @@ export function usePlannerState(): PlannerState {
         await enqueuePlannerOfflineMutation({
           actorUserId,
           input: inputWithId,
-          projectId,
-          type: 'project.create',
+          sphereId,
+          type: 'lifeSphere.create',
           workspaceId,
         })
       },
-      persistCurrentProjectRecords,
+      persistCurrentLifeSphereRecords,
     )
   }
 
-  async function updateProject(
-    projectId: string,
-    input: ProjectUpdateInput,
+  async function updateSphere(
+    sphereId: string,
+    input: LifeSphereUpdateInput,
   ): Promise<boolean> {
     return runMutation(
       () =>
-        updateProjectMutation.mutateAsync({
+        updateLifeSphereMutation.mutateAsync({
           input,
-          projectId,
+          sphereId,
         }),
       async () => {
         if (!actorUserId || !workspaceId) {
@@ -315,17 +314,17 @@ export function usePlannerState(): PlannerState {
         await enqueuePlannerOfflineMutation({
           actorUserId,
           input,
-          projectId,
-          type: 'project.update',
+          sphereId,
+          type: 'lifeSphere.update',
           workspaceId,
         })
       },
-      persistCurrentProjectRecords,
+      persistCurrentLifeSphereRecords,
     )
   }
 
-  async function removeProject(projectId: string): Promise<boolean> {
-    return runMutation(() => removeProjectMutation.mutateAsync(projectId))
+  async function removeSphere(sphereId: string): Promise<boolean> {
+    return runMutation(() => removeLifeSphereMutation.mutateAsync(sphereId))
   }
 
   async function addTask(input: NewTaskInput): Promise<boolean> {
@@ -611,14 +610,14 @@ export function usePlannerState(): PlannerState {
   }
 
   return {
-    addProject,
+    addSphere,
     addTask,
     addTaskTemplate,
     conflictedMutationCount,
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
-      (projectsQuery.error ? getErrorMessage(projectsQuery.error) : null) ??
+      (spheresQuery.error ? getErrorMessage(spheresQuery.error) : null) ??
       (taskTemplatesQuery.error
         ? getErrorMessage(taskTemplatesQuery.error)
         : null) ??
@@ -626,22 +625,22 @@ export function usePlannerState(): PlannerState {
     isLoading:
       sessionQuery.isPending ||
       (sessionQuery.isSuccess &&
-        projectsQuery.isPending &&
-        !hasProjectRecords) ||
+        spheresQuery.isPending &&
+        !hasLifeSphereRecords) ||
       (sessionQuery.isSuccess &&
         taskTemplatesQuery.isPending &&
         !hasTaskTemplateRecords) ||
       (sessionQuery.isSuccess && tasksQuery.isPending && !hasTaskRecords),
     isSyncing:
       sessionQuery.isFetching ||
-      projectsQuery.isFetching ||
+      spheresQuery.isFetching ||
       taskTemplatesQuery.isFetching ||
       tasksQuery.isFetching ||
       isDrainingOfflineQueue ||
       queuedMutationCount > 0 ||
-      createProjectMutation.isPending ||
-      updateProjectMutation.isPending ||
-      removeProjectMutation.isPending ||
+      createLifeSphereMutation.isPending ||
+      updateLifeSphereMutation.isPending ||
+      removeLifeSphereMutation.isPending ||
       createTaskMutation.isPending ||
       updateTaskMutation.isPending ||
       createTaskTemplateMutation.isPending ||
@@ -650,10 +649,10 @@ export function usePlannerState(): PlannerState {
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
     isTaskPending,
-    projects,
+    spheres,
     queuedMutationCount,
     refresh,
-    removeProject,
+    removeSphere,
     removeTask,
     removeTaskTemplate,
     setTaskPlannedDate,
@@ -661,7 +660,7 @@ export function usePlannerState(): PlannerState {
     setTaskStatus,
     tasks,
     taskTemplates,
-    updateProject,
+    updateSphere,
     updateTask,
   }
 }

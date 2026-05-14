@@ -5,7 +5,7 @@ import type {
 } from '@planner/contracts'
 import { useEffect, useRef, useState } from 'react'
 
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import {
@@ -39,7 +39,7 @@ function getEmptyProjectLabel(): string {
   return 'Без сферы'
 }
 
-function getProjectDisplayTitle(projectTitle: string): string {
+function getSphereDisplayTitle(projectTitle: string): string {
   const normalizedProjectTitle = projectTitle.trim()
 
   if (
@@ -59,8 +59,8 @@ interface TaskCardProps {
   sharedWorkspaceRole?: WorkspaceRole | undefined
   workspaceUsers?: WorkspaceUserRecord[] | undefined
   task: Task
-  project?: Project | undefined
-  projects?: Project[] | undefined
+  sphere?: Sphere | undefined
+  spheres?: Sphere[] | undefined
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
@@ -80,8 +80,8 @@ export function TaskCard({
   sharedWorkspaceRole,
   workspaceUsers = [],
   task,
-  project,
-  projects = [],
+  sphere,
+  spheres = [],
   tone = 'default',
   isPending = false,
   uploadedIcons = [],
@@ -96,8 +96,8 @@ export function TaskCard({
   const actionMenuRef = useRef<HTMLDivElement | null>(null)
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
-  const rawProjectTitle = project?.title ?? task.project
-  const projectTitle = getProjectDisplayTitle(rawProjectTitle)
+  const rawProjectTitle = sphere?.name ?? task.project
+  const projectTitle = getSphereDisplayTitle(rawProjectTitle)
   const normalizedRawProjectTitle = rawProjectTitle.trim()
   const hasProject =
     !isSharedWorkspace &&
@@ -415,16 +415,13 @@ export function TaskCard({
         <div className={styles.detailRow}>
           {hasProject ? (
             <span className={styles.projectBadge}>
-              {project ? (
+              {sphere ? (
                 <span
                   className={styles.projectIcon}
-                  style={{ backgroundColor: project.color }}
+                  style={{ backgroundColor: sphere.color }}
                   aria-hidden="true"
                 >
-                  <IconMark
-                    value={project.icon}
-                    uploadedIcons={uploadedIcons}
-                  />
+                  <IconMark value={sphere.icon} uploadedIcons={uploadedIcons} />
                 </span>
               ) : null}
               <span>{projectTitle}</span>
@@ -505,7 +502,7 @@ export function TaskCard({
           currentActorUserId={currentActorUserId}
           isSharedWorkspace={isSharedWorkspace}
           task={task}
-          projects={projects}
+          spheres={spheres}
           uploadedIcons={uploadedIcons}
           isPending={isPending}
           onClose={() => setIsEditing(false)}

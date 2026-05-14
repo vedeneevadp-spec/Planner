@@ -17,15 +17,10 @@ import {
   lifeSphereUpdateInputSchema,
   type NewLifeSphereInput,
   newLifeSphereInputSchema,
-  type NewProjectInput,
-  newProjectInputSchema,
   type NewTaskInput,
   newTaskInputSchema,
   type NewTaskTemplateInput,
   newTaskTemplateInputSchema,
-  type ProjectRecord,
-  type ProjectUpdateInput,
-  projectUpdateInputSchema,
   type TaskDetailsUpdateInput,
   taskDetailsUpdateInputSchema,
   type TaskEventListFilters,
@@ -55,12 +50,6 @@ import {
   type ApiRequestSignal,
   createApiRequester,
 } from '@/shared/lib/api-client'
-
-import {
-  mapLifeSphereToProjectRecord,
-  mapNewProjectInputToLifeSphereInput,
-  mapProjectUpdateInputToLifeSphereUpdateInput,
-} from './sphere-project-compat'
 
 type FetchFn = ApiClientFetch
 type RequestSignal = ApiRequestSignal
@@ -104,15 +93,10 @@ export interface PlannerApiClient {
     input: DailyPlanAutoBuildInput,
   ) => Promise<DailyPlanRecord>
   createLifeSphere: (input: NewLifeSphereInput) => Promise<LifeSphereRecord>
-  createProject: (input: NewProjectInput) => Promise<ProjectRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
   createTaskTemplate: (
     input: NewTaskTemplateInput,
   ) => Promise<TaskTemplateRecord>
-  getProject: (
-    projectId: string,
-    signal?: RequestSignal,
-  ) => Promise<ProjectRecord>
   getDailyPlan: (
     date: string,
     signal?: RequestSignal,
@@ -127,7 +111,6 @@ export interface PlannerApiClient {
     filters?: TaskEventListFilters,
     signal?: RequestSignal,
   ) => Promise<TaskEventListResponse>
-  listProjects: (signal?: RequestSignal) => Promise<ProjectRecord[]>
   listTasks: (
     filters?: TaskListFilters,
     signal?: RequestSignal,
@@ -156,10 +139,6 @@ export interface PlannerApiClient {
     taskId: string,
     input: TaskDetailsUpdateInput,
   ) => Promise<TaskRecord>
-  updateProject: (
-    projectId: string,
-    input: ProjectUpdateInput,
-  ) => Promise<ProjectRecord>
   updateLifeSphere: (
     sphereId: string,
     input: LifeSphereUpdateInput,
@@ -267,56 +246,6 @@ export function createPlannerApiClient(
         responseSchema: weeklySphereStatsRecordResponseSchema,
         signal,
       })
-    },
-    async listProjects(signal) {
-      const spheres = await request({
-        path: '/api/v1/life-spheres',
-        responseSchema: lifeSphereListRecordResponseSchema,
-        signal,
-      })
-
-      return spheres.map((sphere) => mapLifeSphereToProjectRecord(sphere))
-    },
-    async getProject(projectId, signal) {
-      const sphere = await request({
-        path: `/api/v1/life-spheres/${encodeURIComponent(projectId)}`,
-        responseSchema: lifeSphereRecordSchema,
-        signal,
-      })
-
-      return mapLifeSphereToProjectRecord(sphere)
-    },
-    async createProject(input) {
-      const validatedInput = newProjectInputSchema.parse({
-        ...input,
-        id: input.id ?? generateUuidV7(),
-      })
-      const sphereInput = mapNewProjectInputToLifeSphereInput(validatedInput)
-
-      const sphere = await request({
-        body: sphereInput,
-        method: 'POST',
-        path: '/api/v1/life-spheres',
-        responseSchema: lifeSphereRecordSchema,
-        writeAccess: true,
-      })
-
-      return mapLifeSphereToProjectRecord(sphere)
-    },
-    async updateProject(projectId, input) {
-      const validatedInput = projectUpdateInputSchema.parse(input)
-      const sphereInput =
-        mapProjectUpdateInputToLifeSphereUpdateInput(validatedInput)
-
-      const sphere = await request({
-        body: sphereInput,
-        method: 'PATCH',
-        path: `/api/v1/life-spheres/${encodeURIComponent(projectId)}`,
-        responseSchema: lifeSphereRecordSchema,
-        writeAccess: true,
-      })
-
-      return mapLifeSphereToProjectRecord(sphere)
     },
     async listTasks(filters = {}, signal) {
       const validatedFilters = taskListFiltersSchema.parse(filters)

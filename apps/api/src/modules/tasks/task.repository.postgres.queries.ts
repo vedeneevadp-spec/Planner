@@ -6,7 +6,7 @@ import {
   withOptionalRls,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
-import { ProjectNotFoundError } from '../projects/project.errors.js'
+import { LifeSphereNotFoundError } from '../life-spheres/life-sphere.errors.js'
 import type { CreateTaskCommand, TaskListFilters } from './task.model.js'
 import {
   LEGACY_PROJECT_NAME_KEY,
@@ -296,7 +296,7 @@ export async function resolveTaskProject(
   )
 
   if (!project) {
-    throw new ProjectNotFoundError(projectId)
+    throw new LifeSphereNotFoundError(projectId)
   }
 
   return {

@@ -1,4 +1,4 @@
-import type { Project } from '@/entities/project'
+import type { Sphere } from '@/entities/sphere'
 import { getTaskResource, type Task } from '@/entities/task'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import { createSvgIconValue } from '@/shared/ui/Icon'
@@ -109,20 +109,20 @@ function resolveHealth(options: {
   return 'healthy'
 }
 
-function createProjectStats(project: Project): SphereStats {
+function createSphereStats(sphere: Sphere): SphereStats {
   return {
-    color: project.color,
+    color: sphere.color,
     completedCount: 0,
     health: 'abandoned',
-    icon: project.icon,
+    icon: sphere.icon,
     idleDays: null,
     isUnassigned: false,
     lastActivityAt: null,
     overdueCount: 0,
     plannedCount: 0,
-    projectId: project.id,
-    sphereId: project.id,
-    title: project.title,
+    projectId: sphere.id,
+    sphereId: sphere.id,
+    title: sphere.name,
     totalResource: 0,
     weeklyLoad: 0,
     weeklyShare: 0,
@@ -150,15 +150,15 @@ function createUnassignedStats(): SphereStats {
 }
 
 export function buildSphereStats(
-  projects: Project[],
+  spheres: Sphere[],
   tasks: Task[],
   week: WeekRange,
   todayKey: string,
 ): SphereStats[] {
   const statsBySphereId = new Map<string, SphereStats>()
 
-  for (const project of projects) {
-    statsBySphereId.set(project.id, createProjectStats(project))
+  for (const sphere of spheres) {
+    statsBySphereId.set(sphere.id, createSphereStats(sphere))
   }
 
   for (const task of tasks) {

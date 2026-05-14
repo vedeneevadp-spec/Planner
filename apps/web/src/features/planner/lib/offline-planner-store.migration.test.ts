@@ -4,11 +4,11 @@ import Dexie from 'dexie'
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
-  loadCachedProjectRecords,
+  loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
   PLANNER_OFFLINE_DATABASE_NAME,
   PLANNER_OFFLINE_SCHEMA_VERSION,
-  replaceCachedProjectRecords,
+  replaceCachedLifeSphereRecords,
   replaceCachedTaskRecords,
   replaceCachedTaskTemplateRecords,
   resetPlannerOfflineDatabaseForTests,
@@ -21,10 +21,10 @@ describe('offline planner storage migrations', () => {
 
   it('keeps the current schema version explicit and writable', async () => {
     expect(PLANNER_OFFLINE_DATABASE_NAME).toBe('planner-offline')
-    expect(PLANNER_OFFLINE_SCHEMA_VERSION).toBe(3)
+    expect(PLANNER_OFFLINE_SCHEMA_VERSION).toBe(4)
 
     await replaceCachedTaskRecords('workspace-1', [])
-    await replaceCachedProjectRecords('workspace-1', [])
+    await replaceCachedLifeSphereRecords('workspace-1', [])
     await replaceCachedTaskTemplateRecords('workspace-1', [])
 
     const db = new Dexie(PLANNER_OFFLINE_DATABASE_NAME)
@@ -67,7 +67,7 @@ describe('offline planner storage migrations', () => {
       },
     ])
 
-    await replaceCachedProjectRecords('workspace-1', [
+    await replaceCachedLifeSphereRecords('workspace-1', [
       {
         color: '#214e42',
         createdAt: '2026-04-20T08:00:00.000Z',
@@ -75,15 +75,18 @@ describe('offline planner storage migrations', () => {
         description: '',
         icon: 'folder',
         id: 'project-1',
-        status: 'active',
-        title: 'Cached sphere',
+        isActive: true,
+        isDefault: false,
+        name: 'Cached sphere',
+        sortOrder: 0,
         updatedAt: '2026-04-20T08:00:00.000Z',
+        userId: 'user-1',
         version: 1,
         workspaceId: 'workspace-1',
       },
     ])
 
     expect(await loadCachedTaskRecords('workspace-1')).toHaveLength(1)
-    expect(await loadCachedProjectRecords('workspace-1')).toHaveLength(1)
+    expect(await loadCachedLifeSphereRecords('workspace-1')).toHaveLength(1)
   })
 })

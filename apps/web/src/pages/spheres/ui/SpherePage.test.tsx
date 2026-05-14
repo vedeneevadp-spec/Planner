@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SpherePage } from './SpherePage'
 
-const removeProject = vi.fn<(projectId: string) => Promise<boolean>>()
+const removeSphere = vi.fn<(sphereId: string) => Promise<boolean>>()
 
 vi.mock('@/features/emoji-library', () => ({
   useUploadedIconAssets: () => ({
@@ -22,7 +22,7 @@ vi.mock('@/features/planner', () => ({
   usePlanner: () => ({
     isLoading: false,
     isTaskPending: () => false,
-    projects: [
+    spheres: [
       {
         color: '#214e42',
         createdAt: '2026-05-12T00:00:00.000Z',
@@ -30,19 +30,22 @@ vi.mock('@/features/planner', () => ({
         description: 'Описание',
         icon: 'folder',
         id: 'sphere-1',
-        status: 'active',
-        title: 'Здоровье',
+        isActive: true,
+        isDefault: false,
+        name: 'Здоровье',
+        sortOrder: 0,
         updatedAt: '2026-05-12T00:00:00.000Z',
+        userId: 'user-1',
         version: 1,
         workspaceId: 'workspace-1',
       },
     ],
-    removeProject,
+    removeSphere,
     removeTask: vi.fn(),
     setTaskPlannedDate: vi.fn(),
     setTaskStatus: vi.fn(),
     tasks: [],
-    updateProject: vi.fn(),
+    updateSphere: vi.fn(),
     updateTask: vi.fn(),
   }),
 }))
@@ -64,8 +67,8 @@ vi.mock('@/features/session', () => ({
 
 describe('SpherePage', () => {
   beforeEach(() => {
-    removeProject.mockReset()
-    removeProject.mockResolvedValue(true)
+    removeSphere.mockReset()
+    removeSphere.mockResolvedValue(true)
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 
@@ -87,7 +90,7 @@ describe('SpherePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Удалить' }))
 
     await waitFor(() => {
-      expect(removeProject).toHaveBeenCalledWith('sphere-1')
+      expect(removeSphere).toHaveBeenCalledWith('sphere-1')
     })
     expect(await screen.findByText('Список сфер')).toBeVisible()
   })

@@ -1,5 +1,5 @@
 import {
-  type ProjectRecord,
+  type LifeSphereRecord,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
@@ -12,10 +12,10 @@ import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   getLastTaskEventId,
-  loadCachedProjectRecords,
+  loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
   loadCachedTaskTemplateRecords,
-  replaceCachedProjectRecords,
+  replaceCachedLifeSphereRecords,
   replaceCachedTaskRecords,
   replaceCachedTaskTemplateRecords,
   setLastTaskEventId,
@@ -30,27 +30,27 @@ import {
 } from '../lib/planner-api'
 import { getErrorMessage } from './planner-error-policy'
 import {
-  type PlannerProjectQueryKey,
+  type PlannerSphereQueryKey,
   type PlannerTaskQueryKey,
   type PlannerTaskTemplateQueryKey,
   TASK_EVENT_POLL_INTERVAL_MS,
 } from './planner-queries'
 import {
   removeTaskRecord,
-  replaceProjectRecord,
+  replaceLifeSphereRecord,
   replaceTaskRecord,
-  updateTaskProjectRecords,
-  updateTaskTemplateProjectRecords,
+  updateTaskLifeSphereRecords,
+  updateTaskTemplateLifeSphereRecords,
 } from './planner-records'
 
 interface PlannerOfflineSyncParams {
   invalidatePlannerQueries: () => Promise<void>
   plannerApi: PlannerApiClient | null
-  projectQueryKey: PlannerProjectQueryKey
-  projects: ProjectRecord[] | undefined
   queryClient: QueryClient
   recoverSession: () => Promise<unknown>
   setMutationErrorMessage: (message: string | null) => void
+  sphereQueryKey: PlannerSphereQueryKey
+  spheres: LifeSphereRecord[] | undefined
   taskQueryKey: PlannerTaskQueryKey
   taskTemplateQueryKey: PlannerTaskTemplateQueryKey
   taskTemplates: TaskTemplateRecord[] | undefined
@@ -61,7 +61,7 @@ interface PlannerOfflineSyncParams {
 interface PlannerOfflineSync {
   conflictedMutationCount: number
   isDrainingOfflineQueue: boolean
-  persistCurrentProjectRecords: () => Promise<void>
+  persistCurrentLifeSphereRecords: () => Promise<void>
   persistCurrentTaskRecords: () => Promise<void>
   persistCurrentTaskTemplateRecords: () => Promise<void>
   queuedMutationCount: number
@@ -71,11 +71,11 @@ interface PlannerOfflineSync {
 export function usePlannerOfflineSync({
   invalidatePlannerQueries,
   plannerApi,
-  projectQueryKey,
-  projects,
   queryClient,
   recoverSession,
   setMutationErrorMessage,
+  sphereQueryKey,
+  spheres,
   taskQueryKey,
   taskTemplateQueryKey,
   taskTemplates,
@@ -116,18 +116,21 @@ export function usePlannerOfflineSync({
     }
   }, [queryClient, taskQueryKey, workspaceId])
 
-  const persistCurrentProjectRecords = useCallback(async () => {
+  const persistCurrentLifeSphereRecords = useCallback(async () => {
     if (!workspaceId) {
       return
     }
 
-    const currentProjectRecords =
-      queryClient.getQueryData<ProjectRecord[]>(projectQueryKey)
+    const currentLifeSphereRecords =
+      queryClient.getQueryData<LifeSphereRecord[]>(sphereQueryKey)
 
-    if (currentProjectRecords) {
-      await replaceCachedProjectRecords(workspaceId, currentProjectRecords)
+    if (currentLifeSphereRecords) {
+      await replaceCachedLifeSphereRecords(
+        workspaceId,
+        currentLifeSphereRecords,
+      )
     }
-  }, [projectQueryKey, queryClient, workspaceId])
+  }, [queryClient, sphereQueryKey, workspaceId])
 
   const persistCurrentTaskTemplateRecords = useCallback(async () => {
     if (!workspaceId) {
@@ -212,18 +215,18 @@ export function usePlannerOfflineSync({
     try {
       const result = await drainPlannerOfflineQueue({
         api: plannerApi,
-        onProjectSynced: (project) => {
-          queryClient.setQueryData<ProjectRecord[]>(
-            projectQueryKey,
-            (current = []) => replaceProjectRecord(current, project),
+        onLifeSphereSynced: (sphere) => {
+          queryClient.setQueryData<LifeSphereRecord[]>(
+            sphereQueryKey,
+            (current = []) => replaceLifeSphereRecord(current, sphere),
           )
           queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            updateTaskProjectRecords(current, project),
+            updateTaskLifeSphereRecords(current, sphere),
           )
           queryClient.setQueryData<TaskTemplateRecord[]>(
             taskTemplateQueryKey,
             (current = []) =>
-              updateTaskTemplateProjectRecords(current, project),
+              updateTaskTemplateLifeSphereRecords(current, sphere),
           )
         },
         onTaskDeleted: (taskId) => {
@@ -240,7 +243,7 @@ export function usePlannerOfflineSync({
       })
 
       if (result.synced > 0 || result.conflicted > 0) {
-        await queryClient.invalidateQueries({ queryKey: projectQueryKey })
+        await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
         await queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
         await queryClient.invalidateQueries({ queryKey: taskQueryKey })
       }
@@ -260,10 +263,10 @@ export function usePlannerOfflineSync({
     }
   }, [
     plannerApi,
-    projectQueryKey,
     queryClient,
     refreshQueuedMutationCount,
     setMutationErrorMessage,
+    sphereQueryKey,
     syncTaskEventCursor,
     taskTemplateQueryKey,
     taskQueryKey,
@@ -287,17 +290,19 @@ export function usePlannerOfflineSync({
         (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
       )
     })
-    void loadCachedProjectRecords(workspaceId).then((cachedProjectRecords) => {
-      if (!isActive || cachedProjectRecords.length === 0) {
-        return
-      }
+    void loadCachedLifeSphereRecords(workspaceId).then(
+      (cachedLifeSphereRecords) => {
+        if (!isActive || cachedLifeSphereRecords.length === 0) {
+          return
+        }
 
-      queryClient.setQueryData<ProjectRecord[]>(
-        projectQueryKey,
-        (currentProjectRecords) =>
-          currentProjectRecords ?? cachedProjectRecords,
-      )
-    })
+        queryClient.setQueryData<LifeSphereRecord[]>(
+          sphereQueryKey,
+          (currentLifeSphereRecords) =>
+            currentLifeSphereRecords ?? cachedLifeSphereRecords,
+        )
+      },
+    )
     void loadCachedTaskTemplateRecords(workspaceId).then(
       (cachedTemplateRecords) => {
         if (!isActive || cachedTemplateRecords.length === 0) {
@@ -317,9 +322,9 @@ export function usePlannerOfflineSync({
       isActive = false
     }
   }, [
-    projectQueryKey,
     queryClient,
     refreshQueuedMutationCount,
+    sphereQueryKey,
     taskTemplateQueryKey,
     taskQueryKey,
     workspaceId,
@@ -334,12 +339,12 @@ export function usePlannerOfflineSync({
   }, [tasks, workspaceId])
 
   useEffect(() => {
-    if (!workspaceId || !projects) {
+    if (!workspaceId || !spheres) {
       return
     }
 
-    void replaceCachedProjectRecords(workspaceId, projects)
-  }, [projects, workspaceId])
+    void replaceCachedLifeSphereRecords(workspaceId, spheres)
+  }, [spheres, workspaceId])
 
   useEffect(() => {
     if (!workspaceId || !taskTemplates) {
@@ -391,7 +396,7 @@ export function usePlannerOfflineSync({
   return {
     conflictedMutationCount,
     isDrainingOfflineQueue,
-    persistCurrentProjectRecords,
+    persistCurrentLifeSphereRecords,
     persistCurrentTaskRecords,
     persistCurrentTaskTemplateRecords,
     queuedMutationCount,
