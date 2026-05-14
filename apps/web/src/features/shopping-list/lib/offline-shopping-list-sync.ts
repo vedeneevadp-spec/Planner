@@ -1,6 +1,12 @@
 import type { ChaosInboxItemRecord } from '@planner/contracts'
 
 import {
+  drainOfflineMutations,
+  getOfflineErrorMessage,
+  isBrowserRetryableOfflineError,
+} from '@/shared/lib/offline-sync'
+
+import {
   completeShoppingListOfflineMutation,
   listRetryableShoppingListOfflineMutations,
   markShoppingListOfflineMutationFailed,
@@ -54,25 +60,23 @@ export async function drainShoppingListOfflineQueue({
     callbacks.onItemSynced = onItemSynced
   }
 
-  for (const mutation of mutations) {
-    result.processed += 1
-    await markShoppingListOfflineMutationSyncing(mutation.id)
-
-    try {
-      await applyOfflineMutation(api, mutation, callbacks)
-      await completeShoppingListOfflineMutation(mutation.id)
-      result.synced += 1
-    } catch (error) {
+  return drainOfflineMutations({
+    apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
+    complete: completeShoppingListOfflineMutation,
+    getMutationId: (mutation) => mutation.id,
+    markSyncing: markShoppingListOfflineMutationSyncing,
+    mutations,
+    result,
+    onError: async ({ error, mutationId, result: drainResult }) => {
       await markShoppingListOfflineMutationFailed(
-        mutation.id,
+        mutationId,
         getErrorMessage(error),
       )
-      result.failed += 1
-      break
-    }
-  }
+      drainResult.failed += 1
 
-  return result
+      return 'break'
+    },
+  })
 }
 
 export function isQueueableShoppingListMutationError(error: unknown): boolean {
@@ -80,11 +84,7 @@ export function isQueueableShoppingListMutationError(error: unknown): boolean {
     return false
   }
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return true
-  }
-
-  return error instanceof DOMException || error instanceof TypeError
+  return isBrowserRetryableOfflineError(error)
 }
 
 async function applyOfflineMutation(
@@ -119,9 +119,8 @@ async function applyOfflineMutation(
 }
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Не удалось синхронизировать offline-покупку.'
+  return getOfflineErrorMessage(
+    error,
+    'Не удалось синхронизировать offline-покупку.',
+  )
 }

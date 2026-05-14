@@ -15,6 +15,10 @@ export class LifeSphereService {
     return this.repository.listByWorkspace(context)
   }
 
+  getSphere(context: LifeSphereReadContext, sphereId: string) {
+    return this.repository.getById(context, sphereId)
+  }
+
   createSphere(
     context: LifeSphereWriteContext,
     input: CreateLifeSphereCommand['input'],

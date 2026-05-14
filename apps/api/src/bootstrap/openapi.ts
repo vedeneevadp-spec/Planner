@@ -112,6 +112,34 @@ function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         description: 'Independent project catalog and project mutations.',
         name: 'projects',
       },
+      {
+        description: 'Life sphere catalog and weekly balance statistics.',
+        name: 'lifeSpheres',
+      },
+      {
+        description: 'Daily planning state and automatic planning helpers.',
+        name: 'dailyPlan',
+      },
+      {
+        description: 'Habit routines, daily entries and statistics.',
+        name: 'habits',
+      },
+      {
+        description: 'Cleaning zones, routines and completion history.',
+        name: 'cleaning',
+      },
+      {
+        description: 'Capture inbox and shared shopping list items.',
+        name: 'chaosInbox',
+      },
+      {
+        description: 'Native push notification device registration.',
+        name: 'push',
+      },
+      {
+        description: 'Alice skill webhook and account linking.',
+        name: 'alice',
+      },
     ],
   }
 }
@@ -207,6 +235,23 @@ function createPaths(): OpenAPIV3.PathsObject {
       },
     },
     '/api/v1/workspaces/shared': {
+      delete: createJsonOperation({
+        noContentDescription: 'Shared workspace deleted.',
+        operationId: 'deleteSharedWorkspace',
+        parameters: workspaceWriteParameters(),
+        security: authenticatedSecurity(),
+        summary: 'Delete the current shared workspace',
+        tags: ['session'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateSharedWorkspace',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'UpdateSharedWorkspaceInput',
+        responseSchema: 'SessionWorkspaceMembership',
+        security: authenticatedSecurity(),
+        summary: 'Rename the current shared workspace',
+        tags: ['session'],
+      }),
       post: {
         operationId: 'createSharedWorkspace',
         parameters: [
@@ -911,7 +956,686 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    ...createBacklogPaths(),
   }
+}
+
+type ApiParameter = OpenAPIV3.ParameterObject | OpenAPIV3.ReferenceObject
+
+interface JsonOperationInput {
+  noContentDescription?: string
+  operationId: string
+  parameters?: ApiParameter[]
+  requestSchema?: string
+  responseSchema?: string
+  responseStatus?: 200 | 201
+  security?: OpenAPIV3.SecurityRequirementObject[]
+  summary: string
+  tags: string[]
+}
+
+function createBacklogPaths(): OpenAPIV3.PathsObject {
+  return {
+    '/api/v1/alice/webhook': {
+      post: createJsonOperation({
+        operationId: 'handleAliceWebhook',
+        requestSchema: 'AliceWebhookRequest',
+        responseSchema: 'AliceWebhookResponse',
+        summary: 'Handle an Alice skill webhook request',
+        tags: ['alice'],
+      }),
+    },
+    '/api/v1/auth/password': {
+      patch: createJsonOperation({
+        operationId: 'updatePassword',
+        requestSchema: 'AuthPasswordUpdateInput',
+        responseSchema: 'AuthTokenResponse',
+        security: authenticatedSecurity(),
+        summary: 'Update the authenticated user password',
+        tags: ['auth'],
+      }),
+    },
+    '/api/v1/auth/password-reset/confirm': {
+      post: createJsonOperation({
+        operationId: 'confirmPasswordReset',
+        requestSchema: 'AuthPasswordResetConfirmInput',
+        responseSchema: 'AuthTokenResponse',
+        summary: 'Complete password reset and issue a new session',
+        tags: ['auth'],
+      }),
+    },
+    '/api/v1/auth/password-reset/request': {
+      post: createJsonOperation({
+        noContentDescription: 'Password reset request accepted.',
+        operationId: 'requestPasswordReset',
+        requestSchema: 'AuthPasswordResetRequestInput',
+        summary: 'Request a password reset email',
+        tags: ['auth'],
+      }),
+    },
+    '/api/v1/auth/sign-out': {
+      post: createJsonOperation({
+        noContentDescription: 'Auth session revoked.',
+        operationId: 'signOut',
+        requestSchema: 'AuthSignOutInput',
+        summary: 'Sign out and revoke a refresh session',
+        tags: ['auth'],
+      }),
+    },
+    '/api/v1/chaos-inbox': {
+      get: createJsonOperation({
+        operationId: 'listChaosInboxItems',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('status'),
+          optionalStringQueryParameter('kind'),
+          optionalStringQueryParameter('sphereId'),
+          optionalIntegerQueryParameter('page', 1),
+          optionalIntegerQueryParameter('limit', 1, 200),
+        ],
+        responseSchema: 'ChaosInboxListRecordResponse',
+        security: authenticatedSecurity(),
+        summary: 'List capture inbox items',
+        tags: ['chaosInbox'],
+      }),
+      post: createJsonOperation({
+        operationId: 'createChaosInboxItems',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'CreateChaosInboxItemsInput',
+        responseSchema: 'ChaosInboxCreatedRecordResponse',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create capture inbox items',
+        tags: ['chaosInbox'],
+      }),
+    },
+    '/api/v1/chaos-inbox/{id}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Capture inbox item deleted.',
+        operationId: 'deleteChaosInboxItem',
+        parameters: [idPathParameter('id'), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a capture inbox item',
+        tags: ['chaosInbox'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateChaosInboxItem',
+        parameters: [idPathParameter('id'), ...workspaceWriteParameters()],
+        requestSchema: 'ChaosInboxItemUpdateInput',
+        responseSchema: 'ChaosInboxItemRecord',
+        security: authenticatedSecurity(),
+        summary: 'Update capture inbox item metadata',
+        tags: ['chaosInbox'],
+      }),
+    },
+    '/api/v1/chaos-inbox/{id}/convert-to-task': {
+      post: createJsonOperation({
+        operationId: 'convertChaosInboxItemToTask',
+        parameters: [idPathParameter('id'), ...workspaceWriteParameters()],
+        responseSchema: 'ChaosInboxConvertToTaskRecordResponse',
+        security: authenticatedSecurity(),
+        summary: 'Convert a capture inbox item to a task',
+        tags: ['chaosInbox'],
+      }),
+    },
+    '/api/v1/chaos-inbox/bulk-convert-to-tasks': {
+      post: createJsonOperation({
+        operationId: 'bulkConvertChaosInboxItemsToTasks',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'IdListInput',
+        responseSchema: 'ChaosInboxConvertToTaskRecordResponseList',
+        security: authenticatedSecurity(),
+        summary: 'Convert multiple capture inbox items to tasks',
+        tags: ['chaosInbox'],
+      }),
+    },
+    '/api/v1/chaos-inbox/bulk-delete': {
+      post: createJsonOperation({
+        noContentDescription: 'Capture inbox items deleted.',
+        operationId: 'bulkDeleteChaosInboxItems',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'IdListInput',
+        security: authenticatedSecurity(),
+        summary: 'Delete multiple capture inbox items',
+        tags: ['chaosInbox'],
+      }),
+    },
+    '/api/v1/chaos-inbox/bulk-update': {
+      post: createJsonOperation({
+        operationId: 'bulkUpdateChaosInboxItems',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'ChaosInboxBulkUpdateInput',
+        responseSchema: 'ChaosInboxCreatedRecordResponse',
+        security: authenticatedSecurity(),
+        summary: 'Update multiple capture inbox items',
+        tags: ['chaosInbox'],
+      }),
+    },
+    '/api/v1/cleaning': {
+      get: createJsonOperation({
+        operationId: 'listCleaningPlan',
+        parameters: workspaceReadParameters(),
+        responseSchema: 'CleaningListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List cleaning zones, tasks, state and history',
+        tags: ['cleaning'],
+      }),
+    },
+    '/api/v1/cleaning/today': {
+      get: createJsonOperation({
+        operationId: 'getCleaningToday',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'CleaningTodayResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get due cleaning tasks for a date',
+        tags: ['cleaning'],
+      }),
+    },
+    '/api/v1/cleaning/tasks': {
+      post: createJsonOperation({
+        operationId: 'createCleaningTask',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'NewCleaningTaskInput',
+        responseSchema: 'CleaningTaskRecord',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a cleaning task',
+        tags: ['cleaning'],
+      }),
+    },
+    '/api/v1/cleaning/tasks/{taskId}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Cleaning task deleted.',
+        operationId: 'deleteCleaningTask',
+        parameters: [taskIdParameter(), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a cleaning task',
+        tags: ['cleaning'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateCleaningTask',
+        parameters: [taskIdParameter(), ...workspaceWriteParameters()],
+        requestSchema: 'CleaningTaskUpdateInput',
+        responseSchema: 'CleaningTaskRecord',
+        security: authenticatedSecurity(),
+        summary: 'Update a cleaning task',
+        tags: ['cleaning'],
+      }),
+    },
+    '/api/v1/cleaning/tasks/{taskId}/complete': {
+      post: cleaningTaskActionOperation('completeCleaningTask', 'Complete'),
+    },
+    '/api/v1/cleaning/tasks/{taskId}/postpone': {
+      post: cleaningTaskActionOperation('postponeCleaningTask', 'Postpone'),
+    },
+    '/api/v1/cleaning/tasks/{taskId}/skip': {
+      post: cleaningTaskActionOperation('skipCleaningTask', 'Skip'),
+    },
+    '/api/v1/cleaning/zones': {
+      post: createJsonOperation({
+        operationId: 'createCleaningZone',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'NewCleaningZoneInput',
+        responseSchema: 'CleaningZoneRecord',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a cleaning zone',
+        tags: ['cleaning'],
+      }),
+    },
+    '/api/v1/cleaning/zones/{zoneId}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Cleaning zone deleted.',
+        operationId: 'deleteCleaningZone',
+        parameters: [zoneIdParameter(), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a cleaning zone',
+        tags: ['cleaning'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateCleaningZone',
+        parameters: [zoneIdParameter(), ...workspaceWriteParameters()],
+        requestSchema: 'CleaningZoneUpdateInput',
+        responseSchema: 'CleaningZoneRecord',
+        security: authenticatedSecurity(),
+        summary: 'Update a cleaning zone',
+        tags: ['cleaning'],
+      }),
+    },
+    '/api/v1/daily-plan': {
+      get: createJsonOperation({
+        operationId: 'getDailyPlan',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('date'),
+        ],
+        responseSchema: 'DailyPlanRecord',
+        security: authenticatedSecurity(),
+        summary: 'Get daily plan for a date',
+        tags: ['dailyPlan'],
+      }),
+      put: createJsonOperation({
+        operationId: 'saveDailyPlan',
+        parameters: [
+          ...workspaceWriteParameters(),
+          requiredStringQueryParameter('date'),
+        ],
+        requestSchema: 'DailyPlanUpsertInput',
+        responseSchema: 'DailyPlanRecord',
+        security: authenticatedSecurity(),
+        summary: 'Save daily plan for a date',
+        tags: ['dailyPlan'],
+      }),
+    },
+    '/api/v1/daily-plan/auto-build': {
+      post: createJsonOperation({
+        operationId: 'autoBuildDailyPlan',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'DailyPlanAutoBuildInput',
+        responseSchema: 'DailyPlanRecord',
+        security: authenticatedSecurity(),
+        summary: 'Build a daily plan automatically',
+        tags: ['dailyPlan'],
+      }),
+    },
+    '/api/v1/daily-plan/unload': {
+      post: createJsonOperation({
+        operationId: 'unloadDailyPlan',
+        parameters: workspaceReadParameters(),
+        requestSchema: 'DailyPlanUnloadInput',
+        responseSchema: 'DailyPlanUnloadResponse',
+        security: authenticatedSecurity(),
+        summary: 'Suggest daily plan unload actions',
+        tags: ['dailyPlan'],
+      }),
+    },
+    '/api/v1/habits': {
+      get: createJsonOperation({
+        operationId: 'listHabits',
+        parameters: workspaceReadParameters(),
+        responseSchema: 'HabitListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List habits in a workspace',
+        tags: ['habits'],
+      }),
+      post: createJsonOperation({
+        operationId: 'createHabit',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'NewHabitInput',
+        responseSchema: 'HabitRecord',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a habit',
+        tags: ['habits'],
+      }),
+    },
+    '/api/v1/habits/stats': {
+      get: createJsonOperation({
+        operationId: 'getHabitStats',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('from'),
+          requiredStringQueryParameter('to'),
+        ],
+        responseSchema: 'HabitStatsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get habit statistics for a date range',
+        tags: ['habits'],
+      }),
+    },
+    '/api/v1/habits/today': {
+      get: createJsonOperation({
+        operationId: 'getHabitsToday',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'HabitTodayResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get habits due for a date',
+        tags: ['habits'],
+      }),
+    },
+    '/api/v1/habits/{habitId}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Habit deleted.',
+        operationId: 'deleteHabit',
+        parameters: [habitIdParameter(), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a habit',
+        tags: ['habits'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateHabit',
+        parameters: [habitIdParameter(), ...workspaceWriteParameters()],
+        requestSchema: 'HabitUpdateInput',
+        responseSchema: 'HabitRecord',
+        security: authenticatedSecurity(),
+        summary: 'Update a habit',
+        tags: ['habits'],
+      }),
+    },
+    '/api/v1/habits/{habitId}/entries/{date}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Habit entry deleted.',
+        operationId: 'deleteHabitEntry',
+        parameters: [
+          habitIdParameter(),
+          datePathParameter(),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'HabitEntryDeleteInput',
+        security: authenticatedSecurity(),
+        summary: 'Delete a habit entry',
+        tags: ['habits'],
+      }),
+      put: createJsonOperation({
+        operationId: 'upsertHabitEntry',
+        parameters: [
+          habitIdParameter(),
+          datePathParameter(),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'HabitEntryUpsertInput',
+        responseSchema: 'HabitEntryRecord',
+        security: authenticatedSecurity(),
+        summary: 'Create or update a habit entry',
+        tags: ['habits'],
+      }),
+    },
+    '/api/v1/icon-assets/{fileName}': {
+      get: createBinaryAssetOperation(
+        'getIconAsset',
+        'Get an uploaded icon asset',
+      ),
+    },
+    '/api/v1/life-spheres': {
+      get: createJsonOperation({
+        operationId: 'listLifeSpheres',
+        parameters: workspaceReadParameters(),
+        responseSchema: 'LifeSphereListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List life spheres in a workspace',
+        tags: ['lifeSpheres'],
+      }),
+      post: createJsonOperation({
+        operationId: 'createLifeSphere',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'NewLifeSphereInput',
+        responseSchema: 'LifeSphereRecord',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a life sphere',
+        tags: ['lifeSpheres'],
+      }),
+    },
+    '/api/v1/life-spheres/{sphereId}': {
+      get: createJsonOperation({
+        operationId: 'getLifeSphere',
+        parameters: [sphereIdParameter(), ...workspaceReadParameters()],
+        responseSchema: 'LifeSphereRecord',
+        security: authenticatedSecurity(),
+        summary: 'Get a life sphere',
+        tags: ['lifeSpheres'],
+      }),
+      delete: createJsonOperation({
+        noContentDescription: 'Life sphere deleted.',
+        operationId: 'deleteLifeSphere',
+        parameters: [sphereIdParameter(), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a life sphere',
+        tags: ['lifeSpheres'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateLifeSphere',
+        parameters: [sphereIdParameter(), ...workspaceWriteParameters()],
+        requestSchema: 'LifeSphereUpdateInput',
+        responseSchema: 'LifeSphereRecord',
+        security: authenticatedSecurity(),
+        summary: 'Update a life sphere',
+        tags: ['lifeSpheres'],
+      }),
+    },
+    '/api/v1/life-spheres/weekly-stats': {
+      get: createJsonOperation({
+        operationId: 'getLifeSphereWeeklyStats',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('from'),
+          requiredStringQueryParameter('to'),
+        ],
+        responseSchema: 'WeeklySphereStatsRecordResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get weekly life sphere statistics',
+        tags: ['lifeSpheres'],
+      }),
+    },
+    '/api/v1/oauth/alice/authorize': {
+      get: createHtmlOperation(
+        'getAliceOAuthAuthorizePage',
+        'Render Alice OAuth authorization page',
+      ),
+      post: createHtmlOperation(
+        'submitAliceOAuthAuthorizePage',
+        'Submit Alice OAuth authorization form',
+        {
+          requestSchema: 'AliceOAuthAuthorizeForm',
+        },
+      ),
+    },
+    '/api/v1/oauth/alice/token': {
+      post: createJsonOperation({
+        operationId: 'exchangeAliceOAuthToken',
+        requestSchema: 'AliceOAuthTokenRequest',
+        responseSchema: 'AliceOAuthTokenResponse',
+        summary: 'Exchange Alice OAuth authorization code or refresh token',
+        tags: ['alice'],
+      }),
+    },
+    '/api/v1/profile': {
+      patch: createJsonOperation({
+        operationId: 'updateUserProfile',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'UpdateUserProfileInput',
+        responseSchema: 'UserProfile',
+        security: authenticatedSecurity(),
+        summary: 'Update current user profile',
+        tags: ['session'],
+      }),
+    },
+    '/api/v1/profile-assets/{fileName}': {
+      get: createBinaryAssetOperation(
+        'getProfileAvatarAsset',
+        'Get an uploaded profile avatar asset',
+      ),
+    },
+    '/api/v1/push/devices': {
+      put: createJsonOperation({
+        operationId: 'upsertPushDevice',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'PushDeviceUpsertInput',
+        responseSchema: 'PushDeviceRecord',
+        security: authenticatedSecurity(),
+        summary: 'Register or update a native push device',
+        tags: ['push'],
+      }),
+    },
+    '/api/v1/push/devices/{installationId}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Push device deleted.',
+        operationId: 'deletePushDevice',
+        parameters: [installationIdParameter(), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a native push device',
+        tags: ['push'],
+      }),
+    },
+    '/api/v1/push/test': {
+      post: createJsonOperation({
+        operationId: 'sendTestPushNotification',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'PushTestNotificationInput',
+        responseSchema: 'PushTestNotificationResponse',
+        security: authenticatedSecurity(),
+        summary: 'Send a test push notification',
+        tags: ['push'],
+      }),
+    },
+  }
+}
+
+function createJsonOperation(
+  input: JsonOperationInput,
+): OpenAPIV3.OperationObject {
+  const successResponses: OpenAPIV3.ResponsesObject =
+    input.noContentDescription !== undefined
+      ? {
+          204: emptyResponse(input.noContentDescription),
+        }
+      : {
+          [input.responseStatus ?? 200]: jsonResponse(
+            input.responseSchema ?? 'JsonObject',
+          ),
+        }
+
+  return {
+    operationId: input.operationId,
+    ...(input.parameters ? { parameters: input.parameters } : {}),
+    ...(input.requestSchema
+      ? { requestBody: jsonRequestBody(input.requestSchema) }
+      : {}),
+    responses: {
+      ...successResponses,
+      400: errorResponse(),
+      401: errorResponse(),
+      403: errorResponse(),
+      404: errorResponse(),
+      409: errorResponse(),
+      429: errorResponse(),
+      503: errorResponse(),
+    },
+    ...(input.security ? { security: input.security } : {}),
+    summary: input.summary,
+    tags: input.tags,
+  }
+}
+
+function createHtmlOperation(
+  operationId: string,
+  summary: string,
+  input: { requestSchema?: string } = {},
+): OpenAPIV3.OperationObject {
+  return {
+    operationId,
+    ...(input.requestSchema
+      ? { requestBody: jsonRequestBody(input.requestSchema) }
+      : {}),
+    responses: {
+      200: {
+        content: {
+          'text/html': {
+            schema: {
+              type: 'string',
+            },
+          },
+        },
+        description: 'HTML response.',
+      },
+      302: emptyResponse('Redirect to the OAuth callback URL.'),
+      400: {
+        content: {
+          'text/html': {
+            schema: {
+              type: 'string',
+            },
+          },
+        },
+        description: 'HTML validation error response.',
+      },
+      401: {
+        content: {
+          'text/html': {
+            schema: {
+              type: 'string',
+            },
+          },
+        },
+        description: 'HTML authentication error response.',
+      },
+      409: {
+        content: {
+          'text/html': {
+            schema: {
+              type: 'string',
+            },
+          },
+        },
+        description: 'HTML conflict response.',
+      },
+    },
+    summary,
+    tags: ['alice'],
+  }
+}
+
+function createBinaryAssetOperation(
+  operationId: string,
+  summary: string,
+): OpenAPIV3.OperationObject {
+  return {
+    operationId,
+    parameters: [fileNameParameter()],
+    responses: {
+      200: {
+        content: {
+          'image/*': {
+            schema: {
+              format: 'binary',
+              type: 'string',
+            },
+          },
+        },
+        description: 'Binary image asset.',
+      },
+      400: errorResponse(),
+      404: errorResponse(),
+    },
+    summary,
+    tags: ['emojiSets'],
+  }
+}
+
+function cleaningTaskActionOperation(
+  operationId: string,
+  verb: string,
+): OpenAPIV3.OperationObject {
+  return createJsonOperation({
+    operationId,
+    parameters: [taskIdParameter(), ...workspaceWriteParameters()],
+    requestSchema: 'CleaningTaskActionInput',
+    responseSchema: 'CleaningTaskActionResponse',
+    security: authenticatedSecurity(),
+    summary: `${verb} a cleaning task`,
+    tags: ['cleaning'],
+  })
+}
+
+function authenticatedSecurity(): OpenAPIV3.SecurityRequirementObject[] {
+  return [{ bearerAuth: [] }, {}]
+}
+
+function workspaceReadParameters(): ApiParameter[] {
+  return [parameter('requiredWorkspaceIdHeader')]
+}
+
+function workspaceWriteParameters(): ApiParameter[] {
+  return [
+    parameter('requiredWorkspaceIdHeader'),
+    parameter('actorUserIdHeader'),
+  ]
 }
 
 function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
@@ -939,6 +1663,137 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       required: ['error'],
       type: 'object',
     },
+    JsonObject: genericJsonObjectSchema(),
+    AliceOAuthAuthorizeForm: genericJsonObjectSchema(),
+    AliceOAuthTokenRequest: genericJsonObjectSchema(),
+    AliceOAuthTokenResponse: genericJsonObjectSchema(),
+    AliceWebhookRequest: genericJsonObjectSchema(),
+    AliceWebhookResponse: genericJsonObjectSchema(),
+    AuthPasswordResetConfirmInput: {
+      additionalProperties: false,
+      properties: {
+        password: {
+          maxLength: 128,
+          minLength: 6,
+          type: 'string',
+        },
+        token: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['password', 'token'],
+      type: 'object',
+    },
+    AuthPasswordResetRequestInput: {
+      additionalProperties: false,
+      properties: {
+        email: {
+          format: 'email',
+          maxLength: 320,
+          type: 'string',
+        },
+      },
+      required: ['email'],
+      type: 'object',
+    },
+    AuthPasswordUpdateInput: {
+      additionalProperties: false,
+      properties: {
+        currentPassword: {
+          maxLength: 128,
+          minLength: 1,
+          type: 'string',
+        },
+        password: {
+          maxLength: 128,
+          minLength: 6,
+          type: 'string',
+        },
+      },
+      required: ['currentPassword', 'password'],
+      type: 'object',
+    },
+    AuthSignOutInput: {
+      allOf: [
+        {
+          $ref: '#/components/schemas/AuthRefreshInput',
+        },
+      ],
+    },
+    ChaosInboxBulkUpdateInput: genericJsonObjectSchema(),
+    ChaosInboxConvertToTaskRecordResponse: genericJsonObjectSchema(),
+    ChaosInboxConvertToTaskRecordResponseList: genericJsonArraySchema(
+      'ChaosInboxConvertToTaskRecordResponse',
+    ),
+    ChaosInboxCreatedRecordResponse: genericJsonObjectSchema(),
+    ChaosInboxItemRecord: genericJsonObjectSchema(),
+    ChaosInboxItemUpdateInput: genericJsonObjectSchema(),
+    ChaosInboxListRecordResponse: genericJsonObjectSchema(),
+    CleaningListResponse: genericJsonObjectSchema(),
+    CleaningTaskActionInput: genericJsonObjectSchema(),
+    CleaningTaskActionResponse: genericJsonObjectSchema(),
+    CleaningTaskRecord: genericJsonObjectSchema(),
+    CleaningTaskUpdateInput: genericJsonObjectSchema(),
+    CleaningTodayResponse: genericJsonObjectSchema(),
+    CleaningZoneRecord: genericJsonObjectSchema(),
+    CleaningZoneUpdateInput: genericJsonObjectSchema(),
+    CreateChaosInboxItemsInput: genericJsonObjectSchema(),
+    DailyPlanAutoBuildInput: genericJsonObjectSchema(),
+    DailyPlanRecord: genericJsonObjectSchema(),
+    DailyPlanUnloadInput: genericJsonObjectSchema(),
+    DailyPlanUnloadResponse: genericJsonObjectSchema(),
+    DailyPlanUpsertInput: genericJsonObjectSchema(),
+    HabitEntryDeleteInput: genericJsonObjectSchema(),
+    HabitEntryRecord: genericJsonObjectSchema(),
+    HabitEntryUpsertInput: genericJsonObjectSchema(),
+    HabitListResponse: genericJsonArraySchema('HabitRecord'),
+    HabitRecord: genericJsonObjectSchema(),
+    HabitStatsResponse: genericJsonObjectSchema(),
+    HabitTodayResponse: genericJsonObjectSchema(),
+    HabitUpdateInput: genericJsonObjectSchema(),
+    IdListInput: {
+      additionalProperties: false,
+      properties: {
+        ids: {
+          items: {
+            minLength: 1,
+            type: 'string',
+          },
+          maxItems: 200,
+          minItems: 1,
+          type: 'array',
+        },
+      },
+      required: ['ids'],
+      type: 'object',
+    },
+    LifeSphereListResponse: genericJsonArraySchema('LifeSphereRecord'),
+    LifeSphereRecord: genericJsonObjectSchema(),
+    LifeSphereUpdateInput: genericJsonObjectSchema(),
+    NewCleaningTaskInput: genericJsonObjectSchema(),
+    NewCleaningZoneInput: genericJsonObjectSchema(),
+    NewHabitInput: genericJsonObjectSchema(),
+    NewLifeSphereInput: genericJsonObjectSchema(),
+    PushDeviceRecord: genericJsonObjectSchema(),
+    PushDeviceUpsertInput: genericJsonObjectSchema(),
+    PushTestNotificationInput: genericJsonObjectSchema(),
+    PushTestNotificationResponse: genericJsonObjectSchema(),
+    UpdateSharedWorkspaceInput: {
+      additionalProperties: false,
+      properties: {
+        name: {
+          maxLength: 80,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['name'],
+      type: 'object',
+    },
+    UpdateUserProfileInput: genericJsonObjectSchema(),
+    UserProfile: genericJsonObjectSchema(),
+    WeeklySphereStatsRecordResponse: genericJsonObjectSchema(),
     AuthRefreshInput: {
       additionalProperties: false,
       properties: {
@@ -2224,6 +3079,24 @@ function nullableRefSchema(schemaName: string): OpenAPIV3.SchemaObject {
   }
 }
 
+function genericJsonObjectSchema(): OpenAPIV3.SchemaObject {
+  return {
+    additionalProperties: true,
+    type: 'object',
+  }
+}
+
+function genericJsonArraySchema(
+  itemSchemaName: string,
+): OpenAPIV3.SchemaObject {
+  return {
+    items: {
+      $ref: `#/components/schemas/${itemSchemaName}`,
+    },
+    type: 'array',
+  }
+}
+
 function parameter(name: string): OpenAPIV3.ReferenceObject {
   return {
     $ref: `#/components/parameters/${name}`,
@@ -2259,6 +3132,42 @@ function iconAssetIdParameter(): OpenAPIV3.ParameterObject {
   }
 }
 
+function idPathParameter(name: string): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name,
+    required: true,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function datePathParameter(): OpenAPIV3.ParameterObject {
+  return idPathParameter('date')
+}
+
+function fileNameParameter(): OpenAPIV3.ParameterObject {
+  return {
+    in: 'path',
+    name: 'fileName',
+    required: true,
+    schema: {
+      maxLength: 260,
+      pattern: '^[a-z0-9][a-z0-9._-]*$',
+      type: 'string',
+    },
+  }
+}
+
+function habitIdParameter(): OpenAPIV3.ParameterObject {
+  return idPathParameter('habitId')
+}
+
+function installationIdParameter(): OpenAPIV3.ParameterObject {
+  return idPathParameter('installationId')
+}
+
 function projectIdParameter(): OpenAPIV3.ParameterObject {
   return {
     in: 'path',
@@ -2270,6 +3179,10 @@ function projectIdParameter(): OpenAPIV3.ParameterObject {
   }
 }
 
+function sphereIdParameter(): OpenAPIV3.ParameterObject {
+  return idPathParameter('sphereId')
+}
+
 function taskIdParameter(): OpenAPIV3.ParameterObject {
   return {
     in: 'path',
@@ -2277,6 +3190,50 @@ function taskIdParameter(): OpenAPIV3.ParameterObject {
     required: true,
     schema: {
       type: 'string',
+    },
+  }
+}
+
+function zoneIdParameter(): OpenAPIV3.ParameterObject {
+  return idPathParameter('zoneId')
+}
+
+function requiredStringQueryParameter(name: string): OpenAPIV3.ParameterObject {
+  return {
+    in: 'query',
+    name,
+    required: true,
+    schema: {
+      minLength: 1,
+      type: 'string',
+    },
+  }
+}
+
+function optionalStringQueryParameter(name: string): OpenAPIV3.ParameterObject {
+  return {
+    in: 'query',
+    name,
+    required: false,
+    schema: {
+      type: 'string',
+    },
+  }
+}
+
+function optionalIntegerQueryParameter(
+  name: string,
+  minimum: number,
+  maximum?: number,
+): OpenAPIV3.ParameterObject {
+  return {
+    in: 'query',
+    name,
+    required: false,
+    schema: {
+      ...(maximum !== undefined ? { maximum } : {}),
+      minimum,
+      type: 'integer',
     },
   }
 }

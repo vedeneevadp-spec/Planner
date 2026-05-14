@@ -54,6 +54,29 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     return rows.map((row) => this.mapSphereRecord(row, context))
   }
 
+  async getById(
+    context: LifeSphereReadContext,
+    sphereId: string,
+  ): Promise<StoredLifeSphereRecord> {
+    const row = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        this.loadActiveSphereRow(executor, context.workspaceId, sphereId),
+      context.actorUserId,
+    )
+
+    if (!row) {
+      throw new HttpError(
+        404,
+        'life_sphere_not_found',
+        'Life sphere not found.',
+      )
+    }
+
+    return this.mapSphereRecord(row, context)
+  }
+
   async create(
     command: CreateLifeSphereCommand,
   ): Promise<StoredLifeSphereRecord> {

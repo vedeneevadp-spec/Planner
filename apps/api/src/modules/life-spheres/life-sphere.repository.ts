@@ -12,6 +12,10 @@ export interface LifeSphereRepository {
   listByWorkspace(
     context: LifeSphereReadContext,
   ): Promise<StoredLifeSphereRecord[]>
+  getById(
+    context: LifeSphereReadContext,
+    sphereId: string,
+  ): Promise<StoredLifeSphereRecord>
   create(command: CreateLifeSphereCommand): Promise<StoredLifeSphereRecord>
   update(command: UpdateLifeSphereCommand): Promise<StoredLifeSphereRecord>
   remove(command: DeleteLifeSphereCommand): Promise<void>

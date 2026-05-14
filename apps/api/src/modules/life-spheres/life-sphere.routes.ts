@@ -37,6 +37,18 @@ export function registerLifeSphereRoutes(
     return lifeSphereListRecordResponseSchema.parse(spheres)
   })
 
+  app.get('/api/v1/life-spheres/:sphereId', async (request) => {
+    const params = parseOrThrow(
+      sphereParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const context = await resolveRouteReadContext(request, sessionService)
+    const sphere = await service.getSphere(context, params.sphereId)
+
+    return lifeSphereRecordSchema.parse(sphere)
+  })
+
   app.post('/api/v1/life-spheres', async (request, reply) => {
     const input = parseOrThrow(
       newLifeSphereInputSchema,

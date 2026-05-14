@@ -1,6 +1,13 @@
 import type { ProjectRecord, TaskRecord } from '@planner/contracts'
 
 import {
+  drainOfflineMutations,
+  getOfflineErrorMessage,
+  isBrowserRetryableOfflineError,
+  readOfflineConflictDetails,
+} from '@/shared/lib/offline-sync'
+
+import {
   completePlannerOfflineMutation,
   listRetryablePlannerOfflineMutations,
   markPlannerOfflineMutationConflicted,
@@ -26,11 +33,6 @@ export interface DrainPlannerOfflineQueueOptions {
   onTaskDeleted?: (taskId: string) => void
   onTaskSynced?: (task: TaskRecord) => void
   workspaceId: string
-}
-
-interface ConflictDetails {
-  actualVersion: number | null
-  expectedVersion: number | null
 }
 
 interface OfflineMutationCallbacks {
@@ -67,37 +69,33 @@ export async function drainPlannerOfflineQueue({
     callbacks.onTaskSynced = onTaskSynced
   }
 
-  for (const mutation of mutations) {
-    result.processed += 1
-    await markPlannerOfflineMutationSyncing(mutation.id)
-
-    try {
-      await applyOfflineMutation(api, mutation, callbacks)
-      await completePlannerOfflineMutation(mutation.id)
-      result.synced += 1
-    } catch (error) {
+  return drainOfflineMutations({
+    apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
+    complete: completePlannerOfflineMutation,
+    getMutationId: (mutation) => mutation.id,
+    markSyncing: markPlannerOfflineMutationSyncing,
+    mutations,
+    result,
+    onError: async ({ error, mutationId, result: drainResult }) => {
       if (isVersionConflict(error)) {
-        const conflict = getConflictDetails(error)
+        const conflict = readOfflineConflictDetails(error.details)
 
-        await markPlannerOfflineMutationConflicted(mutation.id, {
+        await markPlannerOfflineMutationConflicted(mutationId, {
           actualVersion: conflict.actualVersion,
           expectedVersion: conflict.expectedVersion,
           message: getErrorMessage(error),
         })
-        result.conflicted += 1
-        continue
+        drainResult.conflicted += 1
+
+        return 'continue'
       }
 
-      await markPlannerOfflineMutationFailed(
-        mutation.id,
-        getErrorMessage(error),
-      )
-      result.failed += 1
-      break
-    }
-  }
+      await markPlannerOfflineMutationFailed(mutationId, getErrorMessage(error))
+      drainResult.failed += 1
 
-  return result
+      return 'break'
+    },
+  })
 }
 
 export function isQueueablePlannerMutationError(error: unknown): boolean {
@@ -105,11 +103,7 @@ export function isQueueablePlannerMutationError(error: unknown): boolean {
     return false
   }
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return true
-  }
-
-  return error instanceof DOMException || error instanceof TypeError
+  return isBrowserRetryableOfflineError(error)
 }
 
 async function applyOfflineMutation(
@@ -194,32 +188,9 @@ function isVersionConflict(error: unknown): error is PlannerApiError {
   )
 }
 
-function getConflictDetails(error: PlannerApiError): ConflictDetails {
-  if (!isRecord(error.details)) {
-    return {
-      actualVersion: null,
-      expectedVersion: null,
-    }
-  }
-
-  return {
-    actualVersion: getNumber(error.details.actualVersion),
-    expectedVersion: getNumber(error.details.expectedVersion),
-  }
-}
-
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Не удалось синхронизировать offline-операцию.'
-}
-
-function getNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return getOfflineErrorMessage(
+    error,
+    'Не удалось синхронизировать offline-операцию.',
+  )
 }

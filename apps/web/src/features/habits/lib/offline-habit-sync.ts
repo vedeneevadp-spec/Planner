@@ -1,5 +1,12 @@
 import type { HabitEntryRecord, HabitRecord } from '@planner/contracts'
 
+import {
+  drainOfflineMutations,
+  getOfflineErrorMessage,
+  isBrowserRetryableOfflineError,
+  readOfflineConflictDetails,
+} from '@/shared/lib/offline-sync'
+
 import { type HabitsApiClient, HabitsApiError } from './habits-api'
 import {
   completeHabitOfflineMutation,
@@ -30,11 +37,6 @@ export interface DrainHabitOfflineQueueOptions {
   onHabitDeleted?: (habitId: string) => void
   onHabitSynced?: (habit: HabitRecord) => void
   workspaceId: string
-}
-
-interface ConflictDetails {
-  actualVersion: number | null
-  expectedVersion: number | null
 }
 
 interface OfflineMutationCallbacks {
@@ -77,34 +79,33 @@ export async function drainHabitOfflineQueue({
     callbacks.onHabitSynced = onHabitSynced
   }
 
-  for (const mutation of mutations) {
-    result.processed += 1
-    await markHabitOfflineMutationSyncing(mutation.id)
-
-    try {
-      await applyOfflineMutation(api, mutation, callbacks)
-      await completeHabitOfflineMutation(mutation.id)
-      result.synced += 1
-    } catch (error) {
+  return drainOfflineMutations({
+    apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
+    complete: completeHabitOfflineMutation,
+    getMutationId: (mutation) => mutation.id,
+    markSyncing: markHabitOfflineMutationSyncing,
+    mutations,
+    result,
+    onError: async ({ error, mutationId, result: drainResult }) => {
       if (isTerminalHabitSyncError(error)) {
-        const conflict = getConflictDetails(error)
+        const conflict = readOfflineConflictDetails(error.details)
 
-        await markHabitOfflineMutationConflicted(mutation.id, {
+        await markHabitOfflineMutationConflicted(mutationId, {
           actualVersion: conflict.actualVersion,
           expectedVersion: conflict.expectedVersion,
           message: getErrorMessage(error),
         })
-        result.conflicted += 1
-        continue
+        drainResult.conflicted += 1
+
+        return 'continue'
       }
 
-      await markHabitOfflineMutationFailed(mutation.id, getErrorMessage(error))
-      result.failed += 1
-      break
-    }
-  }
+      await markHabitOfflineMutationFailed(mutationId, getErrorMessage(error))
+      drainResult.failed += 1
 
-  return result
+      return 'break'
+    },
+  })
 }
 
 export function isQueueableHabitMutationError(error: unknown): boolean {
@@ -112,11 +113,7 @@ export function isQueueableHabitMutationError(error: unknown): boolean {
     return false
   }
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    return true
-  }
-
-  return error instanceof DOMException || error instanceof TypeError
+  return isBrowserRetryableOfflineError(error)
 }
 
 async function applyOfflineMutation(
@@ -197,32 +194,9 @@ function isTerminalHabitSyncError(error: unknown): error is HabitsApiError {
   )
 }
 
-function getConflictDetails(error: HabitsApiError): ConflictDetails {
-  if (!isRecord(error.details)) {
-    return {
-      actualVersion: null,
-      expectedVersion: null,
-    }
-  }
-
-  return {
-    actualVersion: getNumber(error.details.actualVersion),
-    expectedVersion: getNumber(error.details.expectedVersion),
-  }
-}
-
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return 'Не удалось синхронизировать offline-привычку.'
-}
-
-function getNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
+  return getOfflineErrorMessage(
+    error,
+    'Не удалось синхронизировать offline-привычку.',
+  )
 }

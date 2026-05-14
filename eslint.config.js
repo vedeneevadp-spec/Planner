@@ -37,6 +37,7 @@ const publicApiModules = [
   'entities/task-template',
   'shared/lib/classnames',
   'shared/lib/date',
+  'shared/lib/offline-sync',
   'shared/ui/Icon',
   'shared/ui/Page',
   'shared/ui/PageHeader',

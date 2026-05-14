@@ -24,7 +24,6 @@ import {
   type NewTaskTemplateInput,
   newTaskTemplateInputSchema,
   type ProjectRecord,
-  projectRecordSchema,
   type ProjectUpdateInput,
   projectUpdateInputSchema,
   type TaskDetailsUpdateInput,
@@ -279,11 +278,13 @@ export function createPlannerApiClient(
       return spheres.map((sphere) => mapLifeSphereToProjectRecord(sphere))
     },
     async getProject(projectId, signal) {
-      return request({
-        path: `/api/v1/projects/${encodeURIComponent(projectId)}`,
-        responseSchema: projectRecordSchema,
+      const sphere = await request({
+        path: `/api/v1/life-spheres/${encodeURIComponent(projectId)}`,
+        responseSchema: lifeSphereRecordSchema,
         signal,
       })
+
+      return mapLifeSphereToProjectRecord(sphere)
     },
     async createProject(input) {
       const validatedInput = newProjectInputSchema.parse({

@@ -20,6 +20,13 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
     return Promise.resolve(this.listActiveSpheres(context))
   }
 
+  getById(
+    context: LifeSphereReadContext,
+    sphereId: string,
+  ): Promise<StoredLifeSphereRecord> {
+    return Promise.resolve(this.getSphereOrThrow(context.workspaceId, sphereId))
+  }
+
   create(command: CreateLifeSphereCommand): Promise<StoredLifeSphereRecord> {
     const sphere = createStoredLifeSphereRecord(command.input, {
       sortOrder: this.listActiveSpheres(command.context).length,

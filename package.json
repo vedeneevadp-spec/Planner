@@ -61,7 +61,7 @@
     "coverage": "node ./scripts/coverage.mjs --config apps/web/vite.config.ts",
     "openapi:check": "node --import tsx ./scripts/openapi-contract-check.mjs",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run test:run",
-    "ci": "npm run audit:prod && npm run audit:dev-tooling && npm run check && npm run openapi:check && npm run mobile:ci-check && npm run build",
+    "ci": "npm run audit:prod && npm run audit:dev-tooling && npm run check && npm run coverage && npm run openapi:check && npm run mobile:ci-check && npm run build",
     "prepare": "husky",
     "outbox:run": "npm run -w apps/api outbox:run",
     "task-reminders:worker": "npm run -w apps/api task-reminders:worker",
