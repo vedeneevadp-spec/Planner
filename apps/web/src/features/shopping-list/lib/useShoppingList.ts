@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 
 import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import { useOnlineSync } from '@/shared/lib/offline-sync'
 
 import {
   enqueueShoppingListOfflineMutation,
@@ -141,21 +142,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
     void drainQueuedMutations()
   }, [drainQueuedMutations])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    function handleOnline() {
-      void drainQueuedMutations()
-    }
-
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [drainQueuedMutations])
+  useOnlineSync({ onOnline: drainQueuedMutations })
 
   return useQuery({
     enabled: isEnabled,

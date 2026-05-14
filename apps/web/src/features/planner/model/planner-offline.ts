@@ -6,6 +6,8 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { useOnlineSync } from '@/shared/lib/offline-sync'
+
 import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
@@ -351,21 +353,7 @@ export function usePlannerOfflineSync({
     void drainQueuedMutations()
   }, [drainQueuedMutations])
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    function handleOnline() {
-      void drainQueuedMutations()
-    }
-
-    window.addEventListener('online', handleOnline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [drainQueuedMutations])
+  useOnlineSync({ onOnline: drainQueuedMutations })
 
   useEffect(() => {
     if (

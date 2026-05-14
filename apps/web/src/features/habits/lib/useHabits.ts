@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 import { getDateKey } from '@/shared/lib/date'
+import { useOnlineSync } from '@/shared/lib/offline-sync'
 
 import {
   createHabitsApiClient,
@@ -819,30 +820,27 @@ function useOnlineHabitSync(input: {
   retry?: (() => Promise<unknown>) | undefined
   workspaceId: string
 }) {
-  useEffect(() => {
-    if (!input.enabled || !input.api || typeof window === 'undefined') {
+  const { api, enabled, queryClient, retry, workspaceId } = input
+  const handleOnline = useCallback(() => {
+    if (!api) {
       return
     }
 
-    function handleOnline() {
-      if (input.retry) {
-        void input.retry()
-        return
-      }
-
-      void drainQueuedHabitMutations({
-        api: input.api as HabitsApiClient,
-        queryClient: input.queryClient,
-        workspaceId: input.workspaceId,
-      })
+    if (retry) {
+      return retry()
     }
 
-    window.addEventListener('online', handleOnline)
+    return drainQueuedHabitMutations({
+      api,
+      queryClient,
+      workspaceId,
+    })
+  }, [api, queryClient, retry, workspaceId])
 
-    return () => {
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [input])
+  useOnlineSync({
+    enabled: enabled && Boolean(api),
+    onOnline: handleOnline,
+  })
 }
 
 function requireHabitsApi(api: HabitsApiClient | null): HabitsApiClient {

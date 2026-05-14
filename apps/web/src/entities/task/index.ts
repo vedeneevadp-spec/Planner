@@ -66,7 +66,8 @@ export {
   taskRecurrenceWeekdayLabels,
 } from './model/task-recurrence'
 export { RoutineTaskFields } from './ui/RoutineTaskFields'
-export { TaskCard, TaskEditDialog } from './ui/TaskCard'
+export { TaskCard } from './ui/TaskCard'
+export { TaskEditDialog } from './ui/TaskEditDialog'
 export {
   ResourcePicker,
   TaskResourceMeter,

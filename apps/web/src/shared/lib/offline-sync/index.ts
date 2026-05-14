@@ -7,3 +7,4 @@ export {
   type OfflineDrainResultBase,
   readOfflineConflictDetails,
 } from './offline-sync'
+export { useOnlineSync } from './useOnlineSync'
