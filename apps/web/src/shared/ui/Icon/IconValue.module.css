@@ -34,6 +34,12 @@
   white-space: nowrap;
 }
 
+.textCompact {
+  font-size: 0.62em;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
 .placeholder {
   color: var(--text-soft);
   font-size: 0.8rem;
@@ -78,8 +84,9 @@
 }
 
 .optionButton .mark {
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1.55rem;
+  height: 1.55rem;
+  font-size: 1.18rem;
 }
 
 .optionButton:hover {

@@ -17,10 +17,7 @@ import {
 import { CheckIcon, IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 
 import { getTaskResource } from '../model/resource'
-import {
-  getRoutineTaskFrequencyLabel,
-  getRoutineTaskTargetLabel,
-} from '../model/routine-task'
+import { getRoutineTaskFrequencyLabel } from '../model/routine-task'
 import { resolveTaskCardActionPolicy } from '../model/task-card-policy'
 import { getTaskTypeValue } from '../model/task-meta'
 import { getTaskRecurrenceLabel } from '../model/task-recurrence'
@@ -447,11 +444,6 @@ export function TaskCard({
           {task.routine ? (
             <span className={styles.metaChip}>
               {getRoutineTaskFrequencyLabel(task.routine)}
-            </span>
-          ) : null}
-          {task.routine ? (
-            <span className={styles.metaChip}>
-              {getRoutineTaskTargetLabel(task.routine)}
             </span>
           ) : null}
           {task.recurrence && taskType !== 'routine' ? (

@@ -258,7 +258,7 @@ Web-клиент работает через backend HTTP API и не пишет
   `npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2`
 - для signed APK под RuStore сначала создайте `android/keystore.properties` по
   образцу `android/keystore.properties.example`, затем запускайте
-  `npm run mobile:release:rustore -- --api-url=https://chaotika.ru --version=1.0.4 --build=4`
+  `npm run mobile:release:rustore -- --api-url=https://chaotika.ru --version=1.0.5 --build=5`
 - для one-command сборки release-артефактов используйте, например,
   `npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=2 --build-artifacts=all --android-format=both`
 - для обновления нативных оболочек после изменений web используйте

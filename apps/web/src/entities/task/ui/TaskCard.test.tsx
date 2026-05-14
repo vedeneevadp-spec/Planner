@@ -181,6 +181,25 @@ describe('TaskCard', () => {
     expect(screen.queryByText('Без сферы')).not.toBeInTheDocument()
   })
 
+  it('does not show habit target type metadata for routine tasks', () => {
+    renderTaskCard(
+      createTask({
+        routine: {
+          daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+          frequency: 'daily',
+          seriesId: 'routine-series',
+          targetType: 'check',
+          targetValue: 1,
+          unit: '',
+        },
+      }),
+    )
+
+    expect(screen.getByText('Рутина')).toBeInTheDocument()
+    expect(screen.getByText('каждый день')).toBeInTheDocument()
+    expect(screen.queryByText('отметка')).not.toBeInTheDocument()
+  })
+
   it('limits shared task assignees to work and review status changes', () => {
     renderTaskCard(
       createTask({

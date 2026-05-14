@@ -26,7 +26,6 @@ export {
   createDefaultRoutineTaskForm,
   createRoutineTaskFormFromRoutine,
   getRoutineTaskFrequencyLabel,
-  getRoutineTaskTargetLabel,
   resolveRoutineTaskDaysOfWeek,
   ROUTINE_TASK_DEFAULT_DAYS,
   ROUTINE_TASK_WEEKDAYS,

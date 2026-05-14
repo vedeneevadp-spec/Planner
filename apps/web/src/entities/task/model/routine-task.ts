@@ -97,17 +97,3 @@ export function getRoutineTaskFrequencyLabel(
     .map((day) => routineTaskWeekdayLabels[day - 1])
     .join(', ')
 }
-
-export function getRoutineTaskTargetLabel(
-  routine: Pick<RoutineTask, 'targetType' | 'targetValue' | 'unit'>,
-): string {
-  if (routine.targetType === 'check') {
-    return 'отметка'
-  }
-
-  if (routine.targetType === 'duration') {
-    return `${routine.targetValue} мин`
-  }
-
-  return `${routine.targetValue}${routine.unit ? ` ${routine.unit}` : ''}`
-}

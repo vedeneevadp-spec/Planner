@@ -1,10 +1,12 @@
 import { type CSSProperties, type FormEvent, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { Sphere } from '@/entities/sphere'
 import {
   buildTimelineLayout,
   selectPlannedTasks,
   type Task,
+  TaskCard,
   TaskEditDialog,
   type TaskScheduleInput,
   type TaskStatus,
@@ -12,10 +14,10 @@ import {
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
 import { TaskComposer } from '@/features/task-create'
 import { cx } from '@/shared/lib/classnames'
 import {
-  addDays,
   formatLongDate,
   formatShortDate,
   formatTimeRange,
@@ -33,8 +35,8 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 
 import styles from './TimelinePage.module.css'
 
-const TIMELINE_START_HOUR = 6
-const TIMELINE_END_HOUR = 23
+const TIMELINE_START_HOUR = 0
+const TIMELINE_END_HOUR = 24
 const DAY_START_MINUTES = TIMELINE_START_HOUR * 60
 const DAY_END_MINUTES = TIMELINE_END_HOUR * 60
 const TIMELINE_TOTAL_MINUTES = DAY_END_MINUTES - DAY_START_MINUTES
@@ -42,10 +44,6 @@ const TIMELINE_HOURS = Array.from(
   { length: TIMELINE_END_HOUR - TIMELINE_START_HOUR },
   (_, index) => TIMELINE_START_HOUR + index,
 )
-
-function getShiftedDateKey(dateKey: string, amount: number): string {
-  return getDateKey(addDays(new Date(`${dateKey}T12:00:00`), amount))
-}
 
 function getTimelineBlockStyle(
   startMinutes: number,
@@ -287,8 +285,19 @@ export function TimelinePage() {
     updateTask,
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
-  const todayKey = getDateKey(new Date())
-  const [selectedDate, setSelectedDate] = useState(todayKey)
+  const sessionQuery = usePlannerSession()
+  const selectedDate = getDateKey(new Date())
+  const session = sessionQuery.data
+  const isSharedWorkspace = session?.workspace.kind === 'shared'
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
+    [selectedTaskId, tasks],
+  )
+  const workspaceUsersQuery = useWorkspaceUsers({
+    enabled: Boolean(selectedTask && isSharedWorkspace),
+  })
+  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
 
   const dayTasks = useMemo(
     () => selectPlannedTasks(tasks, selectedDate),
@@ -299,78 +308,18 @@ export function TimelinePage() {
     [selectedDate, tasks],
   )
 
-  const scheduledCount = timelineEntries.length
-  const unscheduledCount = dayTasks.length - scheduledCount
-  const allocatedHours = timelineEntries.reduce(
-    (total, entry) => total + (entry.endMinutes - entry.startMinutes) / 60,
-    0,
-  )
+  const unscheduledTasks = useMemo(() => {
+    const scheduledTaskIds = new Set(
+      timelineEntries.map((entry) => entry.task.id),
+    )
+
+    return dayTasks.filter((task) => !scheduledTaskIds.has(task.id))
+  }, [dayTasks, timelineEntries])
+  const unscheduledCount = unscheduledTasks.length
 
   return (
     <section className={pageStyles.page}>
       <PageHeader kicker="Timeline" />
-
-      <section className={styles.toolbar}>
-        <div className={styles.dateControls}>
-          <div className={styles.quickSwitches}>
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={() =>
-                setSelectedDate(getShiftedDateKey(selectedDate, -1))
-              }
-            >
-              Вчера
-            </button>
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={() => setSelectedDate(todayKey)}
-            >
-              Сегодня
-            </button>
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={() =>
-                setSelectedDate(getShiftedDateKey(selectedDate, 1))
-              }
-            >
-              Завтра
-            </button>
-          </div>
-
-          <label className={styles.field}>
-            <span>Дата</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(event) =>
-                setSelectedDate(event.target.value || todayKey)
-              }
-            />
-          </label>
-        </div>
-
-        <div className={styles.metrics}>
-          <div className={styles.metricCard}>
-            <span>Дата</span>
-            <strong>{formatLongDate(selectedDate)}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span>Задач на день</span>
-            <strong>{dayTasks.length}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span>В таймлайне</span>
-            <strong>{scheduledCount}</strong>
-          </div>
-          <div className={styles.metricCard}>
-            <span>Часов занято</span>
-            <strong>{allocatedHours.toFixed(1)}</strong>
-          </div>
-        </div>
-      </section>
 
       <TaskComposer
         key={selectedDate}
@@ -416,7 +365,7 @@ export function TimelinePage() {
                 </div>
 
                 {timelineEntries.map((entry) => (
-                  <article
+                  <button
                     key={entry.task.id}
                     className={cx(
                       styles.timelineBlock,
@@ -429,13 +378,11 @@ export function TimelinePage() {
                       entry.column,
                       entry.columns,
                     )}
+                    type="button"
+                    aria-label={`Открыть задачу ${entry.task.title}`}
+                    title={entry.task.title}
+                    onClick={() => setSelectedTaskId(entry.task.id)}
                   >
-                    <span className={styles.timelineTime}>
-                      {formatTimeRange(
-                        entry.task.plannedStartTime!,
-                        entry.task.plannedEndTime,
-                      )}
-                    </span>
                     <strong className={styles.timelineTitle}>
                       {entry.task.icon ? (
                         <IconMark
@@ -449,7 +396,7 @@ export function TimelinePage() {
                     {entry.task.project ? (
                       <span>{entry.task.project}</span>
                     ) : null}
-                  </article>
+                  </button>
                 ))}
               </div>
             </div>
@@ -469,15 +416,17 @@ export function TimelinePage() {
             </p>
           </div>
 
-          {dayTasks.length === 0 ? (
+          {unscheduledTasks.length === 0 ? (
             <div className={pageStyles.emptyPanel}>
               <p>
-                На {formatLongDate(selectedDate)} пока ничего не запланировано.
+                {dayTasks.length === 0
+                  ? `На ${formatLongDate(selectedDate)} пока ничего не запланировано.`
+                  : 'Все задачи дня уже распределены по времени.'}
               </p>
             </div>
           ) : (
             <div className={styles.taskList}>
-              {dayTasks.map((task) => (
+              {unscheduledTasks.map((task) => (
                 <TimelineTaskItem
                   key={`${task.id}:${task.plannedStartTime ?? ''}:${task.plannedEndTime ?? ''}`}
                   task={task}
@@ -503,6 +452,61 @@ export function TimelinePage() {
           )}
         </section>
       </div>
+
+      {selectedTask && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className={styles.taskOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Карточка задачи"
+            >
+              <button
+                className={styles.taskOverlayBackdrop}
+                type="button"
+                aria-label="Закрыть карточку задачи"
+                onClick={() => setSelectedTaskId(null)}
+              />
+              <div className={styles.taskOverlayPanel}>
+                <div className={styles.taskOverlayHeader}>
+                  <button
+                    className={styles.taskOverlayClose}
+                    type="button"
+                    aria-label="Закрыть"
+                    onClick={() => setSelectedTaskId(null)}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </div>
+                <TaskCard
+                  task={selectedTask}
+                  sphere={spheres.find(
+                    (sphere) => sphere.id === selectedTask.projectId,
+                  )}
+                  spheres={spheres}
+                  isPending={isTaskPending(selectedTask.id)}
+                  isSharedWorkspace={isSharedWorkspace}
+                  currentActorUserId={session?.actorUserId}
+                  sharedWorkspaceGroupRole={session?.groupRole}
+                  sharedWorkspaceRole={session?.role}
+                  uploadedIcons={uploadedIcons}
+                  workspaceUsers={workspaceUsers}
+                  onRemove={(taskId) => {
+                    void removeTask(taskId)
+                  }}
+                  onSetPlannedDate={(taskId, plannedDate) => {
+                    void setTaskPlannedDate(taskId, plannedDate)
+                  }}
+                  onSetStatus={(taskId, status) => {
+                    void setTaskStatus(taskId, status)
+                  }}
+                  onUpdate={updateTask}
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </section>
   )
 }
