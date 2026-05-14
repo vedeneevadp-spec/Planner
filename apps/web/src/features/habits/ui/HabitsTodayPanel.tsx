@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
+  getHabitEntryProgressValue,
   getHabitEntryValueLabel,
   getHabitFrequencyLabel,
   type HabitTodayListItem,
+  isHabitEntryComplete,
 } from '@/entities/habit'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { cx } from '@/shared/lib/classnames'
@@ -27,10 +29,17 @@ import styles from './HabitsTodayPanel.module.css'
 interface HabitsTodayPanelProps {
   className?: string | undefined
   date: string
+  defaultExpanded?: boolean | undefined
+  showEmptyAction?: boolean | undefined
 }
 
-export function HabitsTodayPanel({ className, date }: HabitsTodayPanelProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
+export function HabitsTodayPanel({
+  className,
+  date,
+  defaultExpanded = false,
+  showEmptyAction = true,
+}: HabitsTodayPanelProps) {
+  const [isExpanded, setIsExpanded] = useState(defaultExpanded)
   const habitsTodayQuery = useHabitsToday(date)
   const syncStatus = useHabitSyncStatus()
   const upsertEntryMutation = useUpsertHabitEntry()
@@ -41,7 +50,9 @@ export function HabitsTodayPanel({ className, date }: HabitsTodayPanelProps) {
     habitsTodayQuery.error ??
     upsertEntryMutation.error ??
     removeEntryMutation.error
-  const doneCount = items.filter((item) => item.entry?.status === 'done').length
+  const doneCount = items.filter((item) =>
+    isHabitEntryComplete(item.habit, item.entry),
+  ).length
   const skippedCount = items.filter(
     (item) => item.entry?.status === 'skipped',
   ).length
@@ -147,9 +158,11 @@ export function HabitsTodayPanel({ className, date }: HabitsTodayPanelProps) {
       ) : items.length === 0 ? (
         <div className={styles.emptyState}>
           <p className={styles.emptyText}>Привычек нет. Создайте первую.</p>
-          <Link className={styles.emptyAction} to="/habits">
-            Создать привычку
-          </Link>
+          {showEmptyAction ? (
+            <Link className={styles.emptyAction} to="/habits">
+              Создать привычку
+            </Link>
+          ) : null}
         </div>
       ) : (
         <div className={styles.list}>
@@ -229,11 +242,17 @@ function HabitTodayRow({
   onSkip,
   onUndo,
 }: HabitTodayRowProps) {
-  const targetValue =
-    item.habit.targetType === 'check' ? item.habit.targetValue : 0
-  const [value, setValue] = useState(item.entry?.value ?? targetValue)
-  const isDone = item.entry?.status === 'done'
+  const initialValue =
+    item.habit.targetType === 'check'
+      ? item.habit.targetValue
+      : getHabitEntryProgressValue(item.habit, item.entry)
+  const [value, setValue] = useState(initialValue)
+  const isDone = isHabitEntryComplete(item.habit, item.entry)
   const isSkipped = item.entry?.status === 'skipped'
+
+  useEffect(() => {
+    setValue(initialValue)
+  }, [initialValue])
 
   return (
     <article
@@ -273,7 +292,7 @@ function HabitTodayRow({
       </div>
 
       <div className={styles.actions}>
-        {item.habit.targetType !== 'check' && !isDone ? (
+        {item.habit.targetType !== 'check' && !isDone && !isSkipped ? (
           <input
             className={styles.valueInput}
             type="number"
@@ -285,7 +304,7 @@ function HabitTodayRow({
           />
         ) : null}
 
-        {item.entry ? (
+        {isDone || isSkipped ? (
           <button
             className={styles.iconButton}
             type="button"

@@ -10,4 +10,5 @@ export {
   useUpdateHabit,
   useUpsertHabitEntry,
 } from './lib/useHabits'
+export { HabitRoutineTaskCard } from './ui/HabitRoutineTaskCard'
 export { HabitsTodayPanel } from './ui/HabitsTodayPanel'

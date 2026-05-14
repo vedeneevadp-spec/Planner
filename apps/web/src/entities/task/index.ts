@@ -27,7 +27,6 @@ export {
   createRoutineTaskFormFromRoutine,
   getRoutineTaskFrequencyLabel,
   getRoutineTaskTargetLabel,
-  isRoutineHabitTask,
   resolveRoutineTaskDaysOfWeek,
   ROUTINE_TASK_DEFAULT_DAYS,
   ROUTINE_TASK_WEEKDAYS,
@@ -40,6 +39,8 @@ export type {
   RoutineTaskInput,
   Task,
   TaskImportance,
+  TaskRecurrence,
+  TaskRecurrenceInput,
   TaskResource,
   TaskStatus,
   TaskUpdateInput,
@@ -53,6 +54,17 @@ export {
   getTaskTypeValue,
   getTaskUrgencyFromType,
 } from './model/task-meta'
+export {
+  buildTaskRecurrenceFromForm,
+  createDefaultTaskRecurrenceForm,
+  createTaskRecurrenceFormFromRecurrence,
+  getTaskRecurrenceLabel,
+  resolveTaskRecurrenceDaysOfWeek,
+  TASK_RECURRENCE_DEFAULT_DAYS,
+  TASK_RECURRENCE_WEEKDAYS,
+  type TaskRecurrenceFormState,
+  taskRecurrenceWeekdayLabels,
+} from './model/task-recurrence'
 export { RoutineTaskFields } from './ui/RoutineTaskFields'
 export { TaskCard, TaskEditDialog } from './ui/TaskCard'
 export {
@@ -60,4 +72,5 @@ export {
   TaskResourceMeter,
   TaskTypePicker,
 } from './ui/TaskMetaPickers'
+export { TaskRecurrenceFields } from './ui/TaskRecurrenceFields'
 export { TaskSection } from './ui/TaskSection'

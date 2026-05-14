@@ -3,7 +3,7 @@ import type {
   WorkspaceRole,
   WorkspaceUserRecord,
 } from '@planner/contracts'
-import { useCallback, useId, useState } from 'react'
+import { type ReactNode, useCallback, useId, useState } from 'react'
 
 import type { Project } from '@/entities/project'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
@@ -25,6 +25,8 @@ interface TaskSectionProps {
   workspaceUsers?: WorkspaceUserRecord[] | undefined
   emptyMessage: string
   defaultCollapsed?: boolean | undefined
+  extraItemCount?: number | undefined
+  extraItems?: ReactNode | undefined
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
@@ -45,6 +47,8 @@ export function TaskSection({
   workspaceUsers = [],
   emptyMessage,
   defaultCollapsed = false,
+  extraItemCount = 0,
+  extraItems,
   tone = 'default',
   isTaskPending,
   onSetStatus,
@@ -58,6 +62,7 @@ export function TaskSection({
   >(null)
   const contentId = useId()
   const headingId = useId()
+  const itemCount = tasks.length + extraItemCount
   const handleActionMenuOpenChange = useCallback(
     (taskId: string, isOpen: boolean) => {
       setOpenActionMenuTaskId((currentTaskId) => {
@@ -85,7 +90,7 @@ export function TaskSection({
           aria-labelledby={headingId}
           onClick={() => setIsCollapsed((value) => !value)}
         >
-          <span className={styles.countChip}>{tasks.length}</span>
+          <span className={styles.countChip}>{itemCount}</span>
           <span
             className={cx(
               styles.collapseChevron,
@@ -98,7 +103,7 @@ export function TaskSection({
 
       {!isCollapsed ? (
         <div id={contentId}>
-          {tasks.length === 0 ? (
+          {itemCount === 0 ? (
             <p className={styles.emptyCopy}>{emptyMessage}</p>
           ) : (
             <div className={styles.stack}>
@@ -125,6 +130,7 @@ export function TaskSection({
                   onActionMenuOpenChange={handleActionMenuOpenChange}
                 />
               ))}
+              {extraItems}
             </div>
           )}
         </div>

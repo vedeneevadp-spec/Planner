@@ -1,7 +1,10 @@
 export {
+  getHabitEntryProgressValue,
   getHabitEntryValueLabel,
   getHabitFrequencyLabel,
   getHabitTargetLabel,
+  getNextHabitEntryProgressValue,
+  isHabitEntryComplete,
   isoWeekdayLabels,
   sortHabits,
 } from './model/habit'

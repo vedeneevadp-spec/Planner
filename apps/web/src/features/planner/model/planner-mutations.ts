@@ -352,6 +352,7 @@ export function usePlannerMutations({
           plannedStartTime: normalizedSchedule.plannedStartTime,
           project: input.project.trim(),
           projectId: input.projectId,
+          recurrence: input.recurrence ?? null,
           remindBeforeStart: input.remindBeforeStart ? true : undefined,
           resource: input.resource,
           requiresConfirmation: input.requiresConfirmation ?? false,

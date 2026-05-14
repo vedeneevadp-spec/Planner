@@ -23,8 +23,9 @@
 }
 
 .typeSurface {
+  flex-wrap: nowrap;
   min-height: var(--control-height, 3rem);
-  gap: 0.35rem;
+  gap: 0.28rem;
   padding: 0.3rem;
 }
 
@@ -80,7 +81,7 @@
   flex: 1 1 0;
   box-sizing: border-box;
   justify-content: flex-start;
-  padding: 0.52rem 0.82rem;
+  padding: 0.46rem 0.42rem;
   text-align: left;
 }
 
@@ -88,7 +89,7 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 0.55rem;
+  gap: 0.32rem;
 }
 
 .typeContent {
@@ -96,15 +97,18 @@
 }
 
 .typeTitle {
-  flex: 0 0 auto;
-  font-size: 0.94rem;
-  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .typeIcon {
   display: inline-grid;
-  width: 1.72rem;
-  height: 1.72rem;
+  width: 1.18rem;
+  height: 1.18rem;
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
@@ -198,6 +202,28 @@
 }
 
 @media (max-width: 560px) {
+  .typeSurface {
+    gap: 0.22rem;
+    padding: 0.24rem;
+  }
+
+  .typeButton {
+    padding: 0.42rem 0.32rem;
+  }
+
+  .content {
+    gap: 0.24rem;
+  }
+
+  .typeTitle {
+    font-size: 0.82rem;
+  }
+
+  .typeIcon {
+    width: 1.12rem;
+    height: 1.12rem;
+  }
+
   .resourceCluster {
     flex-basis: 100%;
   }

@@ -57,6 +57,41 @@ export function getHabitEntryValueLabel(
   return `${entry.value}${habit.unit ? ` ${habit.unit}` : ''}`
 }
 
+export function getHabitEntryProgressValue(
+  habit: Pick<HabitRecord, 'targetValue'>,
+  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+): number {
+  if (!entry || entry.status === 'skipped') {
+    return 0
+  }
+
+  return Math.min(habit.targetValue, entry.value)
+}
+
+export function isHabitEntryComplete(
+  habit: Pick<HabitRecord, 'targetValue'>,
+  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+): boolean {
+  return (
+    entry?.status === 'done' &&
+    getHabitEntryProgressValue(habit, entry) >= habit.targetValue
+  )
+}
+
+export function getNextHabitEntryProgressValue(
+  habit: Pick<HabitRecord, 'targetType' | 'targetValue'>,
+  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+): number {
+  if (habit.targetType === 'check') {
+    return habit.targetValue
+  }
+
+  return Math.min(
+    habit.targetValue,
+    getHabitEntryProgressValue(habit, entry) + 1,
+  )
+}
+
 export function sortHabits(habits: HabitRecord[]): HabitRecord[] {
   return [...habits].sort((left, right) => {
     if (left.sortOrder !== right.sortOrder) {

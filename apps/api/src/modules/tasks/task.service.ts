@@ -108,7 +108,7 @@ export class TaskService {
 
       return this.repository.updateStatus(command).then(async (updatedTask) => {
         if (task.status !== 'done' && status === 'done') {
-          await this.createNextRoutineOccurrence(context, updatedTask)
+          await this.createNextRecurringOccurrence(context, updatedTask)
         }
 
         return updatedTask
@@ -182,19 +182,20 @@ export class TaskService {
     })
   }
 
-  private async createNextRoutineOccurrence(
+  private async createNextRecurringOccurrence(
     context: TaskWriteContext,
     completedTask: StoredTaskRecord,
   ): Promise<void> {
-    const routine = completedTask.routine
+    const recurrence = completedTask.recurrence
 
-    if (!routine) {
+    if (!recurrence?.isActive) {
       return
     }
 
-    const nextPlannedDate = getNextRoutineDate(
-      getRoutineReferenceDate(completedTask),
-      routine.daysOfWeek,
+    const nextPlannedDate = getNextRecurringDate(
+      getRecurringReferenceDate(completedTask),
+      recurrence.daysOfWeek,
+      recurrence.endDate,
     )
 
     if (!nextPlannedDate) {
@@ -207,7 +208,7 @@ export class TaskService {
         task.id !== completedTask.id &&
         task.status !== 'done' &&
         task.plannedDate === nextPlannedDate &&
-        task.routine?.seriesId === routine.seriesId,
+        task.recurrence?.seriesId === recurrence.seriesId,
     )
 
     if (hasExistingNextOccurrence) {
@@ -230,10 +231,11 @@ export class TaskService {
         plannedStartTime: completedTask.plannedStartTime,
         project: completedTask.project,
         projectId: completedTask.projectId,
+        recurrence,
         remindBeforeStart: completedTask.remindBeforeStart === true,
         resource: completedTask.resource,
         requiresConfirmation: completedTask.requiresConfirmation,
-        routine,
+        routine: completedTask.routine,
         sphereId: completedTask.sphereId,
         title: completedTask.title,
         urgency: completedTask.urgency,
@@ -242,7 +244,7 @@ export class TaskService {
   }
 }
 
-function getRoutineReferenceDate(task: StoredTaskRecord): string {
+function getRecurringReferenceDate(task: StoredTaskRecord): string {
   const completedDate = task.completedAt
     ? task.completedAt.slice(0, 10)
     : new Date().toISOString().slice(0, 10)
@@ -254,9 +256,10 @@ function getRoutineReferenceDate(task: StoredTaskRecord): string {
   return task.plannedDate > completedDate ? task.plannedDate : completedDate
 }
 
-function getNextRoutineDate(
+function getNextRecurringDate(
   referenceDate: string,
   daysOfWeek: number[],
+  endDate: string | null,
 ): string | null {
   const scheduledDays = new Set(daysOfWeek)
   const cursor = new Date(`${referenceDate}T00:00:00.000Z`)
@@ -265,7 +268,9 @@ function getNextRoutineDate(
     cursor.setUTCDate(cursor.getUTCDate() + 1)
 
     if (scheduledDays.has(getIsoWeekday(cursor))) {
-      return cursor.toISOString().slice(0, 10)
+      const dateKey = cursor.toISOString().slice(0, 10)
+
+      return endDate && dateKey > endDate ? null : dateKey
     }
   }
 

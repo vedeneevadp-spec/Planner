@@ -13,15 +13,20 @@ import styles from './RoutineTaskFields.module.css'
 
 interface RoutineTaskFieldsProps {
   className?: string | undefined
+  showTargetFields?: boolean | undefined
   value: RoutineTaskFormState
   onChange: (value: RoutineTaskFormState) => void
 }
 
 export function RoutineTaskFields({
   className,
+  showTargetFields = true,
   value,
   onChange,
 }: RoutineTaskFieldsProps) {
+  const showTargetValueField = showTargetFields && value.targetType !== 'check'
+  const showUnitField = showTargetFields && value.targetType === 'count'
+
   function update(patch: Partial<RoutineTaskFormState>) {
     onChange({
       ...value,
@@ -51,7 +56,7 @@ export function RoutineTaskFields({
 
   return (
     <section className={cx(styles.panel, className)}>
-      <div className={styles.grid}>
+      <div className={cx(styles.grid, !showTargetFields && styles.gridSingle)}>
         <SelectPicker
           className={styles.field}
           label="Частота"
@@ -66,72 +71,81 @@ export function RoutineTaskFields({
           }}
         />
 
-        <SelectPicker
-          className={styles.field}
-          label="Тип цели"
-          value={value.targetType}
-          options={[
-            { label: 'Отметка', value: 'check' },
-            { label: 'Количество', value: 'count' },
-            { label: 'Минуты', value: 'duration' },
-          ]}
-          onChange={(nextValue) => {
-            handleTargetTypeChange(nextValue)
-          }}
-        />
+        {showTargetFields ? (
+          <>
+            <SelectPicker
+              className={styles.field}
+              label="Тип цели"
+              value={value.targetType}
+              options={[
+                { label: 'Отметка', value: 'check' },
+                { label: 'Количество', value: 'count' },
+                { label: 'Минуты', value: 'duration' },
+              ]}
+              onChange={(nextValue) => {
+                handleTargetTypeChange(nextValue)
+              }}
+            />
 
-        <label className={styles.field}>
-          <span>Цель</span>
-          <input
-            type="number"
-            min={1}
-            max={999}
-            value={value.targetValue}
-            disabled={value.targetType === 'check'}
-            onChange={(event) => update({ targetValue: event.target.value })}
-          />
-        </label>
+            {showTargetValueField ? (
+              <label className={styles.field}>
+                <span>Цель</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  value={value.targetValue}
+                  onChange={(event) =>
+                    update({ targetValue: event.target.value })
+                  }
+                />
+              </label>
+            ) : null}
 
-        <label className={styles.field}>
-          <span>Единица</span>
-          <input
-            maxLength={24}
-            value={value.unit}
-            disabled={value.targetType !== 'count'}
-            placeholder="стаканов"
-            onChange={(event) => update({ unit: event.target.value })}
-          />
-        </label>
+            {showUnitField ? (
+              <label className={styles.field}>
+                <span>Единица</span>
+                <input
+                  maxLength={24}
+                  value={value.unit}
+                  placeholder="стаканов"
+                  onChange={(event) => update({ unit: event.target.value })}
+                />
+              </label>
+            ) : null}
+          </>
+        ) : null}
       </div>
 
-      <div className={styles.daysGroup}>
-        <span>Дни недели</span>
-        <div className={styles.daysList}>
-          {ROUTINE_TASK_DEFAULT_DAYS.map((day) => (
-            <label
-              key={day}
-              className={cx(
-                styles.dayToggle,
-                value.daysOfWeek.includes(day) && styles.dayToggleActive,
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={value.daysOfWeek.includes(day)}
-                disabled={value.frequency !== 'custom'}
-                onChange={(event) =>
-                  update({
-                    daysOfWeek: event.target.checked
-                      ? [...value.daysOfWeek, day].sort()
-                      : value.daysOfWeek.filter((item) => item !== day),
-                  })
-                }
-              />
-              <span>{routineTaskWeekdayLabels[day - 1]}</span>
-            </label>
-          ))}
+      {value.frequency === 'custom' ? (
+        <div className={styles.daysGroup}>
+          <span>Дни недели</span>
+          <div className={styles.daysList}>
+            {ROUTINE_TASK_DEFAULT_DAYS.map((day) => (
+              <label
+                key={day}
+                className={cx(
+                  styles.dayToggle,
+                  value.daysOfWeek.includes(day) && styles.dayToggleActive,
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={value.daysOfWeek.includes(day)}
+                  onChange={(event) =>
+                    update({
+                      daysOfWeek: event.target.checked
+                        ? [...value.daysOfWeek, day].sort()
+                        : value.daysOfWeek.filter((item) => item !== day),
+                    })
+                  }
+                />
+                <span>{routineTaskWeekdayLabels[day - 1]}</span>
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   )
 }

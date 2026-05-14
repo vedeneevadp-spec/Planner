@@ -165,7 +165,7 @@ export function buildHabitStats(
   for (const dateKey of rangeDates) {
     const entry = entriesByDate.get(dateKey)
 
-    if (entry?.status === 'done') {
+    if (isEntryComplete(habit, entry)) {
       completedCount += 1
       lastCompletedDate = dateKey
     } else if (entry?.status === 'skipped') {
@@ -181,7 +181,7 @@ export function buildHabitStats(
     if (dateKey >= weekStart && dateKey <= range.to) {
       weekScheduled += 1
 
-      if (entry?.status === 'done') {
+      if (isEntryComplete(habit, entry)) {
         weekCompleted += 1
       }
     }
@@ -189,7 +189,7 @@ export function buildHabitStats(
     if (dateKey >= monthStart && dateKey <= range.to) {
       monthScheduled += 1
 
-      if (entry?.status === 'done') {
+      if (isEntryComplete(habit, entry)) {
         monthCompleted += 1
       }
     }
@@ -198,13 +198,14 @@ export function buildHabitStats(
   const scheduledCount = rangeDates.length
 
   return {
-    bestStreak: calculateBestStreak(scheduledDates, entriesByDate),
+    bestStreak: calculateBestStreak(habit, scheduledDates, entriesByDate),
     completionRate:
       scheduledCount === 0
         ? 0
         : Math.round((completedCount / scheduledCount) * 100),
     completedCount,
     currentStreak: calculateCurrentStreak(
+      habit,
       scheduledDates,
       entriesByDate,
       range.to,
@@ -298,6 +299,7 @@ export function serializeNullableTime(value: unknown): string | null {
 }
 
 function calculateCurrentStreak(
+  habit: Pick<StoredHabitRecord, 'targetValue'>,
   scheduledDates: string[],
   entriesByDate: Map<string, StoredHabitEntryRecord>,
   referenceDate: string,
@@ -312,7 +314,7 @@ function calculateCurrentStreak(
 
     const entry = entriesByDate.get(dateKey)
 
-    if (entry?.status === 'done') {
+    if (isEntryComplete(habit, entry)) {
       streak += 1
       isFirstScheduledDate = false
       continue
@@ -335,6 +337,7 @@ function calculateCurrentStreak(
 }
 
 function calculateBestStreak(
+  habit: Pick<StoredHabitRecord, 'targetValue'>,
   scheduledDates: string[],
   entriesByDate: Map<string, StoredHabitEntryRecord>,
 ): number {
@@ -344,7 +347,7 @@ function calculateBestStreak(
   for (const dateKey of scheduledDates) {
     const entry = entriesByDate.get(dateKey)
 
-    if (entry?.status === 'done') {
+    if (isEntryComplete(habit, entry)) {
       currentStreak += 1
       bestStreak = Math.max(bestStreak, currentStreak)
       continue
@@ -358,6 +361,13 @@ function calculateBestStreak(
   }
 
   return bestStreak
+}
+
+function isEntryComplete(
+  habit: Pick<StoredHabitRecord, 'targetValue'>,
+  entry: StoredHabitEntryRecord | undefined,
+): boolean {
+  return entry?.status === 'done' && entry.value >= habit.targetValue
 }
 
 function enumerateDates(from: string, to: string): string[] {

@@ -81,18 +81,18 @@ void test('TaskService requires a start time for task reminders', async () => {
   )
 })
 
-void test('TaskService creates the next routine occurrence after completion', async () => {
+void test('TaskService creates the next recurring occurrence after completion', async () => {
   const service = new TaskService(new MemoryTaskRepository())
   const task = await service.createTask(PERSONAL_CONTEXT, {
     ...BASE_INPUT,
     plannedDate: '2099-01-01',
-    routine: {
+    recurrence: {
       daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
       frequency: 'daily',
+      isActive: true,
       seriesId: '019db853-b277-7000-8000-000000000001',
-      targetType: 'check',
-      targetValue: 1,
-      unit: '',
+      startDate: '2099-01-01',
     },
     title: 'Умыться',
     urgency: 'urgent',
@@ -104,10 +104,34 @@ void test('TaskService creates the next routine occurrence after completion', as
   const nextTask = tasks.find(
     (candidate) =>
       candidate.id !== task.id &&
-      candidate.routine?.seriesId === task.routine?.seriesId,
+      candidate.recurrence?.seriesId === task.recurrence?.seriesId,
   )
 
   assert.equal(nextTask?.status, 'todo')
   assert.equal(nextTask?.plannedDate, '2099-01-02')
   assert.equal(nextTask?.title, 'Умыться')
+})
+
+void test('TaskService does not repeat routine tasks without recurrence', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    routine: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      frequency: 'daily',
+      seriesId: '019db853-b277-7000-8000-000000000002',
+      targetType: 'check',
+      targetValue: 1,
+      unit: '',
+    },
+    title: 'Рутинная задача',
+    urgency: 'urgent',
+  })
+
+  await service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'done', task.version)
+
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+
+  assert.equal(tasks.length, 1)
 })

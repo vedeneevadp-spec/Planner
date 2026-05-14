@@ -1,8 +1,10 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
-import { getPlannerSummary, isRoutineHabitTask } from '@/entities/task'
+import { isHabitEntryComplete } from '@/entities/habit'
+import { getPlannerSummary } from '@/entities/task'
 import { useCleaningSummary } from '@/features/cleaning'
+import { useHabitsToday } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
@@ -97,11 +99,11 @@ export function Sidebar() {
   const todayKey = getDateKey(new Date())
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const summary = getPlannerSummary(tasks, todayKey)
-  const routineHabitTodayCount = tasks.filter(
-    (task) =>
-      task.status !== 'done' &&
-      task.plannedDate === todayKey &&
-      isRoutineHabitTask(task),
+  const habitsTodayQuery = useHabitsToday(todayKey)
+  const pendingHabitTodayCount = (habitsTodayQuery.data?.items ?? []).filter(
+    (item) =>
+      item.entry?.status !== 'skipped' &&
+      !isHabitEntryComplete(item.habit, item.entry),
   ).length
   const canManageCurrentSharedWorkspace =
     session?.workspace.kind === 'shared' && session.role === 'owner'
@@ -914,7 +916,7 @@ export function Sidebar() {
                 : item.to === '/cleaning'
                   ? cleaningSummary.urgentCount || cleaningSummary.dueCount
                   : item.to === '/habits'
-                    ? routineHabitTodayCount
+                    ? pendingHabitTodayCount
                     : item.to === '/shopping'
                       ? shoppingListSummary.activeItemCount
                       : item.to === '/timeline'

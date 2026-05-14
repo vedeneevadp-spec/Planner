@@ -1,6 +1,18 @@
-import { type ReactElement, useEffect, useMemo, useState } from 'react'
+import {
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+import {
+  getNextHabitEntryProgressValue,
+  type HabitTodayListItem,
+  isHabitEntryComplete,
+} from '@/entities/habit'
 import {
   selectDoneBeforeTodayTasks,
   selectDoneTodayTasks,
@@ -12,6 +24,12 @@ import {
   TaskSection,
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
+import {
+  HabitRoutineTaskCard,
+  useHabitsToday,
+  useRemoveHabitEntry,
+  useUpsertHabitEntry,
+} from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
@@ -29,11 +47,13 @@ type TaskSectionTone = 'default' | 'warning' | 'success'
 
 interface TaskSectionOptions {
   defaultCollapsed?: boolean
+  extraItemCount?: number
+  extraItems?: ReactNode
   tone?: TaskSectionTone
 }
 
 function isRoutineTask(task: Task): boolean {
-  return task.urgency === 'urgent'
+  return Boolean(task.routine)
 }
 
 function readStoredEnergyMode(): EnergyMode {
@@ -94,6 +114,66 @@ function useWidgetTaskComposerDraft(
   )
 }
 
+function useTodayHabitRoutine(todayKey: string) {
+  const habitsTodayQuery = useHabitsToday(todayKey)
+  const upsertHabitEntry = useUpsertHabitEntry()
+  const removeHabitEntry = useRemoveHabitEntry()
+  const habitItems = useMemo(
+    () => habitsTodayQuery.data?.items ?? [],
+    [habitsTodayQuery.data?.items],
+  )
+  const activeHabitItems = useMemo(
+    () =>
+      habitItems.filter(
+        (item) =>
+          item.entry?.status !== 'skipped' &&
+          !isHabitEntryComplete(item.habit, item.entry),
+      ),
+    [habitItems],
+  )
+  const completedHabitItems = useMemo(
+    () =>
+      habitItems.filter((item) => isHabitEntryComplete(item.habit, item.entry)),
+    [habitItems],
+  )
+  const isHabitPending =
+    upsertHabitEntry.isPending || removeHabitEntry.isPending
+  const completeHabit = useCallback(
+    (item: HabitTodayListItem) => {
+      upsertHabitEntry.mutate({
+        date: todayKey,
+        habitId: item.habit.id,
+        input: {
+          date: todayKey,
+          expectedVersion: item.entry?.version,
+          note: item.entry?.note ?? '',
+          status: 'done',
+          value: getNextHabitEntryProgressValue(item.habit, item.entry),
+        },
+      })
+    },
+    [todayKey, upsertHabitEntry],
+  )
+  const undoHabit = useCallback(
+    (item: HabitTodayListItem) => {
+      removeHabitEntry.mutate({
+        date: todayKey,
+        habitId: item.habit.id,
+        input: item.entry ? { expectedVersion: item.entry.version } : {},
+      })
+    },
+    [removeHabitEntry, todayKey],
+  )
+
+  return {
+    activeHabitItems,
+    completedHabitItems,
+    completeHabit,
+    isHabitPending,
+    undoHabit,
+  }
+}
+
 export function TodayPage() {
   const { data: session } = usePlannerSession()
 
@@ -118,6 +198,7 @@ function PersonalTodayPage() {
   const [energyMode, setEnergyMode] = useState<EnergyMode>(readStoredEnergyMode)
   const todayKey = getDateKey(new Date())
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
+  const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   useEffect(() => {
     window.localStorage.setItem(ENERGY_MODE_STORAGE_KEY, energyMode)
@@ -169,6 +250,29 @@ function PersonalTodayPage() {
     () => [...todayTasks, ...doneTodayTasks],
     [doneTodayTasks, todayTasks],
   )
+  const routineHabitCards = todayHabitRoutine.activeHabitItems.map((item) => (
+    <HabitRoutineTaskCard
+      key={item.habit.id}
+      item={item}
+      isPending={todayHabitRoutine.isHabitPending}
+      uploadedIcons={uploadedIcons}
+      onComplete={todayHabitRoutine.completeHabit}
+      onUndo={todayHabitRoutine.undoHabit}
+    />
+  ))
+  const completedHabitCards = todayHabitRoutine.completedHabitItems.map(
+    (item) => (
+      <HabitRoutineTaskCard
+        key={item.habit.id}
+        item={item}
+        isPending={todayHabitRoutine.isHabitPending}
+        tone="success"
+        uploadedIcons={uploadedIcons}
+        onComplete={todayHabitRoutine.completeHabit}
+        onUndo={todayHabitRoutine.undoHabit}
+      />
+    ),
+  )
 
   function buildTaskSection(
     key: string,
@@ -178,6 +282,12 @@ function PersonalTodayPage() {
     options: TaskSectionOptions = {},
   ): ReactElement | null {
     if (sectionTasks.length === 0) {
+      if ((options.extraItemCount ?? 0) === 0) {
+        return null
+      }
+    }
+
+    if (sectionTasks.length === 0 && !options.extraItems) {
       return null
     }
 
@@ -191,6 +301,8 @@ function PersonalTodayPage() {
         emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
         defaultCollapsed={options.defaultCollapsed}
+        extraItemCount={options.extraItemCount}
+        extraItems={options.extraItems}
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
@@ -244,6 +356,10 @@ function PersonalTodayPage() {
               'Рутина',
               routineTasks,
               'Рутинных задач на сегодня пока нет.',
+              {
+                extraItemCount: todayHabitRoutine.activeHabitItems.length,
+                extraItems: routineHabitCards,
+              },
             ),
           ])}
 
@@ -277,7 +393,12 @@ function PersonalTodayPage() {
             'Выполнено сегодня',
             doneTodayTasks,
             'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
-            { defaultCollapsed: true, tone: 'success' },
+            {
+              defaultCollapsed: true,
+              extraItemCount: todayHabitRoutine.completedHabitItems.length,
+              extraItems: completedHabitCards,
+              tone: 'success',
+            },
           )}
 
           {buildTaskSection(
@@ -309,10 +430,19 @@ function SharedTodayPage() {
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const todayKey = getDateKey(new Date())
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
+  const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const todayTasks = useMemo(
     () => selectTodayTasks(tasks, todayKey),
     [tasks, todayKey],
+  )
+  const routineTasks = useMemo(
+    () => todayTasks.filter((task) => isRoutineTask(task)),
+    [todayTasks],
+  )
+  const mainTodayTasks = useMemo(
+    () => todayTasks.filter((task) => !isRoutineTask(task)),
+    [todayTasks],
   )
   const overdueTasks = useMemo(
     () => selectOverdueTasks(tasks, todayKey),
@@ -333,15 +463,39 @@ function SharedTodayPage() {
   const visibleTaskIds = useMemo(
     () =>
       new Set([
-        ...todayTasks.map((task) => task.id),
+        ...mainTodayTasks.map((task) => task.id),
+        ...routineTasks.map((task) => task.id),
         ...overdueTasks.map((task) => task.id),
         ...tomorrowTasks.map((task) => task.id),
       ]),
-    [overdueTasks, todayTasks, tomorrowTasks],
+    [mainTodayTasks, overdueTasks, routineTasks, tomorrowTasks],
   )
   const otherTasks = useMemo(
     () => selectTodoTasks(tasks).filter((task) => !visibleTaskIds.has(task.id)),
     [tasks, visibleTaskIds],
+  )
+  const routineHabitCards = todayHabitRoutine.activeHabitItems.map((item) => (
+    <HabitRoutineTaskCard
+      key={item.habit.id}
+      item={item}
+      isPending={todayHabitRoutine.isHabitPending}
+      uploadedIcons={uploadedIcons}
+      onComplete={todayHabitRoutine.completeHabit}
+      onUndo={todayHabitRoutine.undoHabit}
+    />
+  ))
+  const completedHabitCards = todayHabitRoutine.completedHabitItems.map(
+    (item) => (
+      <HabitRoutineTaskCard
+        key={item.habit.id}
+        item={item}
+        isPending={todayHabitRoutine.isHabitPending}
+        tone="success"
+        uploadedIcons={uploadedIcons}
+        onComplete={todayHabitRoutine.completeHabit}
+        onUndo={todayHabitRoutine.undoHabit}
+      />
+    ),
   )
 
   function buildTaskSection(
@@ -352,6 +506,12 @@ function SharedTodayPage() {
     options: TaskSectionOptions = {},
   ): ReactElement | null {
     if (sectionTasks.length === 0) {
+      if ((options.extraItemCount ?? 0) === 0) {
+        return null
+      }
+    }
+
+    if (sectionTasks.length === 0 && !options.extraItems) {
       return null
     }
 
@@ -370,6 +530,8 @@ function SharedTodayPage() {
         emptyMessage={emptyMessage}
         isTaskPending={isTaskPending}
         defaultCollapsed={options.defaultCollapsed}
+        extraItemCount={options.extraItemCount}
+        extraItems={options.extraItems}
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
@@ -401,12 +563,24 @@ function SharedTodayPage() {
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
-          {buildTaskSection(
-            'today',
-            'Сегодня',
-            todayTasks,
-            'В общем workspace на сегодня пока нет задач.',
-          )}
+          {renderTaskSectionGroup([
+            buildTaskSection(
+              'today',
+              'Сегодня',
+              mainTodayTasks,
+              'В общем workspace на сегодня пока нет задач.',
+            ),
+            buildTaskSection(
+              'routine',
+              'Рутина',
+              routineTasks,
+              'Рутинных задач на сегодня пока нет.',
+              {
+                extraItemCount: todayHabitRoutine.activeHabitItems.length,
+                extraItems: routineHabitCards,
+              },
+            ),
+          ])}
 
           {buildTaskSection(
             'overdue',
@@ -438,7 +612,12 @@ function SharedTodayPage() {
             'Выполнено сегодня',
             doneTodayTasks,
             'Закрытые сегодня задачи общего workspace появятся здесь.',
-            { defaultCollapsed: true, tone: 'success' },
+            {
+              defaultCollapsed: true,
+              extraItemCount: todayHabitRoutine.completedHabitItems.length,
+              extraItems: completedHabitCards,
+              tone: 'success',
+            },
           )}
 
           {buildTaskSection(

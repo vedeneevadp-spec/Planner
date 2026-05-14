@@ -1,7 +1,7 @@
 import { clampTaskResource } from './resource'
 import type { NewTaskInput, Task } from './task.types'
 
-export type TaskTypeValue = '' | 'important' | 'routine'
+export type TaskTypeValue = '' | 'important' | 'routine' | 'habit'
 export type ResourceValue =
   | ''
   | '-1'
@@ -15,10 +15,10 @@ export type ResourceValue =
 
 export function getTaskTypeValue(
   value:
-    | Pick<Task, 'importance' | 'urgency'>
-    | Pick<NewTaskInput, 'importance' | 'urgency'>,
+    | Pick<Task, 'importance' | 'routine' | 'urgency'>
+    | Pick<NewTaskInput, 'importance' | 'routine' | 'urgency'>,
 ): TaskTypeValue {
-  if (value.urgency === 'urgent') {
+  if (value.routine) {
     return 'routine'
   }
 

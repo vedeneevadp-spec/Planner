@@ -70,6 +70,7 @@ const mocks = vi.hoisted(() => ({
   useCreateSharedWorkspace: vi.fn<() => MutationStub>(),
   useDeleteSharedWorkspace: vi.fn<() => MutationStub>(),
   useCleaningSummary: vi.fn<() => { dueCount: number; urgentCount: number }>(),
+  useHabitsToday: vi.fn<() => { data: { items: unknown[] } }>(),
   usePlanner: vi.fn<() => PlannerStub>(),
   usePlannerSession: vi.fn<() => { data: SidebarSessionStub }>(),
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
@@ -83,6 +84,10 @@ vi.mock('@/features/planner', () => ({
 
 vi.mock('@/features/cleaning', () => ({
   useCleaningSummary: () => mocks.useCleaningSummary(),
+}))
+
+vi.mock('@/features/habits', () => ({
+  useHabitsToday: () => mocks.useHabitsToday(),
 }))
 
 vi.mock('@/features/shopping-list', () => ({
@@ -172,6 +177,11 @@ function renderSidebar(
   mocks.useCleaningSummary.mockReturnValue({
     dueCount: 0,
     urgentCount: 0,
+  })
+  mocks.useHabitsToday.mockReturnValue({
+    data: {
+      items: [],
+    },
   })
   mocks.usePlannerSession.mockReturnValue({
     data: session,

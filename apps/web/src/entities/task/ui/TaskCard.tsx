@@ -41,6 +41,12 @@ import {
   getTaskUrgencyFromType,
   type TaskTypeValue,
 } from '../model/task-meta'
+import {
+  buildTaskRecurrenceFromForm,
+  createTaskRecurrenceFormFromRecurrence,
+  getTaskRecurrenceLabel,
+  type TaskRecurrenceFormState,
+} from '../model/task-recurrence'
 import { RoutineTaskFields } from './RoutineTaskFields'
 import styles from './TaskCard.module.css'
 import {
@@ -48,6 +54,7 @@ import {
   TaskResourceMeter,
   TaskTypePicker,
 } from './TaskMetaPickers'
+import { TaskRecurrenceFields } from './TaskRecurrenceFields'
 
 const LEGACY_EMPTY_PROJECT_TITLES = new Set([
   'Без сферы',
@@ -491,6 +498,11 @@ export function TaskCard({
               {getRoutineTaskTargetLabel(task.routine)}
             </span>
           ) : null}
+          {task.recurrence && taskType !== 'routine' ? (
+            <span className={styles.metaChip}>
+              Повтор: {getTaskRecurrenceLabel(task.recurrence)}
+            </span>
+          ) : null}
           {taskResource !== 0 ? (
             <span className={cx(styles.metaChip, styles.resourceChip)}>
               <TaskResourceMeter
@@ -619,11 +631,15 @@ export function TaskEditDialog({
   const [routineForm, setRoutineForm] = useState<RoutineTaskFormState>(() =>
     createRoutineTaskFormFromRoutine(task.routine),
   )
+  const [recurrenceForm, setRecurrenceForm] = useState<TaskRecurrenceFormState>(
+    () => createTaskRecurrenceFormFromRecurrence(task.recurrence),
+  )
   const [note, setNote] = useState(task.note)
   const canManageConfirmation =
     task.authorUserId !== null && task.authorUserId === currentActorUserId
   const isReminderAvailable =
     !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
+  const canEditRecurrence = taskType !== 'routine' && taskType !== 'habit'
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -658,6 +674,18 @@ export function TaskEditDialog({
     if (nextTaskType === 'routine' && !plannedDate) {
       setPlannedDate(todayKey)
     }
+
+    if (nextTaskType === 'routine' || nextTaskType === 'habit') {
+      setRecurrenceForm(createTaskRecurrenceFormFromRecurrence(null))
+    }
+  }
+
+  function handleRecurrenceChange(nextForm: TaskRecurrenceFormState) {
+    setRecurrenceForm(nextForm)
+
+    if (nextForm.isEnabled && !plannedDate) {
+      setPlannedDate(todayKey)
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -675,19 +703,30 @@ export function TaskEditDialog({
       project: selectedProject?.title ?? '',
       projectId: selectedProject?.id ?? null,
     }
-    const hasPlannedDate = Boolean(plannedDate)
+    const resolvedPlannedDate =
+      canEditRecurrence && recurrenceForm.isEnabled && !plannedDate
+        ? todayKey
+        : plannedDate
+    const hasPlannedDate = Boolean(resolvedPlannedDate)
     const isUpdated = await onUpdate(task.id, {
       assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
       dueDate: task.dueDate ?? null,
       icon,
       importance: getTaskImportanceFromType(taskType),
       note,
-      plannedDate: plannedDate || null,
+      plannedDate: resolvedPlannedDate || null,
       plannedEndTime:
         hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
       plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
       project: projectInput.project,
       projectId: projectInput.projectId,
+      recurrence: canEditRecurrence
+        ? buildTaskRecurrenceFromForm(
+            recurrenceForm,
+            resolvedPlannedDate || todayKey,
+            task.recurrence?.seriesId,
+          )
+        : null,
       remindBeforeStart: isSharedWorkspace ? false : remindBeforeStart,
       reminderTimeZone:
         !isSharedWorkspace && remindBeforeStart
@@ -826,14 +865,13 @@ export function TaskEditDialog({
               />
             </section>
 
-            {!isSharedWorkspace ? (
+            {isReminderAvailable ? (
               <section className={styles.editorSection}>
                 <div className={styles.checkboxField}>
                   <input
                     id={reminderFieldId}
                     type="checkbox"
                     checked={remindBeforeStart}
-                    disabled={!isReminderAvailable}
                     onChange={(event) =>
                       setRemindBeforeStart(event.target.checked)
                     }
@@ -845,7 +883,6 @@ export function TaskEditDialog({
                     >
                       Напомнить за 15 минут
                     </label>
-                    <small>Доступно, когда у задачи указан старт.</small>
                   </span>
                 </div>
               </section>
@@ -899,6 +936,7 @@ export function TaskEditDialog({
             <section className={styles.editorSection}>
               <TaskTypePicker
                 className={styles.fieldType}
+                includeHabit={false}
                 value={taskType}
                 onChange={handleTaskTypeChange}
               />
@@ -907,8 +945,18 @@ export function TaskEditDialog({
             {taskType === 'routine' ? (
               <section className={styles.editorSection}>
                 <RoutineTaskFields
+                  showTargetFields={false}
                   value={routineForm}
                   onChange={setRoutineForm}
+                />
+              </section>
+            ) : null}
+
+            {canEditRecurrence ? (
+              <section className={styles.editorSection}>
+                <TaskRecurrenceFields
+                  value={recurrenceForm}
+                  onChange={handleRecurrenceChange}
                 />
               </section>
             ) : null}

@@ -15,6 +15,8 @@ const IMPORTANT_ICON_SRC =
   'https://chaotika.ru/api/v1/icon-assets/019db853-b277-7b05-a00f-36487fbb5cdb.webp'
 const ROUTINE_ICON_SRC =
   'https://chaotika.ru/api/v1/icon-assets/019db853-b277-7e73-8b26-6bc63220c18b.webp'
+const HABIT_ICON_SRC =
+  'https://chaotika.ru/api/v1/icon-assets/019e1f42-061d-78e6-9b6d-4de317e02cff.png'
 const RESOURCE_COLORS: Record<TaskResourceLevel, string> = {
   1: '#2f9e44',
   2: '#6da83f',
@@ -39,6 +41,11 @@ const TASK_TYPE_OPTIONS: TaskTypeOption[] = [
     imageSrc: ROUTINE_ICON_SRC,
     label: 'Рутина',
     value: 'routine',
+  },
+  {
+    imageSrc: HABIT_ICON_SRC,
+    label: 'Привычка',
+    value: 'habit',
   },
 ]
 
@@ -132,11 +139,18 @@ interface PickerProps<Value extends string> {
 
 export function TaskTypePicker({
   className,
+  includeHabit = true,
   label = 'Тип',
   value,
   onChange,
-}: Omit<PickerProps<TaskTypeValue>, 'label'> & { label?: string }) {
+}: Omit<PickerProps<TaskTypeValue>, 'label'> & {
+  includeHabit?: boolean | undefined
+  label?: string
+}) {
   const labelId = useId()
+  const options = includeHabit
+    ? TASK_TYPE_OPTIONS
+    : TASK_TYPE_OPTIONS.filter((option) => option.value !== 'habit')
 
   return (
     <div className={cx(styles.picker, className)}>
@@ -149,7 +163,7 @@ export function TaskTypePicker({
         role="group"
         aria-labelledby={labelId}
       >
-        {TASK_TYPE_OPTIONS.map((option) => {
+        {options.map((option) => {
           const isActive = option.value === value
 
           return (

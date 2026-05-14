@@ -1,7 +1,7 @@
 import type { HabitFrequency, HabitTargetType } from '@planner/contracts'
 import { generateUuidV7 } from '@planner/contracts'
 
-import type { RoutineTask, Task } from './task.types'
+import type { RoutineTask } from './task.types'
 
 export const ROUTINE_TASK_DEFAULT_DAYS = [1, 2, 3, 4, 5, 6, 7]
 export const ROUTINE_TASK_WEEKDAYS = [1, 2, 3, 4, 5]
@@ -110,10 +110,4 @@ export function getRoutineTaskTargetLabel(
   }
 
   return `${routine.targetValue}${routine.unit ? ` ${routine.unit}` : ''}`
-}
-
-export function isRoutineHabitTask(
-  task: Pick<Task, 'routine' | 'urgency'>,
-): boolean {
-  return task.urgency === 'urgent' && Boolean(task.routine)
 }

@@ -4,6 +4,8 @@ export type {
   RoutineTaskInput,
   Task,
   TaskImportance,
+  TaskRecurrence,
+  TaskRecurrenceInput,
   TaskResource,
   TaskStatus,
   TaskUpdateInput,

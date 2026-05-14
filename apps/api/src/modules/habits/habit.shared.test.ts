@@ -67,10 +67,37 @@ void test('buildHabitStats does not break streak before today is missed', () => 
   assert.equal(stats.missedCount, 0)
 })
 
+void test('buildHabitStats does not count partial progress as completed', () => {
+  const countHabit: HabitRecord = {
+    ...BASE_HABIT,
+    targetType: 'count',
+    targetValue: 3,
+    unit: 'стакана',
+  }
+  const stats = buildHabitStats(
+    countHabit,
+    [
+      entry('entry-1', '2026-05-05', 'done', 2),
+      entry('entry-2', '2026-05-06', 'done', 3),
+    ],
+    {
+      from: '2026-05-05',
+      to: '2026-05-07',
+    },
+  )
+
+  assert.equal(stats.completedCount, 1)
+  assert.equal(stats.currentStreak, 1)
+  assert.equal(stats.weekCompleted, 1)
+  assert.equal(stats.monthCompleted, 1)
+  assert.equal(stats.missedCount, 1)
+})
+
 function entry(
   id: string,
   date: string,
   status: HabitEntryRecord['status'],
+  value = status === 'done' ? 1 : 0,
 ): HabitEntryRecord {
   return {
     createdAt: '2026-05-01T00:00:00.000Z',
@@ -82,7 +109,7 @@ function entry(
     status,
     updatedAt: '2026-05-01T00:00:00.000Z',
     userId: BASE_HABIT.userId,
-    value: status === 'done' ? 1 : 0,
+    value,
     version: 1,
     workspaceId: BASE_HABIT.workspaceId,
   }

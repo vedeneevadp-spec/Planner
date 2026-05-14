@@ -1,6 +1,7 @@
 import type {
   NewTaskInput,
   RoutineTask,
+  TaskRecurrence,
   TaskScheduleInput,
   TaskStatus,
   TaskUpdateInput,
@@ -17,6 +18,7 @@ export interface NormalizedTaskInput extends NewTaskInput {
   note: string
   project: string
   projectId: string | null
+  recurrence: TaskRecurrence | null
   remindBeforeStart: boolean
   reminderTimeZone: string | undefined
   resource: NewTaskInput['resource']
@@ -64,6 +66,8 @@ export function normalizeTaskSchedule({
 }
 
 export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
+  const schedule = normalizeTaskSchedule(input)
+
   return {
     ...input,
     icon: (input.icon ?? '').trim(),
@@ -71,6 +75,7 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
+    recurrence: normalizeTaskRecurrence(input.recurrence, schedule.plannedDate),
     remindBeforeStart: input.remindBeforeStart === true,
     reminderTimeZone: input.reminderTimeZone?.trim() || undefined,
     resource: input.resource,
@@ -107,6 +112,31 @@ function normalizeRoutineDaysOfWeek(daysOfWeek: number[]): number[] {
   return normalized.length > 0
     ? normalized.sort((left, right) => left - right)
     : [1, 2, 3, 4, 5, 6, 7]
+}
+
+function normalizeTaskRecurrence(
+  recurrence: NewTaskInput['recurrence'],
+  plannedDate: string | null,
+): TaskRecurrence | null {
+  if (!recurrence) {
+    return null
+  }
+
+  const startDate =
+    recurrence.startDate ?? plannedDate ?? getDateKey(new Date())
+  const frequency = recurrence.frequency ?? 'daily'
+  const daysOfWeek =
+    recurrence.daysOfWeek ??
+    (frequency === 'daily' ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5])
+
+  return {
+    daysOfWeek: normalizeRoutineDaysOfWeek(daysOfWeek),
+    endDate: recurrence.endDate ?? null,
+    frequency,
+    isActive: recurrence.isActive !== false,
+    seriesId: recurrence.seriesId ?? generateUuidV7(),
+    startDate,
+  }
 }
 
 function compareNullableTime(
@@ -211,6 +241,7 @@ export function createStoredTaskRecord(
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
+    recurrence: normalizedInput.recurrence,
     remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
@@ -285,6 +316,7 @@ export function applyTaskUpdate(
     plannedStartTime: schedule.plannedStartTime,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
+    recurrence: normalizedInput.recurrence,
     remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
@@ -371,6 +403,10 @@ export function buildTimestampFromDateAndTime(
   time: string,
 ): string {
   return `${date}T${time}:00.000Z`
+}
+
+function getDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10)
 }
 
 export function extractTimeFromTimestamp(timestamp: string): string {

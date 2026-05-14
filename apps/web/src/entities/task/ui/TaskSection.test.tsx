@@ -149,6 +149,17 @@ describe('TaskSection', () => {
     expect(screen.getByText('1')).toBeInTheDocument()
   })
 
+  it('counts and renders extra section items', () => {
+    renderTaskSection({
+      extraItemCount: 1,
+      extraItems: <article data-testid="extra-item">Привычка</article>,
+    })
+
+    expect(screen.getByText('1')).toBeInTheDocument()
+    expect(screen.getByTestId('extra-item')).toHaveTextContent('Привычка')
+    expect(screen.queryByText('Задач нет')).not.toBeInTheDocument()
+  })
+
   it('keeps only one task action menu marked as open', () => {
     renderTaskSection({
       tasks: [

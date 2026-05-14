@@ -1,4 +1,4 @@
-import { routineTaskSchema } from '@planner/contracts'
+import { routineTaskSchema, taskRecurrenceSchema } from '@planner/contracts'
 
 import type { JsonObject } from '../../infrastructure/db/schema.js'
 import type { StoredTaskEventRecord, StoredTaskRecord } from './task.model.js'
@@ -8,6 +8,7 @@ import {
   LEGACY_PROJECT_NAME_KEY,
   TASK_ICON_KEY,
   TASK_IMPORTANCE_KEY,
+  TASK_RECURRENCE_KEY,
   TASK_REMIND_BEFORE_START_KEY,
   TASK_REQUIRES_CONFIRMATION_KEY,
   TASK_ROUTINE_KEY,
@@ -48,6 +49,7 @@ export function mapTaskRecord(
       : null,
     project: projectTitle ?? readLegacyProjectName(task.metadata),
     projectId: task.project_id,
+    recurrence: readTaskRecurrence(task.metadata),
     remindBeforeStart: readTaskRemindBeforeStart(task.metadata),
     resource: task.resource,
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
@@ -85,6 +87,7 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
       : null,
     project: task.project_title ?? readLegacyProjectName(task.metadata),
     projectId: task.project_id,
+    recurrence: readTaskRecurrence(task.metadata),
     remindBeforeStart: readTaskRemindBeforeStart(task.metadata),
     resource: task.resource,
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
@@ -105,6 +108,7 @@ export function buildTaskMetadata(
     StoredTaskRecord,
     | 'icon'
     | 'importance'
+    | 'recurrence'
     | 'remindBeforeStart'
     | 'requiresConfirmation'
     | 'routine'
@@ -131,6 +135,10 @@ export function buildTaskMetadata(
 
   if (input.requiresConfirmation) {
     metadata[TASK_REQUIRES_CONFIRMATION_KEY] = true
+  }
+
+  if (input.recurrence) {
+    metadata[TASK_RECURRENCE_KEY] = input.recurrence
   }
 
   if (input.routine) {
@@ -185,6 +193,15 @@ function readTaskRemindBeforeStart(metadata: JsonObject): true | undefined {
 
 function readTaskRequiresConfirmation(metadata: JsonObject): boolean {
   return metadata[TASK_REQUIRES_CONFIRMATION_KEY] === true
+}
+
+function readTaskRecurrence(
+  metadata: JsonObject,
+): StoredTaskRecord['recurrence'] | null {
+  const value = metadata[TASK_RECURRENCE_KEY]
+  const parsed = taskRecurrenceSchema.safeParse(value)
+
+  return parsed.success ? parsed.data : null
 }
 
 function readTaskRoutine(
