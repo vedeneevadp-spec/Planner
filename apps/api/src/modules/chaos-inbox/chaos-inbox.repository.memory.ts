@@ -183,9 +183,7 @@ function applyUpdate(
     ...item,
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
-    ...(patch.isFavorite !== undefined
-      ? { isFavorite: patch.isFavorite }
-      : {}),
+    ...(patch.isFavorite !== undefined ? { isFavorite: patch.isFavorite } : {}),
     ...(patch.shoppingCategory !== undefined
       ? { shoppingCategory: patch.shoppingCategory }
       : {}),

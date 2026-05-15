@@ -437,9 +437,7 @@ export function ShoppingPage() {
             <p className={styles.emptyCopy}>Загружаем список...</p>
           ) : filteredActiveItems.length === 0 ? (
             <p className={styles.emptyCopy}>
-              {activeItems.length === 0
-                ? 'Список пуст.'
-                : 'По фильтру пусто.'}
+              {activeItems.length === 0 ? 'Список пуст.' : 'По фильтру пусто.'}
             </p>
           ) : (
             <div className={styles.itemList}>
@@ -480,9 +478,7 @@ function filterShoppingItems(
 }
 
 function hasActiveShoppingFilters(filters: ShoppingFilters): boolean {
-  return (
-    filters.categories.length > 0 || filters.isFavorite || filters.isUrgent
-  )
+  return filters.categories.length > 0 || filters.isFavorite || filters.isUrgent
 }
 
 function getShoppingCategoryOption(

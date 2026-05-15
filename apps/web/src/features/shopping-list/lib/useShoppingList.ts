@@ -1,5 +1,4 @@
 import {
-  type ChaosInboxItemRecord,
   type ChaosInboxItemUpdateInput,
   generateUuidV7,
 } from '@planner/contracts'
@@ -33,13 +32,23 @@ import {
   type ShoppingListApiClientConfig,
   type ShoppingListItemCreateInput,
 } from './shopping-list-api'
+import {
+  type ShoppingListItem,
+  sortActiveShoppingListItems,
+  sortCompletedShoppingListItems,
+} from './shopping-list-sort'
 
 function shoppingListQueryKey(workspaceId: string) {
   return ['shopping-list', workspaceId] as const
 }
 
-export type ShoppingListItem = ChaosInboxItemRecord
 export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
+export {
+  isShoppingListItemCompleted,
+  type ShoppingListItem,
+  sortActiveShoppingListItems,
+  sortCompletedShoppingListItems,
+} from './shopping-list-sort'
 
 class ShoppingListApiUnavailableError extends Error {
   constructor() {
@@ -452,34 +461,6 @@ export function useShoppingListSummary() {
   }
 }
 
-export function isShoppingListItemCompleted(item: ShoppingListItem): boolean {
-  return item.status === 'archived'
-}
-
-export function sortActiveShoppingListItems(
-  items: ShoppingListItem[],
-): ShoppingListItem[] {
-  return [...items]
-    .filter((item) => !isShoppingListItemCompleted(item))
-    .sort((left, right) =>
-      left.createdAt === right.createdAt
-        ? left.text.localeCompare(right.text)
-        : left.createdAt.localeCompare(right.createdAt),
-    )
-}
-
-export function sortCompletedShoppingListItems(
-  items: ShoppingListItem[],
-): ShoppingListItem[] {
-  return [...items]
-    .filter((item) => isShoppingListItemCompleted(item))
-    .sort((left, right) =>
-      left.createdAt === right.createdAt
-        ? left.text.localeCompare(right.text)
-        : left.createdAt.localeCompare(right.createdAt),
-    )
-}
-
 function createShoppingListApiClientConfig(input: {
   accessToken: string | null
   actorUserId: string
@@ -544,9 +525,7 @@ function applyShoppingListItemPatch(
   return {
     ...item,
     ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
-    ...(patch.isFavorite !== undefined
-      ? { isFavorite: patch.isFavorite }
-      : {}),
+    ...(patch.isFavorite !== undefined ? { isFavorite: patch.isFavorite } : {}),
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
     ...(patch.shoppingCategory !== undefined
