@@ -243,6 +243,16 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/workspaces/shared/leave': {
+      post: createJsonOperation({
+        noContentDescription: 'Shared workspace left.',
+        operationId: 'leaveSharedWorkspace',
+        parameters: workspaceWriteParameters(),
+        security: authenticatedSecurity(),
+        summary: 'Leave the current shared workspace',
+        tags: ['session'],
+      }),
+    },
     '/api/v1/admin/users': {
       get: {
         operationId: 'listAdminUsers',
@@ -399,6 +409,19 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/workspace-invitations/me': {
+      get: createJsonOperation({
+        operationId: 'listReceivedWorkspaceInvitations',
+        parameters: [
+          parameter('optionalWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responseSchema: 'ReceivedWorkspaceInvitationListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List workspace invitations for the current actor',
+        tags: ['session'],
+      }),
+    },
     '/api/v1/workspace-invitations/{invitationId}': {
       delete: {
         operationId: 'revokeWorkspaceInvitation',
@@ -420,6 +443,34 @@ function createPaths(): OpenAPIV3.PathsObject {
         summary: 'Revoke a pending workspace invitation',
         tags: ['session'],
       },
+    },
+    '/api/v1/workspace-invitations/{invitationId}/accept': {
+      post: createJsonOperation({
+        noContentDescription: 'Invitation accepted.',
+        operationId: 'acceptWorkspaceInvitation',
+        parameters: [
+          invitationIdParameter(),
+          parameter('optionalWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        security: authenticatedSecurity(),
+        summary: 'Accept a workspace invitation',
+        tags: ['session'],
+      }),
+    },
+    '/api/v1/workspace-invitations/{invitationId}/decline': {
+      post: createJsonOperation({
+        noContentDescription: 'Invitation declined.',
+        operationId: 'declineWorkspaceInvitation',
+        parameters: [
+          invitationIdParameter(),
+          parameter('optionalWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        security: authenticatedSecurity(),
+        summary: 'Decline a workspace invitation',
+        tags: ['session'],
+      }),
     },
     '/api/v1/emoji-sets': {
       get: {
@@ -2474,6 +2525,10 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
       required: ['invitations'],
       type: 'object',
     },
+    WorkspaceInvitationStatus: {
+      enum: ['accepted', 'declined', 'pending'],
+      type: 'string',
+    },
     WorkspaceInvitationRecord: {
       additionalProperties: false,
       properties: {
@@ -2490,12 +2545,70 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           format: 'date-time',
           type: 'string',
         },
+        status: {
+          $ref: '#/components/schemas/WorkspaceInvitationStatus',
+        },
         updatedAt: {
           format: 'date-time',
           type: 'string',
         },
       },
-      required: ['email', 'groupRole', 'id', 'invitedAt', 'updatedAt'],
+      required: [
+        'email',
+        'groupRole',
+        'id',
+        'invitedAt',
+        'status',
+        'updatedAt',
+      ],
+      type: 'object',
+    },
+    ReceivedWorkspaceInvitationListResponse: {
+      additionalProperties: false,
+      properties: {
+        invitations: {
+          items: {
+            $ref: '#/components/schemas/ReceivedWorkspaceInvitationRecord',
+          },
+          type: 'array',
+        },
+      },
+      required: ['invitations'],
+      type: 'object',
+    },
+    ReceivedWorkspaceInvitationRecord: {
+      additionalProperties: false,
+      properties: {
+        groupRole: {
+          $ref: '#/components/schemas/AssignableWorkspaceGroupRole',
+        },
+        id: {
+          type: 'string',
+        },
+        invitedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        status: {
+          enum: ['pending'],
+          type: 'string',
+        },
+        updatedAt: {
+          format: 'date-time',
+          type: 'string',
+        },
+        workspace: {
+          $ref: '#/components/schemas/SessionWorkspace',
+        },
+      },
+      required: [
+        'groupRole',
+        'id',
+        'invitedAt',
+        'status',
+        'updatedAt',
+        'workspace',
+      ],
       type: 'object',
     },
     WorkspaceInvitationCreateInput: {
