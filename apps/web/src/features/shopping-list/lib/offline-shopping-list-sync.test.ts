@@ -28,7 +28,10 @@ describe('offline shopping list sync', () => {
 
     await enqueueShoppingListOfflineMutation({
       actorUserId: ACTOR_USER_ID,
+      isFavorite: true,
       itemId: item.id,
+      priority: 'high',
+      shoppingCategory: 'groceries',
       text: item.text,
       type: 'shopping.create',
       workspaceId: WORKSPACE_ID,
@@ -46,6 +49,9 @@ describe('offline shopping list sync', () => {
     })
     expect(api.createItem).toHaveBeenCalledWith({
       id: item.id,
+      isFavorite: true,
+      priority: 'high',
+      shoppingCategory: 'groceries',
       text: item.text,
     })
     expect(await loadCachedShoppingListItems(WORKSPACE_ID)).toEqual([item])
@@ -136,9 +142,11 @@ function createShoppingListItemRecord(
     deletedAt: null,
     dueDate: null,
     id: itemId,
+    isFavorite: false,
     kind: 'shopping',
     linkedTaskDeleted: false,
     priority: null,
+    shoppingCategory: null,
     source: 'manual',
     sphereId: null,
     status: 'new',

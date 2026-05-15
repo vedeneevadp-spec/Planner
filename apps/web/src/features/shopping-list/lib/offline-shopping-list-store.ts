@@ -1,6 +1,8 @@
 import {
   type ChaosInboxItemRecord,
   type ChaosInboxItemUpdateInput,
+  type ChaosInboxPriority,
+  type ChaosInboxShoppingCategory,
   generateUuidV7,
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
@@ -29,6 +31,9 @@ interface ShoppingListOfflineMutationBase {
 
 export type ShoppingListOfflineMutationRecord =
   | (ShoppingListOfflineMutationBase & {
+      isFavorite?: boolean
+      priority?: ChaosInboxPriority | null
+      shoppingCategory?: ChaosInboxShoppingCategory | null
       text: string
       type: 'shopping.create'
     })
@@ -43,7 +48,10 @@ export type ShoppingListOfflineMutationRecord =
 export type ShoppingListOfflineMutationInput =
   | {
       actorUserId: string
+      isFavorite?: boolean
       itemId: string
+      priority?: ChaosInboxPriority | null
+      shoppingCategory?: ChaosInboxShoppingCategory | null
       text: string
       type: 'shopping.create'
       workspaceId: string

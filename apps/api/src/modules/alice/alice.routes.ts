@@ -296,7 +296,10 @@ async function createShoppingListItem(
     {
       items: [
         {
+          isFavorite: false,
           kind: 'shopping',
+          priority: null,
+          shoppingCategory: null,
           source: 'voice',
           text: draft.text,
         },

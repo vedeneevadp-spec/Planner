@@ -29,6 +29,11 @@ export const chaosInboxKindSchema = z.enum([
   'idea',
 ])
 export const chaosInboxPrioritySchema = z.enum(['low', 'medium', 'high'])
+export const chaosInboxShoppingCategorySchema = z.enum([
+  'groceries',
+  'household',
+  'other',
+])
 
 export const chaosInboxItemSchema = z.object({
   id: z.string(),
@@ -39,6 +44,11 @@ export const chaosInboxItemSchema = z.object({
   kind: chaosInboxKindSchema,
   sphereId: nullableStringWithDefault,
   priority: chaosInboxPrioritySchema.nullable().optional().default(null),
+  isFavorite: z.boolean().optional().default(false),
+  shoppingCategory: chaosInboxShoppingCategorySchema
+    .nullable()
+    .optional()
+    .default(null),
   dueDate: nullableStringWithDefault,
   convertedTaskId: nullableStringWithDefault,
   convertedNoteId: nullableStringWithDefault,
@@ -52,6 +62,12 @@ export const newChaosInboxItemInputSchema = z.object({
   kind: chaosInboxKindSchema.optional().default('unknown'),
   text: z.string().trim().min(1).max(5000),
   source: chaosInboxSourceSchema.optional().default('manual'),
+  priority: chaosInboxPrioritySchema.nullable().optional().default(null),
+  isFavorite: z.boolean().optional().default(false),
+  shoppingCategory: chaosInboxShoppingCategorySchema
+    .nullable()
+    .optional()
+    .default(null),
 })
 
 export const createChaosInboxItemsInputSchema = z.object({
@@ -63,6 +79,8 @@ export const chaosInboxItemUpdateInputSchema = z
     kind: chaosInboxKindSchema.optional(),
     sphereId: z.string().nullable().optional(),
     priority: chaosInboxPrioritySchema.nullable().optional(),
+    isFavorite: z.boolean().optional(),
+    shoppingCategory: chaosInboxShoppingCategorySchema.nullable().optional(),
     dueDate: z.string().nullable().optional(),
     status: chaosInboxStatusSchema.optional(),
   })
@@ -71,6 +89,8 @@ export const chaosInboxItemUpdateInputSchema = z
       value.kind !== undefined ||
       value.sphereId !== undefined ||
       value.priority !== undefined ||
+      value.isFavorite !== undefined ||
+      value.shoppingCategory !== undefined ||
       value.dueDate !== undefined ||
       value.status !== undefined,
     'At least one chaos inbox field must be provided.',
@@ -109,6 +129,9 @@ export type ChaosInboxSource = z.infer<typeof chaosInboxSourceSchema>
 export type ChaosInboxStatus = z.infer<typeof chaosInboxStatusSchema>
 export type ChaosInboxKind = z.infer<typeof chaosInboxKindSchema>
 export type ChaosInboxPriority = z.infer<typeof chaosInboxPrioritySchema>
+export type ChaosInboxShoppingCategory = z.infer<
+  typeof chaosInboxShoppingCategorySchema
+>
 export type ChaosInboxItem = z.infer<typeof chaosInboxItemSchema>
 export type NewChaosInboxItemInput = z.infer<
   typeof newChaosInboxItemInputSchema

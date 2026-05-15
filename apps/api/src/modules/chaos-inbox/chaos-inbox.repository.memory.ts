@@ -183,6 +183,12 @@ function applyUpdate(
     ...item,
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+    ...(patch.isFavorite !== undefined
+      ? { isFavorite: patch.isFavorite }
+      : {}),
+    ...(patch.shoppingCategory !== undefined
+      ? { shoppingCategory: patch.shoppingCategory }
+      : {}),
     ...(patch.sphereId !== undefined ? { sphereId: patch.sphereId } : {}),
     ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
     ...(patch.status !== undefined ? { status: patch.status } : {}),

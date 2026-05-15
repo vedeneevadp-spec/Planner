@@ -95,6 +95,9 @@ async function applyOfflineMutation(
   if (mutation.type === 'shopping.create') {
     const item = await api.createItem({
       id: mutation.itemId,
+      isFavorite: mutation.isFavorite ?? false,
+      priority: mutation.priority ?? null,
+      shoppingCategory: mutation.shoppingCategory ?? null,
       text: mutation.text,
     })
 

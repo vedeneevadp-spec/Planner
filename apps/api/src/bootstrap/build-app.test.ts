@@ -3040,7 +3040,10 @@ void describe('buildApiApp', () => {
       payload: {
         items: [
           {
+            isFavorite: true,
             kind: 'shopping',
+            priority: 'high',
+            shoppingCategory: 'groceries',
             text: 'Milk',
           },
         ],
@@ -3053,6 +3056,9 @@ void describe('buildApiApp', () => {
     const createdItem = chaosInboxCreatedRecordResponseSchema.parse(
       createResponse.json(),
     ).items[0]!
+    assert.equal(createdItem.isFavorite, true)
+    assert.equal(createdItem.priority, 'high')
+    assert.equal(createdItem.shoppingCategory, 'groceries')
 
     const listResponse = await app.inject({
       headers: {
@@ -3077,12 +3083,17 @@ void describe('buildApiApp', () => {
       },
       method: 'PATCH',
       payload: {
+        isFavorite: false,
+        shoppingCategory: 'household',
         status: 'archived',
       },
       url: `/api/v1/chaos-inbox/${createdItem.id}`,
     })
 
     assert.equal(updateResponse.statusCode, 200)
+    const updatedItem = chaosInboxItemRecordSchema.parse(updateResponse.json())
+    assert.equal(updatedItem.isFavorite, false)
+    assert.equal(updatedItem.shoppingCategory, 'household')
     assert.equal(
       chaosInboxItemRecordSchema.parse(updateResponse.json()).status,
       'archived',

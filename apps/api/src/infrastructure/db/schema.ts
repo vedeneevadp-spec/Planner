@@ -39,8 +39,10 @@ export interface AppChaosInboxItemsTable {
   deleted_at: TimestampColumn | null
   due_on: DateColumn | null
   id: Generated<string>
+  is_favorite: boolean
   kind: 'unknown' | 'task' | 'note' | 'shopping' | 'event' | 'idea'
   priority: 'low' | 'medium' | 'high' | null
+  shopping_category: 'groceries' | 'household' | 'other' | null
   source: 'manual' | 'quick_add' | 'widget' | 'voice'
   sphere_id: string | null
   status: 'new' | 'in_review' | 'converted' | 'archived'

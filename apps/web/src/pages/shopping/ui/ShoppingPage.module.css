@@ -14,20 +14,72 @@
 .composer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'field add'
+    'controls controls';
   gap: 0.5rem;
+}
+
+.composerField {
+  grid-area: field;
+  position: relative;
 }
 
 .composerField input {
   width: 100%;
   min-height: 2.75rem;
-  padding: 0.68rem 0.85rem;
+  padding: 0.68rem 5.6rem 0.68rem 0.85rem;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: rgba(255, 251, 243, 0.82);
   color: var(--text);
 }
 
+.inputCategoryControls {
+  position: absolute;
+  top: 50%;
+  right: 0.42rem;
+  display: flex;
+  gap: 0.25rem;
+  transform: translateY(-50%);
+}
+
+.inputCategoryButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid rgba(37, 45, 37, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 251, 243, 0.96);
+  box-shadow:
+    0 1px 2px rgba(23, 35, 28, 0.08),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.56);
+}
+
+.inputCategoryButton img {
+  width: 1.24rem;
+  height: 1.24rem;
+  object-fit: contain;
+  opacity: 0.82;
+}
+
+.inputCategoryButtonActive {
+  border-color: rgba(33, 78, 66, 0.38);
+  background: rgba(218, 235, 225, 0.78);
+  box-shadow:
+    0 0 0 1px rgba(33, 78, 66, 0.12),
+    0 6px 14px rgba(33, 78, 66, 0.12);
+}
+
+.inputCategoryButtonActive img {
+  opacity: 1;
+}
+
 .addButton {
+  grid-area: add;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -40,7 +92,108 @@
   color: #f7f2e8;
 }
 
-.addButton:disabled {
+.composerControls {
+  grid-area: controls;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.categorySelector {
+  flex: 1 1 19rem;
+  min-width: min(100%, 19rem);
+  max-width: 34rem;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.controlLegend {
+  margin: 0 0 0.28rem;
+  padding: 0;
+  font-size: 0.78rem;
+  line-height: 1.1;
+  color: var(--text-soft);
+}
+
+.filterOptions {
+  display: grid;
+  grid-template-columns: 0.74fr repeat(3, minmax(0, 1fr)) auto auto;
+  gap: 0.22rem;
+}
+
+.filterOption,
+.filterIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 2.12rem;
+  gap: 0.3rem;
+  padding: 0.34rem 0.32rem;
+  border: 1px solid rgba(37, 45, 37, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 251, 243, 0.72);
+  color: var(--text-soft);
+  font-size: 0.82rem;
+  line-height: 1.1;
+}
+
+.filterCategoryOption {
+  gap: 0.24rem;
+}
+
+.filterCategoryIcon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.filterIconButton {
+  width: 2.12rem;
+  padding: 0;
+}
+
+.filterIconButton img {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.filterOption span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inputCategoryButton:focus-visible,
+.filterOption:focus-visible,
+.filterIconButton:focus-visible,
+.markButton:focus-visible,
+.iconButton:focus-visible {
+  outline: 2px solid rgba(33, 78, 66, 0.36);
+  outline-offset: 2px;
+}
+
+.filterOptionSelected {
+  border-color: rgba(33, 78, 66, 0.28);
+  background: rgba(218, 235, 225, 0.76);
+  color: var(--accent-strong);
+}
+
+.filterIconButtonUrgent {
+  border-color: rgba(138, 58, 33, 0.26);
+  background: rgba(246, 216, 188, 0.72);
+  color: #713017;
+}
+
+.addButton:disabled,
+.inputCategoryButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -89,9 +242,9 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.55rem;
-  min-height: 2.7rem;
-  padding: 0.45rem 0;
+  gap: 0.45rem;
+  min-height: 2.55rem;
+  padding: 0.32rem 0;
   border-bottom: 1px solid rgba(37, 45, 37, 0.08);
 }
 
@@ -99,7 +252,7 @@
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
   min-width: 0;
   cursor: pointer;
 }
@@ -119,9 +272,19 @@
   accent-color: #214e42;
 }
 
+.itemLine {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
 .itemText {
   min-width: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .itemTextCompleted {
@@ -129,7 +292,35 @@
   text-decoration: line-through;
 }
 
-.iconButton {
+.categoryBadge {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  width: 1.45rem;
+  height: 1.45rem;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid rgba(37, 45, 37, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 251, 243, 0.58);
+  color: var(--text-soft);
+}
+
+.categoryIcon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+
+.iconButton,
+.markButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -141,12 +332,40 @@
   color: #8a3a21;
 }
 
-.iconButton:hover {
+.markButton {
+  color: var(--text-soft);
+}
+
+.markButton img {
+  width: 1.12rem;
+  height: 1.12rem;
+  object-fit: contain;
+  opacity: 0.58;
+}
+
+.markButtonActive {
+  border-color: rgba(33, 78, 66, 0.18);
+  background: rgba(218, 235, 225, 0.68);
+  color: var(--accent-strong);
+}
+
+.markButtonActive img {
+  opacity: 1;
+}
+
+.markButtonUrgent {
+  border-color: rgba(138, 58, 33, 0.2);
+  background: rgba(246, 216, 188, 0.66);
+}
+
+.iconButton:hover,
+.markButton:hover {
   border-color: rgba(37, 45, 37, 0.1);
   background: rgba(255, 255, 255, 0.62);
 }
 
-.iconButton:disabled {
+.iconButton:disabled,
+.markButton:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
@@ -164,7 +383,48 @@
     padding-right: 0;
   }
 
+  .composerControls {
+    align-items: stretch;
+  }
+
+  .categorySelector {
+    max-width: none;
+  }
+
+  .categorySelector {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .filterOption {
+    padding-right: 0.18rem;
+    padding-left: 0.18rem;
+    font-size: 0.76rem;
+  }
+
+  .filterCategoryText {
+    display: none;
+  }
+
+  .filterCategoryIcon {
+    width: 1.12rem;
+    height: 1.12rem;
+  }
+
+  .filterIconButton {
+    width: 2rem;
+    min-width: 2rem;
+  }
+
   .panel {
     border-radius: 16px;
+  }
+
+  .itemRow {
+    gap: 0.4rem;
+  }
+
+  .itemActions {
+    gap: 0.12rem;
   }
 }

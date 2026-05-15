@@ -8,7 +8,10 @@ void describe('createStoredChaosInboxItemRecord', () => {
     const item = createStoredChaosInboxItemRecord(
       {
         id: '0196941c-62c1-7d84-9fdb-f5fd1d7540f1',
+        isFavorite: true,
         kind: 'shopping',
+        priority: 'high',
+        shoppingCategory: 'groceries',
         source: 'manual',
         text: 'Milk',
       },
@@ -20,6 +23,9 @@ void describe('createStoredChaosInboxItemRecord', () => {
     )
 
     assert.equal(item.kind, 'shopping')
+    assert.equal(item.isFavorite, true)
+    assert.equal(item.priority, 'high')
+    assert.equal(item.shoppingCategory, 'groceries')
     assert.equal(item.status, 'new')
     assert.equal(item.text, 'Milk')
   })

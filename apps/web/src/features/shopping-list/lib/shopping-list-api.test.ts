@@ -58,9 +58,11 @@ describe('shoppingListApi', () => {
               deletedAt: null,
               dueDate: null,
               id: '0196941c-62c1-7d84-9fdb-f5fd1d7540f1',
+              isFavorite: true,
               kind: 'shopping',
               linkedTaskDeleted: false,
-              priority: null,
+              priority: 'high',
+              shoppingCategory: 'groceries',
               source: 'manual',
               sphereId: null,
               status: 'new',
@@ -79,17 +81,30 @@ describe('shoppingListApi', () => {
 
     await api.createItem({
       id: '0196941c-62c1-7d84-9fdb-f5fd1d7540f1',
+      isFavorite: true,
+      priority: 'high',
+      shoppingCategory: 'groceries',
       text: 'Milk',
     })
 
     const [, requestInit] = fetchMock.mock.calls[0]!
     const body = parseJsonBody(requestInit) as {
-      items: Array<{ id: string; kind: string; text: string }>
+      items: Array<{
+        id: string
+        isFavorite: boolean
+        kind: string
+        priority: string
+        shoppingCategory: string
+        text: string
+      }>
     }
 
     expect(requestInit?.method).toBe('POST')
     expect(body.items[0]?.id).toBe('0196941c-62c1-7d84-9fdb-f5fd1d7540f1')
+    expect(body.items[0]?.isFavorite).toBe(true)
     expect(body.items[0]?.kind).toBe('shopping')
+    expect(body.items[0]?.priority).toBe('high')
+    expect(body.items[0]?.shoppingCategory).toBe('groceries')
     expect(body.items[0]?.text).toBe('Milk')
     expect(new Headers(requestInit?.headers).get('x-actor-user-id')).toBe(
       'user-1',

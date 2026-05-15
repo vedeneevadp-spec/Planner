@@ -31,6 +31,7 @@ import {
   createShoppingListApiClient,
   type ShoppingListApiClient,
   type ShoppingListApiClientConfig,
+  type ShoppingListItemCreateInput,
 } from './shopping-list-api'
 
 function shoppingListQueryKey(workspaceId: string) {
@@ -38,6 +39,7 @@ function shoppingListQueryKey(workspaceId: string) {
 }
 
 export type ShoppingListItem = ChaosInboxItemRecord
+export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
 
 class ShoppingListApiUnavailableError extends Error {
   constructor() {
@@ -200,18 +202,19 @@ export function useCreateShoppingListItem() {
   )
 
   return useMutation({
-    mutationFn: async (text: string) => {
+    mutationFn: async (input: string | ShoppingListItemDraft) => {
       if (!session) {
         throw new Error(
           'Planner session is required to create shopping list items.',
         )
       }
 
+      const itemInput = normalizeShoppingListItemDraft(input)
       const itemId = generateUuidV7()
       const optimisticItem = createOptimisticShoppingListItem(
         {
           id: itemId,
-          text,
+          ...itemInput,
         },
         {
           actorUserId: session.actorUserId,
@@ -230,7 +233,7 @@ export function useCreateShoppingListItem() {
       try {
         const createdItem = await requireShoppingListApi(api).createItem({
           id: itemId,
-          text,
+          ...itemInput,
         })
 
         queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current = []) =>
@@ -243,7 +246,10 @@ export function useCreateShoppingListItem() {
         if (shouldKeepOptimisticShoppingListMutation(error)) {
           await enqueueShoppingListOfflineMutation({
             actorUserId: session.actorUserId,
+            isFavorite: optimisticItem.isFavorite,
             itemId,
+            priority: optimisticItem.priority,
+            shoppingCategory: optimisticItem.shoppingCategory,
             text: optimisticItem.text,
             type: 'shopping.create',
             workspaceId: session.workspaceId,
@@ -468,9 +474,9 @@ export function sortCompletedShoppingListItems(
   return [...items]
     .filter((item) => isShoppingListItemCompleted(item))
     .sort((left, right) =>
-      left.updatedAt === right.updatedAt
+      left.createdAt === right.createdAt
         ? left.text.localeCompare(right.text)
-        : right.updatedAt.localeCompare(left.updatedAt),
+        : left.createdAt.localeCompare(right.createdAt),
     )
 }
 
@@ -487,11 +493,20 @@ function createShoppingListApiClientConfig(input: {
   }
 }
 
+function normalizeShoppingListItemDraft(
+  input: string | ShoppingListItemDraft,
+): ShoppingListItemDraft {
+  if (typeof input === 'string') {
+    return {
+      text: input,
+    }
+  }
+
+  return input
+}
+
 function createOptimisticShoppingListItem(
-  input: {
-    id: string
-    text: string
-  },
+  input: ShoppingListItemCreateInput & { id: string },
   options: {
     actorUserId: string
     workspaceId: string
@@ -506,9 +521,11 @@ function createOptimisticShoppingListItem(
     deletedAt: null,
     dueDate: null,
     id: input.id,
+    isFavorite: input.isFavorite ?? false,
     kind: 'shopping',
     linkedTaskDeleted: false,
-    priority: null,
+    priority: input.priority ?? null,
+    shoppingCategory: input.shoppingCategory ?? null,
     source: 'manual',
     sphereId: null,
     status: 'new',
@@ -527,8 +544,14 @@ function applyShoppingListItemPatch(
   return {
     ...item,
     ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
+    ...(patch.isFavorite !== undefined
+      ? { isFavorite: patch.isFavorite }
+      : {}),
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+    ...(patch.shoppingCategory !== undefined
+      ? { shoppingCategory: patch.shoppingCategory }
+      : {}),
     ...(patch.sphereId !== undefined ? { sphereId: patch.sphereId } : {}),
     ...(patch.status !== undefined ? { status: patch.status } : {}),
     updatedAt: new Date().toISOString(),

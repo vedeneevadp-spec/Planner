@@ -115,7 +115,10 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
               created_by: command.context.actorUserId,
               deleted_at: null,
               id: item.id ?? generateUuidV7(),
+              is_favorite: item.isFavorite ?? false,
               kind: item.kind,
+              priority: item.priority ?? null,
+              shopping_category: item.shoppingCategory ?? null,
               source: item.source,
               status: 'new' as const,
               text: normalizeText(item.text),
@@ -323,6 +326,12 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       .set({
         ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+        ...(patch.isFavorite !== undefined
+          ? { is_favorite: patch.isFavorite }
+          : {}),
+        ...(patch.shoppingCategory !== undefined
+          ? { shopping_category: patch.shoppingCategory }
+          : {}),
         ...(patch.sphereId !== undefined ? { sphere_id: patch.sphereId } : {}),
         ...(patch.dueDate !== undefined ? { due_on: patch.dueDate } : {}),
         ...(patch.status !== undefined ? { status: patch.status } : {}),
@@ -421,11 +430,13 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       deletedAt: serializeNullableTimestamp(row.deleted_at),
       dueDate: serializeNullableDate(row.due_on),
       id: row.id,
+      isFavorite: row.is_favorite,
       kind: row.kind,
       linkedTaskDeleted:
         row.converted_task_id !== null &&
         deletedTaskIds.has(row.converted_task_id),
       priority: row.priority,
+      shoppingCategory: row.shopping_category,
       source: row.source,
       sphereId: row.sphere_id,
       status: row.status,

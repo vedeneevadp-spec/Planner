@@ -5,6 +5,8 @@ import {
   type ChaosInboxItemUpdateInput,
   chaosInboxItemUpdateInputSchema,
   chaosInboxListRecordResponseSchema,
+  type ChaosInboxPriority,
+  type ChaosInboxShoppingCategory,
   createChaosInboxItemsInputSchema,
   generateUuidV7,
 } from '@planner/contracts'
@@ -51,6 +53,9 @@ export interface ShoppingListApiClientConfig {
 
 export interface ShoppingListItemCreateInput {
   id?: string
+  isFavorite?: boolean
+  priority?: ChaosInboxPriority | null
+  shoppingCategory?: ChaosInboxShoppingCategory | null
   text: string
 }
 
@@ -83,7 +88,10 @@ export function createShoppingListApiClient(
         items: [
           {
             id: itemInput.id ?? generateUuidV7(),
+            isFavorite: itemInput.isFavorite ?? false,
             kind: 'shopping',
+            priority: itemInput.priority ?? null,
+            shoppingCategory: itemInput.shoppingCategory ?? null,
             source: 'manual',
             text: itemInput.text,
           },
