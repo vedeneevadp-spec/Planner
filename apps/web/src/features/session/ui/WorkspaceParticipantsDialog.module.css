@@ -283,6 +283,7 @@
 }
 
 .roleBadge,
+.statusBadge,
 .meBadge {
   display: inline-flex;
   align-items: center;
@@ -315,6 +316,16 @@
 .meBadge {
   color: var(--text-soft);
   background: rgba(37, 45, 37, 0.08);
+}
+
+.statusBadge {
+  color: #214e42;
+  background: rgba(33, 78, 66, 0.1);
+}
+
+.statusBadgeDeclined {
+  color: #8a3a21;
+  background: rgba(190, 85, 51, 0.14);
 }
 
 .userActions {

@@ -24,6 +24,10 @@ import pageStyles from '@/shared/ui/Page'
 
 import {
   buildCalendarMonthLoad,
+  buildRecurringGhostTasks,
+  type CalendarDisplayTask,
+  getCalendarMonthDateRange,
+  isRecurringGhostTask,
   shiftCalendarMonth,
 } from '../lib/calendar-load'
 import styles from './CalendarPage.module.css'
@@ -118,17 +122,22 @@ function getWeekDateKeys(anchorDateKey: string): string[] {
   )
 }
 
-function getTaskSortKey(task: Task): string {
+function getTaskSortKey(task: CalendarDisplayTask): string {
   return `${task.plannedStartTime ?? '99:99'}:${task.createdAt}:${task.id}`
 }
 
-function sortCalendarTasks(tasks: Task[]): Task[] {
+function sortCalendarTasks(
+  tasks: CalendarDisplayTask[],
+): CalendarDisplayTask[] {
   return [...tasks].sort((left, right) =>
     getTaskSortKey(left).localeCompare(getTaskSortKey(right)),
   )
 }
 
-function getTasksForDate(tasks: Task[], dateKey: string): Task[] {
+function getTasksForDate(
+  tasks: CalendarDisplayTask[],
+  dateKey: string,
+): CalendarDisplayTask[] {
   return sortCalendarTasks(
     tasks.filter(
       (task) => task.status !== 'done' && task.plannedDate === dateKey,
@@ -136,7 +145,10 @@ function getTasksForDate(tasks: Task[], dateKey: string): Task[] {
   )
 }
 
-function getUntimedTasksForDate(tasks: Task[], dateKey: string): Task[] {
+function getUntimedTasksForDate(
+  tasks: CalendarDisplayTask[],
+  dateKey: string,
+): CalendarDisplayTask[] {
   return getTasksForDate(tasks, dateKey).filter(
     (task) => !task.plannedStartTime,
   )
@@ -168,7 +180,7 @@ function getCalendarTitle(mode: CalendarViewMode, anchorDateKey: string) {
   return formatWeekTitle(weekDays[0]!, weekDays[6]!)
 }
 
-function getTimeRange(tasks: Task[], weekDateKeys: string[]) {
+function getTimeRange(tasks: CalendarDisplayTask[], weekDateKeys: string[]) {
   const timedTasks = tasks.filter(
     (task) =>
       task.status !== 'done' &&
@@ -199,7 +211,7 @@ function getTimeRange(tasks: Task[], weekDateKeys: string[]) {
   }
 }
 
-function getTaskTone(task: Task) {
+function getTaskTone(task: CalendarDisplayTask) {
   if (task.importance === 'important') {
     return styles.taskToneImportant
   }
@@ -215,7 +227,7 @@ function getTaskTone(task: Task) {
   return styles.taskToneDefault
 }
 
-function getScheduleDotTone(task: Task) {
+function getScheduleDotTone(task: CalendarDisplayTask) {
   if (task.importance === 'important') {
     return styles.scheduleDotImportant
   }
@@ -293,19 +305,27 @@ function CalendarTaskPill({
   task,
 }: {
   compact?: boolean
-  onOpenTask?: (task: Task) => void
-  task: Task
+  onOpenTask?: (task: CalendarDisplayTask) => void
+  task: CalendarDisplayTask
 }) {
+  const isGhost = isRecurringGhostTask(task)
+
   return (
     <button
       className={cx(
         styles.taskPill,
         compact && styles.taskPillCompact,
+        isGhost && styles.ghostTask,
         getTaskTone(task),
       )}
       type="button"
-      aria-label={`Открыть задачу ${task.title}`}
+      aria-label={
+        isGhost
+          ? `Будущий повтор задачи ${task.title}`
+          : `Открыть задачу ${task.title}`
+      }
       title={task.title}
+      disabled={isGhost}
       onClick={() => onOpenTask?.(task)}
     >
       <span>{task.title}</span>
@@ -317,9 +337,10 @@ function CalendarScheduleTask({
   onOpenTask,
   task,
 }: {
-  onOpenTask: (task: Task) => void
-  task: Task
+  onOpenTask: (task: CalendarDisplayTask) => void
+  task: CalendarDisplayTask
 }) {
+  const isGhost = isRecurringGhostTask(task)
   const timeLabel = task.plannedStartTime
     ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
     : 'Без времени'
@@ -327,10 +348,15 @@ function CalendarScheduleTask({
 
   return (
     <button
-      className={styles.scheduleTask}
+      className={cx(styles.scheduleTask, isGhost && styles.ghostTask)}
       type="button"
-      aria-label={`Открыть задачу ${task.title}`}
+      aria-label={
+        isGhost
+          ? `Будущий повтор задачи ${task.title}`
+          : `Открыть задачу ${task.title}`
+      }
       title={task.title}
+      disabled={isGhost}
       onClick={() => onOpenTask(task)}
     >
       <span
@@ -376,28 +402,57 @@ export function CalendarPage() {
     enabled: Boolean(selectedTask && isSharedWorkspace),
   })
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
-  const monthLoad = useMemo(
-    () => buildCalendarMonthLoad(tasks, anchorDate),
-    [anchorDate, tasks],
-  )
   const weekDateKeys = useMemo(() => getWeekDateKeys(anchorDate), [anchorDate])
   const scheduleDateKeys = useMemo(
     () => getScheduleDateKeys(anchorDate),
     [anchorDate],
+  )
+  const visibleDateRange = useMemo(() => {
+    if (viewMode === 'month') {
+      return getCalendarMonthDateRange(anchorDate)
+    }
+
+    if (viewMode === 'schedule') {
+      return {
+        endDateKey: scheduleDateKeys[scheduleDateKeys.length - 1] ?? anchorDate,
+        startDateKey: scheduleDateKeys[0] ?? anchorDate,
+      }
+    }
+
+    return {
+      endDateKey: weekDateKeys[weekDateKeys.length - 1] ?? anchorDate,
+      startDateKey: weekDateKeys[0] ?? anchorDate,
+    }
+  }, [anchorDate, scheduleDateKeys, viewMode, weekDateKeys])
+  const calendarTasks = useMemo<CalendarDisplayTask[]>(
+    () => [
+      ...tasks,
+      ...buildRecurringGhostTasks(
+        tasks,
+        visibleDateRange.startDateKey,
+        visibleDateRange.endDateKey,
+        todayKey,
+      ),
+    ],
+    [tasks, todayKey, visibleDateRange],
+  )
+  const monthLoad = useMemo(
+    () => buildCalendarMonthLoad(calendarTasks, anchorDate),
+    [anchorDate, calendarTasks],
   )
   const scheduleDays = useMemo(
     () =>
       scheduleDateKeys
         .map((dateKey) => ({
           dateKey,
-          tasks: getTasksForDate(tasks, dateKey),
+          tasks: getTasksForDate(calendarTasks, dateKey),
         }))
         .filter((day) => day.tasks.length > 0),
-    [scheduleDateKeys, tasks],
+    [calendarTasks, scheduleDateKeys],
   )
   const timeRange = useMemo(
-    () => getTimeRange(tasks, weekDateKeys),
-    [tasks, weekDateKeys],
+    () => getTimeRange(calendarTasks, weekDateKeys),
+    [calendarTasks, weekDateKeys],
   )
   const title = getCalendarTitle(viewMode, anchorDate)
 
@@ -418,7 +473,11 @@ export function CalendarPage() {
     }
   }
 
-  function openTaskCard(task: Task) {
+  function openTaskCard(task: CalendarDisplayTask) {
+    if (isRecurringGhostTask(task)) {
+      return
+    }
+
     setSelectedTaskId(task.id)
   }
 
@@ -530,7 +589,10 @@ export function CalendarPage() {
           <div className={styles.allDayGrid}>
             <div className={styles.allDayLabel}>Без времени</div>
             {weekDateKeys.map((dateKey) => {
-              const untimedTasks = getUntimedTasksForDate(tasks, dateKey)
+              const untimedTasks = getUntimedTasksForDate(
+                calendarTasks,
+                dateKey,
+              )
 
               return (
                 <div key={dateKey} className={styles.allDayCell}>
@@ -566,7 +628,10 @@ export function CalendarPage() {
 
             <div className={styles.weekColumns}>
               {weekDateKeys.map((dateKey) => {
-                const timelineEntries = buildTimelineLayout(tasks, dateKey)
+                const timelineEntries = buildTimelineLayout(
+                  calendarTasks,
+                  dateKey,
+                )
 
                 return (
                   <div key={dateKey} className={styles.weekColumn}>
@@ -578,15 +643,21 @@ export function CalendarPage() {
                         key={entry.task.id}
                         className={cx(
                           styles.timedTask,
+                          isRecurringGhostTask(entry.task) && styles.ghostTask,
                           getTaskTone(entry.task),
                         )}
                         type="button"
+                        disabled={isRecurringGhostTask(entry.task)}
                         style={getTimedTaskStyle(
                           entry,
                           timeRange.startHour,
                           timeRange.endHour,
                         )}
-                        aria-label={`Открыть задачу ${entry.task.title}`}
+                        aria-label={
+                          isRecurringGhostTask(entry.task)
+                            ? `Будущий повтор задачи ${entry.task.title}`
+                            : `Открыть задачу ${entry.task.title}`
+                        }
                         title={entry.task.title}
                         onClick={() => openTaskCard(entry.task)}
                       >

@@ -6,6 +6,7 @@ import type {
 
 import type {
   AdminUserRecord,
+  ReceivedWorkspaceInvitationRecord,
   SessionContext,
   SessionSnapshot,
   SessionWorkspaceMembership,
@@ -32,6 +33,7 @@ export interface SessionRepository {
     input: UpdateSharedWorkspaceInput,
   ): Promise<SessionWorkspaceMembership>
   deleteSharedWorkspace(session: SessionSnapshot): Promise<void>
+  leaveSharedWorkspace(session: SessionSnapshot): Promise<void>
   listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]>
   listWorkspaceInvitations(
     session: SessionSnapshot,
@@ -50,6 +52,17 @@ export interface SessionRepository {
     membershipId: string,
   ): Promise<void>
   revokeWorkspaceInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): Promise<void>
+  listReceivedWorkspaceInvitations(
+    session: SessionSnapshot,
+  ): Promise<ReceivedWorkspaceInvitationRecord[]>
+  acceptWorkspaceInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): Promise<void>
+  declineWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
   ): Promise<void>

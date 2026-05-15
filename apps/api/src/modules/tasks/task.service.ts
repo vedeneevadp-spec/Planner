@@ -194,8 +194,7 @@ export class TaskService {
 
     const nextPlannedDate = getNextRecurringDate(
       getRecurringReferenceDate(completedTask),
-      recurrence.daysOfWeek,
-      recurrence.endDate,
+      recurrence,
     )
 
     if (!nextPlannedDate) {
@@ -258,23 +257,119 @@ function getRecurringReferenceDate(task: StoredTaskRecord): string {
 
 function getNextRecurringDate(
   referenceDate: string,
-  daysOfWeek: number[],
-  endDate: string | null,
+  recurrence: NonNullable<StoredTaskRecord['recurrence']>,
 ): string | null {
-  const scheduledDays = new Set(daysOfWeek)
-  const cursor = new Date(`${referenceDate}T00:00:00.000Z`)
+  if (recurrence.frequency === 'daily') {
+    const dateKey = addUtcDays(referenceDate, recurrence.interval)
 
-  for (let offset = 1; offset <= 366; offset += 1) {
+    return isWithinRecurringEndDate(dateKey, recurrence.endDate)
+      ? dateKey
+      : null
+  }
+
+  if (recurrence.frequency === 'monthly') {
+    return getNextMonthlyRecurringDate(referenceDate, recurrence)
+  }
+
+  const scheduledDays = new Set(recurrence.daysOfWeek)
+  const cursor = parseUtcDateKey(referenceDate)
+  const startWeek = getUtcWeekStart(parseUtcDateKey(recurrence.startDate))
+  const maxLookaheadDays = Math.max(366, recurrence.interval * 371)
+
+  for (let offset = 1; offset <= maxLookaheadDays; offset += 1) {
     cursor.setUTCDate(cursor.getUTCDate() + 1)
 
-    if (scheduledDays.has(getIsoWeekday(cursor))) {
-      const dateKey = cursor.toISOString().slice(0, 10)
+    const dateKey = toUtcDateKey(cursor)
 
-      return endDate && dateKey > endDate ? null : dateKey
+    if (
+      dateKey >= recurrence.startDate &&
+      scheduledDays.has(getIsoWeekday(cursor)) &&
+      getUtcWeekDistance(startWeek, cursor) % recurrence.interval === 0
+    ) {
+      return isWithinRecurringEndDate(dateKey, recurrence.endDate)
+        ? dateKey
+        : null
     }
   }
 
   return null
+}
+
+function getNextMonthlyRecurringDate(
+  referenceDate: string,
+  recurrence: NonNullable<StoredTaskRecord['recurrence']>,
+): string | null {
+  const startDate = parseUtcDateKey(recurrence.startDate)
+  const targetDay = startDate.getUTCDate()
+
+  for (let offset = 0; offset <= 600; offset += recurrence.interval) {
+    const candidate = addUtcMonthsClamped(
+      recurrence.startDate,
+      offset,
+      targetDay,
+    )
+    const dateKey = toUtcDateKey(candidate)
+
+    if (dateKey > referenceDate) {
+      return isWithinRecurringEndDate(dateKey, recurrence.endDate)
+        ? dateKey
+        : null
+    }
+  }
+
+  return null
+}
+
+function isWithinRecurringEndDate(
+  dateKey: string,
+  endDate: string | null,
+): boolean {
+  return endDate === null || dateKey <= endDate
+}
+
+function addUtcDays(dateKey: string, days: number): string {
+  const date = parseUtcDateKey(dateKey)
+
+  date.setUTCDate(date.getUTCDate() + days)
+
+  return toUtcDateKey(date)
+}
+
+function addUtcMonthsClamped(
+  dateKey: string,
+  monthOffset: number,
+  targetDay: number,
+): Date {
+  const date = parseUtcDateKey(dateKey)
+  const year = date.getUTCFullYear()
+  const month = date.getUTCMonth() + monthOffset
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+
+  return new Date(Date.UTC(year, month, Math.min(targetDay, lastDay)))
+}
+
+function parseUtcDateKey(dateKey: string): Date {
+  return new Date(`${dateKey}T00:00:00.000Z`)
+}
+
+function toUtcDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10)
+}
+
+function getUtcWeekStart(date: Date): Date {
+  const weekStart = new Date(date)
+
+  weekStart.setUTCDate(weekStart.getUTCDate() - (getIsoWeekday(weekStart) - 1))
+
+  return weekStart
+}
+
+function getUtcWeekDistance(startWeek: Date, date: Date): number {
+  const weekStart = getUtcWeekStart(date)
+
+  return Math.floor(
+    (weekStart.getTime() - startWeek.getTime()) / (7 * 24 * 60 * 60 * 1000),
+  )
 }
 
 function getIsoWeekday(date: Date): number {

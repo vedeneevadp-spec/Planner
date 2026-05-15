@@ -17,6 +17,7 @@ import {
   healthResponseSchema,
   lifeSphereListRecordResponseSchema,
   lifeSphereRecordSchema,
+  receivedWorkspaceInvitationListResponseSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
   taskEventListResponseSchema,
@@ -169,6 +170,13 @@ const guestSessionRepository: SessionRepository = {
       'Only the workspace creator can rename or delete it.',
     )
   },
+  leaveSharedWorkspace() {
+    throw new HttpError(
+      400,
+      'workspace_owner_leave_forbidden',
+      'The workspace owner cannot leave their own shared workspace.',
+    )
+  },
   listWorkspaceUsers() {
     return Promise.resolve([])
   },
@@ -201,6 +209,23 @@ const guestSessionRepository: SessionRepository = {
       403,
       'workspace_participants_manage_forbidden',
       'Only workspace owners and group admins can manage participants.',
+    )
+  },
+  listReceivedWorkspaceInvitations() {
+    return Promise.resolve([])
+  },
+  acceptWorkspaceInvitation() {
+    throw new HttpError(
+      404,
+      'workspace_invitation_not_found',
+      'Workspace invitation was not found.',
+    )
+  },
+  declineWorkspaceInvitation() {
+    throw new HttpError(
+      404,
+      'workspace_invitation_not_found',
+      'Workspace invitation was not found.',
     )
   },
   listAdminUsers() {
@@ -856,29 +881,49 @@ void describe('buildApiApp', () => {
       email: 'reader@planner.local',
       groupRole: 'member',
     })
-    await sessionRepository.resolve({
+    const readerSession = await sessionRepository.resolve({
       actorUserId: undefined,
       auth: READER_AUTH_CONTEXT,
-      workspaceId: sharedWorkspace.id,
+      workspaceId: undefined,
     })
+    const readerInvitations =
+      await sessionRepository.listReceivedWorkspaceInvitations(readerSession)
+    await sessionRepository.acceptWorkspaceInvitation(
+      readerSession,
+      readerInvitations[0]!.id,
+    )
     await sessionRepository.createWorkspaceInvitation(sharedSession, {
       email: groupAdminAuthContext.claims.email,
       groupRole: 'group_admin',
     })
-    await sessionRepository.resolve({
+    const groupAdminSession = await sessionRepository.resolve({
       actorUserId: undefined,
       auth: groupAdminAuthContext,
-      workspaceId: sharedWorkspace.id,
+      workspaceId: undefined,
     })
+    const groupAdminInvitations =
+      await sessionRepository.listReceivedWorkspaceInvitations(
+        groupAdminSession,
+      )
+    await sessionRepository.acceptWorkspaceInvitation(
+      groupAdminSession,
+      groupAdminInvitations[0]!.id,
+    )
     await sessionRepository.createWorkspaceInvitation(sharedSession, {
       email: observerAuthContext.claims.email,
       groupRole: 'member',
     })
-    await sessionRepository.resolve({
+    const observerSession = await sessionRepository.resolve({
       actorUserId: undefined,
       auth: observerAuthContext,
-      workspaceId: sharedWorkspace.id,
+      workspaceId: undefined,
     })
+    const observerInvitations =
+      await sessionRepository.listReceivedWorkspaceInvitations(observerSession)
+    await sessionRepository.acceptWorkspaceInvitation(
+      observerSession,
+      observerInvitations[0]!.id,
+    )
     const sessionRepositoryInternals = sessionRepository as unknown as {
       memberships: Array<{
         groupRole: string | null
@@ -2214,6 +2259,9 @@ void describe('buildApiApp', () => {
       deleteSharedWorkspace() {
         throw new Error('deleteSharedWorkspace should not be called.')
       },
+      leaveSharedWorkspace() {
+        throw new Error('leaveSharedWorkspace should not be called.')
+      },
       listWorkspaceUsers() {
         throw new Error('listWorkspaceUsers should not be called.')
       },
@@ -2231,6 +2279,17 @@ void describe('buildApiApp', () => {
       },
       revokeWorkspaceInvitation() {
         throw new Error('revokeWorkspaceInvitation should not be called.')
+      },
+      listReceivedWorkspaceInvitations() {
+        throw new Error(
+          'listReceivedWorkspaceInvitations should not be called.',
+        )
+      },
+      acceptWorkspaceInvitation() {
+        throw new Error('acceptWorkspaceInvitation should not be called.')
+      },
+      declineWorkspaceInvitation() {
+        throw new Error('declineWorkspaceInvitation should not be called.')
       },
       listAdminUsers() {
         throw new Error('listAdminUsers should not be called.')
@@ -2647,6 +2706,9 @@ void describe('buildApiApp', () => {
       deleteSharedWorkspace() {
         throw new Error('Not implemented.')
       },
+      leaveSharedWorkspace() {
+        throw new Error('Not implemented.')
+      },
       listWorkspaceUsers() {
         throw new Error('Not implemented.')
       },
@@ -2663,6 +2725,15 @@ void describe('buildApiApp', () => {
         throw new Error('Not implemented.')
       },
       revokeWorkspaceInvitation() {
+        throw new Error('Not implemented.')
+      },
+      listReceivedWorkspaceInvitations() {
+        throw new Error('Not implemented.')
+      },
+      acceptWorkspaceInvitation() {
+        throw new Error('Not implemented.')
+      },
+      declineWorkspaceInvitation() {
         throw new Error('Not implemented.')
       },
       listAdminUsers() {
@@ -3091,6 +3162,34 @@ void describe('buildApiApp', () => {
 
     assert.equal(invitations.invitations.length, 1)
     assert.equal(invitations.invitations[0]?.email, 'reader@planner.local')
+
+    const declineResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': READER_AUTH_CONTEXT.claims.sub,
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'POST',
+      url: `/api/v1/workspace-invitations/${invitation.id}/decline`,
+    })
+
+    assert.equal(declineResponse.statusCode, 204)
+
+    const declinedInvitationsResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': workspace.id,
+      },
+      method: 'GET',
+      url: '/api/v1/workspace-invitations',
+    })
+
+    assert.equal(declinedInvitationsResponse.statusCode, 200)
+
+    const declinedInvitations = workspaceInvitationListResponseSchema.parse(
+      declinedInvitationsResponse.json(),
+    )
+
+    assert.equal(declinedInvitations.invitations[0]?.status, 'declined')
   })
 
   void it('updates workspace participant group roles', async () => {
@@ -3134,11 +3233,17 @@ void describe('buildApiApp', () => {
 
     assert.equal(inviteResponse.statusCode, 201)
 
-    await sessionRepository.resolve({
+    const readerSession = await sessionRepository.resolve({
       actorUserId: undefined,
       auth: READER_AUTH_CONTEXT,
-      workspaceId: workspace.id,
+      workspaceId: undefined,
     })
+    const receivedInvitations =
+      await sessionRepository.listReceivedWorkspaceInvitations(readerSession)
+    await sessionRepository.acceptWorkspaceInvitation(
+      readerSession,
+      receivedInvitations[0]!.id,
+    )
 
     const usersResponse = await app.inject({
       headers: {
@@ -3180,7 +3285,7 @@ void describe('buildApiApp', () => {
     assert.equal(updatedUser.isOwner, false)
   })
 
-  void it('claims matching workspace invitations during authenticated session resolution', async () => {
+  void it('accepts matching workspace invitations after user confirmation', async () => {
     const sessionService = new SessionService(new MemorySessionRepository())
     const setupApp = buildApiApp({
       config: createTestConfig(),
@@ -3231,6 +3336,34 @@ void describe('buildApiApp', () => {
       sessionService,
       taskService: new TaskService(new MemoryTaskRepository()),
     })
+
+    const receivedInvitationsResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+      },
+      method: 'GET',
+      url: '/api/v1/workspace-invitations/me',
+    })
+
+    assert.equal(receivedInvitationsResponse.statusCode, 200)
+
+    const receivedInvitations =
+      receivedWorkspaceInvitationListResponseSchema.parse(
+        receivedInvitationsResponse.json(),
+      )
+
+    assert.equal(receivedInvitations.invitations.length, 1)
+    assert.equal(receivedInvitations.invitations[0]?.workspace.id, workspace.id)
+
+    const acceptResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${AUTH_TOKEN}`,
+      },
+      method: 'POST',
+      url: `/api/v1/workspace-invitations/${receivedInvitations.invitations[0].id}/accept`,
+    })
+
+    assert.equal(acceptResponse.statusCode, 204)
 
     const sessionResponse = await app.inject({
       headers: {

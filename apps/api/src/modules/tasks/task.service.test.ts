@@ -90,6 +90,7 @@ void test('TaskService creates the next recurring occurrence after completion', 
       daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
       endDate: null,
       frequency: 'daily',
+      interval: 1,
       isActive: true,
       seriesId: '019db853-b277-7000-8000-000000000001',
       startDate: '2099-01-01',
@@ -110,6 +111,66 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.status, 'todo')
   assert.equal(nextTask?.plannedDate, '2099-01-02')
   assert.equal(nextTask?.title, 'Умыться')
+})
+
+void test('TaskService respects recurring task intervals', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 3,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000004',
+      startDate: '2099-01-01',
+    },
+    title: 'Каждые три дня',
+    urgency: 'urgent',
+  })
+
+  await service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'done', task.version)
+
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+  const nextTask = tasks.find(
+    (candidate) =>
+      candidate.id !== task.id &&
+      candidate.recurrence?.seriesId === task.recurrence?.seriesId,
+  )
+
+  assert.equal(nextTask?.plannedDate, '2099-01-04')
+})
+
+void test('TaskService creates monthly recurring occurrences', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-31',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'monthly',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000005',
+      startDate: '2099-01-31',
+    },
+    title: 'Раз в месяц',
+    urgency: 'urgent',
+  })
+
+  await service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'done', task.version)
+
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+  const nextTask = tasks.find(
+    (candidate) =>
+      candidate.id !== task.id &&
+      candidate.recurrence?.seriesId === task.recurrence?.seriesId,
+  )
+
+  assert.equal(nextTask?.plannedDate, '2099-02-28')
 })
 
 void test('TaskService does not repeat routine tasks without recurrence', async () => {

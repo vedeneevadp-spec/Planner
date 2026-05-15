@@ -133,6 +133,7 @@ function normalizeTaskRecurrence(
     daysOfWeek: normalizeRoutineDaysOfWeek(daysOfWeek),
     endDate: recurrence.endDate ?? null,
     frequency,
+    interval: recurrence.interval ?? 1,
     isActive: recurrence.isActive !== false,
     seriesId: recurrence.seriesId ?? generateUuidV7(),
     startDate,

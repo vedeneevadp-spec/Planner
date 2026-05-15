@@ -67,12 +67,17 @@ interface SessionAuthStub {
 const mocks = vi.hoisted(() => ({
   setSelectedWorkspaceIdForActors: vi.fn(),
   signOut: vi.fn<() => Promise<void>>(),
+  useAcceptWorkspaceInvitation: vi.fn<() => MutationStub>(),
   useCreateSharedWorkspace: vi.fn<() => MutationStub>(),
+  useDeclineWorkspaceInvitation: vi.fn<() => MutationStub>(),
   useDeleteSharedWorkspace: vi.fn<() => MutationStub>(),
   useCleaningSummary: vi.fn<() => { dueCount: number; urgentCount: number }>(),
   useHabitsToday: vi.fn<() => { data: { items: unknown[] } }>(),
+  useLeaveSharedWorkspace: vi.fn<() => MutationStub>(),
   usePlanner: vi.fn<() => PlannerStub>(),
   usePlannerSession: vi.fn<() => { data: SidebarSessionStub }>(),
+  useReceivedWorkspaceInvitations:
+    vi.fn<() => { data: { invitations: unknown[] } }>(),
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
   useShoppingListSummary: vi.fn<() => { activeItemCount: number }>(),
   useUpdateSharedWorkspace: vi.fn<() => MutationStub>(),
@@ -99,14 +104,22 @@ vi.mock('@/features/session', () => ({
     'Не удалось создать пространство.',
   getDeleteSharedWorkspaceErrorMessage: () =>
     'Не удалось удалить пространство.',
+  getLeaveSharedWorkspaceErrorMessage: () =>
+    'Не удалось выйти из пространства.',
   getUpdateSharedWorkspaceErrorMessage: () =>
     'Не удалось обновить пространство.',
+  getWorkspaceParticipantsErrorMessage: () => 'Не удалось обновить участников.',
   ProfileDialog: ({ isOpen }: { isOpen: boolean }) =>
     isOpen ? <div role="dialog">Профиль</div> : null,
   setSelectedWorkspaceIdForActors: mocks.setSelectedWorkspaceIdForActors,
+  useAcceptWorkspaceInvitation: () => mocks.useAcceptWorkspaceInvitation(),
   useCreateSharedWorkspace: () => mocks.useCreateSharedWorkspace(),
+  useDeclineWorkspaceInvitation: () => mocks.useDeclineWorkspaceInvitation(),
   useDeleteSharedWorkspace: () => mocks.useDeleteSharedWorkspace(),
+  useLeaveSharedWorkspace: () => mocks.useLeaveSharedWorkspace(),
   usePlannerSession: () => mocks.usePlannerSession(),
+  useReceivedWorkspaceInvitations: () =>
+    mocks.useReceivedWorkspaceInvitations(),
   UserAvatar: ({ displayName }: { displayName: string }) => (
     <span>{displayName.slice(0, 2)}</span>
   ),
@@ -195,6 +208,14 @@ function renderSidebar(
   })
   mocks.useCreateSharedWorkspace.mockReturnValue(createMutationStub())
   mocks.useDeleteSharedWorkspace.mockReturnValue(createMutationStub())
+  mocks.useLeaveSharedWorkspace.mockReturnValue(createMutationStub())
+  mocks.useReceivedWorkspaceInvitations.mockReturnValue({
+    data: {
+      invitations: [],
+    },
+  })
+  mocks.useAcceptWorkspaceInvitation.mockReturnValue(createMutationStub())
+  mocks.useDeclineWorkspaceInvitation.mockReturnValue(createMutationStub())
   mocks.useUpdateSharedWorkspace.mockReturnValue(createMutationStub())
 
   return render(

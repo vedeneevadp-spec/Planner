@@ -3,6 +3,7 @@ import {
   adminUserRecordSchema,
   adminUserRoleUpdateInputSchema,
   createSharedWorkspaceInputSchema,
+  receivedWorkspaceInvitationListResponseSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
   updateSharedWorkspaceInputSchema,
@@ -126,6 +127,14 @@ export function registerSessionRoutes(
     return reply.code(204).send()
   })
 
+  app.post('/api/v1/workspaces/shared/leave', async (request, reply) => {
+    const context = resolveRequiredSessionContext(request)
+
+    await service.leaveSharedWorkspace(context)
+
+    return reply.code(204).send()
+  })
+
   app.get('/api/v1/admin/users', async (request) => {
     const context = resolveRequiredSessionContext(request)
     const users = await service.listAdminUsers(context)
@@ -220,6 +229,13 @@ export function registerSessionRoutes(
     return workspaceInvitationListResponseSchema.parse({ invitations })
   })
 
+  app.get('/api/v1/workspace-invitations/me', async (request) => {
+    const context = resolveOptionalSessionContext(request)
+    const invitations = await service.listReceivedWorkspaceInvitations(context)
+
+    return receivedWorkspaceInvitationListResponseSchema.parse({ invitations })
+  })
+
   app.post('/api/v1/workspace-invitations', async (request, reply) => {
     const context = resolveRequiredSessionContext(request)
     const input = parseOrThrow(
@@ -245,6 +261,38 @@ export function registerSessionRoutes(
       )
 
       await service.revokeWorkspaceInvitation(context, params.invitationId)
+
+      return reply.code(204).send()
+    },
+  )
+
+  app.post(
+    '/api/v1/workspace-invitations/:invitationId/accept',
+    async (request, reply) => {
+      const context = resolveOptionalSessionContext(request)
+      const params = parseOrThrow(
+        invitationParamsSchema,
+        request.params,
+        'invalid_params',
+      )
+
+      await service.acceptWorkspaceInvitation(context, params.invitationId)
+
+      return reply.code(204).send()
+    },
+  )
+
+  app.post(
+    '/api/v1/workspace-invitations/:invitationId/decline',
+    async (request, reply) => {
+      const context = resolveOptionalSessionContext(request)
+      const params = parseOrThrow(
+        invitationParamsSchema,
+        request.params,
+        'invalid_params',
+      )
+
+      await service.declineWorkspaceInvitation(context, params.invitationId)
 
       return reply.code(204).send()
     },

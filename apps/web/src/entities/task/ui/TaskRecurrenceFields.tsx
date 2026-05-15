@@ -1,9 +1,9 @@
-import type { HabitFrequency } from '@planner/contracts'
 import { useId } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
+import type { TaskRecurrenceFrequency } from '../model/task.types'
 import {
   TASK_RECURRENCE_DEFAULT_DAYS,
   TASK_RECURRENCE_WEEKDAYS,
@@ -32,10 +32,10 @@ export function TaskRecurrenceFields({
     })
   }
 
-  function handleFrequencyChange(frequency: HabitFrequency) {
+  function handleFrequencyChange(frequency: TaskRecurrenceFrequency) {
     update({
       daysOfWeek:
-        frequency === 'daily'
+        frequency === 'daily' || frequency === 'monthly'
           ? [...TASK_RECURRENCE_DEFAULT_DAYS]
           : frequency === 'weekly'
             ? [...TASK_RECURRENCE_WEEKDAYS]
@@ -66,17 +66,38 @@ export function TaskRecurrenceFields({
           <div className={styles.grid}>
             <SelectPicker
               className={styles.field}
-              label="Частота"
+              label="Тип повтора"
               value={value.frequency}
               options={[
-                { label: 'Каждый день', value: 'daily' },
+                { label: 'Дни', value: 'daily' },
                 { label: 'Будни', value: 'weekly' },
                 { label: 'Выбрать дни', value: 'custom' },
+                { label: 'Месяцы', value: 'monthly' },
               ]}
               onChange={(nextValue) => {
                 handleFrequencyChange(nextValue)
               }}
             />
+
+            <label className={styles.field}>
+              <span>Каждые</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={String(value.interval)}
+                onChange={(event) => {
+                  const interval = Number(event.target.value)
+
+                  update({
+                    interval: Number.isFinite(interval)
+                      ? Math.max(1, Math.floor(interval))
+                      : 1,
+                  })
+                }}
+              />
+            </label>
           </div>
 
           {value.frequency === 'custom' ? (

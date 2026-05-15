@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   createSharedWorkspace,
   deleteSharedWorkspace,
+  leaveSharedWorkspace,
   type SessionApiError,
   updateSharedWorkspace,
 } from './session-api'
@@ -100,6 +101,33 @@ export function useDeleteSharedWorkspace() {
   })
 }
 
+export function useLeaveSharedWorkspace() {
+  const auth = useSessionAuth()
+  const sessionQuery = usePlannerSession()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async () => {
+      const session = sessionQuery.data
+
+      if (!session) {
+        throw new Error('Planner session is required to leave a workspace.')
+      }
+
+      await leaveSharedWorkspace({
+        ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
+        actorUserId: session.actorUserId,
+        workspaceId: session.workspaceId,
+      })
+    },
+    onSuccess: async () => {
+      clearSelectedWorkspaceId(auth.userId)
+      clearSelectedWorkspaceId(sessionQuery.data?.actorUserId)
+      await queryClient.invalidateQueries({ queryKey: ['planner', 'session'] })
+    },
+  })
+}
+
 export function getCreateSharedWorkspaceErrorMessage(error: unknown): string {
   return getWorkspaceActionErrorMessage(error, {
     fallback: 'Не удалось создать общее пространство.',
@@ -116,6 +144,12 @@ export function getUpdateSharedWorkspaceErrorMessage(error: unknown): string {
 export function getDeleteSharedWorkspaceErrorMessage(error: unknown): string {
   return getWorkspaceActionErrorMessage(error, {
     fallback: 'Не удалось удалить пространство.',
+  })
+}
+
+export function getLeaveSharedWorkspaceErrorMessage(error: unknown): string {
+  return getWorkspaceActionErrorMessage(error, {
+    fallback: 'Не удалось выйти из пространства.',
   })
 }
 
@@ -138,6 +172,10 @@ function getWorkspaceActionErrorMessage(
 
   if (apiError.code === 'shared_workspace_required') {
     return 'Эта операция доступна только для общего пространства.'
+  }
+
+  if (apiError.code === 'workspace_owner_leave_forbidden') {
+    return 'Owner не может выйти из собственного пространства. Его можно удалить или сначала передать владение.'
   }
 
   return error instanceof Error ? error.message : options.fallback

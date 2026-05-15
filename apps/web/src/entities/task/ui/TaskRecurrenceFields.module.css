@@ -34,7 +34,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.42fr);
   gap: 0.7rem;
 }
 

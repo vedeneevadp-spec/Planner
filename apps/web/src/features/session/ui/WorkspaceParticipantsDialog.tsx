@@ -33,6 +33,12 @@ const GROUP_ROLE_LABELS = {
   senior_member: 'Senior Member',
 } satisfies Record<AssignableWorkspaceGroupRole | 'owner', string>
 
+const INVITATION_STATUS_LABELS = {
+  accepted: 'Принято',
+  declined: 'Отклонено',
+  pending: 'Ожидает',
+} as const
+
 interface WorkspaceParticipantsDialogProps {
   isOpen: boolean
   onClose: () => void
@@ -190,7 +196,7 @@ export function WorkspaceParticipantsDialog({
             </h2>
             <p>
               {canManage
-                ? 'Приглашайте людей по email, меняйте роли и следите за pending invite.'
+                ? 'Приглашайте людей по email, меняйте роли и следите за инвайтами.'
                 : 'Здесь видно, кто уже работает в общем workspace.'}
             </p>
           </div>
@@ -240,8 +246,8 @@ export function WorkspaceParticipantsDialog({
                 <div className={styles.panelHeader}>
                   <h3>Пригласить участника</h3>
                   <p>
-                    Приглашение привязывается к email и будет принято при
-                    следующем входе пользователя.
+                    Приглашение привязывается к email и ждёт подтверждения
+                    пользователя.
                   </p>
                 </div>
 
@@ -429,11 +435,8 @@ export function WorkspaceParticipantsDialog({
             {canManage ? (
               <section className={styles.panel}>
                 <div className={styles.panelHeader}>
-                  <h3>Pending invite</h3>
-                  <p>
-                    Приглашение исчезнет отсюда, когда пользователь войдёт и
-                    приглашение будет автоматически принято.
-                  </p>
+                  <h3>Инвайты</h3>
+                  <p>Отклонённые приглашения остаются здесь со статусом.</p>
                 </div>
 
                 {invitationsQuery.isPending ? (
@@ -469,6 +472,15 @@ export function WorkspaceParticipantsDialog({
                                   )}
                                 >
                                   {GROUP_ROLE_LABELS[invitation.groupRole]}
+                                </span>
+                                <span
+                                  className={cx(
+                                    styles.statusBadge,
+                                    invitation.status === 'declined' &&
+                                      styles.statusBadgeDeclined,
+                                  )}
+                                >
+                                  {INVITATION_STATUS_LABELS[invitation.status]}
                                 </span>
                               </div>
                               <small>

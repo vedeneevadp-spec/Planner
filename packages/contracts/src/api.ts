@@ -219,16 +219,36 @@ export const workspaceUserGroupRoleUpdateInputSchema = z.object({
   groupRole: assignableWorkspaceGroupRoleSchema,
 })
 
+export const workspaceInvitationStatusSchema = z.enum([
+  'accepted',
+  'declined',
+  'pending',
+])
+
 export const workspaceInvitationRecordSchema = z.object({
   email: z.string(),
   groupRole: assignableWorkspaceGroupRoleSchema,
   id: z.string(),
   invitedAt: z.string(),
+  status: workspaceInvitationStatusSchema.default('pending'),
   updatedAt: z.string(),
 })
 
 export const workspaceInvitationListResponseSchema = z.object({
   invitations: z.array(workspaceInvitationRecordSchema),
+})
+
+export const receivedWorkspaceInvitationRecordSchema = z.object({
+  groupRole: assignableWorkspaceGroupRoleSchema,
+  id: z.string(),
+  invitedAt: z.string(),
+  status: z.literal('pending'),
+  updatedAt: z.string(),
+  workspace: sessionWorkspaceSchema,
+})
+
+export const receivedWorkspaceInvitationListResponseSchema = z.object({
+  invitations: z.array(receivedWorkspaceInvitationRecordSchema),
 })
 
 export const workspaceInvitationCreateInputSchema = z.object({
@@ -571,11 +591,20 @@ export type WorkspaceKind = z.infer<typeof workspaceKindSchema>
 export type WorkspaceInvitationCreateInput = z.infer<
   typeof workspaceInvitationCreateInputSchema
 >
+export type ReceivedWorkspaceInvitationListResponse = z.infer<
+  typeof receivedWorkspaceInvitationListResponseSchema
+>
+export type ReceivedWorkspaceInvitationRecord = z.infer<
+  typeof receivedWorkspaceInvitationRecordSchema
+>
 export type WorkspaceInvitationListResponse = z.infer<
   typeof workspaceInvitationListResponseSchema
 >
 export type WorkspaceInvitationRecord = z.infer<
   typeof workspaceInvitationRecordSchema
+>
+export type WorkspaceInvitationStatus = z.infer<
+  typeof workspaceInvitationStatusSchema
 >
 export type WorkspaceUserRecord = z.infer<typeof workspaceUserRecordSchema>
 export type WorkspaceUserListResponse = z.infer<

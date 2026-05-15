@@ -220,6 +220,29 @@ export async function deleteSharedWorkspace(
   }
 }
 
+export async function leaveSharedWorkspace(
+  options: DeleteSharedWorkspaceOptions,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  const headers = getPlannerSessionOverrideHeaders({
+    accessToken: options.accessToken,
+    actorUserId: options.actorUserId,
+    workspaceId: options.workspaceId,
+  })
+  const response = await fetchFn(
+    new URL('/api/v1/workspaces/shared/leave', plannerApiConfig.apiBaseUrl),
+    {
+      ...(headers ? { headers } : {}),
+      method: 'POST',
+    },
+  )
+  const payload = await readResponsePayload(response)
+
+  if (!response.ok) {
+    throwSessionApiError(response, payload, 'Failed to leave workspace.')
+  }
+}
+
 function throwSessionApiError(
   response: Response,
   payload: unknown,

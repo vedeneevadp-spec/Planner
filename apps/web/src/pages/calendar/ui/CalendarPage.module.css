@@ -425,6 +425,23 @@
   filter: saturate(1.06) brightness(0.98);
 }
 
+.ghostTask {
+  border-style: dashed;
+  opacity: 0.56;
+  box-shadow: none;
+  cursor: default;
+}
+
+.ghostTask:hover {
+  transform: none;
+  filter: none;
+  box-shadow: none;
+}
+
+.ghostTask:disabled {
+  color: var(--text);
+}
+
 .taskPillCompact {
   min-height: 1.35rem;
   padding: 0.22rem 0.36rem;

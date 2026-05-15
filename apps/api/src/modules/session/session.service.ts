@@ -120,6 +120,18 @@ export class SessionService {
     this.authSessionCache.clear()
   }
 
+  async leaveSharedWorkspace(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    assertCanLeaveSharedWorkspace(session)
+
+    await withRepositoryErrorMapping(() =>
+      this.repository.leaveSharedWorkspace(session),
+    )
+
+    this.authSessionCache.clear()
+  }
+
   async listWorkspaceUsers(context: SessionContext) {
     const session = await this.resolveSession(context)
 
@@ -206,6 +218,40 @@ export class SessionService {
 
     await withRepositoryErrorMapping(() =>
       this.repository.revokeWorkspaceInvitation(session, invitationId),
+    )
+
+    this.authSessionCache.clear()
+  }
+
+  async listReceivedWorkspaceInvitations(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    return withRepositoryErrorMapping(() =>
+      this.repository.listReceivedWorkspaceInvitations(session),
+    )
+  }
+
+  async acceptWorkspaceInvitation(
+    context: SessionContext,
+    invitationId: string,
+  ) {
+    const session = await this.resolveSession(context)
+
+    await withRepositoryErrorMapping(() =>
+      this.repository.acceptWorkspaceInvitation(session, invitationId),
+    )
+
+    this.authSessionCache.clear()
+  }
+
+  async declineWorkspaceInvitation(
+    context: SessionContext,
+    invitationId: string,
+  ) {
+    const session = await this.resolveSession(context)
+
+    await withRepositoryErrorMapping(() =>
+      this.repository.declineWorkspaceInvitation(session, invitationId),
     )
 
     this.authSessionCache.clear()
@@ -387,6 +433,26 @@ function assertCanManageSharedWorkspace(session: SessionSnapshot): void {
     403,
     'shared_workspace_creator_required',
     'Only the workspace creator can rename or delete it.',
+  )
+}
+
+function assertCanLeaveSharedWorkspace(session: SessionSnapshot): void {
+  if (session.workspace.kind !== 'shared') {
+    throw new HttpError(
+      400,
+      'shared_workspace_required',
+      'Only shared workspaces can be left.',
+    )
+  }
+
+  if (session.role !== 'owner') {
+    return
+  }
+
+  throw new HttpError(
+    400,
+    'workspace_owner_leave_forbidden',
+    'The workspace owner cannot leave their own shared workspace.',
   )
 }
 

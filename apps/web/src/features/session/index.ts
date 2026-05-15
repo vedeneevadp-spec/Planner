@@ -6,6 +6,7 @@ export {
   createSharedWorkspace,
   deleteSharedWorkspace,
   isUnauthorizedSessionApiError,
+  leaveSharedWorkspace,
   SessionApiError,
   updateSharedWorkspace,
   updateUserProfile,
@@ -21,14 +22,19 @@ export {
 export {
   getCreateSharedWorkspaceErrorMessage,
   getDeleteSharedWorkspaceErrorMessage,
+  getLeaveSharedWorkspaceErrorMessage,
   getUpdateSharedWorkspaceErrorMessage,
   useCreateSharedWorkspace,
   useDeleteSharedWorkspace,
+  useLeaveSharedWorkspace,
   useUpdateSharedWorkspace,
 } from './lib/useWorkspaceActions'
 export {
   getWorkspaceParticipantsErrorMessage,
+  useAcceptWorkspaceInvitation,
   useCreateWorkspaceInvitation,
+  useDeclineWorkspaceInvitation,
+  useReceivedWorkspaceInvitations,
   useRemoveWorkspaceUser,
   useRevokeWorkspaceInvitation,
   useUpdateWorkspaceUserGroupRole,

@@ -5,6 +5,7 @@ import {
   type CreateSharedWorkspaceInput,
   type EnergyMode,
   generateUuidV7,
+  type ReceivedWorkspaceInvitationRecord,
   type UpdateSharedWorkspaceInput,
   type UpdateUserProfileInput,
   type UserProfile,
@@ -51,6 +52,8 @@ interface MemoryInvitation {
   acceptedAt: string | null
   acceptedBy: string | null
   deletedAt: string | null
+  declinedAt: string | null
+  declinedBy: string | null
   email: string
   groupRole: WorkspaceGroupRole
   id: string
@@ -129,8 +132,6 @@ export class MemorySessionRepository implements SessionRepository {
         context.auth.claims.email ??
           `${context.auth.claims.sub}@users.planner.local`,
       )
-
-      this.claimWorkspaceInvitations(actor)
 
       if (!this.hasAnyWorkspaceMembership(actor.id) && !context.workspaceId) {
         this.provisionPersonalWorkspace(actor.id, actor.displayName)
@@ -236,6 +237,36 @@ export class MemorySessionRepository implements SessionRepository {
     return Promise.resolve()
   }
 
+  leaveSharedWorkspace(session: SessionSnapshot): Promise<void> {
+    const membership = this.memberships.find(
+      (candidate) =>
+        candidate.workspaceId === session.workspaceId &&
+        candidate.userId === session.actorUserId &&
+        candidate.deletedAt === null,
+    )
+
+    if (!membership) {
+      throw new HttpError(
+        404,
+        'workspace_user_not_found',
+        'Workspace participant was not found.',
+      )
+    }
+
+    if (membership.role === 'owner') {
+      throw new HttpError(
+        400,
+        'workspace_owner_leave_forbidden',
+        'The workspace owner cannot leave their own shared workspace.',
+      )
+    }
+
+    membership.deletedAt = new Date().toISOString()
+    membership.updatedAt = membership.deletedAt
+
+    return Promise.resolve()
+  }
+
   listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]> {
     const users = this.memberships
       .filter(
@@ -276,13 +307,17 @@ export class MemorySessionRepository implements SessionRepository {
           invitation.deletedAt === null &&
           invitation.acceptedAt === null,
       )
-      .map((invitation) => ({
-        email: invitation.email,
-        groupRole: invitation.groupRole,
-        id: invitation.id,
-        invitedAt: invitation.invitedAt,
-        updatedAt: invitation.updatedAt,
-      }))
+      .map(
+        (invitation) =>
+          ({
+            email: invitation.email,
+            groupRole: invitation.groupRole,
+            id: invitation.id,
+            invitedAt: invitation.invitedAt,
+            status: invitation.declinedAt ? 'declined' : 'pending',
+            updatedAt: invitation.updatedAt,
+          }) satisfies WorkspaceInvitationRecord,
+      )
       .sort(
         (left, right) =>
           right.invitedAt.localeCompare(left.invitedAt) ||
@@ -320,6 +355,8 @@ export class MemorySessionRepository implements SessionRepository {
     if (existingInvitation) {
       existingInvitation.acceptedAt = null
       existingInvitation.acceptedBy = null
+      existingInvitation.declinedAt = null
+      existingInvitation.declinedBy = null
       existingInvitation.deletedAt = null
       existingInvitation.groupRole = input.groupRole
       existingInvitation.invitedBy = session.actorUserId
@@ -334,6 +371,8 @@ export class MemorySessionRepository implements SessionRepository {
       acceptedAt: null,
       acceptedBy: null,
       deletedAt: null,
+      declinedAt: null,
+      declinedBy: null,
       email: normalizedEmail,
       groupRole: input.groupRole,
       id: generateUuidV7(),
@@ -453,6 +492,112 @@ export class MemorySessionRepository implements SessionRepository {
 
     invitation.deletedAt = new Date().toISOString()
     invitation.updatedAt = invitation.deletedAt
+
+    return Promise.resolve()
+  }
+
+  listReceivedWorkspaceInvitations(
+    session: SessionSnapshot,
+  ): Promise<ReceivedWorkspaceInvitationRecord[]> {
+    const invitations = this.invitations
+      .filter(
+        (invitation) =>
+          invitation.email === session.actor.email &&
+          invitation.deletedAt === null &&
+          invitation.acceptedAt === null &&
+          invitation.declinedAt === null,
+      )
+      .flatMap((invitation) => {
+        const workspace = this.getWorkspaceById(invitation.workspaceId)
+
+        if (!workspace || workspace.kind !== 'shared') {
+          return []
+        }
+
+        return [
+          {
+            groupRole: invitation.groupRole,
+            id: invitation.id,
+            invitedAt: invitation.invitedAt,
+            status: 'pending',
+            updatedAt: invitation.updatedAt,
+            workspace: {
+              id: workspace.id,
+              kind: workspace.kind,
+              name: workspace.name,
+              slug: workspace.slug,
+            },
+          },
+        ] satisfies ReceivedWorkspaceInvitationRecord[]
+      })
+      .sort(
+        (left, right) =>
+          right.invitedAt.localeCompare(left.invitedAt) ||
+          left.workspace.name.localeCompare(right.workspace.name),
+      )
+
+    return Promise.resolve(invitations)
+  }
+
+  acceptWorkspaceInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): Promise<void> {
+    const invitation = this.requirePendingReceivedInvitation(
+      session,
+      invitationId,
+    )
+    const now = new Date().toISOString()
+    const membership = this.memberships.find(
+      (candidate) =>
+        candidate.workspaceId === invitation.workspaceId &&
+        candidate.userId === session.actorUserId,
+    )
+
+    if (!membership) {
+      this.memberships = [
+        ...this.memberships,
+        {
+          deletedAt: null,
+          groupRole: invitation.groupRole,
+          id: generateUuidV7(),
+          invitedBy: invitation.invitedBy,
+          joinedAt: now,
+          role: 'user',
+          updatedAt: now,
+          userId: session.actorUserId,
+          workspaceId: invitation.workspaceId,
+        },
+      ]
+    } else if (membership.deletedAt) {
+      membership.deletedAt = null
+      membership.groupRole = invitation.groupRole
+      membership.invitedBy = invitation.invitedBy
+      membership.joinedAt = now
+      membership.role = membership.role === 'owner' ? 'owner' : 'user'
+      membership.updatedAt = now
+    }
+
+    invitation.acceptedAt = now
+    invitation.acceptedBy = session.actorUserId
+    invitation.updatedAt = now
+
+    return Promise.resolve()
+  }
+
+  declineWorkspaceInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): Promise<void> {
+    const invitation = this.requirePendingReceivedInvitation(
+      session,
+      invitationId,
+    )
+    const now = new Date().toISOString()
+
+    invitation.declinedAt = now
+    invitation.declinedBy = session.actorUserId
+    invitation.updatedAt = now
 
     return Promise.resolve()
   }
@@ -789,53 +934,6 @@ export class MemorySessionRepository implements SessionRepository {
     return createdUser
   }
 
-  private claimWorkspaceInvitations(actor: MemoryUser): void {
-    const matchingInvitations = this.invitations.filter(
-      (invitation) =>
-        invitation.email === actor.email &&
-        invitation.deletedAt === null &&
-        invitation.acceptedAt === null,
-    )
-
-    const now = new Date().toISOString()
-
-    for (const invitation of matchingInvitations) {
-      const membership = this.memberships.find(
-        (candidate) =>
-          candidate.workspaceId === invitation.workspaceId &&
-          candidate.userId === actor.id,
-      )
-
-      if (!membership) {
-        this.memberships = [
-          ...this.memberships,
-          {
-            deletedAt: null,
-            groupRole: invitation.groupRole,
-            id: generateUuidV7(),
-            invitedBy: invitation.invitedBy,
-            joinedAt: now,
-            role: 'user',
-            updatedAt: now,
-            userId: actor.id,
-            workspaceId: invitation.workspaceId,
-          },
-        ]
-      } else if (membership.deletedAt) {
-        membership.deletedAt = null
-        membership.groupRole = invitation.groupRole
-        membership.invitedBy = invitation.invitedBy
-        membership.joinedAt = now
-        membership.role = membership.role === 'owner' ? 'owner' : 'user'
-        membership.updatedAt = now
-      }
-
-      invitation.acceptedAt = now
-      invitation.acceptedBy = actor.id
-      invitation.updatedAt = now
-    }
-  }
-
   private hasAnyWorkspaceMembership(actorUserId: string): boolean {
     return this.memberships.some(
       (membership) =>
@@ -950,8 +1048,33 @@ export class MemorySessionRepository implements SessionRepository {
       groupRole: invitation.groupRole,
       id: invitation.id,
       invitedAt: invitation.invitedAt,
+      status: invitation.declinedAt ? 'declined' : 'pending',
       updatedAt: invitation.updatedAt,
     }
+  }
+
+  private requirePendingReceivedInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): MemoryInvitation {
+    const invitation = this.invitations.find(
+      (candidate) =>
+        candidate.id === invitationId &&
+        candidate.email === session.actor.email &&
+        candidate.deletedAt === null &&
+        candidate.acceptedAt === null &&
+        candidate.declinedAt === null,
+    )
+
+    if (!invitation) {
+      throw new HttpError(
+        404,
+        'workspace_invitation_not_found',
+        'Workspace invitation was not found.',
+      )
+    }
+
+    return invitation
   }
 
   private requireWorkspaceUserRecord(

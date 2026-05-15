@@ -9,12 +9,18 @@ import { usePlanner } from '@/features/planner'
 import {
   getCreateSharedWorkspaceErrorMessage,
   getDeleteSharedWorkspaceErrorMessage,
+  getLeaveSharedWorkspaceErrorMessage,
   getUpdateSharedWorkspaceErrorMessage,
+  getWorkspaceParticipantsErrorMessage,
   setSelectedWorkspaceIdForActors,
+  useAcceptWorkspaceInvitation,
   useCreateSharedWorkspace,
+  useDeclineWorkspaceInvitation,
   useDeleteSharedWorkspace,
+  useLeaveSharedWorkspace,
   usePlannerSession,
   UserAvatar,
+  useReceivedWorkspaceInvitations,
   useSessionAuth,
   useUpdateSharedWorkspace,
   WorkspaceParticipantsDialog,
@@ -92,6 +98,12 @@ export function Sidebar({
   const createSharedWorkspaceMutation = useCreateSharedWorkspace()
   const updateSharedWorkspaceMutation = useUpdateSharedWorkspace()
   const deleteSharedWorkspaceMutation = useDeleteSharedWorkspace()
+  const leaveSharedWorkspaceMutation = useLeaveSharedWorkspace()
+  const receivedWorkspaceInvitationsQuery = useReceivedWorkspaceInvitations({
+    enabled: Boolean(session),
+  })
+  const acceptWorkspaceInvitationMutation = useAcceptWorkspaceInvitation()
+  const declineWorkspaceInvitationMutation = useDeclineWorkspaceInvitation()
   const [moreSheetLocation, setMoreSheetLocation] =
     useState<MobileMoreSheetLocation | null>(null)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
@@ -106,6 +118,9 @@ export function Sidebar({
     useState(false)
   const [renameWorkspaceName, setRenameWorkspaceName] = useState('')
   const [workspaceManageError, setWorkspaceManageError] = useState<
+    string | null
+  >(null)
+  const [workspaceInvitationError, setWorkspaceInvitationError] = useState<
     string | null
   >(null)
   const todayKey = getDateKey(new Date())
@@ -188,6 +203,11 @@ export function Sidebar({
             deleteSharedWorkspaceMutation.error,
           )
         : null)
+  const workspaceLeaveActionError = leaveSharedWorkspaceMutation.error
+    ? getLeaveSharedWorkspaceErrorMessage(leaveSharedWorkspaceMutation.error)
+    : null
+  const receivedWorkspaceInvitations =
+    receivedWorkspaceInvitationsQuery.data?.invitations ?? []
 
   useEffect(() => {
     if (!isMoreOpen) {
@@ -329,6 +349,52 @@ export function Sidebar({
       setMoreSheetLocation(null)
     } catch (error) {
       setWorkspaceManageError(getDeleteSharedWorkspaceErrorMessage(error))
+    }
+  }
+
+  async function handleLeaveWorkspace() {
+    if (!session) {
+      return
+    }
+
+    if (!window.confirm(`Выйти из пространства «${session.workspace.name}»?`)) {
+      return
+    }
+
+    setWorkspaceManageError(null)
+    leaveSharedWorkspaceMutation.reset()
+
+    try {
+      await leaveSharedWorkspaceMutation.mutateAsync()
+      setIsWorkspaceParticipantsOpen(false)
+      setIsRenameWorkspaceFormOpen(false)
+      setMoreSheetLocation(null)
+    } catch (error) {
+      setWorkspaceManageError(getLeaveSharedWorkspaceErrorMessage(error))
+    }
+  }
+
+  async function handleAcceptInvitation(input: {
+    invitationId: string
+    workspaceId: string
+  }) {
+    setWorkspaceInvitationError(null)
+
+    try {
+      await acceptWorkspaceInvitationMutation.mutateAsync(input)
+      setMoreSheetLocation(null)
+    } catch (error) {
+      setWorkspaceInvitationError(getWorkspaceParticipantsErrorMessage(error))
+    }
+  }
+
+  async function handleDeclineInvitation(invitationId: string) {
+    setWorkspaceInvitationError(null)
+
+    try {
+      await declineWorkspaceInvitationMutation.mutateAsync(invitationId)
+    } catch (error) {
+      setWorkspaceInvitationError(getWorkspaceParticipantsErrorMessage(error))
     }
   }
 
@@ -522,6 +588,103 @@ export function Sidebar({
     )
   }
 
+  function renderWorkspaceLeaveControls(extraClassName?: string) {
+    if (!isSharedWorkspace || canManageCurrentSharedWorkspace || !session) {
+      return null
+    }
+
+    return (
+      <>
+        <button
+          className={cx(
+            styles.createWorkspaceButton,
+            styles.workspaceDeleteButton,
+            styles.workspaceActionButton,
+            extraClassName,
+          )}
+          type="button"
+          disabled={leaveSharedWorkspaceMutation.isPending}
+          onClick={() => {
+            void handleLeaveWorkspace()
+          }}
+        >
+          <TrashIcon size={18} strokeWidth={2.1} />
+          <span>
+            {leaveSharedWorkspaceMutation.isPending
+              ? 'Выходим...'
+              : 'Выйти из пространства'}
+          </span>
+        </button>
+
+        {workspaceLeaveActionError ? (
+          <p className={styles.connectionError}>{workspaceLeaveActionError}</p>
+        ) : null}
+      </>
+    )
+  }
+
+  function renderReceivedInvitations(extraClassName?: string) {
+    if (receivedWorkspaceInvitations.length === 0) {
+      return null
+    }
+
+    return (
+      <div className={cx(styles.invitationPanel, extraClassName)}>
+        <p className={styles.invitationPanelTitle}>Приглашения</p>
+
+        {receivedWorkspaceInvitations.map((invitation) => {
+          const isAccepting =
+            acceptWorkspaceInvitationMutation.isPending &&
+            acceptWorkspaceInvitationMutation.variables?.invitationId ===
+              invitation.id
+          const isDeclining =
+            declineWorkspaceInvitationMutation.isPending &&
+            declineWorkspaceInvitationMutation.variables === invitation.id
+
+          return (
+            <article key={invitation.id} className={styles.invitationCard}>
+              <div className={styles.invitationCopy}>
+                <strong>{invitation.workspace.name}</strong>
+                <span>{getGroupRoleLabel(invitation.groupRole)}</span>
+              </div>
+              <div className={styles.invitationActions}>
+                <button
+                  className={styles.inlinePrimaryButton}
+                  type="button"
+                  disabled={isAccepting || isDeclining}
+                  onClick={() => {
+                    void handleAcceptInvitation({
+                      invitationId: invitation.id,
+                      workspaceId: invitation.workspace.id,
+                    })
+                  }}
+                >
+                  <CheckIcon size={16} strokeWidth={2.15} />
+                  <span>{isAccepting ? 'Входим...' : 'Вступить'}</span>
+                </button>
+                <button
+                  className={styles.inlineGhostButton}
+                  type="button"
+                  disabled={isAccepting || isDeclining}
+                  onClick={() => {
+                    void handleDeclineInvitation(invitation.id)
+                  }}
+                >
+                  <CloseIcon size={16} strokeWidth={2.15} />
+                  <span>{isDeclining ? 'Отклоняем...' : 'Отклонить'}</span>
+                </button>
+              </div>
+            </article>
+          )
+        })}
+
+        {workspaceInvitationError ? (
+          <p className={styles.connectionError}>{workspaceInvitationError}</p>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <>
       <div className={styles.mobileChrome}>
@@ -653,7 +816,13 @@ export function Sidebar({
                     styles.mobileCreateWorkspaceButton,
                   )}
 
+                  {renderReceivedInvitations(styles.mobileInvitationPanel)}
+
                   {renderWorkspaceOwnerControls(
+                    styles.mobileCreateWorkspaceButton,
+                  )}
+
+                  {renderWorkspaceLeaveControls(
                     styles.mobileCreateWorkspaceButton,
                   )}
 
@@ -863,7 +1032,11 @@ export function Sidebar({
 
               {renderCreateWorkspaceControls()}
 
+              {renderReceivedInvitations()}
+
               {renderWorkspaceOwnerControls()}
+
+              {renderWorkspaceLeaveControls()}
 
               {isSharedWorkspace ? (
                 <button
@@ -1054,6 +1227,18 @@ function renderNavIcon(route: string) {
 
 function renderMobileNavIcon(route: string) {
   return renderNavIcon(route)
+}
+
+function getGroupRoleLabel(role: string): string {
+  if (role === 'group_admin') {
+    return 'Group Admin'
+  }
+
+  if (role === 'senior_member') {
+    return 'Senior Member'
+  }
+
+  return 'Member'
 }
 
 function TimelineIcon() {

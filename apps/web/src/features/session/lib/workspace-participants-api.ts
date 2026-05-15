@@ -1,5 +1,7 @@
 import {
   type AssignableWorkspaceGroupRole,
+  type ReceivedWorkspaceInvitationListResponse,
+  receivedWorkspaceInvitationListResponseSchema,
   type WorkspaceInvitationCreateInput,
   workspaceInvitationCreateInputSchema,
   type WorkspaceInvitationListResponse,
@@ -51,9 +53,14 @@ export interface WorkspaceParticipantsApiClientConfig {
 }
 
 export interface WorkspaceParticipantsApiClient {
+  acceptWorkspaceInvitation: (invitationId: string) => Promise<void>
   createWorkspaceInvitation: (
     input: WorkspaceInvitationCreateInput,
   ) => Promise<WorkspaceInvitationRecord>
+  declineWorkspaceInvitation: (invitationId: string) => Promise<void>
+  listReceivedWorkspaceInvitations: (
+    signal?: RequestSignal,
+  ) => Promise<ReceivedWorkspaceInvitationListResponse>
   listWorkspaceInvitations: (
     signal?: RequestSignal,
   ) => Promise<WorkspaceInvitationListResponse>
@@ -79,6 +86,13 @@ export function createWorkspaceParticipantsApiClient(
   )
 
   return {
+    acceptWorkspaceInvitation(invitationId) {
+      return request({
+        actorHeader: 'always',
+        method: 'POST',
+        path: `/api/v1/workspace-invitations/${encodeURIComponent(invitationId)}/accept`,
+      })
+    },
     createWorkspaceInvitation(input) {
       return request({
         actorHeader: 'always',
@@ -86,6 +100,21 @@ export function createWorkspaceParticipantsApiClient(
         method: 'POST',
         path: '/api/v1/workspace-invitations',
         responseSchema: workspaceInvitationRecordSchema,
+      })
+    },
+    declineWorkspaceInvitation(invitationId) {
+      return request({
+        actorHeader: 'always',
+        method: 'POST',
+        path: `/api/v1/workspace-invitations/${encodeURIComponent(invitationId)}/decline`,
+      })
+    },
+    listReceivedWorkspaceInvitations(signal) {
+      return request({
+        actorHeader: 'always',
+        path: '/api/v1/workspace-invitations/me',
+        responseSchema: receivedWorkspaceInvitationListResponseSchema,
+        signal,
       })
     },
     listWorkspaceInvitations(signal) {

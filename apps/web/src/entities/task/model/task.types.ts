@@ -5,6 +5,7 @@ export type {
   Task,
   TaskImportance,
   TaskRecurrence,
+  TaskRecurrenceFrequency,
   TaskRecurrenceInput,
   TaskResource,
   TaskStatus,

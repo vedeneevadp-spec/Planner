@@ -30,6 +30,12 @@ export const taskStatusSchema = z.enum([
 ])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
+export const taskRecurrenceFrequencySchema = z.enum([
+  'daily',
+  'weekly',
+  'monthly',
+  'custom',
+])
 export const taskResourceSchema = z
   .number()
   .int()
@@ -85,7 +91,8 @@ export const routineTaskInputSchema = z
 export const taskRecurrenceSchema = z.object({
   daysOfWeek: recurrenceDaysOfWeekSchema,
   endDate: z.string().nullable(),
-  frequency: habitFrequencySchema,
+  frequency: taskRecurrenceFrequencySchema,
+  interval: z.number().int().positive().optional().default(1),
   isActive: z.boolean(),
   seriesId: z.string().min(1),
   startDate: z.string(),
@@ -95,7 +102,8 @@ export const taskRecurrenceInputSchema = z
   .object({
     daysOfWeek: recurrenceDaysOfWeekSchema.optional(),
     endDate: z.string().nullable().optional().default(null),
-    frequency: habitFrequencySchema.optional().default('daily'),
+    frequency: taskRecurrenceFrequencySchema.optional().default('daily'),
+    interval: z.coerce.number().int().positive().optional().default(1),
     isActive: z.boolean().optional().default(true),
     seriesId: uuidV7Schema.optional(),
     startDate: z.string().optional(),
@@ -204,6 +212,9 @@ export type TaskImportance = z.infer<typeof taskImportanceSchema>
 export type RoutineTask = z.infer<typeof routineTaskSchema>
 export type RoutineTaskInput = z.input<typeof routineTaskInputSchema>
 export type TaskRecurrence = z.infer<typeof taskRecurrenceSchema>
+export type TaskRecurrenceFrequency = z.infer<
+  typeof taskRecurrenceFrequencySchema
+>
 export type TaskRecurrenceInput = z.input<typeof taskRecurrenceInputSchema>
 export type TaskUrgency = z.infer<typeof taskUrgencySchema>
 export type TaskResource = z.infer<typeof taskResourceSchema>

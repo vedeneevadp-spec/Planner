@@ -4,6 +4,7 @@ import type { Task } from '@/entities/task'
 
 import {
   buildCalendarMonthLoad,
+  buildRecurringGhostTasks,
   getCalendarDaySummary,
   shiftCalendarMonth,
 } from './calendar-load'
@@ -135,5 +136,72 @@ describe('calendar load', () => {
   it('shifts month anchors without carrying an end-of-month overflow', () => {
     expect(shiftCalendarMonth('2026-05-31', 1)).toBe('2026-06-01')
     expect(shiftCalendarMonth('2026-05-31', -1)).toBe('2026-04-01')
+  })
+
+  it('builds ghost cards for future recurring tasks', () => {
+    const ghosts = buildRecurringGhostTasks(
+      [
+        {
+          ...baseTask,
+          id: 'recurring',
+          plannedDate: '2026-05-14',
+          recurrence: {
+            daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+            endDate: null,
+            frequency: 'daily',
+            interval: 2,
+            isActive: true,
+            seriesId: 'series-1',
+            startDate: '2026-05-14',
+          },
+        },
+      ],
+      '2026-05-14',
+      '2026-05-21',
+      '2026-05-14',
+    )
+
+    expect(ghosts.map((task) => task.plannedDate)).toEqual([
+      '2026-05-16',
+      '2026-05-18',
+      '2026-05-20',
+    ])
+    expect(ghosts[0]).toMatchObject({
+      isRecurringGhost: true,
+      sourceTaskId: 'recurring',
+    })
+  })
+
+  it('does not duplicate real occurrences in the same recurrence series', () => {
+    const recurrence = {
+      daysOfWeek: [4],
+      endDate: null,
+      frequency: 'weekly',
+      interval: 1,
+      isActive: true,
+      seriesId: 'series-2',
+      startDate: '2026-05-14',
+    } satisfies NonNullable<Task['recurrence']>
+    const ghosts = buildRecurringGhostTasks(
+      [
+        {
+          ...baseTask,
+          id: 'recurring-source',
+          plannedDate: '2026-05-14',
+          recurrence,
+        },
+        {
+          ...baseTask,
+          id: 'real-next',
+          plannedDate: '2026-05-21',
+          recurrence,
+        },
+      ],
+      '2026-05-14',
+      '2026-05-28',
+      '2026-05-14',
+    )
+
+    expect(ghosts.map((task) => task.plannedDate)).toEqual(['2026-05-28'])
   })
 })

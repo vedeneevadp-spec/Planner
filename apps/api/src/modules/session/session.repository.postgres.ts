@@ -6,6 +6,7 @@ import {
   type CreateSharedWorkspaceInput,
   type EnergyMode,
   generateUuidV7,
+  type ReceivedWorkspaceInvitationRecord,
   type SessionWorkspaceMembership,
   type UpdateSharedWorkspaceInput,
   type UpdateUserProfileInput,
@@ -82,11 +83,24 @@ interface WorkspaceUserRow {
 }
 
 interface WorkspaceInvitationRow {
+  declinedAt: unknown
   email: string
   groupRole: WorkspaceGroupRole
   id: string
   invitedAt: unknown
   updatedAt: unknown
+}
+
+interface ReceivedWorkspaceInvitationRow {
+  groupRole: WorkspaceGroupRole
+  id: string
+  invitedBy: string | null
+  invitedAt: unknown
+  updatedAt: unknown
+  workspaceId: string
+  workspaceKind: WorkspaceKind
+  workspaceName: string
+  workspaceSlug: string
 }
 
 interface UserProfileRow {
@@ -95,14 +109,6 @@ interface UserProfileRow {
   email: string
   id: string
   updatedAt: unknown
-}
-
-interface PendingWorkspaceInvitationRow {
-  email: string
-  groupRole: WorkspaceGroupRole
-  id: string
-  invitedBy: string | null
-  workspaceId: string
 }
 
 interface ExistingWorkspaceMemberRow {
@@ -270,6 +276,30 @@ export class PostgresSessionRepository implements SessionRepository {
     }
   }
 
+  async leaveSharedWorkspace(session: SessionSnapshot): Promise<void> {
+    const deletedMembership = await this.db
+      .updateTable('app.workspace_members')
+      .set({ deleted_at: new Date() })
+      .where('workspace_id', '=', session.workspaceId)
+      .where('user_id', '=', session.actorUserId)
+      .where('role', '<>', 'owner')
+      .where('deleted_at', 'is', null)
+      .returning('id')
+      .executeTakeFirst()
+
+    if (!deletedMembership) {
+      throw new HttpError(
+        session.role === 'owner' ? 400 : 404,
+        session.role === 'owner'
+          ? 'workspace_owner_leave_forbidden'
+          : 'workspace_user_not_found',
+        session.role === 'owner'
+          ? 'The workspace owner cannot leave their own shared workspace.'
+          : 'Workspace participant was not found.',
+      )
+    }
+  }
+
   async listWorkspaceUsers(
     session: SessionSnapshot,
   ): Promise<WorkspaceUserRecord[]> {
@@ -340,12 +370,15 @@ export class PostgresSessionRepository implements SessionRepository {
             accepted_at: null,
             accepted_by: null,
             deleted_at: null,
+            declined_at: null,
+            declined_by: null,
             group_role: input.groupRole,
             invited_by: session.actorUserId,
           }),
         )
         .returning([
           'email',
+          'declined_at as declinedAt',
           'group_role as groupRole',
           'id',
           'created_at as invitedAt',
@@ -488,6 +521,111 @@ export class PostgresSessionRepository implements SessionRepository {
         .where('deleted_at', 'is', null)
         .executeTakeFirst()
     })
+  }
+
+  async listReceivedWorkspaceInvitations(
+    session: SessionSnapshot,
+  ): Promise<ReceivedWorkspaceInvitationRecord[]> {
+    const rows = await this.createReceivedWorkspaceInvitationQuery(
+      this.db,
+      session.actor.email,
+    )
+      .orderBy('invitation.created_at', 'desc')
+      .orderBy('workspace.name', 'asc')
+      .execute()
+
+    return rows.map(mapReceivedWorkspaceInvitationRecord)
+  }
+
+  async acceptWorkspaceInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): Promise<void> {
+    await this.db.transaction().execute(async (trx) => {
+      const invitation = await this.findReceivedWorkspaceInvitationById(
+        trx,
+        session.actor.email,
+        invitationId,
+      )
+
+      if (!invitation) {
+        throw new HttpError(
+          404,
+          'workspace_invitation_not_found',
+          'Workspace invitation was not found.',
+        )
+      }
+
+      const existingMember = await this.findWorkspaceMemberByUserId(
+        trx,
+        invitation.workspaceId,
+        session.actorUserId,
+      )
+
+      if (!existingMember) {
+        await trx
+          .insertInto('app.workspace_members')
+          .values({
+            group_role: invitation.groupRole,
+            id: generateUuidV7(),
+            invited_by: invitation.invitedBy,
+            role: 'user',
+            user_id: session.actorUserId,
+            workspace_id: invitation.workspaceId,
+          })
+          .execute()
+      } else if (existingMember.deletedAt) {
+        await trx
+          .updateTable('app.workspace_members')
+          .set({
+            deleted_at: null,
+            group_role: invitation.groupRole,
+            invited_by: invitation.invitedBy,
+            role: existingMember.role === 'owner' ? 'owner' : 'user',
+          })
+          .where('id', '=', existingMember.id)
+          .executeTakeFirst()
+      }
+
+      await trx
+        .updateTable('app.workspace_invitations')
+        .set({
+          accepted_at: new Date(),
+          accepted_by: session.actorUserId,
+        })
+        .where('id', '=', invitationId)
+        .where('accepted_at', 'is', null)
+        .where('declined_at', 'is', null)
+        .where('deleted_at', 'is', null)
+        .executeTakeFirst()
+    })
+  }
+
+  async declineWorkspaceInvitation(
+    session: SessionSnapshot,
+    invitationId: string,
+  ): Promise<void> {
+    const declinedInvitation = await this.db
+      .updateTable('app.workspace_invitations')
+      .set({
+        declined_at: new Date(),
+        declined_by: session.actorUserId,
+      })
+      .where('id', '=', invitationId)
+      .where('email', '=', session.actor.email)
+      .where('accepted_at', 'is', null)
+      .where('declined_at', 'is', null)
+      .where('deleted_at', 'is', null)
+      .returning('id')
+      .executeTakeFirst()
+
+    if (!declinedInvitation) {
+      throw new HttpError(
+        404,
+        'workspace_invitation_not_found',
+        'Workspace invitation was not found.',
+      )
+    }
   }
 
   async listAdminUsers(_session: SessionSnapshot): Promise<AdminUserRecord[]> {
@@ -727,6 +865,7 @@ export class PostgresSessionRepository implements SessionRepository {
       .selectFrom('app.workspace_invitations as invitation')
       .select([
         'invitation.email as email',
+        'invitation.declined_at as declinedAt',
         'invitation.group_role as groupRole',
         'invitation.id as id',
         'invitation.created_at as invitedAt',
@@ -735,6 +874,36 @@ export class PostgresSessionRepository implements SessionRepository {
       .where('invitation.workspace_id', '=', workspaceId)
       .where('invitation.accepted_at', 'is', null)
       .where('invitation.deleted_at', 'is', null)
+  }
+
+  private createReceivedWorkspaceInvitationQuery(
+    executor: DatabaseExecutor,
+    email: string,
+  ) {
+    return executor
+      .selectFrom('app.workspace_invitations as invitation')
+      .innerJoin(
+        'app.workspaces as workspace',
+        'workspace.id',
+        'invitation.workspace_id',
+      )
+      .select([
+        'invitation.group_role as groupRole',
+        'invitation.id as id',
+        'invitation.invited_by as invitedBy',
+        'invitation.created_at as invitedAt',
+        'invitation.updated_at as updatedAt',
+        'workspace.id as workspaceId',
+        'workspace.kind as workspaceKind',
+        'workspace.name as workspaceName',
+        'workspace.slug as workspaceSlug',
+      ])
+      .where('invitation.email', '=', email)
+      .where('invitation.accepted_at', 'is', null)
+      .where('invitation.declined_at', 'is', null)
+      .where('invitation.deleted_at', 'is', null)
+      .where('workspace.kind', '=', 'shared')
+      .where('workspace.deleted_at', 'is', null)
   }
 
   private findWorkspaceUserByMembershipId(
@@ -767,31 +936,14 @@ export class PostgresSessionRepository implements SessionRepository {
       .executeTakeFirst()
   }
 
-  private loadPendingWorkspaceInvitationsByEmail(
+  private findReceivedWorkspaceInvitationById(
     executor: DatabaseExecutor,
     email: string,
-  ): Promise<PendingWorkspaceInvitationRow[]> {
-    return executor
-      .selectFrom('app.workspace_invitations as invitation')
-      .innerJoin(
-        'app.workspaces as workspace',
-        'workspace.id',
-        'invitation.workspace_id',
-      )
-      .select([
-        'invitation.email as email',
-        'invitation.group_role as groupRole',
-        'invitation.id as id',
-        'invitation.invited_by as invitedBy',
-        'invitation.workspace_id as workspaceId',
-      ])
-      .where('invitation.email', '=', email)
-      .where('invitation.accepted_at', 'is', null)
-      .where('invitation.deleted_at', 'is', null)
-      .where('workspace.kind', '=', 'shared')
-      .where('workspace.deleted_at', 'is', null)
-      .orderBy('invitation.created_at', 'asc')
-      .execute()
+    invitationId: string,
+  ): Promise<ReceivedWorkspaceInvitationRow | undefined> {
+    return this.createReceivedWorkspaceInvitationQuery(executor, email)
+      .where('invitation.id', '=', invitationId)
+      .executeTakeFirst()
   }
 
   private findWorkspaceMemberByUserId(
@@ -923,14 +1075,9 @@ export class PostgresSessionRepository implements SessionRepository {
       authContext,
       requestedWorkspaceId,
     )
-    const existingSessionBeforeClaim = await this.findSessionByActorId(
-      executor,
-      actor.id,
-    )
+    const existingSession = await this.findSessionByActorId(executor, actor.id)
 
-    await this.claimWorkspaceInvitations(executor, actor)
-
-    if (!existingSessionBeforeClaim && !requestedWorkspaceId) {
+    if (!existingSession && !requestedWorkspaceId) {
       await this.provisionPersonalWorkspace(executor, actor, 'owner')
     }
 
@@ -1102,68 +1249,6 @@ export class PostgresSessionRepository implements SessionRepository {
     actorUserId: string,
   ): Promise<boolean> {
     return Boolean(await this.findSessionByActorId(executor, actorUserId))
-  }
-
-  private async claimWorkspaceInvitations(
-    executor: DatabaseExecutor,
-    actor: Pick<AppActorRow, 'email' | 'id'>,
-  ): Promise<void> {
-    const invitations = await this.loadPendingWorkspaceInvitationsByEmail(
-      executor,
-      actor.email,
-    )
-
-    for (const invitation of invitations) {
-      await this.claimWorkspaceInvitation(executor, actor.id, invitation)
-    }
-  }
-
-  private async claimWorkspaceInvitation(
-    executor: DatabaseExecutor,
-    actorUserId: string,
-    invitation: PendingWorkspaceInvitationRow,
-  ): Promise<void> {
-    const existingMember = await this.findWorkspaceMemberByUserId(
-      executor,
-      invitation.workspaceId,
-      actorUserId,
-    )
-
-    if (!existingMember) {
-      await executor
-        .insertInto('app.workspace_members')
-        .values({
-          group_role: invitation.groupRole,
-          id: generateUuidV7(),
-          invited_by: invitation.invitedBy,
-          role: 'user',
-          user_id: actorUserId,
-          workspace_id: invitation.workspaceId,
-        })
-        .execute()
-    } else if (existingMember.deletedAt) {
-      await executor
-        .updateTable('app.workspace_members')
-        .set({
-          deleted_at: null,
-          group_role: invitation.groupRole,
-          invited_by: invitation.invitedBy,
-          role: existingMember.role === 'owner' ? 'owner' : 'user',
-        })
-        .where('id', '=', existingMember.id)
-        .executeTakeFirst()
-    }
-
-    await executor
-      .updateTable('app.workspace_invitations')
-      .set({
-        accepted_at: new Date(),
-        accepted_by: actorUserId,
-      })
-      .where('id', '=', invitation.id)
-      .where('accepted_at', 'is', null)
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst()
   }
 
   private async syncAuthenticatedActorProfile(
@@ -1522,7 +1607,26 @@ function mapWorkspaceInvitationRecord(
     groupRole: row.groupRole,
     id: row.id,
     invitedAt: serializeTimestamp(row.invitedAt),
+    status: row.declinedAt ? 'declined' : 'pending',
     updatedAt: serializeTimestamp(row.updatedAt),
+  }
+}
+
+function mapReceivedWorkspaceInvitationRecord(
+  row: ReceivedWorkspaceInvitationRow,
+): ReceivedWorkspaceInvitationRecord {
+  return {
+    groupRole: row.groupRole,
+    id: row.id,
+    invitedAt: serializeTimestamp(row.invitedAt),
+    status: 'pending',
+    updatedAt: serializeTimestamp(row.updatedAt),
+    workspace: {
+      id: row.workspaceId,
+      kind: row.workspaceKind,
+      name: row.workspaceName,
+      slug: row.workspaceSlug,
+    },
   }
 }
 

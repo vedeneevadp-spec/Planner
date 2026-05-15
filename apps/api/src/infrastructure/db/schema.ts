@@ -327,6 +327,8 @@ export interface AppWorkspaceInvitationsTable {
   accepted_by: string | null
   created_at: Generated<TimestampColumn>
   deleted_at: TimestampColumn | null
+  declined_at: TimestampColumn | null
+  declined_by: string | null
   email: string
   group_role: 'group_admin' | 'senior_member' | 'member'
   id: Generated<string>

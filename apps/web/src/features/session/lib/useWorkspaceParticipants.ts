@@ -13,6 +13,7 @@ import {
   createWorkspaceParticipantsApiClient,
   type WorkspaceParticipantsApiClientConfig,
 } from './workspace-participants-api'
+import { setSelectedWorkspaceIdForActors } from './workspace-selection'
 
 function workspaceUsersQueryKey(workspaceId: string) {
   return ['workspace-users', workspaceId] as const
@@ -20,6 +21,14 @@ function workspaceUsersQueryKey(workspaceId: string) {
 
 function workspaceInvitationsQueryKey(workspaceId: string) {
   return ['workspace-invitations', workspaceId] as const
+}
+
+function receivedWorkspaceInvitationsQueryKey(actorUserId: string | undefined) {
+  return [
+    'workspace-invitations',
+    'received',
+    actorUserId ?? 'pending',
+  ] as const
 }
 
 export function useWorkspaceUsers(options: { enabled?: boolean } = {}) {
@@ -76,6 +85,38 @@ export function useWorkspaceInvitations(options: { enabled?: boolean } = {}) {
       ).listWorkspaceInvitations(signal)
     },
     queryKey: workspaceInvitationsQueryKey(session?.workspaceId ?? 'pending'),
+    staleTime: 30_000,
+  })
+}
+
+export function useReceivedWorkspaceInvitations(
+  options: { enabled?: boolean } = {},
+) {
+  const auth = useSessionAuth()
+  const sessionQuery = usePlannerSession()
+  const session = sessionQuery.data
+
+  return useQuery({
+    enabled:
+      options.enabled !== false &&
+      Boolean(session) &&
+      (!auth.isAuthEnabled || Boolean(auth.accessToken)),
+    queryFn: ({ signal }) => {
+      if (!session) {
+        throw new Error(
+          'Planner session is required to load received workspace invitations.',
+        )
+      }
+
+      return createWorkspaceParticipantsApiClient(
+        createWorkspaceParticipantsApiClientConfig({
+          accessToken: auth.accessToken,
+          actorUserId: session.actorUserId,
+          workspaceId: session.workspaceId,
+        }),
+      ).listReceivedWorkspaceInvitations(signal)
+    },
+    queryKey: receivedWorkspaceInvitationsQueryKey(session?.actorUserId),
     staleTime: 30_000,
   })
 }
@@ -224,6 +265,85 @@ export function useRevokeWorkspaceInvitation() {
       await queryClient.invalidateQueries({
         queryKey: workspaceInvitationsQueryKey(session.workspaceId),
       })
+    },
+  })
+}
+
+export function useAcceptWorkspaceInvitation() {
+  const auth = useSessionAuth()
+  const sessionQuery = usePlannerSession()
+  const session = sessionQuery.data
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (input: {
+      invitationId: string
+      workspaceId: string
+    }) => {
+      if (!session) {
+        throw new Error(
+          'Planner session is required to accept workspace invitations.',
+        )
+      }
+
+      await createWorkspaceParticipantsApiClient(
+        createWorkspaceParticipantsApiClientConfig({
+          accessToken: auth.accessToken,
+          actorUserId: session.actorUserId,
+          workspaceId: session.workspaceId,
+        }),
+      ).acceptWorkspaceInvitation(input.invitationId)
+
+      return input
+    },
+    onSuccess: async ({ workspaceId }) => {
+      setSelectedWorkspaceIdForActors(workspaceId, [
+        auth.userId,
+        session?.actorUserId,
+      ])
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: receivedWorkspaceInvitationsQueryKey(session?.actorUserId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['planner', 'session'],
+        }),
+      ])
+    },
+  })
+}
+
+export function useDeclineWorkspaceInvitation() {
+  const auth = useSessionAuth()
+  const sessionQuery = usePlannerSession()
+  const session = sessionQuery.data
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (invitationId: string) => {
+      if (!session) {
+        throw new Error(
+          'Planner session is required to decline workspace invitations.',
+        )
+      }
+
+      await createWorkspaceParticipantsApiClient(
+        createWorkspaceParticipantsApiClientConfig({
+          accessToken: auth.accessToken,
+          actorUserId: session.actorUserId,
+          workspaceId: session.workspaceId,
+        }),
+      ).declineWorkspaceInvitation(invitationId)
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: receivedWorkspaceInvitationsQueryKey(session?.actorUserId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ['planner', 'session'],
+        }),
+      ])
     },
   })
 }
