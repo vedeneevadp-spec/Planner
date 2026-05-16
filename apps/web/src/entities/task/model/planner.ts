@@ -397,11 +397,25 @@ export function selectDoneBeforeTodayTasks(
   tasks: Task[],
   todayKey: string,
 ): Task[] {
-  return selectDoneTasks(tasks).filter(
-    (task) =>
-      task.completedAt !== null &&
-      isBeforeDate(getDateKey(new Date(task.completedAt)), todayKey),
+  return selectDoneTasks(tasks)
+    .filter(
+      (task) =>
+        task.completedAt !== null &&
+        isBeforeDate(getDateKey(new Date(task.completedAt)), todayKey),
+    )
+    .sort(compareTaskCompletedAtDescending)
+}
+
+function compareTaskCompletedAtDescending(left: Task, right: Task): number {
+  const completedAtComparison = (right.completedAt ?? '').localeCompare(
+    left.completedAt ?? '',
   )
+
+  if (completedAtComparison !== 0) {
+    return completedAtComparison
+  }
+
+  return right.createdAt.localeCompare(left.createdAt)
 }
 
 export function buildTimelineLayout(

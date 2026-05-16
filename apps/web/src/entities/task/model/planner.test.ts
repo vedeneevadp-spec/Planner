@@ -88,7 +88,13 @@ describe('planner model', () => {
     const tasks = [
       {
         ...baseTask,
-        id: 'done-earlier',
+        id: 'done-older',
+        status: 'done' as const,
+        completedAt: '2026-04-13T12:00:00',
+      },
+      {
+        ...baseTask,
+        id: 'done-newer',
         status: 'done' as const,
         completedAt: '2026-04-14T12:00:00',
       },
@@ -113,7 +119,7 @@ describe('planner model', () => {
 
     expect(
       selectDoneBeforeTodayTasks(tasks, '2026-04-15').map((task) => task.id),
-    ).toEqual(['done-earlier'])
+    ).toEqual(['done-newer', 'done-older'])
   })
 
   it('moves a task back to inbox when the planned date is cleared', () => {

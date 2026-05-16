@@ -186,9 +186,9 @@ export class TaskService {
     context: TaskWriteContext,
     completedTask: StoredTaskRecord,
   ): Promise<void> {
-    const recurrence = completedTask.recurrence
+    const recurrence = getTaskRecurrencePattern(completedTask)
 
-    if (!recurrence?.isActive) {
+    if (!recurrence) {
       return
     }
 
@@ -207,7 +207,7 @@ export class TaskService {
         task.id !== completedTask.id &&
         task.status !== 'done' &&
         task.plannedDate === nextPlannedDate &&
-        task.recurrence?.seriesId === recurrence.seriesId,
+        hasRecurringSeries(task, recurrence.seriesId),
     )
 
     if (hasExistingNextOccurrence) {
@@ -230,7 +230,7 @@ export class TaskService {
         plannedStartTime: completedTask.plannedStartTime,
         project: completedTask.project,
         projectId: completedTask.projectId,
-        recurrence,
+        recurrence: completedTask.recurrence,
         remindBeforeStart: completedTask.remindBeforeStart === true,
         resource: completedTask.resource,
         requiresConfirmation: completedTask.requiresConfirmation,
@@ -241,6 +241,35 @@ export class TaskService {
       },
     })
   }
+}
+
+function getTaskRecurrencePattern(
+  task: StoredTaskRecord,
+): NonNullable<StoredTaskRecord['recurrence']> | null {
+  if (task.recurrence) {
+    return task.recurrence.isActive ? task.recurrence : null
+  }
+
+  if (!task.routine) {
+    return null
+  }
+
+  return {
+    daysOfWeek: task.routine.daysOfWeek,
+    endDate: null,
+    frequency: task.routine.frequency,
+    interval: 1,
+    isActive: true,
+    seriesId: task.routine.seriesId,
+    startDate: task.plannedDate ?? getRecurringReferenceDate(task),
+  }
+}
+
+function hasRecurringSeries(task: StoredTaskRecord, seriesId: string): boolean {
+  return (
+    task.recurrence?.seriesId === seriesId ||
+    task.routine?.seriesId === seriesId
+  )
 }
 
 function getRecurringReferenceDate(task: StoredTaskRecord): string {

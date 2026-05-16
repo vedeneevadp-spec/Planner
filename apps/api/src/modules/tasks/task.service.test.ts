@@ -173,7 +173,7 @@ void test('TaskService creates monthly recurring occurrences', async () => {
   assert.equal(nextTask?.plannedDate, '2099-02-28')
 })
 
-void test('TaskService does not repeat routine tasks without recurrence', async () => {
+void test('TaskService creates the next routine occurrence without recurrence', async () => {
   const service = new TaskService(new MemoryTaskRepository())
   const task = await service.createTask(PERSONAL_CONTEXT, {
     ...BASE_INPUT,
@@ -193,6 +193,15 @@ void test('TaskService does not repeat routine tasks without recurrence', async 
   await service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'done', task.version)
 
   const tasks = await service.listTasks(PERSONAL_CONTEXT)
+  const nextTask = tasks.find(
+    (candidate) =>
+      candidate.id !== task.id &&
+      candidate.routine?.seriesId === task.routine?.seriesId,
+  )
 
-  assert.equal(tasks.length, 1)
+  assert.equal(nextTask?.status, 'todo')
+  assert.equal(nextTask?.plannedDate, '2099-01-02')
+  assert.equal(nextTask?.title, 'Рутинная задача')
+  assert.equal(nextTask?.recurrence, null)
+  assert.equal(nextTask?.routine?.frequency, 'daily')
 })

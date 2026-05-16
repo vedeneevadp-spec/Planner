@@ -659,6 +659,8 @@
   z-index: 80;
   display: grid;
   place-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 1rem;
   background: rgba(31, 36, 30, 0.32);
   backdrop-filter: blur(8px);
@@ -1120,11 +1122,13 @@
   }
 
   .taskOverlay {
-    align-items: end;
-    padding: 0.72rem;
+    align-items: start;
+    padding: max(0.72rem, env(safe-area-inset-top)) 0.72rem
+      calc(1.5rem + env(safe-area-inset-bottom));
   }
 
   .taskOverlayPanel {
-    width: 100%;
+    width: min(34rem, 100%);
+    max-height: none;
   }
 }
