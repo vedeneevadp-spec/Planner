@@ -2,8 +2,10 @@ import { generateUuidV7 } from '@planner/contracts'
 
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
+  CopyTaskToPersonalCommand,
   CreateTaskCommand,
   DeleteTaskCommand,
+  MoveTaskToPersonalCommand,
   StoredTaskEventRecord,
   StoredTaskRecord,
   TaskEventFilters,
@@ -136,6 +138,72 @@ export class MemoryTaskRepository implements TaskRepository {
     return Promise.resolve(task)
   }
 
+  copyToPersonal(
+    command: CopyTaskToPersonalCommand,
+  ): Promise<StoredTaskRecord> {
+    const sourceTask = this.getTaskOrThrow(
+      command.task.id,
+      command.context.workspaceId,
+    )
+    this.assertVersion(sourceTask, command.expectedVersion)
+
+    const task = this.createPersonalTaskFromSource(command, {
+      isLinkedCopy: true,
+    })
+
+    this.tasks.set(task.id, task)
+    this.appendTaskEvent(
+      { context: this.createTargetContext(command) },
+      {
+        eventType: 'task.created',
+        payload: {
+          task,
+        },
+        taskId: task.id,
+      },
+    )
+
+    return Promise.resolve(task)
+  }
+
+  moveToPersonal(
+    command: MoveTaskToPersonalCommand,
+  ): Promise<StoredTaskRecord> {
+    const sourceTask = this.getTaskOrThrow(
+      command.task.id,
+      command.context.workspaceId,
+    )
+    this.assertVersion(sourceTask, command.expectedVersion)
+
+    const task = this.createPersonalTaskFromSource(command, {
+      isLinkedCopy: false,
+    })
+    const deletedTask = markTaskDeleted(sourceTask)
+
+    this.tasks.set(task.id, task)
+    this.tasks.set(sourceTask.id, deletedTask)
+    this.appendTaskEvent(
+      { context: this.createTargetContext(command) },
+      {
+        eventType: 'task.created',
+        payload: {
+          task,
+        },
+        taskId: task.id,
+      },
+    )
+    this.appendTaskEvent(command, {
+      eventType: 'task.deleted',
+      payload: {
+        deletedAt: deletedTask.deletedAt,
+        version: deletedTask.version,
+      },
+      taskId: sourceTask.id,
+    })
+
+    return Promise.resolve(task)
+  }
+
   update(command: UpdateTaskCommand): Promise<StoredTaskRecord> {
     const task = this.getTaskOrThrow(
       command.taskId,
@@ -174,6 +242,7 @@ export class MemoryTaskRepository implements TaskRepository {
       },
       taskId: nextTask.id,
     })
+    this.propagateLinkedTaskStatus(command, nextTask)
 
     return Promise.resolve(nextTask)
   }
@@ -253,7 +322,10 @@ export class MemoryTaskRepository implements TaskRepository {
   private appendTaskEvent(
     command:
       | CreateTaskCommand
+      | { context: CreateTaskCommand['context'] }
+      | CopyTaskToPersonalCommand
       | DeleteTaskCommand
+      | MoveTaskToPersonalCommand
       | UpdateTaskCommand
       | UpdateTaskScheduleCommand
       | UpdateTaskStatusCommand,
@@ -274,5 +346,99 @@ export class MemoryTaskRepository implements TaskRepository {
       workspaceId: command.context.workspaceId,
     })
     this.nextEventId += 1
+  }
+
+  private createPersonalTaskFromSource(
+    command: CopyTaskToPersonalCommand | MoveTaskToPersonalCommand,
+    options: {
+      isLinkedCopy: boolean
+    },
+  ): StoredTaskRecord {
+    const now = new Date().toISOString()
+    const sourceTask = command.task
+
+    return {
+      ...sourceTask,
+      assigneeDisplayName: null,
+      assigneeUserId: null,
+      authorDisplayName: command.context.actorDisplayName,
+      authorUserId: command.context.actorUserId,
+      createdAt: now,
+      deletedAt: null,
+      id: generateUuidV7(),
+      linkedTask: options.isLinkedCopy
+        ? {
+            id: sourceTask.id,
+            workspaceId: sourceTask.workspaceId,
+          }
+        : null,
+      project: '',
+      projectId: null,
+      remindBeforeStart: undefined,
+      requiresConfirmation: false,
+      sourceWorkspace: options.isLinkedCopy
+        ? {
+            id: sourceTask.workspaceId,
+            name: command.context.workspaceName ?? 'Shared workspace',
+          }
+        : null,
+      sphereId: null,
+      updatedAt: now,
+      version: 1,
+      workspaceId: command.targetWorkspace.id,
+    }
+  }
+
+  private createTargetContext(
+    command: CopyTaskToPersonalCommand | MoveTaskToPersonalCommand,
+  ): CreateTaskCommand['context'] {
+    return {
+      ...command.context,
+      groupRole: null,
+      personalWorkspace: command.context.personalWorkspace,
+      role: 'owner',
+      workspaceId: command.targetWorkspace.id,
+      workspaceKind: 'personal',
+      workspaceName: command.targetWorkspace.name,
+    }
+  }
+
+  private propagateLinkedTaskStatus(
+    command: UpdateTaskStatusCommand,
+    task: StoredTaskRecord,
+  ): void {
+    const rootTaskId = task.linkedTask?.id ?? task.id
+    const relatedTasks = [...this.tasks.values()].filter(
+      (candidate) =>
+        candidate.deletedAt === null &&
+        candidate.id !== task.id &&
+        (candidate.id === rootTaskId ||
+          candidate.linkedTask?.id === rootTaskId),
+    )
+
+    for (const relatedTask of relatedTasks) {
+      if (relatedTask.status === task.status) {
+        continue
+      }
+
+      const nextTask = applyTaskStatus(relatedTask, command.status)
+      this.tasks.set(nextTask.id, nextTask)
+      this.appendTaskEvent(
+        {
+          context: {
+            ...command.context,
+            workspaceId: nextTask.workspaceId,
+          },
+        },
+        {
+          eventType: 'task.status_changed',
+          payload: {
+            status: nextTask.status,
+            version: nextTask.version,
+          },
+          taskId: nextTask.id,
+        },
+      )
+    }
   }
 }

@@ -92,6 +92,11 @@ export interface RemoveTaskMutationVariables {
   taskId: string
 }
 
+export interface TransferTaskToPersonalMutationVariables {
+  expectedVersion: number
+  taskId: string
+}
+
 interface PlannerMutationSession {
   actor: {
     displayName: string
@@ -586,6 +591,59 @@ export function usePlannerMutations({
     },
   })
 
+  const copyTaskToPersonalMutation = useMutation({
+    mutationFn: ({
+      expectedVersion,
+      taskId,
+    }: TransferTaskToPersonalMutationVariables) =>
+      requirePlannerApi(plannerApi).copyTaskToPersonal(taskId, {
+        expectedVersion,
+      }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
+  const moveTaskToPersonalMutation = useMutation({
+    mutationFn: ({
+      expectedVersion,
+      taskId,
+    }: TransferTaskToPersonalMutationVariables) =>
+      requirePlannerApi(plannerApi).moveTaskToPersonal(taskId, {
+        expectedVersion,
+      }),
+    onMutate: async ({
+      taskId,
+    }: TransferTaskToPersonalMutationVariables): Promise<PlannerMutationContext> => {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: taskQueryKey })
+
+      const previousTaskRecords =
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        removeTaskRecord(current, taskId),
+      )
+
+      return {
+        optimisticTaskId: undefined,
+        previousTaskRecords,
+      }
+    },
+    onError: (error, _variables, context) => {
+      if (shouldKeepOptimisticMutation(error)) {
+        return
+      }
+
+      if (context?.previousTaskRecords) {
+        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
   const removeTaskTemplateMutation = useMutation({
     mutationFn: (templateId: string) =>
       requirePlannerApi(plannerApi).removeTaskTemplate(templateId),
@@ -623,11 +681,13 @@ export function usePlannerMutations({
 
   return {
     createLifeSphereMutation,
+    copyTaskToPersonalMutation,
     createTaskMutation,
     createTaskTemplateMutation,
     removeLifeSphereMutation,
     removeTaskMutation,
     removeTaskTemplateMutation,
+    moveTaskToPersonalMutation,
     setTaskScheduleMutation,
     setTaskStatusMutation,
     updateLifeSphereMutation,

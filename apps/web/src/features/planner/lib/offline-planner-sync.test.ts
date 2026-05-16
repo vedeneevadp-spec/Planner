@@ -147,6 +147,7 @@ function createPlannerApiClientMock(
 ): PlannerApiClient {
   return {
     autoBuildDailyPlan: vi.fn(),
+    copyTaskToPersonal: vi.fn(),
     createLifeSphere: vi.fn(),
     createTask: vi.fn(),
     createTaskTemplate: vi.fn(),
@@ -158,6 +159,7 @@ function createPlannerApiClientMock(
     listTasksPage: vi.fn(),
     listTaskTemplates: vi.fn(),
     removeLifeSphere: vi.fn(),
+    moveTaskToPersonal: vi.fn(),
     removeTask: vi.fn(),
     removeTaskTemplate: vi.fn(),
     saveDailyPlan: vi.fn(),

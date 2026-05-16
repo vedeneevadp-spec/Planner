@@ -16,8 +16,10 @@ export function SpherePage() {
   const { sphereId } = useParams()
   const navigate = useNavigate()
   const {
+    copyTaskToPersonal,
     isLoading,
     isTaskPending,
+    moveTaskToPersonal,
     removeSphere,
     removeTask,
     setTaskPlannedDate,
@@ -151,7 +153,10 @@ export function SpherePage() {
       <TaskSection
         title="Задачи сферы"
         tasks={sphereTasks}
+        currentActorUserId={session?.actorUserId}
         isSharedWorkspace={isSharedWorkspace}
+        sharedWorkspaceGroupRole={session?.groupRole}
+        sharedWorkspaceRole={session?.role}
         spheres={spheres}
         uploadedIcons={uploadedIcons}
         workspaceUsers={workspaceUsers}
@@ -159,6 +164,12 @@ export function SpherePage() {
         isTaskPending={isTaskPending}
         onRemove={(taskId) => {
           void removeTask(taskId)
+        }}
+        onCopyToPersonal={(taskId) => {
+          void copyTaskToPersonal(taskId)
+        }}
+        onMoveToPersonal={(taskId) => {
+          void moveTaskToPersonal(taskId)
         }}
         onSetPlannedDate={(taskId, plannedDate) => {
           void setTaskPlannedDate(taskId, plannedDate)

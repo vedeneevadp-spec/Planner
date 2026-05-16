@@ -29,6 +29,8 @@ export interface PlannerState {
   addSphere: (input: NewLifeSphereInput) => Promise<boolean>
   addTask: (input: NewTaskInput) => Promise<boolean>
   addTaskTemplate: (input: NewTaskTemplateInput) => Promise<boolean>
+  copyTaskToPersonal: (taskId: string) => Promise<boolean>
+  moveTaskToPersonal: (taskId: string) => Promise<boolean>
   updateTask: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   updateSphere: (
     sphereId: string,

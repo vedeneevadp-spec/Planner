@@ -50,6 +50,16 @@ export const taskIconSchema = z
   .optional()
   .transform((value) => value?.trim() ?? '')
 
+export const taskLinkedTaskSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+})
+
+export const taskSourceWorkspaceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+})
+
 const routineDaysOfWeekSchema = z
   .array(isoWeekdaySchema)
   .min(1)
@@ -151,6 +161,8 @@ export const taskSchema = z.object({
   dueDate: nullableStringWithDefault,
   createdAt: z.string(),
   completedAt: z.string().nullable(),
+  linkedTask: taskLinkedTaskSchema.nullable().optional(),
+  sourceWorkspace: taskSourceWorkspaceSchema.nullable().optional(),
 })
 
 export const tasksSchema = z.array(taskSchema)
@@ -218,6 +230,8 @@ export type TaskRecurrenceFrequency = z.infer<
 export type TaskRecurrenceInput = z.input<typeof taskRecurrenceInputSchema>
 export type TaskUrgency = z.infer<typeof taskUrgencySchema>
 export type TaskResource = z.infer<typeof taskResourceSchema>
+export type TaskLinkedTask = z.infer<typeof taskLinkedTaskSchema>
+export type TaskSourceWorkspace = z.infer<typeof taskSourceWorkspaceSchema>
 export type Task = z.infer<typeof taskSchema>
 export type TaskScheduleInput = z.infer<typeof taskScheduleInputSchema>
 export type NewTaskInput = z.infer<typeof newTaskInputSchema>

@@ -32,6 +32,8 @@ import {
   type TaskListPageResponse,
   taskListPageResponseSchema,
   taskListResponseSchema,
+  type TaskPersonalTransferInput,
+  taskPersonalTransferInputSchema,
   type TaskRecord,
   taskRecordSchema,
   type TaskScheduleUpdateInput,
@@ -94,6 +96,10 @@ export interface PlannerApiClient {
   ) => Promise<DailyPlanRecord>
   createLifeSphere: (input: NewLifeSphereInput) => Promise<LifeSphereRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
+  copyTaskToPersonal: (
+    taskId: string,
+    input?: TaskPersonalTransferInput,
+  ) => Promise<TaskRecord>
   createTaskTemplate: (
     input: NewTaskTemplateInput,
   ) => Promise<TaskTemplateRecord>
@@ -121,6 +127,10 @@ export interface PlannerApiClient {
   ) => Promise<TaskListPageResponse>
   listTaskTemplates: (signal?: RequestSignal) => Promise<TaskTemplateRecord[]>
   removeTaskTemplate: (templateId: string) => Promise<void>
+  moveTaskToPersonal: (
+    taskId: string,
+    input?: TaskPersonalTransferInput,
+  ) => Promise<TaskRecord>
   removeLifeSphere: (sphereId: string) => Promise<void>
   removeTask: (taskId: string, expectedVersion?: number) => Promise<void>
   saveDailyPlan: (
@@ -291,6 +301,17 @@ export function createPlannerApiClient(
         writeAccess: true,
       })
     },
+    async copyTaskToPersonal(taskId, input = {}) {
+      const validatedInput = taskPersonalTransferInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}/copy-to-personal`,
+        responseSchema: taskRecordSchema,
+        writeAccess: true,
+      })
+    },
     async listTaskTemplates(signal) {
       return request({
         path: '/api/v1/task-templates',
@@ -316,6 +337,17 @@ export function createPlannerApiClient(
       await request<void>({
         method: 'DELETE',
         path: `/api/v1/task-templates/${encodeURIComponent(templateId)}`,
+        writeAccess: true,
+      })
+    },
+    async moveTaskToPersonal(taskId, input = {}) {
+      const validatedInput = taskPersonalTransferInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}/move-to-personal`,
+        responseSchema: taskRecordSchema,
         writeAccess: true,
       })
     },

@@ -39,8 +39,14 @@ interface RouteSessionService {
     role: WorkspaceRole
     workspace: {
       kind: WorkspaceKind
+      name: string
     }
     workspaceId: string
+    workspaces: Array<{
+      id: string
+      kind: WorkspaceKind
+      name: string
+    }>
   }>
 }
 
@@ -97,6 +103,7 @@ export async function resolveRouteReadContext(
     role: session.role,
     workspaceKind: session.workspace.kind,
     workspaceId: session.workspaceId,
+    workspaceName: session.workspace.name,
   }
 }
 
@@ -121,9 +128,11 @@ export async function resolveRouteWriteContext(
       actorUserId: session.actorUserId,
       auth: null,
       groupRole: session.groupRole,
+      personalWorkspace: findPersonalWorkspace(session.workspaces),
       role: session.role,
       workspaceKind: session.workspace.kind,
       workspaceId: session.workspaceId,
+      workspaceName: session.workspace.name,
     }
   }
 
@@ -139,9 +148,11 @@ export async function resolveRouteWriteContext(
     actorUserId: session.actorUserId,
     auth: authContext,
     groupRole: session.groupRole,
+    personalWorkspace: findPersonalWorkspace(session.workspaces),
     role: session.role,
     workspaceKind: session.workspace.kind,
     workspaceId: session.workspaceId,
+    workspaceName: session.workspace.name,
   }
 }
 
@@ -155,4 +166,18 @@ export function resolveRouteTokenReadContext(request: FastifyRequest) {
     auth: authContext,
     workspaceId: headers['x-workspace-id'],
   }
+}
+
+function findPersonalWorkspace(
+  workspaces: Array<{
+    id: string
+    kind: WorkspaceKind
+    name: string
+  }>,
+) {
+  const workspace = workspaces.find(
+    (candidate) => candidate.kind === 'personal',
+  )
+
+  return workspace ? { id: workspace.id, name: workspace.name } : null
 }

@@ -56,14 +56,21 @@ export interface TaskReadContext {
   workspaceId: string
 }
 
+export interface PersonalWorkspaceTarget {
+  id: string
+  name: string
+}
+
 export interface TaskWriteContext {
   actorUserId: string
   actorDisplayName: string
   auth: AuthenticatedRequestContext | null
   groupRole?: WorkspaceGroupRole | null | undefined
+  personalWorkspace?: PersonalWorkspaceTarget | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
   workspaceId: string
+  workspaceName?: string | undefined
 }
 
 export interface CreateTaskCommand {
@@ -96,4 +103,18 @@ export interface DeleteTaskCommand {
   context: TaskWriteContext
   taskId: string
   expectedVersion?: number
+}
+
+export interface CopyTaskToPersonalCommand {
+  context: TaskWriteContext
+  expectedVersion?: number
+  task: StoredTaskRecord
+  targetWorkspace: PersonalWorkspaceTarget
+}
+
+export interface MoveTaskToPersonalCommand {
+  context: TaskWriteContext
+  expectedVersion?: number
+  task: StoredTaskRecord
+  targetWorkspace: PersonalWorkspaceTarget
 }

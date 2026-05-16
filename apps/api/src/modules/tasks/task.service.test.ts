@@ -17,7 +17,18 @@ const PERSONAL_CONTEXT = {
 
 const SHARED_CONTEXT = {
   ...PERSONAL_CONTEXT,
+  personalWorkspace: {
+    id: 'personal-workspace',
+    name: 'Personal workspace',
+  },
+  workspaceName: 'Family workspace',
   workspaceKind: 'shared' as const,
+  workspaceId: 'shared-workspace',
+}
+
+const TRANSFER_PERSONAL_CONTEXT = {
+  ...PERSONAL_CONTEXT,
+  workspaceId: 'personal-workspace',
 }
 
 const BASE_INPUT = {
@@ -204,4 +215,94 @@ void test('TaskService creates the next routine occurrence without recurrence', 
   assert.equal(nextTask?.title, 'Рутинная задача')
   assert.equal(nextTask?.recurrence, null)
   assert.equal(nextTask?.routine?.frequency, 'daily')
+})
+
+void test('TaskService creates a linked personal copy and syncs status', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const sharedTask = await service.createTask(SHARED_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Купить молоко',
+  })
+
+  const personalTask = await service.copyTaskToPersonal(
+    SHARED_CONTEXT,
+    sharedTask.id,
+    sharedTask.version,
+  )
+
+  assert.equal(personalTask.workspaceId, 'personal-workspace')
+  assert.deepEqual(personalTask.linkedTask, {
+    id: sharedTask.id,
+    workspaceId: 'shared-workspace',
+  })
+  assert.deepEqual(personalTask.sourceWorkspace, {
+    id: 'shared-workspace',
+    name: 'Family workspace',
+  })
+
+  const sharedTasksBeforeStatus = await service.listTasks(SHARED_CONTEXT)
+  assert.equal(
+    sharedTasksBeforeStatus.some((task) => task.id === sharedTask.id),
+    true,
+  )
+
+  await service.setTaskStatus(
+    TRANSFER_PERSONAL_CONTEXT,
+    personalTask.id,
+    'done',
+    personalTask.version,
+  )
+
+  const sharedTasksAfterStatus = await service.listTasks(SHARED_CONTEXT)
+  const updatedSharedTask = sharedTasksAfterStatus.find(
+    (task) => task.id === sharedTask.id,
+  )
+
+  assert.equal(updatedSharedTask?.status, 'done')
+})
+
+void test('TaskService moves only authored shared tasks to personal workspace', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const sharedTask = await service.createTask(SHARED_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Убрать стол',
+  })
+
+  const personalTask = await service.moveTaskToPersonal(
+    SHARED_CONTEXT,
+    sharedTask.id,
+    sharedTask.version,
+  )
+
+  assert.equal(personalTask.workspaceId, 'personal-workspace')
+  assert.equal(personalTask.linkedTask, null)
+  assert.equal(personalTask.sourceWorkspace, null)
+  assert.equal((await service.listTasks(SHARED_CONTEXT)).length, 0)
+  assert.equal((await service.listTasks(TRANSFER_PERSONAL_CONTEXT)).length, 1)
+})
+
+void test('TaskService rejects moving another author task to personal workspace', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const otherAuthorContext = {
+    ...SHARED_CONTEXT,
+    actorDisplayName: 'Other',
+    actorUserId: 'user-2',
+  }
+  const sharedTask = await service.createTask(otherAuthorContext, {
+    ...BASE_INPUT,
+    title: 'Чужая задача',
+  })
+
+  await assert.rejects(
+    Promise.resolve().then(() =>
+      service.moveTaskToPersonal(
+        SHARED_CONTEXT,
+        sharedTask.id,
+        sharedTask.version,
+      ),
+    ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.code === 'task_move_to_personal_forbidden',
+  )
 })

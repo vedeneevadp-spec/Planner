@@ -864,6 +864,50 @@ function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    '/api/v1/tasks/{taskId}/copy-to-personal': {
+      post: {
+        operationId: 'copyTaskToPersonal',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskPersonalTransferInput'),
+        responses: {
+          200: jsonResponse('TaskRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Create a linked personal copy of a shared task',
+        tags: ['tasks'],
+      },
+    },
+    '/api/v1/tasks/{taskId}/move-to-personal': {
+      post: {
+        operationId: 'moveTaskToPersonal',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskPersonalTransferInput'),
+        responses: {
+          200: jsonResponse('TaskRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Move an authored shared task to personal workspace',
+        tags: ['tasks'],
+      },
+    },
     '/api/v1/tasks/{taskId}/schedule': {
       patch: {
         operationId: 'updateTaskSchedule',
@@ -1967,6 +2011,19 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         importance: {
           $ref: '#/components/schemas/TaskImportance',
         },
+        linkedTask: {
+          nullable: true,
+          properties: {
+            id: {
+              type: 'string',
+            },
+            workspaceId: {
+              type: 'string',
+            },
+          },
+          required: ['id', 'workspaceId'],
+          type: 'object',
+        },
         note: {
           type: 'string',
         },
@@ -2864,6 +2921,19 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
           type: 'boolean',
         },
         sphereId: nullableStringSchema(),
+        sourceWorkspace: {
+          nullable: true,
+          properties: {
+            id: {
+              type: 'string',
+            },
+            name: {
+              type: 'string',
+            },
+          },
+          required: ['id', 'name'],
+          type: 'object',
+        },
         status: {
           $ref: '#/components/schemas/TaskStatus',
         },
@@ -2933,6 +3003,13 @@ function createComponentSchemas(): Record<string, OpenAPIV3.SchemaObject> {
         plannedStartTime: nullableStringSchema(),
       },
       required: ['plannedDate', 'plannedEndTime', 'plannedStartTime'],
+      type: 'object',
+    },
+    TaskPersonalTransferInput: {
+      additionalProperties: false,
+      properties: {
+        expectedVersion: positiveIntegerSchema(),
+      },
       type: 'object',
     },
     TaskScheduleUpdateInput: {

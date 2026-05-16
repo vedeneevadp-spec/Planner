@@ -275,7 +275,9 @@ function TimelineTaskItem({
 
 export function TimelinePage() {
   const {
+    copyTaskToPersonal,
     isTaskPending,
+    moveTaskToPersonal,
     spheres,
     tasks,
     removeTask,
@@ -491,6 +493,12 @@ export function TimelinePage() {
                   sharedWorkspaceRole={session?.role}
                   uploadedIcons={uploadedIcons}
                   workspaceUsers={workspaceUsers}
+                  onCopyToPersonal={(taskId) => {
+                    void copyTaskToPersonal(taskId)
+                  }}
+                  onMoveToPersonal={(taskId) => {
+                    void moveTaskToPersonal(taskId)
+                  }}
                   onRemove={(taskId) => {
                     void removeTask(taskId)
                   }}

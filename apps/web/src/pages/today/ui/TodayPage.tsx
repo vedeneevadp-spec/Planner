@@ -179,8 +179,10 @@ function PersonalTodayPage() {
   const updateUserPreferencesMutation = useUpdateUserPreferences()
   const {
     tasks,
+    copyTaskToPersonal,
     spheres,
     isTaskPending,
+    moveTaskToPersonal,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
@@ -315,6 +317,12 @@ function PersonalTodayPage() {
         onRemove={(taskId) => {
           void removeTask(taskId)
         }}
+        onCopyToPersonal={(taskId) => {
+          void copyTaskToPersonal(taskId)
+        }}
+        onMoveToPersonal={(taskId) => {
+          void moveTaskToPersonal(taskId)
+        }}
         onSetPlannedDate={(taskId, plannedDate) => {
           void setTaskPlannedDate(taskId, plannedDate)
         }}
@@ -426,8 +434,10 @@ function SharedTodayPage() {
   const { data: session } = usePlannerSession()
   const {
     tasks,
+    copyTaskToPersonal,
     spheres,
     isTaskPending,
+    moveTaskToPersonal,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
@@ -543,6 +553,12 @@ function SharedTodayPage() {
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
+        }}
+        onCopyToPersonal={(taskId) => {
+          void copyTaskToPersonal(taskId)
+        }}
+        onMoveToPersonal={(taskId) => {
+          void moveTaskToPersonal(taskId)
         }}
         onSetPlannedDate={(taskId, plannedDate) => {
           void setTaskPlannedDate(taskId, plannedDate)

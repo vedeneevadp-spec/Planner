@@ -122,6 +122,11 @@
   color: var(--accent-strong);
 }
 
+.sourceWorkspaceChip {
+  background: rgba(56, 74, 103, 0.1);
+  color: #384a67;
+}
+
 .resourceChip {
   padding-inline: 0.48rem;
 }

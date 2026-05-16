@@ -61,6 +61,8 @@ interface TaskCardProps {
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
+  onCopyToPersonal?: ((taskId: string) => void) | undefined
+  onMoveToPersonal?: ((taskId: string) => void) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
@@ -82,6 +84,8 @@ export function TaskCard({
   tone = 'default',
   isPending = false,
   uploadedIcons = [],
+  onCopyToPersonal,
+  onMoveToPersonal,
   onSetStatus,
   onSetPlannedDate,
   onUpdate,
@@ -113,10 +117,12 @@ export function TaskCard({
   })
   const {
     canCompleteTask,
+    canCopyToPersonal,
     canDeleteTask,
     canEditTask,
     canManageSchedule,
     canManageWorkStatus,
+    canMoveToPersonal,
     canReopenTask,
     hasActionMenu,
     hasMoveToTodayAction,
@@ -388,6 +394,34 @@ export function TaskCard({
                       </button>
                     ) : null}
 
+                    {canCopyToPersonal && onCopyToPersonal ? (
+                      <button
+                        className={styles.menuItem}
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() =>
+                          runMenuAction(() => onCopyToPersonal(task.id))
+                        }
+                      >
+                        Скопировать в личное
+                      </button>
+                    ) : null}
+
+                    {canMoveToPersonal && onMoveToPersonal ? (
+                      <button
+                        className={styles.menuItem}
+                        type="button"
+                        role="menuitem"
+                        disabled={isPending}
+                        onClick={() =>
+                          runMenuAction(() => onMoveToPersonal(task.id))
+                        }
+                      >
+                        Перенести в личное
+                      </button>
+                    ) : null}
+
                     {canDeleteTask ? (
                       <button
                         className={cx(styles.menuItem, styles.menuItemDanger)}
@@ -467,6 +501,11 @@ export function TaskCard({
           {task.assigneeDisplayName ? (
             <span className={styles.metaChip}>
               Исполнитель: {task.assigneeDisplayName}
+            </span>
+          ) : null}
+          {!isSharedWorkspace && task.sourceWorkspace ? (
+            <span className={cx(styles.metaChip, styles.sourceWorkspaceChip)}>
+              Из: {task.sourceWorkspace.name}
             </span>
           ) : null}
           {!isSharedWorkspace &&

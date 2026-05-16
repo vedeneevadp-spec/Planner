@@ -505,6 +505,10 @@ export const taskStatusUpdateInputSchema = z.object({
   status: taskStatusSchema,
 })
 
+export const taskPersonalTransferInputSchema = z.object({
+  expectedVersion: z.number().int().positive().optional(),
+})
+
 export const taskScheduleUpdateInputSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
   schedule: taskScheduleInputSchema,
@@ -642,6 +646,9 @@ export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
 export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>
 export type TaskListFilters = z.infer<typeof taskListFiltersSchema>
 export type TaskListPageResponse = z.infer<typeof taskListPageResponseSchema>
+export type TaskPersonalTransferInput = z.infer<
+  typeof taskPersonalTransferInputSchema
+>
 export type TaskRecord = z.infer<typeof taskRecordSchema>
 export type TaskTemplateRecord = z.infer<typeof taskTemplateRecordSchema>
 export type TaskScheduleUpdateInput = z.infer<

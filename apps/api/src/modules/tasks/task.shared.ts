@@ -216,7 +216,9 @@ export function createStoredTaskRecord(
     authorDisplayName: string
     authorUserId: string
     id?: string
+    linkedTask?: StoredTaskRecord['linkedTask']
     now?: string
+    sourceWorkspace?: StoredTaskRecord['sourceWorkspace']
     workspaceId: string
   },
 ): StoredTaskRecord {
@@ -236,6 +238,7 @@ export function createStoredTaskRecord(
     icon: normalizedInput.icon,
     id: normalizedInput.id ?? options.id ?? generateUuidV7(),
     importance: normalizedInput.importance,
+    linkedTask: options.linkedTask ?? null,
     note: normalizedInput.note,
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
@@ -248,6 +251,7 @@ export function createStoredTaskRecord(
     requiresConfirmation: normalizedInput.requiresConfirmation,
     routine: normalizedInput.routine,
     sphereId: normalizedInput.sphereId,
+    sourceWorkspace: options.sourceWorkspace ?? null,
     status: 'todo',
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,

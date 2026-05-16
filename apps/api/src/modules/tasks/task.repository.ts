@@ -1,6 +1,8 @@
 import type {
+  CopyTaskToPersonalCommand,
   CreateTaskCommand,
   DeleteTaskCommand,
+  MoveTaskToPersonalCommand,
   StoredTaskRecord,
   TaskEventFilters,
   TaskEventListResult,
@@ -29,7 +31,9 @@ export interface TaskRepository {
     context: TaskReadContext,
     filters?: TaskEventFilters,
   ): Promise<TaskEventListResult>
+  copyToPersonal(command: CopyTaskToPersonalCommand): Promise<StoredTaskRecord>
   create(command: CreateTaskCommand): Promise<StoredTaskRecord>
+  moveToPersonal(command: MoveTaskToPersonalCommand): Promise<StoredTaskRecord>
   update(command: UpdateTaskCommand): Promise<StoredTaskRecord>
   updateStatus(command: UpdateTaskStatusCommand): Promise<StoredTaskRecord>
   updateSchedule(command: UpdateTaskScheduleCommand): Promise<StoredTaskRecord>

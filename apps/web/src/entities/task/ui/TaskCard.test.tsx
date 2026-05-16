@@ -330,6 +330,53 @@ describe('TaskCard', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('shows personal copy source workspace marker', () => {
+    renderTaskCard(
+      createTask({
+        sourceWorkspace: {
+          id: 'shared-workspace',
+          name: 'Family workspace',
+        },
+      }),
+    )
+
+    expect(screen.getByText('Из: Family workspace')).toBeInTheDocument()
+  })
+
+  it('shows personal transfer actions for the shared task author', () => {
+    const onCopyToPersonal = vi.fn()
+    const onMoveToPersonal = vi.fn()
+
+    renderTaskCard(
+      createTask({
+        authorUserId: 'user-1',
+      }),
+      {
+        currentActorUserId: 'user-1',
+        isSharedWorkspace: true,
+        onCopyToPersonal,
+        onMoveToPersonal,
+        sharedWorkspaceGroupRole: 'member',
+      },
+    )
+
+    const actionMenu = openTaskActionMenu()
+
+    fireEvent.click(
+      within(actionMenu).getByRole('menuitem', {
+        name: 'Скопировать в личное',
+      }),
+    )
+    expect(onCopyToPersonal).toHaveBeenCalledWith('task-1')
+
+    fireEvent.click(
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'Перенести в личное',
+      }),
+    )
+    expect(onMoveToPersonal).toHaveBeenCalledWith('task-1')
+  })
+
   it('keeps shared workspace admins limited to status actions on tasks assigned to them', () => {
     renderTaskCard(
       createTask({

@@ -39,6 +39,66 @@ export class TaskService {
     return this.repository.create({ context, input })
   }
 
+  copyTaskToPersonal(
+    context: TaskWriteContext,
+    taskId: string,
+    expectedVersion?: number,
+  ) {
+    assertCanWriteTasks(context)
+    assertSharedWorkspaceTransferContext(context)
+
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
+      }
+
+      assertCanCopySharedTaskToPersonal(context, task)
+
+      const command = {
+        context,
+        task,
+        targetWorkspace: requirePersonalWorkspaceTarget(context),
+        ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+      }
+
+      return this.repository.copyToPersonal(command)
+    })
+  }
+
+  moveTaskToPersonal(
+    context: TaskWriteContext,
+    taskId: string,
+    expectedVersion?: number,
+  ) {
+    assertCanWriteTasks(context)
+    assertSharedWorkspaceTransferContext(context)
+
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
+      }
+
+      assertCanMoveSharedTaskToPersonal(context, task)
+
+      const command = {
+        context,
+        task,
+        targetWorkspace: requirePersonalWorkspaceTarget(context),
+        ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+      }
+
+      return this.repository.moveToPersonal(command)
+    })
+  }
+
   updateTask(
     context: TaskWriteContext,
     taskId: string,
@@ -495,6 +555,65 @@ function assertCanUseSharedReviewWorkflow(
     400,
     'task_confirmation_shared_workspace_required',
     'Confirmation workflow is supported only inside shared workspaces.',
+  )
+}
+
+function assertSharedWorkspaceTransferContext(context: TaskWriteContext): void {
+  if (context.workspaceKind === 'shared') {
+    return
+  }
+
+  throw new HttpError(
+    400,
+    'task_transfer_shared_workspace_required',
+    'Tasks can only be copied or moved to personal workspace from a shared workspace.',
+  )
+}
+
+function requirePersonalWorkspaceTarget(
+  context: TaskWriteContext,
+): NonNullable<TaskWriteContext['personalWorkspace']> {
+  if (context.personalWorkspace?.id) {
+    return context.personalWorkspace
+  }
+
+  throw new HttpError(
+    400,
+    'personal_workspace_not_found',
+    'Personal workspace was not found for the current actor.',
+  )
+}
+
+function assertCanCopySharedTaskToPersonal(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+): void {
+  if (
+    canManageSharedTask(context, task) &&
+    (!task.requiresConfirmation || task.authorUserId === context.actorUserId)
+  ) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_copy_to_personal_forbidden',
+    'Only an actor who can manage this shared task can copy it to personal workspace. Confirmation-required tasks can only be copied by the task author.',
+  )
+}
+
+function assertCanMoveSharedTaskToPersonal(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+): void {
+  if (task.authorUserId === context.actorUserId) {
+    return
+  }
+
+  throw new HttpError(
+    403,
+    'task_move_to_personal_forbidden',
+    'Only the task author can move this task to personal workspace.',
   )
 }
 

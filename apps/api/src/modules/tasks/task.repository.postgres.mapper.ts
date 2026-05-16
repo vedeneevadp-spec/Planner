@@ -8,10 +8,12 @@ import {
   LEGACY_PROJECT_NAME_KEY,
   TASK_ICON_KEY,
   TASK_IMPORTANCE_KEY,
+  TASK_LINKED_TASK_KEY,
   TASK_RECURRENCE_KEY,
   TASK_REMIND_BEFORE_START_KEY,
   TASK_REQUIRES_CONFIRMATION_KEY,
   TASK_ROUTINE_KEY,
+  TASK_SOURCE_WORKSPACE_KEY,
   TASK_URGENCY_KEY,
   type TaskEventRow,
   type TaskListRow,
@@ -39,6 +41,7 @@ export function mapTaskRecord(
     id: task.id,
     icon: readTaskIcon(task.metadata),
     importance: readTaskImportance(task.metadata),
+    linkedTask: readTaskLinkedTask(task.metadata),
     note: task.description,
     plannedDate: serializeNullableDate(task.planned_on),
     plannedEndTime: timeBlock
@@ -55,6 +58,7 @@ export function mapTaskRecord(
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
     routine: readTaskRoutine(task.metadata),
     sphereId: task.project_id ?? task.sphere_id,
+    sourceWorkspace: readTaskSourceWorkspace(task.metadata),
     status: task.status,
     title: task.title,
     urgency: readTaskUrgency(task.metadata),
@@ -77,6 +81,7 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     id: task.id,
     icon: readTaskIcon(task.metadata),
     importance: readTaskImportance(task.metadata),
+    linkedTask: readTaskLinkedTask(task.metadata),
     note: task.description,
     plannedDate: serializeNullableDate(task.planned_on),
     plannedEndTime: task.time_block_ends_at
@@ -93,6 +98,7 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
     routine: readTaskRoutine(task.metadata),
     sphereId: task.project_id ?? task.sphere_id,
+    sourceWorkspace: readTaskSourceWorkspace(task.metadata),
     status: task.status,
     title: task.title,
     urgency: readTaskUrgency(task.metadata),
@@ -108,10 +114,12 @@ export function buildTaskMetadata(
     StoredTaskRecord,
     | 'icon'
     | 'importance'
+    | 'linkedTask'
     | 'recurrence'
     | 'remindBeforeStart'
     | 'requiresConfirmation'
     | 'routine'
+    | 'sourceWorkspace'
     | 'urgency'
   >,
 ): JsonObject {
@@ -129,6 +137,10 @@ export function buildTaskMetadata(
     metadata[TASK_IMPORTANCE_KEY] = input.importance
   }
 
+  if (input.linkedTask) {
+    metadata[TASK_LINKED_TASK_KEY] = input.linkedTask
+  }
+
   if (input.remindBeforeStart) {
     metadata[TASK_REMIND_BEFORE_START_KEY] = true
   }
@@ -143,6 +155,10 @@ export function buildTaskMetadata(
 
   if (input.routine) {
     metadata[TASK_ROUTINE_KEY] = input.routine
+  }
+
+  if (input.sourceWorkspace) {
+    metadata[TASK_SOURCE_WORKSPACE_KEY] = input.sourceWorkspace
   }
 
   if (input.urgency !== DEFAULT_TASK_URGENCY) {
@@ -185,6 +201,54 @@ function readTaskImportance(
   return value === 'important' || value === 'not_important'
     ? value
     : DEFAULT_TASK_IMPORTANCE
+}
+
+function readTaskLinkedTask(
+  metadata: JsonObject,
+): StoredTaskRecord['linkedTask'] | null {
+  const value = metadata[TASK_LINKED_TASK_KEY]
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const linkedTask = value as Record<string, unknown>
+
+  if (
+    typeof linkedTask.id !== 'string' ||
+    typeof linkedTask.workspaceId !== 'string'
+  ) {
+    return null
+  }
+
+  return {
+    id: linkedTask.id,
+    workspaceId: linkedTask.workspaceId,
+  }
+}
+
+function readTaskSourceWorkspace(
+  metadata: JsonObject,
+): StoredTaskRecord['sourceWorkspace'] | null {
+  const value = metadata[TASK_SOURCE_WORKSPACE_KEY]
+
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const sourceWorkspace = value as Record<string, unknown>
+
+  if (
+    typeof sourceWorkspace.id !== 'string' ||
+    typeof sourceWorkspace.name !== 'string'
+  ) {
+    return null
+  }
+
+  return {
+    id: sourceWorkspace.id,
+    name: sourceWorkspace.name,
+  }
 }
 
 function readTaskRemindBeforeStart(metadata: JsonObject): true | undefined {

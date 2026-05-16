@@ -376,7 +376,9 @@ function CalendarScheduleTask({
 
 export function CalendarPage() {
   const {
+    copyTaskToPersonal,
     isTaskPending,
+    moveTaskToPersonal,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
@@ -817,6 +819,12 @@ export function CalendarPage() {
                   sharedWorkspaceRole={session?.role}
                   uploadedIcons={uploadedIcons}
                   workspaceUsers={workspaceUsers}
+                  onCopyToPersonal={(taskId) => {
+                    void copyTaskToPersonal(taskId)
+                  }}
+                  onMoveToPersonal={(taskId) => {
+                    void moveTaskToPersonal(taskId)
+                  }}
                   onRemove={(taskId) => {
                     void removeTask(taskId)
                   }}

@@ -119,8 +119,10 @@ export function usePlannerState(): PlannerState {
   })
   const {
     createLifeSphereMutation,
+    copyTaskToPersonalMutation,
     createTaskMutation,
     createTaskTemplateMutation,
+    moveTaskToPersonalMutation,
     removeLifeSphereMutation,
     removeTaskMutation,
     removeTaskTemplateMutation,
@@ -143,7 +145,9 @@ export function usePlannerState(): PlannerState {
     taskTemplatesQuery.error ??
     tasksQuery.error ??
     createLifeSphereMutation.error ??
+    copyTaskToPersonalMutation.error ??
     createTaskTemplateMutation.error ??
+    moveTaskToPersonalMutation.error ??
     updateLifeSphereMutation.error ??
     removeLifeSphereMutation.error ??
     createTaskMutation.error ??
@@ -390,6 +394,44 @@ export function usePlannerState(): PlannerState {
     )
   }
 
+  async function copyTaskToPersonal(taskId: string): Promise<boolean> {
+    const task = getCachedTaskRecord(taskId)
+
+    if (!task) {
+      setMutationErrorMessage(`Task "${taskId}" was not found.`)
+
+      return false
+    }
+
+    return runTaskMutation(taskId, () =>
+      runMutation(() =>
+        copyTaskToPersonalMutation.mutateAsync({
+          expectedVersion: task.version,
+          taskId,
+        }),
+      ),
+    )
+  }
+
+  async function moveTaskToPersonal(taskId: string): Promise<boolean> {
+    const task = getCachedTaskRecord(taskId)
+
+    if (!task) {
+      setMutationErrorMessage(`Task "${taskId}" was not found.`)
+
+      return false
+    }
+
+    return runTaskMutation(taskId, () =>
+      runMutation(() =>
+        moveTaskToPersonalMutation.mutateAsync({
+          expectedVersion: task.version,
+          taskId,
+        }),
+      ),
+    )
+  }
+
   async function addTaskTemplate(
     input: NewTaskTemplateInput,
   ): Promise<boolean> {
@@ -614,6 +656,7 @@ export function usePlannerState(): PlannerState {
     addTask,
     addTaskTemplate,
     conflictedMutationCount,
+    copyTaskToPersonal,
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
@@ -639,10 +682,12 @@ export function usePlannerState(): PlannerState {
       isDrainingOfflineQueue ||
       queuedMutationCount > 0 ||
       createLifeSphereMutation.isPending ||
+      copyTaskToPersonalMutation.isPending ||
       updateLifeSphereMutation.isPending ||
       removeLifeSphereMutation.isPending ||
       createTaskMutation.isPending ||
       updateTaskMutation.isPending ||
+      moveTaskToPersonalMutation.isPending ||
       createTaskTemplateMutation.isPending ||
       removeTaskTemplateMutation.isPending ||
       setTaskStatusMutation.isPending ||
@@ -652,6 +697,7 @@ export function usePlannerState(): PlannerState {
     spheres,
     queuedMutationCount,
     refresh,
+    moveTaskToPersonal,
     removeSphere,
     removeTask,
     removeTaskTemplate,

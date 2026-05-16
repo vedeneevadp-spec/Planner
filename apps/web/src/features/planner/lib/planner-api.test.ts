@@ -619,4 +619,80 @@ describe('plannerApi', () => {
       'http://127.0.0.1:3001/api/v1/tasks/task-1?expectedVersion=3',
     )
   })
+
+  it('sends expectedVersion for task personal transfer mutations', async () => {
+    const taskResponse = {
+      assigneeDisplayName: null,
+      assigneeUserId: null,
+      authorDisplayName: 'Darya',
+      authorUserId: 'user-1',
+      completedAt: null,
+      createdAt: '2026-04-16T02:00:00.000Z',
+      deletedAt: null,
+      dueDate: null,
+      icon: '',
+      id: 'task-personal',
+      importance: 'not_important',
+      linkedTask: {
+        id: 'task-1',
+        workspaceId: 'workspace-1',
+      },
+      note: '',
+      plannedDate: null,
+      plannedEndTime: null,
+      plannedStartTime: null,
+      project: '',
+      projectId: null,
+      resource: null,
+      requiresConfirmation: false,
+      sourceWorkspace: {
+        id: 'workspace-1',
+        name: 'Family',
+      },
+      sphereId: null,
+      status: 'todo',
+      title: 'Task title',
+      updatedAt: '2026-04-16T02:00:00.000Z',
+      urgency: 'not_urgent',
+      version: 1,
+      workspaceId: 'personal-workspace',
+    }
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(taskResponse), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            ...taskResponse,
+            linkedTask: null,
+            sourceWorkspace: null,
+          }),
+          { status: 200 },
+        ),
+      )
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    await api.copyTaskToPersonal('task-1', { expectedVersion: 2 })
+    await api.moveTaskToPersonal('task-1', { expectedVersion: 3 })
+
+    const [copyUrl, copyRequestInit] = fetchMock.mock.calls[0]!
+    const [moveUrl, moveRequestInit] = fetchMock.mock.calls[1]!
+    const copyRequestUrl = copyUrl instanceof URL ? copyUrl.href : copyUrl
+    const moveRequestUrl = moveUrl instanceof URL ? moveUrl.href : moveUrl
+
+    expect(copyRequestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/tasks/task-1/copy-to-personal',
+    )
+    expect(moveRequestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/tasks/task-1/move-to-personal',
+    )
+    expect(parseJsonRequestBody(copyRequestInit)).toEqual({
+      expectedVersion: 2,
+    })
+    expect(parseJsonRequestBody(moveRequestInit)).toEqual({
+      expectedVersion: 3,
+    })
+  })
 })

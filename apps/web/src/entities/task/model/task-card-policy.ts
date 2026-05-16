@@ -21,10 +21,12 @@ interface ResolveTaskCardActionPolicyInput {
 
 export interface TaskCardActionPolicy {
   canCompleteTask: boolean
+  canCopyToPersonal: boolean
   canDeleteTask: boolean
   canEditTask: boolean
   canManageSchedule: boolean
   canManageWorkStatus: boolean
+  canMoveToPersonal: boolean
   canReopenTask: boolean
   hasActionMenu: boolean
   hasMoveToTodayAction: boolean
@@ -83,6 +85,11 @@ export function resolveTaskCardActionPolicy({
     (!isTaskAssignee &&
       (sharedWorkspaceRole === 'owner' ||
         sharedWorkspaceGroupRole === 'group_admin'))
+  const canCopyToPersonal =
+    isSharedWorkspace &&
+    canManageSharedTask &&
+    (!task.requiresConfirmation || isTaskAuthor)
+  const canMoveToPersonal = isSharedWorkspace && isTaskAuthor
   const hasMoveToTodayAction = task.plannedDate !== todayKey
   const hasMoveToTomorrowAction = task.plannedDate !== tomorrowKey
   const hasPostponeAction =
@@ -99,15 +106,19 @@ export function resolveTaskCardActionPolicy({
     hasWorkAction ||
     hasReviewAction ||
     hasReopenAction ||
+    canCopyToPersonal ||
+    canMoveToPersonal ||
     canEditTask ||
     canDeleteTask
 
   return {
     canCompleteTask,
+    canCopyToPersonal,
     canDeleteTask,
     canEditTask,
     canManageSchedule,
     canManageWorkStatus,
+    canMoveToPersonal,
     canReopenTask,
     hasActionMenu,
     hasMoveToTodayAction,

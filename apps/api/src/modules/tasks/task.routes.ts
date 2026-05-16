@@ -6,6 +6,7 @@ import {
   taskListFiltersSchema,
   taskListPageResponseSchema,
   taskListResponseSchema,
+  taskPersonalTransferInputSchema,
   taskRecordSchema,
   taskScheduleUpdateInputSchema,
   taskStatusUpdateInputSchema,
@@ -73,6 +74,48 @@ export function registerTaskRoutes(
     const task = await service.createTask(context, input)
 
     reply.code(201)
+
+    return taskRecordSchema.parse(task)
+  })
+
+  app.post('/api/v1/tasks/:taskId/copy-to-personal', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const body = parseOrThrow(
+      taskPersonalTransferInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const task = await service.copyTaskToPersonal(
+      context,
+      params.taskId,
+      body.expectedVersion,
+    )
+
+    return taskRecordSchema.parse(task)
+  })
+
+  app.post('/api/v1/tasks/:taskId/move-to-personal', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const body = parseOrThrow(
+      taskPersonalTransferInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const task = await service.moveTaskToPersonal(
+      context,
+      params.taskId,
+      body.expectedVersion,
+    )
 
     return taskRecordSchema.parse(task)
   })

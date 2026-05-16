@@ -29,6 +29,8 @@ interface TaskSectionProps {
   extraItems?: ReactNode | undefined
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
+  onCopyToPersonal?: ((taskId: string) => void) | undefined
+  onMoveToPersonal?: ((taskId: string) => void) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
@@ -51,6 +53,8 @@ export function TaskSection({
   extraItems,
   tone = 'default',
   isTaskPending,
+  onCopyToPersonal,
+  onMoveToPersonal,
   onSetStatus,
   onSetPlannedDate,
   onUpdate,
@@ -123,6 +127,8 @@ export function TaskSection({
                   uploadedIcons={uploadedIcons}
                   workspaceUsers={workspaceUsers}
                   tone={tone}
+                  onCopyToPersonal={onCopyToPersonal}
+                  onMoveToPersonal={onMoveToPersonal}
                   onRemove={onRemove}
                   onSetPlannedDate={onSetPlannedDate}
                   onSetStatus={onSetStatus}
