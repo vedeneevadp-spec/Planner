@@ -36,7 +36,7 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 0.72rem 0.8rem;
-  background: rgba(255, 255, 255, 0.68);
+  background: var(--field-bg);
   color: var(--text);
 }
 
@@ -73,14 +73,14 @@
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--field-bg);
   color: var(--text-soft);
   font-weight: 800;
 }
 
 .dayToggleActive span {
-  border-color: rgba(33, 78, 66, 0.35);
-  background: rgba(33, 78, 66, 0.11);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted);
   color: var(--accent);
 }
 

@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: rgba(31, 36, 30, 0.34);
+  background: var(--surface-scrim);
   backdrop-filter: blur(10px);
 }
 
@@ -16,17 +16,9 @@
   overflow: auto;
   border-radius: 30px;
   padding: 1.35rem;
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 251, 243, 0.98),
-      rgba(247, 242, 232, 0.96)
-    ),
-    rgba(255, 255, 255, 0.84);
-  border: 1px solid rgba(37, 45, 37, 0.1);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 28px 64px rgba(63, 53, 31, 0.18);
+  background: var(--surface-overlay);
+  border: 1px solid var(--line);
+  box-shadow: var(--inset-highlight), var(--shadow-elevated);
 }
 
 .header {
@@ -87,10 +79,10 @@
   justify-content: center;
   width: 2.7rem;
   height: 2.7rem;
-  border: 1px solid rgba(37, 45, 37, 0.1);
+  border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--text-soft);
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--field-bg);
 }
 
 .summaryGrid {
@@ -105,14 +97,12 @@
 .infoCard {
   border-radius: 24px;
   border: 1px solid var(--line);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.72),
-    0 10px 24px rgba(82, 68, 37, 0.08);
+  box-shadow: var(--inset-highlight), var(--shadow-soft);
 }
 
 .metricCard {
   padding: 0.95rem 1rem;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--field-bg);
 }
 
 .metricCard span {
@@ -130,7 +120,7 @@
 .infoCard {
   margin-top: 1rem;
   padding: 1rem;
-  background: rgba(255, 251, 243, 0.76);
+  background: var(--surface-muted);
 }
 
 .panelHeader {
@@ -166,7 +156,7 @@
   border-radius: 15px;
   padding: 0.72rem 0.9rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--field-bg-solid);
   font: inherit;
 }
 
@@ -188,17 +178,17 @@
 
 .primaryButton {
   min-height: 3rem;
-  border: 1px solid rgba(33, 78, 66, 0.16);
+  border: 1px solid var(--accent-border);
   padding: 0.78rem 1rem;
-  color: #f7f2e8;
-  background: linear-gradient(135deg, #214e42, #16372f);
+  color: var(--accent-text-on-fill);
+  background: var(--primary-gradient);
 }
 
 .ghostButton {
-  border: 1px solid rgba(33, 78, 66, 0.12);
+  border: 1px solid var(--accent-border);
   padding: 0.72rem 0.9rem;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.06);
+  background: var(--button-ghost-bg);
 }
 
 .primaryButton:disabled,
@@ -216,13 +206,13 @@
 
 .ghostButton:not(:disabled):hover,
 .closeButton:hover {
-  background: rgba(33, 78, 66, 0.1);
-  border-color: rgba(33, 78, 66, 0.18);
+  background: var(--button-ghost-bg-hover);
+  border-color: var(--accent-border-strong);
 }
 
 .errorText {
   margin-top: 0.75rem;
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .emptyState {
@@ -242,8 +232,8 @@
   gap: 1rem;
   border-radius: 20px;
   padding: 0.85rem;
-  background: rgba(255, 255, 255, 0.56);
-  border: 1px solid rgba(37, 45, 37, 0.08);
+  background: var(--field-bg-muted);
+  border: 1px solid var(--line);
 }
 
 .userLead {
@@ -260,7 +250,7 @@
   height: 2.6rem;
   border-radius: 18px;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
 }
 
 .userCopy {
@@ -294,38 +284,38 @@
 }
 
 .roleOwner {
-  color: #7c3f18;
+  color: var(--warning);
   background: rgba(225, 161, 82, 0.18);
 }
 
 .roleAdmin {
-  color: #214e42;
-  background: rgba(33, 78, 66, 0.12);
+  color: var(--accent);
+  background: var(--accent-muted-strong);
 }
 
 .roleUser {
-  color: #3f513d;
+  color: var(--text-soft);
   background: rgba(122, 139, 112, 0.14);
 }
 
 .roleGuest {
-  color: #6a5b35;
+  color: var(--warning);
   background: rgba(207, 191, 143, 0.22);
 }
 
 .meBadge {
   color: var(--text-soft);
-  background: rgba(37, 45, 37, 0.08);
+  background: var(--field-bg-muted);
 }
 
 .statusBadge {
-  color: #214e42;
-  background: rgba(33, 78, 66, 0.1);
+  color: var(--accent);
+  background: var(--accent-muted);
 }
 
 .statusBadgeDeclined {
-  color: #8a3a21;
-  background: rgba(190, 85, 51, 0.14);
+  color: var(--danger);
+  background: var(--danger-bg-hover);
 }
 
 .userActions {

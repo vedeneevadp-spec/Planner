@@ -23,7 +23,7 @@
   padding: 0.35rem;
   border: 1px solid var(--line);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--field-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
 }
 
@@ -35,7 +35,7 @@
   border: 1px solid transparent;
   border-radius: 16px;
   padding: 0.62rem 0.95rem;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--field-bg-muted);
   color: inherit;
   font: inherit;
   transition:
@@ -47,14 +47,14 @@
 
 .sectionTab:hover {
   transform: translateY(-1px);
-  border-color: rgba(33, 78, 66, 0.22);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
 }
 
 .sectionTabActive {
-  border-color: rgba(33, 78, 66, 0.22);
-  background: rgba(240, 236, 228, 0.96);
-  box-shadow: inset 0 0 0 1px rgba(33, 78, 66, 0.08);
+  border-color: var(--accent-border-strong);
+  background: var(--surface-elevated);
+  box-shadow: inset 0 0 0 1px var(--accent-muted);
 }
 
 .formHeader,
@@ -101,7 +101,7 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.72rem;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--field-bg-muted);
 }
 
 .userIdentity {
@@ -134,7 +134,7 @@
 .currentUserBadge {
   border-radius: 999px;
   padding: 0.2rem 0.5rem;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent-strong);
   font-size: 0.78rem;
   white-space: nowrap;
@@ -143,7 +143,7 @@
 .statusBadge {
   border-radius: 999px;
   padding: 0.2rem 0.5rem;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent-strong);
   font-size: 0.78rem;
   white-space: nowrap;
@@ -202,7 +202,7 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 0.72rem 0.82rem;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--field-bg);
   color: inherit;
   font: inherit;
   transition:
@@ -219,8 +219,8 @@
 .nameField input:focus,
 .roleSelect:focus-within {
   outline: none;
-  border-color: rgba(33, 78, 66, 0.5);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
 }
 
 .roleValue {
@@ -231,7 +231,7 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 0.72rem 0.82rem;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--field-bg-muted);
   color: var(--text-soft);
   font-size: 0.88rem;
 }
@@ -249,7 +249,7 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.75rem;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--field-bg-muted);
 }
 
 .previewCell {
@@ -260,7 +260,7 @@
   align-self: end;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
 }
 
 .previewCell img {
@@ -276,7 +276,7 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 0.82rem;
-  background: rgba(33, 78, 66, 0.06);
+  background: var(--accent-muted);
   color: var(--text-soft);
 }
 
@@ -288,7 +288,7 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.9rem;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--field-bg-muted);
 }
 
 .toggleCopy {
@@ -327,7 +327,7 @@
   height: 2rem;
   align-items: center;
   padding: 0.16rem;
-  border: 1px solid rgba(33, 78, 66, 0.16);
+  border: 1px solid var(--accent-border-strong);
   border-radius: 999px;
   background: rgba(64, 58, 41, 0.12);
   transition:
@@ -341,7 +341,7 @@
   width: 1.5rem;
   height: 1.5rem;
   border-radius: 999px;
-  background: #fffdf8;
+  background: var(--accent-text-on-fill);
   box-shadow:
     0 1px 2px rgba(31, 36, 30, 0.16),
     0 0 0 1px rgba(31, 36, 30, 0.08);
@@ -349,13 +349,13 @@
 }
 
 .toggleInput:focus-visible + .toggleTrack {
-  border-color: rgba(33, 78, 66, 0.5);
-  box-shadow: 0 0 0 3px rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--accent-muted-strong);
 }
 
 .toggleInput:checked + .toggleTrack {
-  border-color: rgba(33, 78, 66, 0.3);
-  background: rgba(33, 78, 66, 0.2);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-border-strong);
 }
 
 .toggleInput:checked + .toggleTrack .toggleThumb {
@@ -376,10 +376,10 @@
   min-height: 2.55rem;
   align-items: center;
   overflow: hidden;
-  border: 1px dashed rgba(33, 78, 66, 0.28);
+  border: 1px dashed var(--accent-border-strong);
   border-radius: 16px;
   padding: 0.72rem 0.82rem;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--field-bg-muted);
   transition:
     border-color 150ms ease,
     background 150ms ease,
@@ -388,8 +388,8 @@
 
 .uploadControl:hover,
 .uploadControl:focus-within {
-  border-color: rgba(33, 78, 66, 0.55);
-  background: rgba(255, 255, 255, 0.78);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
   transform: translateY(-1px);
 }
 
@@ -415,7 +415,7 @@
 
 .fieldError,
 .formError {
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .primaryButton,
@@ -444,12 +444,12 @@
 
 .primaryButton {
   align-self: flex-start;
-  background: var(--accent);
-  color: #fffdf8;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
 }
 
 .secondaryButton {
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   border-color: var(--line);
   color: inherit;
 }
@@ -459,7 +459,7 @@
   padding: 0.46rem 0.72rem;
   background: rgba(173, 78, 47, 0.1);
   border-color: rgba(173, 78, 47, 0.2);
-  color: #8a3a21;
+  color: var(--danger);
   font-size: 0.84rem;
 }
 
@@ -469,7 +469,7 @@
   border-radius: 999px;
   align-self: end;
   background: rgba(173, 78, 47, 0.1);
-  color: #8a3a21;
+  color: var(--danger);
   font-size: 1.1rem;
   line-height: 1;
 }
@@ -480,7 +480,7 @@
   padding: 0.28rem 0.55rem;
   background: rgba(173, 78, 47, 0.08);
   border-color: rgba(173, 78, 47, 0.16);
-  color: #8a3a21;
+  color: var(--danger);
   font-size: 0.78rem;
 }
 
@@ -538,7 +538,7 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.32rem 0.62rem 0.32rem 0.38rem;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--field-bg-muted);
   color: var(--accent-strong);
   font-size: 0.86rem;
 }
@@ -558,7 +558,7 @@
   border-radius: 999px;
   padding: 0.14rem 0.42rem;
   background: rgba(173, 78, 47, 0.12);
-  color: #8a3a21;
+  color: var(--danger);
   font-size: 0.72rem;
 }
 
@@ -576,7 +576,7 @@
   justify-content: center;
   border-radius: 999px;
   padding: 0.28rem 0.65rem;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent-strong);
   font-size: 0.95rem;
 }

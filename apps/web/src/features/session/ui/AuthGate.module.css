@@ -15,9 +15,9 @@
   gap: 1.25rem;
   padding: 1.25rem;
   border-radius: 36px;
-  background: rgba(255, 249, 240, 0.78);
-  border: 1px solid rgba(57, 68, 58, 0.12);
-  box-shadow: 0 24px 80px rgba(82, 68, 37, 0.14);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
 
@@ -42,11 +42,7 @@
       rgba(104, 148, 132, 0.18),
       transparent 38%
     ),
-    linear-gradient(
-      145deg,
-      rgba(255, 252, 246, 0.96),
-      rgba(244, 235, 220, 0.82)
-    );
+    var(--surface-strong);
 }
 
 .benefitsCard {
@@ -54,7 +50,7 @@
   display: grid;
   gap: 1.35rem;
   padding: 1.65rem;
-  background: rgba(255, 252, 246, 0.86);
+  background: var(--surface-muted);
 }
 
 .formCard {
@@ -63,7 +59,7 @@
   align-content: start;
   gap: 1.4rem;
   padding: 1.75rem;
-  background: rgba(255, 255, 255, 0.84);
+  background: var(--surface-strong);
 }
 
 .brandRow {
@@ -79,12 +75,12 @@
   display: grid;
   place-items: center;
   border-radius: 18px;
-  background: linear-gradient(140deg, #214e42, #d99b4a);
-  color: #fff8f0;
+  background: linear-gradient(140deg, var(--accent), #d99b4a);
+  color: var(--accent-text-on-fill);
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1.6rem;
   font-weight: 700;
-  box-shadow: 0 14px 24px rgba(33, 78, 66, 0.18);
+  box-shadow: 0 14px 24px var(--accent-border-strong);
 }
 
 .eyebrow,
@@ -126,7 +122,7 @@
   min-height: 2.25rem;
   padding: 0.5rem 0.85rem;
   border-radius: 999px;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent);
   font-size: 0.92rem;
   font-weight: 600;
@@ -152,8 +148,8 @@
   height: 0.7rem;
   margin-top: 0.45rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #214e42, #d99b4a);
-  box-shadow: 0 0 0 5px rgba(33, 78, 66, 0.08);
+  background: linear-gradient(135deg, var(--accent), #d99b4a);
+  box-shadow: 0 0 0 5px var(--accent-muted);
 }
 
 .featureItem strong {
@@ -172,12 +168,8 @@
   gap: 0.95rem;
   padding: 1.2rem 1.25rem;
   border-radius: 22px;
-  border: 1px solid rgba(37, 45, 37, 0.12);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.96),
-    rgba(247, 243, 235, 0.86)
-  );
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
 }
 
 .previewHeader {
@@ -210,7 +202,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid rgba(37, 45, 37, 0.08);
+  border-top: 1px solid var(--line);
 }
 
 .previewList span {
@@ -235,8 +227,8 @@
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 999px;
-  background: rgba(245, 239, 231, 0.88);
-  border: 1px solid rgba(37, 45, 37, 0.1);
+  background: var(--field-bg-muted);
+  border: 1px solid var(--line);
   margin-bottom: 1rem;
 }
 
@@ -256,14 +248,14 @@
 
 .modeButton:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--field-bg);
 }
 
 .modeButtonActive {
-  background: rgba(255, 252, 246, 0.96);
+  background: var(--field-bg-strong);
   box-shadow:
-    inset 0 0 0 1px rgba(33, 78, 66, 0.18),
-    0 1px 2px rgba(37, 45, 37, 0.08);
+    inset 0 0 0 1px var(--accent-border),
+    var(--shadow-soft);
   color: var(--accent);
 }
 
@@ -298,7 +290,7 @@
   min-height: 3.5rem;
   border-radius: 18px;
   border: 1px solid var(--line-strong);
-  background: rgba(252, 250, 245, 0.96);
+  background: var(--field-bg-strong);
   padding: 0.95rem 1rem;
   color: inherit;
   transition:
@@ -308,26 +300,26 @@
 }
 
 .field input::placeholder {
-  color: rgba(87, 96, 86, 0.72);
+  color: var(--text-soft);
 }
 
 .field input:hover {
-  border-color: rgba(33, 78, 66, 0.2);
+  border-color: var(--accent-border);
 }
 
 .field input:focus-visible {
-  border-color: rgba(33, 78, 66, 0.42);
-  box-shadow: 0 0 0 4px rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 4px var(--accent-muted-strong);
 }
 
 .field input[aria-invalid='true'] {
-  border-color: rgba(173, 78, 47, 0.42);
-  background: rgba(255, 246, 241, 0.96);
+  border-color: var(--danger-border-strong);
+  background: var(--danger-bg);
 }
 
 .fieldError {
   font-size: 0.86rem;
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .recoveryCard {
@@ -335,7 +327,7 @@
   gap: 0.4rem;
   padding: 1rem 1.05rem;
   border-radius: 18px;
-  border: 1px dashed rgba(33, 78, 66, 0.22);
+  border: 1px dashed var(--accent-border-strong);
   background: rgba(247, 203, 119, 0.1);
 }
 
@@ -371,7 +363,7 @@
   width: 1rem;
   height: 1rem;
   margin: 0;
-  accent-color: #214e42;
+  accent-color: var(--accent);
 }
 
 .feedbackStack {
@@ -393,8 +385,8 @@
 }
 
 .errorBanner {
-  color: #8a3a21;
-  background: rgba(173, 78, 47, 0.12);
+  color: var(--danger);
+  background: var(--danger-bg-hover);
 }
 
 .submitButton,
@@ -409,9 +401,9 @@
 
 .submitButton {
   width: 100%;
-  color: #fff8f0;
-  background: linear-gradient(135deg, #214e42, #2f6a58);
-  box-shadow: 0 18px 30px rgba(33, 78, 66, 0.18);
+  color: var(--accent-text-on-fill);
+  background: var(--primary-gradient);
+  box-shadow: var(--shadow-soft);
   transition:
     transform 160ms ease,
     box-shadow 160ms ease,
@@ -420,7 +412,7 @@
 
 .submitButton:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 20px 34px rgba(33, 78, 66, 0.22);
+  box-shadow: var(--shadow);
 }
 
 .submitButton:disabled {
@@ -431,7 +423,7 @@
 
 .secondaryButton {
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--button-ghost-bg);
 }
 
 .inlineLink {
@@ -477,8 +469,8 @@
 .spinner {
   width: 1rem;
   height: 1rem;
-  border: 2px solid rgba(255, 248, 240, 0.48);
-  border-top-color: #fff8f0;
+  border: 2px solid rgba(255, 255, 255, 0.38);
+  border-top-color: var(--accent-text-on-fill);
   border-radius: 999px;
   animation: spin 800ms linear infinite;
 }

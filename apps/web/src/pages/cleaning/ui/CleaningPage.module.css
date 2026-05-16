@@ -73,10 +73,10 @@
   display: grid;
   gap: 0.15rem;
   min-width: 0;
-  border: 1px solid rgba(33, 78, 66, 0.12);
+  border: 1px solid var(--accent-muted-strong);
   border-radius: 12px;
   padding: 0.52rem 0.62rem;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--field-bg-muted);
 }
 
 .statPill span {
@@ -97,9 +97,9 @@
   flex-wrap: wrap;
   gap: 0.25rem;
   padding: 0.22rem;
-  border: 1px solid rgba(37, 45, 37, 0.1);
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 251, 243, 0.62);
+  background: var(--surface-muted);
 }
 
 .modeButton,
@@ -131,8 +131,8 @@
 
 .modeButtonActive {
   color: var(--accent);
-  border-color: rgba(33, 78, 66, 0.14);
-  background: rgba(33, 78, 66, 0.08);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted);
 }
 
 .mobileEnergyIcon {
@@ -140,20 +140,20 @@
 }
 
 .primaryButton {
-  border: 1px solid rgba(33, 78, 66, 0.16);
+  border: 1px solid var(--accent-border-strong);
   padding: 0.52rem 0.78rem;
-  color: #f7f2e8;
-  background: linear-gradient(135deg, #214e42, #16372f);
+  color: var(--accent-text-on-fill);
+  background: var(--primary-gradient);
 }
 
 .softButton,
 .dangerButton,
 .iconButton,
 .softLinkButton {
-  border: 1px solid rgba(33, 78, 66, 0.12);
+  border: 1px solid var(--accent-muted-strong);
   padding: 0.48rem 0.68rem;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.06);
+  background: var(--accent-muted);
 }
 
 .headerActions {
@@ -176,11 +176,11 @@
   justify-content: center;
   gap: 0.42rem;
   min-height: 2.16rem;
-  border: 1px solid rgba(33, 78, 66, 0.12);
+  border: 1px solid var(--accent-muted-strong);
   border-radius: 11px;
   padding: 0.46rem 0.68rem;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.06);
+  background: var(--accent-muted);
   font-size: 0.86rem;
   font-weight: 600;
   text-decoration: none;
@@ -188,13 +188,13 @@
 
 .dangerButton,
 .iconButtonDanger {
-  color: #8a3a21;
+  color: var(--danger);
   border-color: rgba(173, 78, 47, 0.16);
   background: rgba(173, 78, 47, 0.08);
 }
 
 .doneButton {
-  border: 1px solid rgba(33, 78, 66, 0.14);
+  border: 1px solid var(--accent-border-strong);
   padding: 0.48rem 0.68rem;
   color: var(--success);
   background: var(--success-bg);
@@ -220,8 +220,8 @@
 
 .iconButtonActive {
   color: var(--accent);
-  border-color: rgba(33, 78, 66, 0.22);
-  background: rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
 }
 
 .iconButtonAddActive svg {
@@ -235,11 +235,11 @@
   justify-self: start;
   gap: 0.34rem;
   min-height: 2.24rem;
-  border: 1px solid rgba(37, 45, 37, 0.12);
+  border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.28rem 0.48rem;
   color: var(--text-soft);
-  background: rgba(37, 45, 37, 0.05);
+  background: var(--line);
   font: inherit;
   font-size: 0.72rem;
   font-weight: 750;
@@ -253,8 +253,8 @@
 
 .switchToggleChecked {
   color: var(--accent);
-  border-color: rgba(33, 78, 66, 0.24);
-  background: rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
 }
 
 .switchTrack {
@@ -263,13 +263,13 @@
   width: 2.2rem;
   height: 1.18rem;
   border-radius: 999px;
-  background: rgba(37, 45, 37, 0.18);
-  box-shadow: inset 0 0 0 1px rgba(37, 45, 37, 0.05);
+  background: var(--line-strong);
+  box-shadow: inset 0 0 0 1px var(--line);
   transition: background 150ms ease;
 }
 
 .switchToggleChecked .switchTrack {
-  background: #214e42;
+  background: var(--accent-fill);
 }
 
 .switchThumb {
@@ -279,8 +279,8 @@
   width: 0.88rem;
   height: 0.88rem;
   border-radius: 50%;
-  background: #fffaf1;
-  box-shadow: 0 1px 3px rgba(37, 45, 37, 0.2);
+  background: var(--surface-overlay);
+  box-shadow: 0 1px 3px var(--line-strong);
   transition: transform 150ms ease;
 }
 
@@ -310,7 +310,7 @@
   border: 1px solid rgba(173, 78, 47, 0.16);
   border-radius: 12px;
   padding: 0.62rem 0.78rem;
-  color: #8a3a21;
+  color: var(--danger);
   background: rgba(173, 78, 47, 0.08);
 }
 
@@ -359,16 +359,16 @@
 
 .badge {
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
 }
 
 .priorityBadge {
   color: var(--text-soft);
-  background: rgba(37, 45, 37, 0.06);
+  background: var(--line);
 }
 
 .priorityHigh {
-  color: #8a3a21;
+  color: var(--danger);
   background: rgba(225, 161, 82, 0.18);
 }
 
@@ -382,10 +382,10 @@
 .taskCard {
   display: grid;
   gap: 0.45rem;
-  border: 1px solid rgba(37, 45, 37, 0.1);
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 0.58rem;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--field-bg-muted);
 }
 
 .taskCardHeader {
@@ -402,7 +402,6 @@
 }
 
 .metaLine,
-.reasonList,
 .taskStateLine,
 .actionRow {
   display: flex;
@@ -411,7 +410,6 @@
 }
 
 .metaLine span,
-.reasonList span,
 .taskStateLine span {
   border-radius: 999px;
   padding: 0.18rem 0.4rem;
@@ -420,17 +418,12 @@
 
 .metaLine span {
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.07);
-}
-
-.reasonList span {
-  color: #6f5010;
-  background: rgba(239, 202, 130, 0.24);
+  background: var(--accent-muted);
 }
 
 .taskStateLine span {
   color: var(--text-soft);
-  background: rgba(37, 45, 37, 0.05);
+  background: var(--line);
 }
 
 .actionRow {
@@ -475,7 +468,7 @@
   border-radius: 10px;
   padding: 0.5rem 0.62rem;
   color: var(--text);
-  background: rgba(255, 255, 255, 0.76);
+  background: var(--field-bg-strong);
 }
 
 .inlineForm,
@@ -534,10 +527,10 @@
   place-items: center;
   width: 2rem;
   height: 2rem;
-  border: 1px solid rgba(33, 78, 66, 0.14);
+  border: 1px solid var(--accent-border-strong);
   border-radius: 10px;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.06);
+  background: var(--accent-muted);
   transition:
     background 150ms ease,
     border-color 150ms ease,
@@ -545,8 +538,8 @@
 }
 
 .zoneAddButtonActive {
-  border-color: rgba(33, 78, 66, 0.22);
-  background: rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   transform: rotate(45deg);
 }
 
@@ -562,9 +555,9 @@
 .zoneLink,
 .zoneTaskRow,
 .historyItem {
-  border: 1px solid rgba(37, 45, 37, 0.08);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--field-bg-muted);
 }
 
 .compactItem {
@@ -598,7 +591,7 @@
   height: 1.85rem;
   border-radius: 10px;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
 }
 
 .zoneLink strong {
@@ -612,8 +605,8 @@
 }
 
 .zoneLinkActive {
-  border-color: rgba(33, 78, 66, 0.18);
-  background: rgba(33, 78, 66, 0.08);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted);
 }
 
 .zonePicker {
@@ -627,11 +620,11 @@
   align-items: center;
   width: 100%;
   min-height: 2.9rem;
-  border: 1px solid rgba(33, 78, 66, 0.14);
+  border: 1px solid var(--accent-border-strong);
   border-radius: 12px;
   padding: 0.42rem 0.54rem;
   color: inherit;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--field-bg);
   font: inherit;
   text-align: left;
 }
@@ -644,7 +637,7 @@
   height: 1.85rem;
   border-radius: 10px;
   color: var(--accent);
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   font-weight: 650;
 }
 
@@ -683,10 +676,10 @@
   gap: 0.28rem;
   max-height: min(20rem, 64vh);
   overflow: auto;
-  border: 1px solid rgba(33, 78, 66, 0.14);
+  border: 1px solid var(--accent-border-strong);
   border-radius: 12px;
   padding: 0.34rem;
-  background: rgba(255, 251, 243, 0.98);
+  background: var(--surface-overlay);
   box-shadow: var(--shadow);
 }
 
@@ -706,8 +699,8 @@
 }
 
 .zoneSelectOptionActive {
-  border-color: rgba(33, 78, 66, 0.16);
-  background: rgba(33, 78, 66, 0.08);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted);
 }
 
 .zoneCreateForm {
@@ -751,7 +744,11 @@
 }
 
 .taskForm {
-  grid-template-columns: minmax(180px, 1.4fr) repeat(4, minmax(90px, 0.45fr));
+  grid-template-columns:
+    minmax(18rem, 1fr) minmax(4.75rem, 0.24fr)
+    minmax(8.5rem, 0.34fr) minmax(6rem, 0.26fr)
+    minmax(9.75rem, 0.4fr) auto minmax(9rem, 0.34fr);
+  align-items: end;
   padding-top: 0.65rem;
   border-top: 1px solid var(--line);
 }
@@ -763,7 +760,7 @@
 }
 
 .fieldLabel {
-  color: rgba(37, 45, 37, 0.56);
+  color: var(--line-strong);
   font-size: 0.66rem;
   font-weight: 500;
   letter-spacing: 0;
@@ -771,7 +768,7 @@
 }
 
 .taskTitleField {
-  grid-column: span 2;
+  grid-column: auto;
 }
 
 .taskSubmitButton {
@@ -811,10 +808,10 @@
   place-items: center;
   width: 1.12rem;
   height: 1.12rem;
-  border: 1px solid rgba(33, 78, 66, 0.18);
+  border: 1px solid var(--accent-border-strong);
   border-radius: 6px;
   color: transparent;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   transition:
     background 150ms ease,
     border-color 150ms ease,
@@ -823,13 +820,13 @@
 }
 
 .seasonCheckboxInput:checked + .seasonCheckboxBox {
-  color: #fffaf1;
-  border-color: rgba(33, 78, 66, 0.42);
-  background: #214e42;
+  color: var(--accent-text-on-fill);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-fill);
 }
 
 .seasonCheckboxInput:focus-visible + .seasonCheckboxBox {
-  box-shadow: 0 0 0 3px rgba(33, 78, 66, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-muted-strong);
 }
 
 .seasonCheckboxInput:disabled + .seasonCheckboxBox,
@@ -853,7 +850,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 0.38rem 0.42rem;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--field-bg-muted);
   color: var(--text-soft);
   font-size: 0.8rem;
   cursor: pointer;
@@ -923,8 +920,14 @@
 }
 
 .zoneTaskRow .switchToggle,
-.zoneTaskRow .iconButtonDanger {
-  min-height: 2.14rem;
+.zoneTaskRow .iconButtonDanger,
+.zoneTaskMinutes {
+  height: var(--select-picker-height);
+  min-height: var(--select-picker-height);
+}
+
+.zoneTaskMinutes {
+  padding-block: 0;
 }
 
 .zoneTaskRow .iconButtonDanger {
@@ -1016,6 +1019,10 @@
     display: none;
   }
 
+  .zoneStatsMobileHidden {
+    display: none;
+  }
+
   .todayHero .kicker {
     display: inline;
     margin: 0;
@@ -1039,7 +1046,7 @@
     --select-picker-padding: 0.42rem 0.54rem;
     --select-picker-font-size: 0.84rem;
 
-    grid-template-columns: minmax(5.2rem, 0.62fr) minmax(0, 1.38fr);
+    grid-template-columns: minmax(5.2rem, 0.78fr) minmax(4rem, 1fr) auto;
     gap: 0.34rem 0.42rem;
     padding: 0.5rem;
   }
@@ -1056,13 +1063,10 @@
     grid-column: 2;
   }
 
-  .zoneTaskMinutes {
-    min-height: 2.18rem;
-    padding: 0.42rem 0.54rem;
-  }
-
   .zoneTaskActions {
-    grid-column: 1 / -1;
+    grid-column: 3;
+    align-self: end;
+    justify-self: end;
   }
 
   .headerActions {

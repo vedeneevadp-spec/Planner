@@ -1,7 +1,4 @@
 import {
-  type CleaningAssignee,
-  type CleaningDepth,
-  type CleaningEnergy,
   type CleaningFrequencyType,
   type CleaningPriority,
   type CleaningZoneUpdateInput,
@@ -37,13 +34,10 @@ import { PageHeader } from '@/shared/ui/PageHeader'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
-  ASSIGNEE_LABELS,
   clamp,
   createActionInput,
   DEFAULT_CLEANING_TEMPLATES,
-  DEPTH_LABELS,
   EMPTY_TASK_DRAFT,
-  ENERGY_LABELS,
   filterItemsByFocusMode,
   type FocusMode,
   FREQUENCY_LABELS,
@@ -531,14 +525,14 @@ export function CleaningSettingsPage() {
 
     try {
       await createTaskMutation.mutateAsync({
-        assignee: taskDraft.assignee,
+        assignee: 'anyone',
         customIntervalDays:
           taskDraft.frequencyType === 'custom'
             ? Number(taskDraft.customIntervalDays) || 1
             : null,
-        depth: taskDraft.depth,
+        depth: 'regular',
         description: taskDraft.description.trim(),
-        energy: taskDraft.energy,
+        energy: 'normal',
         estimatedMinutes: Number(taskDraft.estimatedMinutes) || null,
         frequencyInterval: Math.max(
           1,
@@ -807,6 +801,9 @@ export function CleaningSettingsPage() {
 
               <ZoneStats
                 history={plan?.history ?? []}
+                isMobileHidden={
+                  isZoneCreateOpen || isZoneEditOpen || isTaskCreateOpen
+                }
                 statesByTaskId={statesByTaskId}
                 tasks={selectedZoneTasks}
                 zone={selectedZone}
@@ -897,26 +894,6 @@ export function CleaningSettingsPage() {
                       }}
                     />
                   </div>
-                  <div className={styles.taskFormField}>
-                    <span className={styles.fieldLabel}>Частота</span>
-                    <SelectPicker
-                      value={taskDraft.frequencyType}
-                      disabled={isBusy}
-                      ariaLabel="Частота"
-                      options={Object.entries(FREQUENCY_LABELS).map(
-                        ([value, label]) => ({
-                          label,
-                          value,
-                        }),
-                      )}
-                      onChange={(nextValue) => {
-                        setTaskDraft((current) => ({
-                          ...current,
-                          frequencyType: nextValue as CleaningFrequencyType,
-                        }))
-                      }}
-                    />
-                  </div>
                   <label className={styles.taskFormField}>
                     <span className={styles.fieldLabel}>Интервал</span>
                     <input
@@ -940,12 +917,12 @@ export function CleaningSettingsPage() {
                     />
                   </label>
                   <div className={styles.taskFormField}>
-                    <span className={styles.fieldLabel}>Объём</span>
+                    <span className={styles.fieldLabel}>Частота</span>
                     <SelectPicker
-                      value={taskDraft.depth}
+                      value={taskDraft.frequencyType}
                       disabled={isBusy}
-                      ariaLabel="Объём уборки"
-                      options={Object.entries(DEPTH_LABELS).map(
+                      ariaLabel="Частота"
+                      options={Object.entries(FREQUENCY_LABELS).map(
                         ([value, label]) => ({
                           label,
                           value,
@@ -954,63 +931,11 @@ export function CleaningSettingsPage() {
                       onChange={(nextValue) => {
                         setTaskDraft((current) => ({
                           ...current,
-                          depth: nextValue as CleaningDepth,
+                          frequencyType: nextValue as CleaningFrequencyType,
                         }))
                       }}
                     />
                   </div>
-                  <div className={styles.taskFormField}>
-                    <span className={styles.fieldLabel}>Энергия</span>
-                    <SelectPicker
-                      value={taskDraft.energy}
-                      disabled={isBusy}
-                      ariaLabel="Энергия"
-                      options={Object.entries(ENERGY_LABELS).map(
-                        ([value, label]) => ({
-                          label,
-                          value,
-                        }),
-                      )}
-                      onChange={(nextValue) => {
-                        setTaskDraft((current) => ({
-                          ...current,
-                          energy: nextValue as CleaningEnergy,
-                        }))
-                      }}
-                    />
-                  </div>
-                  <div className={styles.taskFormField}>
-                    <span className={styles.fieldLabel}>Кто</span>
-                    <SelectPicker
-                      value={taskDraft.assignee}
-                      disabled={isBusy}
-                      ariaLabel="Исполнитель"
-                      options={Object.entries(ASSIGNEE_LABELS).map(
-                        ([value, label]) => ({
-                          label,
-                          value,
-                        }),
-                      )}
-                      onChange={(nextValue) => {
-                        setTaskDraft((current) => ({
-                          ...current,
-                          assignee: nextValue as CleaningAssignee,
-                        }))
-                      }}
-                    />
-                  </div>
-                  <button
-                    className={cx(
-                      styles.primaryButton,
-                      styles.taskSubmitButton,
-                    )}
-                    type="submit"
-                    disabled={isBusy}
-                  >
-                    <CheckIcon size={17} strokeWidth={2.15} />
-                    <span>Создать</span>
-                  </button>
-
                   <label className={styles.seasonToggle}>
                     <input
                       className={styles.seasonCheckboxInput}
@@ -1032,6 +957,17 @@ export function CleaningSettingsPage() {
                     </span>
                     <span>Сезонная</span>
                   </label>
+                  <button
+                    className={cx(
+                      styles.primaryButton,
+                      styles.taskSubmitButton,
+                    )}
+                    type="submit"
+                    disabled={isBusy}
+                  >
+                    <CheckIcon size={17} strokeWidth={2.15} />
+                    <span>Создать</span>
+                  </button>
 
                   {taskDraft.isSeasonal ? (
                     <div className={styles.monthGrid}>

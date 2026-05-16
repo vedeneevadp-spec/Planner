@@ -75,7 +75,7 @@
   place-items: center;
   border-radius: 999px;
   border: 2px solid transparent;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   color: inherit;
   transition:
     border-color 150ms ease,
@@ -90,11 +90,11 @@
 }
 
 .optionButton:hover {
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--field-bg-strong);
   transform: translateY(-1px);
 }
 
 .optionButtonActive {
-  border-color: var(--accent);
-  background: rgba(33, 78, 66, 0.1);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
 }

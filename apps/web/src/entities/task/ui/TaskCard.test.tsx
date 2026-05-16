@@ -181,6 +181,31 @@ describe('TaskCard', () => {
     expect(screen.queryByText('Без сферы')).not.toBeInTheDocument()
   })
 
+  it('hides assignee metadata in personal workspace task cards', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Tikondra',
+        assigneeUserId: 'user-2',
+      }),
+    )
+
+    expect(screen.queryByText('Исполнитель: Tikondra')).not.toBeInTheDocument()
+  })
+
+  it('shows assignee metadata in shared workspace task cards', () => {
+    renderTaskCard(
+      createTask({
+        assigneeDisplayName: 'Tikondra',
+        assigneeUserId: 'user-2',
+      }),
+      {
+        isSharedWorkspace: true,
+      },
+    )
+
+    expect(screen.getByText('Исполнитель: Tikondra')).toBeInTheDocument()
+  })
+
   it('does not show habit target type metadata for routine tasks', () => {
     renderTaskCard(
       createTask({

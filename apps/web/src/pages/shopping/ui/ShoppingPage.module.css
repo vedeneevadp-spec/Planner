@@ -31,7 +31,7 @@
   padding: 0.68rem 5.6rem 0.68rem 0.85rem;
   border-radius: 14px;
   border: 1px solid var(--line);
-  background: rgba(255, 251, 243, 0.82);
+  background: var(--surface-muted);
   color: var(--text);
 }
 
@@ -51,12 +51,12 @@
   width: 2rem;
   height: 2rem;
   padding: 0;
-  border: 1px solid rgba(37, 45, 37, 0.18);
+  border: 1px solid var(--line-strong);
   border-radius: 10px;
-  background: rgba(255, 251, 243, 0.96);
+  background: var(--surface-overlay);
   box-shadow:
-    0 1px 2px rgba(23, 35, 28, 0.08),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.56);
+    var(--shadow-soft),
+    inset 0 0 0 1px var(--field-bg-muted);
 }
 
 .inputCategoryButton img {
@@ -67,11 +67,11 @@
 }
 
 .inputCategoryButtonActive {
-  border-color: rgba(33, 78, 66, 0.38);
-  background: rgba(218, 235, 225, 0.78);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   box-shadow:
-    0 0 0 1px rgba(33, 78, 66, 0.12),
-    0 6px 14px rgba(33, 78, 66, 0.12);
+    0 0 0 1px var(--accent-muted-strong),
+    0 6px 14px var(--accent-muted-strong);
 }
 
 .inputCategoryButtonActive img {
@@ -86,10 +86,10 @@
   width: 2.75rem;
   height: 2.75rem;
   padding: 0;
-  border: 1px solid rgba(33, 78, 66, 0.16);
+  border: 1px solid var(--accent-border-strong);
   border-radius: 14px;
-  background: linear-gradient(135deg, #214e42, #16372f);
-  color: #f7f2e8;
+  background: var(--primary-gradient);
+  color: var(--accent-text-on-fill);
 }
 
 .composerControls {
@@ -133,9 +133,9 @@
   min-height: 2.12rem;
   gap: 0.3rem;
   padding: 0.34rem 0.32rem;
-  border: 1px solid rgba(37, 45, 37, 0.1);
+  border: 1px solid var(--line);
   border-radius: 12px;
-  background: rgba(255, 251, 243, 0.72);
+  background: var(--surface-muted);
   color: var(--text-soft);
   font-size: 0.82rem;
   line-height: 1.1;
@@ -176,20 +176,20 @@
 .filterIconButton:focus-visible,
 .markButton:focus-visible,
 .iconButton:focus-visible {
-  outline: 2px solid rgba(33, 78, 66, 0.36);
+  outline: 2px solid var(--accent-border-strong);
   outline-offset: 2px;
 }
 
 .filterOptionSelected {
-  border-color: rgba(33, 78, 66, 0.28);
-  background: rgba(218, 235, 225, 0.76);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   color: var(--accent-strong);
 }
 
 .filterIconButtonUrgent {
-  border-color: rgba(138, 58, 33, 0.26);
-  background: rgba(246, 216, 188, 0.72);
-  color: #713017;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .addButton:disabled,
@@ -201,7 +201,7 @@
 .errorMessage {
   margin: 0;
   font-size: 0.92rem;
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .content {
@@ -220,11 +220,11 @@
   border: 1px solid var(--line);
   background: var(--surface);
   backdrop-filter: blur(18px);
-  box-shadow: 0 12px 30px rgba(23, 35, 28, 0.08);
+  box-shadow: var(--shadow-soft);
 }
 
 .completedPanel {
-  background: rgba(255, 251, 243, 0.62);
+  background: var(--surface-muted);
 }
 
 .emptyCopy {
@@ -245,7 +245,7 @@
   gap: 0.45rem;
   min-height: 2.55rem;
   padding: 0.32rem 0;
-  border-bottom: 1px solid rgba(37, 45, 37, 0.08);
+  border-bottom: 1px solid var(--line);
 }
 
 .itemToggle {
@@ -269,7 +269,7 @@
   width: 1rem;
   height: 1rem;
   margin: 0;
-  accent-color: #214e42;
+  accent-color: var(--accent);
 }
 
 .itemLine {
@@ -300,9 +300,9 @@
   height: 1.45rem;
   justify-content: center;
   padding: 0;
-  border: 1px solid rgba(37, 45, 37, 0.08);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 251, 243, 0.58);
+  background: var(--surface-muted);
   color: var(--text-soft);
 }
 
@@ -329,7 +329,7 @@
   border: 1px solid transparent;
   border-radius: 11px;
   background: transparent;
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .markButton {
@@ -344,8 +344,8 @@
 }
 
 .markButtonActive {
-  border-color: rgba(33, 78, 66, 0.18);
-  background: rgba(218, 235, 225, 0.68);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   color: var(--accent-strong);
 }
 
@@ -354,14 +354,14 @@
 }
 
 .markButtonUrgent {
-  border-color: rgba(138, 58, 33, 0.2);
-  background: rgba(246, 216, 188, 0.66);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .iconButton:hover,
 .markButton:hover {
-  border-color: rgba(37, 45, 37, 0.1);
-  background: rgba(255, 255, 255, 0.62);
+  border-color: var(--line);
+  background: var(--field-bg);
 }
 
 .iconButton:disabled,

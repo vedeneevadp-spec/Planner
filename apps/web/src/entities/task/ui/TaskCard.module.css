@@ -5,9 +5,9 @@
   min-width: 0;
   padding: 0.82rem 0.9rem;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.6);
+  background: var(--field-bg);
   border: 1px solid var(--line);
-  box-shadow: 0 10px 24px rgba(82, 68, 37, 0.07);
+  box-shadow: var(--shadow-soft);
 }
 
 .cardMenuOpen {
@@ -15,29 +15,29 @@
 }
 
 .important {
-  border-color: rgba(140, 75, 36, 0.32);
+  border-color: var(--danger-border-strong);
   background:
     linear-gradient(135deg, rgba(239, 202, 130, 0.2), transparent 55%),
-    rgba(255, 255, 255, 0.68);
+    var(--field-bg);
   box-shadow: inset 4px 0 0 rgba(140, 75, 36, 0.5);
 }
 
 .inProgress {
-  border-color: rgba(33, 78, 66, 0.38);
+  border-color: var(--accent-border-strong);
   background:
-    linear-gradient(135deg, rgba(33, 78, 66, 0.11), transparent 58%),
-    rgba(255, 255, 255, 0.72);
-  box-shadow: inset 4px 0 0 rgba(33, 78, 66, 0.55);
+    linear-gradient(135deg, var(--accent-muted), transparent 58%),
+    var(--field-bg);
+  box-shadow: inset 4px 0 0 var(--accent);
 }
 
 .warning {
   background: var(--warning-bg);
-  border-color: rgba(140, 75, 36, 0.24);
+  border-color: var(--danger-border);
 }
 
 .success {
   background: var(--success-bg);
-  border-color: rgba(35, 80, 63, 0.24);
+  border-color: var(--accent-border);
 }
 
 .main {
@@ -101,7 +101,7 @@
   min-height: 1.65rem;
   padding: 0.22rem 0.55rem;
   border-radius: 999px;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent-strong);
   font-size: 0.76rem;
   line-height: 1.2;
@@ -118,13 +118,13 @@
 }
 
 .reviewChip {
-  background: rgba(33, 78, 66, 0.14);
+  background: var(--accent-muted-strong);
   color: var(--accent-strong);
 }
 
 .sourceWorkspaceChip {
   background: rgba(56, 74, 103, 0.1);
-  color: #384a67;
+  color: var(--text-soft);
 }
 
 .resourceChip {
@@ -171,14 +171,14 @@
 }
 
 .projectBadge {
-  border: 1px solid rgba(33, 78, 66, 0.16);
-  background: rgba(33, 78, 66, 0.08);
+  border: 1px solid var(--accent-border);
+  background: var(--accent-muted);
   color: var(--accent-strong);
 }
 
 .projectBadgeMuted {
-  border: 1px dashed rgba(31, 36, 30, 0.14);
-  background: rgba(255, 255, 255, 0.5);
+  border: 1px dashed var(--line-strong);
+  background: var(--field-bg-muted);
   color: var(--text-soft);
 }
 
@@ -189,7 +189,7 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 999px;
-  color: #fffdf8;
+  color: var(--accent-text-on-fill);
   line-height: 1;
 }
 
@@ -211,7 +211,7 @@
 .button {
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   color: inherit;
   padding: 0.42rem 0.8rem;
   font-size: 0.86rem;
@@ -230,8 +230,8 @@
 }
 
 .workButtonActive {
-  border-color: rgba(33, 78, 66, 0.34);
-  background: rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   font-weight: 700;
 }
 
@@ -240,8 +240,8 @@
 }
 
 .reviewButtonActive {
-  border-color: rgba(33, 78, 66, 0.34);
-  background: rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   font-weight: 700;
 }
 
@@ -259,7 +259,7 @@
 }
 
 .dangerButton {
-  border-color: rgba(140, 75, 36, 0.25);
+  border-color: var(--danger-border-strong);
   color: var(--warning);
 }
 
@@ -275,10 +275,10 @@
   display: grid;
   min-width: 11.5rem;
   padding: 0.35rem;
-  border: 1px solid rgba(37, 45, 37, 0.12);
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 251, 243, 0.98);
-  box-shadow: 0 16px 34px rgba(82, 68, 37, 0.16);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-elevated);
 }
 
 .menuItem {
@@ -297,7 +297,7 @@
 }
 
 .menuItem:hover {
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
 }
 
 .menuItem:disabled {
@@ -321,7 +321,7 @@
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(31, 36, 30, 0.36);
+  background: var(--surface-scrim);
   backdrop-filter: blur(10px);
 }
 
@@ -375,7 +375,7 @@
   place-items: center;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   color: inherit;
   font-size: 1.3rem;
   line-height: 1;
@@ -397,8 +397,8 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: 18px;
-  border: 1px solid rgba(33, 78, 66, 0.12);
-  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid var(--line);
+  background: var(--field-bg-muted);
 }
 
 .editorSection {
@@ -406,7 +406,7 @@
 }
 
 .editorSection + .editorSection {
-  border-top: 1px solid rgba(33, 78, 66, 0.12);
+  border-top: 1px solid var(--line);
 }
 
 .editorGrid {
@@ -440,7 +440,7 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 0.8rem 0.9rem;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--field-bg);
   transition:
     border-color 150ms ease,
     background 150ms ease;
@@ -453,8 +453,8 @@
 .field input:focus,
 .field textarea:focus {
   outline: none;
-  border-color: rgba(33, 78, 66, 0.5);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
 }
 
 .field input:disabled {
@@ -510,15 +510,15 @@
   border-radius: 999px;
   border: 1px solid transparent;
   padding: 0.68rem 1rem;
-  background: var(--accent);
-  color: #fffdf8;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
   transition:
     transform 160ms ease,
     background 160ms ease;
 }
 
 .primaryButton:hover {
-  background: var(--accent-strong);
+  background: var(--accent-fill-hover);
   transform: translateY(-1px);
 }
 

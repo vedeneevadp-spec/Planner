@@ -15,9 +15,6 @@ import { CheckIcon, CloseIcon, EditIcon, TrashIcon } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
-  ASSIGNEE_LABELS,
-  DEPTH_LABELS,
-  ENERGY_LABELS,
   formatFrequency,
   formatPostponeCount,
   getHistoryActionLabel,
@@ -69,20 +66,9 @@ export function TaskSection(props: {
                 </span>
               </div>
 
-              <div className={styles.metaLine}>
-                {item.task.estimatedMinutes ? (
+              {item.task.estimatedMinutes ? (
+                <div className={styles.metaLine}>
                   <span>{item.task.estimatedMinutes} мин</span>
-                ) : null}
-                <span>{DEPTH_LABELS[item.task.depth]}</span>
-                <span>{ENERGY_LABELS[item.task.energy]}</span>
-                <span>{ASSIGNEE_LABELS[item.task.assignee]}</span>
-              </div>
-
-              {item.reasons.length ? (
-                <div className={styles.reasonList}>
-                  {item.reasons.slice(0, 3).map((reason) => (
-                    <span key={reason}>{reason}</span>
-                  ))}
                 </div>
               ) : null}
 
@@ -452,6 +438,7 @@ export function ZoneStats(props: {
   statesByTaskId: Map<string, CleaningTaskStateRecord>
   tasks: CleaningTaskRecord[]
   zone: CleaningZoneRecord
+  isMobileHidden?: boolean | undefined
 }) {
   const zoneHistory = props.history.filter(
     (item) => item.zoneId === props.zone.id,
@@ -472,7 +459,12 @@ export function ZoneStats(props: {
     .sort((left, right) => right.count - left.count)[0]
 
   return (
-    <div className={styles.zoneStats}>
+    <div
+      className={cx(
+        styles.zoneStats,
+        props.isMobileHidden && styles.zoneStatsMobileHidden,
+      )}
+    >
       <StatPill
         label="последняя"
         value={lastCompleted ? formatShortDate(lastCompleted) : 'нет'}

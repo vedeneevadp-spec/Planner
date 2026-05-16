@@ -293,3 +293,27 @@ export function LightningIcon(props: IconProps) {
     </SvgIcon>
   )
 }
+
+export function MoonIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M19.25 15.2C17.98 15.9 16.52 16.25 15 16.25C10.44 16.25 6.75 12.56 6.75 8C6.75 6.48 7.1 5.02 7.8 3.75C4.82 5.16 2.75 8.19 2.75 11.7C2.75 16.56 6.69 20.5 11.55 20.5C15.06 20.5 18.09 18.18 19.25 15.2Z" />
+    </SvgIcon>
+  )
+}
+
+export function SunIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <circle cx="12" cy="12" r="3.7" />
+      <path d="M12 3.25V5.25" />
+      <path d="M12 18.75V20.75" />
+      <path d="M3.25 12H5.25" />
+      <path d="M18.75 12H20.75" />
+      <path d="M5.8 5.8L7.22 7.22" />
+      <path d="M16.78 16.78L18.2 18.2" />
+      <path d="M18.2 5.8L16.78 7.22" />
+      <path d="M7.22 16.78L5.8 18.2" />
+    </SvgIcon>
+  )
+}

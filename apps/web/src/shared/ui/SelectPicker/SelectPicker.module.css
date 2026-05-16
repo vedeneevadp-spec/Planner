@@ -19,7 +19,7 @@
   min-width: 0;
   border: 1px solid var(--line);
   color: inherit;
-  background: rgba(255, 255, 255, 0.58);
+  background: var(--field-bg);
   font: inherit;
   text-align: left;
   transition:
@@ -39,9 +39,9 @@
 .trigger:focus-visible,
 .option:focus-visible {
   outline: none;
-  border-color: rgba(33, 78, 66, 0.5);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 0 0 3px rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+  box-shadow: 0 0 0 3px var(--accent-muted-strong);
 }
 
 .trigger:disabled {
@@ -98,8 +98,8 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.35rem;
-  background: rgba(250, 247, 240, 0.98);
-  box-shadow: 0 18px 40px rgba(31, 36, 30, 0.16);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-elevated);
 }
 
 .option {
@@ -111,8 +111,8 @@
 
 .option:hover,
 .optionActive {
-  border-color: rgba(33, 78, 66, 0.24);
-  background: rgba(33, 78, 66, 0.08);
+  border-color: var(--accent-border);
+  background: var(--accent-muted);
 }
 
 .option:disabled {

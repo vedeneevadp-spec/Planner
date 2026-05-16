@@ -19,6 +19,33 @@
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Chaotika — планер для реальной жизни</title>
+    <script>
+      ;(() => {
+        const storageKey = 'chaotika.color-theme'
+        const darkThemeColor = '#0f1714'
+        const lightThemeColor = '#214e42'
+
+        try {
+          const storedTheme = window.localStorage.getItem(storageKey)
+          const theme =
+            storedTheme === 'dark' || storedTheme === 'light'
+              ? storedTheme
+              : window.matchMedia?.('(prefers-color-scheme: dark)')?.matches
+                ? 'dark'
+                : 'light'
+
+          document.documentElement.dataset.theme = theme
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute(
+              'content',
+              theme === 'dark' ? darkThemeColor : lightThemeColor,
+            )
+        } catch {
+          document.documentElement.dataset.theme = 'light'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

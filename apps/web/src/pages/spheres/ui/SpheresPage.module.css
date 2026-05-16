@@ -160,7 +160,7 @@
 .forgottenPanel {
   align-items: center;
   background:
-    linear-gradient(135deg, rgba(173, 78, 47, 0.1), rgba(255, 251, 243, 0.78)),
+    linear-gradient(135deg, rgba(173, 78, 47, 0.1), var(--surface-muted)),
     var(--surface);
 }
 
@@ -175,7 +175,7 @@
   border: 1px solid rgba(140, 75, 36, 0.2);
   border-radius: 999px;
   padding: 0.48rem 0.78rem;
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--field-bg-muted);
   color: var(--warning);
   text-decoration: none;
 }
@@ -206,7 +206,7 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 999px;
-  color: #fffdf8;
+  color: var(--accent-text-on-fill);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
@@ -238,7 +238,7 @@
 }
 
 .healthBadge[data-health='healthy'] {
-  background: rgba(33, 78, 66, 0.12);
+  background: var(--accent-muted-strong);
   color: var(--success);
 }
 
@@ -249,7 +249,7 @@
 
 .healthBadge[data-health='abandoned'] {
   background: rgba(173, 78, 47, 0.14);
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .statsGrid {
@@ -272,7 +272,7 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 0.55rem 0.85rem;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--field-bg);
   color: inherit;
   transition:
     border-color 150ms ease,
@@ -286,8 +286,8 @@
 .field input:focus,
 .field textarea:focus {
   outline: none;
-  border-color: rgba(33, 78, 66, 0.5);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
 }
 
 .formGridDetailed {
@@ -338,7 +338,7 @@
 }
 
 .swatchButtonActive {
-  border-color: var(--accent);
+  border-color: var(--accent-border-strong);
   transform: translateY(-1px);
 }
 
@@ -366,10 +366,10 @@
 }
 
 .statsGrid div {
-  border: 1px solid rgba(33, 78, 66, 0.1);
+  border: 1px solid var(--accent-muted-strong);
   border-radius: 16px;
   padding: 0.7rem;
-  background: rgba(255, 255, 255, 0.45);
+  background: var(--field-bg-muted);
 }
 
 .statsGrid span,
@@ -400,12 +400,12 @@
 }
 
 .primaryButton {
-  background: var(--accent);
-  color: #fffdf8;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
 }
 
 .secondaryButton {
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   border-color: var(--line);
   color: inherit;
 }
@@ -413,7 +413,7 @@
 .dangerButton {
   background: rgba(173, 78, 47, 0.08);
   border-color: rgba(173, 78, 47, 0.16);
-  color: #8a3a21;
+  color: var(--danger);
 }
 
 .primaryButton:hover,
@@ -429,7 +429,7 @@
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(31, 36, 30, 0.36);
+  background: var(--surface-scrim);
   backdrop-filter: blur(10px);
 }
 
@@ -482,7 +482,7 @@
   place-items: center;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--field-bg);
   color: inherit;
   font-size: 1.3rem;
   line-height: 1;
@@ -495,7 +495,7 @@
 .closeButton:hover {
   transform: translateY(-1px);
   border-color: var(--line-strong);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--field-bg-strong);
 }
 
 @media (max-width: 760px) {

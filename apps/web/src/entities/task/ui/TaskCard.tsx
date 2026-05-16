@@ -498,7 +498,7 @@ export function TaskCard({
               Автор: {task.authorDisplayName}
             </span>
           ) : null}
-          {task.assigneeDisplayName ? (
+          {isSharedWorkspace && task.assigneeDisplayName ? (
             <span className={styles.metaChip}>
               Исполнитель: {task.assigneeDisplayName}
             </span>

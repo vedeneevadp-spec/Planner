@@ -169,7 +169,7 @@ export function buildCleaningTodayResponse(input: {
       item.isDue &&
       (item.state.postponeCount >= 2 ||
         item.isOverdue ||
-        item.reasons.includes('давно не выполнялась')),
+        isCleaningTaskStaleOnDate(item.state, input.date)),
   )
   const quickItems = items.filter(
     (item) =>
@@ -250,16 +250,11 @@ export function buildCleaningTaskItems(input: {
       )
     const isDue = isCleaningTaskDueOnDate(task, state, input.date)
     const isOverdue = isCleaningTaskOverdueOnDate(task, state, input.date)
-    const reasons = getCleaningTaskReasons(task, state, input.date, {
-      isDue,
-      isOverdue,
-    })
 
     return [
       {
         isDue,
         isOverdue,
-        reasons,
         score: getCleaningTaskScore(task, state, input.date, {
           isDue,
           isOverdue,
@@ -471,11 +466,7 @@ function getCleaningTaskScore(
     task.priority === 'high' ? 5 : task.priority === 'normal' ? 2 : 0
   const overdueWeight = flags.isOverdue ? 7 : 0
   const dueWeight = flags.isDue ? 3 : 0
-  const staleWeight =
-    state.lastCompletedAt &&
-    daysBetween(state.lastCompletedAt.slice(0, 10), date) >= 60
-      ? 4
-      : 0
+  const staleWeight = isCleaningTaskStaleOnDate(state, date) ? 4 : 0
 
   return (
     state.postponeCount * 10 +
@@ -487,47 +478,14 @@ function getCleaningTaskScore(
   )
 }
 
-function getCleaningTaskReasons(
-  task: StoredCleaningTaskRecord,
+function isCleaningTaskStaleOnDate(
   state: StoredCleaningTaskStateRecord,
   date: string,
-  flags: {
-    isDue: boolean
-    isOverdue: boolean
-  },
-): string[] {
-  const reasons: string[] = []
-
-  if (state.postponeCount >= 3) {
-    reasons.push('задача давно ждёт внимания')
-  } else if (state.postponeCount > 0) {
-    reasons.push(`отложено ${state.postponeCount} раз`)
-  }
-
-  if (task.priority === 'high') {
-    reasons.push('важная задача')
-  }
-
-  if (flags.isOverdue) {
-    reasons.push('срок уже подошёл')
-  }
-
-  if (
+): boolean {
+  return Boolean(
     state.lastCompletedAt &&
-    daysBetween(state.lastCompletedAt.slice(0, 10), date) >= 60
-  ) {
-    reasons.push('давно не выполнялась')
-  }
-
-  if (task.isSeasonal && isTaskSeasonActive(task, date)) {
-    reasons.push('сезонная')
-  }
-
-  if (flags.isDue && reasons.length === 0) {
-    reasons.push('подходит для текущего цикла')
-  }
-
-  return reasons
+    daysBetween(state.lastCompletedAt.slice(0, 10), date) >= 60,
+  )
 }
 
 function isCleaningTaskDueOnDate(

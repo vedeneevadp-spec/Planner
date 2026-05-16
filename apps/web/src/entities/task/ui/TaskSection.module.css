@@ -7,7 +7,7 @@
   backdrop-filter: blur(18px);
   background: var(--surface);
   border: 1px solid var(--line);
-  box-shadow: 0 14px 34px rgba(82, 68, 37, 0.1);
+  box-shadow: var(--shadow-soft);
 }
 
 .panelMenuOpen {
@@ -48,7 +48,7 @@
   min-height: 1.95rem;
   padding: 0.24rem 0.58rem;
   border-radius: 999px;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent-strong);
   font-size: 0.88rem;
   margin-bottom: 2px;

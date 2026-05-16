@@ -28,6 +28,7 @@ import {
 import { useShoppingListSummary } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
+import { useColorTheme } from '@/shared/lib/theme'
 import {
   CalendarIcon,
   CheckIcon,
@@ -36,10 +37,12 @@ import {
   CloseIcon,
   EditIcon,
   HomeIcon,
+  MoonIcon,
   PlusIcon,
   SettingsIcon,
   ShoppingBagIcon,
   SpheresIcon,
+  SunIcon,
   TrashIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
@@ -94,6 +97,7 @@ export function Sidebar({
   const shoppingListSummary = useShoppingListSummary()
   const location = useLocation()
   const auth = useSessionAuth()
+  const { isDark, toggleTheme } = useColorTheme()
   const { data: session } = usePlannerSession()
   const createSharedWorkspaceMutation = useCreateSharedWorkspace()
   const updateSharedWorkspaceMutation = useUpdateSharedWorkspace()
@@ -208,6 +212,9 @@ export function Sidebar({
     : null
   const receivedWorkspaceInvitations =
     receivedWorkspaceInvitationsQuery.data?.invitations ?? []
+  const themeToggleLabel = isDark
+    ? 'Включить светлую тему'
+    : 'Включить темную тему'
 
   useEffect(() => {
     if (!isMoreOpen) {
@@ -871,6 +878,23 @@ export function Sidebar({
                     </div>
                   ) : null}
 
+                  <button
+                    className={cx(
+                      styles.mobileSheetLink,
+                      styles.mobileThemeButton,
+                    )}
+                    type="button"
+                    aria-pressed={isDark}
+                    onClick={toggleTheme}
+                  >
+                    {isDark ? (
+                      <SunIcon size={18} strokeWidth={2.1} />
+                    ) : (
+                      <MoonIcon size={18} strokeWidth={2.1} />
+                    )}
+                    <span>{isDark ? 'Светлая тема' : 'Темная тема'}</span>
+                  </button>
+
                   {mobileMoreNavigation
                     .filter((item) => item.to !== '/admin')
                     .map((item) => (
@@ -970,22 +994,41 @@ export function Sidebar({
       >
         <div className={styles.brandBlock}>
           <h1>Chaotika</h1>
-          <button
-            className={styles.sidebarCollapseButton}
-            type="button"
-            aria-label={isCollapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}
-            aria-pressed={isCollapsed}
-            title={isCollapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}
-            onClick={() => {
-              onCollapsedChange?.(!isCollapsed)
-            }}
-          >
-            {isCollapsed ? (
-              <ChevronRightIcon size={18} strokeWidth={2.15} />
-            ) : (
-              <ChevronLeftIcon size={18} strokeWidth={2.15} />
-            )}
-          </button>
+          <div className={styles.brandActions}>
+            <button
+              className={styles.iconButton}
+              type="button"
+              aria-label={themeToggleLabel}
+              aria-pressed={isDark}
+              title={themeToggleLabel}
+              onClick={toggleTheme}
+            >
+              {isDark ? (
+                <SunIcon size={18} strokeWidth={2.15} />
+              ) : (
+                <MoonIcon size={18} strokeWidth={2.15} />
+              )}
+            </button>
+
+            <button
+              className={styles.iconButton}
+              type="button"
+              aria-label={
+                isCollapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'
+              }
+              aria-pressed={isCollapsed}
+              title={isCollapsed ? 'Развернуть сайдбар' : 'Свернуть сайдбар'}
+              onClick={() => {
+                onCollapsedChange?.(!isCollapsed)
+              }}
+            >
+              {isCollapsed ? (
+                <ChevronRightIcon size={18} strokeWidth={2.15} />
+              ) : (
+                <ChevronLeftIcon size={18} strokeWidth={2.15} />
+              )}
+            </button>
+          </div>
         </div>
 
         <section className={styles.connectionCard}>

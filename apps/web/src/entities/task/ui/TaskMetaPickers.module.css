@@ -18,8 +18,8 @@
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.35rem;
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38);
+  background: var(--field-bg);
+  box-shadow: var(--inset-highlight);
 }
 
 .typeSurface {
@@ -49,7 +49,7 @@
   gap: 0.5rem;
   border: 1px solid transparent;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--field-bg-muted);
   color: inherit;
   transition:
     transform 160ms ease,
@@ -60,20 +60,20 @@
 
 .segmentButton:hover {
   transform: translateY(-1px);
-  border-color: rgba(33, 78, 66, 0.22);
-  background: rgba(255, 255, 255, 0.92);
+  border-color: var(--accent-border);
+  background: var(--field-bg-strong);
 }
 
 .segmentButton:focus-visible {
   outline: none;
-  border-color: rgba(33, 78, 66, 0.5);
-  box-shadow: 0 0 0 3px rgba(33, 78, 66, 0.12);
+  border-color: var(--accent-border-strong);
+  box-shadow: 0 0 0 3px var(--accent-muted-strong);
 }
 
 .segmentButtonActive {
-  border-color: rgba(33, 78, 66, 0.22);
-  background: rgba(240, 236, 228, 0.96);
-  box-shadow: inset 0 0 0 1px rgba(33, 78, 66, 0.08);
+  border-color: var(--accent-border);
+  background: var(--surface-elevated);
+  box-shadow: inset 0 0 0 1px var(--accent-muted);
 }
 
 .typeButton {
@@ -113,7 +113,7 @@
   place-items: center;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--field-bg-strong);
   line-height: 1;
 }
 
@@ -132,12 +132,12 @@
 
 .resourceButtonDrain,
 .resourceButtonRestore {
-  border-color: rgba(31, 36, 30, 0.08);
+  border-color: var(--line);
 }
 
 .resourceButton.segmentButtonActive {
   border-color: currentColor;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--surface-elevated);
   box-shadow: inset 0 0 0 1px currentColor;
 }
 
@@ -188,7 +188,7 @@
 }
 
 .resourceBoltMuted {
-  color: rgba(31, 36, 30, 0.16);
+  color: var(--line-strong);
 }
 
 .visuallyHidden {

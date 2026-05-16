@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router-dom'
 
 import App from '@/app'
 import { registerPwaServiceWorker } from '@/shared/lib/pwa/register-service-worker'
+import { ThemeProvider } from '@/shared/lib/theme'
 
 const rootElement = document.getElementById('root')
 
@@ -17,8 +18,10 @@ registerPwaServiceWorker()
 
 createRoot(rootElement).render(
   <StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ThemeProvider>
   </StrictMode>,
 )

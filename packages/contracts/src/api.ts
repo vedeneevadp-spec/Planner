@@ -432,7 +432,6 @@ export const cleaningTaskHistoryItemRecordSchema =
 export const cleaningTaskWithStateSchema = z.object({
   isDue: z.boolean(),
   isOverdue: z.boolean(),
-  reasons: z.array(z.string()),
   score: z.number(),
   state: cleaningTaskStateRecordSchema,
   task: cleaningTaskRecordSchema,

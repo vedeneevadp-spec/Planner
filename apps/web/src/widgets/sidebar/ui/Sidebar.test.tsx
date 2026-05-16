@@ -8,6 +8,8 @@ import {
 import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { ThemeProvider } from '@/shared/lib/theme'
+
 import { Sidebar } from './Sidebar'
 
 type WorkspaceKind = 'personal' | 'shared'
@@ -219,15 +221,17 @@ function renderSidebar(
   mocks.useUpdateSharedWorkspace.mockReturnValue(createMutationStub())
 
   return render(
-    <MemoryRouter
-      initialEntries={options.initialEntries ?? ['/today']}
-      {...(options.initialIndex !== undefined
-        ? { initialIndex: options.initialIndex }
-        : {})}
-    >
-      <Sidebar />
-      {options.includeNativeBackButton ? <NativeBackButton /> : null}
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter
+        initialEntries={options.initialEntries ?? ['/today']}
+        {...(options.initialIndex !== undefined
+          ? { initialIndex: options.initialIndex }
+          : {})}
+      >
+        <Sidebar />
+        {options.includeNativeBackButton ? <NativeBackButton /> : null}
+      </MemoryRouter>
+    </ThemeProvider>,
   )
 }
 

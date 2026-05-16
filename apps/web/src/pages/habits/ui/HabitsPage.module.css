@@ -62,12 +62,12 @@
 }
 
 .syncBannerWarning {
-  border-color: rgba(199, 44, 44, 0.28);
-  background: rgba(199, 44, 44, 0.07);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .syncBannerWarning strong {
-  color: #8b1f1f;
+  color: var(--danger);
 }
 
 .form {
@@ -121,7 +121,7 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 0.72rem 0.8rem;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--field-bg);
   color: var(--text);
 }
 
@@ -163,14 +163,14 @@
   height: 2.35rem;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--field-bg);
   color: var(--text-soft);
   font-weight: 800;
 }
 
 .dayToggleActive span {
-  border-color: rgba(33, 78, 66, 0.35);
-  background: rgba(33, 78, 66, 0.11);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
   color: var(--accent);
 }
 
@@ -221,8 +221,8 @@
 .primaryButton {
   justify-self: start;
   border-color: transparent;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
 }
 
 .secondaryButton {
@@ -231,8 +231,8 @@
 }
 
 .dangerButton {
-  background: rgba(199, 44, 44, 0.08);
-  color: #8b1f1f;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .errorText {
@@ -260,14 +260,14 @@
   width: 2.7rem;
   height: 2.7rem;
   border-radius: 14px;
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
 }
 
 .statusBadge {
   border-radius: 999px;
   padding: 0.28rem 0.6rem;
-  background: rgba(33, 78, 66, 0.08);
+  background: var(--accent-muted);
   color: var(--accent);
   font-size: 0.74rem;
   font-weight: 800;
@@ -304,7 +304,7 @@
   gap: 0.1rem;
   border-radius: 12px;
   padding: 0.68rem;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--field-bg-muted);
 }
 
 .cardStats strong {

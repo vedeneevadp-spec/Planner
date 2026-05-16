@@ -1,5 +1,4 @@
 import {
-  type CleaningAssignee,
   type CleaningDepth,
   type CleaningEnergy,
   type CleaningFrequencyType,
@@ -15,11 +14,8 @@ import { getCleaningErrorMessage } from '@/features/cleaning'
 export type FocusMode = 'all' | 'quick' | 'minimum' | 'regular' | 'deep'
 
 export interface TaskDraft {
-  assignee: CleaningAssignee
   customIntervalDays: string
-  depth: CleaningDepth
   description: string
-  energy: CleaningEnergy
   estimatedMinutes: string
   frequencyInterval: string
   frequencyType: CleaningFrequencyType
@@ -71,25 +67,6 @@ export const PRIORITY_LABELS: Record<CleaningPriority, string> = {
   normal: 'обычно',
 }
 
-export const DEPTH_LABELS: Record<CleaningDepth, string> = {
-  deep: 'генеральная',
-  minimum: 'минимум',
-  regular: 'обычная',
-}
-
-export const ENERGY_LABELS: Record<CleaningEnergy, string> = {
-  high: 'много сил',
-  low: 'мало сил',
-  normal: 'нормально',
-}
-
-export const ASSIGNEE_LABELS: Record<CleaningAssignee, string> = {
-  anyone: 'любой',
-  child: 'ребёнок',
-  partner: 'партнёр',
-  self: 'я',
-}
-
 export const FREQUENCY_LABELS: Record<CleaningFrequencyType, string> = {
   custom: 'раз в N дней',
   monthly: 'раз в N месяцев',
@@ -97,11 +74,8 @@ export const FREQUENCY_LABELS: Record<CleaningFrequencyType, string> = {
 }
 
 export const EMPTY_TASK_DRAFT: TaskDraft = {
-  assignee: 'anyone',
   customIntervalDays: '10',
-  depth: 'regular',
   description: '',
-  energy: 'normal',
   estimatedMinutes: '15',
   frequencyInterval: '1',
   frequencyType: 'weekly',

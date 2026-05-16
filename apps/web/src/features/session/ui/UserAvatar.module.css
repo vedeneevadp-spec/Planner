@@ -8,11 +8,11 @@
   border-radius: 18px;
   background: linear-gradient(
     135deg,
-    rgba(33, 78, 66, 0.18),
+    var(--accent-border-strong),
     rgba(239, 202, 130, 0.28)
   );
-  color: #214e42;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  color: var(--accent);
+  box-shadow: inset 0 1px 0 var(--field-bg);
 }
 
 .avatar[data-size='sm'] {
