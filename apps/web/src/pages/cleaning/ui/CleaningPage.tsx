@@ -356,6 +356,19 @@ export function CleaningPage() {
           title="Накопилось"
           emptyMessage="Давно отложенных задач сейчас нет."
           items={today?.accumulatedItems ?? []}
+          isBusy={isBusy}
+          onComplete={(taskId) => {
+            void completeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onPostpone={(taskId) => {
+            void postponeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
         />
         <CompactList
           title="Сезонные"

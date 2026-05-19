@@ -1,6 +1,7 @@
 import type {
   CleaningListResponse,
   CleaningTaskWithState,
+  CleaningTodayResponse,
   CleaningZoneRecord,
 } from '@planner/contracts'
 import {
@@ -18,15 +19,25 @@ import styles from './CleaningPage.module.css'
 import { TaskSection } from './CleaningPage.sections'
 
 const mocks = vi.hoisted(() => ({
+  completeTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   createTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   createZone: vi.fn<(input: unknown) => Promise<unknown>>(),
+  postponeTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   removeTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   removeZone: vi.fn<(input: unknown) => Promise<unknown>>(),
+  skipTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   updateTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   updateZone: vi.fn<(input: unknown) => Promise<unknown>>(),
   useCleaningPlan: vi.fn<
     () => {
       data: CleaningListResponse
+      error: null
+      isLoading: boolean
+    }
+  >(),
+  useCleaningToday: vi.fn<
+    () => {
+      data: CleaningTodayResponse | null
       error: null
       isLoading: boolean
     }
@@ -44,26 +55,18 @@ vi.mock('@/features/cleaning', () => {
     }
   }
 
-  function createNoopMutationStub() {
-    return createMutationStub(vi.fn(() => Promise.resolve(undefined)))
-  }
-
   return {
     getCleaningErrorMessage: (error: unknown) =>
       error instanceof Error ? error.message : 'Не удалось сохранить уборку.',
     useCleaningPlan: () => mocks.useCleaningPlan(),
-    useCleaningToday: () => ({
-      data: null,
-      error: null,
-      isLoading: false,
-    }),
-    useCompleteCleaningTask: createNoopMutationStub,
+    useCleaningToday: () => mocks.useCleaningToday(),
+    useCompleteCleaningTask: () => createMutationStub(mocks.completeTask),
     useCreateCleaningTask: () => createMutationStub(mocks.createTask),
     useCreateCleaningZone: () => createMutationStub(mocks.createZone),
-    usePostponeCleaningTask: createNoopMutationStub,
+    usePostponeCleaningTask: () => createMutationStub(mocks.postponeTask),
     useRemoveCleaningTask: () => createMutationStub(mocks.removeTask),
     useRemoveCleaningZone: () => createMutationStub(mocks.removeZone),
-    useSkipCleaningTask: createNoopMutationStub,
+    useSkipCleaningTask: () => createMutationStub(mocks.skipTask),
     useUpdateCleaningTask: () => createMutationStub(mocks.updateTask),
     useUpdateCleaningZone: () => createMutationStub(mocks.updateZone),
   }
@@ -150,6 +153,32 @@ function createEmptyPlan(): CleaningListResponse {
   }
 }
 
+function createTodayResponse(
+  accumulatedItems: CleaningTaskWithState[] = [],
+  zone = createZone(),
+): CleaningTodayResponse {
+  return {
+    accumulatedItems,
+    date: '2026-05-19',
+    dayOfWeek: 2,
+    history: [],
+    items: [],
+    quickItems: [],
+    seasonalItems: [],
+    summary: {
+      accumulatedCount: accumulatedItems.length,
+      activeZoneCount: 1,
+      completedTodayCount: 0,
+      dueCount: 0,
+      quickCount: 0,
+      seasonalCount: 0,
+      urgentCount: 0,
+    },
+    urgentItems: [],
+    zones: [zone],
+  }
+}
+
 function renderCleaningSettingsPage() {
   return render(
     <MemoryRouter initialEntries={['/cleaning/settings/zones/zone-1']}>
@@ -169,6 +198,29 @@ function renderCleaningPage() {
       <CleaningPage />
     </MemoryRouter>,
   )
+}
+
+function expectNextCycleActionCall(action: unknown) {
+  if (typeof action !== 'object' || action === null) {
+    throw new Error('Cleaning action call was not an object.')
+  }
+
+  const payload = action as Record<string, unknown>
+  const inputValue = payload.input
+
+  if (typeof inputValue !== 'object' || inputValue === null) {
+    throw new Error('Cleaning action input was not an object.')
+  }
+
+  const input = inputValue as Record<string, unknown>
+
+  expect(payload.taskId).toBe('task-1')
+  expect(typeof input.date).toBe('string')
+  expect(input).toMatchObject({
+    mode: 'next_cycle',
+    note: '',
+    targetDate: null,
+  })
 }
 
 function getZoneStatsElement() {
@@ -203,6 +255,11 @@ describe('CleaningSettingsPage', () => {
     mocks.updateZone.mockResolvedValue(createZone())
     mocks.useCleaningPlan.mockReturnValue({
       data: createPlan(),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: null,
       error: null,
       isLoading: false,
     })
@@ -333,10 +390,18 @@ describe('TaskSection', () => {
 describe('CleaningPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.completeTask.mockResolvedValue(undefined)
     mocks.createTask.mockResolvedValue(undefined)
     mocks.createZone.mockResolvedValue(createZone())
+    mocks.postponeTask.mockResolvedValue(undefined)
+    mocks.skipTask.mockResolvedValue(undefined)
     mocks.useCleaningPlan.mockReturnValue({
       data: createEmptyPlan(),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: null,
       error: null,
       isLoading: false,
     })
@@ -355,5 +420,41 @@ describe('CleaningPage', () => {
     expect(
       screen.getByRole('button', { name: 'Добавить базовый набор' }),
     ).toBeVisible()
+  })
+
+  it('lets accumulated cleaning tasks be completed or postponed to the next cycle', async () => {
+    const zone = createZone()
+    const accumulatedItem = createCleaningItem(zone)
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(zone),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([accumulatedItem], zone),
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отложить' }))
+
+    await waitFor(() => {
+      expect(mocks.postponeTask).toHaveBeenCalledTimes(1)
+    })
+    expectNextCycleActionCall(mocks.postponeTask.mock.calls[0]?.[0])
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Отметить «Протереть пол» выполненной',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.completeTask).toHaveBeenCalledTimes(1)
+    })
+    expectNextCycleActionCall(mocks.completeTask.mock.calls[0]?.[0])
   })
 })

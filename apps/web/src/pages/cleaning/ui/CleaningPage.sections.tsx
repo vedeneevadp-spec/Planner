@@ -148,9 +148,14 @@ export function TaskSection(props: {
 
 export function CompactList(props: {
   emptyMessage: string
+  isBusy?: boolean | undefined
   items: CleaningTaskWithState[]
   title: string
+  onComplete?: ((taskId: string) => void) | undefined
+  onPostpone?: ((taskId: string) => void) | undefined
 }) {
+  const hasActions = Boolean(props.onComplete || props.onPostpone)
+
   return (
     <section className={styles.panel}>
       <div className={styles.panelHeader}>
@@ -168,6 +173,37 @@ export function CompactList(props: {
                 {item.zone.title} · отложено{' '}
                 {formatPostponeCount(item.state.postponeCount)}
               </span>
+              {hasActions ? (
+                <div className={styles.compactActions}>
+                  {props.onComplete ? (
+                    <button
+                      className={styles.doneButton}
+                      type="button"
+                      disabled={props.isBusy}
+                      aria-label={`Отметить «${item.task.title}» выполненной`}
+                      onClick={() => {
+                        props.onComplete?.(item.task.id)
+                      }}
+                    >
+                      <CheckIcon size={15} strokeWidth={2.15} />
+                      <span>Сделано</span>
+                    </button>
+                  ) : null}
+                  {props.onPostpone ? (
+                    <button
+                      className={styles.softButton}
+                      type="button"
+                      disabled={props.isBusy}
+                      onClick={() => {
+                        props.onPostpone?.(item.task.id)
+                      }}
+                    >
+                      <EditIcon size={15} strokeWidth={2.1} />
+                      <span>Отложить</span>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ))}
         </div>
