@@ -261,7 +261,7 @@
   border-bottom: none;
 }
 
-.itemRowCompleted {
+.itemRowCompleted .itemToggle {
   opacity: 0.82;
 }
 
@@ -316,7 +316,9 @@
 .itemActions {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
   gap: 0.22rem;
+  min-width: max-content;
 }
 
 .iconButton,
@@ -324,7 +326,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 2.1rem;
   width: 2.1rem;
+  min-width: 2.1rem;
   height: 2.1rem;
   border: 1px solid transparent;
   border-radius: 11px;
@@ -366,7 +370,7 @@
 
 .iconButton:disabled,
 .markButton:disabled {
-  opacity: 0.55;
+  opacity: 0.68;
   cursor: not-allowed;
 }
 
@@ -426,5 +430,13 @@
 
   .itemActions {
     gap: 0.12rem;
+  }
+
+  .itemRowCompleted .markButton img {
+    opacity: 0.72;
+  }
+
+  .itemRowCompleted .markButtonActive img {
+    opacity: 1;
   }
 }

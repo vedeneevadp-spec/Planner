@@ -14,10 +14,10 @@
     <string name="planner_widget_configuration_opacity">Непрозрачность фона</string>
     <string name="planner_widget_configuration_title">Настройки виджета</string>
     <string name="planner_widget_done_summary">%1$d/%2$d выполнено</string>
-    <string name="planner_widget_empty_today">На сегодня нет активных задач.</string>
+    <string name="planner_widget_empty_today">Активных задач нет.</string>
     <string name="planner_widget_no_snapshot_empty">Откройте Chaotika, чтобы обновить виджет.</string>
     <string name="planner_widget_no_snapshot_summary">Ждет данных из приложения</string>
-    <string name="planner_widget_no_today_tasks">Нет задач на сегодня</string>
+    <string name="planner_widget_no_today_tasks">Сегодня без задач</string>
     <string name="planner_widget_overdue_task">Требует внимания: %1$s</string>
     <string name="planner_widget_preview_date">сегодня</string>
     <string name="planner_widget_stale_empty">Откройте приложение, чтобы обновить задачи.</string>

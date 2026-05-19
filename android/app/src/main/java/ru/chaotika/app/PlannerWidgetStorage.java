@@ -45,6 +45,14 @@ final class PlannerWidgetStorage {
     }
 
     static List<String> consumePendingCompletedTaskIds(Context context) {
+        List<String> pendingTaskIds = readPendingCompletedTaskIds(context);
+
+        removePendingCompletedTaskIds(context, pendingTaskIds);
+
+        return pendingTaskIds;
+    }
+
+    static List<String> readPendingCompletedTaskIds(Context context) {
         SharedPreferences preferences = getPreferences(context);
         Set<String> taskIds = preferences.getStringSet(PENDING_COMPLETED_TASK_IDS_KEY, Collections.emptySet());
         List<String> pendingTaskIds = new ArrayList<>();
@@ -55,11 +63,37 @@ final class PlannerWidgetStorage {
             }
         }
 
-        if (!taskIds.isEmpty()) {
-            preferences.edit().remove(PENDING_COMPLETED_TASK_IDS_KEY).apply();
+        return pendingTaskIds;
+    }
+
+    static void removePendingCompletedTaskIds(Context context, List<String> completedTaskIds) {
+        if (completedTaskIds == null || completedTaskIds.isEmpty()) {
+            return;
         }
 
-        return pendingTaskIds;
+        SharedPreferences preferences = getPreferences(context);
+        Set<String> storedTaskIds = preferences.getStringSet(PENDING_COMPLETED_TASK_IDS_KEY, Collections.emptySet());
+        Set<String> nextTaskIds = new LinkedHashSet<>(storedTaskIds);
+
+        for (String taskId : completedTaskIds) {
+            if (isSupportedTaskId(taskId)) {
+                nextTaskIds.remove(taskId);
+            }
+        }
+
+        if (nextTaskIds.size() == storedTaskIds.size()) {
+            return;
+        }
+
+        SharedPreferences.Editor editor = preferences.edit();
+
+        if (nextTaskIds.isEmpty()) {
+            editor.remove(PENDING_COMPLETED_TASK_IDS_KEY);
+        } else {
+            editor.putStringSet(PENDING_COMPLETED_TASK_IDS_KEY, nextTaskIds);
+        }
+
+        editor.apply();
     }
 
     static String readSnapshot(Context context) {

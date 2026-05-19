@@ -38,6 +38,8 @@ export function shouldKeepOptimisticMutation(error: unknown): boolean {
   return (
     isPlannerOfflineStorageAvailable() &&
     (error instanceof PlannerApiUnavailableError ||
+      isUnauthorizedPlannerApiError(error) ||
+      isUnauthorizedSessionApiError(error) ||
       isQueueablePlannerMutationError(error))
   )
 }

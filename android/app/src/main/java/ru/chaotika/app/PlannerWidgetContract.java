@@ -84,7 +84,7 @@ final class PlannerWidgetContract {
             JSONArray taskValues = value.optJSONArray("tasks");
             JSONArray nextTasks = new JSONArray();
             boolean didRemoveTask = false;
-            boolean wasOverdue = false;
+            String removedDateBucket = "today";
 
             if (taskValues != null) {
                 for (int index = 0; index < taskValues.length(); index += 1) {
@@ -95,7 +95,12 @@ final class PlannerWidgetContract {
                     }
 
                     if (!didRemoveTask && taskId.equals(taskValue.optString("id", ""))) {
-                        wasOverdue = taskValue.optBoolean("isOverdue", false);
+                        removedDateBucket = parseDateBucket(
+                            taskValue.optString(
+                                "dateBucket",
+                                taskValue.optBoolean("isOverdue", false) ? "overdue" : "today"
+                            )
+                        );
                         didRemoveTask = true;
                         continue;
                     }
@@ -112,9 +117,9 @@ final class PlannerWidgetContract {
             value.put("doneTodayCount", snapshot.doneTodayCount + 1);
             value.put("generatedAt", generatedAt);
 
-            if (wasOverdue) {
+            if ("overdue".equals(removedDateBucket)) {
                 value.put("overdueCount", Math.max(0, snapshot.overdueCount - 1));
-            } else {
+            } else if ("today".equals(removedDateBucket)) {
                 value.put("todayCount", Math.max(0, snapshot.todayCount - 1));
             }
 
@@ -138,6 +143,7 @@ final class PlannerWidgetContract {
         }
 
         String timeLabel = value.isNull("timeLabel") ? null : value.optString("timeLabel", null);
+        boolean isOverdue = value.optBoolean("isOverdue", false);
 
         return new PlannerWidgetTask(
             id,
@@ -145,7 +151,8 @@ final class PlannerWidgetContract {
             icon,
             parseColor(value.optString("color", DEFAULT_TASK_COLOR)),
             timeLabel,
-            value.optBoolean("isOverdue", false),
+            isOverdue,
+            parseDateBucket(value.optString("dateBucket", isOverdue ? "overdue" : "today")),
             parseVisualTone(value.optString("visualTone", "default"))
         );
     }
@@ -158,6 +165,20 @@ final class PlannerWidgetContract {
         }
 
         return DEFAULT_TASK_COLOR;
+    }
+
+    private static String parseDateBucket(String value) {
+        if (
+            "future".equals(value) ||
+            "overdue".equals(value) ||
+            "today".equals(value) ||
+            "tomorrow".equals(value) ||
+            "unscheduled".equals(value)
+        ) {
+            return value;
+        }
+
+        return "today";
     }
 
     private static String parseVisualTone(String value) {
@@ -226,6 +247,7 @@ final class PlannerWidgetSnapshot {
 final class PlannerWidgetTask {
     final String id;
     final String color;
+    final String dateBucket;
     final String icon;
     final boolean isOverdue;
     final String timeLabel;
@@ -239,6 +261,7 @@ final class PlannerWidgetTask {
         String color,
         String timeLabel,
         boolean isOverdue,
+        String dateBucket,
         String visualTone
     ) {
         this.id = id;
@@ -247,6 +270,7 @@ final class PlannerWidgetTask {
         this.color = color;
         this.timeLabel = timeLabel;
         this.isOverdue = isOverdue;
+        this.dateBucket = dateBucket;
         this.visualTone = visualTone;
     }
 }

@@ -77,7 +77,7 @@ export async function drainPlannerOfflineQueue({
     mutations,
     result,
     onError: async ({ error, mutationId, result: drainResult }) => {
-      if (isVersionConflict(error)) {
+      if (isTerminalPlannerSyncError(error)) {
         const conflict = readOfflineConflictDetails(error.details)
 
         await markPlannerOfflineMutationConflicted(mutationId, {
@@ -188,10 +188,13 @@ async function applyOfflineMutation(
   )
 }
 
-function isVersionConflict(error: unknown): error is PlannerApiError {
+function isTerminalPlannerSyncError(error: unknown): error is PlannerApiError {
   return (
     error instanceof PlannerApiError &&
     (error.code === 'life_sphere_version_conflict' ||
+      error.code === 'life_sphere_not_found' ||
+      error.code === 'task_assignee_not_found' ||
+      error.code === 'task_not_found' ||
       error.code === 'task_version_conflict')
   )
 }

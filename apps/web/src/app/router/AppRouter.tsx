@@ -1,8 +1,12 @@
-import { lazy, Suspense } from 'react'
+import { lazy, type ReactElement, Suspense } from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 
 import { usePlannerSession } from '@/features/session'
 import { TodayPage } from '@/pages/today'
+import {
+  type AppRouteId,
+  getVisibleAppRouteDefinitions,
+} from '@/shared/config/routes'
 
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
@@ -56,59 +60,38 @@ function CleaningZoneRedirect() {
   )
 }
 
+const routeElements = {
+  admin: <AdminPage />,
+  calendar: <CalendarPage />,
+  cleaning: <CleaningPage />,
+  cleaningSettings: <CleaningSettingsPage />,
+  cleaningSettingsZone: <CleaningSettingsPage />,
+  cleaningZoneRedirect: <CleaningZoneRedirect />,
+  habits: <HabitsPage />,
+  profile: <ProfilePage />,
+  shopping: <ShoppingPage />,
+  sphere: <SpherePage />,
+  spheres: <SpheresPage />,
+  timeline: <TimelinePage />,
+  today: <TodayPage />,
+} satisfies Record<AppRouteId, ReactElement>
+
 export function AppRouter() {
   const { data: session } = usePlannerSession()
-
-  if (session?.workspace.kind === 'shared') {
-    return (
-      <Suspense fallback={null}>
-        <Routes>
-          <Route path="/" element={<Navigate replace to="/today" />} />
-          <Route path="/today" element={<TodayPage />} />
-          <Route path="/calendar" element={<CalendarPage />} />
-          <Route path="/cleaning" element={<CleaningPage />} />
-          <Route path="/cleaning/settings" element={<CleaningSettingsPage />} />
-          <Route
-            path="/cleaning/settings/zones/:zoneId"
-            element={<CleaningSettingsPage />}
-          />
-          <Route
-            path="/cleaning/zones/:zoneId"
-            element={<CleaningZoneRedirect />}
-          />
-          <Route path="/shopping" element={<ShoppingPage />} />
-          <Route path="/timeline" element={<TimelinePage />} />
-          <Route path="/spheres" element={<SpheresPage />} />
-          <Route path="/spheres/:sphereId" element={<SpherePage />} />
-          <Route path="*" element={<Navigate replace to="/today" />} />
-        </Routes>
-      </Suspense>
-    )
-  }
+  const workspaceKind = session?.workspace.kind ?? 'personal'
+  const visibleRoutes = getVisibleAppRouteDefinitions(workspaceKind)
 
   return (
     <Suspense fallback={null}>
       <Routes>
         <Route path="/" element={<Navigate replace to="/today" />} />
-        <Route path="/today" element={<TodayPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/cleaning" element={<CleaningPage />} />
-        <Route path="/cleaning/settings" element={<CleaningSettingsPage />} />
-        <Route
-          path="/cleaning/settings/zones/:zoneId"
-          element={<CleaningSettingsPage />}
-        />
-        <Route
-          path="/cleaning/zones/:zoneId"
-          element={<CleaningZoneRedirect />}
-        />
-        <Route path="/habits" element={<HabitsPage />} />
-        <Route path="/profile" element={<ProfilePage />} />
-        <Route path="/shopping" element={<ShoppingPage />} />
-        <Route path="/timeline" element={<TimelinePage />} />
-        <Route path="/spheres" element={<SpheresPage />} />
-        <Route path="/spheres/:sphereId" element={<SpherePage />} />
-        <Route path="/admin" element={<AdminPage />} />
+        {visibleRoutes.map((route) => (
+          <Route
+            key={route.id}
+            path={route.path}
+            element={routeElements[route.id]}
+          />
+        ))}
         <Route path="*" element={<Navigate replace to="/today" />} />
       </Routes>
     </Suspense>

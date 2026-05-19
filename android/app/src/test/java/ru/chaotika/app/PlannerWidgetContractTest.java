@@ -17,17 +17,19 @@ public class PlannerWidgetContractTest {
         assertNotNull(snapshot);
         assertEquals("2026-05-09", snapshot.dateKey);
         assertEquals(2, snapshot.todayCount);
-        assertEquals(1, snapshot.doneTodayCount);
+        assertEquals(0, snapshot.doneTodayCount);
         assertEquals(1, snapshot.overdueCount);
         assertEquals(3, snapshot.hiddenTaskCount);
         assertEquals(2, snapshot.tasks.size());
         assertEquals("task-overdue", snapshot.tasks.get(0).id);
         assertEquals("#AD4E2F", snapshot.tasks.get(0).color);
+        assertEquals("overdue", snapshot.tasks.get(0).dateBucket);
         assertEquals("svg:bell", snapshot.tasks.get(0).icon);
         assertEquals(true, snapshot.tasks.get(0).isOverdue);
         assertEquals("overdue", snapshot.tasks.get(0).visualTone);
         assertEquals("task-today", snapshot.tasks.get(1).id);
         assertEquals("#2F6F62", snapshot.tasks.get(1).color);
+        assertEquals("today", snapshot.tasks.get(1).dateBucket);
         assertEquals("🎯", snapshot.tasks.get(1).icon);
         assertEquals("09:00 - 10:00", snapshot.tasks.get(1).timeLabel);
         assertEquals("urgent", snapshot.tasks.get(1).visualTone);
@@ -75,6 +77,24 @@ public class PlannerWidgetContractTest {
         assertEquals("task-today", tasks.getJSONObject(0).getString("id"));
     }
 
+    @Test
+    public void markTaskDone_keepsTodayCounterForFutureTask() throws Exception {
+        String nextSnapshot = PlannerWidgetContract.markTaskDone(
+            createSnapshotWithFutureTask("2026-05-09"),
+            "task-future",
+            "2026-05-09T10:00:00.000Z"
+        );
+        JSONObject value = new JSONObject(nextSnapshot);
+        JSONArray tasks = value.getJSONArray("tasks");
+
+        assertEquals(1, value.getInt("doneTodayCount"));
+        assertEquals(1, value.getInt("overdueCount"));
+        assertEquals(2, value.getInt("todayCount"));
+        assertEquals(2, tasks.length());
+        assertEquals("task-overdue", tasks.getJSONObject(0).getString("id"));
+        assertEquals("task-today", tasks.getJSONObject(1).getString("id"));
+    }
+
     private static String createSnapshot(String dateKey) {
         return "{"
             + "\"version\":4,"
@@ -88,6 +108,7 @@ public class PlannerWidgetContractTest {
             + "{"
             + "\"id\":\"task-overdue\","
             + "\"color\":\"#ad4e2f\","
+            + "\"dateBucket\":\"overdue\","
             + "\"icon\":\"svg:bell\","
             + "\"title\":\"Просроченная\","
             + "\"timeLabel\":null,"
@@ -97,11 +118,56 @@ public class PlannerWidgetContractTest {
             + "{"
             + "\"id\":\"task-today\","
             + "\"color\":\"#2f6f62\","
+            + "\"dateBucket\":\"today\","
             + "\"icon\":\"🎯\","
             + "\"title\":\"Фокус\","
             + "\"timeLabel\":\"09:00 - 10:00\","
             + "\"isOverdue\":false,"
             + "\"visualTone\":\"urgent\""
+            + "}"
+            + "]"
+            + "}";
+    }
+
+    private static String createSnapshotWithFutureTask(String dateKey) {
+        return "{"
+            + "\"version\":4,"
+            + "\"dateKey\":\"" + dateKey + "\","
+            + "\"generatedAt\":\"2026-05-09T09:00:00.000Z\","
+            + "\"todayCount\":2,"
+            + "\"doneTodayCount\":0,"
+            + "\"overdueCount\":1,"
+            + "\"hiddenTaskCount\":0,"
+            + "\"tasks\":["
+            + "{"
+            + "\"id\":\"task-overdue\","
+            + "\"color\":\"#ad4e2f\","
+            + "\"dateBucket\":\"overdue\","
+            + "\"icon\":\"svg:bell\","
+            + "\"title\":\"Просроченная\","
+            + "\"timeLabel\":null,"
+            + "\"isOverdue\":true,"
+            + "\"visualTone\":\"overdue\""
+            + "},"
+            + "{"
+            + "\"id\":\"task-today\","
+            + "\"color\":\"#2f6f62\","
+            + "\"dateBucket\":\"today\","
+            + "\"icon\":\"🎯\","
+            + "\"title\":\"Фокус\","
+            + "\"timeLabel\":\"09:00 - 10:00\","
+            + "\"isOverdue\":false,"
+            + "\"visualTone\":\"urgent\""
+            + "},"
+            + "{"
+            + "\"id\":\"task-future\","
+            + "\"color\":\"#8ee7c8\","
+            + "\"dateBucket\":\"future\","
+            + "\"icon\":\"\","
+            + "\"title\":\"15 мая: Позже\","
+            + "\"timeLabel\":null,"
+            + "\"isOverdue\":false,"
+            + "\"visualTone\":\"default\""
             + "}"
             + "]"
             + "}";

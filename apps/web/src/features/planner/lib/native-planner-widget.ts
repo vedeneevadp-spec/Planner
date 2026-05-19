@@ -11,6 +11,7 @@ import {
   type NativePlannerWidgetSnapshot,
   nativePlannerWidgetSnapshotSchema,
   type NativePlannerWidgetTask,
+  type NativePlannerWidgetTaskDateBucket,
   type NativePlannerWidgetTaskVisualTone,
 } from '@planner/contracts'
 
@@ -19,15 +20,24 @@ import {
   selectDoneTodayTasks,
   selectOverdueTasks,
   selectTodayTasks,
+  selectTodoTasks,
   type Task,
 } from '@/entities/task'
-import { formatTimeRange, getDateKey } from '@/shared/lib/date'
+import {
+  addDays,
+  formatShortDate,
+  formatTimeRange,
+  getDateKey,
+  isBeforeDate,
+} from '@/shared/lib/date'
 
 const PLANNER_WIDGET_SNAPSHOT_KEY = 'planner.widget.today.snapshot'
 
 interface PlannerWidgetPlugin {
+  ackPendingCompletedTasks: (input: { taskIds: string[] }) => Promise<void>
   consumePendingCompletedTasks: () => Promise<{ taskIds: string[] }>
   consumePendingRoute: () => Promise<{ path: string | null }>
+  readPendingCompletedTasks: () => Promise<{ taskIds: string[] }>
   refresh: () => Promise<void>
 }
 
@@ -46,16 +56,21 @@ export function buildNativePlannerWidgetSnapshot(
 ): NativePlannerWidgetSnapshot {
   const { now, spheres } = resolveSnapshotContext(spheresOrNow, maybeNow)
   const dateKey = getDateKey(now)
+  const tomorrowKey = getDateKey(addDays(now, 1))
   const sphereLookup = createSphereLookup(spheres)
   const todayTasks = selectTodayTasks(tasks, dateKey)
   const overdueTasks = selectOverdueTasks(tasks, dateKey)
   const doneTodayTasks = selectDoneTodayTasks(tasks, dateKey)
-  const widgetTasks = [...overdueTasks, ...todayTasks]
-    .sort((left, right) => compareWidgetTasks(left, right, dateKey))
+  const widgetTasks = selectTodoTasks(tasks)
+    .sort((left, right) =>
+      compareWidgetTasks(left, right, dateKey, tomorrowKey),
+    )
     .map((task) =>
       toNativePlannerWidgetTask(
         task,
-        task.plannedDate !== dateKey,
+        isWidgetTaskOverdue(task, dateKey),
+        dateKey,
+        tomorrowKey,
         sphereLookup,
       ),
     )
@@ -119,11 +134,37 @@ export async function consumePendingNativePlannerWidgetCompletedTasks(): Promise
 
   const { taskIds } = await NativePlannerWidget.consumePendingCompletedTasks()
 
-  return Array.isArray(taskIds)
-    ? taskIds.filter(
-        (taskId) => typeof taskId === 'string' && taskId.length > 0,
-      )
-    : []
+  return normalizePendingTaskIds(taskIds)
+}
+
+export async function readPendingNativePlannerWidgetCompletedTasks(): Promise<
+  string[]
+> {
+  if (!isAndroidPlannerWidgetRuntime()) {
+    return []
+  }
+
+  const { taskIds } = await NativePlannerWidget.readPendingCompletedTasks()
+
+  return normalizePendingTaskIds(taskIds)
+}
+
+export async function ackPendingNativePlannerWidgetCompletedTasks(
+  taskIds: string[],
+): Promise<void> {
+  if (!isAndroidPlannerWidgetRuntime()) {
+    return
+  }
+
+  const acknowledgedTaskIds = normalizePendingTaskIds(taskIds)
+
+  if (acknowledgedTaskIds.length === 0) {
+    return
+  }
+
+  await NativePlannerWidget.ackPendingCompletedTasks({
+    taskIds: acknowledgedTaskIds,
+  })
 }
 
 export async function addNativePlannerWidgetResumeListener(
@@ -139,22 +180,33 @@ export async function addNativePlannerWidgetResumeListener(
 function toNativePlannerWidgetTask(
   task: Task,
   isOverdue: boolean,
+  todayKey: string,
+  tomorrowKey: string,
   sphereLookup: WidgetSphereLookup,
 ): NativePlannerWidgetTask {
   const sphere = findWidgetSphere(task, sphereLookup)
 
   return {
     color: normalizeWidgetColor(sphere?.color),
+    dateBucket: getWidgetTaskDateBucket(task, todayKey, tomorrowKey),
     icon: normalizeWidgetIcon(task.icon) || normalizeWidgetIcon(sphere?.icon),
     id: task.id,
     isOverdue,
     timeLabel:
-      !isOverdue && task.plannedStartTime
+      task.plannedDate === todayKey && task.plannedStartTime
         ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
         : null,
-    title: normalizeWidgetTaskTitle(task.title),
+    title: getWidgetTaskTitle(task, todayKey, tomorrowKey, isOverdue),
     visualTone: getWidgetTaskVisualTone(task, isOverdue),
   }
+}
+
+function normalizePendingTaskIds(taskIds: unknown): string[] {
+  return Array.isArray(taskIds) ? taskIds.filter(isNonEmptyString) : []
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
 }
 
 interface WidgetSphereLookup {
@@ -227,12 +279,41 @@ function normalizeWidgetTaskTitle(title: string): string {
   return trimmedTitle.length > 0 ? trimmedTitle : 'Без названия'
 }
 
-function compareWidgetTasks(left: Task, right: Task, todayKey: string): number {
-  const leftIsOverdue = left.plannedDate !== todayKey
-  const rightIsOverdue = right.plannedDate !== todayKey
+function getWidgetTaskTitle(
+  task: Task,
+  todayKey: string,
+  tomorrowKey: string,
+  isOverdue: boolean,
+): string {
+  const title = normalizeWidgetTaskTitle(task.title)
 
-  if (leftIsOverdue !== rightIsOverdue) {
-    return leftIsOverdue ? -1 : 1
+  if (isOverdue || task.plannedDate === todayKey) {
+    return title
+  }
+
+  if (task.plannedDate === tomorrowKey) {
+    return `Завтра: ${title}`
+  }
+
+  if (task.plannedDate) {
+    return `${formatShortDate(task.plannedDate)}: ${title}`
+  }
+
+  return `Без даты: ${title}`
+}
+
+function compareWidgetTasks(
+  left: Task,
+  right: Task,
+  todayKey: string,
+  tomorrowKey: string,
+): number {
+  const dateBucketComparison =
+    getWidgetDateBucket(left, todayKey, tomorrowKey) -
+    getWidgetDateBucket(right, todayKey, tomorrowKey)
+
+  if (dateBucketComparison !== 0) {
+    return dateBucketComparison
   }
 
   const statusComparison =
@@ -242,13 +323,18 @@ function compareWidgetTasks(left: Task, right: Task, todayKey: string): number {
     return statusComparison
   }
 
-  if (leftIsOverdue && rightIsOverdue) {
-    const leftPlannedDate = left.plannedDate ?? todayKey
-    const rightPlannedDate = right.plannedDate ?? todayKey
-
-    if (leftPlannedDate !== rightPlannedDate) {
-      return leftPlannedDate < rightPlannedDate ? -1 : 1
+  if (left.plannedDate && right.plannedDate) {
+    if (left.plannedDate !== right.plannedDate) {
+      return left.plannedDate < right.plannedDate ? -1 : 1
     }
+  }
+
+  if (left.plannedDate !== right.plannedDate) {
+    if (left.plannedDate === null) {
+      return 1
+    }
+
+    return -1
   }
 
   const timeComparison = compareOptionalTime(
@@ -272,6 +358,53 @@ function compareWidgetTasks(left: Task, right: Task, todayKey: string): number {
   }
 
   return left.createdAt < right.createdAt ? -1 : 1
+}
+
+function getWidgetTaskDateBucket(
+  task: Task,
+  todayKey: string,
+  tomorrowKey: string,
+): NativePlannerWidgetTaskDateBucket {
+  if (isWidgetTaskOverdue(task, todayKey)) {
+    return 'overdue'
+  }
+
+  if (task.plannedDate === todayKey) {
+    return 'today'
+  }
+
+  if (task.plannedDate === tomorrowKey) {
+    return 'tomorrow'
+  }
+
+  if (task.plannedDate) {
+    return 'future'
+  }
+
+  return 'unscheduled'
+}
+
+function getWidgetDateBucket(
+  task: Task,
+  todayKey: string,
+  tomorrowKey: string,
+): number {
+  switch (getWidgetTaskDateBucket(task, todayKey, tomorrowKey)) {
+    case 'overdue':
+      return 0
+    case 'today':
+      return 1
+    case 'tomorrow':
+      return 2
+    case 'future':
+      return 3
+    case 'unscheduled':
+      return 4
+  }
+}
+
+function isWidgetTaskOverdue(task: Task, todayKey: string): boolean {
+  return task.plannedDate !== null && isBeforeDate(task.plannedDate, todayKey)
 }
 
 function compareOptionalTime(

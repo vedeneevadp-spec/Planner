@@ -1,4 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const capacitorMocks = vi.hoisted(() => ({
+  ackPendingCompletedTasks: vi.fn(),
+  consumePendingCompletedTasks: vi.fn(),
+  consumePendingRoute: vi.fn(),
+  getPlatform: vi.fn(),
+  isNativePlatform: vi.fn(),
+  readPendingCompletedTasks: vi.fn(),
+  refresh: vi.fn(),
+}))
 
 vi.mock('@capacitor/app', () => ({
   App: {
@@ -8,13 +18,15 @@ vi.mock('@capacitor/app', () => ({
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
-    getPlatform: vi.fn(),
-    isNativePlatform: vi.fn(),
+    getPlatform: capacitorMocks.getPlatform,
+    isNativePlatform: capacitorMocks.isNativePlatform,
   },
   registerPlugin: vi.fn(() => ({
-    consumePendingCompletedTasks: vi.fn(),
-    consumePendingRoute: vi.fn(),
-    refresh: vi.fn(),
+    ackPendingCompletedTasks: capacitorMocks.ackPendingCompletedTasks,
+    consumePendingCompletedTasks: capacitorMocks.consumePendingCompletedTasks,
+    consumePendingRoute: capacitorMocks.consumePendingRoute,
+    readPendingCompletedTasks: capacitorMocks.readPendingCompletedTasks,
+    refresh: capacitorMocks.refresh,
   })),
 }))
 
@@ -27,7 +39,11 @@ vi.mock('@capacitor/preferences', () => ({
 import type { Sphere } from '@/entities/sphere'
 import type { Task } from '@/entities/task'
 
-import { buildNativePlannerWidgetSnapshot } from './native-planner-widget'
+import {
+  ackPendingNativePlannerWidgetCompletedTasks,
+  buildNativePlannerWidgetSnapshot,
+  readPendingNativePlannerWidgetCompletedTasks,
+} from './native-planner-widget'
 
 const baseTask: Task = {
   assigneeDisplayName: null,
@@ -73,7 +89,13 @@ const baseProject: Sphere = {
 }
 
 describe('native planner widget snapshot', () => {
-  it('prioritizes overdue and today tasks for the Android widget', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    capacitorMocks.getPlatform.mockReturnValue('android')
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+  })
+
+  it('prioritizes overdue, today, tomorrow and unscheduled tasks for the Android widget', () => {
     const snapshot = buildNativePlannerWidgetSnapshot(
       [
         baseTask,
@@ -94,7 +116,19 @@ describe('native planner widget snapshot', () => {
           ...baseTask,
           id: 'task-4',
           plannedDate: '2026-05-10',
-          title: 'Завтра',
+          title: 'Позвонить',
+        },
+        {
+          ...baseTask,
+          id: 'task-5',
+          plannedDate: null,
+          title: 'Когда-нибудь',
+        },
+        {
+          ...baseTask,
+          id: 'task-6',
+          plannedDate: '2026-05-15',
+          title: 'Позже',
         },
       ],
       new Date(2026, 4, 9, 12),
@@ -111,6 +145,7 @@ describe('native planner widget snapshot', () => {
     expect(snapshot.tasks).toEqual([
       {
         color: '#8EE7C8',
+        dateBucket: 'overdue',
         icon: '',
         id: 'task-2',
         isOverdue: true,
@@ -120,11 +155,42 @@ describe('native planner widget snapshot', () => {
       },
       {
         color: '#8EE7C8',
+        dateBucket: 'today',
         icon: '',
         id: 'task-1',
         isOverdue: false,
         timeLabel: '09:00 - 10:00',
         title: 'Утренний фокус',
+        visualTone: 'default',
+      },
+      {
+        color: '#8EE7C8',
+        dateBucket: 'tomorrow',
+        icon: '',
+        id: 'task-4',
+        isOverdue: false,
+        timeLabel: null,
+        title: 'Завтра: Позвонить',
+        visualTone: 'default',
+      },
+      {
+        color: '#8EE7C8',
+        dateBucket: 'future',
+        icon: '',
+        id: 'task-6',
+        isOverdue: false,
+        timeLabel: null,
+        title: '15 мая: Позже',
+        visualTone: 'default',
+      },
+      {
+        color: '#8EE7C8',
+        dateBucket: 'unscheduled',
+        icon: '',
+        id: 'task-5',
+        isOverdue: false,
+        timeLabel: null,
+        title: 'Без даты: Когда-нибудь',
         visualTone: 'default',
       },
     ])
@@ -233,6 +299,26 @@ describe('native planner widget snapshot', () => {
       color: '#2F6F62',
       icon: '🎯',
       id: 'task-1',
+    })
+  })
+
+  it('reads and filters pending Android widget completions', async () => {
+    capacitorMocks.readPendingCompletedTasks.mockResolvedValue({
+      taskIds: ['task-1', '', 'task-2', 3],
+    })
+
+    await expect(
+      readPendingNativePlannerWidgetCompletedTasks(),
+    ).resolves.toEqual(['task-1', 'task-2'])
+  })
+
+  it('acknowledges filtered Android widget completions', async () => {
+    capacitorMocks.ackPendingCompletedTasks.mockResolvedValue(undefined)
+
+    await ackPendingNativePlannerWidgetCompletedTasks(['task-1', '', 'task-2'])
+
+    expect(capacitorMocks.ackPendingCompletedTasks).toHaveBeenCalledWith({
+      taskIds: ['task-1', 'task-2'],
     })
   })
 })

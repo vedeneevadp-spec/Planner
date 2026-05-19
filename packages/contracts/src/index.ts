@@ -335,12 +335,14 @@ export {
 export type {
   NativePlannerWidgetSnapshot,
   NativePlannerWidgetTask,
+  NativePlannerWidgetTaskDateBucket,
   NativePlannerWidgetTaskVisualTone,
 } from './planner-widget.js'
 export {
   NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS,
   NATIVE_PLANNER_WIDGET_SNAPSHOT_VERSION,
   nativePlannerWidgetSnapshotSchema,
+  nativePlannerWidgetTaskDateBucketSchema,
   nativePlannerWidgetTaskSchema,
   nativePlannerWidgetTaskVisualToneSchema,
 } from './planner-widget.js'

@@ -237,9 +237,7 @@ export function usePlannerState(): PlannerState {
         await queueOfflineMutation()
         await persistOfflineSnapshot()
         await refreshQueuedMutationCount()
-        setMutationErrorMessage(
-          'Нет соединения. Изменение сохранено локально и синхронизируется автоматически.',
-        )
+        setMutationErrorMessage(getQueuedMutationMessage(error))
 
         return true
       }
@@ -272,6 +270,17 @@ export function usePlannerState(): PlannerState {
 
       return false
     }
+  }
+
+  function getQueuedMutationMessage(error: unknown): string {
+    if (
+      isUnauthorizedSessionApiError(error) ||
+      isUnauthorizedPlannerApiError(error)
+    ) {
+      return 'Не удалось подтвердить серверную сессию. Изменение сохранено локально и синхронизируется после восстановления входа.'
+    }
+
+    return 'Нет соединения. Изменение сохранено локально и синхронизируется автоматически.'
   }
 
   async function addSphere(input: NewLifeSphereInput): Promise<boolean> {

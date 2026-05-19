@@ -630,11 +630,7 @@ export function usePlannerMutations({
         previousTaskRecords,
       }
     },
-    onError: (error, _variables, context) => {
-      if (shouldKeepOptimisticMutation(error)) {
-        return
-      }
-
+    onError: (_error, _variables, context) => {
       if (context?.previousTaskRecords) {
         queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
       }

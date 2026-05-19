@@ -268,6 +268,8 @@
 }
 
 .actionMenu {
+  --task-action-menu-bg: #faf7f0;
+
   position: absolute;
   top: calc(100% + 0.38rem);
   right: 0;
@@ -277,8 +279,12 @@
   padding: 0.35rem;
   border: 1px solid var(--line);
   border-radius: 14px;
-  background: var(--surface-elevated);
+  background: var(--task-action-menu-bg);
   box-shadow: var(--shadow-elevated);
+}
+
+:global(:root[data-theme='dark']) .actionMenu {
+  --task-action-menu-bg: #1a2722;
 }
 
 .menuItem {

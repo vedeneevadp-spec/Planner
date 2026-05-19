@@ -26,6 +26,7 @@ import {
   WorkspaceParticipantsDialog,
 } from '@/features/session'
 import { useShoppingListSummary } from '@/features/shopping-list'
+import { getVisibleNavigationRouteDefinitions } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate, getDateKey } from '@/shared/lib/date'
 import { useColorTheme } from '@/shared/lib/theme'
@@ -50,19 +51,6 @@ import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import styles from './Sidebar.module.css'
 
-const navigation = [
-  { to: '/today', label: 'Сегодня' },
-  { to: '/calendar', label: 'Календарь' },
-  { to: '/shopping', label: 'Покупки' },
-  { to: '/cleaning', label: 'Уборка' },
-  { to: '/spheres', label: 'Сферы' },
-  { to: '/habits', label: 'Привычки' },
-  { to: '/timeline', label: 'Таймлайн' },
-  { to: '/admin', label: 'Admin' },
-] as const
-
-type NavigationRoute = (typeof navigation)[number]['to']
-
 interface MobileMoreSheetLocation {
   key: string
   pathname: string
@@ -72,20 +60,6 @@ interface SidebarProps {
   isCollapsed?: boolean
   onCollapsedChange?: (isCollapsed: boolean) => void
 }
-
-const mobilePrimaryRoutes: readonly NavigationRoute[] = [
-  '/today',
-  '/calendar',
-  '/shopping',
-  '/cleaning',
-]
-
-const mobileMoreRoutes: readonly NavigationRoute[] = [
-  '/timeline',
-  '/spheres',
-  '/habits',
-  '/admin',
-]
 
 export function Sidebar({
   isCollapsed = false,
@@ -144,18 +118,13 @@ export function Sidebar({
   const sharedWorkspaceCount =
     session?.workspaces.filter((workspace) => workspace.kind === 'shared')
       .length ?? 0
-  const visibleNavigation = navigation.filter(
+  const visibleNavigation = getVisibleNavigationRouteDefinitions(
+    isSharedWorkspace ? 'shared' : 'personal',
+  ).filter(
     (item) =>
-      (!isSharedWorkspace ||
-        item.to === '/today' ||
-        item.to === '/calendar' ||
-        item.to === '/cleaning' ||
-        item.to === '/shopping' ||
-        item.to === '/timeline' ||
-        item.to === '/spheres') &&
-      (item.to !== '/admin' ||
-        session?.appRole === 'admin' ||
-        session?.appRole === 'owner'),
+      item.id !== 'admin' ||
+      session?.appRole === 'admin' ||
+      session?.appRole === 'owner',
   )
   const syncStateLabel = errorMessage
     ? 'Connection issue'
@@ -169,16 +138,12 @@ export function Sidebar({
     session?.actor.email ??
     (auth.accessToken ? 'Chaotika session' : null)
   const isProfileNavigationVisible = Boolean(session && !isSharedWorkspace)
-  const mobilePrimaryNavigation = mobilePrimaryRoutes.flatMap((route) => {
-    const item = visibleNavigation.find((candidate) => candidate.to === route)
-
-    return item ? [item] : []
-  })
-  const mobileMoreNavigation = mobileMoreRoutes.flatMap((route) => {
-    const item = visibleNavigation.find((candidate) => candidate.to === route)
-
-    return item ? [item] : []
-  })
+  const mobilePrimaryNavigation = visibleNavigation
+    .filter((item) => item.mobilePlacement === 'primary')
+    .sort((left, right) => (left.mobileOrder ?? 0) - (right.mobileOrder ?? 0))
+  const mobileMoreNavigation = visibleNavigation
+    .filter((item) => item.mobilePlacement === 'more')
+    .sort((left, right) => (left.mobileOrder ?? 0) - (right.mobileOrder ?? 0))
   const isMoreOpen =
     moreSheetLocation?.pathname === location.pathname &&
     moreSheetLocation.key === location.key

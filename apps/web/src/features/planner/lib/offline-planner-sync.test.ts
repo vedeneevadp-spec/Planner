@@ -114,6 +114,70 @@ describe('offline planner sync', () => {
     expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(1)
   })
 
+  it('marks terminal stale mutations as conflicted and continues replaying the queue', async () => {
+    const taskRecord = createTaskRecord(createInput.id!)
+    const api = createPlannerApiClientMock({
+      createTask: vi.fn().mockResolvedValue(taskRecord),
+      updateTask: vi.fn().mockRejectedValue(
+        new PlannerApiError('Task was deleted on the server.', {
+          code: 'task_not_found',
+          status: 404,
+        }),
+      ),
+    })
+    const updateInput = {
+      assigneeUserId: createInput.assigneeUserId,
+      dueDate: createInput.dueDate,
+      note: createInput.note,
+      plannedDate: createInput.plannedDate,
+      plannedEndTime: createInput.plannedEndTime,
+      plannedStartTime: createInput.plannedStartTime,
+      project: createInput.project,
+      projectId: createInput.projectId,
+      requiresConfirmation: createInput.requiresConfirmation,
+      resource: createInput.resource,
+      sphereId: createInput.sphereId,
+      title: 'Stale offline update',
+    }
+
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      expectedVersion: 1,
+      input: updateInput,
+      taskId: 'stale-task',
+      type: 'task.update',
+      workspaceId: WORKSPACE_ID,
+    })
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      input: createInput,
+      taskId: createInput.id!,
+      type: 'task.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainPlannerOfflineQueue({
+      api,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 1,
+      failed: 0,
+      processed: 2,
+      synced: 1,
+    })
+    expect(api.updateTask).toHaveBeenCalledWith('stale-task', {
+      ...updateInput,
+      expectedVersion: 1,
+    })
+    expect(api.createTask).toHaveBeenCalledWith(createInput)
+    expect(await countRetryablePlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
+    expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(1)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([taskRecord])
+  })
+
   it('replays queued sphere creates through the API and caches the server record', async () => {
     const sphereRecord = createLifeSphereRecord(createSphereInput.id!)
     const api = createPlannerApiClientMock({
@@ -220,4 +284,10 @@ function createLifeSphereRecord(sphereId: string): LifeSphereRecord {
     version: 1,
     workspaceId: WORKSPACE_ID,
   }
+}
+
+function waitForNextMutationTimestamp(): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 1)
+  })
 }

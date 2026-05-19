@@ -14,8 +14,17 @@ export const nativePlannerWidgetTaskVisualToneSchema = z.enum([
   'urgent',
 ])
 
+export const nativePlannerWidgetTaskDateBucketSchema = z.enum([
+  'future',
+  'overdue',
+  'today',
+  'tomorrow',
+  'unscheduled',
+])
+
 export const nativePlannerWidgetTaskSchema = z.object({
   color: z.string().trim().min(1).default('#8EE7C8'),
+  dateBucket: nativePlannerWidgetTaskDateBucketSchema,
   icon: z.string().trim().default(''),
   id: z.string().trim().min(1),
   isOverdue: z.boolean(),
@@ -42,6 +51,9 @@ export type NativePlannerWidgetTask = z.infer<
 >
 export type NativePlannerWidgetTaskVisualTone = z.infer<
   typeof nativePlannerWidgetTaskVisualToneSchema
+>
+export type NativePlannerWidgetTaskDateBucket = z.infer<
+  typeof nativePlannerWidgetTaskDateBucketSchema
 >
 export type NativePlannerWidgetSnapshot = z.infer<
   typeof nativePlannerWidgetSnapshotSchema

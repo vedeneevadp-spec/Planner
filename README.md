@@ -64,7 +64,7 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run test:api:postgres`                       | Postgres/RLS integration-тесты API                      |
 | `npm run test:e2e`                                | Playwright smoke web + API auth/tasks                   |
 | `npm run test:run`                                | web + API тесты                                         |
-| `npm run coverage`                                | web coverage                                            |
+| `npm run coverage`                                | web + API coverage                                      |
 | `npm run openapi:check`                           | контрактная проверка `/api/openapi.json`                |
 | `npm run audit:prod`                              | audit runtime-зависимостей без dev tooling              |
 | `npm run audit:dev-tooling`                       | контроль известных dev-only audit исключений            |
@@ -335,6 +335,7 @@ Workspace`: роли, права, жизненный цикл и правила 
 - shared contracts валидируются через `zod`
 - web unit-тесты запускаются через Vitest
 - web coverage имеет минимальные thresholds в `apps/web/vite.config.ts`
+- API coverage запускается через встроенный Node test runner
 - API тесты запускаются через встроенный Node test runner с `tsx`
 - `npm run audit:prod` и `npm run audit:dev-tooling` должны оставаться чистыми;
   tooling для native assets запускается из isolated `npx`, чтобы не держать
