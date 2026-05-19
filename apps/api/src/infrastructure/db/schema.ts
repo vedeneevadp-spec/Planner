@@ -108,6 +108,7 @@ export interface AppHabitEntriesTable {
   id: Generated<string>
   note: string
   status: 'done' | 'skipped'
+  target_value: number
   updated_at: Generated<TimestampColumn>
   updated_by: string | null
   user_id: string

@@ -116,6 +116,52 @@ describe('TaskCard', () => {
     ).toBeInTheDocument()
   })
 
+  it('opens a full task preview from the card surface', () => {
+    const longNote =
+      'Подробное описание задачи, которое должно быть видно полностью в карточке просмотра.\nВторая строка тоже остается доступной.'
+
+    renderTaskCard(
+      createTask({
+        note: longNote,
+        title: 'Подробная задача',
+      }),
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Открыть карточку задачи Подробная задача',
+      }),
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Карточка задачи' })
+
+    expect(within(dialog).getByText('Подробная задача')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(
+        (_, element) => element?.textContent === longNote,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps quick actions from opening the task preview', () => {
+    const onSetStatus = vi.fn()
+
+    renderTaskCard(createTask(), {
+      onSetStatus,
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Завершить задачу',
+      }),
+    )
+
+    expect(onSetStatus).toHaveBeenCalledWith('task-1', 'done')
+    expect(
+      screen.queryByRole('dialog', { name: 'Карточка задачи' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('hides postpone action for tasks planned after tomorrow', () => {
     renderTaskCard(createTask({ plannedDate: '2026-04-27' }))
     const actionMenu = openTaskActionMenu()

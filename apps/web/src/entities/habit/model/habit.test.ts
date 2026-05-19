@@ -41,4 +41,18 @@ describe('habit progress helpers', () => {
     expect(getHabitEntryProgressValue(habit, skippedEntry)).toBe(0)
     expect(isHabitEntryComplete(habit, skippedEntry)).toBe(false)
   })
+
+  it('uses the entry target snapshot for historical completion', () => {
+    const habit = {
+      targetValue: 10,
+    } as const
+    const historicalEntry = {
+      status: 'done',
+      targetValue: 5,
+      value: 5,
+    } as const
+
+    expect(getHabitEntryProgressValue(habit, historicalEntry)).toBe(5)
+    expect(isHabitEntryComplete(habit, historicalEntry)).toBe(true)
+  })
 })

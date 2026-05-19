@@ -84,6 +84,7 @@ export function createStoredHabitEntryRecord(
     id: input.id ?? generateUuidV7(),
     note: input.note,
     status: input.status,
+    targetValue: input.habit.targetValue,
     updatedAt: now,
     userId: context.actorUserId,
     value: input.value,
@@ -230,7 +231,10 @@ export function getEntryProgressPercent(
     return 0
   }
 
-  return Math.min(100, Math.round((entry.value / habit.targetValue) * 100))
+  return Math.min(
+    100,
+    Math.round((entry.value / getEntryTargetValue(habit, entry)) * 100),
+  )
 }
 
 export function getDefaultEntryValue(
@@ -367,7 +371,16 @@ function isEntryComplete(
   habit: Pick<StoredHabitRecord, 'targetValue'>,
   entry: StoredHabitEntryRecord | undefined,
 ): boolean {
-  return entry?.status === 'done' && entry.value >= habit.targetValue
+  return (
+    entry?.status === 'done' && entry.value >= getEntryTargetValue(habit, entry)
+  )
+}
+
+function getEntryTargetValue(
+  habit: Pick<StoredHabitRecord, 'targetValue'>,
+  entry: Pick<StoredHabitEntryRecord, 'targetValue'>,
+): number {
+  return entry.targetValue ?? habit.targetValue
 }
 
 function enumerateDates(from: string, to: string): string[] {

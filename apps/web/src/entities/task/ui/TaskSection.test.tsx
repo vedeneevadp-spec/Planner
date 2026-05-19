@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -98,6 +104,16 @@ describe('TaskSection', () => {
     expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
 
     fireEvent.click(collapseButton)
+
+    expect(collapseButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Задач нет')).not.toBeInTheDocument()
+  })
+
+  it('toggles content by clicking the section header title', () => {
+    renderTaskSection()
+
+    const collapseButton = screen.getByRole('button', { name: 'Сегодня' })
+    fireEvent.click(within(collapseButton).getByText('Сегодня'))
 
     expect(collapseButton).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('Задач нет')).not.toBeInTheDocument()

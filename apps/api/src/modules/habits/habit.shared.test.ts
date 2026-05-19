@@ -93,6 +93,34 @@ void test('buildHabitStats does not count partial progress as completed', () => 
   assert.equal(stats.missedCount, 1)
 })
 
+void test('buildHabitStats preserves completed days after the habit target grows', () => {
+  const countHabit: HabitRecord = {
+    ...BASE_HABIT,
+    targetType: 'count',
+    targetValue: 10,
+    unit: 'раз',
+  }
+  const stats = buildHabitStats(
+    countHabit,
+    [
+      {
+        ...entry('entry-1', '2026-05-05', 'done', 5),
+        targetValue: 5,
+      },
+      entry('entry-2', '2026-05-06', 'done', 10),
+    ],
+    {
+      from: '2026-05-05',
+      to: '2026-05-07',
+    },
+  )
+
+  assert.equal(stats.completedCount, 2)
+  assert.equal(stats.currentStreak, 2)
+  assert.equal(stats.weekCompleted, 2)
+  assert.equal(stats.monthCompleted, 2)
+})
+
 function entry(
   id: string,
   date: string,

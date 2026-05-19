@@ -2,6 +2,7 @@ import type { HabitRecord } from '@planner/contracts'
 
 import {
   getHabitEntryProgressValue,
+  getHabitEntryTargetValue,
   getHabitFrequencyLabel,
   getHabitTargetLabel,
   type HabitTodayListItem,
@@ -40,7 +41,11 @@ export function HabitRoutineTaskCard({
   const canUndo = isComplete || isSkipped
   const progressValue = getHabitEntryProgressValue(habit, entry)
   const progressPercent = isComplete ? 100 : item.progressPercent
-  const progressLabel = getHabitRoutineProgressLabel(habit, progressValue)
+  const progressLabel = getHabitRoutineProgressLabel(
+    habit,
+    progressValue,
+    getHabitEntryTargetValue(habit, entry),
+  )
   const actionLabel = canUndo
     ? `Отменить отметку привычки ${habit.title}`
     : `Завершить привычку ${habit.title}`
@@ -118,14 +123,15 @@ export function HabitRoutineTaskCard({
 function getHabitRoutineProgressLabel(
   habit: Pick<HabitRecord, 'targetType' | 'targetValue' | 'unit'>,
   progressValue: number,
+  targetValue: number,
 ): string {
   if (habit.targetType === 'check') {
     return getHabitTargetLabel(habit.targetType, habit.targetValue, habit.unit)
   }
 
   if (habit.targetType === 'duration') {
-    return `${progressValue}/${habit.targetValue} мин`
+    return `${progressValue}/${targetValue} мин`
   }
 
-  return `${progressValue}/${habit.targetValue}${habit.unit ? ` ${habit.unit}` : ''}`
+  return `${progressValue}/${targetValue}${habit.unit ? ` ${habit.unit}` : ''}`
 }

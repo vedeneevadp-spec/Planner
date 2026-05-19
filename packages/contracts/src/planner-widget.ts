@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const NATIVE_PLANNER_WIDGET_SNAPSHOT_VERSION = 4
-export const NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS = 12
+export const NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS = 24
 
 const dateKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
 const nonNegativeIntegerSchema = z.number().int().min(0)

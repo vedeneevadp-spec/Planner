@@ -1164,6 +1164,7 @@ function createOptimisticHabitEntry(input: {
       `optimistic-habit-entry-${input.habit.id}-${input.date}`,
     note: input.input.note ?? input.previousEntry?.note ?? '',
     status,
+    targetValue: input.habit.targetValue,
     updatedAt: now,
     userId: input.actorUserId,
     value:
@@ -1350,19 +1351,29 @@ function sortHabitRecords(habits: HabitRecord[]): HabitRecord[] {
 
 function getEntryProgressPercent(
   habit: Pick<HabitRecord, 'targetValue'>,
-  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+  entry: Pick<HabitEntryRecord, 'status' | 'targetValue' | 'value'> | null,
 ): number {
   if (!entry || entry.status === 'skipped') {
     return 0
   }
 
-  return Math.min(100, Math.round((entry.value / habit.targetValue) * 100))
+  return Math.min(
+    100,
+    Math.round((entry.value / getEntryTargetValue(habit, entry)) * 100),
+  )
 }
 
 function getDefaultHabitEntryValue(
   habit: Pick<HabitRecord, 'targetType' | 'targetValue'>,
 ): number {
   return habit.targetType === 'check' ? habit.targetValue : 0
+}
+
+function getEntryTargetValue(
+  habit: Pick<HabitRecord, 'targetValue'>,
+  entry: Pick<HabitEntryRecord, 'targetValue'>,
+): number {
+  return entry.targetValue ?? habit.targetValue
 }
 
 function isHabitScheduledOnDate(habit: HabitRecord, dateKey: string): boolean {

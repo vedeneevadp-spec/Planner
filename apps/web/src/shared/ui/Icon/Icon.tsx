@@ -182,6 +182,23 @@ export function MinusIcon(props: IconProps) {
   )
 }
 
+export function PauseIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M9 5.75V18.25" />
+      <path d="M15 5.75V18.25" />
+    </SvgIcon>
+  )
+}
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M8.25 5.75L18.25 12L8.25 18.25V5.75Z" />
+    </SvgIcon>
+  )
+}
+
 export function CalendarIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

@@ -309,6 +309,63 @@ describe('Sidebar', () => {
     expect(moreSheet.queryByText('Admin')).not.toBeInTheDocument()
   })
 
+  it('hides desktop workspace actions behind the settings button', () => {
+    renderSidebar(createSession('shared', { role: 'owner' }))
+
+    expect(
+      screen.queryByRole('button', { name: 'Переименовать' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Удалить' }),
+    ).not.toBeInTheDocument()
+
+    const workspaceActionsButton = screen.getByRole('button', {
+      name: 'Действия с workspace',
+    })
+
+    expect(workspaceActionsButton).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(workspaceActionsButton)
+
+    expect(workspaceActionsButton).toHaveAttribute('aria-expanded', 'true')
+    expect(
+      screen.getByRole('button', { name: 'Переименовать' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Удалить' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Участники' }),
+    ).toBeInTheDocument()
+  })
+
+  it('hides mobile workspace actions behind the sheet settings button', () => {
+    renderSidebar(createSession('shared', { role: 'owner' }))
+
+    const moreSheet = within(openMobileMoreSheet())
+
+    expect(
+      moreSheet.queryByRole('button', { name: 'Переименовать' }),
+    ).not.toBeInTheDocument()
+    expect(
+      moreSheet.queryByRole('button', { name: 'Удалить' }),
+    ).not.toBeInTheDocument()
+
+    const workspaceActionsButton = moreSheet.getByRole('button', {
+      name: 'Действия с workspace в мобильном меню',
+    })
+
+    fireEvent.click(workspaceActionsButton)
+
+    expect(
+      moreSheet.getByRole('button', { name: 'Переименовать' }),
+    ).toBeInTheDocument()
+    expect(
+      moreSheet.getByRole('button', { name: 'Удалить' }),
+    ).toBeInTheDocument()
+    expect(
+      moreSheet.getByRole('button', { name: 'Участники' }),
+    ).toBeInTheDocument()
+  })
+
   it('closes the mobile more sheet from the sheet header', () => {
     renderSidebar(createSession('personal'))
 

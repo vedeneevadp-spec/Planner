@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/planner_timeline_task_item_row"
+    android:layout_width="match_parent"
+    android:layout_height="42dp"
+    android:background="@drawable/planner_timeline_row_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <ImageView
+        android:id="@+id/planner_timeline_task_item_icon"
+        style="@style/PlannerTimelineTaskIcon" />
+
+    <LinearLayout style="@style/PlannerTimelineTaskCopy">
+        <TextView
+            android:id="@+id/planner_timeline_task_item_time"
+            style="@style/PlannerTimelineTaskTime" />
+
+        <TextView
+            android:id="@+id/planner_timeline_task_item_title"
+            style="@style/PlannerTimelineTaskTitle" />
+    </LinearLayout>
+
+    <ImageView
+        android:id="@+id/planner_timeline_task_item_checkbox"
+        style="@style/PlannerWidgetTaskCheckbox" />
+</LinearLayout>

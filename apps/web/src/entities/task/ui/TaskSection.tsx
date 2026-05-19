@@ -84,26 +84,30 @@ export function TaskSection({
     <section
       className={cx(styles.panel, openActionMenuTaskId && styles.panelMenuOpen)}
     >
-      <div className={styles.header}>
-        <h3 id={headingId}>{title}</h3>
+      <h3 className={styles.headerHeading}>
         <button
-          className={styles.collapseButton}
+          className={styles.header}
           type="button"
           aria-expanded={!isCollapsed}
           aria-controls={contentId}
           aria-labelledby={headingId}
           onClick={() => setIsCollapsed((value) => !value)}
         >
-          <span className={styles.countChip}>{itemCount}</span>
-          <span
-            className={cx(
-              styles.collapseChevron,
-              isCollapsed && styles.collapseChevronCollapsed,
-            )}
-            aria-hidden="true"
-          />
+          <span id={headingId} className={styles.headingText}>
+            {title}
+          </span>
+          <span className={styles.collapseButton} aria-hidden="true">
+            <span className={styles.countChip}>{itemCount}</span>
+            <span
+              className={cx(
+                styles.collapseChevron,
+                isCollapsed && styles.collapseChevronCollapsed,
+              )}
+              aria-hidden="true"
+            />
+          </span>
         </button>
-      </div>
+      </h3>
 
       {!isCollapsed ? (
         <div id={contentId}>

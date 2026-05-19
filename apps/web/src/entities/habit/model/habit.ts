@@ -59,23 +59,31 @@ export function getHabitEntryValueLabel(
 
 export function getHabitEntryProgressValue(
   habit: Pick<HabitRecord, 'targetValue'>,
-  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+  entry: Pick<HabitEntryRecord, 'status' | 'targetValue' | 'value'> | null,
 ): number {
   if (!entry || entry.status === 'skipped') {
     return 0
   }
 
-  return Math.min(habit.targetValue, entry.value)
+  return Math.min(getHabitEntryTargetValue(habit, entry), entry.value)
 }
 
 export function isHabitEntryComplete(
   habit: Pick<HabitRecord, 'targetValue'>,
-  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+  entry: Pick<HabitEntryRecord, 'status' | 'targetValue' | 'value'> | null,
 ): boolean {
   return (
     entry?.status === 'done' &&
-    getHabitEntryProgressValue(habit, entry) >= habit.targetValue
+    getHabitEntryProgressValue(habit, entry) >=
+      getHabitEntryTargetValue(habit, entry)
   )
+}
+
+export function getHabitEntryTargetValue(
+  habit: Pick<HabitRecord, 'targetValue'>,
+  entry: Pick<HabitEntryRecord, 'targetValue'> | null,
+): number {
+  return entry?.targetValue ?? habit.targetValue
 }
 
 export function getNextHabitEntryProgressValue(

@@ -10,6 +10,26 @@
   box-shadow: var(--shadow-soft);
 }
 
+.openCardButton {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border: 0;
+  border-radius: inherit;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.openCardButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.card:hover .openCardButton {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .cardMenuOpen {
   z-index: 2;
 }
@@ -88,6 +108,8 @@
 
 .quickActions {
   display: inline-flex;
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
   align-items: center;
   gap: 0.32rem;
@@ -281,6 +303,59 @@
   border-radius: 14px;
   background: var(--task-action-menu-bg);
   box-shadow: var(--shadow-elevated);
+}
+
+.detailCard {
+  padding: 1rem;
+}
+
+.detailCard .titleRow h4 {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+}
+
+.detailCard .note {
+  display: block;
+  overflow: visible;
+  white-space: pre-wrap;
+  -webkit-line-clamp: unset;
+}
+
+.viewerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem;
+  background: var(--surface-scrim);
+  backdrop-filter: blur(8px);
+}
+
+.viewerBackdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.viewerPanel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.55rem;
+  width: min(34rem, 100%);
+  margin-block: auto;
+  border-radius: 18px;
+}
+
+.viewerHeader {
+  display: flex;
+  justify-content: flex-end;
 }
 
 :global(:root[data-theme='dark']) .actionMenu {

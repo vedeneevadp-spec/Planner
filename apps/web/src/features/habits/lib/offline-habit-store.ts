@@ -1216,13 +1216,23 @@ function createEmptyHabitStats(habitId: string): HabitStats {
 
 function getEntryProgressPercent(
   habit: Pick<HabitRecord, 'targetValue'>,
-  entry: Pick<HabitEntryRecord, 'status' | 'value'> | null,
+  entry: Pick<HabitEntryRecord, 'status' | 'targetValue' | 'value'> | null,
 ): number {
   if (!entry || entry.status === 'skipped') {
     return 0
   }
 
-  return Math.min(100, Math.round((entry.value / habit.targetValue) * 100))
+  return Math.min(
+    100,
+    Math.round((entry.value / getEntryTargetValue(habit, entry)) * 100),
+  )
+}
+
+function getEntryTargetValue(
+  habit: Pick<HabitRecord, 'targetValue'>,
+  entry: Pick<HabitEntryRecord, 'targetValue'>,
+): number {
+  return entry.targetValue ?? habit.targetValue
 }
 
 function isHabitScheduledOnDate(habit: HabitRecord, dateKey: string): boolean {

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/planner_widget_task_item_row"
+    android:layout_width="match_parent"
+    android:layout_height="32dp"
+    android:background="@drawable/planner_widget_task_row_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingBottom="6dp">
+
+    <ImageView
+        android:id="@+id/planner_widget_task_item_icon"
+        style="@style/PlannerWidgetTaskIcon" />
+
+    <TextView
+        android:id="@+id/planner_widget_task_item_title"
+        style="@style/PlannerWidgetTaskTitle" />
+
+    <ImageView
+        android:id="@+id/planner_widget_task_item_checkbox"
+        style="@style/PlannerWidgetTaskCheckbox" />
+</LinearLayout>

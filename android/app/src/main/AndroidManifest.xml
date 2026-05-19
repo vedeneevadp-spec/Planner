@@ -67,6 +67,11 @@
                 android:resource="@xml/planner_timeline_widget_info" />
         </receiver>
 
+        <service
+            android:name=".PlannerWidgetTaskRemoteViewsService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { isHabitEntryComplete } from '@/entities/habit'
@@ -84,6 +84,10 @@ export function Sidebar({
   const declineWorkspaceInvitationMutation = useDeclineWorkspaceInvitation()
   const [moreSheetLocation, setMoreSheetLocation] =
     useState<MobileMoreSheetLocation | null>(null)
+  const [isDesktopWorkspaceActionsOpen, setIsDesktopWorkspaceActionsOpen] =
+    useState(false)
+  const [isMobileWorkspaceActionsOpen, setIsMobileWorkspaceActionsOpen] =
+    useState(false)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
   const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
@@ -181,6 +185,11 @@ export function Sidebar({
     ? 'Включить светлую тему'
     : 'Включить темную тему'
 
+  const closeMobileMoreSheet = useCallback(() => {
+    setMoreSheetLocation(null)
+    setIsMobileWorkspaceActionsOpen(false)
+  }, [])
+
   useEffect(() => {
     if (!isMoreOpen) {
       return
@@ -190,13 +199,13 @@ export function Sidebar({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setMoreSheetLocation(null)
+        closeMobileMoreSheet()
       }
     }
 
     function handleResize() {
       if (window.innerWidth > 820) {
-        setMoreSheetLocation(null)
+        closeMobileMoreSheet()
       }
     }
 
@@ -209,7 +218,7 @@ export function Sidebar({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('resize', handleResize)
     }
-  }, [isMoreOpen])
+  }, [closeMobileMoreSheet, isMoreOpen])
 
   function closeCreateWorkspaceForm() {
     setIsCreateWorkspaceFormOpen(false)
@@ -318,7 +327,7 @@ export function Sidebar({
       await deleteSharedWorkspaceMutation.mutateAsync()
       setIsWorkspaceParticipantsOpen(false)
       setIsRenameWorkspaceFormOpen(false)
-      setMoreSheetLocation(null)
+      closeMobileMoreSheet()
     } catch (error) {
       setWorkspaceManageError(getDeleteSharedWorkspaceErrorMessage(error))
     }
@@ -340,7 +349,7 @@ export function Sidebar({
       await leaveSharedWorkspaceMutation.mutateAsync()
       setIsWorkspaceParticipantsOpen(false)
       setIsRenameWorkspaceFormOpen(false)
-      setMoreSheetLocation(null)
+      closeMobileMoreSheet()
     } catch (error) {
       setWorkspaceManageError(getLeaveSharedWorkspaceErrorMessage(error))
     }
@@ -354,7 +363,7 @@ export function Sidebar({
 
     try {
       await acceptWorkspaceInvitationMutation.mutateAsync(input)
-      setMoreSheetLocation(null)
+      closeMobileMoreSheet()
     } catch (error) {
       setWorkspaceInvitationError(getWorkspaceParticipantsErrorMessage(error))
     }
@@ -657,6 +666,51 @@ export function Sidebar({
     )
   }
 
+  function renderWorkspaceActionsMenu(isMobile = false) {
+    const actionButtonClassName = isMobile
+      ? styles.mobileCreateWorkspaceButton
+      : undefined
+
+    return (
+      <div
+        className={cx(
+          styles.workspaceActionsMenu,
+          isMobile && styles.mobileWorkspaceActionsMenu,
+        )}
+      >
+        {renderCreateWorkspaceControls(actionButtonClassName)}
+
+        {renderReceivedInvitations(
+          isMobile ? styles.mobileInvitationPanel : undefined,
+        )}
+
+        {renderWorkspaceOwnerControls(actionButtonClassName)}
+
+        {renderWorkspaceLeaveControls(actionButtonClassName)}
+
+        {isSharedWorkspace ? (
+          <button
+            className={cx(
+              styles.createWorkspaceButton,
+              actionButtonClassName,
+              styles.secondaryWorkspaceButton,
+            )}
+            type="button"
+            onClick={() => {
+              setIsMobileWorkspaceActionsOpen(false)
+              setIsDesktopWorkspaceActionsOpen(false)
+              closeMobileMoreSheet()
+              setIsWorkspaceParticipantsOpen(true)
+            }}
+          >
+            <UserIcon size={18} strokeWidth={2.1} />
+            <span>Участники</span>
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
     <>
       <div className={styles.mobileChrome}>
@@ -712,12 +766,18 @@ export function Sidebar({
             aria-expanded={isMoreOpen}
             aria-controls="mobile-more-sheet"
             onClick={() => {
-              setMoreSheetLocation((current) =>
-                current?.pathname === location.pathname &&
-                current.key === location.key
-                  ? null
-                  : { key: location.key, pathname: location.pathname },
-              )
+              if (
+                moreSheetLocation?.pathname === location.pathname &&
+                moreSheetLocation.key === location.key
+              ) {
+                closeMobileMoreSheet()
+                return
+              }
+
+              setMoreSheetLocation({
+                key: location.key,
+                pathname: location.pathname,
+              })
             }}
           >
             <span className={styles.mobileTabIcon} aria-hidden="true">
@@ -732,7 +792,7 @@ export function Sidebar({
             className={styles.mobileSheetBackdrop}
             role="presentation"
             onClick={() => {
-              setMoreSheetLocation(null)
+              closeMobileMoreSheet()
             }}
           >
             <section
@@ -752,7 +812,7 @@ export function Sidebar({
                   type="button"
                   aria-label="Закрыть меню"
                   onClick={() => {
-                    setMoreSheetLocation(null)
+                    closeMobileMoreSheet()
                   }}
                 >
                   <CloseIcon size={18} strokeWidth={2.1} />
@@ -769,53 +829,42 @@ export function Sidebar({
                       {session?.actor.displayName ?? 'Загружаем профиль'}
                     </p>
                   </div>
-                  <span
-                    className={cx(
-                      styles.stateBadge,
-                      errorMessage
-                        ? styles.stateBadgeError
-                        : isSyncing || isLoading
-                          ? styles.stateBadgePending
-                          : styles.stateBadgeOk,
-                    )}
-                  >
-                    {syncStateLabel}
-                  </span>
-                </div>
-
-                <div className={styles.mobileWorkspaceActions}>
-                  {renderCreateWorkspaceControls(
-                    styles.mobileCreateWorkspaceButton,
-                  )}
-
-                  {renderReceivedInvitations(styles.mobileInvitationPanel)}
-
-                  {renderWorkspaceOwnerControls(
-                    styles.mobileCreateWorkspaceButton,
-                  )}
-
-                  {renderWorkspaceLeaveControls(
-                    styles.mobileCreateWorkspaceButton,
-                  )}
-
-                  {isSharedWorkspace ? (
-                    <button
+                  <div className={styles.connectionHeaderActions}>
+                    <span
                       className={cx(
-                        styles.createWorkspaceButton,
-                        styles.mobileCreateWorkspaceButton,
-                        styles.secondaryWorkspaceButton,
+                        styles.stateBadge,
+                        errorMessage
+                          ? styles.stateBadgeError
+                          : isSyncing || isLoading
+                            ? styles.stateBadgePending
+                            : styles.stateBadgeOk,
                       )}
-                      type="button"
-                      onClick={() => {
-                        setMoreSheetLocation(null)
-                        setIsWorkspaceParticipantsOpen(true)
-                      }}
                     >
-                      <UserIcon size={18} strokeWidth={2.1} />
-                      <span>Участники</span>
-                    </button>
-                  ) : null}
+                      {syncStateLabel}
+                    </span>
+
+                    {session ? (
+                      <button
+                        className={styles.workspaceSettingsButton}
+                        type="button"
+                        aria-label="Действия с workspace в мобильном меню"
+                        aria-expanded={isMobileWorkspaceActionsOpen}
+                        aria-controls="mobile-workspace-actions"
+                        onClick={() => {
+                          setIsMobileWorkspaceActionsOpen((value) => !value)
+                        }}
+                      >
+                        <WorkspaceGearIcon />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
+
+                {isMobileWorkspaceActionsOpen ? (
+                  <div id="mobile-workspace-actions">
+                    {renderWorkspaceActionsMenu(true)}
+                  </div>
+                ) : null}
               </div>
 
               {accountLabel || mobileMoreNavigation.length > 0 ? (
@@ -873,7 +922,7 @@ export function Sidebar({
                           )
                         }
                         onClick={() => {
-                          setMoreSheetLocation(null)
+                          closeMobileMoreSheet()
                         }}
                       >
                         {renderMobileNavIcon(item.to)}
@@ -891,7 +940,7 @@ export function Sidebar({
                         )
                       }
                       onClick={() => {
-                        setMoreSheetLocation(null)
+                        closeMobileMoreSheet()
                       }}
                     >
                       <EditIcon size={18} strokeWidth={2.1} />
@@ -912,7 +961,7 @@ export function Sidebar({
                           )
                         }
                         onClick={() => {
-                          setMoreSheetLocation(null)
+                          closeMobileMoreSheet()
                         }}
                       >
                         <SettingsIcon size={18} strokeWidth={2.1} />
@@ -925,7 +974,7 @@ export function Sidebar({
                       className={styles.mobileSignOutButton}
                       type="button"
                       onClick={() => {
-                        setMoreSheetLocation(null)
+                        closeMobileMoreSheet()
                         void auth.signOut()
                       }}
                     >
@@ -1006,18 +1055,35 @@ export function Sidebar({
                 {session?.actor.displayName ?? 'Загружаем профиль'}
               </p>
             </div>
-            <span
-              className={cx(
-                styles.stateBadge,
-                errorMessage
-                  ? styles.stateBadgeError
-                  : isSyncing || isLoading
-                    ? styles.stateBadgePending
-                    : styles.stateBadgeOk,
-              )}
-            >
-              {syncStateLabel}
-            </span>
+            <div className={styles.connectionHeaderActions}>
+              <span
+                className={cx(
+                  styles.stateBadge,
+                  errorMessage
+                    ? styles.stateBadgeError
+                    : isSyncing || isLoading
+                      ? styles.stateBadgePending
+                      : styles.stateBadgeOk,
+                )}
+              >
+                {syncStateLabel}
+              </span>
+
+              {session ? (
+                <button
+                  className={styles.workspaceSettingsButton}
+                  type="button"
+                  aria-label="Действия с workspace"
+                  aria-expanded={isDesktopWorkspaceActionsOpen}
+                  aria-controls="desktop-workspace-actions"
+                  onClick={() => {
+                    setIsDesktopWorkspaceActionsOpen((value) => !value)
+                  }}
+                >
+                  <WorkspaceGearIcon />
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {session ? (
@@ -1038,28 +1104,10 @@ export function Sidebar({
                 }}
               />
 
-              {renderCreateWorkspaceControls()}
-
-              {renderReceivedInvitations()}
-
-              {renderWorkspaceOwnerControls()}
-
-              {renderWorkspaceLeaveControls()}
-
-              {isSharedWorkspace ? (
-                <button
-                  className={cx(
-                    styles.createWorkspaceButton,
-                    styles.secondaryWorkspaceButton,
-                  )}
-                  type="button"
-                  onClick={() => {
-                    setIsWorkspaceParticipantsOpen(true)
-                  }}
-                >
-                  <UserIcon size={18} strokeWidth={2.1} />
-                  <span>Участники</span>
-                </button>
+              {isDesktopWorkspaceActionsOpen ? (
+                <div id="desktop-workspace-actions">
+                  {renderWorkspaceActionsMenu()}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -1199,6 +1247,26 @@ export function Sidebar({
 
 function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
+}
+
+function WorkspaceGearIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      stroke="currentColor"
+      strokeWidth="1.85"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.2 4.6H13.8L14.25 6.55C14.73 6.73 15.18 6.98 15.58 7.29L17.46 6.68L19.25 9.82L17.82 11.15C17.86 11.43 17.88 11.71 17.88 12C17.88 12.29 17.86 12.57 17.82 12.85L19.25 14.18L17.46 17.32L15.58 16.71C15.18 17.02 14.73 17.27 14.25 17.45L13.8 19.4H10.2L9.75 17.45C9.27 17.27 8.82 17.02 8.42 16.71L6.54 17.32L4.75 14.18L6.18 12.85C6.14 12.57 6.12 12.29 6.12 12C6.12 11.71 6.14 11.43 6.18 11.15L4.75 9.82L6.54 6.68L8.42 7.29C8.82 6.98 9.27 6.73 9.75 6.55L10.2 4.6Z" />
+      <circle cx="12" cy="12" r="2.45" />
+    </svg>
+  )
 }
 
 function renderNavIcon(route: string) {

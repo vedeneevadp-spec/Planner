@@ -43,6 +43,7 @@ export const habitEntrySchema = z.object({
   id: z.string(),
   note: z.string(),
   status: habitEntryStatusSchema,
+  targetValue: z.number().int().positive().optional(),
   updatedAt: z.string(),
   userId: z.string(),
   value: z.number().int().nonnegative(),

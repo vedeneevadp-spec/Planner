@@ -58,6 +58,60 @@ function isRoutineTask(task: Task): boolean {
   return Boolean(task.routine)
 }
 
+function hasTaskSectionItems(
+  sectionTasks: Task[],
+  extraItemCount = 0,
+): boolean {
+  return sectionTasks.length + extraItemCount > 0
+}
+
+interface TaskSectionDefaultCollapseStateInput {
+  activeHabitItemCount: number
+  completedHabitItemCount: number
+  doneTodayTasks: Task[]
+  mainTodayTasks: Task[]
+  otherTasks: Task[]
+  overdueTasks: Task[]
+  routineTasks: Task[]
+  tomorrowTasks: Task[]
+}
+
+function getTaskSectionDefaultCollapseState({
+  activeHabitItemCount,
+  completedHabitItemCount,
+  doneTodayTasks,
+  mainTodayTasks,
+  otherTasks,
+  overdueTasks,
+  routineTasks,
+  tomorrowTasks,
+}: TaskSectionDefaultCollapseStateInput) {
+  const hasTodayTaskSection = hasTaskSectionItems(mainTodayTasks)
+  const hasRoutineTaskSection = hasTaskSectionItems(
+    routineTasks,
+    activeHabitItemCount,
+  )
+  const hasOverdueTaskSection = hasTaskSectionItems(overdueTasks)
+  const beforeTomorrow =
+    hasTodayTaskSection || hasRoutineTaskSection || hasOverdueTaskSection
+  const hasTomorrowTaskSection = hasTaskSectionItems(tomorrowTasks)
+  const beforeOther = beforeTomorrow || hasTomorrowTaskSection
+  const hasOtherTaskSection = hasTaskSectionItems(otherTasks)
+  const beforeDoneToday = beforeOther || hasOtherTaskSection
+  const hasDoneTodayTaskSection = hasTaskSectionItems(
+    doneTodayTasks,
+    completedHabitItemCount,
+  )
+  const beforeDoneHistory = beforeDoneToday || hasDoneTodayTaskSection
+
+  return {
+    doneHistory: beforeDoneHistory,
+    doneToday: beforeDoneToday,
+    other: beforeOther,
+    tomorrow: beforeTomorrow,
+  }
+}
+
 function renderTaskSectionGroup(
   sections: Array<ReactElement | null>,
 ): ReactElement | null {
@@ -260,6 +314,16 @@ function PersonalTodayPage() {
     () => [...todayTasks, ...doneTodayTasks],
     [doneTodayTasks, todayTasks],
   )
+  const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
+    activeHabitItemCount: todayHabitRoutine.activeHabitItems.length,
+    completedHabitItemCount: todayHabitRoutine.completedHabitItems.length,
+    doneTodayTasks,
+    mainTodayTasks,
+    otherTasks,
+    overdueTasks,
+    routineTasks,
+    tomorrowTasks,
+  })
   const routineHabitCards = todayHabitRoutine.activeHabitItems.map((item) => (
     <HabitRoutineTaskCard
       key={item.habit.id}
@@ -393,14 +457,14 @@ function PersonalTodayPage() {
               'Завтра',
               tomorrowTasks,
               'На завтра пока ничего нет.',
-              { defaultCollapsed: true },
+              { defaultCollapsed: defaultCollapsedSections.tomorrow },
             ),
             buildTaskSection(
               'other',
               'Остальные задачи',
               otherTasks,
               'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
-              { defaultCollapsed: true },
+              { defaultCollapsed: defaultCollapsedSections.other },
             ),
           ])}
 
@@ -410,7 +474,7 @@ function PersonalTodayPage() {
             doneTodayTasks,
             'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
             {
-              defaultCollapsed: true,
+              defaultCollapsed: defaultCollapsedSections.doneToday,
               extraItemCount: todayHabitRoutine.completedHabitItems.length,
               extraItems: completedHabitCards,
               tone: 'success',
@@ -422,7 +486,10 @@ function PersonalTodayPage() {
             'История задач',
             doneHistoryTasks,
             'Выполненные раньше задачи появятся здесь.',
-            { defaultCollapsed: true, tone: 'success' },
+            {
+              defaultCollapsed: defaultCollapsedSections.doneHistory,
+              tone: 'success',
+            },
           )}
         </div>
       </div>
@@ -492,6 +559,16 @@ function SharedTodayPage() {
     () => selectTodoTasks(tasks).filter((task) => !visibleTaskIds.has(task.id)),
     [tasks, visibleTaskIds],
   )
+  const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
+    activeHabitItemCount: todayHabitRoutine.activeHabitItems.length,
+    completedHabitItemCount: todayHabitRoutine.completedHabitItems.length,
+    doneTodayTasks,
+    mainTodayTasks,
+    otherTasks,
+    overdueTasks,
+    routineTasks,
+    tomorrowTasks,
+  })
   const routineHabitCards = todayHabitRoutine.activeHabitItems.map((item) => (
     <HabitRoutineTaskCard
       key={item.habit.id}
@@ -620,14 +697,14 @@ function SharedTodayPage() {
               'Завтра',
               tomorrowTasks,
               'На завтра в общем workspace пока ничего нет.',
-              { defaultCollapsed: true },
+              { defaultCollapsed: defaultCollapsedSections.tomorrow },
             ),
             buildTaskSection(
               'other',
               'Остальные задачи',
               otherTasks,
               'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
-              { defaultCollapsed: true },
+              { defaultCollapsed: defaultCollapsedSections.other },
             ),
           ])}
 
@@ -637,7 +714,7 @@ function SharedTodayPage() {
             doneTodayTasks,
             'Закрытые сегодня задачи общего workspace появятся здесь.',
             {
-              defaultCollapsed: true,
+              defaultCollapsed: defaultCollapsedSections.doneToday,
               extraItemCount: todayHabitRoutine.completedHabitItems.length,
               extraItems: completedHabitCards,
               tone: 'success',
@@ -649,7 +726,10 @@ function SharedTodayPage() {
             'История задач',
             doneHistoryTasks,
             'Закрытые раньше задачи общего workspace появятся здесь.',
-            { defaultCollapsed: true, tone: 'success' },
+            {
+              defaultCollapsed: defaultCollapsedSections.doneHistory,
+              tone: 'success',
+            },
           )}
         </div>
       </div>

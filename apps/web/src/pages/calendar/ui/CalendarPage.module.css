@@ -123,7 +123,7 @@
 .weekSurface {
   --hour-count: 24;
   --time-gutter: 4.35rem;
-  --hour-height: 4.6rem;
+  --hour-height: 2.7rem;
   --week-day-min: 7.45rem;
 }
 
@@ -657,8 +657,8 @@
   position: fixed;
   inset: 0;
   z-index: 80;
-  display: grid;
-  place-items: center;
+  display: flex;
+  justify-content: center;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 1rem;
@@ -680,7 +680,8 @@
   display: grid;
   gap: 0.55rem;
   width: min(34rem, 100%);
-  max-height: calc(100vh - 2rem);
+  margin-block: auto;
+  border-radius: 18px;
 }
 
 .taskOverlayHeader {
@@ -726,7 +727,7 @@
   .weekSurface,
   .scheduleSurface {
     --time-gutter: 3.85rem;
-    --hour-height: 3.65rem;
+    --hour-height: 2rem;
     --week-day-min: 0;
     border: 0;
     border-radius: 20px;
@@ -788,7 +789,9 @@
   .weekHeaderGrid,
   .allDayGrid {
     min-width: 0;
-    background: var(--surface-overlay);
+    background:
+      linear-gradient(var(--surface-muted), var(--surface-muted)),
+      var(--app-background);
     backdrop-filter: none;
   }
 
@@ -864,8 +867,8 @@
   }
 
   .hourSlot {
-    border: 2px solid var(--line);
-    border-radius: 9px;
+    border: 0.5px solid var(--line);
+    border-radius: 5px;
     background: var(--field-bg);
   }
 
@@ -1010,7 +1013,7 @@
 
   .weekSurface {
     --time-gutter: 3.35rem;
-    --hour-height: 3.35rem;
+    --hour-height: 2rem;
   }
 
   .timeZoneLabel,

@@ -267,7 +267,7 @@ describe('native planner widget snapshot', () => {
 
   it('limits the native payload and reports hidden tasks', () => {
     const snapshot = buildNativePlannerWidgetSnapshot(
-      Array.from({ length: 13 }, (_, index) => ({
+      Array.from({ length: 25 }, (_, index) => ({
         ...baseTask,
         id: `task-${index + 1}`,
         plannedEndTime: null,
@@ -277,7 +277,7 @@ describe('native planner widget snapshot', () => {
       new Date(2026, 4, 9, 12),
     )
 
-    expect(snapshot.tasks).toHaveLength(12)
+    expect(snapshot.tasks).toHaveLength(24)
     expect(snapshot.hiddenTaskCount).toBe(1)
   })
 

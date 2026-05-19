@@ -219,6 +219,7 @@ export class MemoryHabitRepository implements HabitRepository {
         ...existingEntry,
         note: command.input.note,
         status: command.input.status,
+        targetValue: habit.targetValue,
         updatedAt,
         value: getDefaultEntryValue(habit, command.input.value),
         version: existingEntry.version + 1,

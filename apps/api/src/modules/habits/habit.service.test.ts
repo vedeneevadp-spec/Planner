@@ -63,3 +63,37 @@ void test('HabitService rejects entries outside the habit schedule', async () =>
       error instanceof HttpError && error.code === 'habit_not_scheduled',
   )
 })
+
+void test('HabitService keeps completed entry stats when the habit target changes', async () => {
+  const service = new HabitService(new MemoryHabitRepository())
+  const habit = await service.createHabit(
+    OWNER_CONTEXT,
+    newHabitInputSchema.parse({
+      startDate: '2026-05-11',
+      targetType: 'count',
+      targetValue: 5,
+      title: 'Push ups',
+      unit: 'раз',
+    }),
+  )
+
+  await service.upsertEntry(OWNER_CONTEXT, habit.id, '2026-05-11', {
+    date: '2026-05-11',
+    note: '',
+    status: 'done',
+    value: 5,
+  })
+  await service.updateHabit(OWNER_CONTEXT, habit.id, {
+    expectedVersion: habit.version,
+    targetValue: 10,
+  })
+
+  const stats = await service.getStats(
+    OWNER_CONTEXT,
+    '2026-05-11',
+    '2026-05-12',
+  )
+
+  assert.equal(stats.stats[0]?.completedCount, 1)
+  assert.equal(stats.stats[0]?.currentStreak, 1)
+})

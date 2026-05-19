@@ -34,6 +34,26 @@ final class PlannerWidgetVisuals {
         return parseTaskColor(task.color, context.getColor(R.color.planner_widget_accent));
     }
 
+    static int getTaskTextColor(Context context, PlannerWidgetTask task) {
+        if ("in_progress".equals(task.visualTone)) {
+            return context.getColor(R.color.planner_widget_in_progress);
+        }
+
+        if ("review".equals(task.visualTone)) {
+            return context.getColor(R.color.planner_widget_review);
+        }
+
+        if ("urgent".equals(task.visualTone)) {
+            return context.getColor(R.color.planner_widget_urgent);
+        }
+
+        if ("overdue".equals(task.visualTone) || task.isOverdue) {
+            return context.getColor(R.color.planner_widget_warning);
+        }
+
+        return context.getColor(R.color.planner_widget_text);
+    }
+
     static Bitmap createCheckboxBitmap(Context context, int accentColor) {
         int size = dp(context, 22);
         int strokeWidth = dp(context, 2);

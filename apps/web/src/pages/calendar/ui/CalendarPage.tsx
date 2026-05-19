@@ -1,5 +1,5 @@
 import type { CalendarViewMode } from '@planner/contracts'
-import { type CSSProperties, useEffect, useMemo, useState } from 'react'
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import {
@@ -35,6 +35,7 @@ import styles from './CalendarPage.module.css'
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
 const DEFAULT_START_HOUR = 0
 const DEFAULT_END_HOUR = 24
+const DEFAULT_WEEK_SCROLL_HOUR = 7
 const MIN_TASK_HEIGHT_REM = 2.2
 const MONTH_VISIBLE_TASK_LIMIT = 5
 const SCHEDULE_VISIBLE_DAYS = 14
@@ -393,6 +394,8 @@ export function CalendarPage() {
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
+  const weekSurfaceRef = useRef<HTMLElement | null>(null)
+  const lastWeekScrollKeyRef = useRef<string | null>(null)
   const [viewMode, setViewMode] = useState<CalendarViewMode>(persistedViewMode)
   const [anchorDate, setAnchorDate] = useState(todayKey)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -487,6 +490,59 @@ export function CalendarPage() {
     setViewMode(persistedViewMode)
   }, [persistedViewMode])
 
+  useEffect(() => {
+    if (viewMode !== 'week') {
+      lastWeekScrollKeyRef.current = null
+
+      return
+    }
+
+    const weekScrollKey = `${anchorDate}:${timeRange.startHour}:${timeRange.endHour}`
+
+    if (lastWeekScrollKeyRef.current === weekScrollKey) {
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const surface = weekSurfaceRef.current
+
+      if (!surface) {
+        return
+      }
+
+      const lastVisibleHour = Math.max(
+        timeRange.startHour,
+        timeRange.endHour - 1,
+      )
+      const targetHour = Math.min(
+        Math.max(DEFAULT_WEEK_SCROLL_HOUR, timeRange.startHour),
+        lastVisibleHour,
+      )
+      const target = surface.querySelector<HTMLElement>(
+        `[data-calendar-hour="${targetHour}"]`,
+      )
+
+      if (!target) {
+        return
+      }
+
+      const header = surface.querySelector<HTMLElement>(
+        `.${styles.weekHeaderGrid}`,
+      )
+      const allDay = surface.querySelector<HTMLElement>(`.${styles.allDayGrid}`)
+      const stickyOffset =
+        (header?.offsetHeight ?? 0) + (allDay?.offsetHeight ?? 0)
+      const surfaceRect = surface.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const targetTop = targetRect.top - surfaceRect.top + surface.scrollTop
+
+      surface.scrollTop = Math.max(0, targetTop - stickyOffset)
+      lastWeekScrollKeyRef.current = weekScrollKey
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [anchorDate, timeRange.endHour, timeRange.startHour, viewMode])
+
   return (
     <section className={`${pageStyles.page} ${styles.calendarPage}`}>
       <h1 className={styles.visuallyHidden}>Календарь</h1>
@@ -567,7 +623,11 @@ export function CalendarPage() {
       </header>
 
       {viewMode === 'week' ? (
-        <section className={styles.weekSurface} aria-label="Неделя">
+        <section
+          ref={weekSurfaceRef}
+          className={styles.weekSurface}
+          aria-label="Неделя"
+        >
           <div className={styles.weekHeaderGrid}>
             <div className={styles.timeZoneLabel}>GMT+7</div>
             {weekDateKeys.map((dateKey, index) => {
@@ -622,7 +682,11 @@ export function CalendarPage() {
           >
             <div className={styles.timeAxis}>
               {timeRange.hours.map((hour) => (
-                <div key={hour} className={styles.timeLabel}>
+                <div
+                  key={hour}
+                  className={styles.timeLabel}
+                  data-calendar-hour={hour}
+                >
                   {String(hour).padStart(2, '0')}:00
                 </div>
               ))}
@@ -812,6 +876,7 @@ export function CalendarPage() {
                     (sphere) => sphere.id === selectedTask.projectId,
                   )}
                   spheres={spheres}
+                  variant="detail"
                   isPending={isTaskPending(selectedTask.id)}
                   isSharedWorkspace={isSharedWorkspace}
                   currentActorUserId={session?.actorUserId}

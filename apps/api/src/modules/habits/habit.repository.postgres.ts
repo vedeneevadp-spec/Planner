@@ -313,6 +313,7 @@ export class PostgresHabitRepository implements HabitRepository {
             .set({
               note: command.input.note,
               status: command.input.status,
+              target_value: habitRecord.targetValue,
               updated_by: command.context.actorUserId,
               value: getDefaultEntryValue(habitRecord, command.input.value),
             })
@@ -333,6 +334,7 @@ export class PostgresHabitRepository implements HabitRepository {
             habit_id: command.habitId,
             note: command.input.note,
             status: command.input.status,
+            target_value: habitRecord.targetValue,
             updated_by: command.context.actorUserId,
             user_id: command.context.actorUserId,
             value: getDefaultEntryValue(habitRecord, command.input.value),
@@ -675,6 +677,7 @@ export class PostgresHabitRepository implements HabitRepository {
       id: entry.id,
       note: entry.note,
       status: entry.status,
+      targetValue: entry.target_value,
       updatedAt: serializeTimestamp(entry.updated_at),
       userId: entry.user_id,
       value: entry.value,

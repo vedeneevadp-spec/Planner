@@ -4,6 +4,7 @@ import type {
   WorkspaceUserRecord,
 } from '@planner/contracts'
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import type { Sphere } from '@/entities/sphere'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
@@ -58,6 +59,7 @@ interface TaskCardProps {
   task: Task
   sphere?: Sphere | undefined
   spheres?: Sphere[] | undefined
+  variant?: 'card' | 'detail' | undefined
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
@@ -81,6 +83,7 @@ export function TaskCard({
   task,
   sphere,
   spheres = [],
+  variant = 'card',
   tone = 'default',
   isPending = false,
   uploadedIcons = [],
@@ -93,8 +96,10 @@ export function TaskCard({
   onActionMenuOpenChange,
 }: TaskCardProps) {
   const [isEditing, setIsEditing] = useState(false)
+  const [isViewing, setIsViewing] = useState(false)
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false)
   const actionMenuRef = useRef<HTMLDivElement | null>(null)
+  const isDetailView = variant === 'detail'
   const todayKey = getDateKey(new Date())
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const rawProjectTitle = sphere?.name ?? task.project
@@ -188,6 +193,24 @@ export function TaskCard({
     }
   }, [isActionMenuOpen, onActionMenuOpenChange, task.id])
 
+  useEffect(() => {
+    if (!isViewing) {
+      return
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setIsViewing(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isViewing])
+
   function runMenuAction(action: () => void) {
     setIsActionMenuOpen(false)
     action()
@@ -201,8 +224,18 @@ export function TaskCard({
         task.importance === 'important' && styles.important,
         isInProgress && styles.inProgress,
         isActionMenuOpen && styles.cardMenuOpen,
+        isDetailView && styles.detailCard,
       )}
     >
+      {!isDetailView ? (
+        <button
+          className={styles.openCardButton}
+          type="button"
+          aria-label={`Открыть карточку задачи ${task.title}`}
+          onClick={() => setIsViewing(true)}
+        />
+      ) : null}
+
       <div className={styles.main}>
         <div className={styles.cardHeader}>
           <div className={styles.titleRow}>
@@ -540,6 +573,60 @@ export function TaskCard({
           workspaceUsers={workspaceUsers}
         />
       ) : null}
+
+      {isViewing && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className={styles.viewerOverlay}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Карточка задачи"
+            >
+              <button
+                className={styles.viewerBackdrop}
+                type="button"
+                aria-label="Закрыть карточку задачи"
+                onClick={() => setIsViewing(false)}
+              />
+              <div className={styles.viewerPanel}>
+                <div className={styles.viewerHeader}>
+                  <button
+                    className={styles.closeButton}
+                    type="button"
+                    aria-label="Закрыть"
+                    onClick={() => setIsViewing(false)}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </div>
+                <TaskCard
+                  currentActorUserId={currentActorUserId}
+                  isSharedWorkspace={isSharedWorkspace}
+                  sharedWorkspaceGroupRole={sharedWorkspaceGroupRole}
+                  sharedWorkspaceRole={sharedWorkspaceRole}
+                  workspaceUsers={workspaceUsers}
+                  task={task}
+                  sphere={sphere}
+                  spheres={spheres}
+                  variant="detail"
+                  tone={tone}
+                  isPending={isPending}
+                  uploadedIcons={uploadedIcons}
+                  onCopyToPersonal={onCopyToPersonal}
+                  onMoveToPersonal={onMoveToPersonal}
+                  onSetStatus={onSetStatus}
+                  onSetPlannedDate={onSetPlannedDate}
+                  onUpdate={onUpdate}
+                  onRemove={(taskId) => {
+                    setIsViewing(false)
+                    onRemove(taskId)
+                  }}
+                />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </article>
   )
 }

@@ -14,19 +14,37 @@
   z-index: 20;
 }
 
+.headerHeading {
+  margin: 0 0 0.68rem;
+}
+
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.65rem;
-  margin-bottom: 0.68rem;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
-.header h3 {
+.headingText {
   margin: 0;
   font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(1.18rem, 2.6vw, 1.42rem);
+  font-weight: 700;
   letter-spacing: -0.03em;
+}
+
+.header:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 4px;
+  border-radius: 12px;
 }
 
 .collapseButton {
@@ -86,11 +104,11 @@
     padding: 0.4rem 0.8rem;
   }
 
-  .header {
+  .headerHeading {
     margin-bottom: 0;
   }
 
-  .header h3 {
+  .headingText {
     font-size: 1.2rem;
   }
 }

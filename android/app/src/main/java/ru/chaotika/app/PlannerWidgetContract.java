@@ -10,7 +10,7 @@ import org.json.JSONObject;
 final class PlannerWidgetContract {
 
     static final String DEFAULT_TASK_COLOR = "#8EE7C8";
-    static final int MAX_SNAPSHOT_TASKS = 12;
+    static final int MAX_SNAPSHOT_TASKS = 24;
     static final int SNAPSHOT_VERSION = 4;
 
     private PlannerWidgetContract() {}
