@@ -129,6 +129,23 @@ describe('AuthGate', () => {
     expect(screen.getByText('Planner content')).toBeVisible()
   })
 
+  it('does not render cached planner content while auth storage is restoring', () => {
+    auth.isLoading = true
+    plannerSessionQuery.data = {
+      actorUserId: 'user-1',
+      workspaceId: 'workspace-1',
+    }
+
+    render(
+      <AuthGate>
+        <main>Planner content</main>
+      </AuthGate>,
+    )
+
+    expect(screen.getByText('Проверяем сохраненный вход')).toBeVisible()
+    expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
+  })
+
   it('shows a disabled-auth configuration error when no session can be bootstrapped', () => {
     auth.isAuthEnabled = false
 

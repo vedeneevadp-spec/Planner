@@ -72,6 +72,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const isAuthEnabled = plannerApiConfig.authProvider === 'planner'
   const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
+  const blockedNativeRefreshTokenRef = useRef<string | null>(null)
   const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
   const restoreSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
@@ -123,6 +124,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       })
 
       await writeStoredAuthSession(storedSession)
+      blockedNativeRefreshTokenRef.current = null
       setPasswordResetToken(null)
       clearPasswordResetUrlParams()
       setAuthNotice(null)
@@ -148,6 +150,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       })
 
       pendingSignOutNoticeRef.current = notice
+      blockedNativeRefreshTokenRef.current = null
       setAuthNotice(notice === false ? null : notice)
       setPasswordResetToken(null)
       clearCachedPlannerSession(actorUserId)
@@ -222,7 +225,31 @@ export function SessionProvider({ children }: PropsWithChildren) {
           : storedSession?.refreshToken
 
         if (isNativeSessionRuntime && !refreshToken) {
+          if (storedSession) {
+            return keepDeviceSession(
+              new Error('Native auth session has no refresh token.'),
+              'Native auth session refresh skipped.',
+              storedSession,
+            )
+          }
+
+          commitAuthSnapshot({
+            ...INITIAL_AUTH_SNAPSHOT,
+            isLoading: false,
+          })
           return 'signed_out' as const
+        }
+
+        if (
+          isNativeSessionRuntime &&
+          refreshToken &&
+          blockedNativeRefreshTokenRef.current === refreshToken
+        ) {
+          return keepDeviceSession(
+            new Error('Native auth refresh is blocked for this token.'),
+            'Native auth session refresh skipped for a blocked token.',
+            storedSession,
+          )
         }
 
         try {
@@ -273,6 +300,19 @@ export function SessionProvider({ children }: PropsWithChildren) {
                 ? ('recovered' as const)
                 : ('deferred' as const)
             }
+          }
+
+          if (
+            isNativeSessionRuntime &&
+            shouldKeepNativeDeviceSessionAfterRefreshError(error, storedSession)
+          ) {
+            blockedNativeRefreshTokenRef.current = refreshToken ?? null
+
+            return keepDeviceSession(
+              error,
+              'Auth session refresh denied; keeping local device session.',
+              storedSession,
+            )
           }
 
           await clearAuthSession(DEFAULT_EXPIRED_SESSION_MESSAGE)
@@ -415,7 +455,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
     if (
       !isAuthEnabled ||
       !snapshot.expiresAt ||
-      (isNativeSessionRuntime && !snapshot.refreshToken)
+      (isNativeSessionRuntime &&
+        (!snapshot.refreshToken ||
+          blockedNativeRefreshTokenRef.current === snapshot.refreshToken))
     ) {
       return
     }
@@ -673,4 +715,11 @@ function isRetryableAuthError(error: unknown): boolean {
   }
 
   return false
+}
+
+function shouldKeepNativeDeviceSessionAfterRefreshError(
+  error: unknown,
+  storedSession: StoredAuthSession | null,
+): boolean {
+  return Boolean(storedSession) || isRetryableAuthError(error)
 }

@@ -30,8 +30,8 @@ const mocks = vi.hoisted(() => ({
   updateZone: vi.fn<(input: unknown) => Promise<unknown>>(),
   useCleaningPlan: vi.fn<
     () => {
-      data: CleaningListResponse
-      error: null
+      data: CleaningListResponse | undefined
+      error: Error | null
       isLoading: boolean
     }
   >(),
@@ -57,7 +57,11 @@ vi.mock('@/features/cleaning', () => {
 
   return {
     getCleaningErrorMessage: (error: unknown) =>
-      error instanceof Error ? error.message : 'Не удалось сохранить уборку.',
+      error instanceof Error && /Cleaning API is not ready/i.test(error.message)
+        ? 'Нет соединения. Уборка загрузится после восстановления подключения.'
+        : error instanceof Error
+          ? error.message
+          : 'Не удалось сохранить уборку.',
     useCleaningPlan: () => mocks.useCleaningPlan(),
     useCleaningToday: () => mocks.useCleaningToday(),
     useCompleteCleaningTask: () => createMutationStub(mocks.completeTask),
@@ -420,6 +424,27 @@ describe('CleaningPage', () => {
     expect(
       screen.getByRole('button', { name: 'Добавить базовый набор' }),
     ).toBeVisible()
+  })
+
+  it('does not show an empty setup state while the cleaning plan is unavailable', () => {
+    mocks.useCleaningPlan.mockReturnValue({
+      data: undefined,
+      error: new Error('Cleaning API is not ready.'),
+      isLoading: false,
+    })
+
+    renderCleaningPage()
+
+    expect(
+      screen.getByText(
+        'Нет соединения. Уборка загрузится после восстановления подключения.',
+      ),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: 'Добавить базовый набор' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Зоны ещё не настроены')).not.toBeInTheDocument()
+    expect(screen.queryByText('Накопилось')).not.toBeInTheDocument()
   })
 
   it('lets accumulated cleaning tasks be completed or postponed to the next cycle', async () => {

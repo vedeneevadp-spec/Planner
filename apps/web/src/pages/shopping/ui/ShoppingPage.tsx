@@ -90,15 +90,12 @@ export function ShoppingPage() {
   const errorMessage = useMemo(
     () =>
       formError ||
-      (shoppingListQuery.error instanceof Error
-        ? shoppingListQuery.error.message
-        : createItemMutation.error instanceof Error
-          ? createItemMutation.error.message
-          : updateItemMutation.error instanceof Error
-            ? updateItemMutation.error.message
-            : removeItemMutation.error instanceof Error
-              ? removeItemMutation.error.message
-              : null),
+      getShoppingErrorMessage(
+        shoppingListQuery.error ??
+          createItemMutation.error ??
+          updateItemMutation.error ??
+          removeItemMutation.error,
+      ),
     [
       createItemMutation.error,
       formError,
@@ -487,5 +484,25 @@ function getShoppingCategoryOption(
   return (
     SHOPPING_CATEGORY_OPTIONS.find((option) => option.value === category) ??
     OTHER_CATEGORY_OPTION
+  )
+}
+
+function getShoppingErrorMessage(error: unknown): string | null {
+  if (!error) {
+    return null
+  }
+
+  if (error instanceof Error && isShoppingSessionReadinessError(error)) {
+    return 'Нет соединения. Изменения сохранятся локально и синхронизируются автоматически.'
+  }
+
+  return error instanceof Error
+    ? error.message
+    : 'Не удалось загрузить список покупок.'
+}
+
+function isShoppingSessionReadinessError(error: Error): boolean {
+  return /Planner session is required|Shopping list session is not ready/i.test(
+    error.message,
   )
 }

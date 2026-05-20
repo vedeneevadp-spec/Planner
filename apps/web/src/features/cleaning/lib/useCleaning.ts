@@ -249,6 +249,10 @@ export function useSkipCleaningTask() {
 }
 
 export function getCleaningErrorMessage(error: unknown): string {
+  if (error instanceof Error && isCleaningSessionReadinessError(error)) {
+    return 'Нет соединения. Уборка загрузится после восстановления подключения.'
+  }
+
   if (error instanceof CleaningApiError) {
     return error.message
   }
@@ -258,6 +262,12 @@ export function getCleaningErrorMessage(error: unknown): string {
   }
 
   return 'Не удалось сохранить уборку.'
+}
+
+function isCleaningSessionReadinessError(error: Error): boolean {
+  return /Cleaning API is not ready|Planner session is required/i.test(
+    error.message,
+  )
 }
 
 function useCleaningApi(options: { enabled?: boolean } = {}) {

@@ -82,6 +82,7 @@ export function CleaningPage() {
   const [isSeeding, setIsSeeding] = useState(false)
   const plan = planQuery.data
   const today = todayQuery.data
+  const hasLoadedPlan = plan !== undefined
   const zones = plan?.zones ?? []
   const todayItems = today?.items ?? []
   const visibleTodayItems = filterItemsByFocusMode(todayItems, focusMode)
@@ -161,9 +162,11 @@ export function CleaningPage() {
           <p>
             {today?.zones.length
               ? getHeroHint(today)
-              : zones.length === 0
-                ? 'Пока нет зон. Можно начать с базового набора и потом всё переименовать.'
-                : 'На этот день зона не назначена.'}
+              : !hasLoadedPlan
+                ? 'Восстанавливаем подключение к плану уборки.'
+                : zones.length === 0
+                  ? 'Пока нет зон. Можно начать с базового набора и потом всё переименовать.'
+                  : 'На этот день зона не назначена.'}
           </p>
         </div>
 
@@ -228,7 +231,7 @@ export function CleaningPage() {
         ))}
       </div>
 
-      {zones.length === 0 && !planQuery.isLoading ? (
+      {hasLoadedPlan && zones.length === 0 ? (
         <section className={styles.emptyPanel}>
           <h3>Зоны ещё не настроены</h3>
           <p>Базовый набор создаст 7 зон и стартовые задачи с частотами.</p>
@@ -351,31 +354,33 @@ export function CleaningPage() {
         />
       ) : null}
 
-      <section className={styles.sideGrid}>
-        <CompactList
-          title="Накопилось"
-          emptyMessage="Давно отложенных задач сейчас нет."
-          items={today?.accumulatedItems ?? []}
-          isBusy={isBusy}
-          onComplete={(taskId) => {
-            void completeTaskMutation.mutateAsync({
-              input: createActionInput(todayKey),
-              taskId,
-            })
-          }}
-          onPostpone={(taskId) => {
-            void postponeTaskMutation.mutateAsync({
-              input: createActionInput(todayKey),
-              taskId,
-            })
-          }}
-        />
-        <CompactList
-          title="Сезонные"
-          emptyMessage="На этот месяц сезонных задач нет."
-          items={today?.seasonalItems ?? []}
-        />
-      </section>
+      {hasLoadedPlan || today ? (
+        <section className={styles.sideGrid}>
+          <CompactList
+            title="Накопилось"
+            emptyMessage="Давно отложенных задач сейчас нет."
+            items={today?.accumulatedItems ?? []}
+            isBusy={isBusy}
+            onComplete={(taskId) => {
+              void completeTaskMutation.mutateAsync({
+                input: createActionInput(todayKey),
+                taskId,
+              })
+            }}
+            onPostpone={(taskId) => {
+              void postponeTaskMutation.mutateAsync({
+                input: createActionInput(todayKey),
+                taskId,
+              })
+            }}
+          />
+          <CompactList
+            title="Сезонные"
+            emptyMessage="На этот месяц сезонных задач нет."
+            items={today?.seasonalItems ?? []}
+          />
+        </section>
+      ) : null}
 
       {zones.length > 0 ? (
         <div className={styles.settingsShortcutRow}>
@@ -411,6 +416,7 @@ export function CleaningSettingsPage() {
   const [isTaskCreateOpen, setIsTaskCreateOpen] = useState(false)
   const [isSeeding, setIsSeeding] = useState(false)
   const plan = planQuery.data
+  const hasLoadedPlan = plan !== undefined
   const zones = useMemo(() => plan?.zones ?? [], [plan?.zones])
   const tasks = useMemo(() => plan?.tasks ?? [], [plan?.tasks])
   const freeWeekdays = useMemo(() => {
@@ -634,7 +640,7 @@ export function CleaningSettingsPage() {
           description="Зоны, дни недели, частоты и список задач."
           actions={
             <div className={styles.headerActions}>
-              {zones.length === 0 ? (
+              {hasLoadedPlan && zones.length === 0 ? (
                 <button
                   className={styles.softButton}
                   type="button"
@@ -697,7 +703,11 @@ export function CleaningSettingsPage() {
               }}
             />
           ) : (
-            <p className={styles.emptyCopy}>Зоны ещё не добавлены.</p>
+            <p className={styles.emptyCopy}>
+              {hasLoadedPlan
+                ? 'Зоны ещё не добавлены.'
+                : 'Восстанавливаем подключение.'}
+            </p>
           )}
 
           {freeWeekdays.length > 0 && isZoneCreateOpen ? (

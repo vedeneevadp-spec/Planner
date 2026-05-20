@@ -193,10 +193,6 @@ export function AuthGate({ children }: PropsWithChildren) {
     )
   }
 
-  if (!isPasswordRecovery && plannerSessionQuery.data && !authNotice) {
-    return children
-  }
-
   if (isLoading) {
     return (
       <AuthStatusPanel
@@ -204,6 +200,10 @@ export function AuthGate({ children }: PropsWithChildren) {
         title="Проверяем сохраненный вход"
       />
     )
+  }
+
+  if (!isPasswordRecovery && plannerSessionQuery.data && !authNotice) {
+    return children
   }
 
   if (shouldResolvePlannerSession) {

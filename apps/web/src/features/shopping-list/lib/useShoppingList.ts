@@ -64,16 +64,15 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const queryClient = useQueryClient()
-  const isEnabled =
-    options.enabled !== false &&
-    Boolean(session) &&
-    (!auth.isAuthEnabled || Boolean(auth.accessToken))
+  const hasSession = options.enabled !== false && Boolean(session)
+  const canUseApi =
+    hasSession && (!auth.isAuthEnabled || Boolean(auth.accessToken))
   const queryKey = useMemo(
     () => shoppingListQueryKey(session?.workspaceId ?? 'pending'),
     [session?.workspaceId],
   )
   const api = useMemo(() => {
-    if (!session || !isEnabled) {
+    if (!session || !canUseApi) {
       return null
     }
 
@@ -84,7 +83,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
         workspaceId: session.workspaceId,
       }),
     )
-  }, [auth.accessToken, isEnabled, session])
+  }, [auth.accessToken, canUseApi, session])
 
   const drainQueuedMutations = useCallback(async () => {
     if (!api || !session) {
@@ -156,12 +155,16 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   useOnlineSync({ onOnline: drainQueuedMutations })
 
   return useQuery({
-    enabled: isEnabled,
+    enabled: hasSession,
     queryFn: async ({ signal }) => {
-      if (!api || !session) {
+      if (!session) {
         throw new Error(
           'Planner session is required to load shopping list items.',
         )
+      }
+
+      if (!api) {
+        return loadCachedShoppingListItems(session.workspaceId)
       }
 
       try {

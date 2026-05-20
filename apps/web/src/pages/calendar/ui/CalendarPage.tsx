@@ -394,9 +394,22 @@ export function CalendarPage() {
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
+  const sessionPreferenceKey = session
+    ? `${session.actorUserId}:${session.workspaceId}`
+    : null
   const weekSurfaceRef = useRef<HTMLElement | null>(null)
   const lastWeekScrollKeyRef = useRef<string | null>(null)
-  const [viewMode, setViewMode] = useState<CalendarViewMode>(persistedViewMode)
+  const [viewModeState, setViewModeState] = useState<{
+    mode: CalendarViewMode
+    sessionPreferenceKey: string | null
+  }>(() => ({
+    mode: persistedViewMode,
+    sessionPreferenceKey,
+  }))
+  const viewMode =
+    viewModeState.sessionPreferenceKey === sessionPreferenceKey
+      ? viewModeState.mode
+      : persistedViewMode
   const [anchorDate, setAnchorDate] = useState(todayKey)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const selectedTask = useMemo(
@@ -466,7 +479,10 @@ export function CalendarPage() {
   }
 
   function selectViewMode(nextViewMode: CalendarViewMode) {
-    setViewMode(nextViewMode)
+    setViewModeState({
+      mode: nextViewMode,
+      sessionPreferenceKey,
+    })
 
     if (
       sessionQuery.data &&
@@ -485,10 +501,6 @@ export function CalendarPage() {
 
     setSelectedTaskId(task.id)
   }
-
-  useEffect(() => {
-    setViewMode(persistedViewMode)
-  }, [persistedViewMode])
 
   useEffect(() => {
     if (viewMode !== 'week') {

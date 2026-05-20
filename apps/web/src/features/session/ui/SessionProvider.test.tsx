@@ -292,6 +292,37 @@ describe('SessionProvider', () => {
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
   })
 
+  it('keeps the native device session when refresh is denied by the server', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createExpiredStoredSession(),
+    )
+    authApiMocks.refreshAuthSession.mockRejectedValue({
+      status: 401,
+    })
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledWith(
+        { refreshToken: 'old-refresh-token' },
+        {
+          rememberSession: true,
+          tokenTransport: 'body',
+        },
+      )
+      expect(screen.getByTestId('auth-email')).toHaveTextContent(
+        'mobile@example.com',
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+    })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+  })
+
   it('does not persist refresh tokens in browser session storage', async () => {
     nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
     authStorageMocks.readStoredAuthSession.mockResolvedValue(null)
