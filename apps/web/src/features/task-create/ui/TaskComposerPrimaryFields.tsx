@@ -68,18 +68,20 @@ export function TaskComposerPrimaryFields({
 }: TaskComposerPrimaryFieldsProps) {
   return (
     <div className={styles.columnPanel}>
-      <label className={cx(styles.field, styles.titleField)}>
-        <span>{titleFieldLabel}</span>
-        <input
-          ref={titleInputRef}
-          required
-          value={title}
-          placeholder="Например: собрать референсы для недельного плана"
-          onChange={(event) => {
-            onTitleChange(event.target.value)
-          }}
-        />
-      </label>
+      <section className={cx(styles.columnSection, styles.titleSection)}>
+        <label className={cx(styles.field, styles.titleField)}>
+          <span>{titleFieldLabel}</span>
+          <input
+            ref={titleInputRef}
+            required
+            value={title}
+            placeholder="Например: собрать референсы для недельного плана"
+            onChange={(event) => {
+              onTitleChange(event.target.value)
+            }}
+          />
+        </label>
+      </section>
 
       <TaskComposerScheduleFields
         isHabitTaskType={isHabitTaskType}

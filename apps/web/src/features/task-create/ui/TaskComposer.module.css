@@ -836,7 +836,7 @@
   }
 
   .columnPanel {
-    display: contents;
+    gap: 1rem;
     border: 0;
     background: transparent;
   }
@@ -847,34 +847,6 @@
 
   .columnSection + .columnSection {
     border-top: 0;
-  }
-
-  .projectSection {
-    grid-row: 1;
-  }
-
-  .typeSection {
-    grid-row: 2;
-  }
-
-  .resourceSection {
-    grid-row: 3;
-  }
-
-  .noteSection {
-    grid-row: 4;
-  }
-
-  .visualSection {
-    grid-row: 5;
-  }
-
-  .scheduleSection {
-    grid-row: 6;
-  }
-
-  .templateSection {
-    grid-row: 7;
   }
 
   .templatePanelHeader {
