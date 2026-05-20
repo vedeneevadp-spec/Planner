@@ -4,14 +4,19 @@ import {
   type HabitEntryRecord,
   type HabitEntryUpsertInput,
   type HabitRecord,
-  type HabitStats,
   type HabitStatsResponse,
-  type HabitTodayItem,
   type HabitTodayResponse,
   type HabitUpdateInput,
   type NewHabitInput,
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
+
+import {
+  removeEntryInTodayResponse,
+  removeHabitFromTodayResponse,
+  upsertEntryInTodayResponse,
+  upsertHabitInTodayResponse,
+} from './habit-projection-model'
 
 export type HabitOfflineMutationStatus =
   | 'conflicted'
@@ -1095,160 +1100,4 @@ function compareOfflineMutations(
   }
 
   return left.createdAt.localeCompare(right.createdAt)
-}
-
-function upsertHabitInTodayResponse(
-  response: HabitTodayResponse,
-  habit: HabitRecord,
-): HabitTodayResponse {
-  const item = response.items.find((entry) => entry.habit.id === habit.id)
-
-  if (!isHabitScheduledOnDate(habit, response.date)) {
-    return removeHabitFromTodayResponse(response, habit.id)
-  }
-
-  if (!item) {
-    return {
-      ...response,
-      items: [
-        ...response.items,
-        createHabitTodayItem({
-          date: response.date,
-          entry: null,
-          habit,
-        }),
-      ],
-    }
-  }
-
-  return {
-    ...response,
-    items: response.items.map((entry) =>
-      entry.habit.id === habit.id
-        ? {
-            ...entry,
-            habit,
-            progressPercent: getEntryProgressPercent(habit, entry.entry),
-          }
-        : entry,
-    ),
-  }
-}
-
-function removeHabitFromTodayResponse(
-  response: HabitTodayResponse,
-  habitId: string,
-): HabitTodayResponse {
-  return {
-    ...response,
-    items: response.items.filter((item) => item.habit.id !== habitId),
-  }
-}
-
-function upsertEntryInTodayResponse(
-  response: HabitTodayResponse,
-  habitId: string,
-  entry: HabitEntryRecord,
-): HabitTodayResponse {
-  return {
-    ...response,
-    items: response.items.map((item) =>
-      item.habit.id === habitId
-        ? {
-            ...item,
-            entry,
-            progressPercent: getEntryProgressPercent(item.habit, entry),
-          }
-        : item,
-    ),
-  }
-}
-
-function removeEntryInTodayResponse(
-  response: HabitTodayResponse,
-  habitId: string,
-): HabitTodayResponse {
-  return {
-    ...response,
-    items: response.items.map((item) =>
-      item.habit.id === habitId
-        ? {
-            ...item,
-            entry: null,
-            progressPercent: 0,
-          }
-        : item,
-    ),
-  }
-}
-
-function createHabitTodayItem(input: {
-  date: string
-  entry: HabitEntryRecord | null
-  habit: HabitRecord
-}): HabitTodayItem {
-  return {
-    entry: input.entry,
-    habit: input.habit,
-    isDueToday: true,
-    progressPercent: getEntryProgressPercent(input.habit, input.entry),
-    stats: createEmptyHabitStats(input.habit.id),
-  }
-}
-
-function createEmptyHabitStats(habitId: string): HabitStats {
-  return {
-    bestStreak: 0,
-    completedCount: 0,
-    completionRate: 0,
-    currentStreak: 0,
-    habitId,
-    lastCompletedDate: null,
-    missedCount: 0,
-    monthCompleted: 0,
-    monthScheduled: 0,
-    scheduledCount: 0,
-    skippedCount: 0,
-    weekCompleted: 0,
-    weekScheduled: 0,
-  }
-}
-
-function getEntryProgressPercent(
-  habit: Pick<HabitRecord, 'targetValue'>,
-  entry: Pick<HabitEntryRecord, 'status' | 'targetValue' | 'value'> | null,
-): number {
-  if (!entry || entry.status === 'skipped') {
-    return 0
-  }
-
-  return Math.min(
-    100,
-    Math.round((entry.value / getEntryTargetValue(habit, entry)) * 100),
-  )
-}
-
-function getEntryTargetValue(
-  habit: Pick<HabitRecord, 'targetValue'>,
-  entry: Pick<HabitEntryRecord, 'targetValue'>,
-): number {
-  return entry.targetValue ?? habit.targetValue
-}
-
-function isHabitScheduledOnDate(habit: HabitRecord, dateKey: string): boolean {
-  if (!habit.isActive || dateKey < habit.startDate) {
-    return false
-  }
-
-  if (habit.endDate && dateKey > habit.endDate) {
-    return false
-  }
-
-  return habit.daysOfWeek.includes(getIsoWeekday(dateKey))
-}
-
-function getIsoWeekday(dateKey: string): number {
-  const day = new Date(`${dateKey}T00:00:00`).getDay()
-
-  return day === 0 ? 7 : day
 }

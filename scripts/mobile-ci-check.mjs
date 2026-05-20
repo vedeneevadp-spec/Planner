@@ -2,7 +2,16 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const capacitorConfig = await readFile('capacitor.config.ts', 'utf8')
+const androidCapacitorBuildGradle = await readFile(
+  'android/app/capacitor.build.gradle',
+  'utf8',
+)
+const androidCapacitorSettingsGradle = await readFile(
+  'android/capacitor.settings.gradle',
+  'utf8',
+)
 const androidBuildGradle = await readFile('android/app/build.gradle', 'utf8')
+const iosSpmPackage = await readFile('ios/App/CapApp-SPM/Package.swift', 'utf8')
 const iosProject = await readFile(
   'ios/App/App.xcodeproj/project.pbxproj',
   'utf8',
@@ -53,6 +62,7 @@ assert.equal(androidApplicationId, appId)
 assert.deepEqual(iosBundleIds, [appId])
 assert.equal(appName, manifest.name)
 assert.equal(webDir, 'apps/web/dist')
+assertCapacitorPlugins()
 assert.ok(Number.isInteger(androidVersionCode) && androidVersionCode > 0)
 assert.deepEqual(iosBuildNumbers, [String(androidVersionCode)])
 assert.deepEqual(iosMarketingVersions, [androidVersionName])
@@ -64,6 +74,49 @@ assert.ok(
 )
 
 console.log('Mobile CI check passed.')
+
+function assertCapacitorPlugins() {
+  const plugins = [
+    {
+      androidGradleProject: ':capacitor-app',
+      androidPackage: '@capacitor/app',
+      iosPackage: 'CapacitorApp',
+    },
+    {
+      androidGradleProject: ':capacitor-preferences',
+      androidPackage: '@capacitor/preferences',
+      iosPackage: 'CapacitorPreferences',
+    },
+    {
+      androidGradleProject: ':capacitor-push-notifications',
+      androidPackage: '@capacitor/push-notifications',
+      iosPackage: 'CapacitorPushNotifications',
+    },
+  ]
+
+  for (const plugin of plugins) {
+    assert.ok(
+      capacitorConfig.includes(`'${plugin.androidPackage}'`),
+      `Missing ${plugin.androidPackage} in capacitor.config.ts includePlugins.`,
+    )
+    assert.ok(
+      androidCapacitorSettingsGradle.includes(
+        `include '${plugin.androidGradleProject}'`,
+      ),
+      `Missing ${plugin.androidGradleProject} in android/capacitor.settings.gradle.`,
+    )
+    assert.ok(
+      androidCapacitorBuildGradle.includes(
+        `implementation project('${plugin.androidGradleProject}')`,
+      ),
+      `Missing ${plugin.androidGradleProject} in android/app/capacitor.build.gradle.`,
+    )
+    assert.ok(
+      iosSpmPackage.includes(plugin.iosPackage),
+      `Missing ${plugin.iosPackage} in ios/App/CapApp-SPM/Package.swift.`,
+    )
+  }
+}
 
 function readSingleMatch(content, pattern, label) {
   const match = content.match(pattern)
