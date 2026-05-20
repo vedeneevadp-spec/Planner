@@ -26,6 +26,7 @@ export function TaskComposerOpenButton({
     >
       <button
         ref={buttonRef}
+        aria-label={label}
         className={cx(
           styles.openButton,
           mode === 'inline' && styles.openButtonInlineMobile,
