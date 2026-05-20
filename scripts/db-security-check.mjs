@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { Client } from 'pg'
 
 import {
@@ -83,6 +85,10 @@ try {
 
   await verifyRuntimeRlsMode(client, rlsMode)
 
+  if (requireRuntimeNonOwner) {
+    await verifyRuntimeAuthBootstrapAccess(client)
+  }
+
   console.log('Database security check passed.')
 } finally {
   await closePgClient(client)
@@ -151,4 +157,86 @@ async function verifyRuntimeRlsMode(client, mode) {
     await client.query('rollback').catch(() => undefined)
     throw error
   }
+}
+
+async function verifyRuntimeAuthBootstrapAccess(client) {
+  const userId = randomUUID()
+  const workspaceId = randomUUID()
+  const refreshTokenId = randomUUID()
+  const sessionId = randomUUID()
+  const email = `db-security-${userId}@example.test`
+  const slug = `db-security-${workspaceId}`
+
+  await client.query('begin')
+  try {
+    await client.query(
+      `
+        select *
+        from app.auth_create_user_with_credential(
+          $1::uuid,
+          $2::public.citext,
+          'DB Security Check',
+          'db-security-check'
+        )
+      `,
+      [userId, email],
+    )
+
+    await client.query(
+      `
+        select app.auth_insert_refresh_token(
+          $1::uuid,
+          $2::uuid,
+          $3,
+          $4::uuid,
+          now() + interval '1 hour',
+          null,
+          null
+        )
+      `,
+      [refreshTokenId, userId, `db-security-${refreshTokenId}`, sessionId],
+    )
+
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ role: 'authenticated', sub: userId }),
+    ])
+    await client.query('set local role authenticated')
+
+    await client.query(
+      `
+        select provisioned_workspace_id as workspace_id
+        from app.session_provision_personal_workspace(
+          $1::uuid,
+          $2::uuid,
+          $3::uuid,
+          'DB Security Check',
+          $4,
+          'owner'::app.workspace_role
+        )
+      `,
+      [userId, workspaceId, randomUUID(), slug],
+    )
+
+    await client.query('rollback')
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined)
+    throw new Error(
+      [
+        'Runtime DB user cannot write auth/session bootstrap records.',
+        'A strict non-owner runtime must be able to create users, credentials, workspaces, memberships, and refresh tokens without table-owner bypass.',
+        `Postgres error: ${formatPgError(error)}`,
+      ].join(' '),
+    )
+  }
+}
+
+function formatPgError(error) {
+  if (!error || typeof error !== 'object') {
+    return String(error)
+  }
+
+  const code = error.code ? ` (${error.code})` : ''
+  const message = error.message ?? String(error)
+
+  return `${message}${code}`
 }

@@ -20,7 +20,10 @@ import { type Kysely, sql } from 'kysely'
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import { isTransientDatabaseError } from '../../infrastructure/db/errors.js'
-import type { DatabaseExecutor } from '../../infrastructure/db/rls.js'
+import {
+  type DatabaseExecutor,
+  withOptionalRls,
+} from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   SessionContext,
@@ -144,19 +147,30 @@ export class PostgresSessionRepository implements SessionRepository {
       return this.mapSessionSnapshot(context, session, workspaces)
     }
 
-    const authenticatedActor = await this.ensureAuthenticatedActorWorkspace(
-      this.db,
-      context.auth,
-      context.workspaceId,
-    )
-    const session = context.workspaceId
-      ? await this.resolveExplicitSession(this.db, context, authenticatedActor)
-      : await this.resolveDefaultSession(this.db, context, authenticatedActor)
-    const workspaces = await this.loadSessionWorkspacesWithRetry(
-      session.actorId,
-    )
+    return withOptionalRls(this.db, context.auth, async (executor) => {
+      const authenticatedActor = await this.ensureAuthenticatedActorWorkspace(
+        executor,
+        context.auth!,
+        context.workspaceId,
+      )
+      const session = context.workspaceId
+        ? await this.resolveExplicitSession(
+            executor,
+            context,
+            authenticatedActor,
+          )
+        : await this.resolveDefaultSession(
+            executor,
+            context,
+            authenticatedActor,
+          )
+      const workspaces = await this.listSessionWorkspaces(
+        executor,
+        session.actorId,
+      )
 
-    return this.mapSessionSnapshot(context, session, workspaces)
+      return this.mapSessionSnapshot(context, session, workspaces)
+    })
   }
 
   async createSharedWorkspace(
@@ -1382,52 +1396,15 @@ export class PostgresSessionRepository implements SessionRepository {
   ): Promise<void> {
     const workspaceSlug = this.createPersonalWorkspaceSlug(actor.id)
     const provisionResult = await sql<{ workspace_id: string }>`
-      with inserted_workspace as (
-        insert into app.workspaces (
-          description,
-          id,
-          kind,
-          name,
-          owner_user_id,
-          slug
-        )
-        values (
-          '',
-          ${generateUuidV7()},
-          'personal'::app.workspace_kind,
-          ${this.createPersonalWorkspaceName(actor.displayName)},
-          ${actor.id},
-          ${workspaceSlug}
-        )
-        on conflict (slug) do nothing
-        returning id
-      ),
-      resolved_workspace as (
-        select id as workspace_id from inserted_workspace
-        union all
-        select workspace.id as workspace_id
-        from app.workspaces as workspace
-        where workspace.slug = ${workspaceSlug}
-          and not exists (select 1 from inserted_workspace)
-      ),
-      inserted_membership as (
-        insert into app.workspace_members (
-          id,
-          role,
-          user_id,
-          workspace_id
-        )
-        select
-          ${generateUuidV7()},
-          ${role}::app.workspace_role,
-          ${actor.id},
-          resolved_workspace.workspace_id
-        from resolved_workspace
-        on conflict (workspace_id, user_id) do nothing
-        returning id
+      select provisioned_workspace_id as workspace_id
+      from app.session_provision_personal_workspace(
+        ${actor.id}::uuid,
+        ${generateUuidV7()}::uuid,
+        ${generateUuidV7()}::uuid,
+        ${this.createPersonalWorkspaceName(actor.displayName)},
+        ${workspaceSlug},
+        ${role}::app.workspace_role
       )
-      select workspace_id
-      from resolved_workspace
     `.execute(executor)
 
     if (!provisionResult.rows[0]?.workspace_id) {

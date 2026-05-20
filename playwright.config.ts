@@ -4,6 +4,7 @@ const apiPort = process.env.E2E_API_PORT ?? '3102'
 const webPort = process.env.E2E_WEB_PORT ?? '5174'
 const apiBaseUrl = `http://127.0.0.1:${apiPort}`
 const webBaseUrl = `http://127.0.0.1:${webPort}`
+const reuseExistingServer = process.env.E2E_REUSE_EXISTING_SERVER === '1'
 const databaseUrl =
   process.env.DATABASE_URL ??
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
@@ -34,7 +35,7 @@ export default defineConfig({
         DATABASE_URL: databaseUrl,
         NODE_ENV: 'production',
       },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 30_000,
       url: `${apiBaseUrl}/api/health`,
     },
@@ -44,7 +45,7 @@ export default defineConfig({
         VITE_API_BASE_URL: apiBaseUrl,
         VITE_AUTH_PROVIDER: 'planner',
       },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 30_000,
       url: webBaseUrl,
     },

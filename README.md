@@ -80,6 +80,10 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run ci`                                      | audit + check + OpenAPI + mobile config + build         |
 | `npm run deploy:prod`                             | production deploy на текущий VPS                        |
 
+`npm run test:e2e` по умолчанию поднимает отдельные API и web-серверы на
+`E2E_API_PORT`/`E2E_WEB_PORT` и падает, если порт уже занят. Переиспользование
+запущенных серверов включается явно через `E2E_REUSE_EXISTING_SERVER=1`.
+
 ## Структура
 
 ```text
@@ -202,6 +206,9 @@ life-spheres API.
 - по умолчанию backend передает DB RLS context через transaction-local settings;
   перед включением этого режима на production надо прогнать
   `npm run db:security:check` с production `DATABASE_URL` и `API_DB_RLS_MODE`
+- `DB_SECURITY_REQUIRE_NON_OWNER=1` делает `db:security:check` строгим:
+  runtime DB user не должен быть владельцем protected tables и должен проходить
+  rollback-only проверку auth/session bootstrap без table-owner bypass
 - `npm run smoke:api:prod` поднимает API локально с `NODE_ENV=production`,
   `API_AUTH_MODE=jwt`, `API_DB_RLS_MODE=transaction_local` и проверяет реальные
   `health`, `auth`, `session` и `tasks` запросы; перед запуском используйте
