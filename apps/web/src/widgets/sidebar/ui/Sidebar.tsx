@@ -124,6 +124,21 @@ export function Sidebar({
     setIsMobileWorkspaceActionsOpen(false)
   }, [])
 
+  const handleMobileSignOut = useCallback(() => {
+    const isConfirmed =
+      typeof window === 'undefined' ||
+      window.confirm(
+        'Выйти из аккаунта? Текущая сессия на этом устройстве будет завершена.',
+      )
+
+    if (!isConfirmed) {
+      return
+    }
+
+    closeMobileMoreSheet()
+    void auth.signOut()
+  }, [auth, closeMobileMoreSheet])
+
   useEffect(() => {
     if (!isMoreOpen) {
       return
@@ -298,29 +313,35 @@ export function Sidebar({
                 ) : null}
               </div>
 
-              {accountLabel || mobileMoreNavigation.length > 0 ? (
+              {accountLabel ? (
                 <section className={styles.mobileSheetSection}>
                   <p className={styles.mobileSectionLabel}>Аккаунт</p>
 
-                  {accountLabel ? (
-                    <div className={styles.mobileInfoRow}>
-                      {session ? (
-                        <UserAvatar
-                          avatarUrl={session.actor.avatarUrl}
-                          displayName={session.actor.displayName}
-                          email={session.actor.email}
-                          size="sm"
-                        />
-                      ) : (
-                        <UserIcon size={18} strokeWidth={2.1} />
-                      )}
-                      <div className={styles.mobileInfoCopy}>
-                        <strong>
-                          {session?.actor.displayName ?? 'Профиль'}
-                        </strong>
-                        <span>{accountLabel}</span>
-                      </div>
+                  <div className={styles.mobileInfoRow}>
+                    {session ? (
+                      <UserAvatar
+                        avatarUrl={session.actor.avatarUrl}
+                        displayName={session.actor.displayName}
+                        email={session.actor.email}
+                        size="sm"
+                      />
+                    ) : (
+                      <UserIcon size={18} strokeWidth={2.1} />
+                    )}
+                    <div className={styles.mobileInfoCopy}>
+                      <strong>{session?.actor.displayName ?? 'Профиль'}</strong>
+                      <span>{accountLabel}</span>
                     </div>
+                  </div>
+
+                  {auth.isAuthEnabled ? (
+                    <button
+                      className={styles.mobileSignOutButton}
+                      type="button"
+                      onClick={handleMobileSignOut}
+                    >
+                      Выйти
+                    </button>
                   ) : null}
 
                   <button
@@ -339,6 +360,12 @@ export function Sidebar({
                     )}
                     <span>{isDark ? 'Светлая тема' : 'Темная тема'}</span>
                   </button>
+                </section>
+              ) : null}
+
+              {mobileMoreNavigation.length > 0 || isProfileNavigationVisible ? (
+                <section className={styles.mobileSheetSection}>
+                  <p className={styles.mobileSectionLabel}>Разделы</p>
 
                   {mobileMoreNavigation
                     .filter((item) => item.to !== '/admin')
@@ -399,19 +426,6 @@ export function Sidebar({
                         <span>{item.label}</span>
                       </NavLink>
                     ))}
-
-                  {auth.isAuthEnabled && accountLabel ? (
-                    <button
-                      className={styles.mobileSignOutButton}
-                      type="button"
-                      onClick={() => {
-                        closeMobileMoreSheet()
-                        void auth.signOut()
-                      }}
-                    >
-                      Выйти
-                    </button>
-                  ) : null}
                 </section>
               ) : null}
 

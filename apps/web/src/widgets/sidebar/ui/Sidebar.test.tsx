@@ -288,6 +288,33 @@ describe('Sidebar', () => {
     expect(moreSheet.getByRole('button', { name: 'Выйти' })).toBeVisible()
   })
 
+  it('keeps mobile sign out away from the bottom navigation links and requires confirmation', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    renderSidebar(createSession('personal'))
+
+    const moreSheet = within(openMobileMoreSheet())
+    const signOutButton = moreSheet.getByRole('button', { name: 'Выйти' })
+    const spheresLink = moreSheet.getByRole('link', { name: 'Сферы' })
+
+    expect(
+      signOutButton.compareDocumentPosition(spheresLink) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+
+    fireEvent.click(signOutButton)
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Выйти из аккаунта? Текущая сессия на этом устройстве будет завершена.',
+    )
+    expect(mocks.signOut).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(signOutButton)
+
+    expect(mocks.signOut).toHaveBeenCalledTimes(1)
+  })
+
   it('keeps habits and admin out of shared workspace navigation', () => {
     renderSidebar(createSession('shared'))
 

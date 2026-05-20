@@ -257,6 +257,47 @@ describe('SessionProvider', () => {
     expect(authApiMocks.refreshAuthSession).not.toHaveBeenCalled()
   })
 
+  it('keeps the current native account when device storage is temporarily empty on resume', async () => {
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+
+    authStorageMocks.readStoredAuthSession
+      .mockResolvedValueOnce(createUsableNativeStoredSession())
+      .mockResolvedValue(null)
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'newer-access-token',
+      )
+    })
+
+    await act(async () => {
+      appStateListener?.(false)
+      appStateListener?.(true)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('auth-email')).toHaveTextContent(
+        'mobile@example.com',
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'newer-access-token',
+      )
+    })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
+  })
+
   it('does not clear native storage when a failed refresh used a stale token', async () => {
     const oldSession = createExpiredStoredSession()
     const newerSession = createUsableNativeStoredSession()

@@ -56,9 +56,14 @@ export function setRememberSessionPreference(remember: boolean): void {
 }
 
 export async function readStoredAuthSession(): Promise<StoredAuthSession | null> {
-  const rawSession = await getActiveAuthStorage().getItem(
-    AUTH_SESSION_STORAGE_KEY,
-  )
+  let rawSession: string | null
+
+  try {
+    rawSession = await getActiveAuthStorage().getItem(AUTH_SESSION_STORAGE_KEY)
+  } catch (error) {
+    console.error('Failed to read auth session storage.', error)
+    rawSession = inMemoryAuthStorage.get(AUTH_SESSION_STORAGE_KEY) ?? null
+  }
 
   if (!rawSession) {
     return null
@@ -80,17 +85,30 @@ export async function readStoredAuthSession(): Promise<StoredAuthSession | null>
 export async function writeStoredAuthSession(
   session: StoredAuthSession,
 ): Promise<void> {
-  await getActiveAuthStorage().setItem(
-    AUTH_SESSION_STORAGE_KEY,
-    JSON.stringify(session),
-  )
+  const serializedSession = JSON.stringify(session)
+
+  inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
+
+  try {
+    await getActiveAuthStorage().setItem(
+      AUTH_SESSION_STORAGE_KEY,
+      serializedSession,
+    )
+  } catch (error) {
+    console.error('Failed to write auth session storage.', error)
+  }
 }
 
 export async function clearStoredAuthSession(
   scope: 'all' | 'local' | 'session' = 'all',
 ): Promise<void> {
   if (isNativeSessionPersistenceRuntime()) {
-    await clearNativeSessionStorage([AUTH_SESSION_STORAGE_KEY])
+    try {
+      await clearNativeSessionStorage([AUTH_SESSION_STORAGE_KEY])
+    } catch (error) {
+      console.error('Failed to clear auth session storage.', error)
+    }
+
     inMemoryAuthStorage.delete(AUTH_SESSION_STORAGE_KEY)
     return
   }
