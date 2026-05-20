@@ -2,24 +2,14 @@ import type { NewHabitInput } from '@planner/contracts'
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { SpherePicker } from '@/entities/sphere'
 import {
-  buildRoutineTaskFromForm,
-  buildTaskRecurrenceFromForm,
   createDefaultRoutineTaskForm,
   createDefaultTaskRecurrenceForm,
-  getResourceFromValue,
-  getTaskImportanceFromType,
   getTaskTypeValue,
-  getTaskUrgencyFromType,
   type NewTaskInput,
-  ResourcePicker,
   type ResourceValue,
-  RoutineTaskFields,
   type RoutineTaskFormState,
-  TaskRecurrenceFields,
   type TaskRecurrenceFormState,
-  TaskTypePicker,
   type TaskTypeValue,
 } from '@/entities/task'
 import type { TaskTemplate } from '@/entities/task-template'
@@ -27,32 +17,21 @@ import { useUploadedIconAssets } from '@/features/emoji-library'
 import { useCreateHabit } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
-import { cx } from '@/shared/lib/classnames'
 import { addDays, getDateKey } from '@/shared/lib/date'
-import {
-  CheckIcon,
-  IconChoicePicker,
-  IconMark,
-  PlusIcon,
-  TrashIcon,
-} from '@/shared/ui/Icon'
-import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
+  buildTaskComposerHabitInput,
+  buildTaskComposerTaskInput,
   buildTaskInputFromTemplate,
-  getEmptyProjectLabel,
-  getSphereDisplayTitle,
-  getSpherePickerLabel,
-  getTemplateProject,
-  LEGACY_EMPTY_PROJECT_TITLES,
-  resolveClientTimeZone,
   type TaskComposerDraft,
 } from '../model/task-composer-model'
 import styles from './TaskComposer.module.css'
-import {
-  BookmarkRibbonIcon,
-  QuickPlanActions,
-} from './TaskComposerQuickActions'
+import { TaskComposerDetailsFields } from './TaskComposerDetailsFields'
+import { TaskComposerFooter } from './TaskComposerFooter'
+import { TaskComposerModalHeader } from './TaskComposerModalHeader'
+import { TaskComposerOpenButton } from './TaskComposerOpenButton'
+import { TaskComposerPrimaryFields } from './TaskComposerPrimaryFields'
+import { QuickPlanActions } from './TaskComposerQuickActions'
 
 interface TaskComposerProps {
   hideOpenButton?: boolean
@@ -251,83 +230,41 @@ export function TaskComposer({
   }
 
   function buildCurrentTaskInput(): NewTaskInput | null {
-    const normalizedTitle = title.trim()
-
-    if (!normalizedTitle) {
-      return null
-    }
-
-    const selectedProject =
-      spheres.find((project) => project.id === projectId) ?? null
-    const projectInput = {
-      project: selectedProject?.name ?? '',
-      projectId: selectedProject?.id ?? null,
-    }
-    const resolvedPlannedDate =
-      canUseRecurrence && recurrenceForm.isEnabled && !plannedDate
-        ? (initialPlannedDate ?? todayKey)
-        : plannedDate
-    const hasPlannedDate = Boolean(resolvedPlannedDate)
-
-    return {
-      assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
-      dueDate: null,
+    return buildTaskComposerTaskInput({
+      assigneeUserId,
+      canUseRecurrence,
       icon,
-      importance: getTaskImportanceFromType(taskType),
+      initialPlannedDate,
+      isSharedWorkspace: Boolean(isSharedWorkspace),
       note,
-      plannedDate: resolvedPlannedDate || null,
-      plannedEndTime:
-        hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
-      plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
-      project: projectInput.project,
-      projectId: projectInput.projectId,
-      recurrence: canUseRecurrence
-        ? buildTaskRecurrenceFromForm(
-            recurrenceForm,
-            resolvedPlannedDate || todayKey,
-          )
-        : null,
-      remindBeforeStart: isSharedWorkspace ? false : remindBeforeStart,
-      reminderTimeZone:
-        !isSharedWorkspace && remindBeforeStart
-          ? resolveClientTimeZone()
-          : undefined,
-      resource: getResourceFromValue(resource),
-      requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
-      routine:
-        taskType === 'routine' ? buildRoutineTaskFromForm(routineForm) : null,
-      sphereId: projectInput.projectId,
-      title: normalizedTitle,
-      urgency: getTaskUrgencyFromType(taskType),
-    }
+      plannedDate,
+      plannedEndTime,
+      plannedStartTime,
+      projectId,
+      recurrenceForm,
+      remindBeforeStart,
+      requiresConfirmation,
+      resource,
+      routineForm,
+      spheres,
+      taskType,
+      title,
+      todayKey,
+    })
   }
 
   function buildCurrentHabitInput(): NewHabitInput | null {
-    const normalizedTitle = title.trim()
-
-    if (!normalizedTitle) {
-      return null
-    }
-
-    const selectedProject =
-      spheres.find((project) => project.id === projectId) ?? null
-    const routine = buildRoutineTaskFromForm(routineForm)
-
-    return {
-      color: '#2f6f62',
-      daysOfWeek: routine.daysOfWeek,
-      description: note.trim(),
-      endDate: null,
-      frequency: routine.frequency,
-      icon: icon.trim() || 'check',
-      reminderTime: null,
-      sphereId: selectedProject?.id ?? null,
-      startDate: plannedDate || initialPlannedDate || todayKey,
-      targetType: routine.targetType,
-      targetValue: routine.targetValue,
-      title: normalizedTitle,
-      unit: routine.targetType === 'count' ? routine.unit : '',
-    }
+    return buildTaskComposerHabitInput({
+      icon,
+      initialPlannedDate,
+      note,
+      plannedDate,
+      projectId,
+      routineForm,
+      spheres,
+      title,
+      todayKey,
+    })
   }
 
   function resetForm() {
@@ -489,28 +426,12 @@ export function TaskComposer({
   return (
     <>
       {hideOpenButton ? null : (
-        <div
-          className={cx(
-            styles.actionRow,
-            mobileOpenButtonMode === 'inline' && styles.actionRowInlineMobile,
-          )}
-        >
-          <button
-            ref={openButtonRef}
-            className={cx(
-              styles.openButton,
-              mobileOpenButtonMode === 'inline' &&
-                styles.openButtonInlineMobile,
-            )}
-            type="button"
-            onClick={openComposer}
-          >
-            <span className={styles.openButtonIcon} aria-hidden="true">
-              +
-            </span>
-            <span className={styles.openButtonLabel}>{openButtonLabel}</span>
-          </button>
-        </div>
+        <TaskComposerOpenButton
+          buttonRef={openButtonRef}
+          label={openButtonLabel}
+          mode={mobileOpenButtonMode}
+          onOpen={openComposer}
+        />
       )}
 
       {isOpen && typeof document !== 'undefined'
@@ -535,432 +456,82 @@ export function TaskComposer({
                   void handleSubmit(event)
                 }}
               >
-                <div className={styles.modalHeader}>
-                  <h2 id={titleId}>{composerTitle}</h2>
-                  <button
-                    className={styles.closeButton}
-                    type="button"
-                    aria-label="Закрыть"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <span aria-hidden="true">×</span>
-                  </button>
-                  <button
-                    className={styles.mobileHeaderSubmit}
-                    type="submit"
-                    aria-label={submitLabel}
-                    disabled={!title.trim() || createHabitMutation.isPending}
-                  >
-                    <CheckIcon size={16} />
-                  </button>
-                </div>
-
-                <label className={cx(styles.field, styles.titleField)}>
-                  <span>{titleFieldLabel}</span>
-                  <input
-                    ref={titleInputRef}
-                    required
-                    value={title}
-                    placeholder="Например: собрать референсы для недельного плана"
-                    onChange={(event) => setTitle(event.target.value)}
-                  />
-                </label>
+                <TaskComposerModalHeader
+                  isSubmitDisabled={
+                    !title.trim() || createHabitMutation.isPending
+                  }
+                  submitLabel={submitLabel}
+                  title={composerTitle}
+                  titleId={titleId}
+                  onClose={() => {
+                    setIsOpen(false)
+                  }}
+                />
 
                 <div className={styles.formColumns}>
-                  <div className={styles.columnPanel}>
-                    <section
-                      className={cx(
-                        styles.columnSection,
-                        styles.scheduleSection,
-                      )}
-                    >
-                      <div
-                        className={cx(
-                          styles.composerMain,
-                          showTimeFields && !isHabitTaskType
-                            ? styles.composerMainTimeline
-                            : styles.composerMainCompact,
-                          showTimeFields &&
-                            !isHabitTaskType &&
-                            !plannedStartTime &&
-                            styles.composerMainPair,
-                        )}
-                      >
-                        <label className={styles.field}>
-                          <span>План</span>
-                          <input
-                            type="date"
-                            value={plannedDate}
-                            onChange={(event) =>
-                              handlePlannedDateChange(event.target.value)
-                            }
-                          />
-                        </label>
+                  <TaskComposerPrimaryFields
+                    icon={icon}
+                    isHabitTaskType={isHabitTaskType}
+                    isTemplatesExpanded={isTemplatesExpanded}
+                    note={note}
+                    pendingTemplateId={pendingTemplateId}
+                    plannedDate={plannedDate}
+                    plannedEndTime={plannedEndTime}
+                    plannedStartTime={plannedStartTime}
+                    selectedTemplateId={selectedTemplateId}
+                    showTimeFields={showTimeFields}
+                    spheres={spheres}
+                    taskTemplates={taskTemplates}
+                    title={title}
+                    titleFieldLabel={titleFieldLabel}
+                    titleInputRef={titleInputRef}
+                    uploadedIcons={uploadedIcons}
+                    onApplyTemplate={handleApplyTemplate}
+                    onCreateFromTemplate={(template) => {
+                      void handleCreateFromTemplate(template)
+                    }}
+                    onIconChange={setIcon}
+                    onNoteChange={setNote}
+                    onPlannedDateChange={handlePlannedDateChange}
+                    onPlannedEndTimeChange={setPlannedEndTime}
+                    onPlannedStartTimeChange={handlePlannedStartTimeChange}
+                    onRemoveTemplate={(template) => {
+                      void handleRemoveTemplate(template)
+                    }}
+                    onTemplatesExpandedChange={setIsTemplatesExpanded}
+                    onTitleChange={setTitle}
+                  />
 
-                        {showTimeFields && !isHabitTaskType ? (
-                          <>
-                            <label className={styles.field}>
-                              <span>Старт</span>
-                              <input
-                                type="time"
-                                value={plannedStartTime}
-                                disabled={!plannedDate}
-                                onChange={(event) =>
-                                  handlePlannedStartTimeChange(
-                                    event.target.value,
-                                  )
-                                }
-                              />
-                            </label>
-
-                            {plannedStartTime ? (
-                              <label className={styles.field}>
-                                <span>Финиш</span>
-                                <input
-                                  type="time"
-                                  value={plannedEndTime}
-                                  disabled={!plannedDate || !plannedStartTime}
-                                  onChange={(event) =>
-                                    setPlannedEndTime(event.target.value)
-                                  }
-                                />
-                              </label>
-                            ) : null}
-                          </>
-                        ) : null}
-                      </div>
-                    </section>
-
-                    <section
-                      className={cx(styles.columnSection, styles.noteSection)}
-                    >
-                      <label className={cx(styles.field, styles.notePanel)}>
-                        <span>Заметка</span>
-                        <textarea
-                          rows={3}
-                          value={note}
-                          placeholder="Контекст, next step, ссылка на материал"
-                          onChange={(event) => setNote(event.target.value)}
-                        />
-                      </label>
-                    </section>
-
-                    <section
-                      className={cx(styles.columnSection, styles.visualSection)}
-                    >
-                      <div className={styles.visualPanel}>
-                        <IconChoicePicker
-                          allowEmpty={false}
-                          label="Иконка"
-                          showEmojiChoices={false}
-                          value={icon}
-                          uploadedIcons={uploadedIcons}
-                          onChange={setIcon}
-                        />
-                      </div>
-                    </section>
-
-                    {!isHabitTaskType && taskTemplates.length > 0 ? (
-                      <section
-                        className={cx(
-                          styles.columnSection,
-                          styles.templateSection,
-                          styles.templatePanel,
-                        )}
-                      >
-                        <div className={styles.templatePanelHeader}>
-                          <p className={styles.eyebrow}>
-                            Шаблоны
-                            <span className={styles.templateCount}>
-                              {taskTemplates.length}
-                            </span>
-                          </p>
-                          <button
-                            className={styles.templateToggle}
-                            type="button"
-                            aria-expanded={isTemplatesExpanded}
-                            aria-label={
-                              isTemplatesExpanded
-                                ? 'Свернуть шаблоны'
-                                : 'Показать шаблоны'
-                            }
-                            onClick={() =>
-                              setIsTemplatesExpanded((value) => !value)
-                            }
-                          >
-                            <span
-                              className={cx(
-                                styles.templateChevron,
-                                isTemplatesExpanded &&
-                                  styles.templateChevronExpanded,
-                              )}
-                              aria-hidden="true"
-                            />
-                          </button>
-                        </div>
-
-                        {isTemplatesExpanded ? (
-                          <div className={styles.templateList}>
-                            {taskTemplates.map((template) => {
-                              const templateProject = getTemplateProject(
-                                template,
-                                spheres,
-                              )
-                              const normalizedTemplateProjectTitle =
-                                template.project.trim()
-                              const hasTemplateProject =
-                                templateProject !== null ||
-                                (Boolean(normalizedTemplateProjectTitle) &&
-                                  !LEGACY_EMPTY_PROJECT_TITLES.has(
-                                    normalizedTemplateProjectTitle,
-                                  ))
-                              const templateProjectTitle =
-                                templateProject?.name ??
-                                getSphereDisplayTitle(template.project)
-
-                              return (
-                                <article
-                                  key={template.id}
-                                  className={cx(
-                                    styles.templateRow,
-                                    selectedTemplateId === template.id &&
-                                      styles.templateRowActive,
-                                  )}
-                                >
-                                  <button
-                                    className={styles.templateSelectButton}
-                                    type="button"
-                                    title={`Подставить шаблон «${template.title}»`}
-                                    onClick={() =>
-                                      handleApplyTemplate(template)
-                                    }
-                                  >
-                                    <span className={styles.templateIconSlot}>
-                                      {template.icon ? (
-                                        <IconMark
-                                          className={styles.templateTaskIcon}
-                                          value={template.icon}
-                                          uploadedIcons={uploadedIcons}
-                                        />
-                                      ) : null}
-                                    </span>
-
-                                    <span className={styles.templateText}>
-                                      <strong>{template.title}</strong>
-                                      {template.note ? (
-                                        <span>{template.note}</span>
-                                      ) : null}
-                                    </span>
-
-                                    <span
-                                      className={cx(
-                                        styles.templateProjectChip,
-                                        !hasTemplateProject &&
-                                          styles.templateProjectChipMuted,
-                                      )}
-                                    >
-                                      {templateProject ? (
-                                        <span
-                                          className={styles.templateProjectIcon}
-                                          style={{
-                                            backgroundColor:
-                                              templateProject.color,
-                                          }}
-                                          aria-hidden="true"
-                                        >
-                                          <IconMark
-                                            value={templateProject.icon}
-                                            uploadedIcons={uploadedIcons}
-                                          />
-                                        </span>
-                                      ) : null}
-                                      {templateProjectTitle}
-                                    </span>
-                                  </button>
-
-                                  <div className={styles.templateActions}>
-                                    <button
-                                      className={cx(
-                                        styles.ghostButton,
-                                        styles.iconButton,
-                                      )}
-                                      type="button"
-                                      disabled={pendingTemplateId !== null}
-                                      aria-label={`Создать задачу из шаблона ${template.title}`}
-                                      title="Создать"
-                                      onClick={() => {
-                                        void handleCreateFromTemplate(template)
-                                      }}
-                                    >
-                                      <CheckIcon size={17} />
-                                    </button>
-                                    <button
-                                      className={cx(
-                                        styles.ghostButton,
-                                        styles.iconButton,
-                                        styles.dangerButton,
-                                      )}
-                                      type="button"
-                                      aria-label={`Удалить шаблон ${template.title}`}
-                                      title="Удалить"
-                                      onClick={() => {
-                                        void handleRemoveTemplate(template)
-                                      }}
-                                    >
-                                      <TrashIcon size={17} />
-                                    </button>
-                                  </div>
-                                </article>
-                              )
-                            })}
-                          </div>
-                        ) : null}
-                      </section>
-                    ) : null}
-                  </div>
-
-                  <div className={styles.columnPanel}>
-                    <section
-                      className={cx(
-                        styles.columnSection,
-                        styles.projectSection,
-                      )}
-                    >
-                      <SpherePicker
-                        className={styles.fieldProject}
-                        emptyLabel={getEmptyProjectLabel()}
-                        label={getSpherePickerLabel()}
-                        spheres={spheres}
-                        uploadedIcons={uploadedIcons}
-                        value={projectId}
-                        onChange={setProjectId}
-                      />
-                    </section>
-
-                    {isReminderAvailable && !isHabitTaskType ? (
-                      <section className={styles.columnSection}>
-                        <div className={styles.checkboxField}>
-                          <input
-                            id={`${confirmationFieldId}-reminder`}
-                            type="checkbox"
-                            checked={remindBeforeStart}
-                            onChange={(event) =>
-                              setRemindBeforeStart(event.target.checked)
-                            }
-                          />
-                          <span className={styles.checkboxCopy}>
-                            <label
-                              className={styles.checkboxLabel}
-                              htmlFor={`${confirmationFieldId}-reminder`}
-                            >
-                              Напомнить за 15 минут
-                            </label>
-                          </span>
-                        </div>
-                      </section>
-                    ) : null}
-
-                    {isSharedWorkspace && !isHabitTaskType ? (
-                      <section className={styles.columnSection}>
-                        <SelectPicker
-                          className={styles.field}
-                          label="Исполнитель"
-                          value={assigneeUserId}
-                          options={[
-                            { label: 'Без исполнителя', value: '' },
-                            ...workspaceUsers.map((user) => ({
-                              label: user.displayName,
-                              value: user.id,
-                            })),
-                          ]}
-                          onChange={setAssigneeUserId}
-                        />
-                      </section>
-                    ) : null}
-
-                    {isSharedWorkspace && !isHabitTaskType ? (
-                      <section className={styles.columnSection}>
-                        <div className={styles.checkboxField}>
-                          <input
-                            id={confirmationFieldId}
-                            type="checkbox"
-                            checked={requiresConfirmation}
-                            onChange={(event) =>
-                              setRequiresConfirmation(event.target.checked)
-                            }
-                          />
-                          <span className={styles.checkboxCopy}>
-                            <label
-                              className={styles.checkboxLabel}
-                              htmlFor={confirmationFieldId}
-                            >
-                              Требуется подтверждение
-                            </label>
-                            <small id={`${confirmationFieldId}-hint`}>
-                              Завершить такую задачу сможет только её автор.
-                            </small>
-                          </span>
-                        </div>
-                      </section>
-                    ) : null}
-
-                    <section
-                      className={cx(styles.columnSection, styles.typeSection)}
-                    >
-                      <TaskTypePicker
-                        className={styles.fieldType}
-                        value={taskType}
-                        onChange={handleTaskTypeChange}
-                      />
-                    </section>
-
-                    {isRoutineLikeTaskType ? (
-                      <section className={styles.columnSection}>
-                        <RoutineTaskFields
-                          showTargetFields={isHabitTaskType}
-                          value={routineForm}
-                          onChange={setRoutineForm}
-                        />
-                      </section>
-                    ) : null}
-
-                    {canUseRecurrence ? (
-                      <section className={styles.columnSection}>
-                        <TaskRecurrenceFields
-                          value={recurrenceForm}
-                          onChange={handleRecurrenceChange}
-                        />
-                      </section>
-                    ) : null}
-
-                    {!isHabitTaskType ? (
-                      <section
-                        className={cx(
-                          styles.columnSection,
-                          styles.resourceSection,
-                        )}
-                      >
-                        <ResourcePicker
-                          className={styles.fieldResource}
-                          value={resource}
-                          onChange={setResource}
-                        />
-                      </section>
-                    ) : null}
-
-                    {!isHabitTaskType ? (
-                      <QuickPlanActions
-                        as="section"
-                        className={cx(
-                          styles.columnSection,
-                          styles.quickActionsSection,
-                        )}
-                        todayKey={todayKey}
-                        tomorrowKey={tomorrowKey}
-                        onChange={handlePlannedDateChange}
-                      />
-                    ) : null}
-                  </div>
+                  <TaskComposerDetailsFields
+                    assigneeUserId={assigneeUserId}
+                    canUseRecurrence={canUseRecurrence}
+                    confirmationFieldId={confirmationFieldId}
+                    isHabitTaskType={isHabitTaskType}
+                    isReminderAvailable={isReminderAvailable}
+                    isRoutineLikeTaskType={isRoutineLikeTaskType}
+                    isSharedWorkspace={Boolean(isSharedWorkspace)}
+                    projectId={projectId}
+                    recurrenceForm={recurrenceForm}
+                    remindBeforeStart={remindBeforeStart}
+                    requiresConfirmation={requiresConfirmation}
+                    resource={resource}
+                    routineForm={routineForm}
+                    spheres={spheres}
+                    taskType={taskType}
+                    todayKey={todayKey}
+                    tomorrowKey={tomorrowKey}
+                    uploadedIcons={uploadedIcons}
+                    workspaceUsers={workspaceUsers}
+                    onAssigneeUserIdChange={setAssigneeUserId}
+                    onPlannedDateChange={handlePlannedDateChange}
+                    onProjectIdChange={setProjectId}
+                    onRecurrenceChange={handleRecurrenceChange}
+                    onRemindBeforeStartChange={setRemindBeforeStart}
+                    onRequiresConfirmationChange={setRequiresConfirmation}
+                    onResourceChange={setResource}
+                    onRoutineFormChange={setRoutineForm}
+                    onTaskTypeChange={handleTaskTypeChange}
+                  />
                 </div>
 
                 {templateNotice ? (
@@ -976,43 +547,15 @@ export function TaskComposer({
                   />
                 ) : null}
 
-                <div className={styles.footer}>
-                  {!isHabitTaskType ? (
-                    <button
-                      className={cx(
-                        styles.ghostButton,
-                        styles.footerGhostButton,
-                      )}
-                      type="button"
-                      disabled={!title.trim()}
-                      onClick={() => {
-                        void handleSaveTemplate()
-                      }}
-                    >
-                      <span className={styles.buttonIcon} aria-hidden="true">
-                        <BookmarkRibbonIcon />
-                      </span>
-                      Сохранить как шаблон
-                    </button>
-                  ) : null}
-
-                  <button
-                    className={cx(
-                      styles.primaryButton,
-                      styles.footerPrimaryButton,
-                    )}
-                    type="submit"
-                    disabled={createHabitMutation.isPending}
-                  >
-                    <span
-                      className={styles.buttonIconStrong}
-                      aria-hidden="true"
-                    >
-                      <PlusIcon size={16} />
-                    </span>
-                    {submitLabel}
-                  </button>
-                </div>
+                <TaskComposerFooter
+                  isHabitTaskType={isHabitTaskType}
+                  isSaveTemplateDisabled={!title.trim()}
+                  isSubmitDisabled={createHabitMutation.isPending}
+                  submitLabel={submitLabel}
+                  onSaveTemplate={() => {
+                    void handleSaveTemplate()
+                  }}
+                />
               </form>
             </div>,
             document.body,

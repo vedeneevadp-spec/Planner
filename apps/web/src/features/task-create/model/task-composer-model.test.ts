@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
 import type { Sphere } from '@/entities/sphere'
+import {
+  createDefaultRoutineTaskForm,
+  createDefaultTaskRecurrenceForm,
+  type RoutineTaskFormState,
+} from '@/entities/task'
 import type { TaskTemplate } from '@/entities/task-template'
 
 import {
+  buildTaskComposerHabitInput,
+  buildTaskComposerTaskInput,
   buildTaskInputFromTemplate,
   getSphereDisplayTitle,
+  getTemplateDisplayProject,
   resolveProjectFields,
 } from './task-composer-model'
 
@@ -49,6 +57,107 @@ describe('task-composer-model', () => {
     expect(resolveProjectFields([], null, 'No sphere')).toEqual({
       project: '',
       projectId: null,
+    })
+  })
+
+  it('builds template display project metadata', () => {
+    expect(getTemplateDisplayProject(TEMPLATE, [PROJECT])).toEqual({
+      hasProject: true,
+      project: PROJECT,
+      title: 'Работа',
+    })
+
+    expect(
+      getTemplateDisplayProject(
+        {
+          ...TEMPLATE,
+          project: 'Без проекта',
+          projectId: null,
+        },
+        [PROJECT],
+      ),
+    ).toEqual({
+      hasProject: false,
+      project: null,
+      title: 'Без сферы',
+    })
+  })
+
+  it('builds task input from the current composer state', () => {
+    const input = buildTaskComposerTaskInput({
+      assigneeUserId: 'user-2',
+      canUseRecurrence: true,
+      icon: 'briefcase',
+      initialPlannedDate: null,
+      isSharedWorkspace: true,
+      note: 'Context',
+      plannedDate: '',
+      plannedEndTime: '',
+      plannedStartTime: '',
+      projectId: PROJECT.id,
+      recurrenceForm: {
+        ...createDefaultTaskRecurrenceForm(),
+        isEnabled: true,
+      },
+      remindBeforeStart: true,
+      requiresConfirmation: true,
+      resource: '3',
+      routineForm: createDefaultRoutineTaskForm(),
+      spheres: [PROJECT],
+      taskType: 'important',
+      title: '  Проверить отчёт  ',
+      todayKey: '2026-04-22',
+    })
+
+    expect(input).toMatchObject({
+      assigneeUserId: 'user-2',
+      importance: 'important',
+      plannedDate: '2026-04-22',
+      project: 'Работа',
+      projectId: PROJECT.id,
+      remindBeforeStart: false,
+      requiresConfirmation: true,
+      resource: 3,
+      sphereId: PROJECT.id,
+      title: 'Проверить отчёт',
+      urgency: 'not_urgent',
+    })
+    expect(input?.recurrence).toMatchObject({
+      isActive: true,
+      startDate: '2026-04-22',
+    })
+    expect(input?.reminderTimeZone).toBeUndefined()
+  })
+
+  it('builds habit input from the current composer state', () => {
+    const routineForm = {
+      ...createDefaultRoutineTaskForm(),
+      targetType: 'count',
+      targetValue: '5',
+      unit: 'страниц',
+    } satisfies RoutineTaskFormState
+
+    expect(
+      buildTaskComposerHabitInput({
+        icon: '',
+        initialPlannedDate: null,
+        note: ' Читать перед сном ',
+        plannedDate: '',
+        projectId: PROJECT.id,
+        routineForm,
+        spheres: [PROJECT],
+        title: '  Читать  ',
+        todayKey: '2026-04-22',
+      }),
+    ).toMatchObject({
+      description: 'Читать перед сном',
+      icon: 'check',
+      sphereId: PROJECT.id,
+      startDate: '2026-04-22',
+      targetType: 'count',
+      targetValue: 5,
+      title: 'Читать',
+      unit: 'страниц',
     })
   })
 

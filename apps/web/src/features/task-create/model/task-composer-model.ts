@@ -1,8 +1,17 @@
+import type { NewHabitInput } from '@planner/contracts'
+
 import type { Sphere } from '@/entities/sphere'
-import type {
-  NewTaskInput,
-  ResourceValue,
-  TaskTypeValue,
+import {
+  buildRoutineTaskFromForm,
+  buildTaskRecurrenceFromForm,
+  getResourceFromValue,
+  getTaskImportanceFromType,
+  getTaskUrgencyFromType,
+  type NewTaskInput,
+  type ResourceValue,
+  type RoutineTaskFormState,
+  type TaskRecurrenceFormState,
+  type TaskTypeValue,
 } from '@/entities/task'
 import type { TaskTemplate } from '@/entities/task-template'
 
@@ -90,11 +99,175 @@ export function getTemplateProject(
   )
 }
 
+export interface TaskTemplateDisplayProject {
+  hasProject: boolean
+  project: Sphere | null
+  title: string
+}
+
+export function getTemplateDisplayProject(
+  template: TaskTemplate,
+  spheres: Sphere[],
+): TaskTemplateDisplayProject {
+  const project = getTemplateProject(template, spheres)
+  const normalizedTemplateProjectTitle = template.project.trim()
+  const hasProject =
+    project !== null ||
+    (Boolean(normalizedTemplateProjectTitle) &&
+      !LEGACY_EMPTY_PROJECT_TITLES.has(normalizedTemplateProjectTitle))
+
+  return {
+    hasProject,
+    project,
+    title: project?.name ?? getSphereDisplayTitle(template.project),
+  }
+}
+
 export function resolveClientTimeZone(): string | undefined {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
   } catch {
     return undefined
+  }
+}
+
+export interface BuildTaskComposerTaskInputParams {
+  assigneeUserId: string
+  canUseRecurrence: boolean
+  icon: string
+  initialPlannedDate: string | null
+  isSharedWorkspace: boolean
+  note: string
+  plannedDate: string
+  plannedEndTime: string
+  plannedStartTime: string
+  projectId: string
+  recurrenceForm: TaskRecurrenceFormState
+  remindBeforeStart: boolean
+  requiresConfirmation: boolean
+  resource: ResourceValue
+  routineForm: RoutineTaskFormState
+  spheres: Sphere[]
+  taskType: TaskTypeValue
+  title: string
+  todayKey: string
+}
+
+export function buildTaskComposerTaskInput({
+  assigneeUserId,
+  canUseRecurrence,
+  icon,
+  initialPlannedDate,
+  isSharedWorkspace,
+  note,
+  plannedDate,
+  plannedEndTime,
+  plannedStartTime,
+  projectId,
+  recurrenceForm,
+  remindBeforeStart,
+  requiresConfirmation,
+  resource,
+  routineForm,
+  spheres,
+  taskType,
+  title,
+  todayKey,
+}: BuildTaskComposerTaskInputParams): NewTaskInput | null {
+  const normalizedTitle = title.trim()
+
+  if (!normalizedTitle) {
+    return null
+  }
+
+  const selectedProject =
+    spheres.find((project) => project.id === projectId) ?? null
+  const resolvedPlannedDate =
+    canUseRecurrence && recurrenceForm.isEnabled && !plannedDate
+      ? (initialPlannedDate ?? todayKey)
+      : plannedDate
+  const hasPlannedDate = Boolean(resolvedPlannedDate)
+
+  return {
+    assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
+    dueDate: null,
+    icon,
+    importance: getTaskImportanceFromType(taskType),
+    note,
+    plannedDate: resolvedPlannedDate || null,
+    plannedEndTime:
+      hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
+    plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
+    project: selectedProject?.name ?? '',
+    projectId: selectedProject?.id ?? null,
+    recurrence: canUseRecurrence
+      ? buildTaskRecurrenceFromForm(
+          recurrenceForm,
+          resolvedPlannedDate || todayKey,
+        )
+      : null,
+    remindBeforeStart: isSharedWorkspace ? false : remindBeforeStart,
+    reminderTimeZone:
+      !isSharedWorkspace && remindBeforeStart
+        ? resolveClientTimeZone()
+        : undefined,
+    resource: getResourceFromValue(resource),
+    requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
+    routine:
+      taskType === 'routine' ? buildRoutineTaskFromForm(routineForm) : null,
+    sphereId: selectedProject?.id ?? null,
+    title: normalizedTitle,
+    urgency: getTaskUrgencyFromType(taskType),
+  }
+}
+
+export interface BuildTaskComposerHabitInputParams {
+  icon: string
+  initialPlannedDate: string | null
+  note: string
+  plannedDate: string
+  projectId: string
+  routineForm: RoutineTaskFormState
+  spheres: Sphere[]
+  title: string
+  todayKey: string
+}
+
+export function buildTaskComposerHabitInput({
+  icon,
+  initialPlannedDate,
+  note,
+  plannedDate,
+  projectId,
+  routineForm,
+  spheres,
+  title,
+  todayKey,
+}: BuildTaskComposerHabitInputParams): NewHabitInput | null {
+  const normalizedTitle = title.trim()
+
+  if (!normalizedTitle) {
+    return null
+  }
+
+  const selectedProject =
+    spheres.find((project) => project.id === projectId) ?? null
+  const routine = buildRoutineTaskFromForm(routineForm)
+
+  return {
+    color: '#2f6f62',
+    daysOfWeek: routine.daysOfWeek,
+    description: note.trim(),
+    endDate: null,
+    frequency: routine.frequency,
+    icon: icon.trim() || 'check',
+    reminderTime: null,
+    sphereId: selectedProject?.id ?? null,
+    startDate: plannedDate || initialPlannedDate || todayKey,
+    targetType: routine.targetType,
+    targetValue: routine.targetValue,
+    title: normalizedTitle,
+    unit: routine.targetType === 'count' ? routine.unit : '',
   }
 }
 
