@@ -5,6 +5,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

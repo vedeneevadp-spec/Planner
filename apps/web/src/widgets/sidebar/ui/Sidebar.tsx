@@ -1,4 +1,4 @@
-import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { isHabitEntryComplete } from '@/entities/habit'
@@ -7,49 +7,35 @@ import { useCleaningSummary } from '@/features/cleaning'
 import { useHabitsToday } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import {
-  getCreateSharedWorkspaceErrorMessage,
-  getDeleteSharedWorkspaceErrorMessage,
-  getLeaveSharedWorkspaceErrorMessage,
-  getUpdateSharedWorkspaceErrorMessage,
-  getWorkspaceParticipantsErrorMessage,
   setSelectedWorkspaceIdForActors,
-  useAcceptWorkspaceInvitation,
-  useCreateSharedWorkspace,
-  useDeclineWorkspaceInvitation,
-  useDeleteSharedWorkspace,
-  useLeaveSharedWorkspace,
   usePlannerSession,
   UserAvatar,
-  useReceivedWorkspaceInvitations,
   useSessionAuth,
-  useUpdateSharedWorkspace,
   WorkspaceParticipantsDialog,
 } from '@/features/session'
 import { useShoppingListSummary } from '@/features/shopping-list'
 import { getVisibleNavigationRouteDefinitions } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'
-import { formatLongDate, getDateKey } from '@/shared/lib/date'
+import { getDateKey } from '@/shared/lib/date'
 import { useColorTheme } from '@/shared/lib/theme'
 import {
-  CalendarIcon,
-  CheckIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
   EditIcon,
-  HomeIcon,
   MoonIcon,
-  PlusIcon,
   SettingsIcon,
-  ShoppingBagIcon,
-  SpheresIcon,
   SunIcon,
-  TrashIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import styles from './Sidebar.module.css'
+import { MoreIcon, SidebarNavIcon } from './SidebarIcons'
+import { SidebarNavigation } from './SidebarNavigation'
+import { SidebarTodaySummary } from './SidebarTodaySummary'
+import { SidebarWorkspaceActions } from './SidebarWorkspaceActions'
+import { SidebarWorkspaceHeader } from './SidebarWorkspaceHeader'
 
 interface MobileMoreSheetLocation {
   key: string
@@ -73,15 +59,6 @@ export function Sidebar({
   const auth = useSessionAuth()
   const { isDark, toggleTheme } = useColorTheme()
   const { data: session } = usePlannerSession()
-  const createSharedWorkspaceMutation = useCreateSharedWorkspace()
-  const updateSharedWorkspaceMutation = useUpdateSharedWorkspace()
-  const deleteSharedWorkspaceMutation = useDeleteSharedWorkspace()
-  const leaveSharedWorkspaceMutation = useLeaveSharedWorkspace()
-  const receivedWorkspaceInvitationsQuery = useReceivedWorkspaceInvitations({
-    enabled: Boolean(session),
-  })
-  const acceptWorkspaceInvitationMutation = useAcceptWorkspaceInvitation()
-  const declineWorkspaceInvitationMutation = useDeclineWorkspaceInvitation()
   const [moreSheetLocation, setMoreSheetLocation] =
     useState<MobileMoreSheetLocation | null>(null)
   const [isDesktopWorkspaceActionsOpen, setIsDesktopWorkspaceActionsOpen] =
@@ -90,21 +67,6 @@ export function Sidebar({
     useState(false)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
-  const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
-    useState(false)
-  const [createWorkspaceName, setCreateWorkspaceName] = useState('')
-  const [createWorkspaceFormError, setCreateWorkspaceFormError] = useState<
-    string | null
-  >(null)
-  const [isRenameWorkspaceFormOpen, setIsRenameWorkspaceFormOpen] =
-    useState(false)
-  const [renameWorkspaceName, setRenameWorkspaceName] = useState('')
-  const [workspaceManageError, setWorkspaceManageError] = useState<
-    string | null
-  >(null)
-  const [workspaceInvitationError, setWorkspaceInvitationError] = useState<
-    string | null
-  >(null)
   const todayKey = getDateKey(new Date())
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const summary = getPlannerSummary(tasks, todayKey)
@@ -117,11 +79,6 @@ export function Sidebar({
       item.entry?.status !== 'skipped' &&
       !isHabitEntryComplete(item.habit, item.entry),
   ).length
-  const canManageCurrentSharedWorkspace =
-    session?.workspace.kind === 'shared' && session.role === 'owner'
-  const sharedWorkspaceCount =
-    session?.workspaces.filter((workspace) => workspace.kind === 'shared')
-      .length ?? 0
   const visibleNavigation = getVisibleNavigationRouteDefinitions(
     isSharedWorkspace ? 'shared' : 'personal',
   ).filter(
@@ -158,29 +115,6 @@ export function Sidebar({
     mobileMoreNavigation.some((item) =>
       matchesRoute(location.pathname, item.to),
     )
-  const createWorkspaceError =
-    createWorkspaceFormError ||
-    (createSharedWorkspaceMutation.error
-      ? getCreateSharedWorkspaceErrorMessage(
-          createSharedWorkspaceMutation.error,
-        )
-      : null)
-  const workspaceOwnerActionError =
-    workspaceManageError ||
-    (updateSharedWorkspaceMutation.error
-      ? getUpdateSharedWorkspaceErrorMessage(
-          updateSharedWorkspaceMutation.error,
-        )
-      : deleteSharedWorkspaceMutation.error
-        ? getDeleteSharedWorkspaceErrorMessage(
-            deleteSharedWorkspaceMutation.error,
-          )
-        : null)
-  const workspaceLeaveActionError = leaveSharedWorkspaceMutation.error
-    ? getLeaveSharedWorkspaceErrorMessage(leaveSharedWorkspaceMutation.error)
-    : null
-  const receivedWorkspaceInvitations =
-    receivedWorkspaceInvitationsQuery.data?.invitations ?? []
   const themeToggleLabel = isDark
     ? 'Включить светлую тему'
     : 'Включить темную тему'
@@ -220,496 +154,12 @@ export function Sidebar({
     }
   }, [closeMobileMoreSheet, isMoreOpen])
 
-  function closeCreateWorkspaceForm() {
-    setIsCreateWorkspaceFormOpen(false)
-    setCreateWorkspaceName('')
-    setCreateWorkspaceFormError(null)
-    createSharedWorkspaceMutation.reset()
-  }
-
-  function openCreateWorkspaceForm() {
-    setIsCreateWorkspaceFormOpen(true)
-    setCreateWorkspaceFormError(null)
-    createSharedWorkspaceMutation.reset()
-  }
-
-  async function handleCreateWorkspaceSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault()
-
-    const name = createWorkspaceName.trim()
-
-    if (!name) {
-      setCreateWorkspaceFormError('Введите название пространства.')
-      return
-    }
-
-    setCreateWorkspaceFormError(null)
-
-    try {
-      await createSharedWorkspaceMutation.mutateAsync({ name })
-      closeCreateWorkspaceForm()
-    } catch (error) {
-      setCreateWorkspaceFormError(getCreateSharedWorkspaceErrorMessage(error))
-    }
-  }
-
-  function closeRenameWorkspaceForm() {
-    setIsRenameWorkspaceFormOpen(false)
-    setWorkspaceManageError(null)
-    setRenameWorkspaceName(session?.workspace.name ?? '')
-    updateSharedWorkspaceMutation.reset()
-    deleteSharedWorkspaceMutation.reset()
-  }
-
-  function openRenameWorkspaceForm() {
-    if (!session) {
-      return
-    }
-
-    setIsRenameWorkspaceFormOpen(true)
-    setWorkspaceManageError(null)
-    setRenameWorkspaceName(session.workspace.name)
-    updateSharedWorkspaceMutation.reset()
-    deleteSharedWorkspaceMutation.reset()
-  }
-
-  async function handleRenameWorkspaceSubmit(
-    event: FormEvent<HTMLFormElement>,
-  ) {
-    event.preventDefault()
-
-    if (!session) {
-      return
-    }
-
-    const name = renameWorkspaceName.trim()
-
-    if (!name) {
-      setWorkspaceManageError('Введите новое название пространства.')
-      return
-    }
-
-    if (name === session.workspace.name.trim()) {
-      closeRenameWorkspaceForm()
-      return
-    }
-
-    setWorkspaceManageError(null)
-
-    try {
-      await updateSharedWorkspaceMutation.mutateAsync({ name })
-      closeRenameWorkspaceForm()
-    } catch (error) {
-      setWorkspaceManageError(getUpdateSharedWorkspaceErrorMessage(error))
-    }
-  }
-
-  async function handleDeleteWorkspace() {
-    if (!session) {
-      return
-    }
-
-    if (
-      !window.confirm(
-        `Удалить пространство «${session.workspace.name}» вместе со всеми данными?`,
-      )
-    ) {
-      return
-    }
-
-    setWorkspaceManageError(null)
-    updateSharedWorkspaceMutation.reset()
-    deleteSharedWorkspaceMutation.reset()
-
-    try {
-      await deleteSharedWorkspaceMutation.mutateAsync()
-      setIsWorkspaceParticipantsOpen(false)
-      setIsRenameWorkspaceFormOpen(false)
-      closeMobileMoreSheet()
-    } catch (error) {
-      setWorkspaceManageError(getDeleteSharedWorkspaceErrorMessage(error))
-    }
-  }
-
-  async function handleLeaveWorkspace() {
-    if (!session) {
-      return
-    }
-
-    if (!window.confirm(`Выйти из пространства «${session.workspace.name}»?`)) {
-      return
-    }
-
-    setWorkspaceManageError(null)
-    leaveSharedWorkspaceMutation.reset()
-
-    try {
-      await leaveSharedWorkspaceMutation.mutateAsync()
-      setIsWorkspaceParticipantsOpen(false)
-      setIsRenameWorkspaceFormOpen(false)
-      closeMobileMoreSheet()
-    } catch (error) {
-      setWorkspaceManageError(getLeaveSharedWorkspaceErrorMessage(error))
-    }
-  }
-
-  async function handleAcceptInvitation(input: {
-    invitationId: string
-    workspaceId: string
-  }) {
-    setWorkspaceInvitationError(null)
-
-    try {
-      await acceptWorkspaceInvitationMutation.mutateAsync(input)
-      closeMobileMoreSheet()
-    } catch (error) {
-      setWorkspaceInvitationError(getWorkspaceParticipantsErrorMessage(error))
-    }
-  }
-
-  async function handleDeclineInvitation(invitationId: string) {
-    setWorkspaceInvitationError(null)
-
-    try {
-      await declineWorkspaceInvitationMutation.mutateAsync(invitationId)
-    } catch (error) {
-      setWorkspaceInvitationError(getWorkspaceParticipantsErrorMessage(error))
-    }
-  }
-
-  function renderCreateWorkspaceControls(extraClassName?: string) {
-    return (
-      <>
-        <button
-          className={cx(styles.createWorkspaceButton, extraClassName)}
-          type="button"
-          aria-expanded={isCreateWorkspaceFormOpen}
-          disabled={
-            createSharedWorkspaceMutation.isPending || sharedWorkspaceCount >= 3
-          }
-          onClick={() => {
-            if (isCreateWorkspaceFormOpen) {
-              closeCreateWorkspaceForm()
-              return
-            }
-
-            openCreateWorkspaceForm()
-          }}
-        >
-          <PlusIcon size={18} strokeWidth={2.15} />
-          <span>Создать пространство</span>
-        </button>
-
-        {isCreateWorkspaceFormOpen ? (
-          <form
-            className={styles.workspaceInlineForm}
-            onSubmit={(event) => {
-              void handleCreateWorkspaceSubmit(event)
-            }}
-          >
-            <label className={styles.workspaceFormField}>
-              <span>Название</span>
-              <input
-                type="text"
-                value={createWorkspaceName}
-                maxLength={80}
-                placeholder="Например, Семья"
-                onChange={(event) => {
-                  setCreateWorkspaceName(event.target.value)
-                  setCreateWorkspaceFormError(null)
-                }}
-              />
-            </label>
-
-            <div className={styles.workspaceFormActions}>
-              <button
-                className={styles.inlinePrimaryButton}
-                type="submit"
-                disabled={createSharedWorkspaceMutation.isPending}
-              >
-                <CheckIcon size={16} strokeWidth={2.15} />
-                <span>
-                  {createSharedWorkspaceMutation.isPending
-                    ? 'Создаём...'
-                    : 'Создать'}
-                </span>
-              </button>
-
-              <button
-                className={styles.inlineGhostButton}
-                type="button"
-                disabled={createSharedWorkspaceMutation.isPending}
-                onClick={() => {
-                  closeCreateWorkspaceForm()
-                }}
-              >
-                <CloseIcon size={16} strokeWidth={2.15} />
-                <span>Отмена</span>
-              </button>
-            </div>
-          </form>
-        ) : null}
-
-        {createWorkspaceError ? (
-          <p className={styles.connectionError}>{createWorkspaceError}</p>
-        ) : null}
-      </>
-    )
-  }
-
-  function renderWorkspaceOwnerControls(extraClassName?: string) {
-    if (!canManageCurrentSharedWorkspace || !session) {
-      return null
-    }
-
-    return (
-      <>
-        <div className={styles.workspaceOwnerActions}>
-          <button
-            className={cx(
-              styles.createWorkspaceButton,
-              styles.secondaryWorkspaceButton,
-              styles.workspaceActionButton,
-              extraClassName,
-            )}
-            type="button"
-            aria-expanded={isRenameWorkspaceFormOpen}
-            disabled={updateSharedWorkspaceMutation.isPending}
-            onClick={() => {
-              if (isRenameWorkspaceFormOpen) {
-                closeRenameWorkspaceForm()
-                return
-              }
-
-              openRenameWorkspaceForm()
-            }}
-          >
-            <EditIcon size={18} strokeWidth={2.1} />
-            <span>Переименовать</span>
-          </button>
-
-          <button
-            className={cx(
-              styles.createWorkspaceButton,
-              styles.workspaceDeleteButton,
-              styles.workspaceActionButton,
-              extraClassName,
-            )}
-            type="button"
-            disabled={deleteSharedWorkspaceMutation.isPending}
-            onClick={() => {
-              void handleDeleteWorkspace()
-            }}
-          >
-            <TrashIcon size={18} strokeWidth={2.1} />
-            <span>
-              {deleteSharedWorkspaceMutation.isPending
-                ? 'Удаляем...'
-                : 'Удалить'}
-            </span>
-          </button>
-        </div>
-
-        {isRenameWorkspaceFormOpen ? (
-          <form
-            className={styles.workspaceInlineForm}
-            onSubmit={(event) => {
-              void handleRenameWorkspaceSubmit(event)
-            }}
-          >
-            <label className={styles.workspaceFormField}>
-              <span>Новое название</span>
-              <input
-                type="text"
-                value={renameWorkspaceName}
-                maxLength={80}
-                placeholder="Название пространства"
-                onChange={(event) => {
-                  setRenameWorkspaceName(event.target.value)
-                  setWorkspaceManageError(null)
-                }}
-              />
-            </label>
-
-            <div className={styles.workspaceFormActions}>
-              <button
-                className={styles.inlinePrimaryButton}
-                type="submit"
-                disabled={updateSharedWorkspaceMutation.isPending}
-              >
-                <CheckIcon size={16} strokeWidth={2.15} />
-                <span>
-                  {updateSharedWorkspaceMutation.isPending
-                    ? 'Сохраняем...'
-                    : 'Сохранить'}
-                </span>
-              </button>
-
-              <button
-                className={styles.inlineGhostButton}
-                type="button"
-                disabled={updateSharedWorkspaceMutation.isPending}
-                onClick={() => {
-                  closeRenameWorkspaceForm()
-                }}
-              >
-                <CloseIcon size={16} strokeWidth={2.15} />
-                <span>Отмена</span>
-              </button>
-            </div>
-          </form>
-        ) : null}
-
-        {workspaceOwnerActionError ? (
-          <p className={styles.connectionError}>{workspaceOwnerActionError}</p>
-        ) : null}
-      </>
-    )
-  }
-
-  function renderWorkspaceLeaveControls(extraClassName?: string) {
-    if (!isSharedWorkspace || canManageCurrentSharedWorkspace || !session) {
-      return null
-    }
-
-    return (
-      <>
-        <button
-          className={cx(
-            styles.createWorkspaceButton,
-            styles.workspaceDeleteButton,
-            styles.workspaceActionButton,
-            extraClassName,
-          )}
-          type="button"
-          disabled={leaveSharedWorkspaceMutation.isPending}
-          onClick={() => {
-            void handleLeaveWorkspace()
-          }}
-        >
-          <TrashIcon size={18} strokeWidth={2.1} />
-          <span>
-            {leaveSharedWorkspaceMutation.isPending
-              ? 'Выходим...'
-              : 'Выйти из пространства'}
-          </span>
-        </button>
-
-        {workspaceLeaveActionError ? (
-          <p className={styles.connectionError}>{workspaceLeaveActionError}</p>
-        ) : null}
-      </>
-    )
-  }
-
-  function renderReceivedInvitations(extraClassName?: string) {
-    if (receivedWorkspaceInvitations.length === 0) {
-      return null
-    }
-
-    return (
-      <div className={cx(styles.invitationPanel, extraClassName)}>
-        <p className={styles.invitationPanelTitle}>Приглашения</p>
-
-        {receivedWorkspaceInvitations.map((invitation) => {
-          const isAccepting =
-            acceptWorkspaceInvitationMutation.isPending &&
-            acceptWorkspaceInvitationMutation.variables?.invitationId ===
-              invitation.id
-          const isDeclining =
-            declineWorkspaceInvitationMutation.isPending &&
-            declineWorkspaceInvitationMutation.variables === invitation.id
-
-          return (
-            <article key={invitation.id} className={styles.invitationCard}>
-              <div className={styles.invitationCopy}>
-                <strong>{invitation.workspace.name}</strong>
-                <span>{getGroupRoleLabel(invitation.groupRole)}</span>
-              </div>
-              <div className={styles.invitationActions}>
-                <button
-                  className={styles.inlinePrimaryButton}
-                  type="button"
-                  disabled={isAccepting || isDeclining}
-                  onClick={() => {
-                    void handleAcceptInvitation({
-                      invitationId: invitation.id,
-                      workspaceId: invitation.workspace.id,
-                    })
-                  }}
-                >
-                  <CheckIcon size={16} strokeWidth={2.15} />
-                  <span>{isAccepting ? 'Входим...' : 'Вступить'}</span>
-                </button>
-                <button
-                  className={styles.inlineGhostButton}
-                  type="button"
-                  disabled={isAccepting || isDeclining}
-                  onClick={() => {
-                    void handleDeclineInvitation(invitation.id)
-                  }}
-                >
-                  <CloseIcon size={16} strokeWidth={2.15} />
-                  <span>{isDeclining ? 'Отклоняем...' : 'Отклонить'}</span>
-                </button>
-              </div>
-            </article>
-          )
-        })}
-
-        {workspaceInvitationError ? (
-          <p className={styles.connectionError}>{workspaceInvitationError}</p>
-        ) : null}
-      </div>
-    )
-  }
-
-  function renderWorkspaceActionsMenu(isMobile = false) {
-    const actionButtonClassName = isMobile
-      ? styles.mobileCreateWorkspaceButton
-      : undefined
-
-    return (
-      <div
-        className={cx(
-          styles.workspaceActionsMenu,
-          isMobile && styles.mobileWorkspaceActionsMenu,
-        )}
-      >
-        {renderCreateWorkspaceControls(actionButtonClassName)}
-
-        {renderReceivedInvitations(
-          isMobile ? styles.mobileInvitationPanel : undefined,
-        )}
-
-        {renderWorkspaceOwnerControls(actionButtonClassName)}
-
-        {renderWorkspaceLeaveControls(actionButtonClassName)}
-
-        {isSharedWorkspace ? (
-          <button
-            className={cx(
-              styles.createWorkspaceButton,
-              actionButtonClassName,
-              styles.secondaryWorkspaceButton,
-            )}
-            type="button"
-            onClick={() => {
-              setIsMobileWorkspaceActionsOpen(false)
-              setIsDesktopWorkspaceActionsOpen(false)
-              closeMobileMoreSheet()
-              setIsWorkspaceParticipantsOpen(true)
-            }}
-          >
-            <UserIcon size={18} strokeWidth={2.1} />
-            <span>Участники</span>
-          </button>
-        ) : null}
-      </div>
-    )
-  }
+  const openWorkspaceParticipants = useCallback(() => {
+    setIsMobileWorkspaceActionsOpen(false)
+    setIsDesktopWorkspaceActionsOpen(false)
+    closeMobileMoreSheet()
+    setIsWorkspaceParticipantsOpen(true)
+  }, [closeMobileMoreSheet])
 
   return (
     <>
@@ -750,7 +200,7 @@ export function Sidebar({
               }
             >
               <span className={styles.mobileTabIcon} aria-hidden="true">
-                {renderMobileNavIcon(item.to)}
+                <SidebarNavIcon route={item.to} />
               </span>
               <span className={styles.mobileTabLabel}>{item.label}</span>
             </NavLink>
@@ -820,49 +270,30 @@ export function Sidebar({
               </div>
 
               <div className={styles.mobileSheetCard}>
-                <div className={styles.connectionHeader}>
-                  <div className={styles.workspaceIntro}>
-                    <h6 className={styles.workspaceTitle}>
-                      {session?.workspace.name ?? 'Определяем...'}
-                    </h6>
-                    <p className={styles.workspaceSubtitle}>
-                      {session?.actor.displayName ?? 'Загружаем профиль'}
-                    </p>
-                  </div>
-                  <div className={styles.connectionHeaderActions}>
-                    <span
-                      className={cx(
-                        styles.stateBadge,
-                        errorMessage
-                          ? styles.stateBadgeError
-                          : isSyncing || isLoading
-                            ? styles.stateBadgePending
-                            : styles.stateBadgeOk,
-                      )}
-                    >
-                      {syncStateLabel}
-                    </span>
-
-                    {session ? (
-                      <button
-                        className={styles.workspaceSettingsButton}
-                        type="button"
-                        aria-label="Действия с workspace в мобильном меню"
-                        aria-expanded={isMobileWorkspaceActionsOpen}
-                        aria-controls="mobile-workspace-actions"
-                        onClick={() => {
-                          setIsMobileWorkspaceActionsOpen((value) => !value)
-                        }}
-                      >
-                        <WorkspaceGearIcon />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
+                <SidebarWorkspaceHeader
+                  actionAriaLabel="Действия с workspace в мобильном меню"
+                  actionsControlId="mobile-workspace-actions"
+                  errorMessage={errorMessage}
+                  isActionsOpen={isMobileWorkspaceActionsOpen}
+                  isLoading={isLoading}
+                  isSyncing={isSyncing}
+                  onToggleActions={() => {
+                    setIsMobileWorkspaceActionsOpen((value) => !value)
+                  }}
+                  session={session}
+                  syncStateLabel={syncStateLabel}
+                />
 
                 {isMobileWorkspaceActionsOpen ? (
                   <div id="mobile-workspace-actions">
-                    {renderWorkspaceActionsMenu(true)}
+                    {session ? (
+                      <SidebarWorkspaceActions
+                        isMobile
+                        onCloseMobileMoreSheet={closeMobileMoreSheet}
+                        onOpenParticipants={openWorkspaceParticipants}
+                        session={session}
+                      />
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -925,7 +356,7 @@ export function Sidebar({
                           closeMobileMoreSheet()
                         }}
                       >
-                        {renderMobileNavIcon(item.to)}
+                        <SidebarNavIcon route={item.to} />
                         <span>{item.label}</span>
                       </NavLink>
                     ))}
@@ -1046,45 +477,19 @@ export function Sidebar({
         </div>
 
         <section className={styles.connectionCard}>
-          <div className={styles.connectionHeader}>
-            <div className={styles.workspaceIntro}>
-              <h6 className={styles.workspaceTitle}>
-                {session?.workspace.name ?? 'Определяем...'}
-              </h6>
-              <p className={styles.workspaceSubtitle}>
-                {session?.actor.displayName ?? 'Загружаем профиль'}
-              </p>
-            </div>
-            <div className={styles.connectionHeaderActions}>
-              <span
-                className={cx(
-                  styles.stateBadge,
-                  errorMessage
-                    ? styles.stateBadgeError
-                    : isSyncing || isLoading
-                      ? styles.stateBadgePending
-                      : styles.stateBadgeOk,
-                )}
-              >
-                {syncStateLabel}
-              </span>
-
-              {session ? (
-                <button
-                  className={styles.workspaceSettingsButton}
-                  type="button"
-                  aria-label="Действия с workspace"
-                  aria-expanded={isDesktopWorkspaceActionsOpen}
-                  aria-controls="desktop-workspace-actions"
-                  onClick={() => {
-                    setIsDesktopWorkspaceActionsOpen((value) => !value)
-                  }}
-                >
-                  <WorkspaceGearIcon />
-                </button>
-              ) : null}
-            </div>
-          </div>
+          <SidebarWorkspaceHeader
+            actionAriaLabel="Действия с workspace"
+            actionsControlId="desktop-workspace-actions"
+            errorMessage={errorMessage}
+            isActionsOpen={isDesktopWorkspaceActionsOpen}
+            isLoading={isLoading}
+            isSyncing={isSyncing}
+            onToggleActions={() => {
+              setIsDesktopWorkspaceActionsOpen((value) => !value)
+            }}
+            session={session}
+            syncStateLabel={syncStateLabel}
+          />
 
           {session ? (
             <div className={styles.workspaceControls}>
@@ -1106,7 +511,11 @@ export function Sidebar({
 
               {isDesktopWorkspaceActionsOpen ? (
                 <div id="desktop-workspace-actions">
-                  {renderWorkspaceActionsMenu()}
+                  <SidebarWorkspaceActions
+                    onCloseMobileMoreSheet={closeMobileMoreSheet}
+                    onOpenParticipants={openWorkspaceParticipants}
+                    session={session}
+                  />
                 </div>
               ) : null}
             </div>
@@ -1171,66 +580,22 @@ export function Sidebar({
           ) : null}
         </section>
 
-        <nav aria-label="Main navigation" className={styles.navList}>
-          {visibleNavigation.map((item) => {
-            const count =
-              item.to === '/today'
-                ? summary.focusCount + summary.overdueCount
-                : item.to === '/calendar'
-                  ? plannedTaskCount
-                  : item.to === '/cleaning'
-                    ? cleaningSummary.urgentCount || cleaningSummary.dueCount
-                    : item.to === '/habits'
-                      ? pendingHabitTodayCount
-                      : item.to === '/shopping'
-                        ? shoppingListSummary.activeItemCount
-                        : item.to === '/timeline'
-                          ? summary.timelineCount
-                          : item.to === '/spheres'
-                            ? spheres.length
-                            : (session?.appRole ?? 'Admin')
+        <SidebarNavigation
+          counts={{
+            appRoleLabel: session?.appRole ?? 'Admin',
+            cleaningDueCount: cleaningSummary.dueCount,
+            cleaningUrgentCount: cleaningSummary.urgentCount,
+            pendingHabitTodayCount,
+            plannedTaskCount,
+            shoppingActiveItemCount: shoppingListSummary.activeItemCount,
+            sphereCount: spheres.length,
+            summary,
+          }}
+          isCollapsed={isCollapsed}
+          items={visibleNavigation}
+        />
 
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                title={isCollapsed ? item.label : undefined}
-                className={({ isActive }) =>
-                  cx(styles.navItem, isActive && styles.navItemActive)
-                }
-              >
-                <span className={styles.navIcon} aria-hidden="true">
-                  {renderNavIcon(item.to)}
-                </span>
-                <span className={styles.navLabel}>{item.label}</span>
-                <strong className={styles.navCount}>{count}</strong>
-              </NavLink>
-            )
-          })}
-        </nav>
-
-        <section className={styles.summaryCard}>
-          <p className={styles.summaryLabel}>Сегодня</p>
-          <strong>{formatLongDate(todayKey)}</strong>
-          <div className={styles.summaryGrid}>
-            <div>
-              <span>Focus</span>
-              <strong>{summary.focusCount}</strong>
-            </div>
-            <div>
-              <span>Timeline</span>
-              <strong>{summary.timelineCount}</strong>
-            </div>
-            <div>
-              <span>Tomorrow</span>
-              <strong>{summary.tomorrowCount}</strong>
-            </div>
-            <div>
-              <span>Done</span>
-              <strong>{summary.doneTodayCount}</strong>
-            </div>
-          </div>
-        </section>
+        <SidebarTodaySummary summary={summary} todayKey={todayKey} />
       </aside>
 
       {isWorkspaceParticipantsOpen && isSharedWorkspace ? (
@@ -1247,112 +612,4 @@ export function Sidebar({
 
 function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
-}
-
-function WorkspaceGearIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      stroke="currentColor"
-      strokeWidth="1.85"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M10.2 4.6H13.8L14.25 6.55C14.73 6.73 15.18 6.98 15.58 7.29L17.46 6.68L19.25 9.82L17.82 11.15C17.86 11.43 17.88 11.71 17.88 12C17.88 12.29 17.86 12.57 17.82 12.85L19.25 14.18L17.46 17.32L15.58 16.71C15.18 17.02 14.73 17.27 14.25 17.45L13.8 19.4H10.2L9.75 17.45C9.27 17.27 8.82 17.02 8.42 16.71L6.54 17.32L4.75 14.18L6.18 12.85C6.14 12.57 6.12 12.29 6.12 12C6.12 11.71 6.14 11.43 6.18 11.15L4.75 9.82L6.54 6.68L8.42 7.29C8.82 6.98 9.27 6.73 9.75 6.55L10.2 4.6Z" />
-      <circle cx="12" cy="12" r="2.45" />
-    </svg>
-  )
-}
-
-function renderNavIcon(route: string) {
-  if (route === '/today') {
-    return <CheckIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/calendar') {
-    return <CalendarIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/shopping') {
-    return <ShoppingBagIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/cleaning') {
-    return <HomeIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/habits') {
-    return <CheckIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/spheres') {
-    return <SpheresIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/admin') {
-    return <SettingsIcon size={20} strokeWidth={1.9} />
-  }
-
-  return <TimelineIcon />
-}
-
-function renderMobileNavIcon(route: string) {
-  return renderNavIcon(route)
-}
-
-function getGroupRoleLabel(role: string): string {
-  if (role === 'group_admin') {
-    return 'Group Admin'
-  }
-
-  if (role === 'senior_member') {
-    return 'Senior Member'
-  }
-
-  return 'Member'
-}
-
-function TimelineIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      stroke="currentColor"
-      strokeWidth="1.9"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M4 7H20" />
-      <path d="M4 17H20" />
-      <circle cx="8" cy="7" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="15" cy="17" r="1.6" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-    </svg>
-  )
-}
-
-function MoreIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <circle cx="6" cy="12" r="1.8" fill="currentColor" />
-      <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-      <circle cx="18" cy="12" r="1.8" fill="currentColor" />
-    </svg>
-  )
 }
