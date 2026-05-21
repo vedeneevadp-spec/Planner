@@ -225,7 +225,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
           : storedSession?.refreshToken
 
         if (isNativeSessionRuntime && !refreshToken) {
-          if (storedSession || hasDeviceAuthSnapshot(snapshot)) {
+          if (storedSession) {
             return keepDeviceSession(
               new Error('Native auth session has no refresh token.'),
               'Native auth session refresh skipped.',
@@ -332,7 +332,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       isNativeSessionRuntime,
       keepDeviceSession,
       persistAuthSession,
-      snapshot,
+      snapshot.refreshToken,
     ])
 
   const restoreSession =
@@ -344,7 +344,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
       const storedSession = await readStoredAuthSession()
 
       if (!storedSession) {
-        if (isNativeSessionRuntime && hasDeviceAuthSnapshot(snapshot)) {
+        if (isNativeSessionRuntime && snapshot.sessionAccessToken) {
           return keepDeviceSession(
             new Error('Native auth storage returned no session.'),
             'Native auth session restore skipped.',
@@ -674,15 +674,6 @@ function toAuthSnapshot(
       : null,
     userId: session.userId,
   }
-}
-
-function hasDeviceAuthSnapshot(snapshot: AuthSnapshot): boolean {
-  return Boolean(
-    snapshot.email ||
-    snapshot.refreshToken ||
-    snapshot.sessionAccessToken ||
-    snapshot.userId,
-  )
 }
 
 function isAccessTokenUsable(expiresAt: string): boolean {

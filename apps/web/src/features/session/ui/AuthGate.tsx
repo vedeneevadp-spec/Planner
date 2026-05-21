@@ -22,6 +22,7 @@ import {
 } from '../lib/auth-form'
 import {
   getRememberSessionPreference,
+  hasNativeAuthSessionHint,
   setRememberSessionPreference,
 } from '../lib/auth-session-storage'
 import { isNativeSessionPersistenceRuntime } from '../lib/native-session-storage'
@@ -121,7 +122,8 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const screenMode: AuthScreenMode = isPasswordRecovery ? 'recover' : mode
   const modeContent = AUTH_MODE_CONTENT[screenMode]
-  const shouldShowRememberMe = !isNativeSessionPersistenceRuntime()
+  const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
+  const shouldShowRememberMe = !isNativeSessionRuntime
   const [isRecovering, setIsRecovering] = useState(false)
   const plannerSessionError = plannerSessionQuery.error
   const refetchPlannerSession = plannerSessionQuery.refetch
@@ -193,7 +195,15 @@ export function AuthGate({ children }: PropsWithChildren) {
     )
   }
 
-  if (!isPasswordRecovery && plannerSessionQuery.data && !authNotice) {
+  if (
+    !isPasswordRecovery &&
+    isAuthEnabled &&
+    isLoading &&
+    plannerSessionQuery.data &&
+    !authNotice &&
+    isNativeSessionRuntime &&
+    hasNativeAuthSessionHint()
+  ) {
     return children
   }
 
@@ -203,6 +213,42 @@ export function AuthGate({ children }: PropsWithChildren) {
         copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
         title="Проверяем сохраненный вход"
       />
+    )
+  }
+
+  if (
+    !isPasswordRecovery &&
+    plannerSessionQuery.data &&
+    !authNotice &&
+    (!isAuthEnabled || Boolean(accessToken))
+  ) {
+    return children
+  }
+
+  if (
+    !isPasswordRecovery &&
+    plannerSessionQuery.data &&
+    !authNotice &&
+    isAuthEnabled &&
+    !accessToken
+  ) {
+    return (
+      <AuthStatusPanel
+        copy="Локальная сессия есть, но серверный вход не восстановился. Войдите снова, чтобы не работать с неполными данными."
+        title="Нужно восстановить вход"
+      >
+        <div className={styles.actionRow}>
+          <button
+            className={styles.submitButton}
+            type="button"
+            onClick={() => {
+              void expireSession()
+            }}
+          >
+            Войти заново
+          </button>
+        </div>
+      </AuthStatusPanel>
     )
   }
 

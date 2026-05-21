@@ -40,6 +40,7 @@ interface PlannerSessionQueryStub {
 
 const mocks = vi.hoisted(() => ({
   getRememberSessionPreference: vi.fn<() => boolean>(),
+  hasNativeAuthSessionHint: vi.fn<() => boolean>(),
   isNativeSessionPersistenceRuntime: vi.fn<() => boolean>(),
   setRememberSessionPreference: vi.fn<(value: boolean) => void>(),
   usePlannerSession: vi.fn<() => PlannerSessionQueryStub>(),
@@ -55,6 +56,7 @@ vi.mock('@/shared/config/planner-api', () => ({
 
 vi.mock('../lib/auth-session-storage', () => ({
   getRememberSessionPreference: mocks.getRememberSessionPreference,
+  hasNativeAuthSessionHint: mocks.hasNativeAuthSessionHint,
   setRememberSessionPreference: mocks.setRememberSessionPreference,
 }))
 
@@ -103,6 +105,7 @@ describe('AuthGate', () => {
     }
 
     mocks.getRememberSessionPreference.mockReturnValue(true)
+    mocks.hasNativeAuthSessionHint.mockReturnValue(false)
     mocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
     mocks.setRememberSessionPreference.mockReset()
     mocks.usePlannerSession.mockImplementation(() => plannerSessionQuery)
@@ -129,8 +132,27 @@ describe('AuthGate', () => {
     expect(screen.getByText('Planner content')).toBeVisible()
   })
 
-  it('renders cached planner content while auth storage is restoring', () => {
+  it('does not render cached planner content while auth storage is restoring', () => {
     auth.isLoading = true
+    plannerSessionQuery.data = {
+      actorUserId: 'user-1',
+      workspaceId: 'workspace-1',
+    }
+
+    render(
+      <AuthGate>
+        <main>Planner content</main>
+      </AuthGate>,
+    )
+
+    expect(screen.getByText('Проверяем сохраненный вход')).toBeVisible()
+    expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
+  })
+
+  it('keeps cached planner content visible while native auth storage is restoring', () => {
+    auth.isLoading = true
+    mocks.hasNativeAuthSessionHint.mockReturnValue(true)
+    mocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
     plannerSessionQuery.data = {
       actorUserId: 'user-1',
       workspaceId: 'workspace-1',
@@ -146,6 +168,24 @@ describe('AuthGate', () => {
     expect(
       screen.queryByText('Проверяем сохраненный вход'),
     ).not.toBeInTheDocument()
+  })
+
+  it('does not treat a cached planner session as signed in without an access token', () => {
+    auth.isLoading = false
+    auth.accessToken = null
+    plannerSessionQuery.data = {
+      actorUserId: 'user-1',
+      workspaceId: 'workspace-1',
+    }
+
+    render(
+      <AuthGate>
+        <main>Planner content</main>
+      </AuthGate>,
+    )
+
+    expect(screen.getByText('Нужно восстановить вход')).toBeVisible()
+    expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
   })
 
   it('shows a disabled-auth configuration error when no session can be bootstrapped', () => {

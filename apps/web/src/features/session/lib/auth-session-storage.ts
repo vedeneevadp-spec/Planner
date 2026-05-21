@@ -6,6 +6,7 @@ import {
 } from './native-session-storage'
 
 const AUTH_SESSION_STORAGE_KEY = 'planner.auth.session'
+const NATIVE_AUTH_SESSION_HINT_STORAGE_KEY = 'planner.auth.nativeSessionHint'
 const REMEMBER_SESSION_STORAGE_KEY = 'planner.rememberSession'
 const inMemoryAuthStorage = new Map<string, string>()
 const nativeSessionStorage = createNativeSessionStorage()
@@ -16,6 +17,16 @@ export interface StoredAuthSession {
   expiresAt: string
   refreshToken?: string | undefined
   userId: string
+}
+
+interface NativeAuthSessionHint {
+  email: string
+  updatedAt: string
+  userId: string
+}
+
+export function hasNativeAuthSessionHint(): boolean {
+  return readNativeAuthSessionHint() !== null
 }
 
 export function getRememberSessionPreference(): boolean {
@@ -94,6 +105,7 @@ export async function writeStoredAuthSession(
       AUTH_SESSION_STORAGE_KEY,
       serializedSession,
     )
+    writeNativeAuthSessionHint(session)
   } catch (error) {
     console.error('Failed to write auth session storage.', error)
   }
@@ -109,6 +121,7 @@ export async function clearStoredAuthSession(
       console.error('Failed to clear auth session storage.', error)
     }
 
+    clearNativeAuthSessionHint()
     inMemoryAuthStorage.delete(AUTH_SESSION_STORAGE_KEY)
     return
   }
@@ -207,6 +220,61 @@ function getBrowserStorage(scope: 'local' | 'session'): Storage | null {
   }
 }
 
+function readNativeAuthSessionHint(): NativeAuthSessionHint | null {
+  if (!isNativeSessionPersistenceRuntime() || typeof window === 'undefined') {
+    return null
+  }
+
+  try {
+    const rawHint = window.localStorage.getItem(
+      NATIVE_AUTH_SESSION_HINT_STORAGE_KEY,
+    )
+
+    if (!rawHint) {
+      return null
+    }
+
+    const parsedHint = JSON.parse(rawHint) as unknown
+
+    return isNativeAuthSessionHint(parsedHint) ? parsedHint : null
+  } catch {
+    return null
+  }
+}
+
+function writeNativeAuthSessionHint(session: StoredAuthSession): void {
+  if (!isNativeSessionPersistenceRuntime() || typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    const hint: NativeAuthSessionHint = {
+      email: session.email,
+      updatedAt: new Date().toISOString(),
+      userId: session.userId,
+    }
+
+    window.localStorage.setItem(
+      NATIVE_AUTH_SESSION_HINT_STORAGE_KEY,
+      JSON.stringify(hint),
+    )
+  } catch (error) {
+    console.error('Failed to persist native auth session hint.', error)
+  }
+}
+
+function clearNativeAuthSessionHint(): void {
+  if (!isNativeSessionPersistenceRuntime() || typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.removeItem(NATIVE_AUTH_SESSION_HINT_STORAGE_KEY)
+  } catch (error) {
+    console.error('Failed to clear native auth session hint.', error)
+  }
+}
+
 function isStoredAuthSession(value: unknown): value is StoredAuthSession {
   return (
     typeof value === 'object' &&
@@ -219,6 +287,21 @@ function isStoredAuthSession(value: unknown): value is StoredAuthSession {
     typeof value.email === 'string' &&
     typeof value.expiresAt === 'string' &&
     (!('refreshToken' in value) || typeof value.refreshToken === 'string') &&
+    typeof value.userId === 'string'
+  )
+}
+
+function isNativeAuthSessionHint(
+  value: unknown,
+): value is NativeAuthSessionHint {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'email' in value &&
+    'updatedAt' in value &&
+    'userId' in value &&
+    typeof value.email === 'string' &&
+    typeof value.updatedAt === 'string' &&
     typeof value.userId === 'string'
   )
 }

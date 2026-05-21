@@ -87,13 +87,19 @@ export function Sidebar({
       session?.appRole === 'admin' ||
       session?.appRole === 'owner',
   )
-  const syncStateLabel = errorMessage
-    ? 'Connection issue'
-    : isLoading
-      ? 'Loading'
-      : isSyncing
-        ? 'Syncing'
-        : 'Connected'
+  const isAuthRestoring = auth.isAuthEnabled && auth.isLoading
+  const hasAuthConnectionIssue =
+    auth.isAuthEnabled && !auth.isLoading && !auth.accessToken
+  const syncStateLabel =
+    errorMessage || hasAuthConnectionIssue
+      ? 'Connection issue'
+      : isLoading || isAuthRestoring
+        ? 'Loading'
+        : isSyncing
+          ? 'Syncing'
+          : 'Connected'
+  const connectionStateErrorMessage =
+    errorMessage ?? (hasAuthConnectionIssue ? 'Auth session unavailable' : null)
   const accountLabel =
     auth.email ??
     session?.actor.email ??
@@ -288,7 +294,7 @@ export function Sidebar({
                 <SidebarWorkspaceHeader
                   actionAriaLabel="Действия с workspace в мобильном меню"
                   actionsControlId="mobile-workspace-actions"
-                  errorMessage={errorMessage}
+                  errorMessage={connectionStateErrorMessage}
                   isActionsOpen={isMobileWorkspaceActionsOpen}
                   isLoading={isLoading}
                   isSyncing={isSyncing}
@@ -494,7 +500,7 @@ export function Sidebar({
           <SidebarWorkspaceHeader
             actionAriaLabel="Действия с workspace"
             actionsControlId="desktop-workspace-actions"
-            errorMessage={errorMessage}
+            errorMessage={connectionStateErrorMessage}
             isActionsOpen={isDesktopWorkspaceActionsOpen}
             isLoading={isLoading}
             isSyncing={isSyncing}

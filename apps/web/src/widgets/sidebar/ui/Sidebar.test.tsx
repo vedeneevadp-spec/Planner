@@ -59,9 +59,10 @@ interface PlannerStub {
 }
 
 interface SessionAuthStub {
-  accessToken: string
+  accessToken: string | null
   email: string
   isAuthEnabled: boolean
+  isLoading: boolean
   signOut: () => Promise<void>
   userId: string
 }
@@ -170,6 +171,7 @@ function createMutationStub(): MutationStub {
 function renderSidebar(
   session: SidebarSessionStub,
   options: {
+    auth?: Partial<SessionAuthStub>
     includeNativeBackButton?: boolean
     initialEntries?: string[]
     initialIndex?: number
@@ -205,8 +207,10 @@ function renderSidebar(
     accessToken: 'token',
     email: session.actor.email,
     isAuthEnabled: true,
+    isLoading: false,
     signOut: mocks.signOut,
     userId: session.actorUserId,
+    ...options.auth,
   })
   mocks.useCreateSharedWorkspace.mockReturnValue(createMutationStub())
   mocks.useDeleteSharedWorkspace.mockReturnValue(createMutationStub())
@@ -313,6 +317,17 @@ describe('Sidebar', () => {
     fireEvent.click(signOutButton)
 
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not show Connected when the auth token is unavailable', () => {
+    renderSidebar(createSession('personal'), {
+      auth: {
+        accessToken: null,
+      },
+    })
+
+    expect(screen.getAllByText('Connection issue')).not.toHaveLength(0)
+    expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 
   it('keeps habits and admin out of shared workspace navigation', () => {

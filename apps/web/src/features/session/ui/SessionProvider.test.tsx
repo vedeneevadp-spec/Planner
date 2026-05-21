@@ -331,6 +331,14 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+
+    await act(async () => {
+      appStateListener?.(false)
+      appStateListener?.(true)
+      await Promise.resolve()
+    })
+
+    expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
   })
 
   it('keeps the native device session when refresh is denied by the server', async () => {
@@ -362,6 +370,14 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+
+    await act(async () => {
+      appStateListener?.(false)
+      appStateListener?.(true)
+      await Promise.resolve()
+    })
+
+    expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
   })
 
   it('does not persist refresh tokens in browser session storage', async () => {
