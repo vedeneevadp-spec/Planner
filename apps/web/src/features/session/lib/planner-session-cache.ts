@@ -24,6 +24,20 @@ export function getCachedPlannerSession(options: {
   return resolveCachedWorkspaceSession(cachedSession, options.workspaceId)
 }
 
+export function getSingleCachedPlannerSession(
+  options: {
+    workspaceId?: string | null | undefined
+  } = {},
+): SessionResponse | null {
+  const cachedSessions = Object.values(readCachedPlannerSessionMap())
+
+  if (cachedSessions.length !== 1) {
+    return null
+  }
+
+  return resolveCachedWorkspaceSession(cachedSessions[0]!, options.workspaceId)
+}
+
 export function setCachedPlannerSession(session: SessionResponse): void {
   const normalizedActorUserId = normalizeActorUserId(session.actorUserId)
 

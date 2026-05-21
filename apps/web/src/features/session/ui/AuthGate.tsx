@@ -22,7 +22,6 @@ import {
 } from '../lib/auth-form'
 import {
   getRememberSessionPreference,
-  hasNativeAuthSessionHint,
   setRememberSessionPreference,
 } from '../lib/auth-session-storage'
 import { isNativeSessionPersistenceRuntime } from '../lib/native-session-storage'
@@ -201,8 +200,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     isLoading &&
     plannerSessionQuery.data &&
     !authNotice &&
-    isNativeSessionRuntime &&
-    hasNativeAuthSessionHint()
+    isNativeSessionRuntime
   ) {
     return children
   }

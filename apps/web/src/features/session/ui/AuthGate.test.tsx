@@ -40,7 +40,6 @@ interface PlannerSessionQueryStub {
 
 const mocks = vi.hoisted(() => ({
   getRememberSessionPreference: vi.fn<() => boolean>(),
-  hasNativeAuthSessionHint: vi.fn<() => boolean>(),
   isNativeSessionPersistenceRuntime: vi.fn<() => boolean>(),
   setRememberSessionPreference: vi.fn<(value: boolean) => void>(),
   usePlannerSession: vi.fn<() => PlannerSessionQueryStub>(),
@@ -56,7 +55,6 @@ vi.mock('@/shared/config/planner-api', () => ({
 
 vi.mock('../lib/auth-session-storage', () => ({
   getRememberSessionPreference: mocks.getRememberSessionPreference,
-  hasNativeAuthSessionHint: mocks.hasNativeAuthSessionHint,
   setRememberSessionPreference: mocks.setRememberSessionPreference,
 }))
 
@@ -105,7 +103,6 @@ describe('AuthGate', () => {
     }
 
     mocks.getRememberSessionPreference.mockReturnValue(true)
-    mocks.hasNativeAuthSessionHint.mockReturnValue(false)
     mocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
     mocks.setRememberSessionPreference.mockReset()
     mocks.usePlannerSession.mockImplementation(() => plannerSessionQuery)
@@ -151,7 +148,6 @@ describe('AuthGate', () => {
 
   it('keeps cached planner content visible while native auth storage is restoring', () => {
     auth.isLoading = true
-    mocks.hasNativeAuthSessionHint.mockReturnValue(true)
     mocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
     plannerSessionQuery.data = {
       actorUserId: 'user-1',

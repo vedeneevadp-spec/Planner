@@ -3,9 +3,18 @@ import type {
   SessionWorkspaceMembership,
 } from '@planner/contracts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { createElement, type PropsWithChildren, type ReactElement } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const nativeSessionMocks = vi.hoisted(() => ({
+  isNativeSessionPersistenceRuntime: vi.fn(),
+}))
+
+vi.mock('./native-session-storage', () => ({
+  isNativeSessionPersistenceRuntime:
+    nativeSessionMocks.isNativeSessionPersistenceRuntime,
+}))
 
 import {
   SessionAuthContext,
@@ -24,6 +33,12 @@ import {
 describe('loadPlannerSession', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReset()
+    nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
+  })
+
+  afterEach(() => {
+    cleanup()
   })
 
   it('exposes the cached session before auth storage restore finishes', () => {
@@ -50,6 +65,45 @@ describe('loadPlannerSession', () => {
     })
 
     setLastActorUserId('user-a')
+    setCachedPlannerSession(session)
+
+    renderWithPlannerSession(
+      createElement(CachedSessionProbe),
+      createAuthState({
+        accessToken: null,
+        isAuthEnabled: true,
+        isLoading: true,
+        userId: null,
+      }),
+    )
+
+    expect(screen.getByTestId('workspace-id')).toHaveTextContent('workspace-a')
+  })
+
+  it('uses the single cached native session before the actor id is restored', () => {
+    const session = createSessionResponse({
+      actorUserId: 'user-a',
+      role: 'owner',
+      workspace: createWorkspaceMembership({
+        id: 'workspace-a',
+        kind: 'personal',
+        name: 'User A',
+        role: 'owner',
+        slug: 'user-a',
+      }),
+      workspaceId: 'workspace-a',
+      workspaces: [
+        createWorkspaceMembership({
+          id: 'workspace-a',
+          kind: 'personal',
+          name: 'User A',
+          role: 'owner',
+          slug: 'user-a',
+        }),
+      ],
+    })
+
+    nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
     setCachedPlannerSession(session)
 
     renderWithPlannerSession(

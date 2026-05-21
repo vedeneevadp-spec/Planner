@@ -3,8 +3,10 @@ import { useQuery } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import { isNativeSessionPersistenceRuntime } from './native-session-storage'
 import {
   getCachedPlannerSession,
+  getSingleCachedPlannerSession,
   setCachedPlannerSession,
 } from './planner-session-cache'
 import {
@@ -36,10 +38,17 @@ export function usePlannerSession() {
     config: plannerApiConfig,
     isAuthEnabled: auth.isAuthEnabled,
   })
-  const cachedPlannerSession = getCachedPlannerSession({
-    actorUserId: selectedWorkspaceActorUserId,
-    workspaceId: selectedWorkspaceId ?? plannerApiConfig.workspaceIdOverride,
-  })
+  const cachedPlannerSession =
+    getCachedPlannerSession({
+      actorUserId: selectedWorkspaceActorUserId,
+      workspaceId: selectedWorkspaceId ?? plannerApiConfig.workspaceIdOverride,
+    }) ??
+    getNativeCachedPlannerSessionFallback({
+      isAuthEnabled: auth.isAuthEnabled,
+      isLoading: auth.isLoading,
+      selectedWorkspaceActorUserId,
+      workspaceId: selectedWorkspaceId ?? plannerApiConfig.workspaceIdOverride,
+    })
 
   return useQuery({
     enabled: canLoadPlannerSession,
@@ -76,6 +85,26 @@ export function usePlannerSession() {
     retry: (failureCount, error) =>
       !isUnauthorizedSessionApiError(error) && failureCount < 2,
     staleTime: 5 * 60_000,
+  })
+}
+
+function getNativeCachedPlannerSessionFallback(options: {
+  isAuthEnabled: boolean
+  isLoading: boolean
+  selectedWorkspaceActorUserId: string | null
+  workspaceId?: string | null | undefined
+}): SessionResponse | null {
+  if (
+    !options.isAuthEnabled ||
+    !options.isLoading ||
+    options.selectedWorkspaceActorUserId ||
+    !isNativeSessionPersistenceRuntime()
+  ) {
+    return null
+  }
+
+  return getSingleCachedPlannerSession({
+    workspaceId: options.workspaceId,
   })
 }
 
