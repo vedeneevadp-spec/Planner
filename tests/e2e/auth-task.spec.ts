@@ -167,6 +167,12 @@ test('keeps auth after reload and exposes password reset after failed sign-in', 
   await page.reload()
   await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
 
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      'Выйти из аккаунта? Текущая сессия на этом устройстве будет завершена.',
+    )
+    await dialog.accept()
+  })
   await page.getByRole('button', { name: 'Выйти' }).click()
   await expect(page.getByRole('tab', { name: 'Вход' })).toBeVisible()
 

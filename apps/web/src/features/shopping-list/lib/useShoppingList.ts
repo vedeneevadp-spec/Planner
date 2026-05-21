@@ -65,8 +65,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   const session = sessionQuery.data
   const queryClient = useQueryClient()
   const hasSession = options.enabled !== false && Boolean(session)
-  const canUseApi =
-    hasSession && (!auth.isAuthEnabled || Boolean(auth.accessToken))
+  const canUseApi = hasSession && auth.canUseProtectedApi
   const queryKey = useMemo(
     () => shoppingListQueryKey(session?.workspaceId ?? 'pending'),
     [session?.workspaceId],

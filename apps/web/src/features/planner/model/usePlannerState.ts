@@ -50,12 +50,16 @@ import {
 } from './planner-records'
 
 export function usePlannerState(): PlannerState {
-  const { accessToken, isAuthEnabled, recoverSession, sessionVersion } =
-    useSessionAuth()
+  const {
+    accessToken,
+    canUseProtectedApi,
+    isAuthEnabled,
+    recoverSession,
+    sessionVersion,
+  } = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
-  const isPlannerApiReady =
-    Boolean(session) && (!isAuthEnabled || Boolean(accessToken))
+  const isPlannerApiReady = Boolean(session) && canUseProtectedApi
   const actorUserId = session?.actorUserId
   const fireTaskCompletionConfetti = useTaskCompletionConfetti()
   const isTaskCompletionConfettiEnabled =

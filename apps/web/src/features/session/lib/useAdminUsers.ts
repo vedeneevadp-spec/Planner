@@ -7,6 +7,7 @@ import {
   type AdminUsersApiClientConfig,
   createAdminUsersApiClient,
 } from './admin-users-api'
+import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 
@@ -21,9 +22,7 @@ export function useAdminUsers(options: { enabled?: boolean } = {}) {
 
   return useQuery({
     enabled:
-      options.enabled !== false &&
-      Boolean(session) &&
-      (!auth.isAuthEnabled || Boolean(auth.accessToken)),
+      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
     queryFn: ({ signal }) => {
       if (!session) {
         throw new Error('Planner session is required to load admin users.')
@@ -53,6 +52,8 @@ export function useUpdateAdminUserRole() {
       if (!session) {
         throw new Error('Planner session is required to update user roles.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return createAdminUsersApiClient(
         createAdminUsersApiClientConfig({

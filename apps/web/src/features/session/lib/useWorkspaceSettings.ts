@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 import {
@@ -30,6 +31,8 @@ export function useUpdateWorkspaceSettings() {
           'Planner session is required to update workspace settings.',
         )
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return createWorkspaceSettingsApiClient(
         createWorkspaceSettingsApiClientConfig({

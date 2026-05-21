@@ -87,9 +87,8 @@ export function Sidebar({
       session?.appRole === 'admin' ||
       session?.appRole === 'owner',
   )
-  const isAuthRestoring = auth.isAuthEnabled && auth.isLoading
-  const hasAuthConnectionIssue =
-    auth.isAuthEnabled && !auth.isLoading && !auth.accessToken
+  const isAuthRestoring = auth.lifecycleStatus === 'restoring'
+  const hasAuthConnectionIssue = auth.lifecycleStatus === 'deferred'
   const syncStateLabel =
     errorMessage || hasAuthConnectionIssue
       ? 'Connection issue'
@@ -103,7 +102,7 @@ export function Sidebar({
   const accountLabel =
     auth.email ??
     session?.actor.email ??
-    (auth.accessToken ? 'Chaotika session' : null)
+    (auth.canUseProtectedApi && auth.accessToken ? 'Chaotika session' : null)
   const isProfileNavigationVisible = Boolean(session && !isSharedWorkspace)
   const mobilePrimaryNavigation = visibleNavigation
     .filter((item) => item.mobilePlacement === 'primary')
@@ -130,20 +129,34 @@ export function Sidebar({
     setIsMobileWorkspaceActionsOpen(false)
   }, [])
 
+  const handleSignOut = useCallback(
+    (options: { closeMobileSheet?: boolean } = {}) => {
+      const isConfirmed =
+        typeof window === 'undefined' ||
+        window.confirm(
+          'Выйти из аккаунта? Текущая сессия на этом устройстве будет завершена.',
+        )
+
+      if (!isConfirmed) {
+        return
+      }
+
+      if (options.closeMobileSheet) {
+        closeMobileMoreSheet()
+      }
+
+      void auth.signOut()
+    },
+    [auth, closeMobileMoreSheet],
+  )
+
   const handleMobileSignOut = useCallback(() => {
-    const isConfirmed =
-      typeof window === 'undefined' ||
-      window.confirm(
-        'Выйти из аккаунта? Текущая сессия на этом устройстве будет завершена.',
-      )
+    handleSignOut({ closeMobileSheet: true })
+  }, [handleSignOut])
 
-    if (!isConfirmed) {
-      return
-    }
-
-    closeMobileMoreSheet()
-    void auth.signOut()
-  }, [auth, closeMobileMoreSheet])
+  const handleDesktopSignOut = useCallback(() => {
+    handleSignOut()
+  }, [handleSignOut])
 
   useEffect(() => {
     if (!isMoreOpen) {
@@ -575,9 +588,7 @@ export function Sidebar({
               <button
                 className={styles.signOutButton}
                 type="button"
-                onClick={() => {
-                  void auth.signOut()
-                }}
+                onClick={handleDesktopSignOut}
               >
                 Выйти
               </button>

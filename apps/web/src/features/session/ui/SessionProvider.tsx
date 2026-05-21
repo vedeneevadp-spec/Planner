@@ -35,6 +35,10 @@ import {
 } from '../lib/native-session-storage'
 import { clearCachedPlannerSession } from '../lib/planner-session-cache'
 import {
+  canUseProtectedSessionApi,
+  resolveSessionAuthLifecycleStatus,
+} from '../lib/session-auth-lifecycle'
+import {
   clearLastActorUserId,
   clearSelectedWorkspaceId,
   getLastActorUserId,
@@ -579,18 +583,32 @@ export function SessionProvider({ children }: PropsWithChildren) {
     ],
   )
 
-  const value: SessionAuthState = useMemo(
-    () => ({
-      accessToken:
-        snapshot.sessionAccessToken ??
-        (isAuthEnabled ? null : (plannerApiConfig.apiAccessToken ?? null)),
+  const value: SessionAuthState = useMemo(() => {
+    const accessToken =
+      snapshot.sessionAccessToken ??
+      (isAuthEnabled ? null : (plannerApiConfig.apiAccessToken ?? null))
+    const lifecycleStatus = resolveSessionAuthLifecycleStatus({
+      accessToken: snapshot.sessionAccessToken,
+      email: snapshot.email,
+      isAuthEnabled,
+      isLoading: isAuthEnabled && snapshot.isLoading,
+      userId: snapshot.userId,
+    })
+
+    return {
+      accessToken,
       authNotice,
+      canUseProtectedApi: canUseProtectedSessionApi({
+        accessToken,
+        isAuthEnabled,
+      }),
       clearAuthNotice,
       email: snapshot.email,
       expireSession,
       isAuthEnabled,
       isLoading: isAuthEnabled && snapshot.isLoading,
       isPasswordRecovery,
+      lifecycleStatus,
       recoverSession,
       requestPasswordReset,
       sessionVersion,
@@ -599,26 +617,25 @@ export function SessionProvider({ children }: PropsWithChildren) {
       signUpWithPassword,
       updatePassword,
       userId: snapshot.userId,
-    }),
-    [
-      authNotice,
-      clearAuthNotice,
-      expireSession,
-      isAuthEnabled,
-      isPasswordRecovery,
-      recoverSession,
-      requestPasswordReset,
-      sessionVersion,
-      signInWithPassword,
-      signOut,
-      signUpWithPassword,
-      snapshot.email,
-      snapshot.isLoading,
-      snapshot.sessionAccessToken,
-      snapshot.userId,
-      updatePassword,
-    ],
-  )
+    }
+  }, [
+    authNotice,
+    clearAuthNotice,
+    expireSession,
+    isAuthEnabled,
+    isPasswordRecovery,
+    recoverSession,
+    requestPasswordReset,
+    sessionVersion,
+    signInWithPassword,
+    signOut,
+    signUpWithPassword,
+    snapshot.email,
+    snapshot.isLoading,
+    snapshot.sessionAccessToken,
+    snapshot.userId,
+    updatePassword,
+  ])
 
   return (
     <SessionAuthContext.Provider value={value}>

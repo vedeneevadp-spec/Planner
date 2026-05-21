@@ -24,8 +24,7 @@ export function useEmojiSets() {
   const session = sessionQuery.data
 
   return useQuery({
-    enabled:
-      Boolean(session) && (!auth.isAuthEnabled || Boolean(auth.accessToken)),
+    enabled: Boolean(session) && auth.canUseProtectedApi,
     queryFn: ({ signal }) => {
       if (!session) {
         throw new Error('Planner session is required to load icon sets.')

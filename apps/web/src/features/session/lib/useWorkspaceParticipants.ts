@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 import type { WorkspaceParticipantsApiError } from './workspace-participants-api'
@@ -38,9 +39,7 @@ export function useWorkspaceUsers(options: { enabled?: boolean } = {}) {
 
   return useQuery({
     enabled:
-      options.enabled !== false &&
-      Boolean(session) &&
-      (!auth.isAuthEnabled || Boolean(auth.accessToken)),
+      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
     queryFn: ({ signal }) => {
       if (!session) {
         throw new Error('Planner session is required to load workspace users.')
@@ -66,9 +65,7 @@ export function useWorkspaceInvitations(options: { enabled?: boolean } = {}) {
 
   return useQuery({
     enabled:
-      options.enabled !== false &&
-      Boolean(session) &&
-      (!auth.isAuthEnabled || Boolean(auth.accessToken)),
+      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
     queryFn: ({ signal }) => {
       if (!session) {
         throw new Error(
@@ -98,9 +95,7 @@ export function useReceivedWorkspaceInvitations(
 
   return useQuery({
     enabled:
-      options.enabled !== false &&
-      Boolean(session) &&
-      (!auth.isAuthEnabled || Boolean(auth.accessToken)),
+      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
     queryFn: ({ signal }) => {
       if (!session) {
         throw new Error(
@@ -132,6 +127,8 @@ export function useCreateWorkspaceInvitation() {
       if (!session) {
         throw new Error('Planner session is required to invite participants.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return createWorkspaceParticipantsApiClient(
         createWorkspaceParticipantsApiClientConfig({
@@ -175,6 +172,8 @@ export function useUpdateWorkspaceUserGroupRole() {
         )
       }
 
+      assertCanUseProtectedSessionApi(auth)
+
       return createWorkspaceParticipantsApiClient(
         createWorkspaceParticipantsApiClientConfig({
           accessToken: auth.accessToken,
@@ -211,6 +210,8 @@ export function useRemoveWorkspaceUser() {
       if (!session) {
         throw new Error('Planner session is required to remove participants.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return createWorkspaceParticipantsApiClient(
         createWorkspaceParticipantsApiClientConfig({
@@ -249,6 +250,8 @@ export function useRevokeWorkspaceInvitation() {
         throw new Error('Planner session is required to revoke invitations.')
       }
 
+      assertCanUseProtectedSessionApi(auth)
+
       return createWorkspaceParticipantsApiClient(
         createWorkspaceParticipantsApiClientConfig({
           accessToken: auth.accessToken,
@@ -285,6 +288,8 @@ export function useAcceptWorkspaceInvitation() {
           'Planner session is required to accept workspace invitations.',
         )
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       await createWorkspaceParticipantsApiClient(
         createWorkspaceParticipantsApiClientConfig({
@@ -326,6 +331,8 @@ export function useDeclineWorkspaceInvitation() {
           'Planner session is required to decline workspace invitations.',
         )
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       await createWorkspaceParticipantsApiClient(
         createWorkspaceParticipantsApiClientConfig({

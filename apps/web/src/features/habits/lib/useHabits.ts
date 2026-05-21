@@ -796,9 +796,7 @@ function useHabitsApi(options: { enabled?: boolean } = {}) {
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const isEnabled =
-    options.enabled !== false &&
-    Boolean(session) &&
-    (!auth.isAuthEnabled || Boolean(auth.accessToken))
+    options.enabled !== false && Boolean(session) && auth.canUseProtectedApi
   const config = useMemo<HabitsApiClientConfig | null>(() => {
     if (!session || !isEnabled) {
       return null

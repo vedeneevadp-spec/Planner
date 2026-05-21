@@ -18,6 +18,13 @@ interface PlannerStub {
 
 interface SessionAuthStub {
   accessToken: string
+  canUseProtectedApi: boolean
+  lifecycleStatus:
+    | 'authenticated'
+    | 'deferred'
+    | 'disabled'
+    | 'restoring'
+    | 'signed_out'
   sessionVersion: number
 }
 
@@ -178,6 +185,8 @@ describe('NativePlannerWidgetSync', () => {
     })
     mocks.useSessionAuth.mockReturnValue({
       accessToken: 'access-token',
+      canUseProtectedApi: true,
+      lifecycleStatus: 'authenticated',
       sessionVersion: 1,
     })
   })

@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import { type SessionApiError, updateUserProfile } from './session-api'
+import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 
@@ -25,6 +26,8 @@ export function useUpdateUserProfile() {
       if (!session) {
         throw new Error('Planner session is required to update profile.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return updateUserProfile({
         ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),

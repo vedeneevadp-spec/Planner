@@ -13,13 +13,20 @@ import { AuthGate } from './AuthGate'
 interface SessionAuthStub {
   accessToken: string | null
   authNotice: string | null
+  canUseProtectedApi: boolean
   clearAuthNotice: () => void
   email: string | null
   expireSession: () => Promise<void>
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean
-  recoverSession: () => Promise<'recovered' | 'signed-out'>
+  lifecycleStatus:
+    | 'authenticated'
+    | 'deferred'
+    | 'disabled'
+    | 'restoring'
+    | 'signed_out'
+  recoverSession: () => Promise<'deferred' | 'recovered' | 'signed_out'>
   requestPasswordReset: (email: string) => Promise<void>
   signOut: () => Promise<void>
   signInWithPassword: (email: string, password: string) => Promise<void>
@@ -78,15 +85,17 @@ describe('AuthGate', () => {
     auth = {
       accessToken: null,
       authNotice: null,
+      canUseProtectedApi: false,
       clearAuthNotice: vi.fn(),
       email: null,
       expireSession: vi.fn(() => Promise.resolve()),
       isAuthEnabled: true,
       isLoading: false,
       isPasswordRecovery: false,
-      recoverSession: vi.fn<() => Promise<'recovered' | 'signed-out'>>(() =>
-        Promise.resolve('signed-out'),
-      ),
+      lifecycleStatus: 'signed_out',
+      recoverSession: vi.fn<
+        () => Promise<'deferred' | 'recovered' | 'signed_out'>
+      >(() => Promise.resolve('signed_out')),
       requestPasswordReset: vi.fn(() => Promise.resolve()),
       signOut: vi.fn(() => Promise.resolve()),
       signInWithPassword: vi.fn(() => Promise.resolve()),
@@ -119,6 +128,8 @@ describe('AuthGate', () => {
       workspaceId: 'workspace-1',
     }
     auth.accessToken = 'access-token'
+    auth.canUseProtectedApi = true
+    auth.lifecycleStatus = 'authenticated'
 
     render(
       <AuthGate>
@@ -131,6 +142,7 @@ describe('AuthGate', () => {
 
   it('does not render cached planner content while auth storage is restoring', () => {
     auth.isLoading = true
+    auth.lifecycleStatus = 'restoring'
     plannerSessionQuery.data = {
       actorUserId: 'user-1',
       workspaceId: 'workspace-1',
@@ -148,6 +160,7 @@ describe('AuthGate', () => {
 
   it('keeps cached planner content visible while native auth storage is restoring', () => {
     auth.isLoading = true
+    auth.lifecycleStatus = 'restoring'
     mocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
     plannerSessionQuery.data = {
       actorUserId: 'user-1',
@@ -169,6 +182,8 @@ describe('AuthGate', () => {
   it('does not treat a cached planner session as signed in without an access token', () => {
     auth.isLoading = false
     auth.accessToken = null
+    auth.canUseProtectedApi = false
+    auth.lifecycleStatus = 'signed_out'
     plannerSessionQuery.data = {
       actorUserId: 'user-1',
       workspaceId: 'workspace-1',
@@ -182,6 +197,29 @@ describe('AuthGate', () => {
 
     expect(screen.getByText('Нужно восстановить вход')).toBeVisible()
     expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
+  })
+
+  it('keeps cached planner content visible for a deferred native device session', () => {
+    auth.isLoading = false
+    auth.accessToken = null
+    auth.canUseProtectedApi = false
+    auth.lifecycleStatus = 'deferred'
+    mocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
+    plannerSessionQuery.data = {
+      actorUserId: 'user-1',
+      workspaceId: 'workspace-1',
+    }
+
+    render(
+      <AuthGate>
+        <main>Planner content</main>
+      </AuthGate>,
+    )
+
+    expect(screen.getByText('Planner content')).toBeVisible()
+    expect(
+      screen.queryByText('Нужно восстановить вход'),
+    ).not.toBeInTheDocument()
   })
 
   it('shows a disabled-auth configuration error when no session can be bootstrapped', () => {
@@ -199,6 +237,8 @@ describe('AuthGate', () => {
 
   it('shows loading and planner error states before rendering children', async () => {
     auth.accessToken = 'access-token'
+    auth.canUseProtectedApi = true
+    auth.lifecycleStatus = 'authenticated'
     plannerSessionQuery.isPending = true
 
     const { rerender } = render(

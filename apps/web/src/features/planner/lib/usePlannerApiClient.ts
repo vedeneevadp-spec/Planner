@@ -6,11 +6,11 @@ import { plannerApiConfig } from '@/shared/config/planner-api'
 import { createPlannerApiClient, type PlannerApiClient } from './planner-api'
 
 export function usePlannerApiClient(): PlannerApiClient | null {
-  const { accessToken } = useSessionAuth()
+  const { accessToken, canUseProtectedApi } = useSessionAuth()
   const { data: session } = usePlannerSession()
 
   return useMemo(() => {
-    if (!session) {
+    if (!session || !canUseProtectedApi) {
       return null
     }
 
@@ -20,5 +20,5 @@ export function usePlannerApiClient(): PlannerApiClient | null {
       apiBaseUrl: plannerApiConfig.apiBaseUrl,
       workspaceId: session.workspaceId,
     })
-  }, [accessToken, session])
+  }, [accessToken, canUseProtectedApi, session])
 }

@@ -107,6 +107,9 @@ runtime.
 
 - session сначала резолвится через `/api/v1/session`
 - Chaotika Auth включается через `VITE_AUTH_PROVIDER=planner`
+- стабильная авторизованность мобильного пользователя является критичным
+  архитектурным инвариантом; правила зафиксированы в
+  [ADR 0002](./adr/0002-auth-session-stability.md)
 - данные задач, сфер, templates, inbox и daily plan читаются через backend API
 - TanStack Query отвечает за server-state cache и invalidation
 - planner feature держит optimistic mutations, чтобы UI-компоненты не зависели
@@ -142,5 +145,8 @@ Planner state, contracts, OpenAPI и offline queue используют `LifeSph
 - API client, offline queue и session helpers покрываются web-тестами через
   Vitest
 - backend modules и bootstrap покрываются Node test runner с `tsx`
+- auth/session изменения должны проходить gate из
+  [ADR 0002](./adr/0002-auth-session-stability.md), включая mobile restore
+  сценарии
 - e2e smoke покрыт Playwright-сценарием auth + создание задачи; новые критичные
   пользовательские flows нужно добавлять в `tests/e2e`

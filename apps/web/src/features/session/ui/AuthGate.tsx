@@ -91,12 +91,14 @@ export function AuthGate({ children }: PropsWithChildren) {
   const {
     accessToken,
     authNotice,
+    canUseProtectedApi,
     clearAuthNotice,
     email,
     expireSession,
     isAuthEnabled,
     isLoading,
     isPasswordRecovery,
+    lifecycleStatus,
     recoverSession,
     requestPasswordReset,
     signOut,
@@ -197,7 +199,7 @@ export function AuthGate({ children }: PropsWithChildren) {
   if (
     !isPasswordRecovery &&
     isAuthEnabled &&
-    isLoading &&
+    lifecycleStatus === 'restoring' &&
     plannerSessionQuery.data &&
     !authNotice &&
     isNativeSessionRuntime
@@ -205,7 +207,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     return children
   }
 
-  if (isLoading) {
+  if (lifecycleStatus === 'restoring' || isLoading) {
     return (
       <AuthStatusPanel
         copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
@@ -218,7 +220,17 @@ export function AuthGate({ children }: PropsWithChildren) {
     !isPasswordRecovery &&
     plannerSessionQuery.data &&
     !authNotice &&
-    (!isAuthEnabled || Boolean(accessToken))
+    canUseProtectedApi
+  ) {
+    return children
+  }
+
+  if (
+    !isPasswordRecovery &&
+    plannerSessionQuery.data &&
+    !authNotice &&
+    lifecycleStatus === 'deferred' &&
+    isNativeSessionRuntime
   ) {
     return children
   }

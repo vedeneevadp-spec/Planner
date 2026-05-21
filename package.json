@@ -54,6 +54,7 @@
     "test": "npm run test:web",
     "test:web": "vitest --config apps/web/vite.config.ts",
     "test:web:run": "vitest run --config apps/web/vite.config.ts",
+    "test:mobile-auth": "npm run test:web:run -- AuthGate.test.tsx SessionProvider.test.tsx usePlannerSession.test.ts session-auth-lifecycle.test.ts && npm run test:api:postgres",
     "test:api": "npm run -w apps/api test",
     "test:api:postgres": "npm run -w apps/api test:postgres",
     "test:e2e": "playwright test",

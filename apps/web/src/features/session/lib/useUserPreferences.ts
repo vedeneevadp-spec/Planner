@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
+import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import {
   createUserPreferencesApiClient,
@@ -28,6 +29,8 @@ export function useUpdateUserPreferences() {
       if (!session) {
         throw new Error('Planner session is required to update preferences.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return createUserPreferencesApiClient(
         createUserPreferencesApiClientConfig({

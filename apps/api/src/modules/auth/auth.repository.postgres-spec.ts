@@ -33,6 +33,71 @@ void describe('Postgres auth runtime functions', () => {
     await client.end()
   })
 
+  void test('rotates an active refresh token without revoking the device session', async () => {
+    const fixture = createFixture()
+
+    try {
+      await seedRefreshFixture(fixture)
+
+      const result = await client.query<{
+        id: string
+        session_id: string
+      }>(
+        `
+          select id, session_id
+          from app.auth_rotate_refresh_token(
+            $1,
+            $2::uuid,
+            $3,
+            now() + interval '30 days',
+            $4,
+            '127.0.0.1'
+          )
+        `,
+        [
+          `${fixture.prefix}-active-hash`,
+          fixture.nextTokenId,
+          `${fixture.prefix}-next-hash`,
+          fixture.userAgent,
+        ],
+      )
+
+      assert.equal(result.rows[0]?.id, fixture.userId)
+      assert.equal(result.rows[0]?.session_id, fixture.sessionId)
+
+      const tokenState = await client.query<{
+        next_token_count: string
+        revoked_count: string
+        rotated_active_count: string
+      }>(
+        `
+          select
+            count(*) filter (where token_hash = $2) as next_token_count,
+            count(*) filter (
+              where id = $3
+                and rotated_at is not null
+                and replaced_by_token_id = $4::uuid
+            ) as rotated_active_count,
+            count(*) filter (where revoked_at is not null) as revoked_count
+          from app.auth_refresh_tokens
+          where session_id = $1
+        `,
+        [
+          fixture.sessionId,
+          `${fixture.prefix}-next-hash`,
+          fixture.activeTokenId,
+          fixture.nextTokenId,
+        ],
+      )
+
+      assert.equal(Number(tokenState.rows[0]?.next_token_count ?? 0), 1)
+      assert.equal(Number(tokenState.rows[0]?.rotated_active_count ?? 0), 1)
+      assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 0)
+    } finally {
+      await cleanupRefreshFixture(fixture)
+    }
+  })
+
   void test('recovers a stale rotated refresh token for the same mobile client', async () => {
     const fixture = createFixture()
 
@@ -132,6 +197,120 @@ void describe('Postgres auth runtime functions', () => {
       )
 
       assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 2)
+    } finally {
+      await cleanupRefreshFixture(fixture)
+    }
+  })
+
+  void test('rejects an expired refresh token without creating the next token', async () => {
+    const fixture = createFixture()
+
+    try {
+      await seedRefreshFixture(fixture)
+      await client.query(
+        `
+          update app.auth_refresh_tokens
+          set expires_at = now() - interval '1 minute'
+          where id = $1::uuid
+        `,
+        [fixture.activeTokenId],
+      )
+
+      const result = await client.query(
+        `
+          select *
+          from app.auth_rotate_refresh_token(
+            $1,
+            $2::uuid,
+            $3,
+            now() + interval '30 days',
+            $4,
+            '127.0.0.1'
+          )
+        `,
+        [
+          `${fixture.prefix}-active-hash`,
+          fixture.nextTokenId,
+          `${fixture.prefix}-next-hash`,
+          fixture.userAgent,
+        ],
+      )
+
+      assert.equal(result.rows.length, 0)
+
+      const tokenState = await client.query<{
+        next_token_count: string
+        revoked_count: string
+      }>(
+        `
+          select
+            count(*) filter (where token_hash = $2) as next_token_count,
+            count(*) filter (where revoked_at is not null) as revoked_count
+          from app.auth_refresh_tokens
+          where session_id = $1
+        `,
+        [fixture.sessionId, `${fixture.prefix}-next-hash`],
+      )
+
+      assert.equal(Number(tokenState.rows[0]?.next_token_count ?? 0), 0)
+      assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 0)
+    } finally {
+      await cleanupRefreshFixture(fixture)
+    }
+  })
+
+  void test('rejects a revoked refresh token without creating the next token', async () => {
+    const fixture = createFixture()
+
+    try {
+      await seedRefreshFixture(fixture)
+      await client.query(
+        `
+          update app.auth_refresh_tokens
+          set revoked_at = now()
+          where id = $1::uuid
+        `,
+        [fixture.activeTokenId],
+      )
+
+      const result = await client.query(
+        `
+          select *
+          from app.auth_rotate_refresh_token(
+            $1,
+            $2::uuid,
+            $3,
+            now() + interval '30 days',
+            $4,
+            '127.0.0.1'
+          )
+        `,
+        [
+          `${fixture.prefix}-active-hash`,
+          fixture.nextTokenId,
+          `${fixture.prefix}-next-hash`,
+          fixture.userAgent,
+        ],
+      )
+
+      assert.equal(result.rows.length, 0)
+
+      const tokenState = await client.query<{
+        next_token_count: string
+        revoked_count: string
+      }>(
+        `
+          select
+            count(*) filter (where token_hash = $2) as next_token_count,
+            count(*) filter (where revoked_at is not null) as revoked_count
+          from app.auth_refresh_tokens
+          where session_id = $1
+        `,
+        [fixture.sessionId, `${fixture.prefix}-next-hash`],
+      )
+
+      assert.equal(Number(tokenState.rows[0]?.next_token_count ?? 0), 0)
+      assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 1)
     } finally {
       await cleanupRefreshFixture(fixture)
     }

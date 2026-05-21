@@ -60,9 +60,16 @@ interface PlannerStub {
 
 interface SessionAuthStub {
   accessToken: string | null
+  canUseProtectedApi: boolean
   email: string
   isAuthEnabled: boolean
   isLoading: boolean
+  lifecycleStatus:
+    | 'authenticated'
+    | 'deferred'
+    | 'disabled'
+    | 'restoring'
+    | 'signed_out'
   signOut: () => Promise<void>
   userId: string
 }
@@ -205,9 +212,11 @@ function renderSidebar(
   })
   mocks.useSessionAuth.mockReturnValue({
     accessToken: 'token',
+    canUseProtectedApi: true,
     email: session.actor.email,
     isAuthEnabled: true,
     isLoading: false,
+    lifecycleStatus: 'authenticated',
     signOut: mocks.signOut,
     userId: session.actorUserId,
     ...options.auth,
@@ -317,12 +326,34 @@ describe('Sidebar', () => {
     fireEvent.click(signOutButton)
 
     expect(mocks.signOut).toHaveBeenCalledTimes(1)
+    confirmSpy.mockRestore()
+  })
+
+  it('requires confirmation before desktop account sign out', () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    renderSidebar(createSession('personal'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Выйти из аккаунта? Текущая сессия на этом устройстве будет завершена.',
+    )
+    expect(mocks.signOut).not.toHaveBeenCalled()
+
+    confirmSpy.mockReturnValue(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+
+    expect(mocks.signOut).toHaveBeenCalledTimes(1)
+    confirmSpy.mockRestore()
   })
 
   it('does not show Connected when the auth token is unavailable', () => {
     renderSidebar(createSession('personal'), {
       auth: {
         accessToken: null,
+        canUseProtectedApi: false,
+        lifecycleStatus: 'deferred',
       },
     })
 

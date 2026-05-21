@@ -23,6 +23,11 @@ workflow релиза.
 установленные store-приложения. В Capacitor сейчас нет live update-механизма,
 поэтому UI-изменения для iOS/Android требуют новой публикации в store.
 
+Для auth/session изменений действует отдельный критичный инвариант:
+авторизованного мобильного пользователя нельзя разлогинивать без явного нажатия
+на выход или подтвержденной серверной ревокации текущей device session. Правила
+и gate описаны в [ADR 0002](./adr/0002-auth-session-stability.md).
+
 ## Когда какой релиз нужен
 
 | Тип изменения                     | Нужен production deploy | Нужен store release | Дополнительно                              |
@@ -168,18 +173,23 @@ npm run mobile:open:android
 3. навигация и safe-area
 4. работа с offline snapshots и очередью
 5. сетевые сценарии на реальном backend URL
+6. для auth/session изменений: повторное открытие уже авторизованного
+   приложения без access-check flash при наличии cached session
+7. для auth/session изменений: background/resume, краткий offline/online и
+   отсутствие silent logout без нажатия на кнопку выхода
 
 ## 5. Подготовить release candidate
 
 Перед релизом собрать минимальный чек-лист:
 
 1. `npm run ci`
-2. `npm run test:api:postgres`, если менялись SQL/RLS/backend data access
-3. `npm run test:e2e`, если менялись auth, routing или основной planner flow
-4. `npm run mobile:doctor`, если планируется store release
-5. production env готов для backend и web runtime
-6. иконки и splash пересобраны, если менялся брендинг
-7. release notes обновлены в [docs/release-notes.md](./release-notes.md)
+2. `npm run test:mobile-auth`, если менялись auth/session/mobile restore
+3. `npm run test:api:postgres`, если менялись SQL/RLS/backend data access
+4. `npm run test:e2e`, если менялись auth, routing или основной planner flow
+5. `npm run mobile:doctor`, если планируется store release
+6. production env готов для backend и web runtime
+7. иконки и splash пересобраны, если менялся брендинг
+8. release notes обновлены в [docs/release-notes.md](./release-notes.md)
 
 Release notes ведутся как пользовательский документ:
 

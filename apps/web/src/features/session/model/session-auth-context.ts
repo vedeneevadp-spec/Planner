@@ -11,16 +11,24 @@ export interface PasswordSignUpResult {
 }
 
 export type SessionRecoveryResult = 'deferred' | 'recovered' | 'signed_out'
+export type SessionAuthLifecycleStatus =
+  | 'authenticated'
+  | 'deferred'
+  | 'disabled'
+  | 'restoring'
+  | 'signed_out'
 
 export interface SessionAuthState {
   accessToken: string | null
   authNotice: string | null
+  canUseProtectedApi: boolean
   clearAuthNotice: () => void
   email: string | null
   expireSession: (message?: string) => Promise<void>
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean
+  lifecycleStatus: SessionAuthLifecycleStatus
   recoverSession: () => Promise<SessionRecoveryResult>
   requestPasswordReset: (email: string) => Promise<void>
   sessionVersion: number

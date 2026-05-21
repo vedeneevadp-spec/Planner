@@ -11,6 +11,7 @@ import {
   type SessionApiError,
   updateSharedWorkspace,
 } from './session-api'
+import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
 import {
@@ -30,6 +31,8 @@ export function useCreateSharedWorkspace() {
       if (!session) {
         throw new Error('Planner session is required to create a workspace.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       return createSharedWorkspace({
         ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
@@ -61,6 +64,8 @@ export function useUpdateSharedWorkspace() {
         throw new Error('Planner session is required to rename a workspace.')
       }
 
+      assertCanUseProtectedSessionApi(auth)
+
       return updateSharedWorkspace({
         ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
         actorUserId: session.actorUserId,
@@ -86,6 +91,8 @@ export function useDeleteSharedWorkspace() {
       if (!session) {
         throw new Error('Planner session is required to delete a workspace.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       await deleteSharedWorkspace({
         ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
@@ -113,6 +120,8 @@ export function useLeaveSharedWorkspace() {
       if (!session) {
         throw new Error('Planner session is required to leave a workspace.')
       }
+
+      assertCanUseProtectedSessionApi(auth)
 
       await leaveSharedWorkspace({
         ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
