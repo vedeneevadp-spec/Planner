@@ -35,6 +35,7 @@ import { useTaskCompletionConfetti } from '../lib/task-completion-confetti'
 import type { PlannerState } from './planner.types'
 import {
   getErrorMessage,
+  getPlannerQueryErrorMessage,
   shouldKeepOptimisticMutation,
 } from './planner-error-policy'
 import { usePlannerMutations } from './planner-mutations'
@@ -673,11 +674,17 @@ export function usePlannerState(): PlannerState {
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??
-      (spheresQuery.error ? getErrorMessage(spheresQuery.error) : null) ??
+      getPlannerQueryErrorMessage(spheresQuery.error, {
+        hasCachedRecords: hasLifeSphereRecords,
+      }) ??
       (taskTemplatesQuery.error
-        ? getErrorMessage(taskTemplatesQuery.error)
+        ? getPlannerQueryErrorMessage(taskTemplatesQuery.error, {
+            hasCachedRecords: hasTaskTemplateRecords,
+          })
         : null) ??
-      (tasksQuery.error ? getErrorMessage(tasksQuery.error) : null),
+      getPlannerQueryErrorMessage(tasksQuery.error, {
+        hasCachedRecords: hasTaskRecords,
+      }),
     isLoading:
       sessionQuery.isPending ||
       (sessionQuery.isSuccess &&
