@@ -291,6 +291,54 @@ describe('NativePlannerWidgetSync', () => {
       )
     })
   })
+
+  it('acknowledges personal widget completions while a shared workspace is open', async () => {
+    const personalTask = createTaskRecord({
+      id: 'personal-task',
+      title: 'Personal task',
+      workspaceId: 'personal-workspace',
+    })
+    const completedPersonalTask = {
+      ...personalTask,
+      completedAt: '2026-05-09T10:00:00.000Z',
+      status: 'done' as const,
+      updatedAt: '2026-05-09T10:00:00.000Z',
+      version: 2,
+    }
+    const setTaskStatus = vi.fn().mockResolvedValue(completedPersonalTask)
+
+    mocks.createPlannerApiClient.mockReturnValue({
+      listLifeSpheres: vi.fn().mockResolvedValue([]),
+      listTasks: vi.fn().mockResolvedValue([personalTask]),
+      setTaskStatus,
+    })
+    mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
+      'personal-task',
+    ])
+    mocks.usePlannerSession.mockReturnValue({
+      data: createSessionStub('shared'),
+    })
+    mocks.usePlanner.mockReturnValue(
+      createPlannerStub({
+        tasks: [{ ...baseTask, id: 'shared-task', title: 'Shared task' }],
+      }),
+    )
+
+    renderSync()
+
+    await waitFor(() => {
+      expect(setTaskStatus).toHaveBeenCalledWith('personal-task', {
+        expectedVersion: 1,
+        status: 'done',
+      })
+    })
+    await waitFor(() => {
+      expect(
+        mocks.ackPendingNativePlannerWidgetCompletedTasks,
+      ).toHaveBeenCalledWith(['personal-task'])
+    })
+    expect(mocks.enqueuePlannerOfflineMutation).not.toHaveBeenCalled()
+  })
 })
 
 function renderSync() {

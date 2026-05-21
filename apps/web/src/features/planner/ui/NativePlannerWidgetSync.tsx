@@ -7,6 +7,7 @@ import type { Sphere } from '@/entities/sphere'
 import { sortTasks, type Task, type TaskStatus } from '@/entities/task'
 import { usePlannerSession, useSessionAuth } from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import { recordClientEvent } from '@/shared/lib/observability'
 
 import {
   ackPendingNativePlannerWidgetCompletedTasks,
@@ -226,6 +227,11 @@ export function NativePlannerWidgetSync() {
       const task = planner.tasks.find((candidate) => candidate.id === taskId)
 
       if (!task || task.status === 'done') {
+        recordClientEvent('widget_completion_replayed', {
+          activePersonalWorkspace: planner.isActivePersonalWorkspace,
+          reason: task ? 'already_completed' : 'missing_local_task',
+        })
+
         return true
       }
 
@@ -293,6 +299,10 @@ export function NativePlannerWidgetSync() {
 
         if (acknowledgedTaskIds.length > 0) {
           await ackPendingNativePlannerWidgetCompletedTasks(acknowledgedTaskIds)
+          recordClientEvent('widget_completion_acknowledged', {
+            count: acknowledgedTaskIds.length,
+            pendingCount: taskIds.length,
+          })
         }
 
         return {
@@ -535,6 +545,13 @@ async function completePersonalWidgetTask({
         type: 'task.status.update',
         workspaceId,
       })
+      recordClientEvent(
+        'widget_completion_queued',
+        {
+          reason: 'offline_or_auth_deferred',
+        },
+        { level: 'warn' },
+      )
 
       return true
     }

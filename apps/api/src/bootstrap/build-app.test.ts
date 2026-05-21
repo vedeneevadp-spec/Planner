@@ -708,6 +708,26 @@ void describe('buildApiApp', () => {
     assert.equal(updatedTask.status, 'done')
     assert.equal(updatedTask.version, 3)
 
+    const statusReplayResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': 'user-1',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'PATCH',
+      payload: {
+        expectedVersion: detailsTask.version,
+        status: 'done',
+      },
+      url: `/api/v1/tasks/${createdTask.id}/status`,
+    })
+
+    assert.equal(statusReplayResponse.statusCode, 200)
+
+    const replayedTask = taskRecordSchema.parse(statusReplayResponse.json())
+
+    assert.equal(replayedTask.status, 'done')
+    assert.equal(replayedTask.version, updatedTask.version)
+
     const listResponse = await app.inject({
       headers: {
         'x-workspace-id': 'workspace-1',

@@ -1,14 +1,15 @@
 import {
   type PropsWithChildren,
-  type SetStateAction,
   useCallback,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import { recordClientEvent } from '@/shared/lib/observability'
 
 import {
   type AuthRequestOptions,
@@ -41,6 +42,12 @@ import {
   resolveSessionAuthLifecycleStatus,
 } from '../lib/session-auth-lifecycle'
 import {
+  ACCESS_TOKEN_EXPIRY_GRACE_MS,
+  createInitialSessionAuthState,
+  isAccessTokenUsable,
+  sessionAuthReducer,
+} from '../lib/session-auth-reducer'
+import {
   clearLastActorUserId,
   clearSelectedWorkspaceId,
   getLastActorUserId,
@@ -52,27 +59,15 @@ import {
   type SessionRecoveryResult,
 } from '../model/session-auth-context'
 
-interface AuthSnapshot {
-  email: string | null
-  expiresAt: string | null
-  isLoading: boolean
-  refreshToken: string | null
-  sessionAccessToken: string | null
-  userId: string | null
-}
-
-const INITIAL_AUTH_SNAPSHOT: AuthSnapshot = {
-  email: null,
-  expiresAt: null,
-  isLoading: false,
-  refreshToken: null,
-  sessionAccessToken: null,
-  userId: null,
-}
-
 const DEFAULT_EXPIRED_SESSION_MESSAGE =
   'Сессия истекла или больше не принимается сервером. Войдите заново.'
-const ACCESS_TOKEN_EXPIRY_GRACE_MS = 30_000
+
+type NativeDeviceSessionKeepReason =
+  | 'blocked_refresh_token'
+  | 'missing_refresh_token'
+  | 'retryable_refresh_error'
+  | 'server_denied_refresh'
+  | 'storage_empty_on_resume'
 
 export function SessionProvider({ children }: PropsWithChildren) {
   const isAuthEnabled = plannerApiConfig.authProvider === 'planner'
@@ -92,20 +87,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
         : readPasswordResetToken(window.location),
   )
   const [authNotice, setAuthNotice] = useState<string | null>(null)
-  const [snapshot, setSnapshot] = useState<AuthSnapshot>({
-    ...INITIAL_AUTH_SNAPSHOT,
-    isLoading: isAuthEnabled,
-  })
-  const [sessionVersion, setSessionVersion] = useState(0)
-  const isPasswordRecovery = passwordResetToken !== null
-
-  const commitAuthSnapshot = useCallback(
-    (nextSnapshot: SetStateAction<AuthSnapshot>) => {
-      setSnapshot(nextSnapshot)
-      setSessionVersion((currentVersion) => currentVersion + 1)
-    },
-    [],
+  const [{ sessionVersion, snapshot }, dispatchAuthState] = useReducer(
+    sessionAuthReducer,
+    isAuthEnabled,
+    createInitialSessionAuthState,
   )
+  const isPasswordRecovery = passwordResetToken !== null
 
   const clearRefreshTimer = useCallback(() => {
     if (refreshTimerRef.current === null) {
@@ -175,11 +162,13 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setPasswordResetToken(null)
       clearPasswordResetUrlParams()
       setAuthNotice(null)
-      commitAuthSnapshot(
-        toAuthSnapshot(storedSession, false, isNativeSessionRuntime),
-      )
+      dispatchAuthState({
+        includeRefreshToken: isNativeSessionRuntime,
+        session: storedSession,
+        type: 'auth.session_restored',
+      })
     },
-    [commitAuthSnapshot, isNativeSessionRuntime],
+    [isNativeSessionRuntime],
   )
 
   const clearAuthSession = useCallback(
@@ -204,10 +193,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
       clearSelectedWorkspaceId(actorUserId)
       clearLastActorUserId()
       await clearStoredAuthSession()
-      commitAuthSnapshot({
-        ...INITIAL_AUTH_SNAPSHOT,
-        isLoading: false,
-      })
+      dispatchAuthState({ type: 'auth.session_cleared' })
+      recordClientEvent(
+        'auth_session_cleared',
+        {
+          hadAccessToken: Boolean(snapshot.sessionAccessToken),
+          hadRefreshToken: Boolean(refreshToken),
+          nativeRuntime: isNativeSessionRuntime,
+          reason: notice === false ? 'user_sign_out' : 'system',
+        },
+        { level: notice === false ? 'info' : 'warn' },
+      )
 
       if (!isNativeSessionRuntime || refreshToken) {
         await signOutAuthSession(
@@ -226,7 +222,6 @@ export function SessionProvider({ children }: PropsWithChildren) {
     },
     [
       clearRefreshTimer,
-      commitAuthSnapshot,
       createAuthRequestOptions,
       isNativeSessionRuntime,
       snapshot.refreshToken,
@@ -239,22 +234,30 @@ export function SessionProvider({ children }: PropsWithChildren) {
     (
       error: unknown,
       logMessage: string,
+      reason: NativeDeviceSessionKeepReason,
       storedSession: StoredAuthSession | null,
     ) => {
       console.warn(logMessage, error)
       setAuthNotice(null)
-      commitAuthSnapshot((currentSnapshot) =>
-        storedSession
-          ? toAuthSnapshot(storedSession, false, isNativeSessionRuntime)
-          : {
-              ...currentSnapshot,
-              isLoading: false,
-            },
+      dispatchAuthState({
+        includeRefreshToken: isNativeSessionRuntime,
+        session: storedSession,
+        type: 'auth.device_session_kept',
+      })
+      recordClientEvent(
+        'auth_device_session_kept',
+        {
+          hasStoredAccessToken: Boolean(storedSession?.accessToken),
+          hasStoredRefreshToken: Boolean(storedSession?.refreshToken),
+          hasStoredSession: Boolean(storedSession),
+          reason,
+        },
+        { level: 'warn' },
       )
 
       return 'deferred' as const
     },
-    [commitAuthSnapshot, isNativeSessionRuntime],
+    [isNativeSessionRuntime],
   )
 
   const recoverSession =
@@ -280,14 +283,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
             return keepDeviceSession(
               new Error('Native auth session has no refresh token.'),
               'Native auth session refresh skipped.',
+              'missing_refresh_token',
               storedSession,
             )
           }
 
-          commitAuthSnapshot({
-            ...INITIAL_AUTH_SNAPSHOT,
-            isLoading: false,
-          })
+          dispatchAuthState({ type: 'auth.session_cleared' })
           return 'signed_out' as const
         }
 
@@ -299,6 +300,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
           return keepDeviceSession(
             new Error('Native auth refresh is blocked for this token.'),
             'Native auth session refresh skipped for a blocked token.',
+            'blocked_refresh_token',
             storedSession,
           )
         }
@@ -313,9 +315,19 @@ export function SessionProvider({ children }: PropsWithChildren) {
           return 'recovered' as const
         } catch (error) {
           if (isNativeSessionRuntime && isRetryableAuthError(error)) {
+            recordClientEvent(
+              'auth_refresh_deferred',
+              {
+                errorKind: getAuthErrorKind(error),
+                hasStoredSession: Boolean(storedSession),
+              },
+              { level: 'warn' },
+            )
+
             return keepDeviceSession(
               error,
               'Auth session refresh deferred to device session.',
+              'retryable_refresh_error',
               storedSession,
             )
           }
@@ -336,13 +348,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
               latestStoredSession.refreshToken !== refreshToken
             ) {
               setAuthNotice(null)
-              commitAuthSnapshot(
-                toAuthSnapshot(
-                  latestStoredSession,
-                  false,
-                  isNativeSessionRuntime,
-                ),
-              )
+              dispatchAuthState({
+                includeRefreshToken: isNativeSessionRuntime,
+                session: latestStoredSession,
+                type: 'auth.session_restored',
+              })
 
               return isAccessTokenUsable(latestStoredSession.expiresAt)
                 ? ('recovered' as const)
@@ -359,6 +369,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
             return keepDeviceSession(
               error,
               'Auth session refresh denied; keeping local device session.',
+              'server_denied_refresh',
               storedSession,
             )
           }
@@ -375,7 +386,6 @@ export function SessionProvider({ children }: PropsWithChildren) {
       return recovery
     }, [
       clearAuthSession,
-      commitAuthSnapshot,
       createAuthRequestOptions,
       isAuthEnabled,
       isNativeSessionRuntime,
@@ -397,14 +407,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
           return keepDeviceSession(
             new Error('Native auth storage returned no session.'),
             'Native auth session restore skipped.',
+            'storage_empty_on_resume',
             null,
           )
         }
 
-        commitAuthSnapshot({
-          ...INITIAL_AUTH_SNAPSHOT,
-          isLoading: false,
-        })
+        dispatchAuthState({ type: 'auth.session_cleared' })
         return 'signed_out'
       }
 
@@ -414,15 +422,16 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       if (isAccessTokenUsable(storedSession.expiresAt)) {
         setAuthNotice(null)
-        commitAuthSnapshot(
-          toAuthSnapshot(storedSession, false, isNativeSessionRuntime),
-        )
+        dispatchAuthState({
+          includeRefreshToken: isNativeSessionRuntime,
+          session: storedSession,
+          type: 'auth.session_restored',
+        })
         return 'recovered'
       }
 
       return recoverSession()
     }, [
-      commitAuthSnapshot,
       isAuthEnabled,
       isNativeSessionRuntime,
       keepDeviceSession,
@@ -469,10 +478,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         })
 
         if (!isActive || !appIsActive) {
-          commitAuthSnapshot((currentSnapshot) => ({
-            ...currentSnapshot,
-            isLoading: false,
-          }))
+          dispatchAuthState({ type: 'auth.loading_finished' })
           return
         }
       }
@@ -506,7 +512,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         void removeAppStateListener()
       }
     }
-  }, [commitAuthSnapshot, isAuthEnabled, isNativeSessionRuntime])
+  }, [isAuthEnabled, isNativeSessionRuntime])
 
   useEffect(() => {
     clearRefreshTimer()
@@ -705,36 +711,6 @@ function toStoredAuthSession(
   }
 }
 
-function toAuthSnapshot(
-  session: StoredAuthSession | null,
-  isLoading: boolean,
-  includeRefreshToken: boolean,
-): AuthSnapshot {
-  if (!session) {
-    return {
-      ...INITIAL_AUTH_SNAPSHOT,
-      isLoading,
-    }
-  }
-
-  return {
-    email: session.email,
-    expiresAt: session.expiresAt,
-    isLoading,
-    refreshToken: includeRefreshToken ? (session.refreshToken ?? null) : null,
-    sessionAccessToken: isAccessTokenUsable(session.expiresAt)
-      ? session.accessToken
-      : null,
-    userId: session.userId,
-  }
-}
-
-function isAccessTokenUsable(expiresAt: string): boolean {
-  return (
-    new Date(expiresAt).getTime() > Date.now() + ACCESS_TOKEN_EXPIRY_GRACE_MS
-  )
-}
-
 function readPasswordResetToken(location: Location): string | null {
   const searchToken = new URLSearchParams(location.search).get('reset_token')
 
@@ -778,6 +754,30 @@ function isRetryableAuthError(error: unknown): boolean {
   }
 
   return false
+}
+
+function getAuthErrorKind(error: unknown): string {
+  if (error instanceof DOMException) {
+    return 'dom_exception'
+  }
+
+  if (error instanceof TypeError) {
+    return 'network'
+  }
+
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const status = (error as { status: unknown }).status
+
+    if (typeof status === 'number') {
+      return `http_${status}`
+    }
+  }
+
+  if (error instanceof Error && /timeout/i.test(error.message)) {
+    return 'timeout'
+  }
+
+  return 'unknown'
 }
 
 function shouldKeepNativeDeviceSessionAfterRefreshError(

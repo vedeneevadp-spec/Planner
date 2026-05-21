@@ -42,6 +42,9 @@ Mobile auth lifecycle считается критической инфрастр
   token и cross-device cases
 - feature code не должен превращать session readiness errors в ложные offline
   или success states
+- mobile auth/offline/widget critical path должен писать structured diagnostic
+  events без персональных данных, чтобы на устройстве было видно, кто сохранил
+  device session, кто очистил session state и где возник offline conflict
 
 ## Правила реализации
 
@@ -51,6 +54,9 @@ Mobile auth lifecycle считается критической инфрастр
   независимые UI effects
 - cache можно использовать, чтобы сохранять контент видимым во время native
   restore, но protected writes все равно требуют текущий access token
+- события диагностики доступны в native console как `[chaotika:event]` и в
+  WebView через `window.__CHAOTIKA_DIAGNOSTICS__.events`; они не должны
+  содержать email, userId, taskId, workspaceId, access token или refresh token
 - любое изменение в `SessionProvider`, `AuthGate`, auth storage, planner session
   bootstrap, refresh endpoints или auth SQL functions должно включать тесты
   mobile restore path
@@ -71,6 +77,8 @@ Mobile auth lifecycle считается критической инфрастр
 7. `npm run test:e2e`, если меняются auth, routing или first-screen behavior
 8. native smoke на симуляторе или физическом устройстве, если меняется поведение
    установленного приложения
+9. `npm run mobile:auth-smoke -- --api-url=<staging-or-prod-url> --android`
+   для real-device прохода auth/offline/widget сценариев
 
 Минимальный ручной mobile smoke:
 
@@ -81,6 +89,8 @@ Mobile auth lifecycle считается критической инфрастр
 4. выключить и включить сеть во время resume
 5. перезагрузить или заново открыть приложение
 6. подтвердить, что пользователя не разлогинило без нажатия на sign-out
+7. завершить задачу из Android widget и открыть приложение; в "Еще" не должно
+   появиться offline conflict от этого завершения
 
 ## Последствия
 

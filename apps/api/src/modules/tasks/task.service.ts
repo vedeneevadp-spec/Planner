@@ -156,6 +156,14 @@ export class TaskService {
       assertCanManageSharedTaskStatus(context, task, status)
       assertCanCompleteConfirmedSharedTask(context, task, status)
 
+      if (
+        expectedVersion !== undefined &&
+        task.version !== expectedVersion &&
+        task.status === status
+      ) {
+        return task
+      }
+
       const command: UpdateTaskStatusCommand = {
         context,
         taskId,
@@ -166,13 +174,31 @@ export class TaskService {
         command.expectedVersion = expectedVersion
       }
 
-      return this.repository.updateStatus(command).then(async (updatedTask) => {
-        if (task.status !== 'done' && status === 'done') {
-          await this.createNextRecurringOccurrence(context, updatedTask)
-        }
+      let shouldCreateNextRecurringOccurrence =
+        task.status !== 'done' && status === 'done'
 
-        return updatedTask
-      })
+      return Promise.resolve()
+        .then(() => this.repository.updateStatus(command))
+        .catch(async (error: unknown) => {
+          if (expectedVersion !== undefined && isTaskVersionConflict(error)) {
+            const currentTask = await this.repository.findById(context, taskId)
+
+            if (currentTask?.status === status) {
+              shouldCreateNextRecurringOccurrence = false
+
+              return currentTask
+            }
+          }
+
+          throw error
+        })
+        .then(async (updatedTask) => {
+          if (shouldCreateNextRecurringOccurrence) {
+            await this.createNextRecurringOccurrence(context, updatedTask)
+          }
+
+          return updatedTask
+        })
     })
   }
 
@@ -753,6 +779,10 @@ function canAssigneeChangeSharedTaskStatus(
   }
 
   return false
+}
+
+function isTaskVersionConflict(error: unknown): error is HttpError {
+  return error instanceof HttpError && error.code === 'task_version_conflict'
 }
 
 function assertCanDeleteSharedWorkspaceTask(

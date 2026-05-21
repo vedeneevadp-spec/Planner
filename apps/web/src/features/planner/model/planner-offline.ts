@@ -6,6 +6,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { recordClientEvent } from '@/shared/lib/observability'
 import { useOnlineSync } from '@/shared/lib/offline-sync'
 
 import {
@@ -249,6 +250,17 @@ export function usePlannerOfflineSync({
       }
 
       if (result.conflicted > 0) {
+        recordClientEvent(
+          'offline_mutation_conflicted',
+          {
+            conflicted: result.conflicted,
+            failed: result.failed,
+            processed: result.processed,
+            scope: 'planner',
+            synced: result.synced,
+          },
+          { level: 'warn' },
+        )
         setMutationErrorMessage(
           'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
         )

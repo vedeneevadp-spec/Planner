@@ -124,6 +124,58 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.title, 'Умыться')
 })
 
+void test('TaskService treats stale same-status completion as idempotent', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000003',
+      startDate: '2099-01-01',
+    },
+    title: 'Повторный replay',
+  })
+
+  const completedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    task.id,
+    'done',
+    task.version,
+  )
+  const replayedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    task.id,
+    'done',
+    task.version,
+  )
+
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+
+  assert.equal(replayedTask.status, 'done')
+  assert.equal(replayedTask.version, completedTask.version)
+  assert.equal(tasks.length, 2)
+})
+
+void test('TaskService keeps stale conflicting status updates strict', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, BASE_INPUT)
+
+  await service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'done', task.version)
+
+  await assert.rejects(
+    Promise.resolve().then(() =>
+      service.setTaskStatus(PERSONAL_CONTEXT, task.id, 'todo', task.version),
+    ),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === 'task_version_conflict',
+  )
+})
+
 void test('TaskService respects recurring task intervals', async () => {
   const service = new TaskService(new MemoryTaskRepository())
   const task = await service.createTask(PERSONAL_CONTEXT, {

@@ -26,7 +26,12 @@ workflow релиза.
 Для auth/session изменений действует отдельный критичный инвариант:
 авторизованного мобильного пользователя нельзя разлогинивать без явного нажатия
 на выход или подтвержденной серверной ревокации текущей device session. Правила
-и gate описаны в [ADR 0002](./adr/0002-auth-session-stability.md).
+и gate описаны в [ADR 0002](./adr/0002-auth-session-stability.md). Для ручного
+проверочного прохода на установленном приложении используйте:
+
+```bash
+npm run mobile:auth-smoke -- --api-url=https://chaotika.ru --android
+```
 
 ## Когда какой релиз нужен
 
@@ -177,6 +182,15 @@ npm run mobile:open:android
    приложения без access-check flash при наличии cached session
 7. для auth/session изменений: background/resume, краткий offline/online и
    отсутствие silent logout без нажатия на кнопку выхода
+8. для widget/offline изменений: завершение задачи из Android widget не должно
+   создавать конфликт в "Еще" после открытия приложения
+
+Во время mobile auth smoke смотрите structured события в native console:
+`[chaotika:event]`, либо в WebView через
+`window.__CHAOTIKA_DIAGNOSTICS__.events`. Критичные имена событий:
+`auth_refresh_deferred`, `auth_device_session_kept`, `auth_session_cleared`,
+`offline_mutation_conflicted`, `widget_completion_replayed`,
+`widget_completion_queued`, `widget_completion_acknowledged`.
 
 ## 5. Подготовить release candidate
 
@@ -184,12 +198,14 @@ npm run mobile:open:android
 
 1. `npm run ci`
 2. `npm run test:mobile-auth`, если менялись auth/session/mobile restore
-3. `npm run test:api:postgres`, если менялись SQL/RLS/backend data access
-4. `npm run test:e2e`, если менялись auth, routing или основной planner flow
-5. `npm run mobile:doctor`, если планируется store release
-6. production env готов для backend и web runtime
-7. иконки и splash пересобраны, если менялся брендинг
-8. release notes обновлены в [docs/release-notes.md](./release-notes.md)
+3. `npm run mobile:auth-smoke -- --api-url=<staging-or-prod-url> --android`,
+   если менялись auth/session/mobile restore/widget/offline completion
+4. `npm run test:api:postgres`, если менялись SQL/RLS/backend data access
+5. `npm run test:e2e`, если менялись auth, routing или основной planner flow
+6. `npm run mobile:doctor`, если планируется store release
+7. production env готов для backend и web runtime
+8. иконки и splash пересобраны, если менялся брендинг
+9. release notes обновлены в [docs/release-notes.md](./release-notes.md)
 
 Release notes ведутся как пользовательский документ:
 
