@@ -33,6 +33,7 @@ interface AuthRouteOptions {
 
 const REFRESH_TOKEN_COOKIE_NAME = 'planner_refresh_token'
 const REFRESH_TOKEN_COOKIE_PATH = '/api/v1/auth'
+const AUTH_DEVICE_ID_HEADER = 'x-auth-device-id'
 const REFRESH_TOKEN_PERSISTENCE_HEADER = 'x-auth-session-persistence'
 const REFRESH_TOKEN_TRANSPORT_HEADER = 'x-auth-token-transport'
 
@@ -316,12 +317,25 @@ function readCookie(
 
 function getRequestMetadata(request: FastifyRequest): AuthRequestMetadata {
   return {
+    deviceId: readOptionalHeader(request.headers[AUTH_DEVICE_ID_HEADER]),
     ipAddress: request.ip,
     userAgent:
       typeof request.headers['user-agent'] === 'string'
         ? request.headers['user-agent']
         : undefined,
   }
+}
+
+function readOptionalHeader(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalizedValue = value.trim()
+
+  return normalizedValue && normalizedValue.length <= 128
+    ? normalizedValue
+    : undefined
 }
 
 function assertAuthRateLimit(

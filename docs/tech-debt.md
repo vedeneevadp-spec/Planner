@@ -60,7 +60,10 @@ workspace selection и sign-out живут в разных местах. Из-з
 
 Текущий первый шаг: postgres spec для `auth_rotate_refresh_token` расширен на
 active rotation, expired token, revoked token, same-client stale replay и
-different-client stale replay.
+different-client stale replay. Native refresh-token runtime получил стабильный
+`deviceId` установленного приложения: новые refresh tokens сохраняют
+`device_id`, same-device replay сравнивает его вместо user-agent, а user-agent
+остается только legacy fallback для старых токенов без `device_id`.
 
 ### Нет отдельного mobile auth regression gate
 

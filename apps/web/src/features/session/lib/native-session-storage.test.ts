@@ -35,6 +35,7 @@ import {
   clearNativeSessionStorage,
   createNativeSessionStorage,
   getNativeAppIsActive,
+  getNativeAuthDeviceId,
   isNativeSessionPersistenceRuntime,
 } from './native-session-storage'
 
@@ -52,6 +53,37 @@ describe('native session storage', () => {
     capacitorMocks.isNativePlatform.mockReturnValue(true)
 
     expect(isNativeSessionPersistenceRuntime()).toBe(true)
+  })
+
+  it('returns no auth device id outside native runtime', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(false)
+
+    await expect(getNativeAuthDeviceId()).resolves.toBeNull()
+    expect(capacitorMocks.get).not.toHaveBeenCalled()
+  })
+
+  it('reuses a stored native auth device id', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    capacitorMocks.get.mockResolvedValue({ value: 'native-device-1' })
+
+    await expect(getNativeAuthDeviceId()).resolves.toBe('native-device-1')
+    expect(capacitorMocks.get).toHaveBeenCalledWith({
+      key: 'planner.auth.deviceId',
+    })
+    expect(capacitorMocks.set).not.toHaveBeenCalled()
+  })
+
+  it('creates and stores a native auth device id when none exists', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    capacitorMocks.get.mockResolvedValue({ value: null })
+
+    const deviceId = await getNativeAuthDeviceId()
+
+    expect(deviceId).toMatch(/^native-/)
+    expect(capacitorMocks.set).toHaveBeenCalledWith({
+      key: 'planner.auth.deviceId',
+      value: deviceId,
+    })
   })
 
   it('reads and writes auth values through Capacitor Preferences', async () => {

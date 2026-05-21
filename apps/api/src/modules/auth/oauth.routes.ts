@@ -550,12 +550,25 @@ function registerUrlEncodedFormParser(app: FastifyInstance): void {
 
 function getRequestMetadata(request: FastifyRequest): AuthRequestMetadata {
   return {
+    deviceId: readOptionalHeader(request.headers['x-auth-device-id']),
     ipAddress: request.ip,
     userAgent:
       typeof request.headers['user-agent'] === 'string'
         ? request.headers['user-agent']
         : undefined,
   }
+}
+
+function readOptionalHeader(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+
+  const normalizedValue = value.trim()
+
+  return normalizedValue && normalizedValue.length <= 128
+    ? normalizedValue
+    : undefined
 }
 
 function assertOAuthAuthorizeRateLimit(

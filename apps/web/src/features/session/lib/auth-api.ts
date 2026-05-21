@@ -22,7 +22,8 @@ import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
 
 export type AuthTokenTransport = 'body' | 'cookie'
 
-interface AuthRequestOptions {
+export interface AuthRequestOptions {
+  deviceId?: string | undefined
   rememberSession?: boolean | undefined
   tokenTransport?: AuthTokenTransport | undefined
 }
@@ -189,6 +190,10 @@ function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
 
   if (options.tokenTransport === 'body') {
     headers['x-auth-token-transport'] = 'body'
+  }
+
+  if (options.deviceId) {
+    headers['x-auth-device-id'] = options.deviceId
   }
 
   if (options.rememberSession === false) {

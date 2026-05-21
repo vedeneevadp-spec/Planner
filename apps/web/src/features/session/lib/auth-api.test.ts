@@ -62,6 +62,7 @@ describe('auth-api', () => {
         password: 'password',
       },
       {
+        deviceId: 'native-device-1',
         tokenTransport: 'body',
         rememberSession: false,
       },
@@ -73,6 +74,7 @@ describe('auth-api', () => {
         credentials: 'include',
         headers: {
           'content-type': 'application/json',
+          'x-auth-device-id': 'native-device-1',
           'x-auth-session-persistence': 'session',
           'x-auth-token-transport': 'body',
         },

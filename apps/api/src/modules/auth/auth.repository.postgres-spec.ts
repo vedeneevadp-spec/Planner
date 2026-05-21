@@ -10,7 +10,9 @@ const connectionString =
 
 interface AuthRefreshFixture {
   activeTokenId: string
+  deviceId: string
   nextTokenId: string
+  otherDeviceId: string
   prefix: string
   sessionId: string
   staleTokenId: string
@@ -51,6 +53,7 @@ void describe('Postgres auth runtime functions', () => {
             $3,
             now() + interval '30 days',
             $4,
+            $5,
             '127.0.0.1'
           )
         `,
@@ -58,6 +61,7 @@ void describe('Postgres auth runtime functions', () => {
           `${fixture.prefix}-active-hash`,
           fixture.nextTokenId,
           `${fixture.prefix}-next-hash`,
+          fixture.deviceId,
           fixture.userAgent,
         ],
       )
@@ -67,12 +71,17 @@ void describe('Postgres auth runtime functions', () => {
 
       const tokenState = await client.query<{
         next_token_count: string
+        next_token_device_count: string
         revoked_count: string
         rotated_active_count: string
       }>(
         `
           select
             count(*) filter (where token_hash = $2) as next_token_count,
+            count(*) filter (
+              where token_hash = $2
+                and device_id = $5
+            ) as next_token_device_count,
             count(*) filter (
               where id = $3
                 and rotated_at is not null
@@ -87,10 +96,12 @@ void describe('Postgres auth runtime functions', () => {
           `${fixture.prefix}-next-hash`,
           fixture.activeTokenId,
           fixture.nextTokenId,
+          fixture.deviceId,
         ],
       )
 
       assert.equal(Number(tokenState.rows[0]?.next_token_count ?? 0), 1)
+      assert.equal(Number(tokenState.rows[0]?.next_token_device_count ?? 0), 1)
       assert.equal(Number(tokenState.rows[0]?.rotated_active_count ?? 0), 1)
       assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 0)
     } finally {
@@ -116,6 +127,7 @@ void describe('Postgres auth runtime functions', () => {
             $3,
             now() + interval '30 days',
             $4,
+            $5,
             '127.0.0.1'
           )
         `,
@@ -123,7 +135,8 @@ void describe('Postgres auth runtime functions', () => {
           `${fixture.prefix}-stale-hash`,
           fixture.nextTokenId,
           `${fixture.prefix}-next-hash`,
-          fixture.userAgent,
+          fixture.deviceId,
+          `${fixture.userAgent} Updated`,
         ],
       )
 
@@ -132,12 +145,17 @@ void describe('Postgres auth runtime functions', () => {
 
       const tokenState = await client.query<{
         next_token_count: string
+        next_token_device_count: string
         revoked_count: string
         rotated_active_count: string
       }>(
         `
           select
             count(*) filter (where token_hash = $2) as next_token_count,
+            count(*) filter (
+              where token_hash = $2
+                and device_id = $4
+            ) as next_token_device_count,
             count(*) filter (where id = $3 and rotated_at is not null) as rotated_active_count,
             count(*) filter (where revoked_at is not null) as revoked_count
           from app.auth_refresh_tokens
@@ -147,10 +165,12 @@ void describe('Postgres auth runtime functions', () => {
           fixture.sessionId,
           `${fixture.prefix}-next-hash`,
           fixture.activeTokenId,
+          fixture.deviceId,
         ],
       )
 
       assert.equal(Number(tokenState.rows[0]?.next_token_count ?? 0), 1)
+      assert.equal(Number(tokenState.rows[0]?.next_token_device_count ?? 0), 1)
       assert.equal(Number(tokenState.rows[0]?.rotated_active_count ?? 0), 1)
       assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 0)
     } finally {
@@ -172,7 +192,8 @@ void describe('Postgres auth runtime functions', () => {
             $2::uuid,
             $3,
             now() + interval '30 days',
-            'OtherClient/1.0',
+            $4,
+            $5,
             '127.0.0.1'
           )
         `,
@@ -180,6 +201,8 @@ void describe('Postgres auth runtime functions', () => {
           `${fixture.prefix}-stale-hash`,
           fixture.nextTokenId,
           `${fixture.prefix}-next-hash`,
+          fixture.otherDeviceId,
+          fixture.userAgent,
         ],
       )
 
@@ -225,6 +248,7 @@ void describe('Postgres auth runtime functions', () => {
             $3,
             now() + interval '30 days',
             $4,
+            $5,
             '127.0.0.1'
           )
         `,
@@ -232,6 +256,7 @@ void describe('Postgres auth runtime functions', () => {
           `${fixture.prefix}-active-hash`,
           fixture.nextTokenId,
           `${fixture.prefix}-next-hash`,
+          fixture.deviceId,
           fixture.userAgent,
         ],
       )
@@ -282,6 +307,7 @@ void describe('Postgres auth runtime functions', () => {
             $3,
             now() + interval '30 days',
             $4,
+            $5,
             '127.0.0.1'
           )
         `,
@@ -289,6 +315,7 @@ void describe('Postgres auth runtime functions', () => {
           `${fixture.prefix}-active-hash`,
           fixture.nextTokenId,
           `${fixture.prefix}-next-hash`,
+          fixture.deviceId,
           fixture.userAgent,
         ],
       )
@@ -322,7 +349,9 @@ function createFixture(): AuthRefreshFixture {
 
   return {
     activeTokenId: randomUUID(),
+    deviceId: `native-device-${suffix}`,
     nextTokenId: randomUUID(),
+    otherDeviceId: `native-device-other-${suffix}`,
     prefix: `auth-refresh-${suffix}`,
     sessionId: randomUUID(),
     staleTokenId: randomUUID(),
@@ -358,6 +387,7 @@ async function seedRefreshFixture(fixture: AuthRefreshFixture): Promise<void> {
         session_id,
         expires_at,
         rotated_at,
+        device_id,
         user_agent,
         ip_address
       )
@@ -370,16 +400,18 @@ async function seedRefreshFixture(fixture: AuthRefreshFixture): Promise<void> {
           now() + interval '30 days',
           now() - interval '2 days',
           $5,
+          $6,
           '127.0.0.1'
         ),
         (
-          $6::uuid,
+          $7::uuid,
           $2::uuid,
-          $7,
+          $8,
           $4::uuid,
           now() + interval '30 days',
           null,
           $5,
+          $6,
           '127.0.0.1'
         )
     `,
@@ -388,6 +420,7 @@ async function seedRefreshFixture(fixture: AuthRefreshFixture): Promise<void> {
       fixture.userId,
       `${fixture.prefix}-stale-hash`,
       fixture.sessionId,
+      fixture.deviceId,
       fixture.userAgent,
       fixture.activeTokenId,
       `${fixture.prefix}-active-hash`,

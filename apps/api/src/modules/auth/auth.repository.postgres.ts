@@ -121,6 +121,7 @@ export class PostgresAuthRepository implements AuthRepository {
         ${command.refreshTokenHash},
         ${command.sessionId}::uuid,
         ${command.expiresAt}::timestamptz,
+        ${command.metadata.deviceId ?? null},
         ${command.metadata.userAgent ?? null},
         ${command.metadata.ipAddress ?? null}
       )
@@ -158,6 +159,7 @@ export class PostgresAuthRepository implements AuthRepository {
         ${command.refreshToken.refreshTokenHash},
         ${command.refreshToken.sessionId}::uuid,
         ${command.refreshToken.expiresAt}::timestamptz,
+        ${command.refreshToken.metadata.deviceId ?? null},
         ${command.refreshToken.metadata.userAgent ?? null},
         ${command.refreshToken.metadata.ipAddress ?? null}
       )
@@ -177,6 +179,7 @@ export class PostgresAuthRepository implements AuthRepository {
         ${generateUuidV7()}::uuid,
         ${nextRefreshToken.refreshTokenHash},
         ${nextRefreshToken.expiresAt}::timestamptz,
+        ${nextRefreshToken.metadata.deviceId ?? null},
         ${nextRefreshToken.metadata.userAgent ?? null},
         ${nextRefreshToken.metadata.ipAddress ?? null}
       )
@@ -217,6 +220,7 @@ export class PostgresAuthRepository implements AuthRepository {
         ${command.refreshToken.refreshTokenHash},
         ${command.refreshToken.sessionId}::uuid,
         ${command.refreshToken.expiresAt}::timestamptz,
+        ${command.refreshToken.metadata.deviceId ?? null},
         ${command.refreshToken.metadata.userAgent ?? null},
         ${command.refreshToken.metadata.ipAddress ?? null}
       )

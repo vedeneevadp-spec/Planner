@@ -19,6 +19,7 @@ export interface PlannerAuthRuntimeConfig {
 }
 
 export interface AuthRequestMetadata {
+  deviceId?: string | undefined
   ipAddress?: string | undefined
   userAgent?: string | undefined
 }

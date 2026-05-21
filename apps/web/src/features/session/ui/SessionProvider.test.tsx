@@ -27,6 +27,7 @@ const authStorageMocks = vi.hoisted(() => ({
 
 const nativeSessionMocks = vi.hoisted(() => ({
   addNativeAppStateChangeListener: vi.fn(),
+  getNativeAuthDeviceId: vi.fn(),
   getNativeAppIsActive: vi.fn(),
   isNativeSessionPersistenceRuntime: vi.fn(),
 }))
@@ -69,6 +70,7 @@ vi.mock('../lib/native-push-notifications', () => ({
 vi.mock('../lib/native-session-storage', () => ({
   addNativeAppStateChangeListener:
     nativeSessionMocks.addNativeAppStateChangeListener,
+  getNativeAuthDeviceId: nativeSessionMocks.getNativeAuthDeviceId,
   getNativeAppIsActive: nativeSessionMocks.getNativeAppIsActive,
   isNativeSessionPersistenceRuntime:
     nativeSessionMocks.isNativeSessionPersistenceRuntime,
@@ -120,6 +122,7 @@ describe('SessionProvider', () => {
 
     nativePushMocks.unregisterStoredNativePushDevice.mockReset()
     nativeSessionMocks.addNativeAppStateChangeListener.mockReset()
+    nativeSessionMocks.getNativeAuthDeviceId.mockReset()
     nativeSessionMocks.getNativeAppIsActive.mockReset()
     nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReset()
 
@@ -134,6 +137,9 @@ describe('SessionProvider', () => {
     authStorageMocks.writeStoredAuthSession.mockResolvedValue(undefined)
     nativePushMocks.unregisterStoredNativePushDevice.mockResolvedValue(
       undefined,
+    )
+    nativeSessionMocks.getNativeAuthDeviceId.mockResolvedValue(
+      'native-device-1',
     )
     nativeSessionMocks.getNativeAppIsActive.mockResolvedValue(true)
     nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
@@ -224,6 +230,38 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+  })
+
+  it('does not refresh a native session without a stable device id', async () => {
+    const warnSpy = vi
+      .spyOn(console, 'warn')
+      .mockImplementation(() => undefined)
+
+    nativeSessionMocks.getNativeAuthDeviceId.mockRejectedValue(
+      new Error('Preferences unavailable'),
+    )
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createExpiredStoredSession(),
+    )
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(nativeSessionMocks.getNativeAuthDeviceId).toHaveBeenCalled()
+      expect(screen.getByTestId('auth-email')).toHaveTextContent(
+        'mobile@example.com',
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+    })
+    expect(authApiMocks.refreshAuthSession).not.toHaveBeenCalled()
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+
+    warnSpy.mockRestore()
   })
 
   it('bumps the native session version when the app resumes with a device session', async () => {
@@ -321,6 +359,7 @@ describe('SessionProvider', () => {
       expect(authApiMocks.refreshAuthSession).toHaveBeenCalledWith(
         { refreshToken: 'old-refresh-token' },
         {
+          deviceId: 'native-device-1',
           rememberSession: true,
           tokenTransport: 'body',
         },
@@ -359,6 +398,7 @@ describe('SessionProvider', () => {
       expect(authApiMocks.refreshAuthSession).toHaveBeenCalledWith(
         { refreshToken: 'old-refresh-token' },
         {
+          deviceId: 'native-device-1',
           rememberSession: true,
           tokenTransport: 'body',
         },

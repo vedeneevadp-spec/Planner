@@ -34,6 +34,9 @@ Mobile auth lifecycle считается критической инфрастр
   restoring state, который сохраняет существующий контент на экране
 - refresh-token rotation с точки зрения клиента должен быть single-flight и
   устойчивым к повторным mobile resume/startup запросам с того же устройства
+- same-device refresh replay на native runtime должен опираться на стабильный
+  `deviceId` установленного приложения; user-agent допустим только как legacy
+  fallback для старых refresh-токенов без `deviceId`
 - SQL runtime functions, используемые auth, являются частью auth boundary;
   изменения требуют PostgreSQL-тестов на success, replay, stale token, revoked
   token и cross-device cases

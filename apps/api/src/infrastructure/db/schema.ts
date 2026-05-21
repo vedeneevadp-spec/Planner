@@ -259,6 +259,7 @@ export interface AppAuthCredentialsTable {
 
 export interface AppAuthRefreshTokensTable {
   created_at: Generated<TimestampColumn>
+  device_id: string | null
   expires_at: TimestampColumn
   id: Generated<string>
   ip_address: string | null

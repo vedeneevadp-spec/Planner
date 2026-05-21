@@ -35,7 +35,7 @@ import {
   workspaceUserRecordSchema,
 } from '@planner/contracts'
 
-import type { AuthService } from '../modules/auth/index.js'
+import type { AuthRequestMetadata, AuthService } from '../modules/auth/index.js'
 import {
   ChaosInboxService,
   MemoryChaosInboxRepository,
@@ -272,6 +272,7 @@ function createCookieAuthService() {
   let issuedTokenCounter = 0
   const refreshTokens: string[] = []
   const revokedRefreshTokens: string[] = []
+  const signInMetadata: AuthRequestMetadata[] = []
 
   function createResponse(): AuthTokenResponse & { refreshToken: string } {
     issuedTokenCounter += 1
@@ -300,7 +301,8 @@ function createCookieAuthService() {
     requestPasswordReset() {
       return Promise.resolve()
     },
-    signIn() {
+    signIn(_input: unknown, metadata: AuthRequestMetadata) {
+      signInMetadata.push(metadata)
       return Promise.resolve(createResponse())
     },
     signOut(refreshToken: string) {
@@ -310,12 +312,14 @@ function createCookieAuthService() {
     signUp() {
       return Promise.resolve(createResponse())
     },
+    signInMetadata,
     updatePassword() {
       return Promise.resolve(createResponse())
     },
   } as unknown as AuthService & {
     refreshTokens: string[]
     revokedRefreshTokens: string[]
+    signInMetadata: AuthRequestMetadata[]
   }
 }
 
@@ -2579,8 +2583,10 @@ void describe('buildApiApp', () => {
   })
 
   void it('keeps body refresh tokens for native auth clients', async () => {
+    const authService = createCookieAuthService()
+
     app = buildApiApp({
-      authService: createCookieAuthService(),
+      authService,
       config: createTestConfig(),
       database: null,
       sessionService: new SessionService(new MemorySessionRepository()),
@@ -2589,6 +2595,7 @@ void describe('buildApiApp', () => {
 
     const response = await app.inject({
       headers: {
+        'x-auth-device-id': 'native-device-1',
         'x-auth-token-transport': 'body',
       },
       method: 'POST',
@@ -2604,6 +2611,7 @@ void describe('buildApiApp', () => {
       authTokenResponseSchema.parse(response.json()).refreshToken,
       'refresh-token-1',
     )
+    assert.equal(authService.signInMetadata[0]?.deviceId, 'native-device-1')
     assert.equal(response.headers['set-cookie'], undefined)
   })
 

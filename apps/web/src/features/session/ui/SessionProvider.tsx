@@ -11,6 +11,7 @@ import {
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import {
+  type AuthRequestOptions,
   confirmPasswordReset,
   isUnauthorizedAuthApiError,
   refreshAuthSession,
@@ -31,6 +32,7 @@ import { unregisterStoredNativePushDevice } from '../lib/native-push-notificatio
 import {
   addNativeAppStateChangeListener,
   getNativeAppIsActive,
+  getNativeAuthDeviceId,
   isNativeSessionPersistenceRuntime,
 } from '../lib/native-session-storage'
 import { clearCachedPlannerSession } from '../lib/planner-session-cache'
@@ -77,6 +79,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const blockedNativeRefreshTokenRef = useRef<string | null>(null)
+  const nativeAuthDeviceIdRef = useRef<Promise<string | null> | null>(null)
   const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
   const restoreSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
@@ -112,6 +115,46 @@ export function SessionProvider({ children }: PropsWithChildren) {
     window.clearTimeout(refreshTimerRef.current)
     refreshTimerRef.current = null
   }, [])
+
+  const resolveNativeAuthDeviceId = useCallback(async (): Promise<
+    string | null
+  > => {
+    if (!isNativeSessionRuntime) {
+      return null
+    }
+
+    nativeAuthDeviceIdRef.current ??= getNativeAuthDeviceId().catch((error) => {
+      nativeAuthDeviceIdRef.current = null
+      console.warn('Failed to resolve native auth device id.', error)
+
+      return null
+    })
+
+    return nativeAuthDeviceIdRef.current
+  }, [isNativeSessionRuntime])
+
+  const createAuthRequestOptions = useCallback(
+    async (options?: {
+      requireNativeDeviceId?: boolean | undefined
+    }): Promise<AuthRequestOptions> => {
+      const deviceId = await resolveNativeAuthDeviceId()
+
+      if (
+        isNativeSessionRuntime &&
+        options?.requireNativeDeviceId !== false &&
+        !deviceId
+      ) {
+        throw new TypeError('Native auth device id is unavailable.')
+      }
+
+      return {
+        ...(deviceId ? { deviceId } : {}),
+        rememberSession: getRememberSessionPreference(),
+        tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
+      }
+    },
+    [isNativeSessionRuntime, resolveNativeAuthDeviceId],
+  )
 
   const persistAuthSession = useCallback(
     async (session: {
@@ -167,9 +210,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
       })
 
       if (!isNativeSessionRuntime || refreshToken) {
-        await signOutAuthSession(refreshToken ? { refreshToken } : {}, {
-          tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
-        }).catch((error) => {
+        await signOutAuthSession(
+          refreshToken ? { refreshToken } : {},
+          await createAuthRequestOptions({
+            requireNativeDeviceId: false,
+          }),
+        ).catch((error) => {
           if (!isUnauthorizedAuthApiError(error)) {
             console.error('Failed to revoke auth session.', error)
           }
@@ -181,6 +227,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     [
       clearRefreshTimer,
       commitAuthSnapshot,
+      createAuthRequestOptions,
       isNativeSessionRuntime,
       snapshot.refreshToken,
       snapshot.sessionAccessToken,
@@ -259,10 +306,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
         try {
           const refreshedSession = await refreshAuthSession(
             refreshToken ? { refreshToken } : {},
-            {
-              rememberSession: getRememberSessionPreference(),
-              tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
-            },
+            await createAuthRequestOptions(),
           )
           await persistAuthSession(refreshedSession)
 
@@ -332,6 +376,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }, [
       clearAuthSession,
       commitAuthSnapshot,
+      createAuthRequestOptions,
       isAuthEnabled,
       isNativeSessionRuntime,
       keepDeviceSession,
@@ -508,31 +553,28 @@ export function SessionProvider({ children }: PropsWithChildren) {
 
       const session = await signInWithPasswordApi(
         { email, password },
-        {
-          rememberSession: getRememberSessionPreference(),
-          tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
-        },
+        await createAuthRequestOptions(),
       )
       await persistAuthSession(session)
     },
-    [isNativeSessionRuntime, persistAuthSession],
+    [createAuthRequestOptions, persistAuthSession],
   )
 
   const signUpWithPassword = useCallback(
     async (input: PasswordSignUpInput) => {
       setAuthNotice(null)
 
-      const session = await signUpWithPasswordApi(input, {
-        rememberSession: getRememberSessionPreference(),
-        tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
-      })
+      const session = await signUpWithPasswordApi(
+        input,
+        await createAuthRequestOptions(),
+      )
       await persistAuthSession(session)
 
       return {
         requiresEmailConfirmation: false,
       }
     },
-    [isNativeSessionRuntime, persistAuthSession],
+    [createAuthRequestOptions, persistAuthSession],
   )
 
   const signOut = useCallback(async () => {
@@ -549,10 +591,7 @@ export function SessionProvider({ children }: PropsWithChildren) {
             password,
             token: passwordResetToken,
           },
-          {
-            rememberSession: getRememberSessionPreference(),
-            tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
-          },
+          await createAuthRequestOptions(),
         )
         await persistAuthSession(session)
         return
@@ -568,15 +607,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
           password,
         },
         snapshot.sessionAccessToken,
-        {
-          rememberSession: getRememberSessionPreference(),
-          tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
-        },
+        await createAuthRequestOptions(),
       )
       await persistAuthSession(session)
     },
     [
-      isNativeSessionRuntime,
+      createAuthRequestOptions,
       passwordResetToken,
       persistAuthSession,
       snapshot.sessionAccessToken,
