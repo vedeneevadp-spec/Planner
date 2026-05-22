@@ -6,6 +6,8 @@ const capacitorMocks = vi.hoisted(() => ({
   consumePendingRoute: vi.fn(),
   getPlatform: vi.fn(),
   isNativePlatform: vi.fn(),
+  preferencesGet: vi.fn(),
+  preferencesSet: vi.fn(),
   readPendingCompletedTasks: vi.fn(),
   refresh: vi.fn(),
 }))
@@ -32,7 +34,8 @@ vi.mock('@capacitor/core', () => ({
 
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
-    set: vi.fn(),
+    get: capacitorMocks.preferencesGet,
+    set: capacitorMocks.preferencesSet,
   },
 }))
 
@@ -42,6 +45,7 @@ import type { Task } from '@/entities/task'
 import {
   ackPendingNativePlannerWidgetCompletedTasks,
   buildNativePlannerWidgetSnapshot,
+  persistNativePlannerWidgetSnapshot,
   readPendingNativePlannerWidgetCompletedTasks,
 } from './native-planner-widget'
 
@@ -93,6 +97,9 @@ describe('native planner widget snapshot', () => {
     vi.clearAllMocks()
     capacitorMocks.getPlatform.mockReturnValue('android')
     capacitorMocks.isNativePlatform.mockReturnValue(true)
+    capacitorMocks.preferencesGet.mockResolvedValue({ value: null })
+    capacitorMocks.preferencesSet.mockResolvedValue(undefined)
+    capacitorMocks.refresh.mockResolvedValue(undefined)
   })
 
   it('prioritizes overdue, today, tomorrow and unscheduled tasks for the Android widget', () => {
@@ -320,5 +327,39 @@ describe('native planner widget snapshot', () => {
     expect(capacitorMocks.ackPendingCompletedTasks).toHaveBeenCalledWith({
       taskIds: ['task-1', 'task-2'],
     })
+  })
+
+  it('persists and refreshes the Android widget when snapshot content changes', async () => {
+    const snapshot = buildNativePlannerWidgetSnapshot(
+      [baseTask],
+      new Date(2026, 4, 9, 12),
+    )
+
+    await persistNativePlannerWidgetSnapshot(snapshot)
+
+    expect(capacitorMocks.preferencesSet).toHaveBeenCalledWith({
+      key: 'planner.widget.today.snapshot',
+      value: JSON.stringify(snapshot),
+    })
+    expect(capacitorMocks.refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips Android widget refresh when only the snapshot timestamp changed', async () => {
+    const snapshot = buildNativePlannerWidgetSnapshot(
+      [baseTask],
+      new Date(2026, 4, 9, 12),
+    )
+
+    capacitorMocks.preferencesGet.mockResolvedValue({
+      value: JSON.stringify({
+        ...snapshot,
+        generatedAt: '2026-05-09T06:00:00.000Z',
+      }),
+    })
+
+    await persistNativePlannerWidgetSnapshot(snapshot)
+
+    expect(capacitorMocks.preferencesSet).not.toHaveBeenCalled()
+    expect(capacitorMocks.refresh).not.toHaveBeenCalled()
   })
 })

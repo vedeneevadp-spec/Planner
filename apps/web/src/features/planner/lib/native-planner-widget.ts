@@ -98,11 +98,64 @@ export async function persistNativePlannerWidgetSnapshot(
     return
   }
 
+  const persistedSnapshot = await readPersistedNativePlannerWidgetSnapshot()
+
+  if (
+    persistedSnapshot &&
+    getNativePlannerWidgetSnapshotSignature(persistedSnapshot) ===
+      getNativePlannerWidgetSnapshotSignature(snapshot)
+  ) {
+    return
+  }
+
   await Preferences.set({
     key: PLANNER_WIDGET_SNAPSHOT_KEY,
     value: JSON.stringify(snapshot),
   })
   await NativePlannerWidget.refresh()
+}
+
+async function readPersistedNativePlannerWidgetSnapshot(): Promise<NativePlannerWidgetSnapshot | null> {
+  try {
+    const { value } = await Preferences.get({
+      key: PLANNER_WIDGET_SNAPSHOT_KEY,
+    })
+
+    if (!value) {
+      return null
+    }
+
+    const parsedSnapshot = nativePlannerWidgetSnapshotSchema.safeParse(
+      JSON.parse(value),
+    )
+
+    return parsedSnapshot.success ? parsedSnapshot.data : null
+  } catch {
+    return null
+  }
+}
+
+function getNativePlannerWidgetSnapshotSignature(
+  snapshot: NativePlannerWidgetSnapshot,
+): string {
+  return JSON.stringify({
+    dateKey: snapshot.dateKey,
+    doneTodayCount: snapshot.doneTodayCount,
+    hiddenTaskCount: snapshot.hiddenTaskCount,
+    overdueCount: snapshot.overdueCount,
+    tasks: snapshot.tasks.map((task) => ({
+      color: task.color,
+      dateBucket: task.dateBucket,
+      icon: task.icon,
+      id: task.id,
+      isOverdue: task.isOverdue,
+      timeLabel: task.timeLabel,
+      title: task.title,
+      visualTone: task.visualTone,
+    })),
+    todayCount: snapshot.todayCount,
+    version: snapshot.version,
+  })
 }
 
 export async function consumePendingNativePlannerWidgetRoute(): Promise<
