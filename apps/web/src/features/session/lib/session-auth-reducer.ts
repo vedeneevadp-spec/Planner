@@ -1,4 +1,6 @@
+import type { SessionAuthLifecycleStatus } from '../model/session-auth-context'
 import type { StoredAuthSession } from './auth-session-storage'
+import { resolveSessionAuthLifecycleStatus } from './session-auth-lifecycle'
 
 export interface SessionAuthSnapshot {
   email: string | null
@@ -10,6 +12,8 @@ export interface SessionAuthSnapshot {
 }
 
 export interface SessionAuthReducerState {
+  isAuthEnabled: boolean
+  lifecycleStatus: SessionAuthLifecycleStatus
   sessionVersion: number
   snapshot: SessionAuthSnapshot
 }
@@ -44,14 +48,18 @@ export const INITIAL_AUTH_SNAPSHOT: SessionAuthSnapshot = {
 export const ACCESS_TOKEN_EXPIRY_GRACE_MS = 30_000
 
 export function createInitialSessionAuthState(
-  isLoading: boolean,
+  isAuthEnabled: boolean,
 ): SessionAuthReducerState {
+  const snapshot = {
+    ...INITIAL_AUTH_SNAPSHOT,
+    isLoading: isAuthEnabled,
+  }
+
   return {
+    isAuthEnabled,
+    lifecycleStatus: resolveLifecycleStatus(snapshot, isAuthEnabled),
     sessionVersion: 0,
-    snapshot: {
-      ...INITIAL_AUTH_SNAPSHOT,
-      isLoading,
-    },
+    snapshot,
   }
 }
 
@@ -126,7 +134,22 @@ function commitAuthSnapshot(
   snapshot: SessionAuthSnapshot,
 ): SessionAuthReducerState {
   return {
+    isAuthEnabled: state.isAuthEnabled,
+    lifecycleStatus: resolveLifecycleStatus(snapshot, state.isAuthEnabled),
     sessionVersion: state.sessionVersion + 1,
     snapshot,
   }
+}
+
+function resolveLifecycleStatus(
+  snapshot: SessionAuthSnapshot,
+  isAuthEnabled: boolean,
+): SessionAuthLifecycleStatus {
+  return resolveSessionAuthLifecycleStatus({
+    accessToken: snapshot.sessionAccessToken,
+    email: snapshot.email,
+    isAuthEnabled,
+    isLoading: snapshot.isLoading,
+    userId: snapshot.userId,
+  })
 }

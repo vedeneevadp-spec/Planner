@@ -29,6 +29,7 @@ import { isUnauthorizedSessionApiError } from '../lib/session-api'
 import { canBootstrapPlannerSession } from '../lib/session-bootstrap'
 import { usePlannerSession } from '../lib/usePlannerSession'
 import { useSessionAuth } from '../lib/useSessionAuth'
+import { resolveAuthGateView } from './AuthGate.model'
 import styles from './AuthGate.module.css'
 
 const AUTH_MODE_CONTENT: Record<
@@ -128,20 +129,32 @@ export function AuthGate({ children }: PropsWithChildren) {
   const [isRecovering, setIsRecovering] = useState(false)
   const plannerSessionError = plannerSessionQuery.error
   const refetchPlannerSession = plannerSessionQuery.refetch
+  const hasUnauthorizedPlannerSessionError =
+    isUnauthorizedSessionApiError(plannerSessionError)
   const canResolvePlannerSession = canBootstrapPlannerSession({
     accessToken,
     config: plannerApiConfig,
     isAuthEnabled,
   })
-  const shouldResolvePlannerSession =
-    !isPasswordRecovery && canResolvePlannerSession
+  const authGateView = resolveAuthGateView({
+    accessToken,
+    canResolvePlannerSession,
+    canUseProtectedApi,
+    hasAuthNotice: Boolean(authNotice),
+    hasPlannerSession: Boolean(plannerSessionQuery.data),
+    hasPlannerSessionError: Boolean(plannerSessionError),
+    hasUnauthorizedPlannerSessionError,
+    isAuthEnabled,
+    isLoading,
+    isNativeSessionRuntime,
+    isPasswordRecovery,
+    isPlannerSessionPending: plannerSessionQuery.isPending,
+    isRecovering,
+    lifecycleStatus,
+  })
 
   useEffect(() => {
-    if (
-      !isAuthEnabled ||
-      !accessToken ||
-      !isUnauthorizedSessionApiError(plannerSessionError)
-    ) {
+    if (!isAuthEnabled || !accessToken || !hasUnauthorizedPlannerSessionError) {
       return
     }
 
@@ -166,8 +179,8 @@ export function AuthGate({ children }: PropsWithChildren) {
       })
   }, [
     accessToken,
+    hasUnauthorizedPlannerSessionError,
     isAuthEnabled,
-    plannerSessionError,
     recoverSession,
     refetchPlannerSession,
   ])
@@ -180,100 +193,56 @@ export function AuthGate({ children }: PropsWithChildren) {
     setFormEmail((currentEmail) => currentEmail || email)
   }, [email])
 
-  if (!isAuthEnabled && !canResolvePlannerSession) {
-    return (
-      <AuthStatusPanel
-        copy="В этой сборке не настроен вход в Chaotika, поэтому экран регистрации и входа недоступен."
-        title="Сборка без настройки входа"
-      >
-        <p className={styles.errorBanner} role="alert">
-          Для входа через Chaotika Auth нужна настройка
-          VITE_AUTH_PROVIDER=planner. Служебный режим возможен только через
-          VITE_API_ACCESS_TOKEN либо VITE_ACTOR_USER_ID вместе с
-          VITE_WORKSPACE_ID.
-        </p>
-      </AuthStatusPanel>
-    )
-  }
-
-  if (
-    !isPasswordRecovery &&
-    isAuthEnabled &&
-    lifecycleStatus === 'restoring' &&
-    plannerSessionQuery.data &&
-    !authNotice &&
-    isNativeSessionRuntime
-  ) {
+  if (authGateView.type === 'children') {
     return children
   }
 
-  if (lifecycleStatus === 'restoring' || isLoading) {
-    return (
-      <AuthStatusPanel
-        copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
-        title="Проверяем сохраненный вход"
-      />
-    )
-  }
-
-  if (
-    !isPasswordRecovery &&
-    plannerSessionQuery.data &&
-    !authNotice &&
-    canUseProtectedApi
-  ) {
-    return children
-  }
-
-  if (
-    !isPasswordRecovery &&
-    plannerSessionQuery.data &&
-    !authNotice &&
-    lifecycleStatus === 'deferred' &&
-    isNativeSessionRuntime
-  ) {
-    return children
-  }
-
-  if (
-    !isPasswordRecovery &&
-    plannerSessionQuery.data &&
-    !authNotice &&
-    isAuthEnabled &&
-    !accessToken
-  ) {
-    return (
-      <AuthStatusPanel
-        copy="Локальная сессия есть, но серверный вход не восстановился. Войдите снова, чтобы не работать с неполными данными."
-        title="Нужно восстановить вход"
-      >
-        <div className={styles.actionRow}>
-          <button
-            className={styles.submitButton}
-            type="button"
-            onClick={() => {
-              void expireSession()
-            }}
+  if (authGateView.type === 'status_panel') {
+    switch (authGateView.panel) {
+      case 'disabled_auth_configuration':
+        return (
+          <AuthStatusPanel
+            copy="В этой сборке не настроен вход в Chaotika, поэтому экран регистрации и входа недоступен."
+            title="Сборка без настройки входа"
           >
-            Войти заново
-          </button>
-        </div>
-      </AuthStatusPanel>
-    )
-  }
+            <p className={styles.errorBanner} role="alert">
+              Для входа через Chaotika Auth нужна настройка
+              VITE_AUTH_PROVIDER=planner. Служебный режим возможен только через
+              VITE_API_ACCESS_TOKEN либо VITE_ACTOR_USER_ID вместе с
+              VITE_WORKSPACE_ID.
+            </p>
+          </AuthStatusPanel>
+        )
 
-  if (shouldResolvePlannerSession) {
-    if (isUnauthorizedSessionApiError(plannerSessionQuery.error)) {
-      if (isAuthEnabled) {
-        if (isRecovering) {
-          return (
-            <AuthStatusPanel
-              copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
-              title="Проверяем сохраненный вход"
-            />
-          )
-        }
+      case 'restore_required':
+        return (
+          <AuthStatusPanel
+            copy="Локальная сессия есть, но серверный вход не восстановился. Войдите снова, чтобы не работать с неполными данными."
+            title="Нужно восстановить вход"
+          >
+            <div className={styles.actionRow}>
+              <button
+                className={styles.submitButton}
+                type="button"
+                onClick={() => {
+                  void expireSession()
+                }}
+              >
+                Войти заново
+              </button>
+            </div>
+          </AuthStatusPanel>
+        )
 
+      case 'restoring_saved_sign_in':
+        return (
+          <AuthStatusPanel
+            copy="Если вы уже входили на этом устройстве, Chaotika восстановит сессию автоматически."
+            title="Проверяем сохраненный вход"
+          />
+        )
+
+      case 'session_ended':
         return (
           <AuthStatusPanel
             copy="Текущая сессия больше не действует. Войдите снова, чтобы продолжить работу."
@@ -292,82 +261,69 @@ export function AuthGate({ children }: PropsWithChildren) {
             </div>
           </AuthStatusPanel>
         )
-      }
 
-      return (
-        <AuthStatusPanel
-          copy="Этот стенд пока не готов к входу через браузер. Проверьте настройки и попробуйте снова."
-          title="Вход временно недоступен"
-        >
-          <div className={styles.actionRow}>
-            <button
-              className={styles.submitButton}
-              type="button"
-              onClick={() => {
-                void plannerSessionQuery.refetch()
-              }}
-            >
-              Проверить снова
-            </button>
-          </div>
-        </AuthStatusPanel>
-      )
-    }
-
-    if (plannerSessionQuery.isPending) {
-      return (
-        <AuthStatusPanel
-          copy="Проверяем доступ к вашему пространству, чтобы открыть планер."
-          title="Открываем Chaotika"
-        />
-      )
-    }
-
-    if (plannerSessionQuery.error && !plannerSessionQuery.data) {
-      return (
-        <AuthStatusPanel
-          copy="Не удалось открыть ваш планер. Попробуйте еще раз или войдите повторно."
-          title="Не получилось загрузить данные"
-        >
-          <p className={styles.errorBanner} role="alert">
-            {getFriendlyPlannerSessionErrorMessage(plannerSessionQuery.error)}
-          </p>
-          <div className={styles.actionRow}>
-            <button
-              className={styles.submitButton}
-              type="button"
-              onClick={() => {
-                void plannerSessionQuery.refetch()
-              }}
-            >
-              Повторить
-            </button>
-            {isAuthEnabled ? (
+      case 'unauthenticated_runtime_unavailable':
+        return (
+          <AuthStatusPanel
+            copy="Этот стенд пока не готов к входу через браузер. Проверьте настройки и попробуйте снова."
+            title="Вход временно недоступен"
+          >
+            <div className={styles.actionRow}>
               <button
-                className={styles.secondaryButton}
+                className={styles.submitButton}
                 type="button"
                 onClick={() => {
-                  void signOut()
+                  void plannerSessionQuery.refetch()
                 }}
               >
-                Выйти
+                Проверить снова
               </button>
-            ) : null}
-          </div>
-        </AuthStatusPanel>
-      )
-    }
+            </div>
+          </AuthStatusPanel>
+        )
 
-    if (plannerSessionQuery.data) {
-      return children
-    }
+      case 'planner_loading':
+        return (
+          <AuthStatusPanel
+            copy="Проверяем доступ к вашему пространству, чтобы открыть планер."
+            title="Открываем Chaotika"
+          />
+        )
 
-    return (
-      <AuthStatusPanel
-        copy="Проверяем доступ к вашему пространству, чтобы открыть планер."
-        title="Открываем Chaotika"
-      />
-    )
+      case 'planner_session_error':
+        return (
+          <AuthStatusPanel
+            copy="Не удалось открыть ваш планер. Попробуйте еще раз или войдите повторно."
+            title="Не получилось загрузить данные"
+          >
+            <p className={styles.errorBanner} role="alert">
+              {getFriendlyPlannerSessionErrorMessage(plannerSessionQuery.error)}
+            </p>
+            <div className={styles.actionRow}>
+              <button
+                className={styles.submitButton}
+                type="button"
+                onClick={() => {
+                  void plannerSessionQuery.refetch()
+                }}
+              >
+                Повторить
+              </button>
+              {isAuthEnabled ? (
+                <button
+                  className={styles.secondaryButton}
+                  type="button"
+                  onClick={() => {
+                    void signOut()
+                  }}
+                >
+                  Выйти
+                </button>
+              ) : null}
+            </div>
+          </AuthStatusPanel>
+        )
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {

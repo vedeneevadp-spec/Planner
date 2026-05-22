@@ -1,6 +1,6 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21.
+Дата анализа: 2026-05-21. Обновлено: 2026-05-22.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
@@ -11,18 +11,21 @@
 
 Где видно:
 
-- `apps/web/src/features/session/ui/SessionProvider.tsx` - 735 строк
-- `apps/web/src/features/session/ui/AuthGate.tsx` - 852 строки
+- `apps/web/src/features/session/ui/SessionProvider.tsx` - 14 строк
+- `apps/web/src/features/session/lib/useSessionAuthController.ts`
+- `apps/web/src/features/session/lib/session-auth-machine.ts`
+- `apps/web/src/features/session/ui/AuthGate.tsx`
+- `apps/web/src/features/session/ui/AuthGate.model.ts`
 - `apps/web/src/features/session/lib/usePlannerSession.ts`
 - `apps/web/src/features/session/lib/planner-session-cache.ts`
 - `apps/api/src/modules/auth/auth.service.ts`
 - `apps/api/src/modules/auth/auth.repository.postgres.ts`
 - `db/migrations/*auth*`
 
-Проблема: restore, refresh, native resume, cached planner session, access token,
-workspace selection и sign-out живут в разных местах. Из-за этого локальная
-правка может выглядеть безопасной, но фактически менять поведение старта
-мобильного приложения.
+Исходная проблема: restore, refresh, native resume, cached planner session,
+access token, workspace selection и sign-out жили в разных местах. Из-за этого
+локальная правка могла выглядеть безопасной, но фактически менять поведение
+старта мобильного приложения.
 
 Что сделать:
 
@@ -33,10 +36,18 @@ workspace selection и sign-out живут в разных местах. Из-з
 - запретить очистку native auth storage вне явного sign-out и verified revoke
 - покрыть state machine table-driven тестами
 
-Текущий первый шаг: в web-клиент добавлен явный auth lifecycle status
+Статус 2026-05-22: restore, refresh, native resume, refresh timer и native
+storage recovery вынесены в явную `session-auth-machine` с event/command
+переходами и table-driven тестами. React-эффекты остались в
+`useSessionAuthController`, а `SessionProvider` стал тонким context provider.
+`AuthGate` использует отдельную `AuthGate.model` decision-модель и остается
+рендерящим слоем. В web-клиенте также есть явный auth lifecycle status
 `authenticated` / `deferred` / `disabled` / `restoring` / `signed_out` и общий
-флаг `canUseProtectedApi`. Они используются gate-компонентами и feature hooks
-вместо разрозненных проверок `accessToken`.
+флаг `canUseProtectedApi`.
+
+Остаток по этому направлению: отдельный общий контракт `SessionReadiness` для
+sidebar и feature hooks можно выделять следующим шагом, если потребуется
+унифицировать состояния `connected`, `empty` и `offline` за пределами auth gate.
 
 ### Auth SQL functions слишком критичны для текущего уровня защиты тестами
 
@@ -97,8 +108,7 @@ refresh-token runtime.
 - `apps/api/src/modules/session/session.repository.postgres.ts` - 1644 строки
 - `apps/web/src/features/habits/lib/useHabits.ts` - 1116 строк
 - `apps/web/src/features/planner/model/usePlannerState.ts` - 721 строк
-- `apps/web/src/features/session/ui/AuthGate.tsx` - 852 строки
-- `apps/web/src/features/session/ui/SessionProvider.tsx` - 735 строк
+- `apps/web/src/features/session/lib/useSessionAuthController.ts` - 740 строк
 
 Проблема: большие файлы смешивают data access, policy, mapping, optimistic UI,
 error handling и runtime integration. Это повышает стоимость ревью и риск
