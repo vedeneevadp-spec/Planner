@@ -11,6 +11,13 @@ export {
   updateSharedWorkspace,
   updateUserProfile,
 } from './lib/session-api'
+export {
+  getSessionReadinessConnectionView,
+  getSessionReadinessErrorMessage,
+  resolveSessionReadiness,
+  type SessionReadiness,
+  type SessionReadinessStatus,
+} from './lib/session-readiness'
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { useSessionAuth } from './lib/useSessionAuth'

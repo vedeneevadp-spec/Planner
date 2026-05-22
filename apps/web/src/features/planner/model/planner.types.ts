@@ -14,11 +14,13 @@ import type {
   NewTaskTemplateInput,
   TaskTemplate,
 } from '@/entities/task-template'
+import type { SessionReadiness } from '@/features/session'
 
 export interface PlannerState {
   spheres: Sphere[]
   tasks: Task[]
   taskTemplates: TaskTemplate[]
+  readiness: SessionReadiness
   conflictedMutationCount: number
   isLoading: boolean
   isSyncing: boolean

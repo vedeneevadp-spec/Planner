@@ -50,6 +50,14 @@ interface PlannerStub {
   errorMessage: string | null
   isLoading: boolean
   isSyncing: boolean
+  readiness: {
+    canReadCachedData: boolean
+    canRenderAppContent: boolean
+    canUseProtectedApi: boolean
+    canWriteProtectedData: boolean
+    reason: string
+    status: string
+  }
   spheres: Array<{
     id: string
     name: string
@@ -110,6 +118,47 @@ vi.mock('@/features/shopping-list', () => ({
 }))
 
 vi.mock('@/features/session', () => ({
+  getSessionReadinessConnectionView: (
+    readiness: PlannerStub['readiness'],
+    input: {
+      featureErrorMessage?: string | null
+      isFeatureLoading?: boolean
+      isFeatureSyncing?: boolean
+    },
+  ) => {
+    if (input.featureErrorMessage) {
+      return {
+        errorMessage: input.featureErrorMessage,
+        label: 'Connection issue',
+      }
+    }
+
+    if (readiness.status === 'offlineWithCache') {
+      return {
+        errorMessage: 'Auth session unavailable',
+        label: 'Connection issue',
+      }
+    }
+
+    if (input.isFeatureLoading) {
+      return {
+        errorMessage: null,
+        label: 'Loading',
+      }
+    }
+
+    if (input.isFeatureSyncing) {
+      return {
+        errorMessage: null,
+        label: 'Syncing',
+      }
+    }
+
+    return {
+      errorMessage: null,
+      label: 'Connected',
+    }
+  },
   getCreateSharedWorkspaceErrorMessage: () =>
     'Не удалось создать пространство.',
   getDeleteSharedWorkspaceErrorMessage: () =>
@@ -184,10 +233,41 @@ function renderSidebar(
     initialIndex?: number
   } = {},
 ) {
+  const auth = {
+    accessToken: 'token',
+    canUseProtectedApi: true,
+    email: session.actor.email,
+    isAuthEnabled: true,
+    isLoading: false,
+    lifecycleStatus: 'authenticated' as const,
+    signOut: mocks.signOut,
+    userId: session.actorUserId,
+    ...options.auth,
+  }
+  const readiness =
+    auth.lifecycleStatus === 'deferred'
+      ? {
+          canReadCachedData: true,
+          canRenderAppContent: true,
+          canUseProtectedApi: false,
+          canWriteProtectedData: false,
+          reason: 'auth_deferred',
+          status: 'offlineWithCache',
+        }
+      : {
+          canReadCachedData: true,
+          canRenderAppContent: true,
+          canUseProtectedApi: auth.canUseProtectedApi,
+          canWriteProtectedData: auth.canUseProtectedApi,
+          reason: 'ready',
+          status: 'ready',
+        }
+
   mocks.usePlanner.mockReturnValue({
     errorMessage: null,
     isLoading: false,
     isSyncing: false,
+    readiness,
     spheres: [
       { id: 'sphere-1', name: 'Работа' },
       { id: 'sphere-2', name: 'Здоровье' },
@@ -211,15 +291,7 @@ function renderSidebar(
     data: session,
   })
   mocks.useSessionAuth.mockReturnValue({
-    accessToken: 'token',
-    canUseProtectedApi: true,
-    email: session.actor.email,
-    isAuthEnabled: true,
-    isLoading: false,
-    lifecycleStatus: 'authenticated',
-    signOut: mocks.signOut,
-    userId: session.actorUserId,
-    ...options.auth,
+    ...auth,
   })
   mocks.useCreateSharedWorkspace.mockReturnValue(createMutationStub())
   mocks.useDeleteSharedWorkspace.mockReturnValue(createMutationStub())

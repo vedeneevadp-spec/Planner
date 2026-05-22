@@ -20,6 +20,7 @@ import type {
 } from '@/entities/task-template'
 import {
   isUnauthorizedSessionApiError,
+  resolveSessionReadiness,
   usePlannerSession,
   useSessionAuth,
 } from '@/features/session'
@@ -55,6 +56,8 @@ export function usePlannerState(): PlannerState {
     accessToken,
     canUseProtectedApi,
     isAuthEnabled,
+    isLoading: isAuthLoading,
+    lifecycleStatus,
     recoverSession,
     sessionVersion,
   } = useSessionAuth()
@@ -100,6 +103,25 @@ export function usePlannerState(): PlannerState {
     queryClient,
     workspaceId,
   })
+  const hasTaskRecords = tasksQuery.data !== undefined
+  const hasLifeSphereRecords = spheresQuery.data !== undefined
+  const hasTaskTemplateRecords = taskTemplatesQuery.data !== undefined
+  const readiness = resolveSessionReadiness({
+    auth: {
+      canUseProtectedApi,
+      isAuthEnabled,
+      isLoading: isAuthLoading,
+      lifecycleStatus,
+    },
+    hasCachedData:
+      hasTaskRecords || hasLifeSphereRecords || hasTaskTemplateRecords,
+    hasPlannerSession: Boolean(session),
+    hasPlannerSessionError: Boolean(sessionQuery.error),
+    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+      sessionQuery.error,
+    ),
+    isPlannerSessionPending: sessionQuery.isPending,
+  })
   const {
     conflictedMutationCount,
     isDrainingOfflineQueue,
@@ -114,6 +136,7 @@ export function usePlannerState(): PlannerState {
     sphereQueryKey,
     queryClient,
     recoverSession,
+    readiness,
     setMutationErrorMessage,
     spheres: spheresQuery.data,
     taskQueryKey,
@@ -204,9 +227,6 @@ export function usePlannerState(): PlannerState {
     () => sortTasks((tasksQuery.data ?? []).map((task) => toPlannerTask(task))),
     [tasksQuery.data],
   )
-  const hasTaskRecords = tasksQuery.data !== undefined
-  const hasLifeSphereRecords = spheresQuery.data !== undefined
-  const hasTaskTemplateRecords = taskTemplatesQuery.data !== undefined
 
   function setTaskPending(taskId: string, isPending: boolean): void {
     pendingTaskIdsRef.current = toggleTaskId(
@@ -714,6 +734,7 @@ export function usePlannerState(): PlannerState {
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
     isTaskPending,
+    readiness,
     spheres,
     queuedMutationCount,
     refresh,

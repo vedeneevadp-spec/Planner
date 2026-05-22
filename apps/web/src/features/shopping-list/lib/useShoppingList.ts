@@ -10,7 +10,12 @@ import {
 } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo } from 'react'
 
-import { usePlannerSession, useSessionAuth } from '@/features/session'
+import {
+  isUnauthorizedSessionApiError,
+  resolveSessionReadiness,
+  usePlannerSession,
+  useSessionAuth,
+} from '@/features/session'
 import { plannerApiConfig } from '@/shared/config/planner-api'
 import { useOnlineSync } from '@/shared/lib/offline-sync'
 
@@ -65,7 +70,16 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   const session = sessionQuery.data
   const queryClient = useQueryClient()
   const hasSession = options.enabled !== false && Boolean(session)
-  const canUseApi = hasSession && auth.canUseProtectedApi
+  const readiness = resolveSessionReadiness({
+    auth,
+    hasPlannerSession: Boolean(session),
+    hasPlannerSessionError: Boolean(sessionQuery.error),
+    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+      sessionQuery.error,
+    ),
+    isPlannerSessionPending: sessionQuery.isPending,
+  })
+  const canUseApi = hasSession && readiness.canUseProtectedApi
   const queryKey = useMemo(
     () => shoppingListQueryKey(session?.workspaceId ?? 'pending'),
     [session?.workspaceId],
@@ -194,13 +208,22 @@ export function useCreateShoppingListItem() {
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const queryClient = useQueryClient()
+  const readiness = resolveSessionReadiness({
+    auth,
+    hasPlannerSession: Boolean(session),
+    hasPlannerSessionError: Boolean(sessionQuery.error),
+    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+      sessionQuery.error,
+    ),
+    isPlannerSessionPending: sessionQuery.isPending,
+  })
   const queryKey = useMemo(
     () => shoppingListQueryKey(session?.workspaceId ?? 'pending'),
     [session?.workspaceId],
   )
   const api = useMemo(
     () =>
-      session && (!auth.isAuthEnabled || auth.accessToken)
+      session && readiness.canUseProtectedApi
         ? createShoppingListApiClient(
             createShoppingListApiClientConfig({
               accessToken: auth.accessToken,
@@ -209,7 +232,7 @@ export function useCreateShoppingListItem() {
             }),
           )
         : null,
-    [auth.accessToken, auth.isAuthEnabled, session],
+    [auth.accessToken, readiness.canUseProtectedApi, session],
   )
 
   return useMutation({
@@ -287,13 +310,22 @@ export function useUpdateShoppingListItem() {
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const queryClient = useQueryClient()
+  const readiness = resolveSessionReadiness({
+    auth,
+    hasPlannerSession: Boolean(session),
+    hasPlannerSessionError: Boolean(sessionQuery.error),
+    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+      sessionQuery.error,
+    ),
+    isPlannerSessionPending: sessionQuery.isPending,
+  })
   const queryKey = useMemo(
     () => shoppingListQueryKey(session?.workspaceId ?? 'pending'),
     [session?.workspaceId],
   )
   const api = useMemo(
     () =>
-      session && (!auth.isAuthEnabled || auth.accessToken)
+      session && readiness.canUseProtectedApi
         ? createShoppingListApiClient(
             createShoppingListApiClientConfig({
               accessToken: auth.accessToken,
@@ -302,7 +334,7 @@ export function useUpdateShoppingListItem() {
             }),
           )
         : null,
-    [auth.accessToken, auth.isAuthEnabled, session],
+    [auth.accessToken, readiness.canUseProtectedApi, session],
   )
 
   return useMutation({
@@ -378,13 +410,22 @@ export function useRemoveShoppingListItem() {
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const queryClient = useQueryClient()
+  const readiness = resolveSessionReadiness({
+    auth,
+    hasPlannerSession: Boolean(session),
+    hasPlannerSessionError: Boolean(sessionQuery.error),
+    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+      sessionQuery.error,
+    ),
+    isPlannerSessionPending: sessionQuery.isPending,
+  })
   const queryKey = useMemo(
     () => shoppingListQueryKey(session?.workspaceId ?? 'pending'),
     [session?.workspaceId],
   )
   const api = useMemo(
     () =>
-      session && (!auth.isAuthEnabled || auth.accessToken)
+      session && readiness.canUseProtectedApi
         ? createShoppingListApiClient(
             createShoppingListApiClientConfig({
               accessToken: auth.accessToken,
@@ -393,7 +434,7 @@ export function useRemoveShoppingListItem() {
             }),
           )
         : null,
-    [auth.accessToken, auth.isAuthEnabled, session],
+    [auth.accessToken, readiness.canUseProtectedApi, session],
   )
 
   return useMutation({

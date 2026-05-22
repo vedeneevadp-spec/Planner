@@ -6,6 +6,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import type { SessionReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
 import { useOnlineSync } from '@/shared/lib/offline-sync'
 
@@ -49,6 +50,7 @@ interface PlannerOfflineSyncParams {
   plannerApi: PlannerApiClient | null
   queryClient: QueryClient
   recoverSession: () => Promise<unknown>
+  readiness: SessionReadiness
   setMutationErrorMessage: (message: string | null) => void
   sphereQueryKey: PlannerSphereQueryKey
   spheres: LifeSphereRecord[] | undefined
@@ -74,6 +76,7 @@ export function usePlannerOfflineSync({
   plannerApi,
   queryClient,
   recoverSession,
+  readiness,
   setMutationErrorMessage,
   sphereQueryKey,
   spheres,
@@ -160,7 +163,7 @@ export function usePlannerOfflineSync({
       return
     }
 
-    if (!plannerApi || !workspaceId) {
+    if (!plannerApi || !workspaceId || !readiness.canUseProtectedApi) {
       return
     }
 
@@ -201,13 +204,14 @@ export function usePlannerOfflineSync({
     plannerApi,
     queryClient,
     recoverSession,
+    readiness.canUseProtectedApi,
     setMutationErrorMessage,
     taskQueryKey,
     workspaceId,
   ])
 
   const drainQueuedMutations = useCallback(async () => {
-    if (!plannerApi || !workspaceId) {
+    if (!plannerApi || !workspaceId || !readiness.canUseProtectedApi) {
       return
     }
 
@@ -276,6 +280,7 @@ export function usePlannerOfflineSync({
   }, [
     plannerApi,
     queryClient,
+    readiness.canUseProtectedApi,
     refreshQueuedMutationCount,
     setMutationErrorMessage,
     sphereQueryKey,

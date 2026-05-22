@@ -7,6 +7,7 @@ import { useCleaningSummary } from '@/features/cleaning'
 import { useHabitsToday } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import {
+  getSessionReadinessConnectionView,
   setSelectedWorkspaceIdForActors,
   usePlannerSession,
   UserAvatar,
@@ -51,8 +52,15 @@ export function Sidebar({
   isCollapsed = false,
   onCollapsedChange,
 }: SidebarProps) {
-  const { errorMessage, isLoading, isSyncing, refresh, spheres, tasks } =
-    usePlanner()
+  const {
+    errorMessage,
+    isLoading,
+    isSyncing,
+    readiness,
+    refresh,
+    spheres,
+    tasks,
+  } = usePlanner()
   const cleaningSummary = useCleaningSummary()
   const shoppingListSummary = useShoppingListSummary()
   const location = useLocation()
@@ -87,18 +95,13 @@ export function Sidebar({
       session?.appRole === 'admin' ||
       session?.appRole === 'owner',
   )
-  const isAuthRestoring = auth.lifecycleStatus === 'restoring'
-  const hasAuthConnectionIssue = auth.lifecycleStatus === 'deferred'
-  const syncStateLabel =
-    errorMessage || hasAuthConnectionIssue
-      ? 'Connection issue'
-      : isLoading || isAuthRestoring
-        ? 'Loading'
-        : isSyncing
-          ? 'Syncing'
-          : 'Connected'
-  const connectionStateErrorMessage =
-    errorMessage ?? (hasAuthConnectionIssue ? 'Auth session unavailable' : null)
+  const connectionView = getSessionReadinessConnectionView(readiness, {
+    featureErrorMessage: errorMessage,
+    isFeatureLoading: isLoading,
+    isFeatureSyncing: isSyncing,
+  })
+  const syncStateLabel = connectionView.label
+  const connectionStateErrorMessage = connectionView.errorMessage
   const accountLabel =
     auth.email ??
     session?.actor.email ??
