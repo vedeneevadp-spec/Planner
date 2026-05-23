@@ -73,7 +73,7 @@ export class SessionService {
     assertCanManageAdminUsers(session)
 
     return withRepositoryErrorMapping(() =>
-      this.repository.listAdminUsers(session),
+      this.repository.listAdminUsers(session, context.auth),
     )
   }
 
@@ -267,7 +267,7 @@ export class SessionService {
     assertCanManageAdminUsers(session)
 
     const user = await withRepositoryErrorMapping(() =>
-      this.repository.updateAdminUserRole(session, userId, role),
+      this.repository.updateAdminUserRole(session, context.auth, userId, role),
     )
 
     this.authSessionCache.clear()

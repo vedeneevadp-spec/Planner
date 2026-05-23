@@ -342,6 +342,7 @@ export function defineSessionRepositoryContractSuite(input: {
 
         const updatedUser = await harness.repository.updateAdminUserRole(
           harness.ownerSession,
+          null,
           harness.memberSession.actorUserId,
           'admin',
         )
@@ -352,6 +353,7 @@ export function defineSessionRepositoryContractSuite(input: {
           async () => {
             await harness.repository.updateAdminUserRole(
               harness.ownerSession,
+              null,
               harness.immutableOwnerUserId,
               'user',
             )

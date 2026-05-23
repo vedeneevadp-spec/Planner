@@ -23,6 +23,7 @@ import { isTransientDatabaseError } from '../../infrastructure/db/errors.js'
 import {
   type DatabaseExecutor,
   withOptionalRls,
+  withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
@@ -642,61 +643,76 @@ export class PostgresSessionRepository implements SessionRepository {
     }
   }
 
-  async listAdminUsers(_session: SessionSnapshot): Promise<AdminUserRecord[]> {
-    const rows = await this.createAdminUserQuery(this.db)
-      .orderBy(
-        sql<number>`case when actor.app_role = 'owner' then 0 else 1 end`,
-      )
-      .orderBy('actor.display_name', 'asc')
-      .orderBy('actor.email', 'asc')
-      .execute()
+  async listAdminUsers(
+    session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null = null,
+  ): Promise<AdminUserRecord[]> {
+    const rows = await withOptionalRls(
+      this.db,
+      authContext,
+      (executor) =>
+        this.createAdminUserQuery(executor)
+          .orderBy(
+            sql<number>`case when actor.app_role = 'owner' then 0 else 1 end`,
+          )
+          .orderBy('actor.display_name', 'asc')
+          .orderBy('actor.email', 'asc')
+          .execute(),
+      session.actorUserId,
+    )
 
     return rows.map(mapAdminUserRecord)
   }
 
   async updateAdminUserRole(
-    _session: SessionSnapshot,
+    session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
     userId: string,
     role: AssignableAppRole,
   ): Promise<AdminUserRecord> {
-    return this.db.transaction().execute(async (trx) => {
-      const currentUser = await this.createAdminUserQuery(trx)
-        .where('actor.id', '=', userId)
-        .executeTakeFirst()
+    return withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        const currentUser = await this.createAdminUserQuery(trx)
+          .where('actor.id', '=', userId)
+          .executeTakeFirst()
 
-      if (!currentUser) {
-        throw new HttpError(
-          404,
-          'admin_user_not_found',
-          'Application user was not found.',
-        )
-      }
+        if (!currentUser) {
+          throw new HttpError(
+            404,
+            'admin_user_not_found',
+            'Application user was not found.',
+          )
+        }
 
-      if (currentUser.appRole === 'owner') {
-        throw new HttpError(
-          400,
-          'owner_role_immutable',
-          'The global owner role cannot be changed.',
-        )
-      }
+        if (currentUser.appRole === 'owner') {
+          throw new HttpError(
+            400,
+            'owner_role_immutable',
+            'The global owner role cannot be changed.',
+          )
+        }
 
-      await trx
-        .updateTable('app.users')
-        .set({ app_role: role })
-        .where('id', '=', userId)
-        .where('deleted_at', 'is', null)
-        .executeTakeFirst()
+        await trx
+          .updateTable('app.users')
+          .set({ app_role: role })
+          .where('id', '=', userId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
 
-      const updatedUser = await this.createAdminUserQuery(trx)
-        .where('actor.id', '=', userId)
-        .executeTakeFirst()
+        const updatedUser = await this.createAdminUserQuery(trx)
+          .where('actor.id', '=', userId)
+          .executeTakeFirst()
 
-      if (!updatedUser) {
-        throw new Error('Failed to resolve updated application user.')
-      }
+        if (!updatedUser) {
+          throw new Error('Failed to resolve updated application user.')
+        }
 
-      return mapAdminUserRecord(updatedUser)
-    })
+        return mapAdminUserRecord(updatedUser)
+      },
+      session.actorUserId,
+    )
   }
 
   async updateWorkspaceSettings(

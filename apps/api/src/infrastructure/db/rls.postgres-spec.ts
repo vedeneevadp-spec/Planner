@@ -103,6 +103,8 @@ const EXPECTED_POLICY_NAMES = [
   'tasks_select_member',
   'tasks_update_member',
   'users_select_self',
+  'users_select_owner',
+  'users_update_owner',
   'workspace_members_select_self',
   'workspaces_select_member',
 ]
@@ -191,6 +193,42 @@ void describe('Postgres RLS policies', () => {
     })
 
     assert.deepEqual(visibleWithoutClaims, [])
+  })
+
+  void test('allows global owner to list and update application users under RLS', async () => {
+    const ownerUserId = await resolveExistingOwnerUserId()
+    const ownerVisibleUserIds = await withAuthenticatedTransaction(
+      ownerUserId,
+      async () => listFixtureUserIds(),
+    )
+    const memberVisibleUserIds = await withAuthenticatedTransaction(
+      fixture.userBId,
+      async () => listFixtureUserIds(),
+    )
+
+    assert.deepEqual(
+      ownerVisibleUserIds.sort(),
+      [fixture.userAId, fixture.userBId].sort(),
+    )
+    assert.deepEqual(memberVisibleUserIds, [fixture.userBId])
+
+    await withAuthenticatedTransaction(ownerUserId, async () => {
+      await client.query(
+        `
+          update app.users
+          set app_role = 'admin'
+          where id = $1
+        `,
+        [fixture.userBId],
+      )
+    })
+
+    const updatedRole = await withAuthenticatedTransaction(
+      ownerUserId,
+      async () => resolveFixtureUserRole(fixture.userBId),
+    )
+
+    assert.equal(updatedRole, 'admin')
   })
 
   void test('keeps RLS enabled on all protected tables', async () => {
@@ -406,6 +444,50 @@ async function listFixtureTaskIds(): Promise<string[]> {
   )
 
   return result.rows.map((row) => row.id)
+}
+
+async function listFixtureUserIds(): Promise<string[]> {
+  const result = await client.query<{ id: string }>(
+    `
+      select id
+      from app.users
+      where email like $1
+      order by email
+    `,
+    [`${fixture.prefix}%`],
+  )
+
+  return result.rows.map((row) => row.id)
+}
+
+async function resolveFixtureUserRole(userId: string): Promise<string | null> {
+  const result = await client.query<{ app_role: string }>(
+    `
+      select app_role::text
+      from app.users
+      where id = $1
+    `,
+    [userId],
+  )
+
+  return result.rows[0]?.app_role ?? null
+}
+
+async function resolveExistingOwnerUserId(): Promise<string> {
+  const result = await client.query<{ id: string }>(
+    `
+      select id
+      from app.users
+      where app_role = 'owner'
+        and deleted_at is null
+      limit 1
+    `,
+  )
+  const ownerUserId = result.rows[0]?.id
+
+  assert.ok(ownerUserId, 'Expected an existing global owner fixture.')
+
+  return ownerUserId
 }
 
 async function insertTask({

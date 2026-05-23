@@ -602,12 +602,13 @@ export class MemorySessionRepository implements SessionRepository {
     return Promise.resolve()
   }
 
-  listAdminUsers() {
+  listAdminUsers(_session: SessionSnapshot) {
     return Promise.resolve(this.users.map(mapAdminUserRecord))
   }
 
   updateAdminUserRole(
     session: SessionSnapshot,
+    _authContext: unknown,
     userId: string,
     role: AssignableAppRole,
   ) {

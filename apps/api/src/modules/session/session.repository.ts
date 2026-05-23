@@ -4,6 +4,7 @@ import type {
   UpdateSharedWorkspaceInput,
 } from '@planner/contracts'
 
+import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import type {
   AdminUserRecord,
   ReceivedWorkspaceInvitationRecord,
@@ -66,9 +67,13 @@ export interface SessionRepository {
     session: SessionSnapshot,
     invitationId: string,
   ): Promise<void>
-  listAdminUsers(session: SessionSnapshot): Promise<AdminUserRecord[]>
+  listAdminUsers(
+    session: SessionSnapshot,
+    authContext?: AuthenticatedRequestContext | null,
+  ): Promise<AdminUserRecord[]>
   updateAdminUserRole(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
     userId: string,
     role: AssignableAppRole,
   ): Promise<AdminUserRecord>
