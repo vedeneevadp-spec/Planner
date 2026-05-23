@@ -17,14 +17,6 @@ interface PlannerStub {
 }
 
 interface SessionAuthStub {
-  accessToken: string
-  canUseProtectedApi: boolean
-  lifecycleStatus:
-    | 'authenticated'
-    | 'deferred'
-    | 'disabled'
-    | 'restoring'
-    | 'signed_out'
   sessionVersion: number
 }
 
@@ -69,12 +61,22 @@ const mocks = vi.hoisted(() => ({
   upsertCachedTaskRecord:
     vi.fn<(workspaceId: string, record: unknown) => Promise<void>>(),
   usePlanner: vi.fn<() => PlannerStub>(),
-  usePlannerSession: vi.fn<() => { data: PlannerSessionStub }>(),
+  useSessionFeatureReadiness: vi.fn<
+    () => {
+      apiConfig: {
+        accessToken: string
+        actorUserId: string
+        apiBaseUrl: string
+        workspaceId: string
+      }
+      session: PlannerSessionStub
+    }
+  >(),
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
 }))
 
 vi.mock('@/features/session', () => ({
-  usePlannerSession: () => mocks.usePlannerSession(),
+  useSessionFeatureReadiness: () => mocks.useSessionFeatureReadiness(),
   useSessionAuth: () => mocks.useSessionAuth(),
 }))
 
@@ -180,13 +182,10 @@ describe('NativePlannerWidgetSync', () => {
     mocks.replaceCachedLifeSphereRecords.mockResolvedValue(undefined)
     mocks.replaceCachedTaskRecords.mockResolvedValue(undefined)
     mocks.upsertCachedTaskRecord.mockResolvedValue(undefined)
-    mocks.usePlannerSession.mockReturnValue({
-      data: createSessionStub('personal'),
-    })
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createSessionFeatureReadinessStub(createSessionStub('personal')),
+    )
     mocks.useSessionAuth.mockReturnValue({
-      accessToken: 'access-token',
-      canUseProtectedApi: true,
-      lifecycleStatus: 'authenticated',
       sessionVersion: 1,
     })
   })
@@ -273,9 +272,9 @@ describe('NativePlannerWidgetSync', () => {
       listTasks,
       setTaskStatus: vi.fn(),
     })
-    mocks.usePlannerSession.mockReturnValue({
-      data: createSessionStub('shared'),
-    })
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createSessionFeatureReadinessStub(createSessionStub('shared')),
+    )
     mocks.usePlanner.mockReturnValue(
       createPlannerStub({
         tasks: [{ ...baseTask, id: 'shared-task', title: 'Shared task' }],
@@ -315,9 +314,9 @@ describe('NativePlannerWidgetSync', () => {
     mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
       'personal-task',
     ])
-    mocks.usePlannerSession.mockReturnValue({
-      data: createSessionStub('shared'),
-    })
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createSessionFeatureReadinessStub(createSessionStub('shared')),
+    )
     mocks.usePlanner.mockReturnValue(
       createPlannerStub({
         tasks: [{ ...baseTask, id: 'shared-task', title: 'Shared task' }],
@@ -380,6 +379,18 @@ function createSessionStub(kind: 'personal' | 'shared'): PlannerSessionStub {
         kind: 'shared',
       },
     ],
+  }
+}
+
+function createSessionFeatureReadinessStub(session: PlannerSessionStub) {
+  return {
+    apiConfig: {
+      accessToken: 'access-token',
+      actorUserId: session.actorUserId,
+      apiBaseUrl: 'http://localhost:3000',
+      workspaceId: session.workspaceId,
+    },
+    session,
   }
 }
 

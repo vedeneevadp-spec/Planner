@@ -243,9 +243,24 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           )
           .execute()
 
+        const updatedEmojiSet = await executor
+          .updateTable('app.emoji_sets')
+          .set({
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', emojiSet.id)
+          .where('deleted_at', 'is', null)
+          .where('status', '=', 'active')
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!updatedEmojiSet) {
+          throw new EmojiSetNotFoundError(command.emojiSetId)
+        }
+
         const assetRows = await this.loadEmojiAssetRows(executor, [emojiSet.id])
 
-        return this.mapEmojiSetRecord(emojiSet, assetRows)
+        return this.mapEmojiSetRecord(updatedEmojiSet, assetRows)
       },
       command.context.actorUserId,
     )
@@ -626,6 +641,16 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
         if (!deletedIconAsset) {
           throw new EmojiAssetNotFoundError(command.iconAssetId)
         }
+
+        await executor
+          .updateTable('app.emoji_sets')
+          .set({
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', command.emojiSetId)
+          .where('deleted_at', 'is', null)
+          .where('status', '=', 'active')
+          .execute()
 
         return this.mapEmojiAssetRecord(deletedIconAsset)
       },

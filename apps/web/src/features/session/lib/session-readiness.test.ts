@@ -249,6 +249,22 @@ describe('session readiness', () => {
   it.each([
     {
       expected: {
+        isApiEnabled: false,
+        status: 'ready',
+      },
+      input: {
+        auth: authState({
+          canUseProtectedApi: true,
+          lifecycleStatus: 'authenticated',
+        }),
+        hasCachedData: true,
+        hasPlannerSession: false,
+        isPlannerSessionPending: false,
+      },
+      name: 'does not enable feature API from cache without planner session',
+    },
+    {
+      expected: {
         isApiEnabled: true,
         status: 'ready',
       },

@@ -5,8 +5,7 @@ import { useNavigate } from 'react-router-dom'
 
 import type { Sphere } from '@/entities/sphere'
 import { sortTasks, type Task, type TaskStatus } from '@/entities/task'
-import { usePlannerSession, useSessionAuth } from '@/features/session'
-import { plannerApiConfig } from '@/shared/config/planner-api'
+import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
 
 import {
@@ -76,8 +75,8 @@ const EMPTY_PERSONAL_SPHERES: Sphere[] = []
 
 export function NativePlannerWidgetSync() {
   const activePlanner = usePlanner()
-  const { accessToken, sessionVersion } = useSessionAuth()
-  const { data: session } = usePlannerSession()
+  const { sessionVersion } = useSessionAuth()
+  const { apiConfig, session } = useSessionFeatureReadiness()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const personalWorkspaceId =
@@ -89,17 +88,15 @@ export function NativePlannerWidgetSync() {
     session?.workspace.kind === 'personal' &&
     session.workspaceId === personalWorkspaceId
   const personalApi = useMemo(() => {
-    if (!session || !personalWorkspaceId) {
+    if (!apiConfig || !personalWorkspaceId) {
       return null
     }
 
     return createPlannerApiClient({
-      ...(accessToken ? { accessToken } : {}),
-      actorUserId: session.actorUserId,
-      apiBaseUrl: plannerApiConfig.apiBaseUrl,
+      ...apiConfig,
       workspaceId: personalWorkspaceId,
     })
-  }, [accessToken, personalWorkspaceId, session])
+  }, [apiConfig, personalWorkspaceId])
   const personalTaskQueryKey = useMemo<NativeWidgetTaskQueryKey>(
     () => [
       'planner',

@@ -1,11 +1,13 @@
 import type { SessionResponse } from '@planner/contracts'
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import { isUnauthorizedSessionApiError } from './session-api'
 import {
   resolveSessionFeatureReadiness,
+  resolveSessionReadiness,
+  type ResolveSessionReadinessInput,
   type SessionReadiness,
 } from './session-readiness'
 import { usePlannerSession } from './usePlannerSession'
@@ -23,11 +25,20 @@ export interface UseSessionFeatureReadinessOptions {
   hasCachedData?: boolean | undefined
 }
 
+export type SessionFeatureReadinessSnapshotOptions = Pick<
+  UseSessionFeatureReadinessOptions,
+  'hasCachedData'
+>
+
 export interface SessionFeatureReadinessResult {
   apiConfig: SessionFeatureApiConfig | null
+  getReadiness: (
+    options?: SessionFeatureReadinessSnapshotOptions,
+  ) => SessionReadiness
   isApiEnabled: boolean
   readiness: SessionReadiness
   session: SessionResponse | undefined
+  sessionQuery: ReturnType<typeof usePlannerSession>
   workspaceId: string
 }
 
@@ -37,17 +48,37 @@ export function useSessionFeatureReadiness(
   const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
-  const { isApiEnabled, readiness } = resolveSessionFeatureReadiness({
-    auth,
-    hasCachedData: options.hasCachedData,
-    hasPlannerSession: Boolean(session),
-    hasPlannerSessionError: Boolean(sessionQuery.error),
-    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+  const readinessInput = useMemo<ResolveSessionReadinessInput>(
+    () => ({
+      auth,
+      hasCachedData: options.hasCachedData,
+      hasPlannerSession: Boolean(session),
+      hasPlannerSessionError: Boolean(sessionQuery.error),
+      hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
+        sessionQuery.error,
+      ),
+      isPlannerSessionPending: sessionQuery.isPending,
+    }),
+    [
+      auth,
+      options.hasCachedData,
+      session,
       sessionQuery.error,
-    ),
+      sessionQuery.isPending,
+    ],
+  )
+  const { isApiEnabled, readiness } = resolveSessionFeatureReadiness({
+    ...readinessInput,
     isFeatureEnabled: options.enabled,
-    isPlannerSessionPending: sessionQuery.isPending,
   })
+  const getReadiness = useCallback(
+    (nextOptions: SessionFeatureReadinessSnapshotOptions = {}) =>
+      resolveSessionReadiness({
+        ...readinessInput,
+        hasCachedData: nextOptions.hasCachedData ?? options.hasCachedData,
+      }),
+    [options.hasCachedData, readinessInput],
+  )
   const apiConfig = useMemo<SessionFeatureApiConfig | null>(() => {
     if (!session || !isApiEnabled) {
       return null
@@ -63,9 +94,11 @@ export function useSessionFeatureReadiness(
 
   return {
     apiConfig,
+    getReadiness,
     isApiEnabled,
     readiness,
     session,
+    sessionQuery,
     workspaceId: session?.workspaceId ?? 'pending',
   }
 }

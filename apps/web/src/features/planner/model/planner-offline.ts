@@ -163,7 +163,7 @@ export function usePlannerOfflineSync({
       return
     }
 
-    if (!plannerApi || !workspaceId || !readiness.canUseProtectedApi) {
+    if (!plannerApi || !workspaceId || !readiness.canWriteProtectedData) {
       return
     }
 
@@ -204,14 +204,14 @@ export function usePlannerOfflineSync({
     plannerApi,
     queryClient,
     recoverSession,
-    readiness.canUseProtectedApi,
+    readiness.canWriteProtectedData,
     setMutationErrorMessage,
     taskQueryKey,
     workspaceId,
   ])
 
   const drainQueuedMutations = useCallback(async () => {
-    if (!plannerApi || !workspaceId || !readiness.canUseProtectedApi) {
+    if (!plannerApi || !workspaceId || !readiness.canWriteProtectedData) {
       return
     }
 
@@ -280,7 +280,7 @@ export function usePlannerOfflineSync({
   }, [
     plannerApi,
     queryClient,
-    readiness.canUseProtectedApi,
+    readiness.canWriteProtectedData,
     refreshQueuedMutationCount,
     setMutationErrorMessage,
     sphereQueryKey,

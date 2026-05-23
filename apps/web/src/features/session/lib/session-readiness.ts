@@ -141,7 +141,9 @@ export function resolveSessionFeatureReadiness(
 
   return {
     isApiEnabled:
-      input.isFeatureEnabled !== false && readiness.canWriteProtectedData,
+      input.isFeatureEnabled !== false &&
+      input.hasPlannerSession &&
+      readiness.canWriteProtectedData,
     readiness,
   }
 }

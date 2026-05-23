@@ -28,6 +28,18 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
   }
 
   create(command: CreateLifeSphereCommand): Promise<StoredLifeSphereRecord> {
+    const existingSphere = command.input.id
+      ? this.spheres.get(command.input.id)
+      : undefined
+
+    if (
+      existingSphere &&
+      existingSphere.workspaceId === command.context.workspaceId &&
+      existingSphere.deletedAt === null
+    ) {
+      return Promise.resolve(existingSphere)
+    }
+
     const sphere = createStoredLifeSphereRecord(command.input, {
       sortOrder: this.listActiveSpheres(command.context).length,
       userId: command.context.actorUserId,
@@ -44,6 +56,22 @@ export class MemoryLifeSphereRepository implements LifeSphereRepository {
       command.context.workspaceId,
       command.sphereId,
     )
+
+    if (
+      command.input.expectedVersion !== undefined &&
+      command.input.expectedVersion !== sphere.version
+    ) {
+      throw new HttpError(
+        409,
+        'life_sphere_version_conflict',
+        'Life sphere was changed on the server.',
+        {
+          actualVersion: sphere.version,
+          expectedVersion: command.input.expectedVersion,
+        },
+      )
+    }
+
     const nextSphere: StoredLifeSphereRecord = {
       ...sphere,
       ...(command.input.name !== undefined

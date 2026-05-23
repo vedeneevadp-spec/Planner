@@ -20,11 +20,9 @@ import type {
 } from '@/entities/task-template'
 import {
   isUnauthorizedSessionApiError,
-  resolveSessionReadiness,
-  usePlannerSession,
   useSessionAuth,
+  useSessionFeatureReadiness,
 } from '@/features/session'
-import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import { enqueuePlannerOfflineMutation } from '../lib/offline-planner-store'
 import {
@@ -52,18 +50,10 @@ import {
 } from './planner-records'
 
 export function usePlannerState(): PlannerState {
-  const {
-    accessToken,
-    canUseProtectedApi,
-    isAuthEnabled,
-    isLoading: isAuthLoading,
-    lifecycleStatus,
-    recoverSession,
-    sessionVersion,
-  } = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
-  const isPlannerApiReady = Boolean(session) && canUseProtectedApi
+  const { accessToken, isAuthEnabled, recoverSession, sessionVersion } =
+    useSessionAuth()
+  const { apiConfig, getReadiness, session, sessionQuery } =
+    useSessionFeatureReadiness()
   const actorUserId = session?.actorUserId
   const fireTaskCompletionConfetti = useTaskCompletionConfetti()
   const isTaskCompletionConfettiEnabled =
@@ -77,18 +67,10 @@ export function usePlannerState(): PlannerState {
     () => new Set(),
   )
   const pendingTaskIdsRef = useRef<Set<string>>(new Set())
-  const plannerApi = useMemo(() => {
-    if (!session || !isPlannerApiReady) {
-      return null
-    }
-
-    return createPlannerApiClient({
-      ...(accessToken ? { accessToken } : {}),
-      actorUserId: session.actorUserId,
-      apiBaseUrl: plannerApiConfig.apiBaseUrl,
-      workspaceId: session.workspaceId,
-    })
-  }, [accessToken, isPlannerApiReady, session])
+  const plannerApi = useMemo(
+    () => (apiConfig ? createPlannerApiClient(apiConfig) : null),
+    [apiConfig],
+  )
   const {
     invalidatePlannerQueries,
     sphereQueryKey,
@@ -106,21 +88,9 @@ export function usePlannerState(): PlannerState {
   const hasTaskRecords = tasksQuery.data !== undefined
   const hasLifeSphereRecords = spheresQuery.data !== undefined
   const hasTaskTemplateRecords = taskTemplatesQuery.data !== undefined
-  const readiness = resolveSessionReadiness({
-    auth: {
-      canUseProtectedApi,
-      isAuthEnabled,
-      isLoading: isAuthLoading,
-      lifecycleStatus,
-    },
+  const readiness = getReadiness({
     hasCachedData:
       hasTaskRecords || hasLifeSphereRecords || hasTaskTemplateRecords,
-    hasPlannerSession: Boolean(session),
-    hasPlannerSessionError: Boolean(sessionQuery.error),
-    hasUnauthorizedPlannerSessionError: isUnauthorizedSessionApiError(
-      sessionQuery.error,
-    ),
-    isPlannerSessionPending: sessionQuery.isPending,
   })
   const {
     conflictedMutationCount,
