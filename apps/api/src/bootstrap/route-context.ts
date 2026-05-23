@@ -7,6 +7,7 @@ import type {
 import type { FastifyRequest } from 'fastify'
 import { z } from 'zod'
 
+import { HttpError } from './http-error.js'
 import {
   type AuthenticatedRequestContext,
   getRequestAuth,
@@ -65,6 +66,14 @@ export function parseRouteWriteHeaders(
 ): RouteReadHeaders | RouteWriteHeaders {
   const authContext = getRequestAuth(request)
 
+  if (!authContext && !areLegacySessionOverridesAllowed()) {
+    throw new HttpError(
+      401,
+      'authentication_required',
+      'A valid bearer token is required for this request.',
+    )
+  }
+
   return parseOrThrow(
     authContext ? routeReadHeadersSchema : routeWriteHeadersSchema,
     request.headers,
@@ -80,6 +89,14 @@ export async function resolveRouteReadContext(
   const authContext = getRequestAuth(request)
 
   if (!authContext) {
+    if (!areLegacySessionOverridesAllowed()) {
+      throw new HttpError(
+        401,
+        'authentication_required',
+        'A valid bearer token is required for this request.',
+      )
+    }
+
     return {
       appRole: undefined,
       actorUserId: undefined,
@@ -166,6 +183,12 @@ export function resolveRouteTokenReadContext(request: FastifyRequest) {
     auth: authContext,
     workspaceId: headers['x-workspace-id'],
   }
+}
+
+export function areLegacySessionOverridesAllowed(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return env.NODE_ENV !== 'production'
 }
 
 function findPersonalWorkspace(

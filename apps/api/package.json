@@ -7,8 +7,10 @@
     "start": "tsx src/server.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "test:postgres": "node --import tsx --test \"src/**/*.postgres-spec.ts\"",
+    "test:postgres:pooler-contracts": "API_DB_WRITE_FALLBACK=pooler node --import tsx --test \"src/modules/tasks/task.repository.contract.postgres-spec.ts\" \"src/modules/emoji-sets/emoji-set.repository.contract.postgres-spec.ts\"",
     "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" \"src/**/*.test.ts\"",
     "coverage:postgres-contracts": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/modules/**/*.repository.postgres.ts\" --test-coverage-include=\"src/modules/**/*.repository.postgres.*.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.contract.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" \"src/**/*.contract.postgres-spec.ts\"",
+    "coverage:postgres-pooler-contracts": "API_DB_WRITE_FALLBACK=pooler node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/modules/tasks/task.repository.postgres.pooler.ts\" --test-coverage-include=\"src/modules/tasks/task.repository.postgres.mutations.ts\" --test-coverage-include=\"src/modules/emoji-sets/emoji-set.repository.postgres.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.contract.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" \"src/modules/tasks/task.repository.contract.postgres-spec.ts\" \"src/modules/emoji-sets/emoji-set.repository.contract.postgres-spec.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "outbox:run": "tsx src/workers/outbox.ts",
     "task-reminders:worker": "tsx src/workers/task-reminders.ts"

@@ -18,11 +18,7 @@ export async function resolveMobileWebBuildEnv({
     ...process.env,
     ...(apiUrl ? { VITE_API_BASE_URL: apiUrl } : {}),
   }
-  const hasLegacyOverrides = Boolean(
-    readNonEmptyEnv('VITE_API_ACCESS_TOKEN') ||
-    (readNonEmptyEnv('VITE_ACTOR_USER_ID') &&
-      readNonEmptyEnv('VITE_WORKSPACE_ID')),
-  )
+  const hasLegacyOverrides = Boolean(readNonEmptyEnv('VITE_API_ACCESS_TOKEN'))
   const authProvider = resolveAuthProvider()
 
   if (!authProvider && !hasLegacyOverrides) {
@@ -31,9 +27,17 @@ export async function resolveMobileWebBuildEnv({
         'Missing mobile auth build configuration.',
         'Provide VITE_AUTH_PROVIDER=planner for Chaotika Auth,',
         `or keep ${envFile} with WEB_AUTH_PROVIDER=planner/API_AUTH_MODE=jwt.`,
-        'For internal builds you can also use VITE_API_ACCESS_TOKEN',
-        'or VITE_ACTOR_USER_ID together with VITE_WORKSPACE_ID.',
+        'For internal builds you can also use VITE_API_ACCESS_TOKEN.',
       ].join(' '),
+    )
+  }
+
+  if (
+    readNonEmptyEnv('VITE_ACTOR_USER_ID') ||
+    readNonEmptyEnv('VITE_WORKSPACE_ID')
+  ) {
+    throw new Error(
+      'VITE_ACTOR_USER_ID and VITE_WORKSPACE_ID are local development overrides and cannot be used for mobile release builds.',
     )
   }
 

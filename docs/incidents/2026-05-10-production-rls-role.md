@@ -39,7 +39,7 @@ environment.
 
 ## Fix
 
-Current production uses `API_DB_RLS_MODE=claims_only`.
+At the time of the incident, production used `API_DB_RLS_MODE=claims_only`.
 
 This mode still passes JWT claims into the database transaction, but does not
 run `SET ROLE authenticated`. It is a compatibility mode for managed database

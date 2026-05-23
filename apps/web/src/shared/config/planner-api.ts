@@ -14,6 +14,16 @@ const plannerApiConfigSchema = z.object({
 
 export type PlannerApiConfig = z.infer<typeof plannerApiConfigSchema>
 
+interface PlannerApiRuntimeEnv {
+  DEV?: boolean | undefined
+  MODE?: string | undefined
+  VITE_ACTOR_USER_ID?: string | undefined
+  VITE_API_ACCESS_TOKEN?: string | undefined
+  VITE_API_BASE_URL?: string | undefined
+  VITE_AUTH_PROVIDER?: string | undefined
+  VITE_WORKSPACE_ID?: string | undefined
+}
+
 function readEnvValue(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.length > 0 ? value : fallback
 }
@@ -23,16 +33,51 @@ function readOptionalEnvValue(value: unknown): string | undefined {
 }
 
 export const plannerApiConfig: PlannerApiConfig = plannerApiConfigSchema.parse({
-  apiAccessToken: readOptionalEnvValue(import.meta.env.VITE_API_ACCESS_TOKEN),
-  actorUserIdOverride: readOptionalEnvValue(import.meta.env.VITE_ACTOR_USER_ID),
-  apiBaseUrl: readEnvValue(
-    import.meta.env.VITE_API_BASE_URL,
-    LOCAL_DEVELOPMENT_DEFAULTS.apiBaseUrl,
-  ),
-  authProvider:
-    readOptionalEnvValue(import.meta.env.VITE_AUTH_PROVIDER) ?? 'disabled',
-  workspaceIdOverride: readOptionalEnvValue(import.meta.env.VITE_WORKSPACE_ID),
+  ...resolvePlannerApiConfig(import.meta.env),
 })
+
+export function resolvePlannerApiConfig(
+  env: PlannerApiRuntimeEnv,
+): PlannerApiConfig {
+  return plannerApiConfigSchema.parse({
+    apiAccessToken: readOptionalEnvValue(env.VITE_API_ACCESS_TOKEN),
+    actorUserIdOverride: readDevelopmentOnlyOptionalEnvValue(
+      'VITE_ACTOR_USER_ID',
+      env.VITE_ACTOR_USER_ID,
+      env,
+    ),
+    apiBaseUrl: readEnvValue(
+      env.VITE_API_BASE_URL,
+      LOCAL_DEVELOPMENT_DEFAULTS.apiBaseUrl,
+    ),
+    authProvider: readOptionalEnvValue(env.VITE_AUTH_PROVIDER) ?? 'disabled',
+    workspaceIdOverride: readDevelopmentOnlyOptionalEnvValue(
+      'VITE_WORKSPACE_ID',
+      env.VITE_WORKSPACE_ID,
+      env,
+    ),
+  })
+}
+
+function readDevelopmentOnlyOptionalEnvValue(
+  name: string,
+  value: unknown,
+  env: PlannerApiRuntimeEnv,
+): string | undefined {
+  const normalizedValue = readOptionalEnvValue(value)
+
+  if (!normalizedValue) {
+    return undefined
+  }
+
+  if (env.DEV || env.MODE === 'development' || env.MODE === 'test') {
+    return normalizedValue
+  }
+
+  throw new Error(
+    `${name} is supported only in local development and test builds.`,
+  )
+}
 
 export function getPlannerSessionOverrideHeaders(
   options: {

@@ -9,6 +9,7 @@ import {
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
 import {
   cleanupRepositoryContractUsers,
+  createRepositoryContractAuthContext,
   seedRepositoryContractProject,
   seedRepositoryContractWorkspace,
 } from '../../testing/repository-contract-fixtures.js'
@@ -56,10 +57,16 @@ defineTaskRepositoryContractSuite({
       id: personal.workspaceId,
       name: personal.workspaceName,
     }
+    const authContext = shouldRunPoolerWriteFallbackContracts()
+      ? createRepositoryContractAuthContext({
+          email: personal.email,
+          userId: actorUserId,
+        })
+      : null
     const personalContext = {
       actorDisplayName: personal.displayName,
       actorUserId,
-      auth: null,
+      auth: authContext,
       groupRole: null,
       personalWorkspace,
       role: 'owner' as const,
@@ -94,3 +101,7 @@ defineTaskRepositoryContractSuite({
   },
   name: 'PostgresTaskRepository contract',
 })
+
+function shouldRunPoolerWriteFallbackContracts(): boolean {
+  return process.env.API_DB_WRITE_FALLBACK === 'pooler'
+}

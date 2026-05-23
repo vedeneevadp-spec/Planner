@@ -521,6 +521,15 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             cross join input_assets
             returning *
           ),
+          updated_emoji_set as (
+            update app.emoji_sets as emoji_set
+            set updated_by = ${command.context.actorUserId}
+            from selected_emoji_set
+            where emoji_set.id = selected_emoji_set.id
+              and emoji_set.deleted_at is null
+              and emoji_set.status = 'active'
+            returning emoji_set.*
+          ),
           asset_rows as (
             select asset.*
             from app.emoji_assets as asset
@@ -533,7 +542,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
             from inserted_assets
           )
           select
-            to_jsonb(selected_emoji_set.*) as emoji_set,
+            to_jsonb(updated_emoji_set.*) as emoji_set,
             (
               select coalesce(
                 jsonb_agg(
@@ -544,7 +553,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
               )
               from asset_rows
             ) as assets
-          from selected_emoji_set
+          from updated_emoji_set
         `.execute(executor)
 
         return result.rows[0]
@@ -587,7 +596,7 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           .where('deleted_at', 'is', null)
           .execute()
 
-        const deletedEmojiSet = await executor
+        const updateResult = await executor
           .updateTable('app.emoji_sets')
           .set({
             deleted_at: deletedAt,
@@ -596,14 +605,21 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           .where('id', '=', command.emojiSetId)
           .where('deleted_at', 'is', null)
           .where('status', '=', 'active')
-          .returningAll()
           .executeTakeFirst()
 
-        if (!deletedEmojiSet) {
+        if (Number(updateResult.numUpdatedRows) === 0) {
           throw new EmojiSetNotFoundError(command.emojiSetId)
         }
 
-        return this.mapEmojiSetRecord(deletedEmojiSet, assetRows)
+        return this.mapEmojiSetRecord(
+          {
+            ...emojiSet,
+            deleted_at: deletedAt.toISOString(),
+            updated_by: command.context.actorUserId,
+            version: Number(emojiSet.version) + 1,
+          },
+          assetRows,
+        )
       },
       command.context.actorUserId,
     )
@@ -625,8 +641,16 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           throw new EmojiSetNotFoundError(command.emojiSetId)
         }
 
+        const iconAsset = (
+          await this.loadEmojiAssetRows(executor, [emojiSet.id])
+        ).find((asset) => asset.id === command.iconAssetId)
+
+        if (!iconAsset) {
+          throw new EmojiAssetNotFoundError(command.iconAssetId)
+        }
+
         const deletedAt = new Date()
-        const deletedIconAsset = await executor
+        const updateResult = await executor
           .updateTable('app.emoji_assets')
           .set({
             deleted_at: deletedAt,
@@ -635,10 +659,9 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           .where('id', '=', command.iconAssetId)
           .where('emoji_set_id', '=', command.emojiSetId)
           .where('deleted_at', 'is', null)
-          .returningAll()
           .executeTakeFirst()
 
-        if (!deletedIconAsset) {
+        if (Number(updateResult.numUpdatedRows) === 0) {
           throw new EmojiAssetNotFoundError(command.iconAssetId)
         }
 
@@ -652,7 +675,12 @@ export class PostgresEmojiSetRepository implements EmojiSetRepository {
           .where('status', '=', 'active')
           .execute()
 
-        return this.mapEmojiAssetRecord(deletedIconAsset)
+        return this.mapEmojiAssetRecord({
+          ...iconAsset,
+          deleted_at: deletedAt.toISOString(),
+          updated_at: deletedAt.toISOString(),
+          version: Number(iconAsset.version) + 1,
+        })
       },
       command.context.actorUserId,
     )

@@ -82,13 +82,15 @@ export class PostgresTaskPoolerWriteFallback {
                 ${command.context.actorUserId},
                 inserted_task.workspace_id
               from inserted_task
+              returning starts_at, ends_at
             ),
           `
         : sql`
             inserted_time_block as (
-              select null::uuid as id
+              select
+                null::timestamptz as starts_at,
+                null::timestamptz as ends_at
               from inserted_task
-              where false
             ),
           `
     const createdTask = await executePoolerWriteStatement(
@@ -157,8 +159,8 @@ export class PostgresTaskPoolerWriteFallback {
               assignee_user.display_name as assignee_display_name,
               author_user.display_name as author_display_name,
               project.title as project_title,
-              time_block.starts_at as time_block_starts_at,
-              time_block.ends_at as time_block_ends_at
+              coalesce(inserted_time_block.starts_at, time_block.starts_at) as time_block_starts_at,
+              coalesce(inserted_time_block.ends_at, time_block.ends_at) as time_block_ends_at
             from selected_task
             left join app.users as assignee_user
               on assignee_user.id = selected_task.assignee_user_id
@@ -179,6 +181,7 @@ export class PostgresTaskPoolerWriteFallback {
               order by position asc, starts_at asc
               limit 1
             ) as time_block on true
+            left join inserted_time_block on true
           ),
           event_insert as (
             insert into app.task_events (
@@ -535,6 +538,22 @@ export class PostgresTaskPoolerWriteFallback {
               ${expectedVersionFilter}
             returning *
           ),
+          related_tasks as (
+            update app.tasks as related_task
+            set
+              completed_at = cast(${completedAt} as timestamptz),
+              status = ${command.status},
+              updated_by = ${command.context.actorUserId}
+            from updated_task
+            where related_task.deleted_at is null
+              and related_task.id != updated_task.id
+              and related_task.status != cast(${command.status} as app.task_status)
+              and (
+                related_task.id = coalesce(updated_task.parent_task_id, updated_task.id)
+                or related_task.parent_task_id = coalesce(updated_task.parent_task_id, updated_task.id)
+              )
+            returning related_task.*
+          ),
           task_with_time_block as (
             select
               updated_task.*,
@@ -563,6 +582,27 @@ export class PostgresTaskPoolerWriteFallback {
               order by position asc, starts_at asc
               limit 1
             ) as time_block on true
+          ),
+          related_event_insert as (
+            insert into app.task_events (
+              actor_user_id,
+              event_type,
+              payload,
+              task_id,
+              workspace_id
+            )
+            select
+              ${command.context.actorUserId},
+              'task.status_changed'::app.task_event_type,
+              jsonb_build_object(
+                'status',
+                cast(${command.status} as text),
+                'version',
+                related_tasks.version
+              ),
+              related_tasks.id,
+              related_tasks.workspace_id
+            from related_tasks
           ),
           event_insert as (
             insert into app.task_events (

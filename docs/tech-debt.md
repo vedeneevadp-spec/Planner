@@ -122,9 +122,10 @@ Planner offline drain использует `readiness.canWriteProtectedData`.
   different device, malformed metadata, concurrent refresh
 
 Текущий первый шаг: postgres spec для `auth_rotate_refresh_token` расширен на
-active rotation, expired token, revoked token, same-client stale replay и
-different-client stale replay. Native refresh-token runtime получил стабильный
-`deviceId` установленного приложения: новые refresh tokens сохраняют
+active rotation, expired token, revoked token, same-client stale replay,
+different-client stale replay, malformed/overlong metadata, concurrent refresh
+и SQL signature/naming drift check. Native refresh-token runtime получил
+стабильный `deviceId` установленного приложения: новые refresh tokens сохраняют
 `device_id`, same-device replay сравнивает его вместо user-agent, а user-agent
 остается только legacy fallback для старых токенов без `device_id`.
 
@@ -207,6 +208,25 @@ global-read семантику icon sets.
 остается быстрым memory/API report, а postgres repository ветки теперь видны в
 отдельном отчете по `*.contract.postgres-spec.ts`, без смешивания с unit
 coverage.
+
+Статус 2026-05-23: pooler write fallback получил отдельный postgres contract и
+coverage gate: `npm run test:api:postgres:pooler-contracts` и
+`npm run coverage:api:postgres-pooler-contracts`. Task contracts в этом режиме
+идут с authenticated context и покрывают create/update/status/schedule/delete
+ветки `PostgresTaskPoolerWriteFallback`; emoji set contracts покрывают
+pooler-фолбэки create/add-items. Gate также зафиксировал soft-delete/RLS
+расхождение для emoji assets; добавлена migration с admin select policy для
+корректного soft-delete transition без возврата к RLS bypass.
+
+Статус 2026-05-23: auth SQL runtime specs расширены на malformed/overlong
+device metadata, concurrent same-device refresh и signature/naming drift check
+для `auth_rotate_refresh_token`.
+
+Статус 2026-05-23: legacy actor/workspace overrides ограничены local/test/dev
+режимом. Production backend больше не принимает unauthenticated
+`x-actor-user-id` как замену bearer token, web production build явно отклоняет
+`VITE_ACTOR_USER_ID`/`VITE_WORKSPACE_ID`, mobile release build также запрещает
+эти env overrides.
 
 ### Состояния "connected", "empty" и "loading" не имеют общего источника правды
 

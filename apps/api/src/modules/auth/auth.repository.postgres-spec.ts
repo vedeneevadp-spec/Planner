@@ -342,7 +342,195 @@ void describe('Postgres auth runtime functions', () => {
       await cleanupRefreshFixture(fixture)
     }
   })
+
+  void test('normalizes malformed refresh metadata without failing rotation', async () => {
+    const fixture = createFixture()
+    const overlongDeviceId = `native-${'x'.repeat(180)}`
+
+    try {
+      await seedRefreshFixture(fixture)
+
+      const result = await rotateRefreshToken(client, {
+        currentTokenHash: `${fixture.prefix}-active-hash`,
+        deviceId: overlongDeviceId,
+        nextTokenHash: `${fixture.prefix}-next-hash`,
+        nextTokenId: fixture.nextTokenId,
+        userAgent: fixture.userAgent,
+      })
+
+      assert.equal(result.rows[0]?.id, fixture.userId)
+
+      const tokenState = await client.query<{
+        next_token_count: string
+        next_token_device_count: string
+      }>(
+        `
+          select
+            count(*) filter (where token_hash = $2) as next_token_count,
+            count(*) filter (
+              where token_hash = $2
+                and device_id is null
+            ) as next_token_device_count
+          from app.auth_refresh_tokens
+          where session_id = $1
+        `,
+        [fixture.sessionId, `${fixture.prefix}-next-hash`],
+      )
+
+      assert.equal(Number(tokenState.rows[0]?.next_token_count ?? 0), 1)
+      assert.equal(Number(tokenState.rows[0]?.next_token_device_count ?? 0), 1)
+    } finally {
+      await cleanupRefreshFixture(fixture)
+    }
+  })
+
+  void test('keeps one active token when same-device refresh requests race', async () => {
+    const fixture = createFixture()
+    const concurrentClient = new Client({
+      connectionString,
+      connectionTimeoutMillis: 10_000,
+      query_timeout: 30_000,
+    })
+
+    try {
+      await concurrentClient.connect()
+      await seedRefreshFixture(fixture)
+
+      const firstNextTokenId = randomUUID()
+      const secondNextTokenId = randomUUID()
+      const [firstResult, secondResult] = await Promise.all([
+        rotateRefreshToken(client, {
+          currentTokenHash: `${fixture.prefix}-active-hash`,
+          deviceId: fixture.deviceId,
+          nextTokenHash: `${fixture.prefix}-concurrent-1-hash`,
+          nextTokenId: firstNextTokenId,
+          userAgent: fixture.userAgent,
+        }),
+        rotateRefreshToken(concurrentClient, {
+          currentTokenHash: `${fixture.prefix}-active-hash`,
+          deviceId: fixture.deviceId,
+          nextTokenHash: `${fixture.prefix}-concurrent-2-hash`,
+          nextTokenId: secondNextTokenId,
+          userAgent: fixture.userAgent,
+        }),
+      ])
+
+      assert.equal(firstResult.rows[0]?.id, fixture.userId)
+      assert.equal(secondResult.rows[0]?.id, fixture.userId)
+
+      const tokenState = await client.query<{
+        active_unrotated_count: string
+        concurrent_token_count: string
+        revoked_count: string
+      }>(
+        `
+          select
+            count(*) filter (
+              where revoked_at is null
+                and rotated_at is null
+            ) as active_unrotated_count,
+            count(*) filter (
+              where token_hash in ($2, $3)
+            ) as concurrent_token_count,
+            count(*) filter (where revoked_at is not null) as revoked_count
+          from app.auth_refresh_tokens
+          where session_id = $1
+        `,
+        [
+          fixture.sessionId,
+          `${fixture.prefix}-concurrent-1-hash`,
+          `${fixture.prefix}-concurrent-2-hash`,
+        ],
+      )
+
+      assert.equal(Number(tokenState.rows[0]?.active_unrotated_count ?? 0), 1)
+      assert.equal(Number(tokenState.rows[0]?.concurrent_token_count ?? 0), 2)
+      assert.equal(Number(tokenState.rows[0]?.revoked_count ?? 0), 0)
+    } finally {
+      await concurrentClient.end()
+      await cleanupRefreshFixture(fixture)
+    }
+  })
+
+  void test('keeps auth_rotate_refresh_token signature and local naming stable', async () => {
+    const functionMetadata = await client.query<{
+      args: string
+      definition: string
+      result: string
+    }>(
+      `
+        select
+          pg_get_function_arguments(function_oid) as args,
+          pg_get_function_result(function_oid) as result,
+          pg_get_functiondef(function_oid) as definition
+        from (
+          select 'app.auth_rotate_refresh_token(text, uuid, text, timestamptz, text, text, text)'::regprocedure as function_oid
+        ) as function_ref
+      `,
+    )
+    const metadata = functionMetadata.rows[0]
+
+    assert.ok(metadata)
+    assert.equal(
+      metadata.args,
+      [
+        'input_current_token_hash text',
+        'input_next_token_id uuid',
+        'input_next_token_hash text',
+        'input_next_expires_at timestamp with time zone',
+        'input_device_id text',
+        'input_user_agent text',
+        'input_ip_address text',
+      ].join(', '),
+    )
+    assert.equal(
+      metadata.result,
+      'TABLE(id uuid, email citext, display_name text, session_id uuid)',
+    )
+    assert.match(metadata.definition, /current_token record;/)
+    assert.match(metadata.definition, /token_to_rotate_id uuid;/)
+    assert.match(metadata.definition, /normalized_device_id text :=/)
+    assert.doesNotMatch(metadata.definition, /\ndeclare\s+id\s/iu)
+    assert.doesNotMatch(metadata.definition, /\ndeclare\s+email\s/iu)
+    assert.doesNotMatch(metadata.definition, /\ndeclare\s+session_id\s/iu)
+  })
 })
+
+function rotateRefreshToken(
+  queryClient: Pick<Client, 'query'>,
+  input: {
+    currentTokenHash: string
+    deviceId: string | null
+    nextTokenHash: string
+    nextTokenId: string
+    userAgent: string | null
+  },
+) {
+  return queryClient.query<{
+    id: string
+    session_id: string
+  }>(
+    `
+      select id, session_id
+      from app.auth_rotate_refresh_token(
+        $1,
+        $2::uuid,
+        $3,
+        now() + interval '30 days',
+        $4,
+        $5,
+        '127.0.0.1'
+      )
+    `,
+    [
+      input.currentTokenHash,
+      input.nextTokenId,
+      input.nextTokenHash,
+      input.deviceId,
+      input.userAgent,
+    ],
+  )
+}
 
 function createFixture(): AuthRefreshFixture {
   const suffix = randomUUID()

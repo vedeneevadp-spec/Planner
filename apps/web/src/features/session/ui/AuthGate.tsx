@@ -208,8 +208,8 @@ export function AuthGate({ children }: PropsWithChildren) {
             <p className={styles.errorBanner} role="alert">
               Для входа через Chaotika Auth нужна настройка
               VITE_AUTH_PROVIDER=planner. Служебный режим возможен только через
-              VITE_API_ACCESS_TOKEN либо VITE_ACTOR_USER_ID вместе с
-              VITE_WORKSPACE_ID.
+              VITE_API_ACCESS_TOKEN. VITE_ACTOR_USER_ID и VITE_WORKSPACE_ID
+              доступны только для локальной разработки.
             </p>
           </AuthStatusPanel>
         )

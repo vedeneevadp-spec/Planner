@@ -25,6 +25,7 @@ import { z } from 'zod'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import { getRequestAuth } from '../../bootstrap/request-auth.js'
+import { areLegacySessionOverridesAllowed } from '../../bootstrap/route-context.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from './session.service.js'
 
@@ -316,6 +317,14 @@ function resolveOptionalSessionContext(request: FastifyRequest) {
     }
   }
 
+  if (!areLegacySessionOverridesAllowed()) {
+    throw new HttpError(
+      401,
+      'authentication_required',
+      'A valid bearer token is required for this request.',
+    )
+  }
+
   const headers = parseOrThrow(
     legacySessionHeadersSchema,
     request.headers,
@@ -354,6 +363,14 @@ function resolveRequiredSessionContext(request: FastifyRequest) {
       auth: authContext,
       workspaceId: headers['x-workspace-id'],
     }
+  }
+
+  if (!areLegacySessionOverridesAllowed()) {
+    throw new HttpError(
+      401,
+      'authentication_required',
+      'A valid bearer token is required for this request.',
+    )
   }
 
   const headers = parseOrThrow(

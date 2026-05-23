@@ -9,6 +9,7 @@ import {
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
 import {
   cleanupRepositoryContractUsers,
+  createRepositoryContractAuthContext,
   seedRepositoryContractWorkspace,
 } from '../../testing/repository-contract-fixtures.js'
 import { defineEmojiSetRepositoryContractSuite } from './emoji-set.repository.contract.js'
@@ -59,13 +60,23 @@ defineEmojiSetRepositoryContractSuite({
       context: {
         actorUserId,
         appRole: 'admin' as const,
-        auth: null,
+        auth: shouldRunPoolerWriteFallbackContracts()
+          ? createRepositoryContractAuthContext({
+              email: workspace.email,
+              userId: actorUserId,
+            })
+          : null,
         workspaceId: workspace.workspaceId,
       },
       otherContext: {
         actorUserId: otherActorUserId,
         appRole: 'admin' as const,
-        auth: null,
+        auth: shouldRunPoolerWriteFallbackContracts()
+          ? createRepositoryContractAuthContext({
+              email: otherWorkspace.email,
+              userId: otherActorUserId,
+            })
+          : null,
         workspaceId: otherWorkspace.workspaceId,
       },
       repository: new PostgresEmojiSetRepository(connection.db),
@@ -73,3 +84,7 @@ defineEmojiSetRepositoryContractSuite({
   },
   name: 'PostgresEmojiSetRepository contract',
 })
+
+function shouldRunPoolerWriteFallbackContracts(): boolean {
+  return process.env.API_DB_WRITE_FALLBACK === 'pooler'
+}

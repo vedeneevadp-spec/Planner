@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
+import type { AuthenticatedRequestContext } from '../bootstrap/request-auth.js'
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 
 type AppRole = 'admin' | 'guest' | 'owner' | 'user'
@@ -165,6 +166,23 @@ export async function seedRepositoryContractProject(
   )
 
   return projectId
+}
+
+export function createRepositoryContractAuthContext(input: {
+  email: string
+  userId: string
+}): AuthenticatedRequestContext {
+  return {
+    accessToken: `contract-token-${input.userId}`,
+    claims: {
+      email: input.email,
+      payload: {
+        email: input.email,
+      },
+      role: 'authenticated',
+      sub: input.userId,
+    },
+  }
 }
 
 export async function cleanupRepositoryContractUsers(
