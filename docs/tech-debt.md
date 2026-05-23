@@ -151,6 +151,13 @@ startup/resume path. Именно там проявляются access-check fla
 который объединяет web auth/session regression tests и postgres tests для
 refresh-token runtime.
 
+Статус 2026-05-23: закрыто как автоматический regression gate. Gate расширен
+installed-app smoke тестом
+`npm run test:mobile-installed-auth`. Playwright запускает приложение в
+Capacitor-like Android runtime с native `Preferences` storage и проверяет
+already-signed-in cold start, native resume, offline resume с истекшим access
+token и сохранение device session без возврата на форму входа.
+
 ## P1: архитектурная сложность и пустые/ложные состояния
 
 ### Крупные orchestration-файлы трудно безопасно менять
@@ -193,6 +200,13 @@ memory test и postgres spec. В процессе выровнены две на
 expected-version conflict semantics, а `PostgresEmojiSetRepository` обновляет
 родительский icon set при добавлении/удалении items, сохраняя существующую
 global-read семантику icon sets.
+
+Статус 2026-05-23: закрыто для P1 visibility. Postgres contract specs получили
+отдельный coverage job
+`npm run coverage:api:postgres-contracts`. Обычный `npm run coverage:api`
+остается быстрым memory/API report, а postgres repository ветки теперь видны в
+отдельном отчете по `*.contract.postgres-spec.ts`, без смешивания с unit
+coverage.
 
 ### Состояния "connected", "empty" и "loading" не имеют общего источника правды
 

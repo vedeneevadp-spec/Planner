@@ -53,7 +53,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: /mobile-auth-installed\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
+    },
+    {
+      name: 'mobile-installed-auth',
+      testMatch: /mobile-auth-installed\.spec\.ts/,
+      use: {
+        ...devices['Pixel 5'],
+      },
     },
   ],
 })
