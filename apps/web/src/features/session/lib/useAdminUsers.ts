@@ -10,33 +10,27 @@ import {
 import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
+import { useSessionFeatureReadiness } from './useSessionFeatureReadiness'
 
 function adminUsersQueryKey(workspaceId: string) {
   return ['admin-users', workspaceId] as const
 }
 
 export function useAdminUsers(options: { enabled?: boolean } = {}) {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { apiConfig, isApiEnabled, workspaceId } = useSessionFeatureReadiness({
+    enabled: options.enabled,
+  })
 
   return useQuery({
-    enabled:
-      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
+    enabled: isApiEnabled,
     queryFn: ({ signal }) => {
-      if (!session) {
-        throw new Error('Planner session is required to load admin users.')
+      if (!apiConfig) {
+        throw new Error('Admin users API is not ready.')
       }
 
-      return createAdminUsersApiClient(
-        createAdminUsersApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).listAdminUsers(signal)
+      return createAdminUsersApiClient(apiConfig).listAdminUsers(signal)
     },
-    queryKey: adminUsersQueryKey(session?.workspaceId ?? 'pending'),
+    queryKey: adminUsersQueryKey(workspaceId),
     staleTime: 30_000,
   })
 }

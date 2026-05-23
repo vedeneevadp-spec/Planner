@@ -14,16 +14,26 @@ const connectionString =
 const requireRuntimeNonOwner = process.env.DB_SECURITY_REQUIRE_NON_OWNER === '1'
 const rlsMode = normalizeRlsMode(process.env.API_DB_RLS_MODE)
 
-const protectedTables = [
+const requiredRlsTables = [
+  'auth_credentials',
+  'auth_password_reset_tokens',
+  'auth_refresh_tokens',
   'chaos_inbox_items',
+  'cleaning_task_history',
+  'cleaning_task_states',
+  'cleaning_tasks',
+  'cleaning_zones',
   'daily_plans',
   'emoji_assets',
   'emoji_sets',
   'habit_entries',
   'habits',
   'life_spheres',
+  'oauth_authorization_codes',
   'projects',
   'push_devices',
+  'task_attachments',
+  'task_events',
   'task_reminders',
   'task_templates',
   'task_time_blocks',
@@ -47,13 +57,13 @@ try {
         and relname = any($1)
       order by relname
     `,
-    [protectedTables],
+    [requiredRlsTables],
   )
   const rlsByTable = new Map(
     rlsResult.rows.map((row) => [row.table_name, row.rls_enabled]),
   )
 
-  for (const tableName of protectedTables) {
+  for (const tableName of requiredRlsTables) {
     if (!rlsByTable.get(tableName)) {
       throw new Error(`RLS is not enabled for app.${tableName}.`)
     }
@@ -64,17 +74,15 @@ try {
       select current_user = tableowner as is_owner, tablename
       from pg_tables
       where schemaname = 'app'
-        and tablename = any($1)
       order by tablename
     `,
-    [protectedTables],
   )
   const ownedTables = ownerResult.rows
     .filter((row) => row.is_owner)
     .map((row) => row.tablename)
 
   if (ownedTables.length > 0) {
-    const message = `Current DB user owns protected app tables: ${ownedTables.join(', ')}. Use a non-owner runtime DB role for stricter RLS enforcement.`
+    const message = `Current DB user owns app tables: ${ownedTables.join(', ')}. Use a non-owner runtime DB role for stricter RLS enforcement.`
 
     if (requireRuntimeNonOwner) {
       throw new Error(message)

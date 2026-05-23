@@ -22,7 +22,15 @@ if (config.storageDriver !== 'postgres') {
   throw new Error('Task reminders worker requires Postgres storage.')
 }
 
-const database = createDatabaseConnection(createDatabaseConfig(process.env))
+const database = createDatabaseConnection(
+  createDatabaseConfig({
+    ...process.env,
+    DATABASE_URL:
+      process.env.TASK_REMINDERS_DATABASE_URL ??
+      process.env.WORKER_DATABASE_URL ??
+      process.env.DATABASE_URL,
+  }),
+)
 const pushNotificationsService = new PushNotificationsService(
   new PostgresPushNotificationsRepository(database.db),
   config.firebasePush

@@ -1,9 +1,43 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-05-22.
+Дата анализа: 2026-05-21. Обновлено: 2026-05-23.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
+
+## Закрыто 2026-05-23: production DB RLS переведен в строгий режим
+
+Где было видно:
+
+- production `/etc/planner/planner.env`: `API_DB_RLS_MODE=claims_only`
+- production runtime DB user `gen_user` владеет app tables и не может
+  `SET ROLE authenticated`
+- `scripts/db-security-check.mjs`
+- `docs/incidents/2026-05-10-production-rls-role.md`
+
+Проблема: API передает JWT claims в Postgres context, но production runtime user
+остается table owner. Это совместимый режим после RLS-инцидента, но он не дает
+полноценной защиты от owner bypass и не проверяет production в том же режиме,
+в котором должен работать strict RLS.
+
+Что сделать:
+
+- разделить runtime `DATABASE_URL` и owner/admin `MIGRATE_DATABASE_URL`
+- создать non-owner runtime DB role, которая является member роли
+  `authenticated` и может `SET ROLE authenticated`
+- перевести production `API_DB_RLS_MODE` на `transaction_local`
+- запускать `db:security:check` с `DB_SECURITY_REQUIRE_NON_OWNER=1`
+- для maintenance workers использовать отдельный worker DB URL, потому что они
+  выполняются без JWT subject
+
+Статус 2026-05-23: production переключен на strict RLS. `planner-api` работает с
+`API_DB_RLS_MODE=transaction_local` и runtime non-owner DB user `authenticated`.
+Owner/admin URL сохранен в `MIGRATE_DATABASE_URL` для backup, migrations и smoke
+cleanup; `planner-task-reminders` работает через maintenance DB URL, потому что
+worker выполняется без JWT subject. `db:security:check` проходит с
+`DB_SECURITY_REQUIRE_NON_OWNER=1`, production smoke и публичный health прошли.
+Runbook обновлен: ручные команды на VPS запускаются через `npm run prod:env`, а
+не через shell-source `/etc/planner/planner.env`.
 
 ## P0: риск повторного логаута на мобильном
 
@@ -52,6 +86,13 @@ storage recovery вынесены в явную `session-auth-machine` с event/
 `lifecycleStatus`, `canUseProtectedApi`, session error и cache fallback.
 Сценарии покрыты table-driven тестом `session-readiness.test.ts`, который входит
 в `npm run test:mobile-auth`.
+
+Статус 2026-05-23: общий helper `useSessionFeatureReadiness` стал единой точкой
+для feature API readiness. На него переведены habits, cleaning, emoji library,
+admin/workspace participant queries и native push registration, поэтому feature
+hooks больше не решают готовность через локальное
+`session && auth.canUseProtectedApi`. Table-driven тесты покрывают ready,
+disabled, restoring и planner-error сценарии для feature API gating.
 
 ### Auth SQL functions слишком критичны для текущего уровня защиты тестами
 
@@ -158,10 +199,11 @@ auth восстанавливается, access token еще не готов, ca
   offline/empty state
 - отображать empty state только после подтвержденной успешной загрузки данных
 
-Статус 2026-05-22: общий тип состояния введен как `SessionReadiness`, а первые
-потребители переведены на него. Остаток - заменить аналогичные локальные
-интерпретации в cleaning/habits и добавить feature-level проверки empty state
-после успешной загрузки.
+Статус 2026-05-23: общий тип состояния введен как `SessionReadiness`, а
+feature-level API readiness для planner, sidebar, shopping-list, habits,
+cleaning, emoji/admin participant queries и native push идет через общий helper.
+Следующий остаточный риск здесь уже не auth readiness, а более точные
+empty-state проверки на уровне отдельных страниц после успешной загрузки данных.
 
 ### Offline/cache paths требуют инвентаризации
 

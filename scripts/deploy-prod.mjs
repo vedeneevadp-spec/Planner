@@ -260,6 +260,10 @@ validate_production_env() {
   api_cors_origin_value="$(require_env_value API_CORS_ORIGIN)"
   auth_jwt_secret_value="$(require_env_value AUTH_JWT_SECRET)"
   database_url_value="$(require_env_value DATABASE_URL)"
+  migrate_database_url_value="$(read_env_value MIGRATE_DATABASE_URL)"
+  task_reminders_database_url_value="$(read_env_value TASK_REMINDERS_DATABASE_URL)"
+  worker_database_url_value="$(read_env_value WORKER_DATABASE_URL)"
+  effective_task_reminders_runtime_value="\${api_task_reminders_runtime_value:-api}"
 
   if [ "$node_env_value" != "production" ]; then
     echo "NODE_ENV must be production in $env_file." >&2
@@ -309,6 +313,21 @@ validate_production_env() {
     echo "DATABASE_URL must be configured." >&2
     return 1
   fi
+
+  if [ "$api_db_rls_mode_value" = "transaction_local" ] && [ -z "$migrate_database_url_value" ]; then
+    echo "MIGRATE_DATABASE_URL must be configured when production uses API_DB_RLS_MODE=transaction_local." >&2
+    return 1
+  fi
+
+  if [ "$api_db_rls_mode_value" = "transaction_local" ] && [ "$effective_task_reminders_runtime_value" = "api" ]; then
+    echo "API_TASK_REMINDERS_RUNTIME=api is not supported with strict transaction_local runtime DB role. Use worker or disabled." >&2
+    return 1
+  fi
+
+  if [ "$api_db_rls_mode_value" = "transaction_local" ] && [ "$effective_task_reminders_runtime_value" = "worker" ] && [ -z "$task_reminders_database_url_value" ] && [ -z "$worker_database_url_value" ]; then
+    echo "TASK_REMINDERS_DATABASE_URL or WORKER_DATABASE_URL must be configured when task reminders worker runs with strict transaction_local API runtime." >&2
+    return 1
+  fi
 }
 
 cd ${shellQuote(config.remoteRoot)}
@@ -321,22 +340,29 @@ runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
 runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
 
 DATABASE_URL_VALUE="$(require_env_value DATABASE_URL)"
+MIGRATE_DATABASE_URL_VALUE="$(read_env_value MIGRATE_DATABASE_URL)"
+if [ -z "$MIGRATE_DATABASE_URL_VALUE" ]; then
+  MIGRATE_DATABASE_URL_VALUE="$DATABASE_URL_VALUE"
+fi
+
 if [ "${skipDbBackup ? '1' : '0'}" != "1" ]; then
-  runuser -u planner -- env HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" DB_BACKUP_DIR=${shellQuote(`${config.remoteRoot}/backups`)} npm run db:backup
+  runuser -u planner -- env HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" DB_BACKUP_DIR=${shellQuote(`${config.remoteRoot}/backups`)} npm run db:backup
 fi
 
 DB_MIGRATE_MODE_VALUE="$(read_env_value DB_MIGRATE_MODE)"
-MIGRATE_ENV=(HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE")
+MIGRATE_ENV=(HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE")
 if [ -n "$DB_MIGRATE_MODE_VALUE" ]; then
   MIGRATE_ENV+=(DB_MIGRATE_MODE="$DB_MIGRATE_MODE_VALUE")
 fi
 
 runuser -u planner -- env "\${MIGRATE_ENV[@]}" npm run db:migrate
+SECURITY_ENV=(HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" NODE_ENV="$node_env_value" API_DB_RLS_MODE="$api_db_rls_mode_value")
+if [ "$api_db_rls_mode_value" = "transaction_local" ]; then
+  SECURITY_ENV+=(DB_SECURITY_REQUIRE_NON_OWNER=1)
+fi
+
 runuser -u planner -- env \\
-  HUSKY=0 \\
-  DATABASE_URL="$DATABASE_URL_VALUE" \\
-  NODE_ENV="$node_env_value" \\
-  API_DB_RLS_MODE="$api_db_rls_mode_value" \\
+  "\${SECURITY_ENV[@]}" \\
   npm run db:security:check
 
 WEB_AUTH_PROVIDER="$(grep '^WEB_AUTH_PROVIDER=' /etc/planner/planner.env | cut -d= -f2- || true)"
@@ -363,7 +389,7 @@ systemctl restart planner-api
 wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
 runuser -u planner -- env \\
   HUSKY=0 \\
-  DATABASE_URL="$DATABASE_URL_VALUE" \\
+  SMOKE_CLEANUP_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" \\
   SMOKE_API_BASE_URL=http://127.0.0.1:3001 \\
   SMOKE_CLEANUP_DATABASE=1 \\
   npm run smoke:api:prod

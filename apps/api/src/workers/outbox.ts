@@ -15,7 +15,15 @@ if (config.storageDriver !== 'postgres') {
   throw new Error('Outbox worker requires Postgres storage.')
 }
 
-const database = createDatabaseConnection(createDatabaseConfig(process.env))
+const database = createDatabaseConnection(
+  createDatabaseConfig({
+    ...process.env,
+    DATABASE_URL:
+      process.env.OUTBOX_DATABASE_URL ??
+      process.env.WORKER_DATABASE_URL ??
+      process.env.DATABASE_URL,
+  }),
+)
 
 try {
   const service = new OutboxService(new PostgresOutboxRepository(database.db))

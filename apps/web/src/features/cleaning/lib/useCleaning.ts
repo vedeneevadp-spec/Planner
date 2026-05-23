@@ -10,13 +10,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { usePlannerSession, useSessionAuth } from '@/features/session'
-import { plannerApiConfig } from '@/shared/config/planner-api'
+import { useSessionFeatureReadiness } from '@/features/session'
 import { getDateKey } from '@/shared/lib/date'
 
 import {
   type CleaningApiClient,
-  type CleaningApiClientConfig,
   CleaningApiError,
   createCleaningApiClient,
 } from './cleaning-api'
@@ -261,33 +259,20 @@ export function getCleaningErrorMessage(error: unknown): string {
 }
 
 function useCleaningApi(options: { enabled?: boolean } = {}) {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
-  const isEnabled =
-    options.enabled !== false && Boolean(session) && auth.canUseProtectedApi
-  const config = useMemo<CleaningApiClientConfig | null>(() => {
-    if (!session || !isEnabled) {
-      return null
-    }
-
-    return {
-      ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
-      actorUserId: session.actorUserId,
-      apiBaseUrl: plannerApiConfig.apiBaseUrl,
-      workspaceId: session.workspaceId,
-    }
-  }, [auth.accessToken, isEnabled, session])
+  const { apiConfig, isApiEnabled, session, workspaceId } =
+    useSessionFeatureReadiness({
+      enabled: options.enabled,
+    })
   const api = useMemo(
-    () => (config ? createCleaningApiClient(config) : null),
-    [config],
+    () => (apiConfig ? createCleaningApiClient(apiConfig) : null),
+    [apiConfig],
   )
 
   return {
     api,
-    isEnabled,
+    isEnabled: isApiEnabled,
     session,
-    workspaceId: session?.workspaceId ?? 'pending',
+    workspaceId,
   }
 }
 

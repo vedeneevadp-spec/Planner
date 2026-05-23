@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { SessionAuthLifecycleStatus } from '../model/session-auth-context'
 import {
   getSessionReadinessConnectionView,
+  resolveSessionFeatureReadiness,
   resolveSessionReadiness,
   type SessionReadinessStatus,
 } from './session-readiness'
@@ -243,6 +244,94 @@ describe('session readiness', () => {
     const readiness = resolveSessionReadiness(input)
 
     expect(getSessionReadinessConnectionView(readiness)).toEqual(expected)
+  })
+
+  it.each([
+    {
+      expected: {
+        isApiEnabled: true,
+        status: 'ready',
+      },
+      input: {
+        auth: authState({
+          canUseProtectedApi: true,
+          lifecycleStatus: 'authenticated',
+        }),
+        hasPlannerSession: true,
+        isPlannerSessionPending: false,
+      },
+      name: 'enables feature API only when readiness is ready',
+    },
+    {
+      expected: {
+        isApiEnabled: false,
+        status: 'ready',
+      },
+      input: {
+        auth: authState({
+          canUseProtectedApi: true,
+          lifecycleStatus: 'authenticated',
+        }),
+        hasPlannerSession: true,
+        isFeatureEnabled: false,
+        isPlannerSessionPending: false,
+      },
+      name: 'keeps ready feature disabled when the feature opts out',
+    },
+    {
+      expected: {
+        isApiEnabled: false,
+        status: 'restoringWithCache',
+      },
+      input: {
+        auth: authState({
+          canUseProtectedApi: false,
+          lifecycleStatus: 'restoring',
+        }),
+        hasCachedData: true,
+        hasPlannerSession: true,
+        isPlannerSessionPending: true,
+      },
+      name: 'does not enable feature API while auth restores over cache',
+    },
+    {
+      expected: {
+        isApiEnabled: false,
+        status: 'serverError',
+      },
+      input: {
+        auth: authState({
+          canUseProtectedApi: true,
+          lifecycleStatus: 'authenticated',
+        }),
+        hasPlannerSession: false,
+        hasPlannerSessionError: true,
+        isPlannerSessionPending: false,
+      },
+      name: 'does not enable feature API without planner session',
+    },
+    {
+      expected: {
+        isApiEnabled: true,
+        status: 'ready',
+      },
+      input: {
+        auth: authState({
+          canUseProtectedApi: true,
+          lifecycleStatus: 'disabled',
+        }),
+        hasPlannerSession: true,
+        isPlannerSessionPending: false,
+      },
+      name: 'keeps disabled auth compatibility behind the same helper',
+    },
+  ])('$name', ({ expected, input }) => {
+    const result = resolveSessionFeatureReadiness(input)
+
+    expect({
+      isApiEnabled: result.isApiEnabled,
+      status: result.readiness.status,
+    }).toEqual(expected)
   })
 })
 

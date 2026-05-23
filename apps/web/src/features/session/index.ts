@@ -14,13 +14,19 @@ export {
 export {
   getSessionReadinessConnectionView,
   getSessionReadinessErrorMessage,
+  resolveSessionFeatureReadiness,
   resolveSessionReadiness,
+  type SessionFeatureReadiness,
   type SessionReadiness,
   type SessionReadinessStatus,
 } from './lib/session-readiness'
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { useSessionAuth } from './lib/useSessionAuth'
+export {
+  type SessionFeatureApiConfig,
+  useSessionFeatureReadiness,
+} from './lib/useSessionFeatureReadiness'
 export { useUpdateUserPreferences } from './lib/useUserPreferences'
 export {
   getUpdateUserProfileErrorMessage,

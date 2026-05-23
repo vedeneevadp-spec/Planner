@@ -3,6 +3,8 @@ import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 
 const connectionString =
+  process.env.BACKUP_DATABASE_URL ??
+  process.env.MIGRATE_DATABASE_URL ??
   process.env.DATABASE_URL ??
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 const pgDumpConnectionString = createPgDumpConnectionString(connectionString)

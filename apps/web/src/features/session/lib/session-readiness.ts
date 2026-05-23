@@ -40,9 +40,18 @@ export interface ResolveSessionReadinessInput {
   isPlannerSessionPending: boolean
 }
 
+export interface ResolveSessionFeatureReadinessInput extends ResolveSessionReadinessInput {
+  isFeatureEnabled?: boolean | undefined
+}
+
 export interface SessionReadinessConnectionView {
   errorMessage: string | null
   label: 'Connected' | 'Connection issue' | 'Loading' | 'Syncing'
+}
+
+export interface SessionFeatureReadiness {
+  isApiEnabled: boolean
+  readiness: SessionReadiness
 }
 
 export function resolveSessionReadiness(
@@ -123,6 +132,18 @@ export function resolveSessionReadiness(
     reason: 'no_session',
     status: input.auth.canUseProtectedApi ? 'serverError' : 'blockedAuth',
   })
+}
+
+export function resolveSessionFeatureReadiness(
+  input: ResolveSessionFeatureReadinessInput,
+): SessionFeatureReadiness {
+  const readiness = resolveSessionReadiness(input)
+
+  return {
+    isApiEnabled:
+      input.isFeatureEnabled !== false && readiness.canWriteProtectedData,
+    readiness,
+  }
 }
 
 export function getSessionReadinessConnectionView(

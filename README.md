@@ -192,6 +192,9 @@ life-spheres API.
 - production runtime требует `API_AUTH_MODE=jwt`, явный `API_CORS_ORIGIN`,
   неплейсхолдерный `AUTH_JWT_SECRET` и включенный RLS mode; с
   `API_DB_RLS_MODE=disabled` API не стартует
+- `DATABASE_URL` в production должен быть runtime connection string для
+  non-owner DB role. `MIGRATE_DATABASE_URL` используется deploy-скриптом для
+  backup/migrations/smoke cleanup под owner/admin role.
 - `API_DB_RLS_MODE` переопределяет RLS strategy:
   `disabled`, `claims_only`, `enabled`, `transaction_local`,
   `session_connection`. `transaction_local` требует, чтобы runtime DB user мог
@@ -202,13 +205,19 @@ life-spheres API.
 - `API_TASK_REMINDERS_RUNTIME` управляет напоминаниями:
   `api` запускает poller внутри API процесса, `worker` запускает отдельный
   production systemd service `planner-task-reminders`, `disabled` полностью
-  выключает poller
+  выключает poller. Для strict `transaction_local` используйте `worker` или
+  `disabled`; worker должен получать `TASK_REMINDERS_DATABASE_URL` или
+  `WORKER_DATABASE_URL`, потому что он выполняет maintenance-запросы без JWT
+  subject.
 - по умолчанию backend передает DB RLS context через transaction-local settings;
   перед включением этого режима на production надо прогнать
   `npm run db:security:check` с production `DATABASE_URL` и `API_DB_RLS_MODE`
 - `DB_SECURITY_REQUIRE_NON_OWNER=1` делает `db:security:check` строгим:
   runtime DB user не должен быть владельцем protected tables и должен проходить
   rollback-only проверку auth/session bootstrap без table-owner bypass
+- `npm run db:runtime-role:setup` создает/обновляет non-owner runtime role:
+  передайте `MIGRATE_DATABASE_URL`, `DB_RUNTIME_ROLE` и `DB_RUNTIME_PASSWORD`,
+  затем настройте `DATABASE_URL` на созданную роль.
 - `npm run smoke:api:prod` поднимает API локально с `NODE_ENV=production`,
   `API_AUTH_MODE=jwt`, `API_DB_RLS_MODE=transaction_local` и проверяет реальные
   `health`, `auth`, `session` и `tasks` запросы; перед запуском используйте
@@ -220,8 +229,9 @@ life-spheres API.
   `FIREBASE_SERVICE_ACCOUNT_PATH`, либо trio
   `FIREBASE_PROJECT_ID`/`FIREBASE_CLIENT_EMAIL`/`FIREBASE_PRIVATE_KEY`
 
-Для production Timeweb PostgreSQL используйте обычный `DATABASE_URL` с
-`sslmode=require`.
+Для production Timeweb PostgreSQL используйте `sslmode=require` и храните
+отдельные URLs: runtime non-owner в `DATABASE_URL`, owner/admin в
+`MIGRATE_DATABASE_URL`.
 
 ## Web Runtime
 

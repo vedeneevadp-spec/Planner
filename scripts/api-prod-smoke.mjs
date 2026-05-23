@@ -241,8 +241,15 @@ async function cleanupSmokeDatabase({ email, userId, workspaceId }) {
     return
   }
 
-  if (!process.env.DATABASE_URL) {
-    throw new Error('SMOKE_CLEANUP_DATABASE=1 requires DATABASE_URL.')
+  const cleanupDatabaseUrl =
+    process.env.SMOKE_CLEANUP_DATABASE_URL ??
+    process.env.MIGRATE_DATABASE_URL ??
+    process.env.DATABASE_URL
+
+  if (!cleanupDatabaseUrl) {
+    throw new Error(
+      'SMOKE_CLEANUP_DATABASE=1 requires SMOKE_CLEANUP_DATABASE_URL, MIGRATE_DATABASE_URL, or DATABASE_URL.',
+    )
   }
 
   if (!email.startsWith('prod-smoke-') || !email.endsWith('@example.test')) {
@@ -250,7 +257,7 @@ async function cleanupSmokeDatabase({ email, userId, workspaceId }) {
   }
 
   const client = new Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: cleanupDatabaseUrl,
     connectionTimeoutMillis: 10_000,
     query_timeout: 30_000,
   })

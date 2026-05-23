@@ -96,9 +96,9 @@ npm run check
 нужен только для отдельного staging/prod maintenance окна:
 
 ```bash
-DATABASE_URL="postgres://..." npm run db:backup
-DATABASE_URL="postgres://..." npm run db:migrate
-DATABASE_URL="postgres://..." npm run db:security:check
+MIGRATE_DATABASE_URL="postgres://owner-or-admin..." npm run db:backup
+MIGRATE_DATABASE_URL="postgres://owner-or-admin..." npm run db:migrate
+DATABASE_URL="postgres://runtime-non-owner..." API_DB_RLS_MODE=transaction_local DB_SECURITY_REQUIRE_NON_OWNER=1 npm run db:security:check
 ```
 
 Для текущего production окружения ручные DB-команды обычно безопаснее делать на
@@ -107,13 +107,21 @@ VPS, чтобы использовать тот же сетевой контур
 ```bash
 ssh root@147.45.158.186
 cd /opt/planner
-set -a
-. /etc/planner/planner.env
-set +a
-npm run db:backup
-npm run db:migrate
-npm run db:security:check
+npm run prod:env -- npm run db:backup
+npm run prod:env -- npm run db:migrate
+DB_SECURITY_REQUIRE_NON_OWNER=1 npm run prod:env -- npm run db:security:check
 ```
+
+Не делайте `. /etc/planner/planner.env`: production env может содержать
+значения, которые валидны для systemd EnvironmentFile, но не являются
+безопасным shell input. `npm run prod:env` читает env-файл parser-based и не
+печатает секреты.
+
+В strict RLS production `DATABASE_URL` - это runtime non-owner role, а
+`MIGRATE_DATABASE_URL` - owner/admin role для миграций. Если включен
+`API_TASK_REMINDERS_RUNTIME=worker`, worker должен иметь
+`TASK_REMINDERS_DATABASE_URL` или `WORKER_DATABASE_URL`, потому что он выполняет
+maintenance-запросы без JWT subject.
 
 Migration runner хранит checksum примененных файлов и берет PostgreSQL advisory
 lock; уже примененные SQL-файлы нужно менять новой migration, а не правкой

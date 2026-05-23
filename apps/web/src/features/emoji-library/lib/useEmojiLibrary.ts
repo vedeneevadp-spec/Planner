@@ -5,40 +5,24 @@ import type {
   AddEmojiSetItemsInput,
   NewEmojiSetInput,
 } from '@/entities/emoji-set'
-import { usePlannerSession, useSessionAuth } from '@/features/session'
-import { plannerApiConfig } from '@/shared/config/planner-api'
+import { useSessionFeatureReadiness } from '@/features/session'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
 
-import {
-  createEmojiLibraryApiClient,
-  type EmojiLibraryApiClientConfig,
-} from './emoji-library-api'
+import { createEmojiLibraryApiClient } from './emoji-library-api'
 
 function emojiSetQueryKey(workspaceId: string) {
   return ['emoji-library', 'sets', workspaceId] as const
 }
 
 export function useEmojiSets() {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { api, isEnabled, workspaceId } = useEmojiLibraryApi()
 
   return useQuery({
-    enabled: Boolean(session) && auth.canUseProtectedApi,
+    enabled: isEnabled,
     queryFn: ({ signal }) => {
-      if (!session) {
-        throw new Error('Planner session is required to load icon sets.')
-      }
-
-      return createEmojiLibraryApiClient(
-        createEmojiLibraryApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).listEmojiSets(signal)
+      return requireEmojiLibraryApi(api).listEmojiSets(signal)
     },
-    queryKey: emojiSetQueryKey(session?.workspaceId ?? 'pending'),
+    queryKey: emojiSetQueryKey(workspaceId),
     staleTime: 60_000,
   })
 }
@@ -69,9 +53,7 @@ export function useUploadedIconAssets(): {
 }
 
 export function useCreateEmojiSet() {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { api, session } = useEmojiLibraryApi()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -80,13 +62,7 @@ export function useCreateEmojiSet() {
         throw new Error('Planner session is required to create icon sets.')
       }
 
-      return createEmojiLibraryApiClient(
-        createEmojiLibraryApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).createEmojiSet(input)
+      return requireEmojiLibraryApi(api).createEmojiSet(input)
     },
     onSuccess: async () => {
       if (!session) {
@@ -101,9 +77,7 @@ export function useCreateEmojiSet() {
 }
 
 export function useAddEmojiSetItems() {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { api, session } = useEmojiLibraryApi()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -115,13 +89,7 @@ export function useAddEmojiSetItems() {
         throw new Error('Planner session is required to update icon sets.')
       }
 
-      return createEmojiLibraryApiClient(
-        createEmojiLibraryApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).addEmojiSetItems(input.emojiSetId, {
+      return requireEmojiLibraryApi(api).addEmojiSetItems(input.emojiSetId, {
         items: input.items,
       })
     },
@@ -138,9 +106,7 @@ export function useAddEmojiSetItems() {
 }
 
 export function useDeleteEmojiSet() {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { api, session } = useEmojiLibraryApi()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -149,13 +115,7 @@ export function useDeleteEmojiSet() {
         throw new Error('Planner session is required to delete icon sets.')
       }
 
-      await createEmojiLibraryApiClient(
-        createEmojiLibraryApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).deleteEmojiSet(emojiSetId)
+      await requireEmojiLibraryApi(api).deleteEmojiSet(emojiSetId)
     },
     onSuccess: async () => {
       if (!session) {
@@ -170,9 +130,7 @@ export function useDeleteEmojiSet() {
 }
 
 export function useDeleteEmojiSetItem() {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { api, session } = useEmojiLibraryApi()
   const queryClient = useQueryClient()
 
   return useMutation({
@@ -181,13 +139,10 @@ export function useDeleteEmojiSetItem() {
         throw new Error('Planner session is required to delete icon assets.')
       }
 
-      await createEmojiLibraryApiClient(
-        createEmojiLibraryApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).deleteEmojiSetItem(input.emojiSetId, input.iconAssetId)
+      await requireEmojiLibraryApi(api).deleteEmojiSetItem(
+        input.emojiSetId,
+        input.iconAssetId,
+      )
     },
     onSuccess: async () => {
       if (!session) {
@@ -201,15 +156,28 @@ export function useDeleteEmojiSetItem() {
   })
 }
 
-function createEmojiLibraryApiClientConfig(input: {
-  accessToken: string | null
-  actorUserId: string
-  workspaceId: string
-}): EmojiLibraryApiClientConfig {
+function useEmojiLibraryApi() {
+  const { apiConfig, isApiEnabled, session, workspaceId } =
+    useSessionFeatureReadiness()
+  const api = useMemo(
+    () => (apiConfig ? createEmojiLibraryApiClient(apiConfig) : null),
+    [apiConfig],
+  )
+
   return {
-    actorUserId: input.actorUserId,
-    apiBaseUrl: plannerApiConfig.apiBaseUrl,
-    workspaceId: input.workspaceId,
-    ...(input.accessToken ? { accessToken: input.accessToken } : {}),
+    api,
+    isEnabled: isApiEnabled,
+    session,
+    workspaceId,
   }
+}
+
+function requireEmojiLibraryApi(
+  api: ReturnType<typeof createEmojiLibraryApiClient> | null,
+) {
+  if (!api) {
+    throw new Error('Icon library API is not ready.')
+  }
+
+  return api
 }

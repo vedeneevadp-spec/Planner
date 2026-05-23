@@ -124,7 +124,9 @@ API_HOST=127.0.0.1
 API_PORT=3001
 API_CORS_ORIGIN=https://chaotika.ru,https://localhost,capacitor://localhost
 API_ICON_ASSET_DIR=/var/lib/planner/icon-assets
-DATABASE_URL=<Timeweb Managed PostgreSQL URL>
+DATABASE_URL=<Timeweb Managed PostgreSQL runtime non-owner URL>
+MIGRATE_DATABASE_URL=<Timeweb Managed PostgreSQL owner/admin URL>
+TASK_REMINDERS_DATABASE_URL=<Timeweb Managed PostgreSQL owner/admin URL>
 AUTH_JWT_SECRET=<long-random-secret>
 AUTH_JWT_ISSUER=planner-api
 AUTH_JWT_AUDIENCE=authenticated
@@ -152,10 +154,27 @@ WEB_AUTH_PROVIDER=planner
 FIREBASE_SERVICE_ACCOUNT_PATH=/etc/planner/firebase-service-account.json
 ```
 
-`DATABASE_URL` должен указывать на Timeweb PostgreSQL, например:
+Для strict RLS production используйте два DB URL:
+
+- `DATABASE_URL` - non-owner runtime role, которая может `SET ROLE authenticated`
+- `MIGRATE_DATABASE_URL` - owner/admin role для backup, migrations и smoke
+  cleanup
+- `TASK_REMINDERS_DATABASE_URL` - owner/admin или отдельная maintenance role для
+  `planner-task-reminders`, потому что worker работает без JWT subject
+
+Runtime role создается/обновляется так:
+
+```bash
+MIGRATE_DATABASE_URL='postgresql://gen_user:<password>@<public-db-host>:5432/default_db?sslmode=require&uselibpqcompat=true' \
+DB_RUNTIME_ROLE=planner_runtime \
+DB_RUNTIME_PASSWORD='<long-random-runtime-password>' \
+npm run db:runtime-role:setup
+```
+
+После этого `DATABASE_URL` должен указывать на созданную runtime role, например:
 
 ```text
-postgresql://gen_user:<password>@<public-db-host>:5432/default_db?sslmode=require&uselibpqcompat=true
+postgresql://planner_runtime:<runtime-password>@<public-db-host>:5432/default_db?sslmode=require&uselibpqcompat=true
 ```
 
 Timeweb firewall для Managed PostgreSQL должен разрешать входящий `TCP 5432`
@@ -377,7 +396,9 @@ curl https://chaotika.ru/api/health
 Проверить production env:
 
 ```bash
-grep -E '^(NODE_ENV|API_|DATABASE_URL|AUTH_|WEB_AUTH_PROVIDER)' /etc/planner/planner.env
+grep -E '^(NODE_ENV|API_|WEB_AUTH_PROVIDER)' /etc/planner/planner.env
+cd /opt/planner
+node -e "const fs=require('fs');const text=fs.readFileSync('/etc/planner/planner.env','utf8');const get=(k)=>text.match(new RegExp('^'+k+'=(.*)$','m'))?.[1]?.replace(/^['\\\"]|['\\\"]$/g,'');for (const k of ['DATABASE_URL','MIGRATE_DATABASE_URL','TASK_REMINDERS_DATABASE_URL']) { const v=get(k); if (v) console.log(k+' user='+new URL(v).username) }"
 ```
 
 Проверить файлы web build:

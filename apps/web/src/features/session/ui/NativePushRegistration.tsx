@@ -1,45 +1,29 @@
 import { useEffect } from 'react'
 
-import { plannerApiConfig } from '@/shared/config/planner-api'
-
 import {
   isAndroidPushNotificationsRuntime,
   registerNativePushNotifications,
 } from '../lib/native-push-notifications'
 import { createPushNotificationsApiClient } from '../lib/push-notifications-api'
-import { usePlannerSession } from '../lib/usePlannerSession'
-import { useSessionAuth } from '../lib/useSessionAuth'
+import { useSessionFeatureReadiness } from '../lib/useSessionFeatureReadiness'
 
 export function NativePushRegistration() {
-  const { accessToken, isAuthEnabled } = useSessionAuth()
-  const { data: session } = usePlannerSession()
-  const actorUserId = session?.actorUserId ?? null
-  const workspaceId = session?.workspaceId ?? null
+  const { apiConfig, session } = useSessionFeatureReadiness()
 
   useEffect(() => {
-    if (
-      !actorUserId ||
-      !workspaceId ||
-      (isAuthEnabled && !accessToken) ||
-      !isAndroidPushNotificationsRuntime()
-    ) {
+    if (!apiConfig || !session || !isAndroidPushNotificationsRuntime()) {
       return
     }
 
-    const apiClient = createPushNotificationsApiClient({
-      ...(accessToken ? { accessToken } : {}),
-      actorUserId,
-      apiBaseUrl: plannerApiConfig.apiBaseUrl,
-      workspaceId,
-    })
+    const apiClient = createPushNotificationsApiClient(apiConfig)
 
     let isDisposed = false
     let cleanup: (() => Promise<void>) | null = null
 
     void registerNativePushNotifications({
-      actorUserId,
+      actorUserId: session.actorUserId,
       apiClient,
-      workspaceId,
+      workspaceId: session.workspaceId,
     })
       .then((dispose) => {
         if (isDisposed) {
@@ -60,7 +44,7 @@ export function NativePushRegistration() {
         void cleanup()
       }
     }
-  }, [accessToken, actorUserId, isAuthEnabled, workspaceId])
+  }, [apiConfig, session])
 
   return null
 }

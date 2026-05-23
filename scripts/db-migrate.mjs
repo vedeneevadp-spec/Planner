@@ -15,6 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '..')
 const migrationsDirectory = path.join(repoRoot, 'db', 'migrations')
 const connectionString =
+  process.env.MIGRATE_DATABASE_URL ??
   process.env.DATABASE_URL ??
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 const retries = 30

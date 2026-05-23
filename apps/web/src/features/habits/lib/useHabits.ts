@@ -17,8 +17,7 @@ import {
 } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo } from 'react'
 
-import { usePlannerSession, useSessionAuth } from '@/features/session'
-import { plannerApiConfig } from '@/shared/config/planner-api'
+import { useSessionFeatureReadiness } from '@/features/session'
 import { getDateKey } from '@/shared/lib/date'
 import { useOnlineSync } from '@/shared/lib/offline-sync'
 
@@ -39,7 +38,6 @@ import {
 import {
   createHabitsApiClient,
   type HabitsApiClient,
-  type HabitsApiClientConfig,
   HabitsApiError,
 } from './habits-api'
 import {
@@ -792,33 +790,20 @@ export function getHabitErrorMessage(error: unknown): string {
 }
 
 function useHabitsApi(options: { enabled?: boolean } = {}) {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
-  const isEnabled =
-    options.enabled !== false && Boolean(session) && auth.canUseProtectedApi
-  const config = useMemo<HabitsApiClientConfig | null>(() => {
-    if (!session || !isEnabled) {
-      return null
-    }
-
-    return {
-      ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
-      actorUserId: session.actorUserId,
-      apiBaseUrl: plannerApiConfig.apiBaseUrl,
-      workspaceId: session.workspaceId,
-    }
-  }, [auth.accessToken, isEnabled, session])
+  const { apiConfig, isApiEnabled, session, workspaceId } =
+    useSessionFeatureReadiness({
+      enabled: options.enabled,
+    })
   const api = useMemo(
-    () => (config ? createHabitsApiClient(config) : null),
-    [config],
+    () => (apiConfig ? createHabitsApiClient(apiConfig) : null),
+    [apiConfig],
   )
 
   return {
     api,
-    isEnabled,
+    isEnabled: isApiEnabled,
     session,
-    workspaceId: session?.workspaceId ?? 'pending',
+    workspaceId,
   }
 }
 

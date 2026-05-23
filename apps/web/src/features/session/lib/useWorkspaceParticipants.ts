@@ -9,6 +9,7 @@ import { plannerApiConfig } from '@/shared/config/planner-api'
 import { assertCanUseProtectedSessionApi } from './session-auth-lifecycle'
 import { usePlannerSession } from './usePlannerSession'
 import { useSessionAuth } from './useSessionAuth'
+import { useSessionFeatureReadiness } from './useSessionFeatureReadiness'
 import type { WorkspaceParticipantsApiError } from './workspace-participants-api'
 import {
   createWorkspaceParticipantsApiClient,
@@ -33,55 +34,43 @@ function receivedWorkspaceInvitationsQueryKey(actorUserId: string | undefined) {
 }
 
 export function useWorkspaceUsers(options: { enabled?: boolean } = {}) {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { apiConfig, isApiEnabled, workspaceId } = useSessionFeatureReadiness({
+    enabled: options.enabled,
+  })
 
   return useQuery({
-    enabled:
-      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
+    enabled: isApiEnabled,
     queryFn: ({ signal }) => {
-      if (!session) {
-        throw new Error('Planner session is required to load workspace users.')
+      if (!apiConfig) {
+        throw new Error('Workspace users API is not ready.')
       }
 
-      return createWorkspaceParticipantsApiClient(
-        createWorkspaceParticipantsApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
-      ).listWorkspaceUsers(signal)
+      return createWorkspaceParticipantsApiClient(apiConfig).listWorkspaceUsers(
+        signal,
+      )
     },
-    queryKey: workspaceUsersQueryKey(session?.workspaceId ?? 'pending'),
+    queryKey: workspaceUsersQueryKey(workspaceId),
     staleTime: 30_000,
   })
 }
 
 export function useWorkspaceInvitations(options: { enabled?: boolean } = {}) {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { apiConfig, isApiEnabled, workspaceId } = useSessionFeatureReadiness({
+    enabled: options.enabled,
+  })
 
   return useQuery({
-    enabled:
-      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
+    enabled: isApiEnabled,
     queryFn: ({ signal }) => {
-      if (!session) {
-        throw new Error(
-          'Planner session is required to load workspace invitations.',
-        )
+      if (!apiConfig) {
+        throw new Error('Workspace invitations API is not ready.')
       }
 
       return createWorkspaceParticipantsApiClient(
-        createWorkspaceParticipantsApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
+        apiConfig,
       ).listWorkspaceInvitations(signal)
     },
-    queryKey: workspaceInvitationsQueryKey(session?.workspaceId ?? 'pending'),
+    queryKey: workspaceInvitationsQueryKey(workspaceId),
     staleTime: 30_000,
   })
 }
@@ -89,29 +78,22 @@ export function useWorkspaceInvitations(options: { enabled?: boolean } = {}) {
 export function useReceivedWorkspaceInvitations(
   options: { enabled?: boolean } = {},
 ) {
-  const auth = useSessionAuth()
-  const sessionQuery = usePlannerSession()
-  const session = sessionQuery.data
+  const { apiConfig, isApiEnabled } = useSessionFeatureReadiness({
+    enabled: options.enabled,
+  })
 
   return useQuery({
-    enabled:
-      options.enabled !== false && Boolean(session) && auth.canUseProtectedApi,
+    enabled: isApiEnabled,
     queryFn: ({ signal }) => {
-      if (!session) {
-        throw new Error(
-          'Planner session is required to load received workspace invitations.',
-        )
+      if (!apiConfig) {
+        throw new Error('Received workspace invitations API is not ready.')
       }
 
       return createWorkspaceParticipantsApiClient(
-        createWorkspaceParticipantsApiClientConfig({
-          accessToken: auth.accessToken,
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        }),
+        apiConfig,
       ).listReceivedWorkspaceInvitations(signal)
     },
-    queryKey: receivedWorkspaceInvitationsQueryKey(session?.actorUserId),
+    queryKey: receivedWorkspaceInvitationsQueryKey(apiConfig?.actorUserId),
     staleTime: 30_000,
   })
 }
