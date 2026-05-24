@@ -1,5 +1,6 @@
+import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { after, before } from 'node:test'
+import { after, before, test } from 'node:test'
 
 import {
   createDatabaseConnection,
@@ -7,7 +8,10 @@ import {
   destroyDatabaseConnection,
 } from '../../infrastructure/db/client.js'
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
-import { defineSessionRepositoryContractSuite } from './session.repository.contract.js'
+import {
+  createSessionAuthContext,
+  defineSessionRepositoryContractSuite,
+} from './session.repository.contract.js'
 import { PostgresSessionRepository } from './session.repository.postgres.js'
 
 let connection: DatabaseConnection
@@ -87,6 +91,85 @@ defineSessionRepositoryContractSuite({
     }
   },
   name: 'PostgresSessionRepository contract',
+})
+
+void test('PostgresSessionRepository exposes admin user metrics under runtime RLS', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const memberUserId = randomUUID()
+  const memberEmail = `contract-admin-metrics-member-${memberUserId}@example.test`
+  const taskId = randomUUID()
+  const refreshTokenId = randomUUID()
+  const refreshSessionId = randomUUID()
+  const lastSeenAt = new Date('2026-05-24T01:02:03.000Z')
+  const owner = await resolveOwnerUser()
+  const cleanupUserIds = owner.seeded
+    ? [owner.id, memberUserId]
+    : [memberUserId]
+
+  try {
+    await seedUserSession({
+      appRole: 'user',
+      email: memberEmail,
+      userId: memberUserId,
+    })
+
+    const memberWorkspaceId = await resolvePersonalWorkspaceId(memberUserId)
+    await connection.pool.query(
+      `
+        insert into app.tasks (
+          id,
+          workspace_id,
+          title,
+          description,
+          created_by,
+          updated_by
+        )
+        values ($1, $2, 'RLS hidden member task', '', $3, $3)
+      `,
+      [taskId, memberWorkspaceId, memberUserId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.auth_refresh_tokens (
+          id,
+          user_id,
+          token_hash,
+          session_id,
+          expires_at,
+          created_at,
+          last_used_at
+        )
+        values ($1, $2, $3, $4, '2099-01-01T00:00:00Z', $5, $5)
+      `,
+      [
+        refreshTokenId,
+        memberUserId,
+        `contract-admin-metrics-token-${refreshTokenId}`,
+        refreshSessionId,
+        lastSeenAt,
+      ],
+    )
+
+    const ownerSession = await repository.resolve({
+      actorUserId: owner.id,
+      auth: null,
+      workspaceId: undefined,
+    })
+    const users = await repository.listAdminUsers(
+      ownerSession,
+      createSessionAuthContext({
+        email: owner.email,
+        userId: owner.id,
+      }),
+    )
+    const member = users.find((user) => user.id === memberUserId)
+
+    assert.ok(member)
+    assert.equal(member.taskCount, 1)
+    assert.equal(member.lastSeenAt, lastSeenAt.toISOString())
+  } finally {
+    await cleanupUsers(cleanupUserIds)
+  }
 })
 
 async function seedUserSession(input: {
@@ -187,6 +270,72 @@ async function resolveImmutableOwnerUserId(
   })
 
   return ownerUserId
+}
+
+async function resolveOwnerUser(): Promise<{
+  email: string
+  id: string
+  seeded: boolean
+}> {
+  const existingOwner = await connection.pool.query<{
+    email: string
+    id: string
+  }>(
+    `
+      select id, email
+      from app.users
+      where app_role = 'owner'
+        and deleted_at is null
+      order by created_at asc
+      limit 1
+    `,
+  )
+
+  if (existingOwner.rows[0]) {
+    return {
+      email: existingOwner.rows[0].email,
+      id: existingOwner.rows[0].id,
+      seeded: false,
+    }
+  }
+
+  const ownerUserId = randomUUID()
+  const ownerEmail = `contract-admin-metrics-owner-${ownerUserId}@example.test`
+
+  await seedUserSession({
+    appRole: 'owner',
+    email: ownerEmail,
+    userId: ownerUserId,
+  })
+
+  return {
+    email: ownerEmail,
+    id: ownerUserId,
+    seeded: true,
+  }
+}
+
+async function resolvePersonalWorkspaceId(userId: string): Promise<string> {
+  const workspace = await connection.pool.query<{ id: string }>(
+    `
+      select workspace.id
+      from app.workspaces as workspace
+      where workspace.owner_user_id = $1
+        and workspace.kind = 'personal'
+        and workspace.deleted_at is null
+      order by workspace.created_at asc
+      limit 1
+    `,
+    [userId],
+  )
+
+  const workspaceId = workspace.rows[0]?.id
+
+  if (!workspaceId) {
+    throw new Error(`Failed to resolve personal workspace for ${userId}.`)
+  }
+
+  return workspaceId
 }
 
 async function cleanupUsers(userIds: string[]): Promise<void> {

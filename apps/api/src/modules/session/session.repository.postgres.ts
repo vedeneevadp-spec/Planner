@@ -849,17 +849,8 @@ export class PostgresSessionRepository implements SessionRepository {
         'actor.email as email',
         'actor.id as id',
         'actor.updated_at as updatedAt',
-        sql<unknown>`(
-          select max(coalesce(token.last_used_at, token.created_at))
-          from app.auth_refresh_tokens as token
-          where token.user_id = actor.id
-        )`.as('lastSeenAt'),
-        sql<number>`(
-          select count(*)::int
-          from app.tasks as task
-          where task.created_by = actor.id
-            and task.deleted_at is null
-        )`.as('taskCount'),
+        sql<unknown>`app.admin_user_last_seen_at(actor.id)`.as('lastSeenAt'),
+        sql<number>`app.admin_user_task_count(actor.id)`.as('taskCount'),
       ])
       .where('actor.deleted_at', 'is', null)
   }
