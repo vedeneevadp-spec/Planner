@@ -172,6 +172,49 @@ void test('PostgresSessionRepository exposes admin user metrics under runtime RL
   }
 })
 
+void test('PostgresSessionRepository updates user preferences under runtime RLS', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const userId = randomUUID()
+  const email = `contract-preferences-${userId}@example.test`
+
+  try {
+    await seedUserSession({
+      appRole: 'user',
+      email,
+      userId,
+    })
+
+    const session = await repository.resolve({
+      actorUserId: userId,
+      auth: null,
+      workspaceId: undefined,
+    })
+    const preferences = await repository.updateUserPreferences(
+      session,
+      createSessionAuthContext({
+        email,
+        userId,
+      }),
+      {
+        energyMode: 'minimum',
+      },
+    )
+    const updatedSession = await repository.resolve({
+      actorUserId: userId,
+      auth: null,
+      workspaceId: undefined,
+    })
+
+    assert.deepEqual(preferences, {
+      calendarViewMode: 'week',
+      energyMode: 'minimum',
+    })
+    assert.equal(updatedSession.userPreferences.energyMode, 'minimum')
+  } finally {
+    await cleanupUsers([userId])
+  }
+})
+
 async function seedUserSession(input: {
   appRole: 'owner' | 'admin' | 'user' | 'guest'
   email: string

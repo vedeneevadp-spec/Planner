@@ -747,8 +747,43 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async updateUserPreferences(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
     input: { calendarViewMode?: CalendarViewMode; energyMode?: EnergyMode },
   ) {
+    if (authContext) {
+      const preferences = await withWriteTransaction(
+        this.db,
+        authContext,
+        async (trx) => {
+          const result = await sql<{
+            calendarViewMode: CalendarViewMode
+            energyMode: EnergyMode
+          }>`
+            select
+              calendar_view_mode as "calendarViewMode",
+              energy_mode as "energyMode"
+            from app.update_current_user_preferences(
+              ${input.calendarViewMode ?? null},
+              ${input.energyMode ?? null}
+            )
+          `.execute(trx)
+
+          return result.rows[0]
+        },
+        session.actorUserId,
+      )
+
+      if (!preferences) {
+        throw new HttpError(
+          404,
+          'user_preferences_not_found',
+          'User was not found.',
+        )
+      }
+
+      return preferences
+    }
+
     const update = {
       ...(input.calendarViewMode
         ? { calendar_view_mode: input.calendarViewMode }

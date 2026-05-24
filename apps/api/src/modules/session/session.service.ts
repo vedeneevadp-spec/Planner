@@ -298,7 +298,7 @@ export class SessionService {
   ) {
     const session = await this.resolveSession(context)
     const preferences = await withRepositoryErrorMapping(() =>
-      this.repository.updateUserPreferences(session, input),
+      this.repository.updateUserPreferences(session, context.auth, input),
     )
 
     this.authSessionCache.clear()

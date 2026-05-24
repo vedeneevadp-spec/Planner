@@ -245,7 +245,7 @@ const guestSessionRepository: SessionRepository = {
       'Only application admins can update workspace settings.',
     )
   },
-  updateUserPreferences(_session, input) {
+  updateUserPreferences(_session, _authContext, input) {
     return Promise.resolve({
       calendarViewMode: input.calendarViewMode ?? 'week',
       energyMode: input.energyMode ?? 'normal',

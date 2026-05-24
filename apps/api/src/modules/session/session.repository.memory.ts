@@ -15,6 +15,7 @@ import {
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import type {
   SessionContext,
   SessionSnapshot,
@@ -668,6 +669,7 @@ export class MemorySessionRepository implements SessionRepository {
 
   updateUserPreferences(
     session: SessionSnapshot,
+    _authContext: AuthenticatedRequestContext | null,
     input: { calendarViewMode?: CalendarViewMode; energyMode?: EnergyMode },
   ) {
     const user = this.getUserById(session.actorUserId)
