@@ -126,6 +126,7 @@ async function ensureRemoteDirectories() {
 set -euo pipefail
 mkdir -p ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
 chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
+chmod 711 ${shellQuote(config.remoteRoot)}
 `
 
   await runWithInput('ssh', [config.remoteHost, 'bash', '-se'], remoteScript)
@@ -335,6 +336,7 @@ cd ${shellQuote(config.remoteRoot)}
 validate_production_env
 
 chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
+chmod 711 ${shellQuote(config.remoteRoot)}
 
 runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
 runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
@@ -413,6 +415,7 @@ caddy fmt --overwrite /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 systemctl reload caddy
 wait_for_url ${shellQuote(`https://${config.domain}${config.healthPath}`)}
+wait_for_url ${shellQuote(`https://${config.domain}/`)}
 `
 
   await runWithInput('ssh', [config.remoteHost, 'bash', '-se'], remoteScript)
