@@ -198,6 +198,35 @@ export class PostgresCleaningRepository implements CleaningRepository {
   }
 
   async removeZone(command: DeleteCleaningZoneCommand): Promise<void> {
+    if (command.context.auth) {
+      const deletedZone = await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        async (trx) => {
+          const result = await sql<{ deleted: boolean }>`
+            select app.soft_delete_cleaning_zone(
+              ${command.zoneId},
+              ${command.context.workspaceId},
+              ${command.context.actorUserId}
+            ) as deleted
+          `.execute(trx)
+
+          return result.rows[0]?.deleted === true
+        },
+        command.context.actorUserId,
+      )
+
+      if (!deletedZone) {
+        throw new HttpError(
+          404,
+          'cleaning_zone_not_found',
+          'Cleaning zone not found.',
+        )
+      }
+
+      return
+    }
+
     const deletedAt = new Date().toISOString()
 
     await withWriteTransaction(
@@ -455,6 +484,35 @@ export class PostgresCleaningRepository implements CleaningRepository {
   }
 
   async removeTask(command: DeleteCleaningTaskCommand): Promise<void> {
+    if (command.context.auth) {
+      const deletedTask = await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        async (trx) => {
+          const result = await sql<{ deleted: boolean }>`
+            select app.soft_delete_cleaning_task(
+              ${command.taskId},
+              ${command.context.workspaceId},
+              ${command.context.actorUserId}
+            ) as deleted
+          `.execute(trx)
+
+          return result.rows[0]?.deleted === true
+        },
+        command.context.actorUserId,
+      )
+
+      if (!deletedTask) {
+        throw new HttpError(
+          404,
+          'cleaning_task_not_found',
+          'Cleaning task not found.',
+        )
+      }
+
+      return
+    }
+
     const deletedAt = new Date().toISOString()
 
     await withWriteTransaction(

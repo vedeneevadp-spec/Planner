@@ -9,6 +9,7 @@ import {
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
 import {
   cleanupRepositoryContractUsers,
+  createRepositoryContractAuthContext,
   seedRepositoryContractWorkspace,
 } from '../../testing/repository-contract-fixtures.js'
 import { defineCleaningRepositoryContractSuite } from './cleaning.repository.contract.js'
@@ -47,7 +48,10 @@ defineCleaningRepositoryContractSuite({
         cleanupRepositoryContractUsers(connection, [...trackedUserIds]),
       context: {
         actorUserId,
-        auth: null,
+        auth: createRepositoryContractAuthContext({
+          email: workspace.email,
+          userId: actorUserId,
+        }),
         groupRole: null,
         role: 'owner' as const,
         workspaceId: workspace.workspaceId,
