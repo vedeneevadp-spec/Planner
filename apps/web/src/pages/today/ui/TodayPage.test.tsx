@@ -136,9 +136,11 @@ function createRoutineTask(overrides: Partial<Task> = {}): Task {
 }
 
 function renderTodayPage({
+  initialEntry = '/today',
   kind = 'personal',
   tasks,
 }: {
+  initialEntry?: string
   kind?: WorkspaceKind
   tasks: Task[]
 }) {
@@ -146,7 +148,7 @@ function renderTodayPage({
   mocks.usePlannerSession.mockReturnValue({ data: createSession(kind) })
 
   return render(
-    <MemoryRouter initialEntries={['/today']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <TodayPage />
     </MemoryRouter>,
   )
@@ -297,5 +299,26 @@ describe('TodayPage', () => {
     expect(
       screen.getByRole('button', { name: 'Остальные задачи' }),
     ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('uses compact task cards when task view is list', () => {
+    const todayKey = getDateKey(new Date())
+
+    renderTodayPage({
+      initialEntry: '/today?taskView=list',
+      tasks: [
+        createTask({
+          id: 'today-task',
+          note: 'Подробности не видны в компактном списке',
+          plannedDate: todayKey,
+          title: 'Компактная задача на сегодня',
+        }),
+      ],
+    })
+
+    expect(screen.getByText('Компактная задача на сегодня')).toBeVisible()
+    expect(
+      screen.queryByText('Подробности не видны в компактном списке'),
+    ).not.toBeInTheDocument()
   })
 })

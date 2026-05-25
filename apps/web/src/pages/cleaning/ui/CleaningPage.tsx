@@ -4,10 +4,11 @@ import {
   type CleaningZoneUpdateInput,
 } from '@planner/contracts'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import {
   getCleaningErrorMessage,
+  getCleaningFocusModeFromSearchParams,
   useCleaningPlan,
   useCleaningToday,
   useCompleteCleaningTask,
@@ -22,13 +23,7 @@ import {
 } from '@/features/cleaning'
 import { cx } from '@/shared/lib/classnames'
 import { getDateKey } from '@/shared/lib/date'
-import {
-  CheckIcon,
-  EditIcon,
-  LightningIcon,
-  PlusIcon,
-  SettingsIcon,
-} from '@/shared/ui/Icon'
+import { CheckIcon, EditIcon, PlusIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
@@ -39,10 +34,8 @@ import {
   DEFAULT_CLEANING_TEMPLATES,
   EMPTY_TASK_DRAFT,
   filterItemsByFocusMode,
-  type FocusMode,
   FREQUENCY_LABELS,
   getFirstErrorMessage,
-  getFocusModeAriaLabel,
   getHeroHint,
   getIsoWeekdayFromDate,
   getWeekdayLabel,
@@ -66,6 +59,7 @@ import {
 } from './CleaningPage.sections'
 
 export function CleaningPage() {
+  const [searchParams] = useSearchParams()
   const todayKey = getDateKey(new Date())
   const planQuery = useCleaningPlan()
   const todayQuery = useCleaningToday(todayKey)
@@ -74,7 +68,7 @@ export function CleaningPage() {
   const completeTaskMutation = useCompleteCleaningTask()
   const postponeTaskMutation = usePostponeCleaningTask()
   const skipTaskMutation = useSkipCleaningTask()
-  const [focusMode, setFocusMode] = useState<FocusMode>('all')
+  const focusMode = getCleaningFocusModeFromSearchParams(searchParams)
   const [postponeTargets, setPostponeTargets] = useState<
     Record<string, string>
   >({})
@@ -146,8 +140,6 @@ export function CleaningPage() {
 
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
-      <PageHeader kicker="Уборка" />
-
       {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
 
       <section className={styles.todayHero}>
@@ -187,50 +179,6 @@ export function CleaningPage() {
         </div>
       </section>
 
-      <div className={styles.modeBar} aria-label="Режим уборки">
-        {[
-          ['all', 'Всё'],
-          ['quick', '15 мин'],
-          ['minimum', 'Минимум'],
-          ['regular', 'Обычно'],
-          ['deep', 'Максимум'],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            className={cx(
-              styles.modeButton,
-              focusMode === value && styles.modeButtonActive,
-            )}
-            type="button"
-            onClick={() => {
-              setFocusMode(value as FocusMode)
-            }}
-            aria-label={getFocusModeAriaLabel(value as FocusMode)}
-          >
-            {value === 'quick' ? (
-              <LightningIcon size={15} strokeWidth={2.1} />
-            ) : null}
-            {value === 'minimum' ? (
-              <span className={styles.mobileEnergyIcon} aria-hidden="true">
-                <LightningIcon size={15} strokeWidth={2.2} />
-              </span>
-            ) : value === 'regular' ? (
-              <span className={styles.mobileEnergyIcon} aria-hidden="true">
-                <LightningIcon size={15} strokeWidth={2.2} />
-                <LightningIcon size={15} strokeWidth={2.2} />
-              </span>
-            ) : value === 'deep' ? (
-              <span className={styles.mobileEnergyIcon} aria-hidden="true">
-                <LightningIcon size={15} strokeWidth={2.2} />
-                <LightningIcon size={15} strokeWidth={2.2} />
-                <LightningIcon size={15} strokeWidth={2.2} />
-              </span>
-            ) : null}
-            <span className={styles.modeLabel}>{label}</span>
-          </button>
-        ))}
-      </div>
-
       {hasLoadedPlan && zones.length === 0 ? (
         <section className={styles.emptyPanel}>
           <h3>Зоны ещё не настроены</h3>
@@ -253,39 +201,6 @@ export function CleaningPage() {
         <TaskSection
           title="Рекомендуется сегодня"
           items={today.urgentItems}
-          isBusy={isBusy}
-          postponeTargets={postponeTargets}
-          onComplete={(taskId) => {
-            void completeTaskMutation.mutateAsync({
-              input: createActionInput(todayKey),
-              taskId,
-            })
-          }}
-          onPostpone={(taskId) => {
-            void postponeTaskMutation.mutateAsync({
-              input: {
-                date: todayKey,
-                mode: postponeTargets[taskId] ? 'specific_date' : 'next_cycle',
-                note: '',
-                targetDate: postponeTargets[taskId] || null,
-              },
-              taskId,
-            })
-          }}
-          onSkip={(taskId) => {
-            void skipTaskMutation.mutateAsync({
-              input: createActionInput(todayKey),
-              taskId,
-            })
-          }}
-          onTargetChange={updatePostponeTarget}
-        />
-      ) : null}
-
-      {today?.quickItems.length && focusMode === 'quick' ? (
-        <TaskSection
-          title="Быстрый режим"
-          items={today.quickItems}
           isBusy={isBusy}
           postponeTargets={postponeTargets}
           onComplete={(taskId) => {
@@ -380,15 +295,6 @@ export function CleaningPage() {
             items={today?.seasonalItems ?? []}
           />
         </section>
-      ) : null}
-
-      {zones.length > 0 ? (
-        <div className={styles.settingsShortcutRow}>
-          <Link className={styles.settingsShortcut} to="/cleaning/settings">
-            <SettingsIcon size={16} strokeWidth={2.1} />
-            <span>Настройки зон и задач</span>
-          </Link>
-        </div>
       ) : null}
     </section>
   )
@@ -639,8 +545,8 @@ export function CleaningSettingsPage() {
           title="Настройки"
           description="Зоны, дни недели, частоты и список задач."
           actions={
-            <div className={styles.headerActions}>
-              {hasLoadedPlan && zones.length === 0 ? (
+            hasLoadedPlan && zones.length === 0 ? (
+              <div className={styles.headerActions}>
                 <button
                   className={styles.softButton}
                   type="button"
@@ -652,11 +558,8 @@ export function CleaningSettingsPage() {
                   <PlusIcon size={17} strokeWidth={2.15} />
                   <span>{isSeeding ? 'Добавляем...' : 'Шаблоны'}</span>
                 </button>
-              ) : null}
-              <Link className={styles.softLinkButton} to="/cleaning">
-                К уборке
-              </Link>
-            </div>
+              </div>
+            ) : null
           }
         />
       </div>

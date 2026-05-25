@@ -1,8 +1,10 @@
 .mobileChrome {
+  grid-area: mobile;
   display: none;
 }
 
 .sidebar {
+  grid-area: sidebar;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -10,6 +12,7 @@
   height: 100%;
   border-radius: 28px;
   padding: 1.5rem;
+  margin-right: var(--planner-shell-sidebar-gap, 0);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -420,6 +423,46 @@
   color: var(--danger);
 }
 
+.connectionIssuePanel {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 0.75rem;
+}
+
+.connectionIssuePanel .connectionError,
+.connectionIssuePanel .retryButton {
+  margin-top: 0;
+}
+
+.connectionDebugDetails {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  border: 1px solid var(--danger-border);
+  border-radius: 14px;
+  padding: 0.72rem 0.82rem;
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.connectionDebugDetails summary {
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.connectionDebugDetails pre {
+  max-height: 12rem;
+  min-width: 0;
+  overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .stateBadge {
   display: inline-flex;
   align-items: center;
@@ -695,7 +738,7 @@
   .mobileSheetBackdrop {
     position: fixed;
     inset: 0;
-    z-index: 16;
+    z-index: 80;
     display: flex;
     align-items: end;
     background: var(--surface-scrim);
@@ -799,6 +842,10 @@
     margin-top: 1rem;
   }
 
+  .mobileSheetSection .connectionIssuePanel {
+    margin-top: 0;
+  }
+
   .mobileSectionLabel {
     margin: 0;
     padding: 0 0.2rem;
@@ -865,6 +912,7 @@
 
   .sidebar {
     display: none;
+    margin-right: 0;
   }
 }
 

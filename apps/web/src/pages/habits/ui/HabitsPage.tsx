@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   getHabitEntryValueLabel,
@@ -34,7 +35,7 @@ import {
   useUpdateHabit,
 } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
-import { TaskComposer } from '@/features/task-create'
+import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate, getDateKey } from '@/shared/lib/date'
 import {
@@ -60,11 +61,14 @@ const HABIT_COLOR_SWATCHES = [
   '#c08a2d',
   '#4d7c45',
 ]
+const HABITS_ACTION_REQUEST_SEARCH_PARAM = 'habitsActionRequest'
+const HABITS_ACTION_SEARCH_PARAM = 'habitsAction'
 
 export function HabitsPage() {
   const todayKey = getDateKey(new Date())
   const monthStart = `${todayKey.slice(0, 7)}-01`
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
   const habitsQuery = useHabits()
   const todayQuery = useHabitsToday(todayKey)
   const statsQuery = useHabitStats(monthStart, todayKey)
@@ -77,6 +81,23 @@ export function HabitsPage() {
     [habitsQuery.data],
   )
   const editingHabit = habits.find((habit) => habit.id === editingHabitId)
+  const habitsAction = searchParams.get(HABITS_ACTION_SEARCH_PARAM)
+  const habitsActionRequestId = searchParams.get(
+    HABITS_ACTION_REQUEST_SEARCH_PARAM,
+  )
+  const habitComposerOpenRequestId =
+    habitsAction === 'habit' ? habitsActionRequestId : null
+  const habitComposerDraft = useMemo<TaskComposerDraft | null>(
+    () =>
+      habitComposerOpenRequestId
+        ? {
+            plannedDate: todayKey,
+            requestId: habitComposerOpenRequestId,
+            taskType: 'habit',
+          }
+        : null,
+    [habitComposerOpenRequestId, todayKey],
+  )
   const todayItems = todayQuery.data?.items ?? []
   const statsByHabitId = useMemo(
     () =>
@@ -114,17 +135,16 @@ export function HabitsPage() {
   return (
     <section className={pageStyles.page}>
       <PageHeader
-        actions={
-          <TaskComposer
-            defaultTaskType="habit"
-            initialPlannedDate={todayKey}
-            mobileOpenButtonMode="inline"
-            openButtonLabel="Новая привычка"
-            showTimeFields={false}
-          />
-        }
         kicker="Habits"
         description="Привычки со статистикой, streak и отметками по дням."
+      />
+
+      <TaskComposer
+        defaultTaskType="habit"
+        hideOpenButton
+        initialPlannedDate={todayKey}
+        openDraft={habitComposerDraft}
+        showTimeFields={false}
       />
 
       <section className={styles.summaryBand}>
@@ -189,7 +209,7 @@ export function HabitsPage() {
         </div>
       ) : habits.length === 0 ? (
         <div className={pageStyles.emptyPanel}>
-          <p>Привычек пока нет. Создайте первую через кнопку вверху.</p>
+          <p>Привычек пока нет. Создайте первую через вкладку + Привычка.</p>
         </div>
       ) : (
         <div className={styles.habitGrid}>

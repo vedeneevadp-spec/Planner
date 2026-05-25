@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
   getHabitEntryProgressValue,
+  getHabitEntryTargetValue,
   getHabitEntryValueLabel,
   getHabitFrequencyLabel,
+  getNextHabitEntryProgressValue,
   type HabitTodayListItem,
   isHabitEntryComplete,
 } from '@/entities/habit'
@@ -70,7 +72,7 @@ export function HabitsTodayPanel({
       ? `${progressLabel} · ${syncStatus.queuedMutationCount} ждут`
       : progressLabel
 
-  function markHabitDone(item: HabitTodayListItem, value: number) {
+  function markHabitDone(item: HabitTodayListItem) {
     upsertEntryMutation.mutate({
       date,
       habitId: item.habit.id,
@@ -79,7 +81,7 @@ export function HabitsTodayPanel({
         expectedVersion: item.entry?.version,
         note: item.entry?.note ?? '',
         status: 'done',
-        value,
+        value: getNextHabitEntryProgressValue(item.habit, item.entry),
       },
     })
   }
@@ -173,7 +175,7 @@ export function HabitsTodayPanel({
               isPending={
                 upsertEntryMutation.isPending || removeEntryMutation.isPending
               }
-              onDone={(value) => markHabitDone(item, value)}
+              onDone={() => markHabitDone(item)}
               onSkip={() => skipHabit(item)}
               onUndo={() => undoHabit(item)}
               uploadedIcons={uploadedIcons}
@@ -229,7 +231,7 @@ interface HabitTodayRowProps {
   isPending: boolean
   item: HabitTodayListItem
   uploadedIcons: UploadedIconAsset[]
-  onDone: (value: number) => void
+  onDone: () => void
   onSkip: () => void
   onUndo: () => void
 }
@@ -242,17 +244,15 @@ function HabitTodayRow({
   onSkip,
   onUndo,
 }: HabitTodayRowProps) {
-  const initialValue =
-    item.habit.targetType === 'check'
-      ? item.habit.targetValue
-      : getHabitEntryProgressValue(item.habit, item.entry)
-  const [value, setValue] = useState(initialValue)
   const isDone = isHabitEntryComplete(item.habit, item.entry)
   const isSkipped = item.entry?.status === 'skipped'
-
-  useEffect(() => {
-    setValue(initialValue)
-  }, [initialValue])
+  const isProgressHabit = item.habit.targetType !== 'check'
+  const progressValue = getHabitEntryProgressValue(item.habit, item.entry)
+  const targetValue = getHabitEntryTargetValue(item.habit, item.entry)
+  const nextProgressValue = getNextHabitEntryProgressValue(
+    item.habit,
+    item.entry,
+  )
 
   return (
     <article
@@ -292,18 +292,6 @@ function HabitTodayRow({
       </div>
 
       <div className={styles.actions}>
-        {item.habit.targetType !== 'check' && !isDone && !isSkipped ? (
-          <input
-            className={styles.valueInput}
-            type="number"
-            min={0}
-            max={999}
-            value={value}
-            aria-label={`Прогресс привычки ${item.habit.title}`}
-            onChange={(event) => setValue(Number(event.target.value))}
-          />
-        ) : null}
-
         {isDone || isSkipped ? (
           <button
             className={styles.iconButton}
@@ -314,6 +302,26 @@ function HabitTodayRow({
           >
             <CloseIcon size={16} strokeWidth={2.1} />
           </button>
+        ) : isProgressHabit ? (
+          <>
+            <button
+              className={styles.progressButton}
+              type="button"
+              disabled={isPending}
+              aria-label={`Увеличить прогресс привычки ${item.habit.title} до ${nextProgressValue} из ${targetValue}`}
+              onClick={onDone}
+            >
+              {progressValue}/{targetValue}
+            </button>
+            <button
+              className={styles.skipButton}
+              type="button"
+              disabled={isPending}
+              onClick={onSkip}
+            >
+              Пропуск
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -321,7 +329,7 @@ function HabitTodayRow({
               type="button"
               disabled={isPending}
               aria-label={`Выполнить привычку ${item.habit.title}`}
-              onClick={() => onDone(value)}
+              onClick={onDone}
             >
               <CheckIcon size={16} strokeWidth={2.1} />
             </button>

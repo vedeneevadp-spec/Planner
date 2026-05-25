@@ -39,6 +39,48 @@ export function getErrorMessage(error: unknown): string {
   return 'Не удалось синхронизировать данные.'
 }
 
+export function getErrorDebugDetails(
+  label: string,
+  error: unknown,
+): string | null {
+  if (!error) {
+    return null
+  }
+
+  const lines = [`[${label}]`]
+
+  if (error instanceof Error) {
+    lines.push(`name=${error.name}`, `message=${error.message}`)
+
+    const errorRecord = error as unknown as Record<string, unknown>
+    const status = errorRecord.status
+    const code = errorRecord.code
+    const details = errorRecord.details
+
+    if (typeof status === 'number') {
+      lines.push(`status=${status}`)
+    }
+
+    if (typeof code === 'string') {
+      lines.push(`code=${code}`)
+    }
+
+    if (details !== undefined) {
+      lines.push(`details=${stringifyDebugValue(details)}`)
+    }
+
+    if (error.stack) {
+      lines.push(`stack=${error.stack}`)
+    }
+
+    return lines.join('\n')
+  }
+
+  lines.push(`value=${stringifyDebugValue(error)}`)
+
+  return lines.join('\n')
+}
+
 export function getPlannerQueryErrorMessage(
   error: unknown,
   options: { hasCachedRecords: boolean },
@@ -80,4 +122,12 @@ export function requirePlannerApi(
   }
 
   return plannerApi
+}
+
+function stringifyDebugValue(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
 }

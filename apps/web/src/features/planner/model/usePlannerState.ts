@@ -33,6 +33,7 @@ import {
 import { useTaskCompletionConfetti } from '../lib/task-completion-confetti'
 import type { PlannerState } from './planner.types'
 import {
+  getErrorDebugDetails,
   getErrorMessage,
   getPlannerQueryErrorMessage,
   shouldKeepOptimisticMutation,
@@ -655,12 +656,77 @@ export function usePlannerState(): PlannerState {
     await invalidatePlannerQueries()
   }
 
+  const debugErrorDetails =
+    [
+      getErrorDebugDetails('sessionQuery.error', sessionQuery.error),
+      getErrorDebugDetails('spheresQuery.error', spheresQuery.error),
+      getErrorDebugDetails(
+        'taskTemplatesQuery.error',
+        taskTemplatesQuery.error,
+      ),
+      getErrorDebugDetails('tasksQuery.error', tasksQuery.error),
+      getErrorDebugDetails(
+        'createLifeSphereMutation.error',
+        createLifeSphereMutation.error,
+      ),
+      getErrorDebugDetails(
+        'copyTaskToPersonalMutation.error',
+        copyTaskToPersonalMutation.error,
+      ),
+      getErrorDebugDetails(
+        'createTaskTemplateMutation.error',
+        createTaskTemplateMutation.error,
+      ),
+      getErrorDebugDetails(
+        'moveTaskToPersonalMutation.error',
+        moveTaskToPersonalMutation.error,
+      ),
+      getErrorDebugDetails(
+        'updateLifeSphereMutation.error',
+        updateLifeSphereMutation.error,
+      ),
+      getErrorDebugDetails(
+        'removeLifeSphereMutation.error',
+        removeLifeSphereMutation.error,
+      ),
+      getErrorDebugDetails(
+        'createTaskMutation.error',
+        createTaskMutation.error,
+      ),
+      getErrorDebugDetails(
+        'updateTaskMutation.error',
+        updateTaskMutation.error,
+      ),
+      getErrorDebugDetails(
+        'removeTaskTemplateMutation.error',
+        removeTaskTemplateMutation.error,
+      ),
+      getErrorDebugDetails(
+        'setTaskStatusMutation.error',
+        setTaskStatusMutation.error,
+      ),
+      getErrorDebugDetails(
+        'setTaskScheduleMutation.error',
+        setTaskScheduleMutation.error,
+      ),
+      getErrorDebugDetails(
+        'removeTaskMutation.error',
+        removeTaskMutation.error,
+      ),
+      mutationErrorMessage
+        ? `[mutationErrorMessage]\nmessage=${mutationErrorMessage}`
+        : null,
+    ]
+      .filter((details): details is string => Boolean(details))
+      .join('\n\n') || null
+
   return {
     addSphere,
     addTask,
     addTaskTemplate,
     conflictedMutationCount,
     copyTaskToPersonal,
+    debugErrorDetails,
     errorMessage:
       mutationErrorMessage ??
       (sessionQuery.error ? getErrorMessage(sessionQuery.error) : null) ??

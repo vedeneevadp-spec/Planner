@@ -1,8 +1,12 @@
 import { type FormEvent, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
 import {
+  getShoppingFiltersFromSearchParams,
+  hasActiveShoppingFilters,
+  type ShoppingCategory,
+  type ShoppingFilters,
   type ShoppingListItem,
-  type ShoppingListItemDraft,
   useCreateShoppingListItem,
   useRemoveShoppingListItem,
   useShoppingListSummary,
@@ -14,18 +18,10 @@ import pageStyles from '@/shared/ui/Page'
 
 import styles from './ShoppingPage.module.css'
 
-type ShoppingCategory = NonNullable<ShoppingListItemDraft['shoppingCategory']>
-
 interface ShoppingCategoryOption {
   iconSrc: string
   label: string
   value: ShoppingCategory
-}
-
-interface ShoppingFilters {
-  categories: ShoppingCategory[]
-  isFavorite: boolean
-  isUrgent: boolean
 }
 
 const SHOPPING_ICON_BASE_URL = '/icons/shopping'
@@ -52,19 +48,16 @@ const DRAFT_CATEGORY_OPTIONS = SHOPPING_CATEGORY_OPTIONS.filter(
 )
 const FAVORITE_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/favorite.png`
 const URGENT_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/urgent.webp`
-const DEFAULT_SHOPPING_FILTERS = {
-  categories: [],
-  isFavorite: false,
-  isUrgent: false,
-} satisfies ShoppingFilters
 
 export function ShoppingPage() {
+  const [searchParams] = useSearchParams()
   const [draft, setDraft] = useState('')
   const [draftCategory, setDraftCategory] = useState<ShoppingCategory | null>(
     null,
   )
-  const [filters, setFilters] = useState<ShoppingFilters>(
-    DEFAULT_SHOPPING_FILTERS,
+  const filters = useMemo(
+    () => getShoppingFiltersFromSearchParams(searchParams),
+    [searchParams],
   )
   const [formError, setFormError] = useState<string | null>(null)
   const shoppingListQuery = useShoppingListSummary()
@@ -82,11 +75,12 @@ export function ShoppingPage() {
     () => filterShoppingItems(completedItems, filters),
     [completedItems, filters],
   )
-  const hasActiveFilters = hasActiveShoppingFilters(filters)
   const isBusy =
     createItemMutation.isPending ||
     updateItemMutation.isPending ||
     removeItemMutation.isPending
+  const completedEmptyMessage =
+    completedItems.length === 0 ? 'Куплено пусто.' : 'По фильтру пусто.'
   const errorMessage = useMemo(
     () =>
       formError ||
@@ -129,33 +123,6 @@ export function ShoppingPage() {
     } catch {
       // handled through mutation state
     }
-  }
-
-  function handleResetFilters() {
-    setFilters(DEFAULT_SHOPPING_FILTERS)
-  }
-
-  function handleToggleCategoryFilter(category: ShoppingCategory) {
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      categories: currentFilters.categories.includes(category)
-        ? currentFilters.categories.filter((value) => value !== category)
-        : [...currentFilters.categories, category],
-    }))
-  }
-
-  function handleToggleFavoriteFilter() {
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      isFavorite: !currentFilters.isFavorite,
-    }))
-  }
-
-  function handleToggleUrgentFilter() {
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      isUrgent: !currentFilters.isUrgent,
-    }))
   }
 
   function handleToggleFavorite(item: ShoppingListItem) {
@@ -284,6 +251,22 @@ export function ShoppingPage() {
     )
   }
 
+  function renderCompletedPanelContent() {
+    if (shoppingListQuery.isLoading) {
+      return null
+    }
+
+    if (filteredCompletedItems.length === 0) {
+      return <p className={styles.emptyCopy}>{completedEmptyMessage}</p>
+    }
+
+    return (
+      <div className={styles.itemList}>
+        {filteredCompletedItems.map((item) => renderItemRow(item, true))}
+      </div>
+    )
+  }
+
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
       <div className={styles.fixedTop}>
@@ -342,85 +325,6 @@ export function ShoppingPage() {
           >
             <CheckIcon size={18} strokeWidth={2.15} />
           </button>
-
-          <div className={styles.composerControls}>
-            <fieldset className={styles.categorySelector}>
-              <legend className={styles.controlLegend}>Фильтр</legend>
-              <div className={styles.filterOptions}>
-                <button
-                  className={cx(
-                    styles.filterOption,
-                    !hasActiveFilters && styles.filterOptionSelected,
-                  )}
-                  type="button"
-                  aria-pressed={!hasActiveFilters}
-                  onClick={handleResetFilters}
-                >
-                  Все
-                </button>
-                {SHOPPING_CATEGORY_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    className={cx(
-                      styles.filterOption,
-                      styles.filterCategoryOption,
-                      filters.categories.includes(option.value) &&
-                        styles.filterOptionSelected,
-                    )}
-                    type="button"
-                    aria-label={`Фильтр: ${option.label}`}
-                    aria-pressed={filters.categories.includes(option.value)}
-                    onClick={() => {
-                      handleToggleCategoryFilter(option.value)
-                    }}
-                  >
-                    <img
-                      src={option.iconSrc}
-                      alt=""
-                      aria-hidden="true"
-                      className={styles.filterCategoryIcon}
-                    />
-                    <span className={styles.filterCategoryText}>
-                      {option.label}
-                    </span>
-                  </button>
-                ))}
-                <button
-                  className={cx(
-                    styles.filterIconButton,
-                    filters.isFavorite && styles.filterOptionSelected,
-                  )}
-                  type="button"
-                  aria-label={
-                    filters.isFavorite
-                      ? 'Не фильтровать избранное'
-                      : 'Показать избранное'
-                  }
-                  aria-pressed={filters.isFavorite}
-                  onClick={handleToggleFavoriteFilter}
-                >
-                  <img src={FAVORITE_ICON_SRC} alt="" aria-hidden="true" />
-                </button>
-                <button
-                  className={cx(
-                    styles.filterIconButton,
-                    filters.isUrgent && styles.filterOptionSelected,
-                    filters.isUrgent && styles.filterIconButtonUrgent,
-                  )}
-                  type="button"
-                  aria-label={
-                    filters.isUrgent
-                      ? 'Не фильтровать срочное'
-                      : 'Показать срочное'
-                  }
-                  aria-pressed={filters.isUrgent}
-                  onClick={handleToggleUrgentFilter}
-                >
-                  <img src={URGENT_ICON_SRC} alt="" aria-hidden="true" />
-                </button>
-              </div>
-            </fieldset>
-          </div>
         </form>
 
         {errorMessage ? (
@@ -429,7 +333,7 @@ export function ShoppingPage() {
       </div>
 
       <div className={styles.content}>
-        <section className={styles.panel}>
+        <section className={styles.panel} aria-label="Актуальные покупки">
           {shoppingListQuery.isLoading ? (
             <p className={styles.emptyCopy}>Загружаем список...</p>
           ) : filteredActiveItems.length === 0 ? (
@@ -443,13 +347,13 @@ export function ShoppingPage() {
           )}
         </section>
 
-        {filteredCompletedItems.length > 0 ? (
-          <section className={cx(styles.panel, styles.completedPanel)}>
-            <div className={styles.itemList}>
-              {filteredCompletedItems.map((item) => renderItemRow(item, true))}
-            </div>
-          </section>
-        ) : null}
+        <section
+          className={cx(styles.panel, styles.completedPanel)}
+          aria-label="Купленные покупки"
+          data-empty={filteredCompletedItems.length === 0 ? 'true' : undefined}
+        >
+          {renderCompletedPanelContent()}
+        </section>
       </div>
     </section>
   )
@@ -472,10 +376,6 @@ function filterShoppingItems(
 
     return matchesCategory && matchesFavorite && matchesUrgent
   })
-}
-
-function hasActiveShoppingFilters(filters: ShoppingFilters): boolean {
-  return filters.categories.length > 0 || filters.isFavorite || filters.isUrgent
 }
 
 function getShoppingCategoryOption(

@@ -44,7 +44,9 @@ const mocks = vi.hoisted(() => ({
   >(),
 }))
 
-vi.mock('@/features/cleaning', () => {
+vi.mock('@/features/cleaning', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+
   function createMutationStub(
     mutateAsync: (input: unknown) => Promise<unknown>,
   ) {
@@ -56,6 +58,7 @@ vi.mock('@/features/cleaning', () => {
   }
 
   return {
+    ...actual,
     getCleaningErrorMessage: (error: unknown) =>
       error instanceof Error && /Cleaning API is not ready/i.test(error.message)
         ? 'Нет соединения. Уборка загрузится после восстановления подключения.'
@@ -102,7 +105,12 @@ function createPlan(zone = createZone()): CleaningListResponse {
   }
 }
 
-function createCleaningItem(zone = createZone()): CleaningTaskWithState {
+function createCleaningItem(
+  zone = createZone(),
+  taskOverrides: Partial<CleaningTaskWithState['task']> = {},
+): CleaningTaskWithState {
+  const taskId = taskOverrides.id ?? 'task-1'
+
   return {
     isDue: true,
     isOverdue: false,
@@ -113,7 +121,7 @@ function createCleaningItem(zone = createZone()): CleaningTaskWithState {
       lastSkippedAt: null,
       nextDueAt: '2026-05-16',
       postponeCount: 0,
-      taskId: 'task-1',
+      taskId,
       updatedAt: '2026-05-12T00:00:00.000Z',
       version: 1,
       workspaceId: 'workspace-1',
@@ -129,7 +137,7 @@ function createCleaningItem(zone = createZone()): CleaningTaskWithState {
       estimatedMinutes: 15,
       frequencyInterval: 1,
       frequencyType: 'weekly',
-      id: 'task-1',
+      id: taskId,
       impactScore: 3,
       isActive: true,
       isSeasonal: false,
@@ -143,6 +151,7 @@ function createCleaningItem(zone = createZone()): CleaningTaskWithState {
       version: 1,
       workspaceId: 'workspace-1',
       zoneId: zone.id,
+      ...taskOverrides,
     },
     zone,
   }
@@ -160,21 +169,32 @@ function createEmptyPlan(): CleaningListResponse {
 function createTodayResponse(
   accumulatedItems: CleaningTaskWithState[] = [],
   zone = createZone(),
+  items: CleaningTaskWithState[] = [],
 ): CleaningTodayResponse {
   return {
     accumulatedItems,
     date: '2026-05-19',
     dayOfWeek: 2,
     history: [],
-    items: [],
-    quickItems: [],
+    items,
+    quickItems: items.filter(
+      (item) =>
+        (item.task.estimatedMinutes ?? 999) <= 15 ||
+        item.task.energy === 'low' ||
+        item.task.depth === 'minimum',
+    ),
     seasonalItems: [],
     summary: {
       accumulatedCount: accumulatedItems.length,
       activeZoneCount: 1,
       completedTodayCount: 0,
-      dueCount: 0,
-      quickCount: 0,
+      dueCount: items.length,
+      quickCount: items.filter(
+        (item) =>
+          (item.task.estimatedMinutes ?? 999) <= 15 ||
+          item.task.energy === 'low' ||
+          item.task.depth === 'minimum',
+      ).length,
       seasonalCount: 0,
       urgentCount: 0,
     },
@@ -196,9 +216,9 @@ function renderCleaningSettingsPage() {
   )
 }
 
-function renderCleaningPage() {
+function renderCleaningPage(initialEntry = '/cleaning') {
   return render(
-    <MemoryRouter initialEntries={['/cleaning']}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <CleaningPage />
     </MemoryRouter>,
   )
@@ -445,6 +465,39 @@ describe('CleaningPage', () => {
     ).not.toBeInTheDocument()
     expect(screen.queryByText('Зоны ещё не настроены')).not.toBeInTheDocument()
     expect(screen.queryByText('Накопилось')).not.toBeInTheDocument()
+  })
+
+  it('filters cleaning tasks from query parameters', () => {
+    const zone = createZone()
+    const lowPriorityItem = createCleaningItem(zone, {
+      estimatedMinutes: 10,
+      id: 'task-low',
+      priority: 'low',
+      title: 'Протереть пол',
+    })
+    const highPriorityItem = createCleaningItem(zone, {
+      energy: 'high',
+      estimatedMinutes: 45,
+      id: 'task-high',
+      priority: 'high',
+      title: 'Помыть окно',
+    })
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(zone),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone, [lowPriorityItem, highPriorityItem]),
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningPage('/cleaning?cleaningMode=low')
+
+    expect(screen.getByText('Протереть пол')).toBeVisible()
+    expect(screen.queryByText('Помыть окно')).not.toBeInTheDocument()
   })
 
   it('lets accumulated cleaning tasks be completed or postponed to the next cycle', async () => {

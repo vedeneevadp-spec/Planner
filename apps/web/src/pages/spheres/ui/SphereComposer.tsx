@@ -7,17 +7,36 @@ import { SphereForm, type SphereFormValues } from './SphereForm'
 import styles from './SpheresPage.module.css'
 
 interface SphereComposerProps {
+  hideOpenButton?: boolean | undefined
+  openRequestId?: string | null | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
   onCreate: (values: SphereFormValues) => Promise<boolean>
 }
 
 export function SphereComposer({
+  hideOpenButton = false,
+  openRequestId,
   uploadedIcons = [],
   onCreate,
 }: SphereComposerProps) {
   const titleId = useId()
   const openButtonRef = useRef<HTMLButtonElement>(null)
-  const [isOpen, setIsOpen] = useState(false)
+  const [isManuallyOpen, setIsManuallyOpen] = useState(false)
+  const [dismissedOpenRequestId, setDismissedOpenRequestId] = useState<
+    string | null
+  >(null)
+  const isOpenFromRequest = Boolean(
+    openRequestId && dismissedOpenRequestId !== openRequestId,
+  )
+  const isOpen = isManuallyOpen || isOpenFromRequest
+
+  function closeComposer() {
+    setIsManuallyOpen(false)
+
+    if (openRequestId) {
+      setDismissedOpenRequestId(openRequestId)
+    }
+  }
 
   useEffect(() => {
     if (!isOpen) {
@@ -30,7 +49,11 @@ export function SphereComposer({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        setIsOpen(false)
+        setIsManuallyOpen(false)
+
+        if (openRequestId) {
+          setDismissedOpenRequestId(openRequestId)
+        }
       }
     }
 
@@ -41,20 +64,22 @@ export function SphereComposer({
       window.removeEventListener('keydown', handleKeyDown)
       openButton?.focus()
     }
-  }, [isOpen])
+  }, [isOpen, openRequestId])
 
   return (
     <>
-      <div className={styles.createActionRow}>
-        <button
-          ref={openButtonRef}
-          className={styles.primaryButton}
-          type="button"
-          onClick={() => setIsOpen(true)}
-        >
-          Создать сферу
-        </button>
-      </div>
+      {hideOpenButton ? null : (
+        <div className={styles.createActionRow}>
+          <button
+            ref={openButtonRef}
+            className={styles.primaryButton}
+            type="button"
+            onClick={() => setIsManuallyOpen(true)}
+          >
+            Создать сферу
+          </button>
+        </div>
+      )}
 
       {isOpen && typeof document !== 'undefined'
         ? createPortal(
@@ -69,7 +94,7 @@ export function SphereComposer({
                 type="button"
                 tabIndex={-1}
                 aria-label="Закрыть окно создания сферы"
-                onClick={() => setIsOpen(false)}
+                onClick={closeComposer}
               />
 
               <section className={styles.modalPanel}>
@@ -79,7 +104,7 @@ export function SphereComposer({
                     className={styles.closeButton}
                     type="button"
                     aria-label="Закрыть"
-                    onClick={() => setIsOpen(false)}
+                    onClick={closeComposer}
                   >
                     <span aria-hidden="true">×</span>
                   </button>
@@ -95,7 +120,7 @@ export function SphereComposer({
                     const isCreated = await onCreate(values)
 
                     if (isCreated) {
-                      setIsOpen(false)
+                      closeComposer()
                     }
 
                     return isCreated

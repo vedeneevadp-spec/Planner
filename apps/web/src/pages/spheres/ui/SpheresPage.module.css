@@ -16,8 +16,8 @@
 .sphereForm {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1.15rem;
+  gap: 0.82rem;
+  padding: 0.96rem;
 }
 
 .balancePanel {
@@ -31,7 +31,6 @@
     var(--surface);
 }
 
-.balanceHeader,
 .cardHeader,
 .cardActions,
 .detailHeader,
@@ -46,36 +45,6 @@
   gap: 1rem;
 }
 
-.balanceHeader {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'meta action'
-    'summary action';
-  align-items: start;
-  column-gap: 1rem;
-  row-gap: 0.45rem;
-}
-
-.balanceMeta,
-.balanceSummary {
-  min-width: 0;
-}
-
-.balanceMeta {
-  grid-area: meta;
-}
-
-.balanceAction {
-  grid-area: action;
-  flex: 0 0 auto;
-  align-self: start;
-}
-
-.balanceSummary {
-  grid-area: summary;
-}
-
 .eyebrow {
   margin: 0;
   color: var(--accent);
@@ -84,7 +53,6 @@
   text-transform: uppercase;
 }
 
-.balanceHeader h3,
 .detailHeader h3,
 .formHeader h3,
 .forgottenPanel h3,
@@ -94,11 +62,6 @@
   letter-spacing: -0.03em;
 }
 
-.balanceHeader h3 {
-  font-size: clamp(1.45rem, 3vw, 2.1rem);
-}
-
-.balanceHeader p,
 .emptyCopy,
 .sphereDescription,
 .cardCopy,
@@ -106,16 +69,40 @@
   color: var(--text-soft);
 }
 
-.balanceHeader p,
+.balanceCaption,
 .emptyCopy,
 .sphereDescription,
 .cardCopy {
-  margin: 0.4rem 0 0;
+  margin: 0.18rem 0 0;
+}
+
+.balanceCaption {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  line-height: 1.26;
+}
+
+.balanceSummary {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.balanceSummary h3 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.12rem, 2.2vw, 1.32rem);
+  font-weight: 650;
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+
+.balanceSummary .balanceCaption {
+  margin: 0;
 }
 
 .balanceBars {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.46rem;
 }
 
 .createActionRow {
@@ -125,25 +112,26 @@
 
 .balanceRow {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.16rem;
 }
 
 .balanceLabel {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.92rem;
+  gap: 0.46rem;
+  font-size: 0.94rem;
+  line-height: 1.16;
 }
 
 .tinyDot {
-  width: 0.65rem;
-  height: 0.65rem;
+  width: 0.62rem;
+  height: 0.62rem;
   border-radius: 999px;
 }
 
 .barTrack {
-  height: 0.58rem;
+  height: 0.42rem;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(31, 36, 30, 0.08);
@@ -182,11 +170,11 @@
 
 .sphereCard {
   display: flex;
-  min-height: 18rem;
+  min-height: 12rem;
   flex-direction: column;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 1.1rem;
+  gap: 0.62rem;
+  padding: 0.78rem;
   text-decoration: none;
   transition:
     transform 160ms ease,
@@ -211,8 +199,8 @@
 }
 
 .sphereIcon {
-  width: 3rem;
-  height: 3rem;
+  width: 2.55rem;
+  height: 2.55rem;
 }
 
 .sphereIconLarge {
@@ -221,8 +209,8 @@
 }
 
 .sphereIcon > span {
-  width: 1.55rem;
-  height: 1.55rem;
+  width: 1.35rem;
+  height: 1.35rem;
 }
 
 .sphereIconLarge > span {
@@ -232,8 +220,8 @@
 
 .healthBadge {
   border-radius: 999px;
-  padding: 0.34rem 0.68rem;
-  font-size: 0.78rem;
+  padding: 0.28rem 0.58rem;
+  font-size: 0.72rem;
   font-weight: 700;
 }
 
@@ -255,7 +243,12 @@
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: 0.48rem;
+}
+
+.spheresGrid {
+  grid-template-columns: repeat(auto-fit, minmax(236px, 1fr));
+  gap: 0.75rem;
 }
 
 .formGrid {
@@ -367,8 +360,8 @@
 
 .statsGrid div {
   border: 1px solid var(--accent-muted-strong);
-  border-radius: 16px;
-  padding: 0.7rem;
+  border-radius: 12px;
+  padding: 0.52rem;
   background: var(--field-bg-muted);
 }
 
@@ -378,8 +371,105 @@
 }
 
 .statsGrid strong {
-  margin-top: 0.1rem;
-  font-size: 1.15rem;
+  margin-top: 0.04rem;
+  font-size: 1rem;
+}
+
+@media (max-width: 820px) {
+  .balancePanel {
+    gap: 0.72rem;
+    padding: 0.84rem;
+  }
+
+  .balanceCaption {
+    font-size: 0.8rem;
+  }
+
+  .balanceSummary {
+    gap: 0.14rem;
+  }
+
+  .balanceSummary h3 {
+    font-size: 1.08rem;
+    line-height: 1.1;
+  }
+
+  .balanceBars {
+    gap: 0.4rem;
+  }
+
+  .balanceRow {
+    gap: 0.14rem;
+  }
+
+  .balanceLabel {
+    gap: 0.4rem;
+    font-size: 0.9rem;
+  }
+
+  .tinyDot {
+    width: 0.58rem;
+    height: 0.58rem;
+  }
+
+  .barTrack {
+    height: 0.38rem;
+  }
+
+  .spheresGrid {
+    gap: 0.58rem;
+    margin-top: 0.7rem;
+  }
+
+  .sphereCard {
+    min-height: 0;
+    border-radius: 16px;
+  }
+
+  .cardHeader {
+    align-items: center;
+    gap: 0.55rem;
+  }
+
+  .sphereCard .eyebrow {
+    display: none;
+  }
+
+  .sphereCard h3 {
+    margin-top: 0;
+    font-size: 1.08rem;
+    line-height: 1.1;
+  }
+
+  .sphereDescription,
+  .cardCopy {
+    font-size: 0.86rem;
+    line-height: 1.34;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.34rem;
+  }
+
+  .statsGrid div {
+    min-width: 0;
+    border-radius: 10px;
+    padding: 0.38rem 0.3rem;
+  }
+
+  .statsGrid span {
+    overflow: hidden;
+    font-size: 0.66rem;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .statsGrid strong {
+    font-size: 0.88rem;
+    line-height: 1.05;
+  }
 }
 
 .primaryButton,
@@ -425,7 +515,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 120;
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -523,7 +613,10 @@
   .forgottenPanel,
   .detailPanel,
   .sphereForm,
-  .sphereCard,
+  .sphereCard {
+    border-radius: 16px;
+  }
+
   .modalPanel {
     border-radius: 22px;
   }
@@ -537,14 +630,6 @@
   .createActionRow {
     justify-content: stretch;
     margin: 1rem 0;
-  }
-
-  .balanceHeader {
-    grid-template-areas:
-      'meta action'
-      'summary summary';
-    column-gap: 0.75rem;
-    row-gap: 0.4rem;
   }
 
   .modalOverlay {

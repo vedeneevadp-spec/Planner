@@ -8,6 +8,7 @@ export type AppRouteId =
   | 'cleaningSettingsZone'
   | 'cleaningZoneRedirect'
   | 'habits'
+  | 'more'
   | 'profile'
   | 'shopping'
   | 'sphere'
@@ -31,11 +32,24 @@ export type NavigationRouteId =
   | 'timeline'
   | 'today'
 
+export type PlannerTabColor =
+  | 'blue'
+  | 'gray'
+  | 'green'
+  | 'lavender'
+  | 'mint'
+  | 'peach'
+  | 'pink'
+
 export interface NavigationRouteDefinition extends AppRouteDefinition {
   id: NavigationRouteId
   label: string
   mobileOrder?: number
   mobilePlacement?: 'more' | 'primary'
+  plannerTabColor?: PlannerTabColor
+  plannerTabOrder?: number
+  plannerTabPlacement?: 'more' | 'side'
+  plannerTabShortLabel?: string
   to: string
 }
 
@@ -99,6 +113,11 @@ export const appRouteDefinitions = [
     workspaceKinds: personalOnlyWorkspaceKinds,
   },
   {
+    id: 'more',
+    path: '/more',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
     id: 'profile',
     path: '/profile',
     workspaceKinds: personalOnlyWorkspaceKinds,
@@ -116,6 +135,10 @@ export const navigationRouteDefinitions = [
     label: 'Сегодня',
     mobileOrder: 0,
     mobilePlacement: 'primary',
+    plannerTabColor: 'pink',
+    plannerTabOrder: 0,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Сегодня',
     path: '/today',
     to: '/today',
     workspaceKinds: allWorkspaceKinds,
@@ -125,6 +148,10 @@ export const navigationRouteDefinitions = [
     label: 'Календарь',
     mobileOrder: 1,
     mobilePlacement: 'primary',
+    plannerTabColor: 'peach',
+    plannerTabOrder: 1,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Календарь',
     path: '/calendar',
     to: '/calendar',
     workspaceKinds: allWorkspaceKinds,
@@ -134,6 +161,10 @@ export const navigationRouteDefinitions = [
     label: 'Покупки',
     mobileOrder: 2,
     mobilePlacement: 'primary',
+    plannerTabColor: 'blue',
+    plannerTabOrder: 2,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Покупки',
     path: '/shopping',
     to: '/shopping',
     workspaceKinds: allWorkspaceKinds,
@@ -143,8 +174,25 @@ export const navigationRouteDefinitions = [
     label: 'Уборка',
     mobileOrder: 3,
     mobilePlacement: 'primary',
+    plannerTabColor: 'mint',
+    plannerTabOrder: 3,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Уборка',
     path: '/cleaning',
     to: '/cleaning',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
+    id: 'timeline',
+    label: 'Таймлайн',
+    mobileOrder: 0,
+    mobilePlacement: 'more',
+    plannerTabColor: 'lavender',
+    plannerTabOrder: 4,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Лента',
+    path: '/timeline',
+    to: '/timeline',
     workspaceKinds: allWorkspaceKinds,
   },
   {
@@ -152,6 +200,10 @@ export const navigationRouteDefinitions = [
     label: 'Сферы',
     mobileOrder: 1,
     mobilePlacement: 'more',
+    plannerTabColor: 'green',
+    plannerTabOrder: 5,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Сферы',
     path: '/spheres',
     to: '/spheres',
     workspaceKinds: allWorkspaceKinds,
@@ -161,24 +213,21 @@ export const navigationRouteDefinitions = [
     label: 'Привычки',
     mobileOrder: 2,
     mobilePlacement: 'more',
+    plannerTabColor: 'pink',
+    plannerTabOrder: 6,
+    plannerTabPlacement: 'side',
+    plannerTabShortLabel: 'Привычки',
     path: '/habits',
     to: '/habits',
     workspaceKinds: personalOnlyWorkspaceKinds,
-  },
-  {
-    id: 'timeline',
-    label: 'Таймлайн',
-    mobileOrder: 0,
-    mobilePlacement: 'more',
-    path: '/timeline',
-    to: '/timeline',
-    workspaceKinds: allWorkspaceKinds,
   },
   {
     id: 'admin',
     label: 'Admin',
     mobileOrder: 3,
     mobilePlacement: 'more',
+    plannerTabColor: 'gray',
+    plannerTabPlacement: 'more',
     path: '/admin',
     to: '/admin',
     workspaceKinds: personalOnlyWorkspaceKinds,

@@ -13,6 +13,8 @@ import type { UploadedIconAsset } from '@/shared/ui/Icon'
 import { TaskCard } from './TaskCard'
 import styles from './TaskSection.module.css'
 
+type TaskCardVariant = 'card' | 'compact'
+
 interface TaskSectionProps {
   title: string
   tasks: Task[]
@@ -27,6 +29,7 @@ interface TaskSectionProps {
   defaultCollapsed?: boolean | undefined
   extraItemCount?: number | undefined
   extraItems?: ReactNode | undefined
+  taskCardVariant?: TaskCardVariant | undefined
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
   onCopyToPersonal?: ((taskId: string) => void) | undefined
@@ -51,6 +54,7 @@ export function TaskSection({
   defaultCollapsed = false,
   extraItemCount = 0,
   extraItems,
+  taskCardVariant = 'card',
   tone = 'default',
   isTaskPending,
   onCopyToPersonal,
@@ -67,6 +71,7 @@ export function TaskSection({
   const contentId = useId()
   const headingId = useId()
   const itemCount = tasks.length + extraItemCount
+  const isCompactList = taskCardVariant === 'compact'
   const handleActionMenuOpenChange = useCallback(
     (taskId: string, isOpen: boolean) => {
       setOpenActionMenuTaskId((currentTaskId) => {
@@ -82,7 +87,11 @@ export function TaskSection({
 
   return (
     <section
-      className={cx(styles.panel, openActionMenuTaskId && styles.panelMenuOpen)}
+      className={cx(
+        styles.panel,
+        isCompactList && styles.compactPanel,
+        openActionMenuTaskId && styles.panelMenuOpen,
+      )}
     >
       <h3 className={styles.headerHeading}>
         <button
@@ -93,11 +102,15 @@ export function TaskSection({
           aria-labelledby={headingId}
           onClick={() => setIsCollapsed((value) => !value)}
         >
-          <span id={headingId} className={styles.headingText}>
-            {title}
+          <span className={styles.headingGroup}>
+            <span id={headingId} className={styles.headingText}>
+              {title}
+            </span>
+            <span className={styles.countChip} aria-hidden="true">
+              {itemCount}
+            </span>
           </span>
           <span className={styles.collapseButton} aria-hidden="true">
-            <span className={styles.countChip}>{itemCount}</span>
             <span
               className={cx(
                 styles.collapseChevron,
@@ -114,11 +127,14 @@ export function TaskSection({
           {itemCount === 0 ? (
             <p className={styles.emptyCopy}>{emptyMessage}</p>
           ) : (
-            <div className={styles.stack}>
+            <div
+              className={cx(styles.stack, isCompactList && styles.compactStack)}
+            >
               {tasks.map((task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
+                  variant={taskCardVariant}
                   spheres={spheres}
                   sphere={spheres.find(
                     (sphere) => sphere.id === task.projectId,

@@ -11,7 +11,7 @@ import {
 
 import { getCleaningErrorMessage } from '@/features/cleaning'
 
-export type FocusMode = 'all' | 'quick' | 'minimum' | 'regular' | 'deep'
+export type FocusMode = 'all' | CleaningPriority
 
 export interface TaskDraft {
   customIntervalDays: string
@@ -277,16 +277,7 @@ export function filterItemsByFocusMode(
     return items
   }
 
-  if (mode === 'quick') {
-    return items.filter(
-      (item) =>
-        (item.task.estimatedMinutes ?? 999) <= 15 ||
-        item.task.energy === 'low' ||
-        item.task.depth === 'minimum',
-    )
-  }
-
-  return items.filter((item) => item.task.depth === mode)
+  return items.filter((item) => item.task.priority === mode)
 }
 
 export function getHeroHint(today: CleaningTodayResponse): string {
@@ -312,19 +303,15 @@ export function getFocusModeAriaLabel(mode: FocusMode): string {
     return 'Показать все задачи'
   }
 
-  if (mode === 'quick') {
-    return 'Показать задачи на 15 минут'
+  if (mode === 'low') {
+    return 'Показать низкий приоритет'
   }
 
-  if (mode === 'minimum') {
-    return 'Показать минимум'
+  if (mode === 'normal') {
+    return 'Показать обычный приоритет'
   }
 
-  if (mode === 'regular') {
-    return 'Показать обычную уборку'
-  }
-
-  return 'Показать глубокую уборку'
+  return 'Показать важные задачи'
 }
 
 export function createActionInput(date: string) {

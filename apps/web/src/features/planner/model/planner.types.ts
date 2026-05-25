@@ -26,6 +26,7 @@ export interface PlannerState {
   isSyncing: boolean
   queuedMutationCount: number
   errorMessage: string | null
+  debugErrorDetails: string | null
   isTaskPending: (taskId: string) => boolean
   refresh: () => Promise<void>
   addSphere: (input: NewLifeSphereInput) => Promise<boolean>

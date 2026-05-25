@@ -1,6 +1,7 @@
 import type { CalendarViewMode } from '@planner/contracts'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
 
 import {
   buildTimelineLayout,
@@ -16,7 +17,7 @@ import {
   useUpdateUserPreferences,
   useWorkspaceUsers,
 } from '@/features/session'
-import { TaskComposer } from '@/features/task-create'
+import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { cx } from '@/shared/lib/classnames'
 import { addDays, formatTimeRange, getDateKey } from '@/shared/lib/date'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/shared/ui/Icon'
@@ -39,6 +40,20 @@ const DEFAULT_WEEK_SCROLL_HOUR = 7
 const MIN_TASK_HEIGHT_REM = 2.2
 const MONTH_VISIBLE_TASK_LIMIT = 5
 const SCHEDULE_VISIBLE_DAYS = 14
+const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
+const TASK_CREATE_SEARCH_PARAM = 'createTask'
+
+function getCalendarViewModeFromSearchParams(
+  searchParams: URLSearchParams,
+): CalendarViewMode | null {
+  const viewMode = searchParams.get(CALENDAR_VIEW_SEARCH_PARAM)
+
+  if (viewMode === 'week' || viewMode === 'month' || viewMode === 'schedule') {
+    return viewMode
+  }
+
+  return null
+}
 
 function parseDateKey(value: string): Date {
   const [yearRaw, monthRaw, dayRaw] = value.split('-')
@@ -376,6 +391,7 @@ function CalendarScheduleTask({
 }
 
 export function CalendarPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
   const {
     copyTaskToPersonal,
     isTaskPending,
@@ -389,16 +405,18 @@ export function CalendarPage() {
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
   const sessionQuery = usePlannerSession()
-  const updateUserPreferencesMutation = useUpdateUserPreferences()
+  const { mutate: updateUserPreferences } = useUpdateUserPreferences()
   const todayKey = getDateKey(new Date())
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
+  const requestedViewMode = getCalendarViewModeFromSearchParams(searchParams)
   const sessionPreferenceKey = session
     ? `${session.actorUserId}:${session.workspaceId}`
     : null
   const weekSurfaceRef = useRef<HTMLElement | null>(null)
   const lastWeekScrollKeyRef = useRef<string | null>(null)
+  const lastCalendarViewPreferenceSyncRef = useRef<string | null>(null)
   const [viewModeState, setViewModeState] = useState<{
     mode: CalendarViewMode
     sessionPreferenceKey: string | null
@@ -407,14 +425,27 @@ export function CalendarPage() {
     sessionPreferenceKey,
   }))
   const viewMode =
-    viewModeState.sessionPreferenceKey === sessionPreferenceKey
+    requestedViewMode ??
+    (viewModeState.sessionPreferenceKey === sessionPreferenceKey
       ? viewModeState.mode
-      : persistedViewMode
+      : persistedViewMode)
+  const calendarSearch = searchParams.toString()
   const [anchorDate, setAnchorDate] = useState(todayKey)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const createTaskRequestId = searchParams.get(TASK_CREATE_SEARCH_PARAM)
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [selectedTaskId, tasks],
+  )
+  const taskComposerDraft = useMemo<TaskComposerDraft | null>(
+    () =>
+      createTaskRequestId
+        ? {
+            plannedDate: anchorDate,
+            requestId: createTaskRequestId,
+          }
+        : null,
+    [anchorDate, createTaskRequestId],
   )
   const workspaceUsersQuery = useWorkspaceUsers({
     enabled: Boolean(selectedTask && isSharedWorkspace),
@@ -484,11 +515,18 @@ export function CalendarPage() {
       sessionPreferenceKey,
     })
 
+    if (requestedViewMode !== nextViewMode) {
+      const nextParams = new URLSearchParams(searchParams)
+      nextParams.set(CALENDAR_VIEW_SEARCH_PARAM, nextViewMode)
+      setSearchParams(nextParams)
+    }
+
     if (
       sessionQuery.data &&
       nextViewMode !== sessionQuery.data.userPreferences.calendarViewMode
     ) {
-      updateUserPreferencesMutation.mutate({
+      lastCalendarViewPreferenceSyncRef.current = `${sessionPreferenceKey ?? 'anonymous'}:${nextViewMode}`
+      updateUserPreferences({
         calendarViewMode: nextViewMode,
       })
     }
@@ -501,6 +539,61 @@ export function CalendarPage() {
 
     setSelectedTaskId(task.id)
   }
+
+  useEffect(() => {
+    if (!createTaskRequestId) {
+      return
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete(TASK_CREATE_SEARCH_PARAM)
+    setSearchParams(nextSearchParams, { replace: true })
+  }, [createTaskRequestId, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (requestedViewMode || persistedViewMode === 'week') {
+      return
+    }
+
+    const nextParams = new URLSearchParams(calendarSearch)
+    nextParams.delete(TASK_CREATE_SEARCH_PARAM)
+    nextParams.set(CALENDAR_VIEW_SEARCH_PARAM, persistedViewMode)
+    setSearchParams(nextParams, { replace: true })
+  }, [calendarSearch, persistedViewMode, requestedViewMode, setSearchParams])
+
+  useEffect(() => {
+    if (!requestedViewMode) {
+      return
+    }
+
+    if (!sessionQuery.data) {
+      return
+    }
+
+    if (
+      requestedViewMode === sessionQuery.data.userPreferences.calendarViewMode
+    ) {
+      lastCalendarViewPreferenceSyncRef.current = null
+
+      return
+    }
+
+    const syncKey = `${sessionPreferenceKey ?? 'anonymous'}:${requestedViewMode}`
+
+    if (lastCalendarViewPreferenceSyncRef.current === syncKey) {
+      return
+    }
+
+    lastCalendarViewPreferenceSyncRef.current = syncKey
+    updateUserPreferences({
+      calendarViewMode: requestedViewMode,
+    })
+  }, [
+    requestedViewMode,
+    sessionPreferenceKey,
+    sessionQuery.data,
+    updateUserPreferences,
+  ])
 
   useEffect(() => {
     if (viewMode !== 'week') {
@@ -589,46 +682,12 @@ export function CalendarPage() {
           <strong className={styles.periodTitle}>{title}</strong>
         </div>
 
-        <div className={styles.viewControls}>
-          <div className={styles.segmentedControl} role="group">
-            <button
-              className={cx(
-                styles.segmentButton,
-                viewMode === 'week' && styles.segmentButtonActive,
-              )}
-              type="button"
-              aria-pressed={viewMode === 'week'}
-              onClick={() => selectViewMode('week')}
-            >
-              Неделя
-            </button>
-            <button
-              className={cx(
-                styles.segmentButton,
-                viewMode === 'month' && styles.segmentButtonActive,
-              )}
-              type="button"
-              aria-pressed={viewMode === 'month'}
-              onClick={() => selectViewMode('month')}
-            >
-              Месяц
-            </button>
-            <button
-              className={cx(
-                styles.segmentButton,
-                viewMode === 'schedule' && styles.segmentButtonActive,
-              )}
-              type="button"
-              aria-pressed={viewMode === 'schedule'}
-              onClick={() => selectViewMode('schedule')}
-            >
-              Расписание
-            </button>
-          </div>
-
+        <div className={styles.toolbarActions}>
           <TaskComposer
             key={anchorDate}
+            desktopOpenButtonHidden
             initialPlannedDate={anchorDate}
+            openDraft={taskComposerDraft}
             openButtonLabel="Задача"
           />
         </div>

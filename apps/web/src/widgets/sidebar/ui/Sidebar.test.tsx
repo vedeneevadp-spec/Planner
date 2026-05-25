@@ -47,9 +47,12 @@ interface MutationStub {
 }
 
 interface PlannerStub {
+  conflictedMutationCount: number
+  debugErrorDetails: string | null
   errorMessage: string | null
   isLoading: boolean
   isSyncing: boolean
+  queuedMutationCount: number
   readiness: {
     canReadCachedData: boolean
     canRenderAppContent: boolean
@@ -231,6 +234,8 @@ function renderSidebar(
     includeNativeBackButton?: boolean
     initialEntries?: string[]
     initialIndex?: number
+    navigationMode?: 'full' | 'service'
+    planner?: Partial<PlannerStub>
   } = {},
 ) {
   const auth = {
@@ -264,9 +269,12 @@ function renderSidebar(
         }
 
   mocks.usePlanner.mockReturnValue({
+    conflictedMutationCount: 0,
+    debugErrorDetails: null,
     errorMessage: null,
     isLoading: false,
     isSyncing: false,
+    queuedMutationCount: 0,
     readiness,
     spheres: [
       { id: 'sphere-1', name: 'Работа' },
@@ -274,6 +282,7 @@ function renderSidebar(
     ],
     refresh: vi.fn(),
     tasks: [],
+    ...options.planner,
   })
   mocks.useShoppingListSummary.mockReturnValue({
     activeItemCount: 0,
@@ -313,7 +322,7 @@ function renderSidebar(
           ? { initialIndex: options.initialIndex }
           : {})}
       >
-        <Sidebar />
+        <Sidebar navigationMode={options.navigationMode ?? 'full'} />
         {options.includeNativeBackButton ? <NativeBackButton /> : null}
       </MemoryRouter>
     </ThemeProvider>,
@@ -350,7 +359,7 @@ describe('Sidebar', () => {
     cleanup()
   })
 
-  it('moves spheres and habits into the mobile more sheet for personal workspaces', () => {
+  it('keeps side tab sections out of the mobile more sheet for personal workspaces', () => {
     renderSidebar(createSession('personal'))
 
     const mobileNavigation = screen.getByRole('navigation', {
@@ -366,8 +375,9 @@ describe('Sidebar', () => {
 
     const moreSheet = within(openMobileMoreSheet())
 
-    expect(moreSheet.getByText('Сферы')).toBeVisible()
-    expect(moreSheet.getByText('Привычки')).toBeVisible()
+    expect(moreSheet.queryByText('Таймлайн')).not.toBeInTheDocument()
+    expect(moreSheet.queryByText('Сферы')).not.toBeInTheDocument()
+    expect(moreSheet.queryByText('Привычки')).not.toBeInTheDocument()
     expect(moreSheet.getByRole('link', { name: 'Профиль' })).toBeVisible()
     expect(moreSheet.getByText('Admin')).toBeVisible()
     expect(moreSheet.getByRole('button', { name: 'Выйти' })).toBeVisible()
@@ -380,10 +390,10 @@ describe('Sidebar', () => {
 
     const moreSheet = within(openMobileMoreSheet())
     const signOutButton = moreSheet.getByRole('button', { name: 'Выйти' })
-    const spheresLink = moreSheet.getByRole('link', { name: 'Сферы' })
+    const profileLink = moreSheet.getByRole('link', { name: 'Профиль' })
 
     expect(
-      signOutButton.compareDocumentPosition(spheresLink) &
+      signOutButton.compareDocumentPosition(profileLink) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
 
@@ -433,6 +443,84 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 
+  it('keeps retry available for readiness connection issues without a planner feature error', () => {
+    const refresh = vi.fn()
+
+    renderSidebar(createSession('personal'), {
+      auth: {
+        accessToken: null,
+        canUseProtectedApi: false,
+        lifecycleStatus: 'deferred',
+      },
+      planner: {
+        refresh,
+      },
+    })
+
+    expect(screen.getByText('Auth session unavailable')).toBeVisible()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Повторить синхронизацию' }),
+    )
+
+    expect(refresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows retry inside the mobile sheet for readiness connection issues', () => {
+    renderSidebar(createSession('personal'), {
+      auth: {
+        accessToken: null,
+        canUseProtectedApi: false,
+        lifecycleStatus: 'deferred',
+      },
+    })
+
+    const moreSheet = within(openMobileMoreSheet())
+
+    expect(moreSheet.getByText('Auth session unavailable')).toBeVisible()
+    expect(
+      moreSheet.getByRole('button', { name: 'Повторить синхронизацию' }),
+    ).toBeVisible()
+  })
+
+  it('shows connection debug details only to the global owner', () => {
+    renderSidebar(createSession('personal'), {
+      auth: {
+        accessToken: null,
+        canUseProtectedApi: false,
+        lifecycleStatus: 'deferred',
+      },
+      planner: {
+        conflictedMutationCount: 1,
+        debugErrorDetails: '[tasksQuery.error]\nname=TypeError',
+        queuedMutationCount: 2,
+      },
+    })
+
+    expect(screen.getByText('Детали ошибки')).toBeVisible()
+    expect(
+      screen.getByText(/readiness\.status=offlineWithCache/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/queuedMutations=2/)).toBeInTheDocument()
+    expect(screen.getByText(/\[tasksQuery\.error\]/)).toBeInTheDocument()
+  })
+
+  it('hides connection debug details from non-owner admins', () => {
+    renderSidebar(createSession('personal', { appRole: 'admin' }), {
+      auth: {
+        accessToken: null,
+        canUseProtectedApi: false,
+        lifecycleStatus: 'deferred',
+      },
+      planner: {
+        debugErrorDetails: '[tasksQuery.error]\nmessage=secret details',
+      },
+    })
+
+    expect(screen.queryByText('Детали ошибки')).not.toBeInTheDocument()
+    expect(screen.queryByText(/secret details/)).not.toBeInTheDocument()
+  })
+
   it('keeps habits and admin out of shared workspace navigation', () => {
     renderSidebar(createSession('shared'))
 
@@ -447,11 +535,47 @@ describe('Sidebar', () => {
 
     const moreSheet = within(openMobileMoreSheet())
 
-    expect(moreSheet.getByText('Сферы')).toBeVisible()
+    expect(moreSheet.queryByText('Таймлайн')).not.toBeInTheDocument()
+    expect(moreSheet.queryByText('Сферы')).not.toBeInTheDocument()
     expect(moreSheet.getByRole('button', { name: 'Выйти' })).toBeVisible()
     expect(moreSheet.queryByText('Привычки')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Профиль')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Admin')).not.toBeInTheDocument()
+  })
+
+  it('uses planner side tabs instead of duplicated navigation in service mode', () => {
+    renderSidebar(createSession('personal'), {
+      initialEntries: ['/cleaning/settings/zones/zone-1'],
+      navigationMode: 'service',
+    })
+
+    expect(
+      screen.queryByRole('navigation', { name: 'Mobile navigation' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('navigation', { name: 'Main navigation' }),
+    ).not.toBeInTheDocument()
+
+    const plannerNavigation = screen.getByRole('navigation', {
+      name: 'Разделы планера',
+    })
+
+    expect(
+      within(plannerNavigation).getByRole('link', { name: 'Уборка' }),
+    ).toHaveAttribute('aria-current', 'page')
+    expect(
+      within(plannerNavigation).getByRole('link', { name: 'Таймлайн' }),
+    ).toBeVisible()
+    expect(
+      within(plannerNavigation).getByRole('link', { name: /Сферы/ }),
+    ).toBeVisible()
+
+    expect(
+      within(plannerNavigation).queryByRole('button', { name: 'Ещё' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(plannerNavigation).getAllByRole('link', { name: 'Ещё' })[0],
+    ).toHaveAttribute('href', '/more')
   })
 
   it('hides desktop workspace actions behind the settings button', () => {

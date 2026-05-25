@@ -1,5 +1,7 @@
 import type { CalendarViewMode } from '@planner/contracts'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CalendarPage } from './CalendarPage'
@@ -18,9 +20,17 @@ interface SessionStub {
   workspaceId: string
 }
 
+interface TaskComposerMockProps {
+  desktopOpenButtonHidden?: boolean
+  initialPlannedDate: string | null
+  openDraft?: { plannedDate?: string | null; requestId: string } | null
+  openButtonLabel?: string
+}
+
 const mocks = vi.hoisted(() => ({
   mutatePreferences:
     vi.fn<(input: { calendarViewMode: CalendarViewMode }) => void>(),
+  taskComposer: vi.fn<(props: TaskComposerMockProps) => void>(),
   usePlannerSession: vi.fn<() => { data: SessionStub }>(),
 }))
 
@@ -53,7 +63,11 @@ vi.mock('@/features/session', () => ({
 }))
 
 vi.mock('@/features/task-create', () => ({
-  TaskComposer: () => <button type="button">Задача</button>,
+  TaskComposer: (props: TaskComposerMockProps) => {
+    mocks.taskComposer(props)
+
+    return <button type="button">Задача</button>
+  },
 }))
 
 describe('CalendarPage', () => {
@@ -62,6 +76,7 @@ describe('CalendarPage', () => {
   beforeEach(() => {
     currentSession = createSession('week')
     mocks.mutatePreferences.mockReset()
+    mocks.taskComposer.mockReset()
     mocks.usePlannerSession.mockImplementation(() => ({ data: currentSession }))
   })
 
@@ -69,34 +84,85 @@ describe('CalendarPage', () => {
     cleanup()
   })
 
-  it('keeps the locally selected view when preference sync rolls back', () => {
-    const { rerender } = render(<CalendarPage />)
+  it('keeps the query-selected view when preference sync rolls back', async () => {
+    const { rerender } = renderCalendarPage('/calendar?calendarView=month')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Месяц' }))
-
-    expect(screen.getByRole('button', { name: 'Месяц' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-    expect(mocks.mutatePreferences).toHaveBeenCalledWith({
-      calendarViewMode: 'month',
+    expect(screen.getByLabelText('Месяц')).toBeVisible()
+    await waitFor(() => {
+      expect(mocks.mutatePreferences).toHaveBeenCalledWith({
+        calendarViewMode: 'month',
+      })
     })
 
     currentSession = createSession('month')
-    rerender(<CalendarPage />)
+    rerenderCalendarPage(rerender, '/calendar?calendarView=month')
     currentSession = createSession('week')
-    rerender(<CalendarPage />)
+    rerenderCalendarPage(rerender, '/calendar?calendarView=month')
 
-    expect(screen.getByRole('button', { name: 'Неделя' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
-    expect(screen.getByRole('button', { name: 'Месяц' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
+    expect(screen.getByLabelText('Месяц')).toBeVisible()
+  })
+
+  it('uses the persisted view when the query does not select one', () => {
+    currentSession = createSession('schedule')
+
+    renderCalendarPage('/calendar')
+
+    expect(screen.getByLabelText('Расписание')).toBeVisible()
+  })
+
+  it('opens task creation from the calendar query trigger and clears it', async () => {
+    renderCalendarPage('/calendar?foo=bar&createTask=request-1')
+
+    await waitFor(() => {
+      const triggerCall = mocks.taskComposer.mock.calls.find(
+        ([props]) => props.openDraft?.requestId === 'request-1',
+      )
+      const props = triggerCall?.[0]
+
+      expect(props?.desktopOpenButtonHidden).toBe(true)
+      expect(typeof props?.openDraft?.plannedDate).toBe('string')
+      expect(props?.openButtonLabel).toBe('Задача')
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/calendar?foo=bar',
+      )
+    })
   })
 })
+
+function LocationProbe() {
+  const location = useLocation()
+
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  )
+}
+
+function renderCalendarPage(initialEntry: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <CalendarPage />
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+}
+
+function rerenderCalendarPage(
+  rerender: (ui: ReactNode) => void,
+  initialEntry: string,
+) {
+  rerender(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <CalendarPage />
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+}
 
 function createSession(calendarViewMode: CalendarViewMode): SessionStub {
   return {

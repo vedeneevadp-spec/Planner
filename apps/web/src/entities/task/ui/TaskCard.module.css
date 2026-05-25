@@ -4,7 +4,7 @@
   z-index: 0;
   min-width: 0;
   padding: 0.82rem 0.9rem;
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--field-bg);
   border: 1px solid var(--line);
   box-shadow: var(--shadow-soft);
@@ -64,6 +64,40 @@
   display: grid;
   gap: 0.58rem;
   min-width: 0;
+}
+
+.compactCard {
+  min-height: 2.6rem;
+  border-radius: 9px;
+  padding: 0.42rem 0.48rem 0.42rem 0.68rem;
+  box-shadow: none;
+}
+
+.compactMain {
+  gap: 0;
+}
+
+.compactRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.62rem;
+  min-width: 0;
+}
+
+.compactTitle {
+  display: -webkit-box;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .cardHeader {
@@ -278,6 +312,11 @@
 
 .iconButton svg {
   display: block;
+}
+
+.compactCompleteButton {
+  width: 1.9rem;
+  height: 1.9rem;
 }
 
 .dangerButton {
@@ -612,6 +651,10 @@
 @media (max-width: 820px) {
   .card {
     padding: 0.78rem;
+  }
+
+  .compactCard {
+    padding: 0.38rem 0.42rem 0.38rem 0.62rem;
   }
 
   .cardHeader {

@@ -5,7 +5,7 @@
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--accent-border);
-  border-radius: 18px;
+  border-radius: 12px;
   padding: 0.78rem;
   background:
     linear-gradient(135deg, var(--accent-muted), var(--surface)),
@@ -159,7 +159,7 @@
   justify-content: space-between;
   gap: 0.7rem;
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 10px;
   padding: 0.75rem;
   background: var(--field-bg-muted);
   color: inherit;
@@ -196,7 +196,7 @@
 .loadCard,
 .unloadBox {
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 12px;
   padding: 0.8rem;
   background: var(--field-bg-muted);
 }
@@ -237,7 +237,7 @@
 @media (max-width: 820px) {
   .panel {
     gap: 0.65rem;
-    border-radius: 18px;
+    border-radius: 12px;
     padding: 0.72rem;
   }
 
@@ -276,7 +276,7 @@
 
   .loadCard,
   .unloadBox {
-    border-radius: 16px;
+    border-radius: 10px;
     padding: 0.72rem;
   }
 }
@@ -300,7 +300,7 @@
 .unloadItem {
   align-items: center;
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 9px;
   padding: 0.5rem;
   background: var(--field-bg-muted);
 }

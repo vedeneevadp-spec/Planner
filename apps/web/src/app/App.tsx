@@ -11,7 +11,7 @@ import {
   SessionProvider,
 } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
-import { Sidebar } from '@/widgets/sidebar'
+import { PlannerMobileHeader, PlannerTopTabs, Sidebar } from '@/widgets/sidebar'
 
 import styles from './App.module.css'
 import { AppRouter } from './router'
@@ -34,11 +34,18 @@ function App() {
             >
               <Sidebar
                 isCollapsed={isSidebarCollapsed}
+                navigationMode="service"
                 onCollapsedChange={setIsSidebarCollapsed}
               />
-              <main className={styles.main}>
-                <AppRouter />
-              </main>
+              <div className={styles.content}>
+                <PlannerTopTabs />
+                <main className={styles.main}>
+                  <PlannerMobileHeader />
+                  <div className={styles.routeSlot}>
+                    <AppRouter />
+                  </div>
+                </main>
+              </div>
             </div>
           </PlannerProvider>
         </AuthGate>

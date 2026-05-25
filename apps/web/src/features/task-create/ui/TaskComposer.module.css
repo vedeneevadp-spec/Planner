@@ -100,7 +100,7 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 120;
   display: grid;
   place-items: center;
   padding: 1rem;
@@ -702,27 +702,42 @@
 
   .openButton {
     position: fixed;
-    right: calc(1rem + var(--safe-area-right));
-    bottom: calc(var(--mobile-fab-offset) + var(--safe-area-bottom));
-    z-index: 15;
-    width: 3.75rem;
-    min-height: 3.75rem;
+    right: calc(
+      var(--planner-shell-inline-padding, 0px) + var(--safe-area-right) + 3px
+    );
+    bottom: calc(1.65rem + var(--safe-area-bottom));
+    z-index: 14;
+    width: calc(var(--planner-side-tabs-width, 48px) - 3px);
+    min-height: 44px;
     padding: 0;
-    border: none;
-    border-radius: 999px;
-    box-shadow: var(--shadow);
+    border: 1px solid var(--planner-tab-border);
+    border-left: 0;
+    border-radius: 0 13px 13px 0;
+    background: var(--planner-tab-green-bg);
+    color: var(--planner-tab-green-fg);
+    box-shadow:
+      var(--planner-tab-shadow-active),
+      inset 1px 0 0 rgba(255, 255, 255, 0.32);
   }
 
   .openButtonIcon {
     width: auto;
     height: auto;
     background: transparent;
-    font-size: 1.85rem;
+    font-size: 1.6rem;
     line-height: 1;
   }
 
   .openButtonLabel {
     display: none;
+  }
+
+  .openButton:hover {
+    background: var(--planner-tab-green-bg);
+    box-shadow:
+      var(--planner-tab-shadow-active),
+      inset 1px 0 0 rgba(255, 255, 255, 0.32);
+    transform: none;
   }
 
   .actionRowInlineMobile {
@@ -738,7 +753,16 @@
     min-height: 2.7rem;
     padding: 0.68rem 1rem;
     border: 1px solid var(--accent-border-strong);
+    border-radius: 999px;
+    background: var(--accent-fill);
+    color: var(--accent-text-on-fill);
     box-shadow: var(--shadow-soft);
+  }
+
+  .openButtonInlineMobile:hover {
+    background: var(--accent-fill-hover);
+    box-shadow: var(--shadow);
+    transform: translateY(-1px);
   }
 
   .openButtonInlineMobile .openButtonIcon {

@@ -16,6 +16,7 @@ describe('route config', () => {
     expect(routeIds).toContain('shopping')
     expect(routeIds).toContain('timeline')
     expect(routeIds).toContain('spheres')
+    expect(routeIds).toContain('more')
     expect(routeIds).not.toContain('admin')
     expect(routeIds).not.toContain('habits')
     expect(routeIds).not.toContain('profile')
@@ -31,8 +32,8 @@ describe('route config', () => {
       'calendar',
       'shopping',
       'cleaning',
-      'spheres',
       'timeline',
+      'spheres',
     ])
   })
 
@@ -52,6 +53,7 @@ describe('route config', () => {
 
     expect(routeIds).toContain('admin')
     expect(routeIds).toContain('habits')
+    expect(routeIds).toContain('more')
     expect(routeIds).toContain('profile')
   })
 })

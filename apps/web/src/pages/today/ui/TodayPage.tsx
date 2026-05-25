@@ -39,13 +39,15 @@ import {
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import pageStyles from '@/shared/ui/Page'
-import { PageHeader } from '@/shared/ui/PageHeader'
 
 import type { EnergyMode } from '../lib/resource-plan'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
 import styles from './TodayPage.module.css'
 
 type TaskSectionTone = 'default' | 'warning' | 'success'
+type TodayTaskView = 'cards' | 'list'
+
+const TASK_VIEW_SEARCH_PARAM = 'taskView'
 
 interface TaskSectionOptions {
   defaultCollapsed?: boolean
@@ -114,6 +116,7 @@ function getTaskSectionDefaultCollapseState({
 
 function renderTaskSectionGroup(
   sections: Array<ReactElement | null>,
+  taskView: TodayTaskView,
 ): ReactElement | null {
   const visibleSections = sections.filter(
     (section): section is ReactElement => section !== null,
@@ -127,7 +130,19 @@ function renderTaskSectionGroup(
     return visibleSections[0] ?? null
   }
 
-  return <div className={pageStyles.gridTwo}>{visibleSections}</div>
+  return (
+    <div
+      className={
+        taskView === 'list' ? styles.taskSectionListGroup : pageStyles.gridTwo
+      }
+    >
+      {visibleSections}
+    </div>
+  )
+}
+
+function getTodayTaskView(searchParams: URLSearchParams): TodayTaskView {
+  return searchParams.get(TASK_VIEW_SEARCH_PARAM) === 'list' ? 'list' : 'cards'
 }
 
 function useWidgetTaskComposerDraft(
@@ -230,6 +245,7 @@ export function TodayPage() {
 
 function PersonalTodayPage() {
   const sessionQuery = usePlannerSession()
+  const [searchParams] = useSearchParams()
   const updateUserPreferencesMutation = useUpdateUserPreferences()
   const {
     tasks,
@@ -250,6 +266,8 @@ function PersonalTodayPage() {
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
+  const taskView = getTodayTaskView(searchParams)
+  const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
 
   useEffect(() => {
     setEnergyMode(persistedEnergyMode)
@@ -377,6 +395,7 @@ function PersonalTodayPage() {
         defaultCollapsed={options.defaultCollapsed}
         extraItemCount={options.extraItemCount}
         extraItems={options.extraItems}
+        taskCardVariant={taskCardVariant}
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
@@ -400,17 +419,11 @@ function PersonalTodayPage() {
 
   return (
     <section className={`${pageStyles.page} ${styles.todayPage}`}>
-      <div className={styles.fixedTop}>
-        <PageHeader
-          kicker="Focus"
-          actions={
-            <TaskComposer
-              initialPlannedDate={todayKey}
-              openDraft={widgetTaskComposerDraft}
-            />
-          }
-        />
-      </div>
+      <TaskComposer
+        desktopOpenButtonHidden
+        initialPlannedDate={todayKey}
+        openDraft={widgetTaskComposerDraft}
+      />
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
@@ -424,24 +437,27 @@ function PersonalTodayPage() {
             }}
           />
 
-          {renderTaskSectionGroup([
-            buildTaskSection(
-              'today',
-              'Сегодня',
-              mainTodayTasks,
-              'На сегодня пока нет задач.',
-            ),
-            buildTaskSection(
-              'routine',
-              'Рутина',
-              routineTasks,
-              'Рутинных задач на сегодня пока нет.',
-              {
-                extraItemCount: todayHabitRoutine.activeHabitItems.length,
-                extraItems: routineHabitCards,
-              },
-            ),
-          ])}
+          {renderTaskSectionGroup(
+            [
+              buildTaskSection(
+                'today',
+                'Сегодня',
+                mainTodayTasks,
+                'На сегодня пока нет задач.',
+              ),
+              buildTaskSection(
+                'routine',
+                'Рутина',
+                routineTasks,
+                'Рутинных задач на сегодня пока нет.',
+                {
+                  extraItemCount: todayHabitRoutine.activeHabitItems.length,
+                  extraItems: routineHabitCards,
+                },
+              ),
+            ],
+            taskView,
+          )}
 
           {buildTaskSection(
             'overdue',
@@ -451,22 +467,25 @@ function PersonalTodayPage() {
             { tone: 'warning' },
           )}
 
-          {renderTaskSectionGroup([
-            buildTaskSection(
-              'tomorrow',
-              'Завтра',
-              tomorrowTasks,
-              'На завтра пока ничего нет.',
-              { defaultCollapsed: defaultCollapsedSections.tomorrow },
-            ),
-            buildTaskSection(
-              'other',
-              'Остальные задачи',
-              otherTasks,
-              'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
-              { defaultCollapsed: defaultCollapsedSections.other },
-            ),
-          ])}
+          {renderTaskSectionGroup(
+            [
+              buildTaskSection(
+                'tomorrow',
+                'Завтра',
+                tomorrowTasks,
+                'На завтра пока ничего нет.',
+                { defaultCollapsed: defaultCollapsedSections.tomorrow },
+              ),
+              buildTaskSection(
+                'other',
+                'Остальные задачи',
+                otherTasks,
+                'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
+                { defaultCollapsed: defaultCollapsedSections.other },
+              ),
+            ],
+            taskView,
+          )}
 
           {buildTaskSection(
             'done-today',
@@ -499,6 +518,7 @@ function PersonalTodayPage() {
 
 function SharedTodayPage() {
   const { data: session } = usePlannerSession()
+  const [searchParams] = useSearchParams()
   const {
     tasks,
     copyTaskToPersonal,
@@ -517,6 +537,8 @@ function SharedTodayPage() {
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
+  const taskView = getTodayTaskView(searchParams)
+  const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
   const todayTasks = useMemo(
     () => selectTodayTasks(tasks, todayKey),
     [tasks, todayKey],
@@ -627,6 +649,7 @@ function SharedTodayPage() {
         defaultCollapsed={options.defaultCollapsed}
         extraItemCount={options.extraItemCount}
         extraItems={options.extraItems}
+        taskCardVariant={taskCardVariant}
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
@@ -650,38 +673,35 @@ function SharedTodayPage() {
 
   return (
     <section className={`${pageStyles.page} ${styles.todayPage}`}>
-      <div className={styles.fixedTop}>
-        <PageHeader
-          kicker="Shared Today"
-          actions={
-            <TaskComposer
-              initialPlannedDate={todayKey}
-              openDraft={widgetTaskComposerDraft}
-            />
-          }
-        />
-      </div>
+      <TaskComposer
+        desktopOpenButtonHidden
+        initialPlannedDate={todayKey}
+        openDraft={widgetTaskComposerDraft}
+      />
 
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>
-          {renderTaskSectionGroup([
-            buildTaskSection(
-              'today',
-              'Сегодня',
-              mainTodayTasks,
-              'В общем workspace на сегодня пока нет задач.',
-            ),
-            buildTaskSection(
-              'routine',
-              'Рутина',
-              routineTasks,
-              'Рутинных задач на сегодня пока нет.',
-              {
-                extraItemCount: todayHabitRoutine.activeHabitItems.length,
-                extraItems: routineHabitCards,
-              },
-            ),
-          ])}
+          {renderTaskSectionGroup(
+            [
+              buildTaskSection(
+                'today',
+                'Сегодня',
+                mainTodayTasks,
+                'В общем workspace на сегодня пока нет задач.',
+              ),
+              buildTaskSection(
+                'routine',
+                'Рутина',
+                routineTasks,
+                'Рутинных задач на сегодня пока нет.',
+                {
+                  extraItemCount: todayHabitRoutine.activeHabitItems.length,
+                  extraItems: routineHabitCards,
+                },
+              ),
+            ],
+            taskView,
+          )}
 
           {buildTaskSection(
             'overdue',
@@ -691,22 +711,25 @@ function SharedTodayPage() {
             { tone: 'warning' },
           )}
 
-          {renderTaskSectionGroup([
-            buildTaskSection(
-              'tomorrow',
-              'Завтра',
-              tomorrowTasks,
-              'На завтра в общем workspace пока ничего нет.',
-              { defaultCollapsed: defaultCollapsedSections.tomorrow },
-            ),
-            buildTaskSection(
-              'other',
-              'Остальные задачи',
-              otherTasks,
-              'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
-              { defaultCollapsed: defaultCollapsedSections.other },
-            ),
-          ])}
+          {renderTaskSectionGroup(
+            [
+              buildTaskSection(
+                'tomorrow',
+                'Завтра',
+                tomorrowTasks,
+                'На завтра в общем workspace пока ничего нет.',
+                { defaultCollapsed: defaultCollapsedSections.tomorrow },
+              ),
+              buildTaskSection(
+                'other',
+                'Остальные задачи',
+                otherTasks,
+                'Все активные задачи уже разложены на сегодня, просрочку или завтра.',
+                { defaultCollapsed: defaultCollapsedSections.other },
+              ),
+            ],
+            taskView,
+          )}
 
           {buildTaskSection(
             'done-today',

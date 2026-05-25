@@ -34,6 +34,7 @@ import { TaskComposerPrimaryFields } from './TaskComposerPrimaryFields'
 import { QuickPlanActions } from './TaskComposerQuickActions'
 
 interface TaskComposerProps {
+  desktopOpenButtonHidden?: boolean | undefined
   hideOpenButton?: boolean
   initialPlannedDate: string | null
   mobileOpenButtonMode?: 'fab' | 'inline'
@@ -45,6 +46,7 @@ interface TaskComposerProps {
 }
 
 export function TaskComposer({
+  desktopOpenButtonHidden = false,
   hideOpenButton = false,
   initialPlannedDate,
   mobileOpenButtonMode = 'fab',
@@ -428,6 +430,7 @@ export function TaskComposer({
       {hideOpenButton ? null : (
         <TaskComposerOpenButton
           buttonRef={openButtonRef}
+          desktopHidden={desktopOpenButtonHidden}
           label={openButtonLabel}
           mode={mobileOpenButtonMode}
           onOpen={openComposer}

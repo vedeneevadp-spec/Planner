@@ -162,6 +162,60 @@ describe('TaskCard', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('renders compact cards with only the title and complete action', () => {
+    const onSetStatus = vi.fn()
+
+    renderTaskCard(
+      createTask({
+        note: 'Подробности должны быть только в полной карточке',
+        title: 'Компактная задача',
+      }),
+      {
+        onSetStatus,
+        variant: 'compact',
+      },
+    )
+
+    expect(screen.getByText('Компактная задача')).toBeVisible()
+    expect(
+      screen.queryByText('Подробности должны быть только в полной карточке'),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Завершить задачу' }))
+
+    expect(onSetStatus).toHaveBeenCalledWith('task-1', 'done')
+    expect(
+      screen.queryByRole('dialog', { name: 'Карточка задачи' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens a full task preview from the compact card surface', () => {
+    renderTaskCard(
+      createTask({
+        note: 'Полное описание компактной задачи',
+        title: 'Открываемая компактная задача',
+      }),
+      {
+        variant: 'compact',
+      },
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Открыть карточку задачи Открываемая компактная задача',
+      }),
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Карточка задачи' })
+
+    expect(
+      within(dialog).getByText('Открываемая компактная задача'),
+    ).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Полное описание компактной задачи'),
+    ).toBeInTheDocument()
+  })
+
   it('hides postpone action for tasks planned after tomorrow', () => {
     renderTaskCard(createTask({ plannedDate: '2026-04-27' }))
     const actionMenu = openTaskActionMenu()

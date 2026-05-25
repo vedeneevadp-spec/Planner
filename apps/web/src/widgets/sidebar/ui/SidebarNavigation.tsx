@@ -3,23 +3,12 @@ import { NavLink } from 'react-router-dom'
 import type { NavigationRouteDefinition } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'
 
+import {
+  getNavigationCount,
+  type SidebarNavigationCounts,
+} from './navigationCounts'
 import styles from './Sidebar.module.css'
 import { SidebarNavIcon } from './SidebarIcons'
-
-interface SidebarNavigationCounts {
-  appRoleLabel: string
-  cleaningDueCount: number
-  cleaningUrgentCount: number
-  pendingHabitTodayCount: number
-  plannedTaskCount: number
-  shoppingActiveItemCount: number
-  sphereCount: number
-  summary: {
-    focusCount: number
-    overdueCount: number
-    timelineCount: number
-  }
-}
 
 interface SidebarNavigationProps {
   counts: SidebarNavigationCounts
@@ -35,7 +24,7 @@ export function SidebarNavigation({
   return (
     <nav aria-label="Main navigation" className={styles.navList}>
       {items.map((item) => {
-        const count = getSidebarNavigationCount(item.to, counts)
+        const count = getNavigationCount(item.to, counts)
 
         return (
           <NavLink
@@ -56,39 +45,4 @@ export function SidebarNavigation({
       })}
     </nav>
   )
-}
-
-function getSidebarNavigationCount(
-  route: string,
-  counts: SidebarNavigationCounts,
-): number | string {
-  if (route === '/today') {
-    return counts.summary.focusCount + counts.summary.overdueCount
-  }
-
-  if (route === '/calendar') {
-    return counts.plannedTaskCount
-  }
-
-  if (route === '/cleaning') {
-    return counts.cleaningUrgentCount || counts.cleaningDueCount
-  }
-
-  if (route === '/habits') {
-    return counts.pendingHabitTodayCount
-  }
-
-  if (route === '/shopping') {
-    return counts.shoppingActiveItemCount
-  }
-
-  if (route === '/timeline') {
-    return counts.summary.timelineCount
-  }
-
-  if (route === '/spheres') {
-    return counts.sphereCount
-  }
-
-  return counts.appRoleLabel
 }

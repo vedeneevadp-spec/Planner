@@ -165,27 +165,6 @@
   min-width: 0;
 }
 
-.settingsShortcutRow {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.settingsShortcut {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.42rem;
-  min-height: 2.16rem;
-  border: 1px solid var(--accent-muted-strong);
-  border-radius: 11px;
-  padding: 0.46rem 0.68rem;
-  color: var(--accent);
-  background: var(--accent-muted);
-  font-size: 0.86rem;
-  font-weight: 600;
-  text-decoration: none;
-}
-
 .dangerButton,
 .iconButtonDanger {
   color: var(--danger);
@@ -1094,14 +1073,6 @@
     gap: 0.3rem;
   }
 
-  .settingsShortcutRow {
-    justify-content: stretch;
-  }
-
-  .settingsShortcut {
-    width: 100%;
-  }
-
   .headerActions .softButton,
   .headerActions .softLinkButton {
     flex: 1 1 0;
@@ -1205,12 +1176,12 @@
     font-weight: 620;
   }
 
-  .doneButton {
+  .taskCard .doneButton {
     width: 2.45rem;
     padding: 0;
   }
 
-  .doneButtonLabel {
+  .taskCard .doneButtonLabel {
     display: none;
   }
 }

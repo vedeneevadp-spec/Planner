@@ -1,13 +1,12 @@
-import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useMemo } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
-import { TaskComposer } from '@/features/task-create'
+import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { formatShortDate, getDateKey } from '@/shared/lib/date'
 import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
-import { PageHeader } from '@/shared/ui/PageHeader'
 
 import {
   buildSphereStats,
@@ -17,6 +16,10 @@ import {
 } from '../lib/sphere-stats'
 import { SphereComposer } from './SphereComposer'
 import styles from './SpheresPage.module.css'
+
+const SPHERES_ACTION_REQUEST_SEARCH_PARAM = 'spheresActionRequest'
+const SPHERES_ACTION_SEARCH_PARAM = 'spheresAction'
+const TASK_CREATE_SEARCH_PARAM = 'createTask'
 
 function buildHeadline(stats: SphereStats[]): string {
   const dominantSphere = stats.find(
@@ -54,8 +57,26 @@ function getLastActivityLabel(
 export function SpheresPage() {
   const { addSphere, spheres, tasks } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
+  const [searchParams, setSearchParams] = useSearchParams()
   const week = getCurrentWeekRange(new Date())
   const todayKey = getDateKey(new Date())
+  const createTaskRequestId = searchParams.get(TASK_CREATE_SEARCH_PARAM)
+  const spheresAction = searchParams.get(SPHERES_ACTION_SEARCH_PARAM)
+  const spheresActionRequestId = searchParams.get(
+    SPHERES_ACTION_REQUEST_SEARCH_PARAM,
+  )
+  const sphereComposerOpenRequestId =
+    spheresAction === 'sphere' ? spheresActionRequestId : null
+  const taskComposerDraft = useMemo<TaskComposerDraft | null>(
+    () =>
+      createTaskRequestId
+        ? {
+            plannedDate: null,
+            requestId: createTaskRequestId,
+          }
+        : null,
+    [createTaskRequestId],
+  )
   const stats = useMemo(
     () => buildSphereStats(spheres, tasks, week, todayKey),
     [spheres, tasks, todayKey, week],
@@ -68,64 +89,66 @@ export function SpheresPage() {
     (stat) => !stat.isUnassigned && stat.health === 'abandoned',
   )
 
+  useEffect(() => {
+    if (!createTaskRequestId) {
+      return
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete(TASK_CREATE_SEARCH_PARAM)
+    setSearchParams(nextSearchParams, { replace: true })
+  }, [createTaskRequestId, searchParams, setSearchParams])
+
   return (
     <section className={pageStyles.page}>
-      <PageHeader
-        kicker="Spheres"
-        description="Сферы собирают задачи по областям жизни: видно, где неделя перекосилась и что давно не получало внимания."
+      <TaskComposer
+        desktopOpenButtonHidden
+        initialPlannedDate={null}
+        openButtonLabel="Действие"
+        openDraft={taskComposerDraft}
       />
 
-      <section className={styles.balancePanel}>
-        <div className={styles.balanceHeader}>
-          <div className={styles.balanceMeta}>
-            <p className={styles.eyebrow}>Баланс недели</p>
-          </div>
-          <div className={styles.balanceAction}>
-            <TaskComposer
-              initialPlannedDate={null}
-              mobileOpenButtonMode="inline"
-              openButtonLabel="Действие"
-            />
-          </div>
-          <div className={styles.balanceSummary}>
-            <h3>
-              {stats.length > 0 ? buildHeadline(stats) : 'Сферы пока не заданы'}
-            </h3>
-            <p>
-              {formatShortDate(week.from)} - {formatShortDate(week.to)} · доля
-              считается по задачам недели.
-            </p>
-          </div>
-        </div>
-
+      <section
+        className={styles.balancePanel}
+        aria-label="Доля задач по сферам за неделю"
+      >
         {stats.length > 0 ? (
-          <div className={styles.balanceBars}>
-            {stats.map((stat) => (
-              <div key={stat.sphereId} className={styles.balanceRow}>
-                <div className={styles.balanceLabel}>
-                  <span
-                    className={styles.tinyDot}
-                    style={{ backgroundColor: stat.color }}
-                    aria-hidden="true"
-                  />
-                  <span>{stat.title}</span>
-                  <strong>{stat.weeklyShare}%</strong>
+          <>
+            <div className={styles.balanceSummary}>
+              <h3>{buildHeadline(stats)}</h3>
+              <p className={styles.balanceCaption}>
+                {formatShortDate(week.from)} - {formatShortDate(week.to)} · доля
+                по задачам недели
+              </p>
+            </div>
+            <div className={styles.balanceBars}>
+              {stats.map((stat) => (
+                <div key={stat.sphereId} className={styles.balanceRow}>
+                  <div className={styles.balanceLabel}>
+                    <span
+                      className={styles.tinyDot}
+                      style={{ backgroundColor: stat.color }}
+                      aria-hidden="true"
+                    />
+                    <span>{stat.title}</span>
+                    <strong>{stat.weeklyShare}%</strong>
+                  </div>
+                  <div className={styles.barTrack} aria-hidden="true">
+                    <span
+                      className={styles.barFill}
+                      style={{
+                        backgroundColor: stat.color,
+                        width: `${Math.max(
+                          stat.weeklyShare,
+                          stat.totalResource > 0 ? 4 : 0,
+                        )}%`,
+                      }}
+                    />
+                  </div>
                 </div>
-                <div className={styles.barTrack} aria-hidden="true">
-                  <span
-                    className={styles.barFill}
-                    style={{
-                      backgroundColor: stat.color,
-                      width: `${Math.max(
-                        stat.weeklyShare,
-                        stat.totalResource > 0 ? 4 : 0,
-                      )}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         ) : (
           <p className={styles.emptyCopy}>
             Создай первую сферу, чтобы выбирать ее при добавлении задач.
@@ -154,6 +177,8 @@ export function SpheresPage() {
       ) : null}
 
       <SphereComposer
+        hideOpenButton
+        openRequestId={sphereComposerOpenRequestId}
         uploadedIcons={uploadedIcons}
         onCreate={(values) => addSphere(values)}
       />
@@ -163,7 +188,7 @@ export function SpheresPage() {
           <p>Создайте первую сферу, чтобы выбирать ее при добавлении задач.</p>
         </div>
       ) : (
-        <div className={pageStyles.autoGrid}>
+        <div className={`${pageStyles.autoGrid} ${styles.spheresGrid}`}>
           {spheres.map((sphere) => {
             const stat = statsBySphereId.get(sphere.id)
 
