@@ -126,6 +126,11 @@ export function PlannerTopTabs() {
   const isShoppingActive = matchesRoute(location.pathname, '/shopping')
   const isSpheresActive = location.pathname === '/spheres'
   const isTimelineActive = location.pathname === '/timeline'
+  const shouldHideMobileBrandText =
+    isCalendarActive ||
+    isCleaningActive ||
+    isCleaningSettingsActive ||
+    isShoppingActive
   const calendarViewMode = getCalendarViewMode(searchParams) ?? 'week'
   const cleaningFocusMode = getCleaningFocusModeFromSearchParams(searchParams)
   const shoppingFilters = getShoppingFiltersFromSearchParams(searchParams)
@@ -259,7 +264,13 @@ export function PlannerTopTabs() {
   }
 
   return (
-    <nav aria-label="Верхние действия планера" className={styles.topTabs}>
+    <nav
+      aria-label="Верхние действия планера"
+      className={cx(
+        styles.topTabs,
+        shouldHideMobileBrandText && styles.topTabsNoMobileBrand,
+      )}
+    >
       <Link
         aria-current={isHomeActive ? 'page' : undefined}
         aria-label="Chaotika, перейти на сегодня"

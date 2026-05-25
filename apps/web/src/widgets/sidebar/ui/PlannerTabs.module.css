@@ -108,6 +108,10 @@
   display: none;
 }
 
+.sideCleaningSettingsTab {
+  display: none;
+}
+
 .sideTab[data-color='pink'] {
   --tab-bg: var(--planner-tab-pink-bg);
   --tab-fg: var(--planner-tab-pink-fg);
@@ -527,6 +531,10 @@
     font-size: 1.2rem;
   }
 
+  .topTabsNoMobileBrand .topBrandText {
+    display: none;
+  }
+
   .topWorkspaceSelect {
     display: none;
   }
@@ -554,6 +562,10 @@
     padding-inline: 0.36rem;
   }
 
+  .topCleaningSettingsTab {
+    display: none;
+  }
+
   .topTodayCreateTab {
     display: none;
   }
@@ -574,6 +586,11 @@
 
   .topSegmentTabWithIcon span {
     display: none;
+  }
+
+  .sideCleaningSettingsTab {
+    display: grid;
+    margin-top: 0.72rem;
   }
 }
 

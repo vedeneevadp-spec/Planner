@@ -49,7 +49,6 @@ import {
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
-import { PageHeader } from '@/shared/ui/PageHeader'
 
 import styles from './HabitsPage.module.css'
 
@@ -134,11 +133,6 @@ export function HabitsPage() {
 
   return (
     <section className={pageStyles.page}>
-      <PageHeader
-        kicker="Habits"
-        description="Привычки со статистикой, streak и отметками по дням."
-      />
-
       <TaskComposer
         defaultTaskType="habit"
         hideOpenButton

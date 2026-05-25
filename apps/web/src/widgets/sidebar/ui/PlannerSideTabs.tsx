@@ -5,6 +5,7 @@ import type {
   PlannerTabColor,
 } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'
+import { GearIcon } from '@/shared/ui/Icon'
 
 import styles from './PlannerTabs.module.css'
 import { MoreIcon, SidebarNavIcon } from './SidebarIcons'
@@ -25,6 +26,7 @@ export function PlannerSideTabs({ isMoreActive, items }: PlannerSideTabsProps) {
   const isMorePageActive = matchesRoute(location.pathname, '/more')
   const isProfileActive = matchesRoute(location.pathname, '/profile')
   const isMoreTabActive = isMoreActive || isMorePageActive || isProfileActive
+  const shouldShowCleaningSettingsTab = location.pathname === '/cleaning'
 
   return (
     <nav aria-label="Разделы планера" className={styles.sideTabs}>
@@ -86,6 +88,21 @@ export function PlannerSideTabs({ isMoreActive, items }: PlannerSideTabsProps) {
         </span>
         <span className={styles.visuallyHidden}>Ещё</span>
       </Link>
+
+      {shouldShowCleaningSettingsTab ? (
+        <Link
+          aria-label="Настройки зон"
+          className={cx(styles.sideTab, styles.sideCleaningSettingsTab)}
+          data-color={'gray' satisfies PlannerTabColor}
+          title="Настройки зон"
+          to="/cleaning/settings"
+        >
+          <span className={styles.sideTabIcon} aria-hidden="true">
+            <GearIcon size={20} strokeWidth={1.9} />
+          </span>
+          <span className={styles.visuallyHidden}>Настройки зон</span>
+        </Link>
+      ) : null}
     </nav>
   )
 }

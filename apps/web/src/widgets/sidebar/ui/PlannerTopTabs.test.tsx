@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Task } from '@/entities/task'
 import { getDateKey } from '@/shared/lib/date'
 
+import styles from './PlannerTabs.module.css'
 import { PlannerTopTabs } from './PlannerTopTabs'
 
 interface PlannerTopTabsAuthStub {
@@ -67,6 +68,14 @@ function renderPlannerTopTabs(initialEntry: string) {
       <LocationProbe />
     </MemoryRouter>,
   )
+}
+
+function requireClassName(className: string | undefined): string {
+  if (!className) {
+    throw new Error('Expected CSS module class to be available.')
+  }
+
+  return className
 }
 
 function createTask(overrides: Partial<Task> = {}): Task {
@@ -473,15 +482,35 @@ describe('PlannerTopTabs', () => {
     )
   })
 
-  it('keeps the brand text visible on calendar and shopping', () => {
-    const { unmount } = renderPlannerTopTabs('/calendar')
+  it('marks dense mobile routes to hide the visual brand text', () => {
+    const noMobileBrandClass = requireClassName(styles.topTabsNoMobileBrand)
 
-    expect(screen.getByText('Chaotika')).toBeVisible()
+    for (const route of [
+      '/calendar',
+      '/shopping',
+      '/cleaning',
+      '/cleaning/settings',
+    ]) {
+      const { unmount } = renderPlannerTopTabs(route)
 
-    unmount()
-    renderPlannerTopTabs('/shopping')
+      expect(
+        screen.getByRole('navigation', {
+          name: 'Верхние действия планера',
+        }),
+      ).toHaveClass(noMobileBrandClass)
 
-    expect(screen.getByText('Chaotika')).toBeVisible()
+      unmount()
+    }
+  })
+
+  it('keeps the visual brand text modifier off today', () => {
+    renderPlannerTopTabs('/today')
+
+    expect(
+      screen.getByRole('navigation', {
+        name: 'Верхние действия планера',
+      }),
+    ).not.toHaveClass(requireClassName(styles.topTabsNoMobileBrand))
   })
 
   it('keeps the home tab for today', () => {
