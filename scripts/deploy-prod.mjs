@@ -1,5 +1,8 @@
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import process from 'node:process'
 
 const DEFAULTS = {
@@ -115,7 +118,7 @@ async function warnAboutDirtyWorktree() {
   console.warn(
     [
       '[deploy] Warning: working tree has uncommitted changes.',
-      '[deploy] The current local files will be deployed:',
+      '[deploy] Only tracked local files are deployed; untracked and ignored files are skipped:',
       status.trim(),
     ].join('\n'),
   )
@@ -133,40 +136,31 @@ chmod 711 ${shellQuote(config.remoteRoot)}
 }
 
 async function syncProject() {
-  const rsyncArgs = [
-    '-az',
-    '--delete',
-    '--exclude',
-    'node_modules',
-    '--exclude',
-    '.git',
-    '--exclude',
-    'apps/web/dist',
-    '--exclude',
-    'coverage',
-    '--exclude',
-    'tmp',
-    '--exclude',
-    '.env',
-    '--exclude',
-    '.env.local',
-    '--exclude',
-    '.env.*.local',
-    '--exclude',
-    'apps/api/.env',
-    '--exclude',
-    'apps/api/.env.local',
-    '--exclude',
-    '*.tsbuildinfo',
-    './',
-    `${config.remoteHost}:${config.remoteRoot}/`,
-  ]
+  const trackedFiles = await collectTrackedProjectFiles()
+  const filterDirectory = await mkdtemp(path.join(tmpdir(), 'planner-deploy-'))
+  const filterPath = path.join(filterDirectory, 'rsync-filter')
 
-  if (dryRun) {
-    rsyncArgs.unshift('--dry-run')
+  try {
+    await writeFile(filterPath, createProjectSyncFilter(trackedFiles), 'utf8')
+
+    const rsyncArgs = [
+      '-az',
+      '--delete',
+      '--delete-excluded',
+      '--filter',
+      `merge ${filterPath}`,
+      './',
+      `${config.remoteHost}:${config.remoteRoot}/`,
+    ]
+
+    if (dryRun) {
+      rsyncArgs.unshift('--dry-run')
+    }
+
+    await run('rsync', rsyncArgs)
+  } finally {
+    await rm(filterDirectory, { force: true, recursive: true })
   }
-
-  await run('rsync', rsyncArgs)
 }
 
 async function syncIconAssets() {
@@ -429,6 +423,68 @@ function readEnv(name, fallback) {
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`
+}
+
+async function collectTrackedProjectFiles() {
+  const output = await collect('git', ['ls-files', '-z'])
+  const files = output
+    .split('\0')
+    .filter(Boolean)
+    .filter((file) => existsSync(file))
+    .sort()
+
+  if (files.length === 0) {
+    throw new Error('No tracked project files found for deploy sync.')
+  }
+
+  return files
+}
+
+function createProjectSyncFilter(files) {
+  const rules = new Set([
+    'P /.git/***',
+    'P /backups/***',
+    'P /.env',
+    'P /.env.local',
+    'P /.env.*.local',
+    'P /apps/api/.env',
+    'P /apps/api/.env.local',
+    'P /node_modules/***',
+    'P /apps/api/node_modules/***',
+    'P /apps/web/node_modules/***',
+    'P /packages/contracts/node_modules/***',
+  ])
+
+  for (const file of files) {
+    const normalizedFile = normalizeGitPath(file)
+    const segments = normalizedFile.split('/')
+    let directory = ''
+
+    for (const segment of segments.slice(0, -1)) {
+      directory += `${segment}/`
+      rules.add(`+ /${escapeRsyncFilterPath(directory)}`)
+    }
+
+    rules.add(`+ /${escapeRsyncFilterPath(normalizedFile)}`)
+  }
+
+  return [...rules].sort().concat('- /***', '').join('\n')
+}
+
+function normalizeGitPath(file) {
+  if (
+    file.length === 0 ||
+    file.startsWith('/') ||
+    file.split('/').includes('..')
+  ) {
+    throw new Error(`Unexpected tracked file path: ${file}`)
+  }
+
+  return file
+}
+
+function escapeRsyncFilterPath(value) {
+  return value.replaceAll('\\', '\\\\').replace(/([*?[\]])/g, '\\$1')
 }
 
 function resolveCommand(command) {
