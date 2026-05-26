@@ -42,14 +42,27 @@ import {
   mapWorkspaceInvitationRecord,
   mapWorkspaceUserRecord,
 } from './session.repository.postgres.mappers.js'
+import {
+  countSharedWorkspaces,
+  createAdminUserQuery,
+  createReceivedWorkspaceInvitationQuery,
+  createSessionQuery,
+  createWorkspaceInvitationQuery,
+  createWorkspaceUserQuery,
+  findActorByEmail,
+  findActorById,
+  findReceivedWorkspaceInvitationById,
+  findSessionByActorId,
+  findWorkspaceInvitationById,
+  findWorkspaceMemberByUserId,
+  findWorkspaceUserByEmail,
+  findWorkspaceUserByMembershipId,
+  listSessionWorkspaces,
+} from './session.repository.postgres.queries.js'
 import type {
   AppActorRow,
-  ExistingWorkspaceMemberRow,
-  ReceivedWorkspaceInvitationRow,
   SessionRow,
-  WorkspaceInvitationRow,
   WorkspaceMembershipRow,
-  WorkspaceUserRow,
 } from './session.repository.postgres.rows.js'
 
 export class PostgresSessionRepository implements SessionRepository {
@@ -84,10 +97,7 @@ export class PostgresSessionRepository implements SessionRepository {
             context,
             authenticatedActor,
           )
-      const workspaces = await this.listSessionWorkspaces(
-        executor,
-        session.actorId,
-      )
+      const workspaces = await listSessionWorkspaces(executor, session.actorId)
 
       return this.mapSessionSnapshot(context, session, workspaces)
     })
@@ -98,7 +108,7 @@ export class PostgresSessionRepository implements SessionRepository {
     input: CreateSharedWorkspaceInput,
   ): Promise<SessionWorkspaceMembership> {
     return this.db.transaction().execute(async (trx) => {
-      const existingSharedWorkspaces = await this.countSharedWorkspaces(
+      const existingSharedWorkspaces = await countSharedWorkspaces(
         trx,
         session.actorUserId,
       )
@@ -237,10 +247,7 @@ export class PostgresSessionRepository implements SessionRepository {
   async listWorkspaceUsers(
     session: SessionSnapshot,
   ): Promise<WorkspaceUserRecord[]> {
-    const rows = await this.createWorkspaceUserQuery(
-      this.db,
-      session.workspaceId,
-    )
+    const rows = await createWorkspaceUserQuery(this.db, session.workspaceId)
       .orderBy(
         sql<number>`case
           when membership.role = 'owner' then 0
@@ -259,7 +266,7 @@ export class PostgresSessionRepository implements SessionRepository {
   async listWorkspaceInvitations(
     session: SessionSnapshot,
   ): Promise<WorkspaceInvitationRecord[]> {
-    const rows = await this.createWorkspaceInvitationQuery(
+    const rows = await createWorkspaceInvitationQuery(
       this.db,
       session.workspaceId,
     )
@@ -276,7 +283,7 @@ export class PostgresSessionRepository implements SessionRepository {
   ): Promise<WorkspaceInvitationRecord> {
     return this.db.transaction().execute(async (trx) => {
       const normalizedEmail = normalizeEmail(input.email)
-      const existingMember = await this.findWorkspaceUserByEmail(
+      const existingMember = await findWorkspaceUserByEmail(
         trx,
         session.workspaceId,
         normalizedEmail,
@@ -330,7 +337,7 @@ export class PostgresSessionRepository implements SessionRepository {
     groupRole: WorkspaceUserGroupRole,
   ): Promise<WorkspaceUserRecord> {
     return this.db.transaction().execute(async (trx) => {
-      const existingMember = await this.findWorkspaceUserByMembershipId(
+      const existingMember = await findWorkspaceUserByMembershipId(
         trx,
         session.workspaceId,
         membershipId,
@@ -368,7 +375,7 @@ export class PostgresSessionRepository implements SessionRepository {
         .where('deleted_at', 'is', null)
         .executeTakeFirst()
 
-      const updatedMember = await this.findWorkspaceUserByMembershipId(
+      const updatedMember = await findWorkspaceUserByMembershipId(
         trx,
         session.workspaceId,
         membershipId,
@@ -387,7 +394,7 @@ export class PostgresSessionRepository implements SessionRepository {
     membershipId: string,
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
-      const existingMember = await this.findWorkspaceUserByMembershipId(
+      const existingMember = await findWorkspaceUserByMembershipId(
         trx,
         session.workspaceId,
         membershipId,
@@ -432,7 +439,7 @@ export class PostgresSessionRepository implements SessionRepository {
     invitationId: string,
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
-      const existingInvitation = await this.findWorkspaceInvitationById(
+      const existingInvitation = await findWorkspaceInvitationById(
         trx,
         session.workspaceId,
         invitationId,
@@ -460,7 +467,7 @@ export class PostgresSessionRepository implements SessionRepository {
   async listReceivedWorkspaceInvitations(
     session: SessionSnapshot,
   ): Promise<ReceivedWorkspaceInvitationRecord[]> {
-    const rows = await this.createReceivedWorkspaceInvitationQuery(
+    const rows = await createReceivedWorkspaceInvitationQuery(
       this.db,
       session.actor.email,
     )
@@ -476,7 +483,7 @@ export class PostgresSessionRepository implements SessionRepository {
     invitationId: string,
   ): Promise<void> {
     await this.db.transaction().execute(async (trx) => {
-      const invitation = await this.findReceivedWorkspaceInvitationById(
+      const invitation = await findReceivedWorkspaceInvitationById(
         trx,
         session.actor.email,
         invitationId,
@@ -490,7 +497,7 @@ export class PostgresSessionRepository implements SessionRepository {
         )
       }
 
-      const existingMember = await this.findWorkspaceMemberByUserId(
+      const existingMember = await findWorkspaceMemberByUserId(
         trx,
         invitation.workspaceId,
         session.actorUserId,
@@ -570,7 +577,7 @@ export class PostgresSessionRepository implements SessionRepository {
       this.db,
       authContext,
       (executor) =>
-        this.createAdminUserQuery(executor)
+        createAdminUserQuery(executor)
           .orderBy(
             sql<number>`case when actor.app_role = 'owner' then 0 else 1 end`,
           )
@@ -593,7 +600,7 @@ export class PostgresSessionRepository implements SessionRepository {
       this.db,
       authContext,
       async (trx) => {
-        const currentUser = await this.createAdminUserQuery(trx)
+        const currentUser = await createAdminUserQuery(trx)
           .where('actor.id', '=', userId)
           .executeTakeFirst()
 
@@ -620,7 +627,7 @@ export class PostgresSessionRepository implements SessionRepository {
           .where('deleted_at', 'is', null)
           .executeTakeFirst()
 
-        const updatedUser = await this.createAdminUserQuery(trx)
+        const updatedUser = await createAdminUserQuery(trx)
           .where('actor.id', '=', userId)
           .executeTakeFirst()
 
@@ -764,235 +771,18 @@ export class PostgresSessionRepository implements SessionRepository {
     return mapUserProfileRecord(updatedProfile)
   }
 
-  private createBaseQuery(executor: DatabaseExecutor) {
-    return executor
-      .selectFrom('app.workspace_members as membership')
-      .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
-      .innerJoin(
-        'app.workspaces as workspace',
-        'workspace.id',
-        'membership.workspace_id',
-      )
-      .select([
-        'actor.avatar_url as actorAvatarUrl',
-        'actor.calendar_view_mode as calendarViewMode',
-        'actor.energy_mode as energyMode',
-        'actor.display_name as actorDisplayName',
-        'actor.email as actorEmail',
-        'actor.id as actorId',
-        'actor.app_role as appRole',
-        'membership.group_role as groupRole',
-        'membership.role as role',
-        'workspace.task_completion_confetti_enabled as taskCompletionConfettiEnabled',
-        'workspace.id as workspaceId',
-        'workspace.kind as workspaceKind',
-        'workspace.name as workspaceName',
-        'workspace.slug as workspaceSlug',
-      ])
-      .where('membership.deleted_at', 'is', null)
-      .where('actor.deleted_at', 'is', null)
-      .where('workspace.deleted_at', 'is', null)
-  }
-
-  private createAdminUserQuery(executor: DatabaseExecutor) {
-    return executor
-      .selectFrom('app.users as actor')
-      .select([
-        'actor.app_role as appRole',
-        'actor.display_name as displayName',
-        'actor.email as email',
-        'actor.id as id',
-        'actor.updated_at as updatedAt',
-        sql<unknown>`app.admin_user_last_seen_at(actor.id)`.as('lastSeenAt'),
-        sql<number>`app.admin_user_task_count(actor.id)`.as('taskCount'),
-      ])
-      .where('actor.deleted_at', 'is', null)
-  }
-
-  private createWorkspaceUserQuery(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-  ) {
-    return executor
-      .selectFrom('app.workspace_members as membership')
-      .innerJoin('app.users as actor', 'actor.id', 'membership.user_id')
-      .select([
-        'actor.display_name as displayName',
-        'actor.email as email',
-        'membership.group_role as groupRole',
-        'membership.joined_at as joinedAt',
-        'membership.id as membershipId',
-        'membership.updated_at as updatedAt',
-        'membership.user_id as userId',
-        'actor.id as id',
-        sql<boolean>`membership.role = 'owner'`.as('isOwner'),
-      ])
-      .where('membership.workspace_id', '=', workspaceId)
-      .where('membership.deleted_at', 'is', null)
-      .where('actor.deleted_at', 'is', null)
-  }
-
-  private createWorkspaceInvitationQuery(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-  ) {
-    return executor
-      .selectFrom('app.workspace_invitations as invitation')
-      .select([
-        'invitation.email as email',
-        'invitation.declined_at as declinedAt',
-        'invitation.group_role as groupRole',
-        'invitation.id as id',
-        'invitation.created_at as invitedAt',
-        'invitation.updated_at as updatedAt',
-      ])
-      .where('invitation.workspace_id', '=', workspaceId)
-      .where('invitation.accepted_at', 'is', null)
-      .where('invitation.deleted_at', 'is', null)
-  }
-
-  private createReceivedWorkspaceInvitationQuery(
-    executor: DatabaseExecutor,
-    email: string,
-  ) {
-    return executor
-      .selectFrom('app.workspace_invitations as invitation')
-      .innerJoin(
-        'app.workspaces as workspace',
-        'workspace.id',
-        'invitation.workspace_id',
-      )
-      .select([
-        'invitation.group_role as groupRole',
-        'invitation.id as id',
-        'invitation.invited_by as invitedBy',
-        'invitation.created_at as invitedAt',
-        'invitation.updated_at as updatedAt',
-        'workspace.id as workspaceId',
-        'workspace.kind as workspaceKind',
-        'workspace.name as workspaceName',
-        'workspace.slug as workspaceSlug',
-      ])
-      .where('invitation.email', '=', email)
-      .where('invitation.accepted_at', 'is', null)
-      .where('invitation.declined_at', 'is', null)
-      .where('invitation.deleted_at', 'is', null)
-      .where('workspace.kind', '=', 'shared')
-      .where('workspace.deleted_at', 'is', null)
-  }
-
-  private findWorkspaceUserByMembershipId(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    membershipId: string,
-  ): Promise<WorkspaceUserRow | undefined> {
-    return this.createWorkspaceUserQuery(executor, workspaceId)
-      .where('membership.id', '=', membershipId)
-      .executeTakeFirst()
-  }
-
-  private findWorkspaceUserByEmail(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    email: string,
-  ): Promise<WorkspaceUserRow | undefined> {
-    return this.createWorkspaceUserQuery(executor, workspaceId)
-      .where('actor.email', '=', email)
-      .executeTakeFirst()
-  }
-
-  private findWorkspaceInvitationById(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    invitationId: string,
-  ): Promise<WorkspaceInvitationRow | undefined> {
-    return this.createWorkspaceInvitationQuery(executor, workspaceId)
-      .where('invitation.id', '=', invitationId)
-      .executeTakeFirst()
-  }
-
-  private findReceivedWorkspaceInvitationById(
-    executor: DatabaseExecutor,
-    email: string,
-    invitationId: string,
-  ): Promise<ReceivedWorkspaceInvitationRow | undefined> {
-    return this.createReceivedWorkspaceInvitationQuery(executor, email)
-      .where('invitation.id', '=', invitationId)
-      .executeTakeFirst()
-  }
-
-  private findWorkspaceMemberByUserId(
-    executor: DatabaseExecutor,
-    workspaceId: string,
-    userId: string,
-  ): Promise<ExistingWorkspaceMemberRow | undefined> {
-    return executor
-      .selectFrom('app.workspace_members')
-      .select(['deleted_at as deletedAt', 'id', 'role'])
-      .where('workspace_id', '=', workspaceId)
-      .where('user_id', '=', userId)
-      .executeTakeFirst()
-  }
-
-  private listSessionWorkspaces(
-    executor: DatabaseExecutor,
-    actorUserId: string,
-  ): Promise<WorkspaceMembershipRow[]> {
-    return executor
-      .selectFrom('app.workspace_members as membership')
-      .innerJoin(
-        'app.workspaces as workspace',
-        'workspace.id',
-        'membership.workspace_id',
-      )
-      .select([
-        'membership.group_role as groupRole',
-        'membership.role as role',
-        'workspace.id as id',
-        'workspace.kind as kind',
-        'workspace.name as name',
-        'workspace.slug as slug',
-      ])
-      .where('membership.user_id', '=', actorUserId)
-      .where('membership.deleted_at', 'is', null)
-      .where('workspace.deleted_at', 'is', null)
-      .orderBy('workspace.created_at', 'asc')
-      .execute()
-  }
-
   private async loadSessionWorkspacesWithRetry(
     actorUserId: string,
   ): Promise<WorkspaceMembershipRow[]> {
     try {
-      return await this.listSessionWorkspaces(this.db, actorUserId)
+      return await listSessionWorkspaces(this.db, actorUserId)
     } catch (error) {
       if (!isTransientDatabaseError(error)) {
         throw error
       }
 
-      return this.listSessionWorkspaces(this.db, actorUserId)
+      return listSessionWorkspaces(this.db, actorUserId)
     }
-  }
-
-  private async countSharedWorkspaces(
-    executor: DatabaseExecutor,
-    actorUserId: string,
-  ): Promise<number> {
-    const row = await executor
-      .selectFrom('app.workspace_members as membership')
-      .innerJoin(
-        'app.workspaces as workspace',
-        'workspace.id',
-        'membership.workspace_id',
-      )
-      .select(({ fn }) => fn.countAll<number>().as('total'))
-      .where('membership.user_id', '=', actorUserId)
-      .where('membership.deleted_at', 'is', null)
-      .where('workspace.kind', '=', 'shared')
-      .where('workspace.deleted_at', 'is', null)
-      .executeTakeFirst()
-
-    return Number(row?.total ?? 0)
   }
 
   private async resolveDefaultSession(
@@ -1002,8 +792,8 @@ export class PostgresSessionRepository implements SessionRepository {
   ): Promise<SessionRow> {
     const actorUserId = authenticatedActor?.id ?? context.actorUserId
     const session = actorUserId
-      ? await this.findSessionByActorId(executor, actorUserId)
-      : await this.createSessionQuery(executor).executeTakeFirst()
+      ? await findSessionByActorId(executor, actorUserId)
+      : await createSessionQuery(executor).executeTakeFirst()
 
     if (!session) {
       throw new HttpError(
@@ -1024,7 +814,7 @@ export class PostgresSessionRepository implements SessionRepository {
     const workspaceId = context.workspaceId ?? ''
     const actorUserId = authenticatedActor?.id ?? context.actorUserId
     const session = actorUserId
-      ? await this.findSessionByActorId(executor, actorUserId, workspaceId)
+      ? await findSessionByActorId(executor, actorUserId, workspaceId)
       : undefined
 
     if (!session) {
@@ -1050,7 +840,7 @@ export class PostgresSessionRepository implements SessionRepository {
       authContext,
       requestedWorkspaceId,
     )
-    const existingSession = await this.findSessionByActorId(executor, actor.id)
+    const existingSession = await findSessionByActorId(executor, actor.id)
 
     if (!existingSession && !requestedWorkspaceId) {
       await this.provisionPersonalWorkspace(executor, actor, 'owner')
@@ -1059,82 +849,14 @@ export class PostgresSessionRepository implements SessionRepository {
     return actor
   }
 
-  private findSessionByActorId(
-    executor: DatabaseExecutor,
-    actorUserId: string,
-    workspaceId?: string,
-  ) {
-    return this.createSessionQuery(executor, workspaceId)
-      .where('actor.id', '=', actorUserId)
-      .executeTakeFirst()
-  }
-
-  private createSessionQuery(executor: DatabaseExecutor, workspaceId?: string) {
-    let query = this.createBaseQuery(executor)
-
-    if (workspaceId) {
-      query = query.where('workspace.id', '=', workspaceId)
-    } else {
-      query = query
-        .orderBy('workspace.created_at', 'asc')
-        .orderBy('membership.joined_at', 'asc')
-    }
-
-    return query
-  }
-
-  private findActorById(
-    executor: DatabaseExecutor,
-    actorUserId: string,
-  ): Promise<AppActorRow | undefined> {
-    return executor
-      .selectFrom('app.users')
-      .select([
-        'app_role as appRole',
-        'avatar_url as avatarUrl',
-        'calendar_view_mode as calendarViewMode',
-        'energy_mode as energyMode',
-        'display_name as displayName',
-        'email',
-        'id',
-        'locale',
-        'timezone',
-      ])
-      .where('deleted_at', 'is', null)
-      .where('id', '=', actorUserId)
-      .executeTakeFirst()
-  }
-
-  private findActorByEmail(
-    executor: DatabaseExecutor,
-    email: string,
-  ): Promise<AppActorRow | undefined> {
-    return executor
-      .selectFrom('app.users')
-      .select([
-        'app_role as appRole',
-        'avatar_url as avatarUrl',
-        'calendar_view_mode as calendarViewMode',
-        'energy_mode as energyMode',
-        'display_name as displayName',
-        'email',
-        'id',
-        'locale',
-        'timezone',
-      ])
-      .where('deleted_at', 'is', null)
-      .where('email', '=', email)
-      .executeTakeFirst()
-  }
-
   private async ensureAuthenticatedActor(
     executor: DatabaseExecutor,
     authContext: AuthenticatedRequestContext,
     requestedWorkspaceId?: string,
   ): Promise<AppActorRow> {
-    const authActor = await this.findActorById(executor, authContext.claims.sub)
+    const authActor = await findActorById(executor, authContext.claims.sub)
     const authEmail = this.resolveAuthEmail(authContext)
-    const emailActor = await this.findActorByEmail(executor, authEmail)
+    const emailActor = await findActorByEmail(executor, authEmail)
 
     if (authActor && emailActor && emailActor.id !== authActor.id) {
       const preferredActor = await this.selectPreferredAuthenticatedActor(
@@ -1215,7 +937,7 @@ export class PostgresSessionRepository implements SessionRepository {
     workspaceId: string,
   ): Promise<boolean> {
     return Boolean(
-      await this.findSessionByActorId(executor, actorUserId, workspaceId),
+      await findSessionByActorId(executor, actorUserId, workspaceId),
     )
   }
 
@@ -1223,7 +945,7 @@ export class PostgresSessionRepository implements SessionRepository {
     executor: DatabaseExecutor,
     actorUserId: string,
   ): Promise<boolean> {
-    return Boolean(await this.findSessionByActorId(executor, actorUserId))
+    return Boolean(await findSessionByActorId(executor, actorUserId))
   }
 
   private async syncAuthenticatedActorProfile(
@@ -1339,7 +1061,7 @@ export class PostgresSessionRepository implements SessionRepository {
       return insertedActor
     }
 
-    const existingActor = await this.findActorById(executor, actor.id)
+    const existingActor = await findActorById(executor, actor.id)
 
     if (!existingActor) {
       throw new Error(
