@@ -9,6 +9,7 @@ import {
   usePlannerSession,
   UserAvatar,
   useSessionAuth,
+  WorkspaceParticipantsDialog,
 } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
@@ -37,6 +38,9 @@ export function MorePage() {
   const [createWorkspaceError, setCreateWorkspaceError] = useState<
     string | null
   >(null)
+  const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
+    useState(false)
+  const isSharedWorkspace = session?.workspace.kind === 'shared'
   const isPersonalWorkspace = session?.workspace.kind === 'personal'
   const isProfileVisible = Boolean(session && isPersonalWorkspace)
   const isAdminVisible =
@@ -224,6 +228,19 @@ export function MorePage() {
             {createWorkspaceError ? (
               <p className={styles.workspaceError}>{createWorkspaceError}</p>
             ) : null}
+
+            {isSharedWorkspace ? (
+              <button
+                className={styles.createWorkspaceButton}
+                type="button"
+                onClick={() => {
+                  setIsWorkspaceParticipantsOpen(true)
+                }}
+              >
+                <UserIcon size={18} strokeWidth={2.1} />
+                <span>Участники</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -270,6 +287,15 @@ export function MorePage() {
         >
           Выйти
         </button>
+      ) : null}
+
+      {isWorkspaceParticipantsOpen && isSharedWorkspace ? (
+        <WorkspaceParticipantsDialog
+          isOpen={isWorkspaceParticipantsOpen}
+          onClose={() => {
+            setIsWorkspaceParticipantsOpen(false)
+          }}
+        />
       ) : null}
 
       <section className={styles.controlList} aria-label="Настройки">

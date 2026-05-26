@@ -78,6 +78,26 @@ try {
 
   assertSchemaProperties(document, 'NewTaskInput', ['resource', 'sphereId'])
   assertSchemaProperties(document, 'Task', ['resource', 'sphereId'])
+  assertSchemaProperties(document, 'CleaningTaskRecord', [
+    'frequencyType',
+    'workspaceId',
+    'zoneId',
+  ])
+  assertSchemaProperties(document, 'CleaningTodayResponse', [
+    'items',
+    'summary',
+    'zones',
+  ])
+  assertSchemaProperties(document, 'CleaningZoneRecord', [
+    'dayOfWeek',
+    'title',
+    'workspaceId',
+  ])
+  assertSchemaProperties(document, 'NewCleaningTaskInput', ['title', 'zoneId'])
+  assertSchemaProperties(document, 'NewCleaningZoneInput', [
+    'dayOfWeek',
+    'title',
+  ])
 
   const missingOpenApiRoutes = registeredRoutes
     .map((route) => routeKey(route.method, route.path))

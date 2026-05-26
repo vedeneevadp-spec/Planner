@@ -36,6 +36,12 @@ import {
   upsertHabitInTodayResponse,
 } from './habit-projection-model'
 import {
+  habitOfflineStatusQueryKey,
+  habitsQueryKey,
+  habitStatsQueryKey,
+  habitsTodayQueryKey,
+} from './habit-query-keys'
+import {
   createHabitsApiClient,
   type HabitsApiClient,
   HabitsApiError,
@@ -90,22 +96,6 @@ let habitDrainPromise: {
   promise: Promise<HabitOfflineDrainResult>
   workspaceId: string
 } | null = null
-
-function habitsQueryKey(workspaceId: string) {
-  return ['habits', workspaceId] as const
-}
-
-function habitsTodayQueryKey(workspaceId: string, date: string) {
-  return ['habits', workspaceId, 'today', date] as const
-}
-
-function habitStatsQueryKey(workspaceId: string, from: string, to: string) {
-  return ['habits', workspaceId, 'stats', from, to] as const
-}
-
-function habitOfflineStatusQueryKey(workspaceId: string) {
-  return ['habits', workspaceId, 'offline-status'] as const
-}
 
 export function useHabits(options: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient()

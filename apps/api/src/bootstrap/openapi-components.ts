@@ -1,5 +1,6 @@
 import type { OpenAPIV3 } from 'openapi-types'
 
+import { createCleaningContractSchemas } from './openapi-contract-schemas.js'
 import {
   genericJsonArraySchema,
   genericJsonObjectSchema,
@@ -103,14 +104,7 @@ export function createComponentSchemas(): Record<
     ChaosInboxItemRecord: genericJsonObjectSchema(),
     ChaosInboxItemUpdateInput: genericJsonObjectSchema(),
     ChaosInboxListRecordResponse: genericJsonObjectSchema(),
-    CleaningListResponse: genericJsonObjectSchema(),
-    CleaningTaskActionInput: genericJsonObjectSchema(),
-    CleaningTaskActionResponse: genericJsonObjectSchema(),
-    CleaningTaskRecord: genericJsonObjectSchema(),
-    CleaningTaskUpdateInput: genericJsonObjectSchema(),
-    CleaningTodayResponse: genericJsonObjectSchema(),
-    CleaningZoneRecord: genericJsonObjectSchema(),
-    CleaningZoneUpdateInput: genericJsonObjectSchema(),
+    ...createCleaningContractSchemas(),
     CreateChaosInboxItemsInput: genericJsonObjectSchema(),
     DailyPlanAutoBuildInput: genericJsonObjectSchema(),
     DailyPlanRecord: genericJsonObjectSchema(),
@@ -144,8 +138,6 @@ export function createComponentSchemas(): Record<
     LifeSphereListResponse: genericJsonArraySchema('LifeSphereRecord'),
     LifeSphereRecord: genericJsonObjectSchema(),
     LifeSphereUpdateInput: genericJsonObjectSchema(),
-    NewCleaningTaskInput: genericJsonObjectSchema(),
-    NewCleaningZoneInput: genericJsonObjectSchema(),
     NewHabitInput: genericJsonObjectSchema(),
     NewLifeSphereInput: genericJsonObjectSchema(),
     PushDeviceRecord: genericJsonObjectSchema(),

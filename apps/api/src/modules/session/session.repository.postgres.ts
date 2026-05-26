@@ -11,8 +11,6 @@ import {
   type UpdateSharedWorkspaceInput,
   type UpdateUserProfileInput,
   type UserProfile,
-  type WorkspaceGroupRole,
-  type WorkspaceKind,
   type WorkspaceRole,
 } from '@planner/contracts'
 import { type Kysely, sql } from 'kysely'
@@ -37,101 +35,17 @@ import type {
   WorkspaceUserRecord,
 } from './session.model.js'
 import type { SessionRepository } from './session.repository.js'
-
-interface SessionRow {
-  actorAvatarUrl: string | null
-  calendarViewMode: CalendarViewMode
-  energyMode: EnergyMode
-  actorDisplayName: string
-  actorEmail: string
-  actorId: string
-  appRole: AppRole
-  groupRole: WorkspaceGroupRole | null
-  role: WorkspaceRole
-  taskCompletionConfettiEnabled: boolean
-  workspaceId: string
-  workspaceKind: WorkspaceKind
-  workspaceName: string
-  workspaceSlug: string
-}
-
-interface AdminUserRow {
-  appRole: AppRole
-  displayName: string
-  email: string
-  id: string
-  lastSeenAt: unknown
-  taskCount: number
-  updatedAt: unknown
-}
-
-interface WorkspaceMembershipRow {
-  groupRole: WorkspaceGroupRole | null
-  id: string
-  kind: WorkspaceKind
-  name: string
-  role: WorkspaceRole
-  slug: string
-}
-
-interface WorkspaceUserRow {
-  displayName: string
-  email: string
-  groupRole: WorkspaceGroupRole | null
-  id: string
-  isOwner: boolean
-  joinedAt: unknown
-  membershipId: string
-  updatedAt: unknown
-  userId: string
-}
-
-interface WorkspaceInvitationRow {
-  declinedAt: unknown
-  email: string
-  groupRole: WorkspaceGroupRole
-  id: string
-  invitedAt: unknown
-  updatedAt: unknown
-}
-
-interface ReceivedWorkspaceInvitationRow {
-  groupRole: WorkspaceGroupRole
-  id: string
-  invitedBy: string | null
-  invitedAt: unknown
-  updatedAt: unknown
-  workspaceId: string
-  workspaceKind: WorkspaceKind
-  workspaceName: string
-  workspaceSlug: string
-}
-
-interface UserProfileRow {
-  avatarUrl: string | null
-  displayName: string
-  email: string
-  id: string
-  updatedAt: unknown
-}
-
-interface ExistingWorkspaceMemberRow {
-  deletedAt: string | null
-  id: string
-  role: WorkspaceRole
-}
-
-interface AppActorRow {
-  appRole: AppRole
-  avatarUrl: string | null
-  calendarViewMode: CalendarViewMode
-  energyMode: EnergyMode
-  displayName: string
-  email: string
-  id: string
-  locale: string
-  timezone: string
-}
+import type {
+  AdminUserRow,
+  AppActorRow,
+  ExistingWorkspaceMemberRow,
+  ReceivedWorkspaceInvitationRow,
+  SessionRow,
+  UserProfileRow,
+  WorkspaceInvitationRow,
+  WorkspaceMembershipRow,
+  WorkspaceUserRow,
+} from './session.repository.postgres.rows.js'
 
 export class PostgresSessionRepository implements SessionRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}

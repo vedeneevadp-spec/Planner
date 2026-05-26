@@ -30,7 +30,9 @@ async function registerUser({
   await page.getByLabel('Подтвердите пароль').fill(password)
   await page.getByRole('button', { name: 'Создать аккаунт' }).click()
 
-  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Создать задачу' }),
+  ).toBeVisible()
 }
 
 async function expectComposerLayout(page: Page) {
@@ -67,10 +69,20 @@ async function expectComposerLayout(page: Page) {
   )
 }
 
+async function openTaskComposer(page: Page) {
+  await page
+    .getByRole('button', { exact: true, name: 'Создать задачу' })
+    .or(page.getByRole('button', { exact: true, name: 'Новая задача' }))
+    .first()
+    .click()
+}
+
 async function openWorkspaceActions(page: Page) {
   const workspaceActionsButton = page.getByRole('button', {
     name: 'Действия с workspace',
   })
+
+  await expect(workspaceActionsButton).toBeVisible()
 
   if ((await workspaceActionsButton.getAttribute('aria-expanded')) !== 'true') {
     await workspaceActionsButton.click()
@@ -88,7 +100,7 @@ test('registers a user and creates a task through the app shell', async ({
 
   await registerUser({ ...user, page })
 
-  await page.getByRole('button', { name: 'Новая задача' }).click()
+  await openTaskComposer(page)
   const createTaskDialog = page.getByRole('dialog', { name: 'Новая задача' })
 
   await createTaskDialog
@@ -146,7 +158,7 @@ test('keeps task composer field layout stable on desktop and mobile', async ({
   ]) {
     await page.setViewportSize(viewport)
     await page.goto('/timeline')
-    await page.getByRole('button', { name: 'Новая задача' }).click()
+    await openTaskComposer(page)
     await expectComposerLayout(page)
     await page.getByRole('button', { exact: true, name: 'Закрыть' }).click()
     await expect(
@@ -165,7 +177,9 @@ test('keeps auth after reload and exposes password reset after failed sign-in', 
   await registerUser({ ...user, page })
 
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Создать задачу' }),
+  ).toBeVisible()
 
   page.once('dialog', async (dialog) => {
     expect(dialog.message()).toBe(
@@ -173,6 +187,7 @@ test('keeps auth after reload and exposes password reset after failed sign-in', 
     )
     await dialog.accept()
   })
+  await page.goto('/more')
   await page.getByRole('button', { name: 'Выйти' }).click()
   await expect(page.getByRole('tab', { name: 'Вход' })).toBeVisible()
 
@@ -199,6 +214,7 @@ test('creates a shared workspace and opens participant management', async ({
 
   await registerUser({ ...user, page })
 
+  await page.goto('/more')
   await openWorkspaceActions(page)
   await page.getByRole('button', { name: 'Создать пространство' }).click()
   await page.getByLabel('Название').fill(workspaceName)
