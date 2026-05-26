@@ -19,8 +19,12 @@ import {
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
+import { recordClientEvent } from '@/shared/lib/observability'
 
 export type AuthTokenTransport = 'body' | 'cookie'
+
+const AUTH_NETWORK_RETRY_DELAY_MS = 750
+const AUTH_NETWORK_REQUEST_ATTEMPTS = 2
 
 export interface AuthRequestOptions {
   deviceId?: string | undefined
@@ -124,8 +128,9 @@ export async function updatePassword(
   accessToken: string,
   options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(
-    new URL('/api/v1/auth/password', plannerApiConfig.apiBaseUrl),
+  const path = '/api/v1/auth/password'
+  const response = await fetchAuth(
+    new URL(path, plannerApiConfig.apiBaseUrl),
     {
       body: JSON.stringify(authPasswordUpdateInputSchema.parse(input)),
       credentials: 'include',
@@ -135,6 +140,7 @@ export async function updatePassword(
       },
       method: 'PATCH',
     },
+    { path },
   )
   const payload = await readResponsePayload(response)
 
@@ -150,12 +156,16 @@ async function postAuthJson<TInput>(
   input: TInput,
   options: AuthRequestOptions = {},
 ): Promise<AuthTokenResponse> {
-  const response = await fetch(new URL(path, plannerApiConfig.apiBaseUrl), {
-    body: JSON.stringify(input),
-    credentials: 'include',
-    headers: createAuthHeaders(options),
-    method: 'POST',
-  })
+  const response = await fetchAuth(
+    new URL(path, plannerApiConfig.apiBaseUrl),
+    {
+      body: JSON.stringify(input),
+      credentials: 'include',
+      headers: createAuthHeaders(options),
+      method: 'POST',
+    },
+    { path },
+  )
   const payload = await readResponsePayload(response)
 
   if (!response.ok) {
@@ -170,12 +180,16 @@ async function postAuthNoContent<TInput>(
   input: TInput,
   options: AuthRequestOptions = {},
 ): Promise<void> {
-  const response = await fetch(new URL(path, plannerApiConfig.apiBaseUrl), {
-    body: JSON.stringify(input),
-    credentials: 'include',
-    headers: createAuthHeaders(options),
-    method: 'POST',
-  })
+  const response = await fetchAuth(
+    new URL(path, plannerApiConfig.apiBaseUrl),
+    {
+      body: JSON.stringify(input),
+      credentials: 'include',
+      headers: createAuthHeaders(options),
+      method: 'POST',
+    },
+    { path },
+  )
   const payload = await readResponsePayload(response)
 
   if (!response.ok) {
@@ -201,6 +215,80 @@ function createAuthHeaders(options: AuthRequestOptions): HeadersInit {
   }
 
   return headers
+}
+
+async function fetchAuth(
+  url: URL,
+  init: RequestInit,
+  context: {
+    path: string
+  },
+): Promise<Response> {
+  let attempt = 1
+
+  while (true) {
+    try {
+      return await fetch(url, init)
+    } catch (error) {
+      if (
+        attempt >= AUTH_NETWORK_REQUEST_ATTEMPTS ||
+        !isRetryableAuthNetworkError(error)
+      ) {
+        recordAuthNetworkFailure(error, context, attempt)
+        throw error
+      }
+
+      attempt += 1
+      await delay(AUTH_NETWORK_RETRY_DELAY_MS)
+    }
+  }
+}
+
+function isRetryableAuthNetworkError(error: unknown): boolean {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return true
+  }
+
+  if (error instanceof TypeError) {
+    return true
+  }
+
+  if (error instanceof Error) {
+    return /failed to fetch|load failed|network|timeout/i.test(error.message)
+  }
+
+  return false
+}
+
+function recordAuthNetworkFailure(
+  error: unknown,
+  context: {
+    path: string
+  },
+  attempts: number,
+): void {
+  const origin =
+    typeof window === 'undefined' ? 'server' : window.location.origin
+  const apiHost = new URL(plannerApiConfig.apiBaseUrl).host
+
+  recordClientEvent(
+    'auth_request_failed',
+    {
+      apiHost,
+      attempts,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorName: error instanceof Error ? error.name : typeof error,
+      origin,
+      path: context.path,
+    },
+    { level: 'error' },
+  )
+}
+
+function delay(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, delayMs)
+  })
 }
 
 function throwAuthApiError(

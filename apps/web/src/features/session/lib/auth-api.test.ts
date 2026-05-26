@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { readClientEvents } from '@/shared/lib/observability'
+
 import {
   refreshAuthSession,
   signInWithPassword,
@@ -9,7 +11,9 @@ import {
 
 describe('auth-api', () => {
   afterEach(() => {
+    window.__CHAOTIKA_DIAGNOSTICS__?.clear()
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('uses cookie refresh transport for browser auth requests', async () => {
@@ -159,6 +163,71 @@ describe('auth-api', () => {
         method: 'PATCH',
       }),
     )
+  })
+
+  it('retries auth requests once after a retryable network failure', async () => {
+    vi.useFakeTimers()
+
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          accessToken: 'access-token',
+          expiresAt: '2026-04-20T09:00:00.000Z',
+          user: {
+            email: 'web@example.test',
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const responsePromise = signInWithPassword({
+      email: 'web@example.test',
+      password: 'password',
+    })
+
+    await vi.advanceTimersByTimeAsync(750)
+
+    await expect(responsePromise).resolves.toMatchObject({
+      accessToken: 'access-token',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('records diagnostics when auth network requests keep failing', async () => {
+    vi.useFakeTimers()
+
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValue(new TypeError('Failed to fetch'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const responsePromise = signInWithPassword({
+      email: 'web@example.test',
+      password: 'password',
+    }).catch((error: unknown) => error)
+
+    await vi.advanceTimersByTimeAsync(750)
+    expect(await responsePromise).toEqual(new TypeError('Failed to fetch'))
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const event = readClientEvents().find(
+      (event) => event.name === 'auth_request_failed',
+    )
+
+    expect(event).toMatchObject({
+      level: 'error',
+      name: 'auth_request_failed',
+    })
+    expect(event?.details).toMatchObject({
+      apiHost: '127.0.0.1:3001',
+      attempts: 2,
+      errorMessage: 'Failed to fetch',
+      errorName: 'TypeError',
+      path: '/api/v1/auth/sign-in',
+    })
   })
 })
 

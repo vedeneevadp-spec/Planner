@@ -100,6 +100,12 @@ describe('auth form helpers', () => {
       getFriendlyAuthErrorMessage(new Error('rate limit exceeded'), 'recover'),
     ).toBe('Слишком много попыток. Попробуйте чуть позже.')
 
+    expect(
+      getFriendlyAuthErrorMessage(new TypeError('Failed to fetch'), 'login'),
+    ).toBe(
+      'Не удалось связаться с сервером. Проверьте интернет или VPN и попробуйте еще раз.',
+    )
+
     expect(getFriendlyAuthErrorMessage(new Error('unknown'), 'register')).toBe(
       'Не удалось создать аккаунт. Попробуйте еще раз.',
     )

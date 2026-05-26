@@ -1,5 +1,6 @@
 export type ClientDiagnosticEventName =
   | 'auth_device_session_kept'
+  | 'auth_request_failed'
   | 'auth_refresh_deferred'
   | 'auth_session_cleared'
   | 'offline_mutation_conflicted'

@@ -120,7 +120,7 @@ export function getFriendlyAuthErrorMessage(
   }
 
   if (message.includes('network') || message.includes('fetch')) {
-    return 'Не удалось связаться с сервером. Попробуйте еще раз.'
+    return 'Не удалось связаться с сервером. Проверьте интернет или VPN и попробуйте еще раз.'
   }
 
   if (screenMode === 'register') {

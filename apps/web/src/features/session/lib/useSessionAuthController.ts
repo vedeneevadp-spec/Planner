@@ -58,12 +58,18 @@ import {
   getLastActorUserId,
 } from './workspace-selection'
 
+const DEFERRED_REFRESH_RETRY_DELAYS_MS = [5_000, 15_000, 60_000, 5 * 60_000]
+
 export function useSessionAuthController(): SessionAuthState {
   const isAuthEnabled = plannerApiConfig.authProvider === 'planner'
   const isNativeSessionRuntime = isNativeSessionPersistenceRuntime()
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const blockedNativeRefreshTokenRef = useRef<string | null>(null)
+  const deferredRefreshRetryCountRef = useRef(0)
   const nativeAuthDeviceIdRef = useRef<Promise<string | null> | null>(null)
+  const recoverSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
+    Promise.resolve('signed_out'),
+  )
   const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
   const restoreSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
@@ -88,6 +94,24 @@ export function useSessionAuthController(): SessionAuthState {
     window.clearTimeout(refreshTimerRef.current)
     refreshTimerRef.current = null
   }, [])
+
+  useEffect(() => clearRefreshTimer, [clearRefreshTimer])
+
+  const scheduleDeferredRefreshRetry = useCallback(() => {
+    clearRefreshTimer()
+
+    const retryIndex = Math.min(
+      deferredRefreshRetryCountRef.current,
+      DEFERRED_REFRESH_RETRY_DELAYS_MS.length - 1,
+    )
+    const delayMs = DEFERRED_REFRESH_RETRY_DELAYS_MS[retryIndex] ?? 5_000
+
+    deferredRefreshRetryCountRef.current += 1
+    refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null
+      void recoverSessionRef.current()
+    }, delayMs)
+  }, [clearRefreshTimer])
 
   const resolveNativeAuthDeviceId = useCallback(async (): Promise<
     string | null
@@ -139,6 +163,9 @@ export function useSessionAuthController(): SessionAuthState {
         id: string
       }
     }): Promise<void> => {
+      deferredRefreshRetryCountRef.current = 0
+      clearRefreshTimer()
+
       const storedSession = toStoredAuthSession(session, {
         includeRefreshToken: isNativeSessionRuntime,
       })
@@ -154,7 +181,7 @@ export function useSessionAuthController(): SessionAuthState {
         type: 'auth.session_restored',
       })
     },
-    [isNativeSessionRuntime],
+    [clearRefreshTimer, isNativeSessionRuntime],
   )
 
   const clearAuthSession = useCallback(
@@ -165,6 +192,7 @@ export function useSessionAuthController(): SessionAuthState {
         : undefined
 
       clearRefreshTimer()
+      deferredRefreshRetryCountRef.current = 0
       await unregisterStoredNativePushDevice({
         accessToken: snapshot.sessionAccessToken,
         actorUserId,
@@ -256,9 +284,15 @@ export function useSessionAuthController(): SessionAuthState {
         { level: 'warn' },
       )
 
+      if (command.reason === 'retryable_refresh_error') {
+        scheduleDeferredRefreshRetry()
+      } else {
+        deferredRefreshRetryCountRef.current = 0
+      }
+
       return command.result
     },
-    [isNativeSessionRuntime],
+    [isNativeSessionRuntime, scheduleDeferredRefreshRetry],
   )
 
   const recoverSession =
@@ -391,6 +425,8 @@ export function useSessionAuthController(): SessionAuthState {
       persistAuthSession,
       snapshot.refreshToken,
     ])
+
+  recoverSessionRef.current = recoverSession
 
   const restoreSession =
     useCallback(async (): Promise<SessionRecoveryResult> => {
@@ -549,6 +585,7 @@ export function useSessionAuthController(): SessionAuthState {
     }
 
     refreshTimerRef.current = window.setTimeout(() => {
+      refreshTimerRef.current = null
       void recoverSession()
     }, command.delayMs)
 

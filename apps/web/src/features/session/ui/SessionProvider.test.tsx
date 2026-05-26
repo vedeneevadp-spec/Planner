@@ -102,6 +102,7 @@ describe('SessionProvider', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
   })
 
   beforeEach(() => {
@@ -228,6 +229,52 @@ describe('SessionProvider', () => {
       )
       expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
     })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+  })
+
+  it('retries deferred native refresh automatically after a retryable error', async () => {
+    vi.useFakeTimers()
+
+    const refreshedSession = createTokenResponse()
+
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createExpiredStoredSession(),
+    )
+    authApiMocks.refreshAuthSession
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce(refreshedSession)
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await flushAsyncWork()
+
+    expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('auth-email')).toHaveTextContent(
+      'mobile@example.com',
+    )
+    expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+    await flushAsyncWork()
+
+    expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(2)
+    expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalledWith({
+      accessToken: 'new-access-token',
+      email: 'mobile@example.com',
+      expiresAt: refreshedSession.expiresAt,
+      refreshToken: 'new-refresh-token',
+      userId: 'user-1',
+    })
+    expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+      'new-access-token',
+    )
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
   })
@@ -547,6 +594,14 @@ function AuthSnapshotProbe() {
       <output data-testid="auth-session-version">{auth.sessionVersion}</output>
     </>
   )
+}
+
+async function flushAsyncWork(): Promise<void> {
+  await act(async () => {
+    for (let index = 0; index < 10; index += 1) {
+      await Promise.resolve()
+    }
+  })
 }
 
 function createExpiredStoredSession(): StoredAuthSession {
