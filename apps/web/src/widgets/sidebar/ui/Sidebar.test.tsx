@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ThemeProvider } from '@/shared/lib/theme'
 
-import plannerTabStyles from './PlannerTabs.module.css'
 import { Sidebar } from './Sidebar'
 
 type WorkspaceKind = 'personal' | 'shared'
@@ -345,14 +344,6 @@ function NativeBackButton() {
   )
 }
 
-function requireClassName(className: string | undefined): string {
-  if (!className) {
-    throw new Error('Expected CSS module class to be available.')
-  }
-
-  return className
-}
-
 function openMobileMoreSheet() {
   fireEvent.click(screen.getByRole('button', { name: 'Ещё' }))
 
@@ -587,7 +578,7 @@ describe('Sidebar', () => {
     ).toHaveAttribute('href', '/more')
   })
 
-  it('shows cleaning zone settings as a separated service side tab on cleaning', () => {
+  it('keeps cleaning zone settings out of service side tabs on cleaning', () => {
     renderSidebar(createSession('personal'), {
       initialEntries: ['/cleaning'],
       navigationMode: 'service',
@@ -596,14 +587,12 @@ describe('Sidebar', () => {
     const plannerNavigation = screen.getByRole('navigation', {
       name: 'Разделы планера',
     })
-    const settingsLink = within(plannerNavigation).getByRole('link', {
-      name: 'Настройки зон',
-    })
 
-    expect(settingsLink).toHaveAttribute('href', '/cleaning/settings')
-    expect(settingsLink).toHaveClass(
-      requireClassName(plannerTabStyles.sideCleaningSettingsTab),
-    )
+    expect(
+      within(plannerNavigation).queryByRole('link', {
+        name: 'Настройки зон',
+      }),
+    ).not.toBeInTheDocument()
   })
 
   it('hides desktop workspace actions behind the settings button', () => {

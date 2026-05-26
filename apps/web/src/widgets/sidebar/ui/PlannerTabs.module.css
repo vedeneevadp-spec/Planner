@@ -108,7 +108,7 @@
   display: none;
 }
 
-.sideCleaningSettingsTab {
+.sideFloatingActionTab {
   display: none;
 }
 
@@ -501,6 +501,27 @@
     display: grid;
   }
 
+  .sideFloatingActionTab {
+    position: fixed;
+    right: calc(
+      var(--planner-shell-inline-padding, 0px) + var(--safe-area-right) + 3px
+    );
+    bottom: calc(1.65rem + var(--safe-area-bottom));
+    z-index: 14;
+    display: grid;
+    width: calc(var(--planner-side-tabs-width, 48px) - 3px);
+    min-height: 44px;
+    padding: 0.46rem 0.28rem;
+    transform: none;
+    box-shadow:
+      var(--planner-tab-shadow-active),
+      inset 1px 0 0 rgba(255, 255, 255, 0.32);
+  }
+
+  .sideFloatingActionTab:hover {
+    transform: none;
+  }
+
   .topTabs {
     gap: 0.18rem;
     margin-bottom: 0;
@@ -586,11 +607,6 @@
 
   .topSegmentTabWithIcon span {
     display: none;
-  }
-
-  .sideCleaningSettingsTab {
-    display: grid;
-    margin-top: 0.72rem;
   }
 }
 
