@@ -1,6 +1,9 @@
 import type { OpenAPIV3 } from 'openapi-types'
 
-import { createCleaningContractSchemas } from './openapi-contract-schemas.js'
+import {
+  createCleaningContractSchemas,
+  createHabitContractSchemas,
+} from './openapi-contract-schemas.js'
 import {
   genericJsonArraySchema,
   genericJsonObjectSchema,
@@ -111,14 +114,7 @@ export function createComponentSchemas(): Record<
     DailyPlanUnloadInput: genericJsonObjectSchema(),
     DailyPlanUnloadResponse: genericJsonObjectSchema(),
     DailyPlanUpsertInput: genericJsonObjectSchema(),
-    HabitEntryDeleteInput: genericJsonObjectSchema(),
-    HabitEntryRecord: genericJsonObjectSchema(),
-    HabitEntryUpsertInput: genericJsonObjectSchema(),
-    HabitListResponse: genericJsonArraySchema('HabitRecord'),
-    HabitRecord: genericJsonObjectSchema(),
-    HabitStatsResponse: genericJsonObjectSchema(),
-    HabitTodayResponse: genericJsonObjectSchema(),
-    HabitUpdateInput: genericJsonObjectSchema(),
+    ...createHabitContractSchemas(),
     IdListInput: {
       additionalProperties: false,
       properties: {
@@ -138,7 +134,6 @@ export function createComponentSchemas(): Record<
     LifeSphereListResponse: genericJsonArraySchema('LifeSphereRecord'),
     LifeSphereRecord: genericJsonObjectSchema(),
     LifeSphereUpdateInput: genericJsonObjectSchema(),
-    NewHabitInput: genericJsonObjectSchema(),
     NewLifeSphereInput: genericJsonObjectSchema(),
     PushDeviceRecord: genericJsonObjectSchema(),
     PushDeviceUpsertInput: genericJsonObjectSchema(),

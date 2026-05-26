@@ -98,6 +98,23 @@ try {
     'dayOfWeek',
     'title',
   ])
+  assertSchemaProperties(document, 'HabitEntryRecord', [
+    'date',
+    'habitId',
+    'workspaceId',
+  ])
+  assertSchemaProperties(document, 'HabitRecord', [
+    'frequency',
+    'targetType',
+    'workspaceId',
+  ])
+  assertSchemaProperties(document, 'HabitStatsResponse', [
+    'habits',
+    'stats',
+    'to',
+  ])
+  assertSchemaProperties(document, 'HabitTodayResponse', ['date', 'items'])
+  assertSchemaProperties(document, 'NewHabitInput', ['title'])
 
   const missingOpenApiRoutes = registeredRoutes
     .map((route) => routeKey(route.method, route.path))

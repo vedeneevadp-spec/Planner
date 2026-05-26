@@ -6,6 +6,9 @@ import {
   cleaningPostponeModeSchema,
   cleaningPrioritySchema,
   cleaningTaskHistoryActionSchema,
+  habitEntryStatusSchema,
+  habitFrequencySchema,
+  habitTargetTypeSchema,
 } from '@planner/contracts'
 import type { OpenAPIV3 } from 'openapi-types'
 
@@ -294,6 +297,229 @@ export function createCleaningContractSchemas(): Record<
   }
 }
 
+export function createHabitContractSchemas(): Record<
+  string,
+  OpenAPIV3.SchemaObject
+> {
+  return {
+    HabitEntryDeleteInput: objectSchema(
+      {
+        expectedVersion: positiveIntegerSchema(),
+      },
+      [],
+    ),
+    HabitEntryRecord: objectSchema(
+      {
+        createdAt: stringSchema(),
+        date: stringSchema(),
+        deletedAt: nullableStringSchema(),
+        habitId: stringSchema(),
+        id: stringSchema(),
+        note: stringSchema(),
+        status: enumSchema(habitEntryStatusSchema.options),
+        targetValue: positiveIntegerSchema(),
+        updatedAt: stringSchema(),
+        userId: stringSchema(),
+        value: nonnegativeIntegerSchema(),
+        version: positiveIntegerSchema(),
+        workspaceId: stringSchema(),
+      },
+      [
+        'createdAt',
+        'date',
+        'deletedAt',
+        'habitId',
+        'id',
+        'note',
+        'status',
+        'updatedAt',
+        'userId',
+        'value',
+        'version',
+        'workspaceId',
+      ],
+    ),
+    HabitEntryUpsertInput: objectSchema(
+      {
+        date: stringSchema(),
+        expectedVersion: positiveIntegerSchema(),
+        note: {
+          default: '',
+          maxLength: 500,
+          type: 'string',
+        },
+        status: {
+          ...enumSchema(habitEntryStatusSchema.options),
+          default: 'done',
+        },
+        value: nonnegativeIntegerSchema(),
+      },
+      ['date'],
+    ),
+    HabitListResponse: arrayOfRef('HabitRecord'),
+    HabitRecord: objectSchema({
+      color: {
+        minLength: 1,
+        type: 'string',
+      },
+      createdAt: stringSchema(),
+      daysOfWeek: weekdayArraySchema(),
+      deletedAt: nullableStringSchema(),
+      description: stringSchema(),
+      endDate: nullableStringSchema(),
+      frequency: enumSchema(habitFrequencySchema.options),
+      icon: {
+        minLength: 1,
+        type: 'string',
+      },
+      id: stringSchema(),
+      isActive: booleanSchema(),
+      reminderTime: nullableTimeStringSchema(),
+      sortOrder: integerSchema(),
+      sphereId: nullableStringSchema(),
+      startDate: stringSchema(),
+      targetType: enumSchema(habitTargetTypeSchema.options),
+      targetValue: positiveIntegerSchema(),
+      title: {
+        minLength: 1,
+        type: 'string',
+      },
+      unit: stringSchema(),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+      version: positiveIntegerSchema(),
+      workspaceId: stringSchema(),
+    }),
+    HabitStats: objectSchema({
+      bestStreak: nonnegativeIntegerSchema(),
+      completionRate: integerRangeSchema(0, 100),
+      completedCount: nonnegativeIntegerSchema(),
+      currentStreak: nonnegativeIntegerSchema(),
+      habitId: stringSchema(),
+      lastCompletedDate: nullableStringSchema(),
+      missedCount: nonnegativeIntegerSchema(),
+      monthCompleted: nonnegativeIntegerSchema(),
+      monthScheduled: nonnegativeIntegerSchema(),
+      scheduledCount: nonnegativeIntegerSchema(),
+      skippedCount: nonnegativeIntegerSchema(),
+      weekCompleted: nonnegativeIntegerSchema(),
+      weekScheduled: nonnegativeIntegerSchema(),
+    }),
+    HabitStatsResponse: objectSchema({
+      from: stringSchema(),
+      habits: arrayOfRef('HabitRecord'),
+      stats: arrayOfRef('HabitStats'),
+      to: stringSchema(),
+    }),
+    HabitTodayItem: objectSchema({
+      entry: nullableRef('HabitEntryRecord'),
+      habit: ref('HabitRecord'),
+      isDueToday: booleanSchema(),
+      progressPercent: integerRangeSchema(0, 100),
+      stats: ref('HabitStats'),
+    }),
+    HabitTodayResponse: objectSchema({
+      date: stringSchema(),
+      items: arrayOfRef('HabitTodayItem'),
+    }),
+    HabitUpdateInput: objectSchema(
+      {
+        color: {
+          minLength: 1,
+          type: 'string',
+        },
+        daysOfWeek: weekdayArraySchema({ requiresSchedule: true }),
+        description: {
+          maxLength: 600,
+          type: 'string',
+        },
+        endDate: nullableStringSchema(),
+        expectedVersion: positiveIntegerSchema(),
+        frequency: enumSchema(habitFrequencySchema.options),
+        icon: {
+          minLength: 1,
+          type: 'string',
+        },
+        isActive: booleanSchema(),
+        reminderTime: nullableTimeStringSchema(),
+        sortOrder: integerSchema(),
+        sphereId: nullableStringSchema(),
+        startDate: stringSchema(),
+        targetType: enumSchema(habitTargetTypeSchema.options),
+        targetValue: positiveIntegerSchema(),
+        title: {
+          maxLength: 120,
+          minLength: 1,
+          type: 'string',
+        },
+        unit: {
+          maxLength: 24,
+          type: 'string',
+        },
+      },
+      [],
+    ),
+    NewHabitInput: objectSchema(
+      {
+        color: {
+          default: '#2f6f62',
+          minLength: 1,
+          type: 'string',
+        },
+        daysOfWeek: weekdayArraySchema({ requiresSchedule: true }),
+        description: {
+          default: '',
+          maxLength: 600,
+          type: 'string',
+        },
+        endDate: {
+          ...nullableStringSchema(),
+          default: null,
+        },
+        frequency: {
+          ...enumSchema(habitFrequencySchema.options),
+          default: 'daily',
+        },
+        icon: {
+          default: 'check',
+          minLength: 1,
+          type: 'string',
+        },
+        id: stringSchema(),
+        reminderTime: {
+          ...nullableTimeStringSchema(),
+          default: null,
+        },
+        sortOrder: integerSchema(),
+        sphereId: {
+          ...nullableStringSchema(),
+          default: null,
+        },
+        startDate: stringSchema(),
+        targetType: {
+          ...enumSchema(habitTargetTypeSchema.options),
+          default: 'check',
+        },
+        targetValue: {
+          ...positiveIntegerSchema(),
+          default: 1,
+        },
+        title: {
+          maxLength: 120,
+          minLength: 1,
+          type: 'string',
+        },
+        unit: {
+          default: '',
+          maxLength: 24,
+          type: 'string',
+        },
+      },
+      ['title'],
+    ),
+  }
+}
+
 function objectSchema(
   properties: SchemaProperties,
   required = Object.keys(properties),
@@ -370,6 +596,21 @@ function nullablePositiveIntegerSchema(): OpenAPIV3.SchemaObject {
   }
 }
 
+function nullableRef(schemaName: string): OpenAPIV3.SchemaObject {
+  return {
+    allOf: [ref(schemaName)],
+    nullable: true,
+  }
+}
+
+function nullableTimeStringSchema(): OpenAPIV3.SchemaObject {
+  return {
+    nullable: true,
+    pattern: '^\\d{2}:\\d{2}$',
+    type: 'string',
+  }
+}
+
 function ref(schemaName: string): OpenAPIV3.ReferenceObject {
   return {
     $ref: `#/components/schemas/${schemaName}`,
@@ -386,5 +627,20 @@ function stringArraySchema(): OpenAPIV3.SchemaObject {
 function stringSchema(): OpenAPIV3.SchemaObject {
   return {
     type: 'string',
+  }
+}
+
+function weekdayArraySchema(
+  options: { requiresSchedule?: boolean } = {},
+): OpenAPIV3.SchemaObject {
+  return {
+    items: integerRangeSchema(1, 7),
+    ...(options.requiresSchedule
+      ? {
+          maxItems: 7,
+          minItems: 1,
+        }
+      : {}),
+    type: 'array',
   }
 }
