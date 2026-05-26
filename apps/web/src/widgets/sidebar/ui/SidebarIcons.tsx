@@ -1,10 +1,13 @@
 import {
-  CalendarIcon,
-  CheckIcon,
+  CalendarPageIcon,
+  ChecklistIcon,
+  CleaningZonesIcon,
   GearIcon,
-  HomeIcon,
-  ShoppingBagIcon,
-  SpheresIcon,
+  HabitsTargetIcon,
+  MoreSlidersIcon,
+  ShoppingCartIcon,
+  SpheresChartIcon,
+  TimelinePageIcon,
 } from '@/shared/ui/Icon'
 
 export function WorkspaceGearIcon() {
@@ -12,49 +15,40 @@ export function WorkspaceGearIcon() {
 }
 
 export function MoreIcon() {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      <circle cx="6" cy="12" r="1.8" fill="currentColor" />
-      <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-      <circle cx="18" cy="12" r="1.8" fill="currentColor" />
-    </svg>
-  )
+  return <MoreSlidersIcon size={20} />
 }
 
 export function SidebarNavIcon({ route }: { route: string }) {
   if (route === '/today') {
-    return <CheckIcon size={20} strokeWidth={1.9} />
+    return <ChecklistIcon size={20} />
   }
 
   if (route === '/calendar') {
-    return <CalendarIcon size={20} strokeWidth={1.9} />
+    return <CalendarPageIcon size={20} />
   }
 
   if (route === '/shopping') {
-    return <ShoppingBagIcon size={20} strokeWidth={1.9} />
+    return <ShoppingCartIcon size={20} strokeWidth={1.9} />
   }
 
   if (route === '/cleaning') {
-    return <HomeIcon size={20} strokeWidth={1.9} />
+    return <CleaningZonesIcon size={20} />
   }
 
   if (route === '/habits') {
-    return <CheckIcon size={20} strokeWidth={1.9} />
+    return <HabitsTargetIcon size={20} />
   }
 
   if (route === '/spheres') {
-    return <SpheresIcon size={20} strokeWidth={1.9} />
+    return <SpheresChartIcon size={20} />
   }
 
   if (route === '/admin') {
     return <GearIcon size={20} strokeWidth={1.9} />
+  }
+
+  if (route === '/timeline') {
+    return <TimelinePageIcon size={20} />
   }
 
   return <TimelineIcon />
