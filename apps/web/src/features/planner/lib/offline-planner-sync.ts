@@ -1,7 +1,8 @@
 import type { LifeSphereRecord, TaskRecord } from '@planner/contracts'
 
 import {
-  drainOfflineMutations,
+  createOfflineDrainResult,
+  drainOfflineQueue,
   getOfflineErrorMessage,
   isBrowserRetryableOfflineError,
   readOfflineConflictDetails,
@@ -48,13 +49,9 @@ export async function drainPlannerOfflineQueue({
   onTaskSynced,
   workspaceId,
 }: DrainPlannerOfflineQueueOptions): Promise<PlannerOfflineDrainResult> {
-  const result: PlannerOfflineDrainResult = {
+  const result = createOfflineDrainResult<PlannerOfflineDrainResult>({
     conflicted: 0,
-    failed: 0,
-    processed: 0,
-    synced: 0,
-  }
-  const mutations = await listRetryablePlannerOfflineMutations(workspaceId)
+  })
   const callbacks: OfflineMutationCallbacks = {}
 
   if (onLifeSphereSynced) {
@@ -69,12 +66,15 @@ export async function drainPlannerOfflineQueue({
     callbacks.onTaskSynced = onTaskSynced
   }
 
-  return drainOfflineMutations({
+  return drainOfflineQueue({
+    adapter: {
+      completeMutation: completePlannerOfflineMutation,
+      getMutationId: (mutation) => mutation.id,
+      listRetryableMutations: () =>
+        listRetryablePlannerOfflineMutations(workspaceId),
+      markMutationSyncing: markPlannerOfflineMutationSyncing,
+    },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
-    complete: completePlannerOfflineMutation,
-    getMutationId: (mutation) => mutation.id,
-    markSyncing: markPlannerOfflineMutationSyncing,
-    mutations,
     result,
     onError: async ({ error, mutationId, result: drainResult }) => {
       if (isTerminalPlannerSyncError(error)) {

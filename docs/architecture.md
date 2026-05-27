@@ -28,10 +28,16 @@ Composition root приложения.
 Текущие страницы:
 
 - `today` - фокус дня, ресурсный план и быстрые изменения задач
+- `calendar` - календарь, дневной/недельный/месячный режимы и расписание
 - `shopping` - общий список покупок поверх `chaos-inbox`
-- `timeline` - задачи на временной линии
+- `cleaning` - бытовые зоны, задачи уборки и настройки циклов
 - `spheres` - список сфер жизни и недельный баланс
+- `habits` - привычки, дневной прогресс и статистика
+- `more` / `profile` - дополнительные действия и профиль пользователя
 - `admin` - пользователи, настройки workspace и icon/emoji assets
+
+Старый маршрут `/timeline` сохранен как redirect на `/calendar` с дневным
+режимом, но не является отдельной страницей.
 
 Страницы собирают экран из widgets, features и entities. Бизнес-логику, которую
 можно переиспользовать или тестировать отдельно, нужно выносить в `features`,
@@ -67,7 +73,7 @@ runtime.
 Текущие примеры:
 
 - `task` - типы, сортировка, группировка, selectors, task card/section
-- `project` - compatibility-модель для сфер в старом planner state
+- `sphere` - типы и UI для пользовательских сфер жизни
 - `emoji-set` - типы и glyph rendering
 - `task-template` - типы templates
 
@@ -135,9 +141,10 @@ runtime.
 `/api/v1/life-spheres`.
 
 Planner state, contracts, OpenAPI и offline queue используют `LifeSphere` /
-`spheres`. Старые task-поля `project` и `projectId` остаются только как
-совместимый payload для существующих задач и БД; новая пользовательская
-функциональность проектируется вокруг `sphereId`.
+`spheres`. Старые task-поля `project` и `projectId`, а также таблица
+`app.projects`, остаются compatibility-слоем для существующих задач и БД; новая
+пользовательская функциональность проектируется вокруг `sphereId` и
+`/api/v1/life-spheres`.
 
 ## Стратегия тестирования
 

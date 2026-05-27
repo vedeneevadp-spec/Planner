@@ -1,7 +1,8 @@
 import type { ChaosInboxItemRecord } from '@planner/contracts'
 
 import {
-  drainOfflineMutations,
+  createOfflineDrainResult,
+  drainOfflineQueue,
   getOfflineErrorMessage,
   isBrowserRetryableOfflineError,
 } from '@/shared/lib/offline-sync'
@@ -9,6 +10,7 @@ import {
 import {
   completeShoppingListOfflineMutation,
   listRetryableShoppingListOfflineMutations,
+  markShoppingListOfflineMutationConflicted,
   markShoppingListOfflineMutationFailed,
   markShoppingListOfflineMutationSyncing,
   removeCachedShoppingListItem,
@@ -21,6 +23,7 @@ import {
 } from './shopping-list-api'
 
 export interface ShoppingListOfflineDrainResult {
+  conflicted: number
   failed: number
   processed: number
   synced: number
@@ -44,12 +47,9 @@ export async function drainShoppingListOfflineQueue({
   onItemSynced,
   workspaceId,
 }: DrainShoppingListOfflineQueueOptions): Promise<ShoppingListOfflineDrainResult> {
-  const result: ShoppingListOfflineDrainResult = {
-    failed: 0,
-    processed: 0,
-    synced: 0,
-  }
-  const mutations = await listRetryableShoppingListOfflineMutations(workspaceId)
+  const result = createOfflineDrainResult<ShoppingListOfflineDrainResult>({
+    conflicted: 0,
+  })
   const callbacks: OfflineMutationCallbacks = {}
 
   if (onItemDeleted) {
@@ -60,14 +60,27 @@ export async function drainShoppingListOfflineQueue({
     callbacks.onItemSynced = onItemSynced
   }
 
-  return drainOfflineMutations({
+  return drainOfflineQueue({
+    adapter: {
+      completeMutation: completeShoppingListOfflineMutation,
+      getMutationId: (mutation) => mutation.id,
+      listRetryableMutations: () =>
+        listRetryableShoppingListOfflineMutations(workspaceId),
+      markMutationSyncing: markShoppingListOfflineMutationSyncing,
+    },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
-    complete: completeShoppingListOfflineMutation,
-    getMutationId: (mutation) => mutation.id,
-    markSyncing: markShoppingListOfflineMutationSyncing,
-    mutations,
     result,
     onError: async ({ error, mutationId, result: drainResult }) => {
+      if (isTerminalShoppingListSyncError(error)) {
+        await markShoppingListOfflineMutationConflicted(
+          mutationId,
+          getErrorMessage(error),
+        )
+        drainResult.conflicted += 1
+
+        return 'continue'
+      }
+
       await markShoppingListOfflineMutationFailed(
         mutationId,
         getErrorMessage(error),
@@ -119,6 +132,15 @@ async function applyOfflineMutation(
   await api.removeItem(mutation.itemId)
   await removeCachedShoppingListItem(mutation.workspaceId, mutation.itemId)
   callbacks.onItemDeleted?.(mutation.itemId)
+}
+
+function isTerminalShoppingListSyncError(
+  error: unknown,
+): error is ShoppingListApiError {
+  return (
+    error instanceof ShoppingListApiError &&
+    error.code === 'chaos_inbox_item_not_found'
+  )
 }
 
 function getErrorMessage(error: unknown): string {

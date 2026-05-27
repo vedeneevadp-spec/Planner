@@ -4,13 +4,18 @@ import type { ChaosInboxItemRecord } from '@planner/contracts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  countConflictedShoppingListOfflineMutations,
+  countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
   loadCachedShoppingListItems,
   replaceCachedShoppingListItems,
   resetShoppingListOfflineDatabaseForTests,
 } from './offline-shopping-list-store'
 import { drainShoppingListOfflineQueue } from './offline-shopping-list-sync'
-import type { ShoppingListApiClient } from './shopping-list-api'
+import {
+  type ShoppingListApiClient,
+  ShoppingListApiError,
+} from './shopping-list-api'
 
 const WORKSPACE_ID = 'workspace-1'
 const ACTOR_USER_ID = 'user-1'
@@ -43,6 +48,7 @@ describe('offline shopping list sync', () => {
     })
 
     expect(result).toEqual({
+      conflicted: 0,
       failed: 0,
       processed: 1,
       synced: 1,
@@ -116,6 +122,47 @@ describe('offline shopping list sync', () => {
     expect(result.synced).toBe(1)
     expect(api.removeItem).toHaveBeenCalledWith(item.id)
     expect(await loadCachedShoppingListItems(WORKSPACE_ID)).toEqual([])
+  })
+
+  it('marks missing server items as terminal conflicts instead of retrying forever', async () => {
+    const item = createShoppingListItemRecord('item-1', 'Milk')
+    const api = createShoppingListApiClientMock({
+      updateItem: vi.fn().mockRejectedValue(
+        new ShoppingListApiError('Chaos inbox item not found.', {
+          code: 'chaos_inbox_item_not_found',
+          status: 404,
+        }),
+      ),
+    })
+
+    await replaceCachedShoppingListItems(WORKSPACE_ID, [item])
+    await enqueueShoppingListOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      itemId: item.id,
+      patch: {
+        status: 'archived',
+      },
+      type: 'shopping.update',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainShoppingListOfflineQueue({
+      api,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 1,
+      failed: 0,
+      processed: 1,
+      synced: 0,
+    })
+    expect(await countRetryableShoppingListOfflineMutations(WORKSPACE_ID)).toBe(
+      0,
+    )
+    expect(
+      await countConflictedShoppingListOfflineMutations(WORKSPACE_ID),
+    ).toBe(1)
   })
 })
 

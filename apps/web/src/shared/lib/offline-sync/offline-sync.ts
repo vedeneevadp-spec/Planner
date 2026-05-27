@@ -11,6 +11,13 @@ export interface OfflineConflictDetails {
 
 export type OfflineDrainErrorDecision = 'break' | 'continue'
 
+export interface OfflineQueueAdapter<TMutation> {
+  completeMutation: (mutationId: string) => Promise<void>
+  getMutationId: (mutation: TMutation) => string
+  listRetryableMutations: () => Promise<TMutation[]>
+  markMutationSyncing: (mutationId: string) => Promise<void>
+}
+
 interface DrainOfflineMutationsOptions<
   TMutation,
   TResult extends OfflineDrainResultBase,
@@ -27,6 +34,63 @@ interface DrainOfflineMutationsOptions<
     mutationId: string
     result: TResult
   }) => Promise<OfflineDrainErrorDecision>
+}
+
+interface DrainOfflineQueueOptions<
+  TMutation,
+  TResult extends OfflineDrainResultBase,
+> {
+  adapter: OfflineQueueAdapter<TMutation>
+  apply: (mutation: TMutation) => Promise<void>
+  result: TResult
+  onError: (input: {
+    error: unknown
+    mutation: TMutation
+    mutationId: string
+    result: TResult
+  }) => Promise<OfflineDrainErrorDecision>
+}
+
+type OfflineDrainResultExtra<TResult extends OfflineDrainResultBase> = Omit<
+  TResult,
+  keyof OfflineDrainResultBase
+>
+
+export function createOfflineDrainResult(): OfflineDrainResultBase
+export function createOfflineDrainResult<
+  TResult extends OfflineDrainResultBase,
+>(extraResult: OfflineDrainResultExtra<TResult>): TResult
+export function createOfflineDrainResult<
+  TResult extends OfflineDrainResultBase,
+>(extraResult?: OfflineDrainResultExtra<TResult>): TResult {
+  return {
+    failed: 0,
+    processed: 0,
+    synced: 0,
+    ...extraResult,
+  } as TResult
+}
+
+export async function drainOfflineQueue<
+  TMutation,
+  TResult extends OfflineDrainResultBase,
+>({
+  adapter,
+  apply,
+  result,
+  onError,
+}: DrainOfflineQueueOptions<TMutation, TResult>): Promise<TResult> {
+  const mutations = await adapter.listRetryableMutations()
+
+  return drainOfflineMutations({
+    apply,
+    complete: adapter.completeMutation,
+    getMutationId: adapter.getMutationId,
+    markSyncing: adapter.markMutationSyncing,
+    mutations,
+    result,
+    onError,
+  })
 }
 
 export async function drainOfflineMutations<

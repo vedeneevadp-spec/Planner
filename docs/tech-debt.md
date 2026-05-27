@@ -1,6 +1,6 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-05-23.
+Дата анализа: 2026-05-21. Обновлено: 2026-05-27.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
@@ -165,10 +165,10 @@ token и сохранение device session без возврата на фор
 
 Где видно:
 
-- `apps/api/src/modules/session/session.repository.postgres.ts` - 1644 строки
-- `apps/web/src/features/habits/lib/useHabits.ts` - 1116 строк
-- `apps/web/src/features/planner/model/usePlannerState.ts` - 721 строк
-- `apps/web/src/features/session/lib/useSessionAuthController.ts` - 740 строк
+- `apps/api/src/modules/session/session.repository.postgres.ts` - 1253 строки
+- `apps/web/src/features/habits/lib/useHabits.ts` - 1089 строк
+- `apps/web/src/features/planner/model/usePlannerState.ts` - 789 строк
+- `apps/web/src/features/session/lib/useSessionAuthController.ts` - 777 строк
 
 Проблема: большие файлы смешивают data access, policy, mapping, optimistic UI,
 error handling и runtime integration. Это повышает стоимость ревью и риск
@@ -228,6 +228,11 @@ device metadata, concurrent same-device refresh и signature/naming drift check
 `VITE_ACTOR_USER_ID`/`VITE_WORKSPACE_ID`, mobile release build также запрещает
 эти env overrides.
 
+Статус 2026-05-27: базовые проверки остаются зелеными (`lint`, `typecheck`,
+`test:run`, `openapi:check`, production/dev audit). Крупные orchestration-файлы
+по-прежнему главный источник стоимости изменений, но риск backend divergence
+прикрыт contract matrix и отдельными Postgres coverage gates.
+
 ### Состояния "connected", "empty" и "loading" не имеют общего источника правды
 
 Где видно:
@@ -273,6 +278,21 @@ cleaning, emoji/admin participant queries, native push и native planner widget
 - описать, какие кэши являются UI fallback, а какие могут разрешать действия
 - для каждого offline path указать, что происходит без access token
 - добавить тесты на запрет protected writes без актуального auth state
+- постепенно свести planner/habits/shopping offline queues к общему adapter
+  вместо копирования статусов, drain и conflict policy в каждом домене
+
+Статус 2026-05-27: первый общий adapter добавлен в
+`apps/web/src/shared/lib/offline-sync/offline-sync.ts`. Planner, habits и
+shopping-list drain теперь используют общий lifecycle для получения retryable
+мутаций, перевода в `syncing`, завершения и обхода очереди; доменные файлы
+оставляют за собой apply-логику и conflict/error policy.
+
+Статус 2026-05-27: shopping-list queue получила terminal `conflicted`-статус
+для `chaos_inbox_item_not_found`. Такие операции больше не остаются в retryable
+очереди бесконечно; после terminal conflict shopping-list invalidates query
+cache и подтягивает серверный список. Следующий шаг здесь - общий feature-level
+status/UX для offline queue health, чтобы planner/habits/shopping одинаково
+показывали ожидающие и конфликтные операции.
 
 ## P2: качество сопровождения
 
@@ -311,3 +331,16 @@ cleaning, emoji/admin participant queries, native push и native planner widget
 - добавлять negative tests на malformed payloads для критичных caches и API
   boundaries
 - не расширять ad hoc parsing в auth/session без тестов
+
+### Migration hygiene больше не должен зависеть от ручного внимания
+
+Проблема: в истории есть applied migration
+`20260527_000028_task_reminder_offsets.sql`, которая повторяет sequence
+`000028` после уже существующей `20260512_000028_cleaning.sql`. Runner
+сортирует файлы по имени и хранит checksum, поэтому текущая история применима,
+но новые повторы или откаты sequence легко пропустить на ревью.
+
+Статус 2026-05-27: добавлен `npm run db:migrations:check`, он проверяет формат
+имен, новые дубли и монотонность sequence. Исторический applied-дубль оставлен
+в явном allowlist, чтобы не переименовывать уже примененный SQL-файл без
+отдельного rollout-плана. Проверка включена в `npm run check`.

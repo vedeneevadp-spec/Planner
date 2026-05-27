@@ -94,7 +94,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
         workspaceId: session.workspaceId,
       })
 
-      if (result.synced > 0) {
+      if (result.synced > 0 || result.conflicted > 0) {
         await queryClient.invalidateQueries({ queryKey })
       }
     })().finally(() => {

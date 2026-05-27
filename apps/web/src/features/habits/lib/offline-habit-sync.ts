@@ -1,7 +1,8 @@
 import type { HabitEntryRecord, HabitRecord } from '@planner/contracts'
 
 import {
-  drainOfflineMutations,
+  createOfflineDrainResult,
+  drainOfflineQueue,
   getOfflineErrorMessage,
   isBrowserRetryableOfflineError,
   readOfflineConflictDetails,
@@ -54,13 +55,9 @@ export async function drainHabitOfflineQueue({
   onHabitSynced,
   workspaceId,
 }: DrainHabitOfflineQueueOptions): Promise<HabitOfflineDrainResult> {
-  const result: HabitOfflineDrainResult = {
+  const result = createOfflineDrainResult<HabitOfflineDrainResult>({
     conflicted: 0,
-    failed: 0,
-    processed: 0,
-    synced: 0,
-  }
-  const mutations = await listRetryableHabitOfflineMutations(workspaceId)
+  })
   const callbacks: OfflineMutationCallbacks = {}
 
   if (onEntryDeleted) {
@@ -79,12 +76,15 @@ export async function drainHabitOfflineQueue({
     callbacks.onHabitSynced = onHabitSynced
   }
 
-  return drainOfflineMutations({
+  return drainOfflineQueue({
+    adapter: {
+      completeMutation: completeHabitOfflineMutation,
+      getMutationId: (mutation) => mutation.id,
+      listRetryableMutations: () =>
+        listRetryableHabitOfflineMutations(workspaceId),
+      markMutationSyncing: markHabitOfflineMutationSyncing,
+    },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
-    complete: completeHabitOfflineMutation,
-    getMutationId: (mutation) => mutation.id,
-    markSyncing: markHabitOfflineMutationSyncing,
-    mutations,
     result,
     onError: async ({ error, mutationId, result: drainResult }) => {
       if (isTerminalHabitSyncError(error)) {

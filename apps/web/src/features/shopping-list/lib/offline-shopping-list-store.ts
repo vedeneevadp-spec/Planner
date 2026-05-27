@@ -7,7 +7,11 @@ import {
 } from '@planner/contracts'
 import Dexie, { type Table } from 'dexie'
 
-export type ShoppingListOfflineMutationStatus = 'failed' | 'pending' | 'syncing'
+export type ShoppingListOfflineMutationStatus =
+  | 'conflicted'
+  | 'failed'
+  | 'pending'
+  | 'syncing'
 
 interface ShoppingListCachedItemRow {
   item: ChaosInboxItemRecord
@@ -237,6 +241,22 @@ export async function countRetryableShoppingListOfflineMutations(
   return mutations.length
 }
 
+export async function countConflictedShoppingListOfflineMutations(
+  workspaceId: string,
+): Promise<number> {
+  const db = getShoppingListOfflineDatabase()
+
+  if (!db) {
+    return 0
+  }
+
+  return db.mutationQueue
+    .where('workspaceId')
+    .equals(workspaceId)
+    .filter((mutation) => mutation.status === 'conflicted')
+    .count()
+}
+
 export async function markShoppingListOfflineMutationSyncing(
   mutationId: string,
 ): Promise<void> {
@@ -285,6 +305,23 @@ export async function markShoppingListOfflineMutationFailed(
   await db.mutationQueue.update(mutationId, {
     lastError: errorMessage,
     status: 'failed',
+    updatedAt: new Date().toISOString(),
+  })
+}
+
+export async function markShoppingListOfflineMutationConflicted(
+  mutationId: string,
+  errorMessage: string,
+): Promise<void> {
+  const db = getShoppingListOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  await db.mutationQueue.update(mutationId, {
+    lastError: errorMessage,
+    status: 'conflicted',
     updatedAt: new Date().toISOString(),
   })
 }
