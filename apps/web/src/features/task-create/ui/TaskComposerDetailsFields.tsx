@@ -138,6 +138,7 @@ export function TaskComposerDetailsFields({
           )}
         >
           <TaskReminderPicker
+            className={styles.field}
             value={reminderOffsets}
             onChange={onReminderOffsetsChange}
           />

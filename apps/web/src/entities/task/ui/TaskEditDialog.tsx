@@ -345,6 +345,7 @@ export function TaskEditDialog({
             {isReminderAvailable ? (
               <section className={styles.editorSection}>
                 <TaskReminderPicker
+                  className={styles.field}
                   value={reminderOffsets}
                   onChange={setReminderOffsets}
                 />

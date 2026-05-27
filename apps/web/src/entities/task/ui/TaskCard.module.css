@@ -546,6 +546,8 @@
   flex-direction: column;
   gap: 0.45rem;
   --select-picker-height: var(--control-height);
+  --select-picker-padding: 0.8rem 0.9rem;
+  --select-picker-radius: 16px;
 }
 
 .field > span {
