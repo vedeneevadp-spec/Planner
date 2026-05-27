@@ -103,6 +103,7 @@ describe('TaskEditDialog', () => {
           plannedEndTime: '11:00',
           plannedStartTime: '10:30',
           remindBeforeStart: true,
+          reminderOffsets: [15],
           requiresConfirmation: false,
           title: 'Updated title',
         }),
@@ -153,6 +154,7 @@ describe('TaskEditDialog', () => {
         expect.objectContaining({
           assigneeUserId: 'user-2',
           remindBeforeStart: false,
+          reminderOffsets: [],
           requiresConfirmation: true,
         }),
       )

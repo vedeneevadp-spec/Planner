@@ -2,6 +2,7 @@ export interface DueTaskReminder {
   id: string
   plannedDate: string
   plannedStartTime: string
+  remindOffsetMinutes: number
   taskId: string
   taskTitle: string
   userId: string

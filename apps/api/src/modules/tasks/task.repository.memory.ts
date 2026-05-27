@@ -375,6 +375,7 @@ export class MemoryTaskRepository implements TaskRepository {
       project: '',
       projectId: null,
       remindBeforeStart: undefined,
+      reminderOffsets: undefined,
       requiresConfirmation: false,
       sourceWorkspace: options.isLinkedCopy
         ? {

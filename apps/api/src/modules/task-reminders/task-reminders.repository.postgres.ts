@@ -10,6 +10,7 @@ interface DueTaskReminderRow {
   id: string
   planned_date: string
   planned_start_time: string
+  remind_offset_minutes: number
   task_id: string
   task_title: string
   user_id: string
@@ -39,6 +40,7 @@ export class PostgresTaskReminderRepository implements TaskReminderRepository {
           reminder.id,
           cast(reminder.planned_date as text) as planned_date,
           to_char(reminder.planned_start_time, 'HH24:MI') as planned_start_time,
+          reminder.remind_offset_minutes,
           reminder.task_id,
           task.title as task_title,
           reminder.user_id,
@@ -102,6 +104,7 @@ function mapDueTaskReminder(row: DueTaskReminderRow): DueTaskReminder {
     id: row.id,
     plannedDate: row.planned_date,
     plannedStartTime: row.planned_start_time,
+    remindOffsetMinutes: row.remind_offset_minutes,
     taskId: row.task_id,
     taskTitle: row.task_title,
     userId: row.user_id,

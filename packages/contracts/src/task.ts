@@ -22,6 +22,18 @@ const optionalBoolean = z.boolean().optional()
 
 const optionalTimeZone = z.string().trim().min(1).max(100).optional()
 
+export const taskReminderOffsetMinutesSchema = z.union([
+  z.literal(15),
+  z.literal(30),
+  z.literal(60),
+])
+
+export const taskReminderOffsetsSchema = z
+  .array(taskReminderOffsetMinutesSchema)
+  .max(3)
+  .transform((value) => [...new Set(value)].sort((left, right) => left - right))
+  .optional()
+
 export const taskStatusSchema = z.enum([
   'todo',
   'in_progress',
@@ -147,6 +159,7 @@ export const taskSchema = z.object({
   importance: taskImportanceSchema.optional().default('not_important'),
   urgency: taskUrgencySchema.optional().default('not_urgent'),
   remindBeforeStart: optionalBoolean,
+  reminderOffsets: taskReminderOffsetsSchema,
   projectId: nullableStringWithDefault,
   sphereId: nullableStringWithDefault,
   project: z.string(),
@@ -182,6 +195,7 @@ export const newTaskInputSchema = z.object({
   importance: taskImportanceSchema.optional(),
   urgency: taskUrgencySchema.optional(),
   remindBeforeStart: optionalBoolean,
+  reminderOffsets: taskReminderOffsetsSchema,
   reminderTimeZone: optionalTimeZone,
   projectId: nullableStringWithDefault,
   sphereId: nullableStringWithDefault,
@@ -230,6 +244,9 @@ export type TaskRecurrenceFrequency = z.infer<
 export type TaskRecurrenceInput = z.input<typeof taskRecurrenceInputSchema>
 export type TaskUrgency = z.infer<typeof taskUrgencySchema>
 export type TaskResource = z.infer<typeof taskResourceSchema>
+export type TaskReminderOffsetMinutes = z.infer<
+  typeof taskReminderOffsetMinutesSchema
+>
 export type TaskLinkedTask = z.infer<typeof taskLinkedTaskSchema>
 export type TaskSourceWorkspace = z.infer<typeof taskSourceWorkspaceSchema>
 export type Task = z.infer<typeof taskSchema>

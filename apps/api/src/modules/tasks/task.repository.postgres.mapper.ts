@@ -11,6 +11,7 @@ import {
   TASK_LINKED_TASK_KEY,
   TASK_RECURRENCE_KEY,
   TASK_REMIND_BEFORE_START_KEY,
+  TASK_REMINDER_OFFSETS_KEY,
   TASK_REQUIRES_CONFIRMATION_KEY,
   TASK_ROUTINE_KEY,
   TASK_SOURCE_WORKSPACE_KEY,
@@ -29,6 +30,8 @@ export function mapTaskRecord(
   assigneeDisplayName: string | null,
   authorDisplayName: string | null,
 ): StoredTaskRecord {
+  const reminderOffsets = readTaskReminderOffsets(task.metadata)
+
   return {
     assigneeDisplayName,
     assigneeUserId: task.assignee_user_id,
@@ -53,7 +56,16 @@ export function mapTaskRecord(
     project: projectTitle ?? readLegacyProjectName(task.metadata),
     projectId: task.project_id,
     recurrence: readTaskRecurrence(task.metadata),
-    remindBeforeStart: readTaskRemindBeforeStart(task.metadata),
+    remindBeforeStart:
+      reminderOffsets.length > 0
+        ? true
+        : readTaskRemindBeforeStart(task.metadata),
+    reminderOffsets:
+      reminderOffsets.length > 0
+        ? reminderOffsets
+        : readTaskRemindBeforeStart(task.metadata)
+          ? [15]
+          : undefined,
     resource: task.resource,
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
     routine: readTaskRoutine(task.metadata),
@@ -69,6 +81,8 @@ export function mapTaskRecord(
 }
 
 export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
+  const reminderOffsets = readTaskReminderOffsets(task.metadata)
+
   return {
     assigneeDisplayName: task.assignee_display_name ?? null,
     assigneeUserId: task.assignee_user_id,
@@ -93,7 +107,16 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     project: task.project_title ?? readLegacyProjectName(task.metadata),
     projectId: task.project_id,
     recurrence: readTaskRecurrence(task.metadata),
-    remindBeforeStart: readTaskRemindBeforeStart(task.metadata),
+    remindBeforeStart:
+      reminderOffsets.length > 0
+        ? true
+        : readTaskRemindBeforeStart(task.metadata),
+    reminderOffsets:
+      reminderOffsets.length > 0
+        ? reminderOffsets
+        : readTaskRemindBeforeStart(task.metadata)
+          ? [15]
+          : undefined,
     resource: task.resource,
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
     routine: readTaskRoutine(task.metadata),
@@ -117,6 +140,7 @@ export function buildTaskMetadata(
     | 'linkedTask'
     | 'recurrence'
     | 'remindBeforeStart'
+    | 'reminderOffsets'
     | 'requiresConfirmation'
     | 'routine'
     | 'sourceWorkspace'
@@ -143,6 +167,10 @@ export function buildTaskMetadata(
 
   if (input.remindBeforeStart) {
     metadata[TASK_REMIND_BEFORE_START_KEY] = true
+  }
+
+  if (input.reminderOffsets && input.reminderOffsets.length > 0) {
+    metadata[TASK_REMINDER_OFFSETS_KEY] = input.reminderOffsets
   }
 
   if (input.requiresConfirmation) {
@@ -253,6 +281,23 @@ function readTaskSourceWorkspace(
 
 function readTaskRemindBeforeStart(metadata: JsonObject): true | undefined {
   return metadata[TASK_REMIND_BEFORE_START_KEY] === true ? true : undefined
+}
+
+function readTaskReminderOffsets(
+  metadata: JsonObject,
+): NonNullable<StoredTaskRecord['reminderOffsets']> {
+  const value = metadata[TASK_REMINDER_OFFSETS_KEY]
+
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return [...new Set(value)]
+    .filter(
+      (offset): offset is 15 | 30 | 60 =>
+        offset === 15 || offset === 30 || offset === 60,
+    )
+    .sort((left, right) => left - right)
 }
 
 function readTaskRequiresConfirmation(metadata: JsonObject): boolean {

@@ -23,7 +23,7 @@ export class TaskRemindersService {
             workspaceId: reminder.workspaceId,
           },
           {
-            body: `Через 15 минут: ${reminder.taskTitle}`,
+            body: `Через ${formatReminderOffset(reminder.remindOffsetMinutes)}: ${reminder.taskTitle}`,
             data: {
               path: '/today',
               taskId: reminder.taskId,
@@ -53,6 +53,10 @@ export class TaskRemindersService {
       releasedCount,
     }
   }
+}
+
+function formatReminderOffset(offsetMinutes: number): string {
+  return offsetMinutes === 60 ? '1 час' : `${offsetMinutes} минут`
 }
 
 function shouldRetryReminder(result: {

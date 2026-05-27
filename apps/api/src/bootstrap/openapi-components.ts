@@ -390,6 +390,13 @@ export function createComponentSchemas(): Record<
         remindBeforeStart: {
           type: 'boolean',
         },
+        reminderOffsets: {
+          items: {
+            enum: [15, 30, 60],
+            type: 'integer',
+          },
+          type: 'array',
+        },
         reminderTimeZone: {
           type: 'string',
         },
@@ -1266,6 +1273,13 @@ export function createComponentSchemas(): Record<
         projectId: nullableStringSchema(),
         remindBeforeStart: {
           type: 'boolean',
+        },
+        reminderOffsets: {
+          items: {
+            enum: [15, 30, 60],
+            type: 'integer',
+          },
+          type: 'array',
         },
         resource: {
           $ref: '#/components/schemas/TaskResource',

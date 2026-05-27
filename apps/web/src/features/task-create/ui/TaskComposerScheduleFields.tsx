@@ -63,7 +63,7 @@ export function TaskComposerScheduleFields({
             </label>
 
             {plannedStartTime ? (
-              <label className={styles.field}>
+              <label className={cx(styles.field, styles.finishField)}>
                 <span>Финиш</span>
                 <input
                   type="time"

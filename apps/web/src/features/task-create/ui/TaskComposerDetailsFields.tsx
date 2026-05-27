@@ -7,6 +7,8 @@ import {
   type RoutineTaskFormState,
   TaskRecurrenceFields,
   type TaskRecurrenceFormState,
+  type TaskReminderOffsetMinutes,
+  TaskReminderPicker,
   TaskTypePicker,
   type TaskTypeValue,
 } from '@/entities/task'
@@ -19,7 +21,6 @@ import {
   getSpherePickerLabel,
 } from '../model/task-composer-model'
 import styles from './TaskComposer.module.css'
-import { QuickPlanActions } from './TaskComposerQuickActions'
 
 interface WorkspaceUserOption {
   displayName: string
@@ -34,23 +35,27 @@ interface TaskComposerDetailsFieldsProps {
   isReminderAvailable: boolean
   isRoutineLikeTaskType: boolean
   isSharedWorkspace: boolean
+  plannedDate: string
+  plannedEndTime: string
+  plannedStartTime: string
   projectId: string
   recurrenceForm: TaskRecurrenceFormState
-  remindBeforeStart: boolean
+  reminderOffsets: TaskReminderOffsetMinutes[]
   requiresConfirmation: boolean
   resource: ResourceValue
   routineForm: RoutineTaskFormState
+  showTimeFields: boolean
   spheres: Sphere[]
   taskType: TaskTypeValue
-  todayKey: string
-  tomorrowKey: string
   uploadedIcons: UploadedIconAsset[]
   workspaceUsers: WorkspaceUserOption[]
   onAssigneeUserIdChange: (assigneeUserId: string) => void
-  onPlannedDateChange: (plannedDate: string) => void
+  onPlannedEndTimeChange: (plannedEndTime: string) => void
   onProjectIdChange: (projectId: string) => void
   onRecurrenceChange: (recurrenceForm: TaskRecurrenceFormState) => void
-  onRemindBeforeStartChange: (remindBeforeStart: boolean) => void
+  onReminderOffsetsChange: (
+    reminderOffsets: TaskReminderOffsetMinutes[],
+  ) => void
   onRequiresConfirmationChange: (requiresConfirmation: boolean) => void
   onResourceChange: (resource: ResourceValue) => void
   onRoutineFormChange: (routineForm: RoutineTaskFormState) => void
@@ -65,28 +70,33 @@ export function TaskComposerDetailsFields({
   isReminderAvailable,
   isRoutineLikeTaskType,
   isSharedWorkspace,
+  plannedDate,
+  plannedEndTime,
+  plannedStartTime,
   projectId,
   recurrenceForm,
-  remindBeforeStart,
+  reminderOffsets,
   requiresConfirmation,
   resource,
   routineForm,
+  showTimeFields,
   spheres,
   taskType,
-  todayKey,
-  tomorrowKey,
   uploadedIcons,
   workspaceUsers,
   onAssigneeUserIdChange,
-  onPlannedDateChange,
+  onPlannedEndTimeChange,
   onProjectIdChange,
   onRecurrenceChange,
-  onRemindBeforeStartChange,
+  onReminderOffsetsChange,
   onRequiresConfirmationChange,
   onResourceChange,
   onRoutineFormChange,
   onTaskTypeChange,
 }: TaskComposerDetailsFieldsProps) {
+  const showMobileFinish =
+    showTimeFields && !isHabitTaskType && Boolean(plannedStartTime)
+
   return (
     <div className={styles.columnPanel}>
       <section className={cx(styles.columnSection, styles.projectSection)}>
@@ -101,31 +111,41 @@ export function TaskComposerDetailsFields({
         />
       </section>
 
-      {isReminderAvailable && !isHabitTaskType ? (
-        <section className={styles.columnSection}>
-          <div className={styles.checkboxField}>
+      {showMobileFinish ? (
+        <section
+          className={cx(styles.columnSection, styles.mobileFinishSection)}
+        >
+          <label className={styles.field}>
+            <span>Финиш</span>
             <input
-              id={`${confirmationFieldId}-reminder`}
-              type="checkbox"
-              checked={remindBeforeStart}
+              type="time"
+              value={plannedEndTime}
+              disabled={!plannedDate || !plannedStartTime}
               onChange={(event) => {
-                onRemindBeforeStartChange(event.target.checked)
+                onPlannedEndTimeChange(event.target.value)
               }}
             />
-            <span className={styles.checkboxCopy}>
-              <label
-                className={styles.checkboxLabel}
-                htmlFor={`${confirmationFieldId}-reminder`}
-              >
-                Напомнить за 15 минут
-              </label>
-            </span>
-          </div>
+          </label>
+        </section>
+      ) : null}
+
+      {isReminderAvailable && !isHabitTaskType ? (
+        <section
+          className={cx(
+            styles.columnSection,
+            styles.reminderSection,
+            showMobileFinish && styles.reminderWithFinish,
+          )}
+        >
+          <TaskReminderPicker
+            value={reminderOffsets}
+            onChange={onReminderOffsetsChange}
+          />
         </section>
       ) : null}
 
       {isSharedWorkspace && !isHabitTaskType ? (
-        <section className={styles.columnSection}>
+        <section className={cx(styles.columnSection, styles.assigneeSection)}>
           <SelectPicker
             className={styles.field}
             label="Исполнитель"
@@ -143,7 +163,9 @@ export function TaskComposerDetailsFields({
       ) : null}
 
       {isSharedWorkspace && !isHabitTaskType ? (
-        <section className={styles.columnSection}>
+        <section
+          className={cx(styles.columnSection, styles.confirmationSection)}
+        >
           <div className={styles.checkboxField}>
             <input
               id={confirmationFieldId}
@@ -177,7 +199,7 @@ export function TaskComposerDetailsFields({
       </section>
 
       {isRoutineLikeTaskType ? (
-        <section className={styles.columnSection}>
+        <section className={cx(styles.columnSection, styles.routineSection)}>
           <RoutineTaskFields
             showTargetFields={isHabitTaskType}
             value={routineForm}
@@ -187,7 +209,7 @@ export function TaskComposerDetailsFields({
       ) : null}
 
       {canUseRecurrence ? (
-        <section className={styles.columnSection}>
+        <section className={cx(styles.columnSection, styles.recurrenceSection)}>
           <TaskRecurrenceFields
             value={recurrenceForm}
             onChange={onRecurrenceChange}
@@ -203,16 +225,6 @@ export function TaskComposerDetailsFields({
             onChange={onResourceChange}
           />
         </section>
-      ) : null}
-
-      {!isHabitTaskType ? (
-        <QuickPlanActions
-          as="section"
-          className={cx(styles.columnSection, styles.quickActionsSection)}
-          todayKey={todayKey}
-          tomorrowKey={tomorrowKey}
-          onChange={onPlannedDateChange}
-        />
       ) : null}
     </div>
   )

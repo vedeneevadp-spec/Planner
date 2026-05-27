@@ -5,24 +5,22 @@ import { createPortal } from 'react-dom'
 import {
   createDefaultRoutineTaskForm,
   createDefaultTaskRecurrenceForm,
-  getTaskTypeValue,
   type NewTaskInput,
   type ResourceValue,
   type RoutineTaskFormState,
   type TaskRecurrenceFormState,
+  type TaskReminderOffsetMinutes,
   type TaskTypeValue,
 } from '@/entities/task'
-import type { TaskTemplate } from '@/entities/task-template'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { useCreateHabit } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import { getDateKey } from '@/shared/lib/date'
 
 import {
   buildTaskComposerHabitInput,
   buildTaskComposerTaskInput,
-  buildTaskInputFromTemplate,
   type TaskComposerDraft,
 } from '../model/task-composer-model'
 import styles from './TaskComposer.module.css'
@@ -31,7 +29,6 @@ import { TaskComposerFooter } from './TaskComposerFooter'
 import { TaskComposerModalHeader } from './TaskComposerModalHeader'
 import { TaskComposerOpenButton } from './TaskComposerOpenButton'
 import { TaskComposerPrimaryFields } from './TaskComposerPrimaryFields'
-import { QuickPlanActions } from './TaskComposerQuickActions'
 
 interface TaskComposerProps {
   desktopOpenButtonHidden?: boolean | undefined
@@ -56,13 +53,7 @@ export function TaskComposer({
   defaultTaskType = '',
   onTaskCreated,
 }: TaskComposerProps) {
-  const {
-    addTask,
-    addTaskTemplate,
-    removeTaskTemplate,
-    spheres,
-    taskTemplates,
-  } = usePlanner()
+  const { addTask, spheres } = usePlanner()
   const createHabitMutation = useCreateHabit()
   const [isOpen, setIsOpen] = useState(false)
   const sessionQuery = usePlannerSession()
@@ -80,7 +71,6 @@ export function TaskComposer({
   const reminderAvailabilityRef = useRef(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const todayKey = getDateKey(new Date())
-  const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const [title, setTitle] = useState('')
   const [icon, setIcon] = useState('')
   const [taskType, setTaskType] = useState<TaskTypeValue>(defaultTaskType)
@@ -97,16 +87,10 @@ export function TaskComposer({
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate ?? '')
   const [plannedStartTime, setPlannedStartTime] = useState('')
   const [plannedEndTime, setPlannedEndTime] = useState('')
-  const [remindBeforeStart, setRemindBeforeStart] = useState(false)
+  const [reminderOffsets, setReminderOffsets] = useState<
+    TaskReminderOffsetMinutes[]
+  >([])
   const [note, setNote] = useState('')
-  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(
-    null,
-  )
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
-    null,
-  )
-  const [templateNotice, setTemplateNotice] = useState<string | null>(null)
-  const [isTemplatesExpanded, setIsTemplatesExpanded] = useState(false)
 
   useEffect(() => {
     if (!isOpen) {
@@ -151,12 +135,9 @@ export function TaskComposer({
     setPlannedDate(openDraft.plannedDate ?? initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
-    setRemindBeforeStart(false)
+    setReminderOffsets([])
     reminderAvailabilityRef.current = false
     setNote(openDraft.note ?? '')
-    setSelectedTemplateId(null)
-    setTemplateNotice(null)
-    setIsTemplatesExpanded(false)
     setIsOpen(true)
   }, [defaultTaskType, initialPlannedDate, isSharedWorkspace, openDraft])
 
@@ -177,19 +158,19 @@ export function TaskComposer({
     const wasAvailable = reminderAvailabilityRef.current
 
     if (!isReminderAvailable) {
-      if (wasAvailable || remindBeforeStart) {
-        setRemindBeforeStart(false)
+      if (wasAvailable || reminderOffsets.length > 0) {
+        setReminderOffsets([])
       }
       reminderAvailabilityRef.current = false
       return
     }
 
     if (!wasAvailable) {
-      setRemindBeforeStart(true)
+      setReminderOffsets([15])
     }
 
     reminderAvailabilityRef.current = true
-  }, [isReminderAvailable, remindBeforeStart])
+  }, [isReminderAvailable, reminderOffsets.length])
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -244,7 +225,7 @@ export function TaskComposer({
       plannedStartTime,
       projectId,
       recurrenceForm,
-      remindBeforeStart,
+      reminderOffsets,
       requiresConfirmation,
       resource,
       routineForm,
@@ -282,11 +263,9 @@ export function TaskComposer({
     setPlannedDate(initialPlannedDate ?? '')
     setPlannedStartTime('')
     setPlannedEndTime('')
-    setRemindBeforeStart(false)
+    setReminderOffsets([])
     reminderAvailabilityRef.current = false
     setNote('')
-    setSelectedTemplateId(null)
-    setTemplateNotice(null)
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -326,102 +305,7 @@ export function TaskComposer({
     }
   }
 
-  async function handleSaveTemplate() {
-    if (isHabitTaskType) {
-      return
-    }
-
-    const input = buildCurrentTaskInput()
-
-    if (!input) {
-      return
-    }
-
-    const isCreated = await addTaskTemplate(input)
-
-    if (isCreated) {
-      resetForm()
-      setTemplateNotice(
-        'Шаблон сохранён. Теперь его можно запускать в один клик.',
-      )
-    }
-  }
-
-  function handleApplyTemplate(template: TaskTemplate) {
-    const plannedDateFromTemplate = initialPlannedDate ?? template.plannedDate
-    const knownProject = template.projectId
-      ? spheres.find((project) => project.id === template.projectId)
-      : null
-
-    setTitle(template.title)
-    setIcon(template.icon)
-    setTaskType(getTaskTypeValue(template))
-    setResource('')
-    setRoutineForm(createDefaultRoutineTaskForm())
-    setRecurrenceForm(createDefaultTaskRecurrenceForm())
-    setProjectId(knownProject?.id ?? '')
-    setAssigneeUserId('')
-    setRequiresConfirmation(false)
-    setPlannedDate(plannedDateFromTemplate ?? '')
-    setPlannedStartTime(
-      plannedDateFromTemplate ? (template.plannedStartTime ?? '') : '',
-    )
-    setPlannedEndTime(
-      plannedDateFromTemplate && template.plannedStartTime
-        ? (template.plannedEndTime ?? '')
-        : '',
-    )
-    setRemindBeforeStart(false)
-    reminderAvailabilityRef.current = false
-    setNote(template.note)
-    setSelectedTemplateId(template.id)
-    setTemplateNotice(`Шаблон «${template.title}» подставлен в форму.`)
-    titleInputRef.current?.focus()
-  }
-
-  async function handleCreateFromTemplate(template: TaskTemplate) {
-    if (pendingTemplateId) {
-      return
-    }
-
-    const input = buildTaskInputFromTemplate(
-      template,
-      spheres,
-      initialPlannedDate,
-      isSharedWorkspace,
-    )
-
-    setPendingTemplateId(template.id)
-    resetForm()
-    setTemplateNotice(`Задача из шаблона «${template.title}» создаётся.`)
-    setIsOpen(false)
-
-    try {
-      const isCreated = await addTask(input)
-
-      if (isCreated) {
-        setTemplateNotice(`Задача из шаблона «${template.title}» создана.`)
-      }
-    } finally {
-      setPendingTemplateId(null)
-    }
-  }
-
-  async function handleRemoveTemplate(template: TaskTemplate) {
-    const isRemoved = await removeTaskTemplate(template.id)
-
-    if (isRemoved) {
-      if (selectedTemplateId === template.id) {
-        setSelectedTemplateId(null)
-      }
-
-      setTemplateNotice(`Шаблон «${template.title}» удалён.`)
-    }
-  }
-
   function openComposer() {
-    setTemplateNotice(null)
-    setIsTemplatesExpanded(false)
     setIsOpen(true)
   }
 
@@ -475,33 +359,20 @@ export function TaskComposer({
                   <TaskComposerPrimaryFields
                     icon={icon}
                     isHabitTaskType={isHabitTaskType}
-                    isTemplatesExpanded={isTemplatesExpanded}
                     note={note}
-                    pendingTemplateId={pendingTemplateId}
                     plannedDate={plannedDate}
                     plannedEndTime={plannedEndTime}
                     plannedStartTime={plannedStartTime}
-                    selectedTemplateId={selectedTemplateId}
                     showTimeFields={showTimeFields}
-                    spheres={spheres}
-                    taskTemplates={taskTemplates}
                     title={title}
                     titleFieldLabel={titleFieldLabel}
                     titleInputRef={titleInputRef}
                     uploadedIcons={uploadedIcons}
-                    onApplyTemplate={handleApplyTemplate}
-                    onCreateFromTemplate={(template) => {
-                      void handleCreateFromTemplate(template)
-                    }}
                     onIconChange={setIcon}
                     onNoteChange={setNote}
                     onPlannedDateChange={handlePlannedDateChange}
                     onPlannedEndTimeChange={setPlannedEndTime}
                     onPlannedStartTimeChange={handlePlannedStartTimeChange}
-                    onRemoveTemplate={(template) => {
-                      void handleRemoveTemplate(template)
-                    }}
-                    onTemplatesExpandedChange={setIsTemplatesExpanded}
                     onTitleChange={setTitle}
                   />
 
@@ -513,23 +384,25 @@ export function TaskComposer({
                     isReminderAvailable={isReminderAvailable}
                     isRoutineLikeTaskType={isRoutineLikeTaskType}
                     isSharedWorkspace={Boolean(isSharedWorkspace)}
+                    plannedDate={plannedDate}
+                    plannedEndTime={plannedEndTime}
+                    plannedStartTime={plannedStartTime}
                     projectId={projectId}
                     recurrenceForm={recurrenceForm}
-                    remindBeforeStart={remindBeforeStart}
+                    reminderOffsets={reminderOffsets}
                     requiresConfirmation={requiresConfirmation}
                     resource={resource}
                     routineForm={routineForm}
+                    showTimeFields={showTimeFields}
                     spheres={spheres}
                     taskType={taskType}
-                    todayKey={todayKey}
-                    tomorrowKey={tomorrowKey}
                     uploadedIcons={uploadedIcons}
                     workspaceUsers={workspaceUsers}
                     onAssigneeUserIdChange={setAssigneeUserId}
-                    onPlannedDateChange={handlePlannedDateChange}
+                    onPlannedEndTimeChange={setPlannedEndTime}
                     onProjectIdChange={setProjectId}
                     onRecurrenceChange={handleRecurrenceChange}
-                    onRemindBeforeStartChange={setRemindBeforeStart}
+                    onReminderOffsetsChange={setReminderOffsets}
                     onRequiresConfirmationChange={setRequiresConfirmation}
                     onResourceChange={setResource}
                     onRoutineFormChange={setRoutineForm}
@@ -537,27 +410,9 @@ export function TaskComposer({
                   />
                 </div>
 
-                {templateNotice ? (
-                  <p className={styles.notice}>{templateNotice}</p>
-                ) : null}
-
-                {!isHabitTaskType ? (
-                  <QuickPlanActions
-                    className={styles.mobileQuickActions}
-                    todayKey={todayKey}
-                    tomorrowKey={tomorrowKey}
-                    onChange={handlePlannedDateChange}
-                  />
-                ) : null}
-
                 <TaskComposerFooter
-                  isHabitTaskType={isHabitTaskType}
-                  isSaveTemplateDisabled={!title.trim()}
                   isSubmitDisabled={createHabitMutation.isPending}
                   submitLabel={submitLabel}
-                  onSaveTemplate={() => {
-                    void handleSaveTemplate()
-                  }}
                 />
               </form>
             </div>,

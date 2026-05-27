@@ -50,6 +50,31 @@ function getSphereDisplayTitle(projectTitle: string): string {
   return normalizedProjectTitle
 }
 
+function getTaskReminderLabel(
+  task: Task,
+  isSharedWorkspace: boolean,
+): string | null {
+  if (
+    isSharedWorkspace ||
+    !task.plannedDate ||
+    !task.plannedStartTime ||
+    !task.remindBeforeStart
+  ) {
+    return null
+  }
+
+  const offsets =
+    task.reminderOffsets && task.reminderOffsets.length > 0
+      ? task.reminderOffsets
+      : [15]
+
+  return `Напомнить: ${offsets.map(formatReminderOffset).join(', ')}`
+}
+
+function formatReminderOffset(offset: number): string {
+  return offset === 60 ? '1 час' : `${offset} мин`
+}
+
 interface TaskCardProps {
   currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
@@ -112,6 +137,7 @@ export function TaskCard({
     !LEGACY_EMPTY_PROJECT_TITLES.has(normalizedRawProjectTitle)
   const taskType = getTaskTypeValue(task)
   const taskResource = getTaskResource(task)
+  const reminderLabel = getTaskReminderLabel(task, isSharedWorkspace)
   const actionPolicy = resolveTaskCardActionPolicy({
     currentActorUserId,
     isSharedWorkspace,
@@ -565,11 +591,8 @@ export function TaskCard({
                   Из: {task.sourceWorkspace.name}
                 </span>
               ) : null}
-              {!isSharedWorkspace &&
-              task.remindBeforeStart &&
-              task.plannedDate &&
-              task.plannedStartTime ? (
-                <span className={styles.metaChip}>Напомнить за 15 минут</span>
+              {reminderLabel ? (
+                <span className={styles.metaChip}>{reminderLabel}</span>
               ) : null}
               {isSharedWorkspace && task.requiresConfirmation ? (
                 <span className={cx(styles.metaChip, styles.confirmationChip)}>

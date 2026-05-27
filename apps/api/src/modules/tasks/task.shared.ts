@@ -2,6 +2,7 @@ import type {
   NewTaskInput,
   RoutineTask,
   TaskRecurrence,
+  TaskReminderOffsetMinutes,
   TaskScheduleInput,
   TaskStatus,
   TaskUpdateInput,
@@ -11,6 +12,8 @@ import { generateUuidV7 } from '@planner/contracts'
 import type { StoredTaskRecord } from './task.model.js'
 
 const DEFAULT_DURATION_MINUTES = 60
+const DEFAULT_TASK_REMINDER_OFFSETS: TaskReminderOffsetMinutes[] = [15]
+const TASK_REMINDER_OFFSETS = new Set<number>([15, 30, 60])
 
 export interface NormalizedTaskInput extends NewTaskInput {
   icon: string
@@ -20,6 +23,7 @@ export interface NormalizedTaskInput extends NewTaskInput {
   projectId: string | null
   recurrence: TaskRecurrence | null
   remindBeforeStart: boolean
+  reminderOffsets: TaskReminderOffsetMinutes[]
   reminderTimeZone: string | undefined
   resource: NewTaskInput['resource']
   requiresConfirmation: boolean
@@ -67,6 +71,7 @@ export function normalizeTaskSchedule({
 
 export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
   const schedule = normalizeTaskSchedule(input)
+  const reminderOffsets = normalizeTaskReminderOffsets(input)
 
   return {
     ...input,
@@ -76,7 +81,8 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     project: input.project.trim(),
     projectId: input.projectId,
     recurrence: normalizeTaskRecurrence(input.recurrence, schedule.plannedDate),
-    remindBeforeStart: input.remindBeforeStart === true,
+    remindBeforeStart: reminderOffsets.length > 0,
+    reminderOffsets,
     reminderTimeZone: input.reminderTimeZone?.trim() || undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
@@ -85,6 +91,23 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     title: input.title.trim(),
     urgency: input.urgency ?? 'not_urgent',
   }
+}
+
+export function normalizeTaskReminderOffsets(
+  input: Pick<NewTaskInput, 'remindBeforeStart' | 'reminderOffsets'>,
+): TaskReminderOffsetMinutes[] {
+  const rawOffsets =
+    input.reminderOffsets !== undefined
+      ? input.reminderOffsets
+      : input.remindBeforeStart
+        ? DEFAULT_TASK_REMINDER_OFFSETS
+        : []
+
+  return [...new Set(rawOffsets)]
+    .filter((offset): offset is TaskReminderOffsetMinutes =>
+      TASK_REMINDER_OFFSETS.has(offset),
+    )
+    .sort((left, right) => left - right)
 }
 
 function normalizeRoutineTask(
@@ -247,6 +270,10 @@ export function createStoredTaskRecord(
     projectId: normalizedInput.projectId,
     recurrence: normalizedInput.recurrence,
     remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
+    reminderOffsets:
+      normalizedInput.reminderOffsets.length > 0
+        ? normalizedInput.reminderOffsets
+        : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
     routine: normalizedInput.routine,
@@ -285,6 +312,9 @@ export function applyTaskSchedule(
     normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
       ? task.remindBeforeStart
       : undefined
+  const resolvedReminderOffsets = remindBeforeStart
+    ? (task.reminderOffsets ?? [15])
+    : undefined
 
   return {
     ...task,
@@ -292,6 +322,7 @@ export function applyTaskSchedule(
     plannedEndTime: normalizedSchedule.plannedEndTime,
     plannedStartTime: normalizedSchedule.plannedStartTime,
     remindBeforeStart,
+    reminderOffsets: resolvedReminderOffsets,
     updatedAt: now,
     version: task.version + 1,
   }
@@ -323,6 +354,10 @@ export function applyTaskUpdate(
     projectId: normalizedInput.projectId,
     recurrence: normalizedInput.recurrence,
     remindBeforeStart: normalizedInput.remindBeforeStart ? true : undefined,
+    reminderOffsets:
+      normalizedInput.reminderOffsets.length > 0
+        ? normalizedInput.reminderOffsets
+        : undefined,
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
     routine: normalizedInput.routine,

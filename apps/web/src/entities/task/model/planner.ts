@@ -253,6 +253,12 @@ export function addTask(
     projectId: input.projectId,
     recurrence: input.recurrence ?? null,
     remindBeforeStart: input.remindBeforeStart ? true : undefined,
+    reminderOffsets:
+      input.reminderOffsets && input.reminderOffsets.length > 0
+        ? input.reminderOffsets
+        : input.remindBeforeStart
+          ? [15]
+          : undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
     routine: input.routine ?? null,
@@ -310,6 +316,10 @@ export function setTaskPlannedDate(
           plannedEndTime: plannedDate ? task.plannedEndTime : null,
         }),
         remindBeforeStart: plannedDate ? task.remindBeforeStart : undefined,
+        reminderOffsets: plannedDate
+          ? (task.reminderOffsets ??
+            (task.remindBeforeStart ? [15] : undefined))
+          : undefined,
       }
     }),
   )
@@ -332,6 +342,12 @@ export function setTaskSchedule(
               normalizedSchedule.plannedDate &&
               normalizedSchedule.plannedStartTime
                 ? task.remindBeforeStart
+                : undefined,
+            reminderOffsets:
+              normalizedSchedule.plannedDate &&
+              normalizedSchedule.plannedStartTime
+                ? (task.reminderOffsets ??
+                  (task.remindBeforeStart ? [15] : undefined))
                 : undefined,
           }
         : task,

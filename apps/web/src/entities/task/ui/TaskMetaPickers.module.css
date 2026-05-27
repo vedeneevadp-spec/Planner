@@ -231,4 +231,8 @@
   .resourceButton {
     flex-basis: calc(25% - 0.27rem);
   }
+
+  .reminderButton {
+    flex-basis: calc(50% - 0.27rem);
+  }
 }

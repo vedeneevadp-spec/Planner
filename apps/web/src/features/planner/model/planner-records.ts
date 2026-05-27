@@ -33,6 +33,7 @@ export function toPlannerTask(task: TaskRecord): Task {
     projectId: task.projectId,
     recurrence: task.recurrence ?? null,
     remindBeforeStart: task.remindBeforeStart,
+    reminderOffsets: task.reminderOffsets,
     resource: task.resource,
     requiresConfirmation: task.requiresConfirmation,
     routine: task.routine ?? null,
@@ -170,6 +171,12 @@ export function createOptimisticTaskRecord(
     projectId: input.projectId,
     recurrence: input.recurrence ?? null,
     remindBeforeStart: input.remindBeforeStart ? true : undefined,
+    reminderOffsets:
+      input.reminderOffsets && input.reminderOffsets.length > 0
+        ? input.reminderOffsets
+        : input.remindBeforeStart
+          ? [15]
+          : undefined,
     resource: input.resource,
     requiresConfirmation: input.requiresConfirmation ?? false,
     routine: input.routine ?? null,

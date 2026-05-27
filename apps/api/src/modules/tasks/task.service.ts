@@ -13,7 +13,10 @@ import type {
   UpdateTaskStatusCommand,
 } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
-import { normalizeTaskSchedule } from './task.shared.js'
+import {
+  normalizeTaskReminderOffsets,
+  normalizeTaskSchedule,
+} from './task.shared.js'
 
 export class TaskService {
   constructor(private readonly repository: TaskRepository) {}
@@ -34,7 +37,11 @@ export class TaskService {
     assertCanWriteTasks(context)
     assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
-    assertCanUseTaskReminder(context, input.remindBeforeStart, input)
+    assertCanUseTaskReminder(
+      context,
+      normalizeTaskReminderOffsets(input),
+      input,
+    )
 
     return this.repository.create({ context, input })
   }
@@ -107,7 +114,11 @@ export class TaskService {
     assertCanWriteTasks(context)
     assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
-    assertCanUseTaskReminder(context, input.remindBeforeStart, input)
+    assertCanUseTaskReminder(
+      context,
+      normalizeTaskReminderOffsets(input),
+      input,
+    )
 
     return this.repository.findById(context, taskId).then((task) => {
       if (!task) {
@@ -318,6 +329,7 @@ export class TaskService {
         projectId: completedTask.projectId,
         recurrence: completedTask.recurrence,
         remindBeforeStart: completedTask.remindBeforeStart === true,
+        reminderOffsets: completedTask.reminderOffsets,
         resource: completedTask.resource,
         requiresConfirmation: completedTask.requiresConfirmation,
         routine: completedTask.routine,
@@ -522,7 +534,7 @@ function assertCanAssignTask(
 
 function assertCanUseTaskReminder(
   context: TaskWriteContext,
-  remindBeforeStart: boolean | undefined,
+  reminderOffsets: number[],
   scheduleInput: {
     plannedDate: string | null
     plannedEndTime: string | null
@@ -530,7 +542,7 @@ function assertCanUseTaskReminder(
     reminderTimeZone?: string | undefined
   },
 ): void {
-  if (!remindBeforeStart) {
+  if (reminderOffsets.length === 0) {
     return
   }
 

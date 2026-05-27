@@ -14,7 +14,11 @@ import {
   createRoutineTaskFormFromRoutine,
   type RoutineTaskFormState,
 } from '../model/routine-task'
-import type { Task, TaskUpdateInput } from '../model/task.types'
+import type {
+  Task,
+  TaskReminderOffsetMinutes,
+  TaskUpdateInput,
+} from '../model/task.types'
 import {
   getResourceFromValue,
   getResourceValueFromTaskResource,
@@ -30,7 +34,11 @@ import {
 } from '../model/task-recurrence'
 import { RoutineTaskFields } from './RoutineTaskFields'
 import styles from './TaskCard.module.css'
-import { ResourcePicker, TaskTypePicker } from './TaskMetaPickers'
+import {
+  ResourcePicker,
+  TaskReminderPicker,
+  TaskTypePicker,
+} from './TaskMetaPickers'
 import { TaskRecurrenceFields } from './TaskRecurrenceFields'
 
 interface TaskEditDialogProps {
@@ -57,7 +65,6 @@ export function TaskEditDialog({
   onUpdate,
 }: TaskEditDialogProps) {
   const confirmationFieldId = useId()
-  const reminderFieldId = useId()
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
   )
@@ -77,8 +84,14 @@ export function TaskEditDialog({
   const [plannedEndTime, setPlannedEndTime] = useState(
     task.plannedEndTime ?? '',
   )
-  const [remindBeforeStart, setRemindBeforeStart] = useState(
-    task.remindBeforeStart === true,
+  const [reminderOffsets, setReminderOffsets] = useState<
+    TaskReminderOffsetMinutes[]
+  >(
+    task.reminderOffsets && task.reminderOffsets.length > 0
+      ? task.reminderOffsets
+      : task.remindBeforeStart
+        ? [15]
+        : [],
   )
   const [icon, setIcon] = useState(task.icon)
   const [resource, setResource] = useState(
@@ -106,7 +119,7 @@ export function TaskEditDialog({
     if (!nextPlannedDate) {
       setPlannedStartTime('')
       setPlannedEndTime('')
-      setRemindBeforeStart(false)
+      setReminderOffsets([])
       reminderAvailabilityRef.current = false
     }
   }
@@ -119,10 +132,10 @@ export function TaskEditDialog({
     setPlannedStartTime(nextStartTime)
 
     if (!nextAvailable) {
-      setRemindBeforeStart(false)
+      setReminderOffsets([])
       reminderAvailabilityRef.current = false
     } else if (!wasAvailable) {
-      setRemindBeforeStart(true)
+      setReminderOffsets([15])
       reminderAvailabilityRef.current = true
     }
   }
@@ -167,6 +180,10 @@ export function TaskEditDialog({
         ? todayKey
         : plannedDate
     const hasPlannedDate = Boolean(resolvedPlannedDate)
+    const resolvedReminderOffsets =
+      !isSharedWorkspace && hasPlannedDate && plannedStartTime
+        ? reminderOffsets
+        : []
     const isUpdated = await onUpdate(task.id, {
       assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
       dueDate: task.dueDate ?? null,
@@ -186,9 +203,10 @@ export function TaskEditDialog({
             task.recurrence?.seriesId,
           )
         : null,
-      remindBeforeStart: isSharedWorkspace ? false : remindBeforeStart,
+      remindBeforeStart: resolvedReminderOffsets.length > 0,
+      reminderOffsets: resolvedReminderOffsets,
       reminderTimeZone:
-        !isSharedWorkspace && remindBeforeStart
+        resolvedReminderOffsets.length > 0
           ? resolveClientTimeZone()
           : undefined,
       resource: getResourceFromValue(resource),
@@ -326,24 +344,10 @@ export function TaskEditDialog({
 
             {isReminderAvailable ? (
               <section className={styles.editorSection}>
-                <div className={styles.checkboxField}>
-                  <input
-                    id={reminderFieldId}
-                    type="checkbox"
-                    checked={remindBeforeStart}
-                    onChange={(event) =>
-                      setRemindBeforeStart(event.target.checked)
-                    }
-                  />
-                  <span className={styles.checkboxCopy}>
-                    <label
-                      className={styles.checkboxLabel}
-                      htmlFor={reminderFieldId}
-                    >
-                      Напомнить за 15 минут
-                    </label>
-                  </span>
-                </div>
+                <TaskReminderPicker
+                  value={reminderOffsets}
+                  onChange={setReminderOffsets}
+                />
               </section>
             ) : null}
 

@@ -6,15 +6,10 @@ import {
   createDefaultTaskRecurrenceForm,
   type RoutineTaskFormState,
 } from '@/entities/task'
-import type { TaskTemplate } from '@/entities/task-template'
 
 import {
   buildTaskComposerHabitInput,
   buildTaskComposerTaskInput,
-  buildTaskInputFromTemplate,
-  getSphereDisplayTitle,
-  getTemplateDisplayProject,
-  resolveProjectFields,
 } from './task-composer-model'
 
 const PROJECT = {
@@ -34,55 +29,7 @@ const PROJECT = {
   workspaceId: 'workspace-1',
 } satisfies Sphere
 
-const TEMPLATE = {
-  createdAt: '2026-04-20T08:00:00.000Z',
-  dueDate: null,
-  icon: 'briefcase',
-  id: 'template-1',
-  importance: 'important',
-  note: 'Контекст',
-  plannedDate: '2026-04-23',
-  plannedEndTime: '10:30',
-  plannedStartTime: '10:00',
-  project: 'Работа',
-  projectId: 'project-1',
-  title: 'Проверить отчёт',
-  urgency: 'urgent',
-} satisfies TaskTemplate
-
 describe('task-composer-model', () => {
-  it('normalizes legacy empty project titles', () => {
-    expect(getSphereDisplayTitle('Без сферы')).toBe('Без сферы')
-    expect(getSphereDisplayTitle('Без проекта')).toBe('Без сферы')
-    expect(resolveProjectFields([], null, 'No sphere')).toEqual({
-      project: '',
-      projectId: null,
-    })
-  })
-
-  it('builds template display project metadata', () => {
-    expect(getTemplateDisplayProject(TEMPLATE, [PROJECT])).toEqual({
-      hasProject: true,
-      project: PROJECT,
-      title: 'Работа',
-    })
-
-    expect(
-      getTemplateDisplayProject(
-        {
-          ...TEMPLATE,
-          project: 'Без проекта',
-          projectId: null,
-        },
-        [PROJECT],
-      ),
-    ).toEqual({
-      hasProject: false,
-      project: null,
-      title: 'Без сферы',
-    })
-  })
-
   it('builds task input from the current composer state', () => {
     const input = buildTaskComposerTaskInput({
       assigneeUserId: 'user-2',
@@ -99,7 +46,7 @@ describe('task-composer-model', () => {
         ...createDefaultTaskRecurrenceForm(),
         isEnabled: true,
       },
-      remindBeforeStart: true,
+      reminderOffsets: [15, 30],
       requiresConfirmation: true,
       resource: '3',
       routineForm: createDefaultRoutineTaskForm(),
@@ -115,6 +62,7 @@ describe('task-composer-model', () => {
       plannedDate: '2026-04-22',
       project: 'Работа',
       projectId: PROJECT.id,
+      reminderOffsets: [],
       remindBeforeStart: false,
       requiresConfirmation: true,
       resource: 3,
@@ -127,6 +75,38 @@ describe('task-composer-model', () => {
       startDate: '2026-04-22',
     })
     expect(input?.reminderTimeZone).toBeUndefined()
+  })
+
+  it('keeps multiple reminder offsets for personal tasks with a start time', () => {
+    const input = buildTaskComposerTaskInput({
+      assigneeUserId: '',
+      canUseRecurrence: false,
+      icon: 'briefcase',
+      initialPlannedDate: null,
+      isSharedWorkspace: false,
+      note: '',
+      plannedDate: '2026-04-22',
+      plannedEndTime: '',
+      plannedStartTime: '10:00',
+      projectId: PROJECT.id,
+      recurrenceForm: createDefaultTaskRecurrenceForm(),
+      reminderOffsets: [15, 60],
+      requiresConfirmation: false,
+      resource: '',
+      routineForm: createDefaultRoutineTaskForm(),
+      spheres: [PROJECT],
+      taskType: '',
+      title: 'Созвон',
+      todayKey: '2026-04-22',
+    })
+
+    expect(input).toMatchObject({
+      plannedDate: '2026-04-22',
+      plannedStartTime: '10:00',
+      reminderOffsets: [15, 60],
+      remindBeforeStart: true,
+      title: 'Созвон',
+    })
   })
 
   it('builds habit input from the current composer state', () => {
@@ -159,25 +139,5 @@ describe('task-composer-model', () => {
       title: 'Читать',
       unit: 'страниц',
     })
-  })
-
-  it('keeps project and reminder fields for personal template tasks', () => {
-    const input = buildTaskInputFromTemplate(TEMPLATE, [PROJECT], null, false)
-
-    expect(input.project).toBe('Работа')
-    expect(input.projectId).toBe('project-1')
-    expect(input.sphereId).toBe('project-1')
-    expect(input.remindBeforeStart).toBe(true)
-    expect(input.plannedStartTime).toBe('10:00')
-  })
-
-  it('keeps project and strips reminder fields for shared workspace template tasks', () => {
-    const input = buildTaskInputFromTemplate(TEMPLATE, [PROJECT], null, true)
-
-    expect(input.project).toBe('Работа')
-    expect(input.projectId).toBe('project-1')
-    expect(input.sphereId).toBe('project-1')
-    expect(input.remindBeforeStart).toBe(false)
-    expect(input.reminderTimeZone).toBeUndefined()
   })
 })

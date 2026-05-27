@@ -10,6 +10,7 @@ export async function syncTaskReminder(
     plannedDate: string | null
     plannedStartTime: string | null
     remindBeforeStart: boolean
+    reminderOffsets: readonly number[]
     reminderTimeZone: string | undefined
     taskId: string
     userId: string
@@ -22,6 +23,7 @@ export async function syncTaskReminder(
       cast(${params.workspaceId} as uuid),
       cast(${params.userId} as uuid),
       ${params.remindBeforeStart},
+      cast(${params.reminderOffsets} as integer[]),
       cast(${params.plannedDate} as date),
       cast(${params.plannedStartTime} as time),
       cast(${params.reminderTimeZone ?? null} as text),

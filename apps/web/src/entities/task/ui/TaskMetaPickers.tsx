@@ -2,12 +2,14 @@ import { useId } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { LightningIcon } from '@/shared/ui/Icon'
+import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
 
 import {
   MAX_TASK_RESOURCE,
   TASK_RESOURCE_STEPS,
   type TaskResourceLevel,
 } from '../model/resource'
+import type { TaskReminderOffsetMinutes } from '../model/task.types'
 import type { ResourceValue, TaskTypeValue } from '../model/task-meta'
 import styles from './TaskMetaPickers.module.css'
 
@@ -24,6 +26,34 @@ const RESOURCE_COLORS: Record<TaskResourceLevel, string> = {
   4: '#de7b35',
 }
 const RESTORE_RESOURCE_COLOR = '#2f9e44'
+
+type TaskReminderOffsetSelectValue = '15' | '30' | '60'
+type TaskReminderSelectValue = 'none' | TaskReminderOffsetSelectValue
+
+const TASK_REMINDER_OPTIONS: Array<
+  SelectPickerOption<TaskReminderSelectValue>
+> = [
+  { label: 'Без оповещения', value: 'none' },
+  { label: '15 мин', value: '15' },
+  { label: '30 мин', value: '30' },
+  { label: '1 час', value: '60' },
+]
+const TASK_REMINDER_OFFSET_BY_VALUE: Record<
+  TaskReminderOffsetSelectValue,
+  TaskReminderOffsetMinutes
+> = {
+  '15': 15,
+  '30': 30,
+  '60': 60,
+}
+const TASK_REMINDER_VALUE_BY_OFFSET: Record<
+  TaskReminderOffsetMinutes,
+  TaskReminderOffsetSelectValue
+> = {
+  15: '15',
+  30: '30',
+  60: '60',
+}
 
 interface TaskTypeOption {
   imageSrc: string
@@ -235,6 +265,45 @@ export function ResourcePicker({
       </div>
     </div>
   )
+}
+
+export function TaskReminderPicker({
+  className,
+  label = 'Напомнить',
+  value,
+  onChange,
+}: {
+  className?: string | undefined
+  label?: string | undefined
+  value: TaskReminderOffsetMinutes[]
+  onChange: (value: TaskReminderOffsetMinutes[]) => void
+}) {
+  function handleChange(nextValue: TaskReminderSelectValue[]) {
+    onChange(
+      nextValue
+        .filter(isReminderOffsetSelectValue)
+        .map((item) => TASK_REMINDER_OFFSET_BY_VALUE[item])
+        .sort((left, right) => left - right),
+    )
+  }
+
+  return (
+    <SelectPicker<TaskReminderSelectValue>
+      className={className}
+      label={label}
+      multiple
+      clearValue="none"
+      value={value.map((item) => TASK_REMINDER_VALUE_BY_OFFSET[item])}
+      options={TASK_REMINDER_OPTIONS}
+      onChange={handleChange}
+    />
+  )
+}
+
+function isReminderOffsetSelectValue(
+  value: TaskReminderSelectValue,
+): value is TaskReminderOffsetSelectValue {
+  return value !== 'none'
 }
 
 function getResourceMagnitude(value: number): TaskResourceLevel {

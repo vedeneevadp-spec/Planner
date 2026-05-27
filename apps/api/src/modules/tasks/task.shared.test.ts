@@ -1,7 +1,28 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { applyTaskSchedule } from './task.shared.js'
+import {
+  applyTaskSchedule,
+  normalizeTaskReminderOffsets,
+} from './task.shared.js'
+
+void test('normalizeTaskReminderOffsets supports legacy flag and explicit clear', () => {
+  assert.deepEqual(
+    normalizeTaskReminderOffsets({ remindBeforeStart: true }),
+    [15],
+  )
+  assert.deepEqual(
+    normalizeTaskReminderOffsets({
+      reminderOffsets: [],
+      remindBeforeStart: true,
+    }),
+    [],
+  )
+  assert.deepEqual(
+    normalizeTaskReminderOffsets({ reminderOffsets: [60, 15, 15] }),
+    [15, 60],
+  )
+})
 
 void test('applyTaskSchedule clears reminder flag when planned start is removed', () => {
   const updatedTask = applyTaskSchedule(
@@ -42,6 +63,7 @@ void test('applyTaskSchedule clears reminder flag when planned start is removed'
   )
 
   assert.equal(updatedTask.remindBeforeStart, undefined)
+  assert.equal(updatedTask.reminderOffsets, undefined)
   assert.equal(updatedTask.plannedDate, null)
   assert.equal(updatedTask.plannedStartTime, null)
 })

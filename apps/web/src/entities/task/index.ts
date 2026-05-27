@@ -42,6 +42,7 @@ export type {
   TaskRecurrence,
   TaskRecurrenceFrequency,
   TaskRecurrenceInput,
+  TaskReminderOffsetMinutes,
   TaskResource,
   TaskSourceWorkspace,
   TaskStatus,
@@ -72,6 +73,7 @@ export { TaskCard } from './ui/TaskCard'
 export { TaskEditDialog } from './ui/TaskEditDialog'
 export {
   ResourcePicker,
+  TaskReminderPicker,
   TaskResourceMeter,
   TaskTypePicker,
 } from './ui/TaskMetaPickers'

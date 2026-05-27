@@ -8,6 +8,7 @@ export type {
   TaskRecurrence,
   TaskRecurrenceFrequency,
   TaskRecurrenceInput,
+  TaskReminderOffsetMinutes,
   TaskResource,
   TaskSourceWorkspace,
   TaskStatus,
