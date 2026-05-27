@@ -13,7 +13,6 @@ export type AppRouteId =
   | 'shopping'
   | 'sphere'
   | 'spheres'
-  | 'timeline'
   | 'today'
 
 export interface AppRouteDefinition {
@@ -29,7 +28,6 @@ export type NavigationRouteId =
   | 'habits'
   | 'shopping'
   | 'spheres'
-  | 'timeline'
   | 'today'
 
 export type PlannerTabColor =
@@ -90,11 +88,6 @@ export const appRouteDefinitions = [
   {
     id: 'shopping',
     path: '/shopping',
-    workspaceKinds: allWorkspaceKinds,
-  },
-  {
-    id: 'timeline',
-    path: '/timeline',
     workspaceKinds: allWorkspaceKinds,
   },
   {
@@ -183,25 +176,12 @@ export const navigationRouteDefinitions = [
     workspaceKinds: allWorkspaceKinds,
   },
   {
-    id: 'timeline',
-    label: 'Таймлайн',
-    mobileOrder: 0,
-    mobilePlacement: 'more',
-    plannerTabColor: 'lavender',
-    plannerTabOrder: 4,
-    plannerTabPlacement: 'side',
-    plannerTabShortLabel: 'Лента',
-    path: '/timeline',
-    to: '/timeline',
-    workspaceKinds: allWorkspaceKinds,
-  },
-  {
     id: 'spheres',
     label: 'Сферы',
-    mobileOrder: 1,
+    mobileOrder: 0,
     mobilePlacement: 'more',
     plannerTabColor: 'green',
-    plannerTabOrder: 5,
+    plannerTabOrder: 4,
     plannerTabPlacement: 'side',
     plannerTabShortLabel: 'Сферы',
     path: '/spheres',
@@ -211,10 +191,10 @@ export const navigationRouteDefinitions = [
   {
     id: 'habits',
     label: 'Привычки',
-    mobileOrder: 2,
+    mobileOrder: 1,
     mobilePlacement: 'more',
     plannerTabColor: 'pink',
-    plannerTabOrder: 6,
+    plannerTabOrder: 5,
     plannerTabPlacement: 'side',
     plannerTabShortLabel: 'Привычки',
     path: '/habits',
@@ -224,7 +204,7 @@ export const navigationRouteDefinitions = [
   {
     id: 'admin',
     label: 'Admin',
-    mobileOrder: 3,
+    mobileOrder: 2,
     mobilePlacement: 'more',
     plannerTabColor: 'gray',
     plannerTabPlacement: 'more',

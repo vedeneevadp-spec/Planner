@@ -2,9 +2,6 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Task } from '@/entities/task'
-import { getDateKey } from '@/shared/lib/date'
-
 import styles from './PlannerTabs.module.css'
 import { PlannerTopTabs } from './PlannerTopTabs'
 
@@ -26,22 +23,10 @@ interface PlannerTopTabsSessionStub {
     | undefined
 }
 
-interface PlannerTopTabsPlannerStub {
-  tasks: Task[]
-}
-
-const plannerMocks = vi.hoisted(() => ({
-  usePlanner: vi.fn<() => PlannerTopTabsPlannerStub>(),
-}))
-
 const sessionMocks = vi.hoisted(() => ({
   setSelectedWorkspaceIdForActors: vi.fn(),
   usePlannerSession: vi.fn<() => PlannerTopTabsSessionStub>(),
   useSessionAuth: vi.fn<() => PlannerTopTabsAuthStub>(),
-}))
-
-vi.mock('@/features/planner', () => ({
-  usePlanner: () => plannerMocks.usePlanner(),
 }))
 
 vi.mock('@/features/session', () => ({
@@ -78,39 +63,8 @@ function requireClassName(className: string | undefined): string {
   return className
 }
 
-function createTask(overrides: Partial<Task> = {}): Task {
-  return {
-    assigneeDisplayName: null,
-    assigneeUserId: null,
-    authorDisplayName: null,
-    authorUserId: null,
-    completedAt: null,
-    createdAt: '2026-05-19T08:00:00.000Z',
-    dueDate: null,
-    icon: '',
-    id: 'task-1',
-    importance: 'not_important',
-    note: '',
-    plannedDate: null,
-    plannedEndTime: null,
-    plannedStartTime: null,
-    project: '',
-    projectId: null,
-    requiresConfirmation: false,
-    resource: null,
-    sphereId: null,
-    status: 'todo',
-    title: 'Нераспределённая задача',
-    urgency: 'not_urgent',
-    ...overrides,
-  }
-}
-
 describe('PlannerTopTabs', () => {
   beforeEach(() => {
-    plannerMocks.usePlanner.mockReturnValue({
-      tasks: [],
-    })
     sessionMocks.setSelectedWorkspaceIdForActors.mockClear()
     sessionMocks.usePlannerSession.mockReturnValue({
       data: {
@@ -200,6 +154,7 @@ describe('PlannerTopTabs', () => {
 
     expect(screen.getByRole('button', { name: 'Создать задачу' })).toBeVisible()
     expect(screen.getByRole('tablist', { name: 'Вид календаря' })).toBeVisible()
+    expect(screen.getByRole('tab', { name: 'День' })).toBeVisible()
     expect(screen.getByRole('tab', { name: 'Неделя' })).toHaveAttribute(
       'aria-selected',
       'true',
@@ -218,60 +173,14 @@ describe('PlannerTopTabs', () => {
     )
   })
 
-  it('shows timeline task creation tab', () => {
-    renderPlannerTopTabs('/timeline')
-
-    expect(screen.getByRole('button', { name: 'Создать задачу' })).toBeVisible()
-    expect(
-      screen.queryByRole('button', { name: /Распределить/i }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('opens timeline task creation through a query trigger', () => {
-    renderPlannerTopTabs('/timeline?foo=bar')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Создать задачу' }))
-
-    expect(screen.getByTestId('location').textContent).toContain(
-      '/timeline?foo=bar&createTask=',
-    )
-  })
-
-  it('shows timeline schedule tab for tasks without time', () => {
-    const todayKey = getDateKey(new Date())
-    plannerMocks.usePlanner.mockReturnValue({
-      tasks: [
-        createTask({
-          id: 'unscheduled-1',
-          plannedDate: todayKey,
-          plannedStartTime: null,
-        }),
-        createTask({
-          id: 'unscheduled-2',
-          plannedDate: todayKey,
-          plannedStartTime: null,
-        }),
-        createTask({
-          id: 'scheduled-1',
-          plannedDate: todayKey,
-          plannedStartTime: '10:00',
-        }),
-      ],
-    })
-
-    renderPlannerTopTabs('/timeline?foo=bar')
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Распределить 2 задач' }),
-    )
-
-    expect(screen.getByTestId('location')).toHaveTextContent(
-      '/timeline?foo=bar&timelineSchedule=1',
-    )
-  })
-
   it('toggles only the calendar view query parameter', () => {
     renderPlannerTopTabs('/calendar?foo=bar')
+
+    fireEvent.click(screen.getByRole('tab', { name: 'День' }))
+
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/calendar?foo=bar&calendarView=day',
+    )
 
     fireEvent.click(screen.getByRole('tab', { name: 'Месяц' }))
 

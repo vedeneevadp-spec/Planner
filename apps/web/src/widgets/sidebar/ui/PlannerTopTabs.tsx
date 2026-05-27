@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import {
   Link,
   useLocation,
@@ -6,14 +5,12 @@ import {
   useSearchParams,
 } from 'react-router-dom'
 
-import { buildTimelineLayout, selectPlannedTasks } from '@/entities/task'
 import {
   CLEANING_FOCUS_QUERY_KEY,
   type CleaningFocusMode,
   getCleaningFocusModeAriaLabel,
   getCleaningFocusModeFromSearchParams,
 } from '@/features/cleaning'
-import { usePlanner } from '@/features/planner'
 import {
   setSelectedWorkspaceIdForActors,
   usePlannerSession,
@@ -26,9 +23,7 @@ import {
   type ShoppingCategory,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKey } from '@/shared/lib/date'
 import {
-  ClockIcon,
   GearIcon,
   LightningIcon,
   MenuIcon,
@@ -39,7 +34,7 @@ import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import styles from './PlannerTabs.module.css'
 
-type CalendarTopViewMode = 'week' | 'month' | 'schedule'
+type CalendarTopViewMode = 'day' | 'week' | 'month' | 'schedule'
 type TodayTaskView = 'cards' | 'list'
 
 const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
@@ -50,11 +45,11 @@ const SPHERES_ACTION_REQUEST_SEARCH_PARAM = 'spheresActionRequest'
 const SPHERES_ACTION_SEARCH_PARAM = 'spheresAction'
 const TASK_CREATE_SEARCH_PARAM = 'createTask'
 const TASK_VIEW_SEARCH_PARAM = 'taskView'
-const TIMELINE_SCHEDULE_SEARCH_PARAM = 'timelineSchedule'
 const CALENDAR_VIEW_TABS: Array<{
   label: string
   mode: CalendarTopViewMode
 }> = [
+  { label: 'День', mode: 'day' },
   { label: 'Неделя', mode: 'week' },
   { label: 'Месяц', mode: 'month' },
   { label: 'Расписание', mode: 'schedule' },
@@ -112,7 +107,6 @@ export function PlannerTopTabs() {
   const location = useLocation()
   const navigate = useNavigate()
   const auth = useSessionAuth()
-  const { tasks } = usePlanner()
   const { data: session } = usePlannerSession()
   const [searchParams] = useSearchParams()
   const isHomeActive = matchesRoute(location.pathname, '/today')
@@ -125,7 +119,6 @@ export function PlannerTopTabs() {
   const isHabitsActive = location.pathname === '/habits'
   const isShoppingActive = matchesRoute(location.pathname, '/shopping')
   const isSpheresActive = location.pathname === '/spheres'
-  const isTimelineActive = location.pathname === '/timeline'
   const shouldHideMobileBrandText =
     isCalendarActive ||
     isCleaningActive ||
@@ -141,19 +134,6 @@ export function PlannerTopTabs() {
     taskView === 'cards'
       ? 'Показать задачи списком'
       : 'Показать задачи плитками'
-  const todayKey = getDateKey(new Date())
-  const timelineUnscheduledCount = useMemo(() => {
-    if (!isTimelineActive) {
-      return 0
-    }
-
-    const dayTasks = selectPlannedTasks(tasks, todayKey)
-    const scheduledTaskIds = new Set(
-      buildTimelineLayout(tasks, todayKey).map((entry) => entry.task.id),
-    )
-
-    return dayTasks.filter((task) => !scheduledTaskIds.has(task.id)).length
-  }, [isTimelineActive, tasks, todayKey])
 
   function toggleTaskView() {
     const nextParams = new URLSearchParams(searchParams)
@@ -242,13 +222,6 @@ export function PlannerTopTabs() {
   function openTaskComposer() {
     const nextParams = new URLSearchParams(searchParams)
     nextParams.set(TASK_CREATE_SEARCH_PARAM, createActionRequestId())
-
-    navigateWithSearchParams(nextParams)
-  }
-
-  function openTimelineSchedule() {
-    const nextParams = new URLSearchParams(searchParams)
-    nextParams.set(TIMELINE_SCHEDULE_SEARCH_PARAM, '1')
 
     navigateWithSearchParams(nextParams)
   }
@@ -483,35 +456,6 @@ export function PlannerTopTabs() {
             })}
           </div>
         </div>
-      ) : isTimelineActive ? (
-        <div className={styles.topActionList}>
-          {timelineUnscheduledCount > 0 ? (
-            <button
-              className={cx(styles.topSegmentTab, styles.topSpheresActionTab)}
-              type="button"
-              aria-label={`Распределить ${timelineUnscheduledCount} задач`}
-              title={`Распределить ${timelineUnscheduledCount} задач`}
-              onClick={openTimelineSchedule}
-            >
-              <ClockIcon size={17} strokeWidth={2.2} />
-              <span>Распределить {timelineUnscheduledCount} задач</span>
-            </button>
-          ) : null}
-          <button
-            className={cx(
-              styles.topSegmentTab,
-              styles.topSpheresActionTab,
-              styles.topTodayCreateTab,
-            )}
-            type="button"
-            aria-label="Создать задачу"
-            title="Создать задачу"
-            onClick={openTaskComposer}
-          >
-            <PlusIcon size={14} strokeWidth={2.2} />
-            <span>Задача</span>
-          </button>
-        </div>
       ) : isSpheresActive ? (
         <div
           className={cx(styles.topSegmentList, styles.topSpheresActionList)}
@@ -632,7 +576,12 @@ function getCalendarViewMode(
 ): CalendarTopViewMode | null {
   const viewMode = searchParams.get(CALENDAR_VIEW_SEARCH_PARAM)
 
-  if (viewMode === 'week' || viewMode === 'month' || viewMode === 'schedule') {
+  if (
+    viewMode === 'day' ||
+    viewMode === 'week' ||
+    viewMode === 'month' ||
+    viewMode === 'schedule'
+  ) {
     return viewMode
   }
 

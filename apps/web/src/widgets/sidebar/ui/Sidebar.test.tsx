@@ -564,9 +564,6 @@ describe('Sidebar', () => {
       within(plannerNavigation).getByRole('link', { name: 'Уборка' }),
     ).toHaveAttribute('aria-current', 'page')
     expect(
-      within(plannerNavigation).getByRole('link', { name: 'Таймлайн' }),
-    ).toBeVisible()
-    expect(
       within(plannerNavigation).getByRole('link', { name: /Сферы/ }),
     ).toBeVisible()
 

@@ -161,7 +161,12 @@ export const workspaceSettingsSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
 })
 
-export const calendarViewModeSchema = z.enum(['week', 'month', 'schedule'])
+export const calendarViewModeSchema = z.enum([
+  'day',
+  'week',
+  'month',
+  'schedule',
+])
 
 export const userPreferencesSchema = z.object({
   calendarViewMode: calendarViewModeSchema,

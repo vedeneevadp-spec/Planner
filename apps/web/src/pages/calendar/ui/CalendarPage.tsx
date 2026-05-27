@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   buildTimelineLayout,
   getTaskResource,
+  selectPlannedTasks,
   type Task,
   TaskCard,
   type TimelineTaskLayout,
@@ -19,8 +20,18 @@ import {
 } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { cx } from '@/shared/lib/classnames'
-import { addDays, formatTimeRange, getDateKey } from '@/shared/lib/date'
-import { ChevronLeftIcon, ChevronRightIcon } from '@/shared/ui/Icon'
+import {
+  addDays,
+  formatLongDate,
+  formatTimeRange,
+  getDateKey,
+} from '@/shared/lib/date'
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  IconMark,
+} from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 
 import {
@@ -31,6 +42,7 @@ import {
   isRecurringGhostTask,
   shiftCalendarMonth,
 } from '../lib/calendar-load'
+import { CalendarDayScheduleDialog } from './CalendarDayScheduleDialog'
 import styles from './CalendarPage.module.css'
 
 const WEEKDAY_LABELS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const
@@ -41,14 +53,41 @@ const MIN_TASK_HEIGHT_REM = 2.2
 const MONTH_VISIBLE_TASK_LIMIT = 5
 const SCHEDULE_VISIBLE_DAYS = 14
 const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
+const DAY_SCHEDULE_SEARCH_PARAM = 'calendarDaySchedule'
+const LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM = 'timelineSchedule'
 const TASK_CREATE_SEARCH_PARAM = 'createTask'
+
+function formatTaskCount(value: number): string {
+  const mod100 = value % 100
+
+  if (mod100 >= 11 && mod100 <= 14) {
+    return `${value} задач`
+  }
+
+  const mod10 = value % 10
+
+  if (mod10 === 1) {
+    return `${value} задача`
+  }
+
+  if (mod10 >= 2 && mod10 <= 4) {
+    return `${value} задачи`
+  }
+
+  return `${value} задач`
+}
 
 function getCalendarViewModeFromSearchParams(
   searchParams: URLSearchParams,
 ): CalendarViewMode | null {
   const viewMode = searchParams.get(CALENDAR_VIEW_SEARCH_PARAM)
 
-  if (viewMode === 'week' || viewMode === 'month' || viewMode === 'schedule') {
+  if (
+    viewMode === 'day' ||
+    viewMode === 'week' ||
+    viewMode === 'month' ||
+    viewMode === 'schedule'
+  ) {
     return viewMode
   }
 
@@ -69,6 +108,12 @@ function formatMonthTitle(dateKey: string): string {
     month: 'long',
     year: 'numeric',
   }).format(parseDateKey(dateKey))
+
+  return title.charAt(0).toUpperCase() + title.slice(1)
+}
+
+function formatDayTitle(dateKey: string): string {
+  const title = formatLongDate(dateKey)
 
   return title.charAt(0).toUpperCase() + title.slice(1)
 }
@@ -179,6 +224,10 @@ function getScheduleDateKeys(anchorDateKey: string): string[] {
 }
 
 function getCalendarTitle(mode: CalendarViewMode, anchorDateKey: string) {
+  if (mode === 'day') {
+    return formatDayTitle(anchorDateKey)
+  }
+
   if (mode === 'month') {
     return formatMonthTitle(anchorDateKey)
   }
@@ -312,6 +361,10 @@ function shiftCalendarDate(
     )
   }
 
+  if (mode === 'day') {
+    return getDateKey(addDays(parseDateKey(dateKey), amount))
+  }
+
   return getDateKey(addDays(parseDateKey(dateKey), amount * 7))
 }
 
@@ -398,6 +451,7 @@ export function CalendarPage() {
     moveTaskToPersonal,
     removeTask,
     setTaskPlannedDate,
+    setTaskSchedule,
     setTaskStatus,
     spheres,
     tasks,
@@ -414,8 +468,8 @@ export function CalendarPage() {
   const sessionPreferenceKey = session
     ? `${session.actorUserId}:${session.workspaceId}`
     : null
-  const weekSurfaceRef = useRef<HTMLElement | null>(null)
-  const lastWeekScrollKeyRef = useRef<string | null>(null)
+  const timelineSurfaceRef = useRef<HTMLElement | null>(null)
+  const lastTimelineScrollKeyRef = useRef<string | null>(null)
   const lastCalendarViewPreferenceSyncRef = useRef<string | null>(null)
   const [viewModeState, setViewModeState] = useState<{
     mode: CalendarViewMode
@@ -456,7 +510,18 @@ export function CalendarPage() {
     () => getScheduleDateKeys(anchorDate),
     [anchorDate],
   )
+  const timedDateKeys = useMemo(
+    () => (viewMode === 'day' ? [anchorDate] : weekDateKeys),
+    [anchorDate, viewMode, weekDateKeys],
+  )
   const visibleDateRange = useMemo(() => {
+    if (viewMode === 'day') {
+      return {
+        endDateKey: anchorDate,
+        startDateKey: anchorDate,
+      }
+    }
+
     if (viewMode === 'month') {
       return getCalendarMonthDateRange(anchorDate)
     }
@@ -499,9 +564,32 @@ export function CalendarPage() {
         .filter((day) => day.tasks.length > 0),
     [calendarTasks, scheduleDateKeys],
   )
+  const dayTimelineEntries = useMemo(
+    () => buildTimelineLayout(calendarTasks, anchorDate),
+    [anchorDate, calendarTasks],
+  )
+  const dayUnscheduledTasks = useMemo(() => {
+    const scheduledTaskIds = new Set(
+      buildTimelineLayout(tasks, anchorDate).map((entry) => entry.task.id),
+    )
+
+    return selectPlannedTasks(tasks, anchorDate).filter(
+      (task) => !scheduledTaskIds.has(task.id),
+    )
+  }, [anchorDate, tasks])
   const timeRange = useMemo(
-    () => getTimeRange(calendarTasks, weekDateKeys),
-    [calendarTasks, weekDateKeys],
+    () => getTimeRange(calendarTasks, timedDateKeys),
+    [calendarTasks, timedDateKeys],
+  )
+  const isDayScheduleModalRequested =
+    searchParams.get(DAY_SCHEDULE_SEARCH_PARAM) === '1' ||
+    searchParams.get(LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM) === '1'
+  const isDayScheduleModalOpen =
+    viewMode === 'day' &&
+    isDayScheduleModalRequested &&
+    dayUnscheduledTasks.length > 0
+  const dayUnscheduledTaskCountLabel = formatTaskCount(
+    dayUnscheduledTasks.length,
   )
   const title = getCalendarTitle(viewMode, anchorDate)
 
@@ -540,6 +628,19 @@ export function CalendarPage() {
     setSelectedTaskId(task.id)
   }
 
+  function openDaySchedule() {
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.set(DAY_SCHEDULE_SEARCH_PARAM, '1')
+    setSearchParams(nextSearchParams)
+  }
+
+  function closeDaySchedule() {
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete(DAY_SCHEDULE_SEARCH_PARAM)
+    nextSearchParams.delete(LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM)
+    setSearchParams(nextSearchParams, { replace: true })
+  }
+
   useEffect(() => {
     if (!createTaskRequestId) {
       return
@@ -549,6 +650,26 @@ export function CalendarPage() {
     nextSearchParams.delete(TASK_CREATE_SEARCH_PARAM)
     setSearchParams(nextSearchParams, { replace: true })
   }, [createTaskRequestId, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (
+      !isDayScheduleModalRequested ||
+      (viewMode === 'day' && dayUnscheduledTasks.length > 0)
+    ) {
+      return
+    }
+
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete(DAY_SCHEDULE_SEARCH_PARAM)
+    nextSearchParams.delete(LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM)
+    setSearchParams(nextSearchParams, { replace: true })
+  }, [
+    dayUnscheduledTasks.length,
+    isDayScheduleModalRequested,
+    searchParams,
+    setSearchParams,
+    viewMode,
+  ])
 
   useEffect(() => {
     if (requestedViewMode || persistedViewMode === 'week') {
@@ -596,20 +717,20 @@ export function CalendarPage() {
   ])
 
   useEffect(() => {
-    if (viewMode !== 'week') {
-      lastWeekScrollKeyRef.current = null
+    if (viewMode !== 'day' && viewMode !== 'week') {
+      lastTimelineScrollKeyRef.current = null
 
       return
     }
 
-    const weekScrollKey = `${anchorDate}:${timeRange.startHour}:${timeRange.endHour}`
+    const timelineScrollKey = `${viewMode}:${anchorDate}:${timeRange.startHour}:${timeRange.endHour}`
 
-    if (lastWeekScrollKeyRef.current === weekScrollKey) {
+    if (lastTimelineScrollKeyRef.current === timelineScrollKey) {
       return
     }
 
     const frame = window.requestAnimationFrame(() => {
-      const surface = weekSurfaceRef.current
+      const surface = timelineSurfaceRef.current
 
       if (!surface) {
         return
@@ -642,7 +763,7 @@ export function CalendarPage() {
       const targetTop = targetRect.top - surfaceRect.top + surface.scrollTop
 
       surface.scrollTop = Math.max(0, targetTop - stickyOffset)
-      lastWeekScrollKeyRef.current = weekScrollKey
+      lastTimelineScrollKeyRef.current = timelineScrollKey
     })
 
     return () => window.cancelAnimationFrame(frame)
@@ -683,19 +804,104 @@ export function CalendarPage() {
         </div>
 
         <div className={styles.toolbarActions}>
+          {viewMode === 'day' && dayUnscheduledTasks.length > 0 ? (
+            <button
+              className={styles.distributeButton}
+              type="button"
+              aria-label={`Распределить ${dayUnscheduledTaskCountLabel}`}
+              title={`Распределить ${dayUnscheduledTaskCountLabel}`}
+              onClick={openDaySchedule}
+            >
+              <ClockIcon size={22} strokeWidth={2.2} />
+              <span>Распределить {dayUnscheduledTaskCountLabel}</span>
+            </button>
+          ) : null}
           <TaskComposer
             key={anchorDate}
             desktopOpenButtonHidden
             initialPlannedDate={anchorDate}
             openDraft={taskComposerDraft}
             openButtonLabel="Задача"
+            showTimeFields={viewMode === 'day'}
           />
         </div>
       </header>
 
-      {viewMode === 'week' ? (
+      {viewMode === 'day' ? (
         <section
-          ref={weekSurfaceRef}
+          ref={timelineSurfaceRef}
+          className={cx(styles.weekSurface, styles.daySurface)}
+          aria-label="День"
+        >
+          <div
+            className={cx(styles.weekTimeGrid, styles.dayTimeGrid)}
+            style={{ '--hour-count': timeRange.hours.length } as CSSProperties}
+          >
+            <div className={styles.timeAxis}>
+              {timeRange.hours.map((hour) => (
+                <div
+                  key={hour}
+                  className={styles.timeLabel}
+                  data-calendar-hour={hour}
+                >
+                  {String(hour).padStart(2, '0')}:00
+                </div>
+              ))}
+            </div>
+
+            <div className={cx(styles.weekColumns, styles.dayColumns)}>
+              <div className={cx(styles.weekColumn, styles.dayColumn)}>
+                {timeRange.hours.map((hour) => (
+                  <div key={hour} className={styles.hourSlot} />
+                ))}
+                {dayTimelineEntries.map((entry) => (
+                  <button
+                    key={entry.task.id}
+                    className={cx(
+                      styles.timedTask,
+                      styles.dayTimedTask,
+                      isRecurringGhostTask(entry.task) && styles.ghostTask,
+                      getTaskTone(entry.task),
+                    )}
+                    type="button"
+                    disabled={isRecurringGhostTask(entry.task)}
+                    style={getTimedTaskStyle(
+                      entry,
+                      timeRange.startHour,
+                      timeRange.endHour,
+                    )}
+                    aria-label={
+                      isRecurringGhostTask(entry.task)
+                        ? `Будущий повтор задачи ${entry.task.title}`
+                        : `Открыть задачу ${entry.task.title}`
+                    }
+                    title={entry.task.title}
+                    onClick={() => openTaskCard(entry.task)}
+                  >
+                    <strong className={styles.timedTaskTitle}>
+                      {entry.task.icon ? (
+                        <IconMark
+                          className={styles.timedTaskIcon}
+                          value={entry.task.icon}
+                          uploadedIcons={uploadedIcons}
+                        />
+                      ) : null}
+                      <span>{entry.task.title}</span>
+                    </strong>
+                    {entry.task.project ? (
+                      <span className={styles.timedTaskProject}>
+                        {entry.task.project}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : viewMode === 'week' ? (
+        <section
+          ref={timelineSurfaceRef}
           className={styles.weekSurface}
           aria-label="Неделя"
         >
@@ -835,10 +1041,10 @@ export function CalendarPage() {
                   <button
                     className={styles.monthDateButton}
                     type="button"
-                    aria-label={`Открыть неделю ${parseDateKey(day.dateKey).getDate()}`}
+                    aria-label={`Открыть день ${parseDateKey(day.dateKey).getDate()}`}
                     onClick={() => {
                       setAnchorDate(day.dateKey)
-                      selectViewMode('week')
+                      selectViewMode('day')
                     }}
                   >
                     <span className={styles.monthDate}>
@@ -915,6 +1121,32 @@ export function CalendarPage() {
           )}
         </section>
       )}
+
+      {isDayScheduleModalOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <CalendarDayScheduleDialog
+              tasks={dayUnscheduledTasks}
+              spheres={spheres}
+              isTaskPending={isTaskPending}
+              uploadedIcons={uploadedIcons}
+              onClose={closeDaySchedule}
+              onRemove={(taskId) => {
+                void removeTask(taskId)
+              }}
+              onSetPlannedDate={(taskId, plannedDate) => {
+                void setTaskPlannedDate(taskId, plannedDate)
+              }}
+              onSetSchedule={(taskId, schedule) => {
+                void setTaskSchedule(taskId, schedule)
+              }}
+              onSetStatus={(taskId, status) => {
+                void setTaskStatus(taskId, status)
+              }}
+              onUpdate={updateTask}
+            />,
+            document.body,
+          )
+        : null}
 
       {selectedTask && typeof document !== 'undefined'
         ? createPortal(

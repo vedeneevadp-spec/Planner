@@ -734,7 +734,7 @@ export function createComponentSchemas(): Record<
       type: 'object',
     },
     CalendarViewMode: {
-      enum: ['month', 'schedule', 'week'],
+      enum: ['day', 'month', 'schedule', 'week'],
       type: 'string',
     },
     EnergyMode: {

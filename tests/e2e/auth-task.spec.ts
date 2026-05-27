@@ -157,7 +157,7 @@ test('keeps task composer field layout stable on desktop and mobile', async ({
     { height: 844, width: 390 },
   ]) {
     await page.setViewportSize(viewport)
-    await page.goto('/timeline')
+    await page.goto('/calendar?calendarView=day')
     await openTaskComposer(page)
     await expectComposerLayout(page)
     await page.getByRole('button', { exact: true, name: 'Закрыть' }).click()

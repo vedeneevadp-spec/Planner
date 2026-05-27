@@ -37,10 +37,6 @@ export function getNavigationCount(
     return counts.shoppingActiveItemCount
   }
 
-  if (route === '/timeline') {
-    return counts.summary.timelineCount
-  }
-
   if (route === '/spheres') {
     return counts.sphereCount
   }

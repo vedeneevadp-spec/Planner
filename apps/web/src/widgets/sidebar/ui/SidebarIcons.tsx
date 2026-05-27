@@ -7,7 +7,6 @@ import {
   MoreSlidersIcon,
   ShoppingCartIcon,
   SpheresChartIcon,
-  TimelinePageIcon,
 } from '@/shared/ui/Icon'
 
 export function WorkspaceGearIcon() {
@@ -45,10 +44,6 @@ export function SidebarNavIcon({ route }: { route: string }) {
 
   if (route === '/admin') {
     return <GearIcon size={20} strokeWidth={1.9} />
-  }
-
-  if (route === '/timeline') {
-    return <TimelinePageIcon size={20} />
   }
 
   return <TimelineIcon />

@@ -14,7 +14,6 @@ describe('route config', () => {
     expect(routeIds).toContain('today')
     expect(routeIds).toContain('calendar')
     expect(routeIds).toContain('shopping')
-    expect(routeIds).toContain('timeline')
     expect(routeIds).toContain('spheres')
     expect(routeIds).toContain('more')
     expect(routeIds).not.toContain('admin')
@@ -32,7 +31,6 @@ describe('route config', () => {
       'calendar',
       'shopping',
       'cleaning',
-      'timeline',
       'spheres',
     ])
   })
@@ -43,7 +41,7 @@ describe('route config', () => {
       .sort((left, right) => (left.mobileOrder ?? 0) - (right.mobileOrder ?? 0))
       .map((route) => route.id)
 
-    expect(routeIds).toEqual(['timeline', 'spheres', 'habits', 'admin'])
+    expect(routeIds).toEqual(['spheres', 'habits', 'admin'])
   })
 
   it('keeps personal workspace-only routes visible for personal workspaces', () => {

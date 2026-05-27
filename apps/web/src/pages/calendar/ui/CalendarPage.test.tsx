@@ -25,6 +25,7 @@ interface TaskComposerMockProps {
   initialPlannedDate: string | null
   openDraft?: { plannedDate?: string | null; requestId: string } | null
   openButtonLabel?: string
+  showTimeFields?: boolean
 }
 
 const mocks = vi.hoisted(() => ({
@@ -45,6 +46,7 @@ vi.mock('@/features/planner', () => ({
     moveTaskToPersonal: vi.fn(),
     removeTask: vi.fn(),
     setTaskPlannedDate: vi.fn(),
+    setTaskSchedule: vi.fn(),
     setTaskStatus: vi.fn(),
     spheres: [],
     tasks: [],
@@ -110,6 +112,17 @@ describe('CalendarPage', () => {
     expect(screen.getByLabelText('Расписание')).toBeVisible()
   })
 
+  it('uses the day view from the calendar query', async () => {
+    renderCalendarPage('/calendar?calendarView=day')
+
+    expect(screen.getByLabelText('День')).toBeVisible()
+    await waitFor(() => {
+      expect(mocks.mutatePreferences).toHaveBeenCalledWith({
+        calendarViewMode: 'day',
+      })
+    })
+  })
+
   it('opens task creation from the calendar query trigger and clears it', async () => {
     renderCalendarPage('/calendar?foo=bar&createTask=request-1')
 
@@ -122,6 +135,7 @@ describe('CalendarPage', () => {
       expect(props?.desktopOpenButtonHidden).toBe(true)
       expect(typeof props?.openDraft?.plannedDate).toBe('string')
       expect(props?.openButtonLabel).toBe('Задача')
+      expect(props?.showTimeFields).toBe(false)
     })
 
     await waitFor(() => {

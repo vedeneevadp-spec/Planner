@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { AppRouter } from './AppRouter'
@@ -49,10 +49,6 @@ vi.mock('@/pages/shopping', () => ({
 vi.mock('@/pages/spheres', () => ({
   SpherePage: () => <div>Sphere page</div>,
   SpheresPage: () => <div>Spheres page</div>,
-}))
-
-vi.mock('@/pages/timeline', () => ({
-  TimelinePage: () => <div>Timeline page</div>,
 }))
 
 describe('AppRouter', () => {
@@ -119,6 +115,28 @@ describe('AppRouter', () => {
     expect(await screen.findByText('Calendar page')).toBeVisible()
   })
 
+  it('redirects the old timeline route to calendar day view', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'personal',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/timeline?foo=bar']}>
+        <AppRouter />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Calendar page')).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/calendar?foo=bar&calendarView=day',
+    )
+  })
+
   it('keeps more available in shared workspaces', async () => {
     mockUsePlannerSession.mockReturnValue({
       data: {
@@ -174,3 +192,14 @@ describe('AppRouter', () => {
     expect(await screen.findByText('Profile page')).toBeVisible()
   })
 })
+
+function LocationProbe() {
+  const location = useLocation()
+
+  return (
+    <output data-testid="location">
+      {location.pathname}
+      {location.search}
+    </output>
+  )
+}

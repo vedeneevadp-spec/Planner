@@ -1,5 +1,11 @@
 import { lazy, type ReactElement, Suspense } from 'react'
-import { Navigate, Route, Routes, useParams } from 'react-router-dom'
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom'
 
 import { usePlannerSession } from '@/features/session'
 import { TodayPage } from '@/pages/today'
@@ -46,11 +52,7 @@ const SpherePage = lazy(() =>
 const SpheresPage = lazy(() =>
   import('@/pages/spheres').then((module) => ({ default: module.SpheresPage })),
 )
-const TimelinePage = lazy(() =>
-  import('@/pages/timeline').then((module) => ({
-    default: module.TimelinePage,
-  })),
-)
+const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
 
 function CleaningZoneRedirect() {
   const { zoneId } = useParams()
@@ -59,6 +61,23 @@ function CleaningZoneRedirect() {
     <Navigate
       replace
       to={zoneId ? `/cleaning/settings/zones/${zoneId}` : '/cleaning/settings'}
+    />
+  )
+}
+
+function TimelineRedirect() {
+  const location = useLocation()
+  const searchParams = new URLSearchParams(location.search)
+  searchParams.set(CALENDAR_VIEW_SEARCH_PARAM, 'day')
+  const nextSearch = searchParams.toString()
+
+  return (
+    <Navigate
+      replace
+      to={{
+        pathname: '/calendar',
+        search: nextSearch ? `?${nextSearch}` : '',
+      }}
     />
   )
 }
@@ -76,7 +95,6 @@ const routeElements = {
   shopping: <ShoppingPage />,
   sphere: <SpherePage />,
   spheres: <SpheresPage />,
-  timeline: <TimelinePage />,
   today: <TodayPage />,
 } satisfies Record<AppRouteId, ReactElement>
 
@@ -89,6 +107,7 @@ export function AppRouter() {
     <Suspense fallback={null}>
       <Routes>
         <Route path="/" element={<Navigate replace to="/today" />} />
+        <Route path="/timeline" element={<TimelineRedirect />} />
         {visibleRoutes.map((route) => (
           <Route
             key={route.id}

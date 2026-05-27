@@ -53,7 +53,8 @@
 }
 
 .todayButton,
-.arrowButton {
+.arrowButton,
+.distributeButton {
   min-height: 2.5rem;
   border-radius: 999px;
   border: 1px solid var(--line-strong);
@@ -79,8 +80,17 @@
   padding: 0;
 }
 
+.distributeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.9rem;
+  white-space: nowrap;
+}
+
 .todayButton:hover,
-.arrowButton:hover {
+.arrowButton:hover,
+.distributeButton:hover {
   transform: translateY(-1px);
   border-color: var(--accent-border-strong);
 }
@@ -221,6 +231,20 @@
   min-width: 52.15rem;
 }
 
+.daySurface {
+  --week-day-min: 18rem;
+}
+
+.dayTimeGrid {
+  grid-template-columns: var(--time-gutter) minmax(var(--week-day-min), 1fr);
+  min-width: 28rem;
+}
+
+.dayColumns {
+  grid-template-columns: minmax(var(--week-day-min), 1fr);
+  min-width: var(--week-day-min);
+}
+
 .weekColumn {
   position: relative;
   display: grid;
@@ -277,6 +301,38 @@
 .timedTask strong {
   font-size: 0.78rem;
   line-height: 1.15;
+}
+
+.dayTimedTask {
+  gap: 0.08rem;
+  padding: 0.3rem 0.58rem;
+}
+
+.timedTaskTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.timedTaskTitle span,
+.timedTaskProject {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timedTaskIcon {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.timedTaskProject {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  line-height: 1;
 }
 
 .monthSurface {
@@ -621,10 +677,303 @@
   text-align: center;
 }
 
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.62rem;
+}
+
+.taskItem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.52rem;
+  padding: 0.72rem 0.78rem;
+  border-radius: 16px;
+  background: var(--field-bg);
+  border: 1px solid var(--line);
+}
+
+.taskItemImportant {
+  border-color: rgba(140, 75, 36, 0.32);
+  background:
+    linear-gradient(135deg, rgba(239, 202, 130, 0.2), transparent 55%),
+    var(--field-bg);
+  box-shadow: inset 4px 0 0 rgba(140, 75, 36, 0.5);
+}
+
+.taskHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.62rem;
+}
+
+.taskHeader h3 {
+  margin: 0.1rem 0 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.08rem;
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+}
+
+.taskHeader p {
+  display: -webkit-box;
+  max-width: 100%;
+  margin: 0.28rem 0 0;
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.taskMain {
+  min-width: 0;
+}
+
+.taskTitleRow,
+.metaRow,
+.scheduleForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.taskTitleRow {
+  align-items: center;
+  gap: 0.32rem 0.45rem;
+  min-width: 0;
+}
+
+.taskIcon {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.taskHeaderActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: start;
+  justify-content: flex-end;
+  gap: 0.32rem;
+}
+
+.projectChip,
+.metaChip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 9rem;
+  min-width: 2rem;
+  overflow: hidden;
+  padding: 0.24rem 0.52rem;
+  border-radius: 999px;
+  background: var(--accent-muted);
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.importantChip {
+  background: rgba(140, 75, 36, 0.1);
+  color: var(--warning);
+}
+
+.scheduleForm {
+  align-items: end;
+}
+
+.scheduleForm .field {
+  min-width: 8rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.field span {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.field input {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.54rem 0.7rem;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+}
+
+.field input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.helper {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  border-radius: 999px;
+  padding: 0.54rem 0.82rem;
+  border: 1px solid transparent;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.primaryButton {
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
+}
+
+.secondaryButton {
+  background: var(--field-bg);
+  border-color: var(--line);
+  color: inherit;
+}
+
+.primaryButton:hover,
+.secondaryButton:hover {
+  transform: translateY(-1px);
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.taskMenu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.menuButton {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--text-soft);
+  background: var(--field-bg);
+  cursor: pointer;
+}
+
+.menuButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.menuButton svg {
+  display: block;
+}
+
+.menuPanel {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 0.34rem);
+  right: 0;
+  display: grid;
+  gap: 0.16rem;
+  min-width: 12rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.28rem;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow);
+}
+
+.menuPanel button {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 0.48rem 0.56rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 0.86rem;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.menuPanel button:hover {
+  background: var(--accent-muted);
+}
+
+.menuPanel button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.menuPanel svg {
+  flex: 0 0 auto;
+}
+
+.menuDangerItem {
+  color: var(--warning) !important;
+}
+
+.scheduleOverlayPanel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.9rem;
+  width: min(46rem, 100%);
+  margin-block: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 1rem;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.scheduleOverlayHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.scheduleOverlayHeader h2 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.55rem;
+  letter-spacing: -0.03em;
+}
+
 .timedTask:focus-visible,
 .monthDateButton:focus-visible,
 .taskPill:focus-visible,
 .scheduleTask:focus-visible,
+.menuButton:focus-visible,
+.menuPanel button:focus-visible,
 .taskOverlayClose:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -694,11 +1043,17 @@
 
   .periodControls,
   .toolbarActions {
+    flex-wrap: wrap;
     justify-content: space-between;
   }
 
   .periodTitle {
     flex: 1 1 auto;
+  }
+
+  .distributeButton {
+    min-height: 2.35rem;
+    padding: 0.48rem 0.72rem;
   }
 
   .weekSurface,
@@ -792,6 +1147,16 @@
     min-width: 0;
   }
 
+  .dayTimeGrid {
+    grid-template-columns: var(--time-gutter) minmax(0, 1fr);
+    min-width: 0;
+  }
+
+  .dayColumns {
+    grid-template-columns: minmax(0, 1fr);
+    min-width: 0;
+  }
+
   .timeZoneLabel {
     padding: 0.55rem 0.45rem;
     font-size: 0.68rem;
@@ -864,6 +1229,10 @@
   .timedTask strong {
     font-size: 0.68rem;
     line-height: 1.05;
+  }
+
+  .timedTaskProject {
+    font-size: 0.66rem;
   }
 
   .allDayCell .taskPill {
@@ -939,6 +1308,21 @@
     min-height: 1.1rem;
     padding: 0.16rem 0.22rem;
   }
+
+  .taskItem {
+    border-radius: 14px;
+    padding: 0.66rem;
+  }
+
+  .scheduleOverlayPanel {
+    width: min(34rem, 100%);
+    border-radius: 18px;
+    padding: 0.78rem;
+  }
+
+  .scheduleOverlayHeader h2 {
+    font-size: 1.28rem;
+  }
 }
 
 @media (max-width: 560px) {
@@ -972,6 +1356,12 @@
     width: 2.18rem;
     height: 2.18rem;
     min-height: 2.18rem;
+  }
+
+  .distributeButton {
+    min-height: 2.18rem;
+    padding: 0.42rem 0.62rem;
+    font-size: 0.86rem;
   }
 
   .weekSurface,
@@ -1102,5 +1492,16 @@
   .taskOverlayPanel {
     width: min(34rem, 100%);
     max-height: none;
+  }
+
+  .scheduleOverlayPanel {
+    width: min(34rem, 100%);
+    margin-block: 0;
+    border-radius: 18px;
+    padding: 0.72rem;
+  }
+
+  .scheduleOverlayHeader h2 {
+    font-size: 1.22rem;
   }
 }
