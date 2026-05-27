@@ -5,13 +5,15 @@ SQL-first схема PostgreSQL.
 
 ## Стек
 
-- React 19, React Router 7, Vite 8
-- TypeScript strict mode
-- Fastify 5, Kysely, PostgreSQL
-- Timeweb Managed PostgreSQL как production data store
+- npm workspaces monorepo: `apps/web`, `apps/api`, `packages/contracts`
+- Web: React 19.2, React Router DOM 7.14, Vite 8, TanStack Query 5, Dexie 4
+- TypeScript 6 в strict mode; shared contracts на Zod 4
+- API: Fastify 5.8, Kysely 0.28, PostgreSQL через `pg`, OpenAPI/Swagger UI
+- Timeweb Managed PostgreSQL как production data store; Docker PostgreSQL локально
 - Chaotika Auth: email/password, JWT, refresh tokens и password reset
-- TanStack Query и Dexie на клиенте
-- Vitest, Node test runner, ESLint, Prettier, Husky, lint-staged
+- Mobile: installable PWA и Capacitor 8 native shell для iOS/Android
+- Тесты: Vitest 4 для web, Node test runner для API, Playwright 1.59 для e2e
+- Tooling: ESLint 9, Prettier 3, Husky, lint-staged
 - GitHub Actions CI
 
 ## Требования
