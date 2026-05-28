@@ -28,7 +28,6 @@ import { enqueuePlannerOfflineMutation } from '../lib/offline-planner-store'
 import {
   createPlannerApiClient,
   isUnauthorizedPlannerApiError,
-  PlannerApiError,
 } from '../lib/planner-api'
 import { useTaskCompletionConfetti } from '../lib/task-completion-confetti'
 import type { PlannerState } from './planner.types'
@@ -38,6 +37,10 @@ import {
   getPlannerQueryErrorMessage,
   shouldKeepOptimisticMutation,
 } from './planner-error-policy'
+import {
+  getPlannerVersionConflict,
+  getQueuedPlannerMutationMessage,
+} from './planner-mutation-policy'
 import { usePlannerMutations } from './planner-mutations'
 import { usePlannerOfflineSync } from './planner-offline'
 import { usePlannerQueries } from './planner-queries'
@@ -233,32 +236,19 @@ export function usePlannerState(): PlannerState {
         await queueOfflineMutation()
         await persistOfflineSnapshot()
         await refreshQueuedMutationCount()
-        setMutationErrorMessage(getQueuedMutationMessage(error))
+        setMutationErrorMessage(getQueuedPlannerMutationMessage(error))
 
         return true
       }
 
-      if (
-        error instanceof PlannerApiError &&
-        error.code === 'task_version_conflict'
-      ) {
-        await queryClient.invalidateQueries({ queryKey: taskQueryKey })
-        setMutationErrorMessage(
-          'Задача уже изменилась на сервере. Обновили данные, повторите действие.',
-        )
+      const versionConflict = getPlannerVersionConflict(error)
 
-        return false
-      }
-
-      if (
-        error instanceof PlannerApiError &&
-        error.code === 'life_sphere_version_conflict'
-      ) {
-        await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
-        setMutationErrorMessage(
-          'Сфера уже изменилась на сервере. Обновили данные, повторите действие.',
-        )
-
+      if (versionConflict) {
+        await queryClient.invalidateQueries({
+          queryKey:
+            versionConflict.target === 'task' ? taskQueryKey : sphereQueryKey,
+        })
+        setMutationErrorMessage(versionConflict.message)
         return false
       }
 
@@ -266,17 +256,6 @@ export function usePlannerState(): PlannerState {
 
       return false
     }
-  }
-
-  function getQueuedMutationMessage(error: unknown): string {
-    if (
-      isUnauthorizedSessionApiError(error) ||
-      isUnauthorizedPlannerApiError(error)
-    ) {
-      return 'Не удалось подтвердить серверную сессию. Изменение сохранено локально и синхронизируется после восстановления входа.'
-    }
-
-    return 'Нет соединения. Изменение сохранено локально и синхронизируется автоматически.'
   }
 
   async function addSphere(input: NewLifeSphereInput): Promise<boolean> {

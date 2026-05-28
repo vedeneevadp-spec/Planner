@@ -237,3 +237,112 @@ test('creates a shared workspace and opens participant management', async ({
     }),
   ).toBeVisible()
 })
+
+test('creates, marks, and completes a shopping item', async ({ page }) => {
+  const user = createE2eUser('e2e-shopping')
+  const itemTitle = `E2E milk ${user.suffix}`
+
+  await registerUser({ ...user, page })
+
+  await page.goto('/shopping')
+  await page.getByPlaceholder('Добавить покупку').fill(itemTitle)
+  await page.getByRole('button', { name: 'Выбрать вид: Продукты' }).click()
+  await page.getByRole('button', { name: 'Добавить покупку' }).click()
+
+  const activePanel = page.getByLabel('Актуальные покупки')
+
+  await expect(activePanel.getByText(itemTitle)).toBeVisible()
+
+  await page
+    .getByRole('button', { name: `Пометить срочным: ${itemTitle}` })
+    .click()
+  await expect(
+    page.getByRole('button', { name: `Снять срочность: ${itemTitle}` }),
+  ).toHaveAttribute('aria-pressed', 'true')
+
+  await activePanel.getByText(itemTitle).click()
+
+  const completedPanel = page.getByLabel('Купленные покупки')
+
+  await expect(completedPanel.getByText(itemTitle)).toBeVisible()
+})
+
+test('creates a habit and toggles it from the habits page', async ({
+  page,
+}) => {
+  const user = createE2eUser('e2e-habit')
+  const habitTitle = `E2E water ${user.suffix}`
+
+  await registerUser({ ...user, page })
+
+  await page.goto(
+    `/habits?habitsAction=habit&habitsActionRequest=${user.suffix}`,
+  )
+
+  const dialog = page.getByRole('dialog', { name: 'Новая привычка' })
+
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox', { name: 'Привычка' }).fill(habitTitle)
+  await dialog
+    .getByRole('button', { name: 'Добавить привычку' })
+    .first()
+    .click()
+
+  await expect(
+    page.getByRole('heading', { name: habitTitle }).last(),
+  ).toBeVisible()
+  await page
+    .getByRole('button', {
+      name: `Поставить привычку ${habitTitle} на паузу`,
+    })
+    .click()
+  await expect(
+    page.getByRole('button', {
+      name: `Возобновить привычку ${habitTitle}`,
+    }),
+  ).toBeVisible()
+})
+
+test('creates a cleaning zone with a task and completes it today', async ({
+  page,
+}) => {
+  const user = createE2eUser('e2e-cleaning')
+  const zoneTitle = `E2E zone ${user.suffix}`
+  const taskTitle = `E2E wipe shelf ${user.suffix}`
+
+  await registerUser({ ...user, page })
+
+  await page.goto('/cleaning/settings')
+  await page.getByRole('button', { name: 'Добавить зону' }).click()
+
+  const zoneForm = page.locator('form').filter({
+    has: page.getByPlaceholder('Новая зона'),
+  })
+
+  await zoneForm.getByPlaceholder('Новая зона').fill(zoneTitle)
+  await zoneForm.getByRole('button', { name: 'Добавить' }).click()
+
+  await expect(page.getByRole('heading', { name: zoneTitle })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Добавить задачу' }).last().click()
+  await page.getByPlaceholder('Например: помыть холодильник').fill(taskTitle)
+  await page.getByRole('button', { name: 'Создать' }).click()
+
+  await expect(page.getByText(taskTitle)).toBeVisible()
+
+  await page.goto('/cleaning')
+  const cleaningTasks = page.locator('#cleaning-tasks')
+
+  await expect(cleaningTasks.getByText(zoneTitle)).toBeVisible()
+  await expect(cleaningTasks.getByText(taskTitle)).toBeVisible()
+
+  await page
+    .getByRole('button', {
+      name: `Отметить «${taskTitle}» выполненной`,
+    })
+    .click()
+
+  await expect(
+    cleaningTasks.getByText('На сегодня всё отмечено.'),
+  ).toBeVisible()
+})
