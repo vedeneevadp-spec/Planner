@@ -110,6 +110,10 @@ scripts/       локальные DB, mobile и deploy workflows
   релиза
 - [docs/release-notes.md](docs/release-notes.md) - пользовательские заметки к
   релизам
+- [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
+  сценарии и roadmap голосового помощника
+- [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
+  Android wake-word provider и модель `Хаотика`
 
 ## API Runtime
 
@@ -295,6 +299,12 @@ Web-клиент работает через backend HTTP API и не пишет
 - Android-клиент сам регистрирует FCM token после входа в приложение и может
   принимать тестовый push через `POST /api/v1/push/test`
 
+## Голосовой помощник
+
+Подробное описание функциональности, сценариев, примеров команд, поведения
+`clarify` и production roadmap вынесено в
+[docs/voice-assistant.md](docs/voice-assistant.md).
+
 ## Production Data Platform
 
 Production-данные приложения живут в Timeweb Managed PostgreSQL, а backend
@@ -345,6 +355,10 @@ Workspace`: роли, права, жизненный цикл и правила 
   состояния
 - [docs/release-workflow.md](docs/release-workflow.md) - пошаговый workflow от
   разработки до production web/PWA/store release
+- [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
+  сценарии уточнения и production roadmap голосового помощника
+- [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
+  выбранный Android wake-word provider и требования к модели
 - [docs/adr/0001-platform-foundation.md](docs/adr/0001-platform-foundation.md)
   - базовое архитектурное решение по платформе
 - [DEPLOY_RU.md](DEPLOY_RU.md) - production deployment на текущий VPS

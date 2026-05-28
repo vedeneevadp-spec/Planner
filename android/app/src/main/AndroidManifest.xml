@@ -35,6 +35,24 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".WakeWordDebugActivity"
+            android:exported="false"
+            android:label="Wake word diagnostics"
+            android:theme="@style/AppTheme" />
+
+        <activity
+            android:name=".WakeWordSampleRecorderActivity"
+            android:exported="false"
+            android:label="Haotika samples"
+            android:theme="@style/AppTheme" />
+
+        <activity
+            android:name=".WakeWordTrainingExamplesActivity"
+            android:exported="false"
+            android:label="Примеры wake-фразы"
+            android:theme="@style/AppTheme" />
+
         <receiver
             android:name=".PlannerWidgetProvider"
             android:exported="false"
@@ -72,6 +90,11 @@
             android:exported="false"
             android:permission="android.permission.BIND_REMOTEVIEWS" />
 
+        <service
+            android:name=".WakeWordService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -85,4 +108,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 </manifest>

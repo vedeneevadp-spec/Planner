@@ -195,6 +195,17 @@ export function BellIcon(props: IconProps) {
   )
 }
 
+export function MicIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M9 5.75C9 4.09 10.34 2.75 12 2.75C13.66 2.75 15 4.09 15 5.75V11.25C15 12.91 13.66 14.25 12 14.25C10.34 14.25 9 12.91 9 11.25V5.75Z" />
+      <path d="M5.75 10.75C5.75 14.2 8.55 17 12 17C15.45 17 18.25 14.2 18.25 10.75" />
+      <path d="M12 17V21.25" />
+      <path d="M8.75 21.25H15.25" />
+    </SvgIcon>
+  )
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

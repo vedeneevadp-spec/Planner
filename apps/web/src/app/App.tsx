@@ -10,6 +10,7 @@ import {
   NativePushRegistration,
   SessionProvider,
 } from '@/features/session'
+import { VoiceAssistant } from '@/features/voice-assistant'
 import { cx } from '@/shared/lib/classnames'
 import { PlannerMobileHeader, PlannerTopTabs, Sidebar } from '@/widgets/sidebar'
 
@@ -26,6 +27,7 @@ function App() {
           <NativePushRegistration />
           <PlannerProvider>
             <NativePlannerWidgetSync />
+            <VoiceAssistant />
             <div
               className={cx(
                 styles.shell,

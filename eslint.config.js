@@ -94,6 +94,7 @@ export default tseslint.config(
       'playwright-report',
       'test-results',
       'node_modules',
+      '.wakeword-venv',
       'android/**',
       'capacitor.config.ts',
       'ios/**',

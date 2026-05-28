@@ -1,0 +1,276 @@
+.micButton {
+  position: fixed;
+  left: calc(0.85rem + var(--safe-area-left));
+  bottom: calc(0.85rem + var(--safe-area-bottom));
+  z-index: 80;
+  display: inline-grid;
+  width: 2.72rem;
+  height: 2.72rem;
+  place-items: center;
+  border: 1px solid var(--accent-border-strong);
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
+  box-shadow: var(--shadow-elevated);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    opacity 160ms ease;
+}
+
+.micButton:hover {
+  background: var(--accent-fill-hover);
+  transform: translateY(-1px);
+}
+
+.micButton:disabled {
+  cursor: wait;
+  opacity: 0.78;
+  transform: none;
+}
+
+.micButtonBusy {
+  background: var(--warning);
+  color: #1f241e;
+}
+
+.card {
+  position: fixed;
+  left: calc(0.85rem + var(--safe-area-left));
+  bottom: calc(4.05rem + var(--safe-area-bottom));
+  z-index: 130;
+  display: grid;
+  width: min(
+    26rem,
+    calc(100vw - 1.7rem - var(--safe-area-left) - var(--safe-area-right))
+  );
+  gap: 0.72rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.88rem;
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-elevated);
+  backdrop-filter: blur(18px);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cardTitleBlock {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.15;
+}
+
+.statusPill {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 0.16rem 0.46rem;
+  background: var(--accent-muted);
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.iconButton {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--field-bg);
+  color: var(--text);
+}
+
+.transcript,
+.errorMessage,
+.clarification {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.transcript {
+  border-radius: 12px;
+  padding: 0.62rem 0.72rem;
+  background: var(--field-bg-muted);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.errorMessage {
+  color: var(--danger);
+}
+
+.clarification {
+  color: var(--text-soft);
+  font-size: 0.9rem;
+}
+
+.wakeFeedback {
+  display: grid;
+  gap: 0.48rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.62rem;
+}
+
+.sampleConsent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 12px;
+  padding: 0.58rem 0.66rem;
+  background: var(--field-bg-muted);
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 620;
+  line-height: 1.25;
+}
+
+.sampleConsent input {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  margin: 0.05rem 0 0;
+  accent-color: var(--accent-fill);
+}
+
+.sampleConsent input:disabled + span {
+  opacity: 0.68;
+}
+
+.wakeFeedbackQuestion,
+.wakeFeedbackMessage {
+  margin: 0;
+}
+
+.wakeFeedbackQuestion {
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.wakeFeedbackActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.feedbackButton {
+  display: inline-flex;
+  min-height: 2.14rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.4rem 0.72rem;
+  background: var(--field-bg);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.feedbackButton:disabled {
+  cursor: default;
+  opacity: 0.68;
+}
+
+.wakeFeedbackMessage {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.wakeFeedbackError {
+  color: var(--danger);
+}
+
+.intentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.52rem;
+  margin: 0;
+}
+
+.intentGrid div {
+  min-width: 0;
+}
+
+.intentGrid dt {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.intentGrid dd {
+  margin: 0.08rem 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.48rem;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  min-height: 2.42rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  border-radius: 999px;
+  padding: 0.48rem 0.78rem;
+  font-weight: 650;
+}
+
+.primaryButton {
+  border: 1px solid var(--accent-border-strong);
+  background: var(--accent-fill);
+  color: var(--accent-text-on-fill);
+}
+
+.secondaryButton {
+  border: 1px solid var(--line);
+  background: var(--field-bg);
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .micButton {
+    left: calc(0.58rem + var(--safe-area-left));
+    bottom: calc(0.62rem + var(--safe-area-bottom));
+  }
+
+  .card {
+    left: calc(0.58rem + var(--safe-area-left));
+    bottom: calc(3.82rem + var(--safe-area-bottom));
+    width: min(
+      24rem,
+      calc(100vw - 1.16rem - var(--safe-area-left) - var(--safe-area-right))
+    );
+    border-radius: 16px;
+  }
+
+  .intentGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .micButton {
+    transition: none;
+  }
+}
