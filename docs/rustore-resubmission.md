@@ -13,7 +13,7 @@ flows, but the app must feel like a complete standalone product. If login is
 required, moderators must be able to pass it, and limited-audience apps need
 test credentials in the moderation comment.
 
-## Before uploading a new APK
+## Before uploading a new release artifact
 
 1. Make sure production is healthy:
 
@@ -23,7 +23,14 @@ test credentials in the moderation comment.
 
    The response must contain `"status":"ok"` and `"databaseStatus":"up"`.
 
-2. Build the RuStore APK only after the health check passes:
+2. Build the RuStore artifact only after the health check passes. Prefer AAB
+   when RuStore Console accepts it for the app:
+
+   ```bash
+   npm run mobile:release:rustore:aab -- --api-url=https://chaotika.ru --version=1.1.1 --build=9
+   ```
+
+   Use APK when you need the universal signed APK specifically:
 
    ```bash
    npm run mobile:release:rustore -- --api-url=https://chaotika.ru --version=1.0.3 --build=3
@@ -36,6 +43,10 @@ test credentials in the moderation comment.
    ```text
    android/app/build/outputs/apk/release/app-release.apk
    ```
+
+   If uploading AAB, keep the APK smoke-test step by either building both
+   formats with `npm run mobile:release -- --api-url=https://chaotika.ru --version=1.1.1 --build=9 --build-artifacts=android --android-format=both`
+   or installing a locally generated APK from the same source revision.
 
    Check a clean install and a reinstall over the previous rejected build.
 

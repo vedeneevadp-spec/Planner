@@ -323,10 +323,18 @@ npm run mobile:release -- --api-url=https://chaotika.ru --version=1.0.1 --build=
 - `--android-sdk=...` позволяет явно указать SDK, если он не найден
 - `--ios-developer-dir=...` позволяет явно указать полный Xcode developer dir
 
-Для RuStore удобнее отдельная команда под signed APK:
+Для RuStore есть отдельная команда под signed APK:
 
 ```bash
 npm run mobile:release:rustore -- --api-url=https://chaotika.ru --version=1.0.1 --build=2
+```
+
+Если в RuStore Console для приложения доступна загрузка AAB, используйте AAB:
+это уменьшает размер загрузки для пользователя, потому что магазин генерирует
+APK под конкретное устройство.
+
+```bash
+npm run mobile:release:rustore:aab -- --api-url=https://chaotika.ru --version=1.0.1 --build=2
 ```
 
 Перед первым запуском нужно настроить release signing:
@@ -355,6 +363,12 @@ ANDROID_KEY_PASSWORD=...
 
 ```text
 android/app/build/outputs/apk/release/app-release.apk
+```
+
+После успешной сборки signed AAB лежит в:
+
+```text
+android/app/build/outputs/bundle/release/app-release.aab
 ```
 
 Примеры:
