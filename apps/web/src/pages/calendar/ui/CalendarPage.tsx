@@ -821,6 +821,7 @@ export function CalendarPage() {
             desktopOpenButtonHidden
             initialPlannedDate={anchorDate}
             openDraft={taskComposerDraft}
+            openButtonAriaLabel="Создать задачу"
             openButtonLabel="Задача"
             showTimeFields={viewMode === 'day'}
           />

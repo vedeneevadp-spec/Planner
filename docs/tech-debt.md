@@ -1,6 +1,6 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-05-27.
+Дата анализа: 2026-05-21. Обновлено: 2026-05-28.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
@@ -38,6 +38,27 @@ worker выполняется без JWT subject. `db:security:check` прохо
 `DB_SECURITY_REQUIRE_NON_OWNER=1`, production smoke и публичный health прошли.
 Runbook обновлен: ручные команды на VPS запускаются через `npm run prod:env`, а
 не через shell-source `/etc/planner/planner.env`.
+
+## Закрыто 2026-05-28: локальные quality gates синхронизированы
+
+Где было видно:
+
+- `npm run test:e2e` падал на calendar composer layout test: тест искал кнопку
+  `Создать задачу` / `Новая задача`, а calendar FAB имел accessible name
+  `Задача`
+- `.github/workflows/ci.yml` запускал `npm run ci` до `db:migrate`, хотя
+  `npm run ci` включает Postgres coverage gates
+- web coverage thresholds в `apps/web/vite.config.ts` оставались ниже
+  фактического покрытия и слабо защищали от регрессий
+- часть этого документа оставалась открытой, хотя auth-specific release criteria
+  уже были перенесены в `docs/release-workflow.md` и ADR 0002
+
+Статус: calendar composer получил отдельный `aria-label="Создать задачу"` при
+компактной визуальной подписи `Задача`, CI сначала мигрирует Postgres и задает
+job-level `DATABASE_URL` / `API_DB_RLS_MODE`, для workspace actions добавлены
+focused web tests, а глобальные web coverage thresholds подняты до текущего
+контролируемого уровня: statements/lines/functions `64`, branches `59.5`.
+Документ очищен от устаревшего открытого auth release пункта.
 
 ## P0: риск повторного логаута на мобильном
 
@@ -296,16 +317,13 @@ status/UX для offline queue health, чтобы planner/habits/shopping оди
 
 ## P2: качество сопровождения
 
-### Нужны auth-specific release criteria
+### Закрыто 2026-05-28: auth-specific release criteria
 
-Проблема: общий release workflow есть, но auth/session требует отдельной
-обязательной секции из-за риска silent logout.
-
-Что сделать:
-
-- ссылаться на ADR 0002 из release workflow
-- для auth/session PR требовать список пройденных startup/resume checks
-- не выпускать store build с auth changes без mobile smoke
+Release workflow уже ссылается на ADR 0002, требует `npm run test:mobile-auth`
+для auth/session/mobile restore изменений и фиксирует ручной
+`mobile:auth-smoke` для installed-app сценариев. Этот пункт больше не открыт;
+оставшийся риск по auth описан ниже как диагностика refresh/restore, а не как
+отсутствие release criteria.
 
 ### Нужна лучшая диагностика refresh/restore
 

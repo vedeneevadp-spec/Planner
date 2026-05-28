@@ -36,6 +36,7 @@ interface TaskComposerProps {
   initialPlannedDate: string | null
   mobileOpenButtonMode?: 'fab' | 'inline'
   openDraft?: TaskComposerDraft | null | undefined
+  openButtonAriaLabel?: string | undefined
   openButtonLabel?: string | undefined
   showTimeFields?: boolean
   defaultTaskType?: TaskTypeValue | undefined
@@ -48,6 +49,7 @@ export function TaskComposer({
   initialPlannedDate,
   mobileOpenButtonMode = 'fab',
   openDraft,
+  openButtonAriaLabel,
   openButtonLabel = 'Новая задача',
   showTimeFields = true,
   defaultTaskType = '',
@@ -361,6 +363,7 @@ export function TaskComposer({
     <>
       {hideOpenButton ? null : (
         <TaskComposerOpenButton
+          ariaLabel={openButtonAriaLabel}
           buttonRef={openButtonRef}
           desktopHidden={desktopOpenButtonHidden}
           label={openButtonLabel}

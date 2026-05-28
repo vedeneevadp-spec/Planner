@@ -6,6 +6,7 @@ import { cx } from '@/shared/lib/classnames'
 import styles from './TaskComposer.module.css'
 
 interface TaskComposerOpenButtonProps {
+  ariaLabel?: string | undefined
   buttonRef: RefObject<HTMLButtonElement | null>
   desktopHidden?: boolean | undefined
   label: string
@@ -14,6 +15,7 @@ interface TaskComposerOpenButtonProps {
 }
 
 export function TaskComposerOpenButton({
+  ariaLabel,
   buttonRef,
   desktopHidden = false,
   label,
@@ -24,7 +26,7 @@ export function TaskComposerOpenButton({
   const openButton = (
     <button
       ref={buttonRef}
-      aria-label={label}
+      aria-label={ariaLabel ?? label}
       data-task-composer-open-button={mode}
       className={cx(
         styles.openButton,

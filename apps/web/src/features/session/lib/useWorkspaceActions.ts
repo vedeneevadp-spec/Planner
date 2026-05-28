@@ -169,23 +169,29 @@ function getWorkspaceActionErrorMessage(
     limitMessage?: string
   },
 ): string {
-  const apiError = error as Partial<SessionApiError>
+  const apiError = isSessionApiErrorLike(error) ? error : null
 
-  if (apiError.code === 'shared_workspace_limit_reached') {
+  if (apiError?.code === 'shared_workspace_limit_reached') {
     return options.limitMessage ?? 'Достигнут лимит общих пространств.'
   }
 
-  if (apiError.code === 'shared_workspace_creator_required') {
+  if (apiError?.code === 'shared_workspace_creator_required') {
     return 'Переименовывать и удалять пространство может только его создатель.'
   }
 
-  if (apiError.code === 'shared_workspace_required') {
+  if (apiError?.code === 'shared_workspace_required') {
     return 'Эта операция доступна только для общего пространства.'
   }
 
-  if (apiError.code === 'workspace_owner_leave_forbidden') {
+  if (apiError?.code === 'workspace_owner_leave_forbidden') {
     return 'Owner не может выйти из собственного пространства. Его можно удалить или сначала передать владение.'
   }
 
   return error instanceof Error ? error.message : options.fallback
+}
+
+function isSessionApiErrorLike(
+  error: unknown,
+): error is Partial<SessionApiError> {
+  return typeof error === 'object' && error !== null
 }
