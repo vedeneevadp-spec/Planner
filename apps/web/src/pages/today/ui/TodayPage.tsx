@@ -348,6 +348,7 @@ function PersonalTodayPage() {
       item={item}
       isPending={todayHabitRoutine.isHabitPending}
       uploadedIcons={uploadedIcons}
+      variant={taskCardVariant}
       onComplete={todayHabitRoutine.completeHabit}
       onUndo={todayHabitRoutine.undoHabit}
     />
@@ -360,6 +361,7 @@ function PersonalTodayPage() {
         isPending={todayHabitRoutine.isHabitPending}
         tone="success"
         uploadedIcons={uploadedIcons}
+        variant={taskCardVariant}
         onComplete={todayHabitRoutine.completeHabit}
         onUndo={todayHabitRoutine.undoHabit}
       />
@@ -597,6 +599,7 @@ function SharedTodayPage() {
       item={item}
       isPending={todayHabitRoutine.isHabitPending}
       uploadedIcons={uploadedIcons}
+      variant={taskCardVariant}
       onComplete={todayHabitRoutine.completeHabit}
       onUndo={todayHabitRoutine.undoHabit}
     />
@@ -609,6 +612,7 @@ function SharedTodayPage() {
         isPending={todayHabitRoutine.isHabitPending}
         tone="success"
         uploadedIcons={uploadedIcons}
+        variant={taskCardVariant}
         onComplete={todayHabitRoutine.completeHabit}
         onUndo={todayHabitRoutine.undoHabit}
       />

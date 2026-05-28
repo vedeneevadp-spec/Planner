@@ -9,6 +9,7 @@ import {
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
 import {
   cleanupRepositoryContractUsers,
+  createRepositoryContractAuthContext,
   seedRepositoryContractWorkspace,
 } from '../../testing/repository-contract-fixtures.js'
 import { defineHabitRepositoryContractSuite } from './habit.repository.contract.js'
@@ -56,7 +57,10 @@ defineHabitRepositoryContractSuite({
         cleanupRepositoryContractUsers(connection, [...trackedUserIds]),
       context: {
         actorUserId,
-        auth: null,
+        auth: createRepositoryContractAuthContext({
+          email: workspace.email,
+          userId: actorUserId,
+        }),
         groupRole: null,
         role: 'owner' as const,
         workspaceId: workspace.workspaceId,
@@ -64,7 +68,10 @@ defineHabitRepositoryContractSuite({
       },
       otherContext: {
         actorUserId: otherActorUserId,
-        auth: null,
+        auth: createRepositoryContractAuthContext({
+          email: otherWorkspace.email,
+          userId: otherActorUserId,
+        }),
         groupRole: null,
         role: 'owner' as const,
         workspaceId: otherWorkspace.workspaceId,

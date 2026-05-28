@@ -23,6 +23,7 @@ interface HabitRoutineTaskCardProps {
   item: HabitTodayListItem
   tone?: 'default' | 'success' | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
+  variant?: 'card' | 'compact' | undefined
   onComplete: (item: HabitTodayListItem) => void
   onUndo: (item: HabitTodayListItem) => void
 }
@@ -32,6 +33,7 @@ export function HabitRoutineTaskCard({
   item,
   tone = 'default',
   uploadedIcons = [],
+  variant = 'card',
   onComplete,
   onUndo,
 }: HabitRoutineTaskCardProps) {
@@ -49,6 +51,30 @@ export function HabitRoutineTaskCard({
   const actionLabel = canUndo
     ? `Отменить отметку привычки ${habit.title}`
     : `Завершить привычку ${habit.title}`
+  const isCompactView = variant === 'compact'
+  const actionButton = (
+    <button
+      className={cx(
+        styles.button,
+        styles.iconButton,
+        isCompactView && styles.compactIconButton,
+      )}
+      type="button"
+      disabled={isPending}
+      aria-label={actionLabel}
+      title={canUndo ? 'Отменить' : 'Завершить'}
+      onClick={() => {
+        if (canUndo) {
+          onUndo(item)
+          return
+        }
+
+        onComplete(item)
+      }}
+    >
+      {canUndo ? <CloseIcon size={18} /> : <CheckIcon size={18} />}
+    </button>
+  )
 
   return (
     <article
@@ -56,65 +82,68 @@ export function HabitRoutineTaskCard({
         styles.card,
         (tone === 'success' || isComplete) && styles.success,
         isSkipped && styles.skipped,
+        isCompactView && styles.compactCard,
       )}
     >
-      <div className={styles.main}>
-        <div className={styles.cardHeader}>
-          <div className={styles.titleRow}>
-            <span
-              className={styles.iconWrap}
-              style={{ backgroundColor: habit.color }}
-              aria-hidden="true"
-            >
-              <IconMark value={habit.icon} uploadedIcons={uploadedIcons} />
-            </span>
-            <h4>{habit.title}</h4>
+      <div className={cx(styles.main, isCompactView && styles.compactMain)}>
+        {isCompactView ? (
+          <div className={styles.compactRow}>
+            <div className={styles.compactTitleGroup}>
+              {habit.icon ? (
+                <span
+                  className={cx(styles.iconWrap, styles.compactIconWrap)}
+                  style={{ backgroundColor: habit.color }}
+                  aria-hidden="true"
+                >
+                  <IconMark value={habit.icon} uploadedIcons={uploadedIcons} />
+                </span>
+              ) : null}
+              <h4 className={styles.compactTitle}>{habit.title}</h4>
+            </div>
+            <div className={styles.quickActions}>{actionButton}</div>
           </div>
+        ) : (
+          <>
+            <div className={styles.cardHeader}>
+              <div className={styles.titleRow}>
+                <span
+                  className={styles.iconWrap}
+                  style={{ backgroundColor: habit.color }}
+                  aria-hidden="true"
+                >
+                  <IconMark value={habit.icon} uploadedIcons={uploadedIcons} />
+                </span>
+                <h4>{habit.title}</h4>
+              </div>
 
-          <div className={styles.quickActions}>
-            <button
-              className={cx(styles.button, styles.iconButton)}
-              type="button"
-              disabled={isPending}
-              aria-label={actionLabel}
-              title={canUndo ? 'Отменить' : 'Завершить'}
-              onClick={() => {
-                if (canUndo) {
-                  onUndo(item)
-                  return
-                }
+              <div className={styles.quickActions}>{actionButton}</div>
+            </div>
 
-                onComplete(item)
-              }}
-            >
-              {canUndo ? <CloseIcon size={18} /> : <CheckIcon size={18} />}
-            </button>
-          </div>
-        </div>
+            {habit.description ? (
+              <p className={styles.note}>{habit.description}</p>
+            ) : null}
 
-        {habit.description ? (
-          <p className={styles.note}>{habit.description}</p>
-        ) : null}
+            <div className={styles.meta}>
+              <span className={styles.metaChip}>Привычка</span>
+              <span className={styles.metaChip}>
+                {getHabitFrequencyLabel(habit)}
+              </span>
+              <span className={styles.metaChip}>{progressLabel}</span>
+            </div>
 
-        <div className={styles.meta}>
-          <span className={styles.metaChip}>Привычка</span>
-          <span className={styles.metaChip}>
-            {getHabitFrequencyLabel(habit)}
-          </span>
-          <span className={styles.metaChip}>{progressLabel}</span>
-        </div>
-
-        {habit.targetType !== 'check' || progressPercent > 0 ? (
-          <div
-            className={styles.progressTrack}
-            aria-label={`Прогресс ${progressLabel}`}
-          >
-            <span
-              className={styles.progressFill}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
-        ) : null}
+            {habit.targetType !== 'check' || progressPercent > 0 ? (
+              <div
+                className={styles.progressTrack}
+                aria-label={`Прогресс ${progressLabel}`}
+              >
+                <span
+                  className={styles.progressFill}
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
     </article>
   )

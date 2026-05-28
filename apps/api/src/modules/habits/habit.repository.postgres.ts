@@ -207,13 +207,38 @@ export class PostgresHabitRepository implements HabitRepository {
   }
 
   async remove(command: DeleteHabitCommand): Promise<void> {
+    if (command.context.auth) {
+      const deletedHabit = await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        async (trx) => {
+          const result = await sql<{ deleted: boolean }>`
+            select app.soft_delete_habit(
+              ${command.habitId},
+              ${command.context.workspaceId},
+              ${command.context.actorUserId}
+            ) as deleted
+          `.execute(trx)
+
+          return result.rows[0]?.deleted === true
+        },
+        command.context.actorUserId,
+      )
+
+      if (!deletedHabit) {
+        throw new HttpError(404, 'habit_not_found', 'Habit not found.')
+      }
+
+      return
+    }
+
     const deletedAt = new Date().toISOString()
 
     await withWriteTransaction(
       this.db,
       command.context.auth,
       async (trx) => {
-        const deletedHabit = await trx
+        const deleteHabitResult = await trx
           .updateTable('app.habits')
           .set({
             deleted_at: deletedAt,
@@ -223,10 +248,9 @@ export class PostgresHabitRepository implements HabitRepository {
           .where('id', '=', command.habitId)
           .where('workspace_id', '=', command.context.workspaceId)
           .where('deleted_at', 'is', null)
-          .returning(['id'])
           .executeTakeFirst()
 
-        if (!deletedHabit) {
+        if (Number(deleteHabitResult.numUpdatedRows) === 0) {
           throw new HttpError(404, 'habit_not_found', 'Habit not found.')
         }
 
@@ -350,6 +374,47 @@ export class PostgresHabitRepository implements HabitRepository {
   }
 
   async removeEntry(command: DeleteHabitEntryCommand): Promise<void> {
+    if (command.context.auth) {
+      await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        async (trx) => {
+          const result = await sql<{
+            actual_version: string | number | null
+            deleted: boolean
+          }>`
+            select deleted, actual_version
+            from app.soft_delete_habit_entry(
+              ${command.habitId},
+              ${command.context.workspaceId},
+              ${command.context.actorUserId},
+              ${command.date},
+              ${command.expectedVersion ?? null}
+            )
+          `.execute(trx)
+          const row = result.rows[0]
+
+          if (row?.deleted || command.expectedVersion === undefined) {
+            return
+          }
+
+          throw new HttpError(
+            409,
+            'habit_entry_version_conflict',
+            'Habit entry was changed on the server.',
+            {
+              actualVersion:
+                row?.actual_version == null ? null : Number(row.actual_version),
+              expectedVersion: command.expectedVersion,
+            },
+          )
+        },
+        command.context.actorUserId,
+      )
+
+      return
+    }
+
     const deletedAt = new Date().toISOString()
 
     await withWriteTransaction(
@@ -375,9 +440,12 @@ export class PostgresHabitRepository implements HabitRepository {
           )
         }
 
-        const deleted = await updateQuery.returning(['id']).executeTakeFirst()
+        const deleteResult = await updateQuery.executeTakeFirst()
 
-        if (!deleted && command.expectedVersion !== undefined) {
+        if (
+          Number(deleteResult.numUpdatedRows) === 0 &&
+          command.expectedVersion !== undefined
+        ) {
           const current = await this.loadActiveEntryRow(
             trx,
             command.context.workspaceId,

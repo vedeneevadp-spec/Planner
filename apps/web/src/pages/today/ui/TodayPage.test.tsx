@@ -25,6 +25,8 @@ interface PlannerSessionStub {
 
 const mocks = vi.hoisted(() => ({
   copyTaskToPersonal: vi.fn(),
+  habitRoutineTaskCard: vi.fn((_props: { variant?: string }) => null),
+  habitTodayItems: [] as unknown[],
   moveTaskToPersonal: vi.fn(),
   removeTask: vi.fn(),
   setTaskPlannedDate: vi.fn(),
@@ -39,8 +41,9 @@ vi.mock('@/features/emoji-library', () => ({
 }))
 
 vi.mock('@/features/habits', () => ({
-  HabitRoutineTaskCard: () => null,
-  useHabitsToday: () => ({ data: { items: [] } }),
+  HabitRoutineTaskCard: (props: { variant?: string }) =>
+    mocks.habitRoutineTaskCard(props),
+  useHabitsToday: () => ({ data: { items: mocks.habitTodayItems } }),
   useRemoveHabitEntry: () => ({ isPending: false, mutate: vi.fn() }),
   useUpsertHabitEntry: () => ({ isPending: false, mutate: vi.fn() }),
 }))
@@ -135,6 +138,47 @@ function createRoutineTask(overrides: Partial<Task> = {}): Task {
   })
 }
 
+function createHabitTodayItem(overrides: Record<string, unknown> = {}) {
+  return {
+    entry: null,
+    habit: {
+      color: '#2f6f62',
+      createdAt: '2026-05-19T08:00:00.000Z',
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      deletedAt: null,
+      description: 'Подробности привычки',
+      endDate: null,
+      frequency: 'daily',
+      icon: 'target',
+      id: 'habit-1',
+      isActive: true,
+      reminderTime: null,
+      sortOrder: 0,
+      sphereId: null,
+      startDate: '2026-05-19',
+      targetType: 'count',
+      targetValue: 3,
+      title: 'Компактная привычка',
+      unit: 'раза',
+      updatedAt: '2026-05-19T08:00:00.000Z',
+      userId: 'user-1',
+      version: 1,
+      workspaceId: 'personal-workspace',
+    },
+    isDueToday: true,
+    progressPercent: 0,
+    stats: {
+      bestStreak: 0,
+      completedCount: 0,
+      habitId: 'habit-1',
+      scheduledCount: 1,
+      skippedCount: 0,
+      streak: 0,
+    },
+    ...overrides,
+  }
+}
+
 function renderTodayPage({
   initialEntry = '/today',
   kind = 'personal',
@@ -158,6 +202,8 @@ describe('TodayPage', () => {
   beforeEach(() => {
     plannerTasks = []
     mocks.copyTaskToPersonal.mockReset()
+    mocks.habitRoutineTaskCard.mockClear()
+    mocks.habitTodayItems.length = 0
     mocks.moveTaskToPersonal.mockReset()
     mocks.removeTask.mockReset()
     mocks.setTaskPlannedDate.mockReset()
@@ -320,5 +366,20 @@ describe('TodayPage', () => {
     expect(
       screen.queryByText('Подробности не видны в компактном списке'),
     ).not.toBeInTheDocument()
+  })
+
+  it('uses compact habit cards when task view is list', () => {
+    mocks.habitTodayItems.push(createHabitTodayItem())
+
+    renderTodayPage({
+      initialEntry: '/today?taskView=list',
+      tasks: [],
+    })
+
+    expect(mocks.habitRoutineTaskCard).toHaveBeenCalledWith(
+      expect.objectContaining({
+        variant: 'compact',
+      }),
+    )
   })
 })

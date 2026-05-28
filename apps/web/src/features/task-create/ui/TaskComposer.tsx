@@ -98,9 +98,43 @@ export function TaskComposer({
     }
 
     const previousOverflow = document.body.style.overflow
+    const rootStyle = document.documentElement.style
+    const previousViewportHeight = rootStyle.getPropertyValue(
+      '--task-composer-viewport-height',
+    )
+    const previousViewportOffsetTop = rootStyle.getPropertyValue(
+      '--task-composer-viewport-offset-top',
+    )
     const openButton = openButtonRef.current
     document.body.style.overflow = 'hidden'
-    titleInputRef.current?.focus()
+
+    function syncVisualViewport() {
+      const visualViewport = window.visualViewport
+      const viewportHeight = visualViewport?.height ?? window.innerHeight
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
+
+      rootStyle.setProperty(
+        '--task-composer-viewport-height',
+        `${viewportHeight}px`,
+      )
+      rootStyle.setProperty(
+        '--task-composer-viewport-offset-top',
+        `${viewportOffsetTop}px`,
+      )
+    }
+
+    syncVisualViewport()
+
+    const visualViewport = window.visualViewport
+    visualViewport?.addEventListener('resize', syncVisualViewport)
+    visualViewport?.addEventListener('scroll', syncVisualViewport)
+    window.addEventListener('resize', syncVisualViewport)
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (!window.matchMedia('(max-width: 560px)').matches) {
+        titleInputRef.current?.focus({ preventScroll: true })
+      }
+    })
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -112,6 +146,20 @@ export function TaskComposer({
 
     return () => {
       document.body.style.overflow = previousOverflow
+      window.cancelAnimationFrame(focusFrame)
+      visualViewport?.removeEventListener('resize', syncVisualViewport)
+      visualViewport?.removeEventListener('scroll', syncVisualViewport)
+      window.removeEventListener('resize', syncVisualViewport)
+      restoreCssVariable(
+        rootStyle,
+        '--task-composer-viewport-height',
+        previousViewportHeight,
+      )
+      restoreCssVariable(
+        rootStyle,
+        '--task-composer-viewport-offset-top',
+        previousViewportOffsetTop,
+      )
       window.removeEventListener('keydown', handleKeyDown)
       openButton?.focus()
     }
@@ -355,65 +403,67 @@ export function TaskComposer({
                   }}
                 />
 
-                <div className={styles.formColumns}>
-                  <TaskComposerPrimaryFields
-                    icon={icon}
-                    isHabitTaskType={isHabitTaskType}
-                    note={note}
-                    plannedDate={plannedDate}
-                    plannedEndTime={plannedEndTime}
-                    plannedStartTime={plannedStartTime}
-                    showTimeFields={showTimeFields}
-                    title={title}
-                    titleFieldLabel={titleFieldLabel}
-                    titleInputRef={titleInputRef}
-                    uploadedIcons={uploadedIcons}
-                    onIconChange={setIcon}
-                    onNoteChange={setNote}
-                    onPlannedDateChange={handlePlannedDateChange}
-                    onPlannedEndTimeChange={setPlannedEndTime}
-                    onPlannedStartTimeChange={handlePlannedStartTimeChange}
-                    onTitleChange={setTitle}
-                  />
+                <div className={styles.formScroller}>
+                  <div className={styles.formColumns}>
+                    <TaskComposerPrimaryFields
+                      icon={icon}
+                      isHabitTaskType={isHabitTaskType}
+                      note={note}
+                      plannedDate={plannedDate}
+                      plannedEndTime={plannedEndTime}
+                      plannedStartTime={plannedStartTime}
+                      showTimeFields={showTimeFields}
+                      title={title}
+                      titleFieldLabel={titleFieldLabel}
+                      titleInputRef={titleInputRef}
+                      uploadedIcons={uploadedIcons}
+                      onIconChange={setIcon}
+                      onNoteChange={setNote}
+                      onPlannedDateChange={handlePlannedDateChange}
+                      onPlannedEndTimeChange={setPlannedEndTime}
+                      onPlannedStartTimeChange={handlePlannedStartTimeChange}
+                      onTitleChange={setTitle}
+                    />
 
-                  <TaskComposerDetailsFields
-                    assigneeUserId={assigneeUserId}
-                    canUseRecurrence={canUseRecurrence}
-                    confirmationFieldId={confirmationFieldId}
-                    isHabitTaskType={isHabitTaskType}
-                    isReminderAvailable={isReminderAvailable}
-                    isRoutineLikeTaskType={isRoutineLikeTaskType}
-                    isSharedWorkspace={Boolean(isSharedWorkspace)}
-                    plannedDate={plannedDate}
-                    plannedEndTime={plannedEndTime}
-                    plannedStartTime={plannedStartTime}
-                    projectId={projectId}
-                    recurrenceForm={recurrenceForm}
-                    reminderOffsets={reminderOffsets}
-                    requiresConfirmation={requiresConfirmation}
-                    resource={resource}
-                    routineForm={routineForm}
-                    showTimeFields={showTimeFields}
-                    spheres={spheres}
-                    taskType={taskType}
-                    uploadedIcons={uploadedIcons}
-                    workspaceUsers={workspaceUsers}
-                    onAssigneeUserIdChange={setAssigneeUserId}
-                    onPlannedEndTimeChange={setPlannedEndTime}
-                    onProjectIdChange={setProjectId}
-                    onRecurrenceChange={handleRecurrenceChange}
-                    onReminderOffsetsChange={setReminderOffsets}
-                    onRequiresConfirmationChange={setRequiresConfirmation}
-                    onResourceChange={setResource}
-                    onRoutineFormChange={setRoutineForm}
-                    onTaskTypeChange={handleTaskTypeChange}
+                    <TaskComposerDetailsFields
+                      assigneeUserId={assigneeUserId}
+                      canUseRecurrence={canUseRecurrence}
+                      confirmationFieldId={confirmationFieldId}
+                      isHabitTaskType={isHabitTaskType}
+                      isReminderAvailable={isReminderAvailable}
+                      isRoutineLikeTaskType={isRoutineLikeTaskType}
+                      isSharedWorkspace={Boolean(isSharedWorkspace)}
+                      plannedDate={plannedDate}
+                      plannedEndTime={plannedEndTime}
+                      plannedStartTime={plannedStartTime}
+                      projectId={projectId}
+                      recurrenceForm={recurrenceForm}
+                      reminderOffsets={reminderOffsets}
+                      requiresConfirmation={requiresConfirmation}
+                      resource={resource}
+                      routineForm={routineForm}
+                      showTimeFields={showTimeFields}
+                      spheres={spheres}
+                      taskType={taskType}
+                      uploadedIcons={uploadedIcons}
+                      workspaceUsers={workspaceUsers}
+                      onAssigneeUserIdChange={setAssigneeUserId}
+                      onPlannedEndTimeChange={setPlannedEndTime}
+                      onProjectIdChange={setProjectId}
+                      onRecurrenceChange={handleRecurrenceChange}
+                      onReminderOffsetsChange={setReminderOffsets}
+                      onRequiresConfirmationChange={setRequiresConfirmation}
+                      onResourceChange={setResource}
+                      onRoutineFormChange={setRoutineForm}
+                      onTaskTypeChange={handleTaskTypeChange}
+                    />
+                  </div>
+
+                  <TaskComposerFooter
+                    isSubmitDisabled={createHabitMutation.isPending}
+                    submitLabel={submitLabel}
                   />
                 </div>
-
-                <TaskComposerFooter
-                  isSubmitDisabled={createHabitMutation.isPending}
-                  submitLabel={submitLabel}
-                />
               </form>
             </div>,
             document.body,
@@ -421,4 +471,17 @@ export function TaskComposer({
         : null}
     </>
   )
+}
+
+function restoreCssVariable(
+  style: CSSStyleDeclaration,
+  propertyName: string,
+  previousValue: string,
+): void {
+  if (previousValue) {
+    style.setProperty(propertyName, previousValue)
+    return
+  }
+
+  style.removeProperty(propertyName)
 }
