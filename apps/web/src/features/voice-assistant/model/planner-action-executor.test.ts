@@ -445,6 +445,39 @@ describe('PlannerActionExecutor', () => {
     })
   })
 
+  it('blocks reschedule undo offline instead of restoring without a fresh version', async () => {
+    const executor = new PlannerActionExecutor()
+    const task = createTaskRecord({
+      id: 'task-1',
+      plannedDate: '2026-05-29',
+      plannedStartTime: '10:00',
+      title: 'Помыть окна',
+      version: 1,
+    })
+    const deps = createDependencies({ tasks: [task] })
+    const preview = await executor.prepareAction(
+      createIntent({
+        date: '2026-05-30',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+      }),
+      CONTEXT,
+      deps,
+    )
+    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+
+    deps.isOnline = () => false
+
+    const undoResult = await executor.undoAction(result, deps)
+
+    expect(undoResult).toMatchObject({
+      errorCode: 'voice_action_undo_offline',
+      status: 'failed',
+      visualStatus: 'Нужно подключение, чтобы отменить перенос.',
+    })
+    expect(deps.taskClient?.setTaskSchedule).toHaveBeenCalledTimes(1)
+  })
+
   it('rejects stale reschedule versions before update', async () => {
     const executor = new PlannerActionExecutor()
     const task = createTaskRecord({

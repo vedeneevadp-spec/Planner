@@ -3,11 +3,12 @@ import type {
   VoiceActionPreview,
   VoiceAssistantState,
 } from '@planner/contracts'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   MAX_CLARIFICATION_ATTEMPTS,
+  VOICE_UNDO_TTL_MS,
   VoiceConfirmationCard,
   type VoiceConfirmationCardProps,
 } from './VoiceConfirmationCard'
@@ -314,6 +315,96 @@ describe('VoiceConfirmationCard', () => {
     fireEvent.click(screen.getByRole('button', { name: /^отменить$/i }))
 
     expect(callbacks.onUndo).toHaveBeenCalled()
+  })
+
+  it('expires undo in the current confirmation card session', () => {
+    vi.useFakeTimers()
+
+    try {
+      const preview = createPreview()
+
+      renderCard({
+        preview,
+        result: {
+          changedData: true,
+          createdTaskId: 'task-1',
+          status: 'success',
+          undo: {
+            createdTaskId: 'task-1',
+            type: 'create_task',
+          },
+          visualStatus: 'Готово, задача сохранена.',
+        },
+        state: {
+          intent: preview.intent,
+          source: 'web_microphone',
+          status: 'completed',
+          transcript: preview.intent.rawText,
+        },
+      })
+
+      expect(screen.getByRole('button', { name: /^отменить$/i })).toBeVisible()
+
+      act(() => {
+        vi.advanceTimersByTime(VOICE_UNDO_TTL_MS)
+      })
+
+      expect(
+        screen.queryByRole('button', { name: /^отменить$/i }),
+      ).not.toBeInTheDocument()
+      expect(screen.getByText('Время отмены истекло.')).toBeVisible()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('hides undo after an undo result has consumed the payload', () => {
+    const preview = createPreview()
+
+    renderCard({
+      preview,
+      result: {
+        changedData: true,
+        status: 'success',
+        visualStatus: 'Перенос отменен.',
+      },
+      state: {
+        intent: preview.intent,
+        source: 'web_microphone',
+        status: 'completed',
+        transcript: 'перенеси помыть окна на завтра',
+      },
+    })
+
+    expect(screen.getByText('Перенос отменен.')).toBeVisible()
+    expect(screen.getByText('Отменено')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: /^отменить$/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows undo failure as visual-only status without another undo button', () => {
+    const preview = createPreview()
+
+    renderCard({
+      preview,
+      result: {
+        errorCode: 'voice_action_undo_failed',
+        status: 'failed',
+        visualStatus: 'Не удалось отменить. Обнови экран.',
+      },
+      state: {
+        intent: preview.intent,
+        source: 'web_microphone',
+        status: 'completed',
+        transcript: 'создай задачу проверить оплату',
+      },
+    })
+
+    expect(screen.getByText('Не удалось отменить. Обнови экран.')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: /^отменить$/i }),
+    ).not.toBeInTheDocument()
   })
 
   it('shows agenda visually without an execution confirmation button', () => {

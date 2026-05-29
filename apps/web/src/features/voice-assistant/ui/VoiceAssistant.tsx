@@ -342,15 +342,12 @@ export function VoiceAssistant() {
         }),
       )
 
-      setActionResult(undoResult)
-    } catch (error) {
+      setActionResult(normalizeUndoResult(undoResult))
+    } catch {
       setActionResult({
         errorCode: 'voice_action_undo_failed',
         status: 'failed',
-        visualStatus:
-          error instanceof Error
-            ? error.message
-            : 'Не удалось отменить действие.',
+        visualStatus: 'Не удалось отменить. Обнови экран.',
       })
     } finally {
       setIsUndoing(false)
@@ -805,6 +802,17 @@ function hasVoiceActionMutatedData(result: VoiceActionResult): boolean {
     result.updatedTaskId ||
     result.createdShoppingItemIds?.length,
   )
+}
+
+function normalizeUndoResult(result: VoiceActionResult): VoiceActionResult {
+  if (result.status === 'success') {
+    return result
+  }
+
+  return {
+    ...result,
+    visualStatus: 'Не удалось отменить. Обнови экран.',
+  }
 }
 
 function getStateSource(

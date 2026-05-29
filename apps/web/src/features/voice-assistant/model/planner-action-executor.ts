@@ -709,6 +709,14 @@ export class PlannerActionExecutor {
       })
     }
 
+    if (dependencies.isOnline?.() === false) {
+      return createResult({
+        errorCode: 'voice_action_undo_offline',
+        status: 'failed',
+        visualStatus: 'Нужно подключение, чтобы отменить перенос.',
+      })
+    }
+
     try {
       const restoredTask = await dependencies.taskClient.setTaskSchedule(
         undo.updatedTaskId,

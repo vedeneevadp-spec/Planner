@@ -6,7 +6,7 @@ import {
   type VoiceActionResult,
   type VoiceAssistantState,
 } from '@planner/contracts'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { CheckIcon, CloseIcon, EditIcon, MicIcon } from '@/shared/ui/Icon'
@@ -18,6 +18,7 @@ import {
 import styles from './VoiceAssistant.module.css'
 
 export const MAX_CLARIFICATION_ATTEMPTS = 2
+export const VOICE_UNDO_TTL_MS = 30_000
 
 export type VoiceConfirmationStatus =
   | VoiceActionPreviewStatus
@@ -74,6 +75,12 @@ export function VoiceConfirmationCard({
   const selectedCandidate = preview?.candidates?.find(
     (candidate) => candidate.taskId === selectedCandidateId,
   )
+  const undoKey =
+    result?.status === 'success' && result.undo
+      ? getUndoPayloadKey(result.undo)
+      : null
+  const [expiredUndoKey, setExpiredUndoKey] = useState<string | null>(null)
+  const isUndoResult = isSuccessfulUndoResult(result)
   const hidesPrivateDetails = Boolean(
     preview?.requiresUnlock || preview?.status === 'requires_unlock',
   )
@@ -90,12 +97,30 @@ export function VoiceConfirmationCard({
     ((preview.status === 'ready_for_confirmation' && preview.canExecute) ||
       (preview.status === 'multiple_candidates' &&
         selectedCandidate !== undefined))
-  const canUndo = result?.status === 'success' && Boolean(result.undo)
+  const canUndo =
+    result?.status === 'success' &&
+    Boolean(result.undo) &&
+    undoKey !== null &&
+    expiredUndoKey !== undoKey
   const closeLabel =
     result?.status === 'success' || preview?.type === 'get_agenda'
       ? 'Закрыть'
       : 'Отмена'
   const confirmationStatus = getVoiceConfirmationStatus(preview, result, state)
+
+  useEffect(() => {
+    if (!undoKey) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setExpiredUndoKey(undoKey)
+    }, VOICE_UNDO_TTL_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [undoKey])
 
   return (
     <section
@@ -107,7 +132,9 @@ export function VoiceConfirmationCard({
       <div className={styles.cardHeader}>
         <div className={styles.cardTitleBlock}>
           <span className={styles.statusPill}>
-            {getStatusLabel(state.status, confirmationStatus)}
+            {getStatusLabel(state.status, confirmationStatus, {
+              isUndoResult,
+            })}
           </span>
           <h2>
             {result ? 'Результат' : (preview?.title ?? 'Голосовая команда')}
@@ -196,7 +223,14 @@ export function VoiceConfirmationCard({
           </p>
           {canUndo ? (
             <p className={styles.previewReason}>
-              Действие можно отменить из этой карточки.
+              Действие можно отменить из этой карточки в течение 30 секунд.
+            </p>
+          ) : result?.status === 'success' && result.undo ? (
+            <p className={styles.previewReason}>Время отмены истекло.</p>
+          ) : null}
+          {result?.status !== 'success' ? (
+            <p className={styles.previewReason}>
+              Обнови экран, если данные выглядят неактуально.
             </p>
           ) : null}
         </div>
@@ -732,7 +766,12 @@ function getVoiceConfirmationStatus(
 function getStatusLabel(
   status: VoiceAssistantState['status'],
   confirmationStatus: VoiceConfirmationStatus | null,
+  options: { isUndoResult?: boolean } = {},
 ): string {
+  if (options.isUndoResult) {
+    return 'Отменено'
+  }
+
   if (confirmationStatus === 'requires_unlock') {
     return 'Разблокировка'
   }
@@ -768,6 +807,27 @@ function getStatusLabel(
       return 'Ошибка'
     default:
       return 'Голос'
+  }
+}
+
+function isSuccessfulUndoResult(result: VoiceActionResult | null): boolean {
+  return (
+    result?.status === 'success' &&
+    !result.undo &&
+    result.visualStatus.toLowerCase().includes('отмен')
+  )
+}
+
+function getUndoPayloadKey(
+  undo: NonNullable<VoiceActionResult['undo']>,
+): string {
+  switch (undo.type) {
+    case 'create_task':
+      return `${undo.type}:${undo.createdTaskId}`
+    case 'add_shopping_item':
+      return `${undo.type}:${undo.createdShoppingItemIds.join(',')}`
+    case 'reschedule_task':
+      return `${undo.type}:${undo.updatedTaskId}:${undo.expectedVersion}`
   }
 }
 

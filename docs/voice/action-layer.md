@@ -63,7 +63,8 @@ offsets.
 
 Undo для successful mutating voice actions реализован в confirmation UI stage
 через `PlannerActionExecutor.undoAction()`. Auto-confirm остается отключен до
-метрик качества и закрытого тестирования.
+метрик качества и закрытого тестирования; Undo больше не является deferred item
+пункта 5.
 
 ## Implemented v1 Scope
 
@@ -180,6 +181,7 @@ Voice actions доступны только глобальным `owner` и `tes
   доступен.
 - `get_agenda`: читает cache с stale пометкой или возвращает offline error.
 - `reschedule_task`: не выполняется offline в v1 без надежной `version`.
+- `reschedule_task` Undo: не выполняется offline без свежей версии задачи.
 
 ## Version Rules
 
@@ -207,6 +209,22 @@ Action layer должен логировать только безопасные
 Transcript и приватные task titles не должны попадать в metrics без отдельной
 privacy policy.
 
+## Undo
+
+Undo вынесен из пункта 5 и реализован в пункте 7 через
+`PlannerActionExecutor.undoAction()`:
+
+- `create_task` удаляет созданную задачу через существующий planner remove
+  flow;
+- `add_shopping_item` удаляет созданные shopping items через существующий
+  shopping remove flow;
+- `reschedule_task` восстанавливает previous schedule через `taskClient` и
+  `expectedVersion` обновленной задачи;
+- failed Undo возвращает visual-only error и не повторяет payload
+  автоматически.
+
+Persistent undo history и server-side preview storage не входят в v1.
+
 ## Voice Cues
 
 Локальные voice cues относятся к Android runtime, а не к executor.
@@ -228,6 +246,7 @@ privacy policy.
 - `not_found`;
 - `multiple_candidates`;
 - failed/cancelled/requires_refresh results.
+- Undo success/failure.
 
 Executor не должен возвращать приватный spoken text. Все пользовательские детали
 остаются в visual UI.
@@ -244,4 +263,5 @@ Executor не должен возвращать приватный spoken text. 
 - stale version rejection;
 - role gate for `admin`/`user`/`guest`;
 - `test` role without elevated workspace permissions;
-- auto-confirm disabled until Undo exists.
+- reschedule Undo offline guard;
+- auto-confirm disabled until policy changes.
