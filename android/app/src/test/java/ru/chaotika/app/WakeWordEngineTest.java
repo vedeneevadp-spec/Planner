@@ -122,6 +122,32 @@ public class WakeWordEngineTest {
     }
 
     @Test
+    public void customTfliteWakeWordEngine_preparesReviewSampleWithPostRoll() {
+        float[] preDetection = new float[32_000];
+        for (int index = 31_200; index < preDetection.length; index += 1) {
+            preDetection[index] = 0.2f;
+        }
+
+        short[] postDetection = new short[12_800];
+        for (int index = 0; index < 10_000; index += 1) {
+            postDetection[index] = 6_000;
+        }
+
+        short[] reviewSample = CustomTfliteWakeWordEngine.prepareReviewSamples(preDetection, postDetection, 32_000);
+
+        assertTrue(reviewSample.length > 10_000);
+        assertTrue(reviewSample.length <= 32_000);
+    }
+
+    @Test
+    public void customTfliteWakeWordEngine_fallsBackToLatestPcmWindow() {
+        short[] latest = CustomTfliteWakeWordEngine.latestPcmWindow(new short[] { 1, 2, 3, 4 }, 2);
+
+        assertEquals(3, latest[0]);
+        assertEquals(4, latest[1]);
+    }
+
+    @Test
     public void voiceAssistantStateMachine_movesWakeListeningToWakeReview() {
         assertEquals(
             VoiceAssistantState.REVIEWING_WAKE_WORD,
