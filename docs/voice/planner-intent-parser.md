@@ -116,7 +116,7 @@ rule-parser result.
 
 - `add_shopping_item`: safe when confidence is high and items are clear.
 - `create_task` with exact relative `reminderAt`: safe parser result, but runtime
-  still waits for confirmation until Undo exists.
+  still waits for confirmation until auto-confirm metrics/policy are ready.
 - `create_task` with `date/time`: `needsConfirmation: true`.
 - `reschedule_task`: `needsConfirmation: true`, `isDangerous: true`.
 - `get_agenda`: `requiresUnlock: true` when `isDeviceLocked` is true.

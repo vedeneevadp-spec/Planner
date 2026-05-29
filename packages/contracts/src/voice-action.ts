@@ -5,6 +5,7 @@ import {
   plannerIntentNameSchema,
   plannerIntentSchema,
 } from './planner-intent.js'
+import { taskScheduleInputSchema } from './task.js'
 
 export const voiceActionTypeSchema = plannerIntentNameSchema
 
@@ -77,12 +78,30 @@ export const voiceActionConfirmedPayloadSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
 })
 
+export const voiceActionUndoSchema = z.discriminatedUnion('type', [
+  z.object({
+    createdTaskId: z.string().trim().min(1),
+    type: z.literal('create_task'),
+  }),
+  z.object({
+    createdShoppingItemIds: z.array(z.string().trim().min(1)).min(1),
+    type: z.literal('add_shopping_item'),
+  }),
+  z.object({
+    expectedVersion: z.number().int().positive(),
+    previousSchedule: taskScheduleInputSchema,
+    type: z.literal('reschedule_task'),
+    updatedTaskId: z.string().trim().min(1),
+  }),
+])
+
 export const voiceActionResultSchema = z.object({
   changedData: z.boolean().optional(),
   createdShoppingItemIds: z.array(z.string().trim().min(1)).optional(),
   createdTaskId: z.string().trim().min(1).optional(),
   errorCode: z.string().trim().min(1).optional(),
   status: z.enum(['success', 'failed', 'cancelled', 'requires_refresh']),
+  undo: voiceActionUndoSchema.optional(),
   updatedTaskId: z.string().trim().min(1).optional(),
   visualStatus: z.string().trim().min(1),
 })
@@ -100,3 +119,4 @@ export type VoiceActionConfirmedPayload = z.infer<
   typeof voiceActionConfirmedPayloadSchema
 >
 export type VoiceActionResult = z.infer<typeof voiceActionResultSchema>
+export type VoiceActionUndo = z.infer<typeof voiceActionUndoSchema>

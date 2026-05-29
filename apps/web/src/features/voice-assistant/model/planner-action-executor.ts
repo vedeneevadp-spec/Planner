@@ -14,6 +14,7 @@ import {
   voiceActionPreviewSchema,
   type VoiceActionResult,
   voiceActionResultSchema,
+  type VoiceActionUndo,
   VoiceTextNormalizer,
 } from '@planner/contracts'
 
@@ -59,6 +60,8 @@ export interface PlannerActionExecutorDependencies {
   getCachedTasks?: (() => VoiceActionCachedTask[]) | undefined
   isOnline?: (() => boolean) | undefined
   refreshPlanner?: (() => Promise<void>) | undefined
+  removeShoppingItem?: ((itemId: string) => Promise<unknown>) | undefined
+  removeTask?: ((taskId: string) => Promise<unknown>) | undefined
   taskClient?: VoiceActionTaskClient | null | undefined
 }
 
@@ -242,6 +245,28 @@ export class PlannerActionExecutor {
     }
   }
 
+  async undoAction(
+    result: VoiceActionResult,
+    dependencies: PlannerActionExecutorDependencies,
+  ): Promise<VoiceActionResult> {
+    if (result.status !== 'success' || !result.undo) {
+      return createResult({
+        errorCode: 'voice_action_undo_unavailable',
+        status: 'failed',
+        visualStatus: 'Для этого действия отмена недоступна.',
+      })
+    }
+
+    switch (result.undo.type) {
+      case 'create_task':
+        return this.undoCreateTaskAction(result.undo, dependencies)
+      case 'add_shopping_item':
+        return this.undoShoppingAction(result.undo, dependencies)
+      case 'reschedule_task':
+        return this.undoRescheduleAction(result.undo, dependencies)
+    }
+  }
+
   private async prepareAgendaAction(
     intent: PlannerIntent,
     context: VoiceActionContext,
@@ -395,10 +420,13 @@ export class PlannerActionExecutor {
     preview: VoiceActionPreview,
     dependencies: PlannerActionExecutorDependencies,
   ): Promise<VoiceActionResult> {
+    const taskInput = {
+      ...buildTaskInputFromPlannerIntent(preview.intent),
+      id: generateUuidV7(),
+    }
+
     try {
-      const result = await dependencies.createTask(
-        buildTaskInputFromPlannerIntent(preview.intent),
-      )
+      const result = await dependencies.createTask(taskInput)
 
       if (result === false) {
         return createResult({
@@ -410,8 +438,12 @@ export class PlannerActionExecutor {
 
       return createResult({
         changedData: true,
-        createdTaskId: getRecordId(result),
+        createdTaskId: getRecordId(result) ?? taskInput.id,
         status: 'success',
+        undo: {
+          createdTaskId: getRecordId(result) ?? taskInput.id,
+          type: 'create_task',
+        },
         visualStatus: 'Готово, задача сохранена.',
       })
     } catch {
@@ -448,6 +480,13 @@ export class PlannerActionExecutor {
         changedData: true,
         createdShoppingItemIds,
         status: 'success',
+        undo:
+          createdShoppingItemIds.length > 0
+            ? {
+                createdShoppingItemIds,
+                type: 'add_shopping_item',
+              }
+            : undefined,
         visualStatus: 'Добавлено в покупки.',
       })
     } catch {
@@ -539,6 +578,16 @@ export class PlannerActionExecutor {
         changedData: true,
         status: 'success',
         updatedTaskId: updatedTask.id,
+        undo: {
+          expectedVersion: updatedTask.version,
+          previousSchedule: {
+            plannedDate: candidate.plannedDate,
+            plannedEndTime: candidate.plannedEndTime ?? null,
+            plannedStartTime: candidate.plannedStartTime,
+          },
+          type: 'reschedule_task',
+          updatedTaskId: updatedTask.id,
+        },
         visualStatus: 'Готово, задача перенесена.',
       })
     } catch (error) {
@@ -568,6 +617,122 @@ export class PlannerActionExecutor {
     })
 
     return preview
+  }
+
+  private async undoCreateTaskAction(
+    undo: Extract<VoiceActionUndo, { type: 'create_task' }>,
+    dependencies: PlannerActionExecutorDependencies,
+  ): Promise<VoiceActionResult> {
+    if (!dependencies.removeTask) {
+      return createResult({
+        errorCode: 'voice_action_undo_unavailable',
+        status: 'failed',
+        visualStatus: 'Отмена создания задачи сейчас недоступна.',
+      })
+    }
+
+    try {
+      const result = await dependencies.removeTask(undo.createdTaskId)
+
+      if (result === false) {
+        return createResult({
+          errorCode: 'task_undo_failed',
+          status: 'failed',
+          visualStatus: 'Не удалось отменить создание задачи.',
+        })
+      }
+
+      await dependencies.refreshPlanner?.()
+
+      return createResult({
+        changedData: true,
+        status: 'success',
+        visualStatus: 'Создание задачи отменено.',
+      })
+    } catch {
+      return createResult({
+        errorCode: 'task_undo_failed',
+        status: 'failed',
+        visualStatus: 'Не удалось отменить создание задачи.',
+      })
+    }
+  }
+
+  private async undoShoppingAction(
+    undo: Extract<VoiceActionUndo, { type: 'add_shopping_item' }>,
+    dependencies: PlannerActionExecutorDependencies,
+  ): Promise<VoiceActionResult> {
+    if (!dependencies.removeShoppingItem) {
+      return createResult({
+        errorCode: 'voice_action_undo_unavailable',
+        status: 'failed',
+        visualStatus: 'Отмена покупок сейчас недоступна.',
+      })
+    }
+
+    try {
+      for (const itemId of undo.createdShoppingItemIds) {
+        const result = await dependencies.removeShoppingItem(itemId)
+
+        if (result === false) {
+          return createResult({
+            errorCode: 'shopping_undo_failed',
+            status: 'failed',
+            visualStatus: 'Не удалось отменить добавление в покупки.',
+          })
+        }
+      }
+
+      return createResult({
+        changedData: true,
+        status: 'success',
+        visualStatus: 'Добавление в покупки отменено.',
+      })
+    } catch {
+      return createResult({
+        errorCode: 'shopping_undo_failed',
+        status: 'failed',
+        visualStatus: 'Не удалось отменить добавление в покупки.',
+      })
+    }
+  }
+
+  private async undoRescheduleAction(
+    undo: Extract<VoiceActionUndo, { type: 'reschedule_task' }>,
+    dependencies: PlannerActionExecutorDependencies,
+  ): Promise<VoiceActionResult> {
+    if (!dependencies.taskClient) {
+      return createResult({
+        errorCode: 'voice_action_undo_unavailable',
+        status: 'failed',
+        visualStatus: 'Отмена переноса сейчас недоступна.',
+      })
+    }
+
+    try {
+      const restoredTask = await dependencies.taskClient.setTaskSchedule(
+        undo.updatedTaskId,
+        {
+          expectedVersion: undo.expectedVersion,
+          schedule: undo.previousSchedule,
+        },
+      )
+
+      await dependencies.refreshPlanner?.()
+
+      return createResult({
+        changedData: true,
+        status: 'success',
+        updatedTaskId: restoredTask.id,
+        visualStatus: 'Перенос отменен.',
+      })
+    } catch (error) {
+      return createResult({
+        errorCode: getErrorCode(error) ?? 'reschedule_undo_failed',
+        status: 'failed',
+        visualStatus: 'Не удалось отменить перенос.',
+      })
+    }
   }
 }
 
@@ -613,6 +778,7 @@ function createResult(input: {
   createdTaskId?: string | undefined
   errorCode?: string | undefined
   status: VoiceActionResult['status']
+  undo?: VoiceActionUndo | undefined
   updatedTaskId?: string | undefined
   visualStatus: string
 }): VoiceActionResult {

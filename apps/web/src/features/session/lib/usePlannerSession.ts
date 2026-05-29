@@ -25,11 +25,11 @@ import {
 
 export function usePlannerSession() {
   const auth = useSessionAuth()
+  const legacyActorUserId = auth.isAuthEnabled
+    ? null
+    : (plannerApiConfig.actorUserIdOverride ?? null)
   const selectedWorkspaceActorUserId =
-    auth.userId ??
-    getLastActorUserId() ??
-    plannerApiConfig.actorUserIdOverride ??
-    null
+    auth.userId ?? getLastActorUserId() ?? legacyActorUserId
   const selectedWorkspaceId = useSelectedWorkspaceId(
     selectedWorkspaceActorUserId,
   )

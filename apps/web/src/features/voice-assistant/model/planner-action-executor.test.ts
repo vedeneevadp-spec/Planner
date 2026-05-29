@@ -42,6 +42,10 @@ describe('PlannerActionExecutor', () => {
       changedData: true,
       createdTaskId: 'task-created',
       status: 'success',
+      undo: {
+        createdTaskId: 'task-created',
+        type: 'create_task',
+      },
       visualStatus: 'Готово, задача сохранена.',
     })
     expect(createTask).toHaveBeenCalledWith(
@@ -74,9 +78,18 @@ describe('PlannerActionExecutor', () => {
     expect(result).toMatchObject({
       changedData: true,
       status: 'success',
+      undo: {
+        type: 'create_task',
+      },
       visualStatus: 'Готово, задача сохранена.',
     })
-    expect(result.createdTaskId).toBeUndefined()
+    expect(result.createdTaskId).toEqual(expect.any(String))
+    expect(result.undo?.type).toBe('create_task')
+
+    if (result.undo?.type === 'create_task') {
+      expect(result.undo.createdTaskId).toEqual(expect.any(String))
+      expect(result.createdTaskId).toBe(result.undo.createdTaskId)
+    }
   })
 
   it('creates reminder intents as planner tasks, not separate reminders', async () => {
@@ -131,6 +144,10 @@ describe('PlannerActionExecutor', () => {
       changedData: true,
       createdShoppingItemIds: ['shopping-1', 'shopping-2'],
       status: 'success',
+      undo: {
+        createdShoppingItemIds: ['shopping-1', 'shopping-2'],
+        type: 'add_shopping_item',
+      },
       visualStatus: 'Добавлено в покупки.',
     })
     expect(createShoppingItem).toHaveBeenCalledTimes(2)
@@ -142,6 +159,65 @@ describe('PlannerActionExecutor', () => {
       2,
       expect.objectContaining({ text: 'хлеб' }),
     )
+  })
+
+  it('undoes a created task through the planner removal flow', async () => {
+    const removeTask = vi.fn().mockResolvedValue(true)
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({
+      createTask: vi.fn().mockResolvedValue({ id: 'task-created' }),
+      removeTask,
+    })
+    const preview = await executor.prepareAction(
+      createIntent({
+        intent: 'create_task',
+        title: 'проверить оплату',
+      }),
+      CONTEXT,
+      deps,
+    )
+    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+
+    const undoResult = await executor.undoAction(result, deps)
+
+    expect(removeTask).toHaveBeenCalledWith('task-created')
+    expect(undoResult).toMatchObject({
+      changedData: true,
+      status: 'success',
+      visualStatus: 'Создание задачи отменено.',
+    })
+  })
+
+  it('undoes created shopping items through the shopping removal flow', async () => {
+    const removeShoppingItem = vi.fn().mockResolvedValue(undefined)
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({
+      createShoppingItem: vi
+        .fn()
+        .mockResolvedValueOnce({ id: 'shopping-1' })
+        .mockResolvedValueOnce({ id: 'shopping-2' }),
+      removeShoppingItem,
+    })
+    const preview = await executor.prepareAction(
+      createIntent({
+        intent: 'add_shopping_item',
+        items: [{ title: 'молоко' }, { title: 'хлеб' }],
+      }),
+      CONTEXT,
+      deps,
+    )
+    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+
+    const undoResult = await executor.undoAction(result, deps)
+
+    expect(removeShoppingItem).toHaveBeenCalledTimes(2)
+    expect(removeShoppingItem).toHaveBeenNthCalledWith(1, 'shopping-1')
+    expect(removeShoppingItem).toHaveBeenNthCalledWith(2, 'shopping-2')
+    expect(undoResult).toMatchObject({
+      changedData: true,
+      status: 'success',
+      visualStatus: 'Добавление в покупки отменено.',
+    })
   })
 
   it('requires unlock for agenda on the lock screen', async () => {
@@ -311,6 +387,64 @@ describe('PlannerActionExecutor', () => {
     )
   })
 
+  it('executes and undoes reschedule with previous schedule and updated version', async () => {
+    const executor = new PlannerActionExecutor()
+    const task = createTaskRecord({
+      id: 'task-1',
+      plannedDate: '2026-05-29',
+      plannedEndTime: '11:00',
+      plannedStartTime: '10:00',
+      title: 'Помыть окна',
+      version: 1,
+    })
+    const deps = createDependencies({ tasks: [task] })
+    const preview = await executor.prepareAction(
+      createIntent({
+        date: '2026-05-30',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+        time: '12:00',
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const undoResult = await executor.undoAction(result, deps)
+
+    expect(result).toMatchObject({
+      changedData: true,
+      status: 'success',
+      undo: {
+        expectedVersion: 2,
+        previousSchedule: {
+          plannedDate: '2026-05-29',
+          plannedEndTime: '11:00',
+          plannedStartTime: '10:00',
+        },
+        type: 'reschedule_task',
+        updatedTaskId: 'task-1',
+      },
+      updatedTaskId: 'task-1',
+    })
+    expect(deps.taskClient?.setTaskSchedule).toHaveBeenLastCalledWith(
+      'task-1',
+      {
+        expectedVersion: 2,
+        schedule: {
+          plannedDate: '2026-05-29',
+          plannedEndTime: '11:00',
+          plannedStartTime: '10:00',
+        },
+      },
+    )
+    expect(undoResult).toMatchObject({
+      changedData: true,
+      status: 'success',
+      visualStatus: 'Перенос отменен.',
+    })
+  })
+
   it('rejects stale reschedule versions before update', async () => {
     const executor = new PlannerActionExecutor()
     const task = createTaskRecord({
@@ -407,6 +541,8 @@ function createDependencies(
     createShoppingItem?: PlannerActionExecutorDependencies['createShoppingItem']
     createTask?: PlannerActionExecutorDependencies['createTask']
     isOnline?: () => boolean
+    removeShoppingItem?: PlannerActionExecutorDependencies['removeShoppingItem']
+    removeTask?: PlannerActionExecutorDependencies['removeTask']
     setTaskSchedule?: NonNullable<
       PlannerActionExecutorDependencies['taskClient']
     >['setTaskSchedule']
@@ -453,6 +589,9 @@ function createDependencies(
     getCachedTasks: () => tasks,
     isOnline: overrides.isOnline ?? (() => true),
     refreshPlanner: vi.fn(() => Promise.resolve(undefined)),
+    removeShoppingItem:
+      overrides.removeShoppingItem ?? vi.fn(() => Promise.resolve(undefined)),
+    removeTask: overrides.removeTask ?? vi.fn(() => Promise.resolve(true)),
     taskClient: {
       listTasks: vi.fn((filters: Parameters<ListTasks>[0]) =>
         Promise.resolve(

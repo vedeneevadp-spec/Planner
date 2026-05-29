@@ -61,7 +61,9 @@ offsets.
 - вызывает существующие planner/shopping механизмы;
 - возвращает только visual status.
 
-Пока Undo для голосовых действий не реализован, auto-confirm отключен.
+Undo для successful mutating voice actions реализован в confirmation UI stage
+через `PlannerActionExecutor.undoAction()`. Auto-confirm остается отключен до
+метрик качества и закрытого тестирования.
 
 ## Implemented v1 Scope
 
@@ -82,17 +84,13 @@ offsets.
 - backend `/voice/action/prepare` и `/voice/action/execute`;
 - persistent preview storage;
 - production telemetry sink;
-- Undo;
 - auto-confirm;
-- full clarification loop;
 - production LLM fallback provider;
 - Android end-to-end проверка action execution на реальном устройстве.
 
 Куда переходят deferred items:
 
-- full clarification loop - confirmation UI roadmap;
-- Undo - confirmation UI roadmap, до включения auto-confirm;
-- auto-confirm - после Undo и метрик качества;
+- auto-confirm - после метрик качества и закрытого тестирования;
 - production telemetry sink - voice quality metrics stage;
 - production LLM fallback provider - отдельный backend-only LLM fallback stage;
 - Android end-to-end action execution - closed testing и release gate;

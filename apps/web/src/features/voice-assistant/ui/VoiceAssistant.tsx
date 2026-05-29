@@ -24,9 +24,12 @@ import {
 
 import { usePlanner, usePlannerApiClient } from '@/features/planner'
 import { useSessionFeatureReadiness } from '@/features/session'
-import { useCreateShoppingListItem } from '@/features/shopping-list'
+import {
+  useCreateShoppingListItem,
+  useRemoveShoppingListItem,
+} from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
-import { CheckIcon, CloseIcon, MicIcon } from '@/shared/ui/Icon'
+import { MicIcon } from '@/shared/ui/Icon'
 
 import {
   addAndroidVoiceAssistantResumeListener,
@@ -46,11 +49,11 @@ import {
   PlannerActionExecutor,
   type PlannerActionExecutorDependencies,
 } from '../model/planner-action-executor'
-import {
-  getPlannerIntentActionLabel,
-  getShoppingItemText,
-} from '../model/planner-intent-execution'
 import styles from './VoiceAssistant.module.css'
+import {
+  MAX_CLARIFICATION_ATTEMPTS,
+  VoiceConfirmationCard,
+} from './VoiceConfirmationCard'
 
 const AUTO_CLOSE_DELAY_MS = 2200
 
@@ -59,6 +62,7 @@ export function VoiceAssistant() {
   const plannerApi = usePlannerApiClient()
   const { apiConfig, session } = useSessionFeatureReadiness()
   const createShoppingItemMutation = useCreateShoppingListItem()
+  const removeShoppingItemMutation = useRemoveShoppingListItem()
   const parser = useMemo(() => new PlannerIntentParser(), [])
   const actionExecutorRef = useRef(new PlannerActionExecutor())
   const [state, dispatch] = useReducer(
@@ -75,6 +79,8 @@ export function VoiceAssistant() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(
     null,
   )
+  const [clarificationAttempts, setClarificationAttempts] = useState(0)
+  const [isUndoing, setIsUndoing] = useState(false)
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
   const autoCloseTimerRef = useRef<number | null>(null)
@@ -100,6 +106,7 @@ export function VoiceAssistant() {
           context,
           createActionDependencies({
             createShoppingItem: createShoppingItemMutation.mutateAsync,
+            removeShoppingItem: removeShoppingItemMutation.mutateAsync,
             planner,
             plannerApi,
           }),
@@ -140,7 +147,48 @@ export function VoiceAssistant() {
         })
       }
     },
-    [createShoppingItemMutation.mutateAsync, planner, plannerApi, session],
+    [
+      createShoppingItemMutation.mutateAsync,
+      planner,
+      plannerApi,
+      removeShoppingItemMutation.mutateAsync,
+      session,
+    ],
+  )
+
+  const prepareIntentPreview = useCallback(
+    async (intent: PlannerIntent, source: VoiceAssistantSource) => {
+      const preview = await actionExecutorRef.current.prepareAction(
+        intent,
+        createVoiceActionContext(source, session),
+        createActionDependencies({
+          createShoppingItem: createShoppingItemMutation.mutateAsync,
+          removeShoppingItem: removeShoppingItemMutation.mutateAsync,
+          planner,
+          plannerApi,
+        }),
+      )
+
+      setActionPreview(preview)
+      setSelectedCandidateId(
+        preview.status === 'multiple_candidates'
+          ? null
+          : (preview.candidates?.[0]?.taskId ?? null),
+      )
+      dispatch({
+        intent,
+        type: 'intent_parsed',
+      })
+
+      return preview
+    },
+    [
+      createShoppingItemMutation.mutateAsync,
+      planner,
+      plannerApi,
+      removeShoppingItemMutation.mutateAsync,
+      session,
+    ],
   )
 
   const handleTranscript = useCallback(
@@ -148,6 +196,7 @@ export function VoiceAssistant() {
       transcript: string,
       source: VoiceAssistantSource,
       backendIntent?: PlannerIntent,
+      options: { resetClarificationAttempts?: boolean } = {},
     ) => {
       const normalizedTranscript = transcript.trim()
 
@@ -155,6 +204,11 @@ export function VoiceAssistant() {
       setActionPreview(null)
       setActionResult(null)
       setSelectedCandidateId(null)
+      setIsUndoing(false)
+
+      if (options.resetClarificationAttempts !== false) {
+        setClarificationAttempts(0)
+      }
 
       if (!normalizedTranscript) {
         dispatch({
@@ -179,26 +233,7 @@ export function VoiceAssistant() {
         )
 
       try {
-        const preview = await actionExecutorRef.current.prepareAction(
-          intent,
-          createVoiceActionContext(source, session),
-          createActionDependencies({
-            createShoppingItem: createShoppingItemMutation.mutateAsync,
-            planner,
-            plannerApi,
-          }),
-        )
-
-        setActionPreview(preview)
-        setSelectedCandidateId(
-          preview.status === 'multiple_candidates'
-            ? null
-            : (preview.candidates?.[0]?.taskId ?? null),
-        )
-        dispatch({
-          intent,
-          type: 'intent_parsed',
-        })
+        await prepareIntentPreview(intent, source)
       } catch (error) {
         dispatch({
           error:
@@ -211,14 +246,122 @@ export function VoiceAssistant() {
         })
       }
     },
-    [
-      createShoppingItemMutation.mutateAsync,
-      parser,
-      planner,
-      plannerApi,
-      session,
-    ],
+    [parser, planner, prepareIntentPreview, session],
   )
+
+  const prepareFollowUpIntent = useCallback(
+    async (
+      intent: PlannerIntent,
+      transcript: string,
+      source: VoiceAssistantSource,
+    ) => {
+      setIsCardVisible(true)
+      setActionPreview(null)
+      setActionResult(null)
+      setSelectedCandidateId(null)
+      setIsUndoing(false)
+      dispatch({
+        source,
+        transcript,
+        type: 'transcript_received',
+      })
+
+      try {
+        await prepareIntentPreview(intent, source)
+      } catch (error) {
+        dispatch({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Не удалось подготовить голосовое действие.',
+          source,
+          transcript,
+          type: 'failed',
+        })
+      }
+    },
+    [prepareIntentPreview],
+  )
+
+  const handleClarifyOption = useCallback(
+    (transcript: string) => {
+      setClarificationAttempts((current) =>
+        Math.min(current + 1, MAX_CLARIFICATION_ATTEMPTS),
+      )
+      void handleTranscript(
+        transcript,
+        getStateSource(state) ?? 'web_microphone',
+        undefined,
+        { resetClarificationAttempts: false },
+      )
+    },
+    [handleTranscript, state],
+  )
+
+  const handleCreateFromNotFound = useCallback(
+    (preview: VoiceActionPreview) => {
+      const intent = createTaskIntentFromNotFoundPreview(preview)
+
+      void prepareFollowUpIntent(
+        intent,
+        intent.rawText,
+        getStateSource(state) ?? 'web_microphone',
+      )
+    },
+    [prepareFollowUpIntent, state],
+  )
+
+  const handleSaveClarificationToInbox = useCallback(
+    (preview: VoiceActionPreview) => {
+      const intent = createInboxTaskIntentFromPreview(preview)
+
+      void prepareFollowUpIntent(
+        intent,
+        intent.rawText,
+        getStateSource(state) ?? 'web_microphone',
+      )
+    },
+    [prepareFollowUpIntent, state],
+  )
+
+  const handleUndo = useCallback(async () => {
+    if (!actionResult) {
+      return
+    }
+
+    setIsUndoing(true)
+
+    try {
+      const undoResult = await actionExecutorRef.current.undoAction(
+        actionResult,
+        createActionDependencies({
+          createShoppingItem: createShoppingItemMutation.mutateAsync,
+          removeShoppingItem: removeShoppingItemMutation.mutateAsync,
+          planner,
+          plannerApi,
+        }),
+      )
+
+      setActionResult(undoResult)
+    } catch (error) {
+      setActionResult({
+        errorCode: 'voice_action_undo_failed',
+        status: 'failed',
+        visualStatus:
+          error instanceof Error
+            ? error.message
+            : 'Не удалось отменить действие.',
+      })
+    } finally {
+      setIsUndoing(false)
+    }
+  }, [
+    actionResult,
+    createShoppingItemMutation.mutateAsync,
+    planner,
+    plannerApi,
+    removeShoppingItemMutation.mutateAsync,
+  ])
 
   const consumePendingAndroidCommand = useCallback(async () => {
     try {
@@ -330,6 +473,10 @@ export function VoiceAssistant() {
       return undefined
     }
 
+    if (actionResult?.status === 'success' && actionResult.undo) {
+      return undefined
+    }
+
     autoCloseTimerRef.current = window.setTimeout(() => {
       setIsCardVisible(false)
       dispatch({ type: 'cancelled' })
@@ -341,7 +488,7 @@ export function VoiceAssistant() {
         autoCloseTimerRef.current = null
       }
     }
-  }, [state])
+  }, [actionResult, state])
 
   async function startVoiceInput() {
     if (!isVoiceEnabled) {
@@ -424,6 +571,8 @@ export function VoiceAssistant() {
     setActionPreview(null)
     setActionResult(null)
     setSelectedCandidateId(null)
+    setClarificationAttempts(0)
+    setIsUndoing(false)
     dispatch({ type: 'cancelled' })
   }
 
@@ -447,11 +596,15 @@ export function VoiceAssistant() {
       </button>
 
       {isCardVisible ? (
-        <VoiceAssistantCard
+        <VoiceConfirmationCard
+          clarificationAttempts={clarificationAttempts}
+          isUndoing={isUndoing}
           preview={actionPreview}
           result={actionResult}
           selectedCandidateId={selectedCandidateId}
+          spheres={planner.spheres}
           state={state}
+          onClarifyOption={handleClarifyOption}
           onClose={closeCard}
           onConfirm={(preview, confirmedPayload) => {
             void runActionPreview(
@@ -460,310 +613,25 @@ export function VoiceAssistant() {
               confirmedPayload,
             )
           }}
+          onCreateFromNotFound={handleCreateFromNotFound}
           onEditTranscript={(transcript) => {
             void handleTranscript(
               transcript,
               getStateSource(state) ?? 'web_microphone',
             )
           }}
+          onRepeat={() => {
+            void startVoiceInput()
+          }}
+          onSaveClarificationToInbox={handleSaveClarificationToInbox}
           onSelectCandidate={setSelectedCandidateId}
+          onUndo={() => {
+            void handleUndo()
+          }}
         />
       ) : null}
     </>
   )
-}
-
-interface VoiceAssistantCardProps {
-  preview: VoiceActionPreview | null
-  result: VoiceActionResult | null
-  selectedCandidateId: string | null
-  state: VoiceAssistantState
-  onClose: () => void
-  onConfirm: (
-    preview: VoiceActionPreview,
-    confirmedPayload?: VoiceActionConfirmedPayload,
-  ) => void
-  onEditTranscript: (transcript: string) => void
-  onSelectCandidate: (taskId: string) => void
-}
-
-function VoiceAssistantCard({
-  preview,
-  result,
-  selectedCandidateId,
-  state,
-  onClose,
-  onConfirm,
-  onEditTranscript,
-  onSelectCandidate,
-}: VoiceAssistantCardProps) {
-  const transcript = 'transcript' in state ? state.transcript : ''
-  const [editState, setEditState] = useState<{
-    transcript: string
-    value: string
-  } | null>(null)
-  const isEditingTranscript = editState !== null
-  const editedTranscript = editState?.value ?? ''
-  const intent =
-    state.status === 'awaiting_confirmation' ||
-    state.status === 'executing' ||
-    state.status === 'completed'
-      ? state.intent
-      : null
-  const canEdit =
-    Boolean(transcript) &&
-    (state.status === 'awaiting_confirmation' || state.status === 'error')
-  const selectedCandidate = preview?.candidates?.find(
-    (candidate) => candidate.taskId === selectedCandidateId,
-  )
-  const canConfirm =
-    state.status === 'awaiting_confirmation' &&
-    preview !== null &&
-    preview.needsConfirmation &&
-    ((preview.status === 'ready_for_confirmation' && preview.canExecute) ||
-      (preview.status === 'multiple_candidates' &&
-        selectedCandidate !== undefined))
-  const statusLabel = getStatusLabel(state.status)
-
-  return (
-    <section
-      className={styles.card}
-      role="dialog"
-      aria-live="polite"
-      aria-label="Голосовая команда"
-    >
-      <div className={styles.cardHeader}>
-        <div className={styles.cardTitleBlock}>
-          <span className={styles.statusPill}>{statusLabel}</span>
-          <h2>Голосовая команда</h2>
-        </div>
-        <button
-          className={styles.iconButton}
-          type="button"
-          aria-label="Закрыть"
-          onClick={onClose}
-        >
-          <CloseIcon size={17} strokeWidth={2.15} />
-        </button>
-      </div>
-
-      {state.status === 'error' ? (
-        <p className={styles.errorMessage}>{state.error}</p>
-      ) : null}
-
-      {isEditingTranscript ? (
-        <form
-          className={styles.editForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-            setEditState(null)
-            onEditTranscript(editedTranscript)
-          }}
-        >
-          <textarea
-            className={styles.editTextarea}
-            value={editedTranscript}
-            rows={3}
-            autoFocus
-            onChange={(event) =>
-              setEditState((current) => ({
-                transcript: current?.transcript ?? transcript ?? '',
-                value: event.currentTarget.value,
-              }))
-            }
-          />
-          <div className={styles.inlineActions}>
-            <button
-              className={styles.secondaryButton}
-              type="button"
-              onClick={() => setEditState(null)}
-            >
-              Отмена
-            </button>
-            <button className={styles.primaryButton} type="submit">
-              <span>Применить</span>
-            </button>
-          </div>
-        </form>
-      ) : transcript ? (
-        <p className={styles.transcript}>{transcript}</p>
-      ) : null}
-
-      {intent ? (
-        <dl className={styles.intentGrid}>
-          <div>
-            <dt>Действие</dt>
-            <dd>{getPlannerIntentActionLabel(intent)}</dd>
-          </div>
-          {intent.title ? (
-            <div>
-              <dt>Название</dt>
-              <dd>{intent.title}</dd>
-            </div>
-          ) : null}
-          {intent.items?.length ? (
-            <div>
-              <dt>Покупки</dt>
-              <dd>{intent.items.map(getShoppingItemText).join(', ')}</dd>
-            </div>
-          ) : null}
-          {intent.targetQuery ? (
-            <div>
-              <dt>Что перенести</dt>
-              <dd>{intent.targetQuery}</dd>
-            </div>
-          ) : null}
-          {intent.date ? (
-            <div>
-              <dt>Дата</dt>
-              <dd>{intent.date}</dd>
-            </div>
-          ) : null}
-          {intent.time ? (
-            <div>
-              <dt>Время</dt>
-              <dd>{intent.time}</dd>
-            </div>
-          ) : null}
-          {intent.reminderAt ? (
-            <div>
-              <dt>Напоминание</dt>
-              <dd>{intent.reminderAt}</dd>
-            </div>
-          ) : null}
-          {intent.requiresUnlock ? (
-            <div>
-              <dt>Доступ</dt>
-              <dd>Нужна разблокировка</dd>
-            </div>
-          ) : null}
-          <div>
-            <dt>Уверенность</dt>
-            <dd>{Math.round(intent.confidence * 100)}%</dd>
-          </div>
-        </dl>
-      ) : null}
-
-      {preview ? (
-        <div className={styles.previewBlock}>
-          <p className={styles.previewSummary}>{preview.summary}</p>
-          {preview.reason && preview.reason !== preview.summary ? (
-            <p className={styles.previewReason}>{preview.reason}</p>
-          ) : null}
-          {preview.agendaItems?.length ? (
-            <ul className={styles.agendaList}>
-              {preview.agendaItems.slice(0, 5).map((item) => (
-                <li key={item.taskId}>
-                  <span>{formatAgendaItemTime(item)}</span>
-                  <strong>{item.title}</strong>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {preview.candidates?.length ? (
-            <fieldset className={styles.candidateList}>
-              <legend>Задача</legend>
-              {preview.candidates.map((candidate) => {
-                const candidateInputId = `voice-candidate-${preview.id}-${candidate.taskId}`
-
-                return (
-                  <label
-                    key={`${candidate.taskId}:${candidate.version}`}
-                    aria-label={`Перенести ${candidate.title}`}
-                    htmlFor={candidateInputId}
-                  >
-                    <input
-                      id={candidateInputId}
-                      type="radio"
-                      name={`voice-candidate-${preview.id}`}
-                      value={candidate.taskId}
-                      checked={selectedCandidateId === candidate.taskId}
-                      onChange={() => onSelectCandidate(candidate.taskId)}
-                    />
-                    <span>
-                      <strong>{candidate.title}</strong>
-                      <small>{formatCandidateSchedule(candidate)}</small>
-                    </span>
-                  </label>
-                )
-              })}
-            </fieldset>
-          ) : null}
-        </div>
-      ) : null}
-
-      {result ? (
-        <p className={styles.resultMessage}>{result.visualStatus}</p>
-      ) : null}
-
-      {intent?.clarificationQuestion ? (
-        <p className={styles.clarification}>{intent.clarificationQuestion}</p>
-      ) : null}
-
-      <div className={styles.actions}>
-        <button
-          className={styles.secondaryButton}
-          type="button"
-          onClick={onClose}
-        >
-          Отмена
-        </button>
-        {canEdit ? (
-          <button
-            className={styles.secondaryButton}
-            type="button"
-            onClick={() =>
-              setEditState({
-                transcript: transcript ?? '',
-                value: transcript ?? '',
-              })
-            }
-          >
-            Изменить
-          </button>
-        ) : null}
-        {canConfirm ? (
-          <button
-            className={styles.primaryButton}
-            type="button"
-            onClick={() => {
-              if (!preview) {
-                return
-              }
-
-              onConfirm(preview, {
-                ...(selectedCandidate
-                  ? {
-                      candidateTaskId: selectedCandidate.taskId,
-                      expectedVersion: selectedCandidate.version,
-                    }
-                  : {}),
-              })
-            }}
-          >
-            <CheckIcon size={17} strokeWidth={2.15} />
-            <span>{getConfirmLabel(preview.intent)}</span>
-          </button>
-        ) : null}
-      </div>
-    </section>
-  )
-}
-
-function getConfirmLabel(intent: PlannerIntent): string {
-  switch (intent.intent) {
-    case 'add_shopping_item':
-      return 'Добавить'
-    case 'reschedule_task':
-      return 'Перенести'
-    case 'create_task':
-      return 'Сохранить'
-    case 'get_agenda':
-      return 'Показать'
-    case 'clarify':
-    case 'unsupported':
-      return 'Подтвердить'
-  }
 }
 
 function createPlannerIntentParserContext(
@@ -787,10 +655,61 @@ function createPlannerIntentParserContext(
   }
 }
 
+function createTaskIntentFromNotFoundPreview(
+  preview: VoiceActionPreview,
+): PlannerIntent {
+  const sourceIntent = preview.intent
+  const title = normalizeFollowUpTaskTitle(
+    sourceIntent.targetQuery ?? sourceIntent.transcript ?? sourceIntent.rawText,
+  )
+
+  return {
+    confidence: Math.min(sourceIntent.confidence, 0.82),
+    intent: 'create_task',
+    needsConfirmation: true,
+    rawText: `создать задачу ${title}`,
+    title,
+    ...(sourceIntent.date ? { date: sourceIntent.date } : {}),
+    ...(sourceIntent.datePrecision
+      ? { datePrecision: sourceIntent.datePrecision }
+      : {}),
+    ...(sourceIntent.dateText ? { dateText: sourceIntent.dateText } : {}),
+    ...(sourceIntent.priority ? { priority: sourceIntent.priority } : {}),
+    ...(sourceIntent.sphereId ? { sphereId: sourceIntent.sphereId } : {}),
+    ...(sourceIntent.time ? { time: sourceIntent.time } : {}),
+  }
+}
+
+function createInboxTaskIntentFromPreview(
+  preview: VoiceActionPreview,
+): PlannerIntent {
+  const sourceIntent = preview.intent
+  const title = normalizeFollowUpTaskTitle(
+    sourceIntent.transcript ?? sourceIntent.rawText,
+  )
+
+  return {
+    confidence: Math.min(sourceIntent.confidence, 0.7),
+    intent: 'create_task',
+    needsConfirmation: true,
+    rawText: `создать задачу ${title}`,
+    title,
+  }
+}
+
+function normalizeFollowUpTaskTitle(value: string): string {
+  const title = value.trim()
+
+  return title || 'Новая задача'
+}
+
 function createActionDependencies(input: {
   createShoppingItem: PlannerActionExecutorDependencies['createShoppingItem']
   planner: ReturnType<typeof usePlanner>
   plannerApi: ReturnType<typeof usePlannerApiClient>
+  removeShoppingItem: NonNullable<
+    PlannerActionExecutorDependencies['removeShoppingItem']
+  >
 }): PlannerActionExecutorDependencies {
   const plannerApi = input.plannerApi
 
@@ -809,6 +728,8 @@ function createActionDependencies(input: {
     isOnline: () =>
       typeof navigator === 'undefined' ? true : navigator.onLine,
     refreshPlanner: input.planner.refresh,
+    removeShoppingItem: input.removeShoppingItem,
+    removeTask: (taskId) => input.planner.removeTask(taskId),
     taskClient: plannerApi
       ? {
           listTasks: (filters) => plannerApi.listTasks(filters),
@@ -869,23 +790,6 @@ function getPlannerIntentParserSource(
   }
 }
 
-function formatAgendaItemTime(
-  item: NonNullable<VoiceActionPreview['agendaItems']>[number],
-): string {
-  return item.plannedStartTime ?? 'Без времени'
-}
-
-function formatCandidateSchedule(
-  candidate: NonNullable<VoiceActionPreview['candidates']>[number],
-): string {
-  const date = candidate.plannedDate ?? 'без даты'
-  const time = candidate.plannedStartTime
-    ? `, ${candidate.plannedStartTime}`
-    : ''
-
-  return `${date}${time}`
-}
-
 function resolveVoiceClientTimeZone(): string | undefined {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
@@ -901,25 +805,6 @@ function hasVoiceActionMutatedData(result: VoiceActionResult): boolean {
     result.updatedTaskId ||
     result.createdShoppingItemIds?.length,
   )
-}
-
-function getStatusLabel(status: string): string {
-  switch (status) {
-    case 'recording':
-      return 'Слушаю'
-    case 'parsing':
-      return 'Разбираю'
-    case 'awaiting_confirmation':
-      return 'Проверка'
-    case 'executing':
-      return 'Выполняю'
-    case 'completed':
-      return 'Готово'
-    case 'error':
-      return 'Ошибка'
-    default:
-      return 'Голос'
-  }
 }
 
 function getStateSource(

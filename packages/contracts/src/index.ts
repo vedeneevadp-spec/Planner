@@ -440,6 +440,7 @@ export type {
   VoiceActionResult,
   VoiceActionSource,
   VoiceActionType,
+  VoiceActionUndo,
 } from './voice-action.js'
 export {
   voiceActionAgendaItemSchema,
@@ -451,6 +452,7 @@ export {
   voiceActionResultSchema,
   voiceActionSourceSchema,
   voiceActionTypeSchema,
+  voiceActionUndoSchema,
 } from './voice-action.js'
 export type {
   CommandAudio,

@@ -112,6 +112,17 @@
   font-size: 0.95rem;
 }
 
+.transcriptBlock {
+  display: grid;
+  gap: 0.28rem;
+}
+
+.eyebrow {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .editForm {
   display: grid;
   gap: 0.52rem;
@@ -150,6 +161,24 @@
   gap: 0.58rem;
 }
 
+.actionPanel,
+.reasonBox,
+.resultBlock {
+  display: grid;
+  gap: 0.52rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.68rem 0.74rem;
+  background: var(--field-bg);
+}
+
+.actionPanel h3,
+.reasonBox h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
 .previewSummary {
   border-radius: 12px;
   padding: 0.62rem 0.72rem;
@@ -162,6 +191,33 @@
 .previewReason {
   color: var(--text-soft);
   font-size: 0.88rem;
+}
+
+.warningText {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.warningPanel {
+  border-color: color-mix(in srgb, var(--danger) 36%, var(--line));
+  background: color-mix(in srgb, var(--danger) 7%, var(--field-bg));
+}
+
+.reasonBox p,
+.reasonBox small {
+  margin: 0;
+}
+
+.reasonBox p {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.reasonBox small {
+  color: var(--text-soft);
+  font-size: 0.78rem;
 }
 
 .resultMessage {
@@ -198,6 +254,17 @@
 
 .agendaList strong,
 .candidateList strong {
+  overflow-wrap: anywhere;
+}
+
+.bulletList {
+  display: grid;
+  gap: 0.34rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.bulletList li {
   overflow-wrap: anywhere;
 }
 
@@ -258,8 +325,38 @@
   font-weight: 650;
 }
 
+.detailList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.52rem;
+  margin: 0;
+}
+
+.detailList div {
+  min-width: 0;
+}
+
+.detailList dt {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.detailList dd {
+  margin: 0.08rem 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.quickOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+}
+
 .actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.48rem;
 }
@@ -288,6 +385,15 @@
   color: var(--text);
 }
 
+.dangerButton {
+  border-color: color-mix(
+    in srgb,
+    var(--danger) 52%,
+    var(--accent-border-strong)
+  );
+  background: color-mix(in srgb, var(--danger) 78%, var(--accent-fill));
+}
+
 @media (max-width: 560px) {
   .micButton {
     left: calc(0.58rem + var(--safe-area-left));
@@ -305,6 +411,10 @@
   }
 
   .intentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailList {
     grid-template-columns: 1fr;
   }
 }

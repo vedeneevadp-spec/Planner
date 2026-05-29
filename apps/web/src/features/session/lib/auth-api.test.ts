@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { plannerApiConfig } from '@/shared/config/planner-api'
 import { readClientEvents } from '@/shared/lib/observability'
 
 import {
@@ -222,7 +223,7 @@ describe('auth-api', () => {
       name: 'auth_request_failed',
     })
     expect(event?.details).toMatchObject({
-      apiHost: '127.0.0.1:3001',
+      apiHost: new URL(plannerApiConfig.apiBaseUrl).host,
       attempts: 2,
       errorMessage: 'Failed to fetch',
       errorName: 'TypeError',

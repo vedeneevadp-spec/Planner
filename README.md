@@ -115,6 +115,8 @@ scripts/       локальные DB, mobile и deploy workflows
   сценарии и roadmap голосового помощника
 - [docs/voice/action-layer.md](docs/voice/action-layer.md) - action layer,
   preview/execute contract и правила безопасности голосовых действий
+- [docs/voice/confirmation-ui.md](docs/voice/confirmation-ui.md) - smart
+  confirmation UI, clarify loop, Undo и auto-confirm policy
 - [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
   Android wake-word provider и модель `Хаотика`
 
@@ -369,6 +371,8 @@ Workspace`: роли, права, жизненный цикл и правила 
   сценарии уточнения и production roadmap голосового помощника
 - [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
   выбранный Android wake-word provider и требования к модели
+- [docs/voice/confirmation-ui.md](docs/voice/confirmation-ui.md) - smart
+  confirmation UI, clarify loop, Undo и auto-confirm policy
 - [docs/adr/0001-platform-foundation.md](docs/adr/0001-platform-foundation.md)
   - базовое архитектурное решение по платформе
 - [DEPLOY_RU.md](DEPLOY_RU.md) - production deployment на текущий VPS

@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { plannerApiConfig } from '@/shared/config/planner-api'
+
 import {
   createSharedWorkspace,
   deleteSharedWorkspace,
@@ -63,7 +65,7 @@ describe('sessionApi', () => {
 
     expect(session.workspace.name).toBe('Personal Workspace')
     expect(session.actor.avatarUrl).toBe(
-      'http://127.0.0.1:3001/api/v1/profile-assets/user-1.webp',
+      `${plannerApiConfig.apiBaseUrl.replace(/\/$/, '')}/api/v1/profile-assets/user-1.webp`,
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -263,7 +265,7 @@ describe('sessionApi', () => {
     const body = parseJsonBody(requestInit) as { displayName: string }
 
     expect(profile.avatarUrl).toBe(
-      'http://127.0.0.1:3001/api/v1/profile-assets/user-1-new.webp',
+      `${plannerApiConfig.apiBaseUrl.replace(/\/$/, '')}/api/v1/profile-assets/user-1-new.webp`,
     )
     expect(profile.displayName).toBe('Planner Captain')
     expect(requestInit?.method).toBe('PATCH')
