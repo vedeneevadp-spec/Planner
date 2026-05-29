@@ -1,5 +1,8 @@
 # Voice Action Layer v1
 
+Статус: реализован v1 web/client action layer. Это не полный production
+backend/action infrastructure.
+
 ## Responsibility
 
 `PlannerActionExecutor` принимает уже готовый `PlannerIntent` и превращает его в
@@ -17,6 +20,10 @@ PlannerIntent
 → existing planner/shopping mechanisms
 → visual result
 ```
+
+Action layer не проигрывает аудио. Он возвращает `VoiceActionResult` с
+`visualStatus`; Android runtime может использовать успешный результат
+изменяющего действия как сигнал для локального static cue `Готово`.
 
 ## Supported Intents
 
@@ -55,6 +62,44 @@ offsets.
 - возвращает только visual status.
 
 Пока Undo для голосовых действий не реализован, auto-confirm отключен.
+
+## Implemented v1 Scope
+
+Реализовано:
+
+- `create_task` через существующий planner create flow;
+- `add_shopping_item` через существующий shopping list flow, включая несколько
+  items;
+- `get_agenda` как visual preview, с locked-screen policy и offline cache;
+- `reschedule_task` через candidate search, `0 / 1 / 2+` states, confirmation и
+  `version` check;
+- `clarify` и `unsupported` как безопасные preview states;
+- role gate: `owner` и `test` доступны, `admin`/`user`/`guest` заблокированы;
+- `test` не получает admin-права и проходит обычные workspace checks.
+
+Вне пункта 5:
+
+- backend `/voice/action/prepare` и `/voice/action/execute`;
+- persistent preview storage;
+- production telemetry sink;
+- Undo;
+- auto-confirm;
+- full clarification loop;
+- production LLM fallback provider;
+- Android end-to-end проверка action execution на реальном устройстве.
+
+Куда переходят deferred items:
+
+- full clarification loop - confirmation UI roadmap;
+- Undo - confirmation UI roadmap, до включения auto-confirm;
+- auto-confirm - после Undo и метрик качества;
+- production telemetry sink - voice quality metrics stage;
+- production LLM fallback provider - отдельный backend-only LLM fallback stage;
+- Android end-to-end action execution - closed testing и release gate;
+- backend `/voice/action/prepare` и `/voice/action/execute` + persistent preview
+  storage - optional server-side action orchestration. Делать только если
+  closed testing покажет, что client-side preview/execute недостаточен для
+  Android, multi-device, long-running или server-audited flows.
 
 ## create_task
 
@@ -163,6 +208,31 @@ Action layer должен логировать только безопасные
 
 Transcript и приватные task titles не должны попадать в metrics без отдельной
 privacy policy.
+
+## Voice Cues
+
+Локальные voice cues относятся к Android runtime, а не к executor.
+
+`Готово` можно проигрывать только если `VoiceActionResult.status === 'success'`
+и действие изменило данные:
+
+- `create_task`;
+- `add_shopping_item`;
+- `reschedule_task`.
+
+`Готово` нельзя проигрывать для:
+
+- preview без execute;
+- `get_agenda`;
+- `clarify`;
+- `unsupported`;
+- `requires_unlock`;
+- `not_found`;
+- `multiple_candidates`;
+- failed/cancelled/requires_refresh results.
+
+Executor не должен возвращать приватный spoken text. Все пользовательские детали
+остаются в visual UI.
 
 ## Tests
 
