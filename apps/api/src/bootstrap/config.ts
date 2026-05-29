@@ -40,6 +40,15 @@ export interface AliceCommandLlmConfig {
   timeoutMs: number
 }
 
+export interface VoiceSttConfig {
+  apiKey: string | null
+  endpoint: string
+  folderId: string | null
+  iamToken: string | null
+  language: string
+  timeoutMs: number
+}
+
 export interface ApiConfig {
   aliceCommandLlm: AliceCommandLlmConfig | null
   aliceOAuth: AliceOAuthConfig | null
@@ -55,6 +64,7 @@ export interface ApiConfig {
   storageDriver: StorageDriver
   taskRemindersRuntime: TaskRemindersRuntimeMode
   trustedProxyHops: ApiTrustedProxyHops
+  voiceStt: VoiceSttConfig
 }
 
 interface ProductionConfigValidationInput {
@@ -448,6 +458,32 @@ function getAliceCommandLlmApiFormat(
   }
 }
 
+function createVoiceSttConfig(env: NodeJS.ProcessEnv): VoiceSttConfig {
+  return {
+    apiKey:
+      env.VOICE_STT_YANDEX_API_KEY?.trim() ||
+      env.YANDEX_API_KEY?.trim() ||
+      null,
+    endpoint:
+      env.VOICE_STT_YANDEX_ENDPOINT?.trim() ||
+      'https://stt.api.cloud.yandex.net/speech/v1/stt:recognize',
+    folderId:
+      env.VOICE_STT_YANDEX_FOLDER_ID?.trim() ||
+      env.YANDEX_FOLDER_ID?.trim() ||
+      null,
+    iamToken:
+      env.VOICE_STT_YANDEX_IAM_TOKEN?.trim() ||
+      env.YANDEX_IAM_TOKEN?.trim() ||
+      null,
+    language: env.VOICE_STT_LANGUAGE?.trim() || 'ru-RU',
+    timeoutMs: parsePositiveInteger(
+      env.VOICE_STT_TIMEOUT_MS,
+      8000,
+      'VOICE_STT_TIMEOUT_MS',
+    ),
+  }
+}
+
 function createSmtpConfig(
   env: NodeJS.ProcessEnv,
 ): PlannerAuthRuntimeConfig['smtp'] {
@@ -523,6 +559,7 @@ export function createApiConfig(
       env.API_TASK_REMINDERS_RUNTIME,
     ),
     trustedProxyHops: parseTrustedProxyHops(env.API_TRUST_PROXY_HOPS),
+    voiceStt: createVoiceSttConfig(env),
   }
 }
 

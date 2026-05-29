@@ -52,6 +52,7 @@ const DEFAULT_WORKSPACE_SETTINGS = {
 const NEW_ICON_SET_TARGET = 'new'
 const MANAGEABLE_APP_ROLES = [
   'admin',
+  'test',
   'user',
   'guest',
 ] satisfies AssignableAppRole[]
@@ -59,6 +60,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'admin',
   guest: 'guest',
   owner: 'owner',
+  test: 'test',
   user: 'user',
 }
 

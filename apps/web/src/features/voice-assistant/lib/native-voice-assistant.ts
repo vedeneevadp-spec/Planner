@@ -4,11 +4,28 @@ import {
   type PluginListenerHandle,
   registerPlugin,
 } from '@capacitor/core'
+import type { PlannerIntent } from '@planner/contracts'
+
+export interface NativeVoiceAssistantApiConfig {
+  accessToken?: string | undefined
+  actorUserId: string
+  apiBaseUrl: string
+  workspaceId: string
+}
 
 export interface NativeVoiceCommand {
   capturedAt: string
+  errorCode?: string | null
+  errorMessage?: string | null
   id: string
-  transcript: string
+  intent?: PlannerIntent | null
+  source?:
+    | 'ANDROID_PUSH_TO_TALK'
+    | 'ANDROID_SHORT_CLIP'
+    | 'LOCAL_FALLBACK'
+    | 'TEST_STUB'
+    | null
+  transcript?: string | null
 }
 
 export interface NativeWakeWordDiagnostics {
@@ -42,7 +59,9 @@ export interface NativeWakeWordTrainingCollectionStatus {
 }
 
 interface PlannerVoiceAssistantPlugin {
-  captureCommand: () => Promise<{ state: string; wakeWord: string }>
+  captureCommand: (
+    options: NativeVoiceAssistantApiConfig,
+  ) => Promise<{ state: string; wakeWord: string }>
   consumePendingCommand: () => Promise<{
     command: NativeVoiceCommand | null
   }>
@@ -57,7 +76,9 @@ interface PlannerVoiceAssistantPlugin {
   setWakeWordTrainingCollectionEnabled: (options: {
     enabled: boolean
   }) => Promise<NativeWakeWordTrainingCollectionStatus>
-  start: () => Promise<{ state: string; wakeWord: string }>
+  start: (
+    options: NativeVoiceAssistantApiConfig,
+  ) => Promise<{ state: string; wakeWord: string }>
   stop: () => Promise<{ state: string }>
 }
 
@@ -69,20 +90,24 @@ export function isAndroidVoiceAssistantRuntime(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
 }
 
-export async function startAndroidVoiceAssistant(): Promise<void> {
+export async function startAndroidVoiceAssistant(
+  options: NativeVoiceAssistantApiConfig,
+): Promise<void> {
   if (!isAndroidVoiceAssistantRuntime()) {
     return
   }
 
-  await NativePlannerVoiceAssistant.start()
+  await NativePlannerVoiceAssistant.start(options)
 }
 
-export async function captureAndroidVoiceCommand(): Promise<void> {
+export async function captureAndroidVoiceCommand(
+  options: NativeVoiceAssistantApiConfig,
+): Promise<void> {
   if (!isAndroidVoiceAssistantRuntime()) {
     return
   }
 
-  await NativePlannerVoiceAssistant.captureCommand()
+  await NativePlannerVoiceAssistant.captureCommand(options)
 }
 
 export async function stopAndroidVoiceAssistant(): Promise<void> {

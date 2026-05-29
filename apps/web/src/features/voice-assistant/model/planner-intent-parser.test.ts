@@ -1,9 +1,12 @@
 import {
+  canUseVoiceAssistant,
   initialVoiceAssistantState,
   PlannerIntentParser,
   reduceVoiceAssistantState,
 } from '@planner/contracts'
 import { describe, expect, it } from 'vitest'
+
+import { shouldAutoConfirmPlannerIntent } from './planner-intent-execution'
 
 const NOW = new Date(2026, 4, 28, 9, 0, 0)
 
@@ -35,6 +38,14 @@ describe('PlannerIntentParser', () => {
       reminderAt: '2026-05-29T10:00',
       title: 'оплатить интернет',
     })
+  })
+
+  it('does not auto-confirm until visual undo is available', () => {
+    const intent = parser.parse('Напомни оплатить интернет завтра в 10', {
+      now: NOW,
+    })
+
+    expect(shouldAutoConfirmPlannerIntent(intent)).toBe(false)
   })
 
   it('parses shopping list additions', () => {
@@ -76,6 +87,17 @@ describe('PlannerIntentParser', () => {
 
     expect(intent.intent).toBe('clarify')
     expect(intent.clarificationQuestion).toBeTruthy()
+  })
+})
+
+describe('canUseVoiceAssistant', () => {
+  it('enables voice only for global owner and test users', () => {
+    expect(canUseVoiceAssistant('owner')).toBe(true)
+    expect(canUseVoiceAssistant('test')).toBe(true)
+    expect(canUseVoiceAssistant('admin')).toBe(false)
+    expect(canUseVoiceAssistant('user')).toBe(false)
+    expect(canUseVoiceAssistant('guest')).toBe(false)
+    expect(canUseVoiceAssistant(null)).toBe(false)
   })
 })
 

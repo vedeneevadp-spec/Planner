@@ -103,6 +103,7 @@ export {
   authTokenResponseSchema,
   authUserSchema,
   calendarViewModeSchema,
+  canUseVoiceAssistant,
   chaosInboxConvertToTaskRecordResponseSchema,
   chaosInboxCreatedRecordResponseSchema,
   chaosInboxItemRecordSchema,
@@ -416,3 +417,23 @@ export {
   taskTemplatesSchema,
 } from './task-template.js'
 export { generateUuidV7, isUuidV7, uuidV7Schema } from './uuid.js'
+export type {
+  CommandAudio,
+  CommandAudioFormat,
+  SttError,
+  SttProvider,
+  SttRequest,
+  SttResult,
+  SttSource,
+  VoiceCommandResponse,
+} from './voice-command.js'
+export {
+  commandAudioFormatSchema,
+  commandAudioSchema,
+  sttErrorSchema,
+  sttProviderSchema,
+  sttRequestSchema,
+  sttResultSchema,
+  sttSourceSchema,
+  voiceCommandResponseSchema,
+} from './voice-command.js'

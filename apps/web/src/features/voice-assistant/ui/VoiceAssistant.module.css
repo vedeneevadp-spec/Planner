@@ -109,6 +109,30 @@
   font-size: 0.95rem;
 }
 
+.editForm {
+  display: grid;
+  gap: 0.52rem;
+}
+
+.editTextarea {
+  min-height: 5.4rem;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.62rem 0.72rem;
+  background: var(--field-bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.35;
+}
+
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.48rem;
+}
+
 .errorMessage {
   color: var(--danger);
 }

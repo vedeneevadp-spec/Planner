@@ -77,6 +77,11 @@ import {
   PostgresTaskRepository,
   TaskService,
 } from './modules/tasks/index.js'
+import {
+  createUnavailableBackendSttProvider,
+  VoiceCommandService,
+  YandexSpeechKitProvider,
+} from './modules/voice/index.js'
 
 export interface ApiKernel {
   app: FastifyInstance
@@ -161,6 +166,17 @@ export function createApiKernel(
     taskService,
   )
   const dailyPlanService = new DailyPlanService(dailyPlanRepository)
+  const voiceCommandProvider = new YandexSpeechKitProvider(config.voiceStt)
+  const voiceCommandService = new VoiceCommandService(
+    voiceCommandProvider.isAvailable()
+      ? voiceCommandProvider
+      : createUnavailableBackendSttProvider(),
+    {
+      record: (event, details) => {
+        appLogMetric(event, details)
+      },
+    },
+  )
   const backgroundJobs: Array<{ stop: () => Promise<void> }> = []
   const requestAuthenticator =
     config.authMode === 'jwt' && config.jwtAuth
@@ -181,6 +197,7 @@ export function createApiKernel(
     sessionService,
     taskTemplateService,
     taskService,
+    voiceCommandService,
   })
 
   if (
@@ -212,6 +229,17 @@ export function createApiKernel(
       }
     },
   }
+}
+
+function appLogMetric(
+  event: string,
+  details: Record<string, unknown> | undefined,
+): void {
+  if (process.env.NODE_ENV === 'test') {
+    return
+  }
+
+  console.info(JSON.stringify({ event, ...details }))
 }
 
 export async function destroyApiKernel(kernel: ApiKernel): Promise<void> {

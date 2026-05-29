@@ -2,7 +2,7 @@
   "phraseId": "haotika",
   "displayPhrase": "Хаотика",
   "language": "ru-RU",
-  "modelVersion": "haotika-realworld-20260528-213500",
+  "modelVersion": "haotika-realworld-20260529-002347",
   "modelPath": "wakewords/haotika.tflite",
   "threshold": 0.65,
   "sampleRate": 16000,
@@ -15,16 +15,18 @@
   "source": "local experimental training with real-world feedback",
   "positiveDataset": {
     "baseAndroidRecordings": 80,
-    "realWorldTrueAccept": 15,
-    "rejectedRealWorldTrueAccept": 0
+    "realWorldTrueAccept": 21,
+    "realWorldFalseReject": 20,
+    "rejectedRealWorldTrueAccept": 0,
+    "rejectedRealWorldFalseReject": 0
   },
   "negativeDataset": {
     "name": "mini_speech_commands",
     "url": "https://storage.googleapis.com/download.tensorflow.org/data/mini_speech_commands.zip",
     "license": "CC-BY-4.0 via Google Speech Commands",
     "openNegativeFiles": 640,
-    "realWorldFalseAccept": 17,
-    "rejectedRealWorldFalseAccept": 3
+    "realWorldFalseAccept": 23,
+    "rejectedRealWorldFalseAccept": 5
   },
   "artifactBytes": 263804
 }

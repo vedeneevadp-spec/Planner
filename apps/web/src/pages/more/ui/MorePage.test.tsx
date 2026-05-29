@@ -6,7 +6,7 @@ import { ThemeProvider } from '@/shared/lib/theme'
 
 import { MorePage } from './MorePage'
 
-type AppRole = 'admin' | 'guest' | 'owner' | 'user'
+type AppRole = 'admin' | 'guest' | 'owner' | 'test' | 'user'
 
 interface MoreSessionStub {
   actor: {

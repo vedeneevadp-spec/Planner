@@ -72,7 +72,7 @@ public class WakeWordService extends Service {
         super.onCreate();
         metricsLogger = new WakeWordMetricsLogger();
         wakeWordEngine = createWakeWordEngine();
-        speechToTextService = new StubSpeechToTextService();
+        speechToTextService = SpeechToTextServiceFactory.create(this);
         setState(VoiceAssistantState.IDLE);
     }
 
@@ -177,7 +177,7 @@ public class WakeWordService extends Service {
         wakeWordEngine.stop();
         setState(VoiceAssistantStateMachine.onWakeWordDetected(state));
         WakeWordTrainingExampleStore.capturePendingIfAllowed(this, detection);
-        beginCommandCapture();
+        beginCommandCapture(SttRequest.afterWakeWord());
     }
 
     private void handleManualCommandCapture() {
@@ -186,21 +186,27 @@ public class WakeWordService extends Service {
         }
 
         wakeWordEngine.stop();
-        beginCommandCapture();
+        beginCommandCapture(SttRequest.pushToTalk());
     }
 
-    private void beginCommandCapture() {
+    private void beginCommandCapture(SttRequest request) {
         playActivationFeedback();
         showListeningOverlay();
         setState(VoiceAssistantState.RECORDING_COMMAND);
         updateNotification(getString(R.string.planner_voice_notification_recording));
-        setState(VoiceAssistantState.TRANSCRIBING);
 
-        speechToTextService.captureShortCommand(
+        speechToTextService.transcribe(
+            request,
             new SpeechToTextService.Callback() {
                 @Override
-                public void onTranscript(String transcript) {
-                    PlannerVoiceAssistantStorage.storePendingCommand(WakeWordService.this, transcript);
+                public void onRecordingStopped(CommandAudio audio) {
+                    setState(VoiceAssistantState.TRANSCRIBING);
+                    updateNotification(getString(R.string.planner_voice_notification_transcribing));
+                }
+
+                @Override
+                public void onResult(SttResult result) {
+                    PlannerVoiceAssistantStorage.storePendingCommand(WakeWordService.this, result);
                     setState(VoiceAssistantState.WAITING_FOR_CONFIRMATION);
                     updateNotification(getString(R.string.planner_voice_notification_ready));
                     openPlannerForConfirmation();
@@ -208,7 +214,9 @@ public class WakeWordService extends Service {
                 }
 
                 @Override
-                public void onError(Exception error) {
+                public void onError(SttException error) {
+                    PlannerVoiceAssistantStorage.storePendingError(WakeWordService.this, error);
+                    openPlannerForConfirmation();
                     handleAssistantError(WakeWordError.inferenceError(error));
                 }
             }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { AuthenticatedRequestContext } from '../bootstrap/request-auth.js'
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 
-type AppRole = 'admin' | 'guest' | 'owner' | 'user'
+type AppRole = 'admin' | 'guest' | 'owner' | 'test' | 'user'
 type WorkspaceGroupRole = 'group_admin' | 'member' | 'senior_member'
 type WorkspaceKind = 'personal' | 'shared'
 type WorkspaceRole = 'admin' | 'guest' | 'owner' | 'user'

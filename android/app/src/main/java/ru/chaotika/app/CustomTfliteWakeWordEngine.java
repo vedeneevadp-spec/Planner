@@ -32,12 +32,14 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
     private float[] ringBuffer;
     private int ringWriteIndex;
     private int ringSamplesAvailable;
+    private volatile float threshold;
 
     CustomTfliteWakeWordEngine(Context context, WakeWordConfig config, WakeWordAssetSource assets, WakeWordMetricsLogger metricsLogger) {
         this.context = context == null ? null : context.getApplicationContext();
         this.config = config;
         this.assets = assets;
         this.metricsLogger = metricsLogger;
+        this.threshold = config.threshold;
     }
 
     CustomTfliteWakeWordEngine(WakeWordConfig config, WakeWordAssetSource assets, WakeWordMetricsLogger metricsLogger) {
@@ -71,7 +73,8 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
         try {
             WakeWordModelManifest manifest = WakeWordModelManifest.read(assets, config);
-            WakeWordDiagnostics.updateModelVersion(manifest.modelVersion);
+            threshold = manifest.threshold;
+            WakeWordDiagnostics.updateModel(manifest.modelVersion, manifest.threshold);
 
             if (!assets.exists(config.modelPath)) {
                 throw WakeWordError.missingModel(config.modelPath);
@@ -244,7 +247,7 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         float score = runModel(input);
         updateScore(score);
 
-        if (score < config.threshold) {
+        if (score < threshold) {
             return;
         }
 

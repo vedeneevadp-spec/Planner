@@ -8,6 +8,9 @@ interface IntentSchedule {
   plannedStartTime: string | null
 }
 
+const AUTO_CONFIRM_MIN_CONFIDENCE = 0.85
+const AUTO_CONFIRM_VISUAL_UNDO_READY: boolean = false
+
 export function getPlannerIntentTitle(intent: PlannerIntent): string {
   return intent.title?.trim() || intent.rawText.trim()
 }
@@ -38,6 +41,25 @@ export function isExecutablePlannerIntent(intent: PlannerIntent): boolean {
     intent.intent === 'create_reminder' ||
     intent.intent === 'add_shopping_item'
   )
+}
+
+export function shouldAutoConfirmPlannerIntent(intent: PlannerIntent): boolean {
+  if (!AUTO_CONFIRM_VISUAL_UNDO_READY) {
+    return false
+  }
+
+  if (
+    intent.needsConfirmation ||
+    intent.confidence < AUTO_CONFIRM_MIN_CONFIDENCE
+  ) {
+    return false
+  }
+
+  if (intent.intent === 'add_shopping_item') {
+    return Boolean(getPlannerIntentTitle(intent))
+  }
+
+  return intent.intent === 'create_reminder' && Boolean(intent.reminderAt)
 }
 
 export function buildTaskInputFromPlannerIntent(

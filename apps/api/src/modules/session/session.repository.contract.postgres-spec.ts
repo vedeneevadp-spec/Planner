@@ -216,7 +216,7 @@ void test('PostgresSessionRepository updates user preferences under runtime RLS'
 })
 
 async function seedUserSession(input: {
-  appRole: 'owner' | 'admin' | 'user' | 'guest'
+  appRole: 'owner' | 'admin' | 'test' | 'user' | 'guest'
   email: string
   userId: string
 }): Promise<void> {

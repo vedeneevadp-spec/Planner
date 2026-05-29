@@ -28,8 +28,13 @@ import {
 import { taskTemplateSchema } from './task-template.js'
 
 export const storageDriverSchema = z.enum(['memory', 'postgres'])
-export const appRoleSchema = z.enum(['owner', 'admin', 'user', 'guest'])
-export const assignableAppRoleSchema = z.enum(['admin', 'user', 'guest'])
+export const appRoleSchema = z.enum(['owner', 'admin', 'test', 'user', 'guest'])
+export const assignableAppRoleSchema = z.enum([
+  'admin',
+  'test',
+  'user',
+  'guest',
+])
 export const workspaceRoleSchema = z.enum(['owner', 'admin', 'user', 'guest'])
 export const workspaceKindSchema = z.enum(['personal', 'shared'])
 export const workspaceGroupRoleSchema = z.enum([
@@ -546,6 +551,13 @@ export type AssignableAppRole = z.infer<typeof assignableAppRoleSchema>
 export type AssignableWorkspaceGroupRole = z.infer<
   typeof assignableWorkspaceGroupRoleSchema
 >
+
+export function canUseVoiceAssistant(
+  appRole: AppRole | null | undefined,
+): boolean {
+  return appRole === 'owner' || appRole === 'test'
+}
+
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>
 export type ChaosInboxItemRecord = z.infer<typeof chaosInboxItemRecordSchema>

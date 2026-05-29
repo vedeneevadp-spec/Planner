@@ -231,7 +231,7 @@ export interface AppTaskTemplatesTable {
 }
 
 export interface AppUsersTable {
-  app_role: 'owner' | 'admin' | 'user' | 'guest'
+  app_role: 'owner' | 'admin' | 'test' | 'user' | 'guest'
   avatar_url: string | null
   calendar_view_mode: Generated<'day' | 'week' | 'month' | 'schedule'>
   created_at: Generated<TimestampColumn>

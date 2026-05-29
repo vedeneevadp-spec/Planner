@@ -11,6 +11,7 @@ import org.json.JSONObject;
 
 final class PlannerVoiceAssistantStorage {
 
+    private static final String API_CONFIG_KEY = "planner.voice.api-config";
     private static final String PENDING_COMMAND_KEY = "planner.voice.pending-command";
     private static final String PREFERENCES_NAME = "CapacitorStorage";
     private static final String STATE_KEY = "planner.voice.state";
@@ -25,8 +26,50 @@ final class PlannerVoiceAssistantStorage {
         return getPreferences(context).getString(STATE_KEY, VoiceAssistantState.IDLE.value);
     }
 
-    static void storePendingCommand(Context context, String transcript) {
-        String normalizedTranscript = normalizeTranscript(transcript);
+    static void storeApiConfig(Context context, VoiceAssistantApiConfig config) {
+        if (config == null || !config.isUsable()) {
+            getPreferences(context).edit().remove(API_CONFIG_KEY).apply();
+            return;
+        }
+
+        JSONObject value = new JSONObject();
+
+        try {
+            value.put("apiBaseUrl", config.apiBaseUrl);
+            value.put("accessToken", config.accessToken);
+            value.put("actorUserId", config.actorUserId);
+            value.put("workspaceId", config.workspaceId);
+        } catch (JSONException exception) {
+            return;
+        }
+
+        getPreferences(context).edit().putString(API_CONFIG_KEY, value.toString()).apply();
+    }
+
+    static VoiceAssistantApiConfig readApiConfig(Context context) {
+        String rawConfig = getPreferences(context).getString(API_CONFIG_KEY, null);
+
+        if (rawConfig == null) {
+            return null;
+        }
+
+        try {
+            JSONObject value = new JSONObject(rawConfig);
+            VoiceAssistantApiConfig config = new VoiceAssistantApiConfig(
+                value.optString("apiBaseUrl", null),
+                value.optString("accessToken", null),
+                value.optString("actorUserId", null),
+                value.optString("workspaceId", null)
+            );
+
+            return config.isUsable() ? config : null;
+        } catch (JSONException exception) {
+            return null;
+        }
+    }
+
+    static void storePendingCommand(Context context, SttResult result) {
+        String normalizedTranscript = normalizeTranscript(result.transcript);
 
         if (normalizedTranscript == null) {
             return;
@@ -39,6 +82,29 @@ final class PlannerVoiceAssistantStorage {
             command.put("id", "voice-" + capturedAt + "-" + Math.abs(normalizedTranscript.hashCode()));
             command.put("capturedAt", capturedAt);
             command.put("transcript", normalizedTranscript);
+            command.put("confidence", result.confidence);
+            command.put("provider", result.provider.name());
+            command.put("source", result.source.name());
+            command.put("durationMs", result.durationMs);
+            if (result.plannerIntentJson != null) {
+                command.put("intent", new JSONObject(result.plannerIntentJson));
+            }
+        } catch (JSONException exception) {
+            return;
+        }
+
+        getPreferences(context).edit().putString(PENDING_COMMAND_KEY, command.toString()).apply();
+    }
+
+    static void storePendingError(Context context, SttException error) {
+        String capturedAt = formatUtcNow();
+        JSONObject command = new JSONObject();
+
+        try {
+            command.put("id", "voice-error-" + capturedAt + "-" + Math.abs(error.code.name().hashCode()));
+            command.put("capturedAt", capturedAt);
+            command.put("errorCode", error.code.name());
+            command.put("errorMessage", error.getMessage());
         } catch (JSONException exception) {
             return;
         }
@@ -61,12 +127,28 @@ final class PlannerVoiceAssistantStorage {
             String id = command.optString("id", "").trim();
             String capturedAt = command.optString("capturedAt", "").trim();
             String transcript = normalizeTranscript(command.optString("transcript", ""));
+            String errorCode = command.optString("errorCode", "").trim();
+            String errorMessage = command.optString("errorMessage", "").trim();
+            String source = command.optString("source", "").trim();
+            JSONObject intent = command.optJSONObject("intent");
 
-            if (id.isEmpty() || capturedAt.isEmpty() || transcript == null) {
+            if (id.isEmpty() || capturedAt.isEmpty()) {
                 return null;
             }
 
-            return new PendingVoiceCommand(id, capturedAt, transcript);
+            if (transcript == null && errorMessage.isEmpty()) {
+                return null;
+            }
+
+            return new PendingVoiceCommand(
+                id,
+                capturedAt,
+                transcript,
+                errorCode.isEmpty() ? null : errorCode,
+                errorMessage.isEmpty() ? null : errorMessage,
+                intent != null ? intent.toString() : null,
+                source.isEmpty() ? null : source
+            );
         } catch (JSONException exception) {
             return null;
         }
@@ -97,12 +179,28 @@ final class PlannerVoiceAssistantStorage {
 final class PendingVoiceCommand {
 
     final String capturedAt;
+    final String errorCode;
+    final String errorMessage;
     final String id;
+    final String plannerIntentJson;
+    final String source;
     final String transcript;
 
-    PendingVoiceCommand(String id, String capturedAt, String transcript) {
+    PendingVoiceCommand(
+        String id,
+        String capturedAt,
+        String transcript,
+        String errorCode,
+        String errorMessage,
+        String plannerIntentJson,
+        String source
+    ) {
         this.id = id;
         this.capturedAt = capturedAt;
         this.transcript = transcript;
+        this.errorCode = errorCode;
+        this.errorMessage = errorMessage;
+        this.plannerIntentJson = plannerIntentJson;
+        this.source = source;
     }
 }

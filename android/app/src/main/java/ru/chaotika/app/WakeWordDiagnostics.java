@@ -6,6 +6,7 @@ final class WakeWordDiagnostics {
     private static final WakeWordConfig CONFIG = WakeWordConfig.haotika();
 
     private static String modelVersion = "unknown";
+    private static float threshold = CONFIG.threshold;
     private static float currentScore;
     private static float lastDetectionScore;
     private static int detectionCount;
@@ -19,7 +20,7 @@ final class WakeWordDiagnostics {
             return new WakeWordDiagnosticsSnapshot(
                 CONFIG.displayPhrase,
                 modelVersion,
-                CONFIG.threshold,
+                threshold,
                 currentScore,
                 lastDetectionScore,
                 detectionCount,
@@ -30,8 +31,13 @@ final class WakeWordDiagnostics {
     }
 
     static void updateModelVersion(String nextModelVersion) {
+        updateModel(nextModelVersion, threshold);
+    }
+
+    static void updateModel(String nextModelVersion, float nextThreshold) {
         synchronized (LOCK) {
             modelVersion = nextModelVersion == null || nextModelVersion.trim().isEmpty() ? "unknown" : nextModelVersion;
+            threshold = nextThreshold;
         }
     }
 

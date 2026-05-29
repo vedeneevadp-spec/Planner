@@ -7,19 +7,36 @@ final class StubSpeechToTextService implements SpeechToTextService {
 
     private static final long STUB_TRANSCRIPT_DELAY_MS = 450L;
     private static final String STUB_TRANSCRIPT = "добавь задачу проверить голосового помощника";
+    private static final byte[] STUB_AUDIO = createStubAudio();
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private Runnable pendingResult;
 
     @Override
-    public void captureShortCommand(Callback callback) {
+    public void transcribe(SttRequest request, Callback callback) {
         stop();
-        // TODO: Replace with real short-command STT after wake-word detection.
-        // This stub does not capture or upload audio; it only simulates the
-        // transcript handoff path into the shared PlannerIntentParser.
         pendingResult = () -> {
             pendingResult = null;
-            callback.onTranscript(STUB_TRANSCRIPT);
+            try {
+                CommandAudio audio = CommandAudio.fromPcm16Le(
+                    STUB_AUDIO,
+                    STUB_AUDIO.length,
+                    request.recordingConfig
+                );
+                callback.onRecordingStopped(audio);
+                callback.onResult(
+                    new SttResult(
+                        STUB_TRANSCRIPT,
+                        1d,
+                        SttProvider.STUB,
+                        SttSource.TEST_STUB,
+                        audio.durationMs,
+                        null
+                    )
+                );
+            } catch (SttException error) {
+                callback.onError(error);
+            }
         };
         handler.postDelayed(pendingResult, STUB_TRANSCRIPT_DELAY_MS);
     }
@@ -30,5 +47,20 @@ final class StubSpeechToTextService implements SpeechToTextService {
             handler.removeCallbacks(pendingResult);
             pendingResult = null;
         }
+    }
+
+    private static byte[] createStubAudio() {
+        int sampleRate = CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ;
+        int durationMs = CommandRecordingConfig.DEFAULT_MIN_DURATION_MS;
+        int sampleCount = (sampleRate * durationMs) / 1000;
+        byte[] audio = new byte[sampleCount * 2];
+
+        for (int index = 0; index < sampleCount; index++) {
+            short sample = (short) (Math.sin(index / 6d) * 2400);
+            audio[index * 2] = (byte) (sample & 0xff);
+            audio[index * 2 + 1] = (byte) ((sample >> 8) & 0xff);
+        }
+
+        return audio;
     }
 }

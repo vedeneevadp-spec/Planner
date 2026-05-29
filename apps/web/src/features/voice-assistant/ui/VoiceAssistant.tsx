@@ -1,4 +1,5 @@
 import {
+  canUseVoiceAssistant,
   initialVoiceAssistantState,
   type PlannerIntent,
   PlannerIntentParser,
@@ -16,6 +17,7 @@ import {
 } from 'react'
 
 import { usePlanner } from '@/features/planner'
+import { useSessionFeatureReadiness } from '@/features/session'
 import { useCreateShoppingListItem } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
 import { CheckIcon, CloseIcon, MicIcon } from '@/shared/ui/Icon'
@@ -26,12 +28,14 @@ import {
   consumePendingAndroidVoiceCommand,
   getAndroidWakeWordTrainingCollectionStatus,
   isAndroidVoiceAssistantRuntime,
+  type NativeVoiceCommand,
   openAndroidWakeWordFalseRejectRecorder,
   reportAndroidWakeWordFalseAccept,
   reportAndroidWakeWordTrueAccept,
   setAndroidWakeWordTrainingCollectionEnabled,
   skipAndroidWakeWordFeedback,
   startAndroidVoiceAssistant,
+  stopAndroidVoiceAssistant,
 } from '../lib/native-voice-assistant'
 import {
   captureWebSpeechTranscript,
@@ -42,6 +46,7 @@ import {
   getPlannerIntentActionLabel,
   getPlannerIntentTitle,
   isExecutablePlannerIntent,
+  shouldAutoConfirmPlannerIntent,
 } from '../model/planner-intent-execution'
 import styles from './VoiceAssistant.module.css'
 
@@ -63,6 +68,7 @@ interface WakeWordSampleCollectionState {
 
 export function VoiceAssistant() {
   const planner = usePlanner()
+  const { apiConfig, session } = useSessionFeatureReadiness()
   const createShoppingItemMutation = useCreateShoppingListItem()
   const parser = useMemo(() => new PlannerIntentParser(), [])
   const [state, dispatch] = useReducer(
@@ -80,6 +86,7 @@ export function VoiceAssistant() {
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
   const autoCloseTimerRef = useRef<number | null>(null)
+  const isVoiceEnabled = canUseVoiceAssistant(session?.appRole)
   const isBusy = state.status === 'recording' || state.status === 'executing'
 
   const executeIntent = useCallback(
@@ -143,7 +150,11 @@ export function VoiceAssistant() {
   )
 
   const handleTranscript = useCallback(
-    (transcript: string, source: VoiceAssistantSource) => {
+    (
+      transcript: string,
+      source: VoiceAssistantSource,
+      backendIntent?: PlannerIntent,
+    ) => {
       const normalizedTranscript = transcript.trim()
 
       setIsCardVisible(true)
@@ -168,14 +179,14 @@ export function VoiceAssistant() {
         type: 'transcript_received',
       })
 
-      const intent = parser.parse(normalizedTranscript)
+      const intent = backendIntent ?? parser.parse(normalizedTranscript)
 
       dispatch({
         intent,
         type: 'intent_parsed',
       })
 
-      if (!intent.needsConfirmation && isExecutablePlannerIntent(intent)) {
+      if (shouldAutoConfirmPlannerIntent(intent)) {
         void runIntent(intent, source)
       }
     },
@@ -283,14 +294,29 @@ export function VoiceAssistant() {
         return
       }
 
-      const source: VoiceAssistantSource =
-        pendingAndroidButtonCaptureRef.current
-          ? 'android_microphone'
-          : 'android_wake_word'
+      const source = getAndroidVoiceCommandSource(
+        command,
+        pendingAndroidButtonCaptureRef.current,
+      )
 
       pendingAndroidButtonCaptureRef.current = false
       handledNativeCommandIdsRef.current.add(command.id)
-      handleTranscript(command.transcript, source)
+
+      if (command.errorMessage) {
+        setIsCardVisible(true)
+        dispatch({
+          error: command.errorMessage,
+          source,
+          type: 'failed',
+        })
+        return
+      }
+
+      if (!command.transcript) {
+        return
+      }
+
+      handleTranscript(command.transcript, source, command.intent ?? undefined)
     } catch (error) {
       console.warn('Failed to consume Android voice command.', error)
     }
@@ -298,6 +324,14 @@ export function VoiceAssistant() {
 
   useEffect(() => {
     if (!isAndroidVoiceAssistantRuntime()) {
+      return undefined
+    }
+
+    if (!isVoiceEnabled) {
+      void stopAndroidVoiceAssistant().catch((error) => {
+        console.warn('Failed to stop Android voice assistant.', error)
+      })
+
       return undefined
     }
 
@@ -310,7 +344,11 @@ export function VoiceAssistant() {
       }
     }
 
-    void startAndroidVoiceAssistant().catch((error) => {
+    if (!apiConfig) {
+      return undefined
+    }
+
+    void startAndroidVoiceAssistant(apiConfig).catch((error) => {
       console.warn('Failed to start Android voice assistant.', error)
     })
     void consumePendingCommandIfMounted()
@@ -338,7 +376,7 @@ export function VoiceAssistant() {
         void resumeHandle.remove()
       }
     }
-  }, [consumePendingAndroidCommand])
+  }, [apiConfig, consumePendingAndroidCommand, isVoiceEnabled])
 
   useEffect(() => {
     if (!isCardVisible || getStateSource(state) !== 'android_wake_word') {
@@ -409,6 +447,10 @@ export function VoiceAssistant() {
   }, [state, wakeWordFeedback.status])
 
   async function startVoiceInput() {
+    if (!isVoiceEnabled) {
+      return
+    }
+
     if (isAndroidVoiceAssistantRuntime()) {
       await startAndroidVoiceInput()
       return
@@ -427,7 +469,11 @@ export function VoiceAssistant() {
     })
 
     try {
-      await captureAndroidVoiceCommand()
+      if (!apiConfig) {
+        throw new Error('Backend STT недоступен без активной сессии.')
+      }
+
+      await captureAndroidVoiceCommand(apiConfig)
       window.setTimeout(() => {
         void consumePendingAndroidCommand()
       }, 650)
@@ -486,6 +532,10 @@ export function VoiceAssistant() {
     dispatch({ type: 'cancelled' })
   }
 
+  if (!isVoiceEnabled) {
+    return null
+  }
+
   return (
     <>
       <button
@@ -518,6 +568,12 @@ export function VoiceAssistant() {
           onConfirm={(intent) => {
             void runIntent(intent, getStateSource(state))
           }}
+          onEditTranscript={(transcript) => {
+            handleTranscript(
+              transcript,
+              getStateSource(state) ?? 'web_microphone',
+            )
+          }}
           onSampleCollectionChange={(isEnabled) => {
             void updateWakeWordSampleCollection(isEnabled)
           }}
@@ -539,6 +595,7 @@ interface VoiceAssistantCardProps {
   wakeWordSampleCollection: WakeWordSampleCollectionState | null
   onClose: () => void
   onConfirm: (intent: PlannerIntent) => void
+  onEditTranscript: (transcript: string) => void
   onSampleCollectionChange: (isEnabled: boolean) => void
   onWakeWordSampleRecord: () => void
   onWakeWordFeedback: (decision: WakeWordFeedbackDecision) => void
@@ -550,16 +607,27 @@ function VoiceAssistantCard({
   wakeWordSampleCollection,
   onClose,
   onConfirm,
+  onEditTranscript,
   onSampleCollectionChange,
   onWakeWordSampleRecord,
   onWakeWordFeedback,
 }: VoiceAssistantCardProps) {
+  const transcript = 'transcript' in state ? state.transcript : ''
+  const [editState, setEditState] = useState<{
+    transcript: string
+    value: string
+  } | null>(null)
+  const isEditingTranscript = editState !== null
+  const editedTranscript = editState?.value ?? ''
   const intent =
     state.status === 'awaiting_confirmation' ||
     state.status === 'executing' ||
     state.status === 'completed'
       ? state.intent
       : null
+  const canEdit =
+    Boolean(transcript) &&
+    (state.status === 'awaiting_confirmation' || state.status === 'error')
   const canConfirm =
     state.status === 'awaiting_confirmation' &&
     intent !== null &&
@@ -596,8 +664,42 @@ function VoiceAssistantCard({
         <p className={styles.errorMessage}>{state.error}</p>
       ) : null}
 
-      {'transcript' in state && state.transcript ? (
-        <p className={styles.transcript}>{state.transcript}</p>
+      {isEditingTranscript ? (
+        <form
+          className={styles.editForm}
+          onSubmit={(event) => {
+            event.preventDefault()
+            setEditState(null)
+            onEditTranscript(editedTranscript)
+          }}
+        >
+          <textarea
+            className={styles.editTextarea}
+            value={editedTranscript}
+            rows={3}
+            autoFocus
+            onChange={(event) =>
+              setEditState((current) => ({
+                transcript: current?.transcript ?? transcript ?? '',
+                value: event.currentTarget.value,
+              }))
+            }
+          />
+          <div className={styles.inlineActions}>
+            <button
+              className={styles.secondaryButton}
+              type="button"
+              onClick={() => setEditState(null)}
+            >
+              Отмена
+            </button>
+            <button className={styles.primaryButton} type="submit">
+              <span>Применить</span>
+            </button>
+          </div>
+        </form>
+      ) : transcript ? (
+        <p className={styles.transcript}>{transcript}</p>
       ) : null}
 
       {intent ? (
@@ -713,8 +815,22 @@ function VoiceAssistantCard({
           type="button"
           onClick={onClose}
         >
-          Закрыть
+          Отмена
         </button>
+        {canEdit ? (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={() =>
+              setEditState({
+                transcript: transcript ?? '',
+                value: transcript ?? '',
+              })
+            }
+          >
+            Изменить
+          </button>
+        ) : null}
         {canConfirm ? (
           <button
             className={styles.primaryButton}
@@ -722,12 +838,28 @@ function VoiceAssistantCard({
             onClick={() => onConfirm(intent)}
           >
             <CheckIcon size={17} strokeWidth={2.15} />
-            <span>Подтвердить</span>
+            <span>{getConfirmLabel(intent)}</span>
           </button>
         ) : null}
       </div>
     </section>
   )
+}
+
+function getConfirmLabel(intent: PlannerIntent): string {
+  switch (intent.intent) {
+    case 'add_shopping_item':
+      return 'Добавить'
+    case 'reschedule':
+      return 'Перенести'
+    case 'create_event':
+    case 'create_reminder':
+    case 'create_task':
+      return 'Сохранить'
+    case 'clarify':
+    case 'delete':
+      return 'Подтвердить'
+  }
 }
 
 function getStatusLabel(status: string): string {
@@ -753,6 +885,21 @@ function getStateSource(
   state: VoiceAssistantState,
 ): VoiceAssistantSource | undefined {
   return 'source' in state ? state.source : undefined
+}
+
+function getAndroidVoiceCommandSource(
+  command: NativeVoiceCommand,
+  wasStartedByButton: boolean,
+): VoiceAssistantSource {
+  if (command.source === 'ANDROID_PUSH_TO_TALK') {
+    return 'android_microphone'
+  }
+
+  if (command.source === 'ANDROID_SHORT_CLIP') {
+    return 'android_wake_word'
+  }
+
+  return wasStartedByButton ? 'android_microphone' : 'android_wake_word'
 }
 
 function getWakeWordFeedbackMessage(sampleSaved: boolean): string {

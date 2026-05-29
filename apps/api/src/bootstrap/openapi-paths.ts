@@ -57,6 +57,81 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['health'],
       },
     },
+    '/api/voice/command': {
+      post: {
+        operationId: 'createVoiceCommand',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+          {
+            description:
+              'Voice command source. Wake-word mode uses android_short_clip; explicit microphone tap uses android_push_to_talk.',
+            in: 'header',
+            name: 'x-stt-source',
+            required: false,
+            schema: {
+              enum: ['android_short_clip', 'android_push_to_talk'],
+              type: 'string',
+            },
+          },
+          {
+            description: 'Client-measured audio duration in milliseconds.',
+            in: 'header',
+            name: 'x-audio-duration-ms',
+            required: false,
+            schema: {
+              minimum: 0,
+              type: 'integer',
+            },
+          },
+        ],
+        requestBody: {
+          content: {
+            'audio/l16': {
+              schema: {
+                format: 'binary',
+                type: 'string',
+              },
+            },
+            'audio/lpcm': {
+              schema: {
+                format: 'binary',
+                type: 'string',
+              },
+            },
+            'audio/pcm': {
+              schema: {
+                format: 'binary',
+                type: 'string',
+              },
+            },
+            'application/octet-stream': {
+              schema: {
+                format: 'binary',
+                type: 'string',
+              },
+            },
+          },
+          description:
+            'PCM/LPCM 16 kHz mono 16-bit little-endian short voice command audio. Route hard limit is 400 KB.',
+          required: true,
+        },
+        responses: {
+          200: jsonResponse('VoiceCommandResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          413: errorResponse(),
+          415: errorResponse(),
+          429: errorResponse(),
+          503: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary:
+          'Transcribe a short voice command and return transcript with PlannerIntent',
+        tags: ['voice'],
+      },
+    },
     '/api/v1/auth/sign-in': {
       post: {
         operationId: 'signIn',

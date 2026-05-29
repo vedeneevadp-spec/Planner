@@ -140,7 +140,7 @@ export async function resolveRouteWriteContext(
     })
 
     return {
-      appRole: undefined,
+      appRole: session.appRole,
       actorDisplayName: session.actor.displayName,
       actorUserId: session.actorUserId,
       auth: null,

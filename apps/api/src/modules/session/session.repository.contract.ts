@@ -340,6 +340,15 @@ export function defineSessionRepositoryContractSuite(input: {
           users.some((user) => user.id === harness.memberSession.actorUserId),
         )
 
+        const testUser = await harness.repository.updateAdminUserRole(
+          harness.ownerSession,
+          null,
+          harness.memberSession.actorUserId,
+          'test',
+        )
+
+        assert.equal(testUser.appRole, 'test')
+
         const updatedUser = await harness.repository.updateAdminUserRole(
           harness.ownerSession,
           null,

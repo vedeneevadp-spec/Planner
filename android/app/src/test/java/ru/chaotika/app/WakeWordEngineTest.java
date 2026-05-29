@@ -55,7 +55,7 @@ public class WakeWordEngineTest {
         WakeWordConfig config = WakeWordConfig.haotika();
         CustomTfliteWakeWordEngine engine = new CustomTfliteWakeWordEngine(
             config,
-            new FakeWakeWordAssetSource(true, false),
+            new FakeWakeWordAssetSource(true, false, 0.73f),
             new WakeWordMetricsLogger()
         );
         AtomicReference<WakeWordError> errorRef = new AtomicReference<>();
@@ -77,6 +77,28 @@ public class WakeWordEngineTest {
 
         assertEquals(WakeWordError.Code.MISSING_MODEL, errorRef.get().code);
         assertFalse(engine.isRunning());
+    }
+
+    @Test
+    public void wakeWordModelManifest_usesManifestThreshold() throws Exception {
+        WakeWordModelManifest manifest = WakeWordModelManifest.read(
+            new FakeWakeWordAssetSource(true, true, 0.73f),
+            WakeWordConfig.haotika()
+        );
+
+        assertEquals(0.73f, manifest.threshold, 0.0001f);
+    }
+
+    @Test
+    public void wakeWordModelManifest_rejectsInvalidThreshold() {
+        try {
+            WakeWordModelManifest.read(new FakeWakeWordAssetSource(true, true, 1.2f), WakeWordConfig.haotika());
+        } catch (WakeWordError error) {
+            assertEquals(WakeWordError.Code.INVALID_MODEL_MANIFEST, error.code);
+            return;
+        }
+
+        throw new AssertionError("Expected invalid manifest error.");
     }
 
     @Test
@@ -115,10 +137,16 @@ public class WakeWordEngineTest {
 
         private final boolean hasManifest;
         private final boolean hasModel;
+        private final float threshold;
 
         private FakeWakeWordAssetSource(boolean hasManifest, boolean hasModel) {
+            this(hasManifest, hasModel, WakeWordConfig.HAOTIKA_THRESHOLD);
+        }
+
+        private FakeWakeWordAssetSource(boolean hasManifest, boolean hasModel, float threshold) {
             this.hasManifest = hasManifest;
             this.hasModel = hasModel;
+            this.threshold = threshold;
         }
 
         @Override
@@ -146,7 +174,7 @@ public class WakeWordEngineTest {
                     + "\"displayPhrase\":\"Хаотика\","
                     + "\"language\":\"ru-RU\","
                     + "\"modelPath\":\"wakewords/haotika.tflite\","
-                    + "\"threshold\":0.65,"
+                    + "\"threshold\":" + threshold + ","
                     + "\"sampleRate\":16000,"
                     + "\"vadEnabled\":true"
                     + "}"

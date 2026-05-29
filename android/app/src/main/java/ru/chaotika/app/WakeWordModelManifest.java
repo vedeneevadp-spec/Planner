@@ -7,9 +7,11 @@ import org.json.JSONObject;
 final class WakeWordModelManifest {
 
     final String modelVersion;
+    final float threshold;
 
-    private WakeWordModelManifest(String modelVersion) {
+    private WakeWordModelManifest(String modelVersion, float threshold) {
         this.modelVersion = modelVersion;
+        this.threshold = threshold;
     }
 
     static WakeWordModelManifest read(WakeWordAssetSource assets, WakeWordConfig config) throws WakeWordError {
@@ -27,11 +29,11 @@ final class WakeWordModelManifest {
             requireString(value, "displayPhrase", config.displayPhrase);
             requireString(value, "language", config.language);
             requireString(value, "modelPath", config.modelPath);
-            requireDouble(value, "threshold", config.threshold);
+            float threshold = readThreshold(value);
             requireInt(value, "sampleRate", config.sampleRate);
             requireBoolean(value, "vadEnabled", config.vadEnabled);
 
-            return new WakeWordModelManifest(value.optString("modelVersion", "unknown"));
+            return new WakeWordModelManifest(value.optString("modelVersion", "unknown"), threshold);
         } catch (WakeWordError error) {
             throw error;
         } catch (Exception error) {
@@ -50,15 +52,18 @@ final class WakeWordModelManifest {
         }
     }
 
-    private static void requireDouble(JSONObject value, String key, float expected) throws WakeWordError, JSONException {
+    private static float readThreshold(JSONObject value) throws WakeWordError, JSONException {
+        String key = "threshold";
         double actual = value.getDouble(key);
 
-        if (Math.abs(expected - actual) > 0.0001d) {
+        if (!Double.isFinite(actual) || actual < 0d || actual > 1d) {
             throw WakeWordError.invalidModelManifest(
-                "Wake-word manifest " + key + " must be " + expected + ", got " + actual + ".",
+                "Wake-word manifest " + key + " must be between 0 and 1, got " + actual + ".",
                 null
             );
         }
+
+        return (float) actual;
     }
 
     private static void requireInt(JSONObject value, String key, int expected) throws WakeWordError, JSONException {

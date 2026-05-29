@@ -2,12 +2,14 @@ package ru.chaotika.app;
 
 interface SpeechToTextService {
     interface Callback {
-        void onTranscript(String transcript);
+        void onRecordingStopped(CommandAudio audio);
 
-        void onError(Exception error);
+        void onResult(SttResult result);
+
+        void onError(SttException error);
     }
 
-    void captureShortCommand(Callback callback);
+    void transcribe(SttRequest request, Callback callback);
 
     void stop();
 }

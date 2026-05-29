@@ -111,6 +111,10 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'push',
       },
       {
+        description: 'Voice command STT upload and PlannerIntent parsing.',
+        name: 'voice',
+      },
+      {
         description: 'Alice skill webhook and account linking.',
         name: 'alice',
       },

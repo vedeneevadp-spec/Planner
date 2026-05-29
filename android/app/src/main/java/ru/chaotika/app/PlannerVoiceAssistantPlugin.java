@@ -29,6 +29,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
+        storeApiConfig(call);
         startWakeWordService();
         call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
     }
@@ -40,8 +41,9 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
+        storeApiConfig(call);
         startForegroundServiceCompat(WakeWordService.createCaptureCommandIntent(getContext()));
-        call.resolve(createStateResponse(VoiceAssistantState.RECORDING_COMMAND.value));
+        call.resolve(createStateResponse(VoiceAssistantState.WAITING_FOR_CONFIRMATION.value));
     }
 
     @PluginMethod
@@ -69,6 +71,18 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             commandValue.put("id", command.id);
             commandValue.put("capturedAt", command.capturedAt);
             commandValue.put("transcript", command.transcript);
+            commandValue.put("errorCode", command.errorCode);
+            commandValue.put("errorMessage", command.errorMessage);
+            commandValue.put("source", command.source);
+            if (command.plannerIntentJson != null) {
+                try {
+                    commandValue.put("intent", new org.json.JSONObject(command.plannerIntentJson));
+                } catch (Exception ignored) {
+                    commandValue.put("intent", JSObject.NULL);
+                }
+            } else {
+                commandValue.put("intent", JSObject.NULL);
+            }
             response.put("command", commandValue);
         }
 
@@ -163,6 +177,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
+        storeApiConfig(call);
         startWakeWordService();
         call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
     }
@@ -174,8 +189,21 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
+        storeApiConfig(call);
         startForegroundServiceCompat(WakeWordService.createCaptureCommandIntent(getContext()));
-        call.resolve(createStateResponse(VoiceAssistantState.RECORDING_COMMAND.value));
+        call.resolve(createStateResponse(VoiceAssistantState.WAITING_FOR_CONFIRMATION.value));
+    }
+
+    private void storeApiConfig(PluginCall call) {
+        PlannerVoiceAssistantStorage.storeApiConfig(
+            getContext(),
+            new VoiceAssistantApiConfig(
+                call.getString("apiBaseUrl"),
+                call.getString("accessToken"),
+                call.getString("actorUserId"),
+                call.getString("workspaceId")
+            )
+        );
     }
 
     private void startWakeWordService() {

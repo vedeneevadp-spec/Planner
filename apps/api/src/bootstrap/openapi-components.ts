@@ -153,6 +153,19 @@ export function createComponentSchemas(): Record<
     },
     UpdateUserProfileInput: genericJsonObjectSchema(),
     UserProfile: genericJsonObjectSchema(),
+    VoiceCommandResponse: {
+      additionalProperties: false,
+      properties: {
+        intent: genericJsonObjectSchema(),
+        stt: genericJsonObjectSchema(),
+        transcript: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      required: ['intent', 'stt', 'transcript'],
+      type: 'object',
+    },
     WeeklySphereStatsRecordResponse: genericJsonObjectSchema(),
     AuthRefreshInput: {
       additionalProperties: false,
@@ -759,11 +772,11 @@ export function createComponentSchemas(): Record<
       type: 'string',
     },
     AppRole: {
-      enum: ['admin', 'guest', 'owner', 'user'],
+      enum: ['admin', 'guest', 'owner', 'test', 'user'],
       type: 'string',
     },
     AssignableAppRole: {
-      enum: ['admin', 'guest', 'user'],
+      enum: ['admin', 'guest', 'test', 'user'],
       type: 'string',
     },
     AssignableWorkspaceGroupRole: {

@@ -46,6 +46,8 @@ import type { TaskTemplateService } from '../modules/task-templates/index.js'
 import { registerTaskTemplateRoutes } from '../modules/task-templates/index.js'
 import type { TaskService } from '../modules/tasks/index.js'
 import { registerTaskRoutes } from '../modules/tasks/index.js'
+import type { VoiceCommandService } from '../modules/voice/index.js'
+import { registerVoiceRoutes } from '../modules/voice/index.js'
 import type { ApiConfig } from './config.js'
 import { HttpError } from './http-error.js'
 import {
@@ -76,6 +78,7 @@ export interface BuildApiAppOptions {
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
   taskService: TaskService
+  voiceCommandService?: VoiceCommandService
 }
 
 export function buildApiApp({
@@ -93,6 +96,7 @@ export function buildApiApp({
   sessionService,
   taskTemplateService,
   taskService,
+  voiceCommandService,
 }: BuildApiAppOptions) {
   const app = Fastify({
     bodyLimit: 25 * 1024 * 1024,
@@ -189,12 +193,16 @@ export function buildApiApp({
     if (chaosInboxService) {
       registerChaosInboxRoutes(instance, sessionService, chaosInboxService)
     }
+    if (voiceCommandService) {
+      registerVoiceRoutes(instance, sessionService, voiceCommandService)
+    }
   })
 
   app.setErrorHandler((error, request, reply) => {
     const diagnostics = createErrorDiagnostics(request, reply)
+    const fastifyHttpError = createFastifyHttpError(error)
 
-    if (!(error instanceof HttpError)) {
+    if (!(error instanceof HttpError) && fastifyHttpError === null) {
       recordUnhandledRequestError(app)
       request.log.error(
         { err: error, ...diagnostics },
@@ -205,7 +213,8 @@ export function buildApiApp({
     const httpError =
       error instanceof HttpError
         ? error
-        : new HttpError(500, 'internal_error', 'Internal server error.')
+        : (fastifyHttpError ??
+          new HttpError(500, 'internal_error', 'Internal server error.'))
 
     const payload: ApiError = {
       error: {
@@ -280,6 +289,18 @@ function isPublicRequest(method: string, url: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function createFastifyHttpError(error: unknown): HttpError | null {
+  if (!isRecord(error)) {
+    return null
+  }
+
+  if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE' && error.statusCode === 413) {
+    return new HttpError(413, 'payload_too_large', 'Request body is too large.')
+  }
+
+  return null
 }
 
 async function getDatabaseStatus(
