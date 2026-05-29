@@ -1,4 +1,4 @@
-import type { PlannerIntent } from '@planner/contracts'
+import { generateUuidV7, type PlannerIntent } from '@planner/contracts'
 
 import type { NewTaskInput, TaskReminderOffsetMinutes } from '@/entities/task'
 
@@ -66,30 +66,37 @@ export function buildTaskInputFromPlannerIntent(
 ): NewTaskInput {
   const schedule = getIntentSchedule(intent)
   const reminderOffsets = getReminderOffsets(intent, schedule)
+  const priority = getTaskPriority(intent)
 
   return {
     assigneeUserId: null,
     dueDate: null,
     icon: intent.reminderAt ? 'bell' : '',
-    importance: 'not_important',
+    importance: priority.importance,
     note: '',
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
     plannedStartTime: schedule.plannedStartTime,
     project: '',
     projectId: null,
-    recurrence: null,
+    recurrence: buildTaskRecurrenceFromPlannerIntent(intent, schedule),
     remindBeforeStart: reminderOffsets.length > 0,
     reminderOffsets,
     reminderTimeZone:
       reminderOffsets.length > 0 ? resolveClientTimeZone() : undefined,
     requiresConfirmation: false,
-    resource: null,
+    resource: priority.resource,
     routine: null,
     sphereId: intent.sphereId ?? null,
     title: getPlannerIntentTitle(intent),
-    urgency: 'not_urgent',
+    urgency: priority.urgency,
   }
+}
+
+export function getShoppingItemText(
+  item: NonNullable<PlannerIntent['items']>[number],
+): string {
+  return item.quantity ? `${item.quantity} ${item.title}` : item.title
 }
 
 function getIntentSchedule(intent: PlannerIntent): IntentSchedule {
@@ -131,6 +138,58 @@ function getReminderOffsets(
   }
 
   return [15]
+}
+
+function getTaskPriority(
+  intent: PlannerIntent,
+): Pick<NewTaskInput, 'importance' | 'resource' | 'urgency'> {
+  if (intent.priority === 'high') {
+    return {
+      importance: 'important',
+      resource: 3,
+      urgency: 'urgent',
+    }
+  }
+
+  if (intent.priority === 'low') {
+    return {
+      importance: 'not_important',
+      resource: 1,
+      urgency: 'not_urgent',
+    }
+  }
+
+  return {
+    importance: 'not_important',
+    resource: null,
+    urgency: 'not_urgent',
+  }
+}
+
+function buildTaskRecurrenceFromPlannerIntent(
+  intent: PlannerIntent,
+  schedule: IntentSchedule,
+): NonNullable<NewTaskInput['recurrence']> | null {
+  if (!intent.recurrence || !schedule.plannedDate) {
+    return null
+  }
+
+  if (intent.recurrence.frequency === 'yearly') {
+    return null
+  }
+
+  return {
+    daysOfWeek:
+      intent.recurrence.frequency === 'weekly'
+        ? [1, 2, 3, 4, 5]
+        : [1, 2, 3, 4, 5, 6, 7],
+    endDate: intent.recurrence.until ?? null,
+    frequency: intent.recurrence.frequency,
+    interval: intent.recurrence.interval ?? 1,
+    isActive: true,
+    seriesId: generateUuidV7(),
+    startDate: schedule.plannedDate,
+  }
 }
 
 function resolveClientTimeZone(): string | undefined {

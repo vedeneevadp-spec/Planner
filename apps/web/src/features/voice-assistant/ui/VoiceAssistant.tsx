@@ -5,6 +5,11 @@ import {
   PlannerIntentParser,
   type PlannerIntentParserContext,
   reduceVoiceAssistantState,
+  type VoiceActionConfirmedPayload,
+  type VoiceActionContext,
+  type VoiceActionPreview,
+  type VoiceActionResult,
+  type VoiceActionSource,
   type VoiceAssistantSource,
   type VoiceAssistantState,
 } from '@planner/contracts'
@@ -17,7 +22,7 @@ import {
   useState,
 } from 'react'
 
-import { usePlanner } from '@/features/planner'
+import { usePlanner, usePlannerApiClient } from '@/features/planner'
 import { useSessionFeatureReadiness } from '@/features/session'
 import { useCreateShoppingListItem } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
@@ -37,10 +42,12 @@ import {
   isWebSpeechRecognitionSupported,
 } from '../lib/web-speech-recognition'
 import {
-  buildTaskInputFromPlannerIntent,
+  PlannerActionExecutor,
+  type PlannerActionExecutorDependencies,
+} from '../model/planner-action-executor'
+import {
   getPlannerIntentActionLabel,
-  isExecutablePlannerIntent,
-  shouldAutoConfirmPlannerIntent,
+  getShoppingItemText,
 } from '../model/planner-intent-execution'
 import styles from './VoiceAssistant.module.css'
 
@@ -48,81 +55,85 @@ const AUTO_CLOSE_DELAY_MS = 2200
 
 export function VoiceAssistant() {
   const planner = usePlanner()
+  const plannerApi = usePlannerApiClient()
   const { apiConfig, session } = useSessionFeatureReadiness()
   const createShoppingItemMutation = useCreateShoppingListItem()
   const parser = useMemo(() => new PlannerIntentParser(), [])
+  const actionExecutorRef = useRef(new PlannerActionExecutor())
   const [state, dispatch] = useReducer(
     reduceVoiceAssistantState,
     initialVoiceAssistantState,
   )
   const [isCardVisible, setIsCardVisible] = useState(false)
+  const [actionPreview, setActionPreview] = useState<VoiceActionPreview | null>(
+    null,
+  )
+  const [actionResult, setActionResult] = useState<VoiceActionResult | null>(
+    null,
+  )
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(
+    null,
+  )
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
   const autoCloseTimerRef = useRef<number | null>(null)
   const isVoiceEnabled = canUseVoiceAssistant(session?.appRole)
   const isBusy = state.status === 'recording' || state.status === 'executing'
 
-  const executeIntent = useCallback(
-    async (intent: PlannerIntent) => {
-      if (intent.intent === 'add_shopping_item') {
-        for (const item of intent.items ?? []) {
-          await createShoppingItemMutation.mutateAsync({
-            isFavorite: false,
-            priority: null,
-            shoppingCategory: 'other',
-            text: getShoppingItemText(item),
-          })
-        }
-
-        return
-      }
-
-      if (intent.intent === 'create_task') {
-        await planner.addTask(buildTaskInputFromPlannerIntent(intent))
-        return
-      }
-
-      throw new Error('Это действие требует ручного выбора объекта в планере.')
-    },
-    [createShoppingItemMutation, planner],
-  )
-
-  const runIntent = useCallback(
-    async (intent: PlannerIntent, source?: VoiceAssistantSource) => {
-      if (!isExecutablePlannerIntent(intent)) {
-        dispatch({
-          error:
-            intent.clarificationQuestion ??
-            'Для этой команды нужно уточнение в планере.',
-          transcript: intent.rawText,
-          type: 'failed',
-          ...(source ? { source } : {}),
-        })
-        return
-      }
-
+  const runActionPreview = useCallback(
+    async (
+      preview: VoiceActionPreview,
+      source?: VoiceAssistantSource,
+      confirmedPayload?: VoiceActionConfirmedPayload,
+    ) => {
       dispatch({ type: 'confirmed' })
 
       try {
-        await executeIntent(intent)
-        dispatch({ type: 'executed' })
+        const context = createVoiceActionContext(
+          source ?? 'web_microphone',
+          session,
+        )
+        const result = await actionExecutorRef.current.executeAction(
+          preview.id,
+          confirmedPayload,
+          context,
+          createActionDependencies({
+            createShoppingItem: createShoppingItemMutation.mutateAsync,
+            planner,
+            plannerApi,
+          }),
+        )
+
+        setActionResult(result)
+
+        if (result.status === 'success') {
+          dispatch({ type: 'executed' })
+          return
+        }
+
+        dispatch({
+          error: result.visualStatus,
+          transcript: preview.intent.rawText,
+          type: 'failed',
+          ...(source ? { source } : {}),
+        })
       } catch (error) {
         dispatch({
           error:
             error instanceof Error
               ? error.message
               : 'Не удалось выполнить голосовую команду.',
-          transcript: intent.rawText,
+          transcript: preview.intent.rawText,
           type: 'failed',
           ...(source ? { source } : {}),
         })
       }
     },
-    [executeIntent],
+    [createShoppingItemMutation.mutateAsync, planner, plannerApi, session],
   )
 
   const handleTranscript = useCallback(
-    (
+    async (
       transcript: string,
       source: VoiceAssistantSource,
       backendIntent?: PlannerIntent,
@@ -130,6 +141,9 @@ export function VoiceAssistant() {
       const normalizedTranscript = transcript.trim()
 
       setIsCardVisible(true)
+      setActionPreview(null)
+      setActionResult(null)
+      setSelectedCandidateId(null)
 
       if (!normalizedTranscript) {
         dispatch({
@@ -153,16 +167,46 @@ export function VoiceAssistant() {
           createPlannerIntentParserContext(source, planner.spheres, session),
         )
 
-      dispatch({
-        intent,
-        type: 'intent_parsed',
-      })
+      try {
+        const preview = await actionExecutorRef.current.prepareAction(
+          intent,
+          createVoiceActionContext(source, session),
+          createActionDependencies({
+            createShoppingItem: createShoppingItemMutation.mutateAsync,
+            planner,
+            plannerApi,
+          }),
+        )
 
-      if (shouldAutoConfirmPlannerIntent(intent)) {
-        void runIntent(intent, source)
+        setActionPreview(preview)
+        setSelectedCandidateId(
+          preview.status === 'multiple_candidates'
+            ? null
+            : (preview.candidates?.[0]?.taskId ?? null),
+        )
+        dispatch({
+          intent,
+          type: 'intent_parsed',
+        })
+      } catch (error) {
+        dispatch({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'Не удалось подготовить голосовое действие.',
+          source,
+          transcript: normalizedTranscript,
+          type: 'failed',
+        })
       }
     },
-    [parser, planner.spheres, runIntent, session],
+    [
+      createShoppingItemMutation.mutateAsync,
+      parser,
+      planner,
+      plannerApi,
+      session,
+    ],
   )
 
   const consumePendingAndroidCommand = useCallback(async () => {
@@ -195,7 +239,11 @@ export function VoiceAssistant() {
         return
       }
 
-      handleTranscript(command.transcript, source, command.intent ?? undefined)
+      void handleTranscript(
+        command.transcript,
+        source,
+        command.intent ?? undefined,
+      )
     } catch (error) {
       console.warn('Failed to consume Android voice command.', error)
     }
@@ -347,7 +395,7 @@ export function VoiceAssistant() {
 
     try {
       const transcript = await captureWebSpeechTranscript()
-      handleTranscript(transcript, 'web_microphone')
+      void handleTranscript(transcript, 'web_microphone')
     } catch (error) {
       dispatch({
         error:
@@ -362,6 +410,9 @@ export function VoiceAssistant() {
 
   function closeCard() {
     setIsCardVisible(false)
+    setActionPreview(null)
+    setActionResult(null)
+    setSelectedCandidateId(null)
     dispatch({ type: 'cancelled' })
   }
 
@@ -386,17 +437,25 @@ export function VoiceAssistant() {
 
       {isCardVisible ? (
         <VoiceAssistantCard
+          preview={actionPreview}
+          result={actionResult}
+          selectedCandidateId={selectedCandidateId}
           state={state}
           onClose={closeCard}
-          onConfirm={(intent) => {
-            void runIntent(intent, getStateSource(state))
+          onConfirm={(preview, confirmedPayload) => {
+            void runActionPreview(
+              preview,
+              getStateSource(state),
+              confirmedPayload,
+            )
           }}
           onEditTranscript={(transcript) => {
-            handleTranscript(
+            void handleTranscript(
               transcript,
               getStateSource(state) ?? 'web_microphone',
             )
           }}
+          onSelectCandidate={setSelectedCandidateId}
         />
       ) : null}
     </>
@@ -404,17 +463,28 @@ export function VoiceAssistant() {
 }
 
 interface VoiceAssistantCardProps {
+  preview: VoiceActionPreview | null
+  result: VoiceActionResult | null
+  selectedCandidateId: string | null
   state: VoiceAssistantState
   onClose: () => void
-  onConfirm: (intent: PlannerIntent) => void
+  onConfirm: (
+    preview: VoiceActionPreview,
+    confirmedPayload?: VoiceActionConfirmedPayload,
+  ) => void
   onEditTranscript: (transcript: string) => void
+  onSelectCandidate: (taskId: string) => void
 }
 
 function VoiceAssistantCard({
+  preview,
+  result,
+  selectedCandidateId,
   state,
   onClose,
   onConfirm,
   onEditTranscript,
+  onSelectCandidate,
 }: VoiceAssistantCardProps) {
   const transcript = 'transcript' in state ? state.transcript : ''
   const [editState, setEditState] = useState<{
@@ -432,11 +502,16 @@ function VoiceAssistantCard({
   const canEdit =
     Boolean(transcript) &&
     (state.status === 'awaiting_confirmation' || state.status === 'error')
+  const selectedCandidate = preview?.candidates?.find(
+    (candidate) => candidate.taskId === selectedCandidateId,
+  )
   const canConfirm =
     state.status === 'awaiting_confirmation' &&
-    intent !== null &&
-    intent.needsConfirmation &&
-    isExecutablePlannerIntent(intent)
+    preview !== null &&
+    preview.needsConfirmation &&
+    ((preview.status === 'ready_for_confirmation' && preview.canExecute) ||
+      (preview.status === 'multiple_candidates' &&
+        selectedCandidate !== undefined))
   const statusLabel = getStatusLabel(state.status)
 
   return (
@@ -558,6 +633,58 @@ function VoiceAssistantCard({
         </dl>
       ) : null}
 
+      {preview ? (
+        <div className={styles.previewBlock}>
+          <p className={styles.previewSummary}>{preview.summary}</p>
+          {preview.reason && preview.reason !== preview.summary ? (
+            <p className={styles.previewReason}>{preview.reason}</p>
+          ) : null}
+          {preview.agendaItems?.length ? (
+            <ul className={styles.agendaList}>
+              {preview.agendaItems.slice(0, 5).map((item) => (
+                <li key={item.taskId}>
+                  <span>{formatAgendaItemTime(item)}</span>
+                  <strong>{item.title}</strong>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {preview.candidates?.length ? (
+            <fieldset className={styles.candidateList}>
+              <legend>Задача</legend>
+              {preview.candidates.map((candidate) => {
+                const candidateInputId = `voice-candidate-${preview.id}-${candidate.taskId}`
+
+                return (
+                  <label
+                    key={`${candidate.taskId}:${candidate.version}`}
+                    aria-label={`Перенести ${candidate.title}`}
+                    htmlFor={candidateInputId}
+                  >
+                    <input
+                      id={candidateInputId}
+                      type="radio"
+                      name={`voice-candidate-${preview.id}`}
+                      value={candidate.taskId}
+                      checked={selectedCandidateId === candidate.taskId}
+                      onChange={() => onSelectCandidate(candidate.taskId)}
+                    />
+                    <span>
+                      <strong>{candidate.title}</strong>
+                      <small>{formatCandidateSchedule(candidate)}</small>
+                    </span>
+                  </label>
+                )
+              })}
+            </fieldset>
+          ) : null}
+        </div>
+      ) : null}
+
+      {result ? (
+        <p className={styles.resultMessage}>{result.visualStatus}</p>
+      ) : null}
+
       {intent?.clarificationQuestion ? (
         <p className={styles.clarification}>{intent.clarificationQuestion}</p>
       ) : null}
@@ -588,10 +715,23 @@ function VoiceAssistantCard({
           <button
             className={styles.primaryButton}
             type="button"
-            onClick={() => onConfirm(intent)}
+            onClick={() => {
+              if (!preview) {
+                return
+              }
+
+              onConfirm(preview, {
+                ...(selectedCandidate
+                  ? {
+                      candidateTaskId: selectedCandidate.taskId,
+                      expectedVersion: selectedCandidate.version,
+                    }
+                  : {}),
+              })
+            }}
           >
             <CheckIcon size={17} strokeWidth={2.15} />
-            <span>{getConfirmLabel(intent)}</span>
+            <span>{getConfirmLabel(preview.intent)}</span>
           </button>
         ) : null}
       </div>
@@ -615,12 +755,6 @@ function getConfirmLabel(intent: PlannerIntent): string {
   }
 }
 
-function getShoppingItemText(
-  item: NonNullable<PlannerIntent['items']>[number],
-): string {
-  return item.quantity ? `${item.quantity} ${item.title}` : item.title
-}
-
 function createPlannerIntentParserContext(
   source: VoiceAssistantSource,
   spheres: Array<{ id: string; name: string }>,
@@ -642,6 +776,75 @@ function createPlannerIntentParserContext(
   }
 }
 
+function createActionDependencies(input: {
+  createShoppingItem: PlannerActionExecutorDependencies['createShoppingItem']
+  planner: ReturnType<typeof usePlanner>
+  plannerApi: ReturnType<typeof usePlannerApiClient>
+}): PlannerActionExecutorDependencies {
+  const plannerApi = input.plannerApi
+
+  return {
+    createShoppingItem: input.createShoppingItem,
+    createTask: (taskInput) => input.planner.addTask(taskInput),
+    getCachedTasks: () =>
+      input.planner.tasks.map((task) => ({
+        id: task.id,
+        plannedEndTime: task.plannedEndTime,
+        plannedDate: task.plannedDate,
+        plannedStartTime: task.plannedStartTime,
+        status: task.status,
+        title: task.title,
+      })),
+    isOnline: () =>
+      typeof navigator === 'undefined' ? true : navigator.onLine,
+    refreshPlanner: input.planner.refresh,
+    taskClient: plannerApi
+      ? {
+          listTasks: (filters) => plannerApi.listTasks(filters),
+          setTaskSchedule: (taskId, scheduleInput) =>
+            plannerApi.setTaskSchedule(taskId, scheduleInput),
+        }
+      : null,
+  }
+}
+
+function createVoiceActionContext(
+  source: VoiceAssistantSource,
+  session:
+    | {
+        actorUserId?: string | undefined
+        appRole?: VoiceActionContext['appRole'] | undefined
+        workspaceId?: string | undefined
+      }
+    | null
+    | undefined,
+): VoiceActionContext {
+  if (!session?.actorUserId || !session.workspaceId) {
+    throw new Error('Planner session is required for voice actions.')
+  }
+
+  return {
+    appRole: session.appRole ?? 'guest',
+    isDeviceLocked: false,
+    now: new Date().toISOString(),
+    source: getVoiceActionSource(source),
+    timezone: resolveVoiceClientTimeZone() ?? 'Europe/Moscow',
+    userId: session.actorUserId,
+    workspaceId: session.workspaceId,
+  }
+}
+
+function getVoiceActionSource(source: VoiceAssistantSource): VoiceActionSource {
+  switch (source) {
+    case 'android_wake_word':
+      return 'android_wake_word'
+    case 'android_microphone':
+      return 'android_push_to_talk'
+    case 'web_microphone':
+      return 'web_push_to_talk'
+  }
+}
+
 function getPlannerIntentParserSource(
   source: VoiceAssistantSource,
 ): PlannerIntentParserContext['source'] {
@@ -653,6 +856,23 @@ function getPlannerIntentParserSource(
     case 'web_microphone':
       return 'web_push_to_talk'
   }
+}
+
+function formatAgendaItemTime(
+  item: NonNullable<VoiceActionPreview['agendaItems']>[number],
+): string {
+  return item.plannedStartTime ?? 'Без времени'
+}
+
+function formatCandidateSchedule(
+  candidate: NonNullable<VoiceActionPreview['candidates']>[number],
+): string {
+  const date = candidate.plannedDate ?? 'без даты'
+  const time = candidate.plannedStartTime
+    ? `, ${candidate.plannedStartTime}`
+    : ''
+
+  return `${date}${time}`
 }
 
 function resolveVoiceClientTimeZone(): string | undefined {

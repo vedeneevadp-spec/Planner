@@ -431,6 +431,28 @@ export {
 } from './task-template.js'
 export { generateUuidV7, isUuidV7, uuidV7Schema } from './uuid.js'
 export type {
+  VoiceActionAgendaItem,
+  VoiceActionCandidate,
+  VoiceActionConfirmedPayload,
+  VoiceActionContext,
+  VoiceActionPreview,
+  VoiceActionPreviewStatus,
+  VoiceActionResult,
+  VoiceActionSource,
+  VoiceActionType,
+} from './voice-action.js'
+export {
+  voiceActionAgendaItemSchema,
+  voiceActionCandidateSchema,
+  voiceActionConfirmedPayloadSchema,
+  voiceActionContextSchema,
+  voiceActionPreviewSchema,
+  voiceActionPreviewStatusSchema,
+  voiceActionResultSchema,
+  voiceActionSourceSchema,
+  voiceActionTypeSchema,
+} from './voice-action.js'
+export type {
   CommandAudio,
   CommandAudioFormat,
   SttError,

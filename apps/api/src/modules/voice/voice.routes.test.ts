@@ -81,32 +81,34 @@ void describe('voice routes', () => {
     assert.equal(provider.callCount, 1)
   })
 
-  void it('rejects regular users before calling the STT provider', async () => {
-    const app = Fastify()
-    const provider = new FakeSttProvider('добавь задачу')
+  void it('rejects non-rollout roles before calling the STT provider', async () => {
+    for (const appRole of ['admin', 'user', 'guest'] satisfies AppRole[]) {
+      const app = Fastify()
+      const provider = new FakeSttProvider('добавь задачу')
 
-    registerVoiceRoutes(
-      app,
-      createFakeSessionService('user') as unknown as SessionService,
-      new VoiceCommandService(provider),
-    )
+      registerVoiceRoutes(
+        app,
+        createFakeSessionService(appRole) as unknown as SessionService,
+        new VoiceCommandService(provider),
+      )
 
-    const response = await app.inject({
-      headers: {
-        'content-type': 'audio/l16',
-        'x-stt-source': 'android_push_to_talk',
-        'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-1',
-      },
-      method: 'POST',
-      payload: createVoiceAudio(900),
-      url: '/api/voice/command',
-    })
+      const response = await app.inject({
+        headers: {
+          'content-type': 'audio/l16',
+          'x-stt-source': 'android_push_to_talk',
+          'x-actor-user-id': 'user-1',
+          'x-workspace-id': 'workspace-1',
+        },
+        method: 'POST',
+        payload: createVoiceAudio(900),
+        url: '/api/voice/command',
+      })
 
-    await app.close()
+      await app.close()
 
-    assert.equal(response.statusCode, 403)
-    assert.equal(provider.callCount, 0)
+      assert.equal(response.statusCode, 403)
+      assert.equal(provider.callCount, 0)
+    }
   })
 
   void it('rejects clips above the route hard limit before STT', async () => {

@@ -113,6 +113,8 @@ scripts/       локальные DB, mobile и deploy workflows
   релизам
 - [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
   сценарии и roadmap голосового помощника
+- [docs/voice/action-layer.md](docs/voice/action-layer.md) - action layer,
+  preview/execute contract и правила безопасности голосовых действий
 - [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
   Android wake-word provider и модель `Хаотика`
 
