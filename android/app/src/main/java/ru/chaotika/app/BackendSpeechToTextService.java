@@ -7,6 +7,10 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -59,6 +63,8 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
             connection.setRequestProperty("x-audio-encoding", audio.encoding);
             connection.setRequestProperty("x-audio-duration-ms", String.valueOf(audio.durationMs));
             connection.setRequestProperty("x-stt-source", toBackendSource(source));
+            connection.setRequestProperty("x-client-now", formatClientNow());
+            connection.setRequestProperty("x-client-timezone", TimeZone.getDefault().getID());
 
             if (config.accessToken != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + config.accessToken);
@@ -129,6 +135,13 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
         return "android_short_clip";
     }
 
+    private static String formatClientNow() {
+        SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US);
+        formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
+
+        return formatter.format(new Date());
+    }
+
     private static SttException mapBackendError(int status, String body) {
         SttError code = parseErrorCode(body);
 
@@ -161,7 +174,7 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
                 return null;
             }
 
-            return SttError.valueOf(rawCode.trim().toUpperCase(java.util.Locale.US));
+            return SttError.valueOf(rawCode.trim().toUpperCase(Locale.US));
         } catch (Exception ignored) {
             return null;
         }

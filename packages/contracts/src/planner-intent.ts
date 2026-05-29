@@ -177,6 +177,7 @@ interface RecurrenceParseResult {
 }
 
 const WAKE_WORD_PATTERN = /^хаотика[\s,.:;!-]*/iu
+const DEFAULT_PLANNER_TIMEZONE = 'Europe/Moscow'
 const DELETE_PATTERN =
   /(?:^|\s)(?:удали|удалить|сотри|стереть|удаление|delete)(?=\s|$)|(?:^|\s)(?:убери|убрать)\s+(?:все|всё|задач[ауи]?|дела|план)(?=\s|$)/iu
 const RESCHEDULE_PATTERN =
@@ -431,7 +432,8 @@ class AgendaQueryParser {
     }
 
     const dateTime = DateTimeParser.parse(commandText, context)
-    const date = dateTime.date ?? formatDateKey(context.now)
+    const date =
+      dateTime.date ?? formatDateKeyInTimezone(context.now, context.timezone)
 
     return createIntent({
       confidence: dateTime.date ? 0.95 : 0.82,
@@ -625,19 +627,22 @@ class DateTimeParser {
     commandText: string,
     context: RuntimeParserContext,
   ): DateTimeParseResult {
-    const relativeReminder = parseRelativeReminder(commandText, context.now)
+    const relativeReminder = parseRelativeReminder(commandText, context)
 
     if (relativeReminder) {
       return relativeReminder
     }
 
-    const date = parseDate(commandText, context.now)
+    const date = parseDate(commandText, context)
     const time = parseTime(commandText)
     const approximateTime = parseApproximateTime(commandText)
     const finalTime = time?.time ?? approximateTime?.time
     const hasTime = Boolean(finalTime)
     const resolvedDate =
-      date?.date ?? (hasTime ? formatDateKey(context.now) : undefined)
+      date?.date ??
+      (hasTime
+        ? formatDateKeyInTimezone(context.now, context.timezone)
+        : undefined)
 
     return {
       ambiguousTime: time?.ambiguous ?? false,
@@ -970,7 +975,7 @@ function createRuntimeContext(
     locale: context.locale ?? 'ru-RU',
     now: normalizeNow(context.now),
     spheres: context.spheres ?? [],
-    timezone: context.timezone ?? 'Europe/Moscow',
+    timezone: normalizeTimezone(context.timezone),
   }
 }
 
@@ -986,6 +991,20 @@ function normalizeNow(now: Date | string | undefined): Date {
   }
 
   return new Date()
+}
+
+function normalizeTimezone(timezone: string | undefined): string {
+  if (!timezone) {
+    return DEFAULT_PLANNER_TIMEZONE
+  }
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format(new Date(0))
+
+    return timezone
+  } catch {
+    return DEFAULT_PLANNER_TIMEZONE
+  }
 }
 
 function isShoppingCommand(
@@ -1082,7 +1101,7 @@ function dedupeItems(items: PlannerIntentItem[]): PlannerIntentItem[] {
 
 function parseRelativeReminder(
   text: string,
-  now: Date,
+  context: RuntimeParserContext,
 ): DateTimeParseResult | null {
   const match =
     /(?:^|\s)через\s+(\d+)\s+(минуту|минуты|минут|час|часа|часов|день|дня|дней)(?=\s|$)/iu.exec(
@@ -1113,13 +1132,16 @@ function parseRelativeReminder(
     dateText: match[0],
     hasExactRelativeReminder: true,
     hasRelativeReminder: true,
-    reminderAt: formatDateTime(addMinutes(now, minutes)),
+    reminderAt: formatDateTimeInTimezone(
+      addMinutes(context.now, minutes),
+      context.timezone,
+    ),
   }
 }
 
 function parseDate(
   text: string,
-  now: Date,
+  context: RuntimeParserContext,
 ):
   | {
       date: string
@@ -1127,9 +1149,11 @@ function parseDate(
       dateText: string
     }
   | undefined {
+  const today = formatDateKeyInTimezone(context.now, context.timezone)
+
   if (containsWord(text, 'сегодня')) {
     return {
-      date: formatDateKey(now),
+      date: today,
       datePrecision: 'exact',
       dateText: 'сегодня',
     }
@@ -1137,7 +1161,7 @@ function parseDate(
 
   if (containsWord(text, 'послезавтра')) {
     return {
-      date: formatDateKey(addDays(now, 2)),
+      date: addDaysToDateKey(today, 2),
       datePrecision: 'exact',
       dateText: 'послезавтра',
     }
@@ -1145,7 +1169,7 @@ function parseDate(
 
   if (containsWord(text, 'завтра')) {
     return {
-      date: formatDateKey(addDays(now, 1)),
+      date: addDaysToDateKey(today, 1),
       datePrecision: 'exact',
       dateText: 'завтра',
     }
@@ -1156,7 +1180,7 @@ function parseDate(
 
   if (nextWeekMatch) {
     return {
-      date: formatDateKey(startOfNextWeek(now)),
+      date: startOfNextWeekDateKey(today),
       datePrecision: 'period',
       dateText: nextWeekMatch[0],
     }
@@ -1171,7 +1195,7 @@ function parseDate(
       const isExplicitNext = Boolean(weekdayMatch[1])
 
       return {
-        date: formatDateKey(nextWeekday(now, weekday, isExplicitNext)),
+        date: nextWeekdayDateKey(today, weekday, isExplicitNext),
         datePrecision: 'date_only',
         dateText: weekdayMatch[0].trim(),
       }
@@ -1188,7 +1212,7 @@ function parseDate(
   const day = Number(numericDateMatch[1])
   const month = Number(numericDateMatch[2])
   const yearText = numericDateMatch[3]
-  const currentYear = now.getFullYear()
+  const currentYear = getZonedDateParts(context.now, context.timezone).year
   const year = yearText
     ? Number(yearText.length === 2 ? `20${yearText}` : yearText)
     : currentYear
@@ -1361,54 +1385,106 @@ function clampConfidence(value: number): number {
   return Math.max(0, Math.min(1, Math.round(value * 100) / 100))
 }
 
-function addDays(date: Date, days: number): Date {
-  const nextDate = new Date(date)
-  nextDate.setDate(nextDate.getDate() + days)
+interface ZonedDateParts {
+  day: number
+  hour: number
+  minute: number
+  month: number
+  year: number
+}
 
-  return nextDate
+function getZonedDateParts(date: Date, timezone: string): ZonedDateParts {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+    minute: '2-digit',
+    month: '2-digit',
+    timeZone: timezone,
+    year: 'numeric',
+  })
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  )
+
+  return {
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    month: Number(parts.month),
+    year: Number(parts.year),
+  }
 }
 
 function addMinutes(date: Date, minutes: number): Date {
-  const nextDate = new Date(date)
-  nextDate.setMinutes(nextDate.getMinutes() + minutes)
-
-  return nextDate
+  return new Date(date.getTime() + minutes * 60_000)
 }
 
-function nextWeekday(
-  date: Date,
+function addDaysToDateKey(dateKey: string, days: number): string {
+  const [year, month, day] = parseDateKey(dateKey)
+  const date = new Date(Date.UTC(year, month - 1, day + days))
+
+  return formatDateParts(
+    date.getUTCFullYear(),
+    date.getUTCMonth() + 1,
+    date.getUTCDate(),
+  )
+}
+
+function nextWeekdayDateKey(
+  dateKey: string,
   targetWeekday: number,
   forceNext: boolean,
-): Date {
-  const currentWeekday = date.getDay()
+): string {
+  const currentWeekday = getWeekdayFromDateKey(dateKey)
   let delta = (targetWeekday - currentWeekday + 7) % 7
 
   if (forceNext || delta === 0) {
     delta += 7
   }
 
-  return addDays(date, delta)
+  return addDaysToDateKey(dateKey, delta)
 }
 
-function startOfNextWeek(date: Date): Date {
-  const currentWeekday = date.getDay() === 0 ? 7 : date.getDay()
+function startOfNextWeekDateKey(dateKey: string): string {
+  const weekday = getWeekdayFromDateKey(dateKey)
+  const currentWeekday = weekday === 0 ? 7 : weekday
   const daysUntilNextMonday = 8 - currentWeekday
 
-  return addDays(date, daysUntilNextMonday)
+  return addDaysToDateKey(dateKey, daysUntilNextMonday)
 }
 
-function formatDateTime(date: Date): string {
-  return `${formatDateKey(date)}T${pad2(date.getHours())}:${pad2(
-    date.getMinutes(),
-  )}`
+function formatDateTimeInTimezone(date: Date, timezone: string): string {
+  const parts = getZonedDateParts(date, timezone)
+
+  return `${formatDateParts(parts.year, parts.month, parts.day)}T${pad2(
+    parts.hour,
+  )}:${pad2(parts.minute)}`
 }
 
-function formatDateKey(date: Date): string {
-  return formatDateParts(
-    date.getFullYear(),
-    date.getMonth() + 1,
-    date.getDate(),
-  )
+function formatDateKeyInTimezone(date: Date, timezone: string): string {
+  const parts = getZonedDateParts(date, timezone)
+
+  return formatDateParts(parts.year, parts.month, parts.day)
+}
+
+function getWeekdayFromDateKey(dateKey: string): number {
+  const [year, month, day] = parseDateKey(dateKey)
+
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+}
+
+function parseDateKey(dateKey: string): [number, number, number] {
+  const [year, month, day] = dateKey.split('-').map(Number)
+
+  if (year === undefined || month === undefined || day === undefined) {
+    throw new Error(`Invalid date key: ${dateKey}`)
+  }
+
+  return [year, month, day]
 }
 
 function formatDateParts(year: number, month: number, day: number): string {
@@ -1416,12 +1492,12 @@ function formatDateParts(year: number, month: number, day: number): string {
 }
 
 function isValidDateParts(year: number, month: number, day: number): boolean {
-  const date = new Date(year, month - 1, day)
+  const date = new Date(Date.UTC(year, month - 1, day))
 
   return (
-    date.getFullYear() === year &&
-    date.getMonth() === month - 1 &&
-    date.getDate() === day
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
   )
 }
 

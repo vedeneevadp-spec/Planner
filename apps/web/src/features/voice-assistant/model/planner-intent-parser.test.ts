@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 
 import { shouldAutoConfirmPlannerIntent } from './planner-intent-execution'
 
-const NOW = new Date(2026, 4, 28, 9, 0, 0)
+const NOW = new Date('2026-05-28T06:00:00.000Z')
 const SPHERES = [
   { id: 'home', name: 'дом' },
   { id: 'kids', name: 'дети' },
@@ -78,6 +78,20 @@ describe('PlannerIntentParser', () => {
       intent: 'create_task',
       needsConfirmation: false,
       reminderAt: '2026-05-28T09:30',
+      title: 'проверить духовку',
+    })
+  })
+
+  it('formats relative reminders in the parser context timezone', () => {
+    const intent = parser.parse('Через полчаса проверить духовку', {
+      now: '2026-05-29T06:54:00.000Z',
+      timezone: 'Asia/Novosibirsk',
+    })
+
+    expect(intent).toMatchObject({
+      intent: 'create_task',
+      needsConfirmation: false,
+      reminderAt: '2026-05-29T14:24',
       title: 'проверить духовку',
     })
   })

@@ -32,7 +32,9 @@ export const COMMAND_AUDIO_HARD_LIMIT_BYTES = 400 * 1024
 export interface VoiceCommandRouteContext {
   actorUserId: string | undefined
   appRole?: AppRole | undefined
+  clientNow?: string | undefined
   isDeviceLocked?: boolean | undefined
+  timezone?: string | undefined
   workspaceId: string
 }
 

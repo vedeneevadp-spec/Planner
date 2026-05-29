@@ -50,6 +50,25 @@ void describe('VoiceCommandService', () => {
     assert.equal(result.stt.source, 'android_push_to_talk')
   })
 
+  void it('uses client capture time and timezone for relative reminders', async () => {
+    const service = new VoiceCommandService(
+      new FakeSttProvider('через полчаса проверить духовку'),
+    )
+    const result = await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        clientNow: '2026-05-29T06:54:00.000Z',
+        timezone: 'Asia/Novosibirsk',
+        workspaceId: 'workspace-1',
+      },
+      source: 'android_push_to_talk',
+    })
+
+    assert.equal(result.intent.intent, 'create_task')
+    assert.equal(result.intent.reminderAt, '2026-05-29T14:24')
+  })
+
   void it('uses backend intent fallback only with transcript text', async () => {
     const provider = new FakeSttProvider('овсянку бы не забыть')
     const fallback = new FakePlannerIntentFallback({

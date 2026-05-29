@@ -81,6 +81,42 @@ void describe('voice routes', () => {
     assert.equal(provider.callCount, 1)
   })
 
+  void it('passes client parser time headers into PlannerIntent parsing', async () => {
+    const app = Fastify()
+
+    registerVoiceRoutes(
+      app,
+      createFakeSessionService() as unknown as SessionService,
+      new VoiceCommandService(
+        new FakeSttProvider('через полчаса проверить духовку'),
+      ),
+    )
+
+    const response = await app.inject({
+      headers: {
+        'content-type': 'audio/l16',
+        'x-actor-user-id': 'user-1',
+        'x-client-now': '2026-05-29T06:54:00.000Z',
+        'x-client-timezone': 'Asia/Novosibirsk',
+        'x-stt-source': 'android_push_to_talk',
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'POST',
+      payload: createVoiceAudio(900),
+      url: '/api/voice/command',
+    })
+
+    await app.close()
+
+    assert.equal(response.statusCode, 200)
+
+    const body = JSON.parse(response.body) as {
+      intent: { reminderAt?: string }
+    }
+
+    assert.equal(body.intent.reminderAt, '2026-05-29T14:24')
+  })
+
   void it('rejects non-rollout roles before calling the STT provider', async () => {
     for (const appRole of ['admin', 'user', 'guest'] satisfies AppRole[]) {
       const app = Fastify()

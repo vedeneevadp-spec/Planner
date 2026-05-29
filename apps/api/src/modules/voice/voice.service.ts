@@ -307,9 +307,9 @@ function createPlannerIntentParserContext(
     appRole: input.context.appRole,
     isDeviceLocked: input.context.isDeviceLocked,
     locale: 'ru-RU',
-    now: new Date(),
+    now: input.context.clientNow ?? new Date(),
     source: getPlannerIntentParserSource(input.source),
-    timezone: 'Europe/Moscow',
+    timezone: input.context.timezone ?? 'Europe/Moscow',
   }
 }
 

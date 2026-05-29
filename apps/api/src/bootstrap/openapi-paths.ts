@@ -75,6 +75,28 @@ export function createPaths(): OpenAPIV3.PathsObject {
             },
           },
           {
+            description:
+              'Client timestamp captured with the audio. Used for relative PlannerIntent dates and reminders.',
+            in: 'header',
+            name: 'x-client-now',
+            required: false,
+            schema: {
+              format: 'date-time',
+              type: 'string',
+            },
+          },
+          {
+            description:
+              'IANA client timezone used to format PlannerIntent date and reminder fields.',
+            in: 'header',
+            name: 'x-client-timezone',
+            required: false,
+            schema: {
+              example: 'Asia/Novosibirsk',
+              type: 'string',
+            },
+          },
+          {
             description: 'Client-measured audio duration in milliseconds.',
             in: 'header',
             name: 'x-audio-duration-ms',

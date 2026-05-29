@@ -65,7 +65,11 @@ export function registerVoiceRoutes(
         context: {
           actorUserId: context.actorUserId,
           appRole: context.appRole,
+          clientNow:
+            readStringHeader(request.headers['x-client-now']) ?? undefined,
           isDeviceLocked: readBooleanHeader(request.headers['x-device-locked']),
+          timezone:
+            readStringHeader(request.headers['x-client-timezone']) ?? undefined,
           workspaceId: context.workspaceId,
         },
         source: parseVoiceCommandSource(
