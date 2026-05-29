@@ -201,7 +201,8 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
                 call.getString("apiBaseUrl"),
                 call.getString("accessToken"),
                 call.getString("actorUserId"),
-                call.getString("workspaceId")
+                call.getString("workspaceId"),
+                Boolean.TRUE.equals(call.getBoolean("wakeWordTrainingModeEnabled"))
             )
         );
     }

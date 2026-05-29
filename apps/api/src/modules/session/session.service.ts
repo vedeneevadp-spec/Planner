@@ -284,7 +284,7 @@ export class SessionService {
     assertCanManageWorkspaceSettings(session)
 
     const settings = await withRepositoryErrorMapping(() =>
-      this.repository.updateWorkspaceSettings(session, input),
+      this.repository.updateWorkspaceSettings(session, context.auth, input),
     )
 
     this.authSessionCache.clear()

@@ -256,6 +256,7 @@ describe('session admin hooks', () => {
       await expect(
         result.current.mutateAsync({
           taskCompletionConfettiEnabled: false,
+          wakeWordTrainingModeEnabled: false,
         }),
       ).rejects.toThrow('Forbidden.')
     })
@@ -267,6 +268,7 @@ describe('session admin hooks', () => {
 
     expect(cachedSession?.workspaceSettings).toEqual({
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     })
   })
 })
@@ -396,6 +398,7 @@ function createSessionResponse(): SessionResponse {
     workspaceId: 'workspace-1',
     workspaceSettings: {
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [
       {

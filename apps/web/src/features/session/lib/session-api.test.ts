@@ -36,6 +36,7 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
     workspaceId: 'workspace-1',
     workspaceSettings: {
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [
       {

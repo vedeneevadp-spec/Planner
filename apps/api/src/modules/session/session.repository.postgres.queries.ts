@@ -281,6 +281,7 @@ function createSessionBaseQuery(executor: DatabaseExecutor) {
       'membership.group_role as groupRole',
       'membership.role as role',
       'workspace.task_completion_confetti_enabled as taskCompletionConfettiEnabled',
+      'workspace.wake_word_training_mode_enabled as wakeWordTrainingModeEnabled',
       'workspace.id as workspaceId',
       'workspace.kind as workspaceKind',
       'workspace.name as workspaceName',

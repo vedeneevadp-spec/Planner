@@ -215,6 +215,50 @@ void test('PostgresSessionRepository updates user preferences under runtime RLS'
   }
 })
 
+void test('PostgresSessionRepository updates workspace settings under runtime RLS', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const userId = randomUUID()
+  const email = `contract-workspace-settings-${userId}@example.test`
+
+  try {
+    await seedUserSession({
+      appRole: 'admin',
+      email,
+      userId,
+    })
+
+    const session = await repository.resolve({
+      actorUserId: userId,
+      auth: null,
+      workspaceId: undefined,
+    })
+    const settings = await repository.updateWorkspaceSettings(
+      session,
+      createSessionAuthContext({
+        email,
+        userId,
+      }),
+      {
+        taskCompletionConfettiEnabled: false,
+        wakeWordTrainingModeEnabled: true,
+      },
+    )
+    const updatedSession = await repository.resolve({
+      actorUserId: userId,
+      auth: null,
+      workspaceId: session.workspaceId,
+    })
+
+    assert.deepEqual(settings, {
+      taskCompletionConfettiEnabled: false,
+      wakeWordTrainingModeEnabled: true,
+    })
+    assert.deepEqual(updatedSession.workspaceSettings, settings)
+  } finally {
+    await cleanupUsers([userId])
+  }
+})
+
 async function seedUserSession(input: {
   appRole: 'owner' | 'admin' | 'test' | 'user' | 'guest'
   email: string

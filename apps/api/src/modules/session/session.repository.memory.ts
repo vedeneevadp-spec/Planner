@@ -35,6 +35,7 @@ interface MemoryWorkspace {
   ownerUserId: string
   slug: string
   taskCompletionConfettiEnabled: boolean
+  wakeWordTrainingModeEnabled: boolean
 }
 
 interface MemoryMembership {
@@ -81,6 +82,7 @@ const DEFAULT_MEMORY_WORKSPACE: MemoryWorkspace = {
   ownerUserId: DEFAULT_ACTOR_ID,
   slug: 'personal',
   taskCompletionConfettiEnabled: true,
+  wakeWordTrainingModeEnabled: false,
 }
 
 export class MemorySessionRepository implements SessionRepository {
@@ -186,6 +188,7 @@ export class MemorySessionRepository implements SessionRepository {
       ownerUserId: session.actorUserId,
       slug: `shared-${id.replaceAll('-', '').slice(-8)}`,
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     }
 
     this.workspaces = [...this.workspaces, workspace]
@@ -647,7 +650,11 @@ export class MemorySessionRepository implements SessionRepository {
 
   updateWorkspaceSettings(
     session: SessionSnapshot,
-    input: { taskCompletionConfettiEnabled: boolean },
+    _authContext: AuthenticatedRequestContext | null,
+    input: {
+      taskCompletionConfettiEnabled: boolean
+      wakeWordTrainingModeEnabled: boolean
+    },
   ) {
     const workspace = this.getWorkspaceById(session.workspaceId)
 
@@ -661,9 +668,11 @@ export class MemorySessionRepository implements SessionRepository {
 
     workspace.taskCompletionConfettiEnabled =
       input.taskCompletionConfettiEnabled
+    workspace.wakeWordTrainingModeEnabled = input.wakeWordTrainingModeEnabled
 
     return Promise.resolve({
       taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
+      wakeWordTrainingModeEnabled: workspace.wakeWordTrainingModeEnabled,
     })
   }
 
@@ -788,6 +797,7 @@ export class MemorySessionRepository implements SessionRepository {
       workspaceId: workspace.id,
       workspaceSettings: {
         taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
+        wakeWordTrainingModeEnabled: workspace.wakeWordTrainingModeEnabled,
       },
       workspaces: memberships.map((membership) => {
         const membershipWorkspace = this.getWorkspaceById(
@@ -868,6 +878,8 @@ export class MemorySessionRepository implements SessionRepository {
       workspaceSettings: {
         taskCompletionConfettiEnabled:
           fallbackWorkspace.taskCompletionConfettiEnabled,
+        wakeWordTrainingModeEnabled:
+          fallbackWorkspace.wakeWordTrainingModeEnabled,
       },
       workspaces: workspaceMemberships,
     }
@@ -1009,6 +1021,7 @@ export class MemorySessionRepository implements SessionRepository {
       ownerUserId: actorUserId,
       slug: `personal-${actorUserId.replaceAll('-', '').slice(0, 12)}`,
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     }
 
     this.workspaces = [...this.workspaces, workspace]

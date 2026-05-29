@@ -9,6 +9,6 @@ final class VoiceAssistantStateMachine {
             return currentState;
         }
 
-        return VoiceAssistantState.WAKE_WORD_DETECTED;
+        return VoiceAssistantState.REVIEWING_WAKE_WORD;
     }
 }

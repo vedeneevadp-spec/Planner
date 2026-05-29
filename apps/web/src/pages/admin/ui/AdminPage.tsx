@@ -48,6 +48,7 @@ const ADMIN_SECTIONS: Array<{ id: AdminSection; label: string }> = [
 
 const DEFAULT_WORKSPACE_SETTINGS = {
   taskCompletionConfettiEnabled: true,
+  wakeWordTrainingModeEnabled: false,
 }
 const NEW_ICON_SET_TARGET = 'new'
 const MANAGEABLE_APP_ROLES = [
@@ -357,6 +358,26 @@ export function AdminPage() {
     try {
       await updateWorkspaceSettings.mutateAsync({
         taskCompletionConfettiEnabled: enabled,
+        wakeWordTrainingModeEnabled:
+          workspaceSettings.wakeWordTrainingModeEnabled,
+      })
+    } catch (error) {
+      setSettingsError(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось обновить настройки.',
+      )
+    }
+  }
+
+  async function handleWakeWordTrainingModeChange(enabled: boolean) {
+    setSettingsError(null)
+
+    try {
+      await updateWorkspaceSettings.mutateAsync({
+        taskCompletionConfettiEnabled:
+          workspaceSettings.taskCompletionConfettiEnabled,
+        wakeWordTrainingModeEnabled: enabled,
       })
     } catch (error) {
       setSettingsError(
@@ -778,17 +799,17 @@ export function AdminPage() {
             <span
               className={cx(
                 styles.statusBadge,
-                !workspaceSettings.taskCompletionConfettiEnabled &&
+                !workspaceSettings.wakeWordTrainingModeEnabled &&
                   styles.statusBadgeMuted,
               )}
             >
-              {workspaceSettings.taskCompletionConfettiEnabled
-                ? 'включено'
-                : 'выключено'}
+              {workspaceSettings.wakeWordTrainingModeEnabled
+                ? 'дообучение включено'
+                : 'обычный флоу'}
             </span>
           </div>
           <p className={styles.sectionCopy}>
-            Управляйте визуальными эффектами для текущего workspace.
+            Управляйте поведением приложения для текущего workspace.
           </p>
 
           {settingsError ? (
@@ -815,6 +836,34 @@ export function AdminPage() {
                 disabled={isUpdatingSettings}
                 onChange={(event) => {
                   void handleTaskCompletionConfettiChange(event.target.checked)
+                }}
+              />
+              <span className={styles.toggleTrack}>
+                <span className={styles.toggleThumb} />
+              </span>
+            </span>
+          </div>
+
+          <div className={styles.toggleRow}>
+            <label
+              className={styles.toggleCopy}
+              htmlFor="wake-word-training-mode-enabled"
+            >
+              <strong>Режим дообучения wake word</strong>
+              <span>
+                Показывать отдельный шаг оценки срабатывания и записи фрагментов
+                перед голосовой командой.
+              </span>
+            </label>
+            <span className={styles.toggleControl}>
+              <input
+                id="wake-word-training-mode-enabled"
+                className={styles.toggleInput}
+                type="checkbox"
+                checked={workspaceSettings.wakeWordTrainingModeEnabled}
+                disabled={isUpdatingSettings}
+                onChange={(event) => {
+                  void handleWakeWordTrainingModeChange(event.target.checked)
                 }}
               />
               <span className={styles.toggleTrack}>

@@ -29,6 +29,7 @@ public class WakeWordSampleRecorderActivity extends Activity {
 
     private static final int RECORD_AUDIO_REQUEST_CODE = 1709;
     private static final int RECORDING_DURATION_MS = 2_500;
+    private static final String EXTRA_MANAGE_ASSISTANT_SERVICE = "manageAssistantService";
     private static final String EXTRA_MODE = "mode";
     private static final String MODE_FALSE_REJECT = "false_reject";
     private static final String MODE_POSITIVE = "positive";
@@ -51,6 +52,14 @@ public class WakeWordSampleRecorderActivity extends Activity {
     static Intent createFalseRejectIntent(Context context) {
         return new Intent(context, WakeWordSampleRecorderActivity.class)
             .putExtra(EXTRA_MODE, MODE_FALSE_REJECT)
+            .putExtra(EXTRA_MANAGE_ASSISTANT_SERVICE, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+    }
+
+    static Intent createWakeReviewFalseRejectIntent(Context context) {
+        return new Intent(context, WakeWordSampleRecorderActivity.class)
+            .putExtra(EXTRA_MODE, MODE_FALSE_REJECT)
+            .putExtra(EXTRA_MANAGE_ASSISTANT_SERVICE, false)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
     }
 
@@ -165,7 +174,9 @@ public class WakeWordSampleRecorderActivity extends Activity {
         }
         String recordingSpeakerId = speakerId;
 
-        startService(WakeWordService.createStopIntent(this));
+        if (shouldManageAssistantService()) {
+            startService(WakeWordService.createStopIntent(this));
+        }
 
         isRecording = true;
         recordButton.setEnabled(false);
@@ -350,8 +361,12 @@ public class WakeWordSampleRecorderActivity extends Activity {
         return MODE_FALSE_REJECT.equals(mode);
     }
 
+    private boolean shouldManageAssistantService() {
+        return getIntent().getBooleanExtra(EXTRA_MANAGE_ASSISTANT_SERVICE, true);
+    }
+
     private void restartWakeWordServiceIfNeeded() {
-        if (!isFalseRejectMode()) {
+        if (!isFalseRejectMode() || !shouldManageAssistantService()) {
             return;
         }
 

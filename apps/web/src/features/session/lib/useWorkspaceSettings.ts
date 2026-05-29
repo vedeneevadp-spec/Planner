@@ -60,6 +60,8 @@ export function useUpdateWorkspaceSettings() {
                 workspaceSettings: {
                   taskCompletionConfettiEnabled:
                     input.taskCompletionConfettiEnabled,
+                  wakeWordTrainingModeEnabled:
+                    input.wakeWordTrainingModeEnabled,
                 },
               }
             : current,

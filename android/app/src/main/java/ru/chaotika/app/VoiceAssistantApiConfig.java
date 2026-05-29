@@ -5,18 +5,21 @@ final class VoiceAssistantApiConfig {
     final String accessToken;
     final String actorUserId;
     final String apiBaseUrl;
+    final boolean wakeWordTrainingModeEnabled;
     final String workspaceId;
 
     VoiceAssistantApiConfig(
         String apiBaseUrl,
         String accessToken,
         String actorUserId,
-        String workspaceId
+        String workspaceId,
+        boolean wakeWordTrainingModeEnabled
     ) {
         this.apiBaseUrl = normalizeBaseUrl(apiBaseUrl);
         this.accessToken = normalizeNullable(accessToken);
         this.actorUserId = normalizeNullable(actorUserId);
         this.workspaceId = normalizeNullable(workspaceId);
+        this.wakeWordTrainingModeEnabled = wakeWordTrainingModeEnabled;
     }
 
     boolean isUsable() {

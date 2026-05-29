@@ -262,6 +262,7 @@ function createSessionResponse(): SessionResponse {
     workspaceId: 'workspace-1',
     workspaceSettings: {
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [
       {

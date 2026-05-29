@@ -107,6 +107,7 @@ const EXPECTED_POLICY_NAMES = [
   'users_update_owner',
   'workspace_members_select_self',
   'workspaces_select_member',
+  'workspaces_update_settings_admin',
 ]
 
 void describe('Postgres RLS policies', () => {

@@ -37,6 +37,7 @@
     <string name="planner_voice_overlay_listening">Слушаю</string>
     <string name="planner_voice_notification_ready">Команда готова к подтверждению.</string>
     <string name="planner_voice_notification_recording">Слушаю короткую команду.</string>
+    <string name="planner_voice_notification_reviewing">Оцените срабатывание wake-фразы.</string>
     <string name="planner_voice_notification_transcribing">Распознаю команду.</string>
     <string name="planner_voice_notification_stop_action">Стоп</string>
     <string name="planner_voice_notification_test_action">Тест</string>

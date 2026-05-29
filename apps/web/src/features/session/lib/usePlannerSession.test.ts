@@ -417,6 +417,7 @@ function createSessionResponse(input: {
     workspaceId,
     workspaceSettings: {
       taskCompletionConfettiEnabled: true,
+      wakeWordTrainingModeEnabled: false,
     },
     workspaces,
   }

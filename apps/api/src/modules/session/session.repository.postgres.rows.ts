@@ -18,6 +18,7 @@ export interface SessionRow {
   groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
   taskCompletionConfettiEnabled: boolean
+  wakeWordTrainingModeEnabled: boolean
   workspaceId: string
   workspaceKind: WorkspaceKind
   workspaceName: string

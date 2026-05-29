@@ -742,8 +742,14 @@ export function createComponentSchemas(): Record<
         taskCompletionConfettiEnabled: {
           type: 'boolean',
         },
+        wakeWordTrainingModeEnabled: {
+          type: 'boolean',
+        },
       },
-      required: ['taskCompletionConfettiEnabled'],
+      required: [
+        'taskCompletionConfettiEnabled',
+        'wakeWordTrainingModeEnabled',
+      ],
       type: 'object',
     },
     CalendarViewMode: {
@@ -863,8 +869,14 @@ export function createComponentSchemas(): Record<
         taskCompletionConfettiEnabled: {
           type: 'boolean',
         },
+        wakeWordTrainingModeEnabled: {
+          type: 'boolean',
+        },
       },
-      required: ['taskCompletionConfettiEnabled'],
+      required: [
+        'taskCompletionConfettiEnabled',
+        'wakeWordTrainingModeEnabled',
+      ],
       type: 'object',
     },
     UserPreferencesUpdateInput: {

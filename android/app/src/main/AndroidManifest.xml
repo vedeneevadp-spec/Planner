@@ -53,6 +53,13 @@
             android:label="Примеры wake-фразы"
             android:theme="@style/AppTheme" />
 
+        <activity
+            android:name=".WakeWordTriggerReviewActivity"
+            android:exported="false"
+            android:label="Проверка срабатывания"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme" />
+
         <receiver
             android:name=".PlannerWidgetProvider"
             android:exported="false"

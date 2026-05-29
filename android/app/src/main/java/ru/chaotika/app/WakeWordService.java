@@ -22,9 +22,8 @@ public class WakeWordService extends Service {
 
     static final String ACTION_SIMULATE_WAKE_WORD = "ru.chaotika.app.action.SIMULATE_WAKE_WORD";
     static final String ACTION_CAPTURE_COMMAND = "ru.chaotika.app.action.CAPTURE_COMMAND";
-    static final String ACTION_MARK_TRUE_ACCEPT = "ru.chaotika.app.action.MARK_TRUE_ACCEPT";
-    static final String ACTION_MARK_FALSE_ACCEPT = "ru.chaotika.app.action.MARK_FALSE_ACCEPT";
-    static final String ACTION_SKIP_WAKE_FEEDBACK = "ru.chaotika.app.action.SKIP_WAKE_FEEDBACK";
+    static final String ACTION_CONTINUE_AFTER_WAKE_REVIEW = "ru.chaotika.app.action.CONTINUE_AFTER_WAKE_REVIEW";
+    static final String ACTION_CANCEL_WAKE_REVIEW = "ru.chaotika.app.action.CANCEL_WAKE_REVIEW";
     static final String ACTION_START = "ru.chaotika.app.action.START_WAKE_WORD";
     static final String ACTION_STOP = "ru.chaotika.app.action.STOP_WAKE_WORD";
 
@@ -55,16 +54,12 @@ public class WakeWordService extends Service {
         return new Intent(context, WakeWordService.class).setAction(ACTION_CAPTURE_COMMAND);
     }
 
-    static Intent createMarkTrueAcceptIntent(Context context) {
-        return new Intent(context, WakeWordService.class).setAction(ACTION_MARK_TRUE_ACCEPT);
+    static Intent createContinueAfterWakeReviewIntent(Context context) {
+        return new Intent(context, WakeWordService.class).setAction(ACTION_CONTINUE_AFTER_WAKE_REVIEW);
     }
 
-    static Intent createMarkFalseAcceptIntent(Context context) {
-        return new Intent(context, WakeWordService.class).setAction(ACTION_MARK_FALSE_ACCEPT);
-    }
-
-    static Intent createSkipWakeFeedbackIntent(Context context) {
-        return new Intent(context, WakeWordService.class).setAction(ACTION_SKIP_WAKE_FEEDBACK);
+    static Intent createCancelWakeReviewIntent(Context context) {
+        return new Intent(context, WakeWordService.class).setAction(ACTION_CANCEL_WAKE_REVIEW);
     }
 
     @Override
@@ -104,18 +99,13 @@ public class WakeWordService extends Service {
             return START_STICKY;
         }
 
-        if (ACTION_MARK_TRUE_ACCEPT.equals(action)) {
-            savePendingTrainingExample(true);
+        if (ACTION_CONTINUE_AFTER_WAKE_REVIEW.equals(action)) {
+            handleWakeReviewContinue();
             return START_STICKY;
         }
 
-        if (ACTION_MARK_FALSE_ACCEPT.equals(action)) {
-            savePendingTrainingExample(false);
-            return START_STICKY;
-        }
-
-        if (ACTION_SKIP_WAKE_FEEDBACK.equals(action)) {
-            skipPendingTrainingExample();
+        if (ACTION_CANCEL_WAKE_REVIEW.equals(action)) {
+            handleWakeReviewCancel();
             return START_STICKY;
         }
 
@@ -170,14 +160,27 @@ public class WakeWordService extends Service {
     }
 
     private void handleWakeWordDetected(WakeWordDetection detection) {
-        if (state == VoiceAssistantState.RECORDING_COMMAND || state == VoiceAssistantState.TRANSCRIBING) {
+        if (
+            state == VoiceAssistantState.RECORDING_COMMAND ||
+            state == VoiceAssistantState.TRANSCRIBING ||
+            state == VoiceAssistantState.REVIEWING_WAKE_WORD
+        ) {
             return;
         }
 
         wakeWordEngine.stop();
+
+        if (!isWakeWordTrainingModeEnabled()) {
+            WakeWordTrainingExampleStore.clearPending();
+            beginCommandCapture(SttRequest.afterWakeWord());
+            return;
+        }
+
         setState(VoiceAssistantStateMachine.onWakeWordDetected(state));
-        WakeWordTrainingExampleStore.capturePendingIfAllowed(this, detection);
-        beginCommandCapture(SttRequest.afterWakeWord());
+        WakeWordTrainingExampleStore.capturePendingForReview(detection);
+        playActivationFeedback();
+        updateNotification(getString(R.string.planner_voice_notification_reviewing));
+        openWakeWordReview();
     }
 
     private void handleManualCommandCapture() {
@@ -187,6 +190,22 @@ public class WakeWordService extends Service {
 
         wakeWordEngine.stop();
         beginCommandCapture(SttRequest.pushToTalk());
+    }
+
+    private void handleWakeReviewContinue() {
+        if (state == VoiceAssistantState.RECORDING_COMMAND || state == VoiceAssistantState.TRANSCRIBING) {
+            return;
+        }
+
+        wakeWordEngine.stop();
+        beginCommandCapture(SttRequest.afterWakeWord());
+    }
+
+    private void handleWakeReviewCancel() {
+        WakeWordTrainingExampleStore.clearPending();
+        setState(VoiceAssistantState.IDLE);
+        updateNotification(getString(R.string.planner_voice_notification_listening));
+        handler.postDelayed(this::startWakeWordDetection, RESUME_WAKE_WORD_DELAY_MS);
     }
 
     private void beginCommandCapture(SttRequest request) {
@@ -229,34 +248,6 @@ public class WakeWordService extends Service {
         setState(VoiceAssistantState.ERROR);
         updateNotification(getString(R.string.planner_voice_notification_error));
         handler.postDelayed(this::startWakeWordDetection, RESUME_WAKE_WORD_DELAY_MS);
-    }
-
-    private void savePendingTrainingExample(boolean isTrueAccept) {
-        try {
-            String label = isTrueAccept
-                ? WakeWordTrainingExampleStore.LABEL_TRUE_ACCEPT
-                : WakeWordTrainingExampleStore.LABEL_FALSE_ACCEPT;
-            WakeWordTrainingExampleStore.SaveResult result = WakeWordTrainingExampleStore.savePending(this, label);
-
-            if (isTrueAccept) {
-                metricsLogger.trueAcceptReported();
-            } else {
-                metricsLogger.falseAcceptReported();
-            }
-
-            metricsLogger.trainingExampleSaved(result.label);
-            Toast.makeText(this, "Пример wake-фразы сохранен: " + result.label, Toast.LENGTH_SHORT).show();
-        } catch (Exception error) {
-            Toast.makeText(this, "Не удалось сохранить пример wake-фразы.", Toast.LENGTH_SHORT).show();
-        }
-
-        updateNotification(getString(R.string.planner_voice_notification_listening));
-    }
-
-    private void skipPendingTrainingExample() {
-        WakeWordTrainingExampleStore.clearPending();
-        Toast.makeText(this, "Пример пропущен.", Toast.LENGTH_SHORT).show();
-        updateNotification(getString(R.string.planner_voice_notification_listening));
     }
 
     private void stopAssistant() {
@@ -342,24 +333,6 @@ public class WakeWordService extends Service {
             WakeWordTrainingExamplesActivity.createIntent(this),
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
-        PendingIntent trueAcceptPendingIntent = PendingIntent.getService(
-            this,
-            4,
-            createMarkTrueAcceptIntent(this),
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-        PendingIntent falseAcceptPendingIntent = PendingIntent.getService(
-            this,
-            5,
-            createMarkFalseAcceptIntent(this),
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-        PendingIntent skipWakeFeedbackPendingIntent = PendingIntent.getService(
-            this,
-            7,
-            createSkipWakeFeedbackIntent(this),
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
         Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             ? new Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
             : new Notification.Builder(this);
@@ -395,13 +368,6 @@ public class WakeWordService extends Service {
             );
         }
 
-        if (WakeWordTrainingExampleStore.isCollectionEnabled(this) && WakeWordTrainingExampleStore.hasPendingExample()) {
-            builder
-                .addAction(android.R.drawable.checkbox_on_background, "Верно", trueAcceptPendingIntent)
-                .addAction(android.R.drawable.ic_delete, "Ложно", falseAcceptPendingIntent)
-                .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Пропустить", skipWakeFeedbackPendingIntent);
-        }
-
         return builder.build();
     }
 
@@ -431,6 +397,16 @@ public class WakeWordService extends Service {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
 
         startActivity(intent);
+    }
+
+    private void openWakeWordReview() {
+        startActivity(WakeWordTriggerReviewActivity.createIntent(this));
+    }
+
+    private boolean isWakeWordTrainingModeEnabled() {
+        VoiceAssistantApiConfig config = PlannerVoiceAssistantStorage.readApiConfig(this);
+
+        return config != null && config.wakeWordTrainingModeEnabled;
     }
 
     private void playActivationFeedback() {

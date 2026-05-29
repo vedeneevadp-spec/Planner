@@ -102,11 +102,30 @@ public class WakeWordEngineTest {
     }
 
     @Test
-    public void voiceAssistantStateMachine_movesWakeListeningToWakeDetected() {
+    public void voiceAssistantStateMachine_movesWakeListeningToWakeReview() {
         assertEquals(
-            VoiceAssistantState.WAKE_WORD_DETECTED,
+            VoiceAssistantState.REVIEWING_WAKE_WORD,
             VoiceAssistantStateMachine.onWakeWordDetected(VoiceAssistantState.LISTENING_FOR_WAKE_WORD)
         );
+    }
+
+    @Test
+    public void trainingExampleStore_capturesPendingReviewSampleWithoutOptIn() {
+        WakeWordTrainingExampleStore.clearPending();
+        WakeWordDetection detection = new WakeWordDetection(
+            "haotika",
+            "Хаотика",
+            0.8f,
+            10L,
+            new short[] { 100, 200, 300 },
+            16_000,
+            0.02f
+        );
+
+        WakeWordTrainingExampleStore.capturePendingForReview(detection);
+
+        assertTrue(WakeWordTrainingExampleStore.hasPendingExample());
+        WakeWordTrainingExampleStore.clearPending();
     }
 
     @Test

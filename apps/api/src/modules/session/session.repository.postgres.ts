@@ -643,19 +643,28 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async updateWorkspaceSettings(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
     input: WorkspaceSettingsUpdateInput,
   ): Promise<WorkspaceSettings> {
-    const updatedWorkspace = await this.db
-      .updateTable('app.workspaces')
-      .set({
-        task_completion_confetti_enabled: input.taskCompletionConfettiEnabled,
-      })
-      .where('id', '=', session.workspaceId)
-      .where('deleted_at', 'is', null)
-      .returning(
-        'task_completion_confetti_enabled as taskCompletionConfettiEnabled',
-      )
-      .executeTakeFirst()
+    const updatedWorkspace = await withWriteTransaction(
+      this.db,
+      authContext,
+      (trx) =>
+        trx
+          .updateTable('app.workspaces')
+          .set({
+            task_completion_confetti_enabled:
+              input.taskCompletionConfettiEnabled,
+            wake_word_training_mode_enabled: input.wakeWordTrainingModeEnabled,
+          })
+          .where('id', '=', session.workspaceId)
+          .where('deleted_at', 'is', null)
+          .returning([
+            'task_completion_confetti_enabled as taskCompletionConfettiEnabled',
+            'wake_word_training_mode_enabled as wakeWordTrainingModeEnabled',
+          ])
+          .executeTakeFirst(),
+    )
 
     if (!updatedWorkspace) {
       throw new HttpError(
@@ -668,6 +677,7 @@ export class PostgresSessionRepository implements SessionRepository {
     return {
       taskCompletionConfettiEnabled:
         updatedWorkspace.taskCompletionConfettiEnabled,
+      wakeWordTrainingModeEnabled: updatedWorkspace.wakeWordTrainingModeEnabled,
     }
   }
 
@@ -1129,6 +1139,7 @@ export class PostgresSessionRepository implements SessionRepository {
       workspaceId: session.workspaceId,
       workspaceSettings: {
         taskCompletionConfettiEnabled: session.taskCompletionConfettiEnabled,
+        wakeWordTrainingModeEnabled: session.wakeWordTrainingModeEnabled,
       },
       workspaces,
     }

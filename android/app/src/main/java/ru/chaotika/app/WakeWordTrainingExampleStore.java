@@ -43,6 +43,15 @@ final class WakeWordTrainingExampleStore {
             return;
         }
 
+        capturePendingForReview(detection);
+    }
+
+    static void capturePendingForReview(WakeWordDetection detection) {
+        if (detection == null || !detection.hasAudioSamples()) {
+            clearPending();
+            return;
+        }
+
         synchronized (LOCK) {
             pendingExample = new PendingWakeWordExample(
                 detection.detectedAtEpochMillis,

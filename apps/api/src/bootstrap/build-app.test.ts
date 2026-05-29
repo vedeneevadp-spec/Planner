@@ -136,6 +136,7 @@ const guestSessionRepository: SessionRepository = {
       workspaceId: 'workspace-guest',
       workspaceSettings: {
         taskCompletionConfettiEnabled: true,
+        wakeWordTrainingModeEnabled: false,
       },
       workspaces: [
         {
@@ -468,6 +469,7 @@ void describe('buildApiApp', () => {
       method: 'PATCH',
       payload: {
         taskCompletionConfettiEnabled: false,
+        wakeWordTrainingModeEnabled: true,
       },
       url: '/api/v1/admin/workspace-settings',
     })
@@ -475,6 +477,7 @@ void describe('buildApiApp', () => {
     assert.equal(response.statusCode, 200)
     assert.deepEqual(workspaceSettingsSchema.parse(response.json()), {
       taskCompletionConfettiEnabled: false,
+      wakeWordTrainingModeEnabled: true,
     })
 
     const sessionResponse = await app.inject({
@@ -491,6 +494,11 @@ void describe('buildApiApp', () => {
       sessionResponseSchema.parse(sessionResponse.json()).workspaceSettings
         .taskCompletionConfettiEnabled,
       false,
+    )
+    assert.equal(
+      sessionResponseSchema.parse(sessionResponse.json()).workspaceSettings
+        .wakeWordTrainingModeEnabled,
+      true,
     )
   })
 
@@ -579,6 +587,7 @@ void describe('buildApiApp', () => {
       method: 'PATCH',
       payload: {
         taskCompletionConfettiEnabled: false,
+        wakeWordTrainingModeEnabled: false,
       },
       url: '/api/v1/admin/workspace-settings',
     })

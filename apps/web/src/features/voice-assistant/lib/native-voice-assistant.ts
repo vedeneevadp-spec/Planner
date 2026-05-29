@@ -10,6 +10,7 @@ export interface NativeVoiceAssistantApiConfig {
   accessToken?: string | undefined
   actorUserId: string
   apiBaseUrl: string
+  wakeWordTrainingModeEnabled?: boolean | undefined
   workspaceId: string
 }
 

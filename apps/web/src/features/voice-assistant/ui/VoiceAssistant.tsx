@@ -27,14 +27,8 @@ import {
   addAndroidVoiceAssistantResumeListener,
   captureAndroidVoiceCommand,
   consumePendingAndroidVoiceCommand,
-  getAndroidWakeWordTrainingCollectionStatus,
   isAndroidVoiceAssistantRuntime,
   type NativeVoiceCommand,
-  openAndroidWakeWordFalseRejectRecorder,
-  reportAndroidWakeWordFalseAccept,
-  reportAndroidWakeWordTrueAccept,
-  setAndroidWakeWordTrainingCollectionEnabled,
-  skipAndroidWakeWordFeedback,
   startAndroidVoiceAssistant,
   stopAndroidVoiceAssistant,
 } from '../lib/native-voice-assistant'
@@ -52,20 +46,6 @@ import styles from './VoiceAssistant.module.css'
 
 const AUTO_CLOSE_DELAY_MS = 2200
 
-type WakeWordFeedbackState =
-  | { status: 'idle' }
-  | { status: 'saving' }
-  | { message: string; status: 'saved' }
-  | { message: string; status: 'error' }
-
-type WakeWordFeedbackDecision = 'false_accept' | 'skip' | 'true_accept'
-
-interface WakeWordSampleCollectionState {
-  isEnabled: boolean
-  isLoading: boolean
-  message?: string
-}
-
 export function VoiceAssistant() {
   const planner = usePlanner()
   const { apiConfig, session } = useSessionFeatureReadiness()
@@ -76,13 +56,6 @@ export function VoiceAssistant() {
     initialVoiceAssistantState,
   )
   const [isCardVisible, setIsCardVisible] = useState(false)
-  const [wakeWordFeedback, setWakeWordFeedback] =
-    useState<WakeWordFeedbackState>({ status: 'idle' })
-  const [wakeWordSampleCollection, setWakeWordSampleCollection] =
-    useState<WakeWordSampleCollectionState>({
-      isEnabled: false,
-      isLoading: false,
-    })
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
   const autoCloseTimerRef = useRef<number | null>(null)
@@ -157,11 +130,6 @@ export function VoiceAssistant() {
       const normalizedTranscript = transcript.trim()
 
       setIsCardVisible(true)
-      setWakeWordFeedback({ status: 'idle' })
-      setWakeWordSampleCollection((current) => ({
-        isEnabled: current.isEnabled,
-        isLoading: source === 'android_wake_word',
-      }))
 
       if (!normalizedTranscript) {
         dispatch({
@@ -195,99 +163,6 @@ export function VoiceAssistant() {
       }
     },
     [parser, planner.spheres, runIntent, session],
-  )
-
-  const submitWakeWordFeedback = useCallback(
-    async (decision: WakeWordFeedbackDecision) => {
-      setWakeWordFeedback({ status: 'saving' })
-
-      try {
-        const result =
-          decision === 'true_accept'
-            ? await reportAndroidWakeWordTrueAccept()
-            : decision === 'false_accept'
-              ? await reportAndroidWakeWordFalseAccept()
-              : await skipAndroidWakeWordFeedback()
-
-        setWakeWordFeedback({
-          message:
-            decision === 'skip'
-              ? 'Пропущено, пример не сохранен.'
-              : getWakeWordFeedbackMessage(result?.sampleSaved ?? false),
-          status: 'saved',
-        })
-        if (result) {
-          setWakeWordSampleCollection((current) => ({
-            ...current,
-            isEnabled: result.collectionEnabled,
-            isLoading: false,
-          }))
-        }
-      } catch (error) {
-        setWakeWordFeedback({
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Не удалось сохранить оценку срабатывания.',
-          status: 'error',
-        })
-      }
-    },
-    [],
-  )
-
-  const openWakeWordSampleRecorder = useCallback(async () => {
-    try {
-      const status = await openAndroidWakeWordFalseRejectRecorder()
-
-      setWakeWordSampleCollection((current) => ({
-        ...current,
-        isEnabled: status?.isEnabled ?? current.isEnabled,
-        isLoading: false,
-        message: 'Открыла запись примера.',
-      }))
-    } catch (error) {
-      setWakeWordSampleCollection((current) => ({
-        ...current,
-        isLoading: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Не удалось открыть запись примера.',
-      }))
-    }
-  }, [])
-
-  const updateWakeWordSampleCollection = useCallback(
-    async (isEnabled: boolean) => {
-      setWakeWordSampleCollection({
-        isEnabled,
-        isLoading: true,
-      })
-
-      try {
-        const status =
-          await setAndroidWakeWordTrainingCollectionEnabled(isEnabled)
-
-        setWakeWordSampleCollection({
-          isEnabled: status?.isEnabled ?? isEnabled,
-          isLoading: false,
-          message: status?.isEnabled
-            ? 'Сохранение аудио включено.'
-            : 'Сохранение аудио выключено.',
-        })
-      } catch (error) {
-        setWakeWordSampleCollection((current) => ({
-          ...current,
-          isLoading: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Не удалось изменить согласие на сохранение аудио.',
-        }))
-      }
-    },
-    [],
   )
 
   const consumePendingAndroidCommand = useCallback(async () => {
@@ -352,7 +227,11 @@ export function VoiceAssistant() {
       return undefined
     }
 
-    void startAndroidVoiceAssistant(apiConfig).catch((error) => {
+    void startAndroidVoiceAssistant({
+      ...apiConfig,
+      wakeWordTrainingModeEnabled:
+        session?.workspaceSettings.wakeWordTrainingModeEnabled ?? false,
+    }).catch((error) => {
       console.warn('Failed to start Android voice assistant.', error)
     })
     void consumePendingCommandIfMounted()
@@ -380,60 +259,15 @@ export function VoiceAssistant() {
         void resumeHandle.remove()
       }
     }
-  }, [apiConfig, consumePendingAndroidCommand, isVoiceEnabled])
-
-  useEffect(() => {
-    if (!isCardVisible || getStateSource(state) !== 'android_wake_word') {
-      return undefined
-    }
-
-    let isDisposed = false
-
-    setWakeWordSampleCollection((current) => ({
-      isEnabled: current.isEnabled,
-      isLoading: true,
-    }))
-
-    void getAndroidWakeWordTrainingCollectionStatus()
-      .then((status) => {
-        if (isDisposed || !status) {
-          return
-        }
-
-        setWakeWordSampleCollection({
-          isEnabled: status.isEnabled,
-          isLoading: false,
-        })
-      })
-      .catch((error) => {
-        if (isDisposed) {
-          return
-        }
-
-        setWakeWordSampleCollection((current) => ({
-          ...current,
-          isLoading: false,
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Не удалось получить статус сохранения аудио.',
-        }))
-      })
-
-    return () => {
-      isDisposed = true
-    }
-  }, [isCardVisible, state])
+  }, [
+    apiConfig,
+    consumePendingAndroidCommand,
+    isVoiceEnabled,
+    session?.workspaceSettings.wakeWordTrainingModeEnabled,
+  ])
 
   useEffect(() => {
     if (state.status !== 'completed') {
-      return undefined
-    }
-
-    if (
-      getStateSource(state) === 'android_wake_word' &&
-      wakeWordFeedback.status !== 'saved'
-    ) {
       return undefined
     }
 
@@ -448,7 +282,7 @@ export function VoiceAssistant() {
         autoCloseTimerRef.current = null
       }
     }
-  }, [state, wakeWordFeedback.status])
+  }, [state])
 
   async function startVoiceInput() {
     if (!isVoiceEnabled) {
@@ -528,11 +362,6 @@ export function VoiceAssistant() {
 
   function closeCard() {
     setIsCardVisible(false)
-    setWakeWordFeedback({ status: 'idle' })
-    setWakeWordSampleCollection({
-      isEnabled: wakeWordSampleCollection.isEnabled,
-      isLoading: false,
-    })
     dispatch({ type: 'cancelled' })
   }
 
@@ -558,16 +387,6 @@ export function VoiceAssistant() {
       {isCardVisible ? (
         <VoiceAssistantCard
           state={state}
-          wakeWordFeedback={
-            getStateSource(state) === 'android_wake_word'
-              ? wakeWordFeedback
-              : null
-          }
-          wakeWordSampleCollection={
-            getStateSource(state) === 'android_wake_word'
-              ? wakeWordSampleCollection
-              : null
-          }
           onClose={closeCard}
           onConfirm={(intent) => {
             void runIntent(intent, getStateSource(state))
@@ -578,15 +397,6 @@ export function VoiceAssistant() {
               getStateSource(state) ?? 'web_microphone',
             )
           }}
-          onSampleCollectionChange={(isEnabled) => {
-            void updateWakeWordSampleCollection(isEnabled)
-          }}
-          onWakeWordSampleRecord={() => {
-            void openWakeWordSampleRecorder()
-          }}
-          onWakeWordFeedback={(decision) => {
-            void submitWakeWordFeedback(decision)
-          }}
         />
       ) : null}
     </>
@@ -595,26 +405,16 @@ export function VoiceAssistant() {
 
 interface VoiceAssistantCardProps {
   state: VoiceAssistantState
-  wakeWordFeedback: WakeWordFeedbackState | null
-  wakeWordSampleCollection: WakeWordSampleCollectionState | null
   onClose: () => void
   onConfirm: (intent: PlannerIntent) => void
   onEditTranscript: (transcript: string) => void
-  onSampleCollectionChange: (isEnabled: boolean) => void
-  onWakeWordSampleRecord: () => void
-  onWakeWordFeedback: (decision: WakeWordFeedbackDecision) => void
 }
 
 function VoiceAssistantCard({
   state,
-  wakeWordFeedback,
-  wakeWordSampleCollection,
   onClose,
   onConfirm,
   onEditTranscript,
-  onSampleCollectionChange,
-  onWakeWordSampleRecord,
-  onWakeWordFeedback,
 }: VoiceAssistantCardProps) {
   const transcript = 'transcript' in state ? state.transcript : ''
   const [editState, setEditState] = useState<{
@@ -638,9 +438,6 @@ function VoiceAssistantCard({
     intent.needsConfirmation &&
     isExecutablePlannerIntent(intent)
   const statusLabel = getStatusLabel(state.status)
-  const isWakeWordFeedbackDisabled =
-    wakeWordFeedback?.status === 'saving' ||
-    wakeWordFeedback?.status === 'saved'
 
   return (
     <section
@@ -763,84 +560,6 @@ function VoiceAssistantCard({
 
       {intent?.clarificationQuestion ? (
         <p className={styles.clarification}>{intent.clarificationQuestion}</p>
-      ) : null}
-
-      {wakeWordFeedback ? (
-        <div className={styles.wakeFeedback}>
-          {wakeWordSampleCollection ? (
-            <label className={styles.sampleConsent}>
-              <input
-                type="checkbox"
-                checked={wakeWordSampleCollection.isEnabled}
-                disabled={
-                  wakeWordSampleCollection.isLoading ||
-                  wakeWordFeedback.status === 'saving'
-                }
-                onChange={(event) =>
-                  onSampleCollectionChange(event.currentTarget.checked)
-                }
-              />
-              <span>Разрешаю сохранять короткие аудио-примеры wake-фразы</span>
-            </label>
-          ) : null}
-          <p className={styles.wakeFeedbackQuestion}>
-            Это было правильное срабатывание?
-          </p>
-          <div className={styles.wakeFeedbackActions}>
-            <button
-              className={styles.feedbackButton}
-              type="button"
-              disabled={isWakeWordFeedbackDisabled}
-              onClick={() => onWakeWordFeedback('true_accept')}
-            >
-              <CheckIcon size={16} strokeWidth={2.15} />
-              <span>Верно</span>
-            </button>
-            <button
-              className={styles.feedbackButton}
-              type="button"
-              disabled={isWakeWordFeedbackDisabled}
-              onClick={() => onWakeWordFeedback('false_accept')}
-            >
-              <CloseIcon size={16} strokeWidth={2.15} />
-              <span>Ложно</span>
-            </button>
-            <button
-              className={styles.feedbackButton}
-              type="button"
-              disabled={isWakeWordFeedbackDisabled}
-              onClick={() => onWakeWordFeedback('skip')}
-            >
-              <span>Пропустить</span>
-            </button>
-            <button
-              className={styles.feedbackButton}
-              type="button"
-              onClick={onWakeWordSampleRecord}
-            >
-              <span>Записать</span>
-            </button>
-          </div>
-          {wakeWordFeedback.status === 'saving' ? (
-            <p className={styles.wakeFeedbackMessage}>Сохраняю оценку...</p>
-          ) : null}
-          {wakeWordSampleCollection?.message ? (
-            <p className={styles.wakeFeedbackMessage}>
-              {wakeWordSampleCollection.message}
-            </p>
-          ) : null}
-          {wakeWordFeedback.status === 'saved' ||
-          wakeWordFeedback.status === 'error' ? (
-            <p
-              className={cx(
-                styles.wakeFeedbackMessage,
-                wakeWordFeedback.status === 'error' && styles.wakeFeedbackError,
-              )}
-            >
-              {wakeWordFeedback.message}
-            </p>
-          ) : null}
-        </div>
       ) : null}
 
       <div className={styles.actions}>
@@ -982,12 +701,4 @@ function getAndroidVoiceCommandSource(
   }
 
   return wasStartedByButton ? 'android_microphone' : 'android_wake_word'
-}
-
-function getWakeWordFeedbackMessage(sampleSaved: boolean): string {
-  if (sampleSaved) {
-    return 'Спасибо, пример сохранен для обучения.'
-  }
-
-  return 'Спасибо, оценка срабатывания учтена.'
 }

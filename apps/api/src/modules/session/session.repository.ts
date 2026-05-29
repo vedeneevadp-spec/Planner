@@ -79,6 +79,7 @@ export interface SessionRepository {
   ): Promise<AdminUserRecord>
   updateWorkspaceSettings(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
     input: WorkspaceSettingsUpdateInput,
   ): Promise<WorkspaceSettings>
   updateUserPreferences(

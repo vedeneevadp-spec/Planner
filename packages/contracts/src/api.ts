@@ -164,6 +164,7 @@ export const sessionWorkspaceMembershipSchema = sessionWorkspaceSchema.extend({
 
 export const workspaceSettingsSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
+  wakeWordTrainingModeEnabled: z.boolean().default(false),
 })
 
 export const calendarViewModeSchema = z.enum([
@@ -276,6 +277,7 @@ export const updateSharedWorkspaceInputSchema = z.object({
 
 export const workspaceSettingsUpdateInputSchema = z.object({
   taskCompletionConfettiEnabled: z.boolean(),
+  wakeWordTrainingModeEnabled: z.boolean(),
 })
 
 export const userPreferencesUpdateInputSchema = z
