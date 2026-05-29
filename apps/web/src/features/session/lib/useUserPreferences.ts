@@ -61,6 +61,9 @@ export function useUpdateUserPreferences() {
                     ? { calendarViewMode: input.calendarViewMode }
                     : {}),
                   ...(input.energyMode ? { energyMode: input.energyMode } : {}),
+                  ...(input.voiceAssistantEnabled !== undefined
+                    ? { voiceAssistantEnabled: input.voiceAssistantEnabled }
+                    : {}),
                 },
               }
             : current,

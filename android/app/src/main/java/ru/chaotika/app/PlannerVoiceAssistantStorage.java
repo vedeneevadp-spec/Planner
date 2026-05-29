@@ -12,9 +12,14 @@ import org.json.JSONObject;
 final class PlannerVoiceAssistantStorage {
 
     private static final String API_CONFIG_KEY = "planner.voice.api-config";
+    private static final String BACKGROUND_WAKE_WORD_ENABLED_KEY = "planner.voice.background-wake-word-enabled";
     private static final String PENDING_COMMAND_KEY = "planner.voice.pending-command";
     private static final String PREFERENCES_NAME = "CapacitorStorage";
     private static final String STATE_KEY = "planner.voice.state";
+    private static final String VOICE_CUES_ENABLED_KEY = "planner.voice.voice-cues-enabled";
+    private static final String WAKE_WORD_ENABLED_KEY = "planner.voice.wake-word-enabled";
+    private static final String WAKE_WORD_REVIEW_MODE_ENABLED_KEY = "planner.voice.wake-word-review-mode-enabled";
+    private static final String WAKE_WORD_SENSITIVITY_KEY = "planner.voice.wake-word-sensitivity";
 
     private PlannerVoiceAssistantStorage() {}
 
@@ -24,6 +29,46 @@ final class PlannerVoiceAssistantStorage {
 
     static String readState(Context context) {
         return getPreferences(context).getString(STATE_KEY, VoiceAssistantState.IDLE.value);
+    }
+
+    static void storeWakeWordEnabled(Context context, boolean isEnabled) {
+        getPreferences(context).edit().putBoolean(WAKE_WORD_ENABLED_KEY, isEnabled).apply();
+    }
+
+    static boolean readWakeWordEnabled(Context context) {
+        return getPreferences(context).getBoolean(WAKE_WORD_ENABLED_KEY, false);
+    }
+
+    static void storeBackgroundWakeWordEnabled(Context context, boolean isEnabled) {
+        getPreferences(context).edit().putBoolean(BACKGROUND_WAKE_WORD_ENABLED_KEY, isEnabled).apply();
+    }
+
+    static boolean readBackgroundWakeWordEnabled(Context context) {
+        return getPreferences(context).getBoolean(BACKGROUND_WAKE_WORD_ENABLED_KEY, false);
+    }
+
+    static void storeVoiceCuesEnabled(Context context, boolean isEnabled) {
+        getPreferences(context).edit().putBoolean(VOICE_CUES_ENABLED_KEY, isEnabled).apply();
+    }
+
+    static boolean readVoiceCuesEnabled(Context context) {
+        return getPreferences(context).getBoolean(VOICE_CUES_ENABLED_KEY, true);
+    }
+
+    static void storeWakeWordReviewModeEnabled(Context context, boolean isEnabled) {
+        getPreferences(context).edit().putBoolean(WAKE_WORD_REVIEW_MODE_ENABLED_KEY, isEnabled).apply();
+    }
+
+    static boolean readWakeWordReviewModeEnabled(Context context) {
+        return getPreferences(context).getBoolean(WAKE_WORD_REVIEW_MODE_ENABLED_KEY, false);
+    }
+
+    static void storeWakeWordSensitivity(Context context, float sensitivity) {
+        getPreferences(context).edit().putFloat(WAKE_WORD_SENSITIVITY_KEY, clampWakeWordSensitivity(sensitivity)).apply();
+    }
+
+    static float readWakeWordSensitivity(Context context) {
+        return getPreferences(context).getFloat(WAKE_WORD_SENSITIVITY_KEY, WakeWordConfig.haotika().threshold);
     }
 
     static void storeApiConfig(Context context, VoiceAssistantApiConfig config) {
@@ -158,6 +203,14 @@ final class PlannerVoiceAssistantStorage {
 
     private static SharedPreferences getPreferences(Context context) {
         return context.getApplicationContext().getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
+    }
+
+    private static float clampWakeWordSensitivity(float sensitivity) {
+        if (Float.isNaN(sensitivity) || Float.isInfinite(sensitivity)) {
+            return WakeWordConfig.haotika().threshold;
+        }
+
+        return Math.max(0.3f, Math.min(0.99f, sensitivity));
     }
 
     private static String normalizeTranscript(String transcript) {

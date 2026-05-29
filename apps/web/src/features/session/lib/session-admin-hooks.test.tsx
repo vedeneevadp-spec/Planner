@@ -154,6 +154,7 @@ describe('session admin hooks', () => {
       jsonResponse({
         calendarViewMode: 'month',
         energyMode: 'maximum',
+        voiceAssistantEnabled: false,
       }),
     )
 
@@ -172,6 +173,7 @@ describe('session admin hooks', () => {
       ).resolves.toEqual({
         calendarViewMode: 'month',
         energyMode: 'maximum',
+        voiceAssistantEnabled: false,
       })
     })
 
@@ -186,6 +188,7 @@ describe('session admin hooks', () => {
     expect(cachedSession?.userPreferences).toEqual({
       calendarViewMode: 'month',
       energyMode: 'maximum',
+      voiceAssistantEnabled: false,
     })
   })
 
@@ -388,6 +391,7 @@ function createSessionResponse(): SessionResponse {
     userPreferences: {
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
     },
     workspace: {
       id: 'workspace-1',

@@ -244,6 +244,7 @@ export interface AppUsersTable {
   timezone: string
   updated_at: Generated<TimestampColumn>
   version: Generated<number>
+  voice_assistant_enabled: Generated<boolean>
 }
 
 export interface AppAuthCredentialsTable {

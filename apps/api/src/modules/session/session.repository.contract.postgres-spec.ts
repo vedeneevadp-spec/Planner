@@ -208,6 +208,7 @@ void test('PostgresSessionRepository updates user preferences under runtime RLS'
     assert.deepEqual(preferences, {
       calendarViewMode: 'week',
       energyMode: 'minimum',
+      voiceAssistantEnabled: true,
     })
     assert.equal(updatedSession.userPreferences.energyMode, 'minimum')
   } finally {

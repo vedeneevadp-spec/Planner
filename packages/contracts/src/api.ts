@@ -177,6 +177,7 @@ export const calendarViewModeSchema = z.enum([
 export const userPreferencesSchema = z.object({
   calendarViewMode: calendarViewModeSchema,
   energyMode: energyModeSchema,
+  voiceAssistantEnabled: z.boolean().default(true),
 })
 
 export const sessionResponseSchema = z.object({
@@ -284,9 +285,15 @@ export const userPreferencesUpdateInputSchema = z
   .object({
     calendarViewMode: calendarViewModeSchema.optional(),
     energyMode: energyModeSchema.optional(),
+    voiceAssistantEnabled: z.boolean().optional(),
   })
   .refine(
-    (value) => Boolean(value.calendarViewMode || value.energyMode),
+    (value) =>
+      Boolean(
+        value.calendarViewMode ||
+        value.energyMode ||
+        value.voiceAssistantEnabled !== undefined,
+      ),
     'At least one preference must be updated.',
   )
 

@@ -213,6 +213,7 @@ function createSessionResponse(input: {
     userPreferences: {
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
     },
     workspace,
     workspaceId,

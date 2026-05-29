@@ -11,6 +11,7 @@ export interface SessionRow {
   actorAvatarUrl: string | null
   calendarViewMode: CalendarViewMode
   energyMode: EnergyMode
+  voiceAssistantEnabled: boolean
   actorDisplayName: string
   actorEmail: string
   actorId: string
@@ -96,6 +97,7 @@ export interface AppActorRow {
   avatarUrl: string | null
   calendarViewMode: CalendarViewMode
   energyMode: EnergyMode
+  voiceAssistantEnabled: boolean
   displayName: string
   email: string
   id: string

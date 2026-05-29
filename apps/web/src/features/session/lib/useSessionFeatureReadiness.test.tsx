@@ -150,6 +150,7 @@ function createSessionResponse(): SessionResponse {
     userPreferences: {
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
     },
     workspace: {
       id: 'workspace-1',

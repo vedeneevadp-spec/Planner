@@ -69,6 +69,7 @@ interface MemoryUser extends AdminUserRecord {
   avatarUrl: string | null
   calendarViewMode: CalendarViewMode
   energyMode: EnergyMode
+  voiceAssistantEnabled: boolean
 }
 
 const DEFAULT_ACTOR_ID = '11111111-1111-4111-8111-111111111111'
@@ -92,6 +93,7 @@ export class MemorySessionRepository implements SessionRepository {
       avatarUrl: null,
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
       displayName: 'Tikondra',
       email: 'dev@planner.local',
       id: DEFAULT_ACTOR_ID,
@@ -104,6 +106,7 @@ export class MemorySessionRepository implements SessionRepository {
       avatarUrl: null,
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
       displayName: 'Planner Reader',
       email: 'reader@planner.local',
       id: '44444444-4444-4444-8444-444444444444',
@@ -679,7 +682,11 @@ export class MemorySessionRepository implements SessionRepository {
   updateUserPreferences(
     session: SessionSnapshot,
     _authContext: AuthenticatedRequestContext | null,
-    input: { calendarViewMode?: CalendarViewMode; energyMode?: EnergyMode },
+    input: {
+      calendarViewMode?: CalendarViewMode
+      energyMode?: EnergyMode
+      voiceAssistantEnabled?: boolean
+    },
   ) {
     const user = this.getUserById(session.actorUserId)
 
@@ -693,11 +700,14 @@ export class MemorySessionRepository implements SessionRepository {
 
     user.calendarViewMode = input.calendarViewMode ?? user.calendarViewMode
     user.energyMode = input.energyMode ?? user.energyMode
+    user.voiceAssistantEnabled =
+      input.voiceAssistantEnabled ?? user.voiceAssistantEnabled
     user.updatedAt = new Date().toISOString()
 
     return Promise.resolve({
       calendarViewMode: user.calendarViewMode,
       energyMode: user.energyMode,
+      voiceAssistantEnabled: user.voiceAssistantEnabled,
     })
   }
 
@@ -787,6 +797,7 @@ export class MemorySessionRepository implements SessionRepository {
       userPreferences: {
         calendarViewMode: actor.calendarViewMode,
         energyMode: actor.energyMode,
+        voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
       workspace: {
         id: workspace.id,
@@ -867,6 +878,7 @@ export class MemorySessionRepository implements SessionRepository {
       userPreferences: {
         calendarViewMode: actor.calendarViewMode,
         energyMode: actor.energyMode,
+        voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
       workspace: {
         id: fallbackWorkspace.id,
@@ -911,6 +923,7 @@ export class MemorySessionRepository implements SessionRepository {
       avatarUrl: null,
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
       email: normalizedEmail,
       id: actorUserId,
@@ -936,6 +949,7 @@ export class MemorySessionRepository implements SessionRepository {
       avatarUrl: null,
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
       displayName: 'Planner User',
       email: `${actorUserId}@planner.local`,
       id: actorUserId,

@@ -769,8 +769,11 @@ export function createComponentSchemas(): Record<
         energyMode: {
           $ref: '#/components/schemas/EnergyMode',
         },
+        voiceAssistantEnabled: {
+          type: 'boolean',
+        },
       },
-      required: ['calendarViewMode', 'energyMode'],
+      required: ['calendarViewMode', 'energyMode', 'voiceAssistantEnabled'],
       type: 'object',
     },
     WorkspaceRole: {
@@ -887,6 +890,9 @@ export function createComponentSchemas(): Record<
         },
         energyMode: {
           $ref: '#/components/schemas/EnergyMode',
+        },
+        voiceAssistantEnabled: {
+          type: 'boolean',
         },
       },
       type: 'object',

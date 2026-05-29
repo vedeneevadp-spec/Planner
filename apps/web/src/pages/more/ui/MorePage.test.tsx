@@ -64,6 +64,12 @@ vi.mock('@/features/planner', () => ({
   usePlanner: () => mocks.usePlanner(),
 }))
 
+vi.mock('@/features/voice-assistant', () => ({
+  VoiceAssistantSettingsPanel: () => (
+    <section aria-label="Голосовой помощник" />
+  ),
+}))
+
 vi.mock('@/features/session', () => ({
   getCreateSharedWorkspaceErrorMessage: () =>
     'Не удалось создать пространство.',

@@ -684,7 +684,11 @@ export class PostgresSessionRepository implements SessionRepository {
   async updateUserPreferences(
     session: SessionSnapshot,
     authContext: AuthenticatedRequestContext | null,
-    input: { calendarViewMode?: CalendarViewMode; energyMode?: EnergyMode },
+    input: {
+      calendarViewMode?: CalendarViewMode
+      energyMode?: EnergyMode
+      voiceAssistantEnabled?: boolean
+    },
   ) {
     if (authContext) {
       const preferences = await withWriteTransaction(
@@ -694,13 +698,16 @@ export class PostgresSessionRepository implements SessionRepository {
           const result = await sql<{
             calendarViewMode: CalendarViewMode
             energyMode: EnergyMode
+            voiceAssistantEnabled: boolean
           }>`
             select
               calendar_view_mode as "calendarViewMode",
-              energy_mode as "energyMode"
+              energy_mode as "energyMode",
+              voice_assistant_enabled as "voiceAssistantEnabled"
             from app.update_current_user_preferences(
               ${input.calendarViewMode ?? null},
-              ${input.energyMode ?? null}
+              ${input.energyMode ?? null},
+              ${input.voiceAssistantEnabled ?? null}
             )
           `.execute(trx)
 
@@ -725,6 +732,9 @@ export class PostgresSessionRepository implements SessionRepository {
         ? { calendar_view_mode: input.calendarViewMode }
         : {}),
       ...(input.energyMode ? { energy_mode: input.energyMode } : {}),
+      ...(input.voiceAssistantEnabled !== undefined
+        ? { voice_assistant_enabled: input.voiceAssistantEnabled }
+        : {}),
     }
     const updatedPreferences = await this.db
       .updateTable('app.users')
@@ -734,6 +744,7 @@ export class PostgresSessionRepository implements SessionRepository {
       .returning([
         'calendar_view_mode as calendarViewMode',
         'energy_mode as energyMode',
+        'voice_assistant_enabled as voiceAssistantEnabled',
       ])
       .executeTakeFirst()
 
@@ -748,6 +759,7 @@ export class PostgresSessionRepository implements SessionRepository {
     return {
       calendarViewMode: updatedPreferences.calendarViewMode,
       energyMode: updatedPreferences.energyMode,
+      voiceAssistantEnabled: updatedPreferences.voiceAssistantEnabled,
     }
   }
 
@@ -996,6 +1008,7 @@ export class PostgresSessionRepository implements SessionRepository {
         avatarUrl: null,
         calendarViewMode: 'week',
         energyMode: 'normal',
+        voiceAssistantEnabled: true,
         displayName: this.resolveAuthDisplayName(authContext),
         email: this.resolveAuthEmail(authContext),
         id: authContext.claims.sub,
@@ -1047,6 +1060,7 @@ export class PostgresSessionRepository implements SessionRepository {
         avatar_url: actor.avatarUrl,
         calendar_view_mode: actor.calendarViewMode,
         energy_mode: actor.energyMode,
+        voice_assistant_enabled: actor.voiceAssistantEnabled,
         display_name: actor.displayName,
         email: actor.email,
         id: actor.id,
@@ -1059,6 +1073,7 @@ export class PostgresSessionRepository implements SessionRepository {
         'avatar_url as avatarUrl',
         'calendar_view_mode as calendarViewMode',
         'energy_mode as energyMode',
+        'voice_assistant_enabled as voiceAssistantEnabled',
         'display_name as displayName',
         'email',
         'id',
@@ -1129,6 +1144,7 @@ export class PostgresSessionRepository implements SessionRepository {
       userPreferences: {
         calendarViewMode: session.calendarViewMode,
         energyMode: session.energyMode,
+        voiceAssistantEnabled: session.voiceAssistantEnabled,
       },
       workspace: {
         id: session.workspaceId,

@@ -68,6 +68,7 @@ public class WakeWordService extends Service {
         wakeWordEngine = createWakeWordEngine();
         speechToTextService = SpeechToTextServiceFactory.create(this);
         voiceCuePlayer = new VoiceCuePlayer(this, handler);
+        voiceCuePlayer.setEnabled(PlannerVoiceAssistantStorage.readVoiceCuesEnabled(this));
         setState(VoiceAssistantState.IDLE);
     }
 

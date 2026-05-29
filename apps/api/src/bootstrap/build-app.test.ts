@@ -128,6 +128,7 @@ const guestSessionRepository: SessionRepository = {
       userPreferences: {
         calendarViewMode: 'week',
         energyMode: 'normal',
+        voiceAssistantEnabled: true,
       },
       workspace: {
         id: 'workspace-guest',
@@ -252,6 +253,7 @@ const guestSessionRepository: SessionRepository = {
     return Promise.resolve({
       calendarViewMode: input.calendarViewMode ?? 'week',
       energyMode: input.energyMode ?? 'normal',
+      voiceAssistantEnabled: input.voiceAssistantEnabled ?? true,
     })
   },
   updateUserProfile() {
@@ -530,6 +532,7 @@ void describe('buildApiApp', () => {
     assert.deepEqual(userPreferencesSchema.parse(response.json()), {
       calendarViewMode: 'schedule',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
     })
 
     const energyResponse = await app.inject({
@@ -548,6 +551,26 @@ void describe('buildApiApp', () => {
     assert.deepEqual(userPreferencesSchema.parse(energyResponse.json()), {
       calendarViewMode: 'schedule',
       energyMode: 'maximum',
+      voiceAssistantEnabled: true,
+    })
+
+    const voiceResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'PATCH',
+      payload: {
+        voiceAssistantEnabled: false,
+      },
+      url: '/api/v1/preferences',
+    })
+
+    assert.equal(voiceResponse.statusCode, 200)
+    assert.deepEqual(userPreferencesSchema.parse(voiceResponse.json()), {
+      calendarViewMode: 'schedule',
+      energyMode: 'maximum',
+      voiceAssistantEnabled: false,
     })
 
     const sessionResponse = await app.inject({
@@ -565,6 +588,7 @@ void describe('buildApiApp', () => {
       {
         calendarViewMode: 'schedule',
         energyMode: 'maximum',
+        voiceAssistantEnabled: false,
       },
     )
   })

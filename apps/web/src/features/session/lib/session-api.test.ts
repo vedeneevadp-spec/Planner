@@ -28,6 +28,7 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
     userPreferences: {
       calendarViewMode: 'week',
       energyMode: 'normal',
+      voiceAssistantEnabled: true,
     },
     workspace: {
       id: 'workspace-1',

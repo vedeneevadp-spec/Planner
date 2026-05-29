@@ -11,6 +11,7 @@ import {
   useSessionAuth,
   WorkspaceParticipantsDialog,
 } from '@/features/session'
+import { VoiceAssistantSettingsPanel } from '@/features/voice-assistant'
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import {
@@ -288,6 +289,8 @@ export function MorePage() {
           Выйти
         </button>
       ) : null}
+
+      {session ? <VoiceAssistantSettingsPanel /> : null}
 
       {isWorkspaceParticipantsOpen && isSharedWorkspace ? (
         <WorkspaceParticipantsDialog

@@ -33,13 +33,16 @@ import { MicIcon } from '@/shared/ui/Icon'
 
 import {
   addAndroidVoiceAssistantResumeListener,
+  addVoiceAssistantSettingsChangedListener,
   captureAndroidVoiceCommand,
   consumePendingAndroidVoiceCommand,
+  getVoiceAssistantNativeStatus,
   isAndroidVoiceAssistantRuntime,
   type NativeVoiceCommand,
   notifyAndroidVoiceActionResult,
   startAndroidVoiceAssistant,
   stopAndroidVoiceAssistant,
+  type VoiceAssistantNativeStatus,
 } from '../lib/native-voice-assistant'
 import {
   captureWebSpeechTranscript,
@@ -84,7 +87,12 @@ export function VoiceAssistant() {
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
   const autoCloseTimerRef = useRef<number | null>(null)
-  const isVoiceEnabled = canUseVoiceAssistant(session?.appRole)
+  const [androidSettingsRevision, setAndroidSettingsRevision] = useState(0)
+  const [androidVoiceStatus, setAndroidVoiceStatus] =
+    useState<VoiceAssistantNativeStatus | null>(null)
+  const isVoiceEnabled =
+    canUseVoiceAssistant(session?.appRole) &&
+    (session?.userPreferences.voiceAssistantEnabled ?? true)
   const isBusy = state.status === 'recording' || state.status === 'executing'
 
   const runActionPreview = useCallback(
@@ -402,6 +410,35 @@ export function VoiceAssistant() {
 
   useEffect(() => {
     if (!isAndroidVoiceAssistantRuntime()) {
+      setAndroidVoiceStatus(null)
+      return undefined
+    }
+
+    let isDisposed = false
+
+    void getVoiceAssistantNativeStatus()
+      .then((status) => {
+        if (!isDisposed) {
+          setAndroidVoiceStatus(status)
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to read Android voice assistant status.', error)
+      })
+
+    return () => {
+      isDisposed = true
+    }
+  }, [androidSettingsRevision])
+
+  useEffect(() => {
+    return addVoiceAssistantSettingsChangedListener(() => {
+      setAndroidSettingsRevision((revision) => revision + 1)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isAndroidVoiceAssistantRuntime()) {
       return undefined
     }
 
@@ -426,10 +463,23 @@ export function VoiceAssistant() {
       return undefined
     }
 
+    if (
+      !androidVoiceStatus?.wakeWordEnabled ||
+      !androidVoiceStatus.backgroundWakeWordEnabled ||
+      androidVoiceStatus.wakeWordModelStatus !== 'ready'
+    ) {
+      void stopAndroidVoiceAssistant().catch((error) => {
+        console.warn('Failed to stop Android voice assistant.', error)
+      })
+
+      return undefined
+    }
+
     void startAndroidVoiceAssistant({
       ...apiConfig,
       wakeWordTrainingModeEnabled:
-        session?.workspaceSettings.wakeWordTrainingModeEnabled ?? false,
+        androidVoiceStatus.wakeWordReviewModeEnabled ||
+        (session?.workspaceSettings.wakeWordTrainingModeEnabled ?? false),
     }).catch((error) => {
       console.warn('Failed to start Android voice assistant.', error)
     })
@@ -460,6 +510,10 @@ export function VoiceAssistant() {
     }
   }, [
     apiConfig,
+    androidVoiceStatus?.backgroundWakeWordEnabled,
+    androidVoiceStatus?.wakeWordEnabled,
+    androidVoiceStatus?.wakeWordModelStatus,
+    androidVoiceStatus?.wakeWordReviewModeEnabled,
     consumePendingAndroidCommand,
     isVoiceEnabled,
     session?.workspaceSettings.wakeWordTrainingModeEnabled,
