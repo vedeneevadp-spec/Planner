@@ -64,6 +64,8 @@ export function registerVoiceRoutes(
         },
         context: {
           actorUserId: context.actorUserId,
+          appRole: context.appRole,
+          isDeviceLocked: readBooleanHeader(request.headers['x-device-locked']),
           workspaceId: context.workspaceId,
         },
         source: parseVoiceCommandSource(
@@ -99,6 +101,26 @@ function createAudioMetadata(
   }
 
   return durationMs === undefined ? metadata : { ...metadata, durationMs }
+}
+
+function readBooleanHeader(
+  value: string | string[] | undefined,
+): boolean | undefined {
+  const rawValue = readStringHeader(value)
+
+  if (!rawValue) {
+    return undefined
+  }
+
+  if (rawValue === '1' || rawValue.toLowerCase() === 'true') {
+    return true
+  }
+
+  if (rawValue === '0' || rawValue.toLowerCase() === 'false') {
+    return false
+  }
+
+  return undefined
 }
 
 function readStringHeader(value: string | string[] | undefined): string | null {

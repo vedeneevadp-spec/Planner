@@ -1,4 +1,5 @@
 import type {
+  AppRole,
   CommandAudio,
   CommandAudioFormat,
   SttError,
@@ -30,6 +31,8 @@ export const COMMAND_AUDIO_HARD_LIMIT_BYTES = 400 * 1024
 
 export interface VoiceCommandRouteContext {
   actorUserId: string | undefined
+  appRole?: AppRole | undefined
+  isDeviceLocked?: boolean | undefined
   workspaceId: string
 }
 

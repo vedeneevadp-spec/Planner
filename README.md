@@ -182,6 +182,10 @@ Lite через OpenAI-compatible Chat Completions: `ALICE_LLM_PROVIDER=yandex`,
 только структурированный intent, исполнение остается в backend-сервисах
 Chaotika.
 
+Этот fallback относится только к Yandex Dialogs/Alice parser. Voice/web
+`PlannerIntentParser` использует отдельный v1-контракт и отдельный backend
+fallback hook; production LLM provider для него пока не подключен.
+
 `/api/v1/life-spheres` - текущий основной API для сфер жизни. Таблица
 `app.projects` остается compatibility-хранилищем для старых task-полей
 `project`/`projectId`, но публичный HTTP API для создания и списка сфер идет

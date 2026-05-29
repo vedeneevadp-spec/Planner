@@ -19,27 +19,22 @@ export function getPlannerIntentActionLabel(intent: PlannerIntent): string {
   switch (intent.intent) {
     case 'create_task':
       return 'Создать задачу'
-    case 'create_event':
-      return 'Создать событие'
-    case 'create_reminder':
-      return 'Создать напоминание'
     case 'add_shopping_item':
       return 'Добавить покупку'
-    case 'reschedule':
+    case 'reschedule_task':
       return 'Перенести'
-    case 'delete':
-      return 'Удалить'
+    case 'get_agenda':
+      return 'Показать план'
     case 'clarify':
       return 'Уточнить'
+    case 'unsupported':
+      return 'Не поддерживается'
   }
 }
 
 export function isExecutablePlannerIntent(intent: PlannerIntent): boolean {
   return (
-    intent.intent === 'create_task' ||
-    intent.intent === 'create_event' ||
-    intent.intent === 'create_reminder' ||
-    intent.intent === 'add_shopping_item'
+    intent.intent === 'create_task' || intent.intent === 'add_shopping_item'
   )
 }
 
@@ -56,10 +51,14 @@ export function shouldAutoConfirmPlannerIntent(intent: PlannerIntent): boolean {
   }
 
   if (intent.intent === 'add_shopping_item') {
-    return Boolean(getPlannerIntentTitle(intent))
+    return Boolean(intent.items?.length)
   }
 
-  return intent.intent === 'create_reminder' && Boolean(intent.reminderAt)
+  return (
+    intent.intent === 'create_task' &&
+    intent.datePrecision === 'relative' &&
+    Boolean(intent.reminderAt)
+  )
 }
 
 export function buildTaskInputFromPlannerIntent(
@@ -71,7 +70,7 @@ export function buildTaskInputFromPlannerIntent(
   return {
     assigneeUserId: null,
     dueDate: null,
-    icon: intent.intent === 'create_reminder' ? 'bell' : '',
+    icon: intent.reminderAt ? 'bell' : '',
     importance: 'not_important',
     note: '',
     plannedDate: schedule.plannedDate,
@@ -87,16 +86,24 @@ export function buildTaskInputFromPlannerIntent(
     requiresConfirmation: false,
     resource: null,
     routine: null,
-    sphereId: null,
+    sphereId: intent.sphereId ?? null,
     title: getPlannerIntentTitle(intent),
     urgency: 'not_urgent',
   }
 }
 
 function getIntentSchedule(intent: PlannerIntent): IntentSchedule {
-  const dateTime = intent.reminderAt ?? intent.datetime
+  if (intent.reminderAt) {
+    const [date, time] = intent.reminderAt.split('T')
 
-  if (!dateTime) {
+    return {
+      plannedDate: date || null,
+      plannedEndTime: null,
+      plannedStartTime: time?.slice(0, 5) ?? null,
+    }
+  }
+
+  if (!intent.date) {
     return {
       plannedDate: null,
       plannedEndTime: null,
@@ -104,12 +111,10 @@ function getIntentSchedule(intent: PlannerIntent): IntentSchedule {
     }
   }
 
-  const [date, time] = dateTime.split('T')
-
   return {
-    plannedDate: date || null,
+    plannedDate: intent.date,
     plannedEndTime: null,
-    plannedStartTime: time?.slice(0, 5) ?? null,
+    plannedStartTime: intent.time ?? null,
   }
 }
 
@@ -118,7 +123,7 @@ function getReminderOffsets(
   schedule: IntentSchedule,
 ): TaskReminderOffsetMinutes[] {
   if (
-    intent.intent !== 'create_reminder' ||
+    !intent.reminderAt ||
     !schedule.plannedDate ||
     !schedule.plannedStartTime
   ) {

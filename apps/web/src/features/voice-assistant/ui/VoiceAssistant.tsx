@@ -3,6 +3,7 @@ import {
   initialVoiceAssistantState,
   type PlannerIntent,
   PlannerIntentParser,
+  type PlannerIntentParserContext,
   reduceVoiceAssistantState,
   type VoiceAssistantSource,
   type VoiceAssistantState,
@@ -44,7 +45,6 @@ import {
 import {
   buildTaskInputFromPlannerIntent,
   getPlannerIntentActionLabel,
-  getPlannerIntentTitle,
   isExecutablePlannerIntent,
   shouldAutoConfirmPlannerIntent,
 } from '../model/planner-intent-execution'
@@ -92,20 +92,19 @@ export function VoiceAssistant() {
   const executeIntent = useCallback(
     async (intent: PlannerIntent) => {
       if (intent.intent === 'add_shopping_item') {
-        await createShoppingItemMutation.mutateAsync({
-          isFavorite: false,
-          priority: null,
-          shoppingCategory: 'other',
-          text: getPlannerIntentTitle(intent),
-        })
+        for (const item of intent.items ?? []) {
+          await createShoppingItemMutation.mutateAsync({
+            isFavorite: false,
+            priority: null,
+            shoppingCategory: 'other',
+            text: getShoppingItemText(item),
+          })
+        }
+
         return
       }
 
-      if (
-        intent.intent === 'create_task' ||
-        intent.intent === 'create_event' ||
-        intent.intent === 'create_reminder'
-      ) {
+      if (intent.intent === 'create_task') {
         await planner.addTask(buildTaskInputFromPlannerIntent(intent))
         return
       }
@@ -179,7 +178,12 @@ export function VoiceAssistant() {
         type: 'transcript_received',
       })
 
-      const intent = backendIntent ?? parser.parse(normalizedTranscript)
+      const intent =
+        backendIntent ??
+        parser.parse(
+          normalizedTranscript,
+          createPlannerIntentParserContext(source, planner.spheres, session),
+        )
 
       dispatch({
         intent,
@@ -190,7 +194,7 @@ export function VoiceAssistant() {
         void runIntent(intent, source)
       }
     },
-    [parser, runIntent],
+    [parser, planner.spheres, runIntent, session],
   )
 
   const submitWakeWordFeedback = useCallback(
@@ -714,10 +718,40 @@ function VoiceAssistantCard({
               <dd>{intent.title}</dd>
             </div>
           ) : null}
-          {(intent.datetime ?? intent.reminderAt) ? (
+          {intent.items?.length ? (
+            <div>
+              <dt>Покупки</dt>
+              <dd>{intent.items.map(getShoppingItemText).join(', ')}</dd>
+            </div>
+          ) : null}
+          {intent.targetQuery ? (
+            <div>
+              <dt>Что перенести</dt>
+              <dd>{intent.targetQuery}</dd>
+            </div>
+          ) : null}
+          {intent.date ? (
+            <div>
+              <dt>Дата</dt>
+              <dd>{intent.date}</dd>
+            </div>
+          ) : null}
+          {intent.time ? (
             <div>
               <dt>Время</dt>
-              <dd>{intent.reminderAt ?? intent.datetime}</dd>
+              <dd>{intent.time}</dd>
+            </div>
+          ) : null}
+          {intent.reminderAt ? (
+            <div>
+              <dt>Напоминание</dt>
+              <dd>{intent.reminderAt}</dd>
+            </div>
+          ) : null}
+          {intent.requiresUnlock ? (
+            <div>
+              <dt>Доступ</dt>
+              <dd>Нужна разблокировка</dd>
             </div>
           ) : null}
           <div>
@@ -850,15 +884,63 @@ function getConfirmLabel(intent: PlannerIntent): string {
   switch (intent.intent) {
     case 'add_shopping_item':
       return 'Добавить'
-    case 'reschedule':
+    case 'reschedule_task':
       return 'Перенести'
-    case 'create_event':
-    case 'create_reminder':
     case 'create_task':
       return 'Сохранить'
+    case 'get_agenda':
+      return 'Показать'
     case 'clarify':
-    case 'delete':
+    case 'unsupported':
       return 'Подтвердить'
+  }
+}
+
+function getShoppingItemText(
+  item: NonNullable<PlannerIntent['items']>[number],
+): string {
+  return item.quantity ? `${item.quantity} ${item.title}` : item.title
+}
+
+function createPlannerIntentParserContext(
+  source: VoiceAssistantSource,
+  spheres: Array<{ id: string; name: string }>,
+  session:
+    | { appRole?: PlannerIntentParserContext['appRole'] | undefined }
+    | null
+    | undefined,
+): PlannerIntentParserContext {
+  return {
+    appRole: session?.appRole,
+    locale: 'ru-RU',
+    now: new Date(),
+    source: getPlannerIntentParserSource(source),
+    spheres: spheres.map((sphere) => ({
+      id: sphere.id,
+      name: sphere.name,
+    })),
+    timezone: resolveVoiceClientTimeZone(),
+  }
+}
+
+function getPlannerIntentParserSource(
+  source: VoiceAssistantSource,
+): PlannerIntentParserContext['source'] {
+  switch (source) {
+    case 'android_wake_word':
+      return 'android_wake_word'
+    case 'android_microphone':
+      return 'android_push_to_talk'
+    case 'web_microphone':
+      return 'web_push_to_talk'
+  }
+}
+
+function resolveVoiceClientTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
+  } catch {
+    return undefined
   }
 }
 

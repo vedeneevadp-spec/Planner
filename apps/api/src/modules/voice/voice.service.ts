@@ -1,7 +1,10 @@
 import {
   commandAudioSchema,
+  type PlannerIntent,
   PlannerIntentParser,
+  type PlannerIntentParserContext,
   type SttSource,
+  validatePlannerIntent,
   type VoiceCommandResponse,
   voiceCommandResponseSchema,
 } from '@planner/contracts'
@@ -43,6 +46,13 @@ export interface VoiceCommandMetricsSink {
   record(event: string, details?: Record<string, unknown>): void
 }
 
+export interface BackendPlannerIntentFallback {
+  parseText(input: {
+    context: PlannerIntentParserContext
+    transcript: string
+  }): Promise<unknown>
+}
+
 export class VoiceCommandService {
   private readonly parser = new PlannerIntentParser()
   private readonly rateLimiter = new VoiceCommandRateLimiter()
@@ -50,6 +60,7 @@ export class VoiceCommandService {
   constructor(
     private readonly provider: BackendSttProvider,
     private readonly metrics: VoiceCommandMetricsSink = noopMetrics,
+    private readonly intentFallback: BackendPlannerIntentFallback | null = null,
   ) {}
 
   async process(
@@ -88,7 +99,8 @@ export class VoiceCommandService {
       1,
       Math.ceil(audio.durationMs / 1000),
     )
-    const intent = this.parser.parse(transcript)
+    const parserContext = createPlannerIntentParserContext(input)
+    const intent = await this.parseIntent(transcript, parserContext)
 
     if (intent.confidence < 0.55) {
       this.metrics.record('stt_low_confidence', {
@@ -120,6 +132,33 @@ export class VoiceCommandService {
       },
       transcript,
     })
+  }
+
+  private async parseIntent(
+    transcript: string,
+    context: PlannerIntentParserContext,
+  ): Promise<PlannerIntent> {
+    const ruleIntent = this.parser.parse(transcript, context)
+
+    if (!shouldUseBackendIntentFallback(ruleIntent) || !this.intentFallback) {
+      return ruleIntent
+    }
+
+    try {
+      const fallbackOutput = await this.intentFallback.parseText({
+        context,
+        transcript,
+      })
+      const fallbackIntent = validatePlannerIntent(fallbackOutput)
+
+      if (fallbackIntent.confidence >= ruleIntent.confidence) {
+        return fallbackIntent
+      }
+    } catch {
+      this.metrics.record('intent_fallback_invalid')
+    }
+
+    return ruleIntent
   }
 }
 
@@ -259,6 +298,42 @@ function isSupportedFormat(
 
 function normalizeTranscript(transcript: string): string {
   return transcript.trim().replace(/\s+/g, ' ')
+}
+
+function createPlannerIntentParserContext(
+  input: ProcessVoiceCommandInput,
+): PlannerIntentParserContext {
+  return {
+    appRole: input.context.appRole,
+    isDeviceLocked: input.context.isDeviceLocked,
+    locale: 'ru-RU',
+    now: new Date(),
+    source: getPlannerIntentParserSource(input.source),
+    timezone: 'Europe/Moscow',
+  }
+}
+
+function getPlannerIntentParserSource(
+  source: SttSource | undefined,
+): PlannerIntentParserContext['source'] {
+  switch (source) {
+    case 'android_push_to_talk':
+      return 'android_push_to_talk'
+    case 'android_short_clip':
+      return 'android_wake_word'
+    case 'local_fallback':
+    case 'test_stub':
+    case undefined:
+      return 'backend_text'
+  }
+}
+
+function shouldUseBackendIntentFallback(intent: PlannerIntent): boolean {
+  if (intent.isDangerous) {
+    return false
+  }
+
+  return intent.confidence < 0.6 || intent.intent === 'unsupported'
 }
 
 function getRateLimitKey(context: VoiceCommandRouteContext): string {

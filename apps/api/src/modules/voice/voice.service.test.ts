@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type {
+  BackendPlannerIntentFallback,
   BackendSttProvider,
   BackendSttProviderInput,
   BackendSttProviderResult,
@@ -47,6 +48,75 @@ void describe('VoiceCommandService', () => {
     })
 
     assert.equal(result.stt.source, 'android_push_to_talk')
+  })
+
+  void it('uses backend intent fallback only with transcript text', async () => {
+    const provider = new FakeSttProvider('овсянку бы не забыть')
+    const fallback = new FakePlannerIntentFallback({
+      confidence: 0.91,
+      intent: 'add_shopping_item',
+      items: [{ title: 'овсянка' }],
+      needsConfirmation: false,
+      rawText: 'овсянку бы не забыть',
+    })
+    const service = new VoiceCommandService(provider, undefined, fallback)
+    const result = await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        appRole: 'owner',
+        workspaceId: 'workspace-1',
+      },
+      source: 'android_push_to_talk',
+    })
+
+    assert.equal(fallback.callCount, 1)
+    assert.equal(fallback.lastInput?.transcript, 'овсянку бы не забыть')
+    assert.equal('audio' in (fallback.lastInput ?? {}), false)
+    assert.equal(fallback.lastInput?.context.source, 'android_push_to_talk')
+    assert.equal(result.intent.intent, 'add_shopping_item')
+  })
+
+  void it('ignores invalid backend intent fallback output', async () => {
+    const provider = new FakeSttProvider('овсянку бы не забыть')
+    const fallback = new FakePlannerIntentFallback({
+      intent: 'create_event',
+      rawText: 'овсянку бы не забыть',
+    })
+    const service = new VoiceCommandService(provider, undefined, fallback)
+    const result = await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        workspaceId: 'workspace-1',
+      },
+    })
+
+    assert.equal(fallback.callCount, 1)
+    assert.equal(result.intent.intent, 'unsupported')
+  })
+
+  void it('does not call backend intent fallback for dangerous unsupported commands', async () => {
+    const provider = new FakeSttProvider('удали задачу')
+    const fallback = new FakePlannerIntentFallback({
+      confidence: 0.91,
+      intent: 'create_task',
+      needsConfirmation: true,
+      rawText: 'удали задачу',
+      title: 'удали задачу',
+    })
+    const service = new VoiceCommandService(provider, undefined, fallback)
+    const result = await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        workspaceId: 'workspace-1',
+      },
+    })
+
+    assert.equal(fallback.callCount, 0)
+    assert.equal(result.intent.intent, 'unsupported')
+    assert.equal(result.intent.isDangerous, true)
   })
 
   void it('rejects too short audio before provider upload', async () => {
@@ -139,6 +209,24 @@ class FakeSttProvider implements BackendSttProvider {
       provider: 'backend_yandex_speechkit',
       transcript: this.transcript,
     })
+  }
+}
+
+class FakePlannerIntentFallback implements BackendPlannerIntentFallback {
+  callCount = 0
+  lastInput:
+    | Parameters<BackendPlannerIntentFallback['parseText']>[0]
+    | undefined
+
+  constructor(private readonly output: unknown) {}
+
+  parseText(
+    input: Parameters<BackendPlannerIntentFallback['parseText']>[0],
+  ): Promise<unknown> {
+    this.callCount += 1
+    this.lastInput = input
+
+    return Promise.resolve(this.output)
   }
 }
 

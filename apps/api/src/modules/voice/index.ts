@@ -16,6 +16,7 @@ export {
 export { YandexSpeechKitProvider } from './voice.providers.js'
 export { registerVoiceRoutes } from './voice.routes.js'
 export {
+  type BackendPlannerIntentFallback,
   validateCommandAudio,
   type VoiceCommandMetricsSink,
   VoiceCommandService,

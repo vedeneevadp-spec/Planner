@@ -335,9 +335,15 @@ export {
 } from './life-sphere.js'
 export type {
   PlannerIntent,
+  PlannerIntentDatePrecision,
+  PlannerIntentItem,
   PlannerIntentList,
   PlannerIntentName,
+  PlannerIntentParserContext,
   PlannerIntentParserOptions,
+  PlannerIntentParserSource,
+  PlannerIntentParserSphere,
+  PlannerIntentRecurrence,
   VoiceAssistantEvent,
   VoiceAssistantSource,
   VoiceAssistantState,
@@ -345,11 +351,18 @@ export type {
 } from './planner-intent.js'
 export {
   initialVoiceAssistantState,
+  plannerIntentDatePrecisionSchema,
+  plannerIntentItemSchema,
   plannerIntentListSchema,
   plannerIntentNameSchema,
   PlannerIntentParser,
+  plannerIntentPrioritySchema,
+  plannerIntentRecurrenceFrequencySchema,
+  plannerIntentRecurrenceSchema,
   plannerIntentSchema,
   reduceVoiceAssistantState,
+  validatePlannerIntent,
+  VoiceTextNormalizer,
 } from './planner-intent.js'
 export type {
   NativePlannerWidgetSnapshot,

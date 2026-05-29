@@ -2,12 +2,28 @@ import { z } from 'zod'
 
 export const plannerIntentNameSchema = z.enum([
   'create_task',
-  'create_event',
-  'create_reminder',
   'add_shopping_item',
-  'reschedule',
-  'delete',
+  'reschedule_task',
+  'get_agenda',
   'clarify',
+  'unsupported',
+])
+
+export const plannerIntentDatePrecisionSchema = z.enum([
+  'exact',
+  'date_only',
+  'period',
+  'relative',
+  'unknown',
+])
+
+export const plannerIntentPrioritySchema = z.enum(['low', 'normal', 'high'])
+
+export const plannerIntentRecurrenceFrequencySchema = z.enum([
+  'daily',
+  'weekly',
+  'monthly',
+  'yearly',
 ])
 
 export const plannerIntentListSchema = z.enum([
@@ -19,168 +35,794 @@ export const plannerIntentListSchema = z.enum([
   'personal',
 ])
 
-export const plannerIntentSchema = z.object({
-  clarificationQuestion: z.string().optional(),
-  confidence: z.number().min(0).max(1),
-  datetime: z.string().optional(),
-  intent: plannerIntentNameSchema,
-  list: plannerIntentListSchema.optional(),
-  needsConfirmation: z.boolean(),
-  rawText: z.string(),
-  reminderAt: z.string().optional(),
-  title: z.string().optional(),
+export const plannerIntentItemSchema = z.object({
+  quantity: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1),
 })
+
+export const plannerIntentRecurrenceSchema = z.object({
+  frequency: plannerIntentRecurrenceFrequencySchema,
+  interval: z.number().int().positive().optional(),
+  until: z.string().optional(),
+})
+
+export const plannerIntentSchema = z
+  .object({
+    alternatives: z.array(z.string().trim().min(1)).optional(),
+    clarificationQuestion: z.string().trim().min(1).optional(),
+    confidence: z.number().min(0).max(1),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .optional(),
+    datePrecision: plannerIntentDatePrecisionSchema.optional(),
+    dateText: z.string().trim().min(1).optional(),
+    intent: plannerIntentNameSchema,
+    isDangerous: z.boolean().optional(),
+    items: z.array(plannerIntentItemSchema).min(1).optional(),
+    needsConfirmation: z.boolean(),
+    priority: plannerIntentPrioritySchema.optional(),
+    rawText: z.string(),
+    recurrence: plannerIntentRecurrenceSchema.optional(),
+    reminderAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/u)
+      .optional(),
+    requiresUnlock: z.boolean().optional(),
+    sphereConfidence: z.number().min(0).max(1).optional(),
+    sphereId: z.string().trim().min(1).optional(),
+    targetQuery: z.string().trim().min(1).optional(),
+    time: z
+      .string()
+      .regex(/^\d{2}:\d{2}$/u)
+      .optional(),
+    title: z.string().trim().min(1).optional(),
+    transcript: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.intent === 'create_task' && !value.title) {
+      context.addIssue({
+        code: 'custom',
+        message: 'create_task requires title.',
+        path: ['title'],
+      })
+    }
+
+    if (value.intent === 'add_shopping_item' && !value.items?.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'add_shopping_item requires items.',
+        path: ['items'],
+      })
+    }
+
+    if (value.intent === 'reschedule_task' && !value.targetQuery) {
+      context.addIssue({
+        code: 'custom',
+        message: 'reschedule_task requires targetQuery.',
+        path: ['targetQuery'],
+      })
+    }
+
+    if (value.intent === 'get_agenda' && !value.date) {
+      context.addIssue({
+        code: 'custom',
+        message: 'get_agenda requires date.',
+        path: ['date'],
+      })
+    }
+  })
 
 export type PlannerIntentName = z.infer<typeof plannerIntentNameSchema>
 export type PlannerIntentList = z.infer<typeof plannerIntentListSchema>
+export type PlannerIntentDatePrecision = z.infer<
+  typeof plannerIntentDatePrecisionSchema
+>
 export type PlannerIntent = z.infer<typeof plannerIntentSchema>
+export type PlannerIntentItem = z.infer<typeof plannerIntentItemSchema>
+export type PlannerIntentRecurrence = z.infer<
+  typeof plannerIntentRecurrenceSchema
+>
 
-export interface PlannerIntentParserOptions {
-  now?: Date
+export type PlannerIntentParserSource =
+  | 'android_wake_word'
+  | 'android_push_to_talk'
+  | 'web_push_to_talk'
+  | 'backend_text'
+
+export interface PlannerIntentParserSphere {
+  id: string
+  keywords?: string[] | undefined
+  name: string
 }
 
-interface ParsedDateTime {
-  value: string
+export interface PlannerIntentParserContext {
+  appRole?: 'owner' | 'test' | 'admin' | 'user' | 'guest' | undefined
+  featureGateRole?: 'owner' | 'test' | 'admin' | 'user' | 'guest' | undefined
+  isDeviceLocked?: boolean | undefined
+  locale?: 'ru-RU' | undefined
+  now?: Date | string | undefined
+  source?: PlannerIntentParserSource | undefined
+  spheres?: PlannerIntentParserSphere[] | undefined
+  timezone?: string | undefined
 }
 
-const WAKE_WORD_PATTERN = /^хаотика[\s,.:;-]*/i
-const DELETE_PATTERN = /(удали|удалить|сотри|стереть|убери|убрать|delete)/i
+export type PlannerIntentParserOptions = PlannerIntentParserContext
+
+interface RuntimeParserContext extends PlannerIntentParserContext {
+  locale: 'ru-RU'
+  now: Date
+  spheres: PlannerIntentParserSphere[]
+  timezone: string
+}
+
+interface DateTimeParseResult {
+  ambiguousTime: boolean
+  date?: string | undefined
+  datePrecision?: PlannerIntentDatePrecision | undefined
+  dateText?: string | undefined
+  hasExactRelativeReminder: boolean
+  hasRelativeReminder: boolean
+  reminderAt?: string | undefined
+  time?: string | undefined
+}
+
+interface SphereResolution {
+  sphereConfidence: number
+  sphereId: string
+}
+
+interface RecurrenceParseResult {
+  recurrence?: PlannerIntentRecurrence | undefined
+}
+
+const WAKE_WORD_PATTERN = /^хаотика[\s,.:;!-]*/iu
+const DELETE_PATTERN =
+  /(?:^|\s)(?:удали|удалить|сотри|стереть|удаление|delete)(?=\s|$)|(?:^|\s)(?:убери|убрать)\s+(?:все|всё|задач[ауи]?|дела|план)(?=\s|$)/iu
 const RESCHEDULE_PATTERN =
-  /(перенеси|перенести|перепланируй|перепланировать|сдвинь|сдвинуть)/i
-const CHANGE_PATTERN = /(измени|изменить|поменяй|поменять)/i
-const REMINDER_PATTERN = /(напомни|напомнить|напоминание)/i
-const EVENT_PATTERN =
-  /(создай\s+событие|добавь\s+событие|запланируй|встреча|событие)/i
-const SHOPPING_PATTERN =
-  /(список\s+покупок|покупки|покупок|в\s+покупки|купи|купить)/i
-const TASK_PATTERN =
-  /(создай\s+задачу|добавь\s+задачу|запиши\s+задачу|задача|надо|нужно)/i
-const MASS_CHANGE_PATTERN = /(все|всё|каждую|каждый|массово|bulk)/i
+  /(?:^|\s)(перенеси|перенести|перепланируй|перепланировать|сдвинь|сдвинуть)(?=\s|$)/iu
+const AGENDA_PATTERN =
+  /(?:^|\s)(что\s+у\s+меня|какие\s+задачи|что\s+запланировано|покажи\s+(?:план|задачи|расписание)|план\s+на)(?=\s|$)/iu
+const TASK_PREFIX_PATTERN =
+  /(?:^|\s)(создай|создать|добавь|добавить|запиши|записать|внеси|внести|поставь|поставить|запланируй|запланировать)\s+(?:мне\s+)?(?:задачу|дело)?(?=\s|$)/giu
+const REMIND_PREFIX_PATTERN =
+  /(?:^|\s)(напомни|напомнить|напоминание)(?=\s|$)/giu
+const TASK_MARKER_PATTERN =
+  /(?:^|\s)(задач[ауи]?|дело|надо|нужно|запланируй|запланировать|поставь|поставить|запиши|записать|создай|создать|добавь|добавить|напомни|напомнить)(?=\s|$)/iu
+const EXPLICIT_SHOPPING_PATTERN =
+  /(?:^|\s)(в\s+покупки|в\s+список\s+покупок|список\s+покупок|покупки|покупок)(?=\s|$)/iu
+const BUY_PREFIX_PATTERN = /^(?:мне\s+)?(?:купи|купить)(?=\s|$)/iu
+const BUY_WORD_PATTERN = /(?:^|\s)(купи|купить)(?=\s|$)/iu
+const WEEKDAY_INDEX: Record<string, number> = {
+  воскресенье: 0,
+  воскресенье2: 0,
+  воскресенья: 0,
+  понедельник: 1,
+  понедельника: 1,
+  понедельникам: 1,
+  вторник: 2,
+  вторника: 2,
+  вторникам: 2,
+  среда: 3,
+  среду: 3,
+  средам: 3,
+  четверг: 4,
+  четверга: 4,
+  четвергам: 4,
+  пятница: 5,
+  пятницу: 5,
+  пятницам: 5,
+  суббота: 6,
+  субботу: 6,
+  субботам: 6,
+}
+
+const WEEKDAY_PATTERN =
+  /(?:^|\s)(?:в|во|на)?\s*(следующ(?:ий|ую|ее|ей)\s+)?(понедельник|понедельника|вторник|вторника|среду|среда|четверг|четверга|пятницу|пятница|субботу|суббота|воскресенье|воскресенья)(?=\s|$)/iu
+
+const NUMBER_WORDS: Record<string, number> = {
+  ноль: 0,
+  одну: 1,
+  одна: 1,
+  один: 1,
+  одно: 1,
+  два: 2,
+  две: 2,
+  три: 3,
+  четыре: 4,
+  пять: 5,
+  шесть: 6,
+  семь: 7,
+  восемь: 8,
+  девять: 9,
+  десять: 10,
+  одиннадцать: 11,
+  двенадцать: 12,
+  тринадцать: 13,
+  четырнадцать: 14,
+  пятнадцать: 15,
+  шестнадцать: 16,
+  семнадцать: 17,
+  восемнадцать: 18,
+  девятнадцать: 19,
+  двадцать: 20,
+  тридцать: 30,
+  сорок: 40,
+  пятьдесят: 50,
+}
+
+const GROCERY_WORDS = new Set([
+  'батон',
+  'вода',
+  'гречка',
+  'йогурт',
+  'кефир',
+  'кофе',
+  'курица',
+  'масло',
+  'молоко',
+  'молока',
+  'морковь',
+  'мясо',
+  'овощи',
+  'огурцы',
+  'рис',
+  'рыба',
+  'сахар',
+  'сыр',
+  'творог',
+  'хлеб',
+  'чай',
+  'яблоки',
+  'яблок',
+  'яйца',
+])
+
+const SHOPPING_TITLE_NORMALIZATION: Record<string, string> = {
+  молока: 'молоко',
+}
+
+const BUILT_IN_SPHERE_KEYWORDS: Record<string, string[]> = {
+  дети: [
+    'кирилл',
+    'максим',
+    'ребенок',
+    'ребенка',
+    'дети',
+    'детский',
+    'школа',
+    'английский',
+    'садик',
+  ],
+  дом: ['дом', 'дома', 'окна', 'кухня', 'уборка', 'плиту', 'духовку', 'посуду'],
+  финансы: ['оплата', 'оплатить', 'счет', 'налог', 'банк', 'кредит'],
+  работа: [
+    'работа',
+    'рабочий',
+    'созвон',
+    'проект',
+    'код',
+    'релиз',
+    'документы',
+  ],
+  сад: [
+    'сад',
+    'огород',
+    'дача',
+    'рассада',
+    'рассаду',
+    'грунт',
+    'теплица',
+    'полить',
+  ],
+  здоровье: ['врач', 'врачу', 'стоматолог', 'аптека', 'анализы'],
+  покупки: ['купить', 'купи', 'молоко', 'хлеб', 'яйца', 'магазин'],
+}
 
 export class PlannerIntentParser {
   parse(
     rawText: string,
-    options: PlannerIntentParserOptions = {},
+    context: PlannerIntentParserOptions = {},
   ): PlannerIntent {
-    const normalizedText = normalizeRawText(rawText)
-    const commandText = stripWakeWord(normalizedText)
-    const now = options.now ?? new Date()
-    const parsedDateTime = parseDateTime(commandText, now)
+    const runtimeContext = createRuntimeContext(context)
+    const normalizedText = VoiceTextNormalizer.normalize(rawText)
+    const commandText = VoiceTextNormalizer.stripWakeWord(normalizedText)
+    const dateTime = DateTimeParser.parse(commandText, runtimeContext)
 
     if (!commandText) {
       return createClarifyIntent(rawText, 'Что добавить в планер?')
     }
 
     if (DELETE_PATTERN.test(commandText)) {
-      const title = extractTitle(commandText, [
-        DELETE_PATTERN,
-        MASS_CHANGE_PATTERN,
-      ])
-
       return createIntent({
-        clarificationQuestion: title
-          ? undefined
-          : 'Что именно удалить? Я попрошу подтверждение перед удалением.',
-        confidence: title ? 0.72 : 0.52,
-        intent: 'delete',
+        clarificationQuestion: 'Удаление голосом пока не поддерживается.',
+        confidence: 0.72,
+        intent: 'unsupported',
+        isDangerous: true,
         needsConfirmation: true,
         rawText,
-        title,
+        requiresUnlock: runtimeContext.isDeviceLocked ? true : undefined,
       })
     }
 
-    if (
-      RESCHEDULE_PATTERN.test(commandText) ||
-      CHANGE_PATTERN.test(commandText)
-    ) {
-      const title = extractTitle(commandText, [
-        RESCHEDULE_PATTERN,
-        CHANGE_PATTERN,
-      ])
+    const agendaIntent = AgendaQueryParser.parse(
+      rawText,
+      commandText,
+      runtimeContext,
+    )
 
-      return createIntent({
-        clarificationQuestion:
-          title && parsedDateTime
-            ? undefined
-            : 'Что и на какое время перенести?',
-        confidence: title && parsedDateTime ? 0.7 : 0.54,
-        datetime: parsedDateTime?.value,
-        intent: 'reschedule',
-        needsConfirmation: true,
-        rawText,
-        title,
-      })
+    if (agendaIntent) {
+      return agendaIntent
     }
 
-    if (REMINDER_PATTERN.test(commandText)) {
-      const title = extractTitle(commandText, [REMINDER_PATTERN])
+    const rescheduleIntent = RescheduleParser.parse(
+      rawText,
+      commandText,
+      dateTime,
+      runtimeContext,
+    )
 
+    if (rescheduleIntent) {
+      return rescheduleIntent
+    }
+
+    const shoppingIntent = ShoppingItemsParser.parseIntent(
+      rawText,
+      commandText,
+      dateTime,
+    )
+
+    if (shoppingIntent) {
+      return shoppingIntent
+    }
+
+    return TaskIntentParser.parse(
+      rawText,
+      commandText,
+      dateTime,
+      runtimeContext,
+    )
+  }
+}
+
+export class VoiceTextNormalizer {
+  static normalize(rawText: string): string {
+    return rawText
+      .toLocaleLowerCase('ru-RU')
+      .replace(/ё/gu, 'е')
+      .replace(/[“”"«»]/gu, '')
+      .replace(/[?!]+/gu, ' ')
+      .replace(/[,;]+/gu, ' ')
+      .replace(/\s*([.:])\s*/gu, '$1')
+      .replace(/(?:^|\s)пол\s*часа(?=\s|$)/gu, ' 30 минут')
+      .replace(/(?:^|\s)полчаса(?=\s|$)/gu, ' 30 минут')
+      .replace(/(?:^|\s)часик(?=\s|$)/gu, ' 1 час')
+      .replace(/(?:^|\s)часика(?=\s|$)/gu, ' 1 часа')
+      .replace(/\s+/gu, ' ')
+      .trim()
+      .replace(
+        /(?:^|\s)([а-я]+(?:надцать|дцать|ок)?)(?=\s|$)/gu,
+        (match: string, word: string) =>
+          `${match.startsWith(' ') ? ' ' : ''}${
+            NUMBER_WORDS[word] === undefined ? word : String(NUMBER_WORDS[word])
+          }`,
+      )
+      .replace(/\s+/gu, ' ')
+      .trim()
+  }
+
+  static stripWakeWord(text: string): string {
+    return text.replace(WAKE_WORD_PATTERN, '').trim()
+  }
+}
+
+class AgendaQueryParser {
+  static parse(
+    rawText: string,
+    commandText: string,
+    context: RuntimeParserContext,
+  ): PlannerIntent | null {
+    if (!AGENDA_PATTERN.test(commandText)) {
+      return null
+    }
+
+    const dateTime = DateTimeParser.parse(commandText, context)
+    const date = dateTime.date ?? formatDateKey(context.now)
+
+    return createIntent({
+      confidence: dateTime.date ? 0.95 : 0.82,
+      date,
+      datePrecision: dateTime.datePrecision ?? 'exact',
+      dateText: dateTime.dateText,
+      intent: 'get_agenda',
+      needsConfirmation: false,
+      rawText,
+      requiresUnlock: context.isDeviceLocked ? true : undefined,
+    })
+  }
+}
+
+class RescheduleParser {
+  static parse(
+    rawText: string,
+    commandText: string,
+    dateTime: DateTimeParseResult,
+    context: RuntimeParserContext,
+  ): PlannerIntent | null {
+    if (!RESCHEDULE_PATTERN.test(commandText)) {
+      return null
+    }
+
+    const targetQuery = TaskTitleExtractor.extract(commandText, {
+      dateTime,
+      extraPatterns: [RESCHEDULE_PATTERN, /(?:^|\s)на(?=\s|$)/giu],
+      removeBuyWords: false,
+    })
+
+    if (!targetQuery || !dateTime.date) {
       return createIntent({
-        clarificationQuestion:
-          title && parsedDateTime ? undefined : 'О чем и когда напомнить?',
-        confidence: title && parsedDateTime ? 0.82 : 0.56,
-        intent: title && parsedDateTime ? 'create_reminder' : 'clarify',
+        clarificationQuestion: 'Что и на какую дату перенести?',
+        confidence: 0.54,
+        intent: 'clarify',
         needsConfirmation: false,
         rawText,
-        reminderAt: parsedDateTime?.value,
-        title,
       })
     }
 
-    if (isShoppingCommand(commandText)) {
-      const title = extractTitle(commandText, [
-        /(добавь|запиши|внеси|положи|купи|купить|надо|нужно)/i,
-        /(в\s+список\s+покупок|список\s+покупок|в\s+покупки|покупки|покупок)/i,
-      ])
+    return createIntent({
+      confidence: dateTime.ambiguousTime ? 0.72 : 0.85,
+      date: dateTime.date,
+      datePrecision: dateTime.ambiguousTime
+        ? 'unknown'
+        : (dateTime.datePrecision ?? 'date_only'),
+      dateText: dateTime.dateText,
+      intent: 'reschedule_task',
+      isDangerous: true,
+      needsConfirmation: true,
+      rawText,
+      requiresUnlock: context.isDeviceLocked ? true : undefined,
+      targetQuery,
+      time: dateTime.time,
+      ...(dateTime.ambiguousTime
+        ? { clarificationQuestion: 'В 8 утра или вечера?' }
+        : {}),
+    })
+  }
+}
 
+class ShoppingItemsParser {
+  static parseIntent(
+    rawText: string,
+    commandText: string,
+    dateTime: DateTimeParseResult,
+  ): PlannerIntent | null {
+    if (!isShoppingCommand(commandText, dateTime)) {
+      return null
+    }
+
+    const items = this.parseItems(commandText)
+
+    if (!items.length) {
       return createIntent({
-        clarificationQuestion: title ? undefined : 'Что добавить в покупки?',
-        confidence: title ? 0.78 : 0.5,
-        intent: title ? 'add_shopping_item' : 'clarify',
-        list: 'shopping',
-        needsConfirmation: true,
+        clarificationQuestion: 'Что добавить в покупки?',
+        confidence: 0.5,
+        intent: 'clarify',
+        needsConfirmation: false,
         rawText,
-        title,
       })
     }
 
-    if (EVENT_PATTERN.test(commandText)) {
-      const title = extractTitle(commandText, [EVENT_PATTERN])
+    const hasAmbiguity = items.some((item) => item.title.length <= 1)
 
+    return createIntent({
+      confidence: hasAmbiguity ? 0.72 : 0.94,
+      intent: 'add_shopping_item',
+      items,
+      needsConfirmation: hasAmbiguity,
+      rawText,
+      requiresUnlock: false,
+    })
+  }
+
+  static parseItems(commandText: string): PlannerIntentItem[] {
+    let text = commandText
+      .replace(
+        /(?:^|\s)(добавь|добавить|запиши|записать|внеси|внести|положи|положить|купи|купить|надо|нужно)(?=\s|$)/giu,
+        ' ',
+      )
+      .replace(
+        /(?:^|\s)(в\s+список\s+покупок|список\s+покупок|в\s+покупки|покупки|покупок)(?=\s|$)/giu,
+        ' ',
+      )
+      .replace(/(?:^|\s)мне(?=\s|$)/giu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+
+    text = TaskTitleExtractor.removeDateTimeTokens(text).trim()
+
+    if (!text) {
+      return []
+    }
+
+    const roughParts = text
+      .split(/\s*,\s*|\s+и\s+/gu)
+      .flatMap((part) => splitKnownShoppingWords(part))
+      .map((part) => normalizeShoppingItem(part))
+      .filter((part): part is PlannerIntentItem => part !== null)
+
+    return dedupeItems(roughParts)
+  }
+}
+
+class TaskIntentParser {
+  static parse(
+    rawText: string,
+    commandText: string,
+    dateTime: DateTimeParseResult,
+    context: RuntimeParserContext,
+  ): PlannerIntent {
+    const hasTaskSignal =
+      TASK_MARKER_PATTERN.test(commandText) ||
+      Boolean(dateTime.date || dateTime.time || dateTime.reminderAt) ||
+      BUY_WORD_PATTERN.test(commandText)
+
+    if (!hasTaskSignal) {
       return createIntent({
         clarificationQuestion:
-          title && parsedDateTime
-            ? undefined
-            : 'Какое событие и когда создать?',
-        confidence: title && parsedDateTime ? 0.76 : 0.58,
-        datetime: parsedDateTime?.value,
-        intent: title && parsedDateTime ? 'create_event' : 'clarify',
-        list: detectPlannerList(commandText),
-        needsConfirmation: true,
+          'Пока я умею создавать задачи, добавлять покупки, переносить задачи и показывать план на сегодня или завтра.',
+        confidence: 0.4,
+        intent: 'unsupported',
+        needsConfirmation: false,
         rawText,
-        title,
       })
     }
 
-    if (TASK_PATTERN.test(commandText)) {
-      const title = extractTitle(commandText, [TASK_PATTERN])
+    const title = TaskTitleExtractor.extract(commandText, {
+      dateTime,
+      extraPatterns: [TASK_PREFIX_PATTERN, REMIND_PREFIX_PATTERN],
+      removeBuyWords: false,
+    })
 
-      return createIntent({
-        clarificationQuestion: title ? undefined : 'Какую задачу создать?',
-        confidence: title ? 0.74 : 0.5,
-        datetime: parsedDateTime?.value,
-        intent: title ? 'create_task' : 'clarify',
-        list: detectPlannerList(commandText),
-        needsConfirmation: true,
-        rawText,
-        title,
-      })
+    if (!title) {
+      return createClarifyIntent(rawText, 'Какую задачу создать?')
     }
 
-    return createClarifyIntent(
-      rawText,
-      'Не понял команду. Создать задачу, событие, напоминание или покупку?',
+    const recurrence = RecurrenceParser.parse(commandText)
+    const sphere = SphereResolver.resolve(title, context.spheres)
+    const confidence = ConfidenceScorer.scoreTask(commandText, dateTime, title)
+    const needsConfirmation = SafetyIntentMarker.needsTaskConfirmation(
+      dateTime,
+      confidence,
     )
+
+    return createIntent({
+      confidence,
+      date: dateTime.date,
+      datePrecision: getTaskDatePrecision(dateTime),
+      dateText: dateTime.dateText,
+      intent: 'create_task',
+      needsConfirmation,
+      rawText,
+      recurrence: recurrence.recurrence,
+      reminderAt: dateTime.reminderAt,
+      sphereConfidence: sphere?.sphereConfidence,
+      sphereId: sphere?.sphereId,
+      time: dateTime.time,
+      title,
+      ...(dateTime.ambiguousTime
+        ? { clarificationQuestion: 'В 8 утра или вечера?' }
+        : {}),
+    })
+  }
+}
+
+class DateTimeParser {
+  static parse(
+    commandText: string,
+    context: RuntimeParserContext,
+  ): DateTimeParseResult {
+    const relativeReminder = parseRelativeReminder(commandText, context.now)
+
+    if (relativeReminder) {
+      return relativeReminder
+    }
+
+    const date = parseDate(commandText, context.now)
+    const time = parseTime(commandText)
+    const approximateTime = parseApproximateTime(commandText)
+    const finalTime = time?.time ?? approximateTime?.time
+    const hasTime = Boolean(finalTime)
+    const resolvedDate =
+      date?.date ?? (hasTime ? formatDateKey(context.now) : undefined)
+
+    return {
+      ambiguousTime: time?.ambiguous ?? false,
+      date: resolvedDate,
+      datePrecision: resolveDatePrecision(date, time, approximateTime),
+      dateText: joinText(date?.dateText, approximateTime?.dateText),
+      hasExactRelativeReminder: false,
+      hasRelativeReminder: false,
+      time: finalTime,
+    }
+  }
+}
+
+function getTaskDatePrecision(
+  dateTime: DateTimeParseResult,
+): PlannerIntentDatePrecision | undefined {
+  if (
+    dateTime.date &&
+    !dateTime.time &&
+    dateTime.datePrecision !== 'period' &&
+    dateTime.datePrecision !== 'unknown'
+  ) {
+    return 'date_only'
+  }
+
+  return (
+    dateTime.datePrecision ??
+    (dateTime.date && dateTime.time ? 'exact' : undefined)
+  )
+}
+
+class TaskTitleExtractor {
+  static extract(
+    commandText: string,
+    options: {
+      dateTime: DateTimeParseResult
+      extraPatterns?: RegExp[] | undefined
+      removeBuyWords: boolean
+    },
+  ): string | undefined {
+    let title = commandText
+
+    for (const pattern of options.extraPatterns ?? []) {
+      title = title.replace(pattern, ' ')
+    }
+
+    if (options.removeBuyWords) {
+      title = title.replace(BUY_WORD_PATTERN, ' ')
+    }
+
+    title = this.removeDateTimeTokens(title)
+      .replace(/(?:^|\s)(мне|пожалуйста|плиз)(?=\s|$)/giu, ' ')
+      .replace(/(?:^|\s)(задачу|задача|дело|надо|нужно)(?=\s|$)/giu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+
+    if (options.dateTime.datePrecision === 'period') {
+      title = title
+        .replace(/(?:^|\s)как-нибудь(?=\s|$)/giu, ' ')
+        .replace(/\s+/gu, ' ')
+    }
+
+    return title || undefined
+  }
+
+  static removeDateTimeTokens(text: string): string {
+    return text
+      .replace(/(?:^|\s)(сегодня|завтра|послезавтра)(?=\s|$)/giu, ' ')
+      .replace(/(?:^|\s)на\s+следующ(?:ей|ую)\s+недел[ею](?=\s|$)/giu, ' ')
+      .replace(WEEKDAY_PATTERN, ' ')
+      .replace(
+        /(?:^|\s)через\s+\d+\s+(?:минуту|минуты|минут|час|часа|часов|день|дня|дней)(?=\s|$)/giu,
+        ' ',
+      )
+      .replace(
+        /(?:^|\s)(?:в|к)\s*\d{1,2}(?::\d{2})?\s*(?:час(?:ов|а)?\s*)?(?:утра|вечера|дня|ночи)?(?=\s|$)/giu,
+        ' ',
+      )
+      .replace(/(?:^|\s)(утром|вечером|днем|ночью)(?=\s|$)/giu, ' ')
+      .replace(/(?:^|\s)\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?=\s|$)/gu, ' ')
+      .replace(/\s+/gu, ' ')
+      .trim()
+  }
+}
+
+class RecurrenceParser {
+  static parse(commandText: string): RecurrenceParseResult {
+    if (/(?:^|\s)по\s+будням(?=\s|$)/iu.test(commandText)) {
+      return { recurrence: { frequency: 'weekly', interval: 1 } }
+    }
+
+    if (/(?:^|\s)кажд(?:ый|ую|ое)(?=\s|$)/iu.test(commandText)) {
+      return { recurrence: { frequency: 'weekly', interval: 1 } }
+    }
+
+    return {}
+  }
+}
+
+class SphereResolver {
+  static resolve(
+    title: string,
+    spheres: PlannerIntentParserSphere[],
+  ): SphereResolution | undefined {
+    if (!spheres.length) {
+      return undefined
+    }
+
+    const normalizedTitle = VoiceTextNormalizer.normalize(title)
+    let best: SphereResolution | undefined
+
+    for (const sphere of spheres) {
+      const normalizedName = VoiceTextNormalizer.normalize(sphere.name)
+      const keywords = [
+        normalizedName,
+        ...(sphere.keywords ?? []).map((keyword) =>
+          VoiceTextNormalizer.normalize(keyword),
+        ),
+        ...(BUILT_IN_SPHERE_KEYWORDS[normalizedName] ?? []),
+      ]
+      const matchedKeywords = keywords.filter((keyword) =>
+        containsWord(normalizedTitle, keyword),
+      )
+
+      if (!matchedKeywords.length) {
+        continue
+      }
+
+      const confidence = Math.min(0.95, 0.62 + matchedKeywords.length * 0.12)
+
+      if (!best || confidence > best.sphereConfidence) {
+        best = {
+          sphereConfidence: confidence,
+          sphereId: sphere.id,
+        }
+      }
+    }
+
+    return best && best.sphereConfidence >= 0.62 ? best : undefined
+  }
+}
+
+class SafetyIntentMarker {
+  static needsTaskConfirmation(
+    dateTime: DateTimeParseResult,
+    confidence: number,
+  ): boolean {
+    if (
+      dateTime.reminderAt &&
+      dateTime.hasExactRelativeReminder &&
+      confidence >= 0.85 &&
+      !dateTime.ambiguousTime
+    ) {
+      return false
+    }
+
+    return true
+  }
+}
+
+class ConfidenceScorer {
+  static scoreTask(
+    commandText: string,
+    dateTime: DateTimeParseResult,
+    title: string,
+  ): number {
+    let confidence = TASK_MARKER_PATTERN.test(commandText) ? 0.86 : 0.82
+
+    if (dateTime.reminderAt && dateTime.hasExactRelativeReminder) {
+      confidence = 0.95
+    } else if (dateTime.date && dateTime.time) {
+      confidence = 0.9
+    } else if (dateTime.date) {
+      confidence = 0.86
+    }
+
+    if (dateTime.datePrecision === 'period') {
+      confidence -= 0.08
+    }
+
+    if (dateTime.ambiguousTime) {
+      confidence -= 0.14
+    }
+
+    if (title.length < 3) {
+      confidence -= 0.2
+    }
+
+    return clampConfidence(confidence)
   }
 }
 
@@ -249,6 +891,12 @@ export const initialVoiceAssistantState: VoiceAssistantState = {
   status: 'idle',
 }
 
+export function canUseVoiceAssistant(
+  appRole: 'owner' | 'test' | 'admin' | 'user' | 'guest' | null | undefined,
+): boolean {
+  return appRole === 'owner' || appRole === 'test'
+}
+
 export function reduceVoiceAssistantState(
   state: VoiceAssistantState,
   event: VoiceAssistantEvent,
@@ -306,140 +954,226 @@ export function reduceVoiceAssistantState(
   }
 }
 
-function normalizeRawText(rawText: string): string {
-  return rawText.replace(/\s+/g, ' ').trim()
+export function validatePlannerIntent(value: unknown): PlannerIntent {
+  return plannerIntentSchema.parse(value)
 }
 
-function stripWakeWord(text: string): string {
-  return text.replace(WAKE_WORD_PATTERN, '').trim()
+function createRuntimeContext(
+  context: PlannerIntentParserOptions,
+): RuntimeParserContext {
+  return {
+    ...context,
+    locale: context.locale ?? 'ru-RU',
+    now: normalizeNow(context.now),
+    spheres: context.spheres ?? [],
+    timezone: context.timezone ?? 'Europe/Moscow',
+  }
 }
 
-function isShoppingCommand(text: string): boolean {
-  if (!SHOPPING_PATTERN.test(text)) {
-    return false
+function normalizeNow(now: Date | string | undefined): Date {
+  if (now instanceof Date) {
+    return Number.isNaN(now.getTime()) ? new Date() : new Date(now)
   }
 
-  return !/задач[ауи]?/i.test(text) || /(список|покупки|покупок)/i.test(text)
+  if (typeof now === 'string') {
+    const parsed = new Date(now)
+
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+  }
+
+  return new Date()
 }
 
-function createClarifyIntent(
-  rawText: string,
-  clarificationQuestion: string,
-): PlannerIntent {
-  return createIntent({
-    clarificationQuestion,
-    confidence: 0.32,
-    intent: 'clarify',
-    needsConfirmation: false,
-    rawText,
+function isShoppingCommand(
+  commandText: string,
+  dateTime: DateTimeParseResult,
+): boolean {
+  if (EXPLICIT_SHOPPING_PATTERN.test(commandText)) {
+    return true
+  }
+
+  if (BUY_PREFIX_PATTERN.test(commandText) && !dateTime.date) {
+    return true
+  }
+
+  if (
+    /^(?:добавь|добавить|запиши|записать)(?=\s|$)/iu.test(commandText) &&
+    !/(?:^|\s)задач[ауи]?(?=\s|$)/iu.test(commandText) &&
+    !dateTime.date
+  ) {
+    return hasGroceryWord(commandText)
+  }
+
+  return false
+}
+
+function hasGroceryWord(text: string): boolean {
+  return text
+    .split(/\s+/gu)
+    .some((word) => GROCERY_WORDS.has(normalizeShoppingWord(word)))
+}
+
+function splitKnownShoppingWords(text: string): string[] {
+  const words = text.split(/\s+/gu).filter(Boolean)
+
+  if (words.length <= 1) {
+    return [text]
+  }
+
+  if (words.every((word) => GROCERY_WORDS.has(normalizeShoppingWord(word)))) {
+    return words
+  }
+
+  return [text]
+}
+
+function normalizeShoppingItem(text: string): PlannerIntentItem | null {
+  const cleaned = text
+    .replace(/(?:^|\s)(и|а|еще|ещё)(?=\s|$)/giu, ' ')
+    .replace(/\s+/gu, ' ')
+    .trim()
+
+  if (!cleaned) {
+    return null
+  }
+
+  const quantityMatch = /^(\d+)\s+(.+)$/u.exec(cleaned)
+  const quantity = quantityMatch?.[1]
+  const rawTitle = quantityMatch?.[2] ?? cleaned
+  const title = normalizeShoppingWord(rawTitle)
+
+  return createDefinedObject({
+    quantity,
+    title,
   })
 }
 
-function createIntent(input: {
-  clarificationQuestion?: string | undefined
-  confidence: number
-  datetime?: string | undefined
-  intent: PlannerIntentName
-  list?: PlannerIntentList | undefined
-  needsConfirmation: boolean
-  rawText: string
-  reminderAt?: string | undefined
-  title?: string | undefined
-}): PlannerIntent {
-  return plannerIntentSchema.parse(removeUndefinedProperties(input))
+function normalizeShoppingWord(text: string): string {
+  const normalized = text.replace(/[.:]+$/gu, '').trim()
+
+  return SHOPPING_TITLE_NORMALIZATION[normalized] ?? normalized
 }
 
-function removeUndefinedProperties<T extends Record<string, unknown>>(
-  value: T,
-): T {
-  return Object.fromEntries(
-    Object.entries(value).filter((entry) => entry[1] !== undefined),
-  ) as T
+function dedupeItems(items: PlannerIntentItem[]): PlannerIntentItem[] {
+  const seen = new Set<string>()
+  const result: PlannerIntentItem[] = []
+
+  for (const item of items) {
+    const key = `${item.title}:${item.quantity ?? ''}`
+
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    result.push(item)
+  }
+
+  return result
 }
 
-function detectPlannerList(text: string): PlannerIntentList | undefined {
-  if (/(дом|дома|домашн)/i.test(text)) {
-    return 'home'
-  }
-
-  if (/(работ|рабоч)/i.test(text)) {
-    return 'work'
-  }
-
-  if (/(дети|детск|ребен|ребён)/i.test(text)) {
-    return 'kids'
-  }
-
-  if (/(сад|огород|дач)/i.test(text)) {
-    return 'garden'
-  }
-
-  if (/(личн|персональн)/i.test(text)) {
-    return 'personal'
-  }
-
-  return undefined
-}
-
-function extractTitle(
+function parseRelativeReminder(
   text: string,
-  commandPatterns: RegExp[],
-): string | undefined {
-  let title = text
-
-  for (const pattern of commandPatterns) {
-    title = title.replace(pattern, ' ')
-  }
-
-  title = title
-    .replace(WAKE_WORD_PATTERN, ' ')
-    .replace(/(^|\s)(мне|пожалуйста|плиз|на)(?=\s|$)/gi, ' ')
-    .replace(/(^|\s)(сегодня|завтра|послезавтра)(?=\s|$)/gi, ' ')
-    .replace(/(^|\s)(утром|вечером|днем|днём|ночью)(?=\s|$)/gi, ' ')
-    .replace(
-      /(^|\s)(в|к)\s+\d{1,2}(?::\d{2})?\s*(?:час(?:ов|а)?|утра|вечера|дня|ночи)?(?=\s|$)/gi,
-      ' ',
+  now: Date,
+): DateTimeParseResult | null {
+  const match =
+    /(?:^|\s)через\s+(\d+)\s+(минуту|минуты|минут|час|часа|часов|день|дня|дней)(?=\s|$)/iu.exec(
+      text,
     )
-    .replace(/\b\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?\b/g, ' ')
-    .replace(/[,:;.!?]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
 
-  return title || undefined
-}
-
-function parseDateTime(text: string, now: Date): ParsedDateTime | undefined {
-  const date = parseDate(text, now)
-  const time = parseTime(text)
-
-  if (!date && !time) {
-    return undefined
+  if (!match?.[1] || !match[2]) {
+    return null
   }
 
-  const resolvedDate = date ?? formatDateKey(now)
+  const amount = Number(match[1])
+  const unit = match[2]
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return null
+  }
+
+  const minutes =
+    unit.startsWith('минут') || unit === 'минуту'
+      ? amount
+      : unit.startsWith('час')
+        ? amount * 60
+        : amount * 24 * 60
 
   return {
-    value: time ? `${resolvedDate}T${time}` : resolvedDate,
+    ambiguousTime: false,
+    datePrecision: 'relative',
+    dateText: match[0],
+    hasExactRelativeReminder: true,
+    hasRelativeReminder: true,
+    reminderAt: formatDateTime(addMinutes(now, minutes)),
   }
 }
 
-function parseDate(text: string, now: Date): string | undefined {
-  if (/(^|\s)сегодня(?=\s|$)/i.test(text)) {
-    return formatDateKey(now)
+function parseDate(
+  text: string,
+  now: Date,
+):
+  | {
+      date: string
+      datePrecision: PlannerIntentDatePrecision
+      dateText: string
+    }
+  | undefined {
+  if (containsWord(text, 'сегодня')) {
+    return {
+      date: formatDateKey(now),
+      datePrecision: 'exact',
+      dateText: 'сегодня',
+    }
   }
 
-  if (/(^|\s)послезавтра(?=\s|$)/i.test(text)) {
-    return formatDateKey(addDays(now, 2))
+  if (containsWord(text, 'послезавтра')) {
+    return {
+      date: formatDateKey(addDays(now, 2)),
+      datePrecision: 'exact',
+      dateText: 'послезавтра',
+    }
   }
 
-  if (/(^|\s)завтра(?=\s|$)/i.test(text)) {
-    return formatDateKey(addDays(now, 1))
+  if (containsWord(text, 'завтра')) {
+    return {
+      date: formatDateKey(addDays(now, 1)),
+      datePrecision: 'exact',
+      dateText: 'завтра',
+    }
+  }
+
+  const nextWeekMatch =
+    /(?:^|\s)на\s+следующ(?:ей|ую)\s+недел[ею](?=\s|$)/iu.exec(text)
+
+  if (nextWeekMatch) {
+    return {
+      date: formatDateKey(startOfNextWeek(now)),
+      datePrecision: 'period',
+      dateText: nextWeekMatch[0],
+    }
+  }
+
+  const weekdayMatch = WEEKDAY_PATTERN.exec(text)
+
+  if (weekdayMatch?.[2]) {
+    const weekday = WEEKDAY_INDEX[weekdayMatch[2]]
+
+    if (weekday !== undefined) {
+      const isExplicitNext = Boolean(weekdayMatch[1])
+
+      return {
+        date: formatDateKey(nextWeekday(now, weekday, isExplicitNext)),
+        datePrecision: 'date_only',
+        dateText: weekdayMatch[0].trim(),
+      }
+    }
   }
 
   const numericDateMatch =
-    /\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/.exec(text)
+    /(?:^|\s)(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?(?=\s|$)/u.exec(text)
 
-  if (!numericDateMatch) {
+  if (!numericDateMatch?.[1] || !numericDateMatch[2]) {
     return undefined
   }
 
@@ -455,22 +1189,28 @@ function parseDate(text: string, now: Date): string | undefined {
     return undefined
   }
 
-  return formatDateParts(year, month, day)
+  return {
+    date: formatDateParts(year, month, day),
+    datePrecision: 'exact',
+    dateText: numericDateMatch[0],
+  }
 }
 
-function parseTime(text: string): string | undefined {
+function parseTime(
+  text: string,
+): { ambiguous: boolean; time: string } | undefined {
   const timeMatch =
-    /(?:^|\s)(?:в|к|на)\s*(\d{1,2})(?::(\d{2}))?\s*(час(?:ов|а)?|утра|вечера|дня|ночи)?(?=\s|$)/i.exec(
+    /(?:^|\s)(?:в|к)\s*(\d{1,2})(?::(\d{2}))?\s*(?:час(?:ов|а)?\s*)?(утра|вечера|дня|ночи)?(?=\s|$)/iu.exec(
       text,
     )
 
-  if (!timeMatch) {
+  if (!timeMatch?.[1]) {
     return undefined
   }
 
   let hours = Number(timeMatch[1])
   const minutes = timeMatch[2] ? Number(timeMatch[2]) : 0
-  const period = timeMatch[3]?.toLowerCase()
+  const period = timeMatch[3]
 
   if (!Number.isInteger(hours) || !Number.isInteger(minutes)) {
     return undefined
@@ -488,7 +1228,129 @@ function parseTime(text: string): string | undefined {
     hours = 0
   }
 
-  return `${pad2(hours)}:${pad2(minutes)}`
+  return {
+    ambiguous: !period && minutes === 0 && hours >= 1 && hours <= 8,
+    time: `${pad2(hours)}:${pad2(minutes)}`,
+  }
+}
+
+function parseApproximateTime(
+  text: string,
+): { dateText: string; time: string } | undefined {
+  if (containsWord(text, 'утром')) {
+    return { dateText: 'утром', time: '09:00' }
+  }
+
+  if (containsWord(text, 'днем')) {
+    return { dateText: 'днем', time: '14:00' }
+  }
+
+  if (containsWord(text, 'вечером')) {
+    return { dateText: 'вечером', time: '19:00' }
+  }
+
+  if (containsWord(text, 'ночью')) {
+    return { dateText: 'ночью', time: '22:00' }
+  }
+
+  return undefined
+}
+
+function resolveDatePrecision(
+  date:
+    | {
+        date: string
+        datePrecision: PlannerIntentDatePrecision
+        dateText: string
+      }
+    | undefined,
+  time: { ambiguous: boolean; time: string } | undefined,
+  approximateTime: { dateText: string; time: string } | undefined,
+): PlannerIntentDatePrecision | undefined {
+  if (time?.ambiguous || approximateTime) {
+    return 'unknown'
+  }
+
+  if (date?.datePrecision === 'period') {
+    return 'period'
+  }
+
+  if (date && time) {
+    return 'exact'
+  }
+
+  return date?.datePrecision
+}
+
+function createClarifyIntent(
+  rawText: string,
+  clarificationQuestion: string,
+): PlannerIntent {
+  return createIntent({
+    clarificationQuestion,
+    confidence: 0.32,
+    intent: 'clarify',
+    needsConfirmation: false,
+    rawText,
+  })
+}
+
+function createIntent(input: {
+  alternatives?: string[] | undefined
+  clarificationQuestion?: string | undefined
+  confidence: number
+  date?: string | undefined
+  datePrecision?: PlannerIntentDatePrecision | undefined
+  dateText?: string | undefined
+  intent: PlannerIntentName
+  isDangerous?: boolean | undefined
+  items?: PlannerIntentItem[] | undefined
+  needsConfirmation: boolean
+  priority?: 'low' | 'normal' | 'high' | undefined
+  rawText: string
+  recurrence?: PlannerIntentRecurrence | undefined
+  reminderAt?: string | undefined
+  requiresUnlock?: boolean | undefined
+  sphereConfidence?: number | undefined
+  sphereId?: string | undefined
+  targetQuery?: string | undefined
+  time?: string | undefined
+  title?: string | undefined
+  transcript?: string | undefined
+}): PlannerIntent {
+  return plannerIntentSchema.parse(createDefinedObject(input))
+}
+
+function createDefinedObject<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter((entry) => entry[1] !== undefined),
+  ) as T
+}
+
+function containsWord(text: string, word: string): boolean {
+  const escaped = escapeRegExp(word)
+  const pattern = new RegExp(`(?:^|\\s)${escaped}(?=\\s|$)`, 'iu')
+
+  return pattern.test(text)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+}
+
+function joinText(
+  left: string | undefined,
+  right: string | undefined,
+): string | undefined {
+  if (left && right) {
+    return `${left} ${right}`
+  }
+
+  return left ?? right
+}
+
+function clampConfidence(value: number): number {
+  return Math.max(0, Math.min(1, Math.round(value * 100) / 100))
 }
 
 function addDays(date: Date, days: number): Date {
@@ -496,6 +1358,41 @@ function addDays(date: Date, days: number): Date {
   nextDate.setDate(nextDate.getDate() + days)
 
   return nextDate
+}
+
+function addMinutes(date: Date, minutes: number): Date {
+  const nextDate = new Date(date)
+  nextDate.setMinutes(nextDate.getMinutes() + minutes)
+
+  return nextDate
+}
+
+function nextWeekday(
+  date: Date,
+  targetWeekday: number,
+  forceNext: boolean,
+): Date {
+  const currentWeekday = date.getDay()
+  let delta = (targetWeekday - currentWeekday + 7) % 7
+
+  if (forceNext || delta === 0) {
+    delta += 7
+  }
+
+  return addDays(date, delta)
+}
+
+function startOfNextWeek(date: Date): Date {
+  const currentWeekday = date.getDay() === 0 ? 7 : date.getDay()
+  const daysUntilNextMonday = 8 - currentWeekday
+
+  return addDays(date, daysUntilNextMonday)
+}
+
+function formatDateTime(date: Date): string {
+  return `${formatDateKey(date)}T${pad2(date.getHours())}:${pad2(
+    date.getMinutes(),
+  )}`
 }
 
 function formatDateKey(date: Date): string {
