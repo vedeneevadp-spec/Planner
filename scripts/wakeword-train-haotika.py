@@ -33,6 +33,7 @@ DEFAULT_HARD_NEGATIVE_DIRS = [Path("datasets/wakeword/haotika/real-world/false_a
 DEFAULT_OUTPUT_DIR = Path("datasets/wakeword/haotika/training/haotika-experimental-v0")
 DEFAULT_ASSET_MODEL_PATH = Path("android/app/src/main/assets/wakewords/haotika.tflite")
 DEFAULT_ASSET_MANIFEST_PATH = Path("android/app/src/main/assets/wakewords/haotika_manifest.json")
+DEFAULT_EXCLUDED_SAMPLES_CSV = Path("datasets/wakeword/haotika/real-world/excluded_samples.csv")
 
 MINI_SPEECH_COMMANDS_URL = (
     "https://storage.googleapis.com/download.tensorflow.org/data/mini_speech_commands.zip"
@@ -50,6 +51,10 @@ MAX_DURATION_SECONDS = 2.0
 MIN_PEAK = 0.03
 MIN_RMS = 0.006
 MAX_CLIPPING_RATIO = 0.001
+VOICE_ACTIVITY_THRESHOLD = 500
+TRUE_ACCEPT_MAX_LEADING_SILENCE_SECONDS = 1.0
+TRUE_ACCEPT_MIN_ACTIVE_SPEECH_SECONDS = 0.45
+TRUE_ACCEPT_LOW_CONFIDENCE_THRESHOLD = 0.65
 THRESHOLD = 0.61
 THRESHOLD_SWEEP_START = 0.50
 THRESHOLD_SWEEP_END = 0.99
@@ -88,6 +93,12 @@ class RejectedFile:
     reasons: list[str]
 
 
+@dataclass(frozen=True)
+class ExcludedSample:
+    path: Path
+    reasons: list[str]
+
+
 def main() -> None:
     args = parse_args()
     random.seed(args.seed)
@@ -100,17 +111,20 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     ensure_negative_dataset(negative_dir)
+    excluded_samples = read_excluded_samples(args.excluded_samples_csv)
 
     base_positive_files = sorted(positive_dir.glob("*.wav"))
     extra_positive_files = collect_wav_files(args.extra_positive_dirs)
     extra_positive_files, rejected_extra_positive_files = filter_training_audio(
         extra_positive_files,
         role="real_world_true_accept",
+        excluded_samples=excluded_samples,
     )
     false_reject_positive_files = collect_wav_files(args.false_reject_positive_dirs)
     false_reject_positive_files, rejected_false_reject_positive_files = filter_training_audio(
         false_reject_positive_files,
         role="real_world_false_reject",
+        excluded_samples=excluded_samples,
     )
     positive_files = unique_paths([*base_positive_files, *extra_positive_files, *false_reject_positive_files])
     open_negative_files = sorted(negative_dir.glob("*/*.wav"))
@@ -118,6 +132,7 @@ def main() -> None:
     hard_negative_files, rejected_hard_negative_files = filter_training_audio(
         hard_negative_files,
         role="real_world_false_accept",
+        excluded_samples=excluded_samples,
     )
     rejected_files = [
         *rejected_extra_positive_files,
@@ -210,6 +225,7 @@ def main() -> None:
         rejected_extra_positive_count=len(rejected_extra_positive_files),
         rejected_false_reject_positive_count=len(rejected_false_reject_positive_files),
         rejected_hard_negative_count=len(rejected_hard_negative_files),
+        excluded_samples_count=len(excluded_samples),
     )
 
     if args.install_asset:
@@ -244,6 +260,8 @@ def main() -> None:
         threshold_sweep=threshold_sweep,
         tflite_path=tflite_path,
         installed_asset_path=args.asset_model_path if args.install_asset else None,
+        excluded_samples_path=args.excluded_samples_csv,
+        excluded_samples_count=len(excluded_samples),
     )
 
     print(f"Trained {args.model_version}")
@@ -274,6 +292,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=RANDOM_SEED)
+    parser.add_argument("--excluded-samples-csv", type=Path, default=DEFAULT_EXCLUDED_SAMPLES_CSV)
     parser.add_argument("--install-asset", action="store_true")
     return parser.parse_args()
 
@@ -322,12 +341,41 @@ def unique_paths(files: Iterable[Path]) -> list[Path]:
     return sorted(unique)
 
 
-def filter_training_audio(files: list[Path], *, role: str) -> tuple[list[Path], list[RejectedFile]]:
+def read_excluded_samples(path: Path) -> dict[Path, ExcludedSample]:
+    if not path.exists():
+        return {}
+
+    excluded: dict[Path, ExcludedSample] = {}
+
+    with path.open(newline="") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            raw_path = (row.get("file") or "").strip()
+            if not raw_path:
+                continue
+
+            reasons_text = (row.get("reasons") or row.get("reason") or "explicitly excluded").strip()
+            reasons = [reason.strip() for reason in reasons_text.split(";") if reason.strip()]
+            sample_path = Path(raw_path)
+            excluded[sample_path] = ExcludedSample(sample_path, reasons or ["explicitly excluded"])
+
+    return excluded
+
+
+def filter_training_audio(
+    files: list[Path],
+    *,
+    role: str,
+    excluded_samples: dict[Path, ExcludedSample],
+) -> tuple[list[Path], list[RejectedFile]]:
     accepted: list[Path] = []
     rejected: list[RejectedFile] = []
 
     for file_path in files:
-        reasons = audit_training_audio(file_path)
+        explicit_exclusion = excluded_samples.get(file_path)
+        reasons = list(explicit_exclusion.reasons) if explicit_exclusion else []
+        reasons.extend(audit_training_audio(file_path, role=role))
+        reasons = unique_reasons(reasons)
 
         if reasons:
             rejected.append(RejectedFile(file_path, role, reasons))
@@ -337,8 +385,26 @@ def filter_training_audio(files: list[Path], *, role: str) -> tuple[list[Path], 
     return accepted, rejected
 
 
-def audit_training_audio(file_path: Path) -> list[str]:
+def unique_reasons(reasons: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+
+    for reason in reasons:
+        if reason in seen:
+            continue
+
+        seen.add(reason)
+        unique.append(reason)
+
+    return unique
+
+
+def audit_training_audio(file_path: Path, *, role: str) -> list[str]:
     reasons: list[str] = []
+    pcm = b""
+    sample_rate = 0
+    channels = 0
+    sample_width = 0
 
     try:
         with wave.open(str(file_path), "rb") as wav:
@@ -381,7 +447,62 @@ def audit_training_audio(file_path: Path) -> list[str]:
         if clipping_ratio > MAX_CLIPPING_RATIO:
             reasons.append(f"clipping={clipping_ratio:.3%}")
 
+        if role == "real_world_true_accept":
+            reasons.extend(audit_real_world_true_accept(file_path, samples, sample_rate))
+
     return reasons
+
+
+def audit_real_world_true_accept(file_path: Path, samples: np.ndarray, sample_rate: int) -> list[str]:
+    reasons: list[str] = []
+
+    if sample_rate <= 0 or len(samples) == 0:
+        return reasons
+
+    active_indices = np.flatnonzero(np.abs(samples * 32_768.0) > VOICE_ACTIVITY_THRESHOLD)
+    if len(active_indices) == 0:
+        reasons.append("no active speech found")
+    else:
+        leading_silence_seconds = float(active_indices[0] / sample_rate)
+        active_speech_seconds = float((active_indices[-1] - active_indices[0] + 1) / sample_rate)
+
+        if leading_silence_seconds > TRUE_ACCEPT_MAX_LEADING_SILENCE_SECONDS:
+            reasons.append(f"likely truncated true_accept: leading speech starts at {leading_silence_seconds * 1_000:.0f}ms")
+
+        if active_speech_seconds < TRUE_ACCEPT_MIN_ACTIVE_SPEECH_SECONDS:
+            reasons.append(f"likely partial true_accept: active speech {active_speech_seconds * 1_000:.0f}ms")
+
+    metadata = read_wakeword_metadata(file_path.with_suffix(".json"))
+    model_version = metadata.get("modelVersion")
+    threshold = metadata_float(metadata.get("threshold"))
+
+    if threshold is not None and threshold <= TRUE_ACCEPT_LOW_CONFIDENCE_THRESHOLD:
+        reasons.append(f"low-confidence true_accept metadata threshold={threshold:.2f}")
+
+    if model_version == "haotika-experimental-v0":
+        reasons.append(f"legacy experimental true_accept modelVersion={model_version}")
+
+    return reasons
+
+
+def read_wakeword_metadata(path: Path) -> dict[str, object]:
+    if not path.exists():
+        return {}
+
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def metadata_float(value: object) -> float | None:
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def split_positive_by_speaker(files: list[Path]) -> Split:
@@ -686,6 +807,8 @@ def write_report(
     threshold_sweep: list[Metrics],
     tflite_path: Path,
     installed_asset_path: Path | None,
+    excluded_samples_path: Path,
+    excluded_samples_count: int,
 ) -> None:
     best_epoch = int(np.argmin(history["val_loss"])) + 1 if history.get("val_loss") else 0
     positive_files_count = len(base_positive_files) + len(extra_positive_files) + len(false_reject_positive_files)
@@ -710,7 +833,8 @@ def write_report(
         f"- Negative files: {negative_files_count}",
         f"- Open negative files: {len(open_negative_files)} from `{MINI_SPEECH_COMMANDS_URL}`",
         f"- Real-world hard negative false accept files: {len(hard_negative_files)}",
-        f"- Rejected real-world files by audio audit: {len(rejected_files)}",
+        f"- Rejected real-world files by audit/exclusion policy: {len(rejected_files)}",
+        f"- Explicit exclusion list: `{excluded_samples_path}` ({excluded_samples_count} rows)",
         f"- Negative license: {MINI_SPEECH_COMMANDS_LICENSE}",
         "- Negative labels: mini Speech Commands words plus real false wake-word accepts",
         "",
@@ -794,6 +918,7 @@ def write_asset_manifest(
     rejected_extra_positive_count: int,
     rejected_false_reject_positive_count: int,
     rejected_hard_negative_count: int,
+    excluded_samples_count: int,
 ) -> None:
     manifest = {
         "phraseId": "haotika",
@@ -812,6 +937,7 @@ def write_asset_manifest(
             "realWorldFalseReject": false_reject_positive_count,
             "rejectedRealWorldTrueAccept": rejected_extra_positive_count,
             "rejectedRealWorldFalseReject": rejected_false_reject_positive_count,
+            "explicitExclusionListRows": excluded_samples_count,
         },
         "negativeDataset": {
             "name": "mini_speech_commands",
