@@ -192,6 +192,8 @@ const TASK_MARKER_PATTERN =
 const EXPLICIT_SHOPPING_PATTERN =
   /(?:^|\s)(в\s+покупки|в\s+список\s+покупок|список\s+покупок|покупки|покупок)(?=\s|$)/iu
 const BUY_PREFIX_PATTERN = /^(?:мне\s+)?(?:купи|купить)(?=\s|$)/iu
+const BUY_INTENT_PATTERN =
+  /^(?:мне\s+)?(?:(?:надо|нужно)\s+(?:бы\s+)?)?(?:купи|купить)(?=\s|$)/iu
 const BUY_WORD_PATTERN = /(?:^|\s)(купи|купить)(?=\s|$)/iu
 const WEEKDAY_INDEX: Record<string, number> = {
   воскресенье: 0,
@@ -264,11 +266,13 @@ const GROCERY_WORDS = new Set([
   'молока',
   'морковь',
   'мясо',
+  'мыло',
   'овощи',
   'огурцы',
   'рис',
   'рыба',
   'сахар',
+  'соль',
   'сыр',
   'творог',
   'хлеб',
@@ -992,7 +996,11 @@ function isShoppingCommand(
     return true
   }
 
-  if (BUY_PREFIX_PATTERN.test(commandText) && !dateTime.date) {
+  if (
+    (BUY_PREFIX_PATTERN.test(commandText) ||
+      BUY_INTENT_PATTERN.test(commandText)) &&
+    !dateTime.date
+  ) {
     return true
   }
 

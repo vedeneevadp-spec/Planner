@@ -84,16 +84,25 @@ describe('PlannerIntentParser', () => {
 
   it('parses multiple shopping items', () => {
     const intent = parser.parse('добавь молоко и хлеб в покупки', { now: NOW })
+    const implicitBuyIntent = parser.parse('Надо купить соль сахар и мыло', {
+      now: NOW,
+    })
 
     expect(intent).toMatchObject({
       intent: 'add_shopping_item',
       items: [{ title: 'молоко' }, { title: 'хлеб' }],
       needsConfirmation: false,
     })
+    expect(implicitBuyIntent).toMatchObject({
+      intent: 'add_shopping_item',
+      items: [{ title: 'соль' }, { title: 'сахар' }, { title: 'мыло' }],
+      needsConfirmation: false,
+    })
   })
 
   it('parses compact shopping lists and quantities', () => {
     const compact = parser.parse('купи хлеб яйца и яблоки', { now: NOW })
+    const implicitSingleBuy = parser.parse('Надо купить хлеб', { now: NOW })
     const quantity = parser.parse(
       'Хаотика, добавь два молока и хлеб в покупки',
       {
@@ -104,6 +113,11 @@ describe('PlannerIntentParser', () => {
     expect(compact).toMatchObject({
       intent: 'add_shopping_item',
       items: [{ title: 'хлеб' }, { title: 'яйца' }, { title: 'яблоки' }],
+    })
+    expect(implicitSingleBuy).toMatchObject({
+      intent: 'add_shopping_item',
+      items: [{ title: 'хлеб' }],
+      needsConfirmation: false,
     })
     expect(quantity).toMatchObject({
       intent: 'add_shopping_item',
