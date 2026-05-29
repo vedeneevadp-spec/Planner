@@ -8,8 +8,6 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.media.AudioManager;
-import android.media.ToneGenerator;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -35,6 +33,7 @@ public class WakeWordService extends Service {
     private WakeWordEngine wakeWordEngine;
     private WakeWordMetricsLogger metricsLogger;
     private SpeechToTextService speechToTextService;
+    private VoiceCuePlayer voiceCuePlayer;
     private VoiceAssistantState state = VoiceAssistantState.IDLE;
     private boolean isForeground;
 
@@ -68,6 +67,7 @@ public class WakeWordService extends Service {
         metricsLogger = new WakeWordMetricsLogger();
         wakeWordEngine = createWakeWordEngine();
         speechToTextService = SpeechToTextServiceFactory.create(this);
+        voiceCuePlayer = new VoiceCuePlayer(this, handler);
         setState(VoiceAssistantState.IDLE);
     }
 
@@ -117,6 +117,7 @@ public class WakeWordService extends Service {
     @Override
     public void onDestroy() {
         handler.removeCallbacksAndMessages(null);
+        voiceCuePlayer.release();
         wakeWordEngine.stop();
         speechToTextService.stop();
         setState(VoiceAssistantState.IDLE);
@@ -180,7 +181,7 @@ public class WakeWordService extends Service {
 
         setState(VoiceAssistantStateMachine.onWakeWordDetected(state));
         WakeWordTrainingExampleStore.capturePendingForReview(detection);
-        playActivationFeedback();
+        playActivationHaptic();
         updateNotification(getString(R.string.planner_voice_notification_reviewing));
         openWakeWordReview();
     }
@@ -211,11 +212,15 @@ public class WakeWordService extends Service {
     }
 
     private void beginCommandCapture(SttRequest request) {
-        playActivationFeedback();
+        playActivationHaptic();
         showListeningOverlay();
         setState(VoiceAssistantState.RECORDING_COMMAND);
         updateNotification(getString(R.string.planner_voice_notification_recording));
 
+        voiceCuePlayer.playListeningCueBefore(() -> startCommandTranscription(request));
+    }
+
+    private void startCommandTranscription(SttRequest request) {
         speechToTextService.transcribe(
             request,
             new SpeechToTextService.Callback() {
@@ -245,6 +250,7 @@ public class WakeWordService extends Service {
     }
 
     private void handleAssistantError(WakeWordError error) {
+        voiceCuePlayer.release();
         WakeWordDiagnostics.recordError(error);
         metricsLogger.error(error);
         setState(VoiceAssistantState.ERROR);
@@ -254,6 +260,7 @@ public class WakeWordService extends Service {
 
     private void stopAssistant() {
         handler.removeCallbacksAndMessages(null);
+        voiceCuePlayer.release();
         wakeWordEngine.stop();
         speechToTextService.stop();
         setState(VoiceAssistantState.IDLE);
@@ -411,11 +418,7 @@ public class WakeWordService extends Service {
         return config != null && config.wakeWordTrainingModeEnabled;
     }
 
-    private void playActivationFeedback() {
-        ToneGenerator toneGenerator = new ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70);
-        toneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, 90);
-        handler.postDelayed(toneGenerator::release, 150L);
-
+    private void playActivationHaptic() {
         Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         if (vibrator == null) {
             return;

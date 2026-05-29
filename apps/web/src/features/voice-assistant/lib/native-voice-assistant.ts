@@ -4,7 +4,12 @@ import {
   type PluginListenerHandle,
   registerPlugin,
 } from '@capacitor/core'
-import type { PlannerIntent } from '@planner/contracts'
+import type {
+  PlannerIntent,
+  PlannerIntentName,
+  VoiceActionResult,
+  VoiceAssistantSource,
+} from '@planner/contracts'
 
 export interface NativeVoiceAssistantApiConfig {
   accessToken?: string | undefined
@@ -27,6 +32,14 @@ export interface NativeVoiceCommand {
     | 'TEST_STUB'
     | null
   transcript?: string | null
+}
+
+export interface NativeVoiceActionResultNotification {
+  changedData: boolean
+  intent: PlannerIntentName
+  requiresUnlock?: boolean | undefined
+  source: VoiceAssistantSource
+  status: VoiceActionResult['status']
 }
 
 export interface NativeWakeWordDiagnostics {
@@ -68,6 +81,9 @@ interface PlannerVoiceAssistantPlugin {
   }>
   getWakeWordDiagnostics: () => Promise<NativeWakeWordDiagnostics>
   getWakeWordTrainingCollectionStatus: () => Promise<NativeWakeWordTrainingCollectionStatus>
+  notifyActionResult: (
+    options: NativeVoiceActionResultNotification,
+  ) => Promise<{ doneCuePlayed: boolean }>
   openWakeWordFalseRejectRecorder: () => Promise<NativeWakeWordTrainingCollectionStatus>
   openWakeWordDebug: () => Promise<NativeWakeWordDiagnostics>
   reportWakeWordFalseAccept: () => Promise<NativeWakeWordFeedbackResult>
@@ -127,6 +143,19 @@ export async function consumePendingAndroidVoiceCommand(): Promise<NativeVoiceCo
   const { command } = await NativePlannerVoiceAssistant.consumePendingCommand()
 
   return command
+}
+
+export async function notifyAndroidVoiceActionResult(
+  options: NativeVoiceActionResultNotification,
+): Promise<boolean> {
+  if (!isAndroidVoiceAssistantRuntime()) {
+    return false
+  }
+
+  const { doneCuePlayed } =
+    await NativePlannerVoiceAssistant.notifyActionResult(options)
+
+  return doneCuePlayed
 }
 
 export async function getAndroidWakeWordDiagnostics(): Promise<NativeWakeWordDiagnostics | null> {

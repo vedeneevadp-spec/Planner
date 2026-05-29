@@ -4,6 +4,8 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -20,6 +22,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 public class PlannerVoiceAssistantPlugin extends Plugin {
 
     static final String MICROPHONE = "microphone";
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final WakeWordMetricsLogger wakeWordMetricsLogger = new WakeWordMetricsLogger();
 
     @PluginMethod
@@ -86,6 +89,30 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             response.put("command", commandValue);
         }
 
+        call.resolve(response);
+    }
+
+    @PluginMethod
+    public void notifyActionResult(PluginCall call) {
+        String source = call.getString("source");
+        String intent = call.getString("intent");
+        String status = call.getString("status");
+        boolean requiresUnlock = Boolean.TRUE.equals(call.getBoolean("requiresUnlock"));
+        boolean changedData = Boolean.TRUE.equals(call.getBoolean("changedData"));
+        boolean shouldPlayDoneCue = VoiceCuePolicy.shouldPlayDoneCue(
+            source,
+            intent,
+            status,
+            requiresUnlock,
+            changedData
+        );
+        JSObject response = new JSObject();
+
+        if (shouldPlayDoneCue) {
+            VoiceCuePlayer.playDoneCue(getContext(), mainHandler);
+        }
+
+        response.put("doneCuePlayed", shouldPlayDoneCue);
         call.resolve(response);
     }
 

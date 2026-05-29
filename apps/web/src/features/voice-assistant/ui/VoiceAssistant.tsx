@@ -34,6 +34,7 @@ import {
   consumePendingAndroidVoiceCommand,
   isAndroidVoiceAssistantRuntime,
   type NativeVoiceCommand,
+  notifyAndroidVoiceActionResult,
   startAndroidVoiceAssistant,
   stopAndroidVoiceAssistant,
 } from '../lib/native-voice-assistant'
@@ -105,6 +106,16 @@ export function VoiceAssistant() {
         )
 
         setActionResult(result)
+        void notifyAndroidVoiceActionResult({
+          changedData: hasVoiceActionMutatedData(result),
+          intent: preview.intent.intent,
+          requiresUnlock:
+            preview.requiresUnlock || Boolean(preview.intent.requiresUnlock),
+          source: source ?? 'web_microphone',
+          status: result.status,
+        }).catch((error) => {
+          console.warn('Failed to notify Android voice action result.', error)
+        })
 
         if (result.status === 'success') {
           dispatch({ type: 'executed' })
@@ -881,6 +892,14 @@ function resolveVoiceClientTimeZone(): string | undefined {
   } catch {
     return undefined
   }
+}
+
+function hasVoiceActionMutatedData(result: VoiceActionResult): boolean {
+  return Boolean(
+    result.createdTaskId ||
+    result.updatedTaskId ||
+    result.createdShoppingItemIds?.length,
+  )
 }
 
 function getStatusLabel(status: string): string {
