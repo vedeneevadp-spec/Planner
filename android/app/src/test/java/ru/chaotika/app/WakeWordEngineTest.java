@@ -110,6 +110,15 @@ public class WakeWordEngineTest {
     }
 
     @Test
+    public void voiceAssistantStateMachine_blocksWakeListeningDuringReviewAndCommandCapture() {
+        assertFalse(VoiceAssistantStateMachine.canStartWakeWordDetection(VoiceAssistantState.REVIEWING_WAKE_WORD));
+        assertFalse(VoiceAssistantStateMachine.canStartWakeWordDetection(VoiceAssistantState.RECORDING_COMMAND));
+        assertFalse(VoiceAssistantStateMachine.canStartWakeWordDetection(VoiceAssistantState.TRANSCRIBING));
+        assertTrue(VoiceAssistantStateMachine.canStartWakeWordDetection(VoiceAssistantState.IDLE));
+        assertTrue(VoiceAssistantStateMachine.canStartWakeWordDetection(VoiceAssistantState.WAITING_FOR_CONFIRMATION));
+    }
+
+    @Test
     public void trainingExampleStore_capturesPendingReviewSampleWithoutOptIn() {
         WakeWordTrainingExampleStore.clearPending();
         WakeWordDetection detection = new WakeWordDetection(

@@ -133,6 +133,11 @@ public class WakeWordService extends Service {
     }
 
     private void startWakeWordDetection() {
+        if (!VoiceAssistantStateMachine.canStartWakeWordDetection(state)) {
+            wakeWordEngine.stop();
+            return;
+        }
+
         if (wakeWordEngine.isRunning()) {
             return;
         }
@@ -160,11 +165,8 @@ public class WakeWordService extends Service {
     }
 
     private void handleWakeWordDetected(WakeWordDetection detection) {
-        if (
-            state == VoiceAssistantState.RECORDING_COMMAND ||
-            state == VoiceAssistantState.TRANSCRIBING ||
-            state == VoiceAssistantState.REVIEWING_WAKE_WORD
-        ) {
+        if (!VoiceAssistantStateMachine.canStartWakeWordDetection(state)) {
+            wakeWordEngine.stop();
             return;
         }
 
