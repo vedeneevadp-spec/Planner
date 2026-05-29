@@ -17,13 +17,17 @@ The `test` role only grants access to rollout features. It does not grant admin 
 - `backgroundWakeWordEnabled`: device-local Android background listening switch.
 - `voiceCuesEnabled`: device-local Android local cue switch.
 - `wakeWordSensitivity`: device-local Android threshold control.
-- `wakeWordReviewModeEnabled`: device-local owner/test review mode for wake-word evaluation.
+- `wakeWordTrainingModeEnabled`: workspace-level review mode for wake-word evaluation.
+
+The voice assistant settings live on the dedicated `/voice-assistant/settings` page. The "More" page links to that page after the theme control and does not embed the full settings panel.
+The workspace training-mode switch is editable by `owner` only; `test` can use rollout voice controls but does not receive workspace-admin rights.
 
 Readonly v1 values:
 
 - `wakePhrase`: `Хаотика`
-- `recognitionLanguage`: `ru-RU`
 - `confirmationMode`: `confirmation_first`
+
+Recognition language is not configurable in settings. Runtime speech recognition uses Russian (`ru-RU`) by default.
 
 ## Platform Differences
 
@@ -49,13 +53,16 @@ User/server storage:
 
 - `voiceAssistantEnabled`
 
+Workspace/server storage:
+
+- `wakeWordTrainingModeEnabled`
+
 Device-local storage:
 
 - `androidWakeWordEnabled`
 - `backgroundWakeWordEnabled`
 - `wakeWordSensitivity`
 - `voiceCuesEnabled`
-- `wakeWordReviewModeEnabled`
 
 Derived runtime state is not stored as a user setting:
 

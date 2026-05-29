@@ -370,24 +370,6 @@ export function AdminPage() {
     }
   }
 
-  async function handleWakeWordTrainingModeChange(enabled: boolean) {
-    setSettingsError(null)
-
-    try {
-      await updateWorkspaceSettings.mutateAsync({
-        taskCompletionConfettiEnabled:
-          workspaceSettings.taskCompletionConfettiEnabled,
-        wakeWordTrainingModeEnabled: enabled,
-      })
-    } catch (error) {
-      setSettingsError(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось обновить настройки.',
-      )
-    }
-  }
-
   function markIconAsBroken(iconAssetId: string) {
     setBrokenIconIds((currentIconIds) => {
       if (currentIconIds.has(iconAssetId)) {
@@ -796,17 +778,6 @@ export function AdminPage() {
               <p className={styles.eyebrow}>Settings</p>
               <h3>Поведение приложения</h3>
             </div>
-            <span
-              className={cx(
-                styles.statusBadge,
-                !workspaceSettings.wakeWordTrainingModeEnabled &&
-                  styles.statusBadgeMuted,
-              )}
-            >
-              {workspaceSettings.wakeWordTrainingModeEnabled
-                ? 'дообучение включено'
-                : 'обычный флоу'}
-            </span>
           </div>
           <p className={styles.sectionCopy}>
             Управляйте поведением приложения для текущего workspace.
@@ -836,34 +807,6 @@ export function AdminPage() {
                 disabled={isUpdatingSettings}
                 onChange={(event) => {
                   void handleTaskCompletionConfettiChange(event.target.checked)
-                }}
-              />
-              <span className={styles.toggleTrack}>
-                <span className={styles.toggleThumb} />
-              </span>
-            </span>
-          </div>
-
-          <div className={styles.toggleRow}>
-            <label
-              className={styles.toggleCopy}
-              htmlFor="wake-word-training-mode-enabled"
-            >
-              <strong>Режим дообучения wake word</strong>
-              <span>
-                Показывать отдельный шаг оценки срабатывания и записи фрагментов
-                перед голосовой командой.
-              </span>
-            </label>
-            <span className={styles.toggleControl}>
-              <input
-                id="wake-word-training-mode-enabled"
-                className={styles.toggleInput}
-                type="checkbox"
-                checked={workspaceSettings.wakeWordTrainingModeEnabled}
-                disabled={isUpdatingSettings}
-                onChange={(event) => {
-                  void handleWakeWordTrainingModeChange(event.target.checked)
                 }}
               />
               <span className={styles.toggleTrack}>

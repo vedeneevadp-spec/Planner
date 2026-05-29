@@ -7,7 +7,11 @@ import {
   useState,
 } from 'react'
 
-import { usePlannerSession, useUpdateUserPreferences } from '@/features/session'
+import {
+  usePlannerSession,
+  useUpdateUserPreferences,
+  useUpdateWorkspaceSettings,
+} from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import { BellIcon, GearIcon, MicIcon } from '@/shared/ui/Icon'
 
@@ -22,7 +26,6 @@ import {
   setAndroidBackgroundWakeWordEnabled,
   setAndroidVoiceCuesEnabled,
   setAndroidWakeWordEnabled,
-  setAndroidWakeWordReviewModeEnabled,
   setAndroidWakeWordSensitivity,
   stopAndroidVoiceAssistant,
   type VoiceAssistantNativeStatus,
@@ -38,6 +41,7 @@ import styles from './VoiceAssistantSettingsPanel.module.css'
 export function VoiceAssistantSettingsPanel() {
   const session = usePlannerSession().data
   const updateUserPreferences = useUpdateUserPreferences()
+  const updateWorkspaceSettings = useUpdateWorkspaceSettings()
   const [nativeStatus, setNativeStatus] =
     useState<VoiceAssistantNativeStatus | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -47,7 +51,13 @@ export function VoiceAssistantSettingsPanel() {
     session?.userPreferences.voiceAssistantEnabled ?? true
   const isAndroid = nativeStatus?.isAndroid ?? isAndroidVoiceAssistantRuntime()
   const isMasterPending = updateUserPreferences.isPending
+  const isWorkspaceSettingsPending = updateWorkspaceSettings.isPending
   const status = nativeStatus ?? null
+  const workspaceSettings = session?.workspaceSettings ?? {
+    taskCompletionConfettiEnabled: true,
+    wakeWordTrainingModeEnabled: false,
+  }
+  const canUpdateWakeWordTrainingMode = session?.appRole === 'owner'
   const wakeWordModelMissing = status?.wakeWordModelStatus === 'missing'
   const androidControlsDisabled =
     !voiceAssistantEnabled || isNativeActionPending || isMasterPending
@@ -160,6 +170,28 @@ export function VoiceAssistantSettingsPanel() {
     await runNativeAction(() => setAndroidBackgroundWakeWordEnabled(true))
   }
 
+  async function handleWakeWordTrainingModeToggle(enabled: boolean) {
+    if (!session) {
+      return
+    }
+
+    setMessage(null)
+
+    try {
+      await updateWorkspaceSettings.mutateAsync({
+        taskCompletionConfettiEnabled:
+          workspaceSettings.taskCompletionConfettiEnabled,
+        wakeWordTrainingModeEnabled: enabled,
+      })
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось обновить режим дообучения.',
+      )
+    }
+  }
+
   if (!session) {
     return null
   }
@@ -193,7 +225,6 @@ export function VoiceAssistantSettingsPanel() {
           label="Фраза активации"
           value={VOICE_ASSISTANT_WAKE_PHRASE}
         />
-        <ReadonlyRow label="Язык" value="Русский" />
         <ReadonlyRow label="Режим подтверждений" value="Всегда подтверждать" />
       </div>
 
@@ -272,17 +303,22 @@ export function VoiceAssistantSettingsPanel() {
           <section className={styles.group} aria-label="Wake word review mode">
             <h3>Режим дообучения "{VOICE_ASSISTANT_WAKE_PHRASE}"</h3>
             <SettingsSwitch
-              checked={Boolean(status?.wakeWordReviewModeEnabled)}
-              disabled={androidControlsDisabled || !status}
+              checked={workspaceSettings.wakeWordTrainingModeEnabled}
+              disabled={
+                androidControlsDisabled ||
+                isWorkspaceSettingsPending ||
+                !canUpdateWakeWordTrainingMode ||
+                !status
+              }
               label={`Показывать окно оценки срабатывания "${VOICE_ASSISTANT_WAKE_PHRASE}"`}
               onCheckedChange={(enabled) => {
-                void runNativeAction(() =>
-                  setAndroidWakeWordReviewModeEnabled(enabled),
-                )
+                void handleWakeWordTrainingModeToggle(enabled)
               }}
             />
             <p className={styles.note}>
-              Аудио для обучения сохраняется только после отдельного согласия.
+              {canUpdateWakeWordTrainingMode
+                ? 'Аудио для обучения сохраняется только после отдельного согласия.'
+                : 'Режим дообучения может менять только owner.'}
             </p>
           </section>
 

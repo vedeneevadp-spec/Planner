@@ -213,19 +213,6 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void setWakeWordReviewModeEnabled(PluginCall call) {
-        Boolean isEnabled = call.getBoolean("enabled");
-
-        if (isEnabled == null) {
-            call.reject("enabled is required.");
-            return;
-        }
-
-        PlannerVoiceAssistantStorage.storeWakeWordReviewModeEnabled(getContext(), isEnabled);
-        call.resolve(new JSObject());
-    }
-
-    @PluginMethod
     public void requestMicrophonePermission(PluginCall call) {
         if (getPermissionState(MICROPHONE) == PermissionState.GRANTED) {
             call.resolve(createPermissionResponse("granted"));
@@ -467,7 +454,6 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         response.put("microphonePermission", mapPermissionState(getPermissionState(MICROPHONE)));
         response.put("notificationPermission", resolveNotificationPermissionStatus());
         response.put("voiceCuesEnabled", PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext()));
-        response.put("wakeWordReviewModeEnabled", PlannerVoiceAssistantStorage.readWakeWordReviewModeEnabled(getContext()));
 
         return response;
     }

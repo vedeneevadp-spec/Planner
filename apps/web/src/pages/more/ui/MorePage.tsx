@@ -11,12 +11,12 @@ import {
   useSessionAuth,
   WorkspaceParticipantsDialog,
 } from '@/features/session'
-import { VoiceAssistantSettingsPanel } from '@/features/voice-assistant'
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import {
   EditIcon,
   GearIcon,
+  MicIcon,
   MoonIcon,
   PlusIcon,
   SunIcon,
@@ -290,8 +290,6 @@ export function MorePage() {
         </button>
       ) : null}
 
-      {session ? <VoiceAssistantSettingsPanel /> : null}
-
       {isWorkspaceParticipantsOpen && isSharedWorkspace ? (
         <WorkspaceParticipantsDialog
           isOpen={isWorkspaceParticipantsOpen}
@@ -317,6 +315,13 @@ export function MorePage() {
           </span>
           <span>{themeLabel}</span>
         </button>
+        {session ? (
+          <MoreActionLink
+            icon={<MicIcon size={19} strokeWidth={2} />}
+            label="Голосовой помощник"
+            to="/voice-assistant/settings"
+          />
+        ) : null}
       </section>
 
       {hasSectionLinks ? (

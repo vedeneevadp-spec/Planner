@@ -97,7 +97,6 @@ export interface VoiceAssistantNativeStatus {
   wakePhrase: typeof VOICE_ASSISTANT_WAKE_PHRASE
   wakeWordEnabled: boolean
   wakeWordModelStatus: VoiceAssistantWakeWordModelStatus
-  wakeWordReviewModeEnabled: boolean
   wakeWordSensitivity: number
 }
 
@@ -130,7 +129,6 @@ interface PlannerVoiceAssistantPlugin {
   setBackgroundWakeWordEnabled: (options: { enabled: boolean }) => Promise<void>
   setVoiceCuesEnabled: (options: { enabled: boolean }) => Promise<void>
   setWakeWordEnabled: (options: { enabled: boolean }) => Promise<void>
-  setWakeWordReviewModeEnabled: (options: { enabled: boolean }) => Promise<void>
   setWakeWordSensitivity: (options: { sensitivity: number }) => Promise<void>
   skipWakeWordFeedback: () => Promise<NativeWakeWordFeedbackResult>
   setWakeWordTrainingCollectionEnabled: (options: {
@@ -220,19 +218,6 @@ export async function setAndroidVoiceCuesEnabled(
   }
 
   await NativePlannerVoiceAssistant.setVoiceCuesEnabled({ enabled })
-  notifyVoiceAssistantSettingsChanged()
-}
-
-export async function setAndroidWakeWordReviewModeEnabled(
-  enabled: boolean,
-): Promise<void> {
-  if (!isAndroidVoiceAssistantRuntime()) {
-    updateVoiceAssistantDeviceSettings({ wakeWordReviewModeEnabled: enabled })
-    notifyVoiceAssistantSettingsChanged()
-    return
-  }
-
-  await NativePlannerVoiceAssistant.setWakeWordReviewModeEnabled({ enabled })
   notifyVoiceAssistantSettingsChanged()
 }
 
@@ -443,7 +428,6 @@ function createWebVoiceAssistantNativeStatus(): VoiceAssistantNativeStatus {
     wakePhrase: VOICE_ASSISTANT_WAKE_PHRASE,
     wakeWordEnabled: false,
     wakeWordModelStatus: 'missing',
-    wakeWordReviewModeEnabled: settings.wakeWordReviewModeEnabled,
     wakeWordSensitivity: settings.wakeWordSensitivity,
   }
 }

@@ -41,6 +41,11 @@ const MorePage = lazy(() =>
 const ProfilePage = lazy(() =>
   import('@/pages/profile').then((module) => ({ default: module.ProfilePage })),
 )
+const VoiceAssistantSettingsPage = lazy(() =>
+  import('@/pages/voice-assistant-settings').then((module) => ({
+    default: module.VoiceAssistantSettingsPage,
+  })),
+)
 const ShoppingPage = lazy(() =>
   import('@/pages/shopping').then((module) => ({
     default: module.ShoppingPage,
@@ -96,6 +101,7 @@ const routeElements = {
   sphere: <SpherePage />,
   spheres: <SpheresPage />,
   today: <TodayPage />,
+  voiceAssistantSettings: <VoiceAssistantSettingsPage />,
 } satisfies Record<AppRouteId, ReactElement>
 
 export function AppRouter() {

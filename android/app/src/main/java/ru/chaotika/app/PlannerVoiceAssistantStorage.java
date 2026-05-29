@@ -18,7 +18,6 @@ final class PlannerVoiceAssistantStorage {
     private static final String STATE_KEY = "planner.voice.state";
     private static final String VOICE_CUES_ENABLED_KEY = "planner.voice.voice-cues-enabled";
     private static final String WAKE_WORD_ENABLED_KEY = "planner.voice.wake-word-enabled";
-    private static final String WAKE_WORD_REVIEW_MODE_ENABLED_KEY = "planner.voice.wake-word-review-mode-enabled";
     private static final String WAKE_WORD_SENSITIVITY_KEY = "planner.voice.wake-word-sensitivity";
 
     private PlannerVoiceAssistantStorage() {}
@@ -53,14 +52,6 @@ final class PlannerVoiceAssistantStorage {
 
     static boolean readVoiceCuesEnabled(Context context) {
         return getPreferences(context).getBoolean(VOICE_CUES_ENABLED_KEY, true);
-    }
-
-    static void storeWakeWordReviewModeEnabled(Context context, boolean isEnabled) {
-        getPreferences(context).edit().putBoolean(WAKE_WORD_REVIEW_MODE_ENABLED_KEY, isEnabled).apply();
-    }
-
-    static boolean readWakeWordReviewModeEnabled(Context context) {
-        return getPreferences(context).getBoolean(WAKE_WORD_REVIEW_MODE_ENABLED_KEY, false);
     }
 
     static void storeWakeWordSensitivity(Context context, float sensitivity) {

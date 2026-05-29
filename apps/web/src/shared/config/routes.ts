@@ -14,6 +14,7 @@ export type AppRouteId =
   | 'sphere'
   | 'spheres'
   | 'today'
+  | 'voiceAssistantSettings'
 
 export interface AppRouteDefinition {
   id: AppRouteId
@@ -108,6 +109,11 @@ export const appRouteDefinitions = [
   {
     id: 'more',
     path: '/more',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
+    id: 'voiceAssistantSettings',
+    path: '/voice-assistant/settings',
     workspaceKinds: allWorkspaceKinds,
   },
   {

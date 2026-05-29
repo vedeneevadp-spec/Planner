@@ -42,6 +42,10 @@ vi.mock('@/pages/profile', () => ({
   ProfilePage: () => <div>Profile page</div>,
 }))
 
+vi.mock('@/pages/voice-assistant-settings', () => ({
+  VoiceAssistantSettingsPage: () => <div>Voice assistant settings page</div>,
+}))
+
 vi.mock('@/pages/shopping', () => ({
   ShoppingPage: () => <div>Shopping page</div>,
 }))
@@ -153,6 +157,26 @@ describe('AppRouter', () => {
     )
 
     expect(await screen.findByText('More page')).toBeVisible()
+  })
+
+  it('keeps voice assistant settings available in shared workspaces', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'shared',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/voice-assistant/settings']}>
+        <AppRouter />
+      </MemoryRouter>,
+    )
+
+    expect(
+      await screen.findByText('Voice assistant settings page'),
+    ).toBeVisible()
   })
 
   it('redirects shared workspaces away from profile', async () => {

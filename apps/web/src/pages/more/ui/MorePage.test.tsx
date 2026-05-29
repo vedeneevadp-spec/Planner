@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -62,12 +68,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/planner', () => ({
   usePlanner: () => mocks.usePlanner(),
-}))
-
-vi.mock('@/features/voice-assistant', () => ({
-  VoiceAssistantSettingsPanel: () => (
-    <section aria-label="Голосовой помощник" />
-  ),
 }))
 
 vi.mock('@/features/session', () => ({
@@ -242,5 +242,31 @@ describe('MorePage', () => {
 
     expect(screen.queryByText('Детали ошибки')).not.toBeInTheDocument()
     expect(screen.queryByText(/secret details/)).not.toBeInTheDocument()
+  })
+
+  it('shows voice assistant as a settings link after the theme control', () => {
+    renderMorePage({
+      planner: {
+        readiness: {
+          canReadCachedData: true,
+          canRenderAppContent: true,
+          canUseProtectedApi: true,
+          canWriteProtectedData: true,
+          reason: 'ready',
+          status: 'ready',
+        },
+      },
+    })
+
+    const settings = screen.getByRole('region', { name: 'Настройки' })
+    const controls = Array.from(settings.querySelectorAll('button, a'))
+
+    expect(
+      within(settings).getByRole('link', { name: 'Голосовой помощник' }),
+    ).toHaveAttribute('href', '/voice-assistant/settings')
+    expect(controls.map((control) => control.textContent?.trim())).toEqual([
+      expect.stringMatching(/тема/i),
+      'Голосовой помощник',
+    ])
   })
 })

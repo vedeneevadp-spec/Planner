@@ -18,7 +18,6 @@ export interface VoiceAssistantDeviceSettings {
   androidWakeWordEnabled: boolean
   backgroundWakeWordEnabled: boolean
   voiceCuesEnabled: boolean
-  wakeWordReviewModeEnabled: boolean
   wakeWordSensitivity: number
 }
 
@@ -32,7 +31,6 @@ export const DEFAULT_VOICE_ASSISTANT_DEVICE_SETTINGS: VoiceAssistantDeviceSettin
     androidWakeWordEnabled: false,
     backgroundWakeWordEnabled: false,
     voiceCuesEnabled: true,
-    wakeWordReviewModeEnabled: false,
     wakeWordSensitivity: DEFAULT_WAKE_WORD_SENSITIVITY,
   }
 
@@ -111,9 +109,6 @@ function normalizeVoiceAssistantDeviceSettings(
     voiceCuesEnabled:
       value.voiceCuesEnabled ??
       DEFAULT_VOICE_ASSISTANT_DEVICE_SETTINGS.voiceCuesEnabled,
-    wakeWordReviewModeEnabled:
-      value.wakeWordReviewModeEnabled ??
-      DEFAULT_VOICE_ASSISTANT_DEVICE_SETTINGS.wakeWordReviewModeEnabled,
     wakeWordSensitivity: clampWakeWordSensitivity(
       value.wakeWordSensitivity ??
         DEFAULT_VOICE_ASSISTANT_DEVICE_SETTINGS.wakeWordSensitivity,

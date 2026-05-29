@@ -478,8 +478,7 @@ export function VoiceAssistant() {
     void startAndroidVoiceAssistant({
       ...apiConfig,
       wakeWordTrainingModeEnabled:
-        androidVoiceStatus.wakeWordReviewModeEnabled ||
-        (session?.workspaceSettings.wakeWordTrainingModeEnabled ?? false),
+        session?.workspaceSettings.wakeWordTrainingModeEnabled ?? false,
     }).catch((error) => {
       console.warn('Failed to start Android voice assistant.', error)
     })
@@ -513,7 +512,6 @@ export function VoiceAssistant() {
     androidVoiceStatus?.backgroundWakeWordEnabled,
     androidVoiceStatus?.wakeWordEnabled,
     androidVoiceStatus?.wakeWordModelStatus,
-    androidVoiceStatus?.wakeWordReviewModeEnabled,
     consumePendingAndroidCommand,
     isVoiceEnabled,
     session?.workspaceSettings.wakeWordTrainingModeEnabled,

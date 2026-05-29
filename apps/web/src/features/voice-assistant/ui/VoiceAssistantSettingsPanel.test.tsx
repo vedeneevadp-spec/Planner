@@ -20,12 +20,24 @@ interface PlannerSessionHookResult {
       energyMode: 'normal'
       voiceAssistantEnabled: boolean
     }
+    workspaceSettings: {
+      taskCompletionConfettiEnabled: boolean
+      wakeWordTrainingModeEnabled: boolean
+    }
   }
 }
 
 interface UpdateUserPreferencesHookResult {
   isPending: boolean
   mutate: (input: { voiceAssistantEnabled: boolean }) => void
+}
+
+interface UpdateWorkspaceSettingsHookResult {
+  isPending: boolean
+  mutateAsync: (input: {
+    taskCompletionConfettiEnabled: boolean
+    wakeWordTrainingModeEnabled: boolean
+  }) => Promise<void>
 }
 
 const mocks = vi.hoisted(() => ({
@@ -47,20 +59,19 @@ const mocks = vi.hoisted(() => ({
   setAndroidWakeWordEnabled: vi.fn<(enabled: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   ),
-  setAndroidWakeWordReviewModeEnabled: vi.fn<
-    (enabled: boolean) => Promise<void>
-  >(() => Promise.resolve()),
   setAndroidWakeWordSensitivity: vi.fn<(sensitivity: number) => Promise<void>>(
     () => Promise.resolve(),
   ),
   stopAndroidVoiceAssistant: vi.fn(() => Promise.resolve()),
   usePlannerSession: vi.fn<() => PlannerSessionHookResult>(),
   useUpdateUserPreferences: vi.fn<() => UpdateUserPreferencesHookResult>(),
+  useUpdateWorkspaceSettings: vi.fn<() => UpdateWorkspaceSettingsHookResult>(),
 }))
 
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
   useUpdateUserPreferences: () => mocks.useUpdateUserPreferences(),
+  useUpdateWorkspaceSettings: () => mocks.useUpdateWorkspaceSettings(),
 }))
 
 vi.mock('../lib/native-voice-assistant', () => ({
@@ -79,8 +90,6 @@ vi.mock('../lib/native-voice-assistant', () => ({
     mocks.setAndroidVoiceCuesEnabled(enabled),
   setAndroidWakeWordEnabled: (enabled: boolean) =>
     mocks.setAndroidWakeWordEnabled(enabled),
-  setAndroidWakeWordReviewModeEnabled: (enabled: boolean) =>
-    mocks.setAndroidWakeWordReviewModeEnabled(enabled),
   setAndroidWakeWordSensitivity: (sensitivity: number) =>
     mocks.setAndroidWakeWordSensitivity(sensitivity),
   stopAndroidVoiceAssistant: () => mocks.stopAndroidVoiceAssistant(),
@@ -92,6 +101,10 @@ describe('VoiceAssistantSettingsPanel', () => {
     mocks.useUpdateUserPreferences.mockReturnValue({
       isPending: false,
       mutate: vi.fn(),
+    })
+    mocks.useUpdateWorkspaceSettings.mockReturnValue({
+      isPending: false,
+      mutateAsync: vi.fn(() => Promise.resolve()),
     })
     mocks.getVoiceAssistantNativeStatus.mockResolvedValue(createStatus())
   })
@@ -131,10 +144,10 @@ describe('VoiceAssistantSettingsPanel', () => {
 
     expect(screen.getByText('Фраза активации')).toBeVisible()
     expect(screen.getByText('Хаотика')).toBeVisible()
-    expect(screen.getByText('Язык')).toBeVisible()
-    expect(screen.getByText('Русский')).toBeVisible()
     expect(screen.getByText('Режим подтверждений')).toBeVisible()
     expect(screen.getByText('Всегда подтверждать')).toBeVisible()
+    expect(screen.queryByText('Язык')).not.toBeInTheDocument()
+    expect(screen.queryByText('Русский')).not.toBeInTheDocument()
     expect(screen.queryByText(/auto-confirm/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/tts/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/выбор.*фраз/i)).not.toBeInTheDocument()
@@ -208,6 +221,50 @@ describe('VoiceAssistantSettingsPanel', () => {
     })
   })
 
+  it('updates wake word training mode through workspace settings', async () => {
+    const mutateAsync = vi.fn(() => Promise.resolve())
+
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.useUpdateWorkspaceSettings.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+    })
+    mocks.getVoiceAssistantNativeStatus.mockResolvedValue(createStatus())
+
+    renderSettings({
+      wakeWordTrainingModeEnabled: false,
+    })
+
+    fireEvent.click(
+      await screen.findByRole('switch', {
+        name: 'Показывать окно оценки срабатывания "Хаотика"',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        taskCompletionConfettiEnabled: true,
+        wakeWordTrainingModeEnabled: true,
+      })
+    })
+  })
+
+  it('keeps wake word training mode owner-controlled for test role', async () => {
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.getVoiceAssistantNativeStatus.mockResolvedValue(createStatus())
+
+    renderSettings({ appRole: 'test' })
+
+    expect(
+      await screen.findByRole('switch', {
+        name: 'Показывать окно оценки срабатывания "Хаотика"',
+      }),
+    ).toBeDisabled()
+    expect(
+      screen.getByText('Режим дообучения может менять только owner.'),
+    ).toBeVisible()
+  })
+
   it('keeps Android-only controls out of the web settings view', async () => {
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(false)
     mocks.getVoiceAssistantNativeStatus.mockResolvedValue(
@@ -233,9 +290,11 @@ describe('VoiceAssistantSettingsPanel', () => {
 function renderSettings({
   appRole = 'owner',
   voiceAssistantEnabled = true,
+  wakeWordTrainingModeEnabled = false,
 }: {
   appRole?: AppRole
   voiceAssistantEnabled?: boolean
+  wakeWordTrainingModeEnabled?: boolean
 } = {}) {
   mocks.usePlannerSession.mockReturnValue({
     data: {
@@ -244,6 +303,10 @@ function renderSettings({
         calendarViewMode: 'week',
         energyMode: 'normal',
         voiceAssistantEnabled,
+      },
+      workspaceSettings: {
+        taskCompletionConfettiEnabled: true,
+        wakeWordTrainingModeEnabled,
       },
     },
   })
@@ -274,7 +337,6 @@ function getBaseStatus(): VoiceAssistantNativeStatus {
     wakePhrase: 'Хаотика',
     wakeWordEnabled: true,
     wakeWordModelStatus: 'ready',
-    wakeWordReviewModeEnabled: false,
     wakeWordSensitivity: 0.99,
   }
 }
