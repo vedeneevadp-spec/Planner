@@ -896,6 +896,7 @@ function resolveVoiceClientTimeZone(): string | undefined {
 
 function hasVoiceActionMutatedData(result: VoiceActionResult): boolean {
   return Boolean(
+    result.changedData ||
     result.createdTaskId ||
     result.updatedTaskId ||
     result.createdShoppingItemIds?.length,

@@ -409,6 +409,7 @@ export class PlannerActionExecutor {
       }
 
       return createResult({
+        changedData: true,
         createdTaskId: getRecordId(result),
         status: 'success',
         visualStatus: 'Готово, задача сохранена.',
@@ -444,6 +445,7 @@ export class PlannerActionExecutor {
       }
 
       return createResult({
+        changedData: true,
         createdShoppingItemIds,
         status: 'success',
         visualStatus: 'Добавлено в покупки.',
@@ -534,6 +536,7 @@ export class PlannerActionExecutor {
       await dependencies.refreshPlanner?.()
 
       return createResult({
+        changedData: true,
         status: 'success',
         updatedTaskId: updatedTask.id,
         visualStatus: 'Готово, задача перенесена.',
@@ -605,6 +608,7 @@ function createPreview(
 }
 
 function createResult(input: {
+  changedData?: boolean | undefined
   createdShoppingItemIds?: string[] | undefined
   createdTaskId?: string | undefined
   errorCode?: string | undefined

@@ -78,6 +78,7 @@ export const voiceActionConfirmedPayloadSchema = z.object({
 })
 
 export const voiceActionResultSchema = z.object({
+  changedData: z.boolean().optional(),
   createdShoppingItemIds: z.array(z.string().trim().min(1)).optional(),
   createdTaskId: z.string().trim().min(1).optional(),
   errorCode: z.string().trim().min(1).optional(),

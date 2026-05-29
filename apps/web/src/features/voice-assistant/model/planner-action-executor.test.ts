@@ -39,6 +39,7 @@ describe('PlannerActionExecutor', () => {
     const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
 
     expect(result).toMatchObject({
+      changedData: true,
       createdTaskId: 'task-created',
       status: 'success',
       visualStatus: 'Готово, задача сохранена.',
@@ -53,6 +54,29 @@ describe('PlannerActionExecutor', () => {
     )
     expect(createTask.mock.calls[0]?.[0]).not.toHaveProperty('event')
     expect(createTask.mock.calls[0]?.[0]).not.toHaveProperty('reminderAt')
+  })
+
+  it('marks task creation as data-changing when the planner flow returns a boolean success', async () => {
+    const createTask = vi.fn().mockResolvedValue(true)
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({ createTask })
+    const preview = await executor.prepareAction(
+      createIntent({
+        intent: 'create_task',
+        title: 'проверить оплату',
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+
+    expect(result).toMatchObject({
+      changedData: true,
+      status: 'success',
+      visualStatus: 'Готово, задача сохранена.',
+    })
+    expect(result.createdTaskId).toBeUndefined()
   })
 
   it('creates reminder intents as planner tasks, not separate reminders', async () => {
@@ -104,6 +128,7 @@ describe('PlannerActionExecutor', () => {
     const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
 
     expect(result).toMatchObject({
+      changedData: true,
       createdShoppingItemIds: ['shopping-1', 'shopping-2'],
       status: 'success',
       visualStatus: 'Добавлено в покупки.',
