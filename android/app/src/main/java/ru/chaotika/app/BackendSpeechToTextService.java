@@ -11,6 +11,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
+import java.util.UUID;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -34,7 +35,27 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
     }
 
     @Override
-    public SttResult transcribe(CommandAudio audio, SttSource source) throws SttException {
+    public SttResult transcribe(CommandAudio audio, SttRequest request) throws SttException {
+        VoiceAudioUploadGuard.Decision uploadDecision = VoiceAudioUploadGuard.decide(
+            new VoiceAudioUploadGuard.Input(
+                VoiceAudioUploadGuard.sourceFromSttRequest(request),
+                request.wakeWordDetected,
+                request.explicitUserAction,
+                true,
+                audio.durationMs,
+                audio.hasVoiceActivity,
+                false,
+                audio.isTooQuiet
+            )
+        );
+
+        if (!uploadDecision.allowed) {
+            throw new SttException(
+                SttError.PRIVACY_BLOCKED,
+                "Аудио не отправлено: " + uploadDecision.reason.name().toLowerCase(Locale.US) + "."
+            );
+        }
+
         VoiceAssistantApiConfig config = PlannerVoiceAssistantStorage.readApiConfig(context);
 
         if (config == null || !config.isUsable()) {
@@ -62,9 +83,13 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
             connection.setRequestProperty("x-audio-byte-order", audio.byteOrder);
             connection.setRequestProperty("x-audio-encoding", audio.encoding);
             connection.setRequestProperty("x-audio-duration-ms", String.valueOf(audio.durationMs));
-            connection.setRequestProperty("x-stt-source", toBackendSource(source));
+            connection.setRequestProperty("x-stt-source", toBackendSource(request.source));
             connection.setRequestProperty("x-client-now", formatClientNow());
             connection.setRequestProperty("x-client-timezone", TimeZone.getDefault().getID());
+            connection.setRequestProperty("x-device-id", config.deviceId);
+            connection.setRequestProperty("x-voice-issued-at", formatClientNow());
+            connection.setRequestProperty("x-voice-request-id", UUID.randomUUID().toString());
+            connection.setRequestProperty("x-voice-session-id", config.voiceSessionId);
 
             if (config.accessToken != null) {
                 connection.setRequestProperty("Authorization", "Bearer " + config.accessToken);
@@ -102,7 +127,7 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
                 transcript,
                 confidence,
                 SttProvider.BACKEND,
-                source,
+                request.source,
                 audio.durationMs,
                 intent != null ? intent.toString() : null
             );

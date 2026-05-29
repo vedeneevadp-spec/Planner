@@ -18,6 +18,7 @@ import {
   VoiceTextNormalizer,
 } from '@planner/contracts'
 
+import { sanitizeVoicePreviewForLockScreen } from './locked-screen-scrubber'
 import {
   buildTaskInputFromPlannerIntent,
   getPlannerIntentTitle,
@@ -200,6 +201,14 @@ export class PlannerActionExecutor {
       })
     }
 
+    if (preview.isDangerous && confirmedPayload.confirmed !== true) {
+      return createResult({
+        errorCode: 'dangerous_intent_confirmation_required',
+        status: 'failed',
+        visualStatus: 'Подтверди опасное действие перед выполнением.',
+      })
+    }
+
     if (preview.status !== 'ready_for_confirmation') {
       if (
         preview.status === 'multiple_candidates' &&
@@ -273,16 +282,18 @@ export class PlannerActionExecutor {
     dependencies: PlannerActionExecutorDependencies,
   ): Promise<VoiceActionPreview> {
     if (context.isDeviceLocked || intent.requiresUnlock) {
-      return createPreview(intent, {
-        canExecute: false,
-        context,
-        needsConfirmation: false,
-        reason: 'requires_unlock',
-        requiresUnlock: true,
-        status: 'requires_unlock',
-        summary: 'Разблокируй устройство, чтобы посмотреть план.',
-        title: 'Нужна разблокировка',
-      })
+      return sanitizeVoicePreviewForLockScreen(
+        createPreview(intent, {
+          canExecute: false,
+          context,
+          needsConfirmation: false,
+          reason: 'requires_unlock',
+          requiresUnlock: true,
+          status: 'requires_unlock',
+          summary: 'Разблокируй устройство, чтобы посмотреть план.',
+          title: 'Нужна разблокировка',
+        }),
+      )
     }
 
     const agendaResult = await loadAgendaTasks(intent, dependencies)
@@ -326,15 +337,17 @@ export class PlannerActionExecutor {
     dependencies: PlannerActionExecutorDependencies,
   ): Promise<VoiceActionPreview> {
     if (context.isDeviceLocked || intent.requiresUnlock) {
-      return createPreview(intent, {
-        canExecute: false,
-        context,
-        reason: 'requires_unlock',
-        requiresUnlock: true,
-        status: 'requires_unlock',
-        summary: 'Разблокируй устройство, чтобы перенести задачу.',
-        title: 'Нужна разблокировка',
-      })
+      return sanitizeVoicePreviewForLockScreen(
+        createPreview(intent, {
+          canExecute: false,
+          context,
+          reason: 'requires_unlock',
+          requiresUnlock: true,
+          status: 'requires_unlock',
+          summary: 'Разблокируй устройство, чтобы перенести задачу.',
+          title: 'Нужна разблокировка',
+        }),
+      )
     }
 
     if (!intent.date) {

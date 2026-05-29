@@ -27,6 +27,9 @@ export const sttErrorSchema = z.enum([
   'UNSUPPORTED_AUDIO_FORMAT',
   'LOW_CONFIDENCE',
   'RATE_LIMITED',
+  'INVALID_SOURCE',
+  'PRIVACY_BLOCKED',
+  'REPLAY_REJECTED',
 ])
 
 export const commandAudioFormatSchema = z.object({

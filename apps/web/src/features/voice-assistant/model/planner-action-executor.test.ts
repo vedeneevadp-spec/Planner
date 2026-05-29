@@ -6,6 +6,7 @@ import type {
 } from '@planner/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
+import { createSafeVoicePreviewTelemetryPayload } from './locked-screen-scrubber'
 import {
   PlannerActionExecutor,
   type PlannerActionExecutorDependencies,
@@ -138,7 +139,12 @@ describe('PlannerActionExecutor', () => {
       deps,
     )
 
-    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
 
     expect(result).toMatchObject({
       changedData: true,
@@ -176,7 +182,12 @@ describe('PlannerActionExecutor', () => {
       CONTEXT,
       deps,
     )
-    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
 
     const undoResult = await executor.undoAction(result, deps)
 
@@ -206,7 +217,12 @@ describe('PlannerActionExecutor', () => {
       CONTEXT,
       deps,
     )
-    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
 
     const undoResult = await executor.undoAction(result, deps)
 
@@ -237,6 +253,72 @@ describe('PlannerActionExecutor', () => {
       requiresUnlock: true,
       status: 'requires_unlock',
     })
+    expect(preview.summary).toBe('Разблокируй телефон, чтобы продолжить.')
+    expect(preview.agendaItems).toBeUndefined()
+    expect(preview.intent.rawText).toBe('')
+  })
+
+  it('scrubs reschedule candidates and task titles on the lock screen', async () => {
+    const executor = new PlannerActionExecutor()
+    const preview = await executor.prepareAction(
+      createIntent({
+        date: '2026-05-30',
+        intent: 'reschedule_task',
+        rawText: 'перенеси секретный договор на завтра',
+        requiresUnlock: true,
+        targetQuery: 'секретный договор',
+      }),
+      { ...CONTEXT, isDeviceLocked: true },
+      createDependencies({
+        tasks: [
+          createTaskRecord({
+            id: 'task-secret',
+            title: 'Секретный договор',
+          }),
+        ],
+      }),
+    )
+
+    expect(preview).toMatchObject({
+      candidates: undefined,
+      status: 'requires_unlock',
+      summary: 'Разблокируй телефон, чтобы продолжить.',
+    })
+    expect(JSON.stringify(preview)).not.toMatch(/секрет/i)
+  })
+
+  it('builds locked-screen telemetry without private preview fields', async () => {
+    const executor = new PlannerActionExecutor()
+    const preview = await executor.prepareAction(
+      createIntent({
+        date: '2026-05-30',
+        intent: 'reschedule_task',
+        rawText: 'перенеси секретный договор на завтра',
+        requiresUnlock: true,
+        targetQuery: 'секретный договор',
+      }),
+      { ...CONTEXT, isDeviceLocked: true },
+      createDependencies({
+        tasks: [
+          createTaskRecord({
+            id: 'task-secret',
+            title: 'Секретный договор',
+          }),
+        ],
+      }),
+    )
+
+    const telemetry = createSafeVoicePreviewTelemetryPayload(preview)
+    const serialized = JSON.stringify(telemetry)
+
+    expect(telemetry).toMatchObject({
+      canExecute: false,
+      intentType: 'reschedule_task',
+      previewStatus: 'requires_unlock',
+      requiresUnlock: true,
+    })
+    expect(serialized).not.toMatch(/секрет/i)
+    expect(serialized).not.toMatch(/rawText|targetQuery|candidates|title/)
   })
 
   it('returns agenda items when the device is unlocked', async () => {
@@ -409,7 +491,12 @@ describe('PlannerActionExecutor', () => {
       deps,
     )
 
-    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
     const undoResult = await executor.undoAction(result, deps)
 
     expect(result).toMatchObject({
@@ -445,6 +532,36 @@ describe('PlannerActionExecutor', () => {
     })
   })
 
+  it('does not execute dangerous intents without explicit confirmation', async () => {
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({
+      tasks: [
+        createTaskRecord({
+          id: 'task-1',
+          title: 'Помыть окна',
+          version: 1,
+        }),
+      ],
+    })
+    const preview = await executor.prepareAction(
+      createIntent({
+        date: '2026-05-30',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+
+    expect(result).toMatchObject({
+      errorCode: 'dangerous_intent_confirmation_required',
+      status: 'failed',
+    })
+    expect(deps.taskClient?.setTaskSchedule).not.toHaveBeenCalled()
+  })
+
   it('blocks reschedule undo offline instead of restoring without a fresh version', async () => {
     const executor = new PlannerActionExecutor()
     const task = createTaskRecord({
@@ -464,7 +581,12 @@ describe('PlannerActionExecutor', () => {
       CONTEXT,
       deps,
     )
-    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
 
     deps.isOnline = () => false
 
@@ -498,7 +620,12 @@ describe('PlannerActionExecutor', () => {
 
     task.version = 2
 
-    const result = await executor.executeAction(preview.id, {}, CONTEXT, deps)
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
 
     expect(result).toMatchObject({
       errorCode: 'task_version_conflict',
@@ -546,7 +673,7 @@ describe('PlannerActionExecutor', () => {
     )
     const result = await executor.executeAction(
       preview.id,
-      {},
+      { confirmed: true },
       { ...CONTEXT, appRole: 'test' },
       deps,
     )

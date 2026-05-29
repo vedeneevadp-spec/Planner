@@ -8,7 +8,7 @@ final class LocalSpeechToTextServiceStub implements RecordedSpeechToTextProvider
     }
 
     @Override
-    public SttResult transcribe(CommandAudio audio, SttSource source) throws SttException {
+    public SttResult transcribe(CommandAudio audio, SttRequest request) throws SttException {
         throw new SttException(
             SttError.LOCAL_STT_UNAVAILABLE,
             "Локальный STT пока не установлен. Можно ввести команду вручную."

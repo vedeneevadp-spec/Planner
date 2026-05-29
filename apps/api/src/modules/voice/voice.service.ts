@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import {
   commandAudioSchema,
   type PlannerIntent,
@@ -14,6 +16,7 @@ import type {
   CommandAudioClip,
   VoiceCommandAudioMetadata,
   VoiceCommandRouteContext,
+  VoiceRequestSecurity,
 } from './voice.model.js'
 import {
   COMMAND_AUDIO_BYTES_PER_SECOND,
@@ -22,6 +25,7 @@ import {
   COMMAND_AUDIO_MAX_DURATION_MS,
   COMMAND_AUDIO_MIN_DURATION_MS,
   createVoiceCommandError,
+  VoiceCommandError,
 } from './voice.model.js'
 
 const SILENCE_ABSOLUTE_PEAK = 12
@@ -32,6 +36,10 @@ const VOICE_RMS = 0.006
 const VOICED_SAMPLE_RATIO = 0.006
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX_REQUESTS = 30
+const REPLAY_WINDOW_MS = 5 * 60_000
+const REPLAY_FUTURE_SKEW_MS = 60_000
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu
 
 export interface ProcessVoiceCommandInput {
   audio: {
@@ -40,6 +48,7 @@ export interface ProcessVoiceCommandInput {
   }
   context: VoiceCommandRouteContext
   source?: SttSource
+  security: VoiceRequestSecurity
 }
 
 export interface VoiceCommandMetricsSink {
@@ -56,6 +65,7 @@ export interface BackendPlannerIntentFallback {
 export class VoiceCommandService {
   private readonly parser = new PlannerIntentParser()
   private readonly rateLimiter = new VoiceCommandRateLimiter()
+  private readonly replayGuard = new VoiceCommandReplayGuard()
 
   constructor(
     private readonly provider: BackendSttProvider,
@@ -66,20 +76,74 @@ export class VoiceCommandService {
   async process(
     input: ProcessVoiceCommandInput,
   ): Promise<VoiceCommandResponse> {
-    this.rateLimiter.assertAllowed(getRateLimitKey(input.context))
+    const safeContext = createSafeVoiceAuditContext(input)
 
+    try {
+      this.rateLimiter.assertAllowed(getRateLimitKey(input.context))
+    } catch (error) {
+      this.recordSafeAudit('rate_limit_exceeded', {
+        ...safeContext,
+        errorCode: 'RATE_LIMITED',
+      })
+      throw error
+    }
+
+    try {
+      this.replayGuard.assertFresh(input.security, {
+        actorUserId: input.context.actorUserId,
+        deviceId: input.context.deviceId,
+        sessionId: input.security.sessionId,
+      })
+    } catch (error) {
+      this.recordSafeAudit('replay_rejected', {
+        ...safeContext,
+        errorCode: 'REPLAY_REJECTED',
+      })
+      throw error
+    }
+
+    this.recordSafeAudit('voice_command_received', {
+      ...safeContext,
+      audioBytes: input.audio.data.byteLength,
+    })
+
+    try {
+      return await this.processAllowed(input, safeContext)
+    } catch (error) {
+      if (error instanceof VoiceCommandError) {
+        this.recordSafeAudit(mapVoiceCommandErrorToAuditEvent(error), {
+          ...safeContext,
+          errorCode: error.sttError,
+        })
+      }
+
+      throw error
+    }
+  }
+
+  recordAuditEvent(
+    eventType: string,
+    details: Record<string, unknown> = {},
+  ): void {
+    this.recordSafeAudit(eventType, details)
+  }
+
+  private async processAllowed(
+    input: ProcessVoiceCommandInput,
+    safeContext: SafeVoiceAuditContext,
+  ): Promise<VoiceCommandResponse> {
     const audio = validateCommandAudio(input.audio.data, input.audio.metadata)
 
     this.metrics.record('stt_upload_started', {
       byteLength: audio.byteLength,
       durationMs: audio.durationMs,
-      workspaceId: input.context.workspaceId,
+      ...safeContext,
     })
 
     if (!this.provider.isAvailable()) {
       this.metrics.record('stt_error', {
         code: 'SERVER_STT_UNAVAILABLE',
-        workspaceId: input.context.workspaceId,
+        ...safeContext,
       })
       throw createVoiceCommandError('SERVER_STT_UNAVAILABLE')
     }
@@ -90,7 +154,7 @@ export class VoiceCommandService {
     if (!transcript) {
       this.metrics.record('stt_error', {
         code: 'NO_SPEECH',
-        workspaceId: input.context.workspaceId,
+        ...safeContext,
       })
       throw createVoiceCommandError('NO_SPEECH')
     }
@@ -104,20 +168,20 @@ export class VoiceCommandService {
 
     if (intent.confidence < 0.55) {
       this.metrics.record('stt_low_confidence', {
-        confidence: intent.confidence,
-        workspaceId: input.context.workspaceId,
+        confidenceBucket: bucketConfidence(intent.confidence),
+        ...safeContext,
       })
     }
 
     this.metrics.record('stt_billable_request_estimated', {
       billableSecondsEstimated,
       provider: stt.provider,
-      workspaceId: input.context.workspaceId,
+      ...safeContext,
     })
     this.metrics.record('stt_upload_completed', {
       durationMs: audio.durationMs,
       provider: stt.provider,
-      workspaceId: input.context.workspaceId,
+      ...safeContext,
     })
 
     return voiceCommandResponseSchema.parse({
@@ -132,6 +196,13 @@ export class VoiceCommandService {
       },
       transcript,
     })
+  }
+
+  private recordSafeAudit(
+    eventType: string,
+    details: Record<string, unknown>,
+  ): void {
+    this.metrics.record(eventType, redactVoiceMetricDetails(details))
   }
 
   private async parseIntent(
@@ -337,7 +408,172 @@ function shouldUseBackendIntentFallback(intent: PlannerIntent): boolean {
 }
 
 function getRateLimitKey(context: VoiceCommandRouteContext): string {
-  return context.actorUserId ?? context.workspaceId
+  return [
+    context.actorUserId ?? context.workspaceId,
+    context.deviceId ?? 'unknown-device',
+    context.ipAddress ?? 'unknown-ip',
+  ].join(':')
+}
+
+type ConfidenceBucket = 'high' | 'low' | 'medium'
+
+interface SafeVoiceAuditContext {
+  appRole?: string | undefined
+  deviceIdHash?: string | undefined
+  ipHash?: string | undefined
+  source?: string | undefined
+  userIdHash?: string | undefined
+  workspaceIdHash: string
+}
+
+function createSafeVoiceAuditContext(
+  input: ProcessVoiceCommandInput,
+): SafeVoiceAuditContext {
+  return {
+    appRole: input.context.appRole,
+    ...(input.context.deviceId
+      ? { deviceIdHash: hashIdentifier(input.context.deviceId) }
+      : {}),
+    ...(input.context.ipAddress
+      ? { ipHash: hashIdentifier(input.context.ipAddress) }
+      : {}),
+    source: input.source ?? 'unknown',
+    ...(input.context.actorUserId
+      ? { userIdHash: hashIdentifier(input.context.actorUserId) }
+      : {}),
+    workspaceIdHash: hashIdentifier(input.context.workspaceId),
+  }
+}
+
+function bucketConfidence(confidence: number): ConfidenceBucket {
+  if (confidence < 0.55) {
+    return 'low'
+  }
+
+  if (confidence < 0.85) {
+    return 'medium'
+  }
+
+  return 'high'
+}
+
+function hashIdentifier(value: string): string {
+  return createHash('sha256').update(value).digest('hex').slice(0, 16)
+}
+
+function mapVoiceCommandErrorToAuditEvent(error: VoiceCommandError): string {
+  switch (error.sttError) {
+    case 'RATE_LIMITED':
+      return 'rate_limit_exceeded'
+    case 'REPLAY_REJECTED':
+      return 'replay_rejected'
+    case 'PRIVACY_BLOCKED':
+      return 'voice_audio_upload_blocked'
+    default:
+      return 'voice_command_rejected'
+  }
+}
+
+function redactVoiceMetricDetails(
+  details: Record<string, unknown>,
+): Record<string, unknown> {
+  const redacted = redactVoiceMetricValue(details, new WeakSet())
+
+  return isRecord(redacted) ? redacted : {}
+}
+
+const BLOCKED_VOICE_METRIC_KEYS = new Set([
+  'agenda',
+  'agendaitem',
+  'agendaitems',
+  'audio',
+  'candidate',
+  'candidatetitle',
+  'candidatetitles',
+  'candidates',
+  'fulltranscript',
+  'intent',
+  'item',
+  'itemname',
+  'itemnames',
+  'items',
+  'name',
+  'preview',
+  'prompt',
+  'query',
+  'rawaudio',
+  'rawproviderresponse',
+  'rawtext',
+  'shoppingitem',
+  'shoppingitemname',
+  'shoppingitems',
+  'targetquery',
+  'task',
+  'tasktitle',
+  'tasktitles',
+  'tasks',
+  'text',
+  'title',
+  'transcript',
+])
+
+function redactVoiceMetricValue(
+  value: unknown,
+  seen: WeakSet<object>,
+): unknown {
+  if (value === undefined || isBinaryPayload(value)) {
+    return undefined
+  }
+
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+
+  if (seen.has(value)) {
+    return undefined
+  }
+
+  seen.add(value)
+
+  if (Array.isArray(value)) {
+    const redactedItems = value
+      .map((item) => redactVoiceMetricValue(item, seen))
+      .filter((item) => item !== undefined)
+
+    return redactedItems.length > 0 ? redactedItems : undefined
+  }
+
+  const entries = Object.entries(value).flatMap(([key, nestedValue]) => {
+    if (isBlockedVoiceMetricKey(key)) {
+      return []
+    }
+
+    const redacted = redactVoiceMetricValue(nestedValue, seen)
+
+    return redacted === undefined ? [] : ([[key, redacted]] as const)
+  })
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
+}
+
+function isBlockedVoiceMetricKey(key: string): boolean {
+  return BLOCKED_VOICE_METRIC_KEYS.has(key.toLowerCase())
+}
+
+function isBinaryPayload(value: unknown): boolean {
+  return (
+    value instanceof ArrayBuffer ||
+    ArrayBuffer.isView(value) ||
+    Buffer.isBuffer(value)
+  )
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 class VoiceCommandRateLimiter {
@@ -366,6 +602,67 @@ class VoiceCommandRateLimiter {
     }
 
     current.count += 1
+  }
+}
+
+class VoiceCommandReplayGuard {
+  private readonly seenRequests = new Map<string, number>()
+
+  assertFresh(
+    security: VoiceRequestSecurity,
+    context: {
+      actorUserId: string | undefined
+      deviceId: string | undefined
+      sessionId: string
+    },
+  ): void {
+    const now = Date.now()
+    this.cleanup(now)
+
+    if (
+      !UUID_PATTERN.test(security.requestId) ||
+      !security.sessionId.trim() ||
+      !security.issuedAt.trim()
+    ) {
+      throw createVoiceCommandError('REPLAY_REJECTED', {
+        reason: 'missing_or_invalid_security_headers',
+      })
+    }
+
+    const issuedAtMs = Date.parse(security.issuedAt)
+
+    if (
+      !Number.isFinite(issuedAtMs) ||
+      issuedAtMs < now - REPLAY_WINDOW_MS ||
+      issuedAtMs > now + REPLAY_FUTURE_SKEW_MS
+    ) {
+      throw createVoiceCommandError('REPLAY_REJECTED', {
+        reason: 'expired_or_future_request',
+      })
+    }
+
+    const key = [
+      context.actorUserId ?? 'anonymous',
+      context.deviceId ?? 'unknown-device',
+      context.sessionId,
+      security.requestId,
+    ].join(':')
+
+    if (this.seenRequests.has(key)) {
+      throw createVoiceCommandError('REPLAY_REJECTED', {
+        reason: 'duplicate_request_id',
+      })
+    }
+
+    this.seenRequests.set(key, issuedAtMs + REPLAY_WINDOW_MS)
+  }
+
+  private cleanup(now: number): void {
+    for (const [key, expiresAt] of this.seenRequests.entries()) {
+      if (expiresAt <= now) {
+        this.seenRequests.delete(key)
+      }
+    }
   }
 }
 

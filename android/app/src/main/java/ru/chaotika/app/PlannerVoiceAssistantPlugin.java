@@ -47,7 +47,15 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
-        startWakeWordService();
+        if (!canStartConfiguredWakeWordService()) {
+            call.reject("Wake word background mode is blocked by permissions or model status.");
+            return;
+        }
+
+        if (!startWakeWordService()) {
+            call.reject("Не удалось запустить foreground-сервис микрофона.");
+            return;
+        }
         call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
     }
 
@@ -59,7 +67,10 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         storeApiConfig(call);
-        startForegroundServiceCompat(WakeWordService.createCaptureCommandIntent(getContext()));
+        if (!startForegroundServiceCompat(WakeWordService.createCaptureCommandIntent(getContext()))) {
+            call.reject("Не удалось запустить запись команды.");
+            return;
+        }
         call.resolve(createStateResponse(VoiceAssistantState.WAITING_FOR_CONFIRMATION.value));
     }
 
@@ -148,8 +159,9 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
         if (!isEnabled) {
             getContext().startService(WakeWordService.createStopIntent(getContext()));
-        } else {
-            tryStartConfiguredWakeWordService();
+        } else if (!tryStartConfiguredWakeWordService()) {
+            call.reject("Не удалось запустить wake word foreground-сервис.");
+            return;
         }
 
         call.resolve(new JSObject());
@@ -179,8 +191,9 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
         if (!isEnabled) {
             getContext().startService(WakeWordService.createStopIntent(getContext()));
-        } else {
-            tryStartConfiguredWakeWordService();
+        } else if (!tryStartConfiguredWakeWordService()) {
+            call.reject("Не удалось запустить фоновый wake word.");
+            return;
         }
 
         call.resolve(new JSObject());
@@ -263,7 +276,10 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
-        startForegroundServiceCompat(WakeWordService.createSimulateWakeWordIntent(getContext()));
+        if (!startForegroundServiceCompat(WakeWordService.createSimulateWakeWordIntent(getContext()))) {
+            call.reject("Не удалось запустить foreground-сервис микрофона.");
+            return;
+        }
         call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
     }
 
@@ -353,7 +369,15 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             return;
         }
 
-        startWakeWordService();
+        if (!canStartConfiguredWakeWordService()) {
+            call.reject("Wake word background mode is blocked by permissions or model status.");
+            return;
+        }
+
+        if (!startWakeWordService()) {
+            call.reject("Не удалось запустить foreground-сервис микрофона.");
+            return;
+        }
         call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
     }
 
@@ -365,7 +389,10 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         storeApiConfig(call);
-        startForegroundServiceCompat(WakeWordService.createCaptureCommandIntent(getContext()));
+        if (!startForegroundServiceCompat(WakeWordService.createCaptureCommandIntent(getContext()))) {
+            call.reject("Не удалось запустить запись команды.");
+            return;
+        }
         call.resolve(createStateResponse(VoiceAssistantState.WAITING_FOR_CONFIRMATION.value));
     }
 
@@ -392,14 +419,16 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         );
     }
 
-    private void startWakeWordService() {
-        startForegroundServiceCompat(WakeWordService.createStartIntent(getContext()));
+    private boolean startWakeWordService() {
+        return startForegroundServiceCompat(WakeWordService.createStartIntent(getContext()));
     }
 
-    private void tryStartConfiguredWakeWordService() {
+    private boolean tryStartConfiguredWakeWordService() {
         if (canStartConfiguredWakeWordService()) {
-            startWakeWordService();
+            return startWakeWordService();
         }
+
+        return true;
     }
 
     private boolean canStartConfiguredWakeWordService() {
@@ -417,15 +446,23 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
             isWakeWordModelReady();
     }
 
-    private void startForegroundServiceCompat(Intent intent) {
+    private boolean startForegroundServiceCompat(Intent intent) {
         Context context = getContext();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-            return;
-        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+                return true;
+            }
 
-        context.startService(intent);
+            context.startService(intent);
+            return true;
+        } catch (SecurityException | IllegalStateException error) {
+            WakeWordDiagnostics.recordError(WakeWordError.foregroundServiceNotAllowed(error));
+            PlannerVoiceAssistantStorage.storeState(context, VoiceAssistantState.ERROR);
+            WakeWordTrainingExampleStore.clearPending();
+            return false;
+        }
     }
 
     private static JSObject createStateResponse(String state) {
@@ -438,6 +475,8 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
     }
 
     private JSObject createStatusResponse() {
+        enforceRuntimePermissionPolicy();
+
         WakeWordConfig config = WakeWordConfig.haotika();
         JSObject response = new JSObject();
 
@@ -483,6 +522,31 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         return "stopped";
+    }
+
+    private void enforceRuntimePermissionPolicy() {
+        Context context = getContext();
+
+        if (getPermissionState(MICROPHONE) != PermissionState.GRANTED) {
+            PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(context, false);
+            WakeWordTrainingExampleStore.clearPending();
+            stopWakeWordServiceSilently();
+            WakeWordDiagnostics.recordError(WakeWordError.microphonePermissionDenied());
+            return;
+        }
+
+        if (!"granted".equals(resolveNotificationPermissionStatus())) {
+            PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(context, false);
+            stopWakeWordServiceSilently();
+        }
+    }
+
+    private void stopWakeWordServiceSilently() {
+        try {
+            getContext().startService(WakeWordService.createStopIntent(getContext()));
+        } catch (RuntimeException ignored) {
+            PlannerVoiceAssistantStorage.storeState(getContext(), VoiceAssistantState.IDLE);
+        }
     }
 
     private boolean isWakeWordModelReady() {

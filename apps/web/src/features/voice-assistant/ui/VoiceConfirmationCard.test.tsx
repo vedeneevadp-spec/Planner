@@ -101,6 +101,7 @@ describe('VoiceConfirmationCard', () => {
 
     expect(callbacks.onConfirm).toHaveBeenCalledWith(preview, {
       candidateTaskId: 'task-1',
+      confirmed: true,
       expectedVersion: 3,
     })
   })
@@ -147,6 +148,7 @@ describe('VoiceConfirmationCard', () => {
 
     expect(callbacks.onConfirm).toHaveBeenCalledWith(preview, {
       candidateTaskId: 'task-2',
+      confirmed: true,
       expectedVersion: 1,
     })
   })

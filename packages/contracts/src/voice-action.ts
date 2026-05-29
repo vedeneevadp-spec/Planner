@@ -75,6 +75,7 @@ export const voiceActionPreviewSchema = z.object({
 
 export const voiceActionConfirmedPayloadSchema = z.object({
   candidateTaskId: z.string().trim().min(1).optional(),
+  confirmed: z.literal(true).optional(),
   expectedVersion: z.number().int().positive().optional(),
 })
 

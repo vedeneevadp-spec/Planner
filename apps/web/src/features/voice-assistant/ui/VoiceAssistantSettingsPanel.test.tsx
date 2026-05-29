@@ -146,6 +146,9 @@ describe('VoiceAssistantSettingsPanel', () => {
     expect(screen.getByText('Хаотика')).toBeVisible()
     expect(screen.getByText('Режим подтверждений')).toBeVisible()
     expect(screen.getByText('Всегда подтверждать')).toBeVisible()
+    expect(
+      screen.getByText(/До фразы активации аудио не отправляется на сервер/),
+    ).toBeVisible()
     expect(screen.queryByText('Язык')).not.toBeInTheDocument()
     expect(screen.queryByText('Русский')).not.toBeInTheDocument()
     expect(screen.queryByText(/auto-confirm/i)).not.toBeInTheDocument()

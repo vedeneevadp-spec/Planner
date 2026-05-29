@@ -228,6 +228,15 @@ export function VoiceAssistantSettingsPanel() {
         <ReadonlyRow label="Режим подтверждений" value="Всегда подтверждать" />
       </div>
 
+      <section className={styles.group} aria-label="Приватность голоса">
+        <h3>Приватность</h3>
+        <p className={styles.note}>
+          "{VOICE_ASSISTANT_WAKE_PHRASE}" распознается локально на устройстве.
+          До фразы активации аудио не отправляется на сервер. После активации
+          или нажатия микрофона отправляется только короткая команда.
+        </p>
+      </section>
+
       {!isAndroid ? (
         <p className={styles.platformNote}>
           В web-версии доступна только кнопка микрофона. Wake word и звуки
@@ -256,6 +265,10 @@ export function VoiceAssistantSettingsPanel() {
                 void handleBackgroundToggle(enabled)
               }}
             />
+            <p className={styles.note}>
+              Для фонового режима нужны доступ к микрофону и постоянное
+              уведомление. Фоновый режим можно выключить в любой момент.
+            </p>
 
             {wakeWordModelMissing ? (
               <p className={styles.warning} role="status">

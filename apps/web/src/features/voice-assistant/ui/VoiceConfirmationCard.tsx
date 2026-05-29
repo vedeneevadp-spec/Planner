@@ -250,6 +250,7 @@ export function VoiceConfirmationCard({
               }
 
               onConfirm(preview, {
+                ...(preview.isDangerous ? { confirmed: true as const } : {}),
                 ...(selectedCandidate
                   ? {
                       candidateTaskId: selectedCandidate.taskId,

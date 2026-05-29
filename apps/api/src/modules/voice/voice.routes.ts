@@ -2,9 +2,13 @@ import { canUseVoiceAssistant } from '@planner/contracts'
 import type { FastifyInstance } from 'fastify'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import { requireRequestAuth } from '../../bootstrap/request-auth.js'
 import { resolveRouteWriteContext } from '../../bootstrap/route-context.js'
 import type { SessionService } from '../session/index.js'
-import type { VoiceCommandAudioMetadata } from './voice.model.js'
+import type {
+  VoiceCommandAudioMetadata,
+  VoiceRequestSecurity,
+} from './voice.model.js'
 import {
   COMMAND_AUDIO_FORMAT,
   COMMAND_AUDIO_HARD_LIMIT_BYTES,
@@ -41,9 +45,15 @@ export function registerVoiceRoutes(
     '/api/voice/command',
     { bodyLimit: COMMAND_AUDIO_HARD_LIMIT_BYTES },
     async (request) => {
+      requireRequestAuth(request)
       const context = await resolveRouteWriteContext(request, sessionService)
 
       if (!canUseVoiceAssistant(context.appRole)) {
+        service.recordAuditEvent('voice_feature_forbidden', {
+          appRole: context.appRole,
+          source:
+            readStringHeader(request.headers['x-stt-source']) ?? 'unknown',
+        })
         throw new HttpError(
           403,
           'voice_feature_forbidden',
@@ -67,17 +77,41 @@ export function registerVoiceRoutes(
           appRole: context.appRole,
           clientNow:
             readStringHeader(request.headers['x-client-now']) ?? undefined,
+          deviceId:
+            readStringHeader(request.headers['x-device-id']) ?? undefined,
+          ipAddress: request.ip,
           isDeviceLocked: readBooleanHeader(request.headers['x-device-locked']),
           timezone:
             readStringHeader(request.headers['x-client-timezone']) ?? undefined,
           workspaceId: context.workspaceId,
         },
+        security: createVoiceRequestSecurity(request.headers),
         source: parseVoiceCommandSource(
           readStringHeader(request.headers['x-stt-source']),
         ),
       })
     },
   )
+}
+
+function createVoiceRequestSecurity(
+  headers: Record<string, string | string[] | undefined>,
+): VoiceRequestSecurity {
+  const requestId = readStringHeader(headers['x-voice-request-id'])
+  const sessionId = readStringHeader(headers['x-voice-session-id'])
+  const issuedAt = readStringHeader(headers['x-voice-issued-at'])
+
+  if (!requestId || !sessionId || !issuedAt) {
+    throw createVoiceCommandError('REPLAY_REJECTED', {
+      reason: 'missing_security_headers',
+    })
+  }
+
+  return {
+    issuedAt,
+    requestId,
+    sessionId,
+  }
 }
 
 function createAudioMetadata(

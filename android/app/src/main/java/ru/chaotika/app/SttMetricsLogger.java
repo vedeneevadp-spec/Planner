@@ -23,6 +23,8 @@ final class SttMetricsLogger {
             log("stt_upload_skipped_too_short");
         } else if (error.code == SttError.TOO_QUIET) {
             log("stt_upload_skipped_too_quiet");
+        } else if (error.code == SttError.PRIVACY_BLOCKED) {
+            log("voice_audio_upload_blocked");
         }
     }
 

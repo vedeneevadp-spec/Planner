@@ -62,15 +62,55 @@ export function createPaths(): OpenAPIV3.PathsObject {
         operationId: 'createVoiceCommand',
         parameters: [
           parameter('requiredWorkspaceIdHeader'),
-          parameter('actorUserIdHeader'),
           {
             description:
               'Voice command source. Wake-word mode uses android_short_clip; explicit microphone tap uses android_push_to_talk.',
             in: 'header',
             name: 'x-stt-source',
-            required: false,
+            required: true,
             schema: {
               enum: ['android_short_clip', 'android_push_to_talk'],
+              type: 'string',
+            },
+          },
+          {
+            description: 'Unique UUID for replay protection.',
+            in: 'header',
+            name: 'x-voice-request-id',
+            required: true,
+            schema: {
+              format: 'uuid',
+              type: 'string',
+            },
+          },
+          {
+            description: 'Voice session id bound to the current user/device.',
+            in: 'header',
+            name: 'x-voice-session-id',
+            required: true,
+            schema: {
+              minLength: 1,
+              type: 'string',
+            },
+          },
+          {
+            description:
+              'Request issue time. Requests older than the replay window are rejected.',
+            in: 'header',
+            name: 'x-voice-issued-at',
+            required: true,
+            schema: {
+              format: 'date-time',
+              type: 'string',
+            },
+          },
+          {
+            description: 'Device id used for per-device rate limiting.',
+            in: 'header',
+            name: 'x-device-id',
+            required: false,
+            schema: {
+              minLength: 1,
               type: 'string',
             },
           },
@@ -148,7 +188,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
           429: errorResponse(),
           503: errorResponse(),
         },
-        security: [{ bearerAuth: [] }, {}],
+        security: [{ bearerAuth: [] }],
         summary:
           'Transcribe a short voice command and return transcript with PlannerIntent',
         tags: ['voice'],

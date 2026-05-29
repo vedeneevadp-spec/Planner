@@ -1,5 +1,6 @@
 package ru.chaotika.app;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -7,6 +8,7 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
@@ -78,6 +80,10 @@ public class WakeWordService extends Service {
 
         if (ACTION_STOP.equals(action)) {
             stopAssistant();
+            return START_NOT_STICKY;
+        }
+
+        if (!ensureRuntimePermissions(action)) {
             return START_NOT_STICKY;
         }
 
@@ -296,6 +302,40 @@ public class WakeWordService extends Service {
             handleAssistantError(WakeWordError.foregroundServiceNotAllowed(error));
             return false;
         }
+    }
+
+    private boolean ensureRuntimePermissions(String action) {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            handlePermissionRevoked(new SttException(SttError.PERMISSION_DENIED, "Нет доступа к микрофону."));
+            return false;
+        }
+
+        if (
+            !ACTION_CAPTURE_COMMAND.equals(action) &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, false);
+            handlePermissionRevoked(
+                new SttException(
+                    SttError.PERMISSION_DENIED,
+                    "Для фонового режима нужно разрешение уведомлений."
+                )
+            );
+            return false;
+        }
+
+        return true;
+    }
+
+    private void handlePermissionRevoked(SttException error) {
+        WakeWordTrainingExampleStore.clearPending();
+        wakeWordEngine.stop();
+        speechToTextService.stop();
+        PlannerVoiceAssistantStorage.storePendingError(this, error);
+        setState(VoiceAssistantState.ERROR);
+        stopForeground(true);
+        stopSelf();
     }
 
     private void updateNotification(String contentText) {

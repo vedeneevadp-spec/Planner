@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { describe, it } from 'node:test'
 
 import type {
@@ -24,6 +25,7 @@ void describe('VoiceCommandService', () => {
         actorUserId: 'user-1',
         workspaceId: 'workspace-1',
       },
+      security: createSecurity(),
     })
 
     assert.equal(provider.callCount, 1)
@@ -44,6 +46,7 @@ void describe('VoiceCommandService', () => {
         actorUserId: 'user-1',
         workspaceId: 'workspace-1',
       },
+      security: createSecurity(),
       source: 'android_push_to_talk',
     })
 
@@ -62,6 +65,7 @@ void describe('VoiceCommandService', () => {
         timezone: 'Asia/Novosibirsk',
         workspaceId: 'workspace-1',
       },
+      security: createSecurity(),
       source: 'android_push_to_talk',
     })
 
@@ -86,6 +90,7 @@ void describe('VoiceCommandService', () => {
         appRole: 'owner',
         workspaceId: 'workspace-1',
       },
+      security: createSecurity(),
       source: 'android_push_to_talk',
     })
 
@@ -109,6 +114,7 @@ void describe('VoiceCommandService', () => {
         actorUserId: 'user-1',
         workspaceId: 'workspace-1',
       },
+      security: createSecurity(),
     })
 
     assert.equal(fallback.callCount, 1)
@@ -131,6 +137,7 @@ void describe('VoiceCommandService', () => {
         actorUserId: 'user-1',
         workspaceId: 'workspace-1',
       },
+      security: createSecurity(),
     })
 
     assert.equal(fallback.callCount, 0)
@@ -150,6 +157,7 @@ void describe('VoiceCommandService', () => {
             actorUserId: 'user-1',
             workspaceId: 'workspace-1',
           },
+          security: createSecurity(),
         }),
       (error) => isVoiceCommandError(error, 'TOO_SHORT'),
     )
@@ -168,6 +176,7 @@ void describe('VoiceCommandService', () => {
             actorUserId: 'user-1',
             workspaceId: 'workspace-1',
           },
+          security: createSecurity(),
         }),
       (error) => isVoiceCommandError(error, 'NO_SPEECH'),
     )
@@ -189,6 +198,7 @@ void describe('VoiceCommandService', () => {
             actorUserId: 'user-1',
             workspaceId: 'workspace-1',
           },
+          security: createSecurity(),
         }),
       (error) => isVoiceCommandError(error, 'TOO_QUIET'),
     )
@@ -203,6 +213,284 @@ void describe('VoiceCommandService', () => {
     assert.equal(audio.format.encoding, 'pcm_s16le')
     assert.equal(audio.format.sampleRateHertz, 16_000)
     assert.equal(audio.hasVoiceActivity, true)
+  })
+
+  void it('rejects duplicate request ids before provider upload', async () => {
+    const provider = new FakeSttProvider('добавь задачу')
+    const service = new VoiceCommandService(provider)
+    const security = createSecurity()
+
+    await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        deviceId: 'device-1',
+        workspaceId: 'workspace-1',
+      },
+      security,
+    })
+
+    await assert.rejects(
+      () =>
+        service.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-1',
+            deviceId: 'device-1',
+            workspaceId: 'workspace-1',
+          },
+          security,
+        }),
+      (error) => isVoiceCommandError(error, 'REPLAY_REJECTED'),
+    )
+    assert.equal(provider.callCount, 1)
+  })
+
+  void it('rejects expired and too-far-future request timestamps', async () => {
+    const provider = new FakeSttProvider('добавь задачу')
+    const service = new VoiceCommandService(provider)
+
+    await assert.rejects(
+      () =>
+        service.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-1',
+            deviceId: 'device-1',
+            workspaceId: 'workspace-1',
+          },
+          security: createSecurity({
+            issuedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+          }),
+        }),
+      (error) => isVoiceCommandError(error, 'REPLAY_REJECTED'),
+    )
+
+    await assert.rejects(
+      () =>
+        service.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-1',
+            deviceId: 'device-1',
+            workspaceId: 'workspace-1',
+          },
+          security: createSecurity({
+            issuedAt: new Date(Date.now() + 2 * 60_000).toISOString(),
+          }),
+        }),
+      (error) => isVoiceCommandError(error, 'REPLAY_REJECTED'),
+    )
+
+    await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        deviceId: 'device-1',
+        workspaceId: 'workspace-1',
+      },
+      security: createSecurity({
+        issuedAt: new Date(Date.now() + 30_000).toISOString(),
+      }),
+    })
+
+    assert.equal(provider.callCount, 1)
+  })
+
+  void it('rejects duplicate request ids after failed attempts', async () => {
+    const provider = new FakeSttProvider('')
+    const service = new VoiceCommandService(provider)
+    const security = createSecurity()
+
+    await assert.rejects(
+      () =>
+        service.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-1',
+            deviceId: 'device-1',
+            workspaceId: 'workspace-1',
+          },
+          security,
+        }),
+      (error) => isVoiceCommandError(error, 'NO_SPEECH'),
+    )
+
+    await assert.rejects(
+      () =>
+        service.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-1',
+            deviceId: 'device-1',
+            workspaceId: 'workspace-1',
+          },
+          security,
+        }),
+      (error) => isVoiceCommandError(error, 'REPLAY_REJECTED'),
+    )
+    assert.equal(provider.callCount, 1)
+  })
+
+  void it('rate limits by user, device, and IP fallback', async () => {
+    const provider = new FakeSttProvider('добавь задачу')
+    const service = new VoiceCommandService(provider)
+
+    for (let index = 0; index < 30; index += 1) {
+      await service.process({
+        audio: createRequestAudio(createVoiceAudio(900)),
+        context: {
+          actorUserId: 'user-1',
+          deviceId: 'device-1',
+          ipAddress: '127.0.0.1',
+          workspaceId: 'workspace-1',
+        },
+        security: createSecurity(),
+      })
+    }
+
+    await assert.rejects(
+      () =>
+        service.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-1',
+            deviceId: 'device-1',
+            ipAddress: '127.0.0.1',
+            workspaceId: 'workspace-1',
+          },
+          security: createSecurity(),
+        }),
+      (error) => isVoiceCommandError(error, 'RATE_LIMITED'),
+    )
+
+    await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        deviceId: 'device-2',
+        ipAddress: '127.0.0.1',
+        workspaceId: 'workspace-1',
+      },
+      security: createSecurity(),
+    })
+
+    const fallbackService = new VoiceCommandService(provider)
+
+    for (let index = 0; index < 30; index += 1) {
+      await fallbackService.process({
+        audio: createRequestAudio(createVoiceAudio(900)),
+        context: {
+          actorUserId: 'user-2',
+          ipAddress: '127.0.0.2',
+          workspaceId: 'workspace-1',
+        },
+        security: createSecurity(),
+      })
+    }
+
+    await assert.rejects(
+      () =>
+        fallbackService.process({
+          audio: createRequestAudio(createVoiceAudio(900)),
+          context: {
+            actorUserId: 'user-2',
+            ipAddress: '127.0.0.2',
+            workspaceId: 'workspace-1',
+          },
+          security: createSecurity(),
+        }),
+      (error) => isVoiceCommandError(error, 'RATE_LIMITED'),
+    )
+
+    await fallbackService.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-2',
+        ipAddress: '127.0.0.3',
+        workspaceId: 'workspace-1',
+      },
+      security: createSecurity(),
+    })
+  })
+
+  void it('records audit-safe metrics without transcript, titles, or audio', async () => {
+    const provider = new FakeSttProvider('добавь задачу секретная задача')
+    const metrics = new FakeMetricsSink()
+    const service = new VoiceCommandService(provider, metrics)
+
+    await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        deviceId: 'device-1',
+        ipAddress: '127.0.0.1',
+        workspaceId: 'workspace-1',
+      },
+      security: createSecurity(),
+      source: 'android_push_to_talk',
+    })
+
+    const serialized = JSON.stringify(metrics.events)
+
+    assert.match(serialized, /workspaceIdHash/)
+    assert.doesNotMatch(serialized, /workspace-1/)
+    assert.doesNotMatch(serialized, /секретная задача/)
+    assert.doesNotMatch(serialized, /transcript/)
+    assert.doesNotMatch(serialized, /rawAudio/)
+    assert.ok(
+      metrics.events.some((event) => event.event === 'voice_command_received'),
+    )
+  })
+
+  void it('recursively redacts unsafe nested audit payloads', () => {
+    const metrics = new FakeMetricsSink()
+    const service = new VoiceCommandService(
+      new FakeSttProvider('добавь задачу'),
+      metrics,
+    )
+
+    service.recordAuditEvent('voice_action_preview_created', {
+      agendaItems: [{ title: 'встреча с юристом' }],
+      audio: new Uint8Array([1, 2, 3]),
+      errorCode: 'requires_unlock',
+      intent: {
+        intent: 'reschedule_task',
+        rawText: 'перенеси секретный договор',
+        targetQuery: 'секретный договор',
+      },
+      metadata: {
+        fullTranscript: 'добавь личные лекарства',
+        nested: {
+          shoppingItemName: 'личные лекарства',
+          taskTitle: 'секретный договор',
+        },
+        safeCode: 'locked_screen',
+      },
+      preview: {
+        candidates: [{ title: 'секретный договор' }],
+        summary: 'Разблокируй телефон, чтобы продолжить.',
+        title: 'Нужна разблокировка',
+      },
+      previewStatus: 'requires_unlock',
+      taskTitles: ['секретный договор'],
+      transcript: 'перенеси секретный договор',
+    })
+
+    const serialized = JSON.stringify(metrics.events)
+
+    assert.match(serialized, /voice_action_preview_created/)
+    assert.match(serialized, /previewStatus/)
+    assert.match(serialized, /requires_unlock/)
+    assert.match(serialized, /safeCode/)
+    assert.doesNotMatch(serialized, /секрет/)
+    assert.doesNotMatch(serialized, /личные лекарства/)
+    assert.doesNotMatch(serialized, /юрист/)
+    assert.doesNotMatch(serialized, /transcript/i)
+    assert.doesNotMatch(serialized, /agendaItems/)
+    assert.doesNotMatch(serialized, /candidates/)
+    assert.doesNotMatch(serialized, /rawText/)
+    assert.doesNotMatch(serialized, /taskTitle/)
   })
 })
 
@@ -249,12 +537,38 @@ class FakePlannerIntentFallback implements BackendPlannerIntentFallback {
   }
 }
 
+class FakeMetricsSink {
+  readonly events: Array<{
+    details?: Record<string, unknown>
+    event: string
+  }> = []
+
+  record(event: string, details?: Record<string, unknown>): void {
+    this.events.push(details ? { details, event } : { event })
+  }
+}
+
 function createRequestAudio(data: Buffer) {
   return {
     data,
     metadata: {
       format: COMMAND_AUDIO_FORMAT,
     },
+  }
+}
+
+function createSecurity(
+  overrides: Partial<{
+    issuedAt: string
+    requestId: string
+    sessionId: string
+  }> = {},
+) {
+  return {
+    issuedAt: new Date().toISOString(),
+    requestId: randomUUID(),
+    sessionId: 'voice-session-1',
+    ...overrides,
   }
 }
 

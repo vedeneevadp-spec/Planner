@@ -74,6 +74,8 @@ final class PlannerVoiceAssistantStorage {
             value.put("apiBaseUrl", config.apiBaseUrl);
             value.put("accessToken", config.accessToken);
             value.put("actorUserId", config.actorUserId);
+            value.put("deviceId", config.deviceId);
+            value.put("voiceSessionId", config.voiceSessionId);
             value.put("workspaceId", config.workspaceId);
             value.put("wakeWordTrainingModeEnabled", config.wakeWordTrainingModeEnabled);
         } catch (JSONException exception) {
@@ -97,7 +99,9 @@ final class PlannerVoiceAssistantStorage {
                 value.optString("accessToken", null),
                 value.optString("actorUserId", null),
                 value.optString("workspaceId", null),
-                value.optBoolean("wakeWordTrainingModeEnabled", false)
+                value.optBoolean("wakeWordTrainingModeEnabled", false),
+                value.optString("deviceId", null),
+                value.optString("voiceSessionId", null)
             );
 
             return config.isUsable() ? config : null;

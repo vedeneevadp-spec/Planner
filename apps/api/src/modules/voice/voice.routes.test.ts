@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { describe, it } from 'node:test'
 
 import type { AppRole } from '@planner/contracts'
@@ -15,7 +16,7 @@ import { VoiceCommandService } from './voice.service.js'
 
 void describe('voice routes', () => {
   void it('accepts a raw PCM clip and returns transcript with PlannerIntent', async () => {
-    const app = Fastify()
+    const app = createAuthenticatedFastify()
 
     registerVoiceRoutes(
       app,
@@ -26,12 +27,11 @@ void describe('voice routes', () => {
     )
 
     const response = await app.inject({
-      headers: {
+      headers: createVoiceHeaders({
         'content-type': 'audio/l16',
         'x-stt-source': 'android_push_to_talk',
-        'x-actor-user-id': 'user-1',
         'x-workspace-id': 'workspace-1',
-      },
+      }),
       method: 'POST',
       payload: createVoiceAudio(900),
       url: '/api/voice/command',
@@ -54,7 +54,7 @@ void describe('voice routes', () => {
   })
 
   void it('allows global test users to use the voice endpoint', async () => {
-    const app = Fastify()
+    const app = createAuthenticatedFastify()
     const provider = new FakeSttProvider('добавь в покупки молоко')
 
     registerVoiceRoutes(
@@ -64,12 +64,11 @@ void describe('voice routes', () => {
     )
 
     const response = await app.inject({
-      headers: {
+      headers: createVoiceHeaders({
         'content-type': 'audio/l16',
         'x-stt-source': 'android_push_to_talk',
-        'x-actor-user-id': 'user-1',
         'x-workspace-id': 'workspace-1',
-      },
+      }),
       method: 'POST',
       payload: createVoiceAudio(900),
       url: '/api/voice/command',
@@ -82,7 +81,7 @@ void describe('voice routes', () => {
   })
 
   void it('passes client parser time headers into PlannerIntent parsing', async () => {
-    const app = Fastify()
+    const app = createAuthenticatedFastify()
 
     registerVoiceRoutes(
       app,
@@ -93,14 +92,13 @@ void describe('voice routes', () => {
     )
 
     const response = await app.inject({
-      headers: {
+      headers: createVoiceHeaders({
         'content-type': 'audio/l16',
-        'x-actor-user-id': 'user-1',
         'x-client-now': '2026-05-29T06:54:00.000Z',
         'x-client-timezone': 'Asia/Novosibirsk',
         'x-stt-source': 'android_push_to_talk',
         'x-workspace-id': 'workspace-1',
-      },
+      }),
       method: 'POST',
       payload: createVoiceAudio(900),
       url: '/api/voice/command',
@@ -119,7 +117,7 @@ void describe('voice routes', () => {
 
   void it('rejects non-rollout roles before calling the STT provider', async () => {
     for (const appRole of ['admin', 'user', 'guest'] satisfies AppRole[]) {
-      const app = Fastify()
+      const app = createAuthenticatedFastify()
       const provider = new FakeSttProvider('добавь задачу')
 
       registerVoiceRoutes(
@@ -129,12 +127,11 @@ void describe('voice routes', () => {
       )
 
       const response = await app.inject({
-        headers: {
+        headers: createVoiceHeaders({
           'content-type': 'audio/l16',
           'x-stt-source': 'android_push_to_talk',
-          'x-actor-user-id': 'user-1',
           'x-workspace-id': 'workspace-1',
-        },
+        }),
         method: 'POST',
         payload: createVoiceAudio(900),
         url: '/api/voice/command',
@@ -148,6 +145,33 @@ void describe('voice routes', () => {
   })
 
   void it('rejects clips above the route hard limit before STT', async () => {
+    const app = createAuthenticatedFastify()
+    const provider = new FakeSttProvider('добавь задачу')
+
+    registerVoiceRoutes(
+      app,
+      createFakeSessionService() as unknown as SessionService,
+      new VoiceCommandService(provider),
+    )
+
+    const response = await app.inject({
+      headers: createVoiceHeaders({
+        'content-type': 'audio/l16',
+        'x-stt-source': '',
+        'x-workspace-id': 'workspace-1',
+      }),
+      method: 'POST',
+      payload: Buffer.alloc(401 * 1024),
+      url: '/api/voice/command',
+    })
+
+    await app.close()
+
+    assert.equal(response.statusCode, 413)
+    assert.equal(provider.callCount, 0)
+  })
+
+  void it('requires authenticated requests', async () => {
     const app = Fastify()
     const provider = new FakeSttProvider('добавь задачу')
 
@@ -158,19 +182,46 @@ void describe('voice routes', () => {
     )
 
     const response = await app.inject({
-      headers: {
+      headers: createVoiceHeaders({
         'content-type': 'audio/l16',
-        'x-actor-user-id': 'user-1',
+        'x-stt-source': 'android_push_to_talk',
         'x-workspace-id': 'workspace-1',
-      },
+      }),
       method: 'POST',
-      payload: Buffer.alloc(401 * 1024),
+      payload: createVoiceAudio(900),
       url: '/api/voice/command',
     })
 
     await app.close()
 
-    assert.equal(response.statusCode, 413)
+    assert.equal(response.statusCode, 401)
+    assert.equal(provider.callCount, 0)
+  })
+
+  void it('rejects missing source before STT', async () => {
+    const app = createAuthenticatedFastify()
+    const provider = new FakeSttProvider('добавь задачу')
+
+    registerVoiceRoutes(
+      app,
+      createFakeSessionService() as unknown as SessionService,
+      new VoiceCommandService(provider),
+    )
+
+    const response = await app.inject({
+      headers: createVoiceHeaders({
+        'content-type': 'audio/l16',
+        'x-stt-source': '',
+        'x-workspace-id': 'workspace-1',
+      }),
+      method: 'POST',
+      payload: createVoiceAudio(900),
+      url: '/api/voice/command',
+    })
+
+    await app.close()
+
+    assert.equal(response.statusCode, 400)
     assert.equal(provider.callCount, 0)
   })
 })
@@ -222,6 +273,37 @@ function createFakeSessionService(appRole: AppRole = 'owner') {
         ],
       })
     },
+  }
+}
+
+function createAuthenticatedFastify() {
+  const app = Fastify()
+
+  app.decorateRequest('authContext', null)
+  app.addHook('onRequest', (request, _reply, done) => {
+    request.authContext = {
+      accessToken: 'test-access-token',
+      claims: {
+        payload: {},
+        role: 'authenticated',
+        sub: 'user-1',
+      },
+    }
+    done()
+  })
+
+  return app
+}
+
+function createVoiceHeaders(
+  overrides: Record<string, string> = {},
+): Record<string, string> {
+  return {
+    'x-stt-source': 'android_short_clip',
+    'x-voice-issued-at': new Date().toISOString(),
+    'x-voice-request-id': randomUUID(),
+    'x-voice-session-id': 'voice-session-1',
+    ...overrides,
   }
 }
 

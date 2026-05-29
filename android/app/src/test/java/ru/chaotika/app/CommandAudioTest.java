@@ -62,7 +62,9 @@ public class CommandAudioTest {
     @Test
     public void separatesWakeWordAndPushToTalkSources() {
         assertEquals(SttSource.ANDROID_SHORT_CLIP, SttRequest.afterWakeWord().source);
+        assertTrue(SttRequest.afterWakeWord().wakeWordDetected);
         assertEquals(SttSource.ANDROID_PUSH_TO_TALK, SttRequest.pushToTalk().source);
+        assertTrue(SttRequest.pushToTalk().explicitUserAction);
     }
 
     private static void assertValidationError(byte[] audio, SttError expectedCode) {

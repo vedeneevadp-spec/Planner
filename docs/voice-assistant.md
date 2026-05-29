@@ -1223,12 +1223,17 @@ Undo и full clarification loop были вынесены из пункта 5 и
    фраза активации одна и фиксированная - `Хаотика`.
 
 9. Защитить приватность и безопасность.
-   Проверить, что до wake word нет сетевой отправки аудио. Добавить явные
-   privacy notes в UI и документацию. На backend ввести лимиты, audit events для
-   голосовых действий, защиту от replay и запрет выполнения опасных intent без
-   подтверждения. Для Android проверить поведение при отзыве microphone и
-   notification permissions. Voice cue audio не содержит приватных данных;
-   transcript/task titles не писать в metrics без отдельной policy.
+   Технически закрепить privacy/security-инварианты voice flow без добавления
+   новых intents и без изменения parser/action logic. До `WakeWordDetected` в
+   wake-word mode нет upload, push-to-talk требует явного user action, backend
+   требует auth/source/security headers, raw audio не сохраняется, metrics/audit
+   не содержат transcript/task titles/audio, locked screen scrubber скрывает
+   приватные данные, dangerous intent требует confirmation, Android корректно
+   обрабатывает revoke microphone/notification permissions. Replay protection
+   имеет TTL/clock-skew checks, duplicate `requestId` отклоняется после
+   successful и failed попыток, rate limit учитывает user/device/IP, redaction
+   рекурсивно чистит nested private payloads. Подробности:
+   [docs/voice/privacy-security.md](voice/privacy-security.md).
 
 10. Оптимизировать Android runtime.
     Измерить расход батареи и CPU в фоне, устойчивость foreground service после

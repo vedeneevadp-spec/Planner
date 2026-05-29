@@ -33,9 +33,17 @@ export interface VoiceCommandRouteContext {
   actorUserId: string | undefined
   appRole?: AppRole | undefined
   clientNow?: string | undefined
+  deviceId?: string | undefined
+  ipAddress?: string | undefined
   isDeviceLocked?: boolean | undefined
   timezone?: string | undefined
   workspaceId: string
+}
+
+export interface VoiceRequestSecurity {
+  issuedAt: string
+  requestId: string
+  sessionId: string
 }
 
 export interface VoiceCommandAudioFormatMetadata {
@@ -128,6 +136,27 @@ export function createVoiceCommandError(
         'Voice command rate limit exceeded.',
         details,
       )
+    case 'INVALID_SOURCE':
+      return new VoiceCommandError(
+        400,
+        sttError,
+        'Voice command source is missing or unsupported.',
+        details,
+      )
+    case 'PRIVACY_BLOCKED':
+      return new VoiceCommandError(
+        400,
+        sttError,
+        'Voice command upload was blocked by privacy policy.',
+        details,
+      )
+    case 'REPLAY_REJECTED':
+      return new VoiceCommandError(
+        409,
+        sttError,
+        'Voice command request was rejected as a replay.',
+        details,
+      )
     case 'NETWORK_ERROR':
       return new VoiceCommandError(
         503,
@@ -172,5 +201,15 @@ export function parseVoiceCommandSource(value: unknown): SttSource {
     return 'android_short_clip'
   }
 
-  return 'android_short_clip'
+  if (value === 'local_fallback') {
+    return 'local_fallback'
+  }
+
+  if (value === 'test_stub') {
+    return 'test_stub'
+  }
+
+  throw createVoiceCommandError('INVALID_SOURCE', {
+    source: typeof value === 'string' ? value : null,
+  })
 }

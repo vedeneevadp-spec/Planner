@@ -48,7 +48,7 @@ final class HybridSpeechToTextService implements SpeechToTextService {
                     metricsLogger.uploadStarted(audio);
                 }
 
-                SttResult result = provider.transcribe(audio, request.source);
+                SttResult result = provider.transcribe(audio, request);
 
                 if (result.confidence < 0.55d) {
                     metricsLogger.lowConfidence(result);
@@ -65,7 +65,8 @@ final class HybridSpeechToTextService implements SpeechToTextService {
                     error.code == SttError.TOO_SHORT ||
                     error.code == SttError.TOO_QUIET ||
                     error.code == SttError.TOO_LONG ||
-                    error.code == SttError.UNSUPPORTED_AUDIO_FORMAT
+                    error.code == SttError.UNSUPPORTED_AUDIO_FORMAT ||
+                    error.code == SttError.PRIVACY_BLOCKED
                 ) {
                     metricsLogger.localValidationFailed(error);
                 } else {
