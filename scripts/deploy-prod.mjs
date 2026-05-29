@@ -43,6 +43,15 @@ const skipDbBackup =
   args.has('--skip-db-backup') || process.env.DEPLOY_SKIP_DB_BACKUP === '1'
 const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
+const LOCAL_CHECK_ENV_OVERRIDES_TO_CLEAR = [
+  'API_AUTH_MODE',
+  'VITE_API_ACCESS_TOKEN',
+  'VITE_API_BASE_URL',
+  'VITE_ACTOR_USER_ID',
+  'VITE_AUTH_PROVIDER',
+  'VITE_WORKSPACE_ID',
+  'WEB_AUTH_PROVIDER',
+]
 
 await main().catch((error) => {
   console.error(error instanceof Error ? error.message : error)
@@ -56,7 +65,7 @@ async function main() {
   if (skipChecks) {
     console.log('[deploy] Skipping local checks.')
   } else {
-    await run('npm', ['run', 'ci'])
+    await run('npm', ['run', 'ci'], { env: createLocalCheckEnv() })
   }
 
   if (dryRun) {
@@ -421,6 +430,26 @@ function readEnv(name, fallback) {
   return value && value.trim().length > 0 ? value : fallback
 }
 
+function createLocalCheckEnv() {
+  const env = { ...process.env }
+  const clearedNames = []
+
+  for (const name of LOCAL_CHECK_ENV_OVERRIDES_TO_CLEAR) {
+    if (env[name] !== undefined) {
+      delete env[name]
+      clearedNames.push(name)
+    }
+  }
+
+  if (clearedNames.length > 0) {
+    console.log(
+      `[deploy] Running local checks without dev env overrides: ${clearedNames.join(', ')}`,
+    )
+  }
+
+  return env
+}
+
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`
 }
@@ -525,12 +554,13 @@ async function collect(command, args) {
   })
 }
 
-async function run(command, args) {
+async function run(command, args, options = {}) {
   const resolvedCommand = resolveCommand(command)
   console.log(`[deploy] ${command} ${args.join(' ')}`)
 
   await new Promise((resolve, reject) => {
     const child = spawn(resolvedCommand, args, {
+      env: options.env ?? process.env,
       stdio: 'inherit',
     })
 
