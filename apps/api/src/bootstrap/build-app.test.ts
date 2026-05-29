@@ -67,6 +67,8 @@ import { HttpError } from './http-error.js'
 import type { RequestAuthenticator } from './request-auth.js'
 
 const AUTH_TOKEN = 'planner-test-token'
+const DEFAULT_OWNER_USER_ID = '11111111-1111-4111-8111-111111111111'
+const DEFAULT_OWNER_WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 const AUTH_CONTEXT = {
   accessToken: AUTH_TOKEN,
   claims: {
@@ -1809,8 +1811,8 @@ void describe('buildApiApp', () => {
 
     const createResponse = await app.inject({
       headers: {
-        'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-1',
+        'x-actor-user-id': DEFAULT_OWNER_USER_ID,
+        'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
       },
       method: 'POST',
       payload: {
@@ -1837,7 +1839,7 @@ void describe('buildApiApp', () => {
 
     assert.equal(createdEmojiSet.title, 'Planner icons')
     assert.equal(createdEmojiSet.source, 'custom')
-    assert.equal(createdEmojiSet.workspaceId, 'workspace-1')
+    assert.equal(createdEmojiSet.workspaceId, DEFAULT_OWNER_WORKSPACE_ID)
     assert.equal(createdEmojiSet.items.length, 2)
     assert.equal(createdEmojiSet.items[0]?.kind, 'image')
     assert.equal(createdEmojiSet.items[0]?.shortcode, 'icon-1')
@@ -1906,8 +1908,8 @@ void describe('buildApiApp', () => {
 
     const addItemsResponse = await app.inject({
       headers: {
-        'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-2',
+        'x-actor-user-id': DEFAULT_OWNER_USER_ID,
+        'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
       },
       method: 'POST',
       payload: {
@@ -1938,8 +1940,8 @@ void describe('buildApiApp', () => {
 
     const deleteItemResponse = await app.inject({
       headers: {
-        'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-2',
+        'x-actor-user-id': DEFAULT_OWNER_USER_ID,
+        'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
       },
       method: 'DELETE',
       url: `/api/v1/emoji-sets/${createdEmojiSet.id}/items/${addedIconAsset.id}`,
@@ -1973,8 +1975,8 @@ void describe('buildApiApp', () => {
 
     const deleteSetResponse = await app.inject({
       headers: {
-        'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-2',
+        'x-actor-user-id': DEFAULT_OWNER_USER_ID,
+        'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
       },
       method: 'DELETE',
       url: `/api/v1/emoji-sets/${createdEmojiSet.id}`,
@@ -2144,8 +2146,8 @@ void describe('buildApiApp', () => {
 
     const response = await app.inject({
       headers: {
-        'x-actor-user-id': 'user-1',
-        'x-workspace-id': 'workspace-1',
+        'x-actor-user-id': DEFAULT_OWNER_USER_ID,
+        'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
       },
       method: 'POST',
       payload: {
