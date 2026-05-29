@@ -16,6 +16,7 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
     private static final int INFERENCE_STRIDE_SAMPLES = 1_600;
     private static final int MIN_RING_BUFFER_SECONDS = 2;
+    private static final int TRAINING_SAMPLE_POST_ROLL_MS = 800;
     private static final float VAD_MIN_RMS = 0.006f;
     private static final float NORMALIZE_MIN_PEAK = 0.01f;
     private static final float NORMALIZE_TARGET_PEAK = 0.85f;
@@ -254,14 +255,16 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
             return;
         }
 
+        long detectedAtEpochMillis = System.currentTimeMillis();
+        short[] reviewSamples = buildReviewSamples(rawInput);
         WakeWordDetection detection = new WakeWordDetection(
             config.phraseId,
             config.displayPhrase,
             score,
-            System.currentTimeMillis(),
-            WakeWordTrainingExampleStore.toPcm16(rawInput),
+            detectedAtEpochMillis,
+            reviewSamples,
             config.sampleRate,
-            WakeWordTrainingExampleStore.estimateNoiseLevelRms(rawInput, config.sampleRate)
+            WakeWordTrainingExampleStore.estimateNoiseLevelRms(reviewSamples, config.sampleRate)
         );
         WakeWordDiagnostics.recordDetection(detection);
         metricsLogger.wakeDetected(detection);
@@ -319,6 +322,79 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         }
 
         return output;
+    }
+
+    private short[] buildReviewSamples(float[] rawInput) {
+        short[] postDetectionSamples = shouldCaptureTrainingPostRoll()
+            ? capturePostDetectionSamples(postRollSampleCount())
+            : new short[0];
+
+        return prepareReviewSamples(rawInput, postDetectionSamples, expectedTrainingWindowSamples());
+    }
+
+    static short[] prepareReviewSamples(float[] rawInput, short[] postDetectionSamples, int fallbackWindowSamples) {
+        short[] preDetectionSamples = WakeWordTrainingExampleStore.toPcm16(rawInput);
+        short[] combinedSamples = appendSamples(preDetectionSamples, postDetectionSamples);
+
+        try {
+            return WakeWordSampleProcessor.process(combinedSamples, combinedSamples.length).samples;
+        } catch (WakeWordSampleProcessor.ValidationException ignored) {
+            return latestPcmWindow(combinedSamples, fallbackWindowSamples);
+        }
+    }
+
+    private boolean shouldCaptureTrainingPostRoll() {
+        return context != null && WakeWordTrainingExampleStore.isCollectionEnabled(context);
+    }
+
+    private int postRollSampleCount() {
+        return (config.sampleRate * TRAINING_SAMPLE_POST_ROLL_MS) / 1_000;
+    }
+
+    private int expectedTrainingWindowSamples() {
+        return config.sampleRate * MIN_RING_BUFFER_SECONDS;
+    }
+
+    private short[] capturePostDetectionSamples(int sampleCount) {
+        if (sampleCount <= 0 || audioRecord == null) {
+            return new short[0];
+        }
+
+        short[] samples = new short[sampleCount];
+        short[] frame = new short[Math.min(1_024, sampleCount)];
+        int offset = 0;
+
+        while (offset < sampleCount && isRunning) {
+            int read = audioRecord.read(frame, 0, Math.min(frame.length, sampleCount - offset));
+
+            if (read <= 0) {
+                break;
+            }
+
+            System.arraycopy(frame, 0, samples, offset, read);
+            offset += read;
+        }
+
+        if (offset == sampleCount) {
+            return samples;
+        }
+
+        return Arrays.copyOf(samples, offset);
+    }
+
+    static short[] appendSamples(short[] first, short[] second) {
+        short[] combined = new short[first.length + second.length];
+        System.arraycopy(first, 0, combined, 0, first.length);
+        System.arraycopy(second, 0, combined, first.length, second.length);
+        return combined;
+    }
+
+    static short[] latestPcmWindow(short[] samples, int maxSamples) {
+        if (samples.length <= maxSamples) {
+            return samples.clone();
+        }
+
+        return Arrays.copyOfRange(samples, samples.length - maxSamples, samples.length);
     }
 
     private static float peakAbs(float[] input) {

@@ -7,7 +7,7 @@ final class WakeWordConfig {
     static final String HAOTIKA_LANGUAGE = "ru-RU";
     static final String HAOTIKA_MANIFEST_PATH = "wakewords/haotika_manifest.json";
     static final String HAOTIKA_MODEL_PATH = "wakewords/haotika.tflite";
-    static final float HAOTIKA_THRESHOLD = 0.65f;
+    static final float HAOTIKA_THRESHOLD = 0.99f;
     static final int HAOTIKA_SAMPLE_RATE = 16_000;
     static final boolean HAOTIKA_VAD_ENABLED = true;
 
