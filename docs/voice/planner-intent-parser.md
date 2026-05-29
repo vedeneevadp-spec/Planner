@@ -68,6 +68,36 @@ Alice parser and Voice `PlannerIntentParser` are separate flows. The `ALICE_LLM_
 configuration described in the README belongs to Yandex Dialogs/Alice command
 parsing and is not the production LLM fallback for voice/web `PlannerIntent`.
 
+## Production LLM Provider Status
+
+Production LLM provider is intentionally not part of point 4. Point 4 closes the
+parser layer: deterministic rule parser, v1 contract, schema validation and the
+backend extension hook.
+
+The provider must be connected later as a separate production step after:
+
+- action layer v1;
+- confirmation UI;
+- test phrase corpus;
+- quality metrics.
+
+Until then `PlannerIntentParser` remains rule-first and deterministic.
+
+## LLM Fallback Enablement
+
+LLM fallback may improve low-confidence safe parsing, but it must never weaken
+safety. It cannot execute actions, access audio, bypass confirmation, return
+unsupported intent types or override dangerous/locked-screen restrictions.
+
+LLM fallback is allowed only for backend text flow, behind a feature flag for
+`appRole = owner` and `appRole = test`. It is not allowed for dangerous intents,
+delete/bulk actions, locked-screen sensitive flows, private data reads and
+`reschedule_task` in the first production fallback rollout.
+
+Every provider result must pass `plannerIntentSchema` validation. Invalid JSON,
+schema-invalid output, provider errors and provider timeouts fall back to the
+rule-parser result.
+
 ## Examples
 
 | Transcript                        | Intent result                                            |
