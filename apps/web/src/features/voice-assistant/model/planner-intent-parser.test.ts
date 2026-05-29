@@ -52,6 +52,28 @@ describe('PlannerIntentParser', () => {
     })
   })
 
+  it('removes date prepositions from task titles', () => {
+    const todayIntent = parser.parse('добавь задачу заказать еду на сегодня', {
+      now: NOW,
+    })
+    const tomorrowIntent = parser.parse('подготовить отчет к завтра', {
+      now: NOW,
+    })
+
+    expect(todayIntent).toMatchObject({
+      date: '2026-05-28',
+      datePrecision: 'date_only',
+      intent: 'create_task',
+      title: 'заказать еду',
+    })
+    expect(tomorrowIntent).toMatchObject({
+      date: '2026-05-29',
+      datePrecision: 'date_only',
+      intent: 'create_task',
+      title: 'подготовить отчет',
+    })
+  })
+
   it('parses relative reminders as create_task with reminderAt', () => {
     const intent = parser.parse('через 10 минут выключить плиту', {
       now: NOW,

@@ -710,7 +710,10 @@ class TaskTitleExtractor {
 
   static removeDateTimeTokens(text: string): string {
     return text
-      .replace(/(?:^|\s)(сегодня|завтра|послезавтра)(?=\s|$)/giu, ' ')
+      .replace(
+        /(?:^|\s)(?:на|к|ко|до)?\s*(сегодня|завтра|послезавтра)(?=\s|$)/giu,
+        ' ',
+      )
       .replace(/(?:^|\s)на\s+следующ(?:ей|ую)\s+недел[ею](?=\s|$)/giu, ' ')
       .replace(WEEKDAY_PATTERN, ' ')
       .replace(
@@ -722,7 +725,10 @@ class TaskTitleExtractor {
         ' ',
       )
       .replace(/(?:^|\s)(утром|вечером|днем|ночью)(?=\s|$)/giu, ' ')
-      .replace(/(?:^|\s)\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?=\s|$)/gu, ' ')
+      .replace(
+        /(?:^|\s)(?:на|к|ко|до)?\s*\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?=\s|$)/gu,
+        ' ',
+      )
       .replace(/\s+/gu, ' ')
       .trim()
   }
