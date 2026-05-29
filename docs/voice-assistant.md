@@ -104,7 +104,7 @@ TensorFlow Lite runtime.
   "language": "ru-RU",
   "modelVersion": "pending-trained-model",
   "modelPath": "wakewords/haotika.tflite",
-  "threshold": 0.65,
+  "threshold": 0.85,
   "sampleRate": 16000,
   "vadEnabled": true
 }

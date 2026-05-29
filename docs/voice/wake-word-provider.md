@@ -86,13 +86,13 @@ microphone frames
   "language": "ru-RU",
   "modelVersion": "haotika-realworld-20260528-213500",
   "modelPath": "wakewords/haotika.tflite",
-  "threshold": 0.65,
+  "threshold": 0.85,
   "sampleRate": 16000,
   "vadEnabled": true
 }
 ```
 
-`threshold = 0.65` - текущий экспериментальный порог после дообучения на
+`threshold = 0.85` - текущий экспериментальный порог после дообучения на
 real-world `true_accept` / `false_accept`. Он выбран консервативнее training
 recommendation, чтобы сильнее снизить false accept. Перед production release его нужно
 уточнить на большем тестовом корпусе и реальных устройствах.
