@@ -4,7 +4,7 @@
   "language": "ru-RU",
   "modelVersion": "haotika-realworld-20260529-002347",
   "modelPath": "wakewords/haotika.tflite",
-  "threshold": 0.65,
+  "threshold": 0.75,
   "sampleRate": 16000,
   "vadEnabled": true,
   "inputShape": [

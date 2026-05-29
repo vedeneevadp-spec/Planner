@@ -102,6 +102,26 @@ public class WakeWordEngineTest {
     }
 
     @Test
+    public void customTfliteWakeWordEngine_normalizesModelInputLikeTraining() {
+        float[] input = new float[] { 0.1f, -0.2f, 0f };
+
+        float[] normalized = CustomTfliteWakeWordEngine.normalizeForModel(input);
+
+        assertEquals(0.425f, normalized[0], 0.0001f);
+        assertEquals(-0.85f, normalized[1], 0.0001f);
+        assertEquals(0f, normalized[2], 0.0001f);
+        assertEquals(0.1f, input[0], 0.0001f);
+    }
+
+    @Test
+    public void customTfliteWakeWordEngine_capsNormalizationGainForQuietInput() {
+        float[] normalized = CustomTfliteWakeWordEngine.normalizeForModel(new float[] { 0.02f, -0.04f });
+
+        assertEquals(0.16f, normalized[0], 0.0001f);
+        assertEquals(-0.32f, normalized[1], 0.0001f);
+    }
+
+    @Test
     public void voiceAssistantStateMachine_movesWakeListeningToWakeReview() {
         assertEquals(
             VoiceAssistantState.REVIEWING_WAKE_WORD,

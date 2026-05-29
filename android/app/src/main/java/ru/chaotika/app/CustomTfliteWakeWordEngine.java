@@ -16,7 +16,10 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
     private static final int INFERENCE_STRIDE_SAMPLES = 1_600;
     private static final int MIN_RING_BUFFER_SECONDS = 2;
-    private static final float VAD_MIN_RMS = 0.01f;
+    private static final float VAD_MIN_RMS = 0.006f;
+    private static final float NORMALIZE_MIN_PEAK = 0.01f;
+    private static final float NORMALIZE_TARGET_PEAK = 0.85f;
+    private static final float NORMALIZE_MAX_GAIN = 8f;
 
     private final Context context;
     private final WakeWordConfig config;
@@ -237,14 +240,14 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
             return;
         }
 
-        float[] input = latestSamples(expectedInputSamples);
+        float[] rawInput = latestSamples(expectedInputSamples);
 
-        if (config.vadEnabled && rootMeanSquare(input) < VAD_MIN_RMS) {
+        if (config.vadEnabled && rootMeanSquare(rawInput) < VAD_MIN_RMS) {
             updateScore(0f);
             return;
         }
 
-        float score = runModel(input);
+        float score = runModel(normalizeForModel(rawInput));
         updateScore(score);
 
         if (score < threshold) {
@@ -256,9 +259,9 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
             config.displayPhrase,
             score,
             System.currentTimeMillis(),
-            WakeWordTrainingExampleStore.toPcm16(input),
+            WakeWordTrainingExampleStore.toPcm16(rawInput),
             config.sampleRate,
-            WakeWordTrainingExampleStore.estimateNoiseLevelRms(input, config.sampleRate)
+            WakeWordTrainingExampleStore.estimateNoiseLevelRms(rawInput, config.sampleRate)
         );
         WakeWordDiagnostics.recordDetection(detection);
         metricsLogger.wakeDetected(detection);
@@ -299,6 +302,33 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         }
 
         return input;
+    }
+
+    static float[] normalizeForModel(float[] input) {
+        float[] output = Arrays.copyOf(input, input.length);
+        float peak = peakAbs(output);
+
+        if (peak < NORMALIZE_MIN_PEAK) {
+            return output;
+        }
+
+        float gain = Math.min(NORMALIZE_TARGET_PEAK / peak, NORMALIZE_MAX_GAIN);
+
+        for (int index = 0; index < output.length; index += 1) {
+            output[index] = Math.max(-1f, Math.min(1f, output[index] * gain));
+        }
+
+        return output;
+    }
+
+    private static float peakAbs(float[] input) {
+        float peak = 0f;
+
+        for (float sample : input) {
+            peak = Math.max(peak, Math.abs(sample));
+        }
+
+        return peak;
     }
 
     private float runModel(float[] input) throws WakeWordError {
