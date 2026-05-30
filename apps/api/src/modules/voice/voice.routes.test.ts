@@ -80,6 +80,39 @@ void describe('voice routes', () => {
     assert.equal(provider.callCount, 1)
   })
 
+  void it('accepts web push-to-talk source', async () => {
+    const app = createAuthenticatedFastify()
+    const provider = new FakeSttProvider('добавь задачу написать отчет')
+
+    registerVoiceRoutes(
+      app,
+      createFakeSessionService() as unknown as SessionService,
+      new VoiceCommandService(provider),
+    )
+
+    const response = await app.inject({
+      headers: createVoiceHeaders({
+        'content-type': 'audio/l16',
+        'x-stt-source': 'web_push_to_talk',
+        'x-workspace-id': 'workspace-1',
+      }),
+      method: 'POST',
+      payload: createVoiceAudio(900),
+      url: '/api/voice/command',
+    })
+
+    await app.close()
+
+    assert.equal(response.statusCode, 200)
+
+    const body = JSON.parse(response.body) as {
+      stt: { source: string }
+    }
+
+    assert.equal(body.stt.source, 'web_push_to_talk')
+    assert.equal(provider.callCount, 1)
+  })
+
   void it('passes client parser time headers into PlannerIntent parsing', async () => {
     const app = createAuthenticatedFastify()
 

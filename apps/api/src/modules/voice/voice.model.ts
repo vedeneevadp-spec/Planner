@@ -22,8 +22,8 @@ export const COMMAND_AUDIO_BYTES_PER_SECOND =
   COMMAND_AUDIO_FORMAT.channelCount *
   (COMMAND_AUDIO_FORMAT.bitsPerSample / 8)
 
-export const COMMAND_AUDIO_MIN_DURATION_MS = 300
-export const COMMAND_AUDIO_MAX_DURATION_MS = 10_000
+export const COMMAND_AUDIO_MIN_DURATION_MS = 500
+export const COMMAND_AUDIO_MAX_DURATION_MS = 8_000
 export const COMMAND_AUDIO_MAX_BYTES = Math.ceil(
   (COMMAND_AUDIO_BYTES_PER_SECOND * COMMAND_AUDIO_MAX_DURATION_MS) / 1000,
 )
@@ -207,6 +207,10 @@ export function parseVoiceCommandSource(value: unknown): SttSource {
 
   if (value === 'test_stub') {
     return 'test_stub'
+  }
+
+  if (value === 'web_push_to_talk') {
+    return 'web_push_to_talk'
   }
 
   throw createVoiceCommandError('INVALID_SOURCE', {

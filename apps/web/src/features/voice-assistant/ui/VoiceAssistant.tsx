@@ -29,6 +29,7 @@ import {
   useRemoveShoppingListItem,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
+import { recordClientEvent } from '@/shared/lib/observability'
 import { MicIcon } from '@/shared/ui/Icon'
 
 import {
@@ -45,13 +46,25 @@ import {
   type VoiceAssistantNativeStatus,
 } from '../lib/native-voice-assistant'
 import {
-  captureWebSpeechTranscript,
-  isWebSpeechRecognitionSupported,
-} from '../lib/web-speech-recognition'
+  uploadWebVoiceCommand,
+  WebVoiceCommandApiError,
+} from '../lib/web-voice-command-api'
+import {
+  startWebVoiceRecorder,
+  type WebVoiceRecorder,
+} from '../lib/web-voice-recorder'
 import {
   PlannerActionExecutor,
   type PlannerActionExecutorDependencies,
 } from '../model/planner-action-executor'
+import {
+  getWebVoiceInputLabel,
+  getWebVoiceSupport,
+  normalizeWebVoicePermissionError,
+  validateWebVoiceRecording,
+  WEB_VOICE_SOURCE,
+  type WebVoiceInputState,
+} from '../model/web-voice-input'
 import styles from './VoiceAssistant.module.css'
 import {
   MAX_CLARIFICATION_ATTEMPTS,
@@ -59,6 +72,15 @@ import {
 } from './VoiceConfirmationCard'
 
 const AUTO_CLOSE_DELAY_MS = 2200
+const WEB_RECORDING_MAX_DURATION_MS = 8_000
+
+const WEB_PROCESSING_STATES = new Set<WebVoiceInputState>([
+  'requesting_permission',
+  'validating_audio',
+  'uploading',
+  'recognizing',
+  'parsing',
+])
 
 export function VoiceAssistant() {
   const planner = usePlanner()
@@ -87,13 +109,26 @@ export function VoiceAssistant() {
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
   const autoCloseTimerRef = useRef<number | null>(null)
+  const webRecorderRef = useRef<WebVoiceRecorder | null>(null)
+  const webRecordingTimerRef = useRef<number | null>(null)
+  const webUploadAbortControllerRef = useRef<AbortController | null>(null)
+  const webExplicitUserActionRef = useRef(false)
+  const webOperationIdRef = useRef(0)
   const [androidSettingsRevision, setAndroidSettingsRevision] = useState(0)
   const [androidVoiceStatus, setAndroidVoiceStatus] =
     useState<VoiceAssistantNativeStatus | null>(null)
+  const [webVoiceState, setWebVoiceState] = useState<WebVoiceInputState>('idle')
+  const [webVoiceMessage, setWebVoiceMessage] = useState<string | null>(null)
   const isVoiceEnabled =
     canUseVoiceAssistant(session?.appRole) &&
     (session?.userPreferences.voiceAssistantEnabled ?? true)
-  const isBusy = state.status === 'recording' || state.status === 'executing'
+  const isAndroidRuntime = isAndroidVoiceAssistantRuntime()
+  const isWebListening = !isAndroidRuntime && webVoiceState === 'listening'
+  const isWebProcessing = WEB_PROCESSING_STATES.has(webVoiceState)
+  const isBusy =
+    state.status === 'executing' ||
+    isWebProcessing ||
+    (isAndroidRuntime && state.status === 'recording')
 
   const runActionPreview = useCallback(
     async (
@@ -539,8 +574,29 @@ export function VoiceAssistant() {
     }
   }, [actionResult, state])
 
+  useEffect(() => {
+    return () => {
+      webOperationIdRef.current += 1
+
+      if (webRecordingTimerRef.current !== null) {
+        window.clearTimeout(webRecordingTimerRef.current)
+        webRecordingTimerRef.current = null
+      }
+
+      webRecorderRef.current?.cancel()
+      webRecorderRef.current = null
+      webUploadAbortControllerRef.current?.abort()
+      webUploadAbortControllerRef.current = null
+    }
+  }, [])
+
   async function startVoiceInput() {
     if (!isVoiceEnabled) {
+      return
+    }
+
+    if (isWebListening) {
+      await stopWebVoiceRecording()
       return
     }
 
@@ -553,6 +609,8 @@ export function VoiceAssistant() {
   }
 
   async function startAndroidVoiceInput() {
+    setWebVoiceState('idle')
+    setWebVoiceMessage(null)
     setIsCardVisible(true)
     pendingAndroidButtonCaptureRef.current = true
 
@@ -585,37 +643,233 @@ export function VoiceAssistant() {
 
   async function startWebVoiceInput() {
     setIsCardVisible(true)
+    setActionPreview(null)
+    setActionResult(null)
+    setSelectedCandidateId(null)
+    setIsUndoing(false)
+    setWebVoiceMessage(null)
+    webExplicitUserActionRef.current = true
+    const operationId = webOperationIdRef.current + 1
 
-    if (!isWebSpeechRecognitionSupported()) {
+    webOperationIdRef.current = operationId
+    recordClientEvent('web_voice_started', {
+      source: WEB_VOICE_SOURCE,
+    })
+
+    const support = getWebVoiceSupport()
+
+    if (!support.supported) {
+      const message =
+        support.message ??
+        'Голосовой ввод недоступен в этом браузере. Можно ввести задачу вручную.'
+
+      setWebVoiceState('unsupported')
+      setWebVoiceMessage(message)
+      recordClientEvent(
+        'web_voice_unsupported',
+        {
+          reason: support.reason ?? 'unknown',
+        },
+        { level: 'warn' },
+      )
       dispatch({
-        error: 'Браузер не поддерживает голосовой ввод.',
+        error: message,
         source: 'web_microphone',
         type: 'failed',
       })
       return
     }
 
-    dispatch({
-      source: 'web_microphone',
-      type: 'recording_started',
-    })
+    setWebVoiceState('requesting_permission')
+    setWebVoiceMessage(getWebVoiceInputLabel('requesting_permission'))
 
     try {
-      const transcript = await captureWebSpeechTranscript()
-      void handleTranscript(transcript, 'web_microphone')
-    } catch (error) {
+      webRecorderRef.current = await startWebVoiceRecorder()
+
+      if (!isCurrentWebOperation(operationId)) {
+        webRecorderRef.current?.cancel()
+        webRecorderRef.current = null
+        return
+      }
+
+      setWebVoiceState('listening')
+      setWebVoiceMessage(getWebVoiceInputLabel('listening'))
       dispatch({
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Не удалось распознать команду.',
+        source: 'web_microphone',
+        type: 'recording_started',
+      })
+      webRecordingTimerRef.current = window.setTimeout(() => {
+        recordClientEvent('web_voice_timeout', {
+          maxDurationMs: WEB_RECORDING_MAX_DURATION_MS,
+          source: WEB_VOICE_SOURCE,
+          stage: 'recording',
+        })
+        void stopWebVoiceRecording(operationId)
+      }, WEB_RECORDING_MAX_DURATION_MS)
+    } catch (error) {
+      const voiceError = normalizeWebVoicePermissionError(error)
+
+      setWebVoiceState(voiceError.state)
+      setWebVoiceMessage(voiceError.message)
+
+      if (voiceError.state === 'permission_denied') {
+        recordClientEvent(
+          'web_voice_permission_denied',
+          {
+            errorName: voiceError.name,
+          },
+          { level: 'warn' },
+        )
+      }
+
+      dispatch({
+        error: voiceError.message,
         source: 'web_microphone',
         type: 'failed',
       })
     }
   }
 
+  async function stopWebVoiceRecording(
+    operationId = webOperationIdRef.current,
+  ) {
+    const recorder = webRecorderRef.current
+
+    if (!recorder || !isCurrentWebOperation(operationId)) {
+      return
+    }
+
+    clearWebRecordingTimer()
+    webRecorderRef.current = null
+    setWebVoiceState('validating_audio')
+    setWebVoiceMessage(getWebVoiceInputLabel('validating_audio'))
+
+    try {
+      const recording = await recorder.stop()
+
+      if (!isCurrentWebOperation(operationId)) {
+        return
+      }
+
+      recordClientEvent('web_voice_recording_stopped', {
+        byteLength: recording.byteLength,
+        durationMs: recording.durationMs,
+        source: WEB_VOICE_SOURCE,
+      })
+
+      const validation = validateWebVoiceRecording(recording, {
+        explicitUserAction: webExplicitUserActionRef.current,
+      })
+
+      if (!validation.ok) {
+        setWebVoiceState('needs_repeat')
+        setWebVoiceMessage(validation.message)
+        recordClientEvent(
+          'web_voice_local_validation_failed',
+          {
+            durationMs: recording.durationMs,
+            reason: validation.reason,
+            source: WEB_VOICE_SOURCE,
+          },
+          { level: 'warn' },
+        )
+        dispatch({
+          error: validation.message,
+          source: 'web_microphone',
+          type: 'failed',
+        })
+        return
+      }
+
+      if (!apiConfig) {
+        throw new Error('Backend STT недоступен без активной сессии.')
+      }
+
+      setWebVoiceState('uploading')
+      setWebVoiceMessage(getWebVoiceInputLabel('uploading'))
+      recordClientEvent('web_voice_upload_started', {
+        byteLength: recording.byteLength,
+        durationMs: recording.durationMs,
+        source: WEB_VOICE_SOURCE,
+      })
+
+      const abortController = new AbortController()
+
+      webUploadAbortControllerRef.current = abortController
+      setWebVoiceState('recognizing')
+      setWebVoiceMessage(getWebVoiceInputLabel('recognizing'))
+
+      const response = await uploadWebVoiceCommand(recording, apiConfig, {
+        signal: abortController.signal,
+      })
+
+      if (!isCurrentWebOperation(operationId)) {
+        return
+      }
+
+      recordClientEvent('web_voice_upload_completed', {
+        billableSecondsEstimated: response.stt.billableSecondsEstimated,
+        durationMs: response.stt.durationMs,
+        provider: response.stt.provider,
+        source: response.stt.source,
+      })
+      setWebVoiceState('parsing')
+      setWebVoiceMessage(getWebVoiceInputLabel('parsing'))
+      await handleTranscript(
+        response.transcript,
+        'web_microphone',
+        response.intent,
+      )
+
+      if (isCurrentWebOperation(operationId)) {
+        setWebVoiceState('ready_for_confirmation')
+        setWebVoiceMessage(null)
+      }
+    } catch (error) {
+      if (!isCurrentWebOperation(operationId)) {
+        return
+      }
+
+      const message = getWebVoiceUploadErrorMessage(error)
+      const errorName = getErrorName(error)
+
+      setWebVoiceState('error')
+      setWebVoiceMessage(message)
+      if (errorName === 'TimeoutError') {
+        recordClientEvent(
+          'web_voice_timeout',
+          {
+            source: WEB_VOICE_SOURCE,
+            stage: 'upload',
+          },
+          { level: 'warn' },
+        )
+      }
+      recordClientEvent(
+        'web_voice_upload_error',
+        {
+          code:
+            error instanceof WebVoiceCommandApiError ? error.code : errorName,
+          source: WEB_VOICE_SOURCE,
+          status:
+            error instanceof WebVoiceCommandApiError ? error.status : undefined,
+        },
+        { level: 'error' },
+      )
+      dispatch({
+        error: message,
+        source: 'web_microphone',
+        type: 'failed',
+      })
+    } finally {
+      if (isCurrentWebOperation(operationId)) {
+        webUploadAbortControllerRef.current = null
+      }
+    }
+  }
+
   function closeCard() {
+    cancelWebVoiceOperation()
     setIsCardVisible(false)
     setActionPreview(null)
     setActionResult(null)
@@ -623,6 +877,36 @@ export function VoiceAssistant() {
     setClarificationAttempts(0)
     setIsUndoing(false)
     dispatch({ type: 'cancelled' })
+  }
+
+  function cancelWebVoiceOperation() {
+    if (isCancellableWebVoiceState(webVoiceState)) {
+      recordClientEvent('web_voice_recording_cancelled', {
+        source: WEB_VOICE_SOURCE,
+        state: webVoiceState,
+      })
+    }
+
+    webOperationIdRef.current += 1
+    clearWebRecordingTimer()
+    webRecorderRef.current?.cancel()
+    webRecorderRef.current = null
+    webUploadAbortControllerRef.current?.abort()
+    webUploadAbortControllerRef.current = null
+    webExplicitUserActionRef.current = false
+    setWebVoiceState('idle')
+    setWebVoiceMessage(null)
+  }
+
+  function clearWebRecordingTimer() {
+    if (webRecordingTimerRef.current !== null) {
+      window.clearTimeout(webRecordingTimerRef.current)
+      webRecordingTimerRef.current = null
+    }
+  }
+
+  function isCurrentWebOperation(operationId: number): boolean {
+    return webOperationIdRef.current === operationId
   }
 
   if (!isVoiceEnabled) {
@@ -634,9 +918,9 @@ export function VoiceAssistant() {
       <button
         className={cx(styles.micButton, isBusy && styles.micButtonBusy)}
         type="button"
-        aria-label={isBusy ? 'Идет распознавание' : 'Голосовой ввод'}
-        title={isBusy ? 'Идет распознавание' : 'Голосовой ввод'}
-        disabled={isBusy}
+        aria-label={getMicButtonLabel(isWebListening, isBusy)}
+        title={getMicButtonLabel(isWebListening, isBusy)}
+        disabled={isBusy && !isWebListening}
         onClick={() => {
           void startVoiceInput()
         }}
@@ -653,6 +937,9 @@ export function VoiceAssistant() {
           selectedCandidateId={selectedCandidateId}
           spheres={planner.spheres}
           state={state}
+          webInputState={webVoiceState}
+          webStatusMessage={webVoiceMessage}
+          onCancelRecording={closeCard}
           onClarifyOption={handleClarifyOption}
           onClose={closeCard}
           onConfirm={(preview, confirmedPayload) => {
@@ -669,8 +956,12 @@ export function VoiceAssistant() {
               getStateSource(state) ?? 'web_microphone',
             )
           }}
+          onManualInput={closeCard}
           onRepeat={() => {
             void startVoiceInput()
+          }}
+          onStopRecording={() => {
+            void stopWebVoiceRecording()
           }}
           onSaveClarificationToInbox={handleSaveClarificationToInbox}
           onSelectCandidate={setSelectedCandidateId}
@@ -871,6 +1162,58 @@ function getStateSource(
   state: VoiceAssistantState,
 ): VoiceAssistantSource | undefined {
   return 'source' in state ? state.source : undefined
+}
+
+function getMicButtonLabel(isWebListening: boolean, isBusy: boolean): string {
+  if (isWebListening) {
+    return 'Завершить запись'
+  }
+
+  return isBusy ? 'Идет распознавание' : 'Голосовой ввод'
+}
+
+function getWebVoiceUploadErrorMessage(error: unknown): string {
+  if (error instanceof WebVoiceCommandApiError) {
+    return error.message || 'Не удалось распознать.'
+  }
+
+  if (error instanceof Error && error.name === 'AbortError') {
+    return 'Запись прервана.'
+  }
+
+  if (error instanceof Error && error.name === 'TimeoutError') {
+    return 'Не удалось распознать: запрос занял слишком много времени.'
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return 'Не удалось распознать.'
+}
+
+function getErrorName(error: unknown): string {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'name' in error &&
+    typeof error.name === 'string'
+  ) {
+    return error.name
+  }
+
+  return 'Error'
+}
+
+function isCancellableWebVoiceState(state: WebVoiceInputState): boolean {
+  return (
+    state === 'requesting_permission' ||
+    state === 'listening' ||
+    state === 'validating_audio' ||
+    state === 'uploading' ||
+    state === 'recognizing' ||
+    state === 'parsing'
+  )
 }
 
 function getAndroidVoiceCommandSource(

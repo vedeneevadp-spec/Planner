@@ -13,6 +13,7 @@ export const sttSourceSchema = z.enum([
   'android_short_clip',
   'local_fallback',
   'test_stub',
+  'web_push_to_talk',
 ])
 
 export const sttErrorSchema = z.enum([

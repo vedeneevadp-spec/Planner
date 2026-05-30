@@ -15,6 +15,10 @@ import {
   getPlannerIntentTitle,
   getShoppingItemText,
 } from '../model/planner-intent-execution'
+import {
+  getWebVoiceInputLabel,
+  type WebVoiceInputState,
+} from '../model/web-voice-input'
 import styles from './VoiceAssistant.module.css'
 
 export const MAX_CLARIFICATION_ATTEMPTS = 2
@@ -33,6 +37,9 @@ export interface VoiceConfirmationCardProps {
   selectedCandidateId: string | null
   spheres: Array<{ id: string; name: string }>
   state: VoiceAssistantState
+  webInputState?: WebVoiceInputState | undefined
+  webStatusMessage?: string | null | undefined
+  onCancelRecording?: (() => void) | undefined
   onClarifyOption: (transcript: string) => void
   onClose: () => void
   onConfirm: (
@@ -41,9 +48,11 @@ export interface VoiceConfirmationCardProps {
   ) => void
   onCreateFromNotFound: (preview: VoiceActionPreview) => void
   onEditTranscript: (transcript: string) => void
+  onManualInput?: (() => void) | undefined
   onRepeat: () => void
   onSaveClarificationToInbox: (preview: VoiceActionPreview) => void
   onSelectCandidate: (taskId: string) => void
+  onStopRecording?: (() => void) | undefined
   onUndo: () => void
 }
 
@@ -55,14 +64,19 @@ export function VoiceConfirmationCard({
   selectedCandidateId,
   spheres,
   state,
+  webInputState,
+  webStatusMessage,
+  onCancelRecording,
   onClarifyOption,
   onClose,
   onConfirm,
   onCreateFromNotFound,
   onEditTranscript,
+  onManualInput,
   onRepeat,
   onSaveClarificationToInbox,
   onSelectCandidate,
+  onStopRecording,
   onUndo,
 }: VoiceConfirmationCardProps) {
   const transcript = 'transcript' in state ? state.transcript : ''
@@ -107,6 +121,11 @@ export function VoiceConfirmationCard({
       ? 'Закрыть'
       : 'Отмена'
   const confirmationStatus = getVoiceConfirmationStatus(preview, result, state)
+  const webStatusLabel = webInputState
+    ? getWebVoiceInputLabel(webInputState)
+    : null
+  const webStatusBody = getWebStatusBody(webInputState, webStatusMessage)
+  const canRetryWebInput = isRetryableWebInputState(webInputState)
 
   useEffect(() => {
     if (!undoKey) {
@@ -134,6 +153,7 @@ export function VoiceConfirmationCard({
           <span className={styles.statusPill}>
             {getStatusLabel(state.status, confirmationStatus, {
               isUndoResult,
+              webStatusLabel,
             })}
           </span>
           <h2>
@@ -152,6 +172,10 @@ export function VoiceConfirmationCard({
 
       {state.status === 'error' ? (
         <p className={styles.errorMessage}>{state.error}</p>
+      ) : null}
+
+      {webStatusBody && state.status !== 'error' ? (
+        <p className={styles.previewSummary}>{webStatusBody}</p>
       ) : null}
 
       {isEditingTranscript ? (
@@ -237,6 +261,44 @@ export function VoiceConfirmationCard({
       ) : null}
 
       <div className={styles.actions}>
+        {webInputState === 'listening' && onStopRecording ? (
+          <button
+            className={styles.primaryButton}
+            type="button"
+            onClick={onStopRecording}
+          >
+            <CheckIcon size={17} strokeWidth={2.15} />
+            <span>Завершить</span>
+          </button>
+        ) : null}
+        {webInputState === 'listening' && onCancelRecording ? (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={onCancelRecording}
+          >
+            Отменить запись
+          </button>
+        ) : null}
+        {canRetryWebInput ? (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={onRepeat}
+          >
+            <MicIcon size={16} strokeWidth={2.05} />
+            <span>Повторить</span>
+          </button>
+        ) : null}
+        {canRetryWebInput && onManualInput ? (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={onManualInput}
+          >
+            Ввести вручную
+          </button>
+        ) : null}
         {canConfirm ? (
           <button
             className={cx(
@@ -767,10 +829,14 @@ function getVoiceConfirmationStatus(
 function getStatusLabel(
   status: VoiceAssistantState['status'],
   confirmationStatus: VoiceConfirmationStatus | null,
-  options: { isUndoResult?: boolean } = {},
+  options: { isUndoResult?: boolean; webStatusLabel?: string | null } = {},
 ): string {
   if (options.isUndoResult) {
     return 'Отменено'
+  }
+
+  if (options.webStatusLabel) {
+    return options.webStatusLabel
   }
 
   if (confirmationStatus === 'requires_unlock') {
@@ -809,6 +875,32 @@ function getStatusLabel(
     default:
       return 'Голос'
   }
+}
+
+function getWebStatusBody(
+  webInputState: WebVoiceInputState | undefined,
+  webStatusMessage: string | null | undefined,
+): string | null {
+  if (!webInputState || webInputState === 'idle') {
+    return null
+  }
+
+  if (webInputState === 'ready_for_confirmation') {
+    return null
+  }
+
+  return webStatusMessage ?? getWebVoiceInputLabel(webInputState)
+}
+
+function isRetryableWebInputState(
+  webInputState: WebVoiceInputState | undefined,
+): boolean {
+  return (
+    webInputState === 'error' ||
+    webInputState === 'needs_repeat' ||
+    webInputState === 'permission_denied' ||
+    webInputState === 'unsupported'
+  )
 }
 
 function isSuccessfulUndoResult(result: VoiceActionResult | null): boolean {

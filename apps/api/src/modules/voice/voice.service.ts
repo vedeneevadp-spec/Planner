@@ -392,6 +392,8 @@ function getPlannerIntentParserSource(
       return 'android_push_to_talk'
     case 'android_short_clip':
       return 'android_wake_word'
+    case 'web_push_to_talk':
+      return 'web_push_to_talk'
     case 'local_fallback':
     case 'test_stub':
     case undefined:

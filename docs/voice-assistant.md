@@ -57,7 +57,11 @@ Web - упрощенный сценарий:
 
 - wake word не реализуется
 - пользователь нажимает кнопку микрофона
+- запись идет через secure context + `getUserMedia` + `MediaRecorder`
 - произносит команду
+- web upload использует `source = web_push_to_talk`
+- web v1 отправляет PCM/LPCM 16 kHz mono 16-bit little-endian, а не
+  browser-native `audio/webm` blob
 - команда преобразуется в тот же `PlannerIntent`
 - используется тот же confirmation UI, что и на Android
 
@@ -942,9 +946,9 @@ Confirmation UI должен быть единым для Android и web.
 7. Android отправляет аудио только на backend endpoint.
 8. На Android-клиенте нет STT provider API keys.
 9. Backend вызывает Yandex SpeechKit через server-side credentials.
-10. Команда ограничена по длительности: max 8-10 секунд.
+10. Команда ограничена по длительности: max 8 секунд.
 11. Перед upload есть локальная проверка:
-    - duration >= 300-500 ms;
+    - duration >= 500 ms;
     - есть voice activity;
     - не тишина;
     - не слишком тихо.
@@ -1260,11 +1264,32 @@ Undo и full clarification loop были вынесены из пункта 5 и
     [docs/voice/android-runtime.md](voice/android-runtime.md).
 
 11. Улучшить web-режим.
-    Обработать браузеры без Web Speech API, добавить понятные статусы
-    `слушаю`, `распознаю`, `нужно повторить`, корректно показывать permission
-    errors и не блокировать основной интерфейс. Wake word в web не добавлять,
-    чтобы браузер не слушал микрофон в фоне. Web v1 не использует voice cues,
-    только визуальные статусы.
+    Статус: реализовано.
+
+    Web Speech API больше не используется как primary path. Web flow идет через
+    explicit mic click -> secure context + `getUserMedia` + `MediaRecorder` ->
+    Web Audio PCM validation -> `/api/voice/command` с
+    `source = web_push_to_talk` -> `VoiceConfirmationCard`.
+
+    Обработаны браузеры без secure context, `getUserMedia` или
+    `MediaRecorder`; добавлены визуальные states `listening`, `recognizing`,
+    `needs_repeat`, `permission_denied`, `unsupported`, `error`; permission
+    errors показываются как понятные сообщения; основной интерфейс не
+    блокируется. Wake word в web не добавлен, web v1 не использует voice cues и
+    не использует TTS/cloud TTS. Upload format v1: PCM/LPCM 16 kHz mono 16-bit
+    little-endian (`Content-Type: audio/l16`); browser `audio/webm`/opus blob не
+    входит в текущий контракт. Подробности: [docs/voice/web-mode.md](voice/web-mode.md).
+
+11.1. Закрыть web-mode cleanup.
+Статус: реализовано.
+
+    Roadmap wording привязан к реальным prerequisites:
+    secure context/getUserMedia/MediaRecorder. Web upload format зафиксирован
+    как PCM/LPCM client-side normalization; safe metrics зафиксированы без
+    transcript/audio/task titles/shopping item names; добавлен browser
+    compatibility checklist. Backend normalization `webm_opus` остается
+    отдельным будущим вариантом и должен явно разрешаться только для
+    `source = web_push_to_talk`.
 
 12. Собрать корпус тестовых фраз.
     Создать набор команд на русском: короткие, длинные, с ошибками STT,

@@ -64,12 +64,16 @@ export function createPaths(): OpenAPIV3.PathsObject {
           parameter('requiredWorkspaceIdHeader'),
           {
             description:
-              'Voice command source. Wake-word mode uses android_short_clip; explicit microphone tap uses android_push_to_talk.',
+              'Voice command source. Wake-word mode uses android_short_clip; explicit microphone tap uses android_push_to_talk or web_push_to_talk.',
             in: 'header',
             name: 'x-stt-source',
             required: true,
             schema: {
-              enum: ['android_short_clip', 'android_push_to_talk'],
+              enum: [
+                'android_short_clip',
+                'android_push_to_talk',
+                'web_push_to_talk',
+              ],
               type: 'string',
             },
           },

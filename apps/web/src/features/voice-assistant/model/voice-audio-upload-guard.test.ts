@@ -79,8 +79,8 @@ describe('VoiceAudioUploadGuard', () => {
   )
 
   it.each([
-    [{ durationMs: 200 }, 'too_short'],
-    [{ durationMs: 10_500 }, 'too_long'],
+    [{ durationMs: 400 }, 'too_short'],
+    [{ durationMs: 8_500 }, 'too_long'],
     [{ isSilent: true }, 'silent_audio'],
     [{ isTooQuiet: true }, 'too_quiet'],
     [{ hasVoiceActivity: false }, 'no_voice_activity'],

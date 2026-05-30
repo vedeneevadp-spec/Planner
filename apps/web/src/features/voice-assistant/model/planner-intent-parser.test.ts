@@ -74,6 +74,29 @@ describe('PlannerIntentParser', () => {
     })
   })
 
+  it('removes task command prefixes before title words', () => {
+    const sttCaseIntent = parser.parse(
+      'Добавь задача на сегодня пойти погулять',
+      { now: NOW },
+    )
+    const barePrefixIntent = parser.parse('добавь позвонить врачу завтра', {
+      now: NOW,
+    })
+
+    expect(sttCaseIntent).toMatchObject({
+      date: '2026-05-28',
+      datePrecision: 'date_only',
+      intent: 'create_task',
+      title: 'пойти погулять',
+    })
+    expect(barePrefixIntent).toMatchObject({
+      date: '2026-05-29',
+      datePrecision: 'date_only',
+      intent: 'create_task',
+      title: 'позвонить врачу',
+    })
+  })
+
   it('parses relative reminders as create_task with reminderAt', () => {
     const intent = parser.parse('через 10 минут выключить плиту', {
       now: NOW,

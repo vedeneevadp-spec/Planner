@@ -53,6 +53,33 @@ void describe('VoiceCommandService', () => {
     assert.equal(result.stt.source, 'android_push_to_talk')
   })
 
+  void it('keeps web push-to-talk source in the STT response and parser context', async () => {
+    const fallback = new FakePlannerIntentFallback({
+      confidence: 0.91,
+      intent: 'add_shopping_item',
+      items: [{ title: 'овсянка' }],
+      needsConfirmation: false,
+      rawText: 'овсянку бы не забыть',
+    })
+    const service = new VoiceCommandService(
+      new FakeSttProvider('овсянку бы не забыть'),
+      undefined,
+      fallback,
+    )
+    const result = await service.process({
+      audio: createRequestAudio(createVoiceAudio(900)),
+      context: {
+        actorUserId: 'user-1',
+        workspaceId: 'workspace-1',
+      },
+      security: createSecurity(),
+      source: 'web_push_to_talk',
+    })
+
+    assert.equal(result.stt.source, 'web_push_to_talk')
+    assert.equal(fallback.lastInput?.context.source, 'web_push_to_talk')
+  })
+
   void it('uses client capture time and timezone for relative reminders', async () => {
     const service = new VoiceCommandService(
       new FakeSttProvider('через полчаса проверить духовку'),

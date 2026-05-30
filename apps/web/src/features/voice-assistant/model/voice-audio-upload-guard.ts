@@ -28,8 +28,8 @@ export type VoiceAudioUploadDecision =
   | { allowed: true }
   | { allowed: false; reason: VoicePrivacyBlockReason }
 
-export const VOICE_AUDIO_UPLOAD_MIN_DURATION_MS = 300
-export const VOICE_AUDIO_UPLOAD_MAX_DURATION_MS = 10_000
+export const VOICE_AUDIO_UPLOAD_MIN_DURATION_MS = 500
+export const VOICE_AUDIO_UPLOAD_MAX_DURATION_MS = 8_000
 
 export function decideVoiceAudioUpload(
   input: VoiceAudioUploadGuardInput,
