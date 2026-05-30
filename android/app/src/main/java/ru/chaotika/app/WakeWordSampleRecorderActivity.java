@@ -35,12 +35,20 @@ public class WakeWordSampleRecorderActivity extends Activity {
     private static final String MODE_POSITIVE = "positive";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private Button previewButton;
     private Button recordButton;
+    private Button saveButton;
     private EditText speakerInput;
     private TextView statusText;
     private TextView countText;
     private Thread recordingThread;
     private String mode = MODE_POSITIVE;
+    private String pendingSpeakerId = "";
+    private short[] pendingSamples;
+    private int pendingDurationMs;
+    private boolean pendingRecordingPreviewed;
+    private boolean pendingRecordingSaved;
+    private boolean isPlayingPreview;
     private volatile boolean isRecording;
 
     static Intent createIntent(Context context) {
@@ -94,6 +102,14 @@ public class WakeWordSampleRecorderActivity extends Activity {
         recordButton.setText("Записать");
         recordButton.setOnClickListener(view -> startRecordingWithPermission());
 
+        previewButton = new Button(this);
+        previewButton.setText("Прослушать");
+        previewButton.setOnClickListener(view -> playPendingRecording());
+
+        saveButton = new Button(this);
+        saveButton.setText("Сохранить");
+        saveButton.setOnClickListener(view -> savePendingRecording());
+
         statusText = new TextView(this);
         statusText.setText("Готово к записи.");
         statusText.setTextSize(15f);
@@ -118,6 +134,14 @@ public class WakeWordSampleRecorderActivity extends Activity {
             new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         );
         container.addView(
+            previewButton,
+            new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        );
+        container.addView(
+            saveButton,
+            new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        );
+        container.addView(
             statusText,
             new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         );
@@ -128,6 +152,7 @@ public class WakeWordSampleRecorderActivity extends Activity {
         scrollView.addView(container);
         setContentView(scrollView);
 
+        refreshRecordingControls();
         refreshCount();
     }
 
@@ -178,8 +203,9 @@ public class WakeWordSampleRecorderActivity extends Activity {
             startService(WakeWordService.createStopIntent(this));
         }
 
+        clearPendingRecording();
         isRecording = true;
-        recordButton.setEnabled(false);
+        refreshRecordingControls();
         setStatus("Говорите “Хаотика”...");
 
         recordingThread = new Thread(() -> recordSample(recordingSpeakerId), "haotika-sample-recorder");
@@ -232,30 +258,11 @@ public class WakeWordSampleRecorderActivity extends Activity {
 
             WakeWordSampleProcessor.ProcessedSample processed = WakeWordSampleProcessor.process(rawSamples, offset);
 
-            if (isFalseRejectMode()) {
-                WakeWordTrainingExampleStore.SaveResult result = WakeWordTrainingExampleStore.saveFalseReject(this, processed.samples);
-                WakeWordMetricsLogger metricsLogger = new WakeWordMetricsLogger();
-
-                metricsLogger.falseRejectReported();
-                metricsLogger.trainingExampleSaved(result.label);
-                showSuccess(result.audioFile, processed.durationMs);
-            } else {
-                File directory = getPositiveDirectory();
-
-                if (!directory.exists() && !directory.mkdirs()) {
-                    throw new IOException("Cannot create output directory: " + directory.getAbsolutePath());
-                }
-
-                int sampleIndex = nextSampleIndex(directory, speakerId);
-                File outputFile = new File(directory, WakeWordSampleProcessor.buildFileName(speakerId, sampleIndex));
-
-                WakeWordSampleProcessor.writeWav(outputFile, processed.samples);
-                showSuccess(outputFile, processed.durationMs);
-            }
+            showPendingRecording(speakerId, processed.samples, processed.durationMs);
         } catch (WakeWordSampleProcessor.ValidationException error) {
             showFailure(error.getMessage());
         } catch (Exception error) {
-            showFailure("Не удалось сохранить запись: " + error.getMessage());
+            showFailure("Не удалось подготовить запись: " + error.getMessage());
         } finally {
             if (audioRecord != null) {
                 try {
@@ -270,7 +277,7 @@ public class WakeWordSampleRecorderActivity extends Activity {
             handler.post(
                 () -> {
                     isRecording = false;
-                    recordButton.setEnabled(true);
+                    refreshRecordingControls();
                     refreshCount();
                     restartWakeWordServiceIfNeeded();
                 }
@@ -335,12 +342,158 @@ public class WakeWordSampleRecorderActivity extends Activity {
         countText.setText("Сохранено positive WAV: " + count + "\nПапка: " + directory.getAbsolutePath());
     }
 
+    private void showPendingRecording(String speakerId, short[] samples, int durationMs) {
+        handler.post(
+            () -> {
+                pendingSpeakerId = speakerId;
+                pendingSamples = samples.clone();
+                pendingDurationMs = durationMs;
+                pendingRecordingPreviewed = false;
+                pendingRecordingSaved = false;
+                setStatus(
+                    "Запись готова к проверке.\n" +
+                    "Длина после trim: " + durationMs + " ms\n" +
+                    "Прослушайте фрагмент перед сохранением."
+                );
+                refreshRecordingControls();
+            }
+        );
+    }
+
     private void showSuccess(File file, int durationMs) {
-        handler.post(() -> setStatus("Сохранено: " + file.getName() + "\nДлина после trim: " + durationMs + " ms"));
+        setStatus("Сохранено: " + file.getName() + "\nДлина после trim: " + durationMs + " ms");
     }
 
     private void showFailure(String message) {
-        handler.post(() -> setStatus(message));
+        handler.post(
+            () -> {
+                clearPendingRecording();
+                setStatus(message);
+            }
+        );
+    }
+
+    private void playPendingRecording() {
+        if (pendingSamples == null || isRecording || isPlayingPreview) {
+            return;
+        }
+
+        isPlayingPreview = true;
+        setStatus("Воспроизвожу запись...");
+        refreshRecordingControls();
+        WakeWordSamplePlayback.play(
+            pendingSamples,
+            WakeWordSampleProcessor.SAMPLE_RATE,
+            new WakeWordSamplePlayback.Callback() {
+                @Override
+                public void onFinished() {
+                    pendingRecordingPreviewed = pendingSamples != null && !pendingRecordingSaved;
+                    isPlayingPreview = false;
+                    setStatus(pendingRecordingStatus());
+                    refreshRecordingControls();
+                }
+
+                @Override
+                public void onError(String message) {
+                    isPlayingPreview = false;
+                    setStatus(message);
+                    refreshRecordingControls();
+                }
+            }
+        );
+    }
+
+    private void savePendingRecording() {
+        if (pendingSamples == null) {
+            setStatus("Сначала запишите и прослушайте пример.");
+            return;
+        }
+
+        if (pendingRecordingSaved) {
+            setStatus("Эта запись уже сохранена. Можно записать следующий пример.");
+            return;
+        }
+
+        if (!pendingRecordingPreviewed) {
+            setStatus("Сначала прослушайте запись.");
+            refreshRecordingControls();
+            return;
+        }
+
+        try {
+            File savedFile;
+
+            if (isFalseRejectMode()) {
+                WakeWordTrainingExampleStore.SaveResult result = WakeWordTrainingExampleStore.saveFalseReject(
+                    this,
+                    pendingSamples
+                );
+                WakeWordMetricsLogger metricsLogger = new WakeWordMetricsLogger();
+
+                metricsLogger.falseRejectReported();
+                metricsLogger.trainingExampleSaved(result.label);
+                savedFile = result.audioFile;
+            } else {
+                File directory = getPositiveDirectory();
+
+                if (!directory.exists() && !directory.mkdirs()) {
+                    throw new IOException("Cannot create output directory: " + directory.getAbsolutePath());
+                }
+
+                int sampleIndex = nextSampleIndex(directory, pendingSpeakerId);
+                savedFile = new File(directory, WakeWordSampleProcessor.buildFileName(pendingSpeakerId, sampleIndex));
+
+                WakeWordSampleProcessor.writeWav(savedFile, pendingSamples);
+            }
+
+            pendingRecordingSaved = true;
+            showSuccess(savedFile, pendingDurationMs);
+            refreshRecordingControls();
+            refreshCount();
+        } catch (Exception error) {
+            setStatus("Не удалось сохранить запись: " + error.getMessage());
+        }
+    }
+
+    private void clearPendingRecording() {
+        pendingSamples = null;
+        pendingDurationMs = 0;
+        pendingRecordingPreviewed = false;
+        pendingRecordingSaved = false;
+        refreshRecordingControls();
+    }
+
+    private void refreshRecordingControls() {
+        boolean hasPendingRecording = pendingSamples != null;
+
+        recordButton.setEnabled(!isRecording && !isPlayingPreview);
+        previewButton.setEnabled(hasPendingRecording && !isRecording && !isPlayingPreview);
+        saveButton.setEnabled(
+            hasPendingRecording &&
+            pendingRecordingPreviewed &&
+            !pendingRecordingSaved &&
+            !isRecording &&
+            !isPlayingPreview
+        );
+        speakerInput.setEnabled(!isFalseRejectMode() && !isRecording && !isPlayingPreview);
+    }
+
+    private String pendingRecordingStatus() {
+        if (pendingSamples == null) {
+            return "Готово к записи.";
+        }
+
+        if (pendingRecordingSaved) {
+            return "Запись сохранена. Можно записать следующий пример.";
+        }
+
+        if (!pendingRecordingPreviewed) {
+            return "Запись готова к проверке.\n" +
+                "Длина после trim: " + pendingDurationMs + " ms\n" +
+                "Прослушайте фрагмент перед сохранением.";
+        }
+
+        return "Запись прослушана и готова к сохранению.\nДлина после trim: " + pendingDurationMs + " ms";
     }
 
     private void setStatus(String value) {
@@ -350,11 +503,11 @@ public class WakeWordSampleRecorderActivity extends Activity {
     private String getHintText() {
         if (isFalseRejectMode()) {
             return "Нажмите “Записать”, произнесите одно слово и дождитесь проверки. " +
-                "Файл сохранится как false_reject для дообучения модели.";
+                "После прослушивания сохраните файл как false_reject для дообучения модели.";
         }
 
         return "Нажмите “Записать”, произнесите одно слово и дождитесь сохранения. " +
-            "Файл будет WAV, mono, 16 kHz, 16-bit PCM, с trim silence и normalize volume.";
+            "После прослушивания файл будет сохранен как WAV, mono, 16 kHz, 16-bit PCM, с trim silence и normalize volume.";
     }
 
     private boolean isFalseRejectMode() {

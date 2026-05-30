@@ -27,6 +27,29 @@ public class WakeWordSampleProcessorTest {
     }
 
     @Test
+    public void process_trimsWakePhraseFromConstantBackgroundNoise() throws Exception {
+        short[] samples = createBackgroundNoise(WakeWordSampleProcessor.SAMPLE_RATE * 2, 650);
+        int voiceStart = WakeWordSampleProcessor.SAMPLE_RATE / 2;
+        int voiceEnd = voiceStart + (WakeWordSampleProcessor.SAMPLE_RATE * 800) / 1_000;
+
+        for (int index = voiceStart; index < voiceEnd; index += 1) {
+            samples[index] = (short) (samples[index] + (index % 2 == 0 ? 4_500 : -4_500));
+        }
+
+        WakeWordSampleProcessor.ProcessedSample processed = WakeWordSampleProcessor.process(samples, samples.length);
+
+        assertTrue(processed.durationMs >= 800);
+        assertTrue(processed.durationMs < 1_100);
+    }
+
+    @Test
+    public void process_rejectsBackgroundNoiseWithoutVoice() {
+        short[] samples = createBackgroundNoise(WakeWordSampleProcessor.SAMPLE_RATE * 2, 800);
+
+        assertValidationError(samples, "Не удалось найти голос");
+    }
+
+    @Test
     public void process_rejectsTooShortVoice() {
         short[] samples = new short[WakeWordSampleProcessor.SAMPLE_RATE];
 
@@ -89,6 +112,16 @@ public class WakeWordSampleProcessorTest {
         }
 
         return peak;
+    }
+
+    private static short[] createBackgroundNoise(int sampleCount, int amplitude) {
+        short[] samples = new short[sampleCount];
+
+        for (int index = 0; index < samples.length; index += 1) {
+            samples[index] = (short) (index % 8 < 4 ? amplitude : -amplitude);
+        }
+
+        return samples;
     }
 
     private static int readLittleEndianInt(byte[] value, int offset) {

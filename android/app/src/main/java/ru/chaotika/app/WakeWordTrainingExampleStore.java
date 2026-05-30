@@ -87,6 +87,16 @@ final class WakeWordTrainingExampleStore {
         }
     }
 
+    static PendingAudio pendingAudio() {
+        synchronized (LOCK) {
+            if (pendingExample == null) {
+                return new PendingAudio(false, 0, new short[0]);
+            }
+
+            return new PendingAudio(true, pendingExample.sampleRate, pendingExample.samples);
+        }
+    }
+
     static SaveResult savePending(Context context, String label) throws IOException {
         if (!isCollectionEnabled(context)) {
             throw new IOException("Wake-word sample collection is disabled.");
@@ -387,6 +397,19 @@ final class WakeWordTrainingExampleStore {
             this.noiseLevelRms = noiseLevelRms;
             this.sampleRate = sampleRate;
             this.sampleCount = sampleCount;
+        }
+    }
+
+    static final class PendingAudio {
+
+        final boolean hasPendingExample;
+        final int sampleRate;
+        final short[] samples;
+
+        PendingAudio(boolean hasPendingExample, int sampleRate, short[] samples) {
+            this.hasPendingExample = hasPendingExample;
+            this.sampleRate = sampleRate;
+            this.samples = samples.clone();
         }
     }
 

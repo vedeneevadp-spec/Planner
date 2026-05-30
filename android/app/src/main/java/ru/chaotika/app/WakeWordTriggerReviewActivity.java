@@ -21,12 +21,14 @@ public class WakeWordTriggerReviewActivity extends Activity {
     private final WakeWordMetricsLogger metricsLogger = new WakeWordMetricsLogger();
     private Button continueButton;
     private Button falseAcceptButton;
+    private Button previewButton;
     private Button recordButton;
     private Button skipButton;
     private TextView statusText;
     private Switch consentSwitch;
     private Button trueAcceptButton;
     private boolean decisionMade;
+    private boolean isPlayingPreview;
 
     static Intent createIntent(Context context) {
         return new Intent(context, WakeWordTriggerReviewActivity.class)
@@ -63,6 +65,10 @@ public class WakeWordTriggerReviewActivity extends Activity {
         note.setTextSize(15f);
         note.setLineSpacing(4f, 1f);
         note.setPadding(0, 0, 0, dp(16));
+
+        previewButton = new Button(this);
+        previewButton.setText("Прослушать фрагмент");
+        previewButton.setOnClickListener(view -> playPendingExample());
 
         consentSwitch = new Switch(this);
         consentSwitch.setText("Разрешаю сохранять короткие аудио-примеры wake-фразы");
@@ -122,6 +128,7 @@ public class WakeWordTriggerReviewActivity extends Activity {
         container.addView(stepLabel, fullWidth());
         container.addView(title, fullWidth());
         container.addView(note, fullWidth());
+        container.addView(previewButton, fullWidth());
         container.addView(consentSwitch, fullWidth());
         container.addView(question, fullWidth());
         container.addView(trueAcceptButton, fullWidth());
@@ -146,6 +153,43 @@ public class WakeWordTriggerReviewActivity extends Activity {
     @Override
     public void onBackPressed() {
         cancelWakeFlow();
+    }
+
+    private void playPendingExample() {
+        if (decisionMade || isPlayingPreview) {
+            return;
+        }
+
+        WakeWordTrainingExampleStore.PendingAudio pendingAudio = WakeWordTrainingExampleStore.pendingAudio();
+
+        if (!pendingAudio.hasPendingExample) {
+            setStatus("Фрагмент для прослушивания недоступен.");
+            refreshButtons();
+            return;
+        }
+
+        isPlayingPreview = true;
+        setStatus("Воспроизвожу фрагмент...");
+        refreshButtons();
+        WakeWordSamplePlayback.play(
+            pendingAudio.samples,
+            pendingAudio.sampleRate,
+            new WakeWordSamplePlayback.Callback() {
+                @Override
+                public void onFinished() {
+                    isPlayingPreview = false;
+                    setStatus(buildInitialStatus());
+                    refreshButtons();
+                }
+
+                @Override
+                public void onError(String message) {
+                    isPlayingPreview = false;
+                    setStatus(message);
+                    refreshButtons();
+                }
+            }
+        );
     }
 
     private void submitWakeFeedback(boolean isTrueAccept) {
@@ -240,11 +284,15 @@ public class WakeWordTriggerReviewActivity extends Activity {
     }
 
     private void refreshButtons() {
-        trueAcceptButton.setEnabled(!decisionMade);
-        falseAcceptButton.setEnabled(!decisionMade);
-        skipButton.setEnabled(!decisionMade);
-        recordButton.setEnabled(!decisionMade);
-        consentSwitch.setEnabled(!decisionMade);
+        boolean canEdit = !decisionMade && !isPlayingPreview;
+        boolean hasPendingExample = WakeWordTrainingExampleStore.hasPendingExample();
+
+        previewButton.setEnabled(canEdit && hasPendingExample);
+        trueAcceptButton.setEnabled(canEdit);
+        falseAcceptButton.setEnabled(canEdit);
+        skipButton.setEnabled(canEdit);
+        recordButton.setEnabled(canEdit);
+        consentSwitch.setEnabled(canEdit);
         continueButton.setEnabled(decisionMade);
     }
 

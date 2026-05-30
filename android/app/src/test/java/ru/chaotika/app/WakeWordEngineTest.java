@@ -184,6 +184,44 @@ public class WakeWordEngineTest {
     }
 
     @Test
+    public void trainingExampleStore_returnsEmptyPendingAudioWithoutSample() {
+        WakeWordTrainingExampleStore.clearPending();
+
+        WakeWordTrainingExampleStore.PendingAudio pendingAudio = WakeWordTrainingExampleStore.pendingAudio();
+
+        assertFalse(pendingAudio.hasPendingExample);
+        assertEquals(0, pendingAudio.sampleRate);
+        assertEquals(0, pendingAudio.samples.length);
+    }
+
+    @Test
+    public void trainingExampleStore_returnsDefensivePendingAudioCopy() {
+        WakeWordTrainingExampleStore.clearPending();
+        short[] samples = new short[] { 100, 200 };
+        WakeWordDetection detection = new WakeWordDetection(
+            "haotika",
+            "Хаотика",
+            0.8f,
+            10L,
+            samples,
+            16_000,
+            0.02f
+        );
+
+        WakeWordTrainingExampleStore.capturePendingForReview(detection);
+        WakeWordTrainingExampleStore.PendingAudio pendingAudio = WakeWordTrainingExampleStore.pendingAudio();
+        pendingAudio.samples[0] = 999;
+
+        WakeWordTrainingExampleStore.PendingAudio rereadPendingAudio = WakeWordTrainingExampleStore.pendingAudio();
+
+        assertTrue(rereadPendingAudio.hasPendingExample);
+        assertEquals(16_000, rereadPendingAudio.sampleRate);
+        assertEquals(100, rereadPendingAudio.samples[0]);
+        assertEquals(200, rereadPendingAudio.samples[1]);
+        WakeWordTrainingExampleStore.clearPending();
+    }
+
+    @Test
     public void wakeWordDetection_defensivelyCopiesAudioSamples() {
         short[] samples = new short[] { 100, 200 };
         WakeWordDetection detection = new WakeWordDetection("haotika", "Хаотика", 0.7f, 10L, samples, 16_000, 0.01f);
