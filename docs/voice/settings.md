@@ -16,7 +16,8 @@ The `test` role only grants access to rollout features. It does not grant admin 
 - `androidWakeWordEnabled`: device-local Android wake word switch.
 - `backgroundWakeWordEnabled`: device-local Android background listening switch.
 - `voiceCuesEnabled`: device-local Android local cue switch.
-- `wakeWordSensitivity`: device-local Android threshold control.
+- `wakeWordSensitivity`: read-only Android model threshold from the wake-word
+  manifest.
 - `wakeWordTrainingModeEnabled`: workspace-level review mode for wake-word evaluation.
 
 The voice assistant settings live on the dedicated `/voice-assistant/settings` page. The "More" page links to that page after the theme control and does not embed the full settings panel.
@@ -61,8 +62,12 @@ Device-local storage:
 
 - `androidWakeWordEnabled`
 - `backgroundWakeWordEnabled`
-- `wakeWordSensitivity`
 - `voiceCuesEnabled`
+
+`wakeWordSensitivity` is intentionally not stored as a device override during
+the closed training rollout. Runtime uses the threshold from
+`wakewords/haotika_manifest.json`, and stale local sensitivity values are
+ignored so collected false accepts / false rejects stay comparable.
 
 Derived runtime state is not stored as a user setting:
 

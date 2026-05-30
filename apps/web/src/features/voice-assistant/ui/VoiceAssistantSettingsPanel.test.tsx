@@ -59,9 +59,6 @@ const mocks = vi.hoisted(() => ({
   setAndroidWakeWordEnabled: vi.fn<(enabled: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   ),
-  setAndroidWakeWordSensitivity: vi.fn<(sensitivity: number) => Promise<void>>(
-    () => Promise.resolve(),
-  ),
   stopAndroidVoiceAssistant: vi.fn(() => Promise.resolve()),
   usePlannerSession: vi.fn<() => PlannerSessionHookResult>(),
   useUpdateUserPreferences: vi.fn<() => UpdateUserPreferencesHookResult>(),
@@ -90,8 +87,6 @@ vi.mock('../lib/native-voice-assistant', () => ({
     mocks.setAndroidVoiceCuesEnabled(enabled),
   setAndroidWakeWordEnabled: (enabled: boolean) =>
     mocks.setAndroidWakeWordEnabled(enabled),
-  setAndroidWakeWordSensitivity: (sensitivity: number) =>
-    mocks.setAndroidWakeWordSensitivity(sensitivity),
   stopAndroidVoiceAssistant: () => mocks.stopAndroidVoiceAssistant(),
 }))
 
@@ -222,6 +217,30 @@ describe('VoiceAssistantSettingsPanel', () => {
     await waitFor(() => {
       expect(mocks.setAndroidVoiceCuesEnabled).toHaveBeenCalledWith(false)
     })
+  })
+
+  it('shows the wake word threshold as read-only on Android', async () => {
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.getVoiceAssistantNativeStatus.mockResolvedValue(
+      createStatus({
+        wakeWordSensitivity: 0.99,
+      }),
+    )
+
+    renderSettings()
+
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Порог модели "Хаотика"',
+      }),
+    ).toBeVisible()
+    expect(screen.getByText('Порог')).toBeVisible()
+    expect(screen.getByText('0.99')).toBeVisible()
+    expect(
+      screen.queryByRole('slider', {
+        name: 'Чувствительность "Хаотика"',
+      }),
+    ).not.toBeInTheDocument()
   })
 
   it('updates wake word training mode through workspace settings', async () => {

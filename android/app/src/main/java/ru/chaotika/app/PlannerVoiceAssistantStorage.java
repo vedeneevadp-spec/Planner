@@ -55,11 +55,17 @@ final class PlannerVoiceAssistantStorage {
     }
 
     static void storeWakeWordSensitivity(Context context, float sensitivity) {
-        getPreferences(context).edit().putFloat(WAKE_WORD_SENSITIVITY_KEY, clampWakeWordSensitivity(sensitivity)).apply();
+        getPreferences(context).edit().remove(WAKE_WORD_SENSITIVITY_KEY).apply();
     }
 
     static float readWakeWordSensitivity(Context context) {
-        return getPreferences(context).getFloat(WAKE_WORD_SENSITIVITY_KEY, WakeWordConfig.haotika().threshold);
+        SharedPreferences preferences = getPreferences(context);
+
+        if (preferences.contains(WAKE_WORD_SENSITIVITY_KEY)) {
+            preferences.edit().remove(WAKE_WORD_SENSITIVITY_KEY).apply();
+        }
+
+        return WakeWordConfig.haotika().threshold;
     }
 
     static void storeApiConfig(Context context, VoiceAssistantApiConfig config) {
@@ -198,14 +204,6 @@ final class PlannerVoiceAssistantStorage {
 
     private static SharedPreferences getPreferences(Context context) {
         return context.getApplicationContext().getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
-    }
-
-    private static float clampWakeWordSensitivity(float sensitivity) {
-        if (Float.isNaN(sensitivity) || Float.isInfinite(sensitivity)) {
-            return WakeWordConfig.haotika().threshold;
-        }
-
-        return Math.max(0.3f, Math.min(0.99f, sensitivity));
     }
 
     private static String normalizeTranscript(String transcript) {

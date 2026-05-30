@@ -517,7 +517,8 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         response.put("recognitionLanguage", config.language);
         response.put("confirmationMode", "confirmation_first");
         response.put("wakeWordModelStatus", isWakeWordModelReady() ? "ready" : "missing");
-        response.put("wakeWordSensitivity", PlannerVoiceAssistantStorage.readWakeWordSensitivity(getContext()));
+        PlannerVoiceAssistantStorage.readWakeWordSensitivity(getContext());
+        response.put("wakeWordSensitivity", readWakeWordManifestThreshold(config));
         response.put("microphonePermission", mapPermissionState(getPermissionState(MICROPHONE)));
         response.put("notificationPermission", resolveNotificationPermissionStatus());
         response.put("voiceCuesEnabled", PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext()));
@@ -601,6 +602,14 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         AndroidWakeWordAssetSource assets = new AndroidWakeWordAssetSource(getContext());
 
         return assets.exists(config.modelPath);
+    }
+
+    private float readWakeWordManifestThreshold(WakeWordConfig config) {
+        try {
+            return WakeWordModelManifest.read(new AndroidWakeWordAssetSource(getContext()), config).threshold;
+        } catch (WakeWordError error) {
+            return config.threshold;
+        }
     }
 
     private boolean degradeIfWakeModelMissing() {

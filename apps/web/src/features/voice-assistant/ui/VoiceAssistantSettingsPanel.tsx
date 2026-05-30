@@ -26,15 +26,12 @@ import {
   setAndroidBackgroundWakeWordEnabled,
   setAndroidVoiceCuesEnabled,
   setAndroidWakeWordEnabled,
-  setAndroidWakeWordSensitivity,
   stopAndroidVoiceAssistant,
   type VoiceAssistantNativeStatus,
 } from '../lib/native-voice-assistant'
 import {
-  MAX_WAKE_WORD_SENSITIVITY,
-  MIN_WAKE_WORD_SENSITIVITY,
+  DEFAULT_WAKE_WORD_SENSITIVITY,
   VOICE_ASSISTANT_WAKE_PHRASE,
-  WAKE_WORD_SENSITIVITY_STEP,
 } from '../model/voice-assistant-settings'
 import styles from './VoiceAssistantSettingsPanel.module.css'
 
@@ -292,27 +289,17 @@ export function VoiceAssistantSettingsPanel() {
             />
           </section>
 
-          <section className={styles.group} aria-label="Wake word sensitivity">
-            <div className={styles.rangeHeader}>
-              <h3>Чувствительность "{VOICE_ASSISTANT_WAKE_PHRASE}"</h3>
-              <span>{formatSensitivity(status?.wakeWordSensitivity)}</span>
+          <section
+            className={styles.group}
+            aria-label="Wake word model threshold"
+          >
+            <h3>Порог модели "{VOICE_ASSISTANT_WAKE_PHRASE}"</h3>
+            <div className={styles.readonlyGrid}>
+              <ReadonlyRow
+                label="Порог"
+                value={formatSensitivity(status?.wakeWordSensitivity)}
+              />
             </div>
-            <input
-              className={styles.rangeInput}
-              type="range"
-              min={MIN_WAKE_WORD_SENSITIVITY}
-              max={MAX_WAKE_WORD_SENSITIVITY}
-              step={WAKE_WORD_SENSITIVITY_STEP}
-              value={status?.wakeWordSensitivity ?? MAX_WAKE_WORD_SENSITIVITY}
-              disabled={androidControlsDisabled || !status}
-              aria-label={`Чувствительность "${VOICE_ASSISTANT_WAKE_PHRASE}"`}
-              onChange={(event) => {
-                const sensitivity = Number(event.target.value)
-                void runNativeAction(() =>
-                  setAndroidWakeWordSensitivity(sensitivity),
-                )
-              }}
-            />
           </section>
 
           <section className={styles.group} aria-label="Wake word review mode">
@@ -595,7 +582,7 @@ function formatForegroundServiceStatus(
 }
 
 function formatSensitivity(value: number | undefined): string {
-  return (value ?? MAX_WAKE_WORD_SENSITIVITY).toFixed(2)
+  return (value ?? DEFAULT_WAKE_WORD_SENSITIVITY).toFixed(2)
 }
 
 function formatRuntimeDuration(durationMs: number | undefined): string {

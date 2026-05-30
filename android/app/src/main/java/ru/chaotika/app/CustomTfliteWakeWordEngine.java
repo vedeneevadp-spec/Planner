@@ -77,9 +77,7 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
         try {
             WakeWordModelManifest manifest = WakeWordModelManifest.read(assets, config);
-            threshold = context != null
-                ? PlannerVoiceAssistantStorage.readWakeWordSensitivity(context)
-                : manifest.threshold;
+            threshold = manifest.threshold;
             WakeWordDiagnostics.updateModel(manifest.modelVersion, threshold);
 
             if (!assets.exists(config.modelPath)) {

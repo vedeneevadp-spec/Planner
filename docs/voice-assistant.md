@@ -110,6 +110,11 @@ TensorFlow Lite runtime.
 }
 ```
 
+В закрытом обучающем rollout threshold должен браться только из
+`wakewords/haotika_manifest.json`. Пользовательский override чувствительности в
+UI временно не показывать и не применять, иначе статистика false accept /
+false reject перестает быть сопоставимой между моделями.
+
 Если модели нет в assets, `CustomTfliteWakeWordEngine` должен вернуть
 `MissingModel` error, а не падать.
 
