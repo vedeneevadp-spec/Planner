@@ -1,8 +1,10 @@
-import type {
-  AppRole,
-  PlannerIntent,
-  TaskRecord,
-  VoiceActionContext,
+import {
+  type AppRole,
+  type PlannerIntent,
+  type TaskRecord,
+  type VoiceActionContext,
+  voiceCommandCorpusV1,
+  type VoiceTestCase,
 } from '@planner/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -683,6 +685,42 @@ describe('PlannerActionExecutor', () => {
       status: 'failed',
     })
   })
+
+  it('prepares action previews from the shared voice corpus', async () => {
+    const corpusCases = voiceCommandCorpusV1.filter(
+      (
+        testCase,
+      ): testCase is VoiceTestCase & {
+        expectedIntent: PlannerIntent
+        expectedPreview: NonNullable<VoiceTestCase['expectedPreview']>
+      } => Boolean(testCase.expectedIntent && testCase.expectedPreview),
+    )
+
+    expect(corpusCases.length).toBeGreaterThanOrEqual(120)
+
+    for (const testCase of corpusCases) {
+      const executor = new PlannerActionExecutor()
+      const preview = await executor.prepareAction(
+        testCase.expectedIntent,
+        createCorpusContext(testCase),
+        createCorpusDependencies(testCase),
+      )
+
+      expect(preview.status, testCase.id).toBe(testCase.expectedPreview.status)
+
+      if (testCase.expectedPreview.canExecute !== undefined) {
+        expect(preview.canExecute, testCase.id).toBe(
+          testCase.expectedPreview.canExecute,
+        )
+      }
+
+      if (testCase.expectedPreview.candidateCount !== undefined) {
+        expect(preview.candidates?.length ?? 0, testCase.id).toBe(
+          testCase.expectedPreview.candidateCount,
+        )
+      }
+    }
+  })
 })
 
 function createIntent(overrides: Partial<PlannerIntent>): PlannerIntent {
@@ -763,6 +801,79 @@ function createDependencies(
       setTaskSchedule,
     },
   }
+}
+
+function createCorpusContext(testCase: VoiceTestCase): VoiceActionContext {
+  return {
+    appRole: testCase.context.appRole,
+    isDeviceLocked: testCase.context.isDeviceLocked,
+    now: testCase.context.now,
+    source: testCase.source,
+    timezone: testCase.context.timezone,
+    userId: 'user-1',
+    workspaceId: 'workspace-1',
+  }
+}
+
+function createCorpusDependencies(
+  testCase: VoiceTestCase & { expectedIntent: PlannerIntent },
+): PlannerActionExecutorDependencies {
+  if (testCase.expectedIntent.intent === 'get_agenda') {
+    return createDependencies({
+      tasks: [
+        createTaskRecord({
+          id: 'agenda-1',
+          plannedDate: testCase.expectedIntent.date ?? '2026-06-01',
+          plannedStartTime: '09:00',
+          title: 'Позвонить врачу',
+        }),
+      ],
+    })
+  }
+
+  if (testCase.expectedIntent.intent !== 'reschedule_task') {
+    return createDependencies()
+  }
+
+  const candidateCount = testCase.expectedPreview?.candidateCount ?? 1
+  const targetQuery = testCase.expectedIntent.targetQuery ?? 'помыть окна'
+
+  if (candidateCount === 0) {
+    return createDependencies({
+      tasks: [createTaskRecord({ id: 'task-other', title: 'Другая задача' })],
+    })
+  }
+
+  if (candidateCount === 2) {
+    return createDependencies({
+      tasks: [
+        createTaskRecord({
+          id: 'task-1',
+          title: `${capitalize(targetQuery)} на кухне`,
+          version: 1,
+        }),
+        createTaskRecord({
+          id: 'task-2',
+          title: `${capitalize(targetQuery)} в спальне`,
+          version: 2,
+        }),
+      ],
+    })
+  }
+
+  return createDependencies({
+    tasks: [
+      createTaskRecord({
+        id: 'task-1',
+        title: capitalize(targetQuery),
+        version: 1,
+      }),
+    ],
+  })
+}
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 function createTaskRecord(overrides: Partial<TaskRecord> = {}): TaskRecord {

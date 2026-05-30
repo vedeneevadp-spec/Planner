@@ -285,6 +285,7 @@ const GROCERY_WORDS = new Set([
 
 const SHOPPING_TITLE_NORMALIZATION: Record<string, string> = {
   молока: 'молоко',
+  воду: 'вода',
 }
 
 const BUILT_IN_SPHERE_KEYWORDS: Record<string, string[]> = {
@@ -401,6 +402,7 @@ export class VoiceTextNormalizer {
       .replace(/\s*([.:])\s*/gu, '$1')
       .replace(/(?:^|\s)пол\s*часа(?=\s|$)/gu, ' 30 минут')
       .replace(/(?:^|\s)полчаса(?=\s|$)/gu, ' 30 минут')
+      .replace(/(?:^|\s)через\s+час(?=\s|$)/gu, ' через 1 час')
       .replace(/(?:^|\s)часик(?=\s|$)/gu, ' 1 час')
       .replace(/(?:^|\s)часика(?=\s|$)/gu, ' 1 часа')
       .replace(/\s+/gu, ' ')
@@ -715,6 +717,7 @@ class TaskTitleExtractor {
         ' ',
       )
       .replace(/(?:^|\s)на\s+следующ(?:ей|ую)\s+недел[ею](?=\s|$)/giu, ' ')
+      .replace(/(?:^|\s)следующ(?:ей|ую)\s+недел[ею](?=\s|$)/giu, ' ')
       .replace(WEEKDAY_PATTERN, ' ')
       .replace(
         /(?:^|\s)через\s+\d+\s+(?:минуту|минуты|минут|час|часа|часов|день|дня|дней)(?=\s|$)/giu,
@@ -724,7 +727,10 @@ class TaskTitleExtractor {
         /(?:^|\s)(?:в|к)\s*\d{1,2}(?::\d{2})?\s*(?:час(?:ов|а)?\s*)?(?:утра|вечера|дня|ночи)?(?=\s|$)/giu,
         ' ',
       )
-      .replace(/(?:^|\s)(утром|вечером|днем|ночью)(?=\s|$)/giu, ' ')
+      .replace(
+        /(?:^|\s)(утром|утро|вечером|вечер|днем|день|ночью|ночь)(?=\s|$)/giu,
+        ' ',
+      )
       .replace(
         /(?:^|\s)(?:на|к|ко|до)?\s*\d{1,2}[./-]\d{1,2}(?:[./-]\d{2,4})?(?=\s|$)/gu,
         ' ',
@@ -1279,16 +1285,32 @@ function parseApproximateTime(
     return { dateText: 'утром', time: '09:00' }
   }
 
+  if (containsWord(text, 'утро')) {
+    return { dateText: 'утро', time: '09:00' }
+  }
+
   if (containsWord(text, 'днем')) {
     return { dateText: 'днем', time: '14:00' }
+  }
+
+  if (containsWord(text, 'день')) {
+    return { dateText: 'день', time: '14:00' }
   }
 
   if (containsWord(text, 'вечером')) {
     return { dateText: 'вечером', time: '19:00' }
   }
 
+  if (containsWord(text, 'вечер')) {
+    return { dateText: 'вечер', time: '19:00' }
+  }
+
   if (containsWord(text, 'ночью')) {
     return { dateText: 'ночью', time: '22:00' }
+  }
+
+  if (containsWord(text, 'ночь')) {
+    return { dateText: 'ночь', time: '22:00' }
   }
 
   return undefined

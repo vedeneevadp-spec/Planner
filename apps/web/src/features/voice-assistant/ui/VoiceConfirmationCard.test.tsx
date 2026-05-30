@@ -1,7 +1,9 @@
-import type {
-  PlannerIntent,
-  VoiceActionPreview,
-  VoiceAssistantState,
+import {
+  type PlannerIntent,
+  type VoiceActionPreview,
+  type VoiceAssistantState,
+  voiceCommandCorpusV1,
+  type VoiceTestCase,
 } from '@planner/contracts'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -438,6 +440,56 @@ describe('VoiceConfirmationCard', () => {
       screen.queryByRole('button', { name: /показать|готово/i }),
     ).not.toBeInTheDocument()
   })
+
+  it('renders selected confirmation UI expectations from the shared corpus', () => {
+    const corpusCases = [
+      'task_basic_015',
+      'shopping_001',
+      'reschedule_001',
+      'agenda_001',
+      'clarify_003',
+      'dangerous_001',
+      'locked_screen_003',
+    ].map(getCorpusCase)
+
+    for (const corpusCase of corpusCases) {
+      cleanup()
+
+      const preview = createPreviewFromCorpusCase(corpusCase)
+
+      renderCard({
+        preview,
+        selectedCandidateId: preview.candidates?.[0]?.taskId ?? null,
+        state: {
+          intent: preview.intent,
+          source: 'web_microphone',
+          status: 'awaiting_confirmation',
+          transcript: preview.intent.rawText,
+        },
+      })
+
+      for (const text of corpusCase.expectedUI?.mustShow ?? []) {
+        expect(
+          screen.queryAllByText((content) => content.includes(text)).length,
+          `${corpusCase.id}: ${text}`,
+        ).toBeGreaterThan(0)
+      }
+
+      for (const text of corpusCase.expectedUI?.mustNotShow ?? []) {
+        expect(
+          screen.queryByText((content) => content.includes(text)),
+          `${corpusCase.id}: ${text}`,
+        ).not.toBeInTheDocument()
+      }
+
+      for (const button of corpusCase.expectedUI?.buttons ?? []) {
+        expect(
+          screen.getAllByRole('button', { name: new RegExp(button, 'iu') })[0],
+          `${corpusCase.id}: ${button}`,
+        ).toBeVisible()
+      }
+    }
+  })
 })
 
 function renderCard(overrides: Partial<VoiceConfirmationCardProps> = {}) {
@@ -540,4 +592,113 @@ function createCandidate(
     version: 1,
     ...overrides,
   }
+}
+
+function getCorpusCase(id: string): VoiceTestCase {
+  const testCase = voiceCommandCorpusV1.find((candidate) => candidate.id === id)
+
+  if (!testCase) {
+    throw new Error(`Missing voice corpus case: ${id}`)
+  }
+
+  return testCase
+}
+
+function createPreviewFromCorpusCase(
+  testCase: VoiceTestCase,
+): VoiceActionPreview {
+  const intent = testCase.expectedIntent ?? createIntent()
+  const status = testCase.expectedPreview?.status ?? 'ready_for_confirmation'
+  const canExecute =
+    testCase.expectedPreview?.canExecute ??
+    (status === 'ready_for_confirmation' && intent.intent !== 'get_agenda')
+  const candidates =
+    intent.intent === 'reschedule_task' && status !== 'not_found'
+      ? createCorpusCandidates(intent, testCase.expectedPreview?.candidateCount)
+      : undefined
+
+  return createPreview({
+    agendaItems:
+      intent.intent === 'get_agenda' && status === 'ready_for_confirmation'
+        ? [
+            {
+              plannedStartTime: '09:00',
+              status: 'todo',
+              taskId: 'agenda-1',
+              title: 'Позвонить врачу',
+            },
+          ]
+        : undefined,
+    canExecute,
+    candidates,
+    intent,
+    isDangerous: Boolean(intent.isDangerous),
+    needsConfirmation:
+      intent.intent === 'get_agenda' || status === 'requires_clarification'
+        ? false
+        : true,
+    requiresUnlock: status === 'requires_unlock',
+    status,
+    summary: createCorpusPreviewSummary(testCase),
+    title: createCorpusPreviewTitle(testCase),
+    type: intent.intent,
+  })
+}
+
+function createCorpusCandidates(
+  intent: PlannerIntent,
+  candidateCount: VoiceTestCase['expectedPreview'] extends infer Preview
+    ? Preview extends { candidateCount?: infer Count }
+      ? Count
+      : never
+    : never,
+): VoiceActionPreview['candidates'] {
+  const targetQuery = intent.targetQuery ?? 'помыть окна'
+
+  if (candidateCount === 2) {
+    return [
+      createCandidate({ taskId: 'task-1', title: `${targetQuery} на кухне` }),
+      createCandidate({ taskId: 'task-2', title: `${targetQuery} в спальне` }),
+    ]
+  }
+
+  return [createCandidate({ taskId: 'task-1', title: targetQuery })]
+}
+
+function createCorpusPreviewTitle(testCase: VoiceTestCase): string {
+  switch (testCase.expectedUI?.card) {
+    case 'agenda':
+      return `План на ${testCase.expectedIntent?.date ?? 'сегодня'}`
+    case 'clarify':
+      return 'Нужно уточнение'
+    case 'requires_unlock':
+      return 'Нужна разблокировка'
+    case 'reschedule_confirmation':
+      return 'Перенести задачу'
+    case 'shopping_confirmation':
+      return 'Добавить в покупки'
+    case 'unsupported':
+      return 'Команда не поддерживается'
+    case 'blocked':
+      return 'Голосовое действие недоступно'
+    case 'multiple_candidates':
+      return 'Какую задачу перенести?'
+    case 'not_found':
+      return 'Задача не найдена'
+    case 'task_confirmation':
+    case undefined:
+      return 'Создать задачу'
+  }
+}
+
+function createCorpusPreviewSummary(testCase: VoiceTestCase): string {
+  if (testCase.expectedPreview?.status === 'requires_unlock') {
+    return 'Разблокируй устройство, чтобы посмотреть план.'
+  }
+
+  return (
+    testCase.expectedIntent?.clarificationQuestion ??
+    testCase.expectedUI?.mustShow?.[0] ??
+    'Проверь действие перед выполнением.'
+  )
 }

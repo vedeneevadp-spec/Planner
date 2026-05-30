@@ -1295,12 +1295,31 @@ Undo и full clarification loop были вынесены из пункта 5 и
     `source = web_push_to_talk`.
 
 12. Собрать корпус тестовых фраз.
-    Создать набор команд на русском: короткие, длинные, с ошибками STT,
-    разговорные, семейные, рабочие, покупки, даты и опасные действия. Покрыть
-    parser unit tests, state machine tests, Android storage/plugin tests и UI
-    tests карточки подтверждения. Добавить voice cue cases: `Слушаю` after wake
-    detected / push-to-talk start, `Готово` only after success, no `Готово` for
-    errors/clarify/requiresUnlock и no private voice output on locked screen.
+    Статус: реализовано.
+
+    Добавлен shared machine-readable corpus `voice-command-corpus.v1` в
+    `packages/contracts/src/voice-test-corpus`: 192 cases на русском для
+    wake-word hard negatives, create_task, reminderAt, shopping, agenda,
+    reschedule, clarify, unsupported/dangerous, locked-screen, STT/noisy
+    transcript, voice cues, web flow, Android runtime и privacy/security.
+
+    Корпус содержит fixed context, locked/role contexts, schema validation,
+    coverage minimums by category, `plannerIntentSchema` validation для всех
+    `expectedIntent`, parser baseline tests, action preview tests, confirmation
+    UI subset tests, web flow validation tests, voice cue/privacy/metrics
+    expectations. Подробности: [docs/voice/test-corpus.md](voice/test-corpus.md).
+
+12.1. Закрепить corpus maintenance policy.
+Статус: реализовано.
+
+    Правило поддержки: новый баг голосового ввода -> сначала новый case в
+    `voice-command-corpus.v1` -> затем fix в parser/action/UI/runtime. Новая
+    deterministic normalization, dangerous формулировка, STT-ошибка,
+    locked-screen сценарий или web validation edge case также добавляются через
+    corpus case. Все `expectedIntent` проходят `plannerIntentSchema`, все
+    locked/private cases имеют `mustNotShow`/`mustNotLog`, voice cues покрывают
+    `Слушаю`/`Готово`, а future LLM eligibility явно задается через
+    `llmFallbackAllowed`.
 
 13. Добавить метрики качества.
     Логировать только безопасные события без аудио: wake word detected,
