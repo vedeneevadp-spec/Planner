@@ -199,6 +199,42 @@ describe('PlannerIntentParser', () => {
     })
   })
 
+  it('parses relative reschedule shifts without resolving a task', () => {
+    const earlierIntent = parser.parse(
+      'Перенеси задачу помыть окна на час раньше',
+      { now: NOW },
+    )
+    const laterIntent = parser.parse('сдвинь созвон на 15 минут позже', {
+      now: NOW,
+    })
+    const halfHourIntent = parser.parse(
+      'перепланируй встречу на полчаса раньше',
+      { now: NOW },
+    )
+
+    expect(earlierIntent).toMatchObject({
+      datePrecision: 'relative',
+      intent: 'reschedule_task',
+      isDangerous: true,
+      needsConfirmation: true,
+      targetQuery: 'помыть окна',
+      timeShiftMinutes: -60,
+      timeShiftText: 'на час раньше',
+    })
+    expect(laterIntent).toMatchObject({
+      intent: 'reschedule_task',
+      targetQuery: 'созвон',
+      timeShiftMinutes: 15,
+      timeShiftText: 'на 15 минут позже',
+    })
+    expect(halfHourIntent).toMatchObject({
+      intent: 'reschedule_task',
+      targetQuery: 'встречу',
+      timeShiftMinutes: -30,
+      timeShiftText: 'на 30 минут раньше',
+    })
+  })
+
   it('parses agenda requests for today and tomorrow', () => {
     expect(parser.parse('что у меня сегодня', { now: NOW })).toMatchObject({
       date: '2026-05-28',

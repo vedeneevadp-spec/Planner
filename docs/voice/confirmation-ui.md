@@ -56,7 +56,8 @@ UI-level statuses:
 `add_shopping_item` показывает список товаров и destination `покупки`.
 
 `reschedule_task` показывает выбранную задачу, старую дату/время, новую
-дату/время и warning: действие меняет существующую задачу.
+дату/время или относительный сдвиг (`на час раньше`, `на 15 минут позже`) и
+warning: действие меняет существующую задачу.
 
 `get_agenda` показывает только visual summary и список задач. Оно не требует
 кнопки выполнения и не должно приводить к cue `Готово`.
@@ -117,8 +118,9 @@ expectedVersion
 ```
 
 При смене выбранного кандидата summary в `reschedule_task` обновляет старую
-дату/время для выбранной задачи. `executeAction()` повторно читает текущую
-задачу и сверяет `expectedVersion` перед update.
+дату/время и вычисленный относительный сдвиг для выбранной задачи.
+`executeAction()` повторно читает текущую задачу и сверяет `expectedVersion`
+перед update.
 
 ## Undo
 
@@ -197,6 +199,7 @@ overlay и не выполняет planner/shopping actions напрямую.
 - dangerous reschedule confirmation;
 - `multiple_candidates`;
 - `not_found`;
+- relative reschedule shift;
 - `requires_unlock`;
 - clarify loop;
 - unsupported dangerous delete;

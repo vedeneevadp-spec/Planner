@@ -273,6 +273,8 @@ function expectPlannerIntentToMatchCorpus(
   expectOptionalField(actual, expected, 'sphereId', testCase.id)
   expectOptionalField(actual, expected, 'targetQuery', testCase.id)
   expectOptionalField(actual, expected, 'time', testCase.id)
+  expectOptionalField(actual, expected, 'timeShiftMinutes', testCase.id)
+  expectOptionalField(actual, expected, 'timeShiftText', testCase.id)
   expectOptionalField(actual, expected, 'title', testCase.id)
 
   if (expected.items) {

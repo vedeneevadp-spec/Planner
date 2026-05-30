@@ -71,6 +71,18 @@ interface StoredPreview {
   preview: VoiceActionPreview
 }
 
+interface RescheduleScheduleSource {
+  plannedDate: string | null
+  plannedEndTime?: string | null | undefined
+  plannedStartTime: string | null
+}
+
+interface RescheduleScheduleResolution {
+  errorCode?: string | undefined
+  schedule?: TaskScheduleInput | undefined
+  summary?: string | undefined
+}
+
 const UNSUPPORTED_MESSAGE =
   'Пока я умею создавать задачи, добавлять покупки, переносить задачи и показывать план на сегодня или завтра.'
 
@@ -350,7 +362,7 @@ export class PlannerActionExecutor {
       )
     }
 
-    if (!intent.date) {
+    if (!intent.date && intent.timeShiftMinutes === undefined) {
       return createPreview(intent, {
         canExecute: false,
         context,
@@ -419,6 +431,20 @@ export class PlannerActionExecutor {
     }
 
     const candidate = candidates[0]!
+    const scheduleResolution = resolveRescheduleSchedule(intent, candidate)
+
+    if (!scheduleResolution.schedule) {
+      return createPreview(intent, {
+        canExecute: false,
+        context,
+        needsConfirmation: false,
+        reason: scheduleResolution.errorCode,
+        status: 'requires_clarification',
+        summary:
+          scheduleResolution.summary ?? 'На какое время перенести задачу?',
+        title: 'Нужно уточнение',
+      })
+    }
 
     return createPreview(intent, {
       candidates,
@@ -576,12 +602,32 @@ export class PlannerActionExecutor {
       })
     }
 
+    const scheduleResolution = resolveRescheduleSchedule(
+      preview.intent,
+      currentTask,
+    )
+
+    if (!scheduleResolution.schedule) {
+      return createResult({
+        errorCode: scheduleResolution.errorCode ?? 'reschedule_time_required',
+        status: 'failed',
+        visualStatus:
+          scheduleResolution.summary ?? 'На какое время перенести задачу?',
+      })
+    }
+
+    const previousSchedule: TaskScheduleInput = {
+      plannedDate: currentTask.plannedDate,
+      plannedEndTime: currentTask.plannedEndTime ?? null,
+      plannedStartTime: currentTask.plannedStartTime,
+    }
+
     try {
       const updatedTask = await dependencies.taskClient.setTaskSchedule(
         candidate.taskId,
         {
           expectedVersion,
-          schedule: buildRescheduleTaskSchedule(preview.intent, candidate),
+          schedule: scheduleResolution.schedule,
         },
       )
 
@@ -593,11 +639,7 @@ export class PlannerActionExecutor {
         updatedTaskId: updatedTask.id,
         undo: {
           expectedVersion: updatedTask.version,
-          previousSchedule: {
-            plannedDate: candidate.plannedDate,
-            plannedEndTime: candidate.plannedEndTime ?? null,
-            plannedStartTime: candidate.plannedStartTime,
-          },
+          previousSchedule,
           type: 'reschedule_task',
           updatedTaskId: updatedTask.id,
         },
@@ -1021,13 +1063,24 @@ function buildRescheduleSummary(
   candidate: VoiceActionCandidate,
   intent: PlannerIntent,
 ): string {
-  const targetDate = intent.date
-  const targetTime = intent.time ? ` в ${intent.time}` : ''
+  const scheduleResolution = resolveRescheduleSchedule(intent, candidate)
   const recurringNote = candidate.isRecurring
     ? ' Изменится только выбранная задача.'
     : ''
 
-  return `Перенести «${candidate.title}» на ${targetDate}${targetTime}.${recurringNote}`
+  if (intent.timeShiftMinutes !== undefined) {
+    const targetSchedule = scheduleResolution.schedule
+      ? `: ${formatTaskSchedule(scheduleResolution.schedule)}`
+      : ''
+
+    return `Сдвинуть «${candidate.title}» ${formatTimeShift(intent)}${targetSchedule}.${recurringNote}`
+  }
+
+  const targetSchedule = scheduleResolution.schedule
+    ? formatTaskSchedule(scheduleResolution.schedule)
+    : 'новую дату'
+
+  return `Перенести «${candidate.title}» на ${targetSchedule}.${recurringNote}`
 }
 
 function resolveConfirmedCandidate(
@@ -1056,17 +1109,179 @@ async function findTaskById(
   return tasks.find((task) => task.id === taskId) ?? null
 }
 
-function buildRescheduleTaskSchedule(
+function resolveRescheduleSchedule(
   intent: PlannerIntent,
-  candidate: VoiceActionCandidate,
-): TaskScheduleInput {
-  const plannedStartTime = intent.time ?? candidate.plannedStartTime
+  source: RescheduleScheduleSource,
+): RescheduleScheduleResolution {
+  if (intent.timeShiftMinutes !== undefined) {
+    return resolveRelativeRescheduleSchedule(intent, source)
+  }
+
+  const plannedStartTime = intent.time ?? source.plannedStartTime
 
   return {
-    plannedDate: intent.date ?? candidate.plannedDate,
-    plannedEndTime: intent.time ? null : (candidate.plannedEndTime ?? null),
-    plannedStartTime: plannedStartTime ?? null,
+    schedule: {
+      plannedDate: intent.date ?? source.plannedDate,
+      plannedEndTime: intent.time ? null : (source.plannedEndTime ?? null),
+      plannedStartTime: plannedStartTime ?? null,
+    },
   }
+}
+
+function resolveRelativeRescheduleSchedule(
+  intent: PlannerIntent,
+  source: RescheduleScheduleSource,
+): RescheduleScheduleResolution {
+  const shiftMinutes = intent.timeShiftMinutes
+
+  if (shiftMinutes === undefined) {
+    return {
+      errorCode: 'reschedule_shift_missing',
+      summary: 'На какую дату перенести задачу?',
+    }
+  }
+
+  if (!source.plannedDate || !source.plannedStartTime) {
+    return {
+      errorCode: 'reschedule_time_required',
+      summary: 'У задачи нет времени. На какое время перенести?',
+    }
+  }
+
+  const shiftedStart = shiftLocalDateTime(
+    source.plannedDate,
+    source.plannedStartTime,
+    shiftMinutes,
+  )
+
+  if (!shiftedStart) {
+    return {
+      errorCode: 'reschedule_invalid_time',
+      summary: 'Не удалось посчитать новое время задачи.',
+    }
+  }
+
+  const shiftedEnd = source.plannedEndTime
+    ? shiftLocalDateTime(
+        source.plannedDate,
+        source.plannedEndTime,
+        shiftMinutes,
+      )
+    : null
+  const plannedDate = intent.date ?? shiftedStart.date
+  const plannedStartTime = intent.time ?? shiftedStart.time
+  const plannedEndTime =
+    !intent.time &&
+    shiftedEnd &&
+    shiftedEnd.date === plannedDate &&
+    shiftedEnd.time > plannedStartTime
+      ? shiftedEnd.time
+      : null
+
+  return {
+    schedule: {
+      plannedDate,
+      plannedEndTime,
+      plannedStartTime,
+    },
+  }
+}
+
+function shiftLocalDateTime(
+  dateKey: string,
+  time: string,
+  shiftMinutes: number,
+): { date: string; time: string } | null {
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(dateKey)
+  const timeMatch = /^(\d{2}):(\d{2})$/u.exec(time)
+
+  if (
+    !dateMatch?.[1] ||
+    !dateMatch[2] ||
+    !dateMatch[3] ||
+    !timeMatch?.[1] ||
+    !timeMatch[2]
+  ) {
+    return null
+  }
+
+  const timestamp = Date.UTC(
+    Number(dateMatch[1]),
+    Number(dateMatch[2]) - 1,
+    Number(dateMatch[3]),
+    Number(timeMatch[1]),
+    Number(timeMatch[2]),
+  )
+
+  if (Number.isNaN(timestamp)) {
+    return null
+  }
+
+  const shifted = new Date(timestamp + shiftMinutes * 60_000)
+
+  return {
+    date: `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`,
+    time: `${pad2(shifted.getUTCHours())}:${pad2(shifted.getUTCMinutes())}`,
+  }
+}
+
+function formatTaskSchedule(schedule: TaskScheduleInput): string {
+  const date = schedule.plannedDate ?? 'без даты'
+  const time = schedule.plannedStartTime
+    ? ` в ${schedule.plannedStartTime}`
+    : ''
+
+  return `${date}${time}`
+}
+
+function formatTimeShift(intent: PlannerIntent): string {
+  if (intent.timeShiftText) {
+    return intent.timeShiftText
+  }
+
+  const shiftMinutes = intent.timeShiftMinutes ?? 0
+  const direction = shiftMinutes < 0 ? 'раньше' : 'позже'
+
+  return `на ${formatShiftDuration(Math.abs(shiftMinutes))} ${direction}`
+}
+
+function formatShiftDuration(minutes: number): string {
+  if (minutes % (24 * 60) === 0) {
+    const days = minutes / (24 * 60)
+
+    return `${days} ${plural(days, 'день', 'дня', 'дней')}`
+  }
+
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60
+
+    return `${hours} ${plural(hours, 'час', 'часа', 'часов')}`
+  }
+
+  return `${minutes} ${plural(minutes, 'минута', 'минуты', 'минут')}`
+}
+
+function plural(value: number, one: string, few: string, many: string): string {
+  const lastTwo = value % 100
+  const last = value % 10
+
+  if (lastTwo >= 11 && lastTwo <= 14) {
+    return many
+  }
+
+  if (last === 1) {
+    return one
+  }
+
+  if (last >= 2 && last <= 4) {
+    return few
+  }
+
+  return many
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
 }
 
 function getRecordId(value: unknown): string | undefined {

@@ -110,6 +110,7 @@ rule-parser result.
 | `что у меня сегодня`              | `get_agenda`, today date                                 |
 | `что у меня завтра`               | `get_agenda`, tomorrow date                              |
 | `перенеси помыть окна на субботу` | `reschedule_task`, `targetQuery`, date, dangerous        |
+| `перенеси задачу на час раньше`   | `reschedule_task`, `timeShiftMinutes`, dangerous         |
 | `удали задачу`                    | `unsupported`, dangerous                                 |
 
 ## Safety Flags
@@ -123,7 +124,11 @@ rule-parser result.
 
 ## Known Limitations
 
-- Parser extracts `targetQuery` for reschedule but does not search tasks.
+- Parser extracts `targetQuery`, absolute target date/time and relative
+  `timeShiftMinutes` for reschedule but does not search tasks.
+- Relative reschedule shifts such as `на час раньше` are computed only in the
+  action layer after a concrete task is selected, because parser does not know
+  the task's current schedule.
 - Sphere resolution is soft and only uses the spheres passed in context.
 - Approximate times such as `утром` and ambiguous times such as `в 8` require
   confirmation.

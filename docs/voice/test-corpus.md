@@ -80,7 +80,7 @@ buckets закрытого тестирования, а не быть однор
 
 ## Coverage matrix
 
-`voice-command-corpus.v1` содержит 192 cases.
+`voice-command-corpus.v1` содержит 195 cases.
 
 | Category         | Count |
 | ---------------- | ----: |
@@ -89,7 +89,7 @@ buckets закрытого тестирования, а не быть однор
 | reminder_task    |    12 |
 | shopping         |    18 |
 | agenda           |    12 |
-| reschedule       |    16 |
+| reschedule       |    19 |
 | clarify          |    10 |
 | unsupported      |    10 |
 | dangerous        |    12 |
@@ -106,18 +106,19 @@ Coverage floor is enforced by
 
 ## Representative cases
 
-| ID               | Phrase                            | Category      | Expected                     |
-| ---------------- | --------------------------------- | ------------- | ---------------------------- |
-| `task_basic_015` | `завтра в 9 стоматолог`           | create_task   | task confirmation, date/time |
-| `web_flow_011`   | `завтра купить молоко`            | web_flow      | task, not shopping           |
-| `reminder_001`   | `через 10 минут выключить плиту`  | reminder_task | task with `reminderAt`       |
-| `shopping_001`   | `добавь молоко и хлеб в покупки`  | shopping      | shopping confirmation        |
-| `agenda_001`     | `что у меня сегодня`              | agenda        | visual agenda, no done cue   |
-| `agenda_002`     | `что у меня завтра`               | agenda        | visual agenda, no done cue   |
-| `reschedule_001` | `перенеси помыть окна на субботу` | reschedule    | dangerous confirmation       |
-| `dangerous_012`  | `удали задачу`                    | dangerous     | unsupported, no execute      |
-| `stt_error_001`  | `палить рассаду вечером`          | stt_error     | editable confirmation        |
-| `wake_word_002`  | `котика`                          | wake_word     | hard negative, no upload     |
+| ID               | Phrase                                      | Category      | Expected                     |
+| ---------------- | ------------------------------------------- | ------------- | ---------------------------- |
+| `task_basic_015` | `завтра в 9 стоматолог`                     | create_task   | task confirmation, date/time |
+| `web_flow_011`   | `завтра купить молоко`                      | web_flow      | task, not shopping           |
+| `reminder_001`   | `через 10 минут выключить плиту`            | reminder_task | task with `reminderAt`       |
+| `shopping_001`   | `добавь молоко и хлеб в покупки`            | shopping      | shopping confirmation        |
+| `agenda_001`     | `что у меня сегодня`                        | agenda        | visual agenda, no done cue   |
+| `agenda_002`     | `что у меня завтра`                         | agenda        | visual agenda, no done cue   |
+| `reschedule_001` | `перенеси помыть окна на субботу`           | reschedule    | dangerous confirmation       |
+| `reschedule_017` | `перенеси задачу помыть окна на час раньше` | reschedule    | relative shift confirmation  |
+| `dangerous_012`  | `удали задачу`                              | dangerous     | unsupported, no execute      |
+| `stt_error_001`  | `палить рассаду вечером`                    | stt_error     | editable confirmation        |
+| `wake_word_002`  | `котика`                                    | wake_word     | hard negative, no upload     |
 
 ## Test consumers
 

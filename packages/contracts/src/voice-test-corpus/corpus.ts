@@ -994,6 +994,72 @@ const rescheduleCases = [
   },
 )
 
+const relativeRescheduleCases = [
+  parserCase({
+    category: 'reschedule',
+    expectedCue: { done: 'not_play' },
+    expectedIntent: rescheduleIntent(
+      'перенеси задачу помыть окна на час раньше',
+      {
+        datePrecision: 'relative',
+        targetQuery: 'помыть окна',
+        timeShiftMinutes: -60,
+        timeShiftText: 'на час раньше',
+      },
+    ),
+    expectedPreview: preview('ready_for_confirmation', {
+      canExecute: true,
+      candidateCount: 1,
+    }),
+    expectedUI: ui('reschedule_confirmation', {
+      buttons: ['Да, перенести', 'Изменить', 'Отмена'],
+      mustShow: ['Перенести задачу', 'на час раньше'],
+    }),
+    id: 'reschedule_017',
+    phrase: 'перенеси задачу помыть окна на час раньше',
+  }),
+  parserCase({
+    category: 'reschedule',
+    expectedCue: { done: 'not_play' },
+    expectedIntent: rescheduleIntent('сдвинь созвон на 15 минут позже', {
+      datePrecision: 'relative',
+      targetQuery: 'созвон',
+      timeShiftMinutes: 15,
+      timeShiftText: 'на 15 минут позже',
+    }),
+    expectedPreview: preview('ready_for_confirmation', {
+      canExecute: true,
+      candidateCount: 1,
+    }),
+    expectedUI: ui('reschedule_confirmation', {
+      buttons: ['Да, перенести', 'Изменить', 'Отмена'],
+      mustShow: ['Перенести задачу', 'на 15 минут позже'],
+    }),
+    id: 'reschedule_018',
+    phrase: 'сдвинь созвон на 15 минут позже',
+  }),
+  parserCase({
+    category: 'reschedule',
+    expectedCue: { done: 'not_play' },
+    expectedIntent: rescheduleIntent('перепланируй встречу на полчаса раньше', {
+      datePrecision: 'relative',
+      targetQuery: 'встречу',
+      timeShiftMinutes: -30,
+      timeShiftText: 'на 30 минут раньше',
+    }),
+    expectedPreview: preview('ready_for_confirmation', {
+      canExecute: true,
+      candidateCount: 1,
+    }),
+    expectedUI: ui('reschedule_confirmation', {
+      buttons: ['Да, перенести', 'Изменить', 'Отмена'],
+      mustShow: ['Перенести задачу', 'на 30 минут раньше'],
+    }),
+    id: 'reschedule_019',
+    phrase: 'перепланируй встречу на полчаса раньше',
+  }),
+]
+
 const clarifyCases = [
   ['clarify_001', 'Хаотика', 'Что добавить в планер?'],
   ['clarify_002', 'добавь в покупки', 'Что добавить в покупки?'],
@@ -2008,6 +2074,7 @@ const rawVoiceCommandCorpusV1 = [
   ...shoppingCases,
   ...agendaCases,
   ...rescheduleCases,
+  ...relativeRescheduleCases,
   ...clarifyCases,
   ...unsupportedCases,
   ...dangerousCases,

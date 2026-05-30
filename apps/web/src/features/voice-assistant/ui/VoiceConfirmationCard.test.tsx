@@ -108,6 +108,38 @@ describe('VoiceConfirmationCard', () => {
     })
   })
 
+  it('shows relative reschedule shift details', () => {
+    const preview = createPreview({
+      candidates: [
+        {
+          plannedDate: '2026-05-29',
+          plannedEndTime: '11:00',
+          plannedStartTime: '10:00',
+          taskId: 'task-1',
+          title: 'Помыть окна',
+          updatedAt: '2026-05-28T09:00:00.000Z',
+          version: 3,
+        },
+      ],
+      intent: createIntent({
+        datePrecision: 'relative',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+        timeShiftMinutes: -60,
+        timeShiftText: 'на час раньше',
+      }),
+      isDangerous: true,
+      summary: 'Сдвинуть «Помыть окна» на час раньше: 2026-05-29 в 09:00.',
+      title: 'Перенести задачу',
+      type: 'reschedule_task',
+    })
+
+    renderCard({ preview, selectedCandidateId: 'task-1' })
+
+    expect(screen.getByText('2026-05-29, 10:00')).toBeVisible()
+    expect(screen.getByText('на час раньше')).toBeVisible()
+  })
+
   it('requires candidate selection before multiple_candidates execution', () => {
     const preview = createPreview({
       canExecute: false,

@@ -76,6 +76,8 @@ export const plannerIntentSchema = z
       .string()
       .regex(/^\d{2}:\d{2}$/u)
       .optional(),
+    timeShiftMinutes: z.number().int().min(-10_080).max(10_080).optional(),
+    timeShiftText: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).optional(),
     transcript: z.string().trim().min(1).optional(),
   })
@@ -101,6 +103,48 @@ export const plannerIntentSchema = z
         code: 'custom',
         message: 'reschedule_task requires targetQuery.',
         path: ['targetQuery'],
+      })
+    }
+
+    if (
+      value.intent === 'reschedule_task' &&
+      !value.date &&
+      value.timeShiftMinutes === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'reschedule_task requires date or timeShiftMinutes.',
+        path: ['date'],
+      })
+    }
+
+    if (value.timeShiftMinutes === 0) {
+      context.addIssue({
+        code: 'custom',
+        message: 'timeShiftMinutes must not be zero.',
+        path: ['timeShiftMinutes'],
+      })
+    }
+
+    if (
+      value.timeShiftMinutes !== undefined &&
+      value.intent !== 'reschedule_task'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'timeShiftMinutes is only valid for reschedule_task.',
+        path: ['timeShiftMinutes'],
+      })
+    }
+
+    if (
+      value.timeShiftText !== undefined &&
+      value.timeShiftMinutes === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'timeShiftText requires timeShiftMinutes.',
+        path: ['timeShiftText'],
       })
     }
 
@@ -176,12 +220,19 @@ interface RecurrenceParseResult {
   recurrence?: PlannerIntentRecurrence | undefined
 }
 
+interface RescheduleTimeShiftParseResult {
+  timeShiftMinutes: number
+  timeShiftText: string
+}
+
 const WAKE_WORD_PATTERN = /^хаотика[\s,.:;!-]*/iu
 const DEFAULT_PLANNER_TIMEZONE = 'Europe/Moscow'
 const DELETE_PATTERN =
   /(?:^|\s)(?:удали|удалить|сотри|стереть|удаление|delete)(?=\s|$)|(?:^|\s)(?:убери|убрать)\s+(?:все|всё|задач[ауи]?|дела|план)(?=\s|$)/iu
 const RESCHEDULE_PATTERN =
   /(?:^|\s)(перенеси|перенести|перепланируй|перепланировать|сдвинь|сдвинуть)(?=\s|$)/iu
+const RESCHEDULE_TIME_SHIFT_PATTERN =
+  /(?:^|\s)на\s+(?:(\d+)\s+)?(?:минуту|минуты|минут|час|часа|часов|день|дня|дней)\s+(?:раньше|позже|позднее|назад|вперед)(?=\s|$)/giu
 const AGENDA_PATTERN =
   /(?:^|\s)(что\s+у\s+меня|какие\s+задачи|что\s+запланировано|покажи\s+(?:план|задачи|расписание)|план\s+на)(?=\s|$)/iu
 const TASK_PREFIX_PATTERN =
@@ -461,13 +512,18 @@ class RescheduleParser {
       return null
     }
 
+    const timeShift = parseRescheduleTimeShift(commandText)
     const targetQuery = TaskTitleExtractor.extract(commandText, {
       dateTime,
-      extraPatterns: [RESCHEDULE_PATTERN, /(?:^|\s)на(?=\s|$)/giu],
+      extraPatterns: [
+        RESCHEDULE_PATTERN,
+        RESCHEDULE_TIME_SHIFT_PATTERN,
+        /(?:^|\s)на(?=\s|$)/giu,
+      ],
       removeBuyWords: false,
     })
 
-    if (!targetQuery || !dateTime.date) {
+    if (!targetQuery || (!dateTime.date && !timeShift)) {
       return createIntent({
         clarificationQuestion: 'Что и на какую дату перенести?',
         confidence: 0.54,
@@ -478,11 +534,11 @@ class RescheduleParser {
     }
 
     return createIntent({
-      confidence: dateTime.ambiguousTime ? 0.72 : 0.85,
+      confidence: dateTime.ambiguousTime ? 0.72 : timeShift ? 0.83 : 0.85,
       date: dateTime.date,
       datePrecision: dateTime.ambiguousTime
         ? 'unknown'
-        : (dateTime.datePrecision ?? 'date_only'),
+        : (dateTime.datePrecision ?? (timeShift ? 'relative' : 'date_only')),
       dateText: dateTime.dateText,
       intent: 'reschedule_task',
       isDangerous: true,
@@ -491,6 +547,8 @@ class RescheduleParser {
       requiresUnlock: context.isDeviceLocked ? true : undefined,
       targetQuery,
       time: dateTime.time,
+      timeShiftMinutes: timeShift?.timeShiftMinutes,
+      timeShiftText: timeShift?.timeShiftText,
       ...(dateTime.ambiguousTime
         ? { clarificationQuestion: 'В 8 утра или вечера?' }
         : {}),
@@ -1151,6 +1209,42 @@ function parseRelativeReminder(
   }
 }
 
+function parseRescheduleTimeShift(
+  text: string,
+): RescheduleTimeShiftParseResult | undefined {
+  const match =
+    /(?:^|\s)на\s+(?:(\d+)\s+)?(минуту|минуты|минут|час|часа|часов|день|дня|дней)\s+(раньше|позже|позднее|назад|вперед)(?=\s|$)/iu.exec(
+      text,
+    )
+
+  if (!match?.[2] || !match[3]) {
+    return undefined
+  }
+
+  const unit = match[2]
+  const amountText = match[1]
+  const amount = amountText ? Number(amountText) : 1
+
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return undefined
+  }
+
+  const multiplier =
+    unit.startsWith('минут') || unit === 'минуту'
+      ? 1
+      : unit.startsWith('час')
+        ? 60
+        : 24 * 60
+  const direction = match[3]
+  const signedMultiplier =
+    direction === 'раньше' || direction === 'назад' ? -1 : 1
+
+  return {
+    timeShiftMinutes: amount * multiplier * signedMultiplier,
+    timeShiftText: match[0].trim(),
+  }
+}
+
 function parseDate(
   text: string,
   context: RuntimeParserContext,
@@ -1375,6 +1469,8 @@ function createIntent(input: {
   sphereId?: string | undefined
   targetQuery?: string | undefined
   time?: string | undefined
+  timeShiftMinutes?: number | undefined
+  timeShiftText?: string | undefined
   title?: string | undefined
   transcript?: string | undefined
 }): PlannerIntent {

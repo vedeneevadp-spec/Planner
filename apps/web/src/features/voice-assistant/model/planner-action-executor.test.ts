@@ -534,6 +534,131 @@ describe('PlannerActionExecutor', () => {
     })
   })
 
+  it('executes relative reschedule shifts against the selected task schedule', async () => {
+    const executor = new PlannerActionExecutor()
+    const task = createTaskRecord({
+      id: 'task-1',
+      plannedDate: '2026-05-29',
+      plannedEndTime: '11:00',
+      plannedStartTime: '10:00',
+      title: 'Помыть окна',
+      version: 1,
+    })
+    const deps = createDependencies({ tasks: [task] })
+    const preview = await executor.prepareAction(
+      createIntent({
+        datePrecision: 'relative',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+        timeShiftMinutes: -60,
+        timeShiftText: 'на час раньше',
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
+
+    expect(preview).toMatchObject({
+      canExecute: true,
+      status: 'ready_for_confirmation',
+      summary: 'Сдвинуть «Помыть окна» на час раньше: 2026-05-29 в 09:00.',
+    })
+    expect(result).toMatchObject({
+      changedData: true,
+      status: 'success',
+      undo: {
+        previousSchedule: {
+          plannedDate: '2026-05-29',
+          plannedEndTime: '11:00',
+          plannedStartTime: '10:00',
+        },
+        type: 'reschedule_task',
+      },
+      updatedTaskId: 'task-1',
+    })
+    expect(deps.taskClient?.setTaskSchedule).toHaveBeenCalledWith('task-1', {
+      expectedVersion: 1,
+      schedule: {
+        plannedDate: '2026-05-29',
+        plannedEndTime: '10:00',
+        plannedStartTime: '09:00',
+      },
+    })
+  })
+
+  it('moves relative reschedule shifts across date boundaries', async () => {
+    const executor = new PlannerActionExecutor()
+    const task = createTaskRecord({
+      id: 'task-1',
+      plannedDate: '2026-05-29',
+      plannedStartTime: '00:30',
+      title: 'Помыть окна',
+      version: 1,
+    })
+    const deps = createDependencies({ tasks: [task] })
+    const preview = await executor.prepareAction(
+      createIntent({
+        datePrecision: 'relative',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+        timeShiftMinutes: -60,
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    await executor.executeAction(preview.id, { confirmed: true }, CONTEXT, deps)
+
+    expect(deps.taskClient?.setTaskSchedule).toHaveBeenCalledWith('task-1', {
+      expectedVersion: 1,
+      schedule: {
+        plannedDate: '2026-05-28',
+        plannedEndTime: null,
+        plannedStartTime: '23:30',
+      },
+    })
+  })
+
+  it('requires clarification for relative reschedule when the task has no time', async () => {
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({
+      tasks: [
+        createTaskRecord({
+          id: 'task-1',
+          plannedDate: '2026-05-29',
+          plannedStartTime: null,
+          title: 'Помыть окна',
+          version: 1,
+        }),
+      ],
+    })
+
+    const preview = await executor.prepareAction(
+      createIntent({
+        datePrecision: 'relative',
+        intent: 'reschedule_task',
+        targetQuery: 'помыть окна',
+        timeShiftMinutes: -60,
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    expect(preview).toMatchObject({
+      canExecute: false,
+      reason: 'reschedule_time_required',
+      status: 'requires_clarification',
+      summary: 'У задачи нет времени. На какое время перенести?',
+    })
+    expect(deps.taskClient?.setTaskSchedule).not.toHaveBeenCalled()
+  })
+
   it('does not execute dangerous intents without explicit confirmation', async () => {
     const executor = new PlannerActionExecutor()
     const deps = createDependencies({
@@ -865,6 +990,14 @@ function createCorpusDependencies(
     tasks: [
       createTaskRecord({
         id: 'task-1',
+        plannedEndTime:
+          testCase.expectedIntent.timeShiftMinutes === undefined
+            ? null
+            : '11:00',
+        plannedStartTime:
+          testCase.expectedIntent.timeShiftMinutes === undefined
+            ? null
+            : '10:00',
         title: capitalize(targetQuery),
         version: 1,
       }),

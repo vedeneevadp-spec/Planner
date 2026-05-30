@@ -150,6 +150,13 @@ Execute:
 - перед update повторно читает текущую задачу;
 - если `version` изменилась → `requires_refresh`;
 - вызывает existing task schedule API с `expectedVersion`;
+- поддерживает абсолютный перенос (`date/time`) и относительный сдвиг
+  `timeShiftMinutes`, например `на час раньше` или `на 15 минут позже`;
+- относительный сдвиг считается от текущих `plannedDate` и `plannedStartTime`
+  выбранной задачи; если у задачи нет времени, action layer возвращает
+  `requires_clarification`/failed result и не пишет schedule;
+- при относительном сдвиге `plannedEndTime` сдвигается вместе со стартом, если
+  остается в той же дате и позже нового старта; иначе end time сбрасывается;
 - recurring series массово не меняет, переносит только выбранную задачу.
 
 ## Permissions

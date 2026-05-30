@@ -1045,8 +1045,44 @@ function formatCandidateSchedule(
 }
 
 function formatTargetSchedule(intent: PlannerIntent): string {
+  if (intent.timeShiftMinutes !== undefined) {
+    return intent.timeShiftText ?? formatTimeShift(intent.timeShiftMinutes)
+  }
+
   const date = intent.dateText ?? intent.date ?? 'дата не указана'
   const time = intent.time ? `, ${intent.time}` : ''
 
   return `${date}${time}`
+}
+
+function formatTimeShift(timeShiftMinutes: number): string {
+  const direction = timeShiftMinutes < 0 ? 'раньше' : 'позже'
+  const minutes = Math.abs(timeShiftMinutes)
+
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60
+
+    return `на ${hours} ${plural(hours, 'час', 'часа', 'часов')} ${direction}`
+  }
+
+  return `на ${minutes} ${plural(minutes, 'минуту', 'минуты', 'минут')} ${direction}`
+}
+
+function plural(value: number, one: string, few: string, many: string): string {
+  const lastTwo = value % 100
+  const last = value % 10
+
+  if (lastTwo >= 11 && lastTwo <= 14) {
+    return many
+  }
+
+  if (last === 1) {
+    return one
+  }
+
+  if (last >= 2 && last <= 4) {
+    return few
+  }
+
+  return many
 }

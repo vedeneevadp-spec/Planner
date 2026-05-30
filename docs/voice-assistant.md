@@ -812,6 +812,8 @@ type PlannerIntent = {
 
   date?: string
   time?: string
+  timeShiftMinutes?: number
+  timeShiftText?: string
   dateText?: string
   datePrecision?: 'exact' | 'date_only' | 'period' | 'relative' | 'unknown'
 
@@ -900,6 +902,28 @@ const shoppingIntent = {
 }
 ```
 
+Команда:
+
+```text
+перенеси задачу помыть окна на час раньше
+```
+
+Должна возвращать:
+
+```ts
+const relativeRescheduleIntent = {
+  intent: 'reschedule_task',
+  targetQuery: 'помыть окна',
+  timeShiftMinutes: -60,
+  timeShiftText: 'на час раньше',
+  datePrecision: 'relative',
+  isDangerous: true,
+  needsConfirmation: true,
+  confidence: 0.83,
+  rawText: 'перенеси задачу помыть окна на час раньше',
+}
+```
+
 ### Confirmation UI
 
 Confirmation UI должен быть единым для Android и web.
@@ -924,7 +948,7 @@ Confirmation UI должен быть единым для Android и web.
 
 - найденная задача
 - старая дата
-- новая дата
+- новая дата/время или относительный сдвиг (`на час раньше`, `на 15 минут позже`)
 - кнопки: `Перенести`, `Отмена`
 
 Для неуверенного распознавания показывать:
@@ -1094,8 +1118,9 @@ Undo и full clarification loop были вынесены из пункта 5 и
 
    Реализовано: v1 contract, schema validation, normalizer, date/time parsing,
    shopping items parsing, task title extraction, reschedule target extraction,
-   agenda intent extraction, soft sphere resolution, dangerous delete handling,
-   backend text-only LLM fallback hook, parser docs и tests.
+   relative reschedule shifts (`timeShiftMinutes`), agenda intent extraction,
+   soft sphere resolution, dangerous delete handling, backend text-only LLM
+   fallback hook, parser docs и tests.
 
    Backend LLM fallback заложен как интерфейсный hook только для текста.
    Production LLM provider для `PlannerIntentParser` пока не подключен. Базовые
@@ -1114,9 +1139,12 @@ Undo и full clarification loop были вынесены из пункта 5 и
    Реализовано: `create_task`, `add_shopping_item`, `get_agenda`,
    `reschedule_task`, `clarify`, `unsupported`; отдельные Event/Reminder не
    создаются; `reschedule_task` ищет candidates, обрабатывает `0 / 1 / 2+`,
-   требует подтверждение и проверяет `version`; `get_agenda` учитывает locked
-   screen и offline cache; `admin`/`user`/`guest` заблокированы, а `test` не
-   получает admin-права. Подробности зафиксированы в
+   поддерживает перенос на новую дату/время и относительный сдвиг
+   `timeShiftMinutes` от текущего времени выбранной задачи, требует
+   подтверждение и проверяет `version`; если у задачи нет даты/времени для
+   относительного сдвига, action layer возвращает уточнение вместо записи.
+   `get_agenda` учитывает locked screen и offline cache; `admin`/`user`/`guest`
+   заблокированы, а `test` не получает admin-права. Подробности зафиксированы в
    [docs/voice/action-layer.md](voice/action-layer.md).
 
    Вне пункта 5:
@@ -1298,7 +1326,7 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Статус: реализовано.
 
     Добавлен shared machine-readable corpus `voice-command-corpus.v1` в
-    `packages/contracts/src/voice-test-corpus`: 192 cases на русском для
+    `packages/contracts/src/voice-test-corpus`: 195 cases на русском для
     wake-word hard negatives, create_task, reminderAt, shopping, agenda,
     reschedule, clarify, unsupported/dangerous, locked-screen, STT/noisy
     transcript, voice cues, web flow, Android runtime и privacy/security.
