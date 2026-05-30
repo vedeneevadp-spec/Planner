@@ -35,7 +35,10 @@ final class HybridSpeechToTextService implements SpeechToTextService {
         executor.execute(() -> {
             try {
                 metricsLogger.recordingStarted();
-                CommandAudio audio = recorder.recordBlocking(request.recordingConfig);
+                CommandAudio audio = recorder.recordBlocking(
+                    request.recordingConfig,
+                    (startedAtElapsedMs) -> recordRuntimeRecorderTiming(request, startedAtElapsedMs)
+                );
                 metricsLogger.recordingStopped(audio);
                 postRecordingStopped(callback, audio);
 
@@ -102,6 +105,32 @@ final class HybridSpeechToTextService implements SpeechToTextService {
             SttError.SERVER_STT_UNAVAILABLE,
             "Backend STT не настроен. Можно ввести команду вручную."
         );
+    }
+
+    private void recordRuntimeRecorderTiming(SttRequest request, long recorderStartedAtElapsedMs) {
+        if (request.captureRequestedAtElapsedMs > 0L) {
+            AndroidVoiceRuntimeStore.recordValue(
+                context,
+                AndroidVoiceRuntimeMetric.COMMAND_RECORDER_START_LATENCY_MS,
+                recorderStartedAtElapsedMs - request.captureRequestedAtElapsedMs
+            );
+        }
+
+        if (request.cueCompletedAtElapsedMs > 0L) {
+            AndroidVoiceRuntimeStore.recordValue(
+                context,
+                AndroidVoiceRuntimeMetric.AUDIO_CUE_TO_RECORDER_DELAY_MS,
+                recorderStartedAtElapsedMs - request.cueCompletedAtElapsedMs
+            );
+        }
+
+        if (request.audioCueDurationMs > 0) {
+            AndroidVoiceRuntimeStore.recordValue(
+                context,
+                AndroidVoiceRuntimeMetric.AUDIO_CUE_DURATION_MS,
+                request.audioCueDurationMs
+            );
+        }
     }
 
     private boolean isNetworkAvailable() {

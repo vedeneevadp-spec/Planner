@@ -12,6 +12,10 @@ import type {
 } from '@planner/contracts'
 
 import {
+  type AndroidVoicePushToTalkFallbackStatus,
+  type AndroidVoiceRuntimeError,
+  type AndroidVoiceRuntimeMetric,
+  type AndroidVoiceRuntimeStatus,
   DEFAULT_VOICE_ASSISTANT_DEVICE_SETTINGS,
   readVoiceAssistantDeviceSettings,
   updateVoiceAssistantDeviceSettings,
@@ -85,14 +89,31 @@ export interface NativeWakeWordTrainingCollectionStatus {
 }
 
 export interface VoiceAssistantNativeStatus {
+  batterySample?: {
+    isCharging: boolean
+    isPowerSaveMode: boolean
+    levelPercent: number
+  }
   backgroundWakeWordEnabled: boolean
   confirmationMode: typeof VOICE_ASSISTANT_CONFIRMATION_MODE
+  cpuSample?: {
+    processCpuPercent: number
+  }
   foregroundServiceStatus: VoiceAssistantForegroundServiceStatus
   isAndroid: boolean
+  memorySample?: {
+    maxMb: number
+    usedMb: number
+  }
   microphonePermission: VoiceAssistantPermissionStatus
   notificationPermission: VoiceAssistantPermissionStatus
   platform: 'android' | 'web'
+  pushToTalkFallbackStatus: AndroidVoicePushToTalkFallbackStatus
   recognitionLanguage: typeof VOICE_ASSISTANT_RECOGNITION_LANGUAGE
+  runtimeDurationMs: number
+  runtimeLastError: AndroidVoiceRuntimeError | null
+  runtimeMetrics: Partial<Record<AndroidVoiceRuntimeMetric, number>>
+  runtimeStatus: AndroidVoiceRuntimeStatus
   voiceCuesEnabled: boolean
   wakePhrase: typeof VOICE_ASSISTANT_WAKE_PHRASE
   wakeWordEnabled: boolean
@@ -423,7 +444,12 @@ function createWebVoiceAssistantNativeStatus(): VoiceAssistantNativeStatus {
     microphonePermission: 'unknown',
     notificationPermission: 'unknown',
     platform: 'web',
+    pushToTalkFallbackStatus: 'available',
     recognitionLanguage: VOICE_ASSISTANT_RECOGNITION_LANGUAGE,
+    runtimeDurationMs: 0,
+    runtimeLastError: null,
+    runtimeMetrics: {},
+    runtimeStatus: 'disabled',
     voiceCuesEnabled: false,
     wakePhrase: VOICE_ASSISTANT_WAKE_PHRASE,
     wakeWordEnabled: false,

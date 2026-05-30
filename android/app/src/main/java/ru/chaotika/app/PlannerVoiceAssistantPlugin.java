@@ -39,6 +39,11 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         storeApiConfig(call);
+        if (degradeIfWakeModelMissing()) {
+            call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
+            return;
+        }
+
         if (
             !PlannerVoiceAssistantStorage.readWakeWordEnabled(getContext()) ||
             !PlannerVoiceAssistantStorage.readBackgroundWakeWordEnabled(getContext())
@@ -48,6 +53,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         if (!canStartConfiguredWakeWordService()) {
+            applyConfiguredStartBlocker();
             call.reject("Wake word background mode is blocked by permissions or model status.");
             return;
         }
@@ -159,6 +165,9 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
         if (!isEnabled) {
             getContext().startService(WakeWordService.createStopIntent(getContext()));
+        } else if (degradeIfWakeModelMissing()) {
+            call.resolve(new JSObject());
+            return;
         } else if (!tryStartConfiguredWakeWordService()) {
             call.reject("Не удалось запустить wake word foreground-сервис.");
             return;
@@ -183,6 +192,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
                 true
             )
         ) {
+            applyConfiguredStartBlocker();
             call.reject("Wake word background mode is blocked by permissions or model status.");
             return;
         }
@@ -361,6 +371,11 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         storeApiConfig(call);
+        if (degradeIfWakeModelMissing()) {
+            call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
+            return;
+        }
+
         if (
             !PlannerVoiceAssistantStorage.readWakeWordEnabled(getContext()) ||
             !PlannerVoiceAssistantStorage.readBackgroundWakeWordEnabled(getContext())
@@ -370,6 +385,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         }
 
         if (!canStartConfiguredWakeWordService()) {
+            applyConfiguredStartBlocker();
             call.reject("Wake word background mode is blocked by permissions or model status.");
             return;
         }
@@ -457,8 +473,18 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
             context.startService(intent);
             return true;
-        } catch (SecurityException | IllegalStateException error) {
+        } catch (SecurityException error) {
             WakeWordDiagnostics.recordError(WakeWordError.foregroundServiceNotAllowed(error));
+            AndroidVoiceRuntimeStore.markServiceStartFailed(context, AndroidVoiceRuntimeError.SECURITY_EXCEPTION);
+            PlannerVoiceAssistantStorage.storeState(context, VoiceAssistantState.ERROR);
+            WakeWordTrainingExampleStore.clearPending();
+            return false;
+        } catch (IllegalStateException error) {
+            WakeWordDiagnostics.recordError(WakeWordError.foregroundServiceNotAllowed(error));
+            AndroidVoiceRuntimeStore.markServiceStartFailed(
+                context,
+                AndroidVoiceRuntimeError.FOREGROUND_SERVICE_NOT_ALLOWED
+            );
             PlannerVoiceAssistantStorage.storeState(context, VoiceAssistantState.ERROR);
             WakeWordTrainingExampleStore.clearPending();
             return false;
@@ -478,6 +504,8 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         enforceRuntimePermissionPolicy();
 
         WakeWordConfig config = WakeWordConfig.haotika();
+        AndroidVoiceRuntimeSnapshot runtimeSnapshot = AndroidVoiceRuntimeStore.snapshot(getContext());
+        AndroidVoiceRuntimeSamples runtimeSamples = AndroidVoiceRuntimeSampler.sample(getContext());
         JSObject response = new JSObject();
 
         response.put("platform", "android");
@@ -493,6 +521,14 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         response.put("microphonePermission", mapPermissionState(getPermissionState(MICROPHONE)));
         response.put("notificationPermission", resolveNotificationPermissionStatus());
         response.put("voiceCuesEnabled", PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext()));
+        response.put("runtimeStatus", resolveRuntimeStatusForResponse(runtimeSnapshot).value);
+        response.put("runtimeLastError", runtimeSnapshot.lastError == null ? JSObject.NULL : runtimeSnapshot.lastError);
+        response.put("runtimeDurationMs", runtimeSnapshot.runtimeDurationMs);
+        response.put("pushToTalkFallbackStatus", resolvePushToTalkFallbackStatus());
+        response.put("runtimeMetrics", createRuntimeMetricsResponse());
+        response.put("batterySample", createBatterySampleResponse(runtimeSamples.battery));
+        response.put("cpuSample", createCpuSampleResponse(runtimeSamples.cpu));
+        response.put("memorySample", createMemorySampleResponse(runtimeSamples.memory));
 
         return response;
     }
@@ -528,16 +564,27 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         Context context = getContext();
 
         if (getPermissionState(MICROPHONE) != PermissionState.GRANTED) {
+            AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.microphonePermissionRevoked();
+            PlannerVoiceAssistantStorage.storeWakeWordEnabled(context, degradation.wakeWordEnabled);
             PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(context, false);
             WakeWordTrainingExampleStore.clearPending();
             stopWakeWordServiceSilently();
             WakeWordDiagnostics.recordError(WakeWordError.microphonePermissionDenied());
+            AndroidVoiceRuntimeStore.markBlocked(context, degradation.error);
+            return;
+        }
+
+        if (degradeIfWakeModelMissing()) {
             return;
         }
 
         if (!"granted".equals(resolveNotificationPermissionStatus())) {
+            AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.notificationPermissionRevoked(
+                PlannerVoiceAssistantStorage.readWakeWordEnabled(context)
+            );
             PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(context, false);
             stopWakeWordServiceSilently();
+            AndroidVoiceRuntimeStore.markBlocked(context, degradation.error);
         }
     }
 
@@ -554,6 +601,101 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         AndroidWakeWordAssetSource assets = new AndroidWakeWordAssetSource(getContext());
 
         return assets.exists(config.modelPath);
+    }
+
+    private boolean degradeIfWakeModelMissing() {
+        if (isWakeWordModelReady()) {
+            return false;
+        }
+
+        Context context = getContext();
+        AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.missingWakeModel();
+
+        PlannerVoiceAssistantStorage.storeWakeWordEnabled(context, degradation.wakeWordEnabled);
+        PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(context, degradation.backgroundWakeWordEnabled);
+        WakeWordTrainingExampleStore.clearPending();
+        stopWakeWordServiceSilently();
+        AndroidVoiceRuntimeStore.markBlocked(context, degradation.error);
+
+        return true;
+    }
+
+    private void applyConfiguredStartBlocker() {
+        Context context = getContext();
+
+        if (getPermissionState(MICROPHONE) != PermissionState.GRANTED) {
+            AndroidVoiceRuntimeStore.markBlocked(context, AndroidVoiceRuntimeError.MISSING_MICROPHONE_PERMISSION);
+            return;
+        }
+
+        if (!"granted".equals(resolveNotificationPermissionStatus())) {
+            PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(context, false);
+            AndroidVoiceRuntimeStore.markBlocked(context, AndroidVoiceRuntimeError.MISSING_NOTIFICATION_PERMISSION);
+            return;
+        }
+
+        if (!isWakeWordModelReady()) {
+            degradeIfWakeModelMissing();
+        }
+    }
+
+    private String resolvePushToTalkFallbackStatus() {
+        if (getPermissionState(MICROPHONE) != PermissionState.GRANTED) {
+            return "blocked_missing_microphone_permission";
+        }
+
+        return "available";
+    }
+
+    private AndroidVoiceRuntimeStatus resolveRuntimeStatusForResponse(AndroidVoiceRuntimeSnapshot snapshot) {
+        if (
+            snapshot.status == AndroidVoiceRuntimeStatus.STOPPED &&
+            !PlannerVoiceAssistantStorage.readWakeWordEnabled(getContext()) &&
+            !PlannerVoiceAssistantStorage.readBackgroundWakeWordEnabled(getContext())
+        ) {
+            return AndroidVoiceRuntimeStatus.DISABLED;
+        }
+
+        return snapshot.status;
+    }
+
+    private JSObject createRuntimeMetricsResponse() {
+        JSObject response = new JSObject();
+
+        for (AndroidVoiceRuntimeMetric metric : AndroidVoiceRuntimeMetric.values()) {
+            if (AndroidVoiceRuntimeStore.hasMetric(getContext(), metric)) {
+                response.put(metric.value, AndroidVoiceRuntimeStore.readMetricValue(getContext(), metric));
+            }
+        }
+
+        return response;
+    }
+
+    private static JSObject createBatterySampleResponse(AndroidVoiceBatterySample sample) {
+        JSObject response = new JSObject();
+
+        response.put("levelPercent", sample.levelPercent);
+        response.put("isCharging", sample.isCharging);
+        response.put("isPowerSaveMode", sample.isPowerSaveMode);
+
+        return response;
+    }
+
+    private static JSObject createCpuSampleResponse(AndroidVoiceCpuSample sample) {
+        JSObject response = new JSObject();
+
+        response.put("processCpuPercent", sample.processCpuPercent);
+
+        return response;
+    }
+
+    private static JSObject createMemorySampleResponse(AndroidVoiceMemorySample sample) {
+        JSObject response = new JSObject();
+
+        response.put("usedMb", sample.usedMb);
+        response.put("maxMb", sample.maxMb);
+
+        return response;
     }
 
     private String resolveNotificationPermissionStatus() {

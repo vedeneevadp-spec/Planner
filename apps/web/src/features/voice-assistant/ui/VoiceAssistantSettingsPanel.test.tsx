@@ -288,6 +288,44 @@ describe('VoiceAssistantSettingsPanel', () => {
       }),
     ).not.toBeInTheDocument()
   })
+
+  it('shows Android runtime diagnostics for owner and test roles', async () => {
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.getVoiceAssistantNativeStatus.mockResolvedValue(
+      createStatus({
+        batterySample: {
+          isCharging: false,
+          isPowerSaveMode: true,
+          levelPercent: 61,
+        },
+        cpuSample: {
+          processCpuPercent: 2.4,
+        },
+        memorySample: {
+          maxMb: 512,
+          usedMb: 84,
+        },
+        pushToTalkFallbackStatus: 'available',
+        runtimeDurationMs: 5_431_000,
+        runtimeLastError: 'missing_wake_model',
+        runtimeStatus: 'blocked',
+      }),
+    )
+
+    renderSettings({ appRole: 'test' })
+
+    expect(await screen.findByText('Android voice runtime')).toBeVisible()
+    expect(screen.getByText('Status')).toBeVisible()
+    expect(screen.getByText('blocked')).toBeVisible()
+    expect(screen.getByText('Last error')).toBeVisible()
+    expect(screen.getByText('missing_wake_model')).toBeVisible()
+    expect(screen.getByText('01:30:31')).toBeVisible()
+    expect(screen.getByText('61%, battery saver')).toBeVisible()
+    expect(screen.getByText('2.4% process')).toBeVisible()
+    expect(screen.getByText('84 / 512 MB')).toBeVisible()
+    expect(screen.getByText('Push-to-talk fallback')).toBeVisible()
+    expect(screen.getByText('available')).toBeVisible()
+  })
 })
 
 function renderSettings({
@@ -335,7 +373,12 @@ function getBaseStatus(): VoiceAssistantNativeStatus {
     microphonePermission: 'granted',
     notificationPermission: 'granted',
     platform: 'android',
+    pushToTalkFallbackStatus: 'available',
     recognitionLanguage: 'ru-RU',
+    runtimeDurationMs: 0,
+    runtimeLastError: null,
+    runtimeMetrics: {},
+    runtimeStatus: 'stopped',
     voiceCuesEnabled: true,
     wakePhrase: 'Хаотика',
     wakeWordEnabled: true,

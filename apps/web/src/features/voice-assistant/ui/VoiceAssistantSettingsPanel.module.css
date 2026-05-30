@@ -107,13 +107,18 @@
 
 .readonlyGrid,
 .group,
-.permissionList {
+.permissionList,
+.runtimeGrid {
   display: grid;
   gap: 0.52rem;
 }
 
 .readonlyGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.runtimeGrid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .readonlyRow {
@@ -259,6 +264,10 @@
 
 @media (max-width: 520px) {
   .readonlyGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .runtimeGrid {
     grid-template-columns: 1fr;
   }
 

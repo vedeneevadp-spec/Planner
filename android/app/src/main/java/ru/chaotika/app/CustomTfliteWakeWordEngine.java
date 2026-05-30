@@ -123,6 +123,8 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
             interpreter = null;
         }
 
+        clearRingBuffer();
+
         if (threadToJoin != null && threadToJoin != Thread.currentThread()) {
             try {
                 threadToJoin.join(700L);
@@ -130,6 +132,14 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
                 Thread.currentThread().interrupt();
             }
         }
+    }
+
+    int bufferedSampleCountForTesting() {
+        return ringSamplesAvailable;
+    }
+
+    int ringBufferCapacityForTesting() {
+        return ringBuffer == null ? 0 : ringBuffer.length;
     }
 
     private Interpreter createInterpreter(byte[] modelBytes) {
@@ -496,6 +506,7 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
             isRunning = false;
         }
 
+        clearRingBuffer();
         WakeWordDiagnostics.recordError(error);
         metricsLogger.error(error);
 
@@ -505,5 +516,14 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         }
 
         stop();
+    }
+
+    private void clearRingBuffer() {
+        if (ringBuffer != null) {
+            Arrays.fill(ringBuffer, 0f);
+        }
+
+        ringWriteIndex = 0;
+        ringSamplesAvailable = 0;
     }
 }

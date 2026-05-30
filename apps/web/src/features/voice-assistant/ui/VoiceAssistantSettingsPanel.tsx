@@ -58,6 +58,8 @@ export function VoiceAssistantSettingsPanel() {
     wakeWordTrainingModeEnabled: false,
   }
   const canUpdateWakeWordTrainingMode = session?.appRole === 'owner'
+  const canShowRuntimeDiagnostics =
+    isAndroid && (session?.appRole === 'owner' || session?.appRole === 'test')
   const wakeWordModelMissing = status?.wakeWordModelStatus === 'missing'
   const androidControlsDisabled =
     !voiceAssistantEnabled || isNativeActionPending || isMasterPending
@@ -388,6 +390,53 @@ export function VoiceAssistantSettingsPanel() {
               </button>
             </div>
           </section>
+
+          {canShowRuntimeDiagnostics ? (
+            <section
+              className={styles.group}
+              aria-label="Android voice runtime"
+            >
+              <h3>Android voice runtime</h3>
+              <div className={styles.runtimeGrid}>
+                <ReadonlyRow
+                  label="Status"
+                  value={status?.runtimeStatus ?? 'stopped'}
+                />
+                <ReadonlyRow
+                  label="Wake model"
+                  value={status?.wakeWordModelStatus ?? 'missing'}
+                />
+                <ReadonlyRow
+                  label="Foreground service"
+                  value={status?.foregroundServiceStatus ?? 'stopped'}
+                />
+                <ReadonlyRow
+                  label="Last error"
+                  value={status?.runtimeLastError ?? 'none'}
+                />
+                <ReadonlyRow
+                  label="Runtime"
+                  value={formatRuntimeDuration(status?.runtimeDurationMs)}
+                />
+                <ReadonlyRow
+                  label="Battery sample"
+                  value={formatBatterySample(status)}
+                />
+                <ReadonlyRow
+                  label="CPU sample"
+                  value={formatCpuSample(status)}
+                />
+                <ReadonlyRow
+                  label="Memory sample"
+                  value={formatMemorySample(status)}
+                />
+                <ReadonlyRow
+                  label="Push-to-talk fallback"
+                  value={status?.pushToTalkFallbackStatus ?? 'available'}
+                />
+              </div>
+            </section>
+          ) : null}
         </>
       ) : null}
 
@@ -547,4 +596,52 @@ function formatForegroundServiceStatus(
 
 function formatSensitivity(value: number | undefined): string {
   return (value ?? MAX_WAKE_WORD_SENSITIVITY).toFixed(2)
+}
+
+function formatRuntimeDuration(durationMs: number | undefined): string {
+  const totalSeconds = Math.max(0, Math.floor((durationMs ?? 0) / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  return [hours, minutes, seconds]
+    .map((part) => part.toString().padStart(2, '0'))
+    .join(':')
+}
+
+function formatBatterySample(
+  status: VoiceAssistantNativeStatus | null,
+): string {
+  const sample = status?.batterySample
+
+  if (!sample || sample.levelPercent < 0) {
+    return 'unknown'
+  }
+
+  const flags = [
+    sample.isCharging ? 'charging' : null,
+    sample.isPowerSaveMode ? 'battery saver' : null,
+  ].filter(Boolean)
+
+  return `${sample.levelPercent}%${flags.length > 0 ? `, ${flags.join(', ')}` : ''}`
+}
+
+function formatCpuSample(status: VoiceAssistantNativeStatus | null): string {
+  const value = status?.cpuSample?.processCpuPercent
+
+  if (value === undefined || !Number.isFinite(value)) {
+    return 'unknown'
+  }
+
+  return `${value.toFixed(1)}% process`
+}
+
+function formatMemorySample(status: VoiceAssistantNativeStatus | null): string {
+  const sample = status?.memorySample
+
+  if (!sample) {
+    return 'unknown'
+  }
+
+  return `${sample.usedMb} / ${sample.maxMb} MB`
 }

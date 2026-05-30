@@ -86,6 +86,25 @@ public class VoiceAudioUploadGuardTest {
         );
     }
 
+    @Test
+    public void blocksCueOnlyAudioWhenLocalValidationDoesNotFindACommand() {
+        VoiceAudioUploadGuard.Decision decision = VoiceAudioUploadGuard.decide(
+            new VoiceAudioUploadGuard.Input(
+                VoiceAudioUploadGuard.Source.ANDROID_WAKE_WORD,
+                true,
+                false,
+                false,
+                700,
+                false,
+                false,
+                false
+            )
+        );
+
+        assertFalse(decision.allowed);
+        assertEquals(VoiceAudioUploadGuard.Reason.LOCAL_VALIDATION_FAILED, decision.reason);
+    }
+
     private static VoiceAudioUploadGuard.Input input(
         VoiceAudioUploadGuard.Source source,
         boolean wakeWordDetected,

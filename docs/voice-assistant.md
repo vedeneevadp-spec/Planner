@@ -1215,12 +1215,14 @@ Undo и full clarification loop были вынесены из пункта 5 и
 - Android parity через общий WebView UI.
 
 8. Добавить настройки помощника.
-   В профиле или настройках приложения добавить включение/выключение Android
-   wake word, чувствительность wake word, разрешение фонового режима, режим
-   подтверждений и ссылку на системные разрешения микрофона/notification.
-   Добавить `voiceCuesEnabled`. Настройку языка распознавания не добавлять:
-   русский используется по умолчанию. Настройку выбора wake-фразы не добавлять:
-   фраза активации одна и фиксированная - `Хаотика`.
+   Статус: реализовано в настройках голосового помощника. Есть master toggle,
+   Android wake word toggle, background wake word toggle, чувствительность,
+   `voiceCuesEnabled`, режим дообучения wake word, permission rows для
+   microphone/notifications и ссылки в системные настройки приложения/батареи.
+
+   Настройка языка распознавания не добавляется: русский используется по
+   умолчанию. Настройка выбора wake-фразы не добавляется: фраза активации одна и
+   фиксированная - `Хаотика`.
 
 9. Защитить приватность и безопасность.
    Технически закрепить privacy/security-инварианты voice flow без добавления
@@ -1236,11 +1238,21 @@ Undo и full clarification loop были вынесены из пункта 5 и
    [docs/voice/privacy-security.md](voice/privacy-security.md).
 
 10. Оптимизировать Android runtime.
-    Измерить расход батареи и CPU в фоне, устойчивость foreground service после
-    перезапуска приложения, поведение после reboot, Doze mode и vendor battery
-    restrictions. Добавить graceful degradation: если wake word недоступен,
-    оставить ручную кнопку микрофона. Проверить, что `Слушаю` не задерживает
-    запись команды и не обрезает начало пользовательской фразы.
+    Статус: реализован Android runtime status/error/metrics layer,
+    owner/test debug UI, graceful degradation, `START_NOT_STICKY` behavior,
+    no automatic microphone listening after reboot, bounded wake ring buffer
+    cleanup и timing checks для cue `Слушаю`.
+
+    Runtime metrics остаются safe: без audio, transcript, task titles, shopping
+    item names, agenda content и candidate titles. Missing wake model блокирует
+    wake word, но оставляет push-to-talk fallback доступным при наличии
+    microphone permission. `Слушаю` проигрывается до старта recorder и не
+    загружается как command audio; cue-only audio блокируется local validation.
+
+    Battery/CPU/memory samples доступны в debug/status UI. Doze, screen-off,
+    reboot и vendor battery restrictions зафиксированы как manual Android device
+    matrix перед rollout. Подробности:
+    [docs/voice/android-runtime.md](voice/android-runtime.md).
 
 11. Улучшить web-режим.
     Обработать браузеры без Web Speech API, добавить понятные статусы

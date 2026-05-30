@@ -3,6 +3,7 @@ package ru.chaotika.app;
 import android.content.Context;
 import android.media.MediaPlayer;
 import android.os.Handler;
+import android.os.SystemClock;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class VoiceCuePlayer {
@@ -26,9 +27,13 @@ final class VoiceCuePlayer {
         new VoiceCuePlayer(context, handler).playDoneCue();
     }
 
-    void playListeningCueBefore(Runnable afterCue) {
+    void playListeningCueBefore(VoiceCueCallback afterCue) {
         if (!isEnabled) {
-            handler.post(afterCue);
+            handler.post(() ->
+                afterCue.onComplete(
+                    new VoiceCuePlayback(false, false, 0, SystemClock.elapsedRealtime(), SystemClock.elapsedRealtime())
+                )
+            );
             return;
         }
 
@@ -55,7 +60,7 @@ final class VoiceCuePlayer {
         releaseActivePlayer();
     }
 
-    private void playRawResource(int rawResourceId, Runnable afterCue) {
+    private void playRawResource(int rawResourceId, VoiceCueCallback afterCue) {
         releaseActivePlayer();
 
         MediaPlayer player = MediaPlayer.create(context, rawResourceId);
@@ -68,6 +73,9 @@ final class VoiceCuePlayer {
         activePlayer = player;
         int generation = playbackGeneration;
         AtomicBoolean isFinished = new AtomicBoolean(false);
+        AtomicBoolean failed = new AtomicBoolean(false);
+        long startedAtElapsedMs = SystemClock.elapsedRealtime();
+        int mediaDurationMs = safeDurationMs(player);
         Runnable finishPlayback = () -> {
             if (generation != playbackGeneration || !isFinished.compareAndSet(false, true)) {
                 return;
@@ -85,12 +93,35 @@ final class VoiceCuePlayer {
             releasePlayer(player);
 
             if (afterCue != null) {
-                afterCue.run();
+                long completedAtElapsedMs = SystemClock.elapsedRealtime();
+                int durationMs = mediaDurationMs > 0
+                    ? mediaDurationMs
+                    : Math.round(completedAtElapsedMs - startedAtElapsedMs);
+                VoiceCuePlayback playback = new VoiceCuePlayback(
+                    true,
+                    failed.get(),
+                    durationMs,
+                    startedAtElapsedMs,
+                    completedAtElapsedMs
+                );
+
+                AndroidVoiceRuntimeStore.recordValue(
+                    context,
+                    AndroidVoiceRuntimeMetric.AUDIO_CUE_DURATION_MS,
+                    playback.durationMs
+                );
+                if (playback.failed) {
+                    AndroidVoiceRuntimeStore.markError(context, AndroidVoiceRuntimeError.AUDIO_CUE_ERROR);
+                    AndroidVoiceRuntimeStore.recordEvent(context, AndroidVoiceRuntimeMetric.GRACEFUL_DEGRADATION_USED);
+                }
+
+                afterCue.onComplete(playback);
             }
         };
 
         player.setOnCompletionListener((ignored) -> finishPlayback.run());
         player.setOnErrorListener((ignoredPlayer, ignoredWhat, ignoredExtra) -> {
+            failed.set(true);
             finishPlayback.run();
             return true;
         });
@@ -101,23 +132,42 @@ final class VoiceCuePlayer {
         try {
             player.start();
         } catch (IllegalStateException ignored) {
+            failed.set(true);
             finishPlayback.run();
         }
     }
 
-    private void finishAfterFallbackDelay(Runnable afterCue) {
+    private void finishAfterFallbackDelay(VoiceCueCallback afterCue) {
         if (afterCue == null) {
             return;
         }
 
         int generation = playbackGeneration;
+        long startedAtElapsedMs = SystemClock.elapsedRealtime();
+        AndroidVoiceRuntimeStore.markError(context, AndroidVoiceRuntimeError.AUDIO_CUE_ERROR);
+        AndroidVoiceRuntimeStore.recordEvent(context, AndroidVoiceRuntimeMetric.GRACEFUL_DEGRADATION_USED);
         activeTimeoutRunnable = () -> {
             if (generation != playbackGeneration) {
                 return;
             }
 
             activeTimeoutRunnable = null;
-            afterCue.run();
+            long completedAtElapsedMs = SystemClock.elapsedRealtime();
+            VoiceCuePlayback playback = new VoiceCuePlayback(
+                false,
+                true,
+                Math.round(completedAtElapsedMs - startedAtElapsedMs),
+                startedAtElapsedMs,
+                completedAtElapsedMs
+            );
+
+            AndroidVoiceRuntimeStore.recordValue(
+                context,
+                AndroidVoiceRuntimeMetric.AUDIO_CUE_DURATION_MS,
+                playback.durationMs
+            );
+
+            afterCue.onComplete(playback);
         };
         handler.postDelayed(activeTimeoutRunnable, FALLBACK_CUE_DELAY_MS);
     }
@@ -134,6 +184,14 @@ final class VoiceCuePlayer {
         }
 
         return FALLBACK_CUE_DELAY_MS;
+    }
+
+    private int safeDurationMs(MediaPlayer player) {
+        try {
+            return Math.max(0, player.getDuration());
+        } catch (IllegalStateException ignored) {
+            return 0;
+        }
     }
 
     private void releaseActivePlayer() {

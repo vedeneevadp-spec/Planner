@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.widget.Toast;
@@ -29,6 +30,7 @@ public class WakeWordService extends Service {
 
     private static final String NOTIFICATION_CHANNEL_ID = "planner-voice-assistant";
     private static final int NOTIFICATION_ID = 1208;
+    private static final long POST_CUE_RECORDER_GUARD_DELAY_MS = 120L;
     private static final long RESUME_WAKE_WORD_DELAY_MS = 1200L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -38,6 +40,8 @@ public class WakeWordService extends Service {
     private VoiceCuePlayer voiceCuePlayer;
     private VoiceAssistantState state = VoiceAssistantState.IDLE;
     private boolean isForeground;
+    private boolean serviceStartLogged;
+    private boolean stopRequested;
 
     static Intent createStartIntent(Context context) {
         return new Intent(context, WakeWordService.class).setAction(ACTION_START);
@@ -72,6 +76,10 @@ public class WakeWordService extends Service {
         voiceCuePlayer = new VoiceCuePlayer(this, handler);
         voiceCuePlayer.setEnabled(PlannerVoiceAssistantStorage.readVoiceCuesEnabled(this));
         setState(VoiceAssistantState.IDLE);
+        AndroidVoiceRuntimeSnapshot previousRuntime = AndroidVoiceRuntimeStore.snapshot(this);
+        if (AndroidVoiceRuntimeStore.isActiveStatus(previousRuntime.status)) {
+            AndroidVoiceRuntimeStore.markServiceKilledOrRestarted(this);
+        }
     }
 
     @Override
@@ -79,9 +87,16 @@ public class WakeWordService extends Service {
         String action = intent != null ? intent.getAction() : ACTION_START;
 
         if (ACTION_STOP.equals(action)) {
-            stopAssistant();
+            boolean preserveBlockedStatus =
+                AndroidVoiceRuntimeStore.snapshot(this).status == AndroidVoiceRuntimeStatus.BLOCKED;
+            if (!preserveBlockedStatus) {
+                AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.STOPPING);
+            }
+            stopAssistant(preserveBlockedStatus);
             return START_NOT_STICKY;
         }
+
+        markServiceStartedIfNeeded();
 
         if (!ensureRuntimePermissions(action)) {
             return START_NOT_STICKY;
@@ -98,37 +113,46 @@ public class WakeWordService extends Service {
             if (wakeWordEngine instanceof MockWakeWordEngine mockWakeWordEngine) {
                 mockWakeWordEngine.simulateWakeWord();
             }
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
 
         if (ACTION_CAPTURE_COMMAND.equals(action)) {
             handleManualCommandCapture();
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
 
         if (ACTION_CONTINUE_AFTER_WAKE_REVIEW.equals(action)) {
             handleWakeReviewContinue();
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
 
         if (ACTION_CANCEL_WAKE_REVIEW.equals(action)) {
             handleWakeReviewCancel();
-            return START_STICKY;
+            return START_NOT_STICKY;
         }
 
         startWakeWordDetection();
 
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
         handler.removeCallbacksAndMessages(null);
-        voiceCuePlayer.release();
-        wakeWordEngine.stop();
-        speechToTextService.stop();
+        clearRuntimeBuffers();
+        if (!stopRequested && AndroidVoiceRuntimeStore.isActiveStatus(AndroidVoiceRuntimeStore.snapshot(this).status)) {
+            AndroidVoiceRuntimeStore.markServiceKilledOrRestarted(this);
+        }
         setState(VoiceAssistantState.IDLE);
         super.onDestroy();
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        AndroidVoiceRuntimeStore.markServiceKilledOrRestarted(this);
+        clearRuntimeBuffers();
+        stopSelf();
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -140,9 +164,18 @@ public class WakeWordService extends Service {
         return WakeWordEngineFactory.create(this, metricsLogger);
     }
 
+    private void markServiceStartedIfNeeded() {
+        if (serviceStartLogged) {
+            return;
+        }
+
+        serviceStartLogged = true;
+        AndroidVoiceRuntimeStore.markServiceStarting(this);
+    }
+
     private void startWakeWordDetection() {
         if (!VoiceAssistantStateMachine.canStartWakeWordDetection(state)) {
-            wakeWordEngine.stop();
+            stopWakeWordEngine();
             return;
         }
 
@@ -151,6 +184,7 @@ public class WakeWordService extends Service {
         }
 
         setState(VoiceAssistantState.LISTENING_FOR_WAKE_WORD);
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.LISTENING_WAKE_WORD);
         updateNotification(getString(R.string.planner_voice_notification_listening));
         wakeWordEngine.start(
             new WakeWordListener() {
@@ -170,15 +204,25 @@ public class WakeWordService extends Service {
                 }
             }
         );
+
+        if (wakeWordEngine.isRunning()) {
+            AndroidVoiceRuntimeStore.recordEvent(this, AndroidVoiceRuntimeMetric.WAKE_ENGINE_STARTED);
+        }
     }
 
     private void handleWakeWordDetected(WakeWordDetection detection) {
         if (!VoiceAssistantStateMachine.canStartWakeWordDetection(state)) {
-            wakeWordEngine.stop();
+            stopWakeWordEngine();
             return;
         }
 
-        wakeWordEngine.stop();
+        AndroidVoiceRuntimeStore.recordValue(
+            this,
+            AndroidVoiceRuntimeMetric.WAKE_DETECTION_LATENCY_MS,
+            System.currentTimeMillis() - detection.detectedAtEpochMillis
+        );
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
+        stopWakeWordEngine();
 
         if (!isWakeWordTrainingModeEnabled()) {
             WakeWordTrainingExampleStore.clearPending();
@@ -187,6 +231,7 @@ public class WakeWordService extends Service {
         }
 
         setState(VoiceAssistantStateMachine.onWakeWordDetected(state));
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
         WakeWordTrainingExampleStore.capturePendingForReview(detection);
         playActivationHaptic();
         updateNotification(getString(R.string.planner_voice_notification_reviewing));
@@ -198,7 +243,8 @@ public class WakeWordService extends Service {
             return;
         }
 
-        wakeWordEngine.stop();
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
+        stopWakeWordEngine();
         beginCommandCapture(SttRequest.pushToTalk());
     }
 
@@ -207,33 +253,49 @@ public class WakeWordService extends Service {
             return;
         }
 
-        wakeWordEngine.stop();
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
+        stopWakeWordEngine();
         beginCommandCapture(SttRequest.afterWakeWord());
     }
 
     private void handleWakeReviewCancel() {
         WakeWordTrainingExampleStore.clearPending();
         setState(VoiceAssistantState.IDLE);
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.RUNNING_FOREGROUND);
         updateNotification(getString(R.string.planner_voice_notification_listening));
         handler.postDelayed(this::startWakeWordDetection, RESUME_WAKE_WORD_DELAY_MS);
     }
 
     private void beginCommandCapture(SttRequest request) {
+        long captureRequestedAtElapsedMs = SystemClock.elapsedRealtime();
         playActivationHaptic();
         showListeningOverlay();
         setState(VoiceAssistantState.RECORDING_COMMAND);
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PLAYING_LISTENING_CUE);
         updateNotification(getString(R.string.planner_voice_notification_recording));
 
-        voiceCuePlayer.playListeningCueBefore(() -> startCommandTranscription(request));
+        voiceCuePlayer.playListeningCueBefore((playback) -> {
+            SttRequest timedRequest = request.withRuntimeTiming(
+                captureRequestedAtElapsedMs,
+                playback.completedAtElapsedMs,
+                playback.durationMs
+            );
+            handler.postDelayed(
+                () -> startCommandTranscription(timedRequest),
+                playback.played ? POST_CUE_RECORDER_GUARD_DELAY_MS : 0L
+            );
+        });
     }
 
     private void startCommandTranscription(SttRequest request) {
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.RECORDING_COMMAND);
         speechToTextService.transcribe(
             request,
             new SpeechToTextService.Callback() {
                 @Override
                 public void onRecordingStopped(CommandAudio audio) {
                     setState(VoiceAssistantState.TRANSCRIBING);
+                    AndroidVoiceRuntimeStore.markStatus(WakeWordService.this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
                     updateNotification(getString(R.string.planner_voice_notification_transcribing));
                 }
 
@@ -241,6 +303,8 @@ public class WakeWordService extends Service {
                 public void onResult(SttResult result) {
                     PlannerVoiceAssistantStorage.storePendingCommand(WakeWordService.this, result);
                     setState(VoiceAssistantState.WAITING_FOR_CONFIRMATION);
+                    speechToTextService.stop();
+                    AndroidVoiceRuntimeStore.markStatus(WakeWordService.this, AndroidVoiceRuntimeStatus.RUNNING_FOREGROUND);
                     updateNotification(getString(R.string.planner_voice_notification_ready));
                     openPlannerForConfirmation();
                     handler.postDelayed(WakeWordService.this::startWakeWordDetection, RESUME_WAKE_WORD_DELAY_MS);
@@ -250,27 +314,61 @@ public class WakeWordService extends Service {
                 public void onError(SttException error) {
                     PlannerVoiceAssistantStorage.storePendingError(WakeWordService.this, error);
                     openPlannerForConfirmation();
-                    handleAssistantError(WakeWordError.inferenceError(error));
+                    handleCommandCaptureError(error);
                 }
             }
         );
+    }
+
+    private void handleCommandCaptureError(SttException error) {
+        AndroidVoiceRuntimeStore.markError(this, AndroidVoiceRuntimeError.fromSttError(error));
+        if (error.code == SttError.PERMISSION_DENIED) {
+            handlePermissionRevoked(error);
+            return;
+        }
+
+        speechToTextService.stop();
+        setState(VoiceAssistantState.ERROR);
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.RUNNING_FOREGROUND);
+        updateNotification(getString(R.string.planner_voice_notification_error));
+        handler.postDelayed(this::startWakeWordDetection, RESUME_WAKE_WORD_DELAY_MS);
     }
 
     private void handleAssistantError(WakeWordError error) {
         voiceCuePlayer.release();
         WakeWordDiagnostics.recordError(error);
         metricsLogger.error(error);
+        AndroidVoiceRuntimeStore.recordEvent(this, AndroidVoiceRuntimeMetric.WAKE_ENGINE_ERROR);
+        AndroidVoiceRuntimeError runtimeError = AndroidVoiceRuntimeError.fromWakeWordError(error);
+        AndroidVoiceRuntimeStore.markError(this, runtimeError);
         setState(VoiceAssistantState.ERROR);
         updateNotification(getString(R.string.planner_voice_notification_error));
-        handler.postDelayed(this::startWakeWordDetection, RESUME_WAKE_WORD_DELAY_MS);
+
+        if (error.code == WakeWordError.Code.MISSING_MODEL) {
+            PlannerVoiceAssistantStorage.storeWakeWordEnabled(this, false);
+            PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, false);
+            AndroidVoiceRuntimeStore.markBlocked(this, runtimeError);
+            return;
+        }
+
+        if (error.code == WakeWordError.Code.MICROPHONE_PERMISSION_DENIED) {
+            handlePermissionRevoked(new SttException(SttError.PERMISSION_DENIED, "Нет доступа к микрофону.", error));
+            return;
+        }
+
+        AndroidVoiceRuntimeStore.markBlocked(this, runtimeError);
     }
 
-    private void stopAssistant() {
+    private void stopAssistant(boolean preserveBlockedStatus) {
+        stopRequested = true;
         handler.removeCallbacksAndMessages(null);
-        voiceCuePlayer.release();
-        wakeWordEngine.stop();
-        speechToTextService.stop();
+        clearRuntimeBuffers();
         setState(VoiceAssistantState.IDLE);
+        if (preserveBlockedStatus) {
+            AndroidVoiceRuntimeStore.recordEvent(this, AndroidVoiceRuntimeMetric.WAKE_SERVICE_STOPPED);
+        } else {
+            AndroidVoiceRuntimeStore.markServiceStopped(this);
+        }
         stopForeground(true);
         stopSelf();
     }
@@ -297,9 +395,13 @@ public class WakeWordService extends Service {
             }
 
             isForeground = true;
+            AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.RUNNING_FOREGROUND);
             return true;
+        } catch (SecurityException error) {
+            handleForegroundServiceStartError(error);
+            return false;
         } catch (RuntimeException error) {
-            handleAssistantError(WakeWordError.foregroundServiceNotAllowed(error));
+            handleForegroundServiceStartError(error);
             return false;
         }
     }
@@ -316,12 +418,11 @@ public class WakeWordService extends Service {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, false);
-            handlePermissionRevoked(
-                new SttException(
-                    SttError.PERMISSION_DENIED,
-                    "Для фонового режима нужно разрешение уведомлений."
-                )
-            );
+            AndroidVoiceRuntimeStore.markBlocked(this, AndroidVoiceRuntimeError.MISSING_NOTIFICATION_PERMISSION);
+            clearRuntimeBuffers();
+            setState(VoiceAssistantState.ERROR);
+            stopForeground(true);
+            stopSelf();
             return false;
         }
 
@@ -329,13 +430,53 @@ public class WakeWordService extends Service {
     }
 
     private void handlePermissionRevoked(SttException error) {
+        AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.microphonePermissionRevoked();
+        PlannerVoiceAssistantStorage.storeWakeWordEnabled(this, degradation.wakeWordEnabled);
+        PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, degradation.backgroundWakeWordEnabled);
         WakeWordTrainingExampleStore.clearPending();
-        wakeWordEngine.stop();
-        speechToTextService.stop();
+        clearRuntimeBuffers();
         PlannerVoiceAssistantStorage.storePendingError(this, error);
         setState(VoiceAssistantState.ERROR);
+        AndroidVoiceRuntimeStore.markBlocked(this, degradation.error);
         stopForeground(true);
         stopSelf();
+    }
+
+    private void handleForegroundServiceStartError(RuntimeException error) {
+        WakeWordError wakeWordError = WakeWordError.foregroundServiceNotAllowed(error);
+        WakeWordDiagnostics.recordError(wakeWordError);
+        metricsLogger.error(wakeWordError);
+        AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.serviceStartFailure(error);
+        PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, degradation.backgroundWakeWordEnabled);
+        AndroidVoiceRuntimeStore.markServiceStartFailed(this, degradation.error);
+        WakeWordTrainingExampleStore.clearPending();
+        setState(VoiceAssistantState.ERROR);
+    }
+
+    private void stopWakeWordEngine() {
+        boolean wasRunning = wakeWordEngine != null && wakeWordEngine.isRunning();
+
+        if (wakeWordEngine != null) {
+            wakeWordEngine.stop();
+        }
+
+        if (wasRunning) {
+            AndroidVoiceRuntimeStore.recordEvent(this, AndroidVoiceRuntimeMetric.WAKE_ENGINE_STOPPED);
+        }
+    }
+
+    private void clearRuntimeBuffers() {
+        if (voiceCuePlayer != null) {
+            voiceCuePlayer.release();
+        }
+
+        stopWakeWordEngine();
+
+        if (speechToTextService != null) {
+            speechToTextService.stop();
+        }
+
+        WakeWordTrainingExampleStore.clearPending();
     }
 
     private void updateNotification(String contentText) {

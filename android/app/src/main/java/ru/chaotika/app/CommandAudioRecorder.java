@@ -25,6 +25,11 @@ final class CommandAudioRecorder {
 
     @SuppressLint("MissingPermission")
     CommandAudio recordBlocking(CommandRecordingConfig config) throws SttException {
+        return recordBlocking(config, null);
+    }
+
+    @SuppressLint("MissingPermission")
+    CommandAudio recordBlocking(CommandRecordingConfig config, CommandRecordingObserver observer) throws SttException {
         ensureMicrophonePermission();
         stop();
         isStopped = false;
@@ -71,6 +76,12 @@ final class CommandAudioRecorder {
 
         try {
             recorder.startRecording();
+            recordingStartedAtMs = SystemClock.elapsedRealtime();
+            lastVoiceAtMs = recordingStartedAtMs;
+
+            if (observer != null) {
+                observer.onRecorderStarted(recordingStartedAtMs);
+            }
 
             while (!isStopped) {
                 long nowMs = SystemClock.elapsedRealtime();
