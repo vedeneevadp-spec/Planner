@@ -11,6 +11,7 @@ import {
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
 import {
   cleanupRepositoryContractUsers,
+  createRepositoryContractAuthContext,
   seedRepositoryContractWorkspace,
 } from '../../testing/repository-contract-fixtures.js'
 import { PostgresTaskRepository } from '../tasks/task.repository.postgres.js'
@@ -57,13 +58,21 @@ defineChaosInboxRepositoryContractSuite({
       id: workspace.workspaceId,
       name: workspace.workspaceName,
     }
+    const authContext = createRepositoryContractAuthContext({
+      email: workspace.email,
+      userId: actorUserId,
+    })
+    const otherAuthContext = createRepositoryContractAuthContext({
+      email: otherWorkspace.email,
+      userId: otherActorUserId,
+    })
     const convertedTask = await new PostgresTaskRepository(
       connection.db,
     ).create({
       context: {
         actorDisplayName: workspace.displayName,
         actorUserId,
-        auth: null,
+        auth: authContext,
         groupRole: null,
         personalWorkspace,
         role: 'owner' as const,
@@ -84,7 +93,7 @@ defineChaosInboxRepositoryContractSuite({
       context: {
         actorDisplayName: workspace.displayName,
         actorUserId,
-        auth: null,
+        auth: authContext,
         groupRole: null,
         role: 'owner' as const,
         workspaceId: workspace.workspaceId,
@@ -94,7 +103,7 @@ defineChaosInboxRepositoryContractSuite({
       otherContext: {
         actorDisplayName: otherWorkspace.displayName,
         actorUserId: otherActorUserId,
-        auth: null,
+        auth: otherAuthContext,
         groupRole: null,
         role: 'owner' as const,
         workspaceId: otherWorkspace.workspaceId,
