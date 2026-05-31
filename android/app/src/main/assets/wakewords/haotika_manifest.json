@@ -2,9 +2,9 @@
   "phraseId": "haotika",
   "displayPhrase": "Хаотика",
   "language": "ru-RU",
-  "modelVersion": "haotika-realworld-clean-20260529-165945",
+  "modelVersion": "haotika-cleaned-from-scratch-20260531-142049",
   "modelPath": "wakewords/haotika.tflite",
-  "threshold": 0.99,
+  "threshold": 0.9,
   "sampleRate": 16000,
   "vadEnabled": true,
   "inputShape": [
@@ -12,12 +12,23 @@
     32000,
     1
   ],
-  "source": "local experimental training with real-world feedback",
+  "source": "forced bootstrap from manually validated positive recordings",
+  "qualityGate": {
+    "passed": false,
+    "recommendedForInstall": false,
+    "forcedBootstrapInstall": true,
+    "forcedBootstrapReason": "Old asset was trained on partially invalid positive recordings; this asset intentionally resets the rollout to a cleaned positive dataset for further real-world data collection.",
+    "deploymentThresholdReason": "Using threshold 0.90 instead of the 0.50 compromise threshold to reduce false accepts during bootstrap collection.",
+    "acceptableThresholdCandidates": 0,
+    "maxFalseAcceptRate": 0.01,
+    "maxFalseRejectRate": 0.2,
+    "reason": "no validation threshold satisfied FAR <= 1.00% and FRR <= 20.00%; best compromise FAR=4.38%, FRR=27.27%"
+  },
   "positiveDataset": {
-    "baseAndroidRecordings": 80,
-    "realWorldTrueAccept": 75,
-    "realWorldFalseReject": 85,
-    "rejectedRealWorldTrueAccept": 59,
+    "baseAndroidRecordings": 52,
+    "realWorldTrueAccept": 65,
+    "realWorldFalseReject": 91,
+    "rejectedRealWorldTrueAccept": 2,
     "rejectedRealWorldFalseReject": 0,
     "explicitExclusionListRows": 59
   },
@@ -26,8 +37,8 @@
     "url": "https://storage.googleapis.com/download.tensorflow.org/data/mini_speech_commands.zip",
     "license": "CC-BY-4.0 via Google Speech Commands",
     "openNegativeFiles": 640,
-    "realWorldFalseAccept": 217,
-    "rejectedRealWorldFalseAccept": 8
+    "realWorldFalseAccept": 260,
+    "rejectedRealWorldFalseAccept": 16
   },
   "artifactBytes": 263804
 }

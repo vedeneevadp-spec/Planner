@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import math
 import random
@@ -52,13 +53,16 @@ MIN_PEAK = 0.03
 MIN_RMS = 0.006
 MAX_CLIPPING_RATIO = 0.001
 VOICE_ACTIVITY_THRESHOLD = 500
-TRUE_ACCEPT_MAX_LEADING_SILENCE_SECONDS = 1.0
-TRUE_ACCEPT_MIN_ACTIVE_SPEECH_SECONDS = 0.45
+REAL_WORLD_POSITIVE_MAX_EDGE_SILENCE_SECONDS = 0.2
+REAL_WORLD_POSITIVE_MIN_ACTIVE_SPEECH_SECONDS = 0.45
 TRUE_ACCEPT_LOW_CONFIDENCE_THRESHOLD = 0.65
 THRESHOLD = 0.61
 THRESHOLD_SWEEP_START = 0.50
 THRESHOLD_SWEEP_END = 0.99
 THRESHOLD_SWEEP_STEP = 0.01
+MAX_ACCEPTABLE_FALSE_ACCEPT_RATE = 0.01
+MAX_ACCEPTABLE_FALSE_REJECT_RATE = 0.20
+SESSION_BUCKET_SECONDS = 30 * 60
 POSITIVE_AUGMENTATIONS_PER_FILE = 8
 MAX_NEGATIVE_SAMPLES = 640
 HARD_NEGATIVE_TRAIN_REPEATS = 8
@@ -84,6 +88,14 @@ class Metrics:
     tn: int
     fp: int
     fn: int
+
+
+@dataclass(frozen=True)
+class ThresholdRecommendation:
+    threshold: float
+    passed_quality_gate: bool
+    acceptable_count: int
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -119,12 +131,14 @@ def main() -> None:
         extra_positive_files,
         role="real_world_true_accept",
         excluded_samples=excluded_samples,
+        trust_cleaned_positive=args.trust_cleaned_positive_dirs,
     )
     false_reject_positive_files = collect_wav_files(args.false_reject_positive_dirs)
     false_reject_positive_files, rejected_false_reject_positive_files = filter_training_audio(
         false_reject_positive_files,
         role="real_world_false_reject",
         excluded_samples=excluded_samples,
+        trust_cleaned_positive=args.trust_cleaned_positive_dirs,
     )
     positive_files = unique_paths([*base_positive_files, *extra_positive_files, *false_reject_positive_files])
     open_negative_files = sorted(negative_dir.glob("*/*.wav"))
@@ -147,9 +161,9 @@ def main() -> None:
         raise RuntimeError(f"Need at least 100 open negative WAV files, found {len(open_negative_files)}")
 
     selected_open_negative_files = random.sample(open_negative_files, min(args.max_negative_samples, len(open_negative_files)))
-    positive_split = split_positive_by_speaker(positive_files)
+    positive_split = split_files_by_session(positive_files)
     open_negative_split = split_files(selected_open_negative_files)
-    hard_negative_split = split_files(hard_negative_files)
+    hard_negative_split = split_files_by_session(hard_negative_files)
     weighted_hard_negative_split = Split(
         train=repeat_files(hard_negative_split.train, args.hard_negative_train_repeats),
         validation=hard_negative_split.validation,
@@ -208,7 +222,8 @@ def main() -> None:
     validation_scores = predict_scores(model, validation_x)
     test_scores = predict_scores(model, test_x)
     threshold_sweep = build_threshold_sweep(validation_scores, validation_y)
-    recommended_threshold = recommend_threshold(threshold_sweep)
+    threshold_recommendation = recommend_threshold(threshold_sweep)
+    recommended_threshold = threshold_recommendation.threshold
     validation_metrics = evaluate_scores(validation_scores, validation_y, recommended_threshold)
     test_metrics = evaluate_scores(test_scores, test_y, recommended_threshold)
     manifest_path = output_dir / "haotika_manifest.json"
@@ -226,12 +241,15 @@ def main() -> None:
         rejected_false_reject_positive_count=len(rejected_false_reject_positive_files),
         rejected_hard_negative_count=len(rejected_hard_negative_files),
         excluded_samples_count=len(excluded_samples),
+        threshold_recommendation=threshold_recommendation,
     )
 
-    if args.install_asset:
+    installed_asset_path = None
+    if args.install_asset and threshold_recommendation.passed_quality_gate:
         args.asset_model_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(tflite_path, args.asset_model_path)
         shutil.copyfile(manifest_path, args.asset_manifest_path)
+        installed_asset_path = args.asset_model_path
 
     write_scores(output_dir / "validation_scores.csv", validation_scores, validation_y)
     write_scores(output_dir / "test_scores.csv", test_scores, test_y)
@@ -257,12 +275,19 @@ def main() -> None:
         recommended_threshold=recommended_threshold,
         validation_metrics=validation_metrics,
         test_metrics=test_metrics,
+        threshold_recommendation=threshold_recommendation,
         threshold_sweep=threshold_sweep,
         tflite_path=tflite_path,
-        installed_asset_path=args.asset_model_path if args.install_asset else None,
+        installed_asset_path=installed_asset_path,
         excluded_samples_path=args.excluded_samples_csv,
         excluded_samples_count=len(excluded_samples),
     )
+
+    if args.install_asset and not threshold_recommendation.passed_quality_gate:
+        raise RuntimeError(
+            "Refusing to install Android asset because the validation quality gate failed: "
+            f"{threshold_recommendation.reason}"
+        )
 
     print(f"Trained {args.model_version}")
     print(f"TFLite: {tflite_path}")
@@ -270,6 +295,11 @@ def main() -> None:
     if args.install_asset:
         print(f"Installed Android asset: {args.asset_model_path}")
     print(f"Report: {output_dir / 'report.md'}")
+    print(
+        "Quality gate: "
+        f"{'pass' if threshold_recommendation.passed_quality_gate else 'fail'} "
+        f"({threshold_recommendation.reason})"
+    )
     print(f"Recommended threshold: {recommended_threshold:.2f}")
     print("Validation:", asdict(validation_metrics))
     print("Test:", asdict(test_metrics))
@@ -293,6 +323,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--seed", type=int, default=RANDOM_SEED)
     parser.add_argument("--excluded-samples-csv", type=Path, default=DEFAULT_EXCLUDED_SAMPLES_CSV)
+    parser.add_argument("--trust-cleaned-positive-dirs", action="store_true")
     parser.add_argument("--install-asset", action="store_true")
     return parser.parse_args()
 
@@ -367,6 +398,7 @@ def filter_training_audio(
     *,
     role: str,
     excluded_samples: dict[Path, ExcludedSample],
+    trust_cleaned_positive: bool = False,
 ) -> tuple[list[Path], list[RejectedFile]]:
     accepted: list[Path] = []
     rejected: list[RejectedFile] = []
@@ -374,7 +406,13 @@ def filter_training_audio(
     for file_path in files:
         explicit_exclusion = excluded_samples.get(file_path)
         reasons = list(explicit_exclusion.reasons) if explicit_exclusion else []
-        reasons.extend(audit_training_audio(file_path, role=role))
+        reasons.extend(
+            audit_training_audio(
+                file_path,
+                role=role,
+                trust_cleaned_positive=trust_cleaned_positive,
+            )
+        )
         reasons = unique_reasons(reasons)
 
         if reasons:
@@ -399,7 +437,12 @@ def unique_reasons(reasons: Iterable[str]) -> list[str]:
     return unique
 
 
-def audit_training_audio(file_path: Path, *, role: str) -> list[str]:
+def audit_training_audio(
+    file_path: Path,
+    *,
+    role: str,
+    trust_cleaned_positive: bool = False,
+) -> list[str]:
     reasons: list[str] = []
     pcm = b""
     sample_rate = 0
@@ -447,13 +490,21 @@ def audit_training_audio(file_path: Path, *, role: str) -> list[str]:
         if clipping_ratio > MAX_CLIPPING_RATIO:
             reasons.append(f"clipping={clipping_ratio:.3%}")
 
-        if role == "real_world_true_accept":
+        use_positive_quality_heuristics = (
+            role in {"real_world_true_accept", "real_world_false_reject"}
+            and not trust_cleaned_positive
+        )
+
+        if use_positive_quality_heuristics:
+            reasons.extend(audit_real_world_positive_phrase(samples, sample_rate))
+
+        if role == "real_world_true_accept" and not trust_cleaned_positive:
             reasons.extend(audit_real_world_true_accept(file_path, samples, sample_rate))
 
     return reasons
 
 
-def audit_real_world_true_accept(file_path: Path, samples: np.ndarray, sample_rate: int) -> list[str]:
+def audit_real_world_positive_phrase(samples: np.ndarray, sample_rate: int) -> list[str]:
     reasons: list[str] = []
 
     if sample_rate <= 0 or len(samples) == 0:
@@ -464,14 +515,23 @@ def audit_real_world_true_accept(file_path: Path, samples: np.ndarray, sample_ra
         reasons.append("no active speech found")
     else:
         leading_silence_seconds = float(active_indices[0] / sample_rate)
+        trailing_silence_seconds = float((len(samples) - 1 - active_indices[-1]) / sample_rate)
         active_speech_seconds = float((active_indices[-1] - active_indices[0] + 1) / sample_rate)
 
-        if leading_silence_seconds > TRUE_ACCEPT_MAX_LEADING_SILENCE_SECONDS:
-            reasons.append(f"likely truncated true_accept: leading speech starts at {leading_silence_seconds * 1_000:.0f}ms")
+        if leading_silence_seconds > REAL_WORLD_POSITIVE_MAX_EDGE_SILENCE_SECONDS:
+            reasons.append(f"positive edge silence: leading speech starts at {leading_silence_seconds * 1_000:.0f}ms")
 
-        if active_speech_seconds < TRUE_ACCEPT_MIN_ACTIVE_SPEECH_SECONDS:
-            reasons.append(f"likely partial true_accept: active speech {active_speech_seconds * 1_000:.0f}ms")
+        if trailing_silence_seconds > REAL_WORLD_POSITIVE_MAX_EDGE_SILENCE_SECONDS:
+            reasons.append(f"positive edge silence: trailing silence {trailing_silence_seconds * 1_000:.0f}ms")
 
+        if active_speech_seconds < REAL_WORLD_POSITIVE_MIN_ACTIVE_SPEECH_SECONDS:
+            reasons.append(f"likely partial positive: active speech {active_speech_seconds * 1_000:.0f}ms")
+
+    return reasons
+
+
+def audit_real_world_true_accept(file_path: Path, samples: np.ndarray, sample_rate: int) -> list[str]:
+    reasons: list[str] = []
     metadata = read_wakeword_metadata(file_path.with_suffix(".json"))
     model_version = metadata.get("modelVersion")
     threshold = metadata_float(metadata.get("threshold"))
@@ -505,34 +565,91 @@ def metadata_float(value: object) -> float | None:
         return None
 
 
-def split_positive_by_speaker(files: list[Path]) -> Split:
-    speakers: dict[str, list[Path]] = {}
+def split_files_by_session(files: list[Path]) -> Split:
+    groups: dict[str, list[Path]] = {}
     for file_path in files:
-        speaker_id = speaker_id_from_path(file_path)
-        speakers.setdefault(speaker_id, []).append(file_path)
+        group_id = training_group_id_from_path(file_path)
+        groups.setdefault(group_id, []).append(file_path)
 
-    ordered_speakers = sorted(speakers)
-    if len(ordered_speakers) < 8:
+    if len(groups) < 3:
         return split_files(files)
 
-    train_speakers = ordered_speakers[:-2]
-    validation_speakers = ordered_speakers[-2:-1]
-    test_speakers = ordered_speakers[-1:]
+    split = Split(train=[], validation=[], test=[])
+    for group_id, group_files in sorted(groups.items()):
+        bucket = stable_fraction(group_id)
+        if bucket < 0.7:
+            split.train.extend(group_files)
+        elif bucket < 0.85:
+            split.validation.extend(group_files)
+        else:
+            split.test.extend(group_files)
+
+    if not split.train or not split.validation or not split.test:
+        return split_group_files_by_count(groups)
 
     return Split(
-        train=[file_path for speaker in train_speakers for file_path in speakers[speaker]],
-        validation=[file_path for speaker in validation_speakers for file_path in speakers[speaker]],
-        test=[file_path for speaker in test_speakers for file_path in speakers[speaker]],
+        train=sorted(split.train),
+        validation=sorted(split.validation),
+        test=sorted(split.test),
     )
 
 
-def speaker_id_from_path(file_path: Path) -> str:
+def split_group_files_by_count(groups: dict[str, list[Path]]) -> Split:
+    ordered_groups = sorted(groups)
+    train_groups = ordered_groups[:-2]
+    validation_groups = ordered_groups[-2:-1]
+    test_groups = ordered_groups[-1:]
+
+    return Split(
+        train=sorted(file_path for group in train_groups for file_path in groups[group]),
+        validation=sorted(file_path for group in validation_groups for file_path in groups[group]),
+        test=sorted(file_path for group in test_groups for file_path in groups[group]),
+    )
+
+
+def training_group_id_from_path(file_path: Path) -> str:
     parts = file_path.stem.split("_")
 
     if len(parts) >= 2 and parts[0] == "speaker" and parts[1].isdigit():
-        return "_".join(parts[:2])
+        return f"speaker:{'_'.join(parts[:2])}"
 
-    return "unknown"
+    metadata = read_wakeword_metadata(file_path.with_suffix(".json"))
+    epoch_millis = metadata_int(metadata.get("detectedAtEpochMillis"))
+    if epoch_millis is None:
+        epoch_millis = epoch_millis_from_name(file_path)
+
+    if epoch_millis is not None:
+        device_model = str(metadata.get("deviceModel") or "unknown-device")
+        session_bucket = epoch_millis // (SESSION_BUCKET_SECONDS * 1_000)
+        return f"session:{device_model}:{session_bucket}"
+
+    if file_path.parent.name:
+        return f"directory:{file_path.parent.name}"
+
+    return f"file:{file_path.stem}"
+
+
+def stable_fraction(value: str) -> float:
+    digest = hashlib.sha256(value.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], byteorder="big") / 2**64
+
+
+def epoch_millis_from_name(file_path: Path) -> int | None:
+    first_part = file_path.stem.split("_", 1)[0]
+    if not first_part.isdigit():
+        return None
+
+    return int(first_part)
+
+
+def metadata_int(value: object) -> int | None:
+    if value is None:
+        return None
+
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def split_files(files: list[Path]) -> Split:
@@ -637,8 +754,21 @@ def augment(window: np.ndarray, *, is_positive: bool) -> np.ndarray:
     gain = random.uniform(0.65, 1.15) if is_positive else random.uniform(0.45, 1.1)
     noise_level = random.uniform(0.0, 0.012 if is_positive else 0.018)
     noise = np.random.normal(0.0, noise_level, WINDOW_SAMPLES).astype(np.float32)
-    shifted = np.roll(window, random.randint(-900, 900))
+    shifted = shift_without_wrap(window, random.randint(-900, 900))
     return shifted * gain + noise
+
+
+def shift_without_wrap(window: np.ndarray, shift_samples: int) -> np.ndarray:
+    if shift_samples == 0:
+        return window
+
+    shifted = np.zeros_like(window)
+    if shift_samples > 0:
+        shifted[shift_samples:] = window[:-shift_samples]
+    else:
+        shifted[:shift_samples] = window[-shift_samples:]
+
+    return shifted
 
 
 def create_model() -> tf.keras.Model:
@@ -710,16 +840,26 @@ def build_threshold_sweep(scores: np.ndarray, y: np.ndarray) -> list[Metrics]:
     return [evaluate_scores(scores, y, float(round(threshold, 2))) for threshold in thresholds]
 
 
-def recommend_threshold(metrics: list[Metrics]) -> float:
+def recommend_threshold(metrics: list[Metrics]) -> ThresholdRecommendation:
     acceptable = [
         metric
         for metric in metrics
-        if metric.false_accept_rate <= 0.01 and metric.false_reject_rate <= 0.20
+        if metric.false_accept_rate <= MAX_ACCEPTABLE_FALSE_ACCEPT_RATE
+        and metric.false_reject_rate <= MAX_ACCEPTABLE_FALSE_REJECT_RATE
     ]
 
     if acceptable:
         best = max(acceptable, key=lambda metric: (metric.recall, metric.accuracy, -metric.threshold))
-        return best.threshold
+        return ThresholdRecommendation(
+            threshold=best.threshold,
+            passed_quality_gate=True,
+            acceptable_count=len(acceptable),
+            reason=(
+                f"found {len(acceptable)} threshold candidates with validation "
+                f"FAR <= {MAX_ACCEPTABLE_FALSE_ACCEPT_RATE:.2%} and "
+                f"FRR <= {MAX_ACCEPTABLE_FALSE_REJECT_RATE:.2%}"
+            ),
+        )
 
     best = min(
         metrics,
@@ -730,7 +870,18 @@ def recommend_threshold(metrics: list[Metrics]) -> float:
             -metric.accuracy,
         ),
     )
-    return best.threshold
+    return ThresholdRecommendation(
+        threshold=best.threshold,
+        passed_quality_gate=False,
+        acceptable_count=0,
+        reason=(
+            "no validation threshold satisfied "
+            f"FAR <= {MAX_ACCEPTABLE_FALSE_ACCEPT_RATE:.2%} and "
+            f"FRR <= {MAX_ACCEPTABLE_FALSE_REJECT_RATE:.2%}; "
+            f"best compromise FAR={best.false_accept_rate:.2%}, "
+            f"FRR={best.false_reject_rate:.2%}"
+        ),
+    )
 
 
 def write_scores(path: Path, scores: np.ndarray, y: np.ndarray) -> None:
@@ -804,6 +955,7 @@ def write_report(
     recommended_threshold: float,
     validation_metrics: Metrics,
     test_metrics: Metrics,
+    threshold_recommendation: ThresholdRecommendation,
     threshold_sweep: list[Metrics],
     tflite_path: Path,
     installed_asset_path: Path | None,
@@ -821,6 +973,7 @@ def write_report(
         f"- Input shape: `[1, {WINDOW_SAMPLES}, 1]`",
         f"- Output: single sigmoid score",
         f"- Recommended threshold: `{recommended_threshold:.2f}`",
+        f"- Quality gate: `{'pass' if threshold_recommendation.passed_quality_gate else 'fail'}`",
         f"- TFLite: `{tflite_path}`",
         f"- Android asset: `{installed_asset_path}`" if installed_asset_path else "- Android asset: not installed",
         "",
@@ -852,6 +1005,14 @@ def write_report(
         f"- Best epoch by validation loss: {best_epoch}",
         f"- Threshold sweep candidates: {len(threshold_sweep)}",
         "",
+        "## Quality Gate",
+        "",
+        f"- Status: `{'pass' if threshold_recommendation.passed_quality_gate else 'fail'}`",
+        f"- Validation false accept limit: {MAX_ACCEPTABLE_FALSE_ACCEPT_RATE:.2%}",
+        f"- Validation false reject limit: {MAX_ACCEPTABLE_FALSE_REJECT_RATE:.2%}",
+        f"- Acceptable threshold candidates: {threshold_recommendation.acceptable_count}",
+        f"- Decision: {threshold_recommendation.reason}",
+        "",
         "## Validation Metrics",
         "",
         metrics_table(validation_metrics),
@@ -865,7 +1026,7 @@ def write_report(
         f"- This is an experimental model trained from only {positive_files_count} positive recordings.",
         "- Russian household speech is still underrepresented; false accepts should keep being collected.",
         "- Real-world hard negatives are valuable but still too few for stable production metrics.",
-        "- There are too few speakers for a strict speaker-independent split; test metrics are optimistic.",
+        "- Real-world recordings are split by detected session buckets because most files do not have speaker IDs.",
         "- Do not treat this as production-ready until false accept / false reject are tested on real devices.",
     ]
     path.write_text("\n".join(lines) + "\n")
@@ -919,6 +1080,7 @@ def write_asset_manifest(
     rejected_false_reject_positive_count: int,
     rejected_hard_negative_count: int,
     excluded_samples_count: int,
+    threshold_recommendation: ThresholdRecommendation,
 ) -> None:
     manifest = {
         "phraseId": "haotika",
@@ -931,6 +1093,14 @@ def write_asset_manifest(
         "vadEnabled": True,
         "inputShape": [1, WINDOW_SAMPLES, 1],
         "source": "local experimental training with real-world feedback",
+        "qualityGate": {
+            "passed": threshold_recommendation.passed_quality_gate,
+            "recommendedForInstall": threshold_recommendation.passed_quality_gate,
+            "acceptableThresholdCandidates": threshold_recommendation.acceptable_count,
+            "maxFalseAcceptRate": MAX_ACCEPTABLE_FALSE_ACCEPT_RATE,
+            "maxFalseRejectRate": MAX_ACCEPTABLE_FALSE_REJECT_RATE,
+            "reason": threshold_recommendation.reason,
+        },
         "positiveDataset": {
             "baseAndroidRecordings": base_positive_count,
             "realWorldTrueAccept": extra_positive_count,
