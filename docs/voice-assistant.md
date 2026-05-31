@@ -65,12 +65,14 @@ Web - упрощенный сценарий:
 - команда преобразуется в тот же `PlannerIntent`
 - используется тот же confirmation UI, что и на Android
 
-Целевой Android wake-word provider первой версии - внутренний
-`CustomWakeWordEngine` на TensorFlow Lite. Wake-фраза одна и фиксированная:
-`Хаотика`. Runtime использует локальную модель `wakewords/haotika.tflite`, а
-`MockWakeWordEngine` остается только для tests/dev. `WakeWordService` должен
-зависеть только от интерфейса `WakeWordEngine` и не должен импортировать классы
-TensorFlow Lite напрямую.
+Целевой Android wake-word provider первой версии - provider-aware слой за
+интерфейсом `WakeWordEngine`. Primary path: LiveKit Wakeword обучает
+`haotika.onnx`, Android запускает ее через `LiveKitOnnxWakeWordEngine` вместе с
+LiveKit frontend models `melspectrogram.onnx` и `embedding_model.onnx`.
+`CustomOnnxWakeWordEngine` остается для будущих raw-PCM ONNX моделей.
+`CustomTfliteWakeWordEngine` остается fallback для будущего `haotika.tflite`, а
+`MockWakeWordEngine` остается только для tests/dev. `WakeWordService` не должен
+импортировать ONNX Runtime или LiteRT classes напрямую.
 
 ### Android-сценарий
 
@@ -95,9 +97,8 @@ TensorFlow Lite напрямую.
 но сама фраза активации остается фиксированной: `Хаотика`.
 
 В коде не нужно закладывать пользовательскую настройку wake-фразы.
-Производственная реализация подключается через `WakeWordEngine` как
-`CustomTfliteWakeWordEngine`, чтобы `WakeWordService` не зависел напрямую от
-TensorFlow Lite runtime.
+Производственная реализация подключается через `WakeWordEngineFactory` по
+`provider` из manifest. В закрытом rollout primary provider - `CUSTOM_ONNX`.
 
 Фиксированный model config:
 
@@ -106,11 +107,29 @@ TensorFlow Lite runtime.
   "phraseId": "haotika",
   "displayPhrase": "Хаотика",
   "language": "ru-RU",
-  "modelVersion": "pending-trained-model",
-  "modelPath": "wakewords/haotika.tflite",
-  "threshold": 0.99,
+  "modelVersion": "haotika-livekit-0.1.0",
+  "provider": "CUSTOM_ONNX",
+  "modelPath": "wakewords/haotika.onnx",
+  "inputKind": "embedding_matrix",
+  "frontend": "livekit_openwakeword",
+  "ioContractConfirmedForAndroid": false,
+  "models": {
+    "melspectrogram": "wakewords/livekit/melspectrogram.onnx",
+    "embedding": "wakewords/livekit/embedding_model.onnx",
+    "classifier": "wakewords/haotika.onnx"
+  },
+  "frontendConfig": {
+    "embeddingWindowSize": 16,
+    "embeddingSize": 96
+  },
+  "threshold": 0.65,
   "sampleRate": 16000,
-  "vadEnabled": true
+  "vadEnabled": true,
+  "runtime": {
+    "frameMs": 80,
+    "windowMs": 2000,
+    "scoreSmoothing": true
+  }
 }
 ```
 
@@ -119,8 +138,56 @@ TensorFlow Lite runtime.
 UI временно не показывать и не применять, иначе статистика false accept /
 false reject перестает быть сопоставимой между моделями.
 
-Если модели нет в assets, `CustomTfliteWakeWordEngine` должен вернуть
-`MissingModel` error, а не падать.
+Перед копированием первой реальной ONNX-модели нужно явно проверить model IO
+contract: input/output names, shapes, dtypes, axis order, frame/window size,
+sample rate, normalization, output score shape, score interpretation и threshold
+semantics. Текущий Android raw-PCM ONNX engine поддерживает raw 16 kHz mono
+PCM16 -> float32 `[-1, 1]`, но LiveKit export является classifier head и ожидает
+embeddings `(batch, 16, 96)`.
+Для LiveKit classifier Android использует отдельный `LiveKitOnnxWakeWordEngine`:
+`melspectrogram.onnx` -> `embedding_model.onnx` -> `haotika.onnx`. До parity
+test против Python `WakeWordModel` manifest должен оставлять
+`ioContractConfirmedForAndroid: false`, а `haotika.onnx` нельзя считать approved
+Android model.
+
+Для `haotika-livekit-0.1.0` Android/Python parity пройден локально. Эта версия
+принята только как `bootstrap_collection` model с threshold `0.50`: ее задача -
+собирать реальные `false_accept` и `false_reject`, а не быть production-quality
+моделью.
+
+Первый parity baseline закреплен на `livekit/livekit-wakeword` commit
+`1ec7f680df30ff4ca0ebae6b5983441e94b10980`. Если меняется LiveKit commit или
+frontend ONNX hashes, Android/Python parity нужно прогнать заново. Rolling
+embeddings должны идти в classifier в том же порядке, что в Python:
+последние 16 embeddings, oldest-to-newest. Raw audio, raw mel values и raw
+embeddings нельзя логировать в metrics.
+
+Parity запускается локально по инструкции
+`tools/wakeword-training/parity/scripts/run_android_parity_check.md`: Python
+сначала генерирует expected score JSON для тех же WAV, затем Android
+instrumented test сравнивает score через offline `LiveKitOnnxOfflineScorer`.
+Если fixtures/model files отсутствуют, это не считается pass.
+
+Если модели из `modelPath` нет в assets, provider engine должен вернуть
+`MissingModel` error, а не падать. При отсутствующей wake-word модели
+push-to-talk fallback остается доступен.
+
+Первый честный training loop для ONNX:
+
+```bash
+cd tools/wakeword-training
+./scripts/train_livekit.sh haotika-livekit-0.1.0
+./scripts/evaluate_model.py \
+  --version haotika-livekit-0.1.0 \
+  --model output/haotika-livekit-0.1.0/haotika.onnx \
+  --positive data/validation/positive \
+  --negative data/validation/negative \
+  --out output/haotika-livekit-0.1.0
+./scripts/copy_to_android_assets.sh haotika-livekit-0.1.0
+```
+
+`copy_to_android_assets.sh` обязан падать без `approval.json`; approval нельзя
+генерировать автоматически из evaluation.
 
 После распознавания wake-фразы приложение должно идти по обычному production
 flow:
@@ -1070,17 +1137,16 @@ Undo и full clarification loop были вынесены из пункта 5 и
    parser, Android runtime и confirmation UI должны сверяться с этим разделом.
 
 2. Реализовать wake-word provider для Android.
-   Статус: реализован Android runtime-каркас за `WakeWordEngine`:
-   `CustomTfliteWakeWordEngine`, fixed config `haotika`, assets manifest,
-   MissingModel handling, metrics, native debug screen и tests. Для production
-   release еще нужна реальная обученная модель `wakewords/haotika.tflite`.
-   Provider выбран: внутренний `CustomWakeWordEngine` с Android runtime на
-   TensorFlow Lite. Production engine - `CustomTfliteWakeWordEngine`, фраза одна
-   и фиксированная: `Хаотика`, model path - `wakewords/haotika.tflite`.
-   `MockWakeWordEngine` оставить для tests/dev. Не добавлять Picovoice как
-   production dependency, не добавлять ONNX runtime в первую версию и не
-   использовать Vosk как постоянно работающий wake-word engine. Подробности
-   зафиксированы в [docs/voice/wake-word-provider.md](voice/wake-word-provider.md).
+   Статус: Android runtime-каркас provider-aware. Primary engine -
+   `CustomOnnxWakeWordEngine` с `wakewords/haotika.onnx`; fallback engine -
+   `CustomTfliteWakeWordEngine` с `wakewords/haotika.tflite`;
+   `MockWakeWordEngine` оставить для tests/dev. Фраза одна и фиксированная:
+   `Хаотика`. MissingModel handling, safe metrics, native debug screen и tests
+   должны оставаться за интерфейсом `WakeWordEngine`. Не добавлять Picovoice как
+   production dependency, cloud wake word или Vosk как постоянно работающий
+   wake-word engine. Подробности зафиксированы в
+   [docs/voice/wake-word-provider.md](voice/wake-word-provider.md) и
+   [docs/voice/wake-word-training.md](voice/wake-word-training.md).
 
 3. Подключить реальный STT после wake word.
    Статус: реализован и закрыт production feature-gate для `appRole = owner`

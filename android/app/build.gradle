@@ -37,6 +37,7 @@ def hasReleaseSigningConfig = [
     releaseKeyAlias,
     releaseKeyPassword,
 ].every { value -> value != null }
+def wakewordParityApplicationIdSuffix = project.findProperty('wakewordParityApplicationIdSuffix')
 
 apply plugin: 'com.android.application'
 
@@ -68,6 +69,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (wakewordParityApplicationIdSuffix != null) {
+                applicationIdSuffix wakewordParityApplicationIdSuffix.toString()
+            }
+        }
         release {
             if (hasReleaseSigningConfig) {
                 signingConfig signingConfigs.release
@@ -90,6 +96,7 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation "com.google.ai.edge.litert:litert:$liteRtVersion"
+    implementation "com.microsoft.onnxruntime:onnxruntime-android:$onnxRuntimeAndroidVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.json:json:20240303"
@@ -102,8 +109,10 @@ apply from: 'capacitor.build.gradle'
 
 try {
     def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
+    if (servicesJSON.text && wakewordParityApplicationIdSuffix == null) {
         apply plugin: 'com.google.gms.google-services'
+    } else if (wakewordParityApplicationIdSuffix != null) {
+        logger.info("google-services plugin not applied for wakeword parity applicationId suffix")
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")

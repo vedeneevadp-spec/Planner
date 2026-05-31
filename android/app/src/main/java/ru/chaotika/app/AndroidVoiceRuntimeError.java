@@ -4,6 +4,7 @@ enum AndroidVoiceRuntimeError {
     MISSING_MICROPHONE_PERMISSION("missing_microphone_permission"),
     MISSING_NOTIFICATION_PERMISSION("missing_notification_permission"),
     MISSING_WAKE_MODEL("missing_wake_model"),
+    UNSUPPORTED_WAKE_MODEL_INPUT("unsupported_wake_model_input"),
     FOREGROUND_SERVICE_NOT_ALLOWED("foreground_service_not_allowed"),
     BATTERY_RESTRICTED("battery_restricted"),
     SECURITY_EXCEPTION("security_exception"),
@@ -20,9 +21,11 @@ enum AndroidVoiceRuntimeError {
     static AndroidVoiceRuntimeError fromWakeWordError(WakeWordError error) {
         return switch (error.code) {
             case MISSING_MODEL -> MISSING_WAKE_MODEL;
+            case MISSING_FRONTEND_MODEL -> MISSING_WAKE_MODEL;
+            case UNSUPPORTED_MODEL_INPUT -> UNSUPPORTED_WAKE_MODEL_INPUT;
             case MICROPHONE_PERMISSION_DENIED -> MISSING_MICROPHONE_PERMISSION;
             case FOREGROUND_SERVICE_NOT_ALLOWED -> FOREGROUND_SERVICE_NOT_ALLOWED;
-            case INFERENCE_ERROR, INVALID_MODEL_MANIFEST, TFLITE_RUNTIME_INIT_ERROR -> WAKE_ENGINE_ERROR;
+            case FRONTEND_NOT_READY, INFERENCE_ERROR, INVALID_MODEL_MANIFEST, MODEL_IO_MISMATCH, MODEL_LOAD_ERROR, TFLITE_RUNTIME_INIT_ERROR, UNSUPPORTED_PROVIDER, UNSUPPORTED_SAMPLE_RATE -> WAKE_ENGINE_ERROR;
         };
     }
 

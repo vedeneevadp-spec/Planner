@@ -1,0 +1,10 @@
+{
+  "livekitWakewordCommit": "1ec7f680df30ff4ca0ebae6b5983441e94b10980",
+  "scoreTolerance": 0.03,
+  "shapeExactMatchRequired": true,
+  "dtypeExactMatchRequired": true,
+  "axisOrderExactMatchRequired": true,
+  "rollingEmbeddingOrder": "latest 16 embeddings, chronological oldest-to-newest",
+  "sampleRate": 16000,
+  "windowSeconds": 2
+}

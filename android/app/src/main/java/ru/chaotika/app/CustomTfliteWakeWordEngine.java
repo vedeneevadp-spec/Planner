@@ -17,6 +17,12 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
     private static final int INFERENCE_STRIDE_SAMPLES = 1_600;
     private static final int MIN_RING_BUFFER_SECONDS = 2;
     private static final int TRAINING_SAMPLE_POST_ROLL_MS = 800;
+    private static final int VAD_FRAME_SAMPLES = 320;
+    private static final int VAD_MIN_ACTIVE_FRAMES = 10;
+    private static final int VAD_MIN_CONSECUTIVE_SPEECH_FRAMES = 5;
+    private static final float VAD_FRAME_MIN_PEAK = 0.018f;
+    private static final float VAD_FRAME_MIN_RMS = 0.008f;
+    private static final float VAD_MAX_SPEECH_ZERO_CROSSING_RATE = 0.35f;
     private static final float VAD_MIN_RMS = 0.006f;
     private static final float NORMALIZE_MIN_PEAK = 0.01f;
     private static final float NORMALIZE_TARGET_PEAK = 0.85f;
@@ -77,15 +83,19 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
         try {
             WakeWordModelManifest manifest = WakeWordModelManifest.read(assets, config);
+            if (manifest.provider != WakeWordProvider.CUSTOM_TFLITE) {
+                throw WakeWordError.unsupportedProvider(manifest.provider.manifestValue);
+            }
             threshold = manifest.threshold;
-            WakeWordDiagnostics.updateModel(manifest.modelVersion, threshold);
+            WakeWordDiagnostics.updateModel(manifest.modelVersion, manifest.provider, threshold);
 
-            if (!assets.exists(config.modelPath)) {
-                throw WakeWordError.missingModel(config.modelPath);
+            if (!assets.exists(manifest.modelPath)) {
+                throw WakeWordError.missingModel(manifest.modelPath);
             }
 
             ensureMicrophonePermission();
-            interpreter = createInterpreter(assets.read(config.modelPath));
+            interpreter = createInterpreter(assets.read(manifest.modelPath));
+            metricsLogger.modelLoaded(manifest);
             startAudioCapture();
         } catch (WakeWordError error) {
             fail(error);
@@ -253,13 +263,14 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
         float[] rawInput = latestSamples(expectedInputSamples);
 
-        if (config.vadEnabled && rootMeanSquare(rawInput) < VAD_MIN_RMS) {
+        if (config.vadEnabled && !shouldRunModelForAudio(rawInput)) {
             updateScore(0f);
             return;
         }
 
         float score = runModel(normalizeForModel(rawInput));
         updateScore(score);
+        metricsLogger.scoreBucket(WakeWordProvider.CUSTOM_TFLITE, score);
 
         if (score < threshold) {
             return;
@@ -332,6 +343,37 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         }
 
         return output;
+    }
+
+    static boolean shouldRunModelForAudio(float[] input) {
+        if (input.length < VAD_FRAME_SAMPLES || rootMeanSquare(input) < VAD_MIN_RMS) {
+            return false;
+        }
+
+        int activeFrames = 0;
+        int consecutiveSpeechFrames = 0;
+        int maxConsecutiveSpeechFrames = 0;
+
+        for (int offset = 0; offset + VAD_FRAME_SAMPLES <= input.length; offset += VAD_FRAME_SAMPLES) {
+            FrameActivity activity = frameActivity(input, offset, VAD_FRAME_SAMPLES);
+
+            if (!activity.isActive()) {
+                consecutiveSpeechFrames = 0;
+                continue;
+            }
+
+            activeFrames += 1;
+
+            if (activity.isSpeechLike()) {
+                consecutiveSpeechFrames += 1;
+                maxConsecutiveSpeechFrames = Math.max(maxConsecutiveSpeechFrames, consecutiveSpeechFrames);
+            } else {
+                consecutiveSpeechFrames = 0;
+            }
+        }
+
+        return activeFrames >= VAD_MIN_ACTIVE_FRAMES &&
+            maxConsecutiveSpeechFrames >= VAD_MIN_CONSECUTIVE_SPEECH_FRAMES;
     }
 
     private short[] buildReviewSamples(float[] rawInput) {
@@ -417,6 +459,27 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         return peak;
     }
 
+    private static FrameActivity frameActivity(float[] input, int offset, int length) {
+        float peak = 0f;
+        float sum = 0f;
+        int crossings = 0;
+        float previous = input[offset];
+
+        for (int index = 0; index < length; index += 1) {
+            float sample = input[offset + index];
+            peak = Math.max(peak, Math.abs(sample));
+            sum += sample * sample;
+
+            if (index > 0 && sample != 0f && previous != 0f && Math.signum(sample) != Math.signum(previous)) {
+                crossings += 1;
+            }
+
+            previous = sample;
+        }
+
+        return new FrameActivity(peak, (float) Math.sqrt(sum / length), crossings / (float) (length - 1));
+    }
+
     private float runModel(float[] input) throws WakeWordError {
         int[] inputShape = interpreter.getInputTensor(0).shape();
         int[] outputShape = interpreter.getOutputTensor(0).shape();
@@ -480,7 +543,7 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
         throw WakeWordError.inferenceError(new IllegalStateException("Wake-word model returned an empty output."));
     }
 
-    private float rootMeanSquare(float[] input) {
+    private static float rootMeanSquare(float[] input) {
         float sum = 0f;
 
         for (float sample : input) {
@@ -523,5 +586,26 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
 
         ringWriteIndex = 0;
         ringSamplesAvailable = 0;
+    }
+
+    private static final class FrameActivity {
+
+        private final float peak;
+        private final float rms;
+        private final float zeroCrossingRate;
+
+        private FrameActivity(float peak, float rms, float zeroCrossingRate) {
+            this.peak = peak;
+            this.rms = rms;
+            this.zeroCrossingRate = zeroCrossingRate;
+        }
+
+        private boolean isActive() {
+            return peak >= VAD_FRAME_MIN_PEAK && rms >= VAD_FRAME_MIN_RMS;
+        }
+
+        private boolean isSpeechLike() {
+            return isActive() && zeroCrossingRate <= VAD_MAX_SPEECH_ZERO_CROSSING_RATE;
+        }
     }
 }

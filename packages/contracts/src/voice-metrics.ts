@@ -54,6 +54,7 @@ export const voiceMetricDurationBucketSchema = z.enum([
   'long',
 ])
 export const voiceMetricWakeWordProviderSchema = z.enum([
+  'custom_onnx',
   'custom_tflite',
   'mock',
 ])

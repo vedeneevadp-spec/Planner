@@ -6,6 +6,7 @@ final class WakeWordDiagnostics {
     private static final WakeWordConfig CONFIG = WakeWordConfig.haotika();
 
     private static String modelVersion = "unknown";
+    private static WakeWordProvider provider = CONFIG.provider;
     private static float threshold = CONFIG.threshold;
     private static float currentScore;
     private static float lastDetectionScore;
@@ -20,6 +21,7 @@ final class WakeWordDiagnostics {
             return new WakeWordDiagnosticsSnapshot(
                 CONFIG.displayPhrase,
                 modelVersion,
+                provider,
                 threshold,
                 currentScore,
                 lastDetectionScore,
@@ -35,8 +37,13 @@ final class WakeWordDiagnostics {
     }
 
     static void updateModel(String nextModelVersion, float nextThreshold) {
+        updateModel(nextModelVersion, provider, nextThreshold);
+    }
+
+    static void updateModel(String nextModelVersion, WakeWordProvider nextProvider, float nextThreshold) {
         synchronized (LOCK) {
             modelVersion = nextModelVersion == null || nextModelVersion.trim().isEmpty() ? "unknown" : nextModelVersion;
+            provider = nextProvider == null ? CONFIG.provider : nextProvider;
             threshold = nextThreshold;
         }
     }
@@ -74,6 +81,7 @@ final class WakeWordDiagnosticsSnapshot {
 
     final String phrase;
     final String modelVersion;
+    final WakeWordProvider provider;
     final float threshold;
     final float currentScore;
     final float lastDetectionScore;
@@ -84,6 +92,7 @@ final class WakeWordDiagnosticsSnapshot {
     WakeWordDiagnosticsSnapshot(
         String phrase,
         String modelVersion,
+        WakeWordProvider provider,
         float threshold,
         float currentScore,
         float lastDetectionScore,
@@ -93,6 +102,7 @@ final class WakeWordDiagnosticsSnapshot {
     ) {
         this.phrase = phrase;
         this.modelVersion = modelVersion;
+        this.provider = provider;
         this.threshold = threshold;
         this.currentScore = currentScore;
         this.lastDetectionScore = lastDetectionScore;

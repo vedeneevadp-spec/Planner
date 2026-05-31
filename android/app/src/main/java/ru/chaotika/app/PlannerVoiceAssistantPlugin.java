@@ -211,15 +211,13 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
     @PluginMethod
     public void setWakeWordSensitivity(PluginCall call) {
-        Float sensitivity = call.getFloat("sensitivity");
+        WakeWordConfig config = WakeWordConfig.haotika();
+        JSObject response = new JSObject();
 
-        if (sensitivity == null) {
-            call.reject("sensitivity is required.");
-            return;
-        }
-
-        PlannerVoiceAssistantStorage.storeWakeWordSensitivity(getContext(), sensitivity);
-        call.resolve(new JSObject());
+        PlannerVoiceAssistantStorage.storeWakeWordSensitivity(getContext(), config.threshold);
+        response.put("locked", true);
+        response.put("sensitivity", readWakeWordManifestThreshold(config));
+        call.resolve(response);
     }
 
     @PluginMethod
@@ -517,8 +515,10 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         response.put("recognitionLanguage", config.language);
         response.put("confirmationMode", "confirmation_first");
         response.put("wakeWordModelStatus", isWakeWordModelReady() ? "ready" : "missing");
-        PlannerVoiceAssistantStorage.readWakeWordSensitivity(getContext());
         response.put("wakeWordSensitivity", readWakeWordManifestThreshold(config));
+        WakeWordModelManifest manifest = readWakeWordManifest(config);
+        response.put("wakeWordProvider", manifest == null ? config.provider.metricValue : manifest.provider.metricValue);
+        response.put("wakeWordModelVersion", manifest == null ? "unknown" : manifest.modelVersion);
         response.put("microphonePermission", mapPermissionState(getPermissionState(MICROPHONE)));
         response.put("notificationPermission", resolveNotificationPermissionStatus());
         response.put("voiceCuesEnabled", PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext()));
@@ -600,15 +600,36 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
     private boolean isWakeWordModelReady() {
         WakeWordConfig config = WakeWordConfig.haotika();
         AndroidWakeWordAssetSource assets = new AndroidWakeWordAssetSource(getContext());
+        WakeWordModelManifest manifest = readWakeWordManifest(config);
 
-        return assets.exists(config.modelPath);
+        if (manifest == null) {
+            return false;
+        }
+
+        if (
+            manifest.provider == WakeWordProvider.CUSTOM_ONNX &&
+            manifest.inputKind == WakeWordModelInputKind.EMBEDDING_MATRIX &&
+            manifest.frontend == WakeWordModelFrontend.LIVEKIT_OPENWAKEWORD
+        ) {
+            return assets.exists(manifest.melSpectrogramModelPath) &&
+                assets.exists(manifest.embeddingModelPath) &&
+                assets.exists(manifest.classifierModelPath);
+        }
+
+        return assets.exists(manifest.modelPath);
     }
 
     private float readWakeWordManifestThreshold(WakeWordConfig config) {
+        WakeWordModelManifest manifest = readWakeWordManifest(config);
+
+        return manifest == null ? config.threshold : manifest.threshold;
+    }
+
+    private WakeWordModelManifest readWakeWordManifest(WakeWordConfig config) {
         try {
-            return WakeWordModelManifest.read(new AndroidWakeWordAssetSource(getContext()), config).threshold;
+            return WakeWordModelManifest.read(new AndroidWakeWordAssetSource(getContext()), config);
         } catch (WakeWordError error) {
-            return config.threshold;
+            return null;
         }
     }
 
@@ -733,6 +754,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
         response.put("phrase", snapshot.phrase);
         response.put("modelVersion", snapshot.modelVersion);
+        response.put("provider", snapshot.provider.metricValue);
         response.put("threshold", snapshot.threshold);
         response.put("currentScore", snapshot.currentScore);
         response.put("lastDetectionScore", snapshot.lastDetectionScore);

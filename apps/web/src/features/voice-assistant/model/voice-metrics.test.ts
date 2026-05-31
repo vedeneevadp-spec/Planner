@@ -135,7 +135,7 @@ describe('voice runtime metrics', () => {
       previewStatus: 'requires_unlock',
       source: 'android_wake_word',
       wake_detected_to_confirmation_card_ms: 900,
-      wakeWordProvider: 'custom_tflite',
+      wakeWordProvider: 'custom_onnx',
     })
 
     const serialized = JSON.stringify(event)

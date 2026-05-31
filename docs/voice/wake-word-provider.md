@@ -1,273 +1,345 @@
 # Wake-Word Provider
 
-Документ фиксирует production-подход для Android wake word в голосовом
-помощнике Chaotika Planner.
+Документ фиксирует Android wake-word provider для голосового помощника
+Chaotika Planner.
 
-## Решение v1
+## Решение
 
-Wake-фраза в первой версии только одна:
+Wake-фраза одна и фиксированная:
 
 ```text
 Хаотика
 ```
 
-Пользователь не выбирает wake-фразу, не задает собственную фразу и не меняет ее
-в настройках. Это намеренное ограничение первой версии: одна фраза проще
-тестируется, стабильнее измеряется по false accept / false reject и не требует
-динамического обучения моделей на устройстве.
+Пользователь не выбирает wake-фразу и не задает свою. Это оставляет rollout
+измеримым: все false accept / false reject относятся к одной и той же фразе.
 
-Выбранный provider:
-
-- primary provider: внутренний `CustomWakeWordEngine`
-- Android runtime: LiteRT v2.1.x через `com.google.ai.edge.litert:litert:2.1.5`
-- production engine: `CustomTfliteWakeWordEngine`
-- model file: `wakewords/haotika.tflite`
-- tests/dev engine: `MockWakeWordEngine`
-
-Проект использует `minSdkVersion = 24`, поэтому LiteRT v2.1.x допустим: для
-Android v2.1.x Google указывает min SDK 23. Версия `2.1.5` выбрана как latest в
-линейке v2.1.x; `2.1.0` не использовать, потому что она уже legacy.
-
-Текущий статус реализации: Android runtime-каркас добавлен за интерфейсом
-`WakeWordEngine`. Локально можно обучить экспериментальную модель
-`haotika.tflite`, но она не считается production-ready и исключена из git. Если
-asset `wakewords/haotika.tflite` отсутствует, release runtime должен вернуть
-`MissingModel`, а debug/dev может использовать `MockWakeWordEngine`.
-
-Не использовать в production v1:
-
-- Picovoice как production dependency
-- ONNX runtime
-- Vosk как постоянно работающий wake-word engine
-
-## Архитектура
-
-`WakeWordService` должен зависеть только от интерфейса `WakeWordEngine`.
-Сервис не должен импортировать TensorFlow Lite classes и не должен знать, как
-устроен inference.
-
-Целевые модели слоя wake word:
-
-- `WakeWordConfig`
-- `WakeWordDetection`
-- `WakeWordError`
-- `WakeWordListener`
-- `WakeWordMetricsLogger`
-
-Целевые реализации:
-
-- `MockWakeWordEngine` - tests/dev, без реального аудио inference
-- `CustomTfliteWakeWordEngine` - production Android runtime
-
-Поток работы:
+Provider-aware runtime:
 
 ```text
-microphone frames
-→ in-memory ring buffer
-→ VAD
-→ TFLite inference
-→ WakeWordDetection
-→ pause wake-word listening
-→ sound + vibration + overlay
-→ command recording
+WakeWordEngine
+├── MockWakeWordEngine
+├── CustomTfliteWakeWordEngine
+├── CustomOnnxWakeWordEngine
+└── LiveKitOnnxWakeWordEngine
 ```
 
-До wake word аудио не отправляется на сервер. Ring buffer хранится только в
-памяти и не пишется на диск.
+Primary path:
 
-## Fixed Config
+```text
+LiveKit Wakeword -> haotika.onnx + LiveKit frontend ONNX -> LiveKitOnnxWakeWordEngine
+```
 
-Конфиг модели фиксированный:
+Fallback path:
+
+```text
+haotika.tflite -> CustomTfliteWakeWordEngine
+```
+
+Dev/test path:
+
+```text
+MockWakeWordEngine
+```
+
+`WakeWordService` зависит только от `WakeWordEngine`. Он не импортирует ONNX
+Runtime или LiteRT classes напрямую.
+
+## Providers
+
+Android enum:
+
+```kotlin
+enum class WakeWordProvider {
+    MOCK,
+    CUSTOM_TFLITE,
+    CUSTOM_ONNX
+}
+```
+
+Factory выбирает реализацию по `provider` из manifest:
+
+- `CUSTOM_ONNX` -> `CustomOnnxWakeWordEngine`
+- `CUSTOM_TFLITE` -> `CustomTfliteWakeWordEngine`
+- `MOCK` -> `MockWakeWordEngine`
+
+For `CUSTOM_ONNX`, the factory also inspects `inputKind` and `frontend`:
+
+- `raw_pcm` + `none` -> `CustomOnnxWakeWordEngine`
+- `embedding_matrix` + `livekit_openwakeword` -> `LiveKitOnnxWakeWordEngine`
+- unsupported combinations -> typed `UnsupportedModelInput`
+
+Если provider неизвестен, runtime возвращает typed `UnsupportedProvider`, а не
+падает.
+
+## Manifest
+
+Manifest является source of truth для provider, model path и threshold:
 
 ```json
 {
   "phraseId": "haotika",
   "displayPhrase": "Хаотика",
   "language": "ru-RU",
-  "modelVersion": "haotika-realworld-20260528-213500",
-  "modelPath": "wakewords/haotika.tflite",
-  "threshold": 0.99,
+  "modelVersion": "haotika-livekit-0.1.0",
+  "provider": "CUSTOM_ONNX",
+  "modelPath": "wakewords/haotika.onnx",
+  "inputKind": "embedding_matrix",
+  "frontend": "livekit_openwakeword",
+  "ioContractConfirmedForAndroid": false,
+  "threshold": 0.65,
   "sampleRate": 16000,
-  "vadEnabled": true
+  "vadEnabled": true,
+  "runtime": {
+    "frameMs": 80,
+    "windowMs": 2000,
+    "scoreSmoothing": true
+  }
 }
 ```
 
-`threshold = 0.99` - текущий экспериментальный порог после дообучения на
-real-world `true_accept` / `false_accept`. Он выбран консервативнее training
-recommendation, чтобы сильнее снизить false accept. Перед production release его нужно
-уточнить на большем тестовом корпусе и реальных устройствах.
+Обязательные поля:
+
+- `phraseId`
+- `displayPhrase`
+- `language`
+- `modelVersion`
+- `provider`
+- `modelPath`
+- `threshold`
+- `sampleRate`
+- `vadEnabled`
+
+Optional IO contract fields:
+
+- `inputKind`: `raw_pcm` or `embedding_matrix`;
+- `frontend`: `none` or `livekit_openwakeword`;
+- `ioContractConfirmedForAndroid`: `true` only after the Android runtime path
+  is proven against the model.
+
+For LiveKit models, manifest also declares the three ONNX files:
+
+```json
+{
+  "models": {
+    "melspectrogram": "wakewords/livekit/melspectrogram.onnx",
+    "embedding": "wakewords/livekit/embedding_model.onnx",
+    "classifier": "wakewords/haotika.onnx"
+  },
+  "frontendConfig": {
+    "embeddingWindowSize": 16,
+    "embeddingSize": 96
+  }
+}
+```
+
+Правила:
+
+- threshold берется только из manifest;
+- пользовательский override чувствительности не применяется в закрытом rollout;
+- approved manifest должен использовать конкретный `modelVersion`, например
+  `haotika-livekit-0.1.0`; `pending-trained-model`, `pending` и `unknown`
+  запрещены для копирования в Android assets;
+- `modelVersion` попадает только в safe diagnostics/metrics;
+- отсутствующий model asset возвращает `MissingModel`;
+- LiveKit classifier manifest с `inputKind = embedding_matrix` и
+  `frontend = livekit_openwakeword` выбирает `LiveKitOnnxWakeWordEngine`;
+- если frontend-файлы отсутствуют, runtime возвращает `MissingFrontendModel`;
+- невалидный manifest возвращает `InvalidModelManifest`.
+
+## Model IO Contract
+
+Перед approval модели нужно подтвердить ONNX input/output contract:
+
+- input shape
+- input dtype
+- frame/window size
+- sample rate
+- normalization
+- output score shape
+- score interpretation
+- threshold semantics
+
+`CustomOnnxWakeWordEngine` поддерживает только raw audio contract: 16 kHz mono
+PCM16 из Android `AudioRecord`, conversion в float32 `[-1, 1]`, latest window и
+score как первый scalar output. LiveKit export является classifier head с input
+`embeddings` `(batch, 16, 96)`, поэтому `WakeWordEngineFactory` выбирает
+`LiveKitOnnxWakeWordEngine` для `inputKind = embedding_matrix` +
+`frontend = livekit_openwakeword`.
+
+`LiveKitOnnxWakeWordEngine` запускает `melspectrogram.onnx`,
+`embedding_model.onnx` и затем `haotika.onnx`. Если frontend-файлов нет, runtime
+возвращает `MissingFrontendModel`; если classifier отсутствует - `MissingModel`;
+если shape/dtype не совпадают - `ModelIoMismatch`.
+
+Pinned first parity source:
+
+```text
+livekit/livekit-wakeword commit: 1ec7f680df30ff4ca0ebae6b5983441e94b10980
+```
+
+Classifier names are fixed by LiveKit export: input `embeddings`, output
+`score`. Frontend model input/output names are read from the ONNX files like the
+Python runtime does, but parity fixtures must record those names, dtypes, shapes,
+axis order, and hashes before rollout.
+
+Подробности spike: [livekit-android-runtime-spike.md](livekit-android-runtime-spike.md).
+Parity protocol: [livekit-android-parity.md](livekit-android-parity.md).
+
+## Runtime Flow
+
+Production flow не меняется:
+
+```text
+WakeWordService
+→ WakeWordEngine
+→ WakeWordDetected
+→ pause wake listening
+→ local cue “Слушаю”
+→ CommandAudioRecorder
+→ local validation
+→ backend STT
+→ PlannerIntent
+→ confirmation UI
+→ action layer
+→ visual result
+```
+
+До `WakeWordDetected` аудио не отправляется на backend. Wake-word engine
+обрабатывает 16 kHz mono audio локально, хранит рабочий ring buffer только в
+памяти и не пишет аудио в metrics.
 
 ## Assets
 
-В Android assets нужны placeholder-файлы:
+Tracked files:
 
 ```text
-app/src/main/assets/wakewords/README.md
-app/src/main/assets/wakewords/haotika_manifest.json
+android/app/src/main/assets/wakewords/README.md
+android/app/src/main/assets/wakewords/haotika_manifest.json
 ```
 
-Файл `haotika.tflite` можно держать локально для тестов на устройстве, но не
-коммитить model files в репозиторий без отдельного product/security решения.
+Generated model files are ignored by default:
 
-Если `wakewords/haotika.tflite` отсутствует, `CustomTfliteWakeWordEngine`
-должен вернуть `MissingModel` error, а не падать.
+```text
+android/app/src/main/assets/wakewords/haotika.onnx
+android/app/src/main/assets/wakewords/haotika.tflite
+android/app/src/main/assets/wakewords/livekit/melspectrogram.onnx
+android/app/src/main/assets/wakewords/livekit/embedding_model.onnx
+```
 
-## Ошибки
+Only copy an approved closed-rollout model into assets locally after evaluation.
+If a chosen rollout model must be committed, that needs an explicit
+product/security decision.
 
-Production implementation должна обрабатывать:
+## Errors
+
+Wake-word errors are typed:
 
 - `MissingModel`
+- `MissingFrontendModel`
+- `ModelLoadError`
+- `ModelIoMismatch`
 - `InvalidModelManifest`
+- `InferenceError`
+- `FrontendNotReady`
+- `UnsupportedSampleRate`
+- `UnsupportedModelInput`
+- `UnsupportedProvider`
 - `MicrophonePermissionDenied`
 - `ForegroundServiceNotAllowed`
 - `TfliteRuntimeInitError`
-- `InferenceError`
 
-Ошибки wake-word слоя не должны приводить к выполнению пользовательской команды.
-Если wake word недоступен, приложение должно оставить ручной запуск по кнопке
-микрофона.
+Wake-word errors must not execute a user command. If wake word is unavailable,
+push-to-talk remains available when microphone permission exists.
 
-## Metrics
+## Safe Metrics
 
-`WakeWordMetricsLogger` должен логировать только безопасные события без аудио:
+Allowed wake-word runtime events:
 
-- `wake_detected`
-- `true_accept_reported`
-- `false_accept_reported`
-- `false_reject_reported`
-- `training_example_saved`
-- `model_missing`
-- `service_start_error`
-- `inference_error`
+- `wake_engine_started`
+- `wake_engine_stopped`
+- `wake_engine_error`
+- `wake_detection_latency_ms`
+- `wake_model_loaded`
+- `wake_model_missing`
+- `wake_score_bucket`
+- `livekit_frontend_loaded`
+- `livekit_frontend_missing`
+- `livekit_embedding_generated`
+- `livekit_classifier_score_bucket`
+- `livekit_model_io_mismatch`
+- `livekit_parity_test_result`
 
-Минимальные quality metrics:
+Allowed fields:
 
-- false accept rate
-- false reject rate
-- средний score при корректной активации
-- средний score на негативных примерах
-- время от фразы до detection
-- расход CPU/battery в foreground service
-- стабильность на заблокированном экране и в фоне
+- `provider`
+- `modelVersion`
+- `threshold`
+- `frontend`
+- `scoreBucket`
+- `errorCode`
+- `durationMs`
 
-## Debug Screen
+Forbidden fields:
 
-Для внутренней проверки нужен Android debug screen:
-
-- phrase
-- model version
-- threshold
-- current score
-- last detection score
-- detection count
-- кнопка `false accept`
-- кнопка `false reject`
-
-False accept - помощник сработал без фразы `Хаотика`. False reject - пользователь
-произнес `Хаотика`, но помощник не сработал.
+- raw audio
+- transcript
+- raw text
+- raw embeddings
+- raw mel values
+- task title
+- shopping item
+- agenda item
+- full audio buffer
 
 ## Real-World Sample Collection
 
-Для улучшения модели в приложении есть opt-in режим сбора реальных примеров.
-По умолчанию он выключен.
-
-На Android экран доступен из постоянного notification голосового помощника по
-кнопке `Примеры`.
-
-Текст согласия:
-
-```text
-Помочь улучшить распознавание “Хаотика”
-Разрешаю сохранять короткие примеры wake-фразы
-```
-
-Правила privacy:
-
-- до wake word аудио не пишется на диск и не отправляется на сервер;
-- после wake word короткий фрагмент держится только в памяти;
-- на диск он сохраняется только если пользователь заранее включил opt-in и
-  явно нажал `Верно`, `Ложно` или `Записать`;
-- `Пропустить` очищает pending-фрагмент и не сохраняет пример для обучения;
-- `Записать` открывает утилиту записи фразы `Хаотика` с trim/normalize/validation
-  и сохраняет успешную запись как
-  positive sample с label `false_reject`;
-- загрузка на сервер не реализована;
-- файлы лежат только в app-specific storage Android.
-
-После срабатывания пользователь может отметить:
-
-```text
-Это было правильное срабатывание?
-[Верно] [Ложно] [Пропустить] [Записать]
-```
-
-При сохранении создаются:
-
-- WAV-файл 16 kHz mono PCM16 с коротким фрагментом 1-2 секунды;
-- JSON metadata рядом с WAV.
-
-Metadata содержит:
-
-- `label`: `true_accept`, `false_accept` или `false_reject`;
-- score модели;
-- threshold;
-- model version;
-- device model;
-- Android SDK;
-- sample rate и duration;
-- оценку шума `noiseLevelRms` / `noiseLevelDbfs`.
-
-Локальный путь:
+Opt-in sample collection is local to Android app-specific storage:
 
 ```text
 /sdcard/Android/data/ru.chaotika.app/files/wakeword/haotika/real-world/
 ```
 
-Маппинг для обучения:
+Mapping for training:
 
-- `true_accept` -> positive samples;
-- `false_reject` -> positive samples, потому что пользователь произнес
-  `Хаотика`, но модель не сработала;
-- `false_accept` -> hard negative samples;
-- `skipped` / `Пропустить` -> не использовать в обучении.
+- `true_accept` -> positive samples
+- `false_reject` -> positive samples
+- `false_accept` -> hard negative samples
+- skipped samples -> not used
 
-## Training Pipeline
+After every successful phone pull into timestamp staging and successful local
+`rsync --ignore-existing`, copied recordings should be deleted from the phone so
+the next training run contains only new examples. Do not delete phone recordings
+if pull or rsync failed.
 
-Обучение модели не выполняется внутри Android app.
+## Training
 
-Экспериментальный локальный пайплайн:
+Training lives outside Android runtime:
 
-```bash
-.wakeword-venv/bin/python scripts/wakeword-train-haotika.py --install-asset
+```text
+tools/wakeword-training/
 ```
 
-Он использует локальные positive recordings и open negative samples из Google
-mini Speech Commands (`CC-BY-4.0`). Результат складывается в
-`datasets/wakeword/haotika/training/haotika-experimental-v0/`, а `.tflite`
-копируется в `android/app/src/main/assets/wakewords/haotika.tflite` для теста
-на устройстве.
+See [wake-word-training.md](wake-word-training.md) for LiveKit config,
+evaluation protocol, hard negatives, versioning, and copy-to-assets workflow.
 
-Training pipeline должен жить отдельно от мобильного приложения и включать:
-
-- сбор положительных примеров фразы `Хаотика` разными голосами
-- сбор негативных примеров: похожие слова, шум, бытовая речь, музыка, фоновые
-  разговоры
-- аугментации: шум, реверберация, разные микрофоны, расстояние до телефона
-- train/validation/test split без пересечения дикторов между выборками
-- подбор threshold по false accept / false reject
-- export в TensorFlow Lite
-- генерацию `haotika_manifest.json` с версией модели и параметрами аудио
-
-Перед production release модель нужно проверять на реальных Android-устройствах,
-в фоне, на заблокированном экране и при разных уровнях шума.
+Android does not train. Android only runs the selected local model offline.
 
 ## Tests
 
-Минимальный набор тестов для реализации:
+Minimum coverage:
 
-- `MockWakeWordEngine` emits detection в tests/dev
-- `WakeWordService` зависит от `WakeWordEngine` interface
-- отсутствие `haotika.tflite` возвращает `MissingModel`
-- state machine переходит `LISTENING_WAKE_WORD -> WAKE_WORD_DETECTED`
-- после detection service приостанавливает wake-word listening
-- inference error не запускает command recording
+- `CUSTOM_ONNX` manifest parses correctly;
+- provider factory creates `CustomOnnxWakeWordEngine` for `raw_pcm` ONNX;
+- provider factory creates `LiveKitOnnxWakeWordEngine` for
+  `embedding_matrix` + `livekit_openwakeword`;
+- missing `haotika.onnx` returns `MissingModel`;
+- missing LiveKit frontend model returns `MissingFrontendModel`;
+- unsupported LiveKit frontend combination returns `UnsupportedModelInput`;
+- `WakeWordService` depends on `WakeWordEngine`;
+- `CUSTOM_TFLITE` still maps to `CustomTfliteWakeWordEngine`;
+- `MOCK` still works for tests/dev;
+- threshold is read from manifest;
+- safe diagnostics expose `modelVersion` and provider;
+- no upload occurs before `WakeWordDetected`;
+- push-to-talk remains available if model is missing.

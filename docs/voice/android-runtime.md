@@ -45,6 +45,7 @@ type AndroidVoiceRuntimeError =
   | 'missing_microphone_permission'
   | 'missing_notification_permission'
   | 'missing_wake_model'
+  | 'unsupported_wake_model_input'
   | 'foreground_service_not_allowed'
   | 'battery_restricted'
   | 'security_exception'

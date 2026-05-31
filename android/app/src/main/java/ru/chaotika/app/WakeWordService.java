@@ -344,7 +344,7 @@ public class WakeWordService extends Service {
         setState(VoiceAssistantState.ERROR);
         updateNotification(getString(R.string.planner_voice_notification_error));
 
-        if (error.code == WakeWordError.Code.MISSING_MODEL) {
+        if (isWakeModelUnavailable(error)) {
             PlannerVoiceAssistantStorage.storeWakeWordEnabled(this, false);
             PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, false);
             AndroidVoiceRuntimeStore.markBlocked(this, runtimeError);
@@ -357,6 +357,14 @@ public class WakeWordService extends Service {
         }
 
         AndroidVoiceRuntimeStore.markBlocked(this, runtimeError);
+    }
+
+    private static boolean isWakeModelUnavailable(WakeWordError error) {
+        return error.code == WakeWordError.Code.MISSING_MODEL ||
+            error.code == WakeWordError.Code.MISSING_FRONTEND_MODEL ||
+            error.code == WakeWordError.Code.MODEL_IO_MISMATCH ||
+            error.code == WakeWordError.Code.UNSUPPORTED_MODEL_INPUT ||
+            error.code == WakeWordError.Code.UNSUPPORTED_SAMPLE_RATE;
     }
 
     private void stopAssistant(boolean preserveBlockedStatus) {

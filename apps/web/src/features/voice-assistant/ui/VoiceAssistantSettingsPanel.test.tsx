@@ -401,7 +401,9 @@ function getBaseStatus(): VoiceAssistantNativeStatus {
     voiceCuesEnabled: true,
     wakePhrase: 'Хаотика',
     wakeWordEnabled: true,
+    wakeWordModelVersion: 'haotika-livekit-test',
     wakeWordModelStatus: 'ready',
+    wakeWordProvider: 'custom_onnx',
     wakeWordSensitivity: 0.99,
   }
 }

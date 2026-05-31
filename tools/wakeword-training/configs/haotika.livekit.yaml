@@ -1,0 +1,96 @@
+# LiveKit Wakeword config for the first Haotika training loop.
+#
+# Checked against the current livekit/livekit-wakeword README/config schema:
+#   livekit-wakeword setup --config configs/haotika.livekit.yaml
+#   livekit-wakeword run configs/haotika.livekit.yaml
+#
+# Pinned source for Android parity:
+#   livekit/livekit-wakeword commit 1ec7f680df30ff4ca0ebae6b5983441e94b10980
+#
+# Important Android blocker:
+# LiveKit exports the classifier head. The ONNX input is embeddings, typically
+# shape (1, 16, 96), not raw PCM. Android approval requires either a matching
+# LiveKit/openWakeWord preprocessing layer on Android or a runtime wrapper that
+# feeds embeddings into this classifier.
+
+model_name: haotika
+target_phrases:
+  - 'Хаотика'
+
+# Russian/multilingual phrases require VoxCPM. Piper is English-focused.
+tts_backend: voxcpm
+
+# First loop values are intentionally smaller than production scale. Increase
+# after the CLI/runtime contract is confirmed.
+n_samples: 2000
+n_samples_val: 400
+n_background_samples: 400
+n_background_samples_val: 100
+tts_batch_size: 8
+
+custom_negative_phrases:
+  - 'котика'
+  - 'готика'
+  - 'экзотика'
+  - 'хаос'
+  - 'хаотично'
+  - 'политика'
+  - 'риторика'
+  - 'хаотичная'
+  - 'план на завтра'
+  - 'открой планнер'
+  - 'обычная русская речь'
+
+noise_scales: [0.98]
+noise_scale_ws: [0.98]
+length_scales: [0.75, 1.0, 1.25]
+slerp_weights: [0.2, 0.35, 0.5, 0.65, 0.8]
+
+piper_tts:
+  checkpoint_relpath: piper/en-us-libritts-high.pt
+
+voxcpm_tts:
+  model_id: openbmb/VoxCPM2
+  model_cache_relpath: voxcpm/VoxCPM2
+  local_model_path: null
+  load_denoiser: false
+  cfg_values: [1.5, 2.0, 2.5]
+  inference_timesteps_list: [8, 10, 12]
+  voice_design_prompts:
+    - 'A young adult woman speaking Russian clearly, calm mid-pitch voice, moderate pace'
+    - 'A young adult man speaking Russian clearly, warm baritone voice, steady pace'
+    - 'A middle-aged woman speaking Russian, confident low-mid voice, measured pace'
+    - 'A middle-aged man speaking Russian, deep resonant voice, slow deliberate pace'
+    - 'An older woman speaking Russian softly, careful enunciation, slower pace'
+    - 'An older man speaking Russian, gravelly tenor, matter-of-fact tone'
+    - 'A young energetic woman speaking Russian, bright pitch, faster conversational pace'
+    - 'A young man speaking Russian, light tenor, quick casual pace'
+    - 'A quiet close-mic Russian voice, intimate tone, slow and clear'
+    - 'A serious formal Russian voice, precise articulation, even rhythm'
+
+data_dir: ./data
+output_dir: ./output/haotika-livekit-0.1.0/_livekit
+
+augmentation:
+  clip_duration: 2.0
+  batch_size: 8
+  rounds: 2
+  background_paths: [./data/backgrounds]
+  rir_paths: [./data/rirs]
+
+model:
+  model_type: conv_attention
+  model_size: small
+
+steps: 10000
+learning_rate: 0.0001
+weight_decay: 0.01
+label_smoothing: 0.05
+max_negative_weight: 2000
+target_fp_per_hour: 1.0
+
+batch_n_per_class:
+  positive: 32
+  adversarial_negative: 32
+  ACAV100M_sample: 256
+  background_noise: 32

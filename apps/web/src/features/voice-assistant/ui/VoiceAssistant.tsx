@@ -14,6 +14,7 @@ import {
   type VoiceActionSource,
   type VoiceAssistantSource,
   type VoiceAssistantState,
+  type VoiceMetricWakeWordProvider,
 } from '@planner/contracts'
 import {
   useCallback,
@@ -93,6 +94,22 @@ const WEB_PROCESSING_STATES = new Set<WebVoiceInputState>([
   'recognizing',
   'parsing',
 ])
+
+function readAndroidWakeWordMetricContext(
+  status: VoiceAssistantNativeStatus | null,
+): {
+  modelVersion?: string
+  wakeWordProvider?: VoiceMetricWakeWordProvider
+} {
+  return {
+    ...(status?.wakeWordModelVersion
+      ? { modelVersion: status.wakeWordModelVersion }
+      : {}),
+    ...(status?.wakeWordProvider
+      ? { wakeWordProvider: status.wakeWordProvider }
+      : {}),
+  }
+}
 
 interface VoiceFlowTimingMarks {
   actionPreviewCreatedAt?: number | undefined
@@ -179,18 +196,30 @@ export function VoiceAssistant() {
       }
 
       const metricSource = getVoiceMetricSource(source)
+      const wakeWordContext =
+        metricSource === 'android_wake_word'
+          ? readAndroidWakeWordMetricContext(androidVoiceStatus)
+          : {}
+      const wakeWordMetricPayload =
+        metricSource === 'android_wake_word'
+          ? createDefinedMetricPayload({
+              wakeWordProvider:
+                payload.wakeWordProvider ?? wakeWordContext.wakeWordProvider,
+            })
+          : {}
 
       try {
         const event = createVoiceRuntimeMetricEvent({
           ...payload,
           appRole,
           eventName,
-          modelVersion: VOICE_RUNTIME_METRICS_MODEL_VERSION,
+          modelVersion:
+            payload.modelVersion ??
+            wakeWordContext.modelVersion ??
+            VOICE_RUNTIME_METRICS_MODEL_VERSION,
           platform: getVoiceMetricPlatform(metricSource),
           source: metricSource,
-          ...(metricSource === 'android_wake_word'
-            ? { wakeWordProvider: 'custom_tflite' }
-            : {}),
+          ...wakeWordMetricPayload,
         })
 
         void Promise.resolve(voiceMetricsSink.track(event)).catch((error) => {
@@ -200,7 +229,7 @@ export function VoiceAssistant() {
         console.warn('Failed to record voice metric.', error)
       }
     },
-    [session?.appRole, voiceMetricsSink],
+    [androidVoiceStatus, session?.appRole, voiceMetricsSink],
   )
 
   function resetVoiceTiming(start: 'android_wake_word' | 'mic_click'): void {
@@ -630,14 +659,13 @@ export function VoiceAssistant() {
       )
 
       if (source === 'android_wake_word') {
+        const wakeWordContext =
+          readAndroidWakeWordMetricContext(androidVoiceStatus)
+
         resetVoiceTiming('android_wake_word')
         markVoiceTiming('recordingStartedAt')
-        trackVoiceMetric('voice_started', source, {
-          wakeWordProvider: 'custom_tflite',
-        })
-        trackVoiceMetric('wake_detected', source, {
-          wakeWordProvider: 'custom_tflite',
-        })
+        trackVoiceMetric('voice_started', source, wakeWordContext)
+        trackVoiceMetric('wake_detected', source, wakeWordContext)
       }
 
       trackVoiceMetric(
@@ -680,7 +708,7 @@ export function VoiceAssistant() {
     } catch (error) {
       console.warn('Failed to consume Android voice command.', error)
     }
-  }, [androidVoiceStatus?.voiceCuesEnabled, handleTranscript, trackVoiceMetric])
+  }, [androidVoiceStatus, handleTranscript, trackVoiceMetric])
 
   useEffect(() => {
     if (!isAndroidVoiceAssistantRuntime()) {

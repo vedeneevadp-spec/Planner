@@ -38,6 +38,7 @@ public class AndroidVoiceRuntimeModelTest {
                 "missing_microphone_permission",
                 "missing_notification_permission",
                 "missing_wake_model",
+                "unsupported_wake_model_input",
                 "foreground_service_not_allowed",
                 "battery_restricted",
                 "security_exception",
@@ -96,6 +97,18 @@ public class AndroidVoiceRuntimeModelTest {
         assertTrue(degradation.pushToTalkAvailable);
         assertFalse(degradation.recorderBlocked);
         assertTrue(degradation.manualTextInputAvailable);
+    }
+
+    @Test
+    public void unsupportedWakeModelInputMapsToSpecificRuntimeError() {
+        WakeWordError error = WakeWordError.unsupportedModelInput("unsupported");
+
+        assertEquals(AndroidVoiceRuntimeError.UNSUPPORTED_WAKE_MODEL_INPUT, AndroidVoiceRuntimeError.fromWakeWordError(error));
+    }
+
+    @Test
+    public void pushToTalkRemainsAvailableForWakeModelErrorsWhenMicrophoneGranted() {
+        assertTrue(AndroidVoiceRuntimePolicy.isPushToTalkAvailable(true));
     }
 
     @Test

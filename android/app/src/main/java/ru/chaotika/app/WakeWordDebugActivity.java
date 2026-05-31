@@ -190,6 +190,7 @@ public class WakeWordDebugActivity extends Activity {
         diagnosticsText.setText(
             "Phrase: " + snapshot.phrase + "\n" +
             "Model version: " + snapshot.modelVersion + "\n" +
+            "Provider: " + snapshot.provider.metricValue + "\n" +
             "Threshold: " + snapshot.threshold + "\n" +
             "Current score: " + snapshot.currentScore + "\n" +
             "Last detection score: " + snapshot.lastDetectionScore + "\n" +

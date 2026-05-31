@@ -9,6 +9,7 @@ import type {
   PlannerIntentName,
   VoiceActionResult,
   VoiceAssistantSource,
+  VoiceMetricWakeWordProvider,
 } from '@planner/contracts'
 
 import {
@@ -66,6 +67,7 @@ export interface NativeWakeWordDiagnostics {
   lastMetric: string
   modelVersion: string
   phrase: string
+  provider: VoiceMetricWakeWordProvider
   threshold: number
 }
 
@@ -117,7 +119,9 @@ export interface VoiceAssistantNativeStatus {
   voiceCuesEnabled: boolean
   wakePhrase: typeof VOICE_ASSISTANT_WAKE_PHRASE
   wakeWordEnabled: boolean
+  wakeWordModelVersion: string
   wakeWordModelStatus: VoiceAssistantWakeWordModelStatus
+  wakeWordProvider: VoiceMetricWakeWordProvider
   wakeWordSensitivity: number
 }
 
@@ -453,7 +457,9 @@ function createWebVoiceAssistantNativeStatus(): VoiceAssistantNativeStatus {
     voiceCuesEnabled: false,
     wakePhrase: VOICE_ASSISTANT_WAKE_PHRASE,
     wakeWordEnabled: false,
+    wakeWordModelVersion: 'unknown',
     wakeWordModelStatus: 'missing',
+    wakeWordProvider: 'mock',
     wakeWordSensitivity: settings.wakeWordSensitivity,
   }
 }

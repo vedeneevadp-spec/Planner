@@ -318,7 +318,7 @@ export function createComponentSchemas(): Record<
           type: 'number',
         },
         wakeWordProvider: {
-          enum: ['custom_tflite', 'mock'],
+          enum: ['custom_onnx', 'custom_tflite', 'mock'],
           type: 'string',
         },
       },
