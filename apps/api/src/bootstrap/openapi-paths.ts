@@ -198,6 +198,37 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['voice'],
       },
     },
+    '/api/voice/metrics': {
+      post: {
+        operationId: 'recordVoiceMetric',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          {
+            description: 'Device id used for per-device rate limiting.',
+            in: 'header',
+            name: 'x-device-id',
+            required: false,
+            schema: {
+              minLength: 1,
+              type: 'string',
+            },
+          },
+        ],
+        requestBody: jsonRequestBody('VoiceMetricEvent'),
+        responses: {
+          200: jsonResponse('VoiceMetricResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          413: errorResponse(),
+          429: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }],
+        summary:
+          'Record one privacy-safe voice telemetry event for runtime quality monitoring',
+        tags: ['voice'],
+      },
+    },
     '/api/v1/auth/sign-in': {
       post: {
         operationId: 'signIn',
