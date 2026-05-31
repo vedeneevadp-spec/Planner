@@ -1,10 +1,12 @@
 import {
   canUseVoiceAssistant,
   initialVoiceAssistantState,
+  NoopVoiceMetricsSink,
   type PlannerIntent,
   PlannerIntentParser,
   type PlannerIntentParserContext,
   reduceVoiceAssistantState,
+  type SafeVoiceMetricEvent,
   type VoiceActionConfirmedPayload,
   type VoiceActionContext,
   type VoiceActionPreview,
@@ -58,6 +60,16 @@ import {
   type PlannerActionExecutorDependencies,
 } from '../model/planner-action-executor'
 import {
+  BackendVoiceMetricsSink,
+  bucketVoiceMetricConfidence,
+  bucketVoiceMetricDuration,
+  createVoiceRuntimeMetricEvent,
+  getSafeVoiceMetricAppRole,
+  getVoiceMetricPlatform,
+  getVoiceMetricSource,
+  VOICE_RUNTIME_METRICS_MODEL_VERSION,
+} from '../model/voice-metrics'
+import {
   getWebVoiceInputLabel,
   getWebVoiceSupport,
   normalizeWebVoicePermissionError,
@@ -82,6 +94,17 @@ const WEB_PROCESSING_STATES = new Set<WebVoiceInputState>([
   'parsing',
 ])
 
+interface VoiceFlowTimingMarks {
+  actionPreviewCreatedAt?: number | undefined
+  intentParsedAt?: number | undefined
+  micClickAt?: number | undefined
+  recordingStartedAt?: number | undefined
+  recordingStoppedAt?: number | undefined
+  sttUploadCompletedAt?: number | undefined
+  sttUploadStartedAt?: number | undefined
+  wakeDetectedAt?: number | undefined
+}
+
 export function VoiceAssistant() {
   const planner = usePlanner()
   const plannerApi = usePlannerApiClient()
@@ -89,6 +112,13 @@ export function VoiceAssistant() {
   const createShoppingItemMutation = useCreateShoppingListItem()
   const removeShoppingItemMutation = useRemoveShoppingListItem()
   const parser = useMemo(() => new PlannerIntentParser(), [])
+  const voiceMetricsSink = useMemo(
+    () =>
+      import.meta.env.MODE === 'test' || !apiConfig
+        ? new NoopVoiceMetricsSink()
+        : new BackendVoiceMetricsSink(apiConfig),
+    [apiConfig],
+  )
   const actionExecutorRef = useRef(new PlannerActionExecutor())
   const [state, dispatch] = useReducer(
     reduceVoiceAssistantState,
@@ -114,6 +144,7 @@ export function VoiceAssistant() {
   const webUploadAbortControllerRef = useRef<AbortController | null>(null)
   const webExplicitUserActionRef = useRef(false)
   const webOperationIdRef = useRef(0)
+  const voiceTimingRef = useRef<VoiceFlowTimingMarks>({})
   const [androidSettingsRevision, setAndroidSettingsRevision] = useState(0)
   const [androidVoiceStatus, setAndroidVoiceStatus] =
     useState<VoiceAssistantNativeStatus | null>(null)
@@ -130,19 +161,107 @@ export function VoiceAssistant() {
     isWebProcessing ||
     (isAndroidRuntime && state.status === 'recording')
 
+  const trackVoiceMetric = useCallback(
+    (
+      eventName: SafeVoiceMetricEvent['eventName'],
+      source: VoiceAssistantSource | VoiceActionSource,
+      payload: Partial<
+        Omit<
+          SafeVoiceMetricEvent,
+          'appRole' | 'createdAt' | 'eventName' | 'platform' | 'source'
+        >
+      > = {},
+    ) => {
+      const appRole = getSafeVoiceMetricAppRole(session?.appRole)
+
+      if (!appRole) {
+        return
+      }
+
+      const metricSource = getVoiceMetricSource(source)
+
+      try {
+        const event = createVoiceRuntimeMetricEvent({
+          ...payload,
+          appRole,
+          eventName,
+          modelVersion: VOICE_RUNTIME_METRICS_MODEL_VERSION,
+          platform: getVoiceMetricPlatform(metricSource),
+          source: metricSource,
+          ...(metricSource === 'android_wake_word'
+            ? { wakeWordProvider: 'custom_tflite' }
+            : {}),
+        })
+
+        void Promise.resolve(voiceMetricsSink.track(event)).catch((error) => {
+          console.warn('Failed to record voice metric.', error)
+        })
+      } catch (error) {
+        console.warn('Failed to record voice metric.', error)
+      }
+    },
+    [session?.appRole, voiceMetricsSink],
+  )
+
+  function resetVoiceTiming(start: 'android_wake_word' | 'mic_click'): void {
+    const now = readVoiceMetricNow()
+
+    voiceTimingRef.current =
+      start === 'android_wake_word'
+        ? { wakeDetectedAt: now }
+        : { micClickAt: now }
+  }
+
+  function markVoiceTiming(mark: keyof VoiceFlowTimingMarks): void {
+    voiceTimingRef.current = {
+      ...voiceTimingRef.current,
+      [mark]: readVoiceMetricNow(),
+    }
+  }
+
+  function createConfirmationTimingPayload(
+    source: VoiceAssistantSource | VoiceActionSource,
+  ): Partial<SafeVoiceMetricEvent> {
+    const marks = voiceTimingRef.current
+    const confirmationShownAt = readVoiceMetricNow()
+    const metricSource = getVoiceMetricSource(source)
+
+    return createDefinedMetricPayload({
+      mic_click_to_confirmation_card_ms:
+        metricSource === 'web_push_to_talk'
+          ? durationBetween(marks.micClickAt, confirmationShownAt)
+          : undefined,
+      time_to_confirmation_card_ms: durationBetween(
+        marks.micClickAt ?? marks.wakeDetectedAt,
+        confirmationShownAt,
+      ),
+      wake_detected_to_confirmation_card_ms:
+        metricSource === 'android_wake_word'
+          ? durationBetween(marks.wakeDetectedAt, confirmationShownAt)
+          : undefined,
+      wake_detected_to_recorder_start_ms:
+        metricSource === 'android_wake_word'
+          ? durationBetween(marks.wakeDetectedAt, marks.recordingStartedAt)
+          : undefined,
+    })
+  }
+
   const runActionPreview = useCallback(
     async (
       preview: VoiceActionPreview,
       source?: VoiceAssistantSource,
       confirmedPayload?: VoiceActionConfirmedPayload,
     ) => {
+      const metricSource = source ?? 'web_microphone'
+
+      trackVoiceMetric('confirmation_accepted', metricSource, {
+        intentType: preview.intent.intent,
+        previewStatus: preview.status,
+      })
       dispatch({ type: 'confirmed' })
 
       try {
-        const context = createVoiceActionContext(
-          source ?? 'web_microphone',
-          session,
-        )
+        const context = createVoiceActionContext(metricSource, session)
         const result = await actionExecutorRef.current.executeAction(
           preview.id,
           confirmedPayload,
@@ -161,11 +280,36 @@ export function VoiceAssistant() {
           intent: preview.intent.intent,
           requiresUnlock:
             preview.requiresUnlock || Boolean(preview.intent.requiresUnlock),
-          source: source ?? 'web_microphone',
+          source: metricSource,
           status: result.status,
-        }).catch((error) => {
-          console.warn('Failed to notify Android voice action result.', error)
         })
+          .then((doneCuePlayed) => {
+            trackVoiceMetric(
+              doneCuePlayed ? 'voice_cue_done_played' : 'voice_cue_suppressed',
+              metricSource,
+              {
+                errorCode: doneCuePlayed
+                  ? undefined
+                  : 'done_cue_not_played_by_policy',
+                intentType: preview.intent.intent,
+                resultStatus: result.status,
+              },
+            )
+          })
+          .catch((error) => {
+            console.warn('Failed to notify Android voice action result.', error)
+          })
+
+        trackVoiceMetric(
+          result.status === 'success' ? 'action_executed' : 'action_failed',
+          metricSource,
+          {
+            errorCode: result.errorCode,
+            intentType: preview.intent.intent,
+            previewStatus: preview.status,
+            resultStatus: result.status,
+          },
+        )
 
         if (result.status === 'success') {
           dispatch({ type: 'executed' })
@@ -176,9 +320,14 @@ export function VoiceAssistant() {
           error: result.visualStatus,
           transcript: preview.intent.rawText,
           type: 'failed',
-          ...(source ? { source } : {}),
+          source: metricSource,
         })
       } catch (error) {
+        trackVoiceMetric('action_failed', metricSource, {
+          errorCode: 'voice_action_execution_error',
+          intentType: preview.intent.intent,
+          previewStatus: preview.status,
+        })
         dispatch({
           error:
             error instanceof Error
@@ -186,7 +335,7 @@ export function VoiceAssistant() {
               : 'Не удалось выполнить голосовую команду.',
           transcript: preview.intent.rawText,
           type: 'failed',
-          ...(source ? { source } : {}),
+          source: metricSource,
         })
       }
     },
@@ -196,11 +345,13 @@ export function VoiceAssistant() {
       plannerApi,
       removeShoppingItemMutation.mutateAsync,
       session,
+      trackVoiceMetric,
     ],
   )
 
   const prepareIntentPreview = useCallback(
     async (intent: PlannerIntent, source: VoiceAssistantSource) => {
+      const actionPreviewStartedAt = readVoiceMetricNow()
       const preview = await actionExecutorRef.current.prepareAction(
         intent,
         createVoiceActionContext(source, session),
@@ -211,6 +362,7 @@ export function VoiceAssistant() {
           plannerApi,
         }),
       )
+      markVoiceTiming('actionPreviewCreatedAt')
 
       setActionPreview(preview)
       setSelectedCandidateId(
@@ -222,6 +374,26 @@ export function VoiceAssistant() {
         intent,
         type: 'intent_parsed',
       })
+      trackVoiceMetric('action_preview_created', source, {
+        action_preview_duration_ms: durationBetween(
+          actionPreviewStartedAt,
+          voiceTimingRef.current.actionPreviewCreatedAt,
+        ),
+        intentType: intent.intent,
+        previewStatus: preview.status,
+      })
+      trackVoiceMetric('confirmation_shown', source, {
+        ...createConfirmationTimingPayload(source),
+        intentType: intent.intent,
+        previewStatus: preview.status,
+      })
+
+      if (preview.status === 'requires_clarification') {
+        trackVoiceMetric('clarification_requested', source, {
+          intentType: intent.intent,
+          previewStatus: preview.status,
+        })
+      }
 
       return preview
     },
@@ -231,6 +403,7 @@ export function VoiceAssistant() {
       plannerApi,
       removeShoppingItemMutation.mutateAsync,
       session,
+      trackVoiceMetric,
     ],
   )
 
@@ -267,13 +440,24 @@ export function VoiceAssistant() {
         transcript: normalizedTranscript,
         type: 'transcript_received',
       })
+      trackVoiceMetric('transcript_received', source)
 
+      const parserStartedAt = readVoiceMetricNow()
       const intent =
         backendIntent ??
         parser.parse(
           normalizedTranscript,
           createPlannerIntentParserContext(source, planner.spheres, session),
         )
+      markVoiceTiming('intentParsedAt')
+      trackVoiceMetric('intent_parsed', source, {
+        confidenceBucket: bucketVoiceMetricConfidence(intent.confidence),
+        intentType: intent.intent,
+        parser_duration_ms: durationBetween(
+          parserStartedAt,
+          voiceTimingRef.current.intentParsedAt,
+        ),
+      })
 
       try {
         await prepareIntentPreview(intent, source)
@@ -289,7 +473,7 @@ export function VoiceAssistant() {
         })
       }
     },
-    [parser, planner, prepareIntentPreview, session],
+    [parser, planner, prepareIntentPreview, session, trackVoiceMetric],
   )
 
   const prepareFollowUpIntent = useCallback(
@@ -308,6 +492,12 @@ export function VoiceAssistant() {
         transcript,
         type: 'transcript_received',
       })
+      trackVoiceMetric('transcript_received', source)
+      markVoiceTiming('intentParsedAt')
+      trackVoiceMetric('intent_parsed', source, {
+        confidenceBucket: bucketVoiceMetricConfidence(intent.confidence),
+        intentType: intent.intent,
+      })
 
       try {
         await prepareIntentPreview(intent, source)
@@ -323,11 +513,15 @@ export function VoiceAssistant() {
         })
       }
     },
-    [prepareIntentPreview],
+    [prepareIntentPreview, trackVoiceMetric],
   )
 
   const handleClarifyOption = useCallback(
     (transcript: string) => {
+      trackVoiceMetric(
+        'clarification_requested',
+        getStateSource(state) ?? 'web_microphone',
+      )
       setClarificationAttempts((current) =>
         Math.min(current + 1, MAX_CLARIFICATION_ATTEMPTS),
       )
@@ -338,7 +532,7 @@ export function VoiceAssistant() {
         { resetClarificationAttempts: false },
       )
     },
-    [handleTranscript, state],
+    [handleTranscript, state, trackVoiceMetric],
   )
 
   const handleCreateFromNotFound = useCallback(
@@ -372,6 +566,11 @@ export function VoiceAssistant() {
       return
     }
 
+    const source = getStateSource(state) ?? 'web_microphone'
+
+    trackVoiceMetric('undo_requested', source, {
+      resultStatus: actionResult.status,
+    })
     setIsUndoing(true)
 
     try {
@@ -386,11 +585,23 @@ export function VoiceAssistant() {
       )
 
       setActionResult(normalizeUndoResult(undoResult))
+      trackVoiceMetric(
+        undoResult.status === 'success' ? 'undo_success' : 'undo_failed',
+        source,
+        {
+          errorCode: undoResult.errorCode,
+          resultStatus: undoResult.status,
+        },
+      )
     } catch {
       setActionResult({
         errorCode: 'voice_action_undo_failed',
         status: 'failed',
         visualStatus: 'Не удалось отменить. Обнови экран.',
+      })
+      trackVoiceMetric('undo_failed', source, {
+        errorCode: 'voice_action_undo_failed',
+        resultStatus: 'failed',
       })
     } finally {
       setIsUndoing(false)
@@ -401,6 +612,8 @@ export function VoiceAssistant() {
     planner,
     plannerApi,
     removeShoppingItemMutation.mutateAsync,
+    state,
+    trackVoiceMetric,
   ])
 
   const consumePendingAndroidCommand = useCallback(async () => {
@@ -416,10 +629,33 @@ export function VoiceAssistant() {
         pendingAndroidButtonCaptureRef.current,
       )
 
+      if (source === 'android_wake_word') {
+        resetVoiceTiming('android_wake_word')
+        markVoiceTiming('recordingStartedAt')
+        trackVoiceMetric('voice_started', source, {
+          wakeWordProvider: 'custom_tflite',
+        })
+        trackVoiceMetric('wake_detected', source, {
+          wakeWordProvider: 'custom_tflite',
+        })
+      }
+
+      trackVoiceMetric(
+        androidVoiceStatus?.voiceCuesEnabled
+          ? 'voice_cue_listening_played'
+          : 'voice_cue_suppressed',
+        source,
+        androidVoiceStatus?.voiceCuesEnabled
+          ? {}
+          : { errorCode: 'voice_cues_disabled' },
+      )
       pendingAndroidButtonCaptureRef.current = false
       handledNativeCommandIdsRef.current.add(command.id)
 
       if (command.errorMessage) {
+        trackVoiceMetric('stt_error', source, {
+          errorCode: command.errorCode ?? 'android_voice_command_error',
+        })
         setIsCardVisible(true)
         dispatch({
           error: command.errorMessage,
@@ -430,6 +666,9 @@ export function VoiceAssistant() {
       }
 
       if (!command.transcript) {
+        trackVoiceMetric('stt_error', source, {
+          errorCode: 'failed_recognition',
+        })
         return
       }
 
@@ -441,7 +680,7 @@ export function VoiceAssistant() {
     } catch (error) {
       console.warn('Failed to consume Android voice command.', error)
     }
-  }, [handleTranscript])
+  }, [androidVoiceStatus?.voiceCuesEnabled, handleTranscript, trackVoiceMetric])
 
   useEffect(() => {
     if (!isAndroidVoiceAssistantRuntime()) {
@@ -609,10 +848,24 @@ export function VoiceAssistant() {
   }
 
   async function startAndroidVoiceInput() {
+    resetVoiceTiming('mic_click')
     setWebVoiceState('idle')
     setWebVoiceMessage(null)
     setIsCardVisible(true)
     pendingAndroidButtonCaptureRef.current = true
+    trackVoiceMetric('voice_started', 'android_microphone')
+    trackVoiceMetric('push_to_talk_started', 'android_microphone')
+    trackVoiceMetric(
+      androidVoiceStatus?.voiceCuesEnabled
+        ? 'voice_cue_listening_played'
+        : 'voice_cue_suppressed',
+      'android_microphone',
+      androidVoiceStatus?.voiceCuesEnabled
+        ? {}
+        : { errorCode: 'voice_cues_disabled' },
+    )
+    markVoiceTiming('recordingStartedAt')
+    trackVoiceMetric('command_recording_started', 'android_microphone')
 
     dispatch({
       source: 'android_microphone',
@@ -630,6 +883,9 @@ export function VoiceAssistant() {
       }, 650)
     } catch (error) {
       pendingAndroidButtonCaptureRef.current = false
+      trackVoiceMetric('command_recording_cancelled', 'android_microphone', {
+        errorCode: 'android_capture_failed',
+      })
       dispatch({
         error:
           error instanceof Error
@@ -642,6 +898,7 @@ export function VoiceAssistant() {
   }
 
   async function startWebVoiceInput() {
+    resetVoiceTiming('mic_click')
     setIsCardVisible(true)
     setActionPreview(null)
     setActionResult(null)
@@ -654,6 +911,11 @@ export function VoiceAssistant() {
     webOperationIdRef.current = operationId
     recordClientEvent('web_voice_started', {
       source: WEB_VOICE_SOURCE,
+    })
+    trackVoiceMetric('voice_started', 'web_microphone')
+    trackVoiceMetric('push_to_talk_started', 'web_microphone')
+    trackVoiceMetric('voice_cue_suppressed', 'web_microphone', {
+      errorCode: 'web_voice_cues_unsupported',
     })
 
     const support = getWebVoiceSupport()
@@ -672,6 +934,9 @@ export function VoiceAssistant() {
         },
         { level: 'warn' },
       )
+      trackVoiceMetric('web_voice_unsupported', 'web_microphone', {
+        errorCode: support.reason ?? 'unknown',
+      })
       dispatch({
         error: message,
         source: 'web_microphone',
@@ -694,6 +959,8 @@ export function VoiceAssistant() {
 
       setWebVoiceState('listening')
       setWebVoiceMessage(getWebVoiceInputLabel('listening'))
+      markVoiceTiming('recordingStartedAt')
+      trackVoiceMetric('command_recording_started', 'web_microphone')
       dispatch({
         source: 'web_microphone',
         type: 'recording_started',
@@ -703,6 +970,9 @@ export function VoiceAssistant() {
           maxDurationMs: WEB_RECORDING_MAX_DURATION_MS,
           source: WEB_VOICE_SOURCE,
           stage: 'recording',
+        })
+        trackVoiceMetric('web_voice_timeout', 'web_microphone', {
+          errorCode: 'recording_timeout',
         })
         void stopWebVoiceRecording(operationId)
       }, WEB_RECORDING_MAX_DURATION_MS)
@@ -720,6 +990,9 @@ export function VoiceAssistant() {
           },
           { level: 'warn' },
         )
+        trackVoiceMetric('web_voice_permission_denied', 'web_microphone', {
+          errorCode: voiceError.name,
+        })
       }
 
       dispatch({
@@ -751,6 +1024,7 @@ export function VoiceAssistant() {
         return
       }
 
+      markVoiceTiming('recordingStoppedAt')
       recordClientEvent('web_voice_recording_stopped', {
         byteLength: recording.byteLength,
         durationMs: recording.durationMs,
@@ -773,6 +1047,12 @@ export function VoiceAssistant() {
           },
           { level: 'warn' },
         )
+        trackVoiceMetric('local_validation_failed', 'web_microphone', {
+          audioBytes: recording.byteLength,
+          audioDurationMs: recording.durationMs,
+          durationBucket: bucketVoiceMetricDuration(recording.durationMs),
+          errorCode: validation.reason,
+        })
         dispatch({
           error: validation.message,
           source: 'web_microphone',
@@ -787,10 +1067,17 @@ export function VoiceAssistant() {
 
       setWebVoiceState('uploading')
       setWebVoiceMessage(getWebVoiceInputLabel('uploading'))
+      markVoiceTiming('sttUploadStartedAt')
       recordClientEvent('web_voice_upload_started', {
         byteLength: recording.byteLength,
         durationMs: recording.durationMs,
         source: WEB_VOICE_SOURCE,
+      })
+      trackVoiceMetric('stt_upload_started', 'web_microphone', {
+        audioBytes: recording.byteLength,
+        audioDurationMs: recording.durationMs,
+        durationBucket: bucketVoiceMetricDuration(recording.durationMs),
+        sttProvider: 'yandex_speechkit',
       })
 
       const abortController = new AbortController()
@@ -812,6 +1099,16 @@ export function VoiceAssistant() {
         durationMs: response.stt.durationMs,
         provider: response.stt.provider,
         source: response.stt.source,
+      })
+      markVoiceTiming('sttUploadCompletedAt')
+      trackVoiceMetric('stt_upload_completed', 'web_microphone', {
+        audioDurationMs: response.stt.durationMs,
+        durationBucket: bucketVoiceMetricDuration(response.stt.durationMs),
+        sttProvider: mapMetricSttProvider(response.stt.provider),
+        stt_upload_duration_ms: durationBetween(
+          voiceTimingRef.current.sttUploadStartedAt,
+          voiceTimingRef.current.sttUploadCompletedAt,
+        ),
       })
       setWebVoiceState('parsing')
       setWebVoiceMessage(getWebVoiceInputLabel('parsing'))
@@ -844,6 +1141,9 @@ export function VoiceAssistant() {
           },
           { level: 'warn' },
         )
+        trackVoiceMetric('web_voice_timeout', 'web_microphone', {
+          errorCode: 'upload_timeout',
+        })
       }
       recordClientEvent(
         'web_voice_upload_error',
@@ -856,6 +1156,11 @@ export function VoiceAssistant() {
         },
         { level: 'error' },
       )
+      trackVoiceMetric('stt_error', 'web_microphone', {
+        errorCode:
+          error instanceof WebVoiceCommandApiError ? error.code : errorName,
+        sttProvider: 'yandex_speechkit',
+      })
       dispatch({
         error: message,
         source: 'web_microphone',
@@ -869,6 +1174,17 @@ export function VoiceAssistant() {
   }
 
   function closeCard() {
+    if (actionPreview && !actionResult) {
+      trackVoiceMetric(
+        'confirmation_cancelled',
+        getStateSource(state) ?? 'web_microphone',
+        {
+          intentType: actionPreview.intent.intent,
+          previewStatus: actionPreview.status,
+        },
+      )
+    }
+
     cancelWebVoiceOperation()
     setIsCardVisible(false)
     setActionPreview(null)
@@ -884,6 +1200,9 @@ export function VoiceAssistant() {
       recordClientEvent('web_voice_recording_cancelled', {
         source: WEB_VOICE_SOURCE,
         state: webVoiceState,
+      })
+      trackVoiceMetric('command_recording_cancelled', 'web_microphone', {
+        errorCode: webVoiceState,
       })
     }
 
@@ -951,6 +1270,16 @@ export function VoiceAssistant() {
           }}
           onCreateFromNotFound={handleCreateFromNotFound}
           onEditTranscript={(transcript) => {
+            if (actionPreview) {
+              trackVoiceMetric(
+                'confirmation_edited',
+                getStateSource(state) ?? 'web_microphone',
+                {
+                  intentType: actionPreview.intent.intent,
+                  previewStatus: actionPreview.status,
+                },
+              )
+            }
             void handleTranscript(
               transcript,
               getStateSource(state) ?? 'web_microphone',
@@ -1229,4 +1558,41 @@ function getAndroidVoiceCommandSource(
   }
 
   return wasStartedByButton ? 'android_microphone' : 'android_wake_word'
+}
+
+function readVoiceMetricNow(): number {
+  return typeof performance === 'undefined' ? Date.now() : performance.now()
+}
+
+function durationBetween(
+  startedAt: number | undefined,
+  endedAt: number | undefined,
+): number | undefined {
+  if (startedAt === undefined || endedAt === undefined) {
+    return undefined
+  }
+
+  return Math.max(0, Math.round(endedAt - startedAt))
+}
+
+function createDefinedMetricPayload(
+  payload: Partial<SafeVoiceMetricEvent>,
+): Partial<SafeVoiceMetricEvent> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== undefined),
+  ) as Partial<SafeVoiceMetricEvent>
+}
+
+function mapMetricSttProvider(
+  provider: string,
+): SafeVoiceMetricEvent['sttProvider'] {
+  switch (provider) {
+    case 'backend_yandex_speechkit':
+      return 'yandex_speechkit'
+    case 'local_stub':
+    case 'stub':
+      return provider
+    default:
+      return 'stub'
+  }
 }

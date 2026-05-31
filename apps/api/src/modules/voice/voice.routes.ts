@@ -1,4 +1,8 @@
-import { canUseVoiceAssistant } from '@planner/contracts'
+import {
+  canUseVoiceAssistant,
+  parseSafeVoiceMetricEvent,
+  VoiceMetricPayloadError,
+} from '@planner/contracts'
 import type { FastifyInstance } from 'fastify'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -23,12 +27,18 @@ const VOICE_COMMAND_CONTENT_TYPES = [
   'audio/lpcm',
   'audio/pcm',
 ] as const
+const VOICE_METRICS_MAX_BATCH_EVENTS = 1
+const VOICE_METRICS_PAYLOAD_LIMIT_BYTES = 16 * 1024
+const VOICE_METRICS_RATE_LIMIT_MAX_EVENTS = 120
+const VOICE_METRICS_RATE_LIMIT_WINDOW_MS = 60_000
 
 export function registerVoiceRoutes(
   app: FastifyInstance,
   sessionService: SessionService,
   service: VoiceCommandService,
 ): void {
+  const metricsRateLimiter = new VoiceMetricsRateLimiter()
+
   for (const contentType of VOICE_COMMAND_CONTENT_TYPES) {
     if (!app.hasContentTypeParser(contentType)) {
       app.addContentTypeParser(
@@ -90,6 +100,86 @@ export function registerVoiceRoutes(
           readStringHeader(request.headers['x-stt-source']),
         ),
       })
+    },
+  )
+
+  app.post(
+    '/api/voice/metrics',
+    { bodyLimit: VOICE_METRICS_PAYLOAD_LIMIT_BYTES },
+    async (request) => {
+      requireRequestAuth(request)
+      const context = await resolveRouteWriteContext(request, sessionService)
+
+      if (!canUseVoiceAssistant(context.appRole)) {
+        throw new HttpError(
+          403,
+          'voice_feature_forbidden',
+          'Voice input is available only for global owner and test users.',
+        )
+      }
+
+      if (Array.isArray(request.body)) {
+        throw new HttpError(
+          400,
+          'voice_metric_batch_too_large',
+          'Voice metrics endpoint accepts one event per request.',
+          {
+            maxEventsPerBatch: VOICE_METRICS_MAX_BATCH_EVENTS,
+            receivedEvents: request.body.length,
+          },
+        )
+      }
+
+      try {
+        metricsRateLimiter.assertAllowed(
+          createVoiceMetricRateLimitKey({
+            actorUserId: context.actorUserId,
+            deviceId:
+              readStringHeader(request.headers['x-device-id']) ?? undefined,
+            ipAddress: request.ip,
+            workspaceId: context.workspaceId,
+          }),
+        )
+      } catch {
+        throw new HttpError(
+          429,
+          'voice_metric_rate_limited',
+          'Voice metrics rate limit exceeded.',
+          {
+            limit: VOICE_METRICS_RATE_LIMIT_MAX_EVENTS,
+            windowMs: VOICE_METRICS_RATE_LIMIT_WINDOW_MS,
+          },
+        )
+      }
+
+      let event
+
+      try {
+        event = parseSafeVoiceMetricEvent(request.body)
+      } catch (error) {
+        if (error instanceof VoiceMetricPayloadError) {
+          throw new HttpError(
+            400,
+            error.code,
+            'Voice metric payload failed safe telemetry validation.',
+            error.details,
+          )
+        }
+
+        throw error
+      }
+
+      if (event.appRole !== context.appRole) {
+        throw new HttpError(
+          400,
+          'voice_metric_role_mismatch',
+          'Voice metric appRole must match the authenticated session role.',
+        )
+      }
+
+      service.recordRuntimeMetric(event)
+
+      return { ok: true }
     },
   )
 }
@@ -181,4 +271,54 @@ function readNumberHeader(
   const parsed = Number(rawValue)
 
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function createVoiceMetricRateLimitKey(input: {
+  actorUserId: string | undefined
+  deviceId: string | undefined
+  ipAddress: string | undefined
+  workspaceId: string
+}): string {
+  return [
+    input.actorUserId ?? input.workspaceId,
+    input.deviceId ?? 'unknown-device',
+    input.ipAddress ?? 'unknown-ip',
+  ].join(':')
+}
+
+class VoiceMetricsRateLimiter {
+  private readonly buckets = new Map<
+    string,
+    { count: number; resetAt: number }
+  >()
+
+  assertAllowed(key: string): void {
+    const now = Date.now()
+
+    this.cleanup(now)
+
+    const current = this.buckets.get(key)
+
+    if (!current || current.resetAt <= now) {
+      this.buckets.set(key, {
+        count: 1,
+        resetAt: now + VOICE_METRICS_RATE_LIMIT_WINDOW_MS,
+      })
+      return
+    }
+
+    if (current.count >= VOICE_METRICS_RATE_LIMIT_MAX_EVENTS) {
+      throw new Error('voice_metric_rate_limited')
+    }
+
+    current.count += 1
+  }
+
+  private cleanup(now: number): void {
+    for (const [key, bucket] of this.buckets.entries()) {
+      if (bucket.resetAt <= now) {
+        this.buckets.delete(key)
+      }
+    }
+  }
 }

@@ -1,3 +1,4 @@
+export { ApiVoiceMetricsSink } from './voice.metrics.js'
 export type {
   BackendSttProvider,
   BackendSttProviderInput,

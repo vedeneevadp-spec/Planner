@@ -1350,15 +1350,26 @@ Undo и full clarification loop были вынесены из пункта 5 и
     `llmFallbackAllowed`.
 
 13. Добавить метрики качества.
-    Логировать только безопасные события без аудио: wake word detected,
-    transcript received, intent type, confidence bucket, confirmation accepted,
-    cancelled, failed. Нужны метрики false activation, failed recognition,
-    parser clarify rate, confirmation accept rate и время от wake word до
-    карточки. Добавить `voice_cue_listening_played`, `voice_cue_done_played`,
-    `voice_cue_error`, время от wake detected до recorder start и время от
-    execute success до visual result. На этом этапе подключается production
-    telemetry sink для voice flow. Не логировать приватные task titles, raw
-    transcript без отдельной policy и audio voice command.
+    Статус: реализовано как два слоя.
+
+    Offline report `npm run voice-quality-report` прогоняет
+    `voice-command-corpus.v1` на 195 cases через `PlannerIntentParser`,
+    `PlannerActionExecutor.prepareAction`, confirmation UI/web/voice cue/privacy
+    expectations и группирует результаты по category. Safety thresholds hard
+    fail: `dangerous_block_rate`, `locked_screen_privacy_pass_rate`,
+    `voice_cue_policy_pass_rate`, `llm_eligibility_policy_pass_rate` и
+    `no_private_metrics_policy` должны быть 100%.
+
+    Runtime safe telemetry добавляет typed `SafeVoiceMetricEvent`,
+    `VoiceMetricsSink`, client `BackendVoiceMetricsSink`, backend
+    `ApiVoiceMetricsSink` и endpoint `POST /api/voice/metrics`. Endpoint
+    принимает один event до 16 KB, rate-limit по actor/device/IP, reject unknown
+    event names/fields, recursive private payloads и full intent/preview/result.
+    Не логировать audio, raw transcript, task titles, shopping item names,
+    agenda content или candidates. Метрики собираются для подготовки
+    auto-confirm, но не включают auto-confirm; auto-confirm появится только
+    после закрытого тестирования и отдельного решения. Подробности:
+    [docs/voice/quality-metrics.md](voice/quality-metrics.md).
 
 14. Подключить production LLM fallback provider для `PlannerIntentParser`.
     Использовать существующий `BackendPlannerIntentFallback` только на backend.

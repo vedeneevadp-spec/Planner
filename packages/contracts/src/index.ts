@@ -475,6 +475,35 @@ export {
   voiceCommandResponseSchema,
 } from './voice-command.js'
 export type {
+  SafeVoiceMetricEvent,
+  VoiceMetricAppRole,
+  VoiceMetricConfidenceBucket,
+  VoiceMetricDurationBucket,
+  VoiceMetricEventName,
+  VoiceMetricPlatform,
+  VoiceMetricsSink,
+  VoiceMetricSttProvider,
+  VoiceMetricWakeWordProvider,
+} from './voice-metrics.js'
+export {
+  ConsoleVoiceMetricsSink,
+  findPrivateVoiceMetricPayloadPaths,
+  NoopVoiceMetricsSink,
+  parseSafeVoiceMetricEvent,
+  redactVoiceMetricDetails,
+  redactVoiceMetricPayload,
+  safeVoiceMetricEventSchema,
+  TestVoiceMetricsSink,
+  voiceMetricAppRoleSchema,
+  voiceMetricConfidenceBucketSchema,
+  voiceMetricDurationBucketSchema,
+  voiceMetricEventNameSchema,
+  VoiceMetricPayloadError,
+  voiceMetricPlatformSchema,
+  voiceMetricSttProviderSchema,
+  voiceMetricWakeWordProviderSchema,
+} from './voice-metrics.js'
+export type {
   VoiceTestCase,
   VoiceTestCaseCategory,
   VoiceTestContext,

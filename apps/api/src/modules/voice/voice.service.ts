@@ -5,12 +5,15 @@ import {
   type PlannerIntent,
   PlannerIntentParser,
   type PlannerIntentParserContext,
+  redactVoiceMetricDetails,
+  type SafeVoiceMetricEvent,
   type SttSource,
   validatePlannerIntent,
   type VoiceCommandResponse,
   voiceCommandResponseSchema,
 } from '@planner/contracts'
 
+import { ApiVoiceMetricsSink } from './voice.metrics.js'
 import type {
   BackendSttProvider,
   CommandAudioClip,
@@ -66,12 +69,15 @@ export class VoiceCommandService {
   private readonly parser = new PlannerIntentParser()
   private readonly rateLimiter = new VoiceCommandRateLimiter()
   private readonly replayGuard = new VoiceCommandReplayGuard()
+  private readonly runtimeMetrics: ApiVoiceMetricsSink
 
   constructor(
     private readonly provider: BackendSttProvider,
     private readonly metrics: VoiceCommandMetricsSink = noopMetrics,
     private readonly intentFallback: BackendPlannerIntentFallback | null = null,
-  ) {}
+  ) {
+    this.runtimeMetrics = new ApiVoiceMetricsSink(metrics)
+  }
 
   async process(
     input: ProcessVoiceCommandInput,
@@ -126,6 +132,10 @@ export class VoiceCommandService {
     details: Record<string, unknown> = {},
   ): void {
     this.recordSafeAudit(eventType, details)
+  }
+
+  recordRuntimeMetric(event: SafeVoiceMetricEvent): void {
+    this.runtimeMetrics.track(event)
   }
 
   private async processAllowed(
@@ -474,108 +484,6 @@ function mapVoiceCommandErrorToAuditEvent(error: VoiceCommandError): string {
     default:
       return 'voice_command_rejected'
   }
-}
-
-function redactVoiceMetricDetails(
-  details: Record<string, unknown>,
-): Record<string, unknown> {
-  const redacted = redactVoiceMetricValue(details, new WeakSet())
-
-  return isRecord(redacted) ? redacted : {}
-}
-
-const BLOCKED_VOICE_METRIC_KEYS = new Set([
-  'agenda',
-  'agendaitem',
-  'agendaitems',
-  'audio',
-  'candidate',
-  'candidatetitle',
-  'candidatetitles',
-  'candidates',
-  'fulltranscript',
-  'intent',
-  'item',
-  'itemname',
-  'itemnames',
-  'items',
-  'name',
-  'preview',
-  'prompt',
-  'query',
-  'rawaudio',
-  'rawproviderresponse',
-  'rawtext',
-  'shoppingitem',
-  'shoppingitemname',
-  'shoppingitems',
-  'targetquery',
-  'task',
-  'tasktitle',
-  'tasktitles',
-  'tasks',
-  'text',
-  'title',
-  'transcript',
-])
-
-function redactVoiceMetricValue(
-  value: unknown,
-  seen: WeakSet<object>,
-): unknown {
-  if (value === undefined || isBinaryPayload(value)) {
-    return undefined
-  }
-
-  if (value === null || typeof value !== 'object') {
-    return value
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString()
-  }
-
-  if (seen.has(value)) {
-    return undefined
-  }
-
-  seen.add(value)
-
-  if (Array.isArray(value)) {
-    const redactedItems = value
-      .map((item) => redactVoiceMetricValue(item, seen))
-      .filter((item) => item !== undefined)
-
-    return redactedItems.length > 0 ? redactedItems : undefined
-  }
-
-  const entries = Object.entries(value).flatMap(([key, nestedValue]) => {
-    if (isBlockedVoiceMetricKey(key)) {
-      return []
-    }
-
-    const redacted = redactVoiceMetricValue(nestedValue, seen)
-
-    return redacted === undefined ? [] : ([[key, redacted]] as const)
-  })
-
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined
-}
-
-function isBlockedVoiceMetricKey(key: string): boolean {
-  return BLOCKED_VOICE_METRIC_KEYS.has(key.toLowerCase())
-}
-
-function isBinaryPayload(value: unknown): boolean {
-  return (
-    value instanceof ArrayBuffer ||
-    ArrayBuffer.isView(value) ||
-    Buffer.isBuffer(value)
-  )
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
 class VoiceCommandRateLimiter {
