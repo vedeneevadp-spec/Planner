@@ -84,6 +84,7 @@ void describe('FirebasePushNotificationSender', () => {
           android: {
             notification: {
               channel_id: 'chaotika-general',
+              icon: 'ic_stat_chaotika',
             },
             priority: 'HIGH',
           },

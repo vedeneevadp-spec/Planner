@@ -537,7 +537,8 @@ public class WakeWordService extends Service {
             : new Notification.Builder(this);
 
         builder
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_chaotika)
+            .setColor(getColor(R.color.colorPrimary))
             .setContentTitle(getString(R.string.planner_voice_notification_title))
             .setContentText(contentText)
             .setContentIntent(openPendingIntent)

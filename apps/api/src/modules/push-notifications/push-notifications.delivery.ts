@@ -22,6 +22,7 @@ interface SingleTokenSendResult {
 const FCM_OAUTH_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging'
 const FCM_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const PUSH_NOTIFICATION_CHANNEL_ID = 'chaotika-general'
+const PUSH_NOTIFICATION_ICON = 'ic_stat_chaotika'
 const MULTICAST_BATCH_SIZE = 500
 const ACCESS_TOKEN_REFRESH_GRACE_MS = 60_000
 const INVALID_FCM_ERROR_CODES = new Set(['INVALID_ARGUMENT', 'UNREGISTERED'])
@@ -212,6 +213,7 @@ function buildFcmSendRequestBody(
       android: {
         notification: {
           channel_id: PUSH_NOTIFICATION_CHANNEL_ID,
+          icon: PUSH_NOTIFICATION_ICON,
         },
         priority: 'HIGH',
       },
