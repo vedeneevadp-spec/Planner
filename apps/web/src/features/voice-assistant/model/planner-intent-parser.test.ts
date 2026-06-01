@@ -264,6 +264,31 @@ describe('PlannerIntentParser', () => {
     })
   })
 
+  it('parses agenda requests from natural list phrases', () => {
+    expect(parser.parse('что на сегодня', { now: NOW })).toMatchObject({
+      date: '2026-05-28',
+      datePrecision: 'exact',
+      intent: 'get_agenda',
+      needsConfirmation: false,
+    })
+    expect(
+      parser.parse('какие у меня сегодня планы', { now: NOW }),
+    ).toMatchObject({
+      date: '2026-05-28',
+      datePrecision: 'exact',
+      intent: 'get_agenda',
+      needsConfirmation: false,
+    })
+    expect(
+      parser.parse('какие у меня сегодня дела', { now: NOW }),
+    ).toMatchObject({
+      date: '2026-05-28',
+      datePrecision: 'exact',
+      intent: 'get_agenda',
+      needsConfirmation: false,
+    })
+  })
+
   it('requires unlock for agenda and reschedule on a locked device', () => {
     expect(
       parser.parse('что у меня завтра', {
@@ -459,6 +484,9 @@ function createRussianPhraseCorpus(): Array<{
     'какие задачи на завтра',
     'что запланировано на сегодня',
     'что запланировано на завтра',
+    'что на сегодня',
+    'какие у меня сегодня планы',
+    'какие у меня сегодня дела',
     'покажи план сегодня',
     'покажи задачи завтра',
     'план на сегодня',

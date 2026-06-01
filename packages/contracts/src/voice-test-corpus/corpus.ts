@@ -794,6 +794,9 @@ const agendaCases = [
   ['agenda_010', 'план на завтра', TOMORROW],
   ['agenda_011', 'покажи расписание сегодня', TODAY],
   ['agenda_012', 'покажи расписание завтра', TOMORROW],
+  ['agenda_013', 'что на сегодня', TODAY],
+  ['agenda_014', 'какие у меня сегодня планы', TODAY],
+  ['agenda_015', 'какие у меня сегодня дела', TODAY],
 ].map(([id, phrase, date]) =>
   parserCase({
     category: 'agenda',
