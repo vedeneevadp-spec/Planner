@@ -87,6 +87,9 @@ import {
 } from './VoiceConfirmationCard'
 
 const AUTO_CLOSE_DELAY_MS = 2200
+const ANDROID_COMMAND_INITIAL_POLL_DELAY_MS = 650
+const ANDROID_COMMAND_POLL_INTERVAL_MS = 750
+const ANDROID_COMMAND_RESULT_TIMEOUT_MS = 25_000
 const WEB_RECORDING_MAX_DURATION_MS = 8_000
 
 const WEB_PROCESSING_STATES = new Set<WebVoiceInputState>([
@@ -158,6 +161,9 @@ export function VoiceAssistant() {
   const [isUndoing, setIsUndoing] = useState(false)
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
+  const androidCaptureOperationIdRef = useRef(0)
+  const androidCommandPollTimerRef = useRef<number | null>(null)
+  const androidCommandTimeoutTimerRef = useRef<number | null>(null)
   const autoCloseTimerRef = useRef<number | null>(null)
   const webRecorderRef = useRef<WebVoiceRecorder | null>(null)
   const webRecordingTimerRef = useRef<number | null>(null)
@@ -671,70 +677,79 @@ export function VoiceAssistant() {
     updateShoppingItemMutation,
   ])
 
-  const consumePendingAndroidCommand = useCallback(async () => {
-    try {
-      const command = await consumePendingAndroidVoiceCommand()
+  const consumePendingAndroidCommand =
+    useCallback(async (): Promise<boolean> => {
+      try {
+        const command = await consumePendingAndroidVoiceCommand()
 
-      if (!command || handledNativeCommandIdsRef.current.has(command.id)) {
-        return
-      }
+        if (!command || handledNativeCommandIdsRef.current.has(command.id)) {
+          return Boolean(command)
+        }
 
-      const source = getAndroidVoiceCommandSource(
-        command,
-        pendingAndroidButtonCaptureRef.current,
-      )
+        const source = getAndroidVoiceCommandSource(
+          command,
+          pendingAndroidButtonCaptureRef.current,
+        )
 
-      if (source === 'android_wake_word') {
-        const wakeWordContext =
-          readAndroidWakeWordMetricContext(androidVoiceStatus)
+        if (source === 'android_wake_word') {
+          const wakeWordContext =
+            readAndroidWakeWordMetricContext(androidVoiceStatus)
 
-        resetVoiceTiming('android_wake_word')
-        markVoiceTiming('recordingStartedAt')
-        trackVoiceMetric('voice_started', source, wakeWordContext)
-        trackVoiceMetric('wake_detected', source, wakeWordContext)
-      }
+          resetVoiceTiming('android_wake_word')
+          markVoiceTiming('recordingStartedAt')
+          trackVoiceMetric('voice_started', source, wakeWordContext)
+          trackVoiceMetric('wake_detected', source, wakeWordContext)
+        }
 
-      trackVoiceMetric(
-        androidVoiceStatus?.voiceCuesEnabled
-          ? 'audio_signal_start_played'
-          : 'audio_signal_suppressed',
-        source,
-        androidVoiceStatus?.voiceCuesEnabled
-          ? {}
-          : { errorCode: 'audio_feedback_disabled' },
-      )
-      pendingAndroidButtonCaptureRef.current = false
-      handledNativeCommandIdsRef.current.add(command.id)
-
-      if (command.errorMessage) {
-        trackVoiceMetric('stt_error', source, {
-          errorCode: command.errorCode ?? 'android_voice_command_error',
-        })
-        setIsCardVisible(true)
-        dispatch({
-          error: command.errorMessage,
+        trackVoiceMetric(
+          androidVoiceStatus?.voiceCuesEnabled
+            ? 'audio_signal_start_played'
+            : 'audio_signal_suppressed',
           source,
-          type: 'failed',
-        })
-        return
-      }
+          androidVoiceStatus?.voiceCuesEnabled
+            ? {}
+            : { errorCode: 'audio_feedback_disabled' },
+        )
+        pendingAndroidButtonCaptureRef.current = false
+        handledNativeCommandIdsRef.current.add(command.id)
 
-      if (!command.transcript) {
-        trackVoiceMetric('stt_error', source, {
-          errorCode: 'failed_recognition',
-        })
-        return
-      }
+        if (command.errorMessage) {
+          trackVoiceMetric('stt_error', source, {
+            errorCode: command.errorCode ?? 'android_voice_command_error',
+          })
+          setIsCardVisible(true)
+          dispatch({
+            error: command.errorMessage,
+            source,
+            type: 'failed',
+          })
+          return true
+        }
 
-      void handleTranscript(
-        command.transcript,
-        source,
-        command.intent ?? undefined,
-      )
-    } catch (error) {
-      console.warn('Failed to consume Android voice command.', error)
-    }
-  }, [androidVoiceStatus, handleTranscript, trackVoiceMetric])
+        if (!command.transcript) {
+          trackVoiceMetric('stt_error', source, {
+            errorCode: 'failed_recognition',
+          })
+          setIsCardVisible(true)
+          dispatch({
+            error: 'Команда не распознана.',
+            source,
+            type: 'failed',
+          })
+          return true
+        }
+
+        await handleTranscript(
+          command.transcript,
+          source,
+          command.intent ?? undefined,
+        )
+        return true
+      } catch (error) {
+        console.warn('Failed to consume Android voice command.', error)
+        return false
+      }
+    }, [androidVoiceStatus, handleTranscript, trackVoiceMetric])
 
   useEffect(() => {
     if (!isAndroidVoiceAssistantRuntime()) {
@@ -869,6 +884,19 @@ export function VoiceAssistant() {
 
   useEffect(() => {
     return () => {
+      androidCaptureOperationIdRef.current += 1
+
+      if (androidCommandPollTimerRef.current !== null) {
+        window.clearTimeout(androidCommandPollTimerRef.current)
+        androidCommandPollTimerRef.current = null
+      }
+
+      if (androidCommandTimeoutTimerRef.current !== null) {
+        window.clearTimeout(androidCommandTimeoutTimerRef.current)
+        androidCommandTimeoutTimerRef.current = null
+      }
+
+      pendingAndroidButtonCaptureRef.current = false
       webOperationIdRef.current += 1
 
       if (webRecordingTimerRef.current !== null) {
@@ -906,7 +934,11 @@ export function VoiceAssistant() {
     setWebVoiceState('idle')
     setWebVoiceMessage(null)
     setIsCardVisible(true)
+    clearAndroidCommandPolling()
     pendingAndroidButtonCaptureRef.current = true
+    const operationId = androidCaptureOperationIdRef.current + 1
+
+    androidCaptureOperationIdRef.current = operationId
     trackVoiceMetric('voice_started', 'android_microphone')
     trackVoiceMetric('push_to_talk_started', 'android_microphone')
     trackVoiceMetric(
@@ -932,10 +964,9 @@ export function VoiceAssistant() {
       }
 
       await captureAndroidVoiceCommand(apiConfig)
-      window.setTimeout(() => {
-        void consumePendingAndroidCommand()
-      }, 650)
+      scheduleAndroidCommandPolling(operationId)
     } catch (error) {
+      clearAndroidCommandPolling()
       pendingAndroidButtonCaptureRef.current = false
       trackVoiceMetric('command_recording_cancelled', 'android_microphone', {
         errorCode: 'android_capture_failed',
@@ -1239,6 +1270,7 @@ export function VoiceAssistant() {
       )
     }
 
+    cancelAndroidCommandPolling()
     cancelWebVoiceOperation()
     setIsCardVisible(false)
     setActionPreview(null)
@@ -1276,6 +1308,79 @@ export function VoiceAssistant() {
       window.clearTimeout(webRecordingTimerRef.current)
       webRecordingTimerRef.current = null
     }
+  }
+
+  function scheduleAndroidCommandPolling(operationId: number) {
+    clearAndroidCommandPolling()
+    androidCommandPollTimerRef.current = window.setTimeout(() => {
+      void pollPendingAndroidCommand(operationId)
+    }, ANDROID_COMMAND_INITIAL_POLL_DELAY_MS)
+    androidCommandTimeoutTimerRef.current = window.setTimeout(() => {
+      if (!isCurrentAndroidCaptureOperation(operationId)) {
+        return
+      }
+
+      androidCaptureOperationIdRef.current += 1
+      clearAndroidCommandPolling()
+      pendingAndroidButtonCaptureRef.current = false
+      trackVoiceMetric('stt_error', 'android_microphone', {
+        errorCode: 'android_command_result_timeout',
+      })
+      dispatch({
+        error:
+          'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
+        source: 'android_microphone',
+        type: 'failed',
+      })
+    }, ANDROID_COMMAND_RESULT_TIMEOUT_MS)
+  }
+
+  async function pollPendingAndroidCommand(operationId: number) {
+    if (!isCurrentAndroidCaptureOperation(operationId)) {
+      return
+    }
+
+    const handled = await consumePendingAndroidCommand()
+
+    if (!isCurrentAndroidCaptureOperation(operationId)) {
+      return
+    }
+
+    if (handled) {
+      clearAndroidCommandPolling()
+      return
+    }
+
+    if (!pendingAndroidButtonCaptureRef.current) {
+      clearAndroidCommandPolling()
+      return
+    }
+
+    androidCommandPollTimerRef.current = window.setTimeout(() => {
+      void pollPendingAndroidCommand(operationId)
+    }, ANDROID_COMMAND_POLL_INTERVAL_MS)
+  }
+
+  function cancelAndroidCommandPolling() {
+    androidCaptureOperationIdRef.current += 1
+    clearAndroidCommandPolling()
+    pendingAndroidButtonCaptureRef.current = false
+  }
+
+  function clearAndroidCommandPolling() {
+    if (androidCommandPollTimerRef.current !== null) {
+      window.clearTimeout(androidCommandPollTimerRef.current)
+      androidCommandPollTimerRef.current = null
+    }
+
+    if (androidCommandTimeoutTimerRef.current !== null) {
+      window.clearTimeout(androidCommandTimeoutTimerRef.current)
+      androidCommandTimeoutTimerRef.current = null
+    }
+  }
+
+  function isCurrentAndroidCaptureOperation(operationId: number): boolean {
+    return androidCaptureOperationIdRef.current === operationId
   }
 
   function isCurrentWebOperation(operationId: number): boolean {

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -71,7 +72,23 @@ interface VoiceCommandResponseStub {
   transcript: string
 }
 
+interface NativeVoiceCommandStub {
+  capturedAt: string
+  errorCode?: string | null
+  errorMessage?: string | null
+  id: string
+  intent?: VoiceCommandResponseStub['intent'] | null
+  source?: 'ANDROID_PUSH_TO_TALK' | 'ANDROID_SHORT_CLIP' | null
+  transcript?: string | null
+}
+
 const mocks = vi.hoisted(() => ({
+  captureAndroidVoiceCommand: vi.fn<(...args: unknown[]) => Promise<void>>(() =>
+    Promise.resolve(),
+  ),
+  consumePendingAndroidVoiceCommand: vi.fn<
+    () => Promise<NativeVoiceCommandStub | null>
+  >(() => Promise.resolve(null)),
   getVoiceAssistantNativeStatus: vi.fn(() => Promise.resolve(null)),
   isAndroidVoiceAssistantRuntime: vi.fn(() => false),
   notifyAndroidVoiceActionResult: vi.fn(() => Promise.resolve()),
@@ -116,8 +133,10 @@ vi.mock('../lib/native-voice-assistant', () => ({
   addAndroidVoiceAssistantResumeListener: () =>
     Promise.resolve({ remove: () => Promise.resolve() }),
   addVoiceAssistantSettingsChangedListener: () => () => {},
-  captureAndroidVoiceCommand: vi.fn(() => Promise.resolve()),
-  consumePendingAndroidVoiceCommand: vi.fn(() => Promise.resolve(null)),
+  captureAndroidVoiceCommand: (...args: unknown[]) =>
+    mocks.captureAndroidVoiceCommand(...args),
+  consumePendingAndroidVoiceCommand: () =>
+    mocks.consumePendingAndroidVoiceCommand(),
   getVoiceAssistantNativeStatus: () => mocks.getVoiceAssistantNativeStatus(),
   isAndroidVoiceAssistantRuntime: () => mocks.isAndroidVoiceAssistantRuntime(),
   notifyAndroidVoiceActionResult: () => mocks.notifyAndroidVoiceActionResult(),
@@ -143,6 +162,10 @@ describe('VoiceAssistant web push-to-talk', () => {
     vi.clearAllMocks()
     window.__CHAOTIKA_DIAGNOSTICS__?.clear()
     stubWebVoiceSupport()
+    mocks.captureAndroidVoiceCommand.mockResolvedValue(undefined)
+    mocks.consumePendingAndroidVoiceCommand.mockResolvedValue(null)
+    mocks.getVoiceAssistantNativeStatus.mockResolvedValue(null)
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(false)
     mocks.usePlanner.mockReturnValue({
       addTask: vi.fn(),
       refresh: vi.fn(() => Promise.resolve()),
@@ -175,6 +198,7 @@ describe('VoiceAssistant web push-to-talk', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -275,6 +299,41 @@ describe('VoiceAssistant web push-to-talk', () => {
         'добавь задачу отчет',
       )
     })
+  })
+
+  it('keeps polling Android push-to-talk until the native command is ready', async () => {
+    vi.useFakeTimers()
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.consumePendingAndroidVoiceCommand
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        capturedAt: '2026-06-01T00:00:00.000Z',
+        id: 'voice-1',
+        source: 'ANDROID_PUSH_TO_TALK',
+        transcript: 'добавь задачу отчет',
+      })
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    await act(async () => {})
+
+    expect(mocks.captureAndroidVoiceCommand).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650)
+    })
+
+    expect(mocks.consumePendingAndroidVoiceCommand).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(750)
+    })
+
+    expect(mocks.consumePendingAndroidVoiceCommand).toHaveBeenCalledTimes(2)
+    expect(screen.getByText('Распознано')).toBeVisible()
+    expect(screen.getByText('добавь задачу отчет')).toBeVisible()
   })
 })
 
