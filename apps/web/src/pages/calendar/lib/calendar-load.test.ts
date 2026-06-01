@@ -204,4 +204,33 @@ describe('calendar load', () => {
 
     expect(ghosts.map((task) => task.plannedDate)).toEqual(['2026-05-28'])
   })
+
+  it('does not build future ghosts from completed recurring tasks', () => {
+    const recurrence = {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: 'series-3',
+      startDate: '2026-05-14',
+    } satisfies NonNullable<Task['recurrence']>
+
+    const ghosts = buildRecurringGhostTasks(
+      [
+        {
+          ...baseTask,
+          completedAt: '2026-05-14T10:00:00.000Z',
+          id: 'completed-source',
+          recurrence,
+          status: 'done',
+        },
+      ],
+      '2026-05-14',
+      '2026-05-18',
+      '2026-05-14',
+    )
+
+    expect(ghosts).toEqual([])
+  })
 })

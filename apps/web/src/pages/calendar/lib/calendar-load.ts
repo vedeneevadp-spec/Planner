@@ -257,6 +257,10 @@ export function buildRecurringGhostTasks(
       existingDatesBySeries.add(`${recurrence.seriesId}:${task.plannedDate}`)
     }
 
+    if (task.status === 'done') {
+      continue
+    }
+
     const currentSource = sourceBySeries.get(recurrence.seriesId)
 
     if (!currentSource || compareRecurringSource(task, currentSource) > 0) {
