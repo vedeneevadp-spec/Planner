@@ -117,7 +117,9 @@ export function VoiceConfirmationCard({
     undoKey !== null &&
     expiredUndoKey !== undoKey
   const closeLabel =
-    result?.status === 'success' || preview?.type === 'get_agenda'
+    result?.status === 'success' ||
+    preview?.type === 'get_agenda' ||
+    preview?.type === 'get_shopping_list'
       ? 'Закрыть'
       : 'Отмена'
   const confirmationStatus = getVoiceConfirmationStatus(preview, result, state)
@@ -494,6 +496,8 @@ function ReadyLayout({
       return <CreateTaskLayout preview={preview} spheres={spheres} />
     case 'add_shopping_item':
       return <ShoppingLayout preview={preview} />
+    case 'get_shopping_list':
+      return <ShoppingListLayout preview={preview} />
     case 'reschedule_task':
       return (
         <RescheduleLayout
@@ -549,6 +553,22 @@ function ShoppingLayout({ preview }: { preview: VoiceActionPreview }) {
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+function ShoppingListLayout({ preview }: { preview: VoiceActionPreview }) {
+  return (
+    <section className={styles.actionPanel} aria-label="Список покупок">
+      <h3>Нужно купить</h3>
+      <p className={styles.previewSummary}>{preview.summary}</p>
+      {preview.shoppingItems?.length ? (
+        <ul className={styles.bulletList}>
+          {preview.shoppingItems.map((item) => (
+            <li key={item.shoppingItemId}>{item.title}</li>
+          ))}
+        </ul>
+      ) : null}
     </section>
   )
 }
@@ -932,6 +952,8 @@ function getConfirmLabel(preview: VoiceActionPreview): string {
   switch (preview.intent.intent) {
     case 'add_shopping_item':
       return 'Добавить'
+    case 'get_shopping_list':
+      return 'Показать'
     case 'reschedule_task':
       return 'Да, перенести'
     case 'create_task':
@@ -986,7 +1008,7 @@ function getConfirmationReason(preview: VoiceActionPreview): string {
     return 'Я не полностью уверена в распознавании. Проверь перед выполнением.'
   }
 
-  if (preview.type === 'get_agenda') {
+  if (preview.type === 'get_agenda' || preview.type === 'get_shopping_list') {
     return 'Это только просмотр. Данные не изменятся.'
   }
 

@@ -35,6 +35,11 @@ import {
   sortActiveShoppingListItems,
   sortCompletedShoppingListItems,
 } from './shopping-list-sort'
+import {
+  findShoppingListItemByText,
+  formatShoppingListText,
+  isActiveShoppingListTextItem,
+} from './shopping-list-text'
 
 function shoppingListQueryKey(workspaceId: string) {
   return ['shopping-list', workspaceId] as const
@@ -47,6 +52,11 @@ export {
   sortActiveShoppingListItems,
   sortCompletedShoppingListItems,
 } from './shopping-list-sort'
+export {
+  findShoppingListItemByText,
+  formatShoppingListText,
+  isActiveShoppingListTextItem,
+} from './shopping-list-text'
 
 class ShoppingListApiUnavailableError extends Error {
   constructor() {
@@ -202,6 +212,62 @@ export function useCreateShoppingListItem() {
       const previousItems =
         queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
         (await loadCachedShoppingListItems(session.workspaceId))
+      const existingItem = findShoppingListItemByText(
+        previousItems,
+        itemInput.text,
+      )
+
+      if (existingItem) {
+        if (isActiveShoppingListTextItem(existingItem)) {
+          return existingItem
+        }
+
+        const optimisticItem = applyShoppingListItemPatch(existingItem, {
+          status: 'new',
+        })
+
+        queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current = []) =>
+          replaceShoppingListItemRecord(current, optimisticItem),
+        )
+        await upsertCachedShoppingListItem(session.workspaceId, optimisticItem)
+
+        try {
+          const updatedItem = await requireShoppingListApi(api).updateItem(
+            existingItem.id,
+            { status: 'new' },
+          )
+
+          queryClient.setQueryData<ShoppingListItem[]>(
+            queryKey,
+            (current = []) =>
+              replaceShoppingListItemRecord(current, updatedItem),
+          )
+          await upsertCachedShoppingListItem(session.workspaceId, updatedItem)
+
+          return updatedItem
+        } catch (error) {
+          if (shouldKeepOptimisticShoppingListMutation(error)) {
+            await enqueueShoppingListOfflineMutation({
+              actorUserId: session.actorUserId,
+              itemId: existingItem.id,
+              patch: { status: 'new' },
+              type: 'shopping.update',
+              workspaceId: session.workspaceId,
+            })
+
+            return optimisticItem
+          }
+
+          await restoreShoppingListItems({
+            items: previousItems,
+            queryClient,
+            queryKey,
+            workspaceId: session.workspaceId,
+          })
+
+          throw error
+        }
+      }
 
       queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
         replaceShoppingListItemRecord(current ?? previousItems, optimisticItem),
@@ -377,8 +443,8 @@ export function useRemoveShoppingListItem() {
   })
 }
 
-export function useShoppingListSummary() {
-  const itemsQuery = useShoppingListItems()
+export function useShoppingListSummary(options: { enabled?: boolean } = {}) {
+  const itemsQuery = useShoppingListItems(options)
 
   const summary = useMemo(() => {
     const items = itemsQuery.data ?? []
@@ -421,11 +487,14 @@ function normalizeShoppingListItemDraft(
 ): ShoppingListItemDraft {
   if (typeof input === 'string') {
     return {
-      text: input,
+      text: formatShoppingListText(input),
     }
   }
 
-  return input
+  return {
+    ...input,
+    text: formatShoppingListText(input.text),
+  }
 }
 
 function createOptimisticShoppingListItem(

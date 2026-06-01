@@ -86,7 +86,14 @@ const mocks = vi.hoisted(() => ({
   useRemoveShoppingListItem: vi.fn<() => ShoppingMutationStub>(() => ({
     mutateAsync: vi.fn(),
   })),
+  useShoppingListSummary: vi.fn(() => ({
+    data: [],
+    refetch: vi.fn(() => Promise.resolve({ data: [] })),
+  })),
   useSessionFeatureReadiness: vi.fn<() => SessionFeatureReadinessStub>(),
+  useUpdateShoppingListItem: vi.fn<() => ShoppingMutationStub>(() => ({
+    mutateAsync: vi.fn(),
+  })),
 }))
 
 vi.mock('@/features/planner', () => ({
@@ -101,6 +108,8 @@ vi.mock('@/features/session', () => ({
 vi.mock('@/features/shopping-list', () => ({
   useCreateShoppingListItem: () => mocks.useCreateShoppingListItem(),
   useRemoveShoppingListItem: () => mocks.useRemoveShoppingListItem(),
+  useShoppingListSummary: () => mocks.useShoppingListSummary(),
+  useUpdateShoppingListItem: () => mocks.useUpdateShoppingListItem(),
 }))
 
 vi.mock('../lib/native-voice-assistant', () => ({

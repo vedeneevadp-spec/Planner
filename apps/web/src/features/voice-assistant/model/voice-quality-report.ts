@@ -1,4 +1,5 @@
 import {
+  type ChaosInboxItemRecord,
   parseSafeVoiceMetricEvent,
   type PlannerIntent,
   PlannerIntentParser,
@@ -815,6 +816,8 @@ function getConfirmationUiCard(
       switch (preview.type) {
         case 'add_shopping_item':
           return 'shopping_confirmation'
+        case 'get_shopping_list':
+          return 'shopping_list'
         case 'create_task':
           return 'task_confirmation'
         case 'get_agenda':
@@ -882,6 +885,14 @@ function createCorpusDependencies(
     })
   }
 
+  if (intent.intent === 'get_shopping_list') {
+    return createDependencies({
+      shoppingItems: [
+        createShoppingRecord({ id: 'shopping-1', text: 'Молоко' }),
+      ],
+    })
+  }
+
   if (intent.intent !== 'reschedule_task') {
     return createDependencies()
   }
@@ -929,10 +940,12 @@ function createCorpusDependencies(
 function createDependencies(
   overrides: {
     isOnline?: (() => boolean) | undefined
+    shoppingItems?: ChaosInboxItemRecord[] | undefined
     tasks?: TaskRecord[] | undefined
   } = {},
 ): PlannerActionExecutorDependencies {
   const tasks = overrides.tasks ?? []
+  const shoppingItems = overrides.shoppingItems ?? []
 
   return {
     createShoppingItem: (input) =>
@@ -940,9 +953,25 @@ function createDependencies(
     createTask: () => Promise.resolve({ id: 'task-created' }),
     getCachedTasks: () => tasks,
     isOnline: overrides.isOnline ?? (() => true),
+    listShoppingItems: () => Promise.resolve(shoppingItems),
     refreshPlanner: () => Promise.resolve(undefined),
     removeShoppingItem: () => Promise.resolve(undefined),
     removeTask: () => Promise.resolve(true),
+    updateShoppingItem: (itemId, patch) => {
+      const item = shoppingItems.find((candidate) => candidate.id === itemId)
+
+      if (!item) {
+        throw Object.assign(new Error('Shopping item not found.'), {
+          code: 'shopping_not_found',
+        })
+      }
+
+      if (patch.status !== undefined) {
+        item.status = patch.status
+      }
+
+      return Promise.resolve(item)
+    },
     taskClient: {
       listTasks: (filters) =>
         Promise.resolve(
@@ -1142,5 +1171,35 @@ function createTaskRecord(overrides: Partial<TaskRecord> = {}): TaskRecord {
     version: 1,
     workspaceId: 'voice-quality-workspace',
     ...overrides,
+  }
+}
+
+function createShoppingRecord(
+  overrides: Pick<ChaosInboxItemRecord, 'id' | 'text'> &
+    Partial<ChaosInboxItemRecord>,
+): ChaosInboxItemRecord {
+  const { id, text, ...rest } = overrides
+
+  return {
+    convertedNoteId: null,
+    convertedTaskId: null,
+    createdAt: '2026-05-28T09:00:00.000Z',
+    deletedAt: null,
+    dueDate: null,
+    id,
+    isFavorite: false,
+    kind: 'shopping',
+    linkedTaskDeleted: false,
+    priority: null,
+    shoppingCategory: 'other',
+    source: 'manual',
+    sphereId: null,
+    status: 'new',
+    text,
+    updatedAt: '2026-05-28T09:00:00.000Z',
+    userId: 'voice-quality-user',
+    version: 1,
+    workspaceId: 'voice-quality-workspace',
+    ...rest,
   }
 }

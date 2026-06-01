@@ -184,6 +184,20 @@ describe('PlannerIntentParser', () => {
     })
   })
 
+  it('parses shopping list queries without adding items', () => {
+    const whatToBuy = parser.parse('Что надо купить?', { now: NOW })
+    const listContents = parser.parse('что в списке покупок', { now: NOW })
+
+    expect(whatToBuy).toMatchObject({
+      intent: 'get_shopping_list',
+      needsConfirmation: false,
+    })
+    expect(listContents).toMatchObject({
+      intent: 'get_shopping_list',
+      needsConfirmation: false,
+    })
+  })
+
   it('parses reschedule as a dangerous intent without finding a task', () => {
     const intent = parser.parse('перенеси помыть окна на субботу', {
       now: NOW,
@@ -450,6 +464,12 @@ function createRussianPhraseCorpus(): Array<{
     'план на сегодня',
     'план на завтра',
   ]
+  const shoppingListPhrases = [
+    'что надо купить',
+    'что нужно купить',
+    'что в списке покупок',
+    'покажи список покупок',
+  ]
   const rescheduleTitles = [
     'помыть окна',
     'проверить оплату',
@@ -493,6 +513,10 @@ function createRussianPhraseCorpus(): Array<{
     })),
     ...agendaPhrases.map((text) => ({
       intent: 'get_agenda' as const,
+      text,
+    })),
+    ...shoppingListPhrases.map((text) => ({
+      intent: 'get_shopping_list' as const,
       text,
     })),
     ...rescheduleTitles.map((title) => ({

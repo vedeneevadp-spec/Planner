@@ -1,5 +1,6 @@
 import {
   type AppRole,
+  type ChaosInboxItemRecord,
   type PlannerIntent,
   type TaskRecord,
   type VoiceActionContext,
@@ -156,17 +157,113 @@ describe('PlannerActionExecutor', () => {
         createdShoppingItemIds: ['shopping-1', 'shopping-2'],
         type: 'add_shopping_item',
       },
-      visualStatus: 'Добавлено в покупки.',
+      visualStatus: 'Добавлено: Молоко, Хлеб.',
     })
     expect(createShoppingItem).toHaveBeenCalledTimes(2)
     expect(createShoppingItem).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ text: 'молоко' }),
+      expect.objectContaining({ text: 'Молоко' }),
     )
     expect(createShoppingItem).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ text: 'хлеб' }),
+      expect.objectContaining({ text: 'Хлеб' }),
     )
+  })
+
+  it('returns only active shopping list items for shopping list queries', async () => {
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({
+      shoppingItems: [
+        createShoppingRecord({
+          id: 'shopping-1',
+          status: 'new',
+          text: 'молоко',
+        }),
+        createShoppingRecord({
+          id: 'shopping-2',
+          status: 'archived',
+          text: 'Хлеб',
+        }),
+      ],
+    })
+
+    const preview = await executor.prepareAction(
+      createIntent({
+        intent: 'get_shopping_list',
+        needsConfirmation: false,
+        rawText: 'что надо купить',
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    expect(preview).toMatchObject({
+      canExecute: false,
+      needsConfirmation: false,
+      shoppingItems: [{ shoppingItemId: 'shopping-1', title: 'Молоко' }],
+      status: 'ready_for_confirmation',
+      summary: 'Нужно купить: Молоко.',
+      title: 'Список покупок',
+    })
+  })
+
+  it('does not duplicate active shopping items and reactivates completed ones', async () => {
+    const createShoppingItem = vi.fn().mockResolvedValue({ id: 'shopping-3' })
+    const updateShoppingItem = vi.fn((itemId: string) =>
+      Promise.resolve(
+        createShoppingRecord({
+          id: itemId,
+          status: 'new',
+          text: 'Хлеб',
+        }),
+      ),
+    )
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies({
+      createShoppingItem,
+      shoppingItems: [
+        createShoppingRecord({
+          id: 'shopping-1',
+          status: 'new',
+          text: 'Молоко',
+        }),
+        createShoppingRecord({
+          id: 'shopping-2',
+          status: 'archived',
+          text: 'хлеб',
+        }),
+      ],
+      updateShoppingItem,
+    })
+    const preview = await executor.prepareAction(
+      createIntent({
+        intent: 'add_shopping_item',
+        items: [{ title: 'молоко' }, { title: 'хлеб' }, { title: 'сыр' }],
+      }),
+      CONTEXT,
+      deps,
+    )
+
+    const result = await executor.executeAction(
+      preview.id,
+      { confirmed: true },
+      CONTEXT,
+      deps,
+    )
+
+    expect(createShoppingItem).toHaveBeenCalledTimes(1)
+    expect(createShoppingItem).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'Сыр' }),
+    )
+    expect(updateShoppingItem).toHaveBeenCalledWith('shopping-2', {
+      status: 'new',
+    })
+    expect(result).toMatchObject({
+      changedData: true,
+      status: 'success',
+      visualStatus: 'Добавлено: Сыр. Вернула в список: Хлеб. Уже есть: Молоко.',
+    })
+    expect(result.undo).toBeUndefined()
   })
 
   it('undoes a created task through the planner removal flow', async () => {
@@ -869,10 +966,13 @@ function createDependencies(
     setTaskSchedule?: NonNullable<
       PlannerActionExecutorDependencies['taskClient']
     >['setTaskSchedule']
+    shoppingItems?: ChaosInboxItemRecord[]
     tasks?: TaskRecord[]
+    updateShoppingItem?: PlannerActionExecutorDependencies['updateShoppingItem']
   } = {},
 ): PlannerActionExecutorDependencies {
   const tasks = overrides.tasks ?? []
+  const shoppingItems = overrides.shoppingItems ?? []
   type SetTaskSchedule = NonNullable<
     PlannerActionExecutorDependencies['taskClient']
   >['setTaskSchedule']
@@ -911,6 +1011,7 @@ function createDependencies(
       vi.fn(() => Promise.resolve({ id: 'task-created' })),
     getCachedTasks: () => tasks,
     isOnline: overrides.isOnline ?? (() => true),
+    listShoppingItems: () => Promise.resolve(shoppingItems),
     refreshPlanner: vi.fn(() => Promise.resolve(undefined)),
     removeShoppingItem:
       overrides.removeShoppingItem ?? vi.fn(() => Promise.resolve(undefined)),
@@ -925,6 +1026,32 @@ function createDependencies(
       ),
       setTaskSchedule,
     },
+    updateShoppingItem:
+      overrides.updateShoppingItem ??
+      vi.fn(
+        (
+          itemId: string,
+          patch: Parameters<
+            NonNullable<PlannerActionExecutorDependencies['updateShoppingItem']>
+          >[1],
+        ) => {
+          const item = shoppingItems.find(
+            (candidate) => candidate.id === itemId,
+          )
+
+          if (!item) {
+            throw Object.assign(new Error('Shopping item not found.'), {
+              code: 'shopping_not_found',
+            })
+          }
+
+          if (patch.status !== undefined) {
+            item.status = patch.status
+          }
+
+          return Promise.resolve(item)
+        },
+      ),
   }
 }
 
@@ -952,6 +1079,14 @@ function createCorpusDependencies(
           plannedStartTime: '09:00',
           title: 'Позвонить врачу',
         }),
+      ],
+    })
+  }
+
+  if (testCase.expectedIntent.intent === 'get_shopping_list') {
+    return createDependencies({
+      shoppingItems: [
+        createShoppingRecord({ id: 'shopping-1', text: 'Молоко' }),
       ],
     })
   }
@@ -1042,5 +1177,35 @@ function createTaskRecord(overrides: Partial<TaskRecord> = {}): TaskRecord {
     version: 1,
     workspaceId: 'workspace-1',
     ...overrides,
+  }
+}
+
+function createShoppingRecord(
+  overrides: Pick<ChaosInboxItemRecord, 'id' | 'text'> &
+    Partial<ChaosInboxItemRecord>,
+): ChaosInboxItemRecord {
+  const { id, text, ...rest } = overrides
+
+  return {
+    convertedNoteId: null,
+    convertedTaskId: null,
+    createdAt: '2026-05-28T09:00:00.000Z',
+    deletedAt: null,
+    dueDate: null,
+    id,
+    isFavorite: false,
+    kind: 'shopping',
+    linkedTaskDeleted: false,
+    priority: null,
+    shoppingCategory: 'other',
+    source: 'manual',
+    sphereId: null,
+    status: 'new',
+    text,
+    updatedAt: '2026-05-28T09:00:00.000Z',
+    userId: 'user-1',
+    version: 1,
+    workspaceId: 'workspace-1',
+    ...rest,
   }
 }

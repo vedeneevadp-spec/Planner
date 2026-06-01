@@ -2,6 +2,8 @@ import { type FormEvent, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import {
+  findShoppingListItemByText,
+  formatShoppingListText,
   getShoppingFiltersFromSearchParams,
   hasActiveShoppingFilters,
   type ShoppingCategory,
@@ -102,7 +104,7 @@ export function ShoppingPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    const text = draft.trim()
+    const text = formatShoppingListText(draft)
 
     if (!text) {
       setFormError('Введите покупку.')
@@ -112,6 +114,28 @@ export function ShoppingPage() {
     setFormError(null)
 
     try {
+      const activeDuplicate = findShoppingListItemByText(activeItems, text)
+
+      if (activeDuplicate) {
+        setFormError('Такая покупка уже есть.')
+        return
+      }
+
+      const completedDuplicate = findShoppingListItemByText(
+        completedItems,
+        text,
+      )
+
+      if (completedDuplicate) {
+        await updateItemMutation.mutateAsync({
+          itemId: completedDuplicate.id,
+          patch: { status: 'new' },
+        })
+        setDraft('')
+        setDraftCategory(null)
+        return
+      }
+
       await createItemMutation.mutateAsync({
         isFavorite: false,
         priority: null,

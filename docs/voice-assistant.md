@@ -502,7 +502,7 @@ TTS не используется. Локальные статические aud
 
 ```text
 “добавь молоко в покупки”
-→ добавить item “молоко” в покупки
+→ добавить item “Молоко” в покупки
 → показать visual status “Добавлено в покупки.”
 ```
 
@@ -511,6 +511,20 @@ TTS не используется. Локальные статические aud
 ```text
 “добавь хлеб, молоко и яблоки в покупки”
 → создать 3 shopping items
+```
+
+Перед добавлением покупка нормализуется: первое буквенное значение в названии
+становится заглавным. Если такая активная покупка уже есть в разделе “Нужно
+купить”, новая запись не создается и показывается статус “Уже есть”. Если
+совпадение найдено в разделе “Куплено”, action layer возвращает покупку в
+активный список.
+
+Для запроса списка покупок:
+
+```text
+“что надо купить?”
+“что в списке покупок?”
+→ показать активные shopping items из раздела “Нужно купить”
 ```
 
 #### Напоминание
@@ -844,7 +858,7 @@ toast/snackbar/card update, не TTS. Локальный cue `Готово` не
 Для неподдерживаемой команды:
 
 ```text
-Пока я умею создавать задачи, добавлять покупки, переносить задачи и показывать план на сегодня или завтра.
+Пока я умею создавать задачи, добавлять покупки, показывать список покупок, переносить задачи и показывать план на сегодня или завтра.
 ```
 
 ### PlannerIntent
@@ -857,6 +871,7 @@ toast/snackbar/card update, не TTS. Локальный cue `Готово` не
 type PlannerIntentType =
   | 'create_task'
   | 'add_shopping_item'
+  | 'get_shopping_list'
   | 'reschedule_task'
   | 'get_agenda'
   | 'clarify'
@@ -1110,7 +1125,8 @@ wake word` относится к wake-word mode; для push-to-talk явным 
 
 Parser не выполняет действие сам. Он только превращает фразу в структурированное
 намерение `PlannerIntent`: например `create_task`, `add_shopping_item`,
-`reschedule_task` или `get_agenda`. Затем UI показывает карточку: что было
+`get_shopping_list`, `reschedule_task` или `get_agenda`. Затем UI показывает
+карточку: что было
 услышано, какое действие найдено, насколько parser уверен и нужно ли
 подтверждение.
 
@@ -1175,18 +1191,20 @@ Undo и full clarification loop были вынесены из пункта 5 и
 
    Parser принимает transcript + context и возвращает строго валидный
    `PlannerIntent` v1. Parser работает rule-first, поддерживает `create_task`,
-   `add_shopping_item`, `reschedule_task`, `get_agenda`, `clarify` и
-   `unsupported`.
+   `add_shopping_item`, `get_shopping_list`, `reschedule_task`, `get_agenda`,
+   `clarify` и `unsupported`.
 
    Parser не выполняет действия, не ищет задачи, не читает agenda и не пишет в
    базу. Реальное выполнение `create_task`, `add_shopping_item`,
-   `reschedule_task` и `get_agenda` относится к пункту 5/action layer.
+   `get_shopping_list`, `reschedule_task` и `get_agenda` относится к пункту
+   5/action layer.
 
    Реализовано: v1 contract, schema validation, normalizer, date/time parsing,
-   shopping items parsing, task title extraction, reschedule target extraction,
-   relative reschedule shifts (`timeShiftMinutes`), agenda intent extraction,
-   soft sphere resolution, dangerous delete handling, backend text-only LLM
-   fallback hook, parser docs и tests.
+   shopping items parsing, shopping list query extraction, task title
+   extraction, reschedule target extraction, relative reschedule shifts
+   (`timeShiftMinutes`), agenda intent extraction, soft sphere resolution,
+   dangerous delete handling, backend text-only LLM fallback hook, parser docs
+   и tests.
 
    Backend LLM fallback заложен как интерфейсный hook только для текста.
    Production LLM provider для `PlannerIntentParser` пока не подключен. Базовые
@@ -1202,15 +1220,17 @@ Undo и full clarification loop были вынесены из пункта 5 и
    Статус: реализован v1 web/client action layer `PlannerActionExecutor` с
    контрактом `VoiceActionPreview` / `VoiceActionResult`.
 
-   Реализовано: `create_task`, `add_shopping_item`, `get_agenda`,
-   `reschedule_task`, `clarify`, `unsupported`; отдельные Event/Reminder не
+   Реализовано: `create_task`, `add_shopping_item`, `get_shopping_list`,
+   `get_agenda`, `reschedule_task`, `clarify`, `unsupported`; отдельные
+   Event/Reminder не
    создаются; `reschedule_task` ищет candidates, обрабатывает `0 / 1 / 2+`,
    поддерживает перенос на новую дату/время и относительный сдвиг
    `timeShiftMinutes` от текущего времени выбранной задачи, требует
    подтверждение и проверяет `version`; если у задачи нет даты/времени для
    относительного сдвига, action layer возвращает уточнение вместо записи.
-   `get_agenda` учитывает locked screen и offline cache; `admin`/`user`/`guest`
-   заблокированы, а `test` не получает admin-права. Подробности зафиксированы в
+   `get_agenda` и `get_shopping_list` учитывают locked screen;
+   `admin`/`user`/`guest` заблокированы, а `test` не получает admin-права.
+   Подробности зафиксированы в
    [docs/voice/action-layer.md](voice/action-layer.md).
 
    Вне пункта 5:
@@ -1273,8 +1293,9 @@ Undo и full clarification loop были вынесены из пункта 5 и
 
    Реализовано: единая `VoiceConfirmationCard` для `VoiceActionPreview`,
    action-specific layouts для `create_task`, `add_shopping_item`,
-   `reschedule_task`, `get_agenda`, `clarify`, `unsupported`, `blocked`,
-   `not_found`, `multiple_candidates` и `requires_unlock`; показ transcript
+   `get_shopping_list`, `reschedule_task`, `get_agenda`, `clarify`,
+   `unsupported`, `blocked`, `not_found`, `multiple_candidates` и
+   `requires_unlock`; показ transcript
    там, где это безопасно; причина подтверждения и confidence; строгая кнопка
    `Да, перенести` для dangerous `reschedule_task`; locked-screen UI без
    приватных данных; clarification loop v1 с быстрыми вариантами, ручным
@@ -1476,8 +1497,8 @@ Undo и full clarification loop были вынесены из пункта 5 и
     подтверждения. Отдельно проверить, не раздражают ли `Слушаю` и `Готово`, не
     мешает ли `Слушаю` STT и как cues ведут себя в silent/vibration mode.
     Прогнать Android end-to-end action execution на реальном устройстве:
-    `create_task`, `add_shopping_item`, `get_agenda`, `reschedule_task`,
-    locked-screen blocks и offline fallback. Отдельно сравнить режимы
+    `create_task`, `add_shopping_item`, `get_shopping_list`, `get_agenda`,
+    `reschedule_task`, locked-screen blocks и offline fallback. Отдельно сравнить режимы
     rule-parser only и rule-parser + LLM fallback, если пункт 14 включен для
     `owner/test`. По результатам обновить provider settings, parser rules, LLM
     fallback policy и тексты карточки.

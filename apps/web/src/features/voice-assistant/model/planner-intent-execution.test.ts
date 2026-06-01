@@ -33,6 +33,14 @@ describe('planner intent execution helpers', () => {
     expect(
       getPlannerIntentActionLabel(
         createIntent({
+          intent: 'get_shopping_list',
+          needsConfirmation: false,
+        }),
+      ),
+    ).toBe('Показать покупки')
+    expect(
+      getPlannerIntentActionLabel(
+        createIntent({
           date: '2026-05-29',
           intent: 'get_agenda',
         }),
@@ -69,6 +77,14 @@ describe('planner intent execution helpers', () => {
         createIntent({
           date: '2026-05-29',
           intent: 'get_agenda',
+        }),
+      ),
+    ).toBe(false)
+    expect(
+      isExecutablePlannerIntent(
+        createIntent({
+          intent: 'get_shopping_list',
+          needsConfirmation: false,
         }),
       ),
     ).toBe(false)

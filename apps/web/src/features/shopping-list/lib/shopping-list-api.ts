@@ -17,6 +17,8 @@ import {
   createApiRequester,
 } from '@/shared/lib/api-client'
 
+import { formatShoppingListText } from './shopping-list-text'
+
 type FetchFn = ApiClientFetch
 type RequestSignal = ApiRequestSignal
 
@@ -146,9 +148,12 @@ function normalizeCreateItemInput(
 ): ShoppingListItemCreateInput {
   if (typeof input === 'string') {
     return {
-      text: input,
+      text: formatShoppingListText(input),
     }
   }
 
-  return input
+  return {
+    ...input,
+    text: formatShoppingListText(input.text),
+  }
 }

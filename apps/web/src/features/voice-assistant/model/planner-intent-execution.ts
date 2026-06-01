@@ -2,6 +2,8 @@ import { generateUuidV7, type PlannerIntent } from '@planner/contracts'
 
 import type { NewTaskInput, TaskReminderOffsetMinutes } from '@/entities/task'
 
+import { formatShoppingListText } from '../../shopping-list/lib/shopping-list-text'
+
 interface IntentSchedule {
   plannedDate: string | null
   plannedEndTime: string | null
@@ -21,6 +23,8 @@ export function getPlannerIntentActionLabel(intent: PlannerIntent): string {
       return 'Создать задачу'
     case 'add_shopping_item':
       return 'Добавить покупку'
+    case 'get_shopping_list':
+      return 'Показать покупки'
     case 'reschedule_task':
       return 'Перенести'
     case 'get_agenda':
@@ -96,7 +100,9 @@ export function buildTaskInputFromPlannerIntent(
 export function getShoppingItemText(
   item: NonNullable<PlannerIntent['items']>[number],
 ): string {
-  return item.quantity ? `${item.quantity} ${item.title}` : item.title
+  return item.quantity
+    ? `${item.quantity} ${formatShoppingListText(item.title)}`
+    : formatShoppingListText(item.title)
 }
 
 function getIntentSchedule(intent: PlannerIntent): IntentSchedule {

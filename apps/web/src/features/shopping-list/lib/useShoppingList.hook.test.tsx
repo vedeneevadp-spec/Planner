@@ -130,7 +130,7 @@ describe('useShoppingList hooks', () => {
           isFavorite: true,
           priority: 'high',
           shoppingCategory: 'groceries',
-          text: '  Сыр  ',
+          text: '  сыр  ',
         }),
       ).resolves.toEqual(createdItem)
     })
@@ -153,6 +153,98 @@ describe('useShoppingList hooks', () => {
       text: 'Сыр',
     })
     expect(typeof body.items[0]?.id).toBe('string')
+  })
+
+  it('does not create a duplicate active shopping item', async () => {
+    const activeItem = createShoppingItemRecord({
+      id: 'item-active',
+      status: 'new',
+      text: 'Молоко',
+    })
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [activeItem],
+        limit: 200,
+        page: 1,
+        total: 1,
+      }),
+    )
+
+    const { result } = renderHook(
+      () => ({
+        createItem: useCreateShoppingListItem(),
+        summary: useShoppingListSummary(),
+      }),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
+
+    await waitFor(() => {
+      expect(result.current.summary.totalItemCount).toBe(1)
+    })
+
+    await act(async () => {
+      await expect(
+        result.current.createItem.mutateAsync('молоко'),
+      ).resolves.toEqual(activeItem)
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reactivates a completed duplicate shopping item', async () => {
+    const completedItem = createShoppingItemRecord({
+      id: 'item-completed',
+      status: 'archived',
+      text: 'Хлеб',
+    })
+    const reactivatedItem = {
+      ...completedItem,
+      status: 'new' as const,
+      version: completedItem.version + 1,
+    }
+
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [completedItem],
+          limit: 200,
+          page: 1,
+          total: 1,
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse(reactivatedItem))
+
+    const { result } = renderHook(
+      () => ({
+        createItem: useCreateShoppingListItem(),
+        summary: useShoppingListSummary(),
+      }),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
+
+    await waitFor(() => {
+      expect(result.current.summary.totalItemCount).toBe(1)
+    })
+
+    await act(async () => {
+      await expect(
+        result.current.createItem.mutateAsync('хлеб'),
+      ).resolves.toEqual(reactivatedItem)
+    })
+
+    const [url, init] = fetchMock.mock.calls[1]!
+    const body = parseRequestBody<Record<string, unknown>>(init)
+
+    expect(getRequestUrl(url)).toBe(
+      'https://api.chaotika.test/api/v1/chaos-inbox/item-completed',
+    )
+    expect(init?.method).toBe('PATCH')
+    expect(body).toEqual({ status: 'new' })
   })
 })
 

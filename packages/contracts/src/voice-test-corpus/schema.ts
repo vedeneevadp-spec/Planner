@@ -62,6 +62,7 @@ export const voiceTestExpectedPreviewSchema = z.object({
 export const voiceTestExpectedUiCardSchema = z.enum([
   'task_confirmation',
   'shopping_confirmation',
+  'shopping_list',
   'reschedule_confirmation',
   'agenda',
   'clarify',

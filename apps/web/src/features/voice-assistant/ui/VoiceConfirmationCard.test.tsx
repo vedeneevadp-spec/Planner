@@ -60,12 +60,40 @@ describe('VoiceConfirmationCard', () => {
     })
     const callbacks = renderCard({ preview })
 
-    expect(screen.getByText('молоко')).toBeVisible()
-    expect(screen.getByText('2 хлеб')).toBeVisible()
+    expect(screen.getByText('Молоко')).toBeVisible()
+    expect(screen.getByText('2 Хлеб')).toBeVisible()
 
     fireEvent.click(screen.getByRole('button', { name: /добавить/i }))
 
     expect(callbacks.onConfirm).toHaveBeenCalledWith(preview, {})
+  })
+
+  it('shows active shopping list as a preview-only result', () => {
+    const preview = createPreview({
+      canExecute: false,
+      intent: createIntent({
+        intent: 'get_shopping_list',
+        needsConfirmation: false,
+        rawText: 'что надо купить',
+      }),
+      needsConfirmation: false,
+      shoppingItems: [
+        { shoppingItemId: 'shopping-1', title: 'Молоко' },
+        { shoppingItemId: 'shopping-2', title: 'Хлеб' },
+      ],
+      summary: 'Нужно купить: Молоко, Хлеб.',
+      title: 'Список покупок',
+      type: 'get_shopping_list',
+    })
+    const callbacks = renderCard({ preview })
+
+    expect(screen.getByText('Нужно купить')).toBeVisible()
+    expect(screen.getByText('Молоко')).toBeVisible()
+    expect(screen.getByText('Хлеб')).toBeVisible()
+    expect(
+      screen.queryByRole('button', { name: /показать/i }),
+    ).not.toBeInTheDocument()
+    expect(callbacks.onConfirm).not.toHaveBeenCalled()
   })
 
   it('uses strict dangerous confirmation for reschedule', () => {
@@ -643,7 +671,9 @@ function createPreviewFromCorpusCase(
   const status = testCase.expectedPreview?.status ?? 'ready_for_confirmation'
   const canExecute =
     testCase.expectedPreview?.canExecute ??
-    (status === 'ready_for_confirmation' && intent.intent !== 'get_agenda')
+    (status === 'ready_for_confirmation' &&
+      intent.intent !== 'get_agenda' &&
+      intent.intent !== 'get_shopping_list')
   const candidates =
     intent.intent === 'reschedule_task' && status !== 'not_found'
       ? createCorpusCandidates(intent, testCase.expectedPreview?.candidateCount)
@@ -661,12 +691,24 @@ function createPreviewFromCorpusCase(
             },
           ]
         : undefined,
+    shoppingItems:
+      intent.intent === 'get_shopping_list' &&
+      status === 'ready_for_confirmation'
+        ? [
+            {
+              shoppingItemId: 'shopping-1',
+              title: 'Молоко',
+            },
+          ]
+        : undefined,
     canExecute,
     candidates,
     intent,
     isDangerous: Boolean(intent.isDangerous),
     needsConfirmation:
-      intent.intent === 'get_agenda' || status === 'requires_clarification'
+      intent.intent === 'get_agenda' ||
+      intent.intent === 'get_shopping_list' ||
+      status === 'requires_clarification'
         ? false
         : true,
     requiresUnlock: status === 'requires_unlock',
@@ -709,6 +751,8 @@ function createCorpusPreviewTitle(testCase: VoiceTestCase): string {
       return 'Перенести задачу'
     case 'shopping_confirmation':
       return 'Добавить в покупки'
+    case 'shopping_list':
+      return 'Список покупок'
     case 'unsupported':
       return 'Команда не поддерживается'
     case 'blocked':

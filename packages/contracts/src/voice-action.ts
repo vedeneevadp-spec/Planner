@@ -55,6 +55,11 @@ export const voiceActionAgendaItemSchema = z.object({
   title: z.string().trim().min(1),
 })
 
+export const voiceActionShoppingItemSchema = z.object({
+  shoppingItemId: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+})
+
 export const voiceActionPreviewSchema = z.object({
   agendaItems: z.array(voiceActionAgendaItemSchema).optional(),
   candidates: z.array(voiceActionCandidateSchema).optional(),
@@ -67,6 +72,7 @@ export const voiceActionPreviewSchema = z.object({
   needsConfirmation: z.boolean(),
   reason: z.string().trim().min(1).optional(),
   requiresUnlock: z.boolean(),
+  shoppingItems: z.array(voiceActionShoppingItemSchema).optional(),
   status: voiceActionPreviewStatusSchema,
   summary: z.string().trim().min(1),
   title: z.string().trim().min(1),
@@ -115,6 +121,9 @@ export type VoiceActionPreviewStatus = z.infer<
 >
 export type VoiceActionCandidate = z.infer<typeof voiceActionCandidateSchema>
 export type VoiceActionAgendaItem = z.infer<typeof voiceActionAgendaItemSchema>
+export type VoiceActionShoppingItem = z.infer<
+  typeof voiceActionShoppingItemSchema
+>
 export type VoiceActionPreview = z.infer<typeof voiceActionPreviewSchema>
 export type VoiceActionConfirmedPayload = z.infer<
   typeof voiceActionConfirmedPayloadSchema

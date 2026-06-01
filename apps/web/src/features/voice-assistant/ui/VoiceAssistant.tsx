@@ -30,6 +30,8 @@ import { useSessionFeatureReadiness } from '@/features/session'
 import {
   useCreateShoppingListItem,
   useRemoveShoppingListItem,
+  useShoppingListSummary,
+  useUpdateShoppingListItem,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
 import { recordClientEvent } from '@/shared/lib/observability'
@@ -128,6 +130,7 @@ export function VoiceAssistant() {
   const { apiConfig, session } = useSessionFeatureReadiness()
   const createShoppingItemMutation = useCreateShoppingListItem()
   const removeShoppingItemMutation = useRemoveShoppingListItem()
+  const updateShoppingItemMutation = useUpdateShoppingListItem()
   const parser = useMemo(() => new PlannerIntentParser(), [])
   const voiceMetricsSink = useMemo(
     () =>
@@ -170,6 +173,7 @@ export function VoiceAssistant() {
   const isVoiceEnabled =
     canUseVoiceAssistant(session?.appRole) &&
     (session?.userPreferences.voiceAssistantEnabled ?? true)
+  const shoppingListQuery = useShoppingListSummary({ enabled: isVoiceEnabled })
   const isAndroidRuntime = isAndroidVoiceAssistantRuntime()
   const isWebListening = !isAndroidRuntime && webVoiceState === 'listening'
   const isWebProcessing = WEB_PROCESSING_STATES.has(webVoiceState)
@@ -298,6 +302,9 @@ export function VoiceAssistant() {
           createActionDependencies({
             createShoppingItem: createShoppingItemMutation.mutateAsync,
             removeShoppingItem: removeShoppingItemMutation.mutateAsync,
+            shoppingListQuery,
+            updateShoppingItem: (itemId, patch) =>
+              updateShoppingItemMutation.mutateAsync({ itemId, patch }),
             planner,
             plannerApi,
           }),
@@ -374,7 +381,9 @@ export function VoiceAssistant() {
       plannerApi,
       removeShoppingItemMutation.mutateAsync,
       session,
+      shoppingListQuery,
       trackVoiceMetric,
+      updateShoppingItemMutation,
     ],
   )
 
@@ -387,6 +396,9 @@ export function VoiceAssistant() {
         createActionDependencies({
           createShoppingItem: createShoppingItemMutation.mutateAsync,
           removeShoppingItem: removeShoppingItemMutation.mutateAsync,
+          shoppingListQuery,
+          updateShoppingItem: (itemId, patch) =>
+            updateShoppingItemMutation.mutateAsync({ itemId, patch }),
           planner,
           plannerApi,
         }),
@@ -432,7 +444,9 @@ export function VoiceAssistant() {
       plannerApi,
       removeShoppingItemMutation.mutateAsync,
       session,
+      shoppingListQuery,
       trackVoiceMetric,
+      updateShoppingItemMutation,
     ],
   )
 
@@ -608,6 +622,9 @@ export function VoiceAssistant() {
         createActionDependencies({
           createShoppingItem: createShoppingItemMutation.mutateAsync,
           removeShoppingItem: removeShoppingItemMutation.mutateAsync,
+          shoppingListQuery,
+          updateShoppingItem: (itemId, patch) =>
+            updateShoppingItemMutation.mutateAsync({ itemId, patch }),
           planner,
           plannerApi,
         }),
@@ -641,8 +658,10 @@ export function VoiceAssistant() {
     planner,
     plannerApi,
     removeShoppingItemMutation.mutateAsync,
+    shoppingListQuery,
     state,
     trackVoiceMetric,
+    updateShoppingItemMutation,
   ])
 
   const consumePendingAndroidCommand = useCallback(async () => {
@@ -1407,6 +1426,10 @@ function createActionDependencies(input: {
   removeShoppingItem: NonNullable<
     PlannerActionExecutorDependencies['removeShoppingItem']
   >
+  shoppingListQuery: ReturnType<typeof useShoppingListSummary>
+  updateShoppingItem: NonNullable<
+    PlannerActionExecutorDependencies['updateShoppingItem']
+  >
 }): PlannerActionExecutorDependencies {
   const plannerApi = input.plannerApi
 
@@ -1424,6 +1447,16 @@ function createActionDependencies(input: {
       })),
     isOnline: () =>
       typeof navigator === 'undefined' ? true : navigator.onLine,
+    listShoppingItems: async () => {
+      const currentItems = input.shoppingListQuery.data ?? []
+      const result = await input.shoppingListQuery.refetch()
+
+      if (result.error && !result.data && currentItems.length === 0) {
+        throw result.error
+      }
+
+      return result.data ?? currentItems
+    },
     refreshPlanner: input.planner.refresh,
     removeShoppingItem: input.removeShoppingItem,
     removeTask: (taskId) => input.planner.removeTask(taskId),
@@ -1434,6 +1467,7 @@ function createActionDependencies(input: {
             plannerApi.setTaskSchedule(taskId, scheduleInput),
         }
       : null,
+    updateShoppingItem: input.updateShoppingItem,
   }
 }
 

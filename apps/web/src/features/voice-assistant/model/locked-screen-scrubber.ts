@@ -23,6 +23,7 @@ export function sanitizeVoicePreviewForLockScreen(
     canExecute: false,
     intent: sanitizeLockedIntent(preview.intent),
     requiresUnlock: true,
+    shoppingItems: undefined,
     status: 'requires_unlock',
     summary: SAFE_LOCKED_SCREEN_SUMMARY,
     title: 'Нужна разблокировка',

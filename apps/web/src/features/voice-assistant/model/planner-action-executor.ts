@@ -1,5 +1,7 @@
 import {
   canUseVoiceAssistant,
+  type ChaosInboxItemRecord,
+  type ChaosInboxItemUpdateInput,
   generateUuidV7,
   type NewTaskInput,
   type PlannerIntent,
@@ -14,10 +16,16 @@ import {
   voiceActionPreviewSchema,
   type VoiceActionResult,
   voiceActionResultSchema,
+  type VoiceActionShoppingItem,
   type VoiceActionUndo,
   VoiceTextNormalizer,
 } from '@planner/contracts'
 
+import {
+  findShoppingListItemByText,
+  formatShoppingListText,
+  isActiveShoppingListTextItem,
+} from '../../shopping-list/lib/shopping-list-text'
 import { sanitizeVoicePreviewForLockScreen } from './locked-screen-scrubber'
 import {
   buildTaskInputFromPlannerIntent,
@@ -60,10 +68,16 @@ export interface PlannerActionExecutorDependencies {
   createTask: (input: NewTaskInput) => Promise<unknown>
   getCachedTasks?: (() => VoiceActionCachedTask[]) | undefined
   isOnline?: (() => boolean) | undefined
+  listShoppingItems?:
+    | (() => Promise<ChaosInboxItemRecord[]> | ChaosInboxItemRecord[])
+    | undefined
   refreshPlanner?: (() => Promise<void>) | undefined
   removeShoppingItem?: ((itemId: string) => Promise<unknown>) | undefined
   removeTask?: ((taskId: string) => Promise<unknown>) | undefined
   taskClient?: VoiceActionTaskClient | null | undefined
+  updateShoppingItem?:
+    | ((itemId: string, patch: ChaosInboxItemUpdateInput) => Promise<unknown>)
+    | undefined
 }
 
 interface StoredPreview {
@@ -84,7 +98,7 @@ interface RescheduleScheduleResolution {
 }
 
 const UNSUPPORTED_MESSAGE =
-  'Пока я умею создавать задачи, добавлять покупки, переносить задачи и показывать план на сегодня или завтра.'
+  'Пока я умею создавать задачи, добавлять покупки, показывать список покупок, переносить задачи и показывать план на сегодня или завтра.'
 
 export class PlannerActionExecutor {
   private readonly previews = new Map<string, StoredPreview>()
@@ -132,6 +146,12 @@ export class PlannerActionExecutor {
             summary: `Добавить в покупки: ${formatShoppingItems(intent)}.`,
             title: 'Добавить в покупки',
           }),
+          context,
+        )
+
+      case 'get_shopping_list':
+        return this.savePreview(
+          await this.prepareShoppingListAction(intent, context, dependencies),
           context,
         )
 
@@ -245,6 +265,11 @@ export class PlannerActionExecutor {
         return this.executeCreateTaskAction(preview, dependencies)
       case 'add_shopping_item':
         return this.executeShoppingAction(preview, dependencies)
+      case 'get_shopping_list':
+        return createResult({
+          status: 'success',
+          visualStatus: preview.summary,
+        })
       case 'reschedule_task':
         return this.executeRescheduleAction(
           preview,
@@ -340,6 +365,56 @@ export class PlannerActionExecutor {
       needsConfirmation: false,
       summary,
       title: `План на ${intent.date}`,
+    })
+  }
+
+  private async prepareShoppingListAction(
+    intent: PlannerIntent,
+    context: VoiceActionContext,
+    dependencies: PlannerActionExecutorDependencies,
+  ): Promise<VoiceActionPreview> {
+    if (context.isDeviceLocked || intent.requiresUnlock) {
+      return sanitizeVoicePreviewForLockScreen(
+        createPreview(intent, {
+          canExecute: false,
+          context,
+          needsConfirmation: false,
+          reason: 'requires_unlock',
+          requiresUnlock: true,
+          status: 'requires_unlock',
+          summary: 'Разблокируй устройство, чтобы посмотреть список покупок.',
+          title: 'Нужна разблокировка',
+        }),
+      )
+    }
+
+    const shoppingListResult = await loadShoppingListItems(dependencies)
+
+    if (!shoppingListResult.ok) {
+      return createPreview(intent, {
+        canExecute: false,
+        context,
+        isOffline: true,
+        needsConfirmation: false,
+        reason: shoppingListResult.reason,
+        status: 'blocked',
+        summary: shoppingListResult.reason,
+        title: 'Список покупок недоступен',
+      })
+    }
+
+    const shoppingItems = shoppingListResult.items
+      .filter(isActiveShoppingRecord)
+      .sort(compareShoppingRecords)
+      .map(toVoiceActionShoppingItem)
+
+    return createPreview(intent, {
+      canExecute: false,
+      context,
+      needsConfirmation: false,
+      shoppingItems,
+      summary: buildShoppingListSummary(shoppingItems),
+      title: 'Список покупок',
     })
   }
 
@@ -499,34 +574,88 @@ export class PlannerActionExecutor {
     dependencies: PlannerActionExecutorDependencies,
   ): Promise<VoiceActionResult> {
     const createdShoppingItemIds: string[] = []
+    const createdItemTitles: string[] = []
+    const duplicateItemTitles: string[] = []
+    const reactivatedItemTitles: string[] = []
 
     try {
+      const shoppingItems = await loadShoppingItemsForMutation(dependencies)
+
       for (const item of preview.intent.items ?? []) {
+        const itemText = formatShoppingListText(getShoppingItemText(item))
+        const existingItem = findShoppingListItemByText(shoppingItems, itemText)
+
+        if (existingItem && isActiveShoppingListTextItem(existingItem)) {
+          duplicateItemTitles.push(formatShoppingListText(existingItem.text))
+          continue
+        }
+
+        if (existingItem) {
+          if (!dependencies.updateShoppingItem) {
+            return createResult({
+              errorCode: 'shopping_update_unavailable',
+              status: 'failed',
+              visualStatus: 'Не удалось вернуть покупку в список.',
+            })
+          }
+
+          const updatedItem = await dependencies.updateShoppingItem(
+            existingItem.id,
+            { status: 'new' },
+          )
+          const updatedRecord = isShoppingRecord(updatedItem)
+            ? updatedItem
+            : { ...existingItem, status: 'new' as const }
+
+          replaceShoppingRecord(shoppingItems, updatedRecord)
+          reactivatedItemTitles.push(formatShoppingListText(existingItem.text))
+          continue
+        }
+
         const createdItem = await dependencies.createShoppingItem({
           isFavorite: false,
           priority: null,
           shoppingCategory: 'other',
-          text: getShoppingItemText(item),
+          text: itemText,
         })
         const itemId = getRecordId(createdItem)
 
         if (itemId) {
           createdShoppingItemIds.push(itemId)
         }
+
+        createdItemTitles.push(itemText)
+
+        if (isShoppingRecord(createdItem)) {
+          shoppingItems.unshift(createdItem)
+        }
       }
 
+      const hasChangedData =
+        createdItemTitles.length > 0 || reactivatedItemTitles.length > 0
+      const canUndo =
+        reactivatedItemTitles.length === 0 &&
+        duplicateItemTitles.length === 0 &&
+        createdShoppingItemIds.length > 0
+
       return createResult({
-        changedData: true,
-        createdShoppingItemIds,
-        status: 'success',
-        undo:
+        changedData: hasChangedData || undefined,
+        createdShoppingItemIds:
           createdShoppingItemIds.length > 0
-            ? {
-                createdShoppingItemIds,
-                type: 'add_shopping_item',
-              }
+            ? createdShoppingItemIds
             : undefined,
-        visualStatus: 'Добавлено в покупки.',
+        status: 'success',
+        undo: canUndo
+          ? {
+              createdShoppingItemIds,
+              type: 'add_shopping_item',
+            }
+          : undefined,
+        visualStatus: buildShoppingMutationStatus({
+          createdItemTitles,
+          duplicateItemTitles,
+          reactivatedItemTitles,
+        }),
       })
     } catch {
       return createResult({
@@ -811,6 +940,7 @@ function createPreview(
     needsConfirmation?: boolean | undefined
     reason?: string | undefined
     requiresUnlock?: boolean | undefined
+    shoppingItems?: VoiceActionShoppingItem[] | undefined
     status?: VoiceActionPreview['status'] | undefined
     summary: string
     title: string
@@ -828,6 +958,7 @@ function createPreview(
     needsConfirmation: input.needsConfirmation ?? true,
     reason: input.reason,
     requiresUnlock: input.requiresUnlock ?? false,
+    shoppingItems: input.shoppingItems,
     status: input.status ?? 'ready_for_confirmation',
     summary: input.summary,
     title: input.title,
@@ -906,6 +1037,40 @@ async function loadAgendaTasks(
   }
 }
 
+async function loadShoppingListItems(
+  dependencies: PlannerActionExecutorDependencies,
+): Promise<
+  { items: ChaosInboxItemRecord[]; ok: true } | { ok: false; reason: string }
+> {
+  if (!dependencies.listShoppingItems) {
+    return {
+      ok: false,
+      reason: 'Список покупок сейчас недоступен.',
+    }
+  }
+
+  try {
+    const items = await dependencies.listShoppingItems()
+
+    return { items, ok: true }
+  } catch {
+    return {
+      ok: false,
+      reason: 'Не удалось загрузить список покупок.',
+    }
+  }
+}
+
+async function loadShoppingItemsForMutation(
+  dependencies: PlannerActionExecutorDependencies,
+): Promise<ChaosInboxItemRecord[]> {
+  if (!dependencies.listShoppingItems) {
+    return []
+  }
+
+  return [...(await dependencies.listShoppingItems())]
+}
+
 function compareAgendaTasks(
   left: VoiceActionCachedTask,
   right: VoiceActionCachedTask,
@@ -947,6 +1112,106 @@ function buildAgendaSummary(
     .join(' и ')
 
   return `${prefix}На ${date} ${formatTaskCount(agendaItems.length)}. Ближайшие: ${nearestTasks}.`
+}
+
+function isActiveShoppingRecord(item: ChaosInboxItemRecord): boolean {
+  return (
+    item.kind === 'shopping' &&
+    item.deletedAt === null &&
+    isActiveShoppingListTextItem(item)
+  )
+}
+
+function compareShoppingRecords(
+  left: ChaosInboxItemRecord,
+  right: ChaosInboxItemRecord,
+): number {
+  if (left.createdAt !== right.createdAt) {
+    return left.createdAt.localeCompare(right.createdAt)
+  }
+
+  return left.text.localeCompare(right.text, 'ru')
+}
+
+function toVoiceActionShoppingItem(
+  item: ChaosInboxItemRecord,
+): VoiceActionShoppingItem {
+  return {
+    shoppingItemId: item.id,
+    title: formatShoppingListText(item.text),
+  }
+}
+
+function buildShoppingListSummary(
+  shoppingItems: VoiceActionShoppingItem[],
+): string {
+  if (shoppingItems.length === 0) {
+    return 'В списке покупок сейчас пусто.'
+  }
+
+  const visibleTitles = shoppingItems
+    .slice(0, 5)
+    .map((item) => item.title)
+    .join(', ')
+  const hiddenCount = shoppingItems.length - 5
+  const hiddenSuffix =
+    hiddenCount > 0
+      ? ` и еще ${hiddenCount} ${plural(hiddenCount, 'позиция', 'позиции', 'позиций')}`
+      : ''
+
+  return `Нужно купить: ${visibleTitles}${hiddenSuffix}.`
+}
+
+function isShoppingRecord(value: unknown): value is ChaosInboxItemRecord {
+  return (
+    Boolean(value) &&
+    typeof value === 'object' &&
+    typeof (value as { id?: unknown }).id === 'string' &&
+    typeof (value as { text?: unknown }).text === 'string' &&
+    typeof (value as { status?: unknown }).status === 'string'
+  )
+}
+
+function replaceShoppingRecord(
+  items: ChaosInboxItemRecord[],
+  nextItem: ChaosInboxItemRecord,
+): void {
+  const existingIndex = items.findIndex((item) => item.id === nextItem.id)
+
+  if (existingIndex === -1) {
+    items.unshift(nextItem)
+    return
+  }
+
+  items[existingIndex] = nextItem
+}
+
+function buildShoppingMutationStatus(input: {
+  createdItemTitles: string[]
+  duplicateItemTitles: string[]
+  reactivatedItemTitles: string[]
+}): string {
+  const parts: string[] = []
+
+  if (input.createdItemTitles.length > 0) {
+    parts.push(`Добавлено: ${formatInlineList(input.createdItemTitles)}.`)
+  }
+
+  if (input.reactivatedItemTitles.length > 0) {
+    parts.push(
+      `Вернула в список: ${formatInlineList(input.reactivatedItemTitles)}.`,
+    )
+  }
+
+  if (input.duplicateItemTitles.length > 0) {
+    parts.push(`Уже есть: ${formatInlineList(input.duplicateItemTitles)}.`)
+  }
+
+  return parts.length > 0 ? parts.join(' ') : 'Такая покупка уже есть.'
+}
+
+function formatInlineList(items: string[]): string {
+  return items.join(', ')
 }
 
 function formatTaskCount(count: number): string {

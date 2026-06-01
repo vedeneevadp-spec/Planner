@@ -202,6 +202,7 @@ describe('voice command test corpus', () => {
         testCase.category === 'locked_screen' ||
         testCase.category === 'reschedule' ||
         intent === 'get_agenda' ||
+        intent === 'get_shopping_list' ||
         intent === 'reschedule_task' ||
         intent === 'unsupported' ||
         testCase.expectedIntent?.isDangerous === true ||

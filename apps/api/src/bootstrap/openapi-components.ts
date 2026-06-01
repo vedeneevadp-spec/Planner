@@ -246,6 +246,7 @@ export function createComponentSchemas(): Record<
           enum: [
             'create_task',
             'add_shopping_item',
+            'get_shopping_list',
             'reschedule_task',
             'get_agenda',
             'clarify',

@@ -8,6 +8,9 @@ export {
   type ShoppingFilters,
 } from './lib/shopping-filter-query'
 export {
+  findShoppingListItemByText,
+  formatShoppingListText,
+  isActiveShoppingListTextItem,
   isShoppingListItemCompleted,
   type ShoppingListItem,
   type ShoppingListItemDraft,

@@ -3,6 +3,7 @@ import { z } from 'zod'
 export const plannerIntentNameSchema = z.enum([
   'create_task',
   'add_shopping_item',
+  'get_shopping_list',
   'reschedule_task',
   'get_agenda',
   'clarify',
@@ -235,6 +236,8 @@ const RESCHEDULE_TIME_SHIFT_PATTERN =
   /(?:^|\s)на\s+(?:(\d+)\s+)?(?:минуту|минуты|минут|час|часа|часов|день|дня|дней)\s+(?:раньше|позже|позднее|назад|вперед)(?=\s|$)/giu
 const AGENDA_PATTERN =
   /(?:^|\s)(что\s+у\s+меня|какие\s+задачи|что\s+запланировано|покажи\s+(?:план|задачи|расписание)|план\s+на)(?=\s|$)/iu
+const SHOPPING_LIST_QUERY_PATTERN =
+  /(?:^|\s)(?:что\s+(?:(?:надо|нужно)\s+)?купить|что\s+в\s+(?:списк[еа]\s+покупок|покупках)|покажи\s+(?:мне\s+)?(?:список\s+покупок|покупки|что\s+(?:(?:надо|нужно)\s+)?купить)|какие\s+покупки)(?=\s|$)/iu
 const TASK_PREFIX_PATTERN =
   /(?:^|\s)(создай|создать|добавь|добавить|запиши|записать|внеси|внести|поставь|поставить|запланируй|запланировать)(?:\s+мне)?(?:\s+(?:задач[ауи]?|дело))?(?=\s|$)/giu
 const REMIND_PREFIX_PATTERN =
@@ -412,6 +415,16 @@ export class PlannerIntentParser {
       return agendaIntent
     }
 
+    const shoppingListIntent = ShoppingListQueryParser.parse(
+      rawText,
+      commandText,
+      runtimeContext,
+    )
+
+    if (shoppingListIntent) {
+      return shoppingListIntent
+    }
+
     const rescheduleIntent = RescheduleParser.parse(
       rawText,
       commandText,
@@ -494,6 +507,26 @@ class AgendaQueryParser {
       datePrecision: dateTime.datePrecision ?? 'exact',
       dateText: dateTime.dateText,
       intent: 'get_agenda',
+      needsConfirmation: false,
+      rawText,
+      requiresUnlock: context.isDeviceLocked ? true : undefined,
+    })
+  }
+}
+
+class ShoppingListQueryParser {
+  static parse(
+    rawText: string,
+    commandText: string,
+    context: RuntimeParserContext,
+  ): PlannerIntent | null {
+    if (!SHOPPING_LIST_QUERY_PATTERN.test(commandText)) {
+      return null
+    }
+
+    return createIntent({
+      confidence: 0.93,
+      intent: 'get_shopping_list',
       needsConfirmation: false,
       rawText,
       requiresUnlock: context.isDeviceLocked ? true : undefined,
@@ -635,7 +668,7 @@ class TaskIntentParser {
     if (!hasTaskSignal) {
       return createIntent({
         clarificationQuestion:
-          'Пока я умею создавать задачи, добавлять покупки, переносить задачи и показывать план на сегодня или завтра.',
+          'Пока я умею создавать задачи, добавлять покупки, показывать список покупок, переносить задачи и показывать план на сегодня или завтра.',
         confidence: 0.4,
         intent: 'unsupported',
         needsConfirmation: false,

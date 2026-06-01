@@ -88,6 +88,18 @@ function agendaIntent(
   })
 }
 
+function shoppingListIntent(
+  phrase: string,
+  input: Partial<ExpectedIntentInput> = {},
+): VoiceTestExpectedIntent {
+  return expectedIntent(phrase, {
+    confidence: 0.93,
+    intent: 'get_shopping_list',
+    needsConfirmation: false,
+    ...input,
+  })
+}
+
 function rescheduleIntent(
   phrase: string,
   input: Omit<
@@ -125,7 +137,7 @@ function unsupportedIntent(
 ): VoiceTestExpectedIntent {
   return expectedIntent(phrase, {
     clarificationQuestion:
-      'Пока я умею создавать задачи, добавлять покупки, переносить задачи и показывать план на сегодня или завтра.',
+      'Пока я умею создавать задачи, добавлять покупки, показывать список покупок, переносить задачи и показывать план на сегодня или завтра.',
     confidence: 0.4,
     intent: 'unsupported',
     needsConfirmation: false,
@@ -174,6 +186,8 @@ function defaultConfidence(intent: PlannerIntentName): number {
   switch (intent) {
     case 'add_shopping_item':
       return 0.94
+    case 'get_shopping_list':
+      return 0.93
     case 'get_agenda':
       return 0.95
     case 'reschedule_task':
@@ -740,13 +754,32 @@ const shoppingCases = (
       id === 'shopping_001'
         ? ui('shopping_confirmation', {
             buttons: ['Добавить', 'Изменить', 'Отмена'],
-            mustShow: ['Добавить в покупки', 'молоко', 'хлеб'],
+            mustShow: ['Добавить в покупки', 'Молоко', 'Хлеб'],
           })
         : shoppingUi,
     id,
     phrase,
   })
 })
+
+const shoppingListCases = [
+  ['shopping_list_001', 'что надо купить'],
+  ['shopping_list_002', 'что в списке покупок'],
+  ['shopping_list_003', 'покажи список покупок'],
+].map(([id, phrase]) =>
+  parserCase({
+    category: 'shopping',
+    expectedCue: { done: 'not_play' },
+    expectedIntent: shoppingListIntent(String(phrase)),
+    expectedPreview: preview('ready_for_confirmation', { canExecute: false }),
+    expectedUI: ui('shopping_list', {
+      buttons: ['Закрыть'],
+      mustShow: ['Нужно купить'],
+    }),
+    id: String(id),
+    phrase: String(phrase),
+  }),
+)
 
 const agendaCases = [
   ['agenda_001', 'что у меня сегодня', TODAY],
@@ -2072,6 +2105,7 @@ const rawVoiceCommandCorpusV1 = [
   ...reminderCases,
   ...approximateReminderCases,
   ...shoppingCases,
+  ...shoppingListCases,
   ...agendaCases,
   ...rescheduleCases,
   ...relativeRescheduleCases,
