@@ -12,7 +12,7 @@ export const VOICE_TEST_CASE_CATEGORIES = [
   'dangerous',
   'locked_screen',
   'stt_error',
-  'voice_cue',
+  'audio_signal',
   'web_flow',
   'android_runtime',
   'privacy_security',
@@ -31,7 +31,7 @@ export const REQUIRED_VOICE_TEST_CORPUS_MINIMUMS = {
   shopping: 15,
   stt_error: 10,
   unsupported: 10,
-  voice_cue: 10,
+  audio_signal: 10,
   wake_word: 8,
   web_flow: 10,
 } as const satisfies Record<VoiceTestCaseCategory, number>

@@ -3,9 +3,9 @@ package ru.chaotika.app;
 final class SttRequest {
 
     final boolean explicitUserAction;
-    final int audioCueDurationMs;
+    final int audioSignalDurationMs;
+    final long audioSignalCompletedAtElapsedMs;
     final long captureRequestedAtElapsedMs;
-    final long cueCompletedAtElapsedMs;
     final CommandRecordingConfig recordingConfig;
     final SttSource source;
     final boolean wakeWordDetected;
@@ -25,16 +25,16 @@ final class SttRequest {
         boolean wakeWordDetected,
         boolean explicitUserAction,
         long captureRequestedAtElapsedMs,
-        long cueCompletedAtElapsedMs,
-        int audioCueDurationMs
+        long audioSignalCompletedAtElapsedMs,
+        int audioSignalDurationMs
     ) {
         this.recordingConfig = recordingConfig;
         this.source = source;
         this.wakeWordDetected = wakeWordDetected;
         this.explicitUserAction = explicitUserAction;
         this.captureRequestedAtElapsedMs = captureRequestedAtElapsedMs;
-        this.cueCompletedAtElapsedMs = cueCompletedAtElapsedMs;
-        this.audioCueDurationMs = audioCueDurationMs;
+        this.audioSignalCompletedAtElapsedMs = audioSignalCompletedAtElapsedMs;
+        this.audioSignalDurationMs = audioSignalDurationMs;
     }
 
     static SttRequest afterWakeWord() {
@@ -55,10 +55,10 @@ final class SttRequest {
         );
     }
 
-    SttRequest withRuntimeTiming(
+    SttRequest withAudioSignalTiming(
         long captureRequestedAtElapsedMs,
-        long cueCompletedAtElapsedMs,
-        int audioCueDurationMs
+        long audioSignalCompletedAtElapsedMs,
+        int audioSignalDurationMs
     ) {
         return new SttRequest(
             recordingConfig,
@@ -66,8 +66,8 @@ final class SttRequest {
             wakeWordDetected,
             explicitUserAction,
             captureRequestedAtElapsedMs,
-            cueCompletedAtElapsedMs,
-            audioCueDurationMs
+            audioSignalCompletedAtElapsedMs,
+            audioSignalDurationMs
         );
     }
 }

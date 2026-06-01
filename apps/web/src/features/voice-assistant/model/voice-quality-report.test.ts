@@ -24,7 +24,9 @@ describe('voice quality report', () => {
     expect(report.metrics.web_flow_validation_pass_rate.total).toBeGreaterThan(
       0,
     )
-    expect(report.metrics.voice_cue_policy_pass_rate.total).toBeGreaterThan(0)
+    expect(report.metrics.audio_signal_policy_pass_rate.total).toBeGreaterThan(
+      0,
+    )
     expect(report.metrics.llm_eligibility_policy_pass_rate.total).toBe(
       voiceCommandCorpusV1.length,
     )
@@ -39,7 +41,7 @@ describe('voice quality report', () => {
     for (const metric of [
       'dangerous_block_rate',
       'locked_screen_privacy_pass_rate',
-      'voice_cue_policy_pass_rate',
+      'audio_signal_policy_pass_rate',
       'llm_eligibility_policy_pass_rate',
       'no_private_metrics_policy',
     ] as const) {
@@ -65,16 +67,17 @@ describe('voice quality report', () => {
     )
   })
 
-  it('keeps voice cue policy aligned with corpus expectations', async () => {
+  it('keeps audio signal policy aligned with corpus expectations', async () => {
     const report = await generateVoiceQualityReport()
-    const voiceCueResults = report.caseResults.filter(
-      (caseResult) => caseResult.category === 'voice_cue',
+    const audioSignalResults = report.caseResults.filter(
+      (caseResult) => caseResult.category === 'audio_signal',
     )
 
-    expect(voiceCueResults.length).toBeGreaterThanOrEqual(10)
+    expect(audioSignalResults.length).toBeGreaterThanOrEqual(10)
     expect(
-      voiceCueResults.every(
-        (caseResult) => caseResult.metrics.voice_cue_policy_pass_rate === true,
+      audioSignalResults.every(
+        (caseResult) =>
+          caseResult.metrics.audio_signal_policy_pass_rate === true,
       ),
     ).toBe(true)
   })

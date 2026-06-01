@@ -1,10 +1,10 @@
 package ru.chaotika.app;
 
-final class VoiceCuePolicy {
+final class AudioSignalPolicy {
 
-    private VoiceCuePolicy() {}
+    private AudioSignalPolicy() {}
 
-    static boolean shouldPlayDoneCue(
+    static boolean shouldPlaySuccessSignal(
         String source,
         String intent,
         String resultStatus,

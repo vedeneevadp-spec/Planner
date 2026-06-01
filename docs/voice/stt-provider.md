@@ -229,17 +229,17 @@ Streaming STT can be added later only if live transcript is required.
 
 Для обратной связи разрешены только:
 
-- локальный static audio cue `Слушаю` после wake word или Android
-  push-to-talk start;
-- локальный static audio cue `Готово` после успешного mutating action;
+- локальный non-verbal start signal после wake word или Android push-to-talk
+  start;
+- локальный non-verbal success signal после успешного mutating action;
 - вибрация;
 - визуальный статус;
 - toast/snackbar после выполнения.
 
-Static cues относятся к Android runtime/action feedback, а не к STT provider.
-Они проигрываются из локальных assets, не содержат приватных данных и не
-передают текст наружу. `Готово` нельзя проигрывать для preview, errors,
-`clarify`, `unsupported`, `requiresUnlock` и `get_agenda`.
+Audio signals относятся к Android runtime/action feedback, а не к STT provider.
+Они проигрываются из локальных assets, не содержат речи или приватных данных и
+не передают текст наружу. Success signal нельзя проигрывать для preview, errors,
+`clarify`, `unsupported`, `requiresUnlock`, `get_agenda`, cancel и Undo.
 
 TTS можно рассмотреть позже как отдельную optional-функцию, но он не входит в
 пункт 3 и не должен влиять на стоимость первой версии.

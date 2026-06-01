@@ -214,13 +214,13 @@ Foreground service startup catches Android runtime `SecurityException`/service-s
 
 Wake-word review may keep a short pending fragment in memory. It is written to disk only when the explicit training collection opt-in is enabled. Disabling opt-in clears pending samples.
 
-## Voice Cues
+## Audio Signals
 
-Allowed static cues:
+Allowed local non-verbal signals:
 
 ```text
-listening
-done
+start
+success
 ```
 
 Rejected:

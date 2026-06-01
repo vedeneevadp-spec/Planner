@@ -1,7 +1,8 @@
 # Android Voice Runtime
 
-Android runtime отвечает только за wake word, foreground service, static cues,
-короткую запись команды и bridge в WebView. Parser/action behavior не меняется.
+Android runtime отвечает только за wake word, foreground service, локальные
+non-verbal audio signals, короткую запись команды и bridge в WebView.
+Parser/action behavior не меняется.
 
 ## Lifecycle
 
@@ -11,8 +12,8 @@ manual enable from app
 -> local wake-word engine
 -> WakeWordDetected
 -> pause wake engine
--> play static cue "Слушаю" + overlay
--> start command recorder after cue guard
+-> play short start signal + haptic + overlay "Слушаю"
+-> start command recorder after signal guard
 -> local validation
 -> backend /api/voice/command
 -> WebView confirmation UI
@@ -31,7 +32,7 @@ type AndroidVoiceRuntimeStatus =
   | 'running_foreground'
   | 'listening_wake_word'
   | 'paused_for_command'
-  | 'playing_listening_cue'
+  | 'playing_start_signal'
   | 'recording_command'
   | 'stopping'
   | 'stopped'
@@ -50,7 +51,7 @@ type AndroidVoiceRuntimeError =
   | 'battery_restricted'
   | 'security_exception'
   | 'wake_engine_error'
-  | 'audio_cue_error'
+  | 'audio_signal_error'
   | 'recorder_error'
 ```
 
@@ -67,9 +68,14 @@ wake_engine_started
 wake_engine_stopped
 wake_engine_error
 wake_detection_latency_ms
+wake_detected_to_recorder_start_ms
 command_recorder_start_latency_ms
-audio_cue_duration_ms
-audio_cue_to_recorder_delay_ms
+start_signal_duration_ms
+audio_signal_to_recorder_delay_ms
+audio_signal_start_played
+audio_signal_success_played
+audio_signal_suppressed
+audio_signal_error
 battery_sample
 cpu_sample
 memory_sample
@@ -138,19 +144,31 @@ No boot receiver starts microphone listening in v1. After reboot, wake-word
 listening stays off until the user opens the app and starts it manually.
 Push-to-talk remains available when microphone permission is granted.
 
-## Cue Timing
+## Audio Signal Timing
 
-`Слушаю` is a bundled local static cue, not TTS. The command recorder starts only
-after cue completion and a short guard delay. Runtime records:
+Start signal is a bundled local non-verbal signal, not TTS. Android plays it
+through `SoundPool`; `MediaPlayer` is not used for these short signals. The
+command recorder starts only after signal completion and a short guard delay.
+Runtime targets:
 
 ```text
-audio_cue_duration_ms
-audio_cue_to_recorder_delay_ms
-command_recorder_start_latency_ms
+signalDurationMs: 40-100
+guardDelayMs: 30-50
+wake_detected_to_recorder_start_ms: <= 150-200
 ```
 
-This keeps the cue out of the STT command clip. If local validation does not find
-a command after the cue, the clip is blocked and is not uploaded.
+Runtime records:
+
+```text
+start_signal_duration_ms
+audio_signal_to_recorder_delay_ms
+command_recorder_start_latency_ms
+wake_detected_to_recorder_start_ms
+```
+
+This keeps the start signal out of the STT command clip. If local validation
+does not find a command after the signal, the clip is blocked and is not
+uploaded.
 
 ## Buffers
 
@@ -207,6 +225,6 @@ Push-to-talk fallback
 - reboot;
 - battery saver enabled;
 - vendor battery restriction;
-- "Слушаю" cue timing;
+- start signal timing;
 - push-to-talk fallback.
 ```

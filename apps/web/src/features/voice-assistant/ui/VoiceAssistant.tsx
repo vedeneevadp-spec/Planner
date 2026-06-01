@@ -319,14 +319,16 @@ export function VoiceAssistant() {
           source: metricSource,
           status: result.status,
         })
-          .then((doneCuePlayed) => {
+          .then((successSignalPlayed) => {
             trackVoiceMetric(
-              doneCuePlayed ? 'voice_cue_done_played' : 'voice_cue_suppressed',
+              successSignalPlayed
+                ? 'audio_signal_success_played'
+                : 'audio_signal_suppressed',
               metricSource,
               {
-                errorCode: doneCuePlayed
+                errorCode: successSignalPlayed
                   ? undefined
-                  : 'done_cue_not_played_by_policy',
+                  : 'success_signal_not_played_by_policy',
                 intentType: preview.intent.intent,
                 resultStatus: result.status,
               },
@@ -334,6 +336,11 @@ export function VoiceAssistant() {
           })
           .catch((error) => {
             console.warn('Failed to notify Android voice action result.', error)
+            trackVoiceMetric('audio_signal_error', metricSource, {
+              errorCode: 'android_signal_notification_failed',
+              intentType: preview.intent.intent,
+              resultStatus: result.status,
+            })
           })
 
         trackVoiceMetric(
@@ -689,12 +696,12 @@ export function VoiceAssistant() {
 
       trackVoiceMetric(
         androidVoiceStatus?.voiceCuesEnabled
-          ? 'voice_cue_listening_played'
-          : 'voice_cue_suppressed',
+          ? 'audio_signal_start_played'
+          : 'audio_signal_suppressed',
         source,
         androidVoiceStatus?.voiceCuesEnabled
           ? {}
-          : { errorCode: 'voice_cues_disabled' },
+          : { errorCode: 'audio_feedback_disabled' },
       )
       pendingAndroidButtonCaptureRef.current = false
       handledNativeCommandIdsRef.current.add(command.id)
@@ -904,12 +911,12 @@ export function VoiceAssistant() {
     trackVoiceMetric('push_to_talk_started', 'android_microphone')
     trackVoiceMetric(
       androidVoiceStatus?.voiceCuesEnabled
-        ? 'voice_cue_listening_played'
-        : 'voice_cue_suppressed',
+        ? 'audio_signal_start_played'
+        : 'audio_signal_suppressed',
       'android_microphone',
       androidVoiceStatus?.voiceCuesEnabled
         ? {}
-        : { errorCode: 'voice_cues_disabled' },
+        : { errorCode: 'audio_feedback_disabled' },
     )
     markVoiceTiming('recordingStartedAt')
     trackVoiceMetric('command_recording_started', 'android_microphone')
@@ -961,8 +968,8 @@ export function VoiceAssistant() {
     })
     trackVoiceMetric('voice_started', 'web_microphone')
     trackVoiceMetric('push_to_talk_started', 'web_microphone')
-    trackVoiceMetric('voice_cue_suppressed', 'web_microphone', {
-      errorCode: 'web_voice_cues_unsupported',
+    trackVoiceMetric('audio_signal_suppressed', 'web_microphone', {
+      errorCode: 'web_audio_signals_unsupported',
     })
 
     const support = getWebVoiceSupport()

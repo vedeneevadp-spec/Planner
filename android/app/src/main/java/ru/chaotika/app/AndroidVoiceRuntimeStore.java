@@ -144,7 +144,7 @@ final class AndroidVoiceRuntimeStore {
             status == AndroidVoiceRuntimeStatus.RUNNING_FOREGROUND ||
             status == AndroidVoiceRuntimeStatus.LISTENING_WAKE_WORD ||
             status == AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND ||
-            status == AndroidVoiceRuntimeStatus.PLAYING_LISTENING_CUE ||
+            status == AndroidVoiceRuntimeStatus.PLAYING_START_SIGNAL ||
             status == AndroidVoiceRuntimeStatus.RECORDING_COMMAND ||
             status == AndroidVoiceRuntimeStatus.STOPPING;
     }

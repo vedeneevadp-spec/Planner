@@ -198,7 +198,7 @@ describe('VoiceAssistantSettingsPanel', () => {
     ).toBeDisabled()
   })
 
-  it('persists voice cues through the Android bridge', async () => {
+  it('persists audio signals through the Android bridge', async () => {
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
     mocks.getVoiceAssistantNativeStatus.mockResolvedValue(
       createStatus({
@@ -210,7 +210,7 @@ describe('VoiceAssistantSettingsPanel', () => {
 
     fireEvent.click(
       await screen.findByRole('switch', {
-        name: 'Проигрывать "Слушаю" и "Готово"',
+        name: 'Проигрывать короткие сигналы',
       }),
     )
 
@@ -303,7 +303,7 @@ describe('VoiceAssistantSettingsPanel', () => {
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('switch', {
-        name: 'Проигрывать "Слушаю" и "Готово"',
+        name: 'Проигрывать короткие сигналы',
       }),
     ).not.toBeInTheDocument()
   })

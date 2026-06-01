@@ -185,6 +185,10 @@ export function createComponentSchemas(): Record<
           minimum: 0,
           type: 'integer',
         },
+        audio_signal_to_recorder_delay_ms: {
+          minimum: 0,
+          type: 'number',
+        },
         confidenceBucket: {
           enum: ['low', 'medium', 'high'],
           type: 'string',
@@ -226,6 +230,10 @@ export function createComponentSchemas(): Record<
             'undo_requested',
             'undo_success',
             'undo_failed',
+            'audio_signal_start_played',
+            'audio_signal_success_played',
+            'audio_signal_suppressed',
+            'audio_signal_error',
             'voice_cue_listening_played',
             'voice_cue_done_played',
             'voice_cue_suppressed',
@@ -303,6 +311,10 @@ export function createComponentSchemas(): Record<
           type: 'string',
         },
         stt_upload_duration_ms: {
+          minimum: 0,
+          type: 'number',
+        },
+        start_signal_duration_ms: {
           minimum: 0,
           type: 'number',
         },

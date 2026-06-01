@@ -23,7 +23,7 @@ PlannerIntent
 
 Action layer не проигрывает аудио. Он возвращает `VoiceActionResult` с
 `visualStatus`; Android runtime может использовать успешный результат
-изменяющего действия как сигнал для локального static cue `Готово`.
+изменяющего действия как сигнал для локального non-verbal success signal.
 
 ## Supported Intents
 
@@ -232,18 +232,18 @@ Undo вынесен из пункта 5 и реализован в пункте 
 
 Persistent undo history и server-side preview storage не входят в v1.
 
-## Voice Cues
+## Audio Signals
 
-Локальные voice cues относятся к Android runtime, а не к executor.
+Локальные non-verbal audio signals относятся к Android runtime, а не к executor.
 
-`Готово` можно проигрывать только если `VoiceActionResult.status === 'success'`
-и действие изменило данные:
+Success signal можно проигрывать только если
+`VoiceActionResult.status === 'success'` и действие изменило данные:
 
 - `create_task`;
 - `add_shopping_item`;
 - `reschedule_task`.
 
-`Готово` нельзя проигрывать для:
+Success signal нельзя проигрывать для:
 
 - preview без execute;
 - `get_agenda`;

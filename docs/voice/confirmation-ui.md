@@ -60,7 +60,7 @@ UI-level statuses:
 warning: действие меняет существующую задачу.
 
 `get_agenda` показывает только visual summary и список задач. Оно не требует
-кнопки выполнения и не должно приводить к cue `Готово`.
+кнопки выполнения и не должно приводить к success signal.
 
 `requires_unlock` не показывает transcript, agenda items или task titles.
 
@@ -142,7 +142,7 @@ Undo failure behavior:
 
 - успешный Undo показывает visual status `Отменено` / `... отменено`;
 - неуспешный Undo показывает `Не удалось отменить. Обнови экран.`;
-- Undo не проигрывает cue `Готово`;
+- Undo не проигрывает success signal;
 - Undo payload используется один раз: после успешного или failed Undo кнопка
   `Отменить` скрывается;
 - после успешного Undo persistent undo history не создается.
@@ -187,8 +187,8 @@ Auto-confirm остается выключенным. Runtime остается c
 
 `VoiceConfirmationCard` реализован в web/client UI. Android runtime использует
 тот же UI через Capacitor WebView: native layer отвечает за wake word, запись,
-STT bridge и local static cues, но не имеет отдельного native confirmation
-overlay и не выполняет planner/shopping actions напрямую.
+STT bridge и local non-verbal audio signals, но не имеет отдельного native
+confirmation overlay и не выполняет planner/shopping actions напрямую.
 
 ## Tests
 
@@ -208,6 +208,6 @@ overlay и не выполняет planner/shopping actions напрямую.
 - Undo for `add_shopping_item`;
 - Undo for `reschedule_task`;
 - Undo failure/TTL;
-- no `Готово` cue after Undo;
+- no success signal after Undo;
 - no auto-confirm before Undo policy changes;
 - `get_agenda` remains visual-only.

@@ -195,7 +195,7 @@ WakeWordService
 → WakeWordEngine
 → WakeWordDetected
 → pause wake listening
-→ local cue “Слушаю”
+→ short local start signal + haptic + overlay “Слушаю”
 → CommandAudioRecorder
 → local validation
 → backend STT

@@ -91,6 +91,7 @@ export interface NativeWakeWordTrainingCollectionStatus {
 }
 
 export interface VoiceAssistantNativeStatus {
+  audioFeedbackEnabled?: boolean
   batterySample?: {
     isCharging: boolean
     isPowerSaveMode: boolean
@@ -141,7 +142,7 @@ interface PlannerVoiceAssistantPlugin {
   getWakeWordTrainingCollectionStatus: () => Promise<NativeWakeWordTrainingCollectionStatus>
   notifyActionResult: (
     options: NativeVoiceActionResultNotification,
-  ) => Promise<{ doneCuePlayed: boolean }>
+  ) => Promise<{ doneCuePlayed?: boolean; successSignalPlayed?: boolean }>
   openWakeWordFalseRejectRecorder: () => Promise<NativeWakeWordTrainingCollectionStatus>
   openWakeWordDebug: () => Promise<NativeWakeWordDiagnostics>
   reportWakeWordFalseAccept: () => Promise<NativeWakeWordFeedbackResult>
@@ -320,10 +321,10 @@ export async function notifyAndroidVoiceActionResult(
     return false
   }
 
-  const { doneCuePlayed } =
+  const { doneCuePlayed, successSignalPlayed } =
     await NativePlannerVoiceAssistant.notifyActionResult(options)
 
-  return doneCuePlayed
+  return Boolean(successSignalPlayed ?? doneCuePlayed)
 }
 
 export async function getAndroidWakeWordDiagnostics(): Promise<NativeWakeWordDiagnostics | null> {
@@ -454,6 +455,7 @@ function createWebVoiceAssistantNativeStatus(): VoiceAssistantNativeStatus {
     runtimeLastError: null,
     runtimeMetrics: {},
     runtimeStatus: 'disabled',
+    audioFeedbackEnabled: false,
     voiceCuesEnabled: false,
     wakePhrase: VOICE_ASSISTANT_WAKE_PHRASE,
     wakeWordEnabled: false,

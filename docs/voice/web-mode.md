@@ -1,7 +1,8 @@
 # Web Voice Mode v1
 
-Web voice input is push-to-talk only. It does not implement wake word, background
-listening, voice cues, TTS, cloud TTS, or client-side STT/LLM provider keys.
+Web voice input is push-to-talk only. It does not implement wake word,
+background listening, audio signals, TTS, cloud TTS, or client-side STT/LLM
+provider keys.
 
 ## Flow
 
@@ -198,7 +199,7 @@ Cases to verify:
 ```text
 Web wake word
 Browser background listening
-Web voice cues
+Web audio signals
 Web TTS/cloud TTS
 SpeechRecognition as production primary
 STT/LLM provider keys in the web bundle

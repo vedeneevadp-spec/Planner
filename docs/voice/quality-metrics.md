@@ -25,11 +25,11 @@ VoiceTestCase
 -> PlannerActionExecutor.prepareAction
 -> VoiceConfirmationCard status expectation
 -> web flow expectation
--> voice cue policy expectation
+-> audio signal policy expectation
 -> privacy / LLM eligibility expectations
 ```
 
-Текущий `voice-command-corpus.v1` содержит 195 cases. Report группирует
+Текущий `voice-command-corpus.v1` содержит 201 cases. Report группирует
 результаты по `category` и считает:
 
 - `parser_intent_accuracy`
@@ -41,7 +41,7 @@ VoiceTestCase
 - `action_preview_accuracy`
 - `confirmation_ui_status_accuracy`
 - `web_flow_validation_pass_rate`
-- `voice_cue_policy_pass_rate`
+- `audio_signal_policy_pass_rate`
 - `llm_eligibility_policy_pass_rate`
 - `no_private_metrics_policy`
 
@@ -53,7 +53,7 @@ VoiceTestCase
 ```text
 dangerous_block_rate = 100%
 locked_screen_privacy_pass_rate = 100%
-voice_cue_policy_pass_rate = 100%
+audio_signal_policy_pass_rate = 100%
 llm_eligibility_policy_pass_rate = 100%
 no_private_metrics_policy = 100%
 ```
@@ -160,13 +160,19 @@ action_failed
 undo_requested
 undo_success
 undo_failed
-voice_cue_listening_played
-voice_cue_done_played
-voice_cue_suppressed
+audio_signal_start_played
+audio_signal_success_played
+audio_signal_suppressed
+audio_signal_error
 web_voice_unsupported
 web_voice_permission_denied
 web_voice_timeout
 ```
+
+Deprecated aliases `voice_cue_listening_played`, `voice_cue_done_played`, and
+`voice_cue_suppressed` may remain accepted by the schema only for backward
+compatibility with older stored telemetry. New runtime code must emit
+`audio_signal_*` names.
 
 LLM fallback metric names are present in the contract, but no production LLM
 provider is connected in пункт 13:
@@ -207,8 +213,9 @@ action preview created -> confirmation shown
 ```
 
 Android wake-word flow records wake and confirmation-card timings when the
-pending native command is consumed. Native cue playback is still controlled by
-the Android runtime; telemetry records only safe cue played/suppressed events.
+pending native command is consumed. Native audio signal playback is controlled by
+the Android runtime; telemetry records only safe signal played/suppressed/error
+events.
 
 ## Retention And Sampling
 

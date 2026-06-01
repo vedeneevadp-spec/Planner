@@ -18,12 +18,12 @@ voice input
 Все голосовые команды должны проходить через общий `PlannerIntentParser` или
 backend parser и приводиться к единому формату `PlannerIntent`.
 
-Голосовой ответ v1 ограничен локальными статическими audio cues. В первой
-версии не используется TTS, cloud TTS и динамически сгенерированные голосовые
-ответы. Разрешены только короткие локальные реплики:
+Голосовой ответ v1 ограничен короткими локальными non-verbal audio signals.
+TTS, cloud TTS, динамически сгенерированные голосовые ответы и озвученные
+фразы `Слушаю` / `Готово` не используются. Разрешены только:
 
-- `Слушаю`;
-- `Готово`.
+- start signal после wake word или Android push-to-talk;
+- success signal после успешного mutating action.
 
 Первый production rollout закрыт feature-gate по глобальной роли приложения:
 
@@ -193,11 +193,11 @@ cd tools/wakeword-training
 flow:
 
 1. Приостановить wake-word listening.
-2. Проиграть локальный audio cue `Слушаю`.
+2. Проиграть короткий локальный start signal.
 3. Дать вибрацию.
 4. Показать маленький overlay `Слушаю`.
-5. Начать записывать короткую голосовую команду после cue или с безопасным
-   pre-roll, чтобы не записать сам cue в STT и не обрезать начало команды.
+5. Начать записывать короткую голосовую команду после
+   `signalDurationMs + guardDelayMs`, чтобы start signal не попал в STT.
 6. Проверить аудио локально.
 7. Отправить валидный short clip только на backend STT endpoint.
 8. Показать визуальное подтверждение результата.
@@ -230,7 +230,7 @@ confirmation UI такие же, но без ожидания wake word.
 
 ```text
 Пользователь: “Хаотика”
-Приложение: локальный cue “Слушаю” + вибрация + overlay “Слушаю”
+Приложение: короткий start signal + вибрация + overlay “Слушаю”
 Пользователь: “Завтра позвонить врачу”
 Приложение: распознает команду → показывает карточку действия
 ```
@@ -244,44 +244,46 @@ confirmation UI такие же, но без ожидания wake word.
 
 В первой версии не использовать TTS. Помощник не озвучивает результат и не
 произносит приватные данные. Результат отображается визуально. Допускаются
-только локальные статические audio cues `Слушаю` и `Готово`.
+только короткие локальные non-verbal audio signals.
 
-### Локальные voice cues
+### Локальные audio signals
 
-Voice cues - это Android-only v1 и не являются TTS. Они проигрываются из
-локальных assets, не содержат приватных данных и не требуют сетевого запроса.
+Audio signals - это Android-only v1 и не являются TTS. Они проигрываются из
+локальных assets через low-latency runtime, не содержат речи или приватных
+данных и не требуют сетевого запроса.
 
-Разрешенные cues:
+Разрешенные signals:
 
 ```text
-Слушаю
-Готово
+start signal
+success signal
 ```
 
 Рекомендуемые assets:
 
 ```text
-android/app/src/main/res/raw/voice_cue_listening_ru.*
-android/app/src/main/res/raw/voice_cue_done_ru.*
+android/app/src/main/res/raw/voice_signal_start.ogg
+android/app/src/main/res/raw/voice_signal_success.ogg
 ```
 
-Формат файлов: 0.4-1.0 сек, mono, 16-24 kHz, wav/ogg, без фоновой музыки.
+Формат файлов: OGG, mono, 24 kHz или 44.1 kHz, без речи, музыки и длинного
+хвоста. Start signal длится 40-100 мс, success signal - 60-120 мс.
 
-`Слушаю` играть:
+Start signal играть:
 
 - после `WakeWordDetected`;
 - после явного Android push-to-talk start;
 - вместе с visual overlay `Слушаю`;
-- до записи команды или с pre-roll logic, чтобы cue не попадал в STT.
+- до записи команды с guard delay 30-50 мс, чтобы signal не попадал в STT.
 
-`Готово` играть только после успешного `executeAction`, когда действие реально
-изменило данные:
+Success signal играть только после успешного `executeAction`, когда действие
+реально изменило данные:
 
 - `create_task` success;
 - `add_shopping_item` success;
 - `reschedule_task` success.
 
-`Готово` не играть:
+Success signal не играть:
 
 - если показана только preview card;
 - если требуется confirmation;
@@ -293,7 +295,7 @@ android/app/src/main/res/raw/voice_cue_done_ru.*
 - если пользователь нажал Undo;
 - если `get_agenda` только показал список.
 
-Web v1 остается без voice cues и использует только визуальные статусы.
+Web v1 остается без audio signals и использует только визуальные статусы.
 
 Примеры визуального подтверждения:
 
@@ -403,7 +405,7 @@ Privacy-правило:
 После wake-фразы можно отправлять только короткую команду пользователя для STT/parser, если голосовой режим включен пользователем.
 После явного нажатия кнопки микрофона можно записывать короткую команду без wake word, но с теми же local validation и backend-only STT правилами.
 Стоимость voice interaction в первой версии считается только по STT. Облачный
-TTS не используется. Локальные статические audio cues не отправляют текст или
+TTS не используется. Локальные non-verbal audio signals не отправляют текст или
 аудио наружу.
 ```
 
@@ -812,9 +814,8 @@ confidence < 0.60
 ### Стандартные визуальные статусы
 
 Использовать короткие стандартные visual statuses. В первой версии это
-toast/snackbar/card update, не TTS. Локальный cue `Готово` не заменяет
-визуальный статус и проигрывается только после successful mutating
-`executeAction`.
+toast/snackbar/card update, не TTS. Success signal не заменяет визуальный статус
+и проигрывается только после successful mutating `executeAction`.
 
 Для успешного создания задачи:
 
@@ -1091,7 +1092,7 @@ Confirmation UI должен быть единым для Android и web.
 29. При отсутствии сети после wake word показывается visual fallback: ручной
     ввод или повторить позже.
 30. В коде отсутствуют вызовы TTS для результата STT/intent. Допустимы только
-    локальные статические audio cues без приватного текста.
+    локальные non-verbal audio signals без речи и приватного текста.
 31. Голосовой ввод доступен только для глобальных `appRole = owner` и
     `appRole = test`.
 32. Для `admin`, `user` и `guest` voice UI не показывает кнопку микрофона и не
@@ -1258,37 +1259,36 @@ Undo и full clarification loop были вынесены из пункта 5 и
      для Android, multi-device, long-running или server-audited flows. Если это
      понадобится для публичного rollout, закрыть до пункта 16 release gate.
 
-6. Добавить локальные voice cues `Слушаю` и `Готово`.
-   Статус: реализовано для Android runtime. Локальные записи из `temp`
-   подключены как `res/raw/voice_cue_listening_ru.m4a` и
-   `res/raw/voice_cue_done_ru.m4a`; web остается визуальным без voice cues.
-   Цель - добавить простую голосовую обратную связь без TTS, без cloud TTS и
-   без динамического текста.
+6. Добавить локальные non-verbal audio signals.
+   Статус: реализовано для Android runtime. Assets подключены как
+   `res/raw/voice_signal_start.ogg` и `res/raw/voice_signal_success.ogg`; web
+   остается визуальным без audio signals. Цель - дать быструю обратную связь без
+   TTS, cloud TTS, речи и динамического текста.
 
    Правила:
-   - `Слушаю` играть после wake word detection и после явного Android
+   - start signal играть после wake word detection и после явного Android
      push-to-talk start;
    - одновременно показывать overlay `Слушаю`;
-   - запись команды начинать после cue или с pre-roll logic, чтобы cue не попал
-     в STT;
-   - `Готово` играть только после successful `executeAction` для
+   - запись команды начинать после start signal + guard delay, чтобы signal не
+     попал в STT;
+   - success signal играть только после successful `executeAction` для
      `create_task`, `add_shopping_item` и `reschedule_task`;
-   - не играть `Готово` для preview, confirmation-needed, blocked,
+   - не играть success signal для preview, confirmation-needed, blocked,
      `requiresUnlock`, `clarify`, `unsupported`, STT/parser/action errors,
      cancel и `get_agenda`.
 
    Технически: Android-only v1, web остается визуальным. Assets:
-   `res/raw/voice_cue_listening_ru.*` и `res/raw/voice_cue_done_ru.*`. Нужен
-   флаг или internal config `voiceCuesEnabled`, по умолчанию включенный на
-   Android.
+   `res/raw/voice_signal_start.ogg` и `res/raw/voice_signal_success.ogg`.
+   Существующий флаг `voiceCuesEnabled` оставлен как совместимое имя настройки,
+   но означает non-verbal audio signals.
 
    Acceptance:
    - в коде нет TTS provider и cloud TTS;
-   - cues локальные и не содержат приватных данных;
-   - `Слушаю` проигрывается перед записью команды;
-   - `Готово` проигрывается только после успешного изменения данных;
+   - signals локальные и не содержат речи или приватных данных;
+   - start signal проигрывается перед записью команды;
+   - success signal проигрывается только после успешного изменения данных;
    - на locked screen не озвучиваются приватные данные;
-   - есть tests/state checks: no `Готово` on preview/error/clarify/requiresUnlock.
+   - есть tests/state checks: no success signal on preview/error/clarify/requiresUnlock.
 
 7. Сделать подтверждение умнее.
    Статус: реализован v1 smart confirmation UI между
@@ -1313,7 +1313,7 @@ Undo и full clarification loop были вынесены из пункта 5 и
 
    Cleanup перед пунктом 8 зафиксирован: Undo является ephemeral UI action в
    текущей карточке с TTL 30 секунд; failed Undo показывает visual-only
-   `Не удалось отменить. Обнови экран.`; Undo не проигрывает cue `Готово`;
+   `Не удалось отменить. Обнови экран.`; Undo не проигрывает success signal;
    после successful/failed Undo payload не используется повторно; `reschedule`
    Undo offline заблокирован без свежей версии задачи. Edit flow не вызывает
    `executeAction()` до повторного подтверждения, а `multiple_candidates`
@@ -1321,8 +1321,9 @@ Undo и full clarification loop были вынесены из пункта 5 и
 
    Android parity: Android runtime использует тот же web/client
    `VoiceConfirmationCard` через Capacitor WebView. Native layer отвечает за
-   wake word, запись, STT bridge и local static cues, но не имеет отдельного
-   native confirmation overlay и не выполняет planner/shopping actions напрямую.
+   wake word, запись, STT bridge и local non-verbal audio signals, но не имеет
+   отдельного native confirmation overlay и не выполняет planner/shopping
+   actions напрямую.
 
    Auto-confirm намеренно остается выключенным. Следующий шаг для auto-confirm -
    метрики качества и закрытое тестирование; allowlist по-прежнему ограничен
@@ -1337,7 +1338,7 @@ Undo и full clarification loop были вынесены из пункта 5 и
 
 - Undo failure behavior;
 - Undo TTL / ephemeral nature;
-- отсутствие cue `Готово` после Undo;
+- отсутствие success signal после Undo;
 - глобально выключенный auto-confirm runtime;
 - edit flow без выполнения до подтверждения;
 - `multiple_candidates` с `candidateTaskId + expectedVersion`;
@@ -1371,13 +1372,13 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Статус: реализован Android runtime status/error/metrics layer,
     owner/test debug UI, graceful degradation, `START_NOT_STICKY` behavior,
     no automatic microphone listening after reboot, bounded wake ring buffer
-    cleanup и timing checks для cue `Слушаю`.
+    cleanup и timing checks для start signal.
 
     Runtime metrics остаются safe: без audio, transcript, task titles, shopping
     item names, agenda content и candidate titles. Missing wake model блокирует
     wake word, но оставляет push-to-talk fallback доступным при наличии
-    microphone permission. `Слушаю` проигрывается до старта recorder и не
-    загружается как command audio; cue-only audio блокируется local validation.
+    microphone permission. Start signal проигрывается до старта recorder и не
+    загружается как command audio; signal-only audio блокируется local validation.
 
     Battery/CPU/memory samples доступны в debug/status UI. Doze, screen-off,
     reboot и vendor battery restrictions зафиксированы как manual Android device
@@ -1396,8 +1397,8 @@ Undo и full clarification loop были вынесены из пункта 5 и
     `MediaRecorder`; добавлены визуальные states `listening`, `recognizing`,
     `needs_repeat`, `permission_denied`, `unsupported`, `error`; permission
     errors показываются как понятные сообщения; основной интерфейс не
-    блокируется. Wake word в web не добавлен, web v1 не использует voice cues и
-    не использует TTS/cloud TTS. Upload format v1: PCM/LPCM 16 kHz mono 16-bit
+    блокируется. Wake word в web не добавлен, web v1 не использует audio
+    signals и не использует TTS/cloud TTS. Upload format v1: PCM/LPCM 16 kHz mono 16-bit
     little-endian (`Content-Type: audio/l16`); browser `audio/webm`/opus blob не
     входит в текущий контракт. Подробности: [docs/voice/web-mode.md](voice/web-mode.md).
 
@@ -1416,15 +1417,15 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Статус: реализовано.
 
     Добавлен shared machine-readable corpus `voice-command-corpus.v1` в
-    `packages/contracts/src/voice-test-corpus`: 195 cases на русском для
+    `packages/contracts/src/voice-test-corpus`: 201 cases на русском для
     wake-word hard negatives, create_task, reminderAt, shopping, agenda,
     reschedule, clarify, unsupported/dangerous, locked-screen, STT/noisy
-    transcript, voice cues, web flow, Android runtime и privacy/security.
+    transcript, audio signals, web flow, Android runtime и privacy/security.
 
     Корпус содержит fixed context, locked/role contexts, schema validation,
     coverage minimums by category, `plannerIntentSchema` validation для всех
     `expectedIntent`, parser baseline tests, action preview tests, confirmation
-    UI subset tests, web flow validation tests, voice cue/privacy/metrics
+    UI subset tests, web flow validation tests, audio signal/privacy/metrics
     expectations. Подробности: [docs/voice/test-corpus.md](voice/test-corpus.md).
 
 12.1. Закрепить corpus maintenance policy.
@@ -1435,19 +1436,19 @@ Undo и full clarification loop были вынесены из пункта 5 и
     deterministic normalization, dangerous формулировка, STT-ошибка,
     locked-screen сценарий или web validation edge case также добавляются через
     corpus case. Все `expectedIntent` проходят `plannerIntentSchema`, все
-    locked/private cases имеют `mustNotShow`/`mustNotLog`, voice cues покрывают
-    `Слушаю`/`Готово`, а future LLM eligibility явно задается через
+    locked/private cases имеют `mustNotShow`/`mustNotLog`, audio signals
+    покрывают start/success policy, а future LLM eligibility явно задается через
     `llmFallbackAllowed`.
 
 13. Добавить метрики качества.
     Статус: реализовано как два слоя.
 
     Offline report `npm run voice-quality-report` прогоняет
-    `voice-command-corpus.v1` на 195 cases через `PlannerIntentParser`,
-    `PlannerActionExecutor.prepareAction`, confirmation UI/web/voice cue/privacy
+    `voice-command-corpus.v1` на 201 cases через `PlannerIntentParser`,
+    `PlannerActionExecutor.prepareAction`, confirmation UI/web/audio signal/privacy
     expectations и группирует результаты по category. Safety thresholds hard
     fail: `dangerous_block_rate`, `locked_screen_privacy_pass_rate`,
-    `voice_cue_policy_pass_rate`, `llm_eligibility_policy_pass_rate` и
+    `audio_signal_policy_pass_rate`, `llm_eligibility_policy_pass_rate` и
     `no_private_metrics_policy` должны быть 100%.
 
     Runtime safe telemetry добавляет typed `SafeVoiceMetricEvent`,
@@ -1497,8 +1498,8 @@ Undo и full clarification loop были вынесены из пункта 5 и
 15. Провести закрытое тестирование.
     Выпустить Android build для внутренней группы, собрать обратную связь по
     ложным срабатываниям, скорости, батарее, качеству команд и UX
-    подтверждения. Отдельно проверить, не раздражают ли `Слушаю` и `Готово`, не
-    мешает ли `Слушаю` STT и как cues ведут себя в silent/vibration mode.
+    подтверждения. Отдельно проверить, не раздражают ли короткие сигналы, не
+    попадает ли start signal в STT и как signals ведут себя в silent/vibration mode.
     Прогнать Android end-to-end action execution на реальном устройстве:
     `create_task`, `add_shopping_item`, `get_shopping_list`, `get_agenda`,
     `reschedule_task`, locked-screen blocks и offline fallback. Отдельно сравнить режимы
@@ -1511,9 +1512,10 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Android unit tests, mobile sync/build и ручная проверка на реальном
     Android-устройстве. Release нельзя считать готовым, пока wake word работает
     локально, STT не раскрывает ключи, опасные действия требуют подтверждения,
-    а offline/manual voice fallback корректно работает без сети. Gate для cues:
-    local voice cues bundled and tested, no TTS/cloud TTS dependency, no dynamic
-    spoken private data, no `Готово` for blocked/error/clarify flows. Если по
+    а offline/manual voice fallback корректно работает без сети. Gate для
+    signals: local non-verbal signals bundled and tested, no TTS/cloud TTS
+    dependency, no dynamic spoken private data, no success signal for
+    blocked/error/clarify flows. Если по
     итогам закрытого тестирования выбран server-side action orchestration, до
     release gate должны быть готовы backend `/voice/action/prepare`,
     `/voice/action/execute` и persistent preview storage.
@@ -1522,6 +1524,6 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Регулярно разбирать анонимизированные failure buckets, добавлять новые
     фразы в тестовый корпус, улучшать parser и обновлять документацию с
     реальными примерами команд. Отдельно отслеживать battery regressions и
-    качество распознавания на разных устройствах. Отслеживать жалобы на voice
-    cues, при необходимости добавить настройку отключения audio cues и не
-    расширять статические cues в TTS без отдельного решения.
+    качество распознавания на разных устройствах. Отслеживать жалобы на audio
+    signals, при необходимости добавить настройку отключения audio signals и не
+    расширять сигналы в TTS без отдельного решения.

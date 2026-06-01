@@ -6,7 +6,7 @@ enum AndroidVoiceRuntimeStatus {
     RUNNING_FOREGROUND("running_foreground"),
     LISTENING_WAKE_WORD("listening_wake_word"),
     PAUSED_FOR_COMMAND("paused_for_command"),
-    PLAYING_LISTENING_CUE("playing_listening_cue"),
+    PLAYING_START_SIGNAL("playing_start_signal"),
     RECORDING_COMMAND("recording_command"),
     STOPPING("stopping"),
     STOPPED("stopped"),

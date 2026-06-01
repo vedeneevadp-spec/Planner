@@ -21,7 +21,7 @@ public class AndroidVoiceRuntimeModelTest {
                 "running_foreground",
                 "listening_wake_word",
                 "paused_for_command",
-                "playing_listening_cue",
+                "playing_start_signal",
                 "recording_command",
                 "stopping",
                 "stopped",
@@ -43,7 +43,7 @@ public class AndroidVoiceRuntimeModelTest {
                 "battery_restricted",
                 "security_exception",
                 "wake_engine_error",
-                "audio_cue_error",
+                "audio_signal_error",
                 "recorder_error",
             },
             Arrays.stream(AndroidVoiceRuntimeError.values()).map((error) -> error.value).toArray(String[]::new)
@@ -62,9 +62,14 @@ public class AndroidVoiceRuntimeModelTest {
                 "wake_engine_stopped",
                 "wake_engine_error",
                 "wake_detection_latency_ms",
+                "wake_detected_to_recorder_start_ms",
                 "command_recorder_start_latency_ms",
-                "audio_cue_duration_ms",
-                "audio_cue_to_recorder_delay_ms",
+                "start_signal_duration_ms",
+                "audio_signal_to_recorder_delay_ms",
+                "audio_signal_start_played",
+                "audio_signal_success_played",
+                "audio_signal_suppressed",
+                "audio_signal_error",
                 "battery_sample",
                 "cpu_sample",
                 "memory_sample",
@@ -146,14 +151,22 @@ public class AndroidVoiceRuntimeModelTest {
     }
 
     @Test
-    public void commandTimingKeepsCueMetadataOutOfRequestContent() {
-        SttRequest request = SttRequest.afterWakeWord().withRuntimeTiming(100L, 400L, 280);
+    public void commandTimingKeepsAudioSignalMetadataOutOfRequestContent() {
+        SttRequest request = SttRequest.afterWakeWord().withAudioSignalTiming(100L, 180L, 70);
 
         assertEquals(SttSource.ANDROID_SHORT_CLIP, request.source);
         assertTrue(request.wakeWordDetected);
         assertEquals(100L, request.captureRequestedAtElapsedMs);
-        assertEquals(400L, request.cueCompletedAtElapsedMs);
-        assertEquals(280, request.audioCueDurationMs);
+        assertEquals(180L, request.audioSignalCompletedAtElapsedMs);
+        assertEquals(70, request.audioSignalDurationMs);
+    }
+
+    @Test
+    public void bundledAudioSignalsStayShort() {
+        assertTrue(AudioFeedbackPlayer.START_SIGNAL_DURATION_MS >= 40);
+        assertTrue(AudioFeedbackPlayer.START_SIGNAL_DURATION_MS <= 100);
+        assertTrue(AudioFeedbackPlayer.SUCCESS_SIGNAL_DURATION_MS >= 60);
+        assertTrue(AudioFeedbackPlayer.SUCCESS_SIGNAL_DURATION_MS <= 120);
     }
 
     @Test

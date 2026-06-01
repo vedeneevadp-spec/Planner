@@ -130,20 +130,32 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         String status = call.getString("status");
         boolean requiresUnlock = Boolean.TRUE.equals(call.getBoolean("requiresUnlock"));
         boolean changedData = Boolean.TRUE.equals(call.getBoolean("changedData"));
-        boolean shouldPlayDoneCue = VoiceCuePolicy.shouldPlayDoneCue(
+        boolean shouldPlaySuccessSignal = AudioSignalPolicy.shouldPlaySuccessSignal(
             source,
             intent,
             status,
             requiresUnlock,
             changedData
         );
-        JSObject response = new JSObject();
-
-        if (shouldPlayDoneCue && PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext())) {
-            VoiceCuePlayer.playDoneCue(getContext(), mainHandler);
+        boolean audioFeedbackEnabled = PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext());
+        if (shouldPlaySuccessSignal && audioFeedbackEnabled) {
+            AudioFeedbackPlayer.playSuccessSignal(
+                getContext(),
+                mainHandler,
+                (playback) -> resolveActionResultResponse(call, playback.played)
+            );
+            return;
         }
 
-        response.put("doneCuePlayed", shouldPlayDoneCue && PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext()));
+        AndroidVoiceRuntimeStore.recordEvent(getContext(), AndroidVoiceRuntimeMetric.AUDIO_SIGNAL_SUPPRESSED);
+        resolveActionResultResponse(call, false);
+    }
+
+    private static void resolveActionResultResponse(PluginCall call, boolean successSignalPlayed) {
+        JSObject response = new JSObject();
+
+        response.put("successSignalPlayed", successSignalPlayed);
+        response.put("doneCuePlayed", successSignalPlayed);
         call.resolve(response);
     }
 
@@ -521,7 +533,10 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         response.put("wakeWordModelVersion", manifest == null ? "unknown" : manifest.modelVersion);
         response.put("microphonePermission", mapPermissionState(getPermissionState(MICROPHONE)));
         response.put("notificationPermission", resolveNotificationPermissionStatus());
-        response.put("voiceCuesEnabled", PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext()));
+        boolean audioFeedbackEnabled = PlannerVoiceAssistantStorage.readVoiceCuesEnabled(getContext());
+
+        response.put("voiceCuesEnabled", audioFeedbackEnabled);
+        response.put("audioFeedbackEnabled", audioFeedbackEnabled);
         response.put("runtimeStatus", resolveRuntimeStatusForResponse(runtimeSnapshot).value);
         response.put("runtimeLastError", runtimeSnapshot.lastError == null ? JSObject.NULL : runtimeSnapshot.lastError);
         response.put("runtimeDurationMs", runtimeSnapshot.runtimeDurationMs);

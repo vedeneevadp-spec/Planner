@@ -24,7 +24,7 @@ import {
 export const VOICE_QUALITY_SAFETY_METRICS = [
   'dangerous_block_rate',
   'locked_screen_privacy_pass_rate',
-  'voice_cue_policy_pass_rate',
+  'audio_signal_policy_pass_rate',
   'llm_eligibility_policy_pass_rate',
   'no_private_metrics_policy',
 ] as const
@@ -39,7 +39,7 @@ export const VOICE_QUALITY_METRICS = [
   'action_preview_accuracy',
   'confirmation_ui_status_accuracy',
   'web_flow_validation_pass_rate',
-  'voice_cue_policy_pass_rate',
+  'audio_signal_policy_pass_rate',
   'llm_eligibility_policy_pass_rate',
   'no_private_metrics_policy',
 ] as const
@@ -215,8 +215,8 @@ export async function generateVoiceQualityReport(
       caseResult,
       overallCounters,
       categoryCounters[testCase.category],
-      'voice_cue_policy_pass_rate',
-      evaluateVoiceCuePolicy(context),
+      'audio_signal_policy_pass_rate',
+      evaluateAudioSignalPolicy(context),
     )
     recordOptionalMetric(
       context,
@@ -320,8 +320,8 @@ export function formatVoiceQualityReport(report: VoiceQualityReport): string {
     `- LLM eligibility policy pass rate: ${formatMetric(
       report.metrics.llm_eligibility_policy_pass_rate,
     )}`,
-    `- voice cue policy pass rate: ${formatMetric(
-      report.metrics.voice_cue_policy_pass_rate,
+    `- audio signal policy pass rate: ${formatMetric(
+      report.metrics.audio_signal_policy_pass_rate,
     )}`,
     `- no private metrics policy: ${formatMetric(
       report.metrics.no_private_metrics_policy,
@@ -692,32 +692,37 @@ function evaluateWebFlowValidation(
       }
 }
 
-function evaluateVoiceCuePolicy(
+function evaluateAudioSignalPolicy(
   context: CaseEvaluationContext,
 ): { pass: boolean; reason?: string | undefined } | null {
-  const expectedCue = context.testCase.expectedCue
+  const expectedAudioSignal = context.testCase.expectedAudioSignal
 
-  if (!expectedCue) {
+  if (!expectedAudioSignal) {
     return null
   }
 
-  const actualCue = {
-    done: getExpectedDoneCuePolicy(context.testCase),
-    listening: getExpectedListeningCuePolicy(context.testCase),
+  const actualSignal = {
+    start: getExpectedStartSignalPolicy(context.testCase),
+    success: getExpectedSuccessSignalPolicy(context.testCase),
   }
   const failures: string[] = []
 
   if (
-    expectedCue.listening !== undefined &&
-    actualCue.listening !== expectedCue.listening
+    expectedAudioSignal.start !== undefined &&
+    actualSignal.start !== expectedAudioSignal.start
   ) {
     failures.push(
-      `listening expected ${expectedCue.listening}, got ${actualCue.listening}`,
+      `start expected ${expectedAudioSignal.start}, got ${actualSignal.start}`,
     )
   }
 
-  if (expectedCue.done !== undefined && actualCue.done !== expectedCue.done) {
-    failures.push(`done expected ${expectedCue.done}, got ${actualCue.done}`)
+  if (
+    expectedAudioSignal.success !== undefined &&
+    actualSignal.success !== expectedAudioSignal.success
+  ) {
+    failures.push(
+      `success expected ${expectedAudioSignal.success}, got ${actualSignal.success}`,
+    )
   }
 
   return failures.length === 0
@@ -774,24 +779,27 @@ function evaluateNoPrivateMetricsPolicy(context: CaseEvaluationContext): {
     : { pass: true }
 }
 
-function getExpectedListeningCuePolicy(
+function getExpectedStartSignalPolicy(
   testCase: VoiceTestCase,
 ): 'not_play' | 'play' {
   const events = testCase.expectedMetrics?.events ?? []
 
   return testCase.source !== 'web_push_to_talk' &&
-    (testCase.expectedCue?.listening === 'play' ||
+    (testCase.expectedAudioSignal?.start === 'play' ||
       events.includes('wake_detected') ||
-      events.includes('android_push_to_talk_started'))
+      events.includes('push_to_talk_started') ||
+      events.includes('audio_signal_start_played'))
     ? 'play'
     : 'not_play'
 }
 
-function getExpectedDoneCuePolicy(
+function getExpectedSuccessSignalPolicy(
   testCase: VoiceTestCase,
 ): 'not_play' | 'play' {
   return testCase.source !== 'web_push_to_talk' &&
-    (testCase.expectedMetrics?.events ?? []).includes('voice_action_executed')
+    (testCase.expectedMetrics?.events ?? []).includes(
+      'audio_signal_success_played',
+    )
     ? 'play'
     : 'not_play'
 }
@@ -1053,6 +1061,22 @@ function selectCorpusMetricEventName(
     return 'stt_upload_completed'
   }
 
+  if (events.includes('audio_signal_start_played')) {
+    return 'audio_signal_start_played'
+  }
+
+  if (events.includes('audio_signal_success_played')) {
+    return 'audio_signal_success_played'
+  }
+
+  if (events.includes('audio_signal_suppressed')) {
+    return 'audio_signal_suppressed'
+  }
+
+  if (events.includes('audio_signal_error')) {
+    return 'audio_signal_error'
+  }
+
   if (events.includes('voice_action_undo_success')) {
     return 'undo_success'
   }
@@ -1065,7 +1089,10 @@ function selectCorpusMetricEventName(
     return 'wake_detected'
   }
 
-  if (events.includes('android_push_to_talk_started')) {
+  if (
+    events.includes('android_push_to_talk_started') ||
+    events.includes('push_to_talk_started')
+  ) {
     return 'push_to_talk_started'
   }
 

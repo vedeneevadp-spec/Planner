@@ -30,14 +30,14 @@ public class WakeWordService extends Service {
 
     private static final String NOTIFICATION_CHANNEL_ID = "planner-voice-assistant";
     private static final int NOTIFICATION_ID = 1208;
-    private static final long POST_CUE_RECORDER_GUARD_DELAY_MS = 120L;
+    private static final long POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS = 40L;
     private static final long RESUME_WAKE_WORD_DELAY_MS = 1200L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private WakeWordEngine wakeWordEngine;
     private WakeWordMetricsLogger metricsLogger;
     private SpeechToTextService speechToTextService;
-    private VoiceCuePlayer voiceCuePlayer;
+    private AudioFeedbackPlayer audioFeedbackPlayer;
     private VoiceAssistantState state = VoiceAssistantState.IDLE;
     private boolean isForeground;
     private boolean serviceStartLogged;
@@ -73,8 +73,8 @@ public class WakeWordService extends Service {
         metricsLogger = new WakeWordMetricsLogger();
         wakeWordEngine = createWakeWordEngine();
         speechToTextService = SpeechToTextServiceFactory.create(this);
-        voiceCuePlayer = new VoiceCuePlayer(this, handler);
-        voiceCuePlayer.setEnabled(PlannerVoiceAssistantStorage.readVoiceCuesEnabled(this));
+        audioFeedbackPlayer = new AudioFeedbackPlayer(this, handler);
+        audioFeedbackPlayer.setEnabled(PlannerVoiceAssistantStorage.readVoiceCuesEnabled(this));
         setState(VoiceAssistantState.IDLE);
         AndroidVoiceRuntimeSnapshot previousRuntime = AndroidVoiceRuntimeStore.snapshot(this);
         if (AndroidVoiceRuntimeStore.isActiveStatus(previousRuntime.status)) {
@@ -268,23 +268,23 @@ public class WakeWordService extends Service {
 
     private void beginCommandCapture(SttRequest request) {
         long captureRequestedAtElapsedMs = SystemClock.elapsedRealtime();
-        playActivationHaptic();
-        showListeningOverlay();
         setState(VoiceAssistantState.RECORDING_COMMAND);
-        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PLAYING_LISTENING_CUE);
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PLAYING_START_SIGNAL);
         updateNotification(getString(R.string.planner_voice_notification_recording));
 
-        voiceCuePlayer.playListeningCueBefore((playback) -> {
-            SttRequest timedRequest = request.withRuntimeTiming(
+        audioFeedbackPlayer.playStartSignalBefore((playback) -> {
+            SttRequest timedRequest = request.withAudioSignalTiming(
                 captureRequestedAtElapsedMs,
                 playback.completedAtElapsedMs,
                 playback.durationMs
             );
             handler.postDelayed(
                 () -> startCommandTranscription(timedRequest),
-                playback.played ? POST_CUE_RECORDER_GUARD_DELAY_MS : 0L
+                playback.played ? POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS : 0L
             );
         });
+        playActivationHaptic();
+        showListeningOverlay();
     }
 
     private void startCommandTranscription(SttRequest request) {
@@ -335,7 +335,7 @@ public class WakeWordService extends Service {
     }
 
     private void handleAssistantError(WakeWordError error) {
-        voiceCuePlayer.release();
+        audioFeedbackPlayer.release();
         WakeWordDiagnostics.recordError(error);
         metricsLogger.error(error);
         AndroidVoiceRuntimeStore.recordEvent(this, AndroidVoiceRuntimeMetric.WAKE_ENGINE_ERROR);
@@ -474,8 +474,8 @@ public class WakeWordService extends Service {
     }
 
     private void clearRuntimeBuffers() {
-        if (voiceCuePlayer != null) {
-            voiceCuePlayer.release();
+        if (audioFeedbackPlayer != null) {
+            audioFeedbackPlayer.release();
         }
 
         stopWakeWordEngine();

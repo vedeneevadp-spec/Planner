@@ -5,7 +5,7 @@
 
 Цель корпуса - один machine-readable baseline для rule-first parser, action
 preview layer, confirmation UI, web push-to-talk, Android runtime expectations,
-voice cues, privacy/security checks и будущих metrics/LLM fallback сравнений.
+audio signals, privacy/security checks и будущих metrics/LLM fallback сравнений.
 
 ## Source of truth
 
@@ -80,22 +80,22 @@ buckets закрытого тестирования, а не быть однор
 
 ## Coverage matrix
 
-`voice-command-corpus.v1` содержит 195 cases.
+`voice-command-corpus.v1` содержит 201 cases.
 
 | Category         | Count |
 | ---------------- | ----: |
 | wake_word        |    10 |
 | create_task      |    24 |
 | reminder_task    |    12 |
-| shopping         |    18 |
-| agenda           |    12 |
+| shopping         |    21 |
+| agenda           |    15 |
 | reschedule       |    19 |
 | clarify          |    10 |
 | unsupported      |    10 |
 | dangerous        |    12 |
 | locked_screen    |    12 |
 | stt_error        |    12 |
-| voice_cue        |    12 |
+| audio_signal     |    12 |
 | web_flow         |    12 |
 | android_runtime  |     8 |
 | privacy_security |    12 |
@@ -112,8 +112,8 @@ Coverage floor is enforced by
 | `web_flow_011`   | `завтра купить молоко`                      | web_flow      | task, not shopping           |
 | `reminder_001`   | `через 10 минут выключить плиту`            | reminder_task | task with `reminderAt`       |
 | `shopping_001`   | `добавь молоко и хлеб в покупки`            | shopping      | shopping confirmation        |
-| `agenda_001`     | `что у меня сегодня`                        | agenda        | visual agenda, no done cue   |
-| `agenda_002`     | `что у меня завтра`                         | agenda        | visual agenda, no done cue   |
+| `agenda_001`     | `что у меня сегодня`                        | agenda        | visual agenda, no signal     |
+| `agenda_002`     | `что у меня завтра`                         | agenda        | visual agenda, no signal     |
 | `reschedule_001` | `перенеси помыть окна на субботу`           | reschedule    | dangerous confirmation       |
 | `reschedule_017` | `перенеси задачу помыть окна на час раньше` | reschedule    | relative shift confirmation  |
 | `dangerous_012`  | `удали задачу`                              | dangerous     | unsupported, no execute      |
@@ -130,8 +130,8 @@ Coverage floor is enforced by
   `apps/web/src/features/voice-assistant/ui/VoiceConfirmationCard.test.tsx`
 - Web support/audio validation subset:
   `apps/web/src/features/voice-assistant/model/web-voice-input.test.ts`
-- Android runtime/cue expectations are encoded in corpus categories
-  `android_runtime` and `voice_cue`; native policy tests remain in
+- Android runtime/audio-signal expectations are encoded in corpus categories
+  `android_runtime` and `audio_signal`; native policy tests remain in
   `android/app/src/test/java/ru/chaotika/app`.
 
 ## Adding closed-testing failures
@@ -141,8 +141,9 @@ Coverage floor is enforced by
    behavior class.
 3. Always set fixed `context`; use locked or role fixtures when relevant.
 4. Add `expectedIntent` only when the rule parser should own the phrase.
-5. Add `expectedPreview`, `expectedUI`, `expectedCue`, `expectedPrivacy`, and
-   `expectedMetrics` when the case is meant to protect downstream behavior.
+5. Add `expectedPreview`, `expectedUI`, `expectedAudioSignal`,
+   `expectedPrivacy`, and `expectedMetrics` when the case is meant to protect
+   downstream behavior.
 6. Set `llmFallbackAllowed` explicitly; only safe create/shopping ambiguity may
    be `true`.
 7. For dangerous or locked-screen cases, set privacy expectations first:

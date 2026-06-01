@@ -116,19 +116,27 @@ final class HybridSpeechToTextService implements SpeechToTextService {
             );
         }
 
-        if (request.cueCompletedAtElapsedMs > 0L) {
+        if (request.wakeWordDetected && request.captureRequestedAtElapsedMs > 0L) {
             AndroidVoiceRuntimeStore.recordValue(
                 context,
-                AndroidVoiceRuntimeMetric.AUDIO_CUE_TO_RECORDER_DELAY_MS,
-                recorderStartedAtElapsedMs - request.cueCompletedAtElapsedMs
+                AndroidVoiceRuntimeMetric.WAKE_DETECTED_TO_RECORDER_START_MS,
+                recorderStartedAtElapsedMs - request.captureRequestedAtElapsedMs
             );
         }
 
-        if (request.audioCueDurationMs > 0) {
+        if (request.audioSignalCompletedAtElapsedMs > 0L) {
             AndroidVoiceRuntimeStore.recordValue(
                 context,
-                AndroidVoiceRuntimeMetric.AUDIO_CUE_DURATION_MS,
-                request.audioCueDurationMs
+                AndroidVoiceRuntimeMetric.AUDIO_SIGNAL_TO_RECORDER_DELAY_MS,
+                recorderStartedAtElapsedMs - request.audioSignalCompletedAtElapsedMs
+            );
+        }
+
+        if (request.audioSignalDurationMs > 0) {
+            AndroidVoiceRuntimeStore.recordValue(
+                context,
+                AndroidVoiceRuntimeMetric.START_SIGNAL_DURATION_MS,
+                request.audioSignalDurationMs
             );
         }
     }

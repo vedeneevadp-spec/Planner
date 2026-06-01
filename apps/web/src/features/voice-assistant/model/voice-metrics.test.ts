@@ -39,7 +39,7 @@ describe('voice runtime metrics', () => {
     })
   })
 
-  it('keeps confirmation, local validation, undo, voice cue, and LLM fallback events in contract', () => {
+  it('keeps confirmation, local validation, undo, audio signal, and LLM fallback events in contract', () => {
     for (const eventName of [
       'confirmation_accepted',
       'confirmation_cancelled',
@@ -47,6 +47,11 @@ describe('voice runtime metrics', () => {
       'local_validation_failed',
       'undo_success',
       'undo_failed',
+      'audio_signal_start_played',
+      'audio_signal_success_played',
+      'audio_signal_suppressed',
+      'audio_signal_error',
+      // Deprecated aliases accepted for backward-compatible stored telemetry.
       'voice_cue_listening_played',
       'voice_cue_done_played',
       'voice_cue_suppressed',
@@ -150,7 +155,7 @@ describe('voice runtime metrics', () => {
     const sink = new TestVoiceMetricsSink()
     const event = createVoiceRuntimeMetricEvent({
       appRole: 'test',
-      eventName: 'voice_cue_suppressed',
+      eventName: 'audio_signal_suppressed',
       platform: 'web',
       source: 'web_push_to_talk',
     })

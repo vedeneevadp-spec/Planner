@@ -1,6 +1,6 @@
 package ru.chaotika.app;
 
-final class VoiceCuePlayback {
+final class AudioSignalPlayback {
 
     final long completedAtElapsedMs;
     final int durationMs;
@@ -8,7 +8,7 @@ final class VoiceCuePlayback {
     final boolean played;
     final long startedAtElapsedMs;
 
-    VoiceCuePlayback(
+    AudioSignalPlayback(
         boolean played,
         boolean failed,
         int durationMs,
@@ -23,6 +23,6 @@ final class VoiceCuePlayback {
     }
 }
 
-interface VoiceCueCallback {
-    void onComplete(VoiceCuePlayback playback);
+interface AudioSignalCallback {
+    void onComplete(AudioSignalPlayback playback);
 }

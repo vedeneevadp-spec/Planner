@@ -19,7 +19,7 @@ export const voiceTestCaseCategorySchema = z.enum([
   'dangerous',
   'locked_screen',
   'stt_error',
-  'voice_cue',
+  'audio_signal',
   'web_flow',
   'android_runtime',
   'privacy_security',
@@ -80,9 +80,9 @@ export const voiceTestExpectedUiSchema = z.object({
   mustShow: z.array(z.string().trim().min(1)).optional(),
 })
 
-export const voiceTestExpectedCueSchema = z.object({
-  done: z.enum(['play', 'not_play']).optional(),
-  listening: z.enum(['play', 'not_play']).optional(),
+export const voiceTestExpectedAudioSignalSchema = z.object({
+  start: z.enum(['play', 'not_play']).optional(),
+  success: z.enum(['play', 'not_play']).optional(),
 })
 
 export const voicePrivateFieldSchema = z.enum([
@@ -132,7 +132,7 @@ export const voiceTestCaseSchema = z.object({
   category: voiceTestCaseCategorySchema,
   context: voiceTestContextSchema,
   expectedAndroidRuntime: voiceTestExpectedAndroidRuntimeSchema.optional(),
-  expectedCue: voiceTestExpectedCueSchema.optional(),
+  expectedAudioSignal: voiceTestExpectedAudioSignalSchema.optional(),
   expectedIntent: voiceTestExpectedIntentSchema.optional(),
   expectedMetrics: voiceTestExpectedMetricsSchema.optional(),
   expectedPreview: voiceTestExpectedPreviewSchema.optional(),
@@ -151,6 +151,9 @@ export const voiceTestCorpusSchema = z.array(voiceTestCaseSchema)
 export type VoiceTestCase = z.infer<typeof voiceTestCaseSchema>
 export type VoiceTestCaseCategory = z.infer<typeof voiceTestCaseCategorySchema>
 export type VoiceTestContext = z.infer<typeof voiceTestContextSchema>
+export type VoiceTestExpectedAudioSignal = z.infer<
+  typeof voiceTestExpectedAudioSignalSchema
+>
 export type VoiceTestExpectedIntent = z.infer<
   typeof voiceTestExpectedIntentSchema
 >

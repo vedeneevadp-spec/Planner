@@ -87,7 +87,7 @@ public class VoiceAudioUploadGuardTest {
     }
 
     @Test
-    public void blocksCueOnlyAudioWhenLocalValidationDoesNotFindACommand() {
+    public void blocksSignalOnlyAudioWhenLocalValidationDoesNotFindACommand() {
         VoiceAudioUploadGuard.Decision decision = VoiceAudioUploadGuard.decide(
             new VoiceAudioUploadGuard.Input(
                 VoiceAudioUploadGuard.Source.ANDROID_WAKE_WORD,

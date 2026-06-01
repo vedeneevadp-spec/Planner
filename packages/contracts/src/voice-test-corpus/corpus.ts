@@ -222,12 +222,12 @@ const wakeWordCases = [
     category: 'wake_word',
     expectedAndroidRuntime: {
       commandRecordingAllowed: true,
-      runtimeStatus: 'playing_listening_cue',
+      runtimeStatus: 'playing_start_signal',
       uploadAllowed: false,
       wakeDetected: true,
     },
-    expectedCue: { listening: 'play' },
-    expectedMetrics: { events: ['wake_detected'] },
+    expectedAudioSignal: { start: 'play' },
+    expectedMetrics: { events: ['wake_detected', 'audio_signal_start_played'] },
     expectedPrivacy: { uploadAllowed: false, mustNotLog: ['audio'] },
     id: 'wake_word_001',
     phrase: 'Хаотика',
@@ -252,7 +252,7 @@ const wakeWordCases = [
         uploadAllowed: false,
         wakeDetected: false,
       },
-      expectedCue: { listening: 'not_play' },
+      expectedAudioSignal: { start: 'not_play' },
       expectedMetrics: { events: ['wake_hard_negative'] },
       expectedPrivacy: { uploadAllowed: false, mustNotLog: ['audio'] },
       id,
@@ -262,7 +262,7 @@ const wakeWordCases = [
   ),
   parserCase({
     category: 'wake_word',
-    expectedCue: { listening: 'play', done: 'not_play' },
+    expectedAudioSignal: { start: 'play', success: 'not_play' },
     expectedIntent: taskIntent('Хаотика, завтра позвонить врачу', {
       date: TOMORROW,
       datePrecision: 'date_only',
@@ -497,7 +497,7 @@ const createTaskCases = [
 ].map(([id, phrase, title, date, datePrecision, time, sphereId]) =>
   parserCase({
     category: 'create_task',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: taskIntent(String(phrase), {
       ...(date ? { date: String(date) } : {}),
       ...(datePrecision
@@ -579,7 +579,7 @@ const reminderCases = [
 ].map(([id, phrase, title, reminderAt, offset, sphereId]) =>
   parserCase({
     category: 'reminder_task',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: taskIntent(String(phrase), {
       datePrecision: 'relative',
       needsConfirmation: false,
@@ -650,7 +650,7 @@ const approximateReminderCases = [
 ].map(([id, phrase, title, date, time, sphereId]) =>
   parserCase({
     category: 'reminder_task',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: taskIntent(String(phrase), {
       date: String(date),
       datePrecision: 'unknown',
@@ -747,7 +747,7 @@ const shoppingCases = (
 
   return parserCase({
     category: 'shopping',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: shoppingIntent(phrase, expectedItems),
     expectedPreview: preview('ready_for_confirmation', { canExecute: true }),
     expectedUI:
@@ -769,7 +769,7 @@ const shoppingListCases = [
 ].map(([id, phrase]) =>
   parserCase({
     category: 'shopping',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: shoppingListIntent(String(phrase)),
     expectedPreview: preview('ready_for_confirmation', { canExecute: false }),
     expectedUI: ui('shopping_list', {
@@ -800,7 +800,7 @@ const agendaCases = [
 ].map(([id, phrase, date]) =>
   parserCase({
     category: 'agenda',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: agendaIntent(String(phrase), String(date)),
     expectedPreview: preview('ready_for_confirmation', { canExecute: false }),
     expectedUI: ui('agenda', {
@@ -970,7 +970,7 @@ const rescheduleCases = [
 
     return parserCase({
       category: 'reschedule',
-      expectedCue: { done: 'not_play' },
+      expectedAudioSignal: { success: 'not_play' },
       expectedIntent: rescheduleIntent(String(phrase), {
         ...(String(phrase).includes(' в 8')
           ? { clarificationQuestion: 'В 8 утра или вечера?', confidence: 0.72 }
@@ -1033,7 +1033,7 @@ const rescheduleCases = [
 const relativeRescheduleCases = [
   parserCase({
     category: 'reschedule',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: rescheduleIntent(
       'перенеси задачу помыть окна на час раньше',
       {
@@ -1056,7 +1056,7 @@ const relativeRescheduleCases = [
   }),
   parserCase({
     category: 'reschedule',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: rescheduleIntent('сдвинь созвон на 15 минут позже', {
       datePrecision: 'relative',
       targetQuery: 'созвон',
@@ -1076,7 +1076,7 @@ const relativeRescheduleCases = [
   }),
   parserCase({
     category: 'reschedule',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: rescheduleIntent('перепланируй встречу на полчаса раньше', {
       datePrecision: 'relative',
       targetQuery: 'встречу',
@@ -1110,7 +1110,7 @@ const clarifyCases = [
 ].map(([id, phrase, question]) =>
   parserCase({
     category: 'clarify',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: clarifyIntent(String(phrase), String(question)),
     expectedPreview: preview('requires_clarification', { canExecute: false }),
     expectedUI:
@@ -1139,7 +1139,7 @@ const unsupportedCases = [
 ].map((phrase, index) =>
   parserCase({
     category: 'unsupported',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: unsupportedIntent(phrase),
     expectedPreview: preview('unsupported', { canExecute: false }),
     expectedUI: ui('unsupported', {
@@ -1167,7 +1167,7 @@ const dangerousCases = [
 ].map((phrase, index) =>
   parserCase({
     category: 'dangerous',
-    expectedCue: { done: 'not_play' },
+    expectedAudioSignal: { success: 'not_play' },
     expectedIntent: unsupportedIntent(phrase, {
       clarificationQuestion: 'Удаление голосом пока не поддерживается.',
       confidence: 0.72,
@@ -1553,57 +1553,57 @@ const sttErrorCases = [
   }),
 ]
 
-const voiceCueCases = [
+const audioSignalCases = [
   [
-    'voice_cue_001',
+    'audio_signal_001',
     'wake detected',
     'android_wake_word',
     'play',
     'not_play',
-    ['wake_detected'],
+    ['wake_detected', 'audio_signal_start_played'],
   ],
   [
-    'voice_cue_002',
+    'audio_signal_002',
     'android push-to-talk start',
     'android_push_to_talk',
     'play',
     'not_play',
-    ['android_push_to_talk_started'],
+    ['push_to_talk_started', 'audio_signal_start_played'],
   ],
   [
-    'voice_cue_003',
+    'audio_signal_003',
     'web push-to-talk start',
     'web_push_to_talk',
     'not_play',
     'not_play',
-    ['web_voice_started'],
+    ['push_to_talk_started', 'audio_signal_suppressed'],
   ],
   [
-    'voice_cue_004',
+    'audio_signal_004',
     'successful create_task execute',
     'android_wake_word',
     undefined,
     'play',
-    ['voice_action_executed'],
+    ['action_executed', 'audio_signal_success_played'],
   ],
   [
-    'voice_cue_005',
+    'audio_signal_005',
     'successful add_shopping_item execute',
     'android_push_to_talk',
     undefined,
     'play',
-    ['voice_action_executed'],
+    ['action_executed', 'audio_signal_success_played'],
   ],
   [
-    'voice_cue_006',
+    'audio_signal_006',
     'successful reschedule execute',
     'android_wake_word',
     undefined,
     'play',
-    ['voice_action_executed'],
+    ['action_executed', 'audio_signal_success_played'],
   ],
   [
-    'voice_cue_007',
+    'audio_signal_007',
     'get_agenda success',
     'android_wake_word',
     undefined,
@@ -1611,7 +1611,7 @@ const voiceCueCases = [
     ['voice_agenda_shown'],
   ],
   [
-    'voice_cue_008',
+    'audio_signal_008',
     'preview only',
     'android_wake_word',
     undefined,
@@ -1619,7 +1619,7 @@ const voiceCueCases = [
     ['voice_preview_shown'],
   ],
   [
-    'voice_cue_009',
+    'audio_signal_009',
     'clarify response',
     'android_wake_word',
     undefined,
@@ -1627,7 +1627,7 @@ const voiceCueCases = [
     ['voice_clarify_shown'],
   ],
   [
-    'voice_cue_010',
+    'audio_signal_010',
     'requires unlock response',
     'android_wake_word',
     undefined,
@@ -1635,7 +1635,7 @@ const voiceCueCases = [
     ['locked_screen_access_blocked'],
   ],
   [
-    'voice_cue_011',
+    'audio_signal_011',
     'error response',
     'android_wake_word',
     undefined,
@@ -1643,7 +1643,7 @@ const voiceCueCases = [
     ['voice_error'],
   ],
   [
-    'voice_cue_012',
+    'audio_signal_012',
     'undo success',
     'android_wake_word',
     undefined,
@@ -1652,11 +1652,11 @@ const voiceCueCases = [
   ],
 ].map(([id, phrase, source, listening, done, events]) =>
   defineCase({
-    category: 'voice_cue',
-    expectedCue: defined({
-      done,
-      listening,
-    }) as VoiceTestCase['expectedCue'],
+    category: 'audio_signal',
+    expectedAudioSignal: defined({
+      start: listening,
+      success: done,
+    }) as VoiceTestCase['expectedAudioSignal'],
     expectedMetrics: { events: events as string[] },
     expectedPrivacy: { mustNotLog: ['transcript', 'rawText', 'taskTitle'] },
     id: String(id),
@@ -1793,11 +1793,11 @@ const androidRuntimeCases = [
     category: 'android_runtime',
     expectedAndroidRuntime: {
       commandRecordingAllowed: true,
-      runtimeStatus: 'playing_listening_cue',
+      runtimeStatus: 'playing_start_signal',
       uploadAllowed: false,
       wakeDetected: true,
     },
-    expectedCue: { listening: 'play' },
+    expectedAudioSignal: { start: 'play' },
     id: 'android_runtime_001',
     phrase: 'Хаотика',
     source: 'android_wake_word',
@@ -1809,7 +1809,7 @@ const androidRuntimeCases = [
       uploadAllowed: false,
       wakeDetected: false,
     },
-    expectedCue: { listening: 'not_play' },
+    expectedAudioSignal: { start: 'not_play' },
     id: 'android_runtime_002',
     phrase: 'котика',
     source: 'android_wake_word',
@@ -1821,7 +1821,7 @@ const androidRuntimeCases = [
       runtimeStatus: 'recording_command',
       uploadAllowed: true,
     },
-    expectedCue: { listening: 'play' },
+    expectedAudioSignal: { start: 'play' },
     id: 'android_runtime_003',
     phrase: 'нажата кнопка микрофона',
     source: 'android_push_to_talk',
@@ -1879,9 +1879,9 @@ const androidRuntimeCases = [
     expectedAndroidRuntime: {
       settingsPersisted: true,
     },
-    expectedCue: { done: 'not_play', listening: 'not_play' },
+    expectedAudioSignal: { start: 'not_play', success: 'not_play' },
     id: 'android_runtime_008',
-    phrase: 'voice cues setting persisted',
+    phrase: 'audio signals setting persisted',
     source: 'android_push_to_talk',
   }),
 ]
@@ -2117,7 +2117,7 @@ const rawVoiceCommandCorpusV1 = [
   ...dangerousCases,
   ...lockedScreenCases,
   ...sttErrorCases,
-  ...voiceCueCases,
+  ...audioSignalCases,
   ...webFlowCases,
   ...androidRuntimeCases,
   ...privacySecurityCases,

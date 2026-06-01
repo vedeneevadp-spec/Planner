@@ -39,30 +39,42 @@ describe('voice command test corpus', () => {
     }
   })
 
-  it('captures the voice cue boundary cases before metrics and LLM fallback', () => {
-    expect(getCorpusCase('voice_cue_001').expectedCue).toMatchObject({
-      listening: 'play',
-    })
-    expect(getCorpusCase('voice_cue_002').expectedCue).toMatchObject({
-      listening: 'play',
-    })
-    expect(getCorpusCase('voice_cue_003').expectedCue).toMatchObject({
-      listening: 'not_play',
-    })
+  it('captures the audio signal boundary cases before metrics and LLM fallback', () => {
+    expect(getCorpusCase('audio_signal_001').expectedAudioSignal).toMatchObject(
+      {
+        start: 'play',
+      },
+    )
+    expect(getCorpusCase('audio_signal_002').expectedAudioSignal).toMatchObject(
+      {
+        start: 'play',
+      },
+    )
+    expect(getCorpusCase('audio_signal_003').expectedAudioSignal).toMatchObject(
+      {
+        start: 'not_play',
+      },
+    )
 
-    for (const id of ['voice_cue_004', 'voice_cue_005', 'voice_cue_006']) {
-      expect(getCorpusCase(id).expectedCue?.done, id).toBe('play')
+    for (const id of [
+      'audio_signal_004',
+      'audio_signal_005',
+      'audio_signal_006',
+    ]) {
+      expect(getCorpusCase(id).expectedAudioSignal?.success, id).toBe('play')
     }
 
     for (const id of [
-      'voice_cue_007',
-      'voice_cue_008',
-      'voice_cue_009',
-      'voice_cue_010',
-      'voice_cue_011',
-      'voice_cue_012',
+      'audio_signal_007',
+      'audio_signal_008',
+      'audio_signal_009',
+      'audio_signal_010',
+      'audio_signal_011',
+      'audio_signal_012',
     ]) {
-      expect(getCorpusCase(id).expectedCue?.done, id).toBe('not_play')
+      expect(getCorpusCase(id).expectedAudioSignal?.success, id).toBe(
+        'not_play',
+      )
     }
   })
 

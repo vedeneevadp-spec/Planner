@@ -15,7 +15,8 @@ The `test` role only grants access to rollout features. It does not grant admin 
 - `voiceAssistantEnabled`: user-level master switch stored in user preferences.
 - `androidWakeWordEnabled`: device-local Android wake word switch.
 - `backgroundWakeWordEnabled`: device-local Android background listening switch.
-- `voiceCuesEnabled`: device-local Android local cue switch.
+- `voiceCuesEnabled`: backward-compatible device-local Android switch for
+  non-verbal audio signals.
 - `wakeWordSensitivity`: read-only Android model threshold from the wake-word
   manifest.
 - `wakeWordTrainingModeEnabled`: workspace-level review mode for wake-word evaluation.
@@ -32,9 +33,12 @@ Recognition language is not configurable in settings. Runtime speech recognition
 
 ## Platform Differences
 
-Android supports wake word, background wake word, local static voice cues, permission status, and foreground-service status through the Capacitor native plugin.
+Android supports wake word, background wake word, local non-verbal audio
+signals, permission status, and foreground-service status through the Capacitor
+native plugin.
 
-Web remains push-to-talk only. Web does not expose wake word, background listening, or voice cues controls.
+Web remains push-to-talk only. Web does not expose wake word, background
+listening, or audio signal controls.
 
 ## Permissions
 
@@ -63,6 +67,10 @@ Device-local storage:
 - `androidWakeWordEnabled`
 - `backgroundWakeWordEnabled`
 - `voiceCuesEnabled`
+
+`voiceCuesEnabled` keeps the old storage/API name for compatibility. Product
+copy and docs treat it as `audioFeedbackEnabled`: it only controls short
+non-verbal start/success signals, not spoken phrases.
 
 `wakeWordSensitivity` is intentionally not stored as a device override during
 the closed training rollout. Runtime uses the threshold from

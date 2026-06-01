@@ -277,12 +277,12 @@ export function VoiceAssistantSettingsPanel() {
             ) : null}
           </section>
 
-          <section className={styles.group} aria-label="Android voice cues">
+          <section className={styles.group} aria-label="Android audio signals">
             <h3>Звуки помощника</h3>
             <SettingsSwitch
               checked={Boolean(status?.voiceCuesEnabled)}
               disabled={androidControlsDisabled || !status}
-              label={'Проигрывать "Слушаю" и "Готово"'}
+              label="Проигрывать короткие сигналы"
               onCheckedChange={(enabled) => {
                 void runNativeAction(() => setAndroidVoiceCuesEnabled(enabled))
               }}

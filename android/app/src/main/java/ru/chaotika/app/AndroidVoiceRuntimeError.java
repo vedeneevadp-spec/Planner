@@ -9,7 +9,7 @@ enum AndroidVoiceRuntimeError {
     BATTERY_RESTRICTED("battery_restricted"),
     SECURITY_EXCEPTION("security_exception"),
     WAKE_ENGINE_ERROR("wake_engine_error"),
-    AUDIO_CUE_ERROR("audio_cue_error"),
+    AUDIO_SIGNAL_ERROR("audio_signal_error"),
     RECORDER_ERROR("recorder_error");
 
     final String value;
