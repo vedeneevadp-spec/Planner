@@ -2,6 +2,7 @@ package ru.chaotika.app;
 
 import android.content.Context;
 import android.content.res.AssetManager;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
@@ -25,7 +26,15 @@ final class AndroidWakeWordAssetSource implements WakeWordAssetSource {
     @Override
     public byte[] read(String path) throws IOException {
         try (InputStream input = assetManager.open(path)) {
-            return input.readAllBytes();
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+
+            return output.toByteArray();
         }
     }
 }

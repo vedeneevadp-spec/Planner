@@ -172,6 +172,26 @@ instrumented test сравнивает score через offline `LiveKitOnnxOffl
 `MissingModel` error, а не падать. При отсутствующей wake-word модели
 push-to-talk fallback остается доступен.
 
+Closed-rollout runtime budget для Android background wake word:
+
+- CPU sample в debug UI измеряется как process CPU и может быть выше 100% на
+  multi-core устройстве;
+- если Battery Saver включен и устройство не заряжается, background wake word
+  останавливается;
+- если заряд `<= 15%` и устройство не заряжается, background wake word
+  останавливается;
+- если process CPU `>= 250%` на одном sample, background wake word
+  останавливается;
+- если process CPU `>= 125%` на 3 последовательных 60-секундных samples,
+  background wake word останавливается;
+- при таком stop `wakeWordEnabled` остается включенным, но
+  `backgroundWakeWordEnabled` выключается; `runtimeLastError` получает значение
+  `battery_restricted`; push-to-talk и ручной ввод остаются доступны.
+
+Эти пороги являются release gate для фонового wake word. Если реальное Android
+устройство показывает устойчивую нагрузку выше этих бюджетов, публичный rollout
+background wake word нельзя считать готовым даже при корректном STT/parser flow.
+
 Первый честный training loop для ONNX:
 
 ```bash
@@ -1372,7 +1392,9 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Статус: реализован Android runtime status/error/metrics layer,
     owner/test debug UI, graceful degradation, `START_NOT_STICKY` behavior,
     no automatic microphone listening after reboot, bounded wake ring buffer
-    cleanup и timing checks для start signal.
+    cleanup, timing checks для start signal, ONNX wake-word sessions с
+    single-thread sequential runtime options и resource-budget guard для
+    background wake word.
 
     Runtime metrics остаются safe: без audio, transcript, task titles, shopping
     item names, agenda content и candidate titles. Missing wake model блокирует
@@ -1380,9 +1402,11 @@ Undo и full clarification loop были вынесены из пункта 5 и
     microphone permission. Start signal проигрывается до старта recorder и не
     загружается как command audio; signal-only audio блокируется local validation.
 
-    Battery/CPU/memory samples доступны в debug/status UI. Doze, screen-off,
-    reboot и vendor battery restrictions зафиксированы как manual Android device
-    matrix перед rollout. Подробности:
+    Battery/CPU/memory samples доступны в debug/status UI. Battery Saver,
+    низкий заряд и CPU budget breach останавливают только background wake word и
+    оставляют push-to-talk/manual fallback. Doze, screen-off, reboot и vendor
+    battery restrictions зафиксированы как manual Android device matrix перед
+    rollout. Подробности:
     [docs/voice/android-runtime.md](voice/android-runtime.md).
 
 11. Улучшить web-режим.
@@ -1512,7 +1536,8 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Android unit tests, mobile sync/build и ручная проверка на реальном
     Android-устройстве. Release нельзя считать готовым, пока wake word работает
     локально, STT не раскрывает ключи, опасные действия требуют подтверждения,
-    а offline/manual voice fallback корректно работает без сети. Gate для
+    offline/manual voice fallback корректно работает без сети, а background wake
+    word не превышает CPU/battery budgets из Android runtime docs. Gate для
     signals: local non-verbal signals bundled and tested, no TTS/cloud TTS
     dependency, no dynamic spoken private data, no success signal for
     blocked/error/clarify flows. Если по

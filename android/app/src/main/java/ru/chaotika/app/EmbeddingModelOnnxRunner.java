@@ -23,7 +23,9 @@ final class EmbeddingModelOnnxRunner implements AutoCloseable {
     EmbeddingModelOnnxRunner(OrtEnvironment environment, byte[] modelBytes) throws WakeWordError {
         try {
             this.environment = environment;
-            this.session = environment.createSession(modelBytes, new OrtSession.SessionOptions());
+            try (OrtSession.SessionOptions options = OnnxWakeWordSessionOptions.create()) {
+                this.session = environment.createSession(modelBytes, options);
+            }
             if (session.getInputInfo().size() != 1 || session.getOutputInfo().size() != 1) {
                 throw WakeWordError.modelIoMismatch("LiveKit embedding model must expose exactly one input and one output.");
             }

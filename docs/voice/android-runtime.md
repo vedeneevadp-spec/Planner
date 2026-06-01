@@ -86,6 +86,37 @@ graceful_degradation_used
 Metrics must not contain raw audio, transcript, task titles, shopping item names,
 agenda content, candidate titles, LLM prompts, or STT provider responses.
 
+## Resource Budgets And Auto-Degradation
+
+Closed-rollout background wake word must stay inside these runtime budgets:
+
+```text
+resourceSampleIntervalMs: 60000
+lowBatteryPercent: <= 15 when not charging
+batterySaver: stop when enabled and not charging
+cpuHardLimit: >= 250% process CPU on one sample
+cpuSustainedLimit: >= 125% process CPU for 3 consecutive samples
+```
+
+CPU sample is process CPU, so it can exceed 100% on multi-core Android devices.
+That does not make a high value invalid; it means the wake-word process used
+more than one core-equivalent during the sample interval.
+
+If any budget is breached while the service is listening for wake word:
+
+```text
+background wake word disabled
+wakeWordEnabled remains true
+push-to-talk fallback available
+manual text input available
+runtime status: blocked
+runtime error: battery_restricted
+```
+
+The service must not restart itself in a loop after resource degradation. The
+user can re-enable background listening manually after charging the device,
+leaving Battery Saver, or after a new build/model fixes the CPU profile.
+
 ## Graceful Degradation
 
 Missing wake model:

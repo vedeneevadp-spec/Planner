@@ -141,6 +141,63 @@ public class AndroidVoiceRuntimeModelTest {
     }
 
     @Test
+    public void batteryRestrictionBlocksOnlyBackgroundWakeWord() {
+        AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.batteryRestricted();
+
+        assertEquals(AndroidVoiceRuntimeStatus.BLOCKED, degradation.status);
+        assertEquals(AndroidVoiceRuntimeError.BATTERY_RESTRICTED, degradation.error);
+        assertTrue(degradation.wakeWordEnabled);
+        assertFalse(degradation.backgroundWakeWordEnabled);
+        assertTrue(degradation.pushToTalkAvailable);
+        assertFalse(degradation.recorderBlocked);
+        assertTrue(degradation.manualTextInputAvailable);
+    }
+
+    @Test
+    public void backgroundWakeWordStopsOnBatterySaverWhenNotCharging() {
+        AndroidVoiceRuntimeSamples samples = new AndroidVoiceRuntimeSamples(
+            new AndroidVoiceBatterySample(42, false, true),
+            new AndroidVoiceCpuSample(0d),
+            new AndroidVoiceMemorySample(10, 256)
+        );
+
+        assertTrue(AndroidVoiceRuntimePolicy.shouldStopBackgroundWakeWord(samples, 0));
+    }
+
+    @Test
+    public void backgroundWakeWordStopsOnLowBatteryWhenNotCharging() {
+        AndroidVoiceRuntimeSamples samples = new AndroidVoiceRuntimeSamples(
+            new AndroidVoiceBatterySample(AndroidVoiceRuntimePolicy.BACKGROUND_LOW_BATTERY_PERCENT, false, false),
+            new AndroidVoiceCpuSample(0d),
+            new AndroidVoiceMemorySample(10, 256)
+        );
+
+        assertTrue(AndroidVoiceRuntimePolicy.shouldStopBackgroundWakeWord(samples, 0));
+    }
+
+    @Test
+    public void backgroundWakeWordStopsOnCpuBudgetBreach() {
+        AndroidVoiceRuntimeSamples hardLimitSamples = new AndroidVoiceRuntimeSamples(
+            new AndroidVoiceBatterySample(80, true, false),
+            new AndroidVoiceCpuSample(AndroidVoiceRuntimePolicy.BACKGROUND_CPU_HARD_LIMIT_PERCENT),
+            new AndroidVoiceMemorySample(10, 256)
+        );
+        AndroidVoiceRuntimeSamples sustainedLimitSamples = new AndroidVoiceRuntimeSamples(
+            new AndroidVoiceBatterySample(80, true, false),
+            new AndroidVoiceCpuSample(AndroidVoiceRuntimePolicy.BACKGROUND_CPU_SUSTAINED_LIMIT_PERCENT),
+            new AndroidVoiceMemorySample(10, 256)
+        );
+
+        assertTrue(AndroidVoiceRuntimePolicy.shouldStopBackgroundWakeWord(hardLimitSamples, 1));
+        assertTrue(
+            AndroidVoiceRuntimePolicy.shouldStopBackgroundWakeWord(
+                sustainedLimitSamples,
+                AndroidVoiceRuntimePolicy.BACKGROUND_CPU_SUSTAINED_SAMPLE_COUNT
+            )
+        );
+    }
+
+    @Test
     public void foregroundServiceSecurityExceptionMapsToTypedError() {
         AndroidVoiceRuntimePolicy.Degradation degradation =
             AndroidVoiceRuntimePolicy.serviceStartFailure(new SecurityException("blocked"));

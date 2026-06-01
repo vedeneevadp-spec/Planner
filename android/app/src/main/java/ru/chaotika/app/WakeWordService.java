@@ -32,8 +32,10 @@ public class WakeWordService extends Service {
     private static final int NOTIFICATION_ID = 1208;
     private static final long POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS = 40L;
     private static final long RESUME_WAKE_WORD_DELAY_MS = 1200L;
+    private static final long RESOURCE_BUDGET_SAMPLE_INTERVAL_MS = 60_000L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable resourceBudgetSampler = this::sampleAndEnforceResourceBudget;
     private WakeWordEngine wakeWordEngine;
     private WakeWordMetricsLogger metricsLogger;
     private SpeechToTextService speechToTextService;
@@ -42,6 +44,7 @@ public class WakeWordService extends Service {
     private boolean isForeground;
     private boolean serviceStartLogged;
     private boolean stopRequested;
+    private int sustainedHighCpuSampleCount;
 
     static Intent createStartIntent(Context context) {
         return new Intent(context, WakeWordService.class).setAction(ACTION_START);
@@ -207,6 +210,7 @@ public class WakeWordService extends Service {
 
         if (wakeWordEngine.isRunning()) {
             AndroidVoiceRuntimeStore.recordEvent(this, AndroidVoiceRuntimeMetric.WAKE_ENGINE_STARTED);
+            sampleAndEnforceResourceBudget();
         }
     }
 
@@ -461,8 +465,50 @@ public class WakeWordService extends Service {
         setState(VoiceAssistantState.ERROR);
     }
 
+    private void sampleAndEnforceResourceBudget() {
+        if (
+            state != VoiceAssistantState.LISTENING_FOR_WAKE_WORD ||
+            wakeWordEngine == null ||
+            !wakeWordEngine.isRunning()
+        ) {
+            return;
+        }
+
+        AndroidVoiceRuntimeSamples samples = AndroidVoiceRuntimeSampler.sample(this);
+        if (AndroidVoiceRuntimePolicy.isCpuOverSustainedLimit(samples)) {
+            sustainedHighCpuSampleCount += 1;
+        } else {
+            sustainedHighCpuSampleCount = 0;
+        }
+
+        if (AndroidVoiceRuntimePolicy.shouldStopBackgroundWakeWord(samples, sustainedHighCpuSampleCount)) {
+            handleResourceBudgetRestricted();
+            return;
+        }
+
+        handler.removeCallbacks(resourceBudgetSampler);
+        handler.postDelayed(resourceBudgetSampler, RESOURCE_BUDGET_SAMPLE_INTERVAL_MS);
+    }
+
+    private void handleResourceBudgetRestricted() {
+        AndroidVoiceRuntimePolicy.Degradation degradation = AndroidVoiceRuntimePolicy.batteryRestricted();
+
+        PlannerVoiceAssistantStorage.storeWakeWordEnabled(this, degradation.wakeWordEnabled);
+        PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, degradation.backgroundWakeWordEnabled);
+        WakeWordTrainingExampleStore.clearPending();
+        handler.removeCallbacks(resourceBudgetSampler);
+        clearRuntimeBuffers();
+        setState(VoiceAssistantState.ERROR);
+        AndroidVoiceRuntimeStore.markBlocked(this, degradation.error);
+        stopForeground(true);
+        stopSelf();
+    }
+
     private void stopWakeWordEngine() {
         boolean wasRunning = wakeWordEngine != null && wakeWordEngine.isRunning();
+
+        handler.removeCallbacks(resourceBudgetSampler);
+        sustainedHighCpuSampleCount = 0;
 
         if (wakeWordEngine != null) {
             wakeWordEngine.stop();

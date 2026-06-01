@@ -1,6 +1,5 @@
 package ru.chaotika.app;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
@@ -12,9 +11,11 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Switch;
 import android.widget.TextView;
+import androidx.activity.ComponentActivity;
+import androidx.activity.OnBackPressedCallback;
 import java.util.Locale;
 
-public class WakeWordTriggerReviewActivity extends Activity {
+public class WakeWordTriggerReviewActivity extends ComponentActivity {
 
     private static final String STATE_DECISION_MADE = "decisionMade";
 
@@ -40,6 +41,7 @@ public class WakeWordTriggerReviewActivity extends Activity {
         super.onCreate(savedInstanceState);
         decisionMade = savedInstanceState != null && savedInstanceState.getBoolean(STATE_DECISION_MADE, false);
         setTitle("Проверка срабатывания");
+        registerBackHandler();
 
         ScrollView scrollView = new ScrollView(this);
         LinearLayout container = new LinearLayout(this);
@@ -148,11 +150,6 @@ public class WakeWordTriggerReviewActivity extends Activity {
     protected void onSaveInstanceState(Bundle outState) {
         outState.putBoolean(STATE_DECISION_MADE, decisionMade);
         super.onSaveInstanceState(outState);
-    }
-
-    @Override
-    public void onBackPressed() {
-        cancelWakeFlow();
     }
 
     private void playPendingExample() {
@@ -272,6 +269,18 @@ public class WakeWordTriggerReviewActivity extends Activity {
     private void cancelWakeFlow() {
         startWakeWordService(WakeWordService.createCancelWakeReviewIntent(this));
         finish();
+    }
+
+    private void registerBackHandler() {
+        getOnBackPressedDispatcher().addCallback(
+            this,
+            new OnBackPressedCallback(true) {
+                @Override
+                public void handleOnBackPressed() {
+                    cancelWakeFlow();
+                }
+            }
+        );
     }
 
     private void startWakeWordService(Intent intent) {

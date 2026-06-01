@@ -162,8 +162,9 @@ final class CustomOnnxWakeWordEngine implements WakeWordEngine {
     private void createSession(byte[] modelBytes) throws OrtException, WakeWordError {
         ortEnvironment = OrtEnvironment.getEnvironment();
 
-        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-        ortSession = ortEnvironment.createSession(modelBytes, options);
+        try (OrtSession.SessionOptions options = OnnxWakeWordSessionOptions.create()) {
+            ortSession = ortEnvironment.createSession(modelBytes, options);
+        }
 
         Map.Entry<String, NodeInfo> input = ortSession.getInputInfo().entrySet().iterator().next();
         inputName = input.getKey();
