@@ -3,11 +3,12 @@ import {
   type CleaningPriority,
   type CleaningTaskRecord,
   type CleaningTaskStateRecord,
+  type CleaningTaskUpdateInput,
   type CleaningTaskWithState,
   type CleaningZoneRecord,
   type CleaningZoneUpdateInput,
 } from '@planner/contracts'
-import { useState } from 'react'
+import { type FormEvent, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate } from '@/shared/lib/date'
@@ -17,6 +18,7 @@ import { SelectPicker } from '@/shared/ui/SelectPicker'
 import {
   formatFrequency,
   formatPostponeCount,
+  FREQUENCY_LABELS,
   getHistoryActionLabel,
   getWeekdayLabel,
   getWeekdayShortLabel,
@@ -386,14 +388,10 @@ export function ZoneTaskRow(props: {
   state: CleaningTaskStateRecord | undefined
   task: CleaningTaskRecord
   onRemove: () => void
-  onUpdate: (input: {
-    estimatedMinutes?: number | null
-    frequencyInterval?: number
-    frequencyType?: CleaningFrequencyType
-    isActive?: boolean
-    priority?: CleaningPriority
-  }) => void
+  onUpdate: (input: CleaningTaskUpdateInput) => Promise<unknown> | void
 }) {
+  const [isEditing, setIsEditing] = useState(false)
+
   return (
     <div className={styles.zoneTaskRow}>
       <div className={styles.zoneTaskMain}>
@@ -417,7 +415,7 @@ export function ZoneTaskRow(props: {
             value,
           }))}
           onChange={(nextValue) => {
-            props.onUpdate({ priority: nextValue as CleaningPriority })
+            void props.onUpdate({ priority: nextValue as CleaningPriority })
           }}
         />
       </div>
@@ -432,7 +430,7 @@ export function ZoneTaskRow(props: {
           disabled={props.disabled}
           aria-label="Длительность задачи"
           onChange={(event) => {
-            props.onUpdate({
+            void props.onUpdate({
               estimatedMinutes: event.target.value
                 ? Number(event.target.value)
                 : null,
@@ -441,13 +439,37 @@ export function ZoneTaskRow(props: {
         />
       </label>
       <div className={styles.zoneTaskActions}>
+        <button
+          className={cx(
+            styles.iconButton,
+            isEditing && styles.iconButtonActive,
+          )}
+          type="button"
+          disabled={props.disabled}
+          aria-label={
+            isEditing
+              ? `Скрыть редактирование задачи «${props.task.title}»`
+              : `Редактировать задачу «${props.task.title}»`
+          }
+          aria-expanded={isEditing}
+          onClick={() => {
+            if (isEditing) {
+              setIsEditing(false)
+              return
+            }
+
+            setIsEditing(true)
+          }}
+        >
+          <EditIcon size={17} strokeWidth={2.1} />
+        </button>
         <ActiveSwitch
           className={styles.zoneTaskSwitch}
           checked={props.task.isActive}
           disabled={props.disabled}
           label={props.task.isActive ? 'Выключить задачу' : 'Включить задачу'}
           onClick={() => {
-            props.onUpdate({ isActive: !props.task.isActive })
+            void props.onUpdate({ isActive: !props.task.isActive })
           }}
         />
         <button
@@ -460,7 +482,130 @@ export function ZoneTaskRow(props: {
           <TrashIcon size={17} strokeWidth={2.1} />
         </button>
       </div>
+      {isEditing ? (
+        <ZoneTaskEditor
+          disabled={props.disabled}
+          task={props.task}
+          onCancel={() => {
+            setIsEditing(false)
+          }}
+          onSave={async (input) => {
+            await props.onUpdate(input)
+            setIsEditing(false)
+          }}
+        />
+      ) : null}
     </div>
+  )
+}
+
+function ZoneTaskEditor(props: {
+  disabled: boolean
+  task: CleaningTaskRecord
+  onCancel: () => void
+  onSave: (input: CleaningTaskUpdateInput) => Promise<void> | void
+}) {
+  const [title, setTitle] = useState(props.task.title)
+  const [frequencyType, setFrequencyType] = useState<CleaningFrequencyType>(
+    props.task.frequencyType,
+  )
+  const [frequencyInterval, setFrequencyInterval] = useState(() =>
+    getEditableFrequencyInterval(props.task),
+  )
+  const canSaveTask = title.trim().length > 0
+
+  async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    const trimmedTitle = title.trim()
+
+    if (!trimmedTitle) {
+      return
+    }
+
+    const normalizedInterval = Math.max(1, Number(frequencyInterval) || 1)
+
+    try {
+      await props.onSave({
+        customIntervalDays:
+          frequencyType === 'custom' ? normalizedInterval : null,
+        frequencyInterval: normalizedInterval,
+        frequencyType,
+        title: trimmedTitle,
+      })
+    } catch {
+      // mutation state renders the error
+    }
+  }
+
+  return (
+    <form
+      className={styles.zoneTaskEditor}
+      onSubmit={(event) => {
+        void handleSaveTask(event)
+      }}
+    >
+      <label className={cx(styles.taskFormField, styles.zoneTaskTitleEditor)}>
+        <span className={styles.fieldLabel}>Название</span>
+        <input
+          type="text"
+          value={title}
+          maxLength={140}
+          disabled={props.disabled}
+          aria-label="Название задачи"
+          onChange={(event) => {
+            setTitle(event.target.value)
+          }}
+        />
+      </label>
+      <label className={styles.taskFormField}>
+        <span className={styles.fieldLabel}>Интервал</span>
+        <input
+          type="number"
+          min={1}
+          value={frequencyInterval}
+          disabled={props.disabled}
+          aria-label="Интервал уборки"
+          onChange={(event) => {
+            setFrequencyInterval(event.target.value)
+          }}
+        />
+      </label>
+      <div className={styles.taskFormField}>
+        <span className={styles.fieldLabel}>Частота</span>
+        <SelectPicker
+          value={frequencyType}
+          disabled={props.disabled}
+          ariaLabel="Частота уборки"
+          options={Object.entries(FREQUENCY_LABELS).map(([value, label]) => ({
+            label,
+            value,
+          }))}
+          onChange={(nextValue) => {
+            setFrequencyType(nextValue as CleaningFrequencyType)
+          }}
+        />
+      </div>
+      <div className={styles.zoneTaskEditorActions}>
+        <button
+          className={styles.iconButton}
+          type="submit"
+          disabled={props.disabled || !canSaveTask}
+          aria-label="Сохранить задачу"
+        >
+          <CheckIcon size={17} strokeWidth={2.15} />
+        </button>
+        <button
+          className={styles.iconButton}
+          type="button"
+          disabled={props.disabled}
+          aria-label="Отменить редактирование задачи"
+          onClick={props.onCancel}
+        >
+          <CloseIcon size={17} strokeWidth={2.1} />
+        </button>
+      </div>
+    </form>
   )
 }
 
@@ -517,6 +662,14 @@ export function ZoneStats(props: {
       <StatPill label="переносы" value={String(postponed.length)} />
     </div>
   )
+}
+
+function getEditableFrequencyInterval(task: CleaningTaskRecord): string {
+  if (task.frequencyType === 'custom') {
+    return String(task.customIntervalDays ?? task.frequencyInterval)
+  }
+
+  return String(task.frequencyInterval)
 }
 
 export function HistoryList(props: {

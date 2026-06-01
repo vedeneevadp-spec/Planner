@@ -949,7 +949,7 @@ export function CleaningSettingsPage() {
                         void removeTaskMutation.mutateAsync(task.id)
                       }}
                       onUpdate={(input) => {
-                        void updateTaskMutation.mutateAsync({
+                        return updateTaskMutation.mutateAsync({
                           input,
                           taskId: task.id,
                         })

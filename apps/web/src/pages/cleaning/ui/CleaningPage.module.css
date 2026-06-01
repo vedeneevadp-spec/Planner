@@ -863,6 +863,8 @@
 }
 
 .zoneTaskRow {
+  --select-picker-padding: 0 0.62rem;
+
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 0.34fr) 4.6rem auto;
   gap: 0.34rem;
@@ -872,6 +874,7 @@
 
 .zoneTaskMain {
   display: grid;
+  align-self: center;
   min-width: 0;
   gap: 0.1rem;
 }
@@ -911,24 +914,53 @@
 .zoneTaskActions {
   display: flex;
   align-items: center;
+  align-self: end;
   gap: 0.34rem;
   justify-self: start;
 }
 
+.zoneTaskRow input,
 .zoneTaskRow .switchToggle,
-.zoneTaskRow .iconButtonDanger,
-.zoneTaskMinutes {
+.zoneTaskRow .iconButton,
+.zoneTaskRow .iconButtonDanger {
   height: var(--select-picker-height);
   min-height: var(--select-picker-height);
 }
 
-.zoneTaskMinutes {
+.zoneTaskRow input {
   padding-block: 0;
 }
 
 .zoneTaskRow .iconButtonDanger {
-  width: 2.14rem;
+  width: var(--select-picker-height);
   border-radius: 10px;
+}
+
+.zoneTaskRow .iconButton {
+  width: var(--select-picker-height);
+  border-radius: 10px;
+}
+
+.zoneTaskEditor {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns:
+    minmax(12rem, 1fr) minmax(5rem, 0.22fr)
+    minmax(9rem, 0.34fr) auto;
+  gap: 0.4rem;
+  align-items: end;
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+.zoneTaskTitleEditor {
+  min-width: 0;
+}
+
+.zoneTaskEditorActions {
+  display: flex;
+  align-items: center;
+  gap: 0.34rem;
 }
 
 .historyBlock {
@@ -969,7 +1001,13 @@
   .zoneTaskRow {
     grid-template-columns:
       minmax(0, 1fr) minmax(6.5rem, 0.34fr)
-      4.6rem auto auto;
+      4.6rem auto;
+  }
+
+  .zoneTaskEditor {
+    grid-template-columns:
+      minmax(10rem, 1fr) minmax(5rem, 0.28fr)
+      minmax(9rem, 0.42fr) auto;
   }
 }
 
@@ -1039,10 +1077,10 @@
 
   .zoneTaskRow {
     --select-picker-height: 2.18rem;
-    --select-picker-padding: 0.42rem 0.54rem;
+    --select-picker-padding: 0 0.54rem;
     --select-picker-font-size: 0.84rem;
 
-    grid-template-columns: minmax(5.2rem, 0.78fr) minmax(4rem, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(4.25rem, 0.5fr);
     gap: 0.34rem 0.42rem;
     padding: 0.5rem;
   }
@@ -1060,8 +1098,15 @@
   }
 
   .zoneTaskActions {
-    grid-column: 3;
-    align-self: end;
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .zoneTaskEditor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .zoneTaskEditorActions {
     justify-self: end;
   }
 

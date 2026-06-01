@@ -157,6 +157,17 @@ function createCleaningItem(
   }
 }
 
+function createPlanWithItems(
+  zone: CleaningZoneRecord,
+  items: CleaningTaskWithState[],
+): CleaningListResponse {
+  return {
+    ...createPlan(zone),
+    states: items.map((item) => item.state),
+    tasks: items.map((item) => item.task),
+  }
+}
+
 function createEmptyPlan(): CleaningListResponse {
   return {
     history: [],
@@ -352,6 +363,55 @@ describe('CleaningSettingsPage', () => {
           zoneId: 'zone-1',
         }),
       )
+    })
+  })
+
+  it('edits cleaning task title and custom frequency', async () => {
+    const zone = createZone()
+    const item = createCleaningItem(zone, {
+      frequencyInterval: 1,
+      frequencyType: 'weekly',
+      title: 'Протереть пол',
+    })
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlanWithItems(zone, [item]),
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningSettingsPage()
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Редактировать задачу «Протереть пол»',
+      }),
+    )
+    fireEvent.change(screen.getByLabelText('Название задачи'), {
+      target: { value: 'Помыть пол' },
+    })
+    fireEvent.change(screen.getByLabelText('Интервал уборки'), {
+      target: { value: '9' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Частота уборки' }))
+    fireEvent.click(screen.getByRole('option', { name: 'раз в N дней' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить задачу' }))
+
+    await waitFor(() => {
+      expect(mocks.updateTask).toHaveBeenCalledWith({
+        input: {
+          customIntervalDays: 9,
+          frequencyInterval: 9,
+          frequencyType: 'custom',
+          title: 'Помыть пол',
+        },
+        taskId: 'task-1',
+      })
+    })
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: 'Сохранить задачу' }),
+      ).not.toBeInTheDocument()
     })
   })
 
