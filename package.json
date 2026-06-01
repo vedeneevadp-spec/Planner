@@ -43,6 +43,7 @@
     "mobile:sync:android": "node ./scripts/mobile-sync.mjs android",
     "mobile:release": "node ./scripts/mobile-release.mjs",
     "mobile:release:rustore": "node ./scripts/mobile-release.mjs --build-artifacts=android --android-format=apk --require-android-signing",
+    "mobile:release:rustore:arm64": "node ./scripts/mobile-release.mjs --build-artifacts=android --android-format=apk --android-abi=arm64-v8a --require-android-signing",
     "mobile:release:rustore:aab": "node ./scripts/mobile-release.mjs --build-artifacts=android --android-format=bundle --require-android-signing",
     "mobile:assets": "npx --yes @capacitor/assets@3.0.5 generate --assetPath assets --iconBackgroundColor '#f7f2e8' --splashBackgroundColor '#f7f2e8' --ios --android",
     "mobile:open:ios": "npx cap open ios",

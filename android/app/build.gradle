@@ -38,6 +38,11 @@ def hasReleaseSigningConfig = [
     releaseKeyPassword,
 ].every { value -> value != null }
 def wakewordParityApplicationIdSuffix = project.findProperty('wakewordParityApplicationIdSuffix')
+def androidAbiFilters = (project.findProperty('androidAbiFilters') ?: '')
+    .toString()
+    .split(',')
+    .collect { value -> value.trim() }
+    .findAll { value -> !value.isEmpty() }
 
 apply plugin: 'com.android.application'
 
@@ -62,6 +67,11 @@ android {
         versionCode 9
         versionName "1.1.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        if (!androidAbiFilters.isEmpty()) {
+            ndk {
+                abiFilters.addAll(androidAbiFilters)
+            }
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61

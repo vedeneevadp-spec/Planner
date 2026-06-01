@@ -43,50 +43,71 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 
 Полный список находится в `package.json`.
 
-| Команда                                               | Назначение                                              |
-| ----------------------------------------------------- | ------------------------------------------------------- |
-| `npm run dev:local`                                   | Postgres + migrations + seed + API + web для разработки |
-| `npm run dev` / `npm run start`                       | dev-сервер web-приложения                               |
-| `npm run preview`                                     | preview production-сборки web                           |
-| `npm run dev:api`                                     | API в watch-режиме                                      |
-| `npm run dev:api:postgres`                            | API с локальным Docker Postgres                         |
-| `npm run start:api`                                   | единичный запуск API                                    |
-| `npm run smoke:api:prod`                              | production-mode smoke API против локального Postgres    |
-| `npm run db:up` / `npm run db:down`                   | поднять/остановить локальный Postgres                   |
-| `npm run db:backup`                                   | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR` |
-| `npm run db:migrations:check`                         | проверить порядок и имена SQL-миграций                  |
-| `npm run db:migrate` / `npm run db:seed`              | применить миграции и dev seed локально                  |
-| `npm run db:security:check`                           | проверить RLS/security-инварианты PostgreSQL            |
-| `npm run db:setup`                                    | `db:up` + migrations + seed                             |
-| `npm run outbox:run`                                  | обработать одну пачку outbox-сообщений                  |
-| `npm run task-reminders:worker`                       | отдельный long-running worker напоминаний               |
-| `npm run lint` / `npm run lint:fix`                   | ESLint                                                  |
-| `npm run format:check` / `npm run format`             | Prettier                                                |
-| `npm run typecheck`                                   | typecheck web, contracts и API                          |
-| `npm run test:web:run` / `npm run test:api`           | web/API тесты                                           |
-| `npm run test:api:postgres`                           | Postgres/RLS integration-тесты API                      |
-| `npm run test:e2e`                                    | Playwright smoke web + API auth/tasks                   |
-| `npm run test:run`                                    | web + API тесты                                         |
-| `npm run coverage`                                    | web + API coverage                                      |
-| `npm run openapi:check`                               | контрактная проверка `/api/openapi.json`                |
-| `npm run audit:prod`                                  | audit runtime-зависимостей без dev tooling              |
-| `npm run audit:dev-tooling`                           | контроль известных dev-only audit исключений            |
-| `npm run build`                                       | production-сборка web                                   |
-| `npm run mobile:sync`                                 | production build web + sync в `ios/` и `android/`       |
-| `npm run mobile:release -- --api-url=...`             | подготовить и при флагах собрать native release         |
-| `npm run mobile:release:rustore -- --api-url=...`     | собрать signed APK для RuStore                          |
-| `npm run mobile:release:rustore:aab -- --api-url=...` | собрать signed AAB для RuStore                          |
-| `npm run mobile:assets`                               | пересобрать нативные icons/splash из `assets/logo.png`  |
-| `npm run mobile:open:ios` / `mobile:open:android`     | открыть нативный проект в Xcode / Android Studio        |
-| `npm run mobile:doctor`                               | проверить состояние Capacitor toolchain                 |
-| `npm run mobile:ci-check`                             | проверить app id, версии и PWA/mobile config            |
-| `npm run check`                                       | lint + typecheck + tests                                |
-| `npm run ci`                                          | audit + check + OpenAPI + mobile config + build         |
-| `npm run deploy:prod`                                 | production deploy на текущий VPS                        |
+| Команда                                                 | Назначение                                              |
+| ------------------------------------------------------- | ------------------------------------------------------- |
+| `npm run dev:local`                                     | Postgres + migrations + seed + API + web для разработки |
+| `npm run dev` / `npm run start`                         | dev-сервер web-приложения                               |
+| `npm run preview`                                       | preview production-сборки web                           |
+| `npm run dev:api`                                       | API в watch-режиме                                      |
+| `npm run dev:api:postgres`                              | API с локальным Docker Postgres                         |
+| `npm run start:api`                                     | единичный запуск API                                    |
+| `npm run smoke:api:prod`                                | production-mode smoke API против локального Postgres    |
+| `npm run db:up` / `npm run db:down`                     | поднять/остановить локальный Postgres                   |
+| `npm run db:backup`                                     | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR` |
+| `npm run db:migrations:check`                           | проверить порядок и имена SQL-миграций                  |
+| `npm run db:migrate` / `npm run db:seed`                | применить миграции и dev seed локально                  |
+| `npm run db:security:check`                             | проверить RLS/security-инварианты PostgreSQL            |
+| `npm run db:setup`                                      | `db:up` + migrations + seed                             |
+| `npm run outbox:run`                                    | обработать одну пачку outbox-сообщений                  |
+| `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний               |
+| `npm run lint` / `npm run lint:fix`                     | ESLint                                                  |
+| `npm run format:check` / `npm run format`               | Prettier                                                |
+| `npm run typecheck`                                     | typecheck web, contracts и API                          |
+| `npm run test:web:run` / `npm run test:api`             | web/API тесты                                           |
+| `npm run test:api:postgres`                             | Postgres/RLS integration-тесты API                      |
+| `npm run test:e2e`                                      | Playwright smoke web + API auth/tasks                   |
+| `npm run test:run`                                      | web + API тесты                                         |
+| `npm run coverage`                                      | web + API coverage                                      |
+| `npm run openapi:check`                                 | контрактная проверка `/api/openapi.json`                |
+| `npm run audit:prod`                                    | audit runtime-зависимостей без dev tooling              |
+| `npm run audit:dev-tooling`                             | контроль известных dev-only audit исключений            |
+| `npm run build`                                         | production-сборка web                                   |
+| `npm run mobile:sync`                                   | production build web + sync в `ios/` и `android/`       |
+| `npm run mobile:release -- --api-url=...`               | подготовить и при флагах собрать native release         |
+| `npm run mobile:release:rustore -- --api-url=...`       | собрать signed APK для RuStore                          |
+| `npm run mobile:release:rustore:arm64 -- --api-url=...` | собрать signed arm64-only APK для реального телефона    |
+| `npm run mobile:release:rustore:aab -- --api-url=...`   | собрать signed AAB для RuStore                          |
+| `npm run mobile:assets`                                 | пересобрать нативные icons/splash из `assets/logo.png`  |
+| `npm run mobile:open:ios` / `mobile:open:android`       | открыть нативный проект в Xcode / Android Studio        |
+| `npm run mobile:doctor`                                 | проверить состояние Capacitor toolchain                 |
+| `npm run mobile:ci-check`                               | проверить app id, версии и PWA/mobile config            |
+| `npm run check`                                         | lint + typecheck + tests                                |
+| `npm run ci`                                            | audit + check + OpenAPI + mobile config + build         |
+| `npm run deploy:prod`                                   | production deploy на текущий VPS                        |
 
 `npm run test:e2e` по умолчанию поднимает отдельные API и web-серверы на
 `E2E_API_PORT`/`E2E_WEB_PORT` и падает, если порт уже занят. Переиспользование
 запущенных серверов включается явно через `E2E_REUSE_EXISTING_SERVER=1`.
+
+### Android arm64-only APK
+
+Universal APK включает native-библиотеки под все ABI, поэтому с ONNX Runtime
+получается сильно тяжелее. Для установки на реальный современный Android-телефон
+собирайте signed APK только под `arm64-v8a`:
+
+```bash
+npm run mobile:release:rustore:arm64 -- --api-url=https://chaotika.ru
+```
+
+Артефакт:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+Эта сборка не подходит для x86/x86_64 эмуляторов и старых 32-bit устройств. Для
+магазина с ABI split delivery используйте AAB:
+`npm run mobile:release:rustore:aab -- --api-url=https://chaotika.ru`.
 
 ## Структура
 

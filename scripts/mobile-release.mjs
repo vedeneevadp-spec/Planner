@@ -80,6 +80,7 @@ async function main() {
       `  assets:         ${options.assets ? 'yes' : 'no'}`,
       `  buildArtifacts: ${options.buildArtifacts}`,
       `  androidFormat:  ${options.androidFormat}`,
+      `  androidAbi:     ${options.androidAbiFilters ?? '(all)'}`,
       `  authMode:       ${authMode}`,
       `  requireSigning: ${options.requireAndroidSigning ? 'yes' : 'no'}`,
       `  open:           ${options.open ?? 'none'}`,
@@ -113,6 +114,7 @@ async function main() {
   })
 
   await buildArtifacts({
+    androidAbiFilters: options.androidAbiFilters,
     androidFormat: options.androidFormat,
     androidJavaHome:
       options.androidJavaHome ??
@@ -145,6 +147,7 @@ async function main() {
 }
 
 async function buildArtifacts({
+  androidAbiFilters,
   buildArtifacts,
   androidFormat,
   androidJavaHome,
@@ -159,6 +162,7 @@ async function buildArtifacts({
 
   if (buildArtifacts === 'android' || buildArtifacts === 'all') {
     await buildAndroidArtifacts({
+      androidAbiFilters,
       androidFormat,
       androidJavaHome,
       requireAndroidSigning: options.requireAndroidSigning,
@@ -177,6 +181,7 @@ async function buildArtifacts({
 }
 
 async function buildAndroidArtifacts({
+  androidAbiFilters,
   androidFormat,
   androidJavaHome,
   requireAndroidSigning,
@@ -239,7 +244,13 @@ async function buildAndroidArtifacts({
     tasks.push(':app:assembleRelease')
   }
 
-  await runCommand(gradleCommand, tasks, {
+  const gradleArgs = [...tasks]
+
+  if (androidAbiFilters) {
+    gradleArgs.push(`-PandroidAbiFilters=${androidAbiFilters}`)
+  }
+
+  await runCommand(gradleCommand, gradleArgs, {
     cwd: androidDirectoryPath,
     dryRun,
     env: {
@@ -529,6 +540,9 @@ function replaceIosVersion(content, { version, buildNumber }) {
 
 function parseArgs(args) {
   const options = {
+    androidAbiFilters: process.env.MOBILE_ANDROID_ABI_FILTERS
+      ? parseAndroidAbiFilters(process.env.MOBILE_ANDROID_ABI_FILTERS)
+      : undefined,
     androidFormat: process.env.MOBILE_ANDROID_FORMAT ?? 'bundle',
     androidJavaHome: undefined,
     androidSdkPath: undefined,
@@ -613,6 +627,13 @@ function parseArgs(args) {
       continue
     }
 
+    if (arg.startsWith('--android-abi=')) {
+      options.androidAbiFilters = parseAndroidAbiFilters(
+        arg.slice('--android-abi='.length),
+      )
+      continue
+    }
+
     if (arg.startsWith('--android-sdk=')) {
       options.androidSdkPath = arg.slice('--android-sdk='.length)
       continue
@@ -648,6 +669,30 @@ function parseArgs(args) {
   }
 
   return options
+}
+
+function parseAndroidAbiFilters(value) {
+  const allowedAbis = new Set(['arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'])
+  const values = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  if (values.length === 0) {
+    throw new Error(
+      'Invalid --android-abi value. Use arm64-v8a, armeabi-v7a, x86, x86_64, or a comma-separated list.',
+    )
+  }
+
+  for (const abi of values) {
+    if (!allowedAbis.has(abi)) {
+      throw new Error(
+        'Invalid --android-abi value. Use arm64-v8a, armeabi-v7a, x86, x86_64, or a comma-separated list.',
+      )
+    }
+  }
+
+  return [...new Set(values)].join(',')
 }
 
 function ensureUrl(value) {
@@ -941,6 +986,7 @@ Options:
   --assets                     Regenerate native icons and splash assets before sync.
   --build-artifacts=<target>   Build none, android, ios, or all native artifacts after sync.
   --android-format=<format>    Build Android apk, bundle, or both. Default: bundle.
+  --android-abi=<abis>         Limit Android native ABIs, e.g. arm64-v8a for a physical phone APK.
   --android-sdk=<path>         Override Android SDK path used for android/local.properties.
   --android-java-home=<path>   Override Java 21 home used for Android Gradle build.
   --require-android-signing    Fail if Android release signing is not configured.
