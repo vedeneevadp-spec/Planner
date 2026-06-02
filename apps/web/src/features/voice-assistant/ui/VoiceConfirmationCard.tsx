@@ -919,6 +919,7 @@ function isRetryableWebInputState(
     webInputState === 'error' ||
     webInputState === 'needs_repeat' ||
     webInputState === 'permission_denied' ||
+    webInputState === 'permission_ready' ||
     webInputState === 'unsupported'
   )
 }

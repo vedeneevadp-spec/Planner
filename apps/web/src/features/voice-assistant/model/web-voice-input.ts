@@ -16,6 +16,7 @@ export type WebVoiceInputState =
   | 'ready_for_confirmation'
   | 'needs_repeat'
   | 'permission_denied'
+  | 'permission_ready'
   | 'unsupported'
   | 'error'
 
@@ -39,6 +40,12 @@ export interface WebVoicePermissionError {
     WebVoiceInputState,
     'error' | 'permission_denied' | 'unsupported'
   >
+}
+
+export type WebVoiceMicrophonePermissionState = PermissionState | 'unknown'
+
+export interface NormalizeWebVoicePermissionErrorOptions {
+  microphonePermissionState?: WebVoiceMicrophonePermissionState | undefined
 }
 
 export interface WebVoiceAudioAnalysis {
@@ -82,6 +89,13 @@ export const WEB_VOICE_BACKEND_TIMEOUT_MS = 12_000
 export const WEB_VOICE_SOURCE = 'web_push_to_talk' as const
 const WEB_VOICE_UNSUPPORTED_MESSAGE =
   'Голосовой ввод недоступен в этом браузере. Можно ввести задачу вручную.'
+export const WEB_VOICE_PERMISSION_READY_MESSAGE =
+  'Доступ к микрофону разрешен. Нажми «Повторить», чтобы начать запись.'
+export const WEB_VOICE_PERMISSION_GRANTED_DEVICE_ERROR_MESSAGE =
+  'Браузер разрешил микрофон, но не смог открыть устройство. Проверь системный доступ к микрофону и выбранный микрофон.'
+const MICROPHONE_PERMISSION_DESCRIPTOR = {
+  name: 'microphone',
+} as PermissionDescriptor
 
 type AudioContextWindow = Window & {
   AudioContext?: typeof AudioContext | undefined
@@ -108,6 +122,8 @@ export function getWebVoiceInputLabel(state: WebVoiceInputState): string {
       return 'Нужно повторить'
     case 'permission_denied':
       return 'Нет доступа к микрофону'
+    case 'permission_ready':
+      return 'Доступ к микрофону разрешен'
     case 'unsupported':
       return 'Голосовой ввод недоступен в этом браузере'
     case 'error':
@@ -177,13 +193,44 @@ export function getAudioContextConstructor(): typeof AudioContext | undefined {
   return audioWindow.AudioContext ?? audioWindow.webkitAudioContext
 }
 
+export async function queryWebVoiceMicrophonePermissionStatus(): Promise<PermissionStatus | null> {
+  if (
+    typeof navigator === 'undefined' ||
+    !navigator.permissions ||
+    typeof navigator.permissions.query !== 'function'
+  ) {
+    return null
+  }
+
+  try {
+    return await navigator.permissions.query(MICROPHONE_PERMISSION_DESCRIPTOR)
+  } catch {
+    return null
+  }
+}
+
+export async function queryWebVoiceMicrophonePermissionState(): Promise<WebVoiceMicrophonePermissionState> {
+  const permissionStatus = await queryWebVoiceMicrophonePermissionStatus()
+
+  return permissionStatus?.state ?? 'unknown'
+}
+
 export function normalizeWebVoicePermissionError(
   error: unknown,
+  options: NormalizeWebVoicePermissionErrorOptions = {},
 ): WebVoicePermissionError {
   const name = getErrorName(error)
 
   switch (name) {
     case 'NotAllowedError':
+      if (options.microphonePermissionState === 'granted') {
+        return {
+          message: WEB_VOICE_PERMISSION_GRANTED_DEVICE_ERROR_MESSAGE,
+          name,
+          state: 'error',
+        }
+      }
+
       return {
         message: 'Нет доступа к микрофону.',
         name,

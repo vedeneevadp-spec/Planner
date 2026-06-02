@@ -6,6 +6,7 @@ import {
   getWebVoiceSupport,
   normalizeWebVoicePermissionError,
   validateWebVoiceRecording,
+  WEB_VOICE_PERMISSION_GRANTED_DEVICE_ERROR_MESSAGE,
   type WebVoiceRecording,
 } from './web-voice-input'
 
@@ -89,6 +90,19 @@ describe('web voice input model', () => {
       message,
       name,
       state,
+    })
+  })
+
+  it('does not report site permission denied when microphone permission is already granted', () => {
+    expect(
+      normalizeWebVoicePermissionError(
+        { name: 'NotAllowedError' },
+        { microphonePermissionState: 'granted' },
+      ),
+    ).toEqual({
+      message: WEB_VOICE_PERMISSION_GRANTED_DEVICE_ERROR_MESSAGE,
+      name: 'NotAllowedError',
+      state: 'error',
     })
   })
 

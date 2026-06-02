@@ -30,6 +30,7 @@ public class WakeWordService extends Service {
 
     private static final String NOTIFICATION_CHANNEL_ID = "planner-voice-assistant";
     private static final int NOTIFICATION_ID = 1208;
+    private static final long COMMAND_CAPTURE_WATCHDOG_TIMEOUT_MS = 40_000L;
     private static final long POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS = 40L;
     private static final long RESUME_WAKE_WORD_DELAY_MS = 1200L;
     private static final long RESOURCE_BUDGET_SAMPLE_INTERVAL_MS = 60_000L;
@@ -41,6 +42,8 @@ public class WakeWordService extends Service {
     private SpeechToTextService speechToTextService;
     private AudioFeedbackPlayer audioFeedbackPlayer;
     private VoiceAssistantState state = VoiceAssistantState.IDLE;
+    private Runnable commandCaptureWatchdog;
+    private int commandCaptureGeneration;
     private boolean isForeground;
     private boolean serviceStartLogged;
     private boolean stopRequested;
@@ -272,6 +275,7 @@ public class WakeWordService extends Service {
 
     private void beginCommandCapture(SttRequest request) {
         long captureRequestedAtElapsedMs = SystemClock.elapsedRealtime();
+        int captureGeneration = scheduleCommandCaptureWatchdog();
         setState(VoiceAssistantState.RECORDING_COMMAND);
         AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PLAYING_START_SIGNAL);
         updateNotification(getString(R.string.planner_voice_notification_recording));
@@ -283,7 +287,7 @@ public class WakeWordService extends Service {
                 playback.durationMs
             );
             handler.postDelayed(
-                () -> startCommandTranscription(timedRequest),
+                () -> startCommandTranscription(timedRequest, captureGeneration),
                 playback.played ? POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS : 0L
             );
         });
@@ -291,13 +295,21 @@ public class WakeWordService extends Service {
         showListeningOverlay();
     }
 
-    private void startCommandTranscription(SttRequest request) {
+    private void startCommandTranscription(SttRequest request, int captureGeneration) {
+        if (!isCurrentCommandCapture(captureGeneration)) {
+            return;
+        }
+
         AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.RECORDING_COMMAND);
         speechToTextService.transcribe(
             request,
             new SpeechToTextService.Callback() {
                 @Override
                 public void onRecordingStopped(CommandAudio audio) {
+                    if (!isCurrentCommandCapture(captureGeneration)) {
+                        return;
+                    }
+
                     setState(VoiceAssistantState.TRANSCRIBING);
                     AndroidVoiceRuntimeStore.markStatus(WakeWordService.this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
                     updateNotification(getString(R.string.planner_voice_notification_transcribing));
@@ -305,6 +317,11 @@ public class WakeWordService extends Service {
 
                 @Override
                 public void onResult(SttResult result) {
+                    if (!isCurrentCommandCapture(captureGeneration)) {
+                        return;
+                    }
+
+                    cancelCommandCaptureWatchdog();
                     PlannerVoiceAssistantStorage.storePendingCommand(WakeWordService.this, result);
                     setState(VoiceAssistantState.WAITING_FOR_CONFIRMATION);
                     speechToTextService.stop();
@@ -316,12 +333,62 @@ public class WakeWordService extends Service {
 
                 @Override
                 public void onError(SttException error) {
+                    if (!isCurrentCommandCapture(captureGeneration)) {
+                        return;
+                    }
+
+                    cancelCommandCaptureWatchdog();
                     PlannerVoiceAssistantStorage.storePendingError(WakeWordService.this, error);
                     openPlannerForConfirmation();
                     handleCommandCaptureError(error);
                 }
             }
         );
+    }
+
+    private int scheduleCommandCaptureWatchdog() {
+        cancelCommandCaptureWatchdog();
+        int captureGeneration = ++commandCaptureGeneration;
+
+        commandCaptureWatchdog = () -> {
+            if (
+                !isCurrentCommandCapture(captureGeneration) ||
+                (
+                    state != VoiceAssistantState.RECORDING_COMMAND &&
+                    state != VoiceAssistantState.TRANSCRIBING
+                )
+            ) {
+                return;
+            }
+
+            commandCaptureWatchdog = null;
+            commandCaptureGeneration++;
+
+            SttException error = new SttException(
+                SttError.NETWORK_ERROR,
+                "Не удалось получить результат голосовой команды. Попробуй ещё раз."
+            );
+
+            PlannerVoiceAssistantStorage.storePendingError(this, error);
+            openPlannerForConfirmation();
+            handleCommandCaptureError(error);
+        };
+        handler.postDelayed(commandCaptureWatchdog, COMMAND_CAPTURE_WATCHDOG_TIMEOUT_MS);
+
+        return captureGeneration;
+    }
+
+    private void cancelCommandCaptureWatchdog() {
+        Runnable watchdog = commandCaptureWatchdog;
+        commandCaptureWatchdog = null;
+
+        if (watchdog != null) {
+            handler.removeCallbacks(watchdog);
+        }
+    }
+
+    private boolean isCurrentCommandCapture(int captureGeneration) {
+        return commandCaptureGeneration == captureGeneration;
     }
 
     private void handleCommandCaptureError(SttException error) {
@@ -374,6 +441,8 @@ public class WakeWordService extends Service {
     private void stopAssistant(boolean preserveBlockedStatus) {
         stopRequested = true;
         handler.removeCallbacksAndMessages(null);
+        commandCaptureWatchdog = null;
+        commandCaptureGeneration++;
         clearRuntimeBuffers();
         setState(VoiceAssistantState.IDLE);
         if (preserveBlockedStatus) {
@@ -520,6 +589,9 @@ public class WakeWordService extends Service {
     }
 
     private void clearRuntimeBuffers() {
+        cancelCommandCaptureWatchdog();
+        commandCaptureGeneration++;
+
         if (audioFeedbackPlayer != null) {
             audioFeedbackPlayer.release();
         }

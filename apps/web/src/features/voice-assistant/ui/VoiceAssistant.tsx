@@ -76,7 +76,10 @@ import {
   getWebVoiceInputLabel,
   getWebVoiceSupport,
   normalizeWebVoicePermissionError,
+  queryWebVoiceMicrophonePermissionState,
+  queryWebVoiceMicrophonePermissionStatus,
   validateWebVoiceRecording,
+  WEB_VOICE_PERMISSION_READY_MESSAGE,
   WEB_VOICE_SOURCE,
   type WebVoiceInputState,
 } from '../model/web-voice-input'
@@ -89,7 +92,7 @@ import {
 const AUTO_CLOSE_DELAY_MS = 2200
 const ANDROID_COMMAND_INITIAL_POLL_DELAY_MS = 650
 const ANDROID_COMMAND_POLL_INTERVAL_MS = 750
-const ANDROID_COMMAND_RESULT_TIMEOUT_MS = 25_000
+const ANDROID_COMMAND_RESULT_TIMEOUT_MS = 45_000
 const WEB_RECORDING_MAX_DURATION_MS = 8_000
 
 const WEB_PROCESSING_STATES = new Set<WebVoiceInputState>([
@@ -883,6 +886,46 @@ export function VoiceAssistant() {
   }, [actionResult, state])
 
   useEffect(() => {
+    if (isAndroidRuntime || webVoiceState !== 'permission_denied') {
+      return undefined
+    }
+
+    let isDisposed = false
+    let removePermissionListener: (() => void) | null = null
+
+    const handlePermissionState = (permissionState: PermissionState) => {
+      if (isDisposed || permissionState !== 'granted') {
+        return
+      }
+
+      setWebVoiceState('permission_ready')
+      setWebVoiceMessage(WEB_VOICE_PERMISSION_READY_MESSAGE)
+      dispatch({ type: 'cancelled' })
+    }
+
+    void queryWebVoiceMicrophonePermissionStatus().then((permissionStatus) => {
+      if (isDisposed || !permissionStatus) {
+        return
+      }
+
+      const handleChange = () => {
+        handlePermissionState(permissionStatus.state)
+      }
+
+      handleChange()
+      permissionStatus.addEventListener('change', handleChange)
+      removePermissionListener = () => {
+        permissionStatus.removeEventListener('change', handleChange)
+      }
+    })
+
+    return () => {
+      isDisposed = true
+      removePermissionListener?.()
+    }
+  }, [isAndroidRuntime, webVoiceState])
+
+  useEffect(() => {
     return () => {
       androidCaptureOperationIdRef.current += 1
 
@@ -931,6 +974,10 @@ export function VoiceAssistant() {
 
   async function startAndroidVoiceInput() {
     resetVoiceTiming('mic_click')
+    setActionPreview(null)
+    setActionResult(null)
+    setSelectedCandidateId(null)
+    setIsUndoing(false)
     setWebVoiceState('idle')
     setWebVoiceMessage(null)
     setIsCardVisible(true)
@@ -990,6 +1037,7 @@ export function VoiceAssistant() {
     setSelectedCandidateId(null)
     setIsUndoing(false)
     setWebVoiceMessage(null)
+    dispatch({ type: 'cancelled' })
     webExplicitUserActionRef.current = true
     const operationId = webOperationIdRef.current + 1
 
@@ -1062,7 +1110,16 @@ export function VoiceAssistant() {
         void stopWebVoiceRecording(operationId)
       }, WEB_RECORDING_MAX_DURATION_MS)
     } catch (error) {
-      const voiceError = normalizeWebVoicePermissionError(error)
+      const microphonePermissionState =
+        await queryWebVoiceMicrophonePermissionState()
+
+      if (!isCurrentWebOperation(operationId)) {
+        return
+      }
+
+      const voiceError = normalizeWebVoicePermissionError(error, {
+        microphonePermissionState,
+      })
 
       setWebVoiceState(voiceError.state)
       setWebVoiceMessage(voiceError.message)
@@ -1326,6 +1383,9 @@ export function VoiceAssistant() {
       trackVoiceMetric('stt_error', 'android_microphone', {
         errorCode: 'android_command_result_timeout',
       })
+      setIsCardVisible(true)
+      setActionPreview(null)
+      setActionResult(null)
       dispatch({
         error:
           'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
@@ -1415,8 +1475,8 @@ export function VoiceAssistant() {
           selectedCandidateId={selectedCandidateId}
           spheres={planner.spheres}
           state={state}
-          webInputState={webVoiceState}
-          webStatusMessage={webVoiceMessage}
+          webInputState={isAndroidRuntime ? undefined : webVoiceState}
+          webStatusMessage={isAndroidRuntime ? null : webVoiceMessage}
           onCancelRecording={closeCard}
           onClarifyOption={handleClarifyOption}
           onClose={closeCard}
@@ -1448,9 +1508,13 @@ export function VoiceAssistant() {
           onRepeat={() => {
             void startVoiceInput()
           }}
-          onStopRecording={() => {
-            void stopWebVoiceRecording()
-          }}
+          onStopRecording={
+            isAndroidRuntime
+              ? undefined
+              : () => {
+                  void stopWebVoiceRecording()
+                }
+          }
           onSaveClarificationToInbox={handleSaveClarificationToInbox}
           onSelectCandidate={setSelectedCandidateId}
           onUndo={() => {

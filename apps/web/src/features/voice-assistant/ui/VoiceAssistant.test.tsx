@@ -12,6 +12,7 @@ import { readClientEvents } from '@/shared/lib/observability'
 
 import {
   analyzePcm16Audio,
+  WEB_VOICE_PERMISSION_READY_MESSAGE,
   type WebVoiceRecording,
 } from '../model/web-voice-input'
 import { VoiceAssistant } from './VoiceAssistant'
@@ -245,6 +246,35 @@ describe('VoiceAssistant web push-to-talk', () => {
     expect(await screen.findByText('Нет доступа к микрофону.')).toBeVisible()
   })
 
+  it('updates the denied card when browser microphone permission becomes granted', async () => {
+    const microphonePermission = stubMicrophonePermissionState('denied')
+
+    mocks.startWebVoiceRecorder.mockRejectedValue({ name: 'NotAllowedError' })
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    expect(await screen.findByText('Нет доступа к микрофону.')).toBeVisible()
+
+    await waitFor(() => {
+      expect(microphonePermission.addEventListener).toHaveBeenCalledWith(
+        'change',
+        expect.any(Function),
+      )
+    })
+
+    act(() => {
+      microphonePermission.setState('granted')
+    })
+
+    expect(
+      await screen.findByText(WEB_VOICE_PERMISSION_READY_MESSAGE),
+    ).toBeVisible()
+    expect(screen.getByText('Доступ к микрофону разрешен')).toBeVisible()
+    expect(screen.getByRole('button', { name: /Повторить/ })).toBeVisible()
+  })
+
   it('shows microphone not found errors', async () => {
     mocks.startWebVoiceRecorder.mockRejectedValue({ name: 'NotFoundError' })
 
@@ -320,6 +350,8 @@ describe('VoiceAssistant web push-to-talk', () => {
     await act(async () => {})
 
     expect(mocks.captureAndroidVoiceCommand).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Слушаю')).toBeVisible()
+    expect(screen.queryByText('Нажми микрофон')).not.toBeInTheDocument()
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(650)
@@ -335,6 +367,32 @@ describe('VoiceAssistant web push-to-talk', () => {
     expect(screen.getByText('Распознано')).toBeVisible()
     expect(screen.getByText('добавь задачу отчет')).toBeVisible()
   })
+
+  it('shows an Android push-to-talk timeout when native command never arrives', async () => {
+    vi.useFakeTimers()
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.consumePendingAndroidVoiceCommand.mockResolvedValue(null)
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    await act(async () => {})
+
+    expect(mocks.captureAndroidVoiceCommand).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Слушаю')).toBeVisible()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(45_001)
+    })
+
+    expect(
+      screen.getByText(
+        'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
+      ),
+    ).toBeVisible()
+    expect(mocks.consumePendingAndroidVoiceCommand).toHaveBeenCalled()
+  })
 })
 
 function stubWebVoiceSupport(): void {
@@ -345,6 +403,10 @@ function stubWebVoiceSupport(): void {
       getUserMedia: vi.fn(),
     },
   })
+  Object.defineProperty(navigator, 'permissions', {
+    configurable: true,
+    value: undefined,
+  })
   vi.stubGlobal(
     'MediaRecorder',
     class FakeMediaRecorder {
@@ -354,6 +416,58 @@ function stubWebVoiceSupport(): void {
     },
   )
   vi.stubGlobal('AudioContext', class FakeAudioContext {})
+}
+
+function stubMicrophonePermissionState(initialState: PermissionState): {
+  addEventListener: ReturnType<typeof vi.fn>
+  setState: (state: PermissionState) => void
+} {
+  let currentState = initialState
+  const listeners = new Set<EventListenerOrEventListenerObject>()
+  const addEventListener = vi.fn(
+    (type: string, listener: EventListenerOrEventListenerObject | null) => {
+      if (type === 'change' && listener) {
+        listeners.add(listener)
+      }
+    },
+  )
+  const removeEventListener = vi.fn(
+    (type: string, listener: EventListenerOrEventListenerObject | null) => {
+      if (type === 'change' && listener) {
+        listeners.delete(listener)
+      }
+    },
+  )
+  const permissionStatus = {
+    addEventListener,
+    removeEventListener,
+    get state() {
+      return currentState
+    },
+  } as unknown as PermissionStatus
+
+  Object.defineProperty(navigator, 'permissions', {
+    configurable: true,
+    value: {
+      query: vi.fn(() => Promise.resolve(permissionStatus)),
+    },
+  })
+
+  return {
+    addEventListener,
+    setState(state: PermissionState) {
+      currentState = state
+      const event = new Event('change')
+
+      for (const listener of listeners) {
+        if (typeof listener === 'function') {
+          listener.call(permissionStatus, event)
+        } else {
+          listener.handleEvent(event)
+        }
+      }
+    },
+  }
 }
 
 function stubSecureContext(value: boolean): void {
