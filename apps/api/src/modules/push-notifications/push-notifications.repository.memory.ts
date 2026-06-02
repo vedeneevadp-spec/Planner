@@ -121,7 +121,10 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
     )
   }
 
-  deactivateTokens(tokens: readonly string[]): Promise<void> {
+  deactivateTokens(
+    tokens: readonly string[],
+    _recipient?: PushNotificationRecipient | PushNotificationSession,
+  ): Promise<void> {
     if (tokens.length === 0) {
       return Promise.resolve()
     }

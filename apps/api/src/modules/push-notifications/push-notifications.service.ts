@@ -29,7 +29,7 @@ export class PushNotificationsService {
   }
 
   async sendNotification(
-    recipient: PushNotificationRecipient,
+    recipient: PushNotificationRecipient | PushNotificationSession,
     message: PushNotificationMessage,
   ): Promise<PushTestNotificationResponse> {
     if (!this.sender.isAvailable()) {
@@ -53,7 +53,7 @@ export class PushNotificationsService {
     const result = await this.sender.sendToTokens(tokens, message)
 
     if (result.invalidTokens.length > 0) {
-      await this.repository.deactivateTokens(result.invalidTokens)
+      await this.repository.deactivateTokens(result.invalidTokens, recipient)
     }
 
     return {
@@ -67,16 +67,10 @@ export class PushNotificationsService {
     session: PushNotificationSession,
     input: PushTestNotificationInput,
   ): Promise<PushTestNotificationResponse> {
-    return this.sendNotification(
-      {
-        userId: session.actorUserId,
-        workspaceId: session.workspaceId,
-      },
-      {
-        body: input.body,
-        data: input.data,
-        title: input.title,
-      },
-    )
+    return this.sendNotification(session, {
+      body: input.body,
+      data: input.data,
+      title: input.title,
+    })
   }
 }

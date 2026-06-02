@@ -5,17 +5,18 @@ import type {
   PushTestNotificationResponse as ContractPushTestNotificationResponse,
 } from '@planner/contracts'
 
-import type { SessionSnapshot } from '../session/session.model.js'
+import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 
 export type PushDeviceRecord = ContractPushDeviceRecord
 export type PushDeviceUpsertInput = ContractPushDeviceUpsertInput
 export type PushTestNotificationInput = ContractPushTestNotificationInput
 export type PushTestNotificationResponse = ContractPushTestNotificationResponse
 
-export type PushNotificationSession = Pick<
-  SessionSnapshot,
-  'actorUserId' | 'workspaceId'
->
+export interface PushNotificationSession {
+  actorUserId: string
+  auth?: AuthenticatedRequestContext | null | undefined
+  workspaceId: string
+}
 
 export interface PushNotificationRecipient {
   userId: string

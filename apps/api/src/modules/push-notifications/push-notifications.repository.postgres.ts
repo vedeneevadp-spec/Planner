@@ -1,5 +1,10 @@
 import { type Kysely, type Selectable } from 'kysely'
 
+import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
+import {
+  withOptionalRls,
+  withWriteTransaction,
+} from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   PushDeviceRecord,
@@ -18,96 +23,123 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
     session: PushNotificationSession,
     input: PushDeviceUpsertInput,
   ): Promise<PushDeviceRecord> {
-    return this.db.transaction().execute(async (trx) => {
-      await trx
-        .updateTable('app.push_devices')
-        .set({
-          deleted_at: new Date(),
-        })
-        .where('platform', '=', input.platform)
-        .where('token', '=', input.token)
-        .where('installation_id', '!=', input.installationId)
-        .where('deleted_at', 'is', null)
-        .execute()
+    return withWriteTransaction(
+      this.db,
+      session.auth,
+      async (trx) => {
+        await trx
+          .updateTable('app.push_devices')
+          .set({
+            deleted_at: new Date(),
+          })
+          .where('platform', '=', input.platform)
+          .where('token', '=', input.token)
+          .where('installation_id', '!=', input.installationId)
+          .where('deleted_at', 'is', null)
+          .execute()
 
-      const row = await trx
-        .insertInto('app.push_devices')
-        .values({
-          app_version: input.appVersion ?? null,
-          deleted_at: null,
-          device_name: input.deviceName ?? null,
-          installation_id: input.installationId,
-          last_registered_at: new Date().toISOString(),
-          locale: input.locale ?? null,
-          platform: input.platform,
-          token: input.token,
-          user_id: session.actorUserId,
-          workspace_id: session.workspaceId,
-        })
-        .onConflict((conflict) =>
-          conflict.columns(['platform', 'installation_id']).doUpdateSet({
+        const row = await trx
+          .insertInto('app.push_devices')
+          .values({
             app_version: input.appVersion ?? null,
             deleted_at: null,
             device_name: input.deviceName ?? null,
+            installation_id: input.installationId,
             last_registered_at: new Date().toISOString(),
             locale: input.locale ?? null,
+            platform: input.platform,
             token: input.token,
             user_id: session.actorUserId,
             workspace_id: session.workspaceId,
-          }),
-        )
-        .returningAll()
-        .executeTakeFirstOrThrow()
+          })
+          .onConflict((conflict) =>
+            conflict.columns(['platform', 'installation_id']).doUpdateSet({
+              app_version: input.appVersion ?? null,
+              deleted_at: null,
+              device_name: input.deviceName ?? null,
+              last_registered_at: new Date().toISOString(),
+              locale: input.locale ?? null,
+              token: input.token,
+              user_id: session.actorUserId,
+              workspace_id: session.workspaceId,
+            }),
+          )
+          .returningAll()
+          .executeTakeFirstOrThrow()
 
-      return mapPushDeviceRecord(row)
-    })
+        return mapPushDeviceRecord(row)
+      },
+      session.actorUserId,
+    )
   }
 
   async removeDevice(
     session: PushNotificationSession,
     installationId: string,
   ): Promise<void> {
-    await this.db
-      .updateTable('app.push_devices')
-      .set({
-        deleted_at: new Date(),
-      })
-      .where('installation_id', '=', installationId)
-      .where('platform', '=', 'android')
-      .where('user_id', '=', session.actorUserId)
-      .where('workspace_id', '=', session.workspaceId)
-      .where('deleted_at', 'is', null)
-      .execute()
+    await withWriteTransaction(
+      this.db,
+      session.auth,
+      async (trx) => {
+        await trx
+          .updateTable('app.push_devices')
+          .set({
+            deleted_at: new Date(),
+          })
+          .where('installation_id', '=', installationId)
+          .where('platform', '=', 'android')
+          .where('user_id', '=', session.actorUserId)
+          .where('workspace_id', '=', session.workspaceId)
+          .where('deleted_at', 'is', null)
+          .execute()
+      },
+      session.actorUserId,
+    )
   }
 
   async listActiveTokens(
     recipient: PushNotificationRecipient | PushNotificationSession,
   ): Promise<string[]> {
-    const rows = await this.db
-      .selectFrom('app.push_devices')
-      .select('token')
-      .where('user_id', '=', resolveRecipientUserId(recipient))
-      .where('workspace_id', '=', recipient.workspaceId)
-      .where('deleted_at', 'is', null)
-      .orderBy('last_registered_at', 'desc')
-      .execute()
+    const rows = await withOptionalRls(
+      this.db,
+      resolveRecipientAuth(recipient),
+      (executor) =>
+        executor
+          .selectFrom('app.push_devices')
+          .select('token')
+          .where('user_id', '=', resolveRecipientUserId(recipient))
+          .where('workspace_id', '=', recipient.workspaceId)
+          .where('deleted_at', 'is', null)
+          .orderBy('last_registered_at', 'desc')
+          .execute(),
+      resolveRecipientActorOverride(recipient),
+    )
 
     return rows.map((row) => row.token)
   }
 
-  async deactivateTokens(tokens: readonly string[]): Promise<void> {
+  async deactivateTokens(
+    tokens: readonly string[],
+    recipient?: PushNotificationRecipient | PushNotificationSession,
+  ): Promise<void> {
     if (tokens.length === 0) {
       return
     }
 
-    await this.db
-      .updateTable('app.push_devices')
-      .set({
-        deleted_at: new Date(),
-      })
-      .where('token', 'in', [...tokens])
-      .where('deleted_at', 'is', null)
-      .execute()
+    await withOptionalRls(
+      this.db,
+      recipient ? resolveRecipientAuth(recipient) : null,
+      (executor) =>
+        executor
+          .updateTable('app.push_devices')
+          .set({
+            deleted_at: new Date(),
+          })
+          .where('token', 'in', [...tokens])
+          .where('deleted_at', 'is', null)
+          .execute(),
+      recipient ? resolveRecipientActorOverride(recipient) : undefined,
+    )
   }
 }
 
@@ -115,6 +147,18 @@ function resolveRecipientUserId(
   recipient: PushNotificationRecipient | PushNotificationSession,
 ): string {
   return 'actorUserId' in recipient ? recipient.actorUserId : recipient.userId
+}
+
+function resolveRecipientAuth(
+  recipient: PushNotificationRecipient | PushNotificationSession,
+): AuthenticatedRequestContext | null | undefined {
+  return 'actorUserId' in recipient ? recipient.auth : null
+}
+
+function resolveRecipientActorOverride(
+  recipient: PushNotificationRecipient | PushNotificationSession,
+): string | undefined {
+  return 'actorUserId' in recipient ? recipient.actorUserId : undefined
 }
 
 function mapPushDeviceRecord(row: PushDeviceRow): PushDeviceRecord {

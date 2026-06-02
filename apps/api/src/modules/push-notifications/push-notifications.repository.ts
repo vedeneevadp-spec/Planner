@@ -6,7 +6,10 @@ import type {
 } from './push-notifications.model.js'
 
 export interface PushNotificationsRepository {
-  deactivateTokens: (tokens: readonly string[]) => Promise<void>
+  deactivateTokens: (
+    tokens: readonly string[],
+    recipient?: PushNotificationRecipient | PushNotificationSession,
+  ) => Promise<void>
   listActiveTokens: (
     recipient: PushNotificationRecipient | PushNotificationSession,
   ) => Promise<string[]>
