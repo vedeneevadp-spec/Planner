@@ -14,6 +14,7 @@ import {
   type TaskReminderOffsetMinutes,
   type TaskTypeValue,
 } from '@/entities/task'
+import { addDays, getDateKey } from '@/shared/lib/date'
 
 export interface TaskComposerDraft {
   dueDate?: string | null | undefined
@@ -63,6 +64,7 @@ export interface BuildTaskComposerTaskInputParams {
   taskType: TaskTypeValue
   title: string
   todayKey: string
+  now?: Date | undefined
 }
 
 export function buildTaskComposerTaskInput({
@@ -85,6 +87,7 @@ export function buildTaskComposerTaskInput({
   taskType,
   title,
   todayKey,
+  now = new Date(),
 }: BuildTaskComposerTaskInputParams): NewTaskInput | null {
   const normalizedTitle = title.trim()
 
@@ -103,6 +106,13 @@ export function buildTaskComposerTaskInput({
     !isSharedWorkspace && hasPlannedDate && plannedStartTime
       ? reminderOffsets
       : []
+  const reminderPlannedDate = resolveReminderPlannedDate({
+    now,
+    plannedDate: resolvedPlannedDate,
+    plannedStartTime,
+    reminderOffsets: resolvedReminderOffsets,
+    todayKey,
+  })
 
   return {
     assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
@@ -110,7 +120,7 @@ export function buildTaskComposerTaskInput({
     icon,
     importance: getTaskImportanceFromType(taskType),
     note,
-    plannedDate: resolvedPlannedDate || null,
+    plannedDate: reminderPlannedDate || null,
     plannedEndTime:
       hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
     plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
@@ -119,7 +129,7 @@ export function buildTaskComposerTaskInput({
     recurrence: canUseRecurrence
       ? buildTaskRecurrenceFromForm(
           recurrenceForm,
-          resolvedPlannedDate || todayKey,
+          reminderPlannedDate || todayKey,
         )
       : null,
     remindBeforeStart: resolvedReminderOffsets.length > 0,
@@ -134,6 +144,64 @@ export function buildTaskComposerTaskInput({
     title: normalizedTitle,
     urgency: getTaskUrgencyFromType(taskType),
   }
+}
+
+function resolveReminderPlannedDate({
+  now,
+  plannedDate,
+  plannedStartTime,
+  reminderOffsets,
+  todayKey,
+}: {
+  now: Date
+  plannedDate: string
+  plannedStartTime: string
+  reminderOffsets: TaskReminderOffsetMinutes[]
+  todayKey: string
+}): string {
+  if (
+    !plannedDate ||
+    plannedDate !== todayKey ||
+    todayKey !== getDateKey(now) ||
+    !plannedStartTime ||
+    reminderOffsets.length === 0
+  ) {
+    return plannedDate
+  }
+
+  const startMinutes = parseTimeMinutes(plannedStartTime)
+
+  if (startMinutes === null) {
+    return plannedDate
+  }
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+
+  return startMinutes < nowMinutes ? getDateKey(addDays(now, 1)) : plannedDate
+}
+
+function parseTimeMinutes(time: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/u.exec(time)
+
+  if (!match?.[1] || !match[2]) {
+    return null
+  }
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null
+  }
+
+  return hours * 60 + minutes
 }
 
 export interface BuildTaskComposerHabitInputParams {

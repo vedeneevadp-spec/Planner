@@ -109,6 +109,71 @@ describe('task-composer-model', () => {
     })
   })
 
+  it('rolls reminder tasks to tomorrow when today start time already passed', () => {
+    const input = buildTaskComposerTaskInput({
+      assigneeUserId: '',
+      canUseRecurrence: false,
+      icon: 'bell',
+      initialPlannedDate: null,
+      isSharedWorkspace: false,
+      note: '',
+      now: new Date('2026-04-22T23:44:00'),
+      plannedDate: '2026-04-22',
+      plannedEndTime: '',
+      plannedStartTime: '00:03',
+      projectId: PROJECT.id,
+      recurrenceForm: createDefaultTaskRecurrenceForm(),
+      reminderOffsets: [15],
+      requiresConfirmation: false,
+      resource: '',
+      routineForm: createDefaultRoutineTaskForm(),
+      spheres: [PROJECT],
+      taskType: '',
+      title: 'Выключить плиту',
+      todayKey: '2026-04-22',
+    })
+
+    expect(input).toMatchObject({
+      plannedDate: '2026-04-23',
+      plannedStartTime: '00:03',
+      reminderOffsets: [15],
+      remindBeforeStart: true,
+      title: 'Выключить плиту',
+    })
+  })
+
+  it('keeps non-reminder tasks on the selected date even when start time passed', () => {
+    const input = buildTaskComposerTaskInput({
+      assigneeUserId: '',
+      canUseRecurrence: false,
+      icon: 'briefcase',
+      initialPlannedDate: null,
+      isSharedWorkspace: false,
+      note: '',
+      now: new Date('2026-04-22T23:44:00'),
+      plannedDate: '2026-04-22',
+      plannedEndTime: '',
+      plannedStartTime: '00:03',
+      projectId: PROJECT.id,
+      recurrenceForm: createDefaultTaskRecurrenceForm(),
+      reminderOffsets: [],
+      requiresConfirmation: false,
+      resource: '',
+      routineForm: createDefaultRoutineTaskForm(),
+      spheres: [PROJECT],
+      taskType: '',
+      title: 'Записать факт',
+      todayKey: '2026-04-22',
+    })
+
+    expect(input).toMatchObject({
+      plannedDate: '2026-04-22',
+      plannedStartTime: '00:03',
+      remindBeforeStart: false,
+      title: 'Записать факт',
+    })
+  })
+
   it('builds habit input from the current composer state', () => {
     const routineForm = {
       ...createDefaultRoutineTaskForm(),

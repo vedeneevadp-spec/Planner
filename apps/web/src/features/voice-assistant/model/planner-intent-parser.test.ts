@@ -141,6 +141,34 @@ describe('PlannerIntentParser', () => {
     })
   })
 
+  it('rolls time-only commands to tomorrow when the local time already passed', () => {
+    const intent = parser.parse('в 00:03 выключить плиту', {
+      now: '2026-06-02T16:44:00.000Z',
+      timezone: 'Asia/Novosibirsk',
+    })
+
+    expect(intent).toMatchObject({
+      date: '2026-06-03',
+      datePrecision: 'exact',
+      intent: 'create_task',
+      time: '00:03',
+      title: 'выключить плиту',
+    })
+  })
+
+  it('keeps time-only commands on today when the local time is still ahead', () => {
+    const intent = parser.parse('в 23:50 выключить плиту', {
+      now: '2026-06-02T16:44:00.000Z',
+      timezone: 'Asia/Novosibirsk',
+    })
+
+    expect(intent).toMatchObject({
+      date: '2026-06-02',
+      intent: 'create_task',
+      time: '23:50',
+    })
+  })
+
   it('parses multiple shopping items', () => {
     const intent = parser.parse('добавь молоко и хлеб в покупки', { now: NOW })
     const implicitBuyIntent = parser.parse('Надо купить соль сахар и мыло', {

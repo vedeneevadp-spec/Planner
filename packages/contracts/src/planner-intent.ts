@@ -745,12 +745,9 @@ class DateTimeParser {
     const time = parseTime(commandText)
     const approximateTime = parseApproximateTime(commandText)
     const finalTime = time?.time ?? approximateTime?.time
-    const hasTime = Boolean(finalTime)
     const resolvedDate =
       date?.date ??
-      (hasTime
-        ? formatDateKeyInTimezone(context.now, context.timezone)
-        : undefined)
+      (finalTime ? resolveImplicitDateForTime(context, finalTime) : undefined)
 
     return {
       ambiguousTime: time?.ambiguous ?? false,
@@ -762,6 +759,23 @@ class DateTimeParser {
       time: finalTime,
     }
   }
+}
+
+function resolveImplicitDateForTime(
+  context: RuntimeParserContext,
+  time: string,
+): string {
+  const today = formatDateKeyInTimezone(context.now, context.timezone)
+  const timeMinutes = parseTimeMinutes(time)
+
+  if (timeMinutes === null) {
+    return today
+  }
+
+  const nowParts = getZonedDateParts(context.now, context.timezone)
+  const nowMinutes = nowParts.hour * 60 + nowParts.minute
+
+  return timeMinutes < nowMinutes ? addDaysToDateKey(today, 1) : today
 }
 
 function getTaskDatePrecision(
@@ -1464,6 +1478,30 @@ function parseTime(
     ambiguous: !period && minutes === 0 && hours >= 1 && hours <= 8,
     time: `${pad2(hours)}:${pad2(minutes)}`,
   }
+}
+
+function parseTimeMinutes(time: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/u.exec(time)
+
+  if (!match?.[1] || !match[2]) {
+    return null
+  }
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
+    return null
+  }
+
+  return hours * 60 + minutes
 }
 
 function parseApproximateTime(
