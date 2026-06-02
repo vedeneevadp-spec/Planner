@@ -384,6 +384,16 @@ Production-данные приложения живут в Timeweb Managed Postg
 npm run deploy:prod
 ```
 
+Локальный deploy остается штатным workflow, но скрипт деплоит только код,
+который уже есть в Git:
+
+- рабочее дерево должно быть чистым
+- текущая ветка должна иметь upstream
+- текущий commit должен быть запушен и совпадать с upstream
+
+Если проверка не проходит, сначала выполните `git commit`, `git push` или
+`git pull --ff-only`, затем повторите `npm run deploy:prod`.
+
 ## Документация
 
 - [docs/shared-workspace.md](docs/shared-workspace.md) - модель `Shared

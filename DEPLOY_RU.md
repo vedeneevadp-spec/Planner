@@ -215,7 +215,8 @@ npm run deploy:prod
 Скрипт делает следующее:
 
 ```text
-1. Проверяет рабочее дерево и предупреждает о незакоммиченных изменениях.
+1. Проверяет deploy source guard: чистое рабочее дерево, наличие upstream,
+   текущий commit запушен и совпадает с upstream.
 2. Запускает npm run ci.
 3. Создает/проверяет production-директории на сервере.
 4. Копирует проект через rsync.
@@ -238,6 +239,20 @@ npm run deploy:prod
     planner-task-reminders; иначе останавливает отдельный worker.
 16. Валидирует и перезагружает Caddy.
 17. Проверяет http://127.0.0.1:3001/api/health и https://chaotika.ru/api/health.
+```
+
+Если guard останавливает deploy, выполните нужную команду:
+
+```bash
+git commit
+git push
+git pull --ff-only
+```
+
+После этого повторите:
+
+```bash
+npm run deploy:prod
 ```
 
 После успешного deploy проверить:

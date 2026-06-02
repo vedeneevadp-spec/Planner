@@ -60,7 +60,7 @@ await main().catch((error) => {
 
 async function main() {
   printHeader()
-  await warnAboutDirtyWorktree()
+  await assertDeploySourceReady()
 
   if (skipChecks) {
     console.log('[deploy] Skipping local checks.')
@@ -102,6 +102,9 @@ function printHelp() {
 Usage:
   npm run deploy:prod
 
+Source guard:
+  The deploy runs only from a clean tracked branch whose HEAD matches upstream.
+
 Options:
   --skip-checks  Do not run npm run ci before deploy.
   --skip-db-backup
@@ -117,20 +120,138 @@ Environment overrides:
 `)
 }
 
-async function warnAboutDirtyWorktree() {
-  const status = await collect('git', ['status', '--short'])
+async function assertDeploySourceReady() {
+  const branch = (await collect('git', ['branch', '--show-current'])).trim()
 
-  if (!status.trim()) {
-    return
+  if (!branch) {
+    throw new Error(
+      [
+        '[deploy] Refusing to deploy from detached HEAD.',
+        '[deploy] Checkout a tracked branch, then run npm run deploy:prod again.',
+      ].join('\n'),
+    )
   }
 
-  console.warn(
+  const status = await collect('git', [
+    'status',
+    '--porcelain=v1',
+    '--untracked-files=all',
+  ])
+
+  if (status.trim()) {
+    throw new Error(
+      [
+        '[deploy] Refusing to deploy with uncommitted local changes.',
+        '[deploy] Commit or stash these changes first:',
+        status.trim(),
+      ].join('\n'),
+    )
+  }
+
+  const upstream = await collectUpstream(branch)
+  const remote = (
+    await collect('git', ['config', `branch.${branch}.remote`])
+  ).trim()
+
+  if (!remote) {
+    throw new Error(
+      [
+        `[deploy] Refusing to deploy because ${branch} has no configured remote.`,
+        `[deploy] Run git branch --set-upstream-to=origin/${branch} ${branch}, then npm run deploy:prod again.`,
+      ].join('\n'),
+    )
+  }
+
+  await run('git', ['fetch', '--quiet', '--prune', remote])
+
+  const head = (await collect('git', ['rev-parse', 'HEAD'])).trim()
+  const upstreamHead = (
+    await collect('git', ['rev-parse', '@{upstream}'])
+  ).trim()
+
+  if (head !== upstreamHead) {
+    const { ahead, behind } = await collectAheadBehind()
+
+    if (ahead > 0 && behind === 0) {
+      throw new Error(
+        [
+          `[deploy] Refusing to deploy unpushed commits from ${branch}.`,
+          `[deploy] ${branch} is ahead of ${upstream} by ${ahead} commit(s).`,
+          '[deploy] Run git push, then npm run deploy:prod again.',
+        ].join('\n'),
+      )
+    }
+
+    if (ahead === 0 && behind > 0) {
+      throw new Error(
+        [
+          `[deploy] Refusing to deploy an outdated local branch ${branch}.`,
+          `[deploy] ${branch} is behind ${upstream} by ${behind} commit(s).`,
+          '[deploy] Run git pull --ff-only, then npm run deploy:prod again.',
+        ].join('\n'),
+      )
+    }
+
+    throw new Error(
+      [
+        `[deploy] Refusing to deploy a branch that diverged from ${upstream}.`,
+        `[deploy] ${branch} is ahead by ${ahead} commit(s) and behind by ${behind} commit(s).`,
+        '[deploy] Reconcile the branch with Git, then npm run deploy:prod again.',
+      ].join('\n'),
+    )
+  }
+
+  console.log(
     [
-      '[deploy] Warning: working tree has uncommitted changes.',
-      '[deploy] Only tracked local files are deployed; untracked and ignored files are skipped:',
-      status.trim(),
+      '[deploy] Source guard passed.',
+      `  branch:   ${branch}`,
+      `  upstream: ${upstream}`,
+      `  commit:   ${head.slice(0, 12)}`,
     ].join('\n'),
   )
+}
+
+async function collectUpstream(branch) {
+  try {
+    const upstream = (
+      await collect('git', [
+        'rev-parse',
+        '--abbrev-ref',
+        '--symbolic-full-name',
+        '@{upstream}',
+      ])
+    ).trim()
+
+    if (upstream) {
+      return upstream
+    }
+  } catch {
+    // Fall through to a clearer deploy-specific error below.
+  }
+
+  throw new Error(
+    [
+      `[deploy] Refusing to deploy because ${branch} has no upstream branch.`,
+      `[deploy] Run git push --set-upstream origin ${branch}, then npm run deploy:prod again.`,
+    ].join('\n'),
+  )
+}
+
+async function collectAheadBehind() {
+  const output = (
+    await collect('git', [
+      'rev-list',
+      '--left-right',
+      '--count',
+      'HEAD...@{upstream}',
+    ])
+  ).trim()
+  const [aheadRaw = '0', behindRaw = '0'] = output.split(/\s+/)
+
+  return {
+    ahead: Number(aheadRaw),
+    behind: Number(behindRaw),
+  }
 }
 
 async function ensureRemoteDirectories() {
