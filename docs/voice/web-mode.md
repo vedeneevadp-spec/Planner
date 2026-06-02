@@ -91,7 +91,7 @@ Before upload, web validates:
 
 ```text
 minDurationMs: 500
-maxDurationMs: 8000
+maxDurationMs: 15000
 not empty
 not silent
 not too quiet

@@ -1,33 +1,41 @@
-import type {
-  AppRole,
-  CommandAudio,
-  CommandAudioFormat,
-  SttError,
-  SttProvider,
-  SttSource,
+import {
+  type AppRole,
+  type CommandAudio,
+  type CommandAudioFormat,
+  type SttError,
+  type SttProvider,
+  type SttSource,
+  VOICE_COMMAND_AUDIO_BITS_PER_SAMPLE,
+  VOICE_COMMAND_AUDIO_BYTE_ORDER,
+  VOICE_COMMAND_AUDIO_BYTES_PER_SECOND,
+  VOICE_COMMAND_AUDIO_CHANNEL_COUNT,
+  VOICE_COMMAND_AUDIO_ENCODING,
+  VOICE_COMMAND_AUDIO_MAX_DURATION_MS,
+  VOICE_COMMAND_AUDIO_MIN_DURATION_MS,
+  VOICE_COMMAND_AUDIO_ROUTE_HARD_LIMIT_BYTES,
+  VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 
 export const COMMAND_AUDIO_FORMAT: CommandAudioFormat = {
-  bitsPerSample: 16,
-  byteOrder: 'little_endian',
-  channelCount: 1,
-  encoding: 'pcm_s16le',
-  sampleRateHertz: 16_000,
+  bitsPerSample: VOICE_COMMAND_AUDIO_BITS_PER_SAMPLE,
+  byteOrder: VOICE_COMMAND_AUDIO_BYTE_ORDER,
+  channelCount: VOICE_COMMAND_AUDIO_CHANNEL_COUNT,
+  encoding: VOICE_COMMAND_AUDIO_ENCODING,
+  sampleRateHertz: VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ,
 }
 
 export const COMMAND_AUDIO_BYTES_PER_SECOND =
-  COMMAND_AUDIO_FORMAT.sampleRateHertz *
-  COMMAND_AUDIO_FORMAT.channelCount *
-  (COMMAND_AUDIO_FORMAT.bitsPerSample / 8)
+  VOICE_COMMAND_AUDIO_BYTES_PER_SECOND
 
-export const COMMAND_AUDIO_MIN_DURATION_MS = 500
-export const COMMAND_AUDIO_MAX_DURATION_MS = 8_000
+export const COMMAND_AUDIO_MIN_DURATION_MS = VOICE_COMMAND_AUDIO_MIN_DURATION_MS
+export const COMMAND_AUDIO_MAX_DURATION_MS = VOICE_COMMAND_AUDIO_MAX_DURATION_MS
 export const COMMAND_AUDIO_MAX_BYTES = Math.ceil(
   (COMMAND_AUDIO_BYTES_PER_SECOND * COMMAND_AUDIO_MAX_DURATION_MS) / 1000,
 )
-export const COMMAND_AUDIO_HARD_LIMIT_BYTES = 400 * 1024
+export const COMMAND_AUDIO_HARD_LIMIT_BYTES =
+  VOICE_COMMAND_AUDIO_ROUTE_HARD_LIMIT_BYTES
 
 export interface VoiceCommandRouteContext {
   actorUserId: string | undefined

@@ -1,3 +1,8 @@
+import {
+  VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ,
+  VOICE_COMMAND_STT_TIMEOUT_MS,
+} from '@planner/contracts'
+
 import { type VoicePrivacyBlockReason } from './voice-audio-upload-guard'
 import {
   decideVoiceAudioUpload,
@@ -84,8 +89,8 @@ const QUIET_RMS = 0.0035
 const VOICE_RMS = 0.006
 const VOICED_SAMPLE_RATIO = 0.006
 
-export const WEB_VOICE_SAMPLE_RATE_HERTZ = 16_000
-export const WEB_VOICE_BACKEND_TIMEOUT_MS = 12_000
+export const WEB_VOICE_SAMPLE_RATE_HERTZ = VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ
+export const WEB_VOICE_BACKEND_TIMEOUT_MS = VOICE_COMMAND_STT_TIMEOUT_MS
 export const WEB_VOICE_SOURCE = 'web_push_to_talk' as const
 const WEB_VOICE_UNSUPPORTED_MESSAGE =
   'Голосовой ввод недоступен в этом браузере. Можно ввести задачу вручную.'

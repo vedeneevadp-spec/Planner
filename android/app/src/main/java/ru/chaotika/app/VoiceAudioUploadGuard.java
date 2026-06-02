@@ -2,8 +2,8 @@ package ru.chaotika.app;
 
 final class VoiceAudioUploadGuard {
 
-    private static final int MAX_DURATION_MS = 10_000;
-    private static final int MIN_DURATION_MS = 300;
+    private static final int MAX_DURATION_MS = CommandRecordingConfig.DEFAULT_MAX_DURATION_MS;
+    private static final int MIN_DURATION_MS = CommandRecordingConfig.DEFAULT_MIN_DURATION_MS;
 
     private VoiceAudioUploadGuard() {}
 

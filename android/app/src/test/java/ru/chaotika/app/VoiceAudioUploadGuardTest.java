@@ -55,6 +55,21 @@ public class VoiceAudioUploadGuardTest {
             ).reason
         );
         assertEquals(
+            VoiceAudioUploadGuard.Reason.TOO_LONG,
+            VoiceAudioUploadGuard.decide(
+                new VoiceAudioUploadGuard.Input(
+                    VoiceAudioUploadGuard.Source.ANDROID_PUSH_TO_TALK,
+                    false,
+                    true,
+                    true,
+                    CommandRecordingConfig.DEFAULT_MAX_DURATION_MS + 1,
+                    true,
+                    false,
+                    false
+                )
+            ).reason
+        );
+        assertEquals(
             VoiceAudioUploadGuard.Reason.SILENT_AUDIO,
             VoiceAudioUploadGuard.decide(
                 new VoiceAudioUploadGuard.Input(

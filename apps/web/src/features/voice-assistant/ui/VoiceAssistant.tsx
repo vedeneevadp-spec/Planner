@@ -69,6 +69,7 @@ import {
   shouldResetAppendOnVoiceStart,
   type VoiceAppendSession,
 } from '../model/voice-append-session'
+import { VOICE_AUDIO_UPLOAD_MAX_DURATION_MS } from '../model/voice-audio-upload-guard'
 import {
   BackendVoiceMetricsSink,
   bucketVoiceMetricConfidence,
@@ -100,7 +101,7 @@ const AUTO_CLOSE_DELAY_MS = 2200
 const ANDROID_COMMAND_INITIAL_POLL_DELAY_MS = 650
 const ANDROID_COMMAND_POLL_INTERVAL_MS = 750
 const ANDROID_COMMAND_RESULT_TIMEOUT_MS = 45_000
-const WEB_RECORDING_MAX_DURATION_MS = 8_000
+const WEB_RECORDING_MAX_DURATION_MS = VOICE_AUDIO_UPLOAD_MAX_DURATION_MS
 
 const WEB_PROCESSING_STATES = new Set<WebVoiceInputState>([
   'requesting_permission',

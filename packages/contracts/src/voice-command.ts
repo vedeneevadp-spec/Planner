@@ -2,6 +2,20 @@ import { z } from 'zod'
 
 import { plannerIntentSchema } from './planner-intent.js'
 
+export const VOICE_COMMAND_AUDIO_BITS_PER_SAMPLE = 16
+export const VOICE_COMMAND_AUDIO_BYTE_ORDER = 'little_endian' as const
+export const VOICE_COMMAND_AUDIO_CHANNEL_COUNT = 1
+export const VOICE_COMMAND_AUDIO_ENCODING = 'pcm_s16le' as const
+export const VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ = 16_000
+export const VOICE_COMMAND_AUDIO_BYTES_PER_SECOND =
+  VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ *
+  VOICE_COMMAND_AUDIO_CHANNEL_COUNT *
+  (VOICE_COMMAND_AUDIO_BITS_PER_SAMPLE / 8)
+export const VOICE_COMMAND_AUDIO_MIN_DURATION_MS = 500
+export const VOICE_COMMAND_AUDIO_MAX_DURATION_MS = 15_000
+export const VOICE_COMMAND_AUDIO_ROUTE_HARD_LIMIT_BYTES = 512 * 1024
+export const VOICE_COMMAND_STT_TIMEOUT_MS = 25_000
+
 export const sttProviderSchema = z.enum([
   'backend_yandex_speechkit',
   'local_stub',
@@ -34,11 +48,11 @@ export const sttErrorSchema = z.enum([
 ])
 
 export const commandAudioFormatSchema = z.object({
-  bitsPerSample: z.literal(16),
-  byteOrder: z.literal('little_endian'),
-  channelCount: z.literal(1),
-  encoding: z.literal('pcm_s16le'),
-  sampleRateHertz: z.literal(16_000),
+  bitsPerSample: z.literal(VOICE_COMMAND_AUDIO_BITS_PER_SAMPLE),
+  byteOrder: z.literal(VOICE_COMMAND_AUDIO_BYTE_ORDER),
+  channelCount: z.literal(VOICE_COMMAND_AUDIO_CHANNEL_COUNT),
+  encoding: z.literal(VOICE_COMMAND_AUDIO_ENCODING),
+  sampleRateHertz: z.literal(VOICE_COMMAND_AUDIO_SAMPLE_RATE_HERTZ),
 })
 
 export const commandAudioSchema = z.object({

@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs'
 
-import type { StorageDriver } from '@planner/contracts'
+import {
+  type StorageDriver,
+  VOICE_COMMAND_STT_TIMEOUT_MS,
+} from '@planner/contracts'
 
 import type { JwtAuthRuntimeConfig } from '../infrastructure/auth/jwt-request-authenticator.js'
 import type { PlannerAuthRuntimeConfig } from '../modules/auth/index.js'
@@ -478,7 +481,7 @@ function createVoiceSttConfig(env: NodeJS.ProcessEnv): VoiceSttConfig {
     language: env.VOICE_STT_LANGUAGE?.trim() || 'ru-RU',
     timeoutMs: parsePositiveInteger(
       env.VOICE_STT_TIMEOUT_MS,
-      8000,
+      VOICE_COMMAND_STT_TIMEOUT_MS,
       'VOICE_STT_TIMEOUT_MS',
     ),
   }

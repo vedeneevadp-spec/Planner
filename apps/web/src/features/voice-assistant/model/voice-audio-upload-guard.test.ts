@@ -80,7 +80,7 @@ describe('VoiceAudioUploadGuard', () => {
 
   it.each([
     [{ durationMs: 400 }, 'too_short'],
-    [{ durationMs: 8_500 }, 'too_long'],
+    [{ durationMs: 15_500 }, 'too_long'],
     [{ isSilent: true }, 'silent_audio'],
     [{ isTooQuiet: true }, 'too_quiet'],
     [{ hasVoiceActivity: false }, 'no_voice_activity'],

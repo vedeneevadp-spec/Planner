@@ -1,3 +1,8 @@
+import {
+  VOICE_COMMAND_AUDIO_MAX_DURATION_MS,
+  VOICE_COMMAND_AUDIO_MIN_DURATION_MS,
+} from '@planner/contracts'
+
 export type VoiceAudioUploadSource =
   | 'android_push_to_talk'
   | 'android_wake_word'
@@ -28,8 +33,10 @@ export type VoiceAudioUploadDecision =
   | { allowed: true }
   | { allowed: false; reason: VoicePrivacyBlockReason }
 
-export const VOICE_AUDIO_UPLOAD_MIN_DURATION_MS = 500
-export const VOICE_AUDIO_UPLOAD_MAX_DURATION_MS = 8_000
+export const VOICE_AUDIO_UPLOAD_MIN_DURATION_MS =
+  VOICE_COMMAND_AUDIO_MIN_DURATION_MS
+export const VOICE_AUDIO_UPLOAD_MAX_DURATION_MS =
+  VOICE_COMMAND_AUDIO_MAX_DURATION_MS
 
 export function decideVoiceAudioUpload(
   input: VoiceAudioUploadGuardInput,

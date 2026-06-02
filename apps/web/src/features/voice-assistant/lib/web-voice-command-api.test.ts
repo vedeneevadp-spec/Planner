@@ -43,7 +43,7 @@ describe('web voice command api', () => {
       issuedAt: '2026-05-30T05:00:00.000Z',
       requestId: '018fc513-1840-7000-8b86-0f39b49f2049',
       sessionId: 'web-voice-session-1',
-      timeoutMs: 12_000,
+      timeoutMs: 25_000,
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)

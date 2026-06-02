@@ -31,6 +31,14 @@ public class CommandAudioTest {
     }
 
     @Test
+    public void rejectsTooLongAudioLocally() {
+        assertValidationError(
+            createVoiceAudio(CommandRecordingConfig.DEFAULT_MAX_DURATION_MS + 500, 2800),
+            SttError.TOO_LONG
+        );
+    }
+
+    @Test
     public void rejectsSilenceLocally() {
         assertValidationError(new byte[16000], SttError.NO_SPEECH);
     }

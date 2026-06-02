@@ -80,6 +80,7 @@ final class CommandAudioRecorder {
         if (preBuffer.pcm16le.length > 0) {
             output.write(preBuffer.pcm16le, 0, preBuffer.pcm16le.length);
         }
+        int maxMainDurationMs = Math.max(0, config.maxDurationMs - preBuffer.durationMs);
         int mainAudioOffset = output.size();
         byte[] buffer = new byte[frameBytes];
         boolean hasVoice = false;
@@ -99,7 +100,7 @@ final class CommandAudioRecorder {
                 long nowMs = SystemClock.elapsedRealtime();
                 int elapsedMs = (int) (nowMs - recordingStartedAtMs);
 
-                if (elapsedMs >= config.maxDurationMs) {
+                if (elapsedMs >= maxMainDurationMs) {
                     break;
                 }
 

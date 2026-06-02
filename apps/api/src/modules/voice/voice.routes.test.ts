@@ -11,6 +11,7 @@ import type {
   BackendSttProviderInput,
   BackendSttProviderResult,
 } from './voice.model.js'
+import { COMMAND_AUDIO_HARD_LIMIT_BYTES } from './voice.model.js'
 import { registerVoiceRoutes } from './voice.routes.js'
 import { VoiceCommandService } from './voice.service.js'
 
@@ -194,7 +195,7 @@ void describe('voice routes', () => {
         'x-workspace-id': 'workspace-1',
       }),
       method: 'POST',
-      payload: Buffer.alloc(401 * 1024),
+      payload: Buffer.alloc(COMMAND_AUDIO_HARD_LIMIT_BYTES + 1),
       url: '/api/voice/command',
     })
 

@@ -57,8 +57,8 @@ Android применяет такой же guard непосредственно 
 - валидирует `x-stt-source` (`android_short_clip`,
   `android_push_to_talk`, `web_push_to_talk`, `local_fallback`, `test_stub`);
 - принимает PCM/LPCM 16 kHz mono 16-bit little-endian;
-- отклоняет audio короче `500 ms`, длиннее `8000 ms`, тихое или silent audio;
-- имеет route body hard limit `400 KB`;
+- отклоняет audio короче `500 ms`, длиннее `15000 ms`, тихое или silent audio;
+- имеет route body hard limit `512 KB`;
 - rate limits by user/device/IP;
 - не сохраняет raw audio.
 
@@ -66,10 +66,10 @@ Android применяет такой же guard непосредственно 
 
 ```text
 1 sec = 32 000 bytes
-8 sec = 256 000 bytes
+15 sec = 480 000 bytes
 ```
 
-`400 KB` оставляет запас на transport overhead и все равно блокирует длинные записи.
+`512 KB` оставляет запас на transport overhead и все равно блокирует длинные записи.
 
 ## Replay Protection
 

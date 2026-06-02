@@ -1077,7 +1077,7 @@ Confirmation UI должен быть единым для Android и web.
 7. Android отправляет аудио только на backend endpoint.
 8. На Android-клиенте нет STT provider API keys.
 9. Backend вызывает Yandex SpeechKit через server-side credentials.
-10. Команда ограничена по длительности: max 8 секунд.
+10. Команда ограничена по длительности: max 15 секунд.
 11. Перед upload есть локальная проверка:
     - duration >= 500 ms;
     - есть voice activity;
@@ -1106,7 +1106,7 @@ Confirmation UI должен быть единым для Android и web.
 26. Auto-confirmed actions показывают visual result и `Undo`, если действие
     обратимое.
 27. Backend hard limit для PCM 16 kHz mono 16-bit command audio: не больше
-    400 KB.
+    512 KB.
 28. Backend не доверяет `source` как security-гарантии, а использует auth, rate
     limit и duration/size validation.
 29. При отсутствии сети после wake word показывается visual fallback: ручной

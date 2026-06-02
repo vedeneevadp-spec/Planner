@@ -179,7 +179,7 @@ export function createPaths(): OpenAPIV3.PathsObject {
             },
           },
           description:
-            'PCM/LPCM 16 kHz mono 16-bit little-endian short voice command audio. Route hard limit is 400 KB.',
+            'PCM/LPCM 16 kHz mono 16-bit little-endian short voice command audio. Route hard limit is 512 KB.',
           required: true,
         },
         responses: {

@@ -90,7 +90,7 @@ Android пишет короткую команду в формате:
 - mono;
 - 16-bit signed;
 - little-endian;
-- maxDurationMs: 8000;
+- maxDurationMs: 15000;
 - minDurationMs: 500;
 - silenceTimeoutMs: 900;
 - preRollMs: 200;
@@ -100,8 +100,8 @@ Backend принимает только PCM 16 kHz mono 16-bit little-endian.
 
 Size limits:
 
-- 8 секунд PCM 16 kHz mono 16-bit: 256 000 bytes;
-- backend route hard limit: 400 KB с небольшим запасом на metadata/wrapper.
+- 15 секунд PCM 16 kHz mono 16-bit: 480 000 bytes;
+- backend route hard limit: 512 KB с небольшим запасом на metadata/wrapper.
 
 ## Local validation
 
@@ -187,7 +187,7 @@ Server env/secrets:
 - `VOICE_STT_YANDEX_ENDPOINT`, default
   `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize`;
 - `VOICE_STT_LANGUAGE`, default `ru-RU`;
-- `VOICE_STT_TIMEOUT_MS`, default `8000`.
+- `VOICE_STT_TIMEOUT_MS`, default `25000`.
 
 Android не содержит Yandex/OpenAI/Google STT keys и не вызывает STT provider
 напрямую.

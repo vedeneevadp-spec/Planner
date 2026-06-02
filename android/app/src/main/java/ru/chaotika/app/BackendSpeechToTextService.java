@@ -18,7 +18,7 @@ import org.json.JSONObject;
 final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
 
     private static final int CONNECT_TIMEOUT_MS = 8000;
-    private static final int READ_TIMEOUT_MS = 12000;
+    private static final int READ_TIMEOUT_MS = 25000;
     private static final int HTTP_TOO_MANY_REQUESTS = 429;
 
     private final android.content.Context context;
