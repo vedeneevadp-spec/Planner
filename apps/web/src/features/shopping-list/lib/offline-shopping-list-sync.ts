@@ -1,6 +1,7 @@
 import type { ChaosInboxItemRecord } from '@planner/contracts'
 
 import {
+  createOfflineDrainErrorHandler,
   createOfflineDrainResult,
   drainOfflineQueue,
   getOfflineErrorMessage,
@@ -70,25 +71,13 @@ export async function drainShoppingListOfflineQueue({
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
     result,
-    onError: async ({ error, mutationId, result: drainResult }) => {
-      if (isTerminalShoppingListSyncError(error)) {
-        await markShoppingListOfflineMutationConflicted(
-          mutationId,
-          getErrorMessage(error),
-        )
-        drainResult.conflicted += 1
-
-        return 'continue'
-      }
-
-      await markShoppingListOfflineMutationFailed(
-        mutationId,
-        getErrorMessage(error),
-      )
-      drainResult.failed += 1
-
-      return 'break'
-    },
+    onError: createOfflineDrainErrorHandler<ShoppingListOfflineDrainResult>({
+      getErrorMessage,
+      isTerminalError: isTerminalShoppingListSyncError,
+      markConflicted: (mutationId, conflict) =>
+        markShoppingListOfflineMutationConflicted(mutationId, conflict.message),
+      markFailed: markShoppingListOfflineMutationFailed,
+    }),
   })
 }
 

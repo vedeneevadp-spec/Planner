@@ -1,6 +1,7 @@
 import type { LifeSphereRecord, TaskRecord } from '@planner/contracts'
 
 import {
+  createOfflineDrainErrorHandler,
   createOfflineDrainResult,
   drainOfflineQueue,
   getOfflineErrorMessage,
@@ -76,25 +77,16 @@ export async function drainPlannerOfflineQueue({
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
     result,
-    onError: async ({ error, mutationId, result: drainResult }) => {
-      if (isTerminalPlannerSyncError(error)) {
-        const conflict = readOfflineConflictDetails(error.details)
-
-        await markPlannerOfflineMutationConflicted(mutationId, {
-          actualVersion: conflict.actualVersion,
-          expectedVersion: conflict.expectedVersion,
-          message: getErrorMessage(error),
-        })
-        drainResult.conflicted += 1
-
-        return 'continue'
-      }
-
-      await markPlannerOfflineMutationFailed(mutationId, getErrorMessage(error))
-      drainResult.failed += 1
-
-      return 'break'
-    },
+    onError: createOfflineDrainErrorHandler<PlannerOfflineDrainResult>({
+      getErrorMessage,
+      isTerminalError: isTerminalPlannerSyncError,
+      markConflicted: markPlannerOfflineMutationConflicted,
+      markFailed: markPlannerOfflineMutationFailed,
+      readConflict: (error) =>
+        error instanceof PlannerApiError
+          ? readOfflineConflictDetails(error.details)
+          : { actualVersion: null, expectedVersion: null },
+    }),
   })
 }
 

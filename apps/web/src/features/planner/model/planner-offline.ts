@@ -8,7 +8,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { SessionReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
-import { useOnlineSync } from '@/shared/lib/offline-sync'
+import {
+  createOfflineDrainCoordinator,
+  useOfflineQueueDrain,
+} from '@/shared/lib/offline-sync'
 
 import {
   countConflictedPlannerOfflineMutations,
@@ -70,6 +73,8 @@ interface PlannerOfflineSync {
   queuedMutationCount: number
   refreshQueuedMutationCount: () => Promise<void>
 }
+
+const plannerDrainCoordinator = createOfflineDrainCoordinator<string, void>()
 
 export function usePlannerOfflineSync({
   invalidatePlannerQueries,
@@ -215,68 +220,74 @@ export function usePlannerOfflineSync({
       return
     }
 
-    setIsDrainingOfflineQueue(true)
-
-    try {
-      const result = await drainPlannerOfflineQueue({
-        api: plannerApi,
-        onLifeSphereSynced: (sphere) => {
-          queryClient.setQueryData<LifeSphereRecord[]>(
-            sphereQueryKey,
-            (current = []) => replaceLifeSphereRecord(current, sphere),
-          )
-          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            updateTaskLifeSphereRecords(current, sphere),
-          )
-          queryClient.setQueryData<TaskTemplateRecord[]>(
-            taskTemplateQueryKey,
-            (current = []) =>
-              updateTaskTemplateLifeSphereRecords(current, sphere),
-          )
-        },
-        onTaskDeleted: (taskId) => {
-          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            removeTaskRecord(current, taskId),
-          )
-        },
-        onTaskSynced: (task) => {
-          queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-            replaceTaskRecord(current, task),
-          )
-        },
-        workspaceId,
-      })
-
-      if (result.synced > 0 || result.conflicted > 0) {
-        await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
-        await queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
-        await queryClient.invalidateQueries({ queryKey: taskQueryKey })
-      }
-
-      if (result.conflicted > 0) {
-        recordClientEvent(
-          'offline_mutation_conflicted',
-          {
-            conflicted: result.conflicted,
-            failed: result.failed,
-            processed: result.processed,
-            scope: 'planner',
-            synced: result.synced,
+    await plannerDrainCoordinator
+      .drain(workspaceId, async () => {
+        setIsDrainingOfflineQueue(true)
+        const result = await drainPlannerOfflineQueue({
+          api: plannerApi,
+          onLifeSphereSynced: (sphere) => {
+            queryClient.setQueryData<LifeSphereRecord[]>(
+              sphereQueryKey,
+              (current = []) => replaceLifeSphereRecord(current, sphere),
+            )
+            queryClient.setQueryData<TaskRecord[]>(
+              taskQueryKey,
+              (current = []) => updateTaskLifeSphereRecords(current, sphere),
+            )
+            queryClient.setQueryData<TaskTemplateRecord[]>(
+              taskTemplateQueryKey,
+              (current = []) =>
+                updateTaskTemplateLifeSphereRecords(current, sphere),
+            )
           },
-          { level: 'warn' },
-        )
-        setMutationErrorMessage(
-          'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
-        )
-      }
+          onTaskDeleted: (taskId) => {
+            queryClient.setQueryData<TaskRecord[]>(
+              taskQueryKey,
+              (current = []) => removeTaskRecord(current, taskId),
+            )
+          },
+          onTaskSynced: (task) => {
+            queryClient.setQueryData<TaskRecord[]>(
+              taskQueryKey,
+              (current = []) => replaceTaskRecord(current, task),
+            )
+          },
+          workspaceId,
+        })
 
-      if (result.processed > 0 && result.failed === 0) {
-        await syncTaskEventCursor()
-      }
-    } finally {
-      await refreshQueuedMutationCount()
-      setIsDrainingOfflineQueue(false)
-    }
+        if (result.synced > 0 || result.conflicted > 0) {
+          await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
+          await queryClient.invalidateQueries({
+            queryKey: taskTemplateQueryKey,
+          })
+          await queryClient.invalidateQueries({ queryKey: taskQueryKey })
+        }
+
+        if (result.conflicted > 0) {
+          recordClientEvent(
+            'offline_mutation_conflicted',
+            {
+              conflicted: result.conflicted,
+              failed: result.failed,
+              processed: result.processed,
+              scope: 'planner',
+              synced: result.synced,
+            },
+            { level: 'warn' },
+          )
+          setMutationErrorMessage(
+            'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
+          )
+        }
+
+        if (result.processed > 0 && result.failed === 0) {
+          await syncTaskEventCursor()
+        }
+      })
+      .finally(async () => {
+        await refreshQueuedMutationCount()
+        setIsDrainingOfflineQueue(false)
+      })
   }, [
     plannerApi,
     queryClient,
@@ -371,11 +382,12 @@ export function usePlannerOfflineSync({
     void replaceCachedTaskTemplateRecords(workspaceId, taskTemplates)
   }, [taskTemplates, workspaceId])
 
-  useEffect(() => {
-    void drainQueuedMutations()
-  }, [drainQueuedMutations])
-
-  useOnlineSync({ onOnline: drainQueuedMutations })
+  useOfflineQueueDrain({
+    drain: drainQueuedMutations,
+    enabled: Boolean(
+      plannerApi && workspaceId && readiness.canWriteProtectedData,
+    ),
+  })
 
   useEffect(() => {
     if (

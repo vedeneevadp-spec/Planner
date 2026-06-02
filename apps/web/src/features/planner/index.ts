@@ -1,5 +1,5 @@
 export { isAndroidPlannerWidgetRuntime } from './lib/native-planner-widget'
 export { usePlanner } from './lib/usePlanner'
 export { usePlannerApiClient } from './lib/usePlannerApiClient'
-export { NativePlannerWidgetSync } from './ui/NativePlannerWidgetSync'
+export { LazyNativePlannerWidgetSync as NativePlannerWidgetSync } from './ui/LazyNativePlannerWidgetSync'
 export { PlannerProvider, PlannerQueryProvider } from './ui/PlannerProvider'

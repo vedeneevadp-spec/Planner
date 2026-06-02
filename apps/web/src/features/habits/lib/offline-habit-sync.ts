@@ -1,6 +1,7 @@
 import type { HabitEntryRecord, HabitRecord } from '@planner/contracts'
 
 import {
+  createOfflineDrainErrorHandler,
   createOfflineDrainResult,
   drainOfflineQueue,
   getOfflineErrorMessage,
@@ -86,25 +87,16 @@ export async function drainHabitOfflineQueue({
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
     result,
-    onError: async ({ error, mutationId, result: drainResult }) => {
-      if (isTerminalHabitSyncError(error)) {
-        const conflict = readOfflineConflictDetails(error.details)
-
-        await markHabitOfflineMutationConflicted(mutationId, {
-          actualVersion: conflict.actualVersion,
-          expectedVersion: conflict.expectedVersion,
-          message: getErrorMessage(error),
-        })
-        drainResult.conflicted += 1
-
-        return 'continue'
-      }
-
-      await markHabitOfflineMutationFailed(mutationId, getErrorMessage(error))
-      drainResult.failed += 1
-
-      return 'break'
-    },
+    onError: createOfflineDrainErrorHandler<HabitOfflineDrainResult>({
+      getErrorMessage,
+      isTerminalError: isTerminalHabitSyncError,
+      markConflicted: markHabitOfflineMutationConflicted,
+      markFailed: markHabitOfflineMutationFailed,
+      readConflict: (error) =>
+        error instanceof HabitsApiError
+          ? readOfflineConflictDetails(error.details)
+          : { actualVersion: null, expectedVersion: null },
+    }),
   })
 }
 

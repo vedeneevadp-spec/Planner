@@ -11,7 +11,10 @@ import {
 import { useCallback, useEffect, useMemo } from 'react'
 
 import { useSessionFeatureReadiness } from '@/features/session'
-import { useOnlineSync } from '@/shared/lib/offline-sync'
+import {
+  createOfflineDrainCoordinator,
+  useOfflineQueueDrain,
+} from '@/shared/lib/offline-sync'
 
 import {
   enqueueShoppingListOfflineMutation,
@@ -65,7 +68,10 @@ class ShoppingListApiUnavailableError extends Error {
   }
 }
 
-let shoppingListDrainPromise: Promise<void> | null = null
+const shoppingListDrainCoordinator = createOfflineDrainCoordinator<
+  string,
+  void
+>()
 
 export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   const { api, session, workspaceId } = useShoppingListApi(options)
@@ -81,12 +87,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
       return
     }
 
-    if (shoppingListDrainPromise) {
-      await shoppingListDrainPromise
-      return
-    }
-
-    shoppingListDrainPromise = (async () => {
+    await shoppingListDrainCoordinator.drain(session.workspaceId, async () => {
       const result = await drainShoppingListOfflineQueue({
         api,
         onItemDeleted: (itemId) => {
@@ -107,11 +108,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
       if (result.synced > 0 || result.conflicted > 0) {
         await queryClient.invalidateQueries({ queryKey })
       }
-    })().finally(() => {
-      shoppingListDrainPromise = null
     })
-
-    await shoppingListDrainPromise
   }, [api, queryClient, queryKey, session])
 
   useEffect(() => {
@@ -139,11 +136,10 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
     }
   }, [options.enabled, queryClient, queryKey, session])
 
-  useEffect(() => {
-    void drainQueuedMutations()
-  }, [drainQueuedMutations])
-
-  useOnlineSync({ onOnline: drainQueuedMutations })
+  useOfflineQueueDrain({
+    drain: drainQueuedMutations,
+    enabled: Boolean(api && session),
+  })
 
   return useQuery({
     enabled: hasSession,

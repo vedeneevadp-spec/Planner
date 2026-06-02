@@ -81,6 +81,10 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run mobile:open:ios` / `mobile:open:android`       | открыть нативный проект в Xcode / Android Studio        |
 | `npm run mobile:doctor`                                 | проверить состояние Capacitor toolchain                 |
 | `npm run mobile:ci-check`                               | проверить app id, версии и PWA/mobile config            |
+| `npm run mobile:android:test`                           | запустить Android unit-тесты через Gradle               |
+| `npm run mobile:android:assemble`                       | собрать Android debug APK smoke через Gradle            |
+| `npm run mobile:android:ci`                             | sync web в Android + unit-тесты + debug assemble        |
+| `npm run build:budget`                                  | проверить initial web bundle budget после `build`       |
 | `npm run check`                                         | lint + typecheck + tests                                |
 | `npm run ci`                                            | audit + check + OpenAPI + mobile config + build         |
 | `npm run deploy:prod`                                   | production deploy на текущий VPS                        |
@@ -407,9 +411,13 @@ Workspace`: роли, права, жизненный цикл и правила 
 - CI дополнительно поднимает PostgreSQL, применяет миграции, запускает
   `npm run db:security:check`, `npm run test:api:postgres`,
   `npm run smoke:api:prod` и `npm run test:e2e`
+- отдельный CI job `android` запускает `npm run mobile:android:ci`, включая
+  Capacitor sync, Gradle unit-тесты и debug assemble smoke
 - shared contracts валидируются через `zod`
 - web unit-тесты запускаются через Vitest
 - web coverage имеет минимальные thresholds в `apps/web/vite.config.ts`
+- `npm run build:budget` запрещает preload тяжелых lazy chunks и контролирует
+  размер initial JS после production build
 - API coverage запускается через встроенный Node test runner
 - API тесты запускаются через встроенный Node test runner с `tsx`
 - `npm run audit:prod` и `npm run audit:dev-tooling` должны оставаться чистыми;

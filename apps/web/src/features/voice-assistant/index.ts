@@ -1,2 +1,2 @@
-export { VoiceAssistant } from './ui/VoiceAssistant'
-export { VoiceAssistantSettingsPanel } from './ui/VoiceAssistantSettingsPanel'
+export { LazyVoiceAssistant as VoiceAssistant } from './ui/LazyVoiceAssistant'
+export { LazyVoiceAssistantSettingsPanel as VoiceAssistantSettingsPanel } from './ui/LazyVoiceAssistantSettingsPanel'

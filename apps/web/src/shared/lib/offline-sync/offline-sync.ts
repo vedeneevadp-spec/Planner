@@ -9,6 +9,10 @@ export interface OfflineConflictDetails {
   expectedVersion: number | null
 }
 
+export interface OfflineDrainConflictInput extends OfflineConflictDetails {
+  message: string
+}
+
 export type OfflineDrainErrorDecision = 'break' | 'continue'
 
 export interface OfflineQueueAdapter<TMutation> {
@@ -49,6 +53,21 @@ interface DrainOfflineQueueOptions<
     mutationId: string
     result: TResult
   }) => Promise<OfflineDrainErrorDecision>
+}
+
+interface OfflineDrainConflictResult extends OfflineDrainResultBase {
+  conflicted: number
+}
+
+interface OfflineDrainErrorHandlerOptions {
+  getErrorMessage: (error: unknown) => string
+  isTerminalError: (error: unknown) => boolean
+  markConflicted: (
+    mutationId: string,
+    conflict: OfflineDrainConflictInput,
+  ) => Promise<void>
+  markFailed: (mutationId: string, message: string) => Promise<void>
+  readConflict?: ((error: unknown) => OfflineConflictDetails) | undefined
 }
 
 type OfflineDrainResultExtra<TResult extends OfflineDrainResultBase> = Omit<
@@ -130,6 +149,81 @@ export async function drainOfflineMutations<
   }
 
   return result
+}
+
+export function createOfflineDrainErrorHandler<
+  TResult extends OfflineDrainConflictResult,
+>({
+  getErrorMessage,
+  isTerminalError,
+  markConflicted,
+  markFailed,
+  readConflict,
+}: OfflineDrainErrorHandlerOptions) {
+  return async ({
+    error,
+    mutationId,
+    result,
+  }: {
+    error: unknown
+    mutationId: string
+    result: TResult
+  }): Promise<OfflineDrainErrorDecision> => {
+    const message = getErrorMessage(error)
+
+    if (isTerminalError(error)) {
+      const conflict = readConflict?.(error) ?? {
+        actualVersion: null,
+        expectedVersion: null,
+      }
+
+      await markConflicted(mutationId, {
+        actualVersion: conflict.actualVersion,
+        expectedVersion: conflict.expectedVersion,
+        message,
+      })
+      result.conflicted += 1
+
+      return 'continue'
+    }
+
+    await markFailed(mutationId, message)
+    result.failed += 1
+
+    return 'break'
+  }
+}
+
+export function createOfflineDrainCoordinator<TKey, TResult>() {
+  let currentDrain: {
+    key: TKey
+    promise: Promise<TResult>
+  } | null = null
+
+  return {
+    async drain(key: TKey, run: () => Promise<TResult>): Promise<TResult> {
+      if (currentDrain) {
+        if (Object.is(currentDrain.key, key)) {
+          return currentDrain.promise
+        }
+
+        await currentDrain.promise.catch(() => undefined)
+      }
+
+      const drainPromise = run().finally(() => {
+        if (currentDrain?.promise === drainPromise) {
+          currentDrain = null
+        }
+      })
+
+      currentDrain = {
+        key,
+        promise: drainPromise,
+      }
+
+      return drainPromise
+    },
+  }
 }
 
 export function isBrowserRetryableOfflineError(error: unknown): boolean {

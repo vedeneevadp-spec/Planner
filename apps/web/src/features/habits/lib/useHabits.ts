@@ -19,7 +19,10 @@ import { useCallback, useEffect, useMemo } from 'react'
 
 import { useSessionFeatureReadiness } from '@/features/session'
 import { getDateKey } from '@/shared/lib/date'
-import { useOnlineSync } from '@/shared/lib/offline-sync'
+import {
+  createOfflineDrainCoordinator,
+  useOfflineQueueDrain,
+} from '@/shared/lib/offline-sync'
 
 import {
   applyHabitUpdate,
@@ -92,10 +95,10 @@ interface HabitUpdateVariables {
 
 type HabitTodayQuerySnapshot = [QueryKey, HabitTodayResponse | undefined]
 
-let habitDrainPromise: {
-  promise: Promise<HabitOfflineDrainResult>
-  workspaceId: string
-} | null = null
+const habitDrainCoordinator = createOfflineDrainCoordinator<
+  string,
+  HabitOfflineDrainResult
+>()
 
 export function useHabits(options: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient()
@@ -821,9 +824,10 @@ function useOnlineHabitSync(input: {
     })
   }, [api, queryClient, retry, workspaceId])
 
-  useOnlineSync({
+  useOfflineQueueDrain({
+    drain: handleOnline,
+    drainOnMount: false,
     enabled: enabled && Boolean(api),
-    onOnline: handleOnline,
   })
 }
 
@@ -840,15 +844,7 @@ async function drainQueuedHabitMutations(input: {
   queryClient: QueryClient
   workspaceId: string
 }): Promise<HabitOfflineDrainResult> {
-  if (habitDrainPromise) {
-    if (habitDrainPromise.workspaceId === input.workspaceId) {
-      return habitDrainPromise.promise
-    }
-
-    await habitDrainPromise.promise.catch(() => undefined)
-  }
-
-  const drainPromise = (async () => {
+  return habitDrainCoordinator.drain(input.workspaceId, async () => {
     const result = await drainHabitOfflineQueue({
       api: input.api,
       onEntryDeleted: ({ date, habitId }) => {
@@ -896,17 +892,7 @@ async function drainQueuedHabitMutations(input: {
     await refreshHabitOfflineStatus(input.queryClient, input.workspaceId)
 
     return result
-  })().finally(() => {
-    if (habitDrainPromise?.promise === drainPromise) {
-      habitDrainPromise = null
-    }
   })
-  habitDrainPromise = {
-    promise: drainPromise,
-    workspaceId: input.workspaceId,
-  }
-
-  return drainPromise
 }
 
 async function invalidateHabits(queryClient: QueryClient, workspaceId: string) {
