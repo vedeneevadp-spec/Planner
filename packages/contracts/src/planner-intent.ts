@@ -343,8 +343,19 @@ const GROCERY_WORDS = new Set([
 
 const SHOPPING_TITLE_NORMALIZATION: Record<string, string> = {
   молока: 'молоко',
+  рыбу: 'рыба',
+  'туалетная бумага': 'туалетная бумага',
+  'туалетной бумаги': 'туалетная бумага',
+  'туалетную бумагу': 'туалетная бумага',
   воду: 'вода',
 }
+
+const KNOWN_SHOPPING_PHRASES = ['туалетная бумага'] as const
+const KNOWN_SHOPPING_PHRASE_TITLES = new Set<string>(KNOWN_SHOPPING_PHRASES)
+const MAX_KNOWN_SHOPPING_PHRASE_WORDS = KNOWN_SHOPPING_PHRASES.reduce(
+  (max, phrase) => Math.max(max, phrase.split(/\s+/u).length),
+  1,
+)
 
 const BUILT_IN_SPHERE_KEYWORDS: Record<string, string[]> = {
   дети: [
@@ -1142,23 +1153,69 @@ function isShoppingCommand(
 }
 
 function hasGroceryWord(text: string): boolean {
-  return text
-    .split(/\s+/gu)
-    .some((word) => GROCERY_WORDS.has(normalizeShoppingWord(word)))
+  const words = text.split(/\s+/gu).filter(Boolean)
+
+  return (
+    words.some((word) => GROCERY_WORDS.has(normalizeShoppingWord(word))) ||
+    containsKnownShoppingPhrase(words)
+  )
 }
 
 function splitKnownShoppingWords(text: string): string[] {
   const words = text.split(/\s+/gu).filter(Boolean)
 
-  if (words.length <= 1) {
+  if (words.length <= 1 || /^\d+\s+/u.test(text.trim())) {
     return [text]
   }
 
-  if (words.every((word) => GROCERY_WORDS.has(normalizeShoppingWord(word)))) {
-    return words
+  const parts: string[] = []
+
+  for (let index = 0; index < words.length; ) {
+    const phraseMatch = findKnownShoppingPhrase(words, index)
+
+    if (phraseMatch) {
+      parts.push(phraseMatch.text)
+      index += phraseMatch.wordCount
+      continue
+    }
+
+    const word = words[index]
+
+    if (!word || !GROCERY_WORDS.has(normalizeShoppingWord(word))) {
+      return [text]
+    }
+
+    parts.push(word)
+    index += 1
   }
 
-  return [text]
+  return parts
+}
+
+function containsKnownShoppingPhrase(words: string[]): boolean {
+  return words.some((_, index) =>
+    Boolean(findKnownShoppingPhrase(words, index)),
+  )
+}
+
+function findKnownShoppingPhrase(
+  words: string[],
+  startIndex: number,
+): { text: string; wordCount: number } | null {
+  const maxWordCount = Math.min(
+    MAX_KNOWN_SHOPPING_PHRASE_WORDS,
+    words.length - startIndex,
+  )
+
+  for (let wordCount = maxWordCount; wordCount >= 2; wordCount -= 1) {
+    const text = words.slice(startIndex, startIndex + wordCount).join(' ')
+
+    if (KNOWN_SHOPPING_PHRASE_TITLES.has(normalizeShoppingWord(text))) {
+      return { text, wordCount }
+    }
+  }
+
+  return null
 }
 
 function normalizeShoppingItem(text: string): PlannerIntentItem | null {

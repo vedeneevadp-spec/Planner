@@ -741,6 +741,11 @@ const shoppingCases = (
     ],
     ['shopping_017', 'запиши молока в покупки', [{ title: 'молоко' }]],
     ['shopping_018', 'добавь сахар в список покупок', [{ title: 'сахар' }]],
+    [
+      'shopping_019',
+      'надо купить хлеб туалетную бумагу и рыбу',
+      [{ title: 'хлеб' }, { title: 'туалетная бумага' }, { title: 'рыба' }],
+    ],
   ] as const
 ).map(([id, phrase, items]) => {
   const expectedItems = items.map((item) => ({ ...item }))

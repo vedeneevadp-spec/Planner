@@ -146,6 +146,10 @@ describe('PlannerIntentParser', () => {
     const implicitBuyIntent = parser.parse('Надо купить соль сахар и мыло', {
       now: NOW,
     })
+    const householdIntent = parser.parse(
+      'Надо купить хлеб туалетную бумагу и рыбу',
+      { now: NOW },
+    )
 
     expect(intent).toMatchObject({
       intent: 'add_shopping_item',
@@ -155,6 +159,15 @@ describe('PlannerIntentParser', () => {
     expect(implicitBuyIntent).toMatchObject({
       intent: 'add_shopping_item',
       items: [{ title: 'соль' }, { title: 'сахар' }, { title: 'мыло' }],
+      needsConfirmation: false,
+    })
+    expect(householdIntent).toMatchObject({
+      intent: 'add_shopping_item',
+      items: [
+        { title: 'хлеб' },
+        { title: 'туалетная бумага' },
+        { title: 'рыба' },
+      ],
       needsConfirmation: false,
     })
   })
