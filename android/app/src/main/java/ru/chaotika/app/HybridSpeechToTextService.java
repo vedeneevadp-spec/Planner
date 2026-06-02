@@ -36,10 +36,11 @@ final class HybridSpeechToTextService implements SpeechToTextService {
             try {
                 metricsLogger.recordingStarted();
                 CommandAudio audio = recorder.recordBlocking(
-                    request.recordingConfig,
+                    request,
                     (startedAtElapsedMs) -> recordRuntimeRecorderTiming(request, startedAtElapsedMs)
                 );
                 metricsLogger.recordingStopped(audio);
+                recordRuntimeRecordingMetrics(audio);
                 postRecordingStopped(callback, audio);
 
                 RecordedSpeechToTextProvider provider = selectProvider();
@@ -122,6 +123,11 @@ final class HybridSpeechToTextService implements SpeechToTextService {
                 AndroidVoiceRuntimeMetric.WAKE_DETECTED_TO_RECORDER_START_MS,
                 recorderStartedAtElapsedMs - request.captureRequestedAtElapsedMs
             );
+            AndroidVoiceRuntimeStore.recordValue(
+                context,
+                AndroidVoiceRuntimeMetric.WAKE_TO_RECORDING_STARTED_MS,
+                recorderStartedAtElapsedMs - request.captureRequestedAtElapsedMs
+            );
         }
 
         if (request.audioSignalCompletedAtElapsedMs > 0L) {
@@ -139,6 +145,19 @@ final class HybridSpeechToTextService implements SpeechToTextService {
                 request.audioSignalDurationMs
             );
         }
+    }
+
+    private void recordRuntimeRecordingMetrics(CommandAudio audio) {
+        AndroidVoiceRuntimeStore.recordValue(
+            context,
+            AndroidVoiceRuntimeMetric.RECORDING_DURATION_MS,
+            audio.recordingDurationMs
+        );
+        AndroidVoiceRuntimeStore.recordValue(
+            context,
+            AndroidVoiceRuntimeMetric.PREBUFFER_MS,
+            audio.preBufferMs
+        );
     }
 
     private boolean isNetworkAvailable() {

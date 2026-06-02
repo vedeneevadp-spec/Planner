@@ -63,6 +63,13 @@ import {
   type PlannerActionExecutorDependencies,
 } from '../model/planner-action-executor'
 import {
+  appendVoiceTranscript,
+  canAppendToVoiceSession,
+  createVoiceAppendSession,
+  shouldResetAppendOnVoiceStart,
+  type VoiceAppendSession,
+} from '../model/voice-append-session'
+import {
   BackendVoiceMetricsSink,
   bucketVoiceMetricConfidence,
   bucketVoiceMetricDuration,
@@ -162,8 +169,12 @@ export function VoiceAssistant() {
   )
   const [clarificationAttempts, setClarificationAttempts] = useState(0)
   const [isUndoing, setIsUndoing] = useState(false)
+  const [appendSession, setAppendSession] = useState<VoiceAppendSession | null>(
+    null,
+  )
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
+  const pendingAppendSessionRef = useRef<VoiceAppendSession | null>(null)
   const androidCaptureOperationIdRef = useRef(0)
   const androidCommandPollTimerRef = useRef<number | null>(null)
   const androidCommandTimeoutTimerRef = useRef<number | null>(null)
@@ -190,6 +201,10 @@ export function VoiceAssistant() {
     state.status === 'executing' ||
     isWebProcessing ||
     (isAndroidRuntime && state.status === 'recording')
+  const canAppendVoice =
+    state.status === 'awaiting_confirmation' &&
+    !actionResult &&
+    appendSession !== null
 
   const trackVoiceMetric = useCallback(
     (
@@ -471,9 +486,17 @@ export function VoiceAssistant() {
       transcript: string,
       source: VoiceAssistantSource,
       backendIntent?: PlannerIntent,
-      options: { resetClarificationAttempts?: boolean } = {},
+      options: {
+        appendSession?: VoiceAppendSession | null | undefined
+        resetClarificationAttempts?: boolean
+      } = {},
     ) => {
-      const normalizedTranscript = transcript.trim()
+      const appendResult = appendVoiceTranscript({
+        addition: transcript,
+        nowMs: readVoiceMetricNow(),
+        session: options.appendSession ?? null,
+      })
+      const normalizedTranscript = appendResult.transcript.trim()
 
       setIsCardVisible(true)
       setActionPreview(null)
@@ -486,6 +509,7 @@ export function VoiceAssistant() {
       }
 
       if (!normalizedTranscript) {
+        pendingAppendSessionRef.current = null
         dispatch({
           error: 'Команда не распознана.',
           source,
@@ -494,20 +518,44 @@ export function VoiceAssistant() {
         return
       }
 
+      if (appendResult.appended) {
+        setAppendSession(appendResult.session)
+        trackVoiceMetric('append_used', source, {
+          append_count: appendResult.appendCount,
+          append_used: true,
+        })
+      } else {
+        setAppendSession(
+          createVoiceAppendSession({
+            nowMs: readVoiceMetricNow(),
+            source,
+            transcript: normalizedTranscript,
+          }),
+        )
+      }
+      pendingAppendSessionRef.current = null
+
       dispatch({
         source,
         transcript: normalizedTranscript,
         type: 'transcript_received',
       })
       trackVoiceMetric('transcript_received', source)
+      trackVoiceMetric('voice_session_result', source, {
+        voice_session_result: 'success',
+      })
 
       const parserStartedAt = readVoiceMetricNow()
-      const intent =
-        backendIntent ??
-        parser.parse(
-          normalizedTranscript,
-          createPlannerIntentParserContext(source, planner.spheres, session),
-        )
+      const intent = appendResult.appended
+        ? parser.parse(
+            normalizedTranscript,
+            createPlannerIntentParserContext(source, planner.spheres, session),
+          )
+        : (backendIntent ??
+          parser.parse(
+            normalizedTranscript,
+            createPlannerIntentParserContext(source, planner.spheres, session),
+          ))
       markVoiceTiming('intentParsedAt')
       trackVoiceMetric('intent_parsed', source, {
         confidenceBucket: bucketVoiceMetricConfidence(intent.confidence),
@@ -693,6 +741,16 @@ export function VoiceAssistant() {
           command,
           pendingAndroidButtonCaptureRef.current,
         )
+        const pendingAppendSession = pendingAppendSessionRef.current
+
+        if (
+          shouldResetAppendOnVoiceStart({
+            appendRequested: Boolean(pendingAppendSession),
+            source,
+          })
+        ) {
+          setAppendSession(null)
+        }
 
         if (source === 'android_wake_word') {
           const wakeWordContext =
@@ -717,8 +775,12 @@ export function VoiceAssistant() {
         handledNativeCommandIdsRef.current.add(command.id)
 
         if (command.errorMessage) {
+          pendingAppendSessionRef.current = null
           trackVoiceMetric('stt_error', source, {
             errorCode: command.errorCode ?? 'android_voice_command_error',
+          })
+          trackVoiceMetric('voice_session_result', source, {
+            voice_session_result: 'error',
           })
           setIsCardVisible(true)
           dispatch({
@@ -730,8 +792,12 @@ export function VoiceAssistant() {
         }
 
         if (!command.transcript) {
+          pendingAppendSessionRef.current = null
           trackVoiceMetric('stt_error', source, {
             errorCode: 'failed_recognition',
+          })
+          trackVoiceMetric('voice_session_result', source, {
+            voice_session_result: 'error',
           })
           setIsCardVisible(true)
           dispatch({
@@ -746,6 +812,9 @@ export function VoiceAssistant() {
           command.transcript,
           source,
           command.intent ?? undefined,
+          {
+            appendSession: pendingAppendSession,
+          },
         )
         return true
       } catch (error) {
@@ -753,6 +822,23 @@ export function VoiceAssistant() {
         return false
       }
     }, [androidVoiceStatus, handleTranscript, trackVoiceMetric])
+
+  useEffect(() => {
+    if (!appendSession) {
+      return undefined
+    }
+
+    const timeoutId = window.setTimeout(
+      () => {
+        setAppendSession(null)
+      },
+      Math.max(0, appendSession.expiresAtMs - readVoiceMetricNow()),
+    )
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [appendSession])
 
   useEffect(() => {
     if (!isAndroidVoiceAssistantRuntime()) {
@@ -954,7 +1040,7 @@ export function VoiceAssistant() {
     }
   }, [])
 
-  async function startVoiceInput() {
+  async function startVoiceInput(options: { appendRequested?: boolean } = {}) {
     if (!isVoiceEnabled) {
       return
     }
@@ -962,6 +1048,17 @@ export function VoiceAssistant() {
     if (isWebListening) {
       await stopWebVoiceRecording()
       return
+    }
+
+    const appendSessionForCapture =
+      options.appendRequested &&
+      canAppendToVoiceSession(appendSession, readVoiceMetricNow())
+        ? appendSession
+        : null
+
+    pendingAppendSessionRef.current = appendSessionForCapture
+    if (!appendSessionForCapture) {
+      setAppendSession(null)
     }
 
     if (isAndroidVoiceAssistantRuntime()) {
@@ -1015,6 +1112,7 @@ export function VoiceAssistant() {
     } catch (error) {
       clearAndroidCommandPolling()
       pendingAndroidButtonCaptureRef.current = false
+      pendingAppendSessionRef.current = null
       trackVoiceMetric('command_recording_cancelled', 'android_microphone', {
         errorCode: 'android_capture_failed',
       })
@@ -1070,6 +1168,7 @@ export function VoiceAssistant() {
       trackVoiceMetric('web_voice_unsupported', 'web_microphone', {
         errorCode: support.reason ?? 'unknown',
       })
+      pendingAppendSessionRef.current = null
       dispatch({
         error: message,
         source: 'web_microphone',
@@ -1123,6 +1222,7 @@ export function VoiceAssistant() {
 
       setWebVoiceState(voiceError.state)
       setWebVoiceMessage(voiceError.message)
+      pendingAppendSessionRef.current = null
 
       if (voiceError.state === 'permission_denied') {
         recordClientEvent(
@@ -1194,7 +1294,12 @@ export function VoiceAssistant() {
           audioDurationMs: recording.durationMs,
           durationBucket: bucketVoiceMetricDuration(recording.durationMs),
           errorCode: validation.reason,
+          recording_duration_ms: recording.durationMs,
         })
+        trackVoiceMetric('voice_session_result', 'web_microphone', {
+          voice_session_result: 'error',
+        })
+        pendingAppendSessionRef.current = null
         dispatch({
           error: validation.message,
           source: 'web_microphone',
@@ -1219,6 +1324,7 @@ export function VoiceAssistant() {
         audioBytes: recording.byteLength,
         audioDurationMs: recording.durationMs,
         durationBucket: bucketVoiceMetricDuration(recording.durationMs),
+        recording_duration_ms: recording.durationMs,
         sttProvider: 'yandex_speechkit',
       })
 
@@ -1246,6 +1352,7 @@ export function VoiceAssistant() {
       trackVoiceMetric('stt_upload_completed', 'web_microphone', {
         audioDurationMs: response.stt.durationMs,
         durationBucket: bucketVoiceMetricDuration(response.stt.durationMs),
+        recording_duration_ms: recording.durationMs,
         sttProvider: mapMetricSttProvider(response.stt.provider),
         stt_upload_duration_ms: durationBetween(
           voiceTimingRef.current.sttUploadStartedAt,
@@ -1258,6 +1365,9 @@ export function VoiceAssistant() {
         response.transcript,
         'web_microphone',
         response.intent,
+        {
+          appendSession: pendingAppendSessionRef.current,
+        },
       )
 
       if (isCurrentWebOperation(operationId)) {
@@ -1303,6 +1413,10 @@ export function VoiceAssistant() {
           error instanceof WebVoiceCommandApiError ? error.code : errorName,
         sttProvider: 'yandex_speechkit',
       })
+      trackVoiceMetric('voice_session_result', 'web_microphone', {
+        voice_session_result: 'error',
+      })
+      pendingAppendSessionRef.current = null
       dispatch({
         error: message,
         source: 'web_microphone',
@@ -1335,6 +1449,8 @@ export function VoiceAssistant() {
     setSelectedCandidateId(null)
     setClarificationAttempts(0)
     setIsUndoing(false)
+    setAppendSession(null)
+    pendingAppendSessionRef.current = null
     dispatch({ type: 'cancelled' })
   }
 
@@ -1356,6 +1472,7 @@ export function VoiceAssistant() {
     webUploadAbortControllerRef.current?.abort()
     webUploadAbortControllerRef.current = null
     webExplicitUserActionRef.current = false
+    pendingAppendSessionRef.current = null
     setWebVoiceState('idle')
     setWebVoiceMessage(null)
   }
@@ -1380,8 +1497,12 @@ export function VoiceAssistant() {
       androidCaptureOperationIdRef.current += 1
       clearAndroidCommandPolling()
       pendingAndroidButtonCaptureRef.current = false
+      pendingAppendSessionRef.current = null
       trackVoiceMetric('stt_error', 'android_microphone', {
         errorCode: 'android_command_result_timeout',
+      })
+      trackVoiceMetric('voice_session_result', 'android_microphone', {
+        voice_session_result: 'error',
       })
       setIsCardVisible(true)
       setActionPreview(null)
@@ -1470,6 +1591,7 @@ export function VoiceAssistant() {
         <VoiceConfirmationCard
           clarificationAttempts={clarificationAttempts}
           isUndoing={isUndoing}
+          canAppendVoice={canAppendVoice}
           preview={actionPreview}
           result={actionResult}
           selectedCandidateId={selectedCandidateId}
@@ -1478,6 +1600,9 @@ export function VoiceAssistant() {
           webInputState={isAndroidRuntime ? undefined : webVoiceState}
           webStatusMessage={isAndroidRuntime ? null : webVoiceMessage}
           onCancelRecording={closeCard}
+          onAppendVoice={() => {
+            void startVoiceInput({ appendRequested: true })
+          }}
           onClarifyOption={handleClarifyOption}
           onClose={closeCard}
           onConfirm={(preview, confirmedPayload) => {

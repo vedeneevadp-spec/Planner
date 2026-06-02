@@ -13,6 +13,7 @@ import java.io.ByteArrayOutputStream;
 final class CommandAudioRecorder {
 
     private static final int FRAME_DURATION_MS = 40;
+    private static final long START_SIGNAL_CAPTURE_GUARD_MS = 30L;
     private static final int VOICE_ABSOLUTE_PEAK = 700;
 
     private final Context context;
@@ -25,11 +26,17 @@ final class CommandAudioRecorder {
 
     @SuppressLint("MissingPermission")
     CommandAudio recordBlocking(CommandRecordingConfig config) throws SttException {
-        return recordBlocking(config, null);
+        return recordBlocking(new SttRequest(config, SttSource.TEST_STUB, false, true), null);
     }
 
     @SuppressLint("MissingPermission")
     CommandAudio recordBlocking(CommandRecordingConfig config, CommandRecordingObserver observer) throws SttException {
+        return recordBlocking(new SttRequest(config, SttSource.TEST_STUB, false, true), observer);
+    }
+
+    @SuppressLint("MissingPermission")
+    CommandAudio recordBlocking(SttRequest request, CommandRecordingObserver observer) throws SttException {
+        CommandRecordingConfig config = request.recordingConfig;
         ensureMicrophonePermission();
         stop();
         isStopped = false;
@@ -69,6 +76,11 @@ final class CommandAudioRecorder {
         ByteArrayOutputStream output = new ByteArrayOutputStream(
             (config.sampleRateHertz * 2 * config.maxDurationMs) / 1000
         );
+        CommandAudioPreBuffer preBuffer = compatiblePreBuffer(request, config);
+        if (preBuffer.pcm16le.length > 0) {
+            output.write(preBuffer.pcm16le, 0, preBuffer.pcm16le.length);
+        }
+        int mainAudioOffset = output.size();
         byte[] buffer = new byte[frameBytes];
         boolean hasVoice = false;
         long recordingStartedAtMs = SystemClock.elapsedRealtime();
@@ -97,6 +109,10 @@ final class CommandAudioRecorder {
                     continue;
                 }
 
+                if (isAudioSignalFrame(request, nowMs)) {
+                    continue;
+                }
+
                 output.write(buffer, 0, read);
 
                 if (!config.vadEnabled || hasVoiceActivity(buffer, read)) {
@@ -119,8 +135,18 @@ final class CommandAudioRecorder {
         }
 
         byte[] audio = output.toByteArray();
+        int mainByteLength = audio.length - mainAudioOffset;
+        int recordingDurationMs = Math.round((mainByteLength * 1000f) / (config.sampleRateHertz * 2f));
 
-        return CommandAudio.fromPcm16Le(audio, audio.length, config);
+        return CommandAudio.fromPcm16Le(
+            audio,
+            audio.length,
+            config,
+            preBuffer.durationMs,
+            recordingDurationMs,
+            mainAudioOffset,
+            mainByteLength
+        );
     }
 
     void stop() {
@@ -152,5 +178,35 @@ final class CommandAudioRecorder {
         }
 
         return false;
+    }
+
+    private static CommandAudioPreBuffer compatiblePreBuffer(
+        SttRequest request,
+        CommandRecordingConfig config
+    ) {
+        CommandAudioPreBuffer preBuffer = request.preBuffer;
+
+        if (preBuffer == null || !preBuffer.isCompatibleWith(config)) {
+            return CommandAudioPreBuffer.empty(config.sampleRateHertz);
+        }
+
+        return preBuffer;
+    }
+
+    private static boolean isAudioSignalFrame(SttRequest request, long frameReadAtElapsedMs) {
+        if (
+            !request.audioSignalPlayed ||
+            request.audioSignalStartedAtElapsedMs <= 0L ||
+            request.audioSignalDurationMs <= 0
+        ) {
+            return false;
+        }
+
+        long guardedUntilElapsedMs =
+            request.audioSignalStartedAtElapsedMs +
+            request.audioSignalDurationMs +
+            START_SIGNAL_CAPTURE_GUARD_MS;
+
+        return frameReadAtElapsedMs <= guardedUntilElapsedMs;
     }
 }

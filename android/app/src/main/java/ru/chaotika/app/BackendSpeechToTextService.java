@@ -83,6 +83,8 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
             connection.setRequestProperty("x-audio-byte-order", audio.byteOrder);
             connection.setRequestProperty("x-audio-encoding", audio.encoding);
             connection.setRequestProperty("x-audio-duration-ms", String.valueOf(audio.durationMs));
+            connection.setRequestProperty("x-audio-prebuffer-ms", String.valueOf(audio.preBufferMs));
+            connection.setRequestProperty("x-recording-duration-ms", String.valueOf(audio.recordingDurationMs));
             connection.setRequestProperty("x-stt-source", toBackendSource(request.source));
             connection.setRequestProperty("x-client-now", formatClientNow());
             connection.setRequestProperty("x-client-timezone", TimeZone.getDefault().getID());

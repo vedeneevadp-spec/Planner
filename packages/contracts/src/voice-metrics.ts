@@ -30,6 +30,8 @@ export const voiceMetricEventNameSchema = z.enum([
   'audio_signal_success_played',
   'audio_signal_suppressed',
   'audio_signal_error',
+  'append_used',
+  'voice_session_result',
   'voice_cue_listening_played',
   'voice_cue_done_played',
   'voice_cue_suppressed',
@@ -67,6 +69,12 @@ export const voiceMetricSttProviderSchema = z.enum([
   'stub',
   'local_stub',
 ])
+export const voiceSessionResultSchema = z.enum([
+  'success',
+  'error',
+  'cancelled',
+  'unsupported',
+])
 
 const safeMetricStringSchema = z.string().trim().min(1).max(160)
 const safeMetricNumberSchema = z.number().finite().nonnegative()
@@ -75,6 +83,8 @@ const safeMetricIntegerSchema = z.number().int().nonnegative()
 export const safeVoiceMetricEventSchema = z
   .object({
     appRole: voiceMetricAppRoleSchema,
+    append_count: safeMetricIntegerSchema.optional(),
+    append_used: z.boolean().optional(),
     audioBytes: safeMetricIntegerSchema.optional(),
     audioDurationMs: safeMetricIntegerSchema.optional(),
     audio_signal_to_recorder_delay_ms: safeMetricNumberSchema.optional(),
@@ -91,14 +101,20 @@ export const safeVoiceMetricEventSchema = z
     parser_duration_ms: safeMetricNumberSchema.optional(),
     platform: voiceMetricPlatformSchema,
     previewStatus: safeMetricStringSchema.optional(),
+    prebuffer_ms: safeMetricNumberSchema.optional(),
+    recording_duration_ms: safeMetricNumberSchema.optional(),
     resultStatus: safeMetricStringSchema.optional(),
     source: voiceActionSourceSchema,
+    stt_first_partial_ms: safeMetricNumberSchema.optional(),
     sttProvider: voiceMetricSttProviderSchema.optional(),
     stt_upload_duration_ms: safeMetricNumberSchema.optional(),
     start_signal_duration_ms: safeMetricNumberSchema.optional(),
     time_to_confirmation_card_ms: safeMetricNumberSchema.optional(),
     wake_detected_to_confirmation_card_ms: safeMetricNumberSchema.optional(),
     wake_detected_to_recorder_start_ms: safeMetricNumberSchema.optional(),
+    wake_to_recording_started_ms: safeMetricNumberSchema.optional(),
+    wake_to_start_cue_ms: safeMetricNumberSchema.optional(),
+    voice_session_result: voiceSessionResultSchema.optional(),
     wakeWordProvider: voiceMetricWakeWordProviderSchema.optional(),
     action_preview_duration_ms: safeMetricNumberSchema.optional(),
   })
@@ -119,6 +135,7 @@ export type VoiceMetricWakeWordProvider = z.infer<
 export type VoiceMetricSttProvider = z.infer<
   typeof voiceMetricSttProviderSchema
 >
+export type VoiceSessionResult = z.infer<typeof voiceSessionResultSchema>
 export type SafeVoiceMetricEvent = z.infer<typeof safeVoiceMetricEventSchema>
 
 export interface VoiceMetricsSink {

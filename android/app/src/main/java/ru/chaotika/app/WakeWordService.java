@@ -31,7 +31,6 @@ public class WakeWordService extends Service {
     private static final String NOTIFICATION_CHANNEL_ID = "planner-voice-assistant";
     private static final int NOTIFICATION_ID = 1208;
     private static final long COMMAND_CAPTURE_WATCHDOG_TIMEOUT_MS = 40_000L;
-    private static final long POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS = 40L;
     private static final long RESUME_WAKE_WORD_DELAY_MS = 1200L;
     private static final long RESOURCE_BUDGET_SAMPLE_INTERVAL_MS = 60_000L;
 
@@ -229,11 +228,14 @@ public class WakeWordService extends Service {
             System.currentTimeMillis() - detection.detectedAtEpochMillis
         );
         AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
+        CommandAudioPreBuffer preBuffer = wakeWordEngine.latestCommandPreBuffer(
+            CommandRecordingConfig.VOICE_PREBUFFER_MS
+        );
         stopWakeWordEngine();
 
         if (!isWakeWordTrainingModeEnabled()) {
             WakeWordTrainingExampleStore.clearPending();
-            beginCommandCapture(SttRequest.afterWakeWord());
+            beginCommandCapture(SttRequest.afterWakeWord(preBuffer));
             return;
         }
 
@@ -277,22 +279,23 @@ public class WakeWordService extends Service {
         long captureRequestedAtElapsedMs = SystemClock.elapsedRealtime();
         int captureGeneration = scheduleCommandCaptureWatchdog();
         setState(VoiceAssistantState.RECORDING_COMMAND);
-        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PLAYING_START_SIGNAL);
+        AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.RECORDING_COMMAND);
         updateNotification(getString(R.string.planner_voice_notification_recording));
-
-        audioFeedbackPlayer.playStartSignalBefore((playback) -> {
-            SttRequest timedRequest = request.withAudioSignalTiming(
-                captureRequestedAtElapsedMs,
-                playback.completedAtElapsedMs,
-                playback.durationMs
-            );
-            handler.postDelayed(
-                () -> startCommandTranscription(timedRequest, captureGeneration),
-                playback.played ? POST_START_SIGNAL_RECORDER_GUARD_DELAY_MS : 0L
-            );
-        });
-        playActivationHaptic();
+        AudioSignalPlayback playback = audioFeedbackPlayer.playStartSignalNow();
+        recordStartCueTiming(request, captureRequestedAtElapsedMs, playback);
+        if (!playback.played && AudioFeedbackPlayer.shouldUseVibrationFallback(this)) {
+            playActivationHaptic();
+        }
         showListeningOverlay();
+
+        SttRequest timedRequest = request.withAudioSignalTiming(
+            captureRequestedAtElapsedMs,
+            playback.startedAtElapsedMs,
+            playback.completedAtElapsedMs,
+            playback.durationMs,
+            playback.played
+        );
+        startCommandTranscription(timedRequest, captureGeneration);
     }
 
     private void startCommandTranscription(SttRequest request, int captureGeneration) {
@@ -325,6 +328,11 @@ public class WakeWordService extends Service {
                     PlannerVoiceAssistantStorage.storePendingCommand(WakeWordService.this, result);
                     setState(VoiceAssistantState.WAITING_FOR_CONFIRMATION);
                     speechToTextService.stop();
+                    AndroidVoiceRuntimeStore.recordTextValue(
+                        WakeWordService.this,
+                        AndroidVoiceRuntimeMetric.VOICE_SESSION_RESULT,
+                        "success"
+                    );
                     AndroidVoiceRuntimeStore.markStatus(WakeWordService.this, AndroidVoiceRuntimeStatus.RUNNING_FOREGROUND);
                     updateNotification(getString(R.string.planner_voice_notification_ready));
                     openPlannerForConfirmation();
@@ -339,6 +347,11 @@ public class WakeWordService extends Service {
 
                     cancelCommandCaptureWatchdog();
                     PlannerVoiceAssistantStorage.storePendingError(WakeWordService.this, error);
+                    AndroidVoiceRuntimeStore.recordTextValue(
+                        WakeWordService.this,
+                        AndroidVoiceRuntimeMetric.VOICE_SESSION_RESULT,
+                        "error"
+                    );
                     openPlannerForConfirmation();
                     handleCommandCaptureError(error);
                 }
@@ -418,6 +431,11 @@ public class WakeWordService extends Service {
         if (isWakeModelUnavailable(error)) {
             PlannerVoiceAssistantStorage.storeWakeWordEnabled(this, false);
             PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(this, false);
+            AndroidVoiceRuntimeStore.recordTextValue(
+                this,
+                AndroidVoiceRuntimeMetric.VOICE_SESSION_RESULT,
+                "unsupported"
+            );
             AndroidVoiceRuntimeStore.markBlocked(this, runtimeError);
             return;
         }
@@ -443,6 +461,7 @@ public class WakeWordService extends Service {
         handler.removeCallbacksAndMessages(null);
         commandCaptureWatchdog = null;
         commandCaptureGeneration++;
+        recordCancelledVoiceSessionIfNeeded();
         clearRuntimeBuffers();
         setState(VoiceAssistantState.IDLE);
         if (preserveBlockedStatus) {
@@ -452,6 +471,18 @@ public class WakeWordService extends Service {
         }
         stopForeground(true);
         stopSelf();
+    }
+
+    private void recordCancelledVoiceSessionIfNeeded() {
+        if (state != VoiceAssistantState.RECORDING_COMMAND && state != VoiceAssistantState.TRANSCRIBING) {
+            return;
+        }
+
+        AndroidVoiceRuntimeStore.recordTextValue(
+            this,
+            AndroidVoiceRuntimeMetric.VOICE_SESSION_RESULT,
+            "cancelled"
+        );
     }
 
     private void setState(VoiceAssistantState nextState) {
@@ -603,6 +634,22 @@ public class WakeWordService extends Service {
         }
 
         WakeWordTrainingExampleStore.clearPending();
+    }
+
+    private void recordStartCueTiming(
+        SttRequest request,
+        long captureRequestedAtElapsedMs,
+        AudioSignalPlayback playback
+    ) {
+        if (!request.wakeWordDetected || captureRequestedAtElapsedMs <= 0L || !playback.played) {
+            return;
+        }
+
+        AndroidVoiceRuntimeStore.recordValue(
+            this,
+            AndroidVoiceRuntimeMetric.WAKE_TO_START_CUE_MS,
+            playback.startedAtElapsedMs - captureRequestedAtElapsedMs
+        );
     }
 
     private void updateNotification(String contentText) {

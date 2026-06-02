@@ -486,6 +486,7 @@ export type {
   VoiceMetricsSink,
   VoiceMetricSttProvider,
   VoiceMetricWakeWordProvider,
+  VoiceSessionResult,
 } from './voice-metrics.js'
 export {
   ConsoleVoiceMetricsSink,
@@ -504,6 +505,7 @@ export {
   voiceMetricPlatformSchema,
   voiceMetricSttProviderSchema,
   voiceMetricWakeWordProviderSchema,
+  voiceSessionResultSchema,
 } from './voice-metrics.js'
 export type {
   VoiceTestCase,

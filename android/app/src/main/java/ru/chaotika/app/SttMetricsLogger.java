@@ -11,7 +11,16 @@ final class SttMetricsLogger {
     }
 
     void recordingStopped(CommandAudio audio) {
-        log("stt_recording_stopped durationMs=" + audio.durationMs + " byteLength=" + audio.byteLength());
+        log(
+            "stt_recording_stopped durationMs=" +
+            audio.durationMs +
+            " recordingDurationMs=" +
+            audio.recordingDurationMs +
+            " prebufferMs=" +
+            audio.preBufferMs +
+            " byteLength=" +
+            audio.byteLength()
+        );
     }
 
     void localValidationFailed(SttException error) {

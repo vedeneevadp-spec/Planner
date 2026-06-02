@@ -117,6 +117,47 @@
   gap: 0.28rem;
 }
 
+.recordingIndicator {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 0.42rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 26%, var(--line));
+  border-radius: 999px;
+  padding: 0.3rem 0.56rem;
+  background: color-mix(in srgb, var(--danger) 8%, var(--field-bg));
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.recordingPulse {
+  --voice-pulse-color: var(--danger);
+
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 999px;
+  background: var(--voice-pulse-color);
+  box-shadow: 0 0 0 0
+    color-mix(in srgb, var(--voice-pulse-color) 42%, transparent);
+  animation: voicePulse 1.05s ease-out infinite;
+}
+
+.processingPulse {
+  --voice-pulse-color: var(--warning);
+}
+
+.recordingState,
+.recordingTimer {
+  line-height: 1;
+}
+
+.recordingTimer {
+  min-width: 2.1rem;
+  color: var(--text-soft);
+  text-align: right;
+}
+
 .eyebrow {
   color: var(--text-soft);
   font-size: 0.72rem;
@@ -422,5 +463,27 @@
 @media (prefers-reduced-motion: reduce) {
   .micButton {
     transition: none;
+  }
+
+  .recordingPulse {
+    animation: none;
+  }
+}
+
+@keyframes voicePulse {
+  0% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--voice-pulse-color) 42%, transparent);
+    transform: scale(0.92);
+  }
+
+  70% {
+    box-shadow: 0 0 0 0.42rem transparent;
+    transform: scale(1);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+    transform: scale(0.92);
   }
 }

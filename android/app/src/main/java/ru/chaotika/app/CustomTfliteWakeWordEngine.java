@@ -72,6 +72,20 @@ final class CustomTfliteWakeWordEngine implements WakeWordEngine {
     }
 
     @Override
+    public CommandAudioPreBuffer latestCommandPreBuffer(int durationMs) {
+        if (ringBuffer == null || ringSamplesAvailable <= 0 || durationMs <= 0) {
+            return CommandAudioPreBuffer.empty(config.sampleRate);
+        }
+
+        int sampleCount = Math.min(
+            ringSamplesAvailable,
+            Math.max(1, (config.sampleRate * durationMs) / 1_000)
+        );
+
+        return CommandAudioPreBuffer.fromFloatSamples(latestSamples(sampleCount), config.sampleRate);
+    }
+
+    @Override
     public void start(WakeWordListener listener) {
         synchronized (lock) {
             if (isRunning) {

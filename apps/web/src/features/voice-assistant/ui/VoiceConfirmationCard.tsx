@@ -30,6 +30,7 @@ export type VoiceConfirmationStatus =
   | 'success'
 
 export interface VoiceConfirmationCardProps {
+  canAppendVoice?: boolean | undefined
   clarificationAttempts: number
   isUndoing: boolean
   preview: VoiceActionPreview | null
@@ -40,6 +41,7 @@ export interface VoiceConfirmationCardProps {
   webInputState?: WebVoiceInputState | undefined
   webStatusMessage?: string | null | undefined
   onCancelRecording?: (() => void) | undefined
+  onAppendVoice?: (() => void) | undefined
   onClarifyOption: (transcript: string) => void
   onClose: () => void
   onConfirm: (
@@ -57,6 +59,7 @@ export interface VoiceConfirmationCardProps {
 }
 
 export function VoiceConfirmationCard({
+  canAppendVoice = false,
   clarificationAttempts,
   isUndoing,
   preview,
@@ -67,6 +70,7 @@ export function VoiceConfirmationCard({
   webInputState,
   webStatusMessage,
   onCancelRecording,
+  onAppendVoice,
   onClarifyOption,
   onClose,
   onConfirm,
@@ -128,6 +132,8 @@ export function VoiceConfirmationCard({
     : null
   const webStatusBody = getWebStatusBody(webInputState, webStatusMessage)
   const canRetryWebInput = isRetryableWebInputState(webInputState)
+  const canShowAppendVoice =
+    canAppendVoice && Boolean(transcript) && !result && !hidesPrivateDetails
 
   useEffect(() => {
     if (!undoKey) {
@@ -178,6 +184,12 @@ export function VoiceConfirmationCard({
 
       {webStatusBody && state.status !== 'error' ? (
         <p className={styles.previewSummary}>{webStatusBody}</p>
+      ) : null}
+
+      {state.status === 'recording' ? (
+        <VoiceRecordingIndicator />
+      ) : state.status === 'parsing' || webInputState === 'validating_audio' ? (
+        <VoiceProcessingIndicator />
       ) : null}
 
       {isEditingTranscript ? (
@@ -301,6 +313,16 @@ export function VoiceConfirmationCard({
             Ввести вручную
           </button>
         ) : null}
+        {canShowAppendVoice && onAppendVoice ? (
+          <button
+            className={styles.secondaryButton}
+            type="button"
+            onClick={onAppendVoice}
+          >
+            <MicIcon size={16} strokeWidth={2.05} />
+            <span>Ещё сказать</span>
+          </button>
+        ) : null}
         {canConfirm ? (
           <button
             className={cx(
@@ -384,6 +406,49 @@ export function VoiceConfirmationCard({
       </div>
     </section>
   )
+}
+
+function VoiceRecordingIndicator() {
+  const elapsedMs = useRecordingElapsedMs()
+
+  return (
+    <div className={styles.recordingIndicator} aria-label="Listening">
+      <span className={styles.recordingPulse} aria-hidden="true" />
+      <span className={styles.recordingState}>Listening</span>
+      <span className={styles.recordingTimer}>
+        {(elapsedMs / 1000).toFixed(1)}s
+      </span>
+    </div>
+  )
+}
+
+function VoiceProcessingIndicator() {
+  return (
+    <div className={styles.recordingIndicator} aria-label="Processing">
+      <span
+        className={cx(styles.recordingPulse, styles.processingPulse)}
+        aria-hidden="true"
+      />
+      <span className={styles.recordingState}>Processing</span>
+    </div>
+  )
+}
+
+function useRecordingElapsedMs(): number {
+  const [elapsedMs, setElapsedMs] = useState(0)
+
+  useEffect(() => {
+    const startedAt = performance.now()
+    const intervalId = window.setInterval(() => {
+      setElapsedMs(Math.max(0, Math.round(performance.now() - startedAt)))
+    }, 100)
+
+    return () => {
+      window.clearInterval(intervalId)
+    }
+  }, [])
+
+  return elapsedMs
 }
 
 function VoicePreviewBody({

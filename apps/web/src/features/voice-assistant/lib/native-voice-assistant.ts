@@ -115,7 +115,7 @@ export interface VoiceAssistantNativeStatus {
   recognitionLanguage: typeof VOICE_ASSISTANT_RECOGNITION_LANGUAGE
   runtimeDurationMs: number
   runtimeLastError: AndroidVoiceRuntimeError | null
-  runtimeMetrics: Partial<Record<AndroidVoiceRuntimeMetric, number>>
+  runtimeMetrics: Partial<Record<AndroidVoiceRuntimeMetric, number | string>>
   runtimeStatus: AndroidVoiceRuntimeStatus
   voiceCuesEnabled: boolean
   wakePhrase: typeof VOICE_ASSISTANT_WAKE_PHRASE

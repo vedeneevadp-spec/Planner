@@ -709,7 +709,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
         for (AndroidVoiceRuntimeMetric metric : AndroidVoiceRuntimeMetric.values()) {
             if (AndroidVoiceRuntimeStore.hasMetric(getContext(), metric)) {
-                response.put(metric.value, AndroidVoiceRuntimeStore.readMetricValue(getContext(), metric));
+                response.put(metric.value, AndroidVoiceRuntimeStore.readMetric(getContext(), metric));
             }
         }
 

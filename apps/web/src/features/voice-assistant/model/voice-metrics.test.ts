@@ -51,6 +51,8 @@ describe('voice runtime metrics', () => {
       'audio_signal_success_played',
       'audio_signal_suppressed',
       'audio_signal_error',
+      'append_used',
+      'voice_session_result',
       // Deprecated aliases accepted for backward-compatible stored telemetry.
       'voice_cue_listening_played',
       'voice_cue_done_played',
@@ -74,6 +76,24 @@ describe('voice runtime metrics', () => {
         eventName,
       ).toBe(true)
     }
+  })
+
+  it('accepts append and session-result metrics without private text', () => {
+    const event = createVoiceRuntimeMetricEvent({
+      append_count: 2,
+      append_used: true,
+      appRole: 'owner',
+      eventName: 'voice_session_result',
+      platform: 'android',
+      prebuffer_ms: 250,
+      recording_duration_ms: 940,
+      source: 'android_wake_word',
+      voice_session_result: 'success',
+      wake_to_recording_started_ms: 80,
+      wake_to_start_cue_ms: 12,
+    })
+
+    expect(safeVoiceMetricEventSchema.safeParse(event).success).toBe(true)
   })
 
   it('rejects private runtime metric payloads and full domain objects', () => {

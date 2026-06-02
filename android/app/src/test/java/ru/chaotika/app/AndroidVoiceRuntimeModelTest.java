@@ -63,13 +63,21 @@ public class AndroidVoiceRuntimeModelTest {
                 "wake_engine_error",
                 "wake_detection_latency_ms",
                 "wake_detected_to_recorder_start_ms",
+                "wake_to_start_cue_ms",
+                "wake_to_recording_started_ms",
                 "command_recorder_start_latency_ms",
+                "recording_duration_ms",
+                "prebuffer_ms",
                 "start_signal_duration_ms",
                 "audio_signal_to_recorder_delay_ms",
                 "audio_signal_start_played",
                 "audio_signal_success_played",
                 "audio_signal_suppressed",
                 "audio_signal_error",
+                "append_used",
+                "append_count",
+                "stt_first_partial_ms",
+                "voice_session_result",
                 "battery_sample",
                 "cpu_sample",
                 "memory_sample",
@@ -209,13 +217,28 @@ public class AndroidVoiceRuntimeModelTest {
 
     @Test
     public void commandTimingKeepsAudioSignalMetadataOutOfRequestContent() {
-        SttRequest request = SttRequest.afterWakeWord().withAudioSignalTiming(100L, 180L, 70);
+        SttRequest request = SttRequest.afterWakeWord().withAudioSignalTiming(100L, 110L, 180L, 70, true);
 
         assertEquals(SttSource.ANDROID_SHORT_CLIP, request.source);
         assertTrue(request.wakeWordDetected);
         assertEquals(100L, request.captureRequestedAtElapsedMs);
+        assertEquals(110L, request.audioSignalStartedAtElapsedMs);
         assertEquals(180L, request.audioSignalCompletedAtElapsedMs);
         assertEquals(70, request.audioSignalDurationMs);
+        assertTrue(request.audioSignalPlayed);
+    }
+
+    @Test
+    public void wakeWordRequestCarriesBoundedPreBuffer() {
+        CommandAudioPreBuffer preBuffer = CommandAudioPreBuffer.fromPcm16Le(
+            createVoiceAudio(CommandRecordingConfig.VOICE_PREBUFFER_MS),
+            CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ
+        );
+        SttRequest request = SttRequest.afterWakeWord(preBuffer);
+
+        assertEquals(CommandRecordingConfig.VOICE_PREBUFFER_MS, request.recordingConfig.preBufferMs);
+        assertEquals(CommandRecordingConfig.VOICE_PREBUFFER_MS, request.preBuffer.durationMs);
+        assertTrue(request.preBuffer.pcm16le.length > 0);
     }
 
     @Test
@@ -248,6 +271,19 @@ public class AndroidVoiceRuntimeModelTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private static byte[] createVoiceAudio(int durationMs) {
+        int sampleCount = (CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ * durationMs) / 1000;
+        byte[] audio = new byte[sampleCount * 2];
+
+        for (int index = 0; index < sampleCount; index += 1) {
+            short sample = (short) (Math.sin(index / 7d) * 2800);
+            audio[index * 2] = (byte) (sample & 0xff);
+            audio[index * 2 + 1] = (byte) ((sample >> 8) & 0xff);
+        }
+
+        return audio;
     }
 
     private static final class EmptyWakeWordAssetSource implements WakeWordAssetSource {

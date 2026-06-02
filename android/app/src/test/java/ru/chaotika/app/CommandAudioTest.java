@@ -47,6 +47,49 @@ public class CommandAudioTest {
     }
 
     @Test
+    public void attachesPreBufferButRequiresMainRecordingVoice() throws Exception {
+        byte[] preBuffer = createVoiceAudio(CommandRecordingConfig.VOICE_PREBUFFER_MS, 2800);
+        byte[] mainRecording = createVoiceAudio(600, 2800);
+        byte[] combined = concat(preBuffer, mainRecording);
+
+        CommandAudio audio = CommandAudio.fromPcm16Le(
+            combined,
+            combined.length,
+            CommandRecordingConfig.defaultConfig(),
+            CommandRecordingConfig.VOICE_PREBUFFER_MS,
+            600,
+            preBuffer.length,
+            mainRecording.length
+        );
+
+        assertEquals(CommandRecordingConfig.VOICE_PREBUFFER_MS, audio.preBufferMs);
+        assertEquals(600, audio.recordingDurationMs);
+        assertTrue(audio.durationMs >= 800);
+    }
+
+    @Test
+    public void rejectsWakeTailPreBufferWithoutUserSpeechInMainRecording() {
+        byte[] preBuffer = createVoiceAudio(CommandRecordingConfig.VOICE_PREBUFFER_MS, 2800);
+        byte[] mainRecording = new byte[(CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ * 900 * 2) / 1000];
+        byte[] combined = concat(preBuffer, mainRecording);
+
+        try {
+            CommandAudio.fromPcm16Le(
+                combined,
+                combined.length,
+                CommandRecordingConfig.defaultConfig(),
+                CommandRecordingConfig.VOICE_PREBUFFER_MS,
+                900,
+                preBuffer.length,
+                mainRecording.length
+            );
+            fail("Expected STT validation error.");
+        } catch (SttException error) {
+            assertEquals(SttError.NO_SPEECH, error.code);
+        }
+    }
+
+    @Test
     public void backendSpeechToTextServiceDoesNotDeclareProviderKeys() {
         for (Field field : BackendSpeechToTextService.class.getDeclaredFields()) {
             String fieldName = field.getName().toLowerCase(Locale.US);
@@ -87,5 +130,14 @@ public class CommandAudioTest {
         }
 
         return audio;
+    }
+
+    private static byte[] concat(byte[] first, byte[] second) {
+        byte[] combined = new byte[first.length + second.length];
+
+        System.arraycopy(first, 0, combined, 0, first.length);
+        System.arraycopy(second, 0, combined, first.length, second.length);
+
+        return combined;
     }
 }

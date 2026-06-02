@@ -331,6 +331,39 @@ describe('VoiceAssistant web push-to-talk', () => {
     })
   })
 
+  it('appends a repeated voice input to the last recognized phrase', async () => {
+    mocks.uploadWebVoiceCommand
+      .mockResolvedValueOnce(
+        createVoiceResponse({
+          title: 'купить молоко',
+          transcript: 'купить молоко',
+        }),
+      )
+      .mockResolvedValueOnce(
+        createVoiceResponse({
+          title: 'и хлеб',
+          transcript: 'и хлеб',
+        }),
+      )
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Завершить' }))
+
+    expect(
+      (await screen.findAllByText('купить молоко')).length,
+    ).toBeGreaterThan(0)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Ещё сказать' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Завершить' }))
+
+    expect(
+      (await screen.findAllByText('купить молоко и хлеб')).length,
+    ).toBeGreaterThan(0)
+    expect(mocks.uploadWebVoiceCommand).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps polling Android push-to-talk until the native command is ready', async () => {
     vi.useFakeTimers()
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
@@ -495,14 +528,19 @@ function createRecording(durationMs: number): WebVoiceRecording {
   }
 }
 
-function createVoiceResponse(): VoiceCommandResponseStub {
+function createVoiceResponse(
+  options: { title?: string; transcript?: string } = {},
+): VoiceCommandResponseStub {
+  const transcript = options.transcript ?? 'добавь задачу отчет'
+  const title = options.title ?? 'отчет'
+
   return {
     intent: {
       confidence: 0.9,
       intent: 'create_task',
       needsConfirmation: true,
-      rawText: 'добавь задачу отчет',
-      title: 'отчет',
+      rawText: transcript,
+      title,
     },
     stt: {
       billableSecondsEstimated: 1,
@@ -510,9 +548,9 @@ function createVoiceResponse(): VoiceCommandResponseStub {
       durationMs: 900,
       provider: 'backend_yandex_speechkit',
       source: 'web_push_to_talk',
-      transcript: 'добавь задачу отчет',
+      transcript,
     },
-    transcript: 'добавь задачу отчет',
+    transcript,
   }
 }
 

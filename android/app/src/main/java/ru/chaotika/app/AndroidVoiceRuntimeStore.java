@@ -105,6 +105,14 @@ final class AndroidVoiceRuntimeStore {
         getPreferences(context).edit().putLong(metricValueKey(metric), Math.max(0L, value)).apply();
     }
 
+    static void recordTextValue(Context context, AndroidVoiceRuntimeMetric metric, String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return;
+        }
+
+        getPreferences(context).edit().putString(metricTextValueKey(metric), value.trim()).apply();
+    }
+
     static long readMetricValue(Context context, AndroidVoiceRuntimeMetric metric) {
         SharedPreferences preferences = getPreferences(context);
         String valueKey = metricValueKey(metric);
@@ -116,10 +124,23 @@ final class AndroidVoiceRuntimeStore {
         return preferences.getLong(metricCountKey(metric), 0L);
     }
 
+    static Object readMetric(Context context, AndroidVoiceRuntimeMetric metric) {
+        SharedPreferences preferences = getPreferences(context);
+        String textValueKey = metricTextValueKey(metric);
+
+        if (preferences.contains(textValueKey)) {
+            return preferences.getString(textValueKey, "");
+        }
+
+        return readMetricValue(context, metric);
+    }
+
     static boolean hasMetric(Context context, AndroidVoiceRuntimeMetric metric) {
         SharedPreferences preferences = getPreferences(context);
 
-        return preferences.contains(metricValueKey(metric)) || preferences.contains(metricCountKey(metric));
+        return preferences.contains(metricTextValueKey(metric)) ||
+            preferences.contains(metricValueKey(metric)) ||
+            preferences.contains(metricCountKey(metric));
     }
 
     static AndroidVoiceRuntimeSnapshot snapshot(Context context) {
@@ -169,6 +190,10 @@ final class AndroidVoiceRuntimeStore {
 
     private static String metricValueKey(AndroidVoiceRuntimeMetric metric) {
         return "planner.voice.runtime.metric." + metric.value + ".value";
+    }
+
+    private static String metricTextValueKey(AndroidVoiceRuntimeMetric metric) {
+        return "planner.voice.runtime.metric." + metric.value + ".text";
     }
 }
 

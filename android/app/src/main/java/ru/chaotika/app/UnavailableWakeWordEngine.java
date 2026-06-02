@@ -28,6 +28,11 @@ final class UnavailableWakeWordEngine implements WakeWordEngine {
     }
 
     @Override
+    public CommandAudioPreBuffer latestCommandPreBuffer(int durationMs) {
+        return CommandAudioPreBuffer.empty(config.sampleRate);
+    }
+
+    @Override
     public void start(WakeWordListener listener) {
         WakeWordDiagnostics.recordError(error);
         metricsLogger.error(error);

@@ -8,13 +8,13 @@ final class CommandRecordingConfig {
     static final String ENCODING = "pcm_s16le";
     static final int DEFAULT_MAX_DURATION_MS = 8000;
     static final int DEFAULT_MIN_DURATION_MS = 500;
-    static final int DEFAULT_PRE_ROLL_MS = 200;
     static final int DEFAULT_SAMPLE_RATE_HERTZ = 16000;
     static final int DEFAULT_SILENCE_TIMEOUT_MS = 900;
+    static final int VOICE_PREBUFFER_MS = 250;
 
     final int maxDurationMs;
     final int minDurationMs;
-    final int preRollMs;
+    final int preBufferMs;
     final int sampleRateHertz;
     final int silenceTimeoutMs;
     final boolean vadEnabled;
@@ -24,14 +24,14 @@ final class CommandRecordingConfig {
         int maxDurationMs,
         int minDurationMs,
         int silenceTimeoutMs,
-        int preRollMs,
+        int preBufferMs,
         boolean vadEnabled
     ) {
         this.sampleRateHertz = sampleRateHertz;
         this.maxDurationMs = maxDurationMs;
         this.minDurationMs = minDurationMs;
         this.silenceTimeoutMs = silenceTimeoutMs;
-        this.preRollMs = preRollMs;
+        this.preBufferMs = preBufferMs;
         this.vadEnabled = vadEnabled;
     }
 
@@ -41,7 +41,7 @@ final class CommandRecordingConfig {
             DEFAULT_MAX_DURATION_MS,
             DEFAULT_MIN_DURATION_MS,
             DEFAULT_SILENCE_TIMEOUT_MS,
-            DEFAULT_PRE_ROLL_MS,
+            VOICE_PREBUFFER_MS,
             true
         );
     }

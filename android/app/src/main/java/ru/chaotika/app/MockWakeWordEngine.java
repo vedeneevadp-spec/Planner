@@ -32,6 +32,11 @@ final class MockWakeWordEngine implements WakeWordEngine {
     }
 
     @Override
+    public CommandAudioPreBuffer latestCommandPreBuffer(int durationMs) {
+        return CommandAudioPreBuffer.empty(config.sampleRate);
+    }
+
+    @Override
     public void start(WakeWordListener listener) {
         this.listener = listener;
         isRunning = true;

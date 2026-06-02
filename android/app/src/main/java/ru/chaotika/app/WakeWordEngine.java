@@ -7,6 +7,8 @@ interface WakeWordEngine {
 
     boolean isRunning();
 
+    CommandAudioPreBuffer latestCommandPreBuffer(int durationMs);
+
     void start(WakeWordListener listener);
 
     void stop();

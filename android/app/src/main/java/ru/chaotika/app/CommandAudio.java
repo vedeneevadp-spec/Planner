@@ -19,18 +19,24 @@ final class CommandAudio {
     final boolean hasVoiceActivity;
     final boolean isTooQuiet;
     final byte[] pcm16le;
+    final int preBufferMs;
+    final int recordingDurationMs;
     final int sampleRateHertz;
 
     private CommandAudio(
         byte[] pcm16le,
         int sampleRateHertz,
         int durationMs,
+        int recordingDurationMs,
+        int preBufferMs,
         boolean hasVoiceActivity,
         boolean isTooQuiet
     ) {
         this.pcm16le = pcm16le;
         this.sampleRateHertz = sampleRateHertz;
         this.durationMs = durationMs;
+        this.recordingDurationMs = Math.max(0, recordingDurationMs);
+        this.preBufferMs = Math.max(0, preBufferMs);
         this.hasVoiceActivity = hasVoiceActivity;
         this.isTooQuiet = isTooQuiet;
     }
@@ -39,6 +45,18 @@ final class CommandAudio {
         byte[] source,
         int byteLength,
         CommandRecordingConfig config
+    ) throws SttException {
+        return fromPcm16Le(source, byteLength, config, 0, 0, 0, byteLength);
+    }
+
+    static CommandAudio fromPcm16Le(
+        byte[] source,
+        int byteLength,
+        CommandRecordingConfig config,
+        int preBufferMs,
+        int recordingDurationMs,
+        int mainAudioOffset,
+        int mainByteLength
     ) throws SttException {
         if (source == null || byteLength <= 0 || byteLength > source.length || byteLength % 2 != 0) {
             throw new SttException(
@@ -59,17 +77,17 @@ final class CommandAudio {
             throw new SttException(SttError.TOO_LONG, "Команда слишком длинная.");
         }
 
-        AudioActivity activity = analyze(source, byteLength);
+        AudioActivity mainActivity = analyzeRange(source, mainAudioOffset, mainByteLength);
 
-        if (activity.peak <= SILENCE_ABSOLUTE_PEAK || activity.voicedRatio == 0d) {
+        if (mainActivity.peak <= SILENCE_ABSOLUTE_PEAK || mainActivity.voicedRatio == 0d) {
             throw new SttException(SttError.NO_SPEECH, "Речь не обнаружена.");
         }
 
-        if (activity.isTooQuiet) {
+        if (mainActivity.isTooQuiet) {
             throw new SttException(SttError.TOO_QUIET, "Запись слишком тихая.");
         }
 
-        if (!activity.hasVoiceActivity) {
+        if (!mainActivity.hasVoiceActivity) {
             throw new SttException(SttError.NO_SPEECH, "Речь не обнаружена.");
         }
 
@@ -77,6 +95,8 @@ final class CommandAudio {
             Arrays.copyOf(source, byteLength),
             config.sampleRateHertz,
             durationMs,
+            recordingDurationMs > 0 ? recordingDurationMs : durationMs,
+            preBufferMs,
             true,
             false
         );
@@ -86,14 +106,29 @@ final class CommandAudio {
         return pcm16le.length;
     }
 
-    private static AudioActivity analyze(byte[] data, int byteLength) {
+    private static AudioActivity analyzeRange(byte[] data, int offset, int byteLength) {
+        if (
+            data == null ||
+            offset < 0 ||
+            byteLength <= 0 ||
+            offset >= data.length ||
+            offset + byteLength > data.length
+        ) {
+            return new AudioActivity(false, true, 0, 0d);
+        }
+
+        int safeByteLength = byteLength - (byteLength % 2);
+        if (safeByteLength <= 0) {
+            return new AudioActivity(false, true, 0, 0d);
+        }
+
         int peak = 0;
         long sumSquares = 0L;
         int voicedSamples = 0;
-        int sampleCount = byteLength / 2;
+        int sampleCount = safeByteLength / 2;
 
-        for (int offset = 0; offset < byteLength; offset += 2) {
-            int sample = (short) ((data[offset] & 0xff) | (data[offset + 1] << 8));
+        for (int cursor = offset; cursor < offset + safeByteLength; cursor += 2) {
+            int sample = (short) ((data[cursor] & 0xff) | (data[cursor + 1] << 8));
             int absolute = Math.abs(sample);
 
             peak = Math.max(peak, absolute);

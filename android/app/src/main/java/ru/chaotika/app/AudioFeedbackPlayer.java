@@ -2,6 +2,7 @@ package ru.chaotika.app;
 
 import android.content.Context;
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.SoundPool;
 import android.os.Handler;
 import android.os.SystemClock;
@@ -13,7 +14,7 @@ final class AudioFeedbackPlayer {
     private static final long RELEASE_PADDING_MS = 250L;
     private static final long START_SIGNAL_LOAD_GRACE_MS = 40L;
     private static final long SUCCESS_SIGNAL_LOAD_GRACE_MS = 500L;
-    private static final float SIGNAL_VOLUME = 0.7f;
+    private static final float SIGNAL_VOLUME = 0.38f;
 
     private final Context context;
     private final Handler handler;
@@ -54,7 +55,7 @@ final class AudioFeedbackPlayer {
     }
 
     void playStartSignalBefore(AudioSignalCallback afterSignal) {
-        if (!isEnabled || isReleased) {
+        if (!isEnabled || isReleased || shouldSuppressAudioCue(context)) {
             recordSuppressed(context);
             completeSignal(afterSignal, false, false, 0, SystemClock.elapsedRealtime());
             return;
@@ -91,10 +92,47 @@ final class AudioFeedbackPlayer {
         handler.postDelayed(pending.timeout, START_SIGNAL_LOAD_GRACE_MS);
     }
 
+    AudioSignalPlayback playStartSignalNow() {
+        long requestedAtElapsedMs = SystemClock.elapsedRealtime();
+
+        if (!isEnabled || isReleased || shouldSuppressAudioCue(context)) {
+            recordSuppressed(context);
+            return new AudioSignalPlayback(false, false, 0, requestedAtElapsedMs, requestedAtElapsedMs);
+        }
+
+        if (!startSignalLoaded) {
+            recordSignalError(context);
+            return new AudioSignalPlayback(false, true, 0, requestedAtElapsedMs, requestedAtElapsedMs);
+        }
+
+        long startedAtElapsedMs = SystemClock.elapsedRealtime();
+        boolean played = playSignal(startSignalId);
+
+        if (!played) {
+            recordSignalError(context);
+            return new AudioSignalPlayback(false, true, 0, startedAtElapsedMs, startedAtElapsedMs);
+        }
+
+        AndroidVoiceRuntimeStore.recordEvent(context, AndroidVoiceRuntimeMetric.AUDIO_SIGNAL_START_PLAYED);
+        AndroidVoiceRuntimeStore.recordValue(
+            context,
+            AndroidVoiceRuntimeMetric.START_SIGNAL_DURATION_MS,
+            START_SIGNAL_DURATION_MS
+        );
+
+        return new AudioSignalPlayback(
+            true,
+            false,
+            START_SIGNAL_DURATION_MS,
+            startedAtElapsedMs,
+            startedAtElapsedMs + START_SIGNAL_DURATION_MS
+        );
+    }
+
     void playSuccessSignal(AudioSignalCallback afterSignal) {
         long requestedAtElapsedMs = SystemClock.elapsedRealtime();
 
-        if (!isEnabled || isReleased) {
+        if (!isEnabled || isReleased || shouldSuppressAudioCue(context)) {
             recordSuppressed(context);
             completeSignal(afterSignal, false, false, 0, requestedAtElapsedMs);
             return;
@@ -311,6 +349,20 @@ final class AudioFeedbackPlayer {
         AndroidVoiceRuntimeStore.markError(context, AndroidVoiceRuntimeError.AUDIO_SIGNAL_ERROR);
         AndroidVoiceRuntimeStore.recordEvent(context, AndroidVoiceRuntimeMetric.AUDIO_SIGNAL_ERROR);
         AndroidVoiceRuntimeStore.recordEvent(context, AndroidVoiceRuntimeMetric.GRACEFUL_DEGRADATION_USED);
+    }
+
+    static boolean shouldUseVibrationFallback(Context context) {
+        return shouldSuppressAudioCue(context);
+    }
+
+    private static boolean shouldSuppressAudioCue(Context context) {
+        AudioManager audioManager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+
+        if (audioManager == null) {
+            return false;
+        }
+
+        return audioManager.getRingerMode() != AudioManager.RINGER_MODE_NORMAL;
     }
 
     private static final class PendingStartSignal {
