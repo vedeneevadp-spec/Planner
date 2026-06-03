@@ -18,33 +18,57 @@ const layerOrder = ['app', 'pages', 'widgets', 'features', 'entities', 'shared']
 const publicApiModules = [
   'app',
   'pages/admin',
+  'pages/calendar',
+  'pages/cleaning',
   'pages/habits',
+  'pages/more',
+  'pages/profile',
   'pages/shopping',
   'pages/spheres',
   'pages/timeline',
   'pages/today',
+  'pages/voice-assistant-settings',
   'widgets/sidebar',
+  'features/cleaning',
   'features/emoji-library',
   'features/habits',
   'features/planner',
   'features/session',
   'features/shopping-list',
   'features/task-create',
+  'features/voice-assistant',
   'entities/emoji-set',
   'entities/habit',
   'entities/sphere',
   'entities/task',
   'entities/task-template',
+  'shared/lib/api-client',
   'shared/lib/classnames',
   'shared/lib/date',
+  'shared/lib/observability',
   'shared/lib/offline-sync',
+  'shared/lib/theme',
   'shared/ui/Icon',
   'shared/ui/Page',
   'shared/ui/PageHeader',
+  'shared/ui/SelectPicker',
 ]
+const publicSliceModuleLayers = new Set([
+  'entities',
+  'features',
+  'pages',
+  'widgets',
+])
+const publicSliceModules = publicApiModules.filter((modulePath) => {
+  const [layer, sliceName, extraSegment] = modulePath.split('/')
+
+  return (
+    layer && sliceName && !extraSegment && publicSliceModuleLayers.has(layer)
+  )
+})
 
 function createPublicApiPatterns() {
-  return publicApiModules.flatMap((modulePath) => [
+  const publicApiPatterns = publicApiModules.flatMap((modulePath) => [
     {
       group: [`@/${modulePath}/*`],
       message: `Import from the public API "@/` + `${modulePath}" instead.`,
@@ -54,6 +78,21 @@ function createPublicApiPatterns() {
       message: `Import from the public API "@/` + `${modulePath}" instead.`,
     },
   ])
+
+  const siblingSlicePatterns = publicSliceModules.map((modulePath) => {
+    const sliceName = modulePath.split('/')[1]
+
+    return {
+      regex: `^(?:\\.\\./)+(?:${escapeRegExp(sliceName)})(?:$|/.+)$`,
+      message: `Import from the public API "@/` + `${modulePath}" instead.`,
+    }
+  })
+
+  return [...publicApiPatterns, ...siblingSlicePatterns]
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function createLayerBoundaryPatterns(layer) {

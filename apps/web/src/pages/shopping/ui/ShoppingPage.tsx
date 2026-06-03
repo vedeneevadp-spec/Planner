@@ -12,6 +12,7 @@ import {
   useCreateShoppingListItem,
   useRemoveShoppingListItem,
   useShoppingListSummary,
+  useShoppingListSyncStatus,
   useUpdateShoppingListItem,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
@@ -63,6 +64,7 @@ export function ShoppingPage() {
   )
   const [formError, setFormError] = useState<string | null>(null)
   const shoppingListQuery = useShoppingListSummary()
+  const syncStatus = useShoppingListSyncStatus()
   const createItemMutation = useCreateShoppingListItem()
   const updateItemMutation = useUpdateShoppingListItem()
   const removeItemMutation = useRemoveShoppingListItem()
@@ -90,13 +92,15 @@ export function ShoppingPage() {
         shoppingListQuery.error ??
           createItemMutation.error ??
           updateItemMutation.error ??
-          removeItemMutation.error,
+          removeItemMutation.error ??
+          syncStatus.error,
       ),
     [
       createItemMutation.error,
       formError,
       removeItemMutation.error,
       shoppingListQuery.error,
+      syncStatus.error,
       updateItemMutation.error,
     ],
   )
@@ -353,6 +357,42 @@ export function ShoppingPage() {
 
         {errorMessage ? (
           <p className={styles.errorMessage}>{errorMessage}</p>
+        ) : null}
+
+        {syncStatus.queuedMutationCount > 0 ||
+        syncStatus.conflictedMutationCount > 0 ? (
+          <section
+            className={cx(
+              styles.syncBanner,
+              syncStatus.conflictedMutationCount > 0 &&
+                styles.syncBannerWarning,
+            )}
+            aria-live="polite"
+          >
+            <div>
+              <strong>
+                {syncStatus.conflictedMutationCount > 0
+                  ? 'Есть конфликтующие покупки'
+                  : 'Есть изменения offline'}
+              </strong>
+              <span>
+                {syncStatus.queuedMutationCount} ждут синхронизации
+                {syncStatus.conflictedMutationCount > 0
+                  ? `, конфликтов: ${syncStatus.conflictedMutationCount}`
+                  : ''}
+              </span>
+            </div>
+            <button
+              className={styles.syncButton}
+              type="button"
+              disabled={syncStatus.isSyncing}
+              onClick={() => {
+                void syncStatus.retry()
+              }}
+            >
+              {syncStatus.isSyncing ? 'Синхронизируем...' : 'Повторить'}
+            </button>
+          </section>
         ) : null}
       </div>
 

@@ -25,7 +25,8 @@ import {
   findShoppingListItemByText,
   formatShoppingListText,
   isActiveShoppingListTextItem,
-} from '../../shopping-list/lib/shopping-list-text'
+} from '@/features/shopping-list'
+
 import { sanitizeVoicePreviewForLockScreen } from './locked-screen-scrubber'
 import {
   buildTaskInputFromPlannerIntent,

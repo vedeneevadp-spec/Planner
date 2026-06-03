@@ -1,3 +1,5 @@
+import 'fake-indexeddb/auto'
+
 import type { ChaosInboxItemRecord, SessionResponse } from '@planner/contracts'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
@@ -24,14 +26,21 @@ vi.mock('@/features/session', async (importOriginal) => {
 })
 
 import {
+  enqueueShoppingListOfflineMutation,
+  markShoppingListOfflineMutationConflicted,
+  resetShoppingListOfflineDatabaseForTests,
+} from './offline-shopping-list-store'
+import {
   useCreateShoppingListItem,
   useShoppingListSummary,
+  useShoppingListSyncStatus,
 } from './useShoppingList'
 
 describe('useShoppingList hooks', () => {
   let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetShoppingListOfflineDatabaseForTests()
     fetchMock = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetchMock)
     mocks.useSessionFeatureReadiness.mockReturnValue(
@@ -39,8 +48,9 @@ describe('useShoppingList hooks', () => {
     )
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup()
+    await resetShoppingListOfflineDatabaseForTests()
     vi.unstubAllGlobals()
     mocks.useSessionFeatureReadiness.mockReset()
   })
@@ -192,6 +202,41 @@ describe('useShoppingList hooks', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports pending and conflicted shopping offline mutations', async () => {
+    await enqueueShoppingListOfflineMutation({
+      actorUserId: 'user-1',
+      itemId: 'item-pending',
+      text: 'Молоко',
+      type: 'shopping.create',
+      workspaceId: 'workspace-1',
+    })
+    const conflictedMutation = await enqueueShoppingListOfflineMutation({
+      actorUserId: 'user-1',
+      itemId: 'item-conflicted',
+      type: 'shopping.delete',
+      workspaceId: 'workspace-1',
+    })
+
+    if (!conflictedMutation) {
+      throw new Error('Expected offline shopping mutation to be queued.')
+    }
+
+    await markShoppingListOfflineMutationConflicted(
+      conflictedMutation.id,
+      'Item no longer exists.',
+    )
+
+    const { result } = renderHook(() => useShoppingListSyncStatus(), {
+      wrapper: createQueryWrapper(),
+    })
+
+    await waitFor(() => {
+      expect(result.current.queuedMutationCount).toBe(1)
+      expect(result.current.conflictedMutationCount).toBe(1)
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('reactivates a completed duplicate shopping item', async () => {

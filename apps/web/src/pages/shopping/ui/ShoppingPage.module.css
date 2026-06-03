@@ -98,7 +98,8 @@
 }
 
 .addButton:disabled,
-.inputCategoryButton:disabled {
+.inputCategoryButton:disabled,
+.syncButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -107,6 +108,55 @@
   margin: 0;
   font-size: 0.92rem;
   color: var(--danger);
+}
+
+.syncBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.syncBanner div {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.syncBanner strong {
+  color: var(--accent);
+}
+
+.syncBanner span {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.syncBannerWarning {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.syncBannerWarning strong {
+  color: var(--danger);
+}
+
+.syncButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.2rem;
+  padding: 0 0.82rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--field-bg);
+  color: var(--text);
+  font-weight: 800;
 }
 
 .content {
@@ -327,6 +377,16 @@
 
   .fixedTop {
     gap: 0.4rem;
+  }
+
+  .syncBanner {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 0.58rem;
+  }
+
+  .syncButton {
+    width: 100%;
   }
 
   .content {

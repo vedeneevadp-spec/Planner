@@ -7,6 +7,7 @@ import { ShoppingPage } from './ShoppingPage'
 
 const mocks = vi.hoisted(() => ({
   useShoppingListSummary: vi.fn(),
+  useShoppingListSyncStatus: vi.fn(),
 }))
 
 vi.mock('@/features/shopping-list', async (importOriginal) => {
@@ -25,6 +26,7 @@ vi.mock('@/features/shopping-list', async (importOriginal) => {
       mutateAsync: vi.fn(),
     }),
     useShoppingListSummary: mocks.useShoppingListSummary,
+    useShoppingListSyncStatus: mocks.useShoppingListSyncStatus,
     useUpdateShoppingListItem: () => ({
       error: null,
       isPending: false,
@@ -40,6 +42,14 @@ describe('ShoppingPage', () => {
       completedItems: [],
       error: null,
       isLoading: false,
+    })
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      conflictedMutationCount: 0,
+      error: null,
+      isPending: false,
+      isSyncing: false,
+      queuedMutationCount: 0,
+      retry: vi.fn(),
     })
   })
 
@@ -89,6 +99,24 @@ describe('ShoppingPage', () => {
 
     expect(screen.getByText('Молоко')).toBeVisible()
     expect(screen.queryByText('Губки')).not.toBeInTheDocument()
+  })
+
+  it('shows offline queue health when shopping mutations are pending or conflicted', () => {
+    mocks.useShoppingListSyncStatus.mockReturnValue({
+      conflictedMutationCount: 1,
+      error: null,
+      isPending: false,
+      isSyncing: false,
+      queuedMutationCount: 2,
+      retry: vi.fn(),
+    })
+
+    renderShoppingPage('/shopping')
+
+    expect(screen.getByText('Есть конфликтующие покупки')).toBeVisible()
+    expect(
+      screen.getByText('2 ждут синхронизации, конфликтов: 1'),
+    ).toBeVisible()
   })
 })
 

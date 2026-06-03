@@ -17,6 +17,8 @@ import {
 } from '@/shared/lib/offline-sync'
 
 import {
+  countConflictedShoppingListOfflineMutations,
+  countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
   isShoppingListOfflineStorageAvailable,
   loadCachedShoppingListItems,
@@ -27,6 +29,7 @@ import {
 import {
   drainShoppingListOfflineQueue,
   isQueueableShoppingListMutationError,
+  type ShoppingListOfflineDrainResult,
 } from './offline-shopping-list-sync'
 import {
   createShoppingListApiClient,
@@ -48,7 +51,15 @@ function shoppingListQueryKey(workspaceId: string) {
   return ['shopping-list', workspaceId] as const
 }
 
+function shoppingListOfflineStatusQueryKey(workspaceId: string) {
+  return ['shopping-list-offline-status', workspaceId] as const
+}
+
 export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
+export interface ShoppingListOfflineStatus {
+  conflictedMutationCount: number
+  queuedMutationCount: number
+}
 export {
   isShoppingListItemCompleted,
   type ShoppingListItem,
@@ -70,7 +81,7 @@ class ShoppingListApiUnavailableError extends Error {
 
 const shoppingListDrainCoordinator = createOfflineDrainCoordinator<
   string,
-  void
+  ShoppingListOfflineDrainResult
 >()
 
 export function useShoppingListItems(options: { enabled?: boolean } = {}) {
@@ -87,29 +98,12 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
       return
     }
 
-    await shoppingListDrainCoordinator.drain(session.workspaceId, async () => {
-      const result = await drainShoppingListOfflineQueue({
-        api,
-        onItemDeleted: (itemId) => {
-          queryClient.setQueryData<ShoppingListItem[]>(
-            queryKey,
-            (current = []) => removeShoppingListItemRecord(current, itemId),
-          )
-        },
-        onItemSynced: (item) => {
-          queryClient.setQueryData<ShoppingListItem[]>(
-            queryKey,
-            (current = []) => replaceShoppingListItemRecord(current, item),
-          )
-        },
-        workspaceId: session.workspaceId,
-      })
-
-      if (result.synced > 0 || result.conflicted > 0) {
-        await queryClient.invalidateQueries({ queryKey })
-      }
+    await drainQueuedShoppingListMutations({
+      api,
+      queryClient,
+      workspaceId: session.workspaceId,
     })
-  }, [api, queryClient, queryKey, session])
+  }, [api, queryClient, session])
 
   useEffect(() => {
     if (options.enabled === false || !session) {
@@ -175,6 +169,55 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
       !isQueueableShoppingListMutationError(error) && failureCount < 2,
     staleTime: 30_000,
   })
+}
+
+export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
+  const queryClient = useQueryClient()
+  const { api, session, workspaceId } = useShoppingListApi(options)
+  const isEnabled = options.enabled !== false && Boolean(session)
+  const queryKey = useMemo(
+    () => shoppingListOfflineStatusQueryKey(workspaceId),
+    [workspaceId],
+  )
+  const statusQuery = useQuery({
+    enabled: isEnabled,
+    queryFn: () => loadShoppingListOfflineStatus(workspaceId),
+    queryKey,
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  })
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      if (api && session) {
+        await drainQueuedShoppingListMutations({
+          api,
+          queryClient,
+          workspaceId: session.workspaceId,
+        })
+      }
+
+      return loadShoppingListOfflineStatus(workspaceId)
+    },
+    onSuccess: (status) => {
+      queryClient.setQueryData(queryKey, status)
+    },
+  })
+  const retry = useCallback(() => retryMutation.mutateAsync(), [retryMutation])
+
+  useOfflineQueueDrain({
+    drain: retry,
+    drainOnMount: false,
+    enabled: isEnabled && Boolean(api),
+  })
+
+  return {
+    conflictedMutationCount: statusQuery.data?.conflictedMutationCount ?? 0,
+    error: statusQuery.error ?? retryMutation.error,
+    isPending: statusQuery.isPending,
+    isSyncing: retryMutation.isPending,
+    queuedMutationCount: statusQuery.data?.queuedMutationCount ?? 0,
+    retry,
+  }
 }
 
 export function useCreateShoppingListItem() {
@@ -250,6 +293,10 @@ export function useCreateShoppingListItem() {
               type: 'shopping.update',
               workspaceId: session.workspaceId,
             })
+            await refreshShoppingListOfflineStatus(
+              queryClient,
+              session.workspaceId,
+            )
 
             return optimisticItem
           }
@@ -294,6 +341,10 @@ export function useCreateShoppingListItem() {
             type: 'shopping.create',
             workspaceId: session.workspaceId,
           })
+          await refreshShoppingListOfflineStatus(
+            queryClient,
+            session.workspaceId,
+          )
 
           return optimisticItem
         }
@@ -370,6 +421,10 @@ export function useUpdateShoppingListItem() {
             type: 'shopping.update',
             workspaceId: session.workspaceId,
           })
+          await refreshShoppingListOfflineStatus(
+            queryClient,
+            session.workspaceId,
+          )
 
           return optimisticItem
         }
@@ -422,6 +477,10 @@ export function useRemoveShoppingListItem() {
             type: 'shopping.delete',
             workspaceId: session.workspaceId,
           })
+          await refreshShoppingListOfflineStatus(
+            queryClient,
+            session.workspaceId,
+          )
 
           return
         }
@@ -594,4 +653,59 @@ function shouldKeepOptimisticShoppingListMutation(error: unknown): boolean {
     (error instanceof ShoppingListApiUnavailableError ||
       isQueueableShoppingListMutationError(error))
   )
+}
+
+async function drainQueuedShoppingListMutations(input: {
+  api: ShoppingListApiClient
+  queryClient: QueryClient
+  workspaceId: string
+}): Promise<ShoppingListOfflineDrainResult> {
+  return shoppingListDrainCoordinator.drain(input.workspaceId, async () => {
+    const queryKey = shoppingListQueryKey(input.workspaceId)
+    const result = await drainShoppingListOfflineQueue({
+      api: input.api,
+      onItemDeleted: (itemId) => {
+        input.queryClient.setQueryData<ShoppingListItem[]>(
+          queryKey,
+          (current = []) => removeShoppingListItemRecord(current, itemId),
+        )
+      },
+      onItemSynced: (item) => {
+        input.queryClient.setQueryData<ShoppingListItem[]>(
+          queryKey,
+          (current = []) => replaceShoppingListItemRecord(current, item),
+        )
+      },
+      workspaceId: input.workspaceId,
+    })
+
+    if (result.synced > 0 || result.conflicted > 0) {
+      await input.queryClient.invalidateQueries({ queryKey })
+    }
+
+    await refreshShoppingListOfflineStatus(input.queryClient, input.workspaceId)
+
+    return result
+  })
+}
+
+async function refreshShoppingListOfflineStatus(
+  queryClient: QueryClient,
+  workspaceId: string,
+): Promise<void> {
+  queryClient.setQueryData(
+    shoppingListOfflineStatusQueryKey(workspaceId),
+    await loadShoppingListOfflineStatus(workspaceId),
+  )
+}
+
+async function loadShoppingListOfflineStatus(
+  workspaceId: string,
+): Promise<ShoppingListOfflineStatus> {
+  return {
+    conflictedMutationCount:
+      await countConflictedShoppingListOfflineMutations(workspaceId),
+    queuedMutationCount:
+      await countRetryableShoppingListOfflineMutations(workspaceId),
+  }
 }

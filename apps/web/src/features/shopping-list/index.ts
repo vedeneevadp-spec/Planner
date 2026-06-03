@@ -11,6 +11,8 @@ export {
   findShoppingListItemByText,
   formatShoppingListText,
   isActiveShoppingListTextItem,
+} from './lib/shopping-list-text'
+export {
   isShoppingListItemCompleted,
   type ShoppingListItem,
   type ShoppingListItemDraft,
@@ -20,5 +22,6 @@ export {
   useRemoveShoppingListItem,
   useShoppingListItems,
   useShoppingListSummary,
+  useShoppingListSyncStatus,
   useUpdateShoppingListItem,
 } from './lib/useShoppingList'
