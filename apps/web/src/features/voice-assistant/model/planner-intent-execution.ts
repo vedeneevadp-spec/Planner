@@ -1,7 +1,11 @@
-import { generateUuidV7, type PlannerIntent } from '@planner/contracts'
+import {
+  generateUuidV7,
+  type NewTaskInput,
+  type PlannerIntent,
+  type TaskReminderOffsetMinutes,
+} from '@planner/contracts'
 
-import type { NewTaskInput, TaskReminderOffsetMinutes } from '@/entities/task'
-import { formatShoppingListText } from '@/features/shopping-list'
+import { formatShoppingListText } from './shopping-list-text'
 
 interface IntentSchedule {
   plannedDate: string | null

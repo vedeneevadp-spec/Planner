@@ -21,18 +21,17 @@ import {
   VoiceTextNormalizer,
 } from '@planner/contracts'
 
-import {
-  findShoppingListItemByText,
-  formatShoppingListText,
-  isActiveShoppingListTextItem,
-} from '@/features/shopping-list'
-
 import { sanitizeVoicePreviewForLockScreen } from './locked-screen-scrubber'
 import {
   buildTaskInputFromPlannerIntent,
   getPlannerIntentTitle,
   getShoppingItemText,
 } from './planner-intent-execution'
+import {
+  findShoppingListItemByText,
+  formatShoppingListText,
+  isActiveShoppingListTextItem,
+} from './shopping-list-text'
 
 export interface VoiceActionCachedTask {
   id: string
