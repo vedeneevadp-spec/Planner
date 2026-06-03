@@ -1,4 +1,4 @@
-import { getTaskResource, type Task } from '@/entities/task'
+import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
 
 export type EnergyMode = 'maximum' | 'minimum' | 'normal'
 export type LoadState = 'calm' | 'edge' | 'overload'
@@ -122,7 +122,9 @@ export function groupDailyTasks(tasks: Task[]): DailyTaskGroups {
 
 export function getUnloadCandidates(tasks: Task[], limit = 3): Task[] {
   return [...tasks]
-    .filter((task) => task.status !== 'done' && getTaskResource(task) < 0)
+    .filter(
+      (task) => isActiveTaskStatus(task.status) && getTaskResource(task) < 0,
+    )
     .sort((left, right) => {
       if (left.importance !== right.importance) {
         return left.importance === 'important' ? 1 : -1

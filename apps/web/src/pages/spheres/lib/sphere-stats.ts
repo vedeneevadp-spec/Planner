@@ -1,5 +1,5 @@
 import type { Sphere } from '@/entities/sphere'
-import { getTaskResource, type Task } from '@/entities/task'
+import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import { createSvgIconValue } from '@/shared/ui/Icon'
 
@@ -172,7 +172,7 @@ export function buildSphereStats(
     const weekAnchor = getTaskWeekAnchor(task)
     const latestActivityDate = getLatestActivityDate(task)
 
-    if (task.status !== 'done' && isInWeek(task.plannedDate, week)) {
+    if (isActiveTaskStatus(task.status) && isInWeek(task.plannedDate, week)) {
       stats.plannedCount += 1
     }
 
@@ -181,7 +181,7 @@ export function buildSphereStats(
     }
 
     if (
-      task.status !== 'done' &&
+      isActiveTaskStatus(task.status) &&
       task.plannedDate !== null &&
       task.plannedDate < todayKey
     ) {

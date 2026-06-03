@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
 import { isHabitEntryComplete } from '@/entities/habit'
-import { getPlannerSummary } from '@/entities/task'
+import { getPlannerSummary, isActiveTaskStatus } from '@/entities/task'
 import { useCleaningSummary } from '@/features/cleaning'
 import { useHabitsToday } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
@@ -85,7 +85,7 @@ export function Sidebar({
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const summary = getPlannerSummary(tasks, todayKey)
   const plannedTaskCount = tasks.filter(
-    (task) => task.status !== 'done' && task.plannedDate !== null,
+    (task) => isActiveTaskStatus(task.status) && task.plannedDate !== null,
   ).length
   const habitsTodayQuery = useHabitsToday(todayKey)
   const pendingHabitTodayCount = (habitsTodayQuery.data?.items ?? []).filter(

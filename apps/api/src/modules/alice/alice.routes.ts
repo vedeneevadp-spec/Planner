@@ -10,6 +10,7 @@ import type { ChaosInboxService } from '../chaos-inbox/index.js'
 import type { SessionService } from '../session/index.js'
 import type { SessionSnapshot } from '../session/session.model.js'
 import type { TaskService } from '../tasks/index.js'
+import { isActiveTaskStatus } from '../tasks/task.shared.js'
 import type {
   AliceCommandParser,
   AliceCommandParserInput,
@@ -333,7 +334,7 @@ async function createTaskListResponse(
       plannedDate: command.plannedDate,
     },
   )
-  const activeTasks = tasks.filter((task) => task.status !== 'done')
+  const activeTasks = tasks.filter((task) => isActiveTaskStatus(task.status))
   const label = command.range === 'today' ? 'сегодня' : 'завтра'
 
   if (activeTasks.length === 0) {

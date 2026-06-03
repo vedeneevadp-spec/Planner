@@ -195,7 +195,15 @@ function getTaskStatusWeight(status: TaskStatus): number {
     return 2
   }
 
-  return 3
+  if (status === 'archived') {
+    return 3
+  }
+
+  return 4
+}
+
+export function isActiveTaskStatus(status: TaskStatus): boolean {
+  return status !== 'done' && status !== 'archived'
 }
 
 export function compareStoredTasks(

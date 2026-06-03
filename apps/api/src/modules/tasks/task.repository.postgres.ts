@@ -54,6 +54,7 @@ import type { TaskRow } from './task.repository.postgres.types.js'
 import {
   buildDefaultEndTime,
   buildTimestampFromDateAndTime,
+  isActiveTaskStatus,
   normalizeTaskInput,
   normalizeTaskSchedule,
   sortStoredTasks,
@@ -694,7 +695,7 @@ export class PostgresTaskRepository implements TaskRepository {
         )
 
         await syncTaskReminder(trx, {
-          isActive: record.status !== 'done',
+          isActive: isActiveTaskStatus(record.status),
           plannedDate: record.plannedDate,
           plannedStartTime: record.plannedStartTime,
           remindBeforeStart: record.remindBeforeStart === true,
@@ -1189,7 +1190,7 @@ export class PostgresTaskRepository implements TaskRepository {
       const record = mapTaskRecord(nextRelatedTask, timeBlock, null, null, null)
 
       await syncTaskReminder(trx, {
-        isActive: record.status !== 'done',
+        isActive: isActiveTaskStatus(record.status),
         plannedDate: record.plannedDate,
         plannedStartTime: record.plannedStartTime,
         remindBeforeStart: record.remindBeforeStart === true,

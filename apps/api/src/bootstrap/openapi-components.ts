@@ -1604,7 +1604,7 @@ export function createComponentSchemas(): Record<
       type: 'object',
     },
     TaskStatus: {
-      enum: ['done', 'in_progress', 'ready_for_review', 'todo'],
+      enum: ['archived', 'done', 'in_progress', 'ready_for_review', 'todo'],
       type: 'string',
     },
     TaskStatusUpdateInput: {

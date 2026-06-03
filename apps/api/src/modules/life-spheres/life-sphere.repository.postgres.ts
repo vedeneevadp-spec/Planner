@@ -8,6 +8,7 @@ import {
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
+import { isActiveTaskStatus } from '../tasks/task.shared.js'
 import type {
   CreateLifeSphereCommand,
   DeleteLifeSphereCommand,
@@ -518,7 +519,10 @@ function updateStats(
     .at(-1)!
   let weeklyLoad = 0
 
-  if (task.status !== 'done' && isInRange(plannedDate ?? dueDate, dates)) {
+  if (
+    isActiveTaskStatus(task.status) &&
+    isInRange(plannedDate ?? dueDate, dates)
+  ) {
     stats.plannedCount += 1
   }
 
@@ -527,7 +531,7 @@ function updateStats(
   }
 
   if (
-    task.status !== 'done' &&
+    isActiveTaskStatus(task.status) &&
     plannedDate !== null &&
     plannedDate < dates.today
   ) {

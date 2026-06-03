@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -335,6 +335,31 @@ describe('TodayPage', () => {
     expect(
       screen.getByRole('button', { name: 'Выполнено сегодня' }),
     ).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('shows archived tasks only in the collapsed archive section', () => {
+    renderTodayPage({
+      tasks: [
+        createTask({
+          id: 'archived-task',
+          status: 'archived',
+          title: 'Когда-нибудь разобрать',
+        }),
+      ],
+    })
+
+    expect(
+      screen.queryByRole('button', { name: 'Остальные задачи' }),
+    ).toBeNull()
+    expect(screen.queryByText('Когда-нибудь разобрать')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Архив' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Архив' }))
+
+    expect(screen.getByText('Когда-нибудь разобрать')).toBeVisible()
   })
 
   it('keeps shared other tasks expanded when tomorrow is empty', () => {

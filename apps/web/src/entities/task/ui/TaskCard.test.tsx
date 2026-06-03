@@ -162,6 +162,38 @@ describe('TaskCard', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('archives active tasks from the action menu', () => {
+    const onSetStatus = vi.fn()
+
+    renderTaskCard(createTask(), {
+      onSetStatus,
+    })
+
+    fireEvent.click(
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'В архив',
+      }),
+    )
+
+    expect(onSetStatus).toHaveBeenCalledWith('task-1', 'archived')
+  })
+
+  it('reopens archived tasks from the action menu', () => {
+    const onSetStatus = vi.fn()
+
+    renderTaskCard(createTask({ status: 'archived' }), {
+      onSetStatus,
+    })
+
+    fireEvent.click(
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'Вернуть',
+      }),
+    )
+
+    expect(onSetStatus).toHaveBeenCalledWith('task-1', 'todo')
+  })
+
   it('renders compact cards with only the title and complete action', () => {
     const onSetStatus = vi.fn()
 

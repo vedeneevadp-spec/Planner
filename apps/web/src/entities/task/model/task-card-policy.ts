@@ -1,5 +1,6 @@
 import type { WorkspaceGroupRole, WorkspaceRole } from '@planner/contracts'
 
+import { isActiveTaskStatus } from './planner'
 import type { Task } from './task.types'
 
 interface ResolveTaskCardActionPolicyInput {
@@ -21,6 +22,7 @@ interface ResolveTaskCardActionPolicyInput {
 
 export interface TaskCardActionPolicy {
   canCompleteTask: boolean
+  canArchiveTask: boolean
   canCopyToPersonal: boolean
   canDeleteTask: boolean
   canEditTask: boolean
@@ -29,6 +31,7 @@ export interface TaskCardActionPolicy {
   canMoveToPersonal: boolean
   canReopenTask: boolean
   hasActionMenu: boolean
+  hasArchiveAction: boolean
   hasMoveToTodayAction: boolean
   hasMoveToTomorrowAction: boolean
   hasPostponeAction: boolean
@@ -51,7 +54,7 @@ export function resolveTaskCardActionPolicy({
   todayKey,
   tomorrowKey,
 }: ResolveTaskCardActionPolicyInput): TaskCardActionPolicy {
-  const isActiveTask = task.status !== 'done'
+  const isActiveTask = isActiveTaskStatus(task.status)
   const isInProgress = task.status === 'in_progress'
   const isReadyForReview = task.status === 'ready_for_review'
   const isTaskAuthor =
@@ -79,6 +82,7 @@ export function resolveTaskCardActionPolicy({
     (canManageSharedTask && (!task.requiresConfirmation || isTaskAuthor))
   const canReopenTask = !isSharedWorkspace || canManageSharedTask
   const canEditTask = !isSharedWorkspace || canManageSharedTask
+  const canArchiveTask = !isSharedWorkspace || canManageSharedTask
   const canDeleteTask =
     !isSharedWorkspace ||
     isTaskAuthor ||
@@ -100,11 +104,13 @@ export function resolveTaskCardActionPolicy({
     (hasMoveToTodayAction || hasMoveToTomorrowAction || hasPostponeAction)
   const hasWorkAction = isActiveTask && canManageWorkStatus
   const hasReviewAction = canToggleReview
+  const hasArchiveAction = isActiveTask && canArchiveTask
   const hasReopenAction = !isActiveTask && canReopenTask
   const hasActionMenu =
     hasScheduleActions ||
     hasWorkAction ||
     hasReviewAction ||
+    hasArchiveAction ||
     hasReopenAction ||
     canCopyToPersonal ||
     canMoveToPersonal ||
@@ -113,6 +119,7 @@ export function resolveTaskCardActionPolicy({
 
   return {
     canCompleteTask,
+    canArchiveTask,
     canCopyToPersonal,
     canDeleteTask,
     canEditTask,
@@ -121,6 +128,7 @@ export function resolveTaskCardActionPolicy({
     canMoveToPersonal,
     canReopenTask,
     hasActionMenu,
+    hasArchiveAction,
     hasMoveToTodayAction,
     hasMoveToTomorrowAction,
     hasPostponeAction,

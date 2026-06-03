@@ -124,6 +124,36 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.title, 'Умыться')
 })
 
+void test('TaskService archives recurring tasks without creating the next occurrence', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const task = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000004',
+      startDate: '2099-01-01',
+    },
+    title: 'Отложенная повторяющаяся задача',
+  })
+
+  const archivedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    task.id,
+    'archived',
+    task.version,
+  )
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+
+  assert.equal(archivedTask.status, 'archived')
+  assert.equal(archivedTask.completedAt, null)
+  assert.equal(tasks.length, 1)
+})
+
 void test('TaskService treats stale same-status completion as idempotent', async () => {
   const service = new TaskService(new MemoryTaskRepository())
   const task = await service.createTask(PERSONAL_CONTEXT, {

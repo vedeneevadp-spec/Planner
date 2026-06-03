@@ -6,7 +6,9 @@ import {
   buildTimelineLayout,
   getPlannerSummary,
   groupTasksByProject,
+  selectArchivedTasks,
   selectDoneBeforeTodayTasks,
+  selectTodoTasks,
   setTaskPlannedDate,
   setTaskSchedule,
   setTaskStatus,
@@ -120,6 +122,22 @@ describe('planner model', () => {
     expect(
       selectDoneBeforeTodayTasks(tasks, '2026-04-15').map((task) => task.id),
     ).toEqual(['done-newer', 'done-older'])
+  })
+
+  it('keeps archived tasks out of active task selectors', () => {
+    const tasks = [
+      baseTask,
+      {
+        ...baseTask,
+        id: 'archived-task',
+        status: 'archived' as const,
+      },
+    ]
+
+    expect(selectTodoTasks(tasks).map((task) => task.id)).toEqual(['task-1'])
+    expect(selectArchivedTasks(tasks).map((task) => task.id)).toEqual([
+      'archived-task',
+    ])
   })
 
   it('moves a task back to inbox when the planned date is cleared', () => {

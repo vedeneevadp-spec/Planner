@@ -56,7 +56,7 @@ export class PostgresTaskReminderRepository implements TaskReminderRepository {
             or reminder.claimed_at <= now() - ${sql.raw(CLAIM_TIMEOUT_INTERVAL)}
           )
           and task.deleted_at is null
-          and task.status <> 'done'
+          and task.status not in ('done', 'archived')
           and ${reminderDueAtSql('reminder')} <= now()
           and ${reminderStartAtSql('reminder')} > now() - ${sql.raw(STALE_GRACE_INTERVAL)}
         order by ${reminderDueAtSql('reminder')} asc, reminder.created_at asc

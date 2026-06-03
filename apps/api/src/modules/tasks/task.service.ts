@@ -14,6 +14,7 @@ import type {
 } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
 import {
+  isActiveTaskStatus,
   normalizeTaskReminderOffsets,
   normalizeTaskSchedule,
 } from './task.shared.js'
@@ -186,7 +187,7 @@ export class TaskService {
       }
 
       let shouldCreateNextRecurringOccurrence =
-        task.status !== 'done' && status === 'done'
+        isActiveTaskStatus(task.status) && status === 'done'
 
       return Promise.resolve()
         .then(() => this.repository.updateStatus(command))
@@ -302,7 +303,7 @@ export class TaskService {
     const hasExistingNextOccurrence = workspaceTasks.some(
       (task) =>
         task.id !== completedTask.id &&
-        task.status !== 'done' &&
+        isActiveTaskStatus(task.status) &&
         task.plannedDate === nextPlannedDate &&
         hasRecurringSeries(task, recurrence.seriesId),
     )
@@ -783,7 +784,7 @@ function canAssigneeChangeSharedTaskStatus(
   }
 
   if (status === 'in_progress') {
-    return task.status !== 'done'
+    return isActiveTaskStatus(task.status)
   }
 
   if (status === 'ready_for_review') {

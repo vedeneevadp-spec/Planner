@@ -66,4 +66,28 @@ describe('resolveTaskCardActionPolicy', () => {
     expect(policy.canEditTask).toBe(false)
     expect(policy.canDeleteTask).toBe(false)
   })
+
+  it('allows archiving active personal tasks and reopening archived tasks', () => {
+    const activePolicy = resolveTaskCardActionPolicy({
+      isSharedWorkspace: false,
+      task: createPolicyTask(),
+      todayKey: '2026-04-23',
+      tomorrowKey: '2026-04-24',
+    })
+
+    expect(activePolicy.isActiveTask).toBe(true)
+    expect(activePolicy.hasArchiveAction).toBe(true)
+    expect(activePolicy.hasReopenAction).toBe(false)
+
+    const archivedPolicy = resolveTaskCardActionPolicy({
+      isSharedWorkspace: false,
+      task: createPolicyTask({ status: 'archived' }),
+      todayKey: '2026-04-23',
+      tomorrowKey: '2026-04-24',
+    })
+
+    expect(archivedPolicy.isActiveTask).toBe(false)
+    expect(archivedPolicy.hasArchiveAction).toBe(false)
+    expect(archivedPolicy.hasReopenAction).toBe(true)
+  })
 })

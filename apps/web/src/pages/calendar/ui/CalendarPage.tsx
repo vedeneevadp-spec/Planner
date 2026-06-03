@@ -6,6 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   buildTimelineLayout,
   getTaskResource,
+  isActiveTaskStatus,
   selectPlannedTasks,
   type Task,
   TaskCard,
@@ -213,7 +214,7 @@ function getTasksForDate(
 ): CalendarDisplayTask[] {
   return sortCalendarTasks(
     tasks.filter(
-      (task) => task.status !== 'done' && task.plannedDate === dateKey,
+      (task) => isActiveTaskStatus(task.status) && task.plannedDate === dateKey,
     ),
   )
 }
@@ -260,7 +261,7 @@ function getCalendarTitle(mode: CalendarViewMode, anchorDateKey: string) {
 function getTimeRange(tasks: CalendarDisplayTask[], weekDateKeys: string[]) {
   const timedTasks = tasks.filter(
     (task) =>
-      task.status !== 'done' &&
+      isActiveTaskStatus(task.status) &&
       task.plannedDate !== null &&
       weekDateKeys.includes(task.plannedDate) &&
       task.plannedStartTime !== null,

@@ -14,6 +14,7 @@ import {
   isHabitEntryComplete,
 } from '@/entities/habit'
 import {
+  selectArchivedTasks,
   selectDoneBeforeTodayTasks,
   selectDoneTodayTasks,
   selectOverdueTasks,
@@ -298,6 +299,7 @@ function PersonalTodayPage() {
     () => selectDoneBeforeTodayTasks(tasks, todayKey),
     [tasks, todayKey],
   )
+  const archivedTasks = useMemo(() => selectArchivedTasks(tasks), [tasks])
   const routineTasks = useMemo(
     () => todayTasks.filter((task) => isRoutineTask(task)),
     [todayTasks],
@@ -512,6 +514,14 @@ function PersonalTodayPage() {
               tone: 'success',
             },
           )}
+
+          {buildTaskSection(
+            'archive',
+            'Архив',
+            archivedTasks,
+            'Задачи, отложенные без планирования, появятся здесь.',
+            { defaultCollapsed: true },
+          )}
         </div>
       </div>
     </section>
@@ -569,6 +579,7 @@ function SharedTodayPage() {
     () => selectDoneBeforeTodayTasks(tasks, todayKey),
     [tasks, todayKey],
   )
+  const archivedTasks = useMemo(() => selectArchivedTasks(tasks), [tasks])
   const visibleTaskIds = useMemo(
     () =>
       new Set([
@@ -757,6 +768,14 @@ function SharedTodayPage() {
               defaultCollapsed: defaultCollapsedSections.doneHistory,
               tone: 'success',
             },
+          )}
+
+          {buildTaskSection(
+            'archive',
+            'Архив',
+            archivedTasks,
+            'Архивированные задачи общего workspace появятся здесь.',
+            { defaultCollapsed: true },
           )}
         </div>
       </div>

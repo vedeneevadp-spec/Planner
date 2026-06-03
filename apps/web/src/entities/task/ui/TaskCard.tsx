@@ -157,6 +157,7 @@ export function TaskCard({
     canMoveToPersonal,
     canReopenTask,
     hasActionMenu,
+    hasArchiveAction,
     hasMoveToTodayAction,
     hasMoveToTomorrowAction,
     hasPostponeAction,
@@ -434,6 +435,22 @@ export function TaskCard({
                             }
                           >
                             На проверку
+                          </button>
+                        ) : null}
+
+                        {hasArchiveAction ? (
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            disabled={isPending}
+                            onClick={() =>
+                              runMenuAction(() =>
+                                onSetStatus(task.id, 'archived'),
+                              )
+                            }
+                          >
+                            В архив
                           </button>
                         ) : null}
 

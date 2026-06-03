@@ -24,9 +24,10 @@ import {
   type TaskListRow,
   type TaskRow,
 } from './task.repository.postgres.types.js'
-import type {
-  normalizeTaskInput,
-  normalizeTaskSchedule,
+import {
+  isActiveTaskStatus,
+  type normalizeTaskInput,
+  type normalizeTaskSchedule,
 } from './task.shared.js'
 
 export class PostgresTaskPoolerWriteFallback {
@@ -305,7 +306,7 @@ export class PostgresTaskPoolerWriteFallback {
           const record = mapTaskRecordFromListRow(createdTask)
 
           await syncTaskReminder(executor, {
-            isActive: record.status !== 'done',
+            isActive: isActiveTaskStatus(record.status),
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
             remindBeforeStart: record.remindBeforeStart === true,
@@ -477,7 +478,7 @@ export class PostgresTaskPoolerWriteFallback {
           const record = mapTaskRecordFromListRow(updatedTask)
 
           await syncTaskReminder(executor, {
-            isActive: record.status !== 'done',
+            isActive: isActiveTaskStatus(record.status),
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
             remindBeforeStart: record.remindBeforeStart === true,
@@ -637,7 +638,7 @@ export class PostgresTaskPoolerWriteFallback {
           const record = mapTaskRecordFromListRow(updatedTask)
 
           await syncTaskReminder(executor, {
-            isActive: record.status !== 'done',
+            isActive: isActiveTaskStatus(record.status),
             plannedDate: record.plannedDate,
             plannedStartTime: record.plannedStartTime,
             remindBeforeStart: record.remindBeforeStart === true,

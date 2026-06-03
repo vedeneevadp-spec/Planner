@@ -43,6 +43,10 @@ export interface VoiceActionCachedTask {
   title: string
 }
 
+function isActivePlannerTaskStatus(status: string): boolean {
+  return status !== 'done' && status !== 'archived'
+}
+
 export interface VoiceActionTaskClient {
   listTasks: (filters?: {
     limit?: number | undefined
@@ -350,7 +354,7 @@ export class PlannerActionExecutor {
     }
 
     const agendaItems = agendaResult.tasks
-      .filter((task) => task.status !== 'done')
+      .filter((task) => isActivePlannerTaskStatus(task.status))
       .sort(compareAgendaTasks)
       .map(toAgendaItem)
     const summary = buildAgendaSummary(intent.date!, agendaItems, {
@@ -1232,7 +1236,10 @@ function resolveRescheduleCandidates(
   targetQuery: string,
 ): VoiceActionCandidate[] {
   const scoredCandidates = tasks
-    .filter((task) => task.status !== 'done' && task.deletedAt === null)
+    .filter(
+      (task) =>
+        isActivePlannerTaskStatus(task.status) && task.deletedAt === null,
+    )
     .map((task) => ({
       candidate: toVoiceActionCandidate(task),
       score: scoreTaskCandidate(task.title, targetQuery),

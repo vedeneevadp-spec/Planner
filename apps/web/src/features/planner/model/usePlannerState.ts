@@ -13,7 +13,7 @@ import type {
   TaskStatus,
   TaskUpdateInput,
 } from '@/entities/task'
-import { sortTasks } from '@/entities/task'
+import { isActiveTaskStatus, sortTasks } from '@/entities/task'
 import type {
   NewTaskTemplateInput,
   TaskTemplate,
@@ -466,7 +466,8 @@ export function usePlannerState(): PlannerState {
     }
 
     return runTaskMutation(taskId, async () => {
-      const didCompleteTask = task.status !== 'done' && status === 'done'
+      const didCompleteTask =
+        isActiveTaskStatus(task.status) && status === 'done'
       const didUpdate = await runMutation(
         () =>
           setTaskStatusMutation.mutateAsync({

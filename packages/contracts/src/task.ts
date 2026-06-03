@@ -39,6 +39,7 @@ export const taskStatusSchema = z.enum([
   'in_progress',
   'ready_for_review',
   'done',
+  'archived',
 ])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])

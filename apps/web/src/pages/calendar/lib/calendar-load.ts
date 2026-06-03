@@ -1,4 +1,4 @@
-import { getTaskResource, type Task } from '@/entities/task'
+import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
 import { addDays, getDateKey } from '@/shared/lib/date'
 
 const CALENDAR_GRID_DAY_COUNT = 42
@@ -149,7 +149,7 @@ export function getCalendarDaySummary(
   dateKey: string,
 ): CalendarDaySummary {
   const plannedTasks = tasks.filter(
-    (task) => task.status !== 'done' && task.plannedDate === dateKey,
+    (task) => isActiveTaskStatus(task.status) && task.plannedDate === dateKey,
   )
   const loadUnits = plannedTasks.reduce(
     (total, task) => total + getTaskLoadUnits(task),
@@ -257,7 +257,7 @@ export function buildRecurringGhostTasks(
       existingDatesBySeries.add(`${recurrence.seriesId}:${task.plannedDate}`)
     }
 
-    if (task.status === 'done') {
+    if (!isActiveTaskStatus(task.status)) {
       continue
     }
 

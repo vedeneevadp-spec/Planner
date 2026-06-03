@@ -122,7 +122,15 @@ function getTaskStatusWeight(status: TaskStatus): number {
     return 2
   }
 
-  return 3
+  if (status === 'archived') {
+    return 3
+  }
+
+  return 4
+}
+
+export function isActiveTaskStatus(status: TaskStatus): boolean {
+  return status !== 'done' && status !== 'archived'
 }
 
 function parseTimeKey(value: string): number {
@@ -360,7 +368,7 @@ export function removeTask(tasks: Task[], taskId: string): Task[] {
 }
 
 export function selectTodoTasks(tasks: Task[]): Task[] {
-  return tasks.filter((task) => task.status !== 'done')
+  return tasks.filter((task) => isActiveTaskStatus(task.status))
 }
 
 export function selectInboxTasks(tasks: Task[]): Task[] {
@@ -399,6 +407,10 @@ export function selectOverdueTasks(tasks: Task[], todayKey: string): Task[] {
 
 export function selectDoneTasks(tasks: Task[]): Task[] {
   return tasks.filter((task) => task.status === 'done')
+}
+
+export function selectArchivedTasks(tasks: Task[]): Task[] {
+  return tasks.filter((task) => task.status === 'archived')
 }
 
 export function selectDoneTodayTasks(tasks: Task[], todayKey: string): Task[] {

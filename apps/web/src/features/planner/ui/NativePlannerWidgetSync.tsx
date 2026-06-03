@@ -4,7 +4,12 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import type { Sphere } from '@/entities/sphere'
-import { sortTasks, type Task, type TaskStatus } from '@/entities/task'
+import {
+  isActiveTaskStatus,
+  sortTasks,
+  type Task,
+  type TaskStatus,
+} from '@/entities/task'
 import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
 
@@ -223,7 +228,7 @@ export function NativePlannerWidgetSync() {
       const planner = plannerRef.current
       const task = planner.tasks.find((candidate) => candidate.id === taskId)
 
-      if (!task || task.status === 'done') {
+      if (!task || !isActiveTaskStatus(task.status)) {
         recordClientEvent('widget_completion_replayed', {
           activePersonalWorkspace: planner.isActivePersonalWorkspace,
           reason: task ? 'already_completed' : 'missing_local_task',
