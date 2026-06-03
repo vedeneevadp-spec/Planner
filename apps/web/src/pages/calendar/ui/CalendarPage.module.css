@@ -114,6 +114,43 @@
   --week-day-min: 7.45rem;
 }
 
+.periodSwipeSurface {
+  touch-action: pan-y;
+  overscroll-behavior-x: contain;
+}
+
+.periodTransitionNext {
+  animation: calendarPeriodEnterNext 220ms ease both;
+}
+
+.periodTransitionPrev {
+  animation: calendarPeriodEnterPrev 220ms ease both;
+}
+
+@keyframes calendarPeriodEnterNext {
+  from {
+    opacity: 0.82;
+    transform: translateX(1.6rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes calendarPeriodEnterPrev {
+  from {
+    opacity: 0.82;
+    transform: translateX(-1.6rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .weekHeaderGrid,
 .allDayGrid,
 .weekColumns,
@@ -333,6 +370,39 @@
   color: var(--text-soft);
   font-size: 0.7rem;
   line-height: 1;
+}
+
+.currentTimeMarker {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 3;
+  height: 0;
+  pointer-events: none;
+}
+
+.currentTimeMarker::before,
+.currentTimeMarker::after {
+  content: '';
+  position: absolute;
+  background: color-mix(in srgb, var(--text) 72%, transparent);
+}
+
+.currentTimeMarker::before {
+  top: -0.31rem;
+  left: -0.31rem;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px var(--surface-muted);
+}
+
+.currentTimeMarker::after {
+  top: -1px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
 }
 
 .monthSurface {
@@ -1322,6 +1392,13 @@
 
   .scheduleOverlayHeader h2 {
     font-size: 1.28rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .periodTransitionNext,
+  .periodTransitionPrev {
+    animation: none;
   }
 }
 

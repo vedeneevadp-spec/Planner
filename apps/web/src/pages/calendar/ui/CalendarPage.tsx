@@ -40,8 +40,13 @@ import {
   type CalendarDisplayTask,
   getCalendarMonthDateRange,
   isRecurringGhostTask,
-  shiftCalendarMonth,
 } from '../lib/calendar-load'
+import {
+  type CalendarPeriodDirection,
+  SCHEDULE_PERIOD_DAYS,
+  shiftCalendarPeriod,
+} from '../lib/calendar-period'
+import { useHorizontalPeriodSwipe } from '../lib/useHorizontalPeriodSwipe'
 import { CalendarDayScheduleDialog } from './CalendarDayScheduleDialog'
 import styles from './CalendarPage.module.css'
 
@@ -51,11 +56,18 @@ const DEFAULT_END_HOUR = 24
 const DEFAULT_WEEK_SCROLL_HOUR = 7
 const MIN_TASK_HEIGHT_REM = 2.2
 const MONTH_VISIBLE_TASK_LIMIT = 5
-const SCHEDULE_VISIBLE_DAYS = 14
 const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
 const DAY_SCHEDULE_SEARCH_PARAM = 'calendarDaySchedule'
 const LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM = 'timelineSchedule'
 const TASK_CREATE_SEARCH_PARAM = 'createTask'
+
+function getMillisecondsUntilNextMinute(date: Date): number {
+  const elapsedMinuteMilliseconds =
+    date.getSeconds() * 1000 + date.getMilliseconds()
+  const remainingMilliseconds = 60_000 - elapsedMinuteMilliseconds
+
+  return remainingMilliseconds > 0 ? remainingMilliseconds : 60_000
+}
 
 function formatTaskCount(value: number): string {
   const mod100 = value % 100
@@ -218,7 +230,7 @@ function getUntimedTasksForDate(
 function getScheduleDateKeys(anchorDateKey: string): string[] {
   const startDate = parseDateKey(anchorDateKey)
 
-  return Array.from({ length: SCHEDULE_VISIBLE_DAYS }, (_, index) =>
+  return Array.from({ length: SCHEDULE_PERIOD_DAYS }, (_, index) =>
     getDateKey(addDays(startDate, index)),
   )
 }
@@ -234,7 +246,7 @@ function getCalendarTitle(mode: CalendarViewMode, anchorDateKey: string) {
 
   if (mode === 'schedule') {
     const endDateKey = getDateKey(
-      addDays(parseDateKey(anchorDateKey), SCHEDULE_VISIBLE_DAYS - 1),
+      addDays(parseDateKey(anchorDateKey), SCHEDULE_PERIOD_DAYS - 1),
     )
 
     return formatWeekTitle(anchorDateKey, endDateKey)
@@ -346,26 +358,59 @@ function getTimedTaskStyle(
   }
 }
 
-function shiftCalendarDate(
-  dateKey: string,
-  mode: CalendarViewMode,
-  amount: number,
-): string {
-  if (mode === 'month') {
-    return shiftCalendarMonth(dateKey, amount)
+function getCurrentTimeMarkerStyle(
+  currentTime: Date,
+  startHour: number,
+  endHour: number,
+): CSSProperties | null {
+  const calendarStartMinutes = startHour * 60
+  const calendarEndMinutes = endHour * 60
+  const totalMinutes = calendarEndMinutes - calendarStartMinutes
+
+  if (totalMinutes <= 0) {
+    return null
   }
 
-  if (mode === 'schedule') {
-    return getDateKey(
-      addDays(parseDateKey(dateKey), amount * SCHEDULE_VISIBLE_DAYS),
-    )
+  const currentMinutes =
+    currentTime.getHours() * 60 +
+    currentTime.getMinutes() +
+    currentTime.getSeconds() / 60
+
+  if (
+    currentMinutes < calendarStartMinutes ||
+    currentMinutes > calendarEndMinutes
+  ) {
+    return null
   }
 
-  if (mode === 'day') {
-    return getDateKey(addDays(parseDateKey(dateKey), amount))
+  return {
+    top: `${((currentMinutes - calendarStartMinutes) / totalMinutes) * 100}%`,
+  }
+}
+
+function CurrentTimeMarker({
+  currentTime,
+  endHour,
+  startHour,
+}: {
+  currentTime: Date
+  endHour: number
+  startHour: number
+}) {
+  const markerStyle = getCurrentTimeMarkerStyle(currentTime, startHour, endHour)
+
+  if (!markerStyle) {
+    return null
   }
 
-  return getDateKey(addDays(parseDateKey(dateKey), amount * 7))
+  return (
+    <div
+      aria-hidden="true"
+      className={styles.currentTimeMarker}
+      data-testid="calendar-current-time-marker"
+      style={markerStyle}
+    />
+  )
 }
 
 function CalendarTaskPill({
@@ -381,6 +426,7 @@ function CalendarTaskPill({
 
   return (
     <button
+      data-no-swipe
       className={cx(
         styles.taskPill,
         compact && styles.taskPillCompact,
@@ -417,6 +463,7 @@ function CalendarScheduleTask({
 
   return (
     <button
+      data-no-swipe
       className={cx(styles.scheduleTask, isGhost && styles.ghostTask)}
       type="button"
       aria-label={
@@ -460,7 +507,8 @@ export function CalendarPage() {
   const { uploadedIcons } = useUploadedIconAssets()
   const sessionQuery = usePlannerSession()
   const { mutate: updateUserPreferences } = useUpdateUserPreferences()
-  const todayKey = getDateKey(new Date())
+  const [currentTime, setCurrentTime] = useState(() => new Date())
+  const todayKey = getDateKey(currentTime)
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
@@ -471,6 +519,7 @@ export function CalendarPage() {
   const timelineSurfaceRef = useRef<HTMLElement | null>(null)
   const lastTimelineScrollKeyRef = useRef<string | null>(null)
   const lastCalendarViewPreferenceSyncRef = useRef<string | null>(null)
+  const periodTransitionTimeoutRef = useRef<number | null>(null)
   const [viewModeState, setViewModeState] = useState<{
     mode: CalendarViewMode
     sessionPreferenceKey: string | null
@@ -486,6 +535,8 @@ export function CalendarPage() {
   const calendarSearch = searchParams.toString()
   const [anchorDate, setAnchorDate] = useState(todayKey)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const [periodTransition, setPeriodTransition] =
+    useState<CalendarPeriodDirection | null>(null)
   const createTaskRequestId = searchParams.get(TASK_CREATE_SEARCH_PARAM)
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -592,9 +643,37 @@ export function CalendarPage() {
     dayUnscheduledTasks.length,
   )
   const title = getCalendarTitle(viewMode, anchorDate)
+  const canSwipePeriod =
+    viewMode === 'day' || viewMode === 'week' || viewMode === 'month'
+  const periodTransitionClass =
+    periodTransition === 'next'
+      ? styles.periodTransitionNext
+      : periodTransition === 'prev'
+        ? styles.periodTransitionPrev
+        : undefined
+  const periodSwipeHandlers = useHorizontalPeriodSwipe({
+    enabled: canSwipePeriod && !periodTransition,
+    onSwipeLeft: () => shiftPeriod('next'),
+    onSwipeRight: () => shiftPeriod('prev'),
+  })
 
-  function shiftPeriod(amount: number) {
-    setAnchorDate((current) => shiftCalendarDate(current, viewMode, amount))
+  function startPeriodTransition(direction: CalendarPeriodDirection) {
+    if (periodTransitionTimeoutRef.current !== null) {
+      window.clearTimeout(periodTransitionTimeoutRef.current)
+    }
+
+    setPeriodTransition(direction)
+    periodTransitionTimeoutRef.current = window.setTimeout(() => {
+      setPeriodTransition(null)
+      periodTransitionTimeoutRef.current = null
+    }, 220)
+  }
+
+  function shiftPeriod(direction: CalendarPeriodDirection) {
+    startPeriodTransition(direction)
+    setAnchorDate((current) =>
+      shiftCalendarPeriod(current, viewMode, direction),
+    )
   }
 
   function selectViewMode(nextViewMode: CalendarViewMode) {
@@ -640,6 +719,34 @@ export function CalendarPage() {
     nextSearchParams.delete(LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM)
     setSearchParams(nextSearchParams, { replace: true })
   }
+
+  useEffect(() => {
+    return () => {
+      if (periodTransitionTimeoutRef.current !== null) {
+        window.clearTimeout(periodTransitionTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    function syncCurrentTime() {
+      setCurrentTime(new Date())
+    }
+
+    let intervalId: number | undefined
+    const timeoutId = window.setTimeout(() => {
+      syncCurrentTime()
+      intervalId = window.setInterval(syncCurrentTime, 60_000)
+    }, getMillisecondsUntilNextMinute(new Date()))
+
+    return () => {
+      window.clearTimeout(timeoutId)
+
+      if (intervalId !== undefined) {
+        window.clearInterval(intervalId)
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!createTaskRequestId) {
@@ -787,7 +894,7 @@ export function CalendarPage() {
             type="button"
             aria-label="Предыдущий период"
             title="Предыдущий период"
-            onClick={() => shiftPeriod(-1)}
+            onClick={() => shiftPeriod('prev')}
           >
             <ChevronLeftIcon size={18} strokeWidth={2.2} />
           </button>
@@ -796,11 +903,16 @@ export function CalendarPage() {
             type="button"
             aria-label="Следующий период"
             title="Следующий период"
-            onClick={() => shiftPeriod(1)}
+            onClick={() => shiftPeriod('next')}
           >
             <ChevronRightIcon size={18} strokeWidth={2.2} />
           </button>
-          <strong className={styles.periodTitle}>{title}</strong>
+          <strong
+            className={styles.periodTitle}
+            data-testid="calendar-period-title"
+          >
+            {title}
+          </strong>
         </div>
 
         <div className={styles.toolbarActions}>
@@ -823,15 +935,21 @@ export function CalendarPage() {
             openDraft={taskComposerDraft}
             openButtonAriaLabel="Создать задачу"
             openButtonLabel="Задача"
-            showTimeFields={viewMode === 'day'}
+            showTimeFields
           />
         </div>
       </header>
 
       {viewMode === 'day' ? (
         <section
+          {...periodSwipeHandlers}
           ref={timelineSurfaceRef}
-          className={cx(styles.weekSurface, styles.daySurface)}
+          className={cx(
+            styles.weekSurface,
+            styles.daySurface,
+            styles.periodSwipeSurface,
+            periodTransitionClass,
+          )}
           aria-label="День"
         >
           <div
@@ -857,6 +975,7 @@ export function CalendarPage() {
                 ))}
                 {dayTimelineEntries.map((entry) => (
                   <button
+                    data-no-swipe
                     key={entry.task.id}
                     className={cx(
                       styles.timedTask,
@@ -896,14 +1015,26 @@ export function CalendarPage() {
                     ) : null}
                   </button>
                 ))}
+                {anchorDate === todayKey ? (
+                  <CurrentTimeMarker
+                    currentTime={currentTime}
+                    endHour={timeRange.endHour}
+                    startHour={timeRange.startHour}
+                  />
+                ) : null}
               </div>
             </div>
           </div>
         </section>
       ) : viewMode === 'week' ? (
         <section
+          {...periodSwipeHandlers}
           ref={timelineSurfaceRef}
-          className={styles.weekSurface}
+          className={cx(
+            styles.weekSurface,
+            styles.periodSwipeSurface,
+            periodTransitionClass,
+          )}
           aria-label="Неделя"
         >
           <div className={styles.weekHeaderGrid}>
@@ -984,6 +1115,7 @@ export function CalendarPage() {
                     ))}
                     {timelineEntries.map((entry) => (
                       <button
+                        data-no-swipe
                         key={entry.task.id}
                         className={cx(
                           styles.timedTask,
@@ -1008,6 +1140,13 @@ export function CalendarPage() {
                         <strong>{entry.task.title}</strong>
                       </button>
                     ))}
+                    {dateKey === todayKey ? (
+                      <CurrentTimeMarker
+                        currentTime={currentTime}
+                        endHour={timeRange.endHour}
+                        startHour={timeRange.startHour}
+                      />
+                    ) : null}
                   </div>
                 )
               })}
@@ -1015,7 +1154,15 @@ export function CalendarPage() {
           </div>
         </section>
       ) : viewMode === 'month' ? (
-        <section className={styles.monthSurface} aria-label="Месяц">
+        <section
+          {...periodSwipeHandlers}
+          className={cx(
+            styles.monthSurface,
+            styles.periodSwipeSurface,
+            periodTransitionClass,
+          )}
+          aria-label="Месяц"
+        >
           <div className={styles.monthWeekdays}>
             {WEEKDAY_LABELS.map((weekday) => (
               <span key={weekday}>{weekday}</span>
@@ -1040,6 +1187,7 @@ export function CalendarPage() {
                   )}
                 >
                   <button
+                    data-no-swipe
                     className={styles.monthDateButton}
                     type="button"
                     aria-label={`Открыть день ${parseDateKey(day.dateKey).getDate()}`}

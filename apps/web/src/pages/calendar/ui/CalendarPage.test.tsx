@@ -1,5 +1,12 @@
 import type { CalendarViewMode } from '@planner/contracts'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -85,6 +92,7 @@ describe('CalendarPage', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
   })
 
   it('keeps the query-selected view when preference sync rolls back', async () => {
@@ -124,7 +132,7 @@ describe('CalendarPage', () => {
     })
   })
 
-  it('opens task creation from the calendar query trigger and clears it', async () => {
+  it('opens task creation with time fields from the calendar query trigger and clears it', async () => {
     renderCalendarPage('/calendar?foo=bar&createTask=request-1')
 
     await waitFor(() => {
@@ -136,7 +144,7 @@ describe('CalendarPage', () => {
       expect(props?.desktopOpenButtonHidden).toBe(true)
       expect(typeof props?.openDraft?.plannedDate).toBe('string')
       expect(props?.openButtonLabel).toBe('Задача')
-      expect(props?.showTimeFields).toBe(false)
+      expect(props?.showTimeFields).toBe(true)
     })
 
     await waitFor(() => {
@@ -145,6 +153,69 @@ describe('CalendarPage', () => {
       )
     })
   })
+
+  it('shows the current time marker in today day view', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-03T14:15:00'))
+    currentSession = createSession('day')
+
+    renderCalendarPage('/calendar?calendarView=day')
+
+    const marker = within(screen.getByLabelText('День')).getByTestId(
+      'calendar-current-time-marker',
+    )
+
+    expect(marker).toHaveStyle({ top: '59.375%' })
+  })
+
+  it('shows the current time marker only in the current week day column', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-03T14:15:00'))
+
+    renderCalendarPage('/calendar?calendarView=week')
+
+    const markers = within(screen.getByLabelText('Неделя')).getAllByTestId(
+      'calendar-current-time-marker',
+    )
+
+    expect(markers).toHaveLength(1)
+    expect(markers[0]).toHaveStyle({ top: '59.375%' })
+  })
+
+  it.each([
+    {
+      afterNext: '13 июня',
+      initialEntry: '/calendar?calendarView=day',
+      label: 'День',
+      persistedViewMode: 'day' as const,
+    },
+    {
+      afterNext: '15 июн',
+      initialEntry: '/calendar?calendarView=week',
+      label: 'Неделя',
+      persistedViewMode: 'week' as const,
+    },
+    {
+      afterNext: 'Июль',
+      initialEntry: '/calendar?calendarView=month',
+      label: 'Месяц',
+      persistedViewMode: 'month' as const,
+    },
+  ])(
+    'changes the $label period with horizontal swipes',
+    ({ afterNext, initialEntry, label, persistedViewMode }) => {
+      vi.useFakeTimers()
+      vi.setSystemTime(new Date('2026-06-12T10:00:00'))
+      currentSession = createSession(persistedViewMode)
+
+      renderCalendarPage(initialEntry)
+
+      swipeCalendarSurface(label, 'left')
+      expect(screen.getByTestId('calendar-period-title')).toHaveTextContent(
+        afterNext,
+      )
+    },
+  )
 })
 
 function LocationProbe() {
@@ -177,6 +248,26 @@ function rerenderCalendarPage(
       <LocationProbe />
     </MemoryRouter>,
   )
+}
+
+function swipeCalendarSurface(label: string, direction: 'left' | 'right') {
+  const surface = screen.getByLabelText(label)
+  const startX = direction === 'left' ? 260 : 120
+  const endX = direction === 'left' ? 120 : 260
+
+  fireEvent.pointerDown(surface, {
+    button: 0,
+    clientX: startX,
+    clientY: 220,
+    pointerId: 1,
+    pointerType: 'touch',
+  })
+  fireEvent.pointerUp(surface, {
+    clientX: endX,
+    clientY: 226,
+    pointerId: 1,
+    pointerType: 'touch',
+  })
 }
 
 function createSession(calendarViewMode: CalendarViewMode): SessionStub {
