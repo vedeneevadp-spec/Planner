@@ -4,7 +4,6 @@
   isolation: isolate;
   z-index: 0;
   min-width: 0;
-  overflow: hidden;
   padding: 0.82rem 0.9rem;
   border-radius: 10px;
   background: var(--surface-elevated);
