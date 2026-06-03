@@ -6,6 +6,7 @@ import {
   cleaningPostponeModeSchema,
   cleaningPrioritySchema,
   cleaningTaskHistoryActionSchema,
+  cleaningTaskScopeSchema,
   habitEntryStatusSchema,
   habitFrequencySchema,
   habitTargetTypeSchema,
@@ -35,6 +36,7 @@ export function createCleaningContractSchemas(): Record<
       activeZoneCount: nonnegativeIntegerSchema(),
       completedTodayCount: nonnegativeIntegerSchema(),
       dueCount: nonnegativeIntegerSchema(),
+      generalCount: nonnegativeIntegerSchema(),
       quickCount: nonnegativeIntegerSchema(),
       seasonalCount: nonnegativeIntegerSchema(),
       urgentCount: nonnegativeIntegerSchema(),
@@ -72,7 +74,7 @@ export function createCleaningContractSchemas(): Record<
       taskId: stringSchema(),
       userId: stringSchema(),
       workspaceId: stringSchema(),
-      zoneId: stringSchema(),
+      zoneId: nullableStringSchema(),
     }),
     CleaningTaskRecord: objectSchema({
       assignee: enumSchema(cleaningAssigneeSchema.options),
@@ -92,6 +94,7 @@ export function createCleaningContractSchemas(): Record<
       priority: enumSchema(cleaningPrioritySchema.options),
       seasonMonths: monthArraySchema(),
       sortOrder: integerSchema(),
+      scope: enumSchema(cleaningTaskScopeSchema.options),
       tags: stringArraySchema(),
       title: {
         minLength: 1,
@@ -101,7 +104,7 @@ export function createCleaningContractSchemas(): Record<
       userId: stringSchema(),
       version: positiveIntegerSchema(),
       workspaceId: stringSchema(),
-      zoneId: stringSchema(),
+      zoneId: nullableStringSchema(),
     }),
     CleaningTaskStateRecord: objectSchema({
       lastCompletedAt: nullableStringSchema(),
@@ -134,16 +137,14 @@ export function createCleaningContractSchemas(): Record<
         priority: enumSchema(cleaningPrioritySchema.options),
         seasonMonths: monthArraySchema(),
         sortOrder: integerSchema(),
+        scope: enumSchema(cleaningTaskScopeSchema.options),
         tags: stringArraySchema(),
         title: {
           maxLength: 140,
           minLength: 1,
           type: 'string',
         },
-        zoneId: {
-          minLength: 1,
-          type: 'string',
-        },
+        zoneId: nullableStringSchema(),
       },
       [],
     ),
@@ -155,12 +156,13 @@ export function createCleaningContractSchemas(): Record<
       },
       state: ref('CleaningTaskStateRecord'),
       task: ref('CleaningTaskRecord'),
-      zone: ref('CleaningZoneRecord'),
+      zone: nullableRef('CleaningZoneRecord'),
     }),
     CleaningTodayResponse: objectSchema({
       accumulatedItems: arrayOfRef('CleaningTaskWithState'),
       date: stringSchema(),
       dayOfWeek: integerRangeSchema(1, 7),
+      generalItems: arrayOfRef('CleaningTaskWithState'),
       history: arrayOfRef('CleaningTaskHistoryItemRecord'),
       items: arrayOfRef('CleaningTaskWithState'),
       quickItems: arrayOfRef('CleaningTaskWithState'),
@@ -255,6 +257,10 @@ export function createCleaningContractSchemas(): Record<
           default: [],
         },
         sortOrder: integerSchema(),
+        scope: {
+          ...enumSchema(cleaningTaskScopeSchema.options),
+          default: 'zone',
+        },
         tags: {
           ...stringArraySchema(),
           default: [],
@@ -265,12 +271,9 @@ export function createCleaningContractSchemas(): Record<
           minLength: 1,
           type: 'string',
         },
-        zoneId: {
-          minLength: 1,
-          type: 'string',
-        },
+        zoneId: nullableStringSchema(),
       },
-      ['title', 'zoneId'],
+      ['title'],
     ),
     NewCleaningZoneInput: objectSchema(
       {

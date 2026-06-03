@@ -264,6 +264,7 @@ function templateTask(
     isSeasonal: overrides.isSeasonal ?? false,
     priority,
     seasonMonths: overrides.seasonMonths ?? [],
+    scope: overrides.scope ?? 'zone',
     tags: overrides.tags ?? [],
     title,
   }

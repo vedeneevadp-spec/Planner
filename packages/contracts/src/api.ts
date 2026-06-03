@@ -454,13 +454,14 @@ export const cleaningTaskWithStateSchema = z.object({
   score: z.number(),
   state: cleaningTaskStateRecordSchema,
   task: cleaningTaskRecordSchema,
-  zone: cleaningZoneRecordSchema,
+  zone: cleaningZoneRecordSchema.nullable(),
 })
 export const cleaningSummarySchema = z.object({
   accumulatedCount: z.number().int().nonnegative(),
   activeZoneCount: z.number().int().nonnegative(),
   completedTodayCount: z.number().int().nonnegative(),
   dueCount: z.number().int().nonnegative(),
+  generalCount: z.number().int().nonnegative(),
   quickCount: z.number().int().nonnegative(),
   seasonalCount: z.number().int().nonnegative(),
   urgentCount: z.number().int().nonnegative(),
@@ -475,6 +476,7 @@ export const cleaningTodayResponseSchema = z.object({
   accumulatedItems: z.array(cleaningTaskWithStateSchema),
   date: z.string(),
   dayOfWeek: z.number().int().min(1).max(7),
+  generalItems: z.array(cleaningTaskWithStateSchema),
   history: z.array(cleaningTaskHistoryItemRecordSchema),
   items: z.array(cleaningTaskWithStateSchema),
   quickItems: z.array(cleaningTaskWithStateSchema),

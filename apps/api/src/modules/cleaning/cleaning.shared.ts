@@ -57,9 +57,10 @@ export function createStoredCleaningTaskRecord(
     priority: StoredCleaningTaskRecord['priority']
     seasonMonths: number[]
     sortOrder?: number | undefined
+    scope: StoredCleaningTaskRecord['scope']
     tags: string[]
     title: string
-    zoneId: string
+    zoneId: string | null
   },
   context: {
     actorUserId: string
@@ -87,6 +88,7 @@ export function createStoredCleaningTaskRecord(
     priority: input.priority,
     seasonMonths: normalizeSeasonMonths(input.seasonMonths),
     sortOrder: input.sortOrder ?? context.sortOrder,
+    scope: input.scope,
     tags: normalizeTags(input.tags),
     title: input.title.trim(),
     updatedAt: now,
@@ -126,7 +128,7 @@ export function createStoredCleaningHistoryItemRecord(
     note: string
     targetDate: string | null
     taskId: string
-    zoneId: string
+    zoneId: string | null
   },
   context: {
     actorUserId: string
@@ -162,7 +164,21 @@ export function buildCleaningTodayResponse(input: {
   const todayZoneIds = new Set(todayZones.map((zone) => zone.id))
   const allItems = buildCleaningTaskItems(input)
   const items = allItems.filter(
-    (item) => todayZoneIds.has(item.task.zoneId) && item.isDue,
+    (item) =>
+      item.task.scope === 'zone' &&
+      item.task.zoneId !== null &&
+      todayZoneIds.has(item.task.zoneId) &&
+      item.isDue,
+  )
+  const generalItems = allItems.filter(
+    (item) => item.task.scope === 'general' && item.isDue,
+  )
+  const todayDueItems = [...items, ...generalItems]
+  const quickItems = todayDueItems.filter(
+    (item) =>
+      (item.task.estimatedMinutes ?? 999) <= 15 ||
+      item.task.energy === 'low' ||
+      item.task.depth === 'minimum',
   )
   const accumulatedItems = allItems.filter(
     (item) =>
@@ -171,13 +187,7 @@ export function buildCleaningTodayResponse(input: {
         item.isOverdue ||
         isCleaningTaskStaleOnDate(item.state, input.date)),
   )
-  const quickItems = items.filter(
-    (item) =>
-      (item.task.estimatedMinutes ?? 999) <= 15 ||
-      item.task.energy === 'low' ||
-      item.task.depth === 'minimum',
-  )
-  const urgentItems = items.filter(
+  const urgentItems = todayDueItems.filter(
     (item) =>
       item.state.postponeCount >= 2 ||
       item.task.priority === 'high' ||
@@ -199,6 +209,7 @@ export function buildCleaningTodayResponse(input: {
     accumulatedItems,
     date: input.date,
     dayOfWeek,
+    generalItems,
     history: sortCleaningHistory(input.history).slice(0, 60),
     items,
     quickItems,
@@ -207,7 +218,8 @@ export function buildCleaningTodayResponse(input: {
       accumulatedCount: accumulatedItems.length,
       activeZoneCount: activeZones.length,
       completedTodayCount: completedTodayTaskIds.size,
-      dueCount: items.length,
+      dueCount: todayDueItems.length,
+      generalCount: generalItems.length,
       quickCount: quickItems.length,
       seasonalCount: seasonalItems.length,
       urgentCount: urgentItems.length,
@@ -236,9 +248,9 @@ export function buildCleaningTaskItems(input: {
       return []
     }
 
-    const zone = zoneById.get(task.zoneId)
+    const zone = task.zoneId ? zoneById.get(task.zoneId) : null
 
-    if (!zone || !zone.isActive) {
+    if (task.scope === 'zone' && (!zone || !zone.isActive)) {
       return []
     }
 
@@ -261,7 +273,7 @@ export function buildCleaningTaskItems(input: {
         }),
         state,
         task,
-        zone,
+        zone: task.scope === 'general' ? null : (zone ?? null),
       },
     ]
   })
@@ -357,6 +369,40 @@ export function calculateNextCleaningDueDate(
   }
 
   return findNextSeasonalWeekday(baseDate, zone.dayOfWeek, task.seasonMonths)
+}
+
+export function calculateNextGeneralCleaningDueDate(
+  task: Pick<
+    StoredCleaningTaskRecord,
+    | 'customIntervalDays'
+    | 'frequencyInterval'
+    | 'frequencyType'
+    | 'isSeasonal'
+    | 'seasonMonths'
+  >,
+  fromDate: string,
+): string {
+  const baseDate =
+    task.frequencyType === 'monthly'
+      ? addMonthsToDateKey(fromDate, task.frequencyInterval)
+      : task.frequencyType === 'custom'
+        ? addDaysToDateKey(
+            fromDate,
+            task.customIntervalDays ?? task.frequencyInterval,
+          )
+        : addDaysToDateKey(fromDate, task.frequencyInterval * 7)
+
+  if (!task.isSeasonal || task.seasonMonths.length === 0) {
+    return baseDate
+  }
+
+  return findNextSeasonalDate(baseDate, task.seasonMonths)
+}
+
+export function calculateNextGeneralCleaningPostponeDate(
+  fromDate: string,
+): string {
+  return addDaysToDateKey(fromDate, 1)
 }
 
 export function calculateNextCleaningZoneCycleDate(
@@ -535,6 +581,23 @@ function findNextSeasonalWeekday(
       seasonMonths.includes(Number(cursor.slice(5, 7))) &&
       getIsoWeekday(cursor) === weekday
     ) {
+      return cursor
+    }
+
+    cursor = addDaysToDateKey(cursor, 1)
+  }
+
+  return fromDate
+}
+
+function findNextSeasonalDate(
+  fromDate: string,
+  seasonMonths: number[],
+): string {
+  let cursor = fromDate
+
+  for (let index = 0; index < 370; index += 1) {
+    if (seasonMonths.includes(Number(cursor.slice(5, 7)))) {
       return cursor
     }
 

@@ -124,6 +124,7 @@ export function defineCleaningRepositoryContractSuite(input: {
         assert.equal(task.frequencyInterval, 3)
         assert.equal(task.frequencyType, 'custom')
         assert.equal(task.priority, 'high')
+        assert.equal(task.scope, 'zone')
         assert.deepEqual(task.seasonMonths, [1, 12])
         assert.deepEqual(task.tags, ['weekly', 'deep'])
         assert.equal(task.title, 'Clean fridge')
@@ -227,6 +228,150 @@ export function defineCleaningRepositoryContractSuite(input: {
           },
           (error: unknown) =>
             hasHttpErrorCode(error, 'cleaning_zone_not_found'),
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('supports general cleaning tasks without zones', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        assert.throws(() => {
+          newCleaningTaskInputSchema.parse({
+            scope: 'zone',
+            title: 'Missing zone',
+          })
+        })
+        assert.throws(() => {
+          newCleaningTaskInputSchema.parse({
+            scope: 'general',
+            title: 'General with zone',
+            zoneId: generateUuidV7(),
+          })
+        })
+
+        const zone = await harness.repository.createZone({
+          context: harness.context,
+          input: newCleaningZoneInputSchema.parse({
+            dayOfWeek: 1,
+            title: 'Kitchen',
+          }),
+        })
+        const zoneTask = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            title: 'Wipe sink',
+            zoneId: zone.id,
+          }),
+        })
+        const generalTask = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            estimatedMinutes: 40,
+            frequencyInterval: 2,
+            priority: 'high',
+            scope: 'general',
+            title: 'Wash windows',
+          }),
+        })
+
+        assert.equal(generalTask.scope, 'general')
+        assert.equal(generalTask.zoneId, null)
+
+        const list = await harness.repository.listByWorkspace(harness.context)
+
+        assert.equal(
+          list.tasks.some((candidate) => candidate.id === generalTask.id),
+          true,
+        )
+
+        const today = await harness.repository.getToday({
+          context: harness.context,
+          date: '2026-05-25',
+        })
+
+        assert.equal(
+          today.items.some((item) => item.task.id === generalTask.id),
+          false,
+        )
+        assert.equal(today.items[0]?.task.id, zoneTask.id)
+        assert.equal(today.generalItems[0]?.task.id, generalTask.id)
+        assert.equal(today.generalItems[0]?.zone, null)
+        assert.equal(today.summary.generalCount, 1)
+        assert.equal(today.summary.dueCount, 2)
+        assert.equal(
+          today.urgentItems.some((item) => item.task.id === generalTask.id),
+          true,
+        )
+
+        const postponedAction = await harness.repository.recordTaskAction({
+          action: 'postponed',
+          context: harness.context,
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-05-25',
+          }),
+          taskId: generalTask.id,
+        })
+
+        assert.equal(postponedAction.historyItem.zoneId, null)
+        assert.equal(postponedAction.historyItem.targetDate, '2026-05-26')
+        assert.equal(postponedAction.state.nextDueAt, '2026-05-26')
+
+        await harness.repository.recordTaskAction({
+          action: 'postponed',
+          context: harness.context,
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-05-26',
+          }),
+          taskId: generalTask.id,
+        })
+
+        const accumulatedToday = await harness.repository.getToday({
+          context: harness.context,
+          date: '2026-05-27',
+        })
+
+        assert.equal(
+          accumulatedToday.accumulatedItems.some(
+            (item) => item.task.id === generalTask.id,
+          ),
+          true,
+        )
+
+        const completedAction = await harness.repository.recordTaskAction({
+          action: 'completed',
+          context: harness.context,
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-05-27',
+          }),
+          taskId: generalTask.id,
+        })
+
+        assert.equal(completedAction.state.nextDueAt, '2026-06-10')
+        assert.equal(completedAction.state.postponeCount, 0)
+
+        await harness.repository.removeZone({
+          context: harness.context,
+          zoneId: zone.id,
+        })
+
+        const listAfterZoneRemoval = await harness.repository.listByWorkspace(
+          harness.context,
+        )
+
+        assert.equal(
+          listAfterZoneRemoval.tasks.some(
+            (candidate) => candidate.id === generalTask.id,
+          ),
+          true,
+        )
+        assert.equal(
+          listAfterZoneRemoval.tasks.some(
+            (candidate) => candidate.id === zoneTask.id,
+          ),
+          false,
         )
       } finally {
         await harness.cleanup()

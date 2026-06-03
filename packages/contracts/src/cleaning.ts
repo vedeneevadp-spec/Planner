@@ -9,6 +9,7 @@ export const cleaningFrequencyTypeSchema = z.enum([
   'monthly',
   'custom',
 ])
+export const cleaningTaskScopeSchema = z.enum(['zone', 'general'])
 export const cleaningDepthSchema = z.enum(['minimum', 'regular', 'deep'])
 export const cleaningEnergySchema = z.enum(['low', 'normal', 'high'])
 export const cleaningAssigneeSchema = z.enum([
@@ -69,11 +70,12 @@ export const cleaningTaskSchema = z.object({
   priority: cleaningPrioritySchema,
   seasonMonths: z.array(z.number().int().min(1).max(12)),
   sortOrder: z.number().int(),
+  scope: cleaningTaskScopeSchema,
   tags: z.array(z.string()),
   title: z.string().min(1),
   updatedAt: z.string(),
   userId: z.string(),
-  zoneId: z.string(),
+  zoneId: z.string().nullable(),
 })
 
 export const cleaningTaskStateSchema = z.object({
@@ -95,8 +97,15 @@ export const cleaningTaskHistoryItemSchema = z.object({
   targetDate: z.string().nullable(),
   taskId: z.string(),
   userId: z.string(),
-  zoneId: z.string(),
+  zoneId: z.string().nullable(),
 })
+
+const cleaningTaskZoneIdInputSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .nullable()
+  .optional()
 
 export const newCleaningZoneInputSchema = z.object({
   dayOfWeek: cleaningWeekdaySchema,
@@ -143,9 +152,27 @@ export const newCleaningTaskInputSchema = z
     priority: cleaningPrioritySchema.optional().default('normal'),
     seasonMonths: cleaningSeasonMonthsSchema.optional().default([]),
     sortOrder: z.number().int().optional(),
+    scope: cleaningTaskScopeSchema.optional().default('zone'),
     tags: cleaningTagsSchema.optional().default([]),
     title: z.string().trim().min(1).max(140),
-    zoneId: z.string().min(1),
+    zoneId: cleaningTaskZoneIdInputSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (value.scope === 'zone' && !value.zoneId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'zoneId is required for zone cleaning tasks.',
+        path: ['zoneId'],
+      })
+    }
+
+    if (value.scope === 'general' && value.zoneId !== null && value.zoneId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'zoneId must be empty for general cleaning tasks.',
+        path: ['zoneId'],
+      })
+    }
   })
   .transform((value) => ({
     ...value,
@@ -154,6 +181,7 @@ export const newCleaningTaskInputSchema = z
         ? (value.customIntervalDays ?? value.frequencyInterval)
         : null,
     estimatedMinutes: value.estimatedMinutes ?? null,
+    zoneId: value.scope === 'general' ? null : value.zoneId!,
   }))
 
 export const cleaningTaskUpdateInputSchema = z
@@ -173,9 +201,35 @@ export const cleaningTaskUpdateInputSchema = z
     priority: cleaningPrioritySchema.optional(),
     seasonMonths: cleaningSeasonMonthsSchema.optional(),
     sortOrder: z.number().int().optional(),
+    scope: cleaningTaskScopeSchema.optional(),
     tags: cleaningTagsSchema.optional(),
     title: z.string().trim().min(1).max(140).optional(),
-    zoneId: z.string().min(1).optional(),
+    zoneId: cleaningTaskZoneIdInputSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (value.scope === 'zone' && !value.zoneId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'zoneId is required when moving a cleaning task to a zone.',
+        path: ['zoneId'],
+      })
+    }
+
+    if (value.scope === 'general' && value.zoneId !== null && value.zoneId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'zoneId must be empty for general cleaning tasks.',
+        path: ['zoneId'],
+      })
+    }
+
+    if (value.scope === undefined && value.zoneId === null) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'scope must be general when clearing zoneId.',
+        path: ['scope'],
+      })
+    }
   })
   .refine(
     (value) =>
@@ -193,6 +247,7 @@ export const cleaningTaskUpdateInputSchema = z
       value.priority !== undefined ||
       value.seasonMonths !== undefined ||
       value.sortOrder !== undefined ||
+      value.scope !== undefined ||
       value.tags !== undefined ||
       value.title !== undefined ||
       value.zoneId !== undefined,
@@ -217,6 +272,7 @@ export type CleaningFrequencyType = z.infer<typeof cleaningFrequencyTypeSchema>
 export type CleaningPostponeMode = z.infer<typeof cleaningPostponeModeSchema>
 export type CleaningPriority = z.infer<typeof cleaningPrioritySchema>
 export type CleaningTask = z.infer<typeof cleaningTaskSchema>
+export type CleaningTaskScope = z.infer<typeof cleaningTaskScopeSchema>
 export type CleaningTaskActionInput = z.infer<
   typeof cleaningTaskActionInputSchema
 >

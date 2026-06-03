@@ -153,6 +153,7 @@ export interface AppCleaningTasksTable {
   priority: 'low' | 'normal' | 'high'
   season_months: ColumnType<number[], number[] | string, number[] | string>
   sort_order: number
+  scope: 'zone' | 'general'
   tags: ColumnType<string[], string[] | string, string[] | string>
   title: string
   updated_at: Generated<TimestampColumn>
@@ -160,7 +161,7 @@ export interface AppCleaningTasksTable {
   user_id: string
   version: Generated<number>
   workspace_id: string
-  zone_id: string
+  zone_id: string | null
 }
 
 export interface AppCleaningTaskStatesTable {
@@ -190,7 +191,7 @@ export interface AppCleaningTaskHistoryTable {
   task_id: string
   user_id: string
   workspace_id: string
-  zone_id: string
+  zone_id: string | null
 }
 
 export interface AppLifeSpheresTable {

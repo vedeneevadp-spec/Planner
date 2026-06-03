@@ -19,6 +19,8 @@ import {
   buildCleaningTodayResponse,
   calculateNextCleaningDueDate,
   calculateNextCleaningZoneCycleDate,
+  calculateNextGeneralCleaningDueDate,
+  calculateNextGeneralCleaningPostponeDate,
   createStoredCleaningHistoryItemRecord,
   createStoredCleaningTaskRecord,
   createStoredCleaningTaskStateRecord,
@@ -180,7 +182,17 @@ export class MemoryCleaningRepository implements CleaningRepository {
   createTask(
     command: CreateCleaningTaskCommand,
   ): Promise<StoredCleaningTaskRecord> {
-    this.getZoneOrThrow(command.context.workspaceId, command.input.zoneId)
+    if (command.input.scope === 'zone') {
+      if (!command.input.zoneId) {
+        throw new HttpError(
+          400,
+          'cleaning_zone_required',
+          'Cleaning zone is required for zone-scoped cleaning tasks.',
+        )
+      }
+
+      this.getZoneOrThrow(command.context.workspaceId, command.input.zoneId)
+    }
 
     const existingTask = command.input.id
       ? this.tasks.get(command.input.id)
@@ -198,8 +210,10 @@ export class MemoryCleaningRepository implements CleaningRepository {
       actorUserId: command.context.actorUserId,
       sortOrder:
         command.input.sortOrder ??
-        this.listWorkspaceTasks(command.context.workspaceId).filter(
-          (item) => item.zoneId === command.input.zoneId,
+        this.listWorkspaceTasks(command.context.workspaceId).filter((item) =>
+          command.input.scope === 'general'
+            ? item.scope === 'general'
+            : item.zoneId === command.input.zoneId,
         ).length,
       workspaceId: command.context.workspaceId,
     })
@@ -239,8 +253,22 @@ export class MemoryCleaningRepository implements CleaningRepository {
       )
     }
 
-    if (command.input.zoneId !== undefined) {
-      this.getZoneOrThrow(command.context.workspaceId, command.input.zoneId)
+    const nextScope =
+      command.input.scope ??
+      (typeof command.input.zoneId === 'string' ? 'zone' : task.scope)
+    const nextZoneId =
+      nextScope === 'general' ? null : (command.input.zoneId ?? task.zoneId)
+
+    if (nextScope === 'zone') {
+      if (!nextZoneId) {
+        throw new HttpError(
+          400,
+          'cleaning_zone_required',
+          'Cleaning zone is required for zone-scoped cleaning tasks.',
+        )
+      }
+
+      this.getZoneOrThrow(command.context.workspaceId, nextZoneId)
     }
 
     const nextTask: StoredCleaningTaskRecord = {
@@ -295,15 +323,14 @@ export class MemoryCleaningRepository implements CleaningRepository {
       ...(command.input.sortOrder !== undefined
         ? { sortOrder: command.input.sortOrder }
         : {}),
+      scope: nextScope,
       ...(command.input.tags !== undefined
         ? { tags: normalizeTags(command.input.tags) }
         : {}),
       ...(command.input.title !== undefined
         ? { title: command.input.title.trim() }
         : {}),
-      ...(command.input.zoneId !== undefined
-        ? { zoneId: command.input.zoneId }
-        : {}),
+      zoneId: nextZoneId,
       updatedAt: new Date().toISOString(),
       version: task.version + 1,
     }
@@ -336,7 +363,10 @@ export class MemoryCleaningRepository implements CleaningRepository {
       command.context.workspaceId,
       command.taskId,
     )
-    const zone = this.getZoneOrThrow(command.context.workspaceId, task.zoneId)
+    const zone =
+      task.scope === 'zone' && task.zoneId
+        ? this.getZoneOrThrow(command.context.workspaceId, task.zoneId)
+        : null
     const currentState =
       this.states.get(task.id) ??
       createStoredCleaningTaskStateRecord(
@@ -365,7 +395,10 @@ export class MemoryCleaningRepository implements CleaningRepository {
       ...(command.action === 'completed'
         ? {
             lastCompletedAt: now,
-            nextDueAt: calculateNextCleaningDueDate(task, zone, date),
+            nextDueAt:
+              task.scope === 'general'
+                ? calculateNextGeneralCleaningDueDate(task, date)
+                : calculateNextCleaningDueDate(task, zone!, date),
             postponeCount: 0,
           }
         : {}),
@@ -379,7 +412,10 @@ export class MemoryCleaningRepository implements CleaningRepository {
       ...(command.action === 'skipped'
         ? {
             lastSkippedAt: now,
-            nextDueAt: calculateNextCleaningDueDate(task, zone, date),
+            nextDueAt:
+              task.scope === 'general'
+                ? calculateNextGeneralCleaningDueDate(task, date)
+                : calculateNextCleaningDueDate(task, zone!, date),
           }
         : {}),
       updatedAt: now,
@@ -392,7 +428,7 @@ export class MemoryCleaningRepository implements CleaningRepository {
         note: command.input.note,
         targetDate: command.action === 'postponed' ? targetDate : null,
         taskId: task.id,
-        zoneId: zone.id,
+        zoneId: zone?.id ?? null,
       },
       {
         actorUserId: command.context.actorUserId,
@@ -500,7 +536,7 @@ export class MemoryCleaningRepository implements CleaningRepository {
 function getActionTargetDate(
   command: RecordCleaningTaskActionCommand,
   task: StoredCleaningTaskRecord,
-  zone: StoredCleaningZoneRecord,
+  zone: StoredCleaningZoneRecord | null,
   date: string,
 ): string {
   if (
@@ -513,6 +549,18 @@ function getActionTargetDate(
 
   if (command.input.targetDate) {
     return command.input.targetDate
+  }
+
+  if (task.scope === 'general') {
+    return calculateNextGeneralCleaningPostponeDate(date)
+  }
+
+  if (!zone) {
+    throw new HttpError(
+      404,
+      'cleaning_zone_not_found',
+      'Cleaning zone not found.',
+    )
   }
 
   return command.input.mode === 'next_cycle'

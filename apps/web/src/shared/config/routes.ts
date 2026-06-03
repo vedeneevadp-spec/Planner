@@ -4,6 +4,7 @@ export type AppRouteId =
   | 'admin'
   | 'calendar'
   | 'cleaning'
+  | 'cleaningSettingsGeneral'
   | 'cleaningSettings'
   | 'cleaningSettingsZone'
   | 'cleaningZoneRedirect'
@@ -74,6 +75,11 @@ export const appRouteDefinitions = [
   {
     id: 'cleaningSettings',
     path: '/cleaning/settings',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
+    id: 'cleaningSettingsGeneral',
+    path: '/cleaning/settings/general',
     workspaceKinds: allWorkspaceKinds,
   },
   {

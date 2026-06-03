@@ -4,7 +4,13 @@ import {
   type CleaningZoneUpdateInput,
 } from '@planner/contracts'
 import { type FormEvent, useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom'
 
 import {
   getCleaningErrorMessage,
@@ -58,6 +64,8 @@ import {
   ZoneTaskRow,
 } from './CleaningPage.sections'
 
+const CLEANING_GENERAL_SETTINGS_PATH = '/cleaning/settings/general'
+
 export function CleaningPage() {
   const [searchParams] = useSearchParams()
   const todayKey = getDateKey(new Date())
@@ -79,7 +87,9 @@ export function CleaningPage() {
   const hasLoadedPlan = plan !== undefined
   const zones = plan?.zones ?? []
   const todayItems = today?.items ?? []
+  const generalItems = today?.generalItems ?? []
   const visibleTodayItems = filterItemsByFocusMode(todayItems, focusMode)
+  const visibleGeneralItems = filterItemsByFocusMode(generalItems, focusMode)
   const isBusy =
     createZoneMutation.isPending ||
     createTaskMutation.isPending ||
@@ -163,7 +173,10 @@ export function CleaningPage() {
         </div>
 
         <div className={styles.heroStats}>
-          <StatPill label="задач" value={String(today?.items.length ?? 0)} />
+          <StatPill
+            label="задач"
+            value={String(today?.summary.dueCount ?? 0)}
+          />
           <StatPill
             label="важные"
             value={String(today?.summary.urgentCount ?? 0)}
@@ -175,6 +188,10 @@ export function CleaningPage() {
           <StatPill
             label="накопилось"
             value={String(today?.summary.accumulatedCount ?? 0)}
+          />
+          <StatPill
+            label="прочие"
+            value={String(today?.summary.generalCount ?? 0)}
           />
         </div>
       </section>
@@ -269,6 +286,48 @@ export function CleaningPage() {
         />
       ) : null}
 
+      {today ? (
+        <TaskSection
+          title="Прочая уборка"
+          emptyMessage="Прочих задач уборки сейчас нет."
+          emptyAction={
+            <Link
+              className={cx(styles.softLinkButton, styles.emptyActionLink)}
+              to={CLEANING_GENERAL_SETTINGS_PATH}
+            >
+              Добавить
+            </Link>
+          }
+          items={visibleGeneralItems}
+          isBusy={isBusy}
+          postponeTargets={postponeTargets}
+          onComplete={(taskId) => {
+            void completeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onPostpone={(taskId) => {
+            void postponeTaskMutation.mutateAsync({
+              input: {
+                date: todayKey,
+                mode: postponeTargets[taskId] ? 'specific_date' : 'next_cycle',
+                note: '',
+                targetDate: postponeTargets[taskId] || null,
+              },
+              taskId,
+            })
+          }}
+          onSkip={(taskId) => {
+            void skipTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onTargetChange={updatePostponeTarget}
+        />
+      ) : null}
+
       {hasLoadedPlan || today ? (
         <section className={styles.sideGrid}>
           <CompactList
@@ -302,6 +361,7 @@ export function CleaningPage() {
 
 export function CleaningSettingsPage() {
   const params = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const planQuery = useCleaningPlan()
   const createZoneMutation = useCreateCleaningZone()
@@ -335,13 +395,19 @@ export function CleaningSettingsPage() {
     [plan?.states],
   )
   const todayWeekday = getIsoWeekdayFromDate()
+  const isGeneralSelected = location.pathname === CLEANING_GENERAL_SETTINGS_PATH
   const todayZone =
     zones.find((zone) => zone.dayOfWeek === todayWeekday) ?? zones[0] ?? null
-  const selectedZone =
-    zones.find((zone) => zone.id === params.zoneId) ?? todayZone
-  const selectedZoneTasks = selectedZone
-    ? tasks.filter((task) => task.zoneId === selectedZone.id)
-    : []
+  const selectedZone = isGeneralSelected
+    ? null
+    : (zones.find((zone) => zone.id === params.zoneId) ?? todayZone)
+  const selectedTasks = isGeneralSelected
+    ? tasks.filter((task) => task.scope === 'general')
+    : selectedZone
+      ? tasks.filter(
+          (task) => task.scope === 'zone' && task.zoneId === selectedZone.id,
+        )
+      : []
   const zoneSettingsWeekdays = useMemo(() => {
     if (!selectedZone) {
       return freeWeekdays
@@ -434,7 +500,7 @@ export function CleaningSettingsPage() {
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!selectedZone) {
+    if (!selectedZone && !isGeneralSelected) {
       setFormError('Сначала добавьте зону.')
       return
     }
@@ -469,9 +535,10 @@ export function CleaningSettingsPage() {
         isSeasonal: taskDraft.isSeasonal,
         priority: taskDraft.priority,
         seasonMonths: taskDraft.isSeasonal ? taskDraft.seasonMonths : [],
+        scope: isGeneralSelected ? 'general' : 'zone',
         tags: parseTags(taskDraft.tags),
         title,
-        zoneId: selectedZone.id,
+        zoneId: isGeneralSelected ? null : selectedZone!.id,
       })
       setTaskDraft(EMPTY_TASK_DRAFT)
       setIsTaskCreateOpen(false)
@@ -596,21 +663,21 @@ export function CleaningSettingsPage() {
             ) : null}
           </div>
 
-          {zones.length > 0 ? (
+          {hasLoadedPlan ? (
             <ZonePicker
               disabled={isBusy}
+              isGeneralSelected={isGeneralSelected}
               selectedZone={selectedZone}
               zones={zones}
               onSelect={(zoneId) => {
                 void navigate(`/cleaning/settings/zones/${zoneId}`)
               }}
+              onSelectGeneral={() => {
+                void navigate(CLEANING_GENERAL_SETTINGS_PATH)
+              }}
             />
           ) : (
-            <p className={styles.emptyCopy}>
-              {hasLoadedPlan
-                ? 'Зоны ещё не добавлены.'
-                : 'Восстанавливаем подключение.'}
-            </p>
+            <p className={styles.emptyCopy}>Восстанавливаем подключение.</p>
           )}
 
           {freeWeekdays.length > 0 && isZoneCreateOpen ? (
@@ -670,37 +737,45 @@ export function CleaningSettingsPage() {
         </section>
 
         <section className={styles.panel}>
-          {selectedZone ? (
+          {selectedZone || isGeneralSelected ? (
             <>
               <div className={styles.panelHeader}>
                 <div>
-                  <p className={styles.kicker}>Зона</p>
-                  <h3>{selectedZone.title}</h3>
+                  <p className={styles.kicker}>
+                    {isGeneralSelected ? 'Раздел' : 'Зона'}
+                  </p>
+                  <h3>
+                    {isGeneralSelected ? 'Прочая уборка' : selectedZone!.title}
+                  </h3>
                 </div>
                 <div className={styles.zoneHeaderActions}>
-                  <span className={styles.badge}>
-                    {getWeekdayLabel(selectedZone.dayOfWeek)}
-                  </span>
-                  <button
-                    className={cx(
-                      styles.iconButton,
-                      isZoneEditOpen && styles.iconButtonActive,
-                    )}
-                    type="button"
-                    disabled={isBusy}
-                    aria-label={
-                      isZoneEditOpen
-                        ? 'Скрыть редактирование зоны'
-                        : 'Редактировать зону'
-                    }
-                    aria-expanded={isZoneEditOpen}
-                    onClick={() => {
-                      setIsZoneEditOpen((current) => !current)
-                      setFormError(null)
-                    }}
-                  >
-                    <EditIcon size={16} strokeWidth={2.1} />
-                  </button>
+                  {selectedZone ? (
+                    <>
+                      <span className={styles.badge}>
+                        {getWeekdayLabel(selectedZone.dayOfWeek)}
+                      </span>
+                      <button
+                        className={cx(
+                          styles.iconButton,
+                          isZoneEditOpen && styles.iconButtonActive,
+                        )}
+                        type="button"
+                        disabled={isBusy}
+                        aria-label={
+                          isZoneEditOpen
+                            ? 'Скрыть редактирование зоны'
+                            : 'Редактировать зону'
+                        }
+                        aria-expanded={isZoneEditOpen}
+                        onClick={() => {
+                          setIsZoneEditOpen((current) => !current)
+                          setFormError(null)
+                        }}
+                      >
+                        <EditIcon size={16} strokeWidth={2.1} />
+                      </button>
+                    </>
+                  ) : null}
                   <button
                     className={cx(
                       styles.iconButton,
@@ -725,17 +800,25 @@ export function CleaningSettingsPage() {
                 </div>
               </div>
 
-              <ZoneStats
-                history={plan?.history ?? []}
-                isMobileHidden={
-                  isZoneCreateOpen || isZoneEditOpen || isTaskCreateOpen
-                }
-                statesByTaskId={statesByTaskId}
-                tasks={selectedZoneTasks}
-                zone={selectedZone}
-              />
+              {selectedZone ? (
+                <ZoneStats
+                  history={plan?.history ?? []}
+                  isMobileHidden={
+                    isZoneCreateOpen || isZoneEditOpen || isTaskCreateOpen
+                  }
+                  statesByTaskId={statesByTaskId}
+                  tasks={selectedTasks}
+                  zone={selectedZone}
+                />
+              ) : (
+                <p className={styles.emptyCopy}>
+                  Сюда можно добавлять задачи по уборке, которые не относятся к
+                  конкретной зоне или дню. Например: помыть окна, постирать
+                  шторы, разобрать кладовку.
+                </p>
+              )}
 
-              {isZoneEditOpen ? (
+              {selectedZone && isZoneEditOpen ? (
                 <ZoneSettings
                   key={selectedZone.id}
                   availableWeekdays={zoneSettingsWeekdays}
@@ -934,17 +1017,36 @@ export function CleaningSettingsPage() {
               ) : null}
 
               <div className={styles.zoneTaskList}>
-                {selectedZoneTasks.length === 0 ? (
-                  <p className={styles.emptyCopy}>
-                    В этой зоне пока нет задач.
-                  </p>
+                {selectedTasks.length === 0 ? (
+                  <div className={styles.emptyTaskState}>
+                    <p className={styles.emptyCopy}>
+                      {isGeneralSelected
+                        ? 'Сюда можно добавлять задачи по уборке, которые не относятся к конкретной зоне или дню.'
+                        : 'В этой зоне пока нет задач.'}
+                    </p>
+                    {isGeneralSelected ? (
+                      <button
+                        className={styles.softButton}
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => {
+                          setIsTaskCreateOpen(true)
+                          setFormError(null)
+                        }}
+                      >
+                        <PlusIcon size={17} strokeWidth={2.15} />
+                        <span>Добавить</span>
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
-                  selectedZoneTasks.map((task) => (
+                  selectedTasks.map((task) => (
                     <ZoneTaskRow
                       key={task.id}
                       disabled={isBusy}
                       state={statesByTaskId.get(task.id)}
                       task={task}
+                      zones={zones}
                       onRemove={() => {
                         void removeTaskMutation.mutateAsync(task.id)
                       }}
@@ -960,8 +1062,10 @@ export function CleaningSettingsPage() {
               </div>
 
               <HistoryList
-                history={(plan?.history ?? []).filter(
-                  (item) => item.zoneId === selectedZone.id,
+                history={(plan?.history ?? []).filter((item) =>
+                  isGeneralSelected
+                    ? item.zoneId === null
+                    : item.zoneId === selectedZone!.id,
                 )}
                 tasks={tasks}
               />

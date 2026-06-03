@@ -2,13 +2,14 @@ import {
   type CleaningFrequencyType,
   type CleaningPriority,
   type CleaningTaskRecord,
+  type CleaningTaskScope,
   type CleaningTaskStateRecord,
   type CleaningTaskUpdateInput,
   type CleaningTaskWithState,
   type CleaningZoneRecord,
   type CleaningZoneUpdateInput,
 } from '@planner/contracts'
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, type ReactNode, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate } from '@/shared/lib/date'
@@ -29,6 +30,7 @@ import styles from './CleaningPage.module.css'
 
 export function TaskSection(props: {
   emptyMessage?: string
+  emptyAction?: ReactNode
   isBusy: boolean
   items: CleaningTaskWithState[]
   postponeTargets: Record<string, string>
@@ -46,16 +48,21 @@ export function TaskSection(props: {
       </div>
 
       {props.items.length === 0 ? (
-        <p className={styles.emptyCopy}>
-          {props.emptyMessage ?? 'Здесь пока нет задач.'}
-        </p>
+        <div className={styles.taskSectionEmpty}>
+          <p className={styles.emptyCopy}>
+            {props.emptyMessage ?? 'Здесь пока нет задач.'}
+          </p>
+          {props.emptyAction}
+        </div>
       ) : (
         <div className={styles.taskGrid}>
           {props.items.map((item) => (
             <article key={item.task.id} className={styles.taskCard}>
               <div className={styles.taskCardHeader}>
                 <div>
-                  <p className={styles.kicker}>{item.zone.title}</p>
+                  <p className={styles.kicker}>
+                    {item.zone?.title ?? 'Прочее'}
+                  </p>
                   <h4>{item.task.title}</h4>
                 </div>
                 <span
@@ -172,7 +179,7 @@ export function CompactList(props: {
             <div key={item.task.id} className={styles.compactItem}>
               <strong>{item.task.title}</strong>
               <span>
-                {item.zone.title} · отложено{' '}
+                {item.zone?.title ?? 'Прочее'} · отложено{' '}
                 {formatPostponeCount(item.state.postponeCount)}
               </span>
               {hasActions ? (
@@ -216,12 +223,17 @@ export function CompactList(props: {
 
 export function ZonePicker(props: {
   disabled: boolean
+  isGeneralSelected?: boolean | undefined
   selectedZone: CleaningZoneRecord | null
   zones: CleaningZoneRecord[]
+  onSelectGeneral?: (() => void) | undefined
   onSelect: (zoneId: string) => void
 }) {
   const [isOpen, setIsOpen] = useState(false)
-  const selectedZone = props.selectedZone ?? props.zones[0] ?? null
+  const selectedZone = props.isGeneralSelected
+    ? null
+    : (props.selectedZone ?? props.zones[0] ?? null)
+  const hasOptions = props.zones.length > 0 || Boolean(props.onSelectGeneral)
 
   return (
     <div
@@ -240,14 +252,22 @@ export function ZonePicker(props: {
       <button
         className={styles.zoneSelectButton}
         type="button"
-        disabled={props.disabled || props.zones.length === 0}
+        disabled={props.disabled || !hasOptions}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         onClick={() => {
           setIsOpen((current) => !current)
         }}
       >
-        {selectedZone ? (
+        {props.isGeneralSelected ? (
+          <>
+            <span className={styles.zoneSelectDay}>*</span>
+            <span className={styles.zoneSelectText}>
+              <strong>Прочая уборка</strong>
+              <small>без зоны и дня недели</small>
+            </span>
+          </>
+        ) : selectedZone ? (
           <>
             <span className={styles.zoneSelectDay}>
               {getWeekdayShortLabel(selectedZone.dayOfWeek)}
@@ -292,6 +312,25 @@ export function ZonePicker(props: {
               <small>{zone.isActive ? 'активна' : 'выключена'}</small>
             </button>
           ))}
+          {props.onSelectGeneral ? (
+            <button
+              className={cx(
+                styles.zoneSelectOption,
+                props.isGeneralSelected && styles.zoneSelectOptionActive,
+              )}
+              type="button"
+              role="option"
+              aria-selected={props.isGeneralSelected ?? false}
+              onClick={() => {
+                setIsOpen(false)
+                props.onSelectGeneral?.()
+              }}
+            >
+              <span>*</span>
+              <strong>Прочая уборка</strong>
+              <small>без зоны</small>
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -387,6 +426,7 @@ export function ZoneTaskRow(props: {
   disabled: boolean
   state: CleaningTaskStateRecord | undefined
   task: CleaningTaskRecord
+  zones: CleaningZoneRecord[]
   onRemove: () => void
   onUpdate: (input: CleaningTaskUpdateInput) => Promise<unknown> | void
 }) {
@@ -486,6 +526,7 @@ export function ZoneTaskRow(props: {
         <ZoneTaskEditor
           disabled={props.disabled}
           task={props.task}
+          zones={props.zones}
           onCancel={() => {
             setIsEditing(false)
           }}
@@ -502,6 +543,7 @@ export function ZoneTaskRow(props: {
 function ZoneTaskEditor(props: {
   disabled: boolean
   task: CleaningTaskRecord
+  zones: CleaningZoneRecord[]
   onCancel: () => void
   onSave: (input: CleaningTaskUpdateInput) => Promise<void> | void
 }) {
@@ -512,7 +554,12 @@ function ZoneTaskEditor(props: {
   const [frequencyInterval, setFrequencyInterval] = useState(() =>
     getEditableFrequencyInterval(props.task),
   )
-  const canSaveTask = title.trim().length > 0
+  const [scope, setScope] = useState<CleaningTaskScope>(props.task.scope)
+  const [zoneId, setZoneId] = useState(
+    () => props.task.zoneId ?? props.zones[0]?.id ?? '',
+  )
+  const canSaveTask =
+    title.trim().length > 0 && (scope === 'general' || zoneId.length > 0)
 
   async function handleSaveTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -531,7 +578,9 @@ function ZoneTaskEditor(props: {
           frequencyType === 'custom' ? normalizedInterval : null,
         frequencyInterval: normalizedInterval,
         frequencyType,
+        scope,
         title: trimmedTitle,
+        zoneId: scope === 'general' ? null : zoneId,
       })
     } catch {
       // mutation state renders the error
@@ -586,6 +635,42 @@ function ZoneTaskEditor(props: {
           }}
         />
       </div>
+      <div className={styles.taskFormField}>
+        <span className={styles.fieldLabel}>Размещение</span>
+        <SelectPicker
+          value={scope}
+          disabled={props.disabled}
+          ariaLabel="Размещение задачи"
+          options={[
+            { label: 'Зона', value: 'zone' },
+            { label: 'Прочая уборка', value: 'general' },
+          ]}
+          onChange={(nextValue) => {
+            const nextScope = nextValue
+            setScope(nextScope)
+
+            if (nextScope === 'zone' && !zoneId) {
+              setZoneId(props.zones[0]?.id ?? '')
+            }
+          }}
+        />
+      </div>
+      {scope === 'zone' ? (
+        <div className={styles.taskFormField}>
+          <span className={styles.fieldLabel}>Зона</span>
+          <SelectPicker
+            value={zoneId}
+            disabled={props.disabled || props.zones.length === 0}
+            ariaLabel="Зона задачи"
+            placeholder="Выберите зону"
+            options={props.zones.map((zone) => ({
+              label: zone.title,
+              value: zone.id,
+            }))}
+            onChange={setZoneId}
+          />
+        </div>
+      ) : null}
       <div className={styles.zoneTaskEditorActions}>
         <button
           className={styles.iconButton}
@@ -614,7 +699,7 @@ export function ZoneStats(props: {
     action: string
     date: string
     taskId: string
-    zoneId: string
+    zoneId: string | null
   }>
   statesByTaskId: Map<string, CleaningTaskStateRecord>
   tasks: CleaningTaskRecord[]

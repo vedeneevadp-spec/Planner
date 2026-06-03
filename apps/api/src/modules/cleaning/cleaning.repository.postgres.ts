@@ -28,6 +28,8 @@ import {
   buildCleaningTodayResponse,
   calculateNextCleaningDueDate,
   calculateNextCleaningZoneCycleDate,
+  calculateNextGeneralCleaningDueDate,
+  calculateNextGeneralCleaningPostponeDate,
   createStoredCleaningTaskStateRecord,
   getDateKey,
   normalizeSeasonMonths,
@@ -279,17 +281,28 @@ export class PostgresCleaningRepository implements CleaningRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        await this.assertActiveZone(
-          trx,
-          command.context.workspaceId,
-          command.input.zoneId,
-        )
+        if (command.input.scope === 'zone') {
+          if (!command.input.zoneId) {
+            throw new HttpError(
+              400,
+              'cleaning_zone_required',
+              'Cleaning zone is required for zone-scoped cleaning tasks.',
+            )
+          }
+
+          await this.assertActiveZone(
+            trx,
+            command.context.workspaceId,
+            command.input.zoneId,
+          )
+        }
 
         const sortOrder =
           command.input.sortOrder ??
           (await this.loadNextTaskSortOrder(
             trx,
             command.context.workspaceId,
+            command.input.scope,
             command.input.zoneId,
           ))
         const inserted = await trx
@@ -316,6 +329,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
             priority: command.input.priority,
             season_months: normalizeSeasonMonths(command.input.seasonMonths),
             sort_order: sortOrder,
+            scope: command.input.scope,
             tags: normalizeTags(command.input.tags),
             title: command.input.title.trim(),
             updated_by: command.context.actorUserId,
@@ -368,14 +382,6 @@ export class PostgresCleaningRepository implements CleaningRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        if (command.input.zoneId !== undefined) {
-          await this.assertActiveZone(
-            trx,
-            command.context.workspaceId,
-            command.input.zoneId,
-          )
-        }
-
         const current = await this.loadActiveTaskRow(
           trx,
           command.context.workspaceId,
@@ -387,6 +393,30 @@ export class PostgresCleaningRepository implements CleaningRepository {
             404,
             'cleaning_task_not_found',
             'Cleaning task not found.',
+          )
+        }
+
+        const nextScope =
+          command.input.scope ??
+          (typeof command.input.zoneId === 'string' ? 'zone' : current.scope)
+        const nextZoneId =
+          nextScope === 'general'
+            ? null
+            : (command.input.zoneId ?? current.zone_id)
+
+        if (nextScope === 'zone') {
+          if (!nextZoneId) {
+            throw new HttpError(
+              400,
+              'cleaning_zone_required',
+              'Cleaning zone is required for zone-scoped cleaning tasks.',
+            )
+          }
+
+          await this.assertActiveZone(
+            trx,
+            command.context.workspaceId,
+            nextZoneId,
           )
         }
 
@@ -443,6 +473,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
             ...(command.input.sortOrder !== undefined
               ? { sort_order: command.input.sortOrder }
               : {}),
+            scope: nextScope,
             ...(command.input.tags !== undefined
               ? { tags: normalizeTags(command.input.tags) }
               : {}),
@@ -450,9 +481,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
               ? { title: command.input.title.trim() }
               : {}),
             updated_by: command.context.actorUserId,
-            ...(command.input.zoneId !== undefined
-              ? { zone_id: command.input.zoneId }
-              : {}),
+            zone_id: nextZoneId,
           })
           .where('id', '=', command.taskId)
           .where('workspace_id', '=', command.context.workspaceId)
@@ -563,13 +592,16 @@ export class PostgresCleaningRepository implements CleaningRepository {
           )
         }
 
-        const zoneRow = await this.loadActiveZoneRow(
-          trx,
-          command.context.workspaceId,
-          taskRow.zone_id,
-        )
+        const zoneRow =
+          taskRow.scope === 'zone' && taskRow.zone_id
+            ? await this.loadActiveZoneRow(
+                trx,
+                command.context.workspaceId,
+                taskRow.zone_id,
+              )
+            : null
 
-        if (!zoneRow) {
+        if (taskRow.scope === 'zone' && !zoneRow) {
           throw new HttpError(
             404,
             'cleaning_zone_not_found',
@@ -578,7 +610,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
         }
 
         const task = this.mapTaskRecord(taskRow)
-        const zone = this.mapZoneRecord(zoneRow)
+        const zone = zoneRow ? this.mapZoneRecord(zoneRow) : null
         const currentStateRow = await this.loadStateRow(
           trx,
           command.context.workspaceId,
@@ -613,7 +645,10 @@ export class PostgresCleaningRepository implements CleaningRepository {
                 last_completed_at: now,
                 last_postponed_at: currentState.lastPostponedAt,
                 last_skipped_at: currentState.lastSkippedAt,
-                next_due_at: calculateNextCleaningDueDate(task, zone, date),
+                next_due_at:
+                  task.scope === 'general'
+                    ? calculateNextGeneralCleaningDueDate(task, date)
+                    : calculateNextCleaningDueDate(task, zone!, date),
                 postpone_count: 0,
               }
             : command.action === 'postponed'
@@ -628,7 +663,10 @@ export class PostgresCleaningRepository implements CleaningRepository {
                   last_completed_at: currentState.lastCompletedAt,
                   last_postponed_at: currentState.lastPostponedAt,
                   last_skipped_at: now,
-                  next_due_at: calculateNextCleaningDueDate(task, zone, date),
+                  next_due_at:
+                    task.scope === 'general'
+                      ? calculateNextGeneralCleaningDueDate(task, date)
+                      : calculateNextCleaningDueDate(task, zone!, date),
                   postpone_count: currentState.postponeCount,
                 }
         const stateRow = await trx
@@ -669,7 +707,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
             task_id: task.id,
             user_id: command.context.actorUserId,
             workspace_id: command.context.workspaceId,
-            zone_id: zone.id,
+            zone_id: zone?.id ?? null,
           })
           .onConflict((conflict) =>
             conflict
@@ -833,15 +871,22 @@ export class PostgresCleaningRepository implements CleaningRepository {
   private async loadNextTaskSortOrder(
     executor: DatabaseExecutor,
     workspaceId: string,
-    zoneId: string,
+    scope: StoredCleaningTaskRecord['scope'],
+    zoneId: string | null,
   ): Promise<number> {
-    const row = await executor
+    let query = executor
       .selectFrom('app.cleaning_tasks')
       .select(sql<number>`coalesce(max(sort_order), -1)`.as('max_sort_order'))
       .where('workspace_id', '=', workspaceId)
-      .where('zone_id', '=', zoneId)
+      .where('scope', '=', scope)
       .where('deleted_at', 'is', null)
-      .executeTakeFirst()
+
+    query =
+      scope === 'general'
+        ? query.where('zone_id', 'is', null)
+        : query.where('zone_id', '=', zoneId)
+
+    const row = await query.executeTakeFirst()
 
     return Number(row?.max_sort_order ?? -1) + 1
   }
@@ -980,6 +1025,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
         normalizeNumberArray(row.season_months),
       ),
       sortOrder: row.sort_order,
+      scope: row.scope,
       tags: normalizeTags(normalizeStringArray(row.tags)),
       title: row.title,
       updatedAt: serializeTimestamp(row.updated_at),
@@ -1027,7 +1073,7 @@ export class PostgresCleaningRepository implements CleaningRepository {
 function getActionTargetDate(
   command: RecordCleaningTaskActionCommand,
   task: StoredCleaningTaskRecord,
-  zone: StoredCleaningZoneRecord,
+  zone: StoredCleaningZoneRecord | null,
   date: string,
 ): string {
   if (
@@ -1040,6 +1086,18 @@ function getActionTargetDate(
 
   if (command.input.targetDate) {
     return command.input.targetDate
+  }
+
+  if (task.scope === 'general') {
+    return calculateNextGeneralCleaningPostponeDate(date)
+  }
+
+  if (!zone) {
+    throw new HttpError(
+      404,
+      'cleaning_zone_not_found',
+      'Cleaning zone not found.',
+    )
   }
 
   return command.input.mode === 'next_cycle'

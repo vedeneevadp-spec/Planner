@@ -10,6 +10,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -144,16 +145,17 @@ function createCleaningItem(
       priority: 'normal',
       seasonMonths: [],
       sortOrder: 0,
+      scope: taskOverrides.scope ?? 'zone',
       tags: [],
       title: 'Протереть пол',
       updatedAt: '2026-05-12T00:00:00.000Z',
       userId: 'user-1',
       version: 1,
       workspaceId: 'workspace-1',
-      zoneId: zone.id,
+      zoneId: taskOverrides.scope === 'general' ? null : zone.id,
       ...taskOverrides,
     },
-    zone,
+    zone: taskOverrides.scope === 'general' ? null : zone,
   }
 }
 
@@ -181,14 +183,18 @@ function createTodayResponse(
   accumulatedItems: CleaningTaskWithState[] = [],
   zone = createZone(),
   items: CleaningTaskWithState[] = [],
+  generalItems: CleaningTaskWithState[] = [],
 ): CleaningTodayResponse {
+  const dueItems = [...items, ...generalItems]
+
   return {
     accumulatedItems,
     date: '2026-05-19',
     dayOfWeek: 2,
+    generalItems,
     history: [],
     items,
-    quickItems: items.filter(
+    quickItems: dueItems.filter(
       (item) =>
         (item.task.estimatedMinutes ?? 999) <= 15 ||
         item.task.energy === 'low' ||
@@ -199,8 +205,9 @@ function createTodayResponse(
       accumulatedCount: accumulatedItems.length,
       activeZoneCount: 1,
       completedTodayCount: 0,
-      dueCount: items.length,
-      quickCount: items.filter(
+      dueCount: dueItems.length,
+      generalCount: generalItems.length,
+      quickCount: dueItems.filter(
         (item) =>
           (item.task.estimatedMinutes ?? 999) <= 15 ||
           item.task.energy === 'low' ||
@@ -220,6 +227,19 @@ function renderCleaningSettingsPage() {
       <Routes>
         <Route
           path="/cleaning/settings/zones/:zoneId"
+          element={<CleaningSettingsPage />}
+        />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function renderCleaningGeneralSettingsPage() {
+  return render(
+    <MemoryRouter initialEntries={['/cleaning/settings/general']}>
+      <Routes>
+        <Route
+          path="/cleaning/settings/general"
           element={<CleaningSettingsPage />}
         />
       </Routes>
@@ -359,6 +379,7 @@ describe('CleaningSettingsPage', () => {
           assignee: 'anyone',
           depth: 'regular',
           energy: 'normal',
+          scope: 'zone',
           title: 'Протереть пол',
           zoneId: 'zone-1',
         }),
@@ -403,7 +424,9 @@ describe('CleaningSettingsPage', () => {
           customIntervalDays: 9,
           frequencyInterval: 9,
           frequencyType: 'custom',
+          scope: 'zone',
           title: 'Помыть пол',
+          zoneId: 'zone-1',
         },
         taskId: 'task-1',
       })
@@ -442,6 +465,48 @@ describe('CleaningSettingsPage', () => {
     await waitFor(() => {
       expect(getZoneStatsElement()).not.toHaveClass(mobileHiddenClass)
     })
+  })
+
+  it('shows the general cleaning entry in settings', () => {
+    renderCleaningSettingsPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Комната Кирилла/ }))
+
+    expect(screen.getByRole('option', { name: /Прочая уборка/ })).toBeVisible()
+  })
+
+  it('creates general cleaning tasks without a zone', async () => {
+    renderCleaningGeneralSettingsPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить задачу' }))
+    fireEvent.change(
+      screen.getByPlaceholderText('Например: помыть холодильник'),
+      {
+        target: { value: 'Помыть окна' },
+      },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Создать' }))
+
+    await waitFor(() => {
+      expect(mocks.createTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: 'general',
+          title: 'Помыть окна',
+          zoneId: null,
+        }),
+      )
+    })
+  })
+
+  it('shows the general cleaning empty state in settings', () => {
+    renderCleaningGeneralSettingsPage()
+
+    expect(
+      screen.getAllByText(
+        /Сюда можно добавлять задачи по уборке, которые не относятся/i,
+      )[0],
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Добавить' })).toBeVisible()
   })
 })
 
@@ -594,5 +659,127 @@ describe('CleaningPage', () => {
       expect(mocks.completeTask).toHaveBeenCalledTimes(1)
     })
     expectNextCycleActionCall(mocks.completeTask.mock.calls[0]?.[0])
+  })
+
+  it('shows general cleaning tasks in a separate block without zone metadata', () => {
+    const zone = createZone()
+    const generalItem = createCleaningItem(zone, {
+      id: 'task-general',
+      scope: 'general',
+      title: 'Помыть окна',
+      zoneId: null,
+    })
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlanWithItems(zone, [generalItem]),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone, [], [generalItem]),
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningPage()
+
+    const generalSection = screen
+      .getByRole('heading', { name: 'Прочая уборка' })
+      .closest('section')
+
+    if (!generalSection) {
+      throw new Error('General cleaning section was not found.')
+    }
+
+    expect(within(generalSection).getByText('Помыть окна')).toBeVisible()
+    expect(within(generalSection).getByText('Прочее')).toBeVisible()
+    expect(within(generalSection).queryByText('Комната Кирилла')).toBeNull()
+  })
+
+  it('shows a general cleaning empty state on the main cleaning page', () => {
+    const zone = createZone()
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(zone),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone),
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningPage()
+
+    const generalSection = screen
+      .getByRole('heading', { name: 'Прочая уборка' })
+      .closest('section')
+
+    if (!generalSection) {
+      throw new Error('General cleaning section was not found.')
+    }
+
+    expect(
+      within(generalSection).getByText('Прочих задач уборки сейчас нет.'),
+    ).toBeVisible()
+    expect(
+      within(generalSection).getByRole('link', { name: 'Добавить' }),
+    ).toHaveAttribute('href', '/cleaning/settings/general')
+  })
+
+  it('lets general cleaning tasks be completed, postponed and skipped', async () => {
+    const zone = createZone()
+    const generalItem = createCleaningItem(zone, {
+      id: 'task-general',
+      scope: 'general',
+      title: 'Помыть окна',
+      zoneId: null,
+    })
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlanWithItems(zone, [generalItem]),
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone, [], [generalItem]),
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningPage()
+
+    const generalSection = screen
+      .getByRole('heading', { name: 'Прочая уборка' })
+      .closest('section')
+
+    if (!generalSection) {
+      throw new Error('General cleaning section was not found.')
+    }
+
+    fireEvent.click(
+      within(generalSection).getByRole('button', {
+        name: 'Отметить «Помыть окна» выполненной',
+      }),
+    )
+    fireEvent.click(
+      within(generalSection).getByRole('button', { name: 'Отложить' }),
+    )
+    fireEvent.click(
+      within(generalSection).getByRole('button', { name: 'Пропустить' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.completeTask).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task-general' }),
+      )
+      expect(mocks.postponeTask).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task-general' }),
+      )
+      expect(mocks.skipTask).toHaveBeenCalledWith(
+        expect.objectContaining({ taskId: 'task-general' }),
+      )
+    })
   })
 })

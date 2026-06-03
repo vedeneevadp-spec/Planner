@@ -300,9 +300,42 @@
   padding: 0.9rem;
 }
 
+.emptyTaskState {
+  display: grid;
+  justify-items: start;
+  gap: 0.62rem;
+}
+
 .taskSection,
 .panel {
   padding: 0.76rem;
+}
+
+.taskSection {
+  padding: 0.84rem 0.9rem 0.9rem;
+}
+
+.taskSectionEmpty {
+  display: grid;
+  justify-items: start;
+  gap: 0.48rem;
+  padding-top: 0.02rem;
+}
+
+.taskSectionEmpty .emptyCopy {
+  margin-top: 0;
+}
+
+.emptyActionLink,
+.emptyTaskState .softButton {
+  min-height: 1.92rem;
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 999px;
+  padding: 0.34rem 0.58rem;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  font-size: 0.86rem;
+  font-weight: 620;
 }
 
 .panelHeader {

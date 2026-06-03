@@ -92,6 +92,7 @@ const routeElements = {
   calendar: <CalendarPage />,
   cleaning: <CleaningPage />,
   cleaningSettings: <CleaningSettingsPage />,
+  cleaningSettingsGeneral: <CleaningSettingsPage />,
   cleaningSettingsZone: <CleaningSettingsPage />,
   cleaningZoneRedirect: <CleaningZoneRedirect />,
   habits: <HabitsPage />,
