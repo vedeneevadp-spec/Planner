@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { after, before, describe, test } from 'node:test'
 
+import { generateUuidV7 } from '@planner/contracts'
+
 import {
   createDatabaseConnection,
   type DatabaseConnection,
@@ -9,6 +11,7 @@ import {
 } from '../../infrastructure/db/client.js'
 import { createDatabaseConfig } from '../../infrastructure/db/config.js'
 import { PostgresTaskRepository } from './task.repository.postgres.js'
+import { TaskService } from './task.service.js'
 
 interface Fixture {
   otherTaskId: string
@@ -103,6 +106,98 @@ void describe('PostgresTaskRepository', () => {
     assert.deepEqual(
       pagedTaskIds,
       [fixture.legacyTaskId, fixture.projectTaskId].sort(),
+    )
+  })
+
+  void test('keeps reminder timezone on recurring task occurrences', async () => {
+    const repository = new PostgresTaskRepository(connection.db)
+    const service = new TaskService(repository)
+    const context = {
+      actorDisplayName: `${fixture.prefix} User`,
+      actorUserId: fixture.userId,
+      auth: null,
+      role: 'owner' as const,
+      workspaceKind: 'personal' as const,
+      workspaceId: fixture.workspaceId,
+    }
+    const seriesId = generateUuidV7()
+    const task = await service.createTask(context, {
+      assigneeUserId: null,
+      dueDate: null,
+      icon: '',
+      importance: 'not_important',
+      note: '',
+      plannedDate: '2099-01-01',
+      plannedEndTime: null,
+      plannedStartTime: '09:00',
+      project: '',
+      projectId: null,
+      recurrence: {
+        daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+        endDate: null,
+        frequency: 'daily',
+        interval: 1,
+        isActive: true,
+        seriesId,
+        startDate: '2099-01-01',
+      },
+      remindBeforeStart: true,
+      reminderOffsets: [15, 30],
+      reminderTimeZone: 'Asia/Novosibirsk',
+      resource: null,
+      requiresConfirmation: false,
+      routine: null,
+      sphereId: null,
+      title: `${fixture.prefix} recurring reminder`,
+      urgency: 'not_urgent',
+    })
+
+    await service.setTaskStatus(context, task.id, 'done', task.version)
+
+    const tasks = await service.listTasks(context)
+    const nextTask = tasks.find(
+      (candidate) =>
+        candidate.id !== task.id &&
+        candidate.status === 'todo' &&
+        candidate.recurrence?.seriesId === seriesId,
+    )
+
+    assert.ok(nextTask)
+
+    const reminders = await connection.pool.query<{
+      canceled_at: Date | null
+      remind_offset_minutes: number
+      sent_at: Date | null
+      time_zone: string
+    }>(
+      `
+        select
+          canceled_at,
+          remind_offset_minutes,
+          sent_at,
+          time_zone
+        from app.task_reminders
+        where task_id = $1
+        order by remind_offset_minutes asc
+      `,
+      [nextTask.id],
+    )
+
+    assert.deepEqual(
+      reminders.rows.map((reminder) => reminder.remind_offset_minutes),
+      [15, 30],
+    )
+    assert.deepEqual(
+      reminders.rows.map((reminder) => reminder.time_zone),
+      ['Asia/Novosibirsk', 'Asia/Novosibirsk'],
+    )
+    assert.deepEqual(
+      reminders.rows.map((reminder) => reminder.sent_at),
+      [null, null],
+    )
+    assert.deepEqual(
+      reminders.rows.map((reminder) => reminder.canceled_at),
+      [null, null],
     )
   })
 })
