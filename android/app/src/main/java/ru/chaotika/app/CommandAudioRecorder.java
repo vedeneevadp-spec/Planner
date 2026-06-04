@@ -14,7 +14,6 @@ final class CommandAudioRecorder {
 
     private static final int FRAME_DURATION_MS = 40;
     private static final long START_SIGNAL_CAPTURE_GUARD_MS = 30L;
-    private static final int VOICE_ABSOLUTE_PEAK = 700;
 
     private final Context context;
     private volatile AudioRecord activeRecord;
@@ -116,7 +115,9 @@ final class CommandAudioRecorder {
 
                 output.write(buffer, 0, read);
 
-                if (!config.vadEnabled || hasVoiceActivity(buffer, read)) {
+                Pcm16AudioActivity.Result frameActivity = Pcm16AudioActivity.analyzeRange(buffer, 0, read);
+
+                if (!config.vadEnabled || frameActivity.hasVoiceActivity) {
                     hasVoice = true;
                     lastVoiceAtMs = nowMs;
                 }
@@ -167,18 +168,6 @@ final class CommandAudioRecorder {
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             throw new SttException(SttError.PERMISSION_DENIED, "Нет доступа к микрофону.");
         }
-    }
-
-    private static boolean hasVoiceActivity(byte[] data, int byteLength) {
-        for (int offset = 0; offset + 1 < byteLength; offset += 2) {
-            int sample = (short) ((data[offset] & 0xff) | (data[offset + 1] << 8));
-
-            if (Math.abs(sample) >= VOICE_ABSOLUTE_PEAK) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static CommandAudioPreBuffer compatiblePreBuffer(

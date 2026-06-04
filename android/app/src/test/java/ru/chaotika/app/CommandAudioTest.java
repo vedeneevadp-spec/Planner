@@ -55,6 +55,28 @@ public class CommandAudioTest {
     }
 
     @Test
+    public void voiceActivityIgnoresSingleNoisePeak() {
+        byte[] frame = new byte[(CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ * 40 * 2) / 1000];
+        short sample = 900;
+
+        frame[0] = (byte) (sample & 0xff);
+        frame[1] = (byte) ((sample >> 8) & 0xff);
+
+        Pcm16AudioActivity.Result activity = Pcm16AudioActivity.analyzeRange(frame, 0, frame.length);
+
+        assertTrue(activity.peak >= 700);
+        assertTrue(!activity.hasVoiceActivity);
+    }
+
+    @Test
+    public void voiceActivityDetectsSustainedSpeechFrame() {
+        byte[] frame = createVoiceAudio(40, 2800);
+        Pcm16AudioActivity.Result activity = Pcm16AudioActivity.analyzeRange(frame, 0, frame.length);
+
+        assertTrue(activity.hasVoiceActivity);
+    }
+
+    @Test
     public void attachesPreBufferButRequiresMainRecordingVoice() throws Exception {
         byte[] preBuffer = createVoiceAudio(CommandRecordingConfig.VOICE_PREBUFFER_MS, 2800);
         byte[] mainRecording = createVoiceAudio(600, 2800);

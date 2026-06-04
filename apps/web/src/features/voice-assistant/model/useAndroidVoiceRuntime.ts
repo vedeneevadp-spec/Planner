@@ -305,33 +305,47 @@ export function useAndroidVoiceRuntime({
         })
       }, ANDROID_COMMAND_RECORDING_UI_TRANSITION_MS)
       androidCommandTimeoutTimerRef.current = window.setTimeout(() => {
-        if (!isCurrentAndroidCaptureOperation(operationId)) {
-          return
-        }
+        void (async () => {
+          if (!isCurrentAndroidCaptureOperation(operationId)) {
+            return
+          }
 
-        androidCaptureOperationIdRef.current += 1
-        clearAndroidCommandPolling()
-        pendingAndroidButtonCaptureRef.current = false
-        pendingAppendSessionRef.current = null
-        trackVoiceMetric('stt_error', 'android_microphone', {
-          errorCode: 'android_command_result_timeout',
-        })
-        trackVoiceMetric('voice_session_result', 'android_microphone', {
-          voice_session_result: 'error',
-        })
-        setIsCardVisible(true)
-        setActionPreview(null)
-        setActionResult(null)
-        dispatch({
-          error:
-            'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
-          source: 'android_microphone',
-          type: 'failed',
-        })
+          const handled = await consumePendingAndroidCommand()
+
+          if (!isCurrentAndroidCaptureOperation(operationId)) {
+            return
+          }
+
+          if (handled) {
+            clearAndroidCommandPolling()
+            return
+          }
+
+          androidCaptureOperationIdRef.current += 1
+          clearAndroidCommandPolling()
+          pendingAndroidButtonCaptureRef.current = false
+          pendingAppendSessionRef.current = null
+          trackVoiceMetric('stt_error', 'android_microphone', {
+            errorCode: 'android_command_result_timeout',
+          })
+          trackVoiceMetric('voice_session_result', 'android_microphone', {
+            voice_session_result: 'error',
+          })
+          setIsCardVisible(true)
+          setActionPreview(null)
+          setActionResult(null)
+          dispatch({
+            error:
+              'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
+            source: 'android_microphone',
+            type: 'failed',
+          })
+        })()
       }, ANDROID_COMMAND_RESULT_TIMEOUT_MS)
     },
     [
       clearAndroidCommandPolling,
+      consumePendingAndroidCommand,
       dispatch,
       isCurrentAndroidCaptureOperation,
       pendingAppendSessionRef,
