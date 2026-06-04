@@ -210,28 +210,32 @@ token и сохранение device session без возврата на фор
 
 - `apps/api/src/bootstrap/build-app.test.ts` - 3667 строк
 - `packages/contracts/src/voice-test-corpus/corpus.ts` - 2133 строки
-- `apps/web/src/features/voice-assistant/ui/VoiceAssistant.tsx` - 1962 строки
 - `packages/contracts/src/planner-intent.ts` - 1773 строки
 - `apps/api/src/bootstrap/openapi-paths.ts` - 1728 строк
 - `apps/api/src/bootstrap/openapi-components.ts` - 1626 строк
-- `apps/web/src/features/voice-assistant/model/planner-action-executor.ts` -
-  1583 строки
 - `apps/web/src/pages/calendar/ui/CalendarPage.tsx` - 1364 строки
 - `apps/api/src/modules/session/session.repository.postgres.ts` - 1280 строк
 - `apps/api/src/modules/tasks/task.repository.postgres.ts` - 1215 строк
+- `apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts` - 869
+  строк
+- `apps/web/src/features/voice-assistant/model/voice-action-reschedule-handler.ts` -
+  623 строки
+- `apps/web/src/features/voice-assistant/model/planner-action-executor.ts` -
+  306 строк
+- `apps/web/src/features/voice-assistant/ui/VoiceAssistant.tsx` - 227 строк
 
 Проблема: большие файлы смешивают data access, policy, mapping, optimistic UI,
 error handling и runtime integration. Это повышает стоимость ревью и риск
 случайных регрессий.
 
 Актуальный смещенный риск 2026-06-04: самые крупные hotspots теперь не только
-auth/session repositories. Главная стоимость изменений ушла в voice assistant
-и ручной OpenAPI слой:
+auth/session repositories. Главная стоимость изменений ушла в voice action flow,
+часть intent handlers и ручной OpenAPI слой:
 
-- `VoiceAssistant.tsx` одновременно держит web recorder, Android bridge polling,
-  metrics, parser, preview/execute/undo и UI state
-- `PlannerActionExecutor` содержит все voice action handlers, candidate scoring,
-  undo и formatting helpers в одном классе
+- `useVoiceActionFlow.ts` держит parser context, preview/execute/undo,
+  clarification flow, append session, Android action result bridge и card state
+- `voice-action-reschedule-handler.ts` содержит candidate scoring, schedule
+  resolution, optimistic version checks, execute и undo переноса в одном модуле
 - `openapi-paths.ts` и `openapi-components.ts` остаются ручным описанием API
   рядом с Zod contracts; часть DTO все еще описана как generic JSON object
 - `build-app.test.ts` проверяет много route-групп одним большим test harness,
@@ -247,16 +251,26 @@ auth/session repositories. Главная стоимость изменений 
   механическими шагами
 - не проводить большие рефакторы auth/session без отдельного mobile regression
   плана
-- для voice начинать с extract hooks:
-  `useVoiceMetrics`, `useAndroidVoiceRuntime`, `useWebVoiceInput`,
-  `useVoiceActionFlow`
-- для `PlannerActionExecutor` выделять intent-specific handlers, сохраняя
-  corpus tests как behavioral baseline
+- для voice продолжать дробить `useVoiceActionFlow` по устойчивым границам:
+  action session reducer, parser/executor adapter, confirmation card adapter и
+  Android notification side effects
+- для intent handlers сохранять corpus tests как behavioral baseline; при
+  изменении переноса отдельно дробить candidate scoring и schedule resolution
 - для OpenAPI постепенно заменять `genericJsonObjectSchema()` на детальные
   схемы из contracts или generated layer; сначала для внешних и mobile-critical
   DTO
 - для `build-app.test.ts` разделять route groups и shared fixtures без изменения
   runtime поведения
+
+Статус 2026-06-04: voice split доведен до orchestration/intent границ.
+Вынесены `useVoiceMetrics`, `useAndroidVoiceRuntime`, `useWebVoiceInput` и
+`useVoiceActionFlow`; `VoiceAssistant.tsx` стал UI-shell на 227 строк и больше
+не держит recorder, Android bridge polling, metrics, parser,
+preview/execute/undo и card state. `PlannerActionExecutor` стал thin router на
+306 строк: create-task, agenda, shopping и reschedule logic вынесены в
+intent-specific handlers, а общие preview/result builders, shopping helpers и
+formatting helpers вынесены в отдельные model-модули. Остаточный voice hotspot:
+`useVoiceActionFlow.ts` и крупный `voice-action-reschedule-handler.ts`.
 
 Статус 2026-05-22: P0/High contract matrix для самых рискованных postgres
 repositories закрыта. `SessionRepository`, `TaskRepository` и
@@ -310,10 +324,10 @@ device metadata, concurrent same-device refresh и signature/naming drift check
 
 Статус 2026-06-04: inventory обновлен под текущий размер файлов. Voice safety
 и parser/action/UI baseline прикрыты `voice-command-corpus.v1` и
-`npm run voice-quality-report`, но размер `VoiceAssistant` и
-`PlannerActionExecutor` остается главным frontend hotspot. Backend contract
-matrix продолжает снижать риск repository divergence, а следующим backend
-hotspot стал ручной OpenAPI/documentation layer.
+`npm run voice-quality-report`; после split главным frontend hotspot остается
+`useVoiceActionFlow`, а не `VoiceAssistant`/`PlannerActionExecutor`. Backend
+contract matrix продолжает снижать риск repository divergence, а следующим
+backend hotspot стал ручной OpenAPI/documentation layer.
 
 ### Состояния "connected", "empty" и "loading" не имеют общего источника правды
 
