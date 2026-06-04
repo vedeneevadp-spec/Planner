@@ -24,8 +24,6 @@ if (vulnerabilities.length === 0) {
   process.exit(0)
 }
 
-assertCapacitorAssetsIsDevOnly()
-
 const unexpected = vulnerabilities.filter(
   (vulnerability) => !isAllowedDevToolingVulnerability(vulnerability),
 )
@@ -52,6 +50,8 @@ if (critical.length > 0) {
   process.exit(1)
 }
 
+assertCapacitorAssetsIsDevOnly()
+
 console.log(
   [
     'Only the known dev-only @capacitor/assets audit chain remains.',
@@ -75,9 +75,21 @@ function assertCapacitorAssetsIsDevOnly() {
     throw new Error('@capacitor/assets must not be a production dependency.')
   }
 
-  if (!packageJson.devDependencies?.['@capacitor/assets']) {
-    throw new Error('@capacitor/assets devDependency was not found.')
+  if (
+    !packageJson.devDependencies?.['@capacitor/assets'] &&
+    !isCapacitorAssetsPinnedNpxScript(packageJson.scripts?.['mobile:assets'])
+  ) {
+    throw new Error(
+      '@capacitor/assets must be a devDependency or a pinned npx script.',
+    )
   }
+}
+
+function isCapacitorAssetsPinnedNpxScript(value) {
+  return (
+    typeof value === 'string' &&
+    /\bnpx\s+--yes\s+@capacitor\/assets@\d+\.\d+\.\d+\s+generate\b/.test(value)
+  )
 }
 
 function isAllowedDevToolingVulnerability(vulnerability) {

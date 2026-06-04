@@ -51,3 +51,4 @@ tools/wakeword-training/parity/expected/**/*.npy
 tools/wakeword-training/parity/expected/**/*.json
 tools/wakeword-training/output/**
 !tools/wakeword-training/output/.gitkeep
+/store-screenshots/
