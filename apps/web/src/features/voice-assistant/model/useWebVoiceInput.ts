@@ -140,6 +140,10 @@ export function useWebVoiceInput({
       webRecorderRef.current = null
       setWebVoiceState('validating_audio')
       setWebVoiceMessage(getWebVoiceInputLabel('validating_audio'))
+      dispatch({
+        source: 'web_microphone',
+        type: 'transcribing_started',
+      })
 
       try {
         const recording = await recorder.stop()

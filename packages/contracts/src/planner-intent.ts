@@ -1012,6 +1012,7 @@ export type VoiceAssistantState =
 export type VoiceAssistantEvent =
   | { type: 'start_wake_word' }
   | { source: VoiceAssistantSource; type: 'recording_started' }
+  | { source: VoiceAssistantSource; type: 'transcribing_started' }
   | {
       source: VoiceAssistantSource
       transcript: string
@@ -1049,6 +1050,15 @@ export function reduceVoiceAssistantState(
       return {
         source: event.source,
         status: 'recording',
+      }
+    case 'transcribing_started':
+      if (state.status !== 'recording' || state.source !== event.source) {
+        return state
+      }
+
+      return {
+        source: event.source,
+        status: 'transcribing',
       }
     case 'transcript_received':
       return {

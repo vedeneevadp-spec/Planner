@@ -461,6 +461,25 @@ describe('reduceVoiceAssistantState', () => {
     expect(completedState.status).toBe('completed')
   })
 
+  it('moves active recording to transcribing before transcript arrives', () => {
+    const recordingState = reduceVoiceAssistantState(
+      initialVoiceAssistantState,
+      {
+        source: 'web_microphone',
+        type: 'recording_started',
+      },
+    )
+    const transcribingState = reduceVoiceAssistantState(recordingState, {
+      source: 'web_microphone',
+      type: 'transcribing_started',
+    })
+
+    expect(transcribingState).toEqual({
+      source: 'web_microphone',
+      status: 'transcribing',
+    })
+  })
+
   it('does not execute without an awaiting confirmation state', () => {
     const nextState = reduceVoiceAssistantState(initialVoiceAssistantState, {
       type: 'confirmed',

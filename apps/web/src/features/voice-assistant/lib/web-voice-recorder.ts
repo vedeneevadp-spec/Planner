@@ -25,6 +25,7 @@ const MEDIA_RECORDER_MIME_TYPES = [
   'audio/ogg;codecs=opus',
   'audio/ogg',
 ] as const
+const MEDIA_RECORDER_STOP_FALLBACK_MS = 800
 
 export async function startWebVoiceRecorder(): Promise<WebVoiceRecorder> {
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -56,9 +57,9 @@ async function createRecorder(stream: MediaStream): Promise<WebVoiceRecorder> {
   const processor = audioContext.createScriptProcessor(4096, 1, 1)
   const silentOutput = audioContext.createGain()
   const floatChunks: Float32Array[] = []
-  const mediaChunks: Blob[] = []
   const mediaRecorder = createMediaRecorder(stream)
   let isCancelled = false
+  let isRuntimeCleanedUp = false
   let stopPromise: Promise<WebVoiceRecording> | null = null
   const startedAt = performance.now()
 
@@ -85,9 +86,29 @@ async function createRecorder(stream: MediaStream): Promise<WebVoiceRecorder> {
     stream,
   }
 
-  mediaRecorder.ondataavailable = (event) => {
-    if (event.data.size > 0) {
-      mediaChunks.push(event.data)
+  function cleanupOnce() {
+    if (isRuntimeCleanedUp) {
+      return
+    }
+
+    isRuntimeCleanedUp = true
+    cleanupRuntime(runtime)
+  }
+
+  function createRecording(): WebVoiceRecording {
+    const durationMs = Math.round(performance.now() - startedAt)
+    const audio = createPcm16Audio(
+      floatChunks,
+      audioContext.sampleRate,
+      WEB_VOICE_SAMPLE_RATE_HERTZ,
+    )
+
+    return {
+      analysis: analyzePcm16Audio(audio),
+      audio,
+      byteLength: audio.byteLength,
+      durationMs,
+      mediaRecorderMimeType: mediaRecorder.mimeType || undefined,
     }
   }
 
@@ -102,10 +123,29 @@ async function createRecorder(stream: MediaStream): Promise<WebVoiceRecorder> {
   return {
     cancel() {
       isCancelled = true
+      const cleanupTimeoutId = window.setTimeout(
+        cleanupOnce,
+        MEDIA_RECORDER_STOP_FALLBACK_MS,
+      )
+
       mediaRecorder.onstop = () => {
-        cleanupRuntime(runtime)
+        window.clearTimeout(cleanupTimeoutId)
+        cleanupOnce()
       }
-      stopRuntime(runtime)
+      mediaRecorder.onerror = () => {
+        window.clearTimeout(cleanupTimeoutId)
+        cleanupOnce()
+      }
+
+      try {
+        if (!stopRuntime(runtime)) {
+          window.clearTimeout(cleanupTimeoutId)
+          cleanupOnce()
+        }
+      } catch {
+        window.clearTimeout(cleanupTimeoutId)
+        cleanupOnce()
+      }
     },
     stop() {
       if (stopPromise) {
@@ -113,29 +153,54 @@ async function createRecorder(stream: MediaStream): Promise<WebVoiceRecorder> {
       }
 
       stopPromise = new Promise<WebVoiceRecording>((resolve, reject) => {
-        mediaRecorder.onstop = () => {
-          const durationMs = Math.round(performance.now() - startedAt)
-          const audio = createPcm16Audio(
-            floatChunks,
-            audioContext.sampleRate,
-            WEB_VOICE_SAMPLE_RATE_HERTZ,
-          )
+        let isSettled = false
+        const fallbackTimeoutId = window.setTimeout(
+          finishStop,
+          MEDIA_RECORDER_STOP_FALLBACK_MS,
+        )
 
-          cleanupRuntime(runtime)
-          resolve({
-            analysis: analyzePcm16Audio(audio),
-            audio,
-            byteLength: audio.byteLength,
-            durationMs,
-            mediaRecorderMimeType: mediaRecorder.mimeType || undefined,
-          })
+        function finishStop() {
+          if (isSettled) {
+            return
+          }
+
+          isSettled = true
+          window.clearTimeout(fallbackTimeoutId)
+
+          try {
+            const recording = createRecording()
+
+            cleanupOnce()
+            resolve(recording)
+          } catch (error) {
+            cleanupOnce()
+            reject(
+              error instanceof Error
+                ? error
+                : new Error('Не удалось подготовить запись.'),
+            )
+          }
         }
+
         mediaRecorder.onerror = () => {
-          cleanupRuntime(runtime)
+          if (isSettled) {
+            return
+          }
+
+          isSettled = true
+          window.clearTimeout(fallbackTimeoutId)
+          cleanupOnce()
           reject(new Error('Запись прервана.'))
         }
+        mediaRecorder.onstop = finishStop
 
-        stopRuntime(runtime)
+        try {
+          if (!stopRuntime(runtime)) {
+            finishStop()
+          }
+        } catch {
+          finishStop()
+        }
       })
 
       return stopPromise
@@ -161,13 +226,13 @@ function getSupportedMediaRecorderMimeType(): string | undefined {
   )
 }
 
-function stopRuntime(runtime: RecorderRuntime): void {
+function stopRuntime(runtime: RecorderRuntime): boolean {
   if (runtime.mediaRecorder.state !== 'inactive') {
     runtime.mediaRecorder.stop()
-    return
+    return true
   }
 
-  cleanupRuntime(runtime)
+  return false
 }
 
 function cleanupRuntime(runtime: RecorderRuntime): void {

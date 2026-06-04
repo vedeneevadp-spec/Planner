@@ -331,6 +331,31 @@ describe('VoiceAssistant web push-to-talk', () => {
     })
   })
 
+  it('shows processing while a web recording stop is still resolving', async () => {
+    const stopDeferred = createDeferred<WebVoiceRecording>()
+
+    mocks.startWebVoiceRecorder.mockResolvedValue({
+      cancel: vi.fn(),
+      stop: vi.fn(() => stopDeferred.promise),
+    })
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Завершить' }))
+
+    expect(await screen.findByLabelText('Processing')).toBeVisible()
+    expect(screen.queryByLabelText('Listening')).not.toBeInTheDocument()
+    expect(mocks.uploadWebVoiceCommand).not.toHaveBeenCalled()
+
+    act(() => {
+      stopDeferred.resolve(createRecording(900))
+    })
+
+    expect(await screen.findByText('Распознано')).toBeVisible()
+    expect(mocks.uploadWebVoiceCommand).toHaveBeenCalledTimes(1)
+  })
+
   it('appends a repeated voice input to the last recognized phrase', async () => {
     mocks.uploadWebVoiceCommand
       .mockResolvedValueOnce(
@@ -425,6 +450,39 @@ describe('VoiceAssistant web push-to-talk', () => {
       ),
     ).toBeVisible()
     expect(mocks.consumePendingAndroidVoiceCommand).toHaveBeenCalled()
+  })
+
+  it('times out Android push-to-talk when native capture never resolves', async () => {
+    vi.useFakeTimers()
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.captureAndroidVoiceCommand.mockReturnValue(new Promise(() => {}))
+    mocks.consumePendingAndroidVoiceCommand.mockResolvedValue(null)
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    await act(async () => {})
+
+    expect(mocks.captureAndroidVoiceCommand).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('Слушаю')).toBeVisible()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(16_001)
+    })
+
+    expect(screen.getByLabelText('Processing')).toBeVisible()
+    expect(screen.queryByLabelText('Listening')).not.toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000)
+    })
+
+    expect(
+      screen.getByText(
+        'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
+      ),
+    ).toBeVisible()
   })
 })
 
@@ -565,4 +623,16 @@ function createVoiceAudio(durationMs: number): ArrayBuffer {
   }
 
   return audio
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+
+  return { promise, resolve }
 }

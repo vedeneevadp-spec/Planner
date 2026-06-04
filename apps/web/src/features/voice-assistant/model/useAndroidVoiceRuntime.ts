@@ -1,9 +1,10 @@
-import type {
-  PlannerIntent,
-  VoiceActionPreview,
-  VoiceActionResult,
-  VoiceAssistantEvent,
-  VoiceAssistantSource,
+import {
+  type PlannerIntent,
+  VOICE_COMMAND_AUDIO_MAX_DURATION_MS,
+  type VoiceActionPreview,
+  type VoiceActionResult,
+  type VoiceAssistantEvent,
+  type VoiceAssistantSource,
 } from '@planner/contracts'
 import {
   type Dispatch,
@@ -43,6 +44,8 @@ import {
 
 const ANDROID_COMMAND_INITIAL_POLL_DELAY_MS = 650
 const ANDROID_COMMAND_POLL_INTERVAL_MS = 750
+const ANDROID_COMMAND_RECORDING_UI_TRANSITION_MS =
+  VOICE_COMMAND_AUDIO_MAX_DURATION_MS + 1_000
 const ANDROID_COMMAND_RESULT_TIMEOUT_MS = 45_000
 
 type VoiceTranscriptHandler = (
@@ -100,6 +103,7 @@ export function useAndroidVoiceRuntime({
   const pendingAndroidButtonCaptureRef = useRef(false)
   const androidCaptureOperationIdRef = useRef(0)
   const androidCommandPollTimerRef = useRef<number | null>(null)
+  const androidCommandTranscribingTimerRef = useRef<number | null>(null)
   const androidCommandTimeoutTimerRef = useRef<number | null>(null)
   const [androidSettingsRevision, setAndroidSettingsRevision] = useState(0)
   const [androidVoiceStatus, setAndroidVoiceStatus] =
@@ -121,6 +125,11 @@ export function useAndroidVoiceRuntime({
     if (androidCommandPollTimerRef.current !== null) {
       window.clearTimeout(androidCommandPollTimerRef.current)
       androidCommandPollTimerRef.current = null
+    }
+
+    if (androidCommandTranscribingTimerRef.current !== null) {
+      window.clearTimeout(androidCommandTranscribingTimerRef.current)
+      androidCommandTranscribingTimerRef.current = null
     }
 
     if (androidCommandTimeoutTimerRef.current !== null) {
@@ -285,6 +294,16 @@ export function useAndroidVoiceRuntime({
       androidCommandPollTimerRef.current = window.setTimeout(() => {
         void pollPendingAndroidCommand(operationId)
       }, ANDROID_COMMAND_INITIAL_POLL_DELAY_MS)
+      androidCommandTranscribingTimerRef.current = window.setTimeout(() => {
+        if (!isCurrentAndroidCaptureOperation(operationId)) {
+          return
+        }
+
+        dispatch({
+          source: 'android_microphone',
+          type: 'transcribing_started',
+        })
+      }, ANDROID_COMMAND_RECORDING_UI_TRANSITION_MS)
       androidCommandTimeoutTimerRef.current = window.setTimeout(() => {
         if (!isCurrentAndroidCaptureOperation(operationId)) {
           return
@@ -361,9 +380,13 @@ export function useAndroidVoiceRuntime({
         throw new Error('Backend STT недоступен без активной сессии.')
       }
 
-      await captureAndroidVoiceCommand(apiConfig)
       scheduleAndroidCommandPolling(operationId)
+      await captureAndroidVoiceCommand(apiConfig)
     } catch (error) {
+      if (!isCurrentAndroidCaptureOperation(operationId)) {
+        return
+      }
+
       clearAndroidCommandPolling()
       pendingAndroidButtonCaptureRef.current = false
       pendingAppendSessionRef.current = null
@@ -384,6 +407,7 @@ export function useAndroidVoiceRuntime({
     apiConfig,
     clearAndroidCommandPolling,
     dispatch,
+    isCurrentAndroidCaptureOperation,
     markVoiceTiming,
     pendingAppendSessionRef,
     resetVoiceTiming,

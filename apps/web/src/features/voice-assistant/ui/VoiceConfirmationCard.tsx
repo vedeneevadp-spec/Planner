@@ -134,6 +134,12 @@ export function VoiceConfirmationCard({
   const canRetryWebInput = isRetryableWebInputState(webInputState)
   const canShowAppendVoice =
     canAppendVoice && Boolean(transcript) && !result && !hidesPrivateDetails
+  const isWebInputProcessing = isProcessingWebInputState(webInputState)
+  const isRecording = state.status === 'recording' && !isWebInputProcessing
+  const isProcessing =
+    state.status === 'transcribing' ||
+    state.status === 'parsing' ||
+    isWebInputProcessing
 
   useEffect(() => {
     if (!undoKey) {
@@ -186,9 +192,9 @@ export function VoiceConfirmationCard({
         <p className={styles.previewSummary}>{webStatusBody}</p>
       ) : null}
 
-      {state.status === 'recording' ? (
+      {isRecording ? (
         <VoiceRecordingIndicator />
-      ) : state.status === 'parsing' || webInputState === 'validating_audio' ? (
+      ) : isProcessing ? (
         <VoiceProcessingIndicator />
       ) : null}
 
@@ -947,6 +953,8 @@ function getStatusLabel(
   switch (status) {
     case 'recording':
       return 'Слушаю'
+    case 'transcribing':
+      return 'Распознаю'
     case 'parsing':
       return 'Разбираю'
     case 'awaiting_confirmation':
@@ -986,6 +994,17 @@ function isRetryableWebInputState(
     webInputState === 'permission_denied' ||
     webInputState === 'permission_ready' ||
     webInputState === 'unsupported'
+  )
+}
+
+function isProcessingWebInputState(
+  webInputState: WebVoiceInputState | undefined,
+): boolean {
+  return (
+    webInputState === 'validating_audio' ||
+    webInputState === 'uploading' ||
+    webInputState === 'recognizing' ||
+    webInputState === 'parsing'
   )
 }
 
