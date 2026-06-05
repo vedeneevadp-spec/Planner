@@ -509,6 +509,38 @@ public class WakeWordEngineTest {
     }
 
     @Test
+    public void voiceAssistantStateMachine_doesNotResumeWakeListeningWhenBackgroundModeIsDisabled() {
+        assertTrue(
+            VoiceAssistantStateMachine.canResumeWakeWordDetection(
+                VoiceAssistantState.IDLE,
+                true,
+                true
+            )
+        );
+        assertFalse(
+            VoiceAssistantStateMachine.canResumeWakeWordDetection(
+                VoiceAssistantState.IDLE,
+                true,
+                false
+            )
+        );
+        assertFalse(
+            VoiceAssistantStateMachine.canResumeWakeWordDetection(
+                VoiceAssistantState.IDLE,
+                false,
+                true
+            )
+        );
+        assertFalse(
+            VoiceAssistantStateMachine.canResumeWakeWordDetection(
+                VoiceAssistantState.RECORDING_COMMAND,
+                true,
+                true
+            )
+        );
+    }
+
+    @Test
     public void trainingExampleStore_capturesPendingReviewSampleWithoutOptIn() {
         WakeWordTrainingExampleStore.clearPending();
         WakeWordDetection detection = new WakeWordDetection(

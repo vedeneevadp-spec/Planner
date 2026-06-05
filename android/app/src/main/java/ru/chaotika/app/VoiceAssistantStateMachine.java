@@ -18,4 +18,14 @@ final class VoiceAssistantStateMachine {
             currentState == VoiceAssistantState.WAITING_FOR_CONFIRMATION ||
             currentState == VoiceAssistantState.ERROR;
     }
+
+    static boolean canResumeWakeWordDetection(
+        VoiceAssistantState currentState,
+        boolean wakeWordEnabled,
+        boolean backgroundWakeWordEnabled
+    ) {
+        return wakeWordEnabled &&
+            backgroundWakeWordEnabled &&
+            canStartWakeWordDetection(currentState);
+    }
 }

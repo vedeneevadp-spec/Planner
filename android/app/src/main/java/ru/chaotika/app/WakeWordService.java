@@ -184,6 +184,18 @@ public class WakeWordService extends Service {
             return;
         }
 
+        if (
+            !VoiceAssistantStateMachine.canResumeWakeWordDetection(
+                state,
+                PlannerVoiceAssistantStorage.readWakeWordEnabled(this),
+                PlannerVoiceAssistantStorage.readBackgroundWakeWordEnabled(this)
+            )
+        ) {
+            stopWakeWordEngine();
+            stopAssistant(false);
+            return;
+        }
+
         if (wakeWordEngine.isRunning()) {
             return;
         }
