@@ -181,11 +181,7 @@ export function buildCleaningTodayResponse(input: {
       item.task.depth === 'minimum',
   )
   const accumulatedItems = allItems.filter(
-    (item) =>
-      item.isDue &&
-      (item.state.postponeCount >= 2 ||
-        item.isOverdue ||
-        isCleaningTaskStaleOnDate(item.state, input.date)),
+    (item) => item.isDue && isCleaningTaskAccumulatedOnDate(item, input.date),
   )
   const urgentItems = todayDueItems.filter(
     (item) =>
@@ -522,6 +518,85 @@ function getCleaningTaskScore(
     staleWeight +
     task.impactScore
   )
+}
+
+function isCleaningTaskAccumulatedOnDate(
+  item: CleaningTaskWithState,
+  date: string,
+): boolean {
+  if (
+    item.state.postponeCount >= 2 ||
+    item.isOverdue ||
+    isCleaningTaskStaleOnDate(item.state, date)
+  ) {
+    return true
+  }
+
+  return isUnactedCleaningTaskMissedOnDate(
+    item.task,
+    item.state,
+    item.zone,
+    date,
+  )
+}
+
+function isUnactedCleaningTaskMissedOnDate(
+  task: StoredCleaningTaskRecord,
+  state: StoredCleaningTaskStateRecord,
+  zone: StoredCleaningZoneRecord | null,
+  date: string,
+): boolean {
+  if (
+    state.nextDueAt !== null ||
+    state.lastCompletedAt !== null ||
+    state.lastPostponedAt !== null ||
+    state.lastSkippedAt !== null ||
+    state.postponeCount > 0
+  ) {
+    return false
+  }
+
+  const firstDueDate = calculateInitialCleaningDueDate(task, zone)
+
+  return firstDueDate < date
+}
+
+function calculateInitialCleaningDueDate(
+  task: StoredCleaningTaskRecord,
+  zone: StoredCleaningZoneRecord | null,
+): string {
+  const createdDate = task.createdAt.slice(0, 10)
+
+  if (task.scope === 'general') {
+    if (!task.isSeasonal || task.seasonMonths.length === 0) {
+      return createdDate
+    }
+
+    return findNextSeasonalDate(createdDate, task.seasonMonths)
+  }
+
+  if (!zone) {
+    return createdDate
+  }
+
+  const zoneDueDate = calculateCleaningZoneDateOnOrAfter(zone, createdDate)
+
+  if (!task.isSeasonal || task.seasonMonths.length === 0) {
+    return zoneDueDate
+  }
+
+  return findNextSeasonalWeekday(zoneDueDate, zone.dayOfWeek, task.seasonMonths)
+}
+
+function calculateCleaningZoneDateOnOrAfter(
+  zone: Pick<StoredCleaningZoneRecord, 'dayOfWeek'>,
+  fromDate: string,
+): string {
+  const weekday = getIsoWeekday(fromDate)
+  const rawDiff = zone.dayOfWeek - weekday
+  const diff = rawDiff < 0 ? rawDiff + 7 : rawDiff
+
+  return addDaysToDateKey(fromDate, diff)
 }
 
 function isCleaningTaskStaleOnDate(

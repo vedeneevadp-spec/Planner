@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   cleaningTaskActionInputSchema,
+  cleaningZoneUpdateInputSchema,
   newCleaningTaskInputSchema,
   newCleaningZoneInputSchema,
 } from '@planner/contracts'
@@ -10,6 +11,7 @@ import {
 import { HttpError } from '../../bootstrap/http-error.js'
 import { MemoryCleaningRepository } from './cleaning.repository.memory.js'
 import { CleaningService } from './cleaning.service.js'
+import { getIsoWeekday } from './cleaning.shared.js'
 
 const OWNER_CONTEXT = {
   actorUserId: 'user-1',
@@ -129,3 +131,66 @@ void test('CleaningService promotes postponed tasks and resets counter on comple
   assert.equal(completedTask?.state.postponeCount, 0)
   assert.equal(completedTask?.state.nextDueAt, '2026-06-01')
 })
+
+void test('CleaningService accumulates untouched zone tasks after their assigned day passes', async () => {
+  const service = new CleaningService(new MemoryCleaningRepository())
+  const zone = await service.createZone(
+    OWNER_CONTEXT,
+    newCleaningZoneInputSchema.parse({
+      dayOfWeek: 1,
+      title: 'Кухня',
+    }),
+  )
+  const task = await service.createTask(
+    OWNER_CONTEXT,
+    newCleaningTaskInputSchema.parse({
+      estimatedMinutes: 20,
+      priority: 'normal',
+      title: 'Помыть плиту',
+      zoneId: zone.id,
+    }),
+  )
+  const taskCreatedDate = task.createdAt.slice(0, 10)
+
+  await service.updateZone(
+    OWNER_CONTEXT,
+    zone.id,
+    cleaningZoneUpdateInputSchema.parse({
+      dayOfWeek: getIsoWeekday(taskCreatedDate),
+    }),
+  )
+
+  const assignedDay = await service.getToday(OWNER_CONTEXT, taskCreatedDate)
+
+  assert.equal(
+    assignedDay.items.some((item) => item.task.id === task.id),
+    true,
+  )
+  assert.equal(
+    assignedDay.accumulatedItems.some((item) => item.task.id === task.id),
+    false,
+  )
+
+  const nextDay = await service.getToday(
+    OWNER_CONTEXT,
+    addDaysToDateKey(taskCreatedDate, 1),
+  )
+
+  assert.equal(
+    nextDay.items.some((item) => item.task.id === task.id),
+    false,
+  )
+  assert.equal(
+    nextDay.accumulatedItems.some((item) => item.task.id === task.id),
+    true,
+  )
+  assert.equal(nextDay.summary.accumulatedCount, 1)
+})
+
+function addDaysToDateKey(dateKey: string, amount: number): string {
+  const date = new Date(`${dateKey}T12:00:00.000Z`)
+
+  date.setUTCDate(date.getUTCDate() + amount)
+
+  return date.toISOString().slice(0, 10)
+}
