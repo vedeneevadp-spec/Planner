@@ -489,6 +489,44 @@ describe('VoiceAssistant web push-to-talk', () => {
     expect(screen.queryByLabelText('Listening')).not.toBeInTheDocument()
   })
 
+  it('does not stop Android push-to-talk when background wake word is disabled', async () => {
+    vi.useFakeTimers()
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.consumePendingAndroidVoiceCommand.mockResolvedValue(null)
+    mocks.getVoiceAssistantNativeStatus
+      .mockResolvedValueOnce(
+        createAndroidStatus({
+          backgroundWakeWordEnabled: false,
+          runtimeStatus: 'stopped',
+          state: 'idle',
+        }),
+      )
+      .mockResolvedValue(
+        createAndroidStatus({
+          backgroundWakeWordEnabled: false,
+          runtimeStatus: 'paused_for_command',
+          state: 'transcribing',
+        }),
+      )
+
+    render(<VoiceAssistant />)
+
+    await act(async () => {})
+
+    mocks.stopAndroidVoiceAssistant.mockClear()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    await act(async () => {})
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650)
+    })
+
+    expect(screen.getByLabelText('Processing')).toBeVisible()
+    expect(mocks.stopAndroidVoiceAssistant).not.toHaveBeenCalled()
+  })
+
   it('shows an Android push-to-talk timeout when native command never arrives', async () => {
     vi.useFakeTimers()
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)

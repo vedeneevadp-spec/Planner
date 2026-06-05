@@ -581,9 +581,16 @@ export function useAndroidVoiceRuntime({
       !androidVoiceStatus.backgroundWakeWordEnabled ||
       androidVoiceStatus.wakeWordModelStatus !== 'ready'
     ) {
-      void stopAndroidVoiceAssistant().catch((error) => {
-        console.warn('Failed to stop Android voice assistant.', error)
-      })
+      if (
+        !pendingAndroidButtonCaptureRef.current &&
+        !androidCommandTranscribingRef.current &&
+        androidVoiceStatus?.state !== 'recording' &&
+        androidVoiceStatus?.state !== 'transcribing'
+      ) {
+        void stopAndroidVoiceAssistant().catch((error) => {
+          console.warn('Failed to stop Android voice assistant.', error)
+        })
+      }
 
       return undefined
     }
@@ -630,6 +637,7 @@ export function useAndroidVoiceRuntime({
     }
   }, [
     androidVoiceStatus?.backgroundWakeWordEnabled,
+    androidVoiceStatus?.state,
     androidVoiceStatus?.wakeWordEnabled,
     androidVoiceStatus?.wakeWordModelStatus,
     apiConfig,
