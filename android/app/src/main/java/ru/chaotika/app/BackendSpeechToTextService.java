@@ -22,6 +22,7 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
     private static final int HTTP_TOO_MANY_REQUESTS = 429;
 
     private final android.content.Context context;
+    private volatile HttpURLConnection activeConnection;
 
     BackendSpeechToTextService(android.content.Context context) {
         this.context = context.getApplicationContext();
@@ -32,6 +33,15 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
         VoiceAssistantApiConfig config = PlannerVoiceAssistantStorage.readApiConfig(context);
 
         return config != null && config.isUsable();
+    }
+
+    @Override
+    public void cancel() {
+        HttpURLConnection connection = activeConnection;
+
+        if (connection != null) {
+            connection.disconnect();
+        }
     }
 
     @Override
@@ -70,6 +80,7 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
         try {
             URL endpoint = new URL(config.apiBaseUrl + "/api/voice/command");
             connection = (HttpURLConnection) endpoint.openConnection();
+            activeConnection = connection;
             connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
             connection.setReadTimeout(READ_TIMEOUT_MS);
             connection.setDoOutput(true);
@@ -142,6 +153,9 @@ final class BackendSpeechToTextService implements RecordedSpeechToTextProvider {
         } finally {
             if (connection != null) {
                 connection.disconnect();
+            }
+            if (activeConnection == connection) {
+                activeConnection = null;
             }
         }
     }

@@ -96,6 +96,7 @@ const mocks = vi.hoisted(() => ({
   >(() => Promise.resolve(null)),
   isAndroidVoiceAssistantRuntime: vi.fn(() => false),
   notifyAndroidVoiceActionResult: vi.fn(() => Promise.resolve()),
+  stopAndroidVoiceAssistant: vi.fn(() => Promise.resolve()),
   startWebVoiceRecorder: vi.fn<() => Promise<FakeRecorder>>(),
   uploadWebVoiceCommand:
     vi.fn<(...args: unknown[]) => Promise<VoiceCommandResponseStub>>(),
@@ -145,7 +146,7 @@ vi.mock('../lib/native-voice-assistant', () => ({
   isAndroidVoiceAssistantRuntime: () => mocks.isAndroidVoiceAssistantRuntime(),
   notifyAndroidVoiceActionResult: () => mocks.notifyAndroidVoiceActionResult(),
   startAndroidVoiceAssistant: vi.fn(() => Promise.resolve()),
-  stopAndroidVoiceAssistant: vi.fn(() => Promise.resolve()),
+  stopAndroidVoiceAssistant: () => mocks.stopAndroidVoiceAssistant(),
 }))
 
 vi.mock('../lib/web-voice-recorder', () => ({
@@ -170,6 +171,7 @@ describe('VoiceAssistant web push-to-talk', () => {
     mocks.consumePendingAndroidVoiceCommand.mockResolvedValue(null)
     mocks.getVoiceAssistantNativeStatus.mockResolvedValue(null)
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(false)
+    mocks.stopAndroidVoiceAssistant.mockResolvedValue(undefined)
     mocks.usePlanner.mockReturnValue({
       addTask: vi.fn(),
       refresh: vi.fn(() => Promise.resolve()),
@@ -181,7 +183,7 @@ describe('VoiceAssistant web push-to-talk', () => {
     mocks.useSessionFeatureReadiness.mockReturnValue({
       apiConfig: {
         actorUserId: 'user-1',
-        apiBaseUrl: 'http://127.0.0.1:3001',
+        apiBaseUrl: 'https://chaotika.test',
         workspaceId: 'workspace-1',
       },
       session: {
@@ -429,6 +431,37 @@ describe('VoiceAssistant web push-to-talk', () => {
     expect(screen.getByText('добавь задачу отчет')).toBeVisible()
   })
 
+  it('rejects Android push-to-talk when the API URL points to localhost', async () => {
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.useSessionFeatureReadiness.mockReturnValue({
+      apiConfig: {
+        actorUserId: 'user-1',
+        apiBaseUrl: 'http://127.0.0.1:3001',
+        workspaceId: 'workspace-1',
+      },
+      session: {
+        actorUserId: 'user-1',
+        appRole: 'owner',
+        userPreferences: {
+          voiceAssistantEnabled: true,
+        },
+        workspaceId: 'workspace-1',
+        workspaceSettings: {
+          wakeWordTrainingModeEnabled: false,
+        },
+      },
+    })
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    expect(
+      await screen.findByText(/Android-приложение собрано с локальным API URL/),
+    ).toBeVisible()
+    expect(mocks.captureAndroidVoiceCommand).not.toHaveBeenCalled()
+  })
+
   it('shows Android processing when native recording has stopped', async () => {
     vi.useFakeTimers()
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
@@ -475,11 +508,10 @@ describe('VoiceAssistant web push-to-talk', () => {
     })
 
     expect(
-      screen.getByText(
-        'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
-      ),
+      screen.getByText(/Native status недоступен, запись остановлена/),
     ).toBeVisible()
     expect(mocks.consumePendingAndroidVoiceCommand).toHaveBeenCalled()
+    expect(mocks.stopAndroidVoiceAssistant).toHaveBeenCalled()
   })
 
   it('times out Android push-to-talk when native capture never resolves', async () => {
@@ -509,10 +541,9 @@ describe('VoiceAssistant web push-to-talk', () => {
     })
 
     expect(
-      screen.getByText(
-        'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
-      ),
+      screen.getByText(/Native status недоступен, запись остановлена/),
     ).toBeVisible()
+    expect(mocks.stopAndroidVoiceAssistant).toHaveBeenCalled()
   })
 })
 

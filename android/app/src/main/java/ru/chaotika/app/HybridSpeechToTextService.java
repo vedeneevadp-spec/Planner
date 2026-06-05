@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 final class HybridSpeechToTextService implements SpeechToTextService {
 
@@ -16,7 +17,10 @@ final class HybridSpeechToTextService implements SpeechToTextService {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final RecordedSpeechToTextProvider localProvider;
     private final SttMetricsLogger metricsLogger = new SttMetricsLogger();
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Object transcriptionLock = new Object();
+    private ExecutorService executor = createExecutor();
+    private Future<?> activeTask;
+    private int transcriptionGeneration;
 
     HybridSpeechToTextService(
         Context context,
@@ -32,58 +36,112 @@ final class HybridSpeechToTextService implements SpeechToTextService {
 
     @Override
     public void transcribe(SttRequest request, Callback callback) {
-        executor.execute(() -> {
-            try {
-                metricsLogger.recordingStarted();
-                CommandAudio audio = recorder.recordBlocking(
-                    request,
-                    (startedAtElapsedMs) -> recordRuntimeRecorderTiming(request, startedAtElapsedMs)
-                );
-                metricsLogger.recordingStopped(audio);
-                recordRuntimeRecordingMetrics(audio);
-                postRecordingStopped(callback, audio);
+        int generation;
 
-                RecordedSpeechToTextProvider provider = selectProvider();
-                if (provider == localProvider) {
-                    metricsLogger.fallbackUsed(SttProvider.LOCAL_STUB);
-                }
-
-                if (provider == backendProvider) {
-                    metricsLogger.uploadStarted(audio);
-                }
-
-                SttResult result = provider.transcribe(audio, request);
-
-                if (result.confidence < 0.55d) {
-                    metricsLogger.lowConfidence(result);
-                }
-
-                if (provider == backendProvider) {
-                    metricsLogger.uploadCompleted(result);
-                }
-
-                postResult(callback, result);
-            } catch (SttException error) {
-                if (
-                    error.code == SttError.NO_SPEECH ||
-                    error.code == SttError.TOO_SHORT ||
-                    error.code == SttError.TOO_QUIET ||
-                    error.code == SttError.TOO_LONG ||
-                    error.code == SttError.UNSUPPORTED_AUDIO_FORMAT ||
-                    error.code == SttError.PRIVACY_BLOCKED
-                ) {
-                    metricsLogger.localValidationFailed(error);
-                } else {
-                    metricsLogger.error(error);
-                }
-                postError(callback, error);
-            }
-        });
+        synchronized (transcriptionLock) {
+            generation = ++transcriptionGeneration;
+            activeTask = executor.submit(() -> runTranscription(generation, request, callback));
+        }
     }
 
     @Override
     public void stop() {
         recorder.stop();
+        backendProvider.cancel();
+        localProvider.cancel();
+
+        synchronized (transcriptionLock) {
+            transcriptionGeneration++;
+
+            if (activeTask != null) {
+                activeTask.cancel(true);
+                activeTask = null;
+            }
+
+            executor.shutdownNow();
+            executor = createExecutor();
+        }
+    }
+
+    private void runTranscription(int generation, SttRequest request, Callback callback) {
+        try {
+            metricsLogger.recordingStarted();
+            CommandAudio audio = recorder.recordBlocking(
+                request,
+                (startedAtElapsedMs) -> recordRuntimeRecorderTiming(request, startedAtElapsedMs)
+            );
+
+            if (!isActiveTranscription(generation)) {
+                return;
+            }
+
+            metricsLogger.recordingStopped(audio);
+            recordRuntimeRecordingMetrics(audio);
+            postRecordingStopped(generation, callback, audio);
+
+            RecordedSpeechToTextProvider provider = selectProvider();
+            if (provider == localProvider) {
+                metricsLogger.fallbackUsed(SttProvider.LOCAL_STUB);
+            }
+
+            if (provider == backendProvider) {
+                metricsLogger.uploadStarted(audio);
+            }
+
+            SttResult result = provider.transcribe(audio, request);
+
+            if (!isActiveTranscription(generation)) {
+                return;
+            }
+
+            if (result.confidence < 0.55d) {
+                metricsLogger.lowConfidence(result);
+            }
+
+            if (provider == backendProvider) {
+                metricsLogger.uploadCompleted(result);
+            }
+
+            postResult(generation, callback, result);
+        } catch (SttException error) {
+            if (!isActiveTranscription(generation)) {
+                return;
+            }
+
+            if (
+                error.code == SttError.NO_SPEECH ||
+                error.code == SttError.TOO_SHORT ||
+                error.code == SttError.TOO_QUIET ||
+                error.code == SttError.TOO_LONG ||
+                error.code == SttError.UNSUPPORTED_AUDIO_FORMAT ||
+                error.code == SttError.PRIVACY_BLOCKED
+            ) {
+                metricsLogger.localValidationFailed(error);
+            } else {
+                metricsLogger.error(error);
+            }
+            postError(generation, callback, error);
+        } finally {
+            clearActiveTask(generation);
+        }
+    }
+
+    private boolean isActiveTranscription(int generation) {
+        synchronized (transcriptionLock) {
+            return transcriptionGeneration == generation && !Thread.currentThread().isInterrupted();
+        }
+    }
+
+    private void clearActiveTask(int generation) {
+        synchronized (transcriptionLock) {
+            if (transcriptionGeneration == generation) {
+                activeTask = null;
+            }
+        }
+    }
+
+    private static ExecutorService createExecutor() {
+        return Executors.newSingleThreadExecutor();
     }
 
     private RecordedSpeechToTextProvider selectProvider() throws SttException {
@@ -178,15 +236,27 @@ final class HybridSpeechToTextService implements SpeechToTextService {
         return capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
     }
 
-    private void postRecordingStopped(Callback callback, CommandAudio audio) {
-        mainHandler.post(() -> callback.onRecordingStopped(audio));
+    private void postRecordingStopped(int generation, Callback callback, CommandAudio audio) {
+        mainHandler.post(() -> {
+            if (isActiveTranscription(generation)) {
+                callback.onRecordingStopped(audio);
+            }
+        });
     }
 
-    private void postResult(Callback callback, SttResult result) {
-        mainHandler.post(() -> callback.onResult(result));
+    private void postResult(int generation, Callback callback, SttResult result) {
+        mainHandler.post(() -> {
+            if (isActiveTranscription(generation)) {
+                callback.onResult(result);
+            }
+        });
     }
 
-    private void postError(Callback callback, SttException error) {
-        mainHandler.post(() -> callback.onError(error));
+    private void postError(int generation, Callback callback, SttException error) {
+        mainHandler.post(() -> {
+            if (isActiveTranscription(generation)) {
+                callback.onError(error);
+            }
+        });
     }
 }

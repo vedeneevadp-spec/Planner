@@ -249,7 +249,7 @@ public class WakeWordService extends Service {
 
     private void handleManualCommandCapture() {
         if (state == VoiceAssistantState.RECORDING_COMMAND || state == VoiceAssistantState.TRANSCRIBING) {
-            return;
+            cancelActiveCommandCaptureForManualRestart();
         }
 
         AndroidVoiceRuntimeStore.markStatus(this, AndroidVoiceRuntimeStatus.PAUSED_FOR_COMMAND);
@@ -379,7 +379,7 @@ public class WakeWordService extends Service {
 
             SttException error = new SttException(
                 SttError.NETWORK_ERROR,
-                "Не удалось получить результат голосовой команды. Попробуй ещё раз."
+                "Распознавание зависло дольше 40 секунд. Я остановила обработку, попробуй ещё раз."
             );
 
             PlannerVoiceAssistantStorage.storePendingError(this, error);
@@ -483,6 +483,18 @@ public class WakeWordService extends Service {
             AndroidVoiceRuntimeMetric.VOICE_SESSION_RESULT,
             "cancelled"
         );
+    }
+
+    private void cancelActiveCommandCaptureForManualRestart() {
+        cancelCommandCaptureWatchdog();
+        commandCaptureGeneration++;
+        recordCancelledVoiceSessionIfNeeded();
+
+        if (speechToTextService != null) {
+            speechToTextService.stop();
+        }
+
+        setState(VoiceAssistantState.IDLE);
     }
 
     private void setState(VoiceAssistantState nextState) {

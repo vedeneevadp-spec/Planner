@@ -242,6 +242,27 @@ public class AndroidVoiceRuntimeModelTest {
     }
 
     @Test
+    public void androidVoiceApiConfigRejectsLoopbackUrls() {
+        VoiceAssistantApiConfig loopbackConfig = new VoiceAssistantApiConfig(
+            "http://127.0.0.1:3001",
+            "token",
+            null,
+            "workspace-1",
+            false
+        );
+        VoiceAssistantApiConfig productionConfig = new VoiceAssistantApiConfig(
+            "https://chaotika.ru",
+            "token",
+            null,
+            "workspace-1",
+            false
+        );
+
+        assertFalse(loopbackConfig.isUsable());
+        assertTrue(productionConfig.isUsable());
+    }
+
+    @Test
     public void bundledAudioSignalsStayShort() {
         assertTrue(AudioFeedbackPlayer.START_SIGNAL_DURATION_MS >= 40);
         assertTrue(AudioFeedbackPlayer.START_SIGNAL_DURATION_MS <= 100);

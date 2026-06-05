@@ -369,9 +369,42 @@ export function useAndroidVoiceRuntime({
             return
           }
 
+          let timeoutStatus: VoiceAssistantNativeStatus | null = null
+
+          try {
+            timeoutStatus = await getVoiceAssistantNativeStatus()
+            updateAndroidVoiceStatus(timeoutStatus)
+          } catch (error) {
+            console.warn(
+              'Failed to read Android voice status after command timeout.',
+              error,
+            )
+          }
+
+          try {
+            await stopAndroidVoiceAssistant()
+          } catch (error) {
+            console.warn(
+              'Failed to stop Android voice assistant after command timeout.',
+              error,
+            )
+          }
+
+          const handledAfterStop = await consumePendingAndroidCommand()
+
+          if (!isCurrentAndroidCaptureOperation(operationId)) {
+            return
+          }
+
+          if (handledAfterStop) {
+            clearAndroidCommandPolling()
+            return
+          }
+
           androidCaptureOperationIdRef.current += 1
           clearAndroidCommandPolling()
           pendingAndroidButtonCaptureRef.current = false
+          androidCommandTranscribingRef.current = false
           pendingAppendSessionRef.current = null
           trackVoiceMetric('stt_error', 'android_microphone', {
             errorCode: 'android_command_result_timeout',
@@ -383,8 +416,7 @@ export function useAndroidVoiceRuntime({
           setActionPreview(null)
           setActionResult(null)
           dispatch({
-            error:
-              'Не удалось получить результат голосовой команды. Попробуй ещё раз.',
+            error: createAndroidCommandTimeoutMessage(timeoutStatus),
             source: 'android_microphone',
             type: 'failed',
           })
@@ -403,6 +435,7 @@ export function useAndroidVoiceRuntime({
       setActionResult,
       setIsCardVisible,
       trackVoiceMetric,
+      updateAndroidVoiceStatus,
     ],
   )
 
@@ -444,8 +477,10 @@ export function useAndroidVoiceRuntime({
         throw new Error('Backend STT недоступен без активной сессии.')
       }
 
+      const androidApiConfig = resolveAndroidVoiceApiConfig(apiConfig)
+
       scheduleAndroidCommandPolling(operationId)
-      await captureAndroidVoiceCommand(apiConfig)
+      await captureAndroidVoiceCommand(androidApiConfig)
     } catch (error) {
       if (!isCurrentAndroidCaptureOperation(operationId)) {
         return
@@ -553,8 +588,17 @@ export function useAndroidVoiceRuntime({
       return undefined
     }
 
+    let androidApiConfig: SessionFeatureApiConfig
+
+    try {
+      androidApiConfig = resolveAndroidVoiceApiConfig(apiConfig)
+    } catch (error) {
+      console.warn('Android voice assistant API config is invalid.', error)
+      return undefined
+    }
+
     void startAndroidVoiceAssistant({
-      ...apiConfig,
+      ...androidApiConfig,
       wakeWordTrainingModeEnabled: wakeWordTrainingModeEnabled ?? false,
     }).catch((error) => {
       console.warn('Failed to start Android voice assistant.', error)
@@ -610,6 +654,55 @@ export function useAndroidVoiceRuntime({
     isAndroidRuntime,
     startAndroidVoiceInput,
   }
+}
+
+function resolveAndroidVoiceApiConfig(
+  apiConfig: SessionFeatureApiConfig,
+): SessionFeatureApiConfig {
+  try {
+    const url = new URL(apiConfig.apiBaseUrl)
+    const hostname = url.hostname.toLowerCase()
+
+    if (
+      hostname === 'localhost' ||
+      hostname === '::1' ||
+      hostname === '[::1]' ||
+      hostname.startsWith('127.')
+    ) {
+      throw new Error(
+        'Android-приложение собрано с локальным API URL. Собери приложение с VITE_API_BASE_URL=https://chaotika.ru или MOBILE_API_URL=https://chaotika.ru.',
+      )
+    }
+
+    return apiConfig
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith('Android-приложение собрано')
+    ) {
+      throw error
+    }
+
+    throw new Error('Некорректный Android voice API URL.')
+  }
+}
+
+function createAndroidCommandTimeoutMessage(
+  status: VoiceAssistantNativeStatus | null,
+): string {
+  if (!status) {
+    return 'Не удалось получить результат голосовой команды за 45 секунд. Native status недоступен, запись остановлена.'
+  }
+
+  const voiceSessionResult = status.runtimeMetrics.voice_session_result
+  const details = [
+    `state=${status.state ?? 'unknown'}`,
+    `runtime=${status.runtimeStatus}`,
+    `lastError=${status.runtimeLastError ?? 'none'}`,
+    `result=${typeof voiceSessionResult === 'string' ? voiceSessionResult : 'none'}`,
+  ].join(', ')
+
+  return `Не удалось получить результат голосовой команды за 45 секунд. Запись остановлена. Диагностика: ${details}.`
 }
 
 function getAndroidVoiceCommandSource(

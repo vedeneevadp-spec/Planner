@@ -1,5 +1,7 @@
 package ru.chaotika.app;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.UUID;
 
 final class VoiceAssistantApiConfig {
@@ -55,7 +57,17 @@ final class VoiceAssistantApiConfig {
             normalized = normalized.substring(0, normalized.length() - 1);
         }
 
-        return normalized;
+        return isLoopbackBaseUrl(normalized) ? null : normalized;
+    }
+
+    private static boolean isLoopbackBaseUrl(String value) {
+        try {
+            String host = new URL(value).getHost().toLowerCase(java.util.Locale.US);
+
+            return host.equals("localhost") || host.equals("::1") || host.startsWith("127.");
+        } catch (MalformedURLException ignored) {
+            return true;
+        }
     }
 
     private static String normalizeNullable(String value) {
