@@ -90,6 +90,16 @@ export interface NativeWakeWordTrainingCollectionStatus {
   trueAcceptCount: number
 }
 
+export type VoiceAssistantNativeState =
+  | 'idle'
+  | 'wake_listening'
+  | 'wake_word_detected'
+  | 'wake_review'
+  | 'recording'
+  | 'transcribing'
+  | 'awaiting_confirmation'
+  | 'error'
+
 export interface VoiceAssistantNativeStatus {
   audioFeedbackEnabled?: boolean
   batterySample?: {
@@ -117,6 +127,7 @@ export interface VoiceAssistantNativeStatus {
   runtimeLastError: AndroidVoiceRuntimeError | null
   runtimeMetrics: Partial<Record<AndroidVoiceRuntimeMetric, number | string>>
   runtimeStatus: AndroidVoiceRuntimeStatus
+  state?: VoiceAssistantNativeState | undefined
   voiceCuesEnabled: boolean
   wakePhrase: typeof VOICE_ASSISTANT_WAKE_PHRASE
   wakeWordEnabled: boolean
@@ -455,6 +466,7 @@ function createWebVoiceAssistantNativeStatus(): VoiceAssistantNativeStatus {
     runtimeLastError: null,
     runtimeMetrics: {},
     runtimeStatus: 'disabled',
+    state: 'idle',
     audioFeedbackEnabled: false,
     voiceCuesEnabled: false,
     wakePhrase: VOICE_ASSISTANT_WAKE_PHRASE,

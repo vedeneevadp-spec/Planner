@@ -9,9 +9,11 @@ final class CommandRecordingConfig {
     static final int DEFAULT_MAX_DURATION_MS = 15000;
     static final int DEFAULT_MIN_DURATION_MS = 500;
     static final int DEFAULT_SAMPLE_RATE_HERTZ = 16000;
+    static final int DEFAULT_INITIAL_SILENCE_TIMEOUT_MS = 2500;
     static final int DEFAULT_SILENCE_TIMEOUT_MS = 900;
     static final int VOICE_PREBUFFER_MS = 250;
 
+    final int initialSilenceTimeoutMs;
     final int maxDurationMs;
     final int minDurationMs;
     final int preBufferMs;
@@ -23,6 +25,7 @@ final class CommandRecordingConfig {
         int sampleRateHertz,
         int maxDurationMs,
         int minDurationMs,
+        int initialSilenceTimeoutMs,
         int silenceTimeoutMs,
         int preBufferMs,
         boolean vadEnabled
@@ -30,6 +33,7 @@ final class CommandRecordingConfig {
         this.sampleRateHertz = sampleRateHertz;
         this.maxDurationMs = maxDurationMs;
         this.minDurationMs = minDurationMs;
+        this.initialSilenceTimeoutMs = initialSilenceTimeoutMs;
         this.silenceTimeoutMs = silenceTimeoutMs;
         this.preBufferMs = preBufferMs;
         this.vadEnabled = vadEnabled;
@@ -40,6 +44,7 @@ final class CommandRecordingConfig {
             DEFAULT_SAMPLE_RATE_HERTZ,
             DEFAULT_MAX_DURATION_MS,
             DEFAULT_MIN_DURATION_MS,
+            DEFAULT_INITIAL_SILENCE_TIMEOUT_MS,
             DEFAULT_SILENCE_TIMEOUT_MS,
             VOICE_PREBUFFER_MS,
             true

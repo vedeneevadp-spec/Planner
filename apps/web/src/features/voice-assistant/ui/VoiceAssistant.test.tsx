@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { readClientEvents } from '@/shared/lib/observability'
 
+import type { VoiceAssistantNativeStatus } from '../lib/native-voice-assistant'
 import {
   analyzePcm16Audio,
   WEB_VOICE_PERMISSION_READY_MESSAGE,
@@ -90,7 +91,9 @@ const mocks = vi.hoisted(() => ({
   consumePendingAndroidVoiceCommand: vi.fn<
     () => Promise<NativeVoiceCommandStub | null>
   >(() => Promise.resolve(null)),
-  getVoiceAssistantNativeStatus: vi.fn(() => Promise.resolve(null)),
+  getVoiceAssistantNativeStatus: vi.fn<
+    () => Promise<VoiceAssistantNativeStatus | null>
+  >(() => Promise.resolve(null)),
   isAndroidVoiceAssistantRuntime: vi.fn(() => false),
   notifyAndroidVoiceActionResult: vi.fn(() => Promise.resolve()),
   startWebVoiceRecorder: vi.fn<() => Promise<FakeRecorder>>(),
@@ -426,6 +429,33 @@ describe('VoiceAssistant web push-to-talk', () => {
     expect(screen.getByText('добавь задачу отчет')).toBeVisible()
   })
 
+  it('shows Android processing when native recording has stopped', async () => {
+    vi.useFakeTimers()
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.consumePendingAndroidVoiceCommand.mockResolvedValue(null)
+    mocks.getVoiceAssistantNativeStatus.mockResolvedValue(
+      createAndroidStatus({
+        runtimeStatus: 'paused_for_command',
+        state: 'transcribing',
+      }),
+    )
+
+    render(<VoiceAssistant />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Голосовой ввод' }))
+
+    await act(async () => {})
+
+    expect(screen.getByText('Слушаю')).toBeVisible()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(650)
+    })
+
+    expect(screen.getByLabelText('Processing')).toBeVisible()
+    expect(screen.queryByLabelText('Listening')).not.toBeInTheDocument()
+  })
+
   it('shows an Android push-to-talk timeout when native command never arrives', async () => {
     vi.useFakeTimers()
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
@@ -507,6 +537,35 @@ function stubWebVoiceSupport(): void {
     },
   )
   vi.stubGlobal('AudioContext', class FakeAudioContext {})
+}
+
+function createAndroidStatus(
+  overrides: Partial<VoiceAssistantNativeStatus> = {},
+): VoiceAssistantNativeStatus {
+  return {
+    backgroundWakeWordEnabled: false,
+    confirmationMode: 'confirmation_first',
+    foregroundServiceStatus: 'running',
+    isAndroid: true,
+    microphonePermission: 'granted',
+    notificationPermission: 'granted',
+    platform: 'android',
+    pushToTalkFallbackStatus: 'available',
+    recognitionLanguage: 'ru-RU',
+    runtimeDurationMs: 0,
+    runtimeLastError: null,
+    runtimeMetrics: {},
+    runtimeStatus: 'recording_command',
+    state: 'recording',
+    voiceCuesEnabled: true,
+    wakePhrase: 'Хаотика',
+    wakeWordEnabled: true,
+    wakeWordModelVersion: 'haotika-livekit-test',
+    wakeWordModelStatus: 'ready',
+    wakeWordProvider: 'custom_onnx',
+    wakeWordSensitivity: 0.99,
+    ...overrides,
+  }
 }
 
 function stubMicrophonePermissionState(initialState: PermissionState): {

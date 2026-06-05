@@ -537,6 +537,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
         response.put("voiceCuesEnabled", audioFeedbackEnabled);
         response.put("audioFeedbackEnabled", audioFeedbackEnabled);
+        response.put("state", PlannerVoiceAssistantStorage.readState(getContext()));
         response.put("runtimeStatus", resolveRuntimeStatusForResponse(runtimeSnapshot).value);
         response.put("runtimeLastError", runtimeSnapshot.lastError == null ? JSObject.NULL : runtimeSnapshot.lastError);
         response.put("runtimeDurationMs", runtimeSnapshot.runtimeDurationMs);

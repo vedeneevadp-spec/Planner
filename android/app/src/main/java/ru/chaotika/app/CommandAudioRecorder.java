@@ -82,14 +82,13 @@ final class CommandAudioRecorder {
         int maxMainDurationMs = Math.max(0, config.maxDurationMs - preBuffer.durationMs);
         int mainAudioOffset = output.size();
         byte[] buffer = new byte[frameBytes];
-        boolean hasVoice = false;
         long recordingStartedAtMs = SystemClock.elapsedRealtime();
-        long lastVoiceAtMs = recordingStartedAtMs;
+        CommandRecordingVad vad = new CommandRecordingVad(config, recordingStartedAtMs);
 
         try {
             recorder.startRecording();
             recordingStartedAtMs = SystemClock.elapsedRealtime();
-            lastVoiceAtMs = recordingStartedAtMs;
+            vad = new CommandRecordingVad(config, recordingStartedAtMs);
 
             if (observer != null) {
                 observer.onRecorderStarted(recordingStartedAtMs);
@@ -116,13 +115,9 @@ final class CommandAudioRecorder {
                 output.write(buffer, 0, read);
 
                 Pcm16AudioActivity.Result frameActivity = Pcm16AudioActivity.analyzeRange(buffer, 0, read);
+                vad.observe(frameActivity, nowMs);
 
-                if (!config.vadEnabled || frameActivity.hasVoiceActivity) {
-                    hasVoice = true;
-                    lastVoiceAtMs = nowMs;
-                }
-
-                if (hasVoice && nowMs - lastVoiceAtMs >= config.silenceTimeoutMs) {
+                if (vad.shouldStop(nowMs, elapsedMs)) {
                     break;
                 }
             }

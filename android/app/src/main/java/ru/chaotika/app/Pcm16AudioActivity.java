@@ -29,6 +29,7 @@ final class Pcm16AudioActivity {
 
         int peak = 0;
         long sumSquares = 0L;
+        int activeSamples = 0;
         int voicedSamples = 0;
         int sampleCount = safeByteLength / 2;
 
@@ -39,18 +40,23 @@ final class Pcm16AudioActivity {
             peak = Math.max(peak, absolute);
             sumSquares += (long) sample * sample;
 
+            if (absolute >= QUIET_ABSOLUTE_PEAK) {
+                activeSamples += 1;
+            }
+
             if (absolute >= VOICE_ABSOLUTE_PEAK) {
                 voicedSamples += 1;
             }
         }
 
         double rms = Math.sqrt(sumSquares / (double) sampleCount) / 32768d;
+        double activeRatio = activeSamples / (double) sampleCount;
         double voicedRatio = voicedSamples / (double) sampleCount;
-        boolean isSilent = peak <= SILENCE_ABSOLUTE_PEAK || voicedRatio == 0d;
+        boolean isSilent = peak <= SILENCE_ABSOLUTE_PEAK;
         boolean isTooQuiet = peak < QUIET_ABSOLUTE_PEAK || rms < QUIET_RMS;
         boolean hasVoiceActivity = peak >= VOICE_ABSOLUTE_PEAK && rms >= VOICE_RMS && voicedRatio >= VOICED_SAMPLE_RATIO;
 
-        return new Result(hasVoiceActivity, isSilent, isTooQuiet, peak, rms, voicedRatio);
+        return new Result(hasVoiceActivity, isSilent, isTooQuiet, peak, rms, activeRatio, voicedRatio);
     }
 
     static final class Result {
@@ -58,6 +64,7 @@ final class Pcm16AudioActivity {
         final boolean hasVoiceActivity;
         final boolean isSilent;
         final boolean isTooQuiet;
+        final double activeRatio;
         final int peak;
         final double rms;
         final double voicedRatio;
@@ -68,6 +75,7 @@ final class Pcm16AudioActivity {
             boolean isTooQuiet,
             int peak,
             double rms,
+            double activeRatio,
             double voicedRatio
         ) {
             this.hasVoiceActivity = hasVoiceActivity;
@@ -75,11 +83,12 @@ final class Pcm16AudioActivity {
             this.isTooQuiet = isTooQuiet;
             this.peak = peak;
             this.rms = rms;
+            this.activeRatio = activeRatio;
             this.voicedRatio = voicedRatio;
         }
 
         static Result empty() {
-            return new Result(false, true, true, 0, 0d, 0d);
+            return new Result(false, true, true, 0, 0d, 0d, 0d);
         }
     }
 }

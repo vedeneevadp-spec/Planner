@@ -1,6 +1,7 @@
 package ru.chaotika.app;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -55,6 +56,21 @@ public class CommandAudioTest {
     }
 
     @Test
+    public void voiceActivitySeparatesSinglePeakFromSilence() {
+        byte[] audio = new byte[16000 * 2];
+        short sample = 800;
+
+        audio[0] = (byte) (sample & 0xff);
+        audio[1] = (byte) ((sample >> 8) & 0xff);
+
+        Pcm16AudioActivity.Result activity = Pcm16AudioActivity.analyzeRange(audio, 0, audio.length);
+
+        assertFalse(activity.isSilent);
+        assertTrue(activity.isTooQuiet);
+        assertFalse(activity.hasVoiceActivity);
+    }
+
+    @Test
     public void voiceActivityIgnoresSingleNoisePeak() {
         byte[] frame = new byte[(CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ * 40 * 2) / 1000];
         short sample = 900;
@@ -74,6 +90,52 @@ public class CommandAudioTest {
         Pcm16AudioActivity.Result activity = Pcm16AudioActivity.analyzeRange(frame, 0, frame.length);
 
         assertTrue(activity.hasVoiceActivity);
+    }
+
+    @Test
+    public void commandVadStopsAfterInitialSilenceTimeout() {
+        CommandRecordingConfig config = CommandRecordingConfig.defaultConfig();
+        CommandRecordingVad vad = new CommandRecordingVad(config, 1_000L);
+        byte[] frame = new byte[(CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ * 40 * 2) / 1000];
+
+        vad.observe(Pcm16AudioActivity.analyzeRange(frame, 0, frame.length), 1_040L);
+
+        assertFalse(vad.hasSpeech());
+        assertFalse(vad.shouldStop(3_499L, config.initialSilenceTimeoutMs - 1));
+        assertTrue(vad.shouldStop(3_500L, config.initialSilenceTimeoutMs));
+    }
+
+    @Test
+    public void commandVadIgnoresSingleNoisePeakBeforeSpeech() {
+        CommandRecordingConfig config = CommandRecordingConfig.defaultConfig();
+        CommandRecordingVad vad = new CommandRecordingVad(config, 1_000L);
+        byte[] frame = new byte[(CommandRecordingConfig.DEFAULT_SAMPLE_RATE_HERTZ * 40 * 2) / 1000];
+        short sample = 900;
+
+        frame[0] = (byte) (sample & 0xff);
+        frame[1] = (byte) ((sample >> 8) & 0xff);
+
+        vad.observe(Pcm16AudioActivity.analyzeRange(frame, 0, frame.length), 1_040L);
+
+        assertFalse(vad.hasSpeech());
+        assertTrue(vad.shouldStop(3_500L, config.initialSilenceTimeoutMs));
+    }
+
+    @Test
+    public void commandVadUsesSofterSpeechStartForAndroidMicGain() {
+        CommandRecordingConfig config = CommandRecordingConfig.defaultConfig();
+        CommandRecordingVad vad = new CommandRecordingVad(config, 1_000L);
+        byte[] softSpeech = createVoiceAudio(40, 560);
+
+        Pcm16AudioActivity.Result activity = Pcm16AudioActivity.analyzeRange(softSpeech, 0, softSpeech.length);
+
+        assertFalse(activity.hasVoiceActivity);
+
+        vad.observe(activity, 1_040L);
+
+        assertTrue(vad.hasSpeech());
+        assertFalse(vad.shouldStop(1_939L, config.silenceTimeoutMs - 1));
+        assertTrue(vad.shouldStop(1_940L, config.silenceTimeoutMs));
     }
 
     @Test

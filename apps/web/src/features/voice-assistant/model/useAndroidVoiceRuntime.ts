@@ -1,6 +1,5 @@
 import {
   type PlannerIntent,
-  VOICE_COMMAND_AUDIO_MAX_DURATION_MS,
   type VoiceActionPreview,
   type VoiceActionResult,
   type VoiceAssistantEvent,
@@ -44,8 +43,7 @@ import {
 
 const ANDROID_COMMAND_INITIAL_POLL_DELAY_MS = 650
 const ANDROID_COMMAND_POLL_INTERVAL_MS = 750
-const ANDROID_COMMAND_RECORDING_UI_TRANSITION_MS =
-  VOICE_COMMAND_AUDIO_MAX_DURATION_MS + 1_000
+const ANDROID_COMMAND_PROCESSING_FALLBACK_MS = 4_000
 const ANDROID_COMMAND_RESULT_TIMEOUT_MS = 45_000
 
 type VoiceTranscriptHandler = (
@@ -101,6 +99,7 @@ export function useAndroidVoiceRuntime({
 }: UseAndroidVoiceRuntimeInput) {
   const handledNativeCommandIdsRef = useRef<Set<string>>(new Set())
   const pendingAndroidButtonCaptureRef = useRef(false)
+  const androidCommandTranscribingRef = useRef(false)
   const androidCaptureOperationIdRef = useRef(0)
   const androidCommandPollTimerRef = useRef<number | null>(null)
   const androidCommandTranscribingTimerRef = useRef<number | null>(null)
@@ -148,7 +147,56 @@ export function useAndroidVoiceRuntime({
     androidCaptureOperationIdRef.current += 1
     clearAndroidCommandPolling()
     pendingAndroidButtonCaptureRef.current = false
+    androidCommandTranscribingRef.current = false
   }, [clearAndroidCommandPolling])
+
+  const markAndroidCommandTranscribing = useCallback(
+    (operationId: number) => {
+      if (
+        !isCurrentAndroidCaptureOperation(operationId) ||
+        androidCommandTranscribingRef.current
+      ) {
+        return
+      }
+
+      androidCommandTranscribingRef.current = true
+      dispatch({
+        source: 'android_microphone',
+        type: 'transcribing_started',
+      })
+    },
+    [dispatch, isCurrentAndroidCaptureOperation],
+  )
+
+  const refreshAndroidCommandStatus = useCallback(
+    async (operationId: number) => {
+      try {
+        const status = await getVoiceAssistantNativeStatus()
+
+        if (!isCurrentAndroidCaptureOperation(operationId)) {
+          return
+        }
+
+        updateAndroidVoiceStatus(status)
+
+        if (
+          status?.state === 'transcribing' ||
+          status?.state === 'awaiting_confirmation' ||
+          (pendingAndroidButtonCaptureRef.current &&
+            status?.runtimeStatus === 'paused_for_command')
+        ) {
+          markAndroidCommandTranscribing(operationId)
+        }
+      } catch (error) {
+        console.warn('Failed to refresh Android voice command status.', error)
+      }
+    },
+    [
+      isCurrentAndroidCaptureOperation,
+      markAndroidCommandTranscribing,
+      updateAndroidVoiceStatus,
+    ],
+  )
 
   const consumePendingAndroidCommand =
     useCallback(async (): Promise<boolean> => {
@@ -272,6 +320,12 @@ export function useAndroidVoiceRuntime({
         return
       }
 
+      await refreshAndroidCommandStatus(operationId)
+
+      if (!isCurrentAndroidCaptureOperation(operationId)) {
+        return
+      }
+
       if (!pendingAndroidButtonCaptureRef.current) {
         clearAndroidCommandPolling()
         return
@@ -285,6 +339,7 @@ export function useAndroidVoiceRuntime({
       clearAndroidCommandPolling,
       consumePendingAndroidCommand,
       isCurrentAndroidCaptureOperation,
+      refreshAndroidCommandStatus,
     ],
   )
 
@@ -295,15 +350,8 @@ export function useAndroidVoiceRuntime({
         void pollPendingAndroidCommand(operationId)
       }, ANDROID_COMMAND_INITIAL_POLL_DELAY_MS)
       androidCommandTranscribingTimerRef.current = window.setTimeout(() => {
-        if (!isCurrentAndroidCaptureOperation(operationId)) {
-          return
-        }
-
-        dispatch({
-          source: 'android_microphone',
-          type: 'transcribing_started',
-        })
-      }, ANDROID_COMMAND_RECORDING_UI_TRANSITION_MS)
+        markAndroidCommandTranscribing(operationId)
+      }, ANDROID_COMMAND_PROCESSING_FALLBACK_MS)
       androidCommandTimeoutTimerRef.current = window.setTimeout(() => {
         void (async () => {
           if (!isCurrentAndroidCaptureOperation(operationId)) {
@@ -348,6 +396,7 @@ export function useAndroidVoiceRuntime({
       consumePendingAndroidCommand,
       dispatch,
       isCurrentAndroidCaptureOperation,
+      markAndroidCommandTranscribing,
       pendingAppendSessionRef,
       pollPendingAndroidCommand,
       setActionPreview,
@@ -367,6 +416,7 @@ export function useAndroidVoiceRuntime({
     setIsCardVisible(true)
     clearAndroidCommandPolling()
     pendingAndroidButtonCaptureRef.current = true
+    androidCommandTranscribingRef.current = false
     const operationId = androidCaptureOperationIdRef.current + 1
 
     androidCaptureOperationIdRef.current = operationId
@@ -403,6 +453,7 @@ export function useAndroidVoiceRuntime({
 
       clearAndroidCommandPolling()
       pendingAndroidButtonCaptureRef.current = false
+      androidCommandTranscribingRef.current = false
       pendingAppendSessionRef.current = null
       trackVoiceMetric('command_recording_cancelled', 'android_microphone', {
         errorCode: 'android_capture_failed',
@@ -549,6 +600,7 @@ export function useAndroidVoiceRuntime({
       androidCaptureOperationIdRef.current += 1
       clearAndroidCommandPolling()
       pendingAndroidButtonCaptureRef.current = false
+      androidCommandTranscribingRef.current = false
     }
   }, [clearAndroidCommandPolling])
 
