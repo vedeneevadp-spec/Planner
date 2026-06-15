@@ -117,6 +117,307 @@ export interface AppHabitEntriesTable {
   workspace_id: string
 }
 
+export interface AppSelfCareItemsTable {
+  category:
+    | 'beauty'
+    | 'body'
+    | 'custom'
+    | 'daily_base'
+    | 'emotional'
+    | 'health'
+    | 'medical'
+    | 'movement'
+    | 'nutrition'
+    | 'relax'
+    | 'sleep'
+  color: string | null
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  created_from_template_id: string | null
+  custom_category_id: string | null
+  default_duration_minutes: number | null
+  deleted_at: TimestampColumn | null
+  description: string
+  icon: string | null
+  id: Generated<string>
+  importance: 'gentle' | 'recommended' | 'required'
+  is_active: boolean
+  is_archived: boolean
+  is_private: boolean
+  migrated_from_habit_id: string | null
+  minimum_version_description: string | null
+  minimum_version_duration_minutes: number | null
+  minimum_version_title: string | null
+  preferred_time_of_day:
+    | 'afternoon'
+    | 'anytime'
+    | 'evening'
+    | 'morning'
+    | 'night'
+    | null
+  title: string
+  type:
+    | 'appointment'
+    | 'course'
+    | 'flexible_goal'
+    | 'habit'
+    | 'measurement'
+    | 'medical'
+    | 'mood_check'
+    | 'procedure'
+    | 'rest_action'
+    | 'ritual'
+    | 'task'
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppSelfCareItemAlternativesTable {
+  counts_as_completion: boolean
+  description: string
+  id: Generated<string>
+  item_id: string
+  title: string
+}
+
+export interface AppSelfCareScheduleRulesTable {
+  allow_multiple_per_day: boolean
+  created_at: Generated<TimestampColumn>
+  day_of_month: number | null
+  days_of_week: ColumnType<number[], number[] | string, number[] | string>
+  end_date: DateColumn | null
+  flexible_period: 'day' | 'month' | 'week' | null
+  flexible_target_count: number | null
+  generate_in_calendar: boolean
+  generate_in_task_list: boolean
+  id: Generated<string>
+  interval_unit: 'day' | 'month' | 'week' | 'year' | null
+  interval_value: number | null
+  item_id: string
+  month_of_year: number | null
+  preferred_time: TimeColumn | null
+  reminder_offsets_minutes: ColumnType<
+    number[],
+    number[] | string,
+    number[] | string
+  >
+  repeat_kind:
+    | 'after_completion'
+    | 'course'
+    | 'daily'
+    | 'flexible_goal'
+    | 'interval'
+    | 'monthly'
+    | 'none'
+    | 'weekly'
+    | 'yearly'
+  start_date: DateColumn | null
+  timezone: string | null
+  updated_at: Generated<TimestampColumn>
+  week_of_month: number | null
+}
+
+export interface AppSelfCareOccurrencesTable {
+  completed_at: TimestampColumn | null
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  due_at: TimestampColumn | null
+  generated_at: TimestampColumn | null
+  id: Generated<string>
+  item_id: string
+  moved_to: DateColumn | null
+  scheduled_for: DateColumn
+  schedule_rule_id: string | null
+  status:
+    | 'cancelled'
+    | 'done'
+    | 'missed'
+    | 'moved'
+    | 'partial'
+    | 'scheduled'
+    | 'skipped'
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  user_id: string
+  version: Generated<number>
+}
+
+export interface AppSelfCareCompletionsTable {
+  alternative_title: string | null
+  completed_at: TimestampColumn
+  completed_variant: 'alternative' | 'full' | 'minimum' | null
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  duration_minutes: number | null
+  energy_after: number | null
+  energy_before: number | null
+  id: Generated<string>
+  item_id: string
+  mood_after: number | null
+  mood_before: number | null
+  note: string
+  occurrence_id: string | null
+  scheduled_for: DateColumn | null
+  status:
+    | 'alternative_done'
+    | 'cancelled'
+    | 'done'
+    | 'moved'
+    | 'partial'
+    | 'skipped'
+  user_id: string
+}
+
+export interface AppSelfCareRitualStepsTable {
+  created_at: Generated<TimestampColumn>
+  default_checked: boolean
+  id: Generated<string>
+  is_optional: boolean
+  item_id: string
+  sort_order: number
+  title: string
+  updated_at: Generated<TimestampColumn>
+}
+
+export interface AppSelfCareRitualStepCompletionsTable {
+  completion_id: string
+  id: Generated<string>
+  is_done: boolean
+  step_id: string
+}
+
+export interface AppSelfCareProcedureDetailsTable {
+  contact: string | null
+  created_at: Generated<TimestampColumn>
+  currency: string | null
+  default_price: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
+  id: Generated<string>
+  item_id: string
+  place: string | null
+  specialist_name: string | null
+  updated_at: Generated<TimestampColumn>
+}
+
+export interface AppSelfCareAppointmentDetailsTable {
+  created_at: Generated<TimestampColumn>
+  currency: string | null
+  ends_at: TimestampColumn | null
+  id: Generated<string>
+  item_id: string
+  occurrence_id: string | null
+  place: string | null
+  preparation_note: string | null
+  price: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
+  result_note: string | null
+  specialist_contact: string | null
+  specialist_name: string | null
+  starts_at: TimestampColumn
+  updated_at: Generated<TimestampColumn>
+}
+
+export interface AppSelfCareMedicalDetailsTable {
+  analysis_list: ColumnType<string[], string[] | string, string[] | string>
+  clinic_address: string | null
+  clinic_name: string | null
+  created_at: Generated<TimestampColumn>
+  document_urls: ColumnType<string[], string[] | string, string[] | string>
+  doctor_name: string | null
+  id: Generated<string>
+  item_id: string
+  next_control_date: DateColumn | null
+  phone: string | null
+  reminder_strategy: 'normal' | 'persistent' | 'soft'
+  result_note: string | null
+  updated_at: Generated<TimestampColumn>
+  website: string | null
+}
+
+export interface AppSelfCareCourseDetailsTable {
+  completed_count: number
+  course_type: 'days' | 'sessions'
+  created_at: Generated<TimestampColumn>
+  end_date: DateColumn | null
+  id: Generated<string>
+  is_completed: boolean
+  is_paused: boolean
+  item_id: string
+  start_date: DateColumn | null
+  total_count: number
+  updated_at: Generated<TimestampColumn>
+}
+
+export interface AppSelfCareDailyStatesTable {
+  created_at: Generated<TimestampColumn>
+  date: DateColumn
+  energy: number | null
+  id: Generated<string>
+  mood: number | null
+  note: string
+  pain: number | null
+  sleep_quality: number | null
+  stress: number | null
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+}
+
+export interface AppSelfCareTemplatesTable {
+  category: AppSelfCareItemsTable['category']
+  color: string | null
+  created_at: Generated<TimestampColumn>
+  default_schedule: ColumnType<
+    JsonObject | null,
+    JsonObject | string | null,
+    JsonObject | string | null
+  >
+  default_steps: ColumnType<string[], string[] | string, string[] | string>
+  description: string
+  icon: string | null
+  id: string
+  importance: AppSelfCareItemsTable['importance']
+  is_system: boolean
+  title: string
+  type: AppSelfCareItemsTable['type']
+  updated_at: Generated<TimestampColumn>
+}
+
+export interface AppSelfCareSettingsTable {
+  created_at: Generated<TimestampColumn>
+  currency: string | null
+  default_reminder_tone: 'normal' | 'soft'
+  gentle_mode_date: DateColumn | null
+  gentle_mode_enabled_today: boolean
+  id: Generated<string>
+  quiet_hours_end: TimeColumn | null
+  quiet_hours_start: TimeColumn | null
+  show_appointments_in_calendar: boolean
+  show_daily_rituals_in_calendar: boolean
+  show_self_care_in_main_tasks: boolean
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+}
+
+export interface AppSelfCareMinimumItemsTable {
+  created_at: Generated<TimestampColumn>
+  id: Generated<string>
+  is_active: boolean
+  linked_item_id: string | null
+  sort_order: number
+  title: string
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+}
+
 export interface AppCleaningZonesTable {
   created_at: Generated<TimestampColumn>
   created_by: string | null
@@ -528,6 +829,21 @@ export interface DatabaseSchema {
   'app.oauth_authorization_codes': AppOAuthAuthorizationCodesTable
   'app.push_devices': AppPushDevicesTable
   'app.projects': AppProjectsTable
+  'app.self_care_appointment_details': AppSelfCareAppointmentDetailsTable
+  'app.self_care_completions': AppSelfCareCompletionsTable
+  'app.self_care_course_details': AppSelfCareCourseDetailsTable
+  'app.self_care_daily_states': AppSelfCareDailyStatesTable
+  'app.self_care_item_alternatives': AppSelfCareItemAlternativesTable
+  'app.self_care_items': AppSelfCareItemsTable
+  'app.self_care_medical_details': AppSelfCareMedicalDetailsTable
+  'app.self_care_minimum_items': AppSelfCareMinimumItemsTable
+  'app.self_care_occurrences': AppSelfCareOccurrencesTable
+  'app.self_care_procedure_details': AppSelfCareProcedureDetailsTable
+  'app.self_care_ritual_step_completions': AppSelfCareRitualStepCompletionsTable
+  'app.self_care_ritual_steps': AppSelfCareRitualStepsTable
+  'app.self_care_schedule_rules': AppSelfCareScheduleRulesTable
+  'app.self_care_settings': AppSelfCareSettingsTable
+  'app.self_care_templates': AppSelfCareTemplatesTable
   'app.task_attachments': AppTaskAttachmentsTable
   'app.task_events': AppTaskEventsTable
   'app.task_reminders': AppTaskRemindersTable

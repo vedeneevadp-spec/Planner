@@ -93,13 +93,16 @@ const mocks = vi.hoisted(() => ({
   useDeclineWorkspaceInvitation: vi.fn<() => MutationStub>(),
   useDeleteSharedWorkspace: vi.fn<() => MutationStub>(),
   useCleaningSummary: vi.fn<() => { dueCount: number; urgentCount: number }>(),
-  useHabitsToday: vi.fn<() => { data: { items: unknown[] } }>(),
   useLeaveSharedWorkspace: vi.fn<() => MutationStub>(),
   usePlanner: vi.fn<() => PlannerStub>(),
   usePlannerSession: vi.fn<() => { data: SidebarSessionStub }>(),
   useReceivedWorkspaceInvitations:
     vi.fn<() => { data: { invitations: unknown[] } }>(),
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
+  useSelfCareDashboard:
+    vi.fn<
+      () => { data: { flexibleGoals: unknown[]; todayItems: unknown[] } }
+    >(),
   useShoppingListSummary: vi.fn<() => { activeItemCount: number }>(),
   useUpdateSharedWorkspace: vi.fn<() => MutationStub>(),
 }))
@@ -112,8 +115,8 @@ vi.mock('@/features/cleaning', () => ({
   useCleaningSummary: () => mocks.useCleaningSummary(),
 }))
 
-vi.mock('@/features/habits', () => ({
-  useHabitsToday: () => mocks.useHabitsToday(),
+vi.mock('@/features/self-care', () => ({
+  useSelfCareDashboard: () => mocks.useSelfCareDashboard(),
 }))
 
 vi.mock('@/features/shopping-list', () => ({
@@ -291,9 +294,10 @@ function renderSidebar(
     dueCount: 0,
     urgentCount: 0,
   })
-  mocks.useHabitsToday.mockReturnValue({
+  mocks.useSelfCareDashboard.mockReturnValue({
     data: {
-      items: [],
+      flexibleGoals: [],
+      todayItems: [],
     },
   })
   mocks.usePlannerSession.mockReturnValue({
@@ -370,14 +374,14 @@ describe('Sidebar', () => {
       within(mobileNavigation).queryByText('Сферы'),
     ).not.toBeInTheDocument()
     expect(
-      within(mobileNavigation).queryByText('Привычки'),
+      within(mobileNavigation).queryByText('Забота'),
     ).not.toBeInTheDocument()
 
     const moreSheet = within(openMobileMoreSheet())
 
     expect(moreSheet.queryByText('Таймлайн')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Сферы')).not.toBeInTheDocument()
-    expect(moreSheet.queryByText('Привычки')).not.toBeInTheDocument()
+    expect(moreSheet.queryByText('Забота')).not.toBeInTheDocument()
     expect(moreSheet.getByRole('link', { name: 'Профиль' })).toBeVisible()
     expect(moreSheet.getByText('Admin')).toBeVisible()
     expect(moreSheet.getByRole('button', { name: 'Выйти' })).toBeVisible()
@@ -521,16 +525,14 @@ describe('Sidebar', () => {
     expect(screen.queryByText(/secret details/)).not.toBeInTheDocument()
   })
 
-  it('keeps habits and admin out of shared workspace navigation', () => {
+  it('keeps self-care and admin out of shared workspace navigation', () => {
     renderSidebar(createSession('shared'))
 
     const mainNavigation = screen.getByRole('navigation', {
       name: 'Main navigation',
     })
 
-    expect(
-      within(mainNavigation).queryByText('Привычки'),
-    ).not.toBeInTheDocument()
+    expect(within(mainNavigation).queryByText('Забота')).not.toBeInTheDocument()
     expect(within(mainNavigation).queryByText('Admin')).not.toBeInTheDocument()
 
     const moreSheet = within(openMobileMoreSheet())
@@ -538,7 +540,7 @@ describe('Sidebar', () => {
     expect(moreSheet.queryByText('Таймлайн')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Сферы')).not.toBeInTheDocument()
     expect(moreSheet.getByRole('button', { name: 'Выйти' })).toBeVisible()
-    expect(moreSheet.queryByText('Привычки')).not.toBeInTheDocument()
+    expect(moreSheet.queryByText('Забота')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Профиль')).not.toBeInTheDocument()
     expect(moreSheet.queryByText('Admin')).not.toBeInTheDocument()
   })

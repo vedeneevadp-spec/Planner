@@ -57,6 +57,11 @@ import {
   PushNotificationsService,
 } from './modules/push-notifications/index.js'
 import {
+  MemorySelfCareRepository,
+  PostgresSelfCareRepository,
+  SelfCareService,
+} from './modules/self-care/index.js'
+import {
   LocalProfileAvatarStorage,
   MemorySessionRepository,
   PostgresSessionRepository,
@@ -122,6 +127,9 @@ export function createApiKernel(
   const habitRepository = database
     ? new PostgresHabitRepository(database.db)
     : new MemoryHabitRepository()
+  const selfCareRepository = database
+    ? new PostgresSelfCareRepository(database.db)
+    : new MemorySelfCareRepository()
   const pushNotificationsRepository = database
     ? new PostgresPushNotificationsRepository(database.db)
     : new MemoryPushNotificationsRepository()
@@ -152,6 +160,7 @@ export function createApiKernel(
   )
   const lifeSphereService = new LifeSphereService(lifeSphereRepository)
   const habitService = new HabitService(habitRepository)
+  const selfCareService = new SelfCareService(selfCareRepository)
   const cleaningService = new CleaningService(cleaningRepository)
   const pushNotificationsService = new PushNotificationsService(
     pushNotificationsRepository,
@@ -194,6 +203,7 @@ export function createApiKernel(
     lifeSphereService,
     pushNotificationsService,
     requestAuthenticator,
+    selfCareService,
     sessionService,
     taskTemplateService,
     taskService,

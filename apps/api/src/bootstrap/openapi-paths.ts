@@ -1424,6 +1424,366 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['habits'],
       }),
     },
+    '/api/v1/self-care': {
+      get: createJsonOperation({
+        operationId: 'listSelfCareItems',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('type'),
+          optionalStringQueryParameter('category'),
+          optionalStringQueryParameter('status'),
+        ],
+        responseSchema: 'SelfCareListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List private self-care items and related records',
+        tags: ['selfCare'],
+      }),
+      post: createJsonOperation({
+        operationId: 'createSelfCareItem',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'SelfCareItemInput',
+        responseSchema: 'SelfCareItem',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a self-care item',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/dashboard': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareDashboard',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'SelfCareDashboardResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get self-care dashboard for a date',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/plan': {
+      get: createJsonOperation({
+        operationId: 'getSelfCarePlan',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('from'),
+          requiredStringQueryParameter('to'),
+        ],
+        responseSchema: 'SelfCarePlanResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get upcoming self-care plan for a date range',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/occurrences': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareOccurrences',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('from'),
+          requiredStringQueryParameter('to'),
+        ],
+        responseSchema: 'SelfCareOccurrenceListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List generated self-care occurrences for a date range',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/history': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareHistory',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('from'),
+          requiredStringQueryParameter('to'),
+        ],
+        responseSchema: 'SelfCareHistoryResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get self-care completion history',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/analytics': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareAnalytics',
+        parameters: [
+          ...workspaceReadParameters(),
+          requiredStringQueryParameter('from'),
+          requiredStringQueryParameter('to'),
+        ],
+        responseSchema: 'SelfCareAnalyticsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get supportive self-care analytics',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/daily-state': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareDailyState',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'SelfCareDailyState',
+        security: authenticatedSecurity(),
+        summary: 'Get daily self-care state check-in',
+        tags: ['selfCare'],
+      }),
+      put: createJsonOperation({
+        operationId: 'upsertSelfCareDailyState',
+        parameters: [
+          ...workspaceWriteParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        requestSchema: 'SelfCareDailyStateInput',
+        responseSchema: 'SelfCareDailyState',
+        security: authenticatedSecurity(),
+        summary: 'Create or update daily self-care state check-in',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/settings': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareSettings',
+        parameters: workspaceReadParameters(),
+        responseSchema: 'SelfCareSettingsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get self-care settings',
+        tags: ['selfCare'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateSelfCareSettings',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'SelfCareSettingsUpdateInput',
+        responseSchema: 'SelfCareSettingsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Update self-care settings',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/templates': {
+      get: createJsonOperation({
+        operationId: 'listSelfCareTemplates',
+        parameters: workspaceReadParameters(),
+        responseSchema: 'SelfCareTemplateListResponse',
+        security: authenticatedSecurity(),
+        summary: 'List self-care templates',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/{itemId}': {
+      delete: createJsonOperation({
+        noContentDescription: 'Self-care item archived or deleted.',
+        operationId: 'deleteSelfCareItem',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        security: authenticatedSecurity(),
+        summary: 'Delete a self-care item',
+        tags: ['selfCare'],
+      }),
+      patch: createJsonOperation({
+        operationId: 'updateSelfCareItem',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        requestSchema: 'SelfCareItemUpdateInput',
+        responseSchema: 'SelfCareItem',
+        security: authenticatedSecurity(),
+        summary: 'Update a self-care item',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/{itemId}/archive': {
+      post: createJsonOperation({
+        operationId: 'archiveSelfCareItem',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        responseSchema: 'SelfCareItem',
+        security: authenticatedSecurity(),
+        summary: 'Archive a self-care item',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/{itemId}/restore': {
+      post: createJsonOperation({
+        operationId: 'restoreSelfCareItem',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        responseSchema: 'SelfCareItem',
+        security: authenticatedSecurity(),
+        summary: 'Restore an archived self-care item',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/generate-occurrences': {
+      post: createJsonOperation({
+        operationId: 'generateSelfCareOccurrences',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'SelfCareRangeInput',
+        responseSchema: 'SelfCareOccurrenceListResponse',
+        security: authenticatedSecurity(),
+        summary: 'Generate self-care occurrences for a rolling date range',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/occurrences/{occurrenceId}/complete': {
+      post: createJsonOperation({
+        operationId: 'completeSelfCareOccurrence',
+        parameters: [
+          idPathParameter('occurrenceId'),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'SelfCareRitualCompletionInput',
+        responseSchema: 'SelfCareCompletion',
+        security: authenticatedSecurity(),
+        summary: 'Complete a self-care occurrence',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/items/{itemId}/complete-now': {
+      post: createJsonOperation({
+        operationId: 'completeSelfCareItemNow',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        requestSchema: 'SelfCareRitualCompletionInput',
+        responseSchema: 'SelfCareCompletion',
+        security: authenticatedSecurity(),
+        summary: 'Record an ad-hoc self-care completion',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/items/{itemId}/schedule': {
+      post: createJsonOperation({
+        operationId: 'scheduleSelfCareItem',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        requestSchema: 'SelfCareItemScheduleInput',
+        responseSchema: 'SelfCareOccurrence',
+        security: authenticatedSecurity(),
+        summary: 'Schedule a self-care item occurrence',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/items/{itemId}/complete-flexible-goal': {
+      post: createJsonOperation({
+        operationId: 'completeSelfCareFlexibleGoal',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        requestSchema: 'SelfCareCompletionInput',
+        responseSchema: 'SelfCareCompletion',
+        security: authenticatedSecurity(),
+        summary: 'Count progress for a flexible self-care goal',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/items/{itemId}/complete-course-session': {
+      post: createJsonOperation({
+        operationId: 'completeSelfCareCourseSession',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        requestSchema: 'SelfCareCompletionInput',
+        responseSchema: 'SelfCareCompletion',
+        security: authenticatedSecurity(),
+        summary: 'Complete a self-care course session',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/occurrences/{occurrenceId}/skip': {
+      post: createJsonOperation({
+        operationId: 'skipSelfCareOccurrence',
+        parameters: [
+          idPathParameter('occurrenceId'),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'SelfCareOccurrenceSkipInput',
+        responseSchema: 'SelfCareOccurrence',
+        security: authenticatedSecurity(),
+        summary: 'Soft-skip a self-care occurrence',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/occurrences/{occurrenceId}/move': {
+      post: createJsonOperation({
+        operationId: 'moveSelfCareOccurrence',
+        parameters: [
+          idPathParameter('occurrenceId'),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'SelfCareOccurrenceMoveInput',
+        responseSchema: 'SelfCareOccurrence',
+        security: authenticatedSecurity(),
+        summary: 'Move a self-care occurrence to another date',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/occurrences/{occurrenceId}/cancel': {
+      post: createJsonOperation({
+        operationId: 'cancelSelfCareOccurrence',
+        parameters: [
+          idPathParameter('occurrenceId'),
+          ...workspaceWriteParameters(),
+        ],
+        responseSchema: 'SelfCareOccurrence',
+        security: authenticatedSecurity(),
+        summary: 'Cancel a self-care appointment occurrence',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/items/{itemId}/steps': {
+      put: createJsonOperation({
+        operationId: 'updateSelfCareRitualSteps',
+        parameters: [idPathParameter('itemId'), ...workspaceWriteParameters()],
+        requestSchema: 'SelfCareRitualStepsUpdateInput',
+        responseSchema: 'SelfCareListResponse',
+        security: authenticatedSecurity(),
+        summary: 'Replace ritual checklist steps for a self-care item',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/settings/gentle-mode/enable': {
+      post: createJsonOperation({
+        operationId: 'enableSelfCareGentleMode',
+        parameters: [
+          ...workspaceWriteParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'SelfCareSettingsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Enable gentle mode for a date',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/settings/gentle-mode/disable': {
+      post: createJsonOperation({
+        operationId: 'disableSelfCareGentleMode',
+        parameters: [
+          ...workspaceWriteParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'SelfCareSettingsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Disable gentle mode for a date',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/settings/minimum-items': {
+      put: createJsonOperation({
+        operationId: 'updateSelfCareMinimumItems',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'SelfCareMinimumItemsUpdateInput',
+        responseSchema: 'SelfCareSettingsResponse',
+        security: authenticatedSecurity(),
+        summary: 'Update minimum daily self-care items',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/templates/{templateId}/create': {
+      post: createJsonOperation({
+        operationId: 'createSelfCareItemFromTemplate',
+        parameters: [
+          idPathParameter('templateId'),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'SelfCareTemplateCreateInput',
+        responseSchema: 'SelfCareItem',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a self-care item from a template',
+        tags: ['selfCare'],
+      }),
+    },
     '/api/v1/icon-assets/{fileName}': {
       get: createBinaryAssetOperation(
         'getIconAsset',

@@ -30,10 +30,6 @@ vi.mock('@/pages/calendar', () => ({
   CalendarPage: () => <div>Calendar page</div>,
 }))
 
-vi.mock('@/pages/habits', () => ({
-  HabitsPage: () => <div>Habits page</div>,
-}))
-
 vi.mock('@/pages/more', () => ({
   MorePage: () => <div>More page</div>,
 }))
@@ -50,6 +46,10 @@ vi.mock('@/pages/shopping', () => ({
   ShoppingPage: () => <div>Shopping page</div>,
 }))
 
+vi.mock('@/pages/self-care', () => ({
+  SelfCarePage: () => <div>Self-care page</div>,
+}))
+
 vi.mock('@/pages/spheres', () => ({
   SpherePage: () => <div>Sphere page</div>,
   SpheresPage: () => <div>Spheres page</div>,
@@ -64,7 +64,7 @@ describe('AppRouter', () => {
     cleanup()
   })
 
-  it('redirects shared workspaces away from habits', async () => {
+  it('keeps self-care private in shared workspaces', async () => {
     mockUsePlannerSession.mockReturnValue({
       data: {
         workspace: {
@@ -74,16 +74,16 @@ describe('AppRouter', () => {
     })
 
     render(
-      <MemoryRouter initialEntries={['/habits']}>
+      <MemoryRouter initialEntries={['/self-care']}>
         <AppRouter />
       </MemoryRouter>,
     )
 
     expect(await screen.findByText('Today page')).toBeVisible()
-    expect(screen.queryByText('Habits page')).not.toBeInTheDocument()
+    expect(screen.queryByText('Self-care page')).not.toBeInTheDocument()
   })
 
-  it('keeps habits available in personal workspaces', async () => {
+  it('keeps self-care available in personal workspaces', async () => {
     mockUsePlannerSession.mockReturnValue({
       data: {
         workspace: {
@@ -93,12 +93,34 @@ describe('AppRouter', () => {
     })
 
     render(
-      <MemoryRouter initialEntries={['/habits']}>
+      <MemoryRouter initialEntries={['/self-care']}>
         <AppRouter />
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('Habits page')).toBeVisible()
+    expect(await screen.findByText('Self-care page')).toBeVisible()
+  })
+
+  it('redirects old habits links to self-care rituals', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'personal',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/habits/habit-1']}>
+        <AppRouter />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Self-care page')).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/self-care?tab=rituals&itemId=habit-1',
+    )
   })
 
   it('keeps calendar available in shared workspaces', async () => {

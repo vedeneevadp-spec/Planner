@@ -122,9 +122,9 @@ export function HabitsTodayPanel({
           <Link
             id="habits-today-title"
             className={styles.eyebrowLink}
-            to="/habits"
+            to="/self-care?tab=rituals"
           >
-            Привычки
+            Регулярная забота
           </Link>
           {isExpanded ? <h3>Ритм дня</h3> : null}
         </div>
@@ -137,7 +137,11 @@ export function HabitsTodayPanel({
             )}
             type="button"
             aria-expanded={isExpanded}
-            aria-label={isExpanded ? 'Свернуть привычки' : 'Открыть привычки'}
+            aria-label={
+              isExpanded
+                ? 'Свернуть регулярную заботу'
+                : 'Открыть регулярную заботу'
+            }
             onClick={() => setIsExpanded((value) => !value)}
           >
             <span
@@ -156,13 +160,13 @@ export function HabitsTodayPanel({
           <span style={{ width: `${progressPercent}%` }} />
         </div>
       ) : habitsTodayQuery.isPending ? (
-        <p className={styles.emptyText}>Загружаем привычки...</p>
+        <p className={styles.emptyText}>Загружаем регулярную заботу...</p>
       ) : items.length === 0 ? (
         <div className={styles.emptyState}>
-          <p className={styles.emptyText}>Привычек нет. Создайте первую.</p>
+          <p className={styles.emptyText}>Регулярной заботы на сегодня нет.</p>
           {showEmptyAction ? (
-            <Link className={styles.emptyAction} to="/habits">
-              Создать привычку
+            <Link className={styles.emptyAction} to="/self-care?tab=rituals">
+              Добавить заботу
             </Link>
           ) : null}
         </div>
@@ -221,7 +225,7 @@ function getProgressLabel(input: {
   }
 
   if (input.skippedCount > 0) {
-    return `${input.doneCount}/${input.totalCount}, ${input.skippedCount} пропуск`
+    return `${input.doneCount}/${input.totalCount}, ${input.skippedCount} позже`
   }
 
   return `${input.doneCount}/${input.totalCount}`
@@ -297,7 +301,7 @@ function HabitTodayRow({
             className={styles.iconButton}
             type="button"
             disabled={isPending}
-            aria-label={`Отменить отметку привычки ${item.habit.title}`}
+            aria-label={`Отменить отметку регулярной заботы ${item.habit.title}`}
             onClick={onUndo}
           >
             <CloseIcon size={16} strokeWidth={2.1} />
@@ -308,7 +312,7 @@ function HabitTodayRow({
               className={styles.progressButton}
               type="button"
               disabled={isPending}
-              aria-label={`Увеличить прогресс привычки ${item.habit.title} до ${nextProgressValue} из ${targetValue}`}
+              aria-label={`Увеличить прогресс регулярной заботы ${item.habit.title} до ${nextProgressValue} из ${targetValue}`}
               onClick={onDone}
             >
               {progressValue}/{targetValue}
@@ -319,7 +323,7 @@ function HabitTodayRow({
               disabled={isPending}
               onClick={onSkip}
             >
-              Пропуск
+              Позже
             </button>
           </>
         ) : (
@@ -328,7 +332,7 @@ function HabitTodayRow({
               className={styles.iconButton}
               type="button"
               disabled={isPending}
-              aria-label={`Выполнить привычку ${item.habit.title}`}
+              aria-label={`Выполнить регулярную заботу ${item.habit.title}`}
               onClick={onDone}
             >
               <CheckIcon size={16} strokeWidth={2.1} />
@@ -339,7 +343,7 @@ function HabitTodayRow({
               disabled={isPending}
               onClick={onSkip}
             >
-              Пропуск
+              Позже
             </button>
           </>
         )}

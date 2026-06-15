@@ -32,9 +32,6 @@ const CleaningSettingsPage = lazy(() =>
     default: module.CleaningSettingsPage,
   })),
 )
-const HabitsPage = lazy(() =>
-  import('@/pages/habits').then((module) => ({ default: module.HabitsPage })),
-)
 const MorePage = lazy(() =>
   import('@/pages/more').then((module) => ({ default: module.MorePage })),
 )
@@ -49,6 +46,11 @@ const VoiceAssistantSettingsPage = lazy(() =>
 const ShoppingPage = lazy(() =>
   import('@/pages/shopping').then((module) => ({
     default: module.ShoppingPage,
+  })),
+)
+const SelfCarePage = lazy(() =>
+  import('@/pages/self-care').then((module) => ({
+    default: module.SelfCarePage,
   })),
 )
 const SpherePage = lazy(() =>
@@ -87,6 +89,25 @@ function TimelineRedirect() {
   )
 }
 
+function HabitsRedirect() {
+  const { habitId } = useParams()
+  const searchParams = new URLSearchParams({ tab: 'rituals' })
+
+  if (habitId) {
+    searchParams.set('itemId', habitId)
+  }
+
+  return (
+    <Navigate
+      replace
+      to={{
+        pathname: '/self-care',
+        search: `?${searchParams.toString()}`,
+      }}
+    />
+  )
+}
+
 const routeElements = {
   admin: <AdminPage />,
   calendar: <CalendarPage />,
@@ -95,9 +116,11 @@ const routeElements = {
   cleaningSettingsGeneral: <CleaningSettingsPage />,
   cleaningSettingsZone: <CleaningSettingsPage />,
   cleaningZoneRedirect: <CleaningZoneRedirect />,
-  habits: <HabitsPage />,
+  habitRedirect: <HabitsRedirect />,
+  habitsRedirect: <HabitsRedirect />,
   more: <MorePage />,
   profile: <ProfilePage />,
+  selfCare: <SelfCarePage />,
   shopping: <ShoppingPage />,
   sphere: <SpherePage />,
   spheres: <SpheresPage />,

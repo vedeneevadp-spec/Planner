@@ -18,7 +18,7 @@ describe('route config', () => {
     expect(routeIds).toContain('more')
     expect(routeIds).toContain('voiceAssistantSettings')
     expect(routeIds).not.toContain('admin')
-    expect(routeIds).not.toContain('habits')
+    expect(routeIds).not.toContain('selfCare')
     expect(routeIds).not.toContain('profile')
   })
 
@@ -42,7 +42,7 @@ describe('route config', () => {
       .sort((left, right) => (left.mobileOrder ?? 0) - (right.mobileOrder ?? 0))
       .map((route) => route.id)
 
-    expect(routeIds).toEqual(['spheres', 'habits', 'admin'])
+    expect(routeIds).toEqual(['spheres', 'selfCare', 'admin'])
   })
 
   it('keeps personal workspace-only routes visible for personal workspaces', () => {
@@ -51,9 +51,9 @@ describe('route config', () => {
     )
 
     expect(routeIds).toContain('admin')
-    expect(routeIds).toContain('habits')
     expect(routeIds).toContain('more')
     expect(routeIds).toContain('profile')
+    expect(routeIds).toContain('selfCare')
     expect(routeIds).toContain('voiceAssistantSettings')
   })
 })

@@ -34,7 +34,7 @@ export function SidebarNavIcon({ route }: { route: string }) {
     return <CleaningZonesIcon size={20} />
   }
 
-  if (route === '/habits') {
+  if (route === '/self-care') {
     return <HabitsTargetIcon size={20} />
   }
 

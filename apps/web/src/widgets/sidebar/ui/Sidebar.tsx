@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 
-import { isHabitEntryComplete } from '@/entities/habit'
 import { getPlannerSummary, isActiveTaskStatus } from '@/entities/task'
 import { useCleaningSummary } from '@/features/cleaning'
-import { useHabitsToday } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
+import { useSelfCareDashboard } from '@/features/self-care'
 import {
   getSessionReadinessConnectionView,
   setSelectedWorkspaceIdForActors,
@@ -87,17 +86,17 @@ export function Sidebar({
   const plannedTaskCount = tasks.filter(
     (task) => isActiveTaskStatus(task.status) && task.plannedDate !== null,
   ).length
-  const habitsTodayQuery = useHabitsToday(todayKey)
-  const pendingHabitTodayCount = (habitsTodayQuery.data?.items ?? []).filter(
-    (item) =>
-      item.entry?.status !== 'skipped' &&
-      !isHabitEntryComplete(item.habit, item.entry),
-  ).length
+  const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
+    enabled: !isSharedWorkspace,
+  })
+  const pendingSelfCareTodayCount = countPendingSelfCare(
+    selfCareDashboardQuery.data,
+  )
   const navigationCounts = {
     appRoleLabel: session?.appRole ?? 'Admin',
     cleaningDueCount: cleaningSummary.dueCount,
     cleaningUrgentCount: cleaningSummary.urgentCount,
-    pendingHabitTodayCount,
+    pendingSelfCareTodayCount,
     plannedTaskCount,
     shoppingActiveItemCount: shoppingListSummary.activeItemCount,
     sphereCount: spheres.length,
@@ -701,6 +700,29 @@ export function Sidebar({
 
 function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
+}
+
+function countPendingSelfCare(
+  dashboard: ReturnType<typeof useSelfCareDashboard>['data'] | undefined,
+): number {
+  const todayItems = dashboard?.todayItems ?? []
+  const flexibleGoals = dashboard?.flexibleGoals ?? []
+  const pendingTodayItems = todayItems.filter((entry) => {
+    const status = entry.occurrence?.status
+
+    return (
+      status !== 'done' &&
+      status !== 'partial' &&
+      status !== 'skipped' &&
+      status !== 'cancelled' &&
+      !entry.completion
+    )
+  }).length
+  const pendingFlexibleGoals = flexibleGoals.filter(
+    (entry) => (entry.flexibleProgress?.remainingCount ?? 0) > 0,
+  ).length
+
+  return pendingTodayItems + pendingFlexibleGoals
 }
 
 function ConnectionIssuePanel({

@@ -2,7 +2,7 @@ export interface SidebarNavigationCounts {
   appRoleLabel: string
   cleaningDueCount: number
   cleaningUrgentCount: number
-  pendingHabitTodayCount: number
+  pendingSelfCareTodayCount: number
   plannedTaskCount: number
   shoppingActiveItemCount: number
   sphereCount: number
@@ -29,8 +29,8 @@ export function getNavigationCount(
     return counts.cleaningUrgentCount || counts.cleaningDueCount
   }
 
-  if (route === '/habits') {
-    return counts.pendingHabitTodayCount
+  if (route === '/self-care') {
+    return counts.pendingSelfCareTodayCount
   }
 
   if (route === '/shopping') {

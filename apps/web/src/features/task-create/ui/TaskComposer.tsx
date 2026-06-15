@@ -197,12 +197,14 @@ export function TaskComposer({
   const isRoutineLikeTaskType = taskType === 'routine' || isHabitTaskType
   const canUseRecurrence = !isRoutineLikeTaskType
   const composerTitle = isHabitTaskType
-    ? 'Новая привычка'
+    ? 'Новая регулярная забота'
     : taskType === 'routine' || defaultTaskType === 'routine'
       ? 'Новая рутина'
       : 'Новая задача'
-  const titleFieldLabel = isHabitTaskType ? 'Привычка' : 'Задача'
-  const submitLabel = isHabitTaskType ? 'Добавить привычку' : 'Добавить задачу'
+  const titleFieldLabel = isHabitTaskType ? 'Регулярная забота' : 'Задача'
+  const submitLabel = isHabitTaskType
+    ? 'Добавить регулярную заботу'
+    : 'Добавить задачу'
 
   useEffect(() => {
     const wasAvailable = reminderAvailabilityRef.current

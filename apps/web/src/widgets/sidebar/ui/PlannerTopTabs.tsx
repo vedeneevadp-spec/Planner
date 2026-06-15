@@ -38,8 +38,8 @@ type CalendarTopViewMode = 'day' | 'week' | 'month' | 'schedule'
 type TodayTaskView = 'cards' | 'list'
 
 const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
-const HABITS_ACTION_REQUEST_SEARCH_PARAM = 'habitsActionRequest'
-const HABITS_ACTION_SEARCH_PARAM = 'habitsAction'
+const SELF_CARE_ACTION_REQUEST_SEARCH_PARAM = 'selfCareActionRequest'
+const SELF_CARE_ACTION_SEARCH_PARAM = 'selfCareAction'
 const SHOPPING_ICON_BASE_URL = '/icons/shopping'
 const SPHERES_ACTION_REQUEST_SEARCH_PARAM = 'spheresActionRequest'
 const SPHERES_ACTION_SEARCH_PARAM = 'spheresAction'
@@ -116,13 +116,14 @@ export function PlannerTopTabs() {
     location.pathname,
     '/cleaning/settings',
   )
-  const isHabitsActive = location.pathname === '/habits'
+  const isSelfCareActive = location.pathname === '/self-care'
   const isShoppingActive = matchesRoute(location.pathname, '/shopping')
   const isSpheresActive = location.pathname === '/spheres'
   const shouldHideMobileBrandText =
     isCalendarActive ||
     isCleaningActive ||
     isCleaningSettingsActive ||
+    isSelfCareActive ||
     isShoppingActive
   const calendarViewMode = getCalendarViewMode(searchParams) ?? 'week'
   const cleaningFocusMode = getCleaningFocusModeFromSearchParams(searchParams)
@@ -211,10 +212,13 @@ export function PlannerTopTabs() {
     navigateWithSearchParams(nextParams)
   }
 
-  function openHabitComposer() {
+  function openSelfCareComposer() {
     const nextParams = new URLSearchParams(searchParams)
-    nextParams.set(HABITS_ACTION_SEARCH_PARAM, 'habit')
-    nextParams.set(HABITS_ACTION_REQUEST_SEARCH_PARAM, createActionRequestId())
+    nextParams.set(SELF_CARE_ACTION_SEARCH_PARAM, 'care')
+    nextParams.set(
+      SELF_CARE_ACTION_REQUEST_SEARCH_PARAM,
+      createActionRequestId(),
+    )
 
     navigateWithSearchParams(nextParams)
   }
@@ -491,11 +495,11 @@ export function PlannerTopTabs() {
             <span>Сфера</span>
           </button>
         </div>
-      ) : isHabitsActive ? (
+      ) : isSelfCareActive ? (
         <div
           className={cx(styles.topSegmentList, styles.topSpheresActionList)}
           role="group"
-          aria-label="Действия привычек"
+          aria-label="Действия заботы"
         >
           <button
             className={cx(
@@ -504,12 +508,12 @@ export function PlannerTopTabs() {
               styles.topHabitCreateTab,
             )}
             type="button"
-            aria-label="Создать привычку"
-            title="Создать привычку"
-            onClick={openHabitComposer}
+            aria-label="Создать заботу"
+            title="Создать заботу"
+            onClick={openSelfCareComposer}
           >
             <PlusIcon size={14} strokeWidth={2.2} />
-            <span>Привычка</span>
+            <span>Забота</span>
           </button>
         </div>
       ) : isHomeActive ? (

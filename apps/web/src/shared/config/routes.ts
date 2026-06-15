@@ -8,9 +8,11 @@ export type AppRouteId =
   | 'cleaningSettings'
   | 'cleaningSettingsZone'
   | 'cleaningZoneRedirect'
-  | 'habits'
+  | 'habitRedirect'
+  | 'habitsRedirect'
   | 'more'
   | 'profile'
+  | 'selfCare'
   | 'shopping'
   | 'sphere'
   | 'spheres'
@@ -27,7 +29,7 @@ export type NavigationRouteId =
   | 'admin'
   | 'calendar'
   | 'cleaning'
-  | 'habits'
+  | 'selfCare'
   | 'shopping'
   | 'spheres'
   | 'today'
@@ -108,9 +110,19 @@ export const appRouteDefinitions = [
     workspaceKinds: allWorkspaceKinds,
   },
   {
-    id: 'habits',
-    path: '/habits',
+    id: 'selfCare',
+    path: '/self-care',
     workspaceKinds: personalOnlyWorkspaceKinds,
+  },
+  {
+    id: 'habitsRedirect',
+    path: '/habits',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
+    id: 'habitRedirect',
+    path: '/habits/:habitId',
+    workspaceKinds: allWorkspaceKinds,
   },
   {
     id: 'more',
@@ -201,16 +213,16 @@ export const navigationRouteDefinitions = [
     workspaceKinds: allWorkspaceKinds,
   },
   {
-    id: 'habits',
-    label: 'Привычки',
+    id: 'selfCare',
+    label: 'Забота',
     mobileOrder: 1,
     mobilePlacement: 'more',
-    plannerTabColor: 'pink',
+    plannerTabColor: 'green',
     plannerTabOrder: 5,
     plannerTabPlacement: 'side',
-    plannerTabShortLabel: 'Привычки',
-    path: '/habits',
-    to: '/habits',
+    plannerTabShortLabel: 'Забота',
+    path: '/self-care',
+    to: '/self-care',
     workspaceKinds: personalOnlyWorkspaceKinds,
   },
   {

@@ -37,6 +37,8 @@ import type { LifeSphereService } from '../modules/life-spheres/index.js'
 import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
 import type { PushNotificationsService } from '../modules/push-notifications/index.js'
 import { registerPushNotificationsRoutes } from '../modules/push-notifications/index.js'
+import type { SelfCareService } from '../modules/self-care/index.js'
+import { registerSelfCareRoutes } from '../modules/self-care/index.js'
 import type { SessionService } from '../modules/session/index.js'
 import {
   registerProfileAvatarRoutes,
@@ -75,6 +77,7 @@ export interface BuildApiAppOptions {
   habitService?: HabitService
   lifeSphereService?: LifeSphereService
   pushNotificationsService?: PushNotificationsService
+  selfCareService?: SelfCareService
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
   taskService: TaskService
@@ -93,6 +96,7 @@ export function buildApiApp({
   habitService,
   lifeSphereService,
   pushNotificationsService,
+  selfCareService,
   sessionService,
   taskTemplateService,
   taskService,
@@ -172,6 +176,9 @@ export function buildApiApp({
     }
     if (habitService) {
       registerHabitRoutes(instance, sessionService, habitService)
+    }
+    if (selfCareService) {
+      registerSelfCareRoutes(instance, sessionService, selfCareService)
     }
     if (cleaningService) {
       registerCleaningRoutes(instance, sessionService, cleaningService)

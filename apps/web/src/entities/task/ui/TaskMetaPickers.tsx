@@ -74,7 +74,7 @@ const TASK_TYPE_OPTIONS: TaskTypeOption[] = [
   },
   {
     imageSrc: HABIT_ICON_SRC,
-    label: 'Привычка',
+    label: 'Регулярная забота',
     value: 'habit',
   },
 ]

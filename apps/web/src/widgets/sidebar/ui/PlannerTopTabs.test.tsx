@@ -341,24 +341,20 @@ describe('PlannerTopTabs', () => {
     )
   })
 
-  it('shows a habit creation tab on habits', () => {
-    renderPlannerTopTabs('/habits')
+  it('shows a self-care creation tab on self-care', () => {
+    renderPlannerTopTabs('/self-care')
 
-    expect(
-      screen.getByRole('group', { name: 'Действия привычек' }),
-    ).toBeVisible()
-    expect(
-      screen.getByRole('button', { name: 'Создать привычку' }),
-    ).toBeVisible()
+    expect(screen.getByRole('group', { name: 'Действия заботы' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Создать заботу' })).toBeVisible()
   })
 
-  it('opens habit creation through a query trigger', () => {
-    renderPlannerTopTabs('/habits?foo=bar')
+  it('opens self-care creation through a query trigger', () => {
+    renderPlannerTopTabs('/self-care?foo=bar')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Создать привычку' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Создать заботу' }))
 
     expect(screen.getByTestId('location').textContent).toContain(
-      '/habits?foo=bar&habitsAction=habit&habitsActionRequest=',
+      '/self-care?foo=bar&selfCareAction=care&selfCareActionRequest=',
     )
   })
 

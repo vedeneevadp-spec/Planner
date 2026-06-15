@@ -1,0 +1,1414 @@
+.page {
+  display: grid;
+  gap: 0.9rem;
+  padding-bottom: 1.4rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.28rem;
+  background: var(--surface);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+.tabButton,
+.primaryButton,
+.softButton,
+.doneButton,
+.dangerButton,
+.dangerLinkButton,
+.backLinkButton,
+.quickDateButton,
+.createChoiceCard,
+.templateCard {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.42rem;
+  min-height: 2.35rem;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.tabButton {
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  padding: 0.52rem 0.82rem;
+  color: var(--text-soft);
+  background: transparent;
+}
+
+.tabButtonActive {
+  color: var(--accent);
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted);
+}
+
+.tabPanel {
+  display: grid;
+  gap: 0.88rem;
+}
+
+.panel,
+.sectionBlock,
+.emptyPanel,
+.analyticsHero,
+.panelHeader {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.panel h3,
+.sectionBlock h2,
+.emptyPanel h3,
+.panelHeader h3 {
+  margin: 0;
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.panel p,
+.emptyPanel p,
+.hintCard p,
+.templateCard p,
+.mutedText {
+  margin: 0.28rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.93rem;
+}
+
+.kicker {
+  margin: 0 0 0.26rem;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.gridTwo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.88rem;
+}
+
+.panel,
+.emptyPanel,
+.panelHeader {
+  padding: 0.92rem;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--accent-muted-strong);
+  border-radius: 9px;
+  padding: 0.28rem 0.5rem;
+  color: var(--accent);
+  background: var(--accent-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.primaryButton,
+.softButton,
+.doneButton,
+.dangerButton,
+.dangerLinkButton {
+  border: 1px solid var(--accent-muted-strong);
+  padding: 0.48rem 0.72rem;
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.primaryButton {
+  color: var(--text);
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+}
+
+.doneButton {
+  color: var(--success);
+  border-color: rgba(78, 137, 91, 0.28);
+  background: rgba(78, 137, 91, 0.12);
+}
+
+.dangerButton,
+.dangerLinkButton {
+  color: var(--danger);
+  border-color: rgba(173, 78, 47, 0.18);
+  background: rgba(173, 78, 47, 0.08);
+}
+
+.dangerLinkButton {
+  justify-self: start;
+  min-height: 2rem;
+  margin-top: 0.3rem;
+  padding: 0.34rem 0.58rem;
+  font-size: 0.84rem;
+}
+
+.backLinkButton {
+  justify-self: start;
+  min-height: 2rem;
+  border: 1px solid transparent;
+  padding: 0.22rem 0;
+  color: var(--text-soft);
+  background: transparent;
+  font-size: 0.9rem;
+}
+
+.sectionBlock {
+  display: grid;
+  gap: 0.72rem;
+  padding: 0.86rem;
+}
+
+.sectionBlock h2 {
+  font-size: 1.08rem;
+}
+
+.cardList {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.card,
+.hintCard,
+.historyCard {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-muted);
+}
+
+.card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.72rem;
+  align-items: center;
+  padding: 0.74rem;
+}
+
+.cardDone {
+  opacity: 0.72;
+}
+
+.cardCompact {
+  align-items: start;
+}
+
+.cardMain {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.68rem;
+  min-width: 0;
+}
+
+.cardIcon {
+  display: grid;
+  place-items: center;
+  width: 2.28rem;
+  height: 2.28rem;
+  border: 1px solid var(--accent-muted-strong);
+  border-radius: 10px;
+  color: var(--accent);
+  background: var(--accent-muted);
+  font-size: 1.04rem;
+}
+
+.cardTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.42rem;
+  align-items: center;
+}
+
+.cardTitleRow h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.cardMeta,
+.progressText,
+.minimumText,
+.noteText {
+  margin: 0.18rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.86rem;
+}
+
+.minimumText {
+  color: var(--accent);
+}
+
+.courseProgress {
+  display: grid;
+  gap: 0.26rem;
+  max-width: 20rem;
+  margin-top: 0.4rem;
+}
+
+.courseProgressTrack {
+  overflow: hidden;
+  block-size: 0.42rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-muted) 65%, transparent);
+}
+
+.courseProgressTrack span {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    var(--accent),
+    color-mix(in srgb, var(--accent) 64%, #d8b26e)
+  );
+}
+
+.stepPreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  align-items: center;
+  margin-top: 0.42rem;
+}
+
+.stepPreviewCounter {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--accent-muted-strong);
+  border-radius: 9px;
+  padding: 0.28rem 0.5rem;
+  color: var(--text-soft);
+  background: var(--accent-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.stepChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  min-height: 1.72rem;
+  border: 1px solid var(--accent-muted-strong);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  color: var(--accent);
+  background: var(--accent-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.stepChip svg {
+  opacity: 0.24;
+}
+
+.stepChip span {
+  color: inherit;
+}
+
+.stepChipDone {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 42%, transparent);
+  background: var(--success-bg);
+}
+
+.stepChipDone svg {
+  opacity: 1;
+}
+
+.stepChip:not(:disabled):not([aria-disabled='true']):hover {
+  border-color: var(--accent-border-strong);
+  background: var(--accent-muted-strong);
+}
+
+.stepChipDone:not(:disabled):not([aria-disabled='true']):hover {
+  border-color: color-mix(in srgb, var(--success) 54%, transparent);
+  background: color-mix(in srgb, var(--success-bg) 82%, var(--accent-muted));
+}
+
+.stepChip:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.stepChip[aria-disabled='true'] {
+  cursor: default;
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.36rem;
+  justify-content: flex-end;
+}
+
+.hintCard {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.72rem;
+}
+
+.hintActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.36rem;
+  margin-top: 0.35rem;
+}
+
+.hintCard strong {
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.hintCard span {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.emptyPanel {
+  display: grid;
+  gap: 0.58rem;
+  text-align: left;
+}
+
+.clearStatePanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(11rem, 0.42fr);
+  gap: 0.9rem;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.86rem;
+  background:
+    radial-gradient(circle at 10% 0, var(--accent-muted) 0, transparent 32%),
+    var(--surface);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+.clearStateContent {
+  display: grid;
+  align-content: center;
+  gap: 0.9rem;
+  padding: 0.14rem;
+}
+
+.clearStateHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.clearStateHero h2 {
+  margin: 0;
+  color: color-mix(in srgb, var(--text) 86%, var(--accent));
+  font-size: 1.12rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.28;
+}
+
+.clearStateHero p {
+  max-width: 42rem;
+  margin: 0.32rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.94rem;
+}
+
+.clearStateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.tomorrowPreview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.72rem;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: var(--surface-muted);
+}
+
+.tomorrowPreview div {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+}
+
+.tomorrowPreview span {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.tomorrowPreview strong {
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.clearStateArtwork {
+  position: relative;
+  align-self: center;
+  aspect-ratio: 4 / 3;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background:
+    radial-gradient(circle at 50% 28%, var(--accent-muted) 0, transparent 42%),
+    var(--surface-muted);
+  box-shadow: var(--inset-highlight);
+}
+
+.clearStateArtwork::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.08),
+    rgba(255, 255, 255, 0)
+  );
+}
+
+.clearStateImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+.clearStateImageDark {
+  display: none;
+}
+
+:global(:root[data-theme='dark']) .clearStateImageLight {
+  display: none;
+}
+
+:global(:root[data-theme='dark']) .clearStateImageDark {
+  display: block;
+}
+
+.templateGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.48rem;
+}
+
+.templateCard {
+  border: 1px solid var(--accent-muted-strong);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+}
+
+.templateCard {
+  display: grid;
+  gap: 0.34rem;
+  align-items: start;
+  justify-content: start;
+  min-width: 0;
+  min-height: 8rem;
+  border-radius: 12px;
+  padding: 0.78rem;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.templateCard:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.templateCard span {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.createChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.createChoiceCard {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  align-items: start;
+  gap: 0.68rem;
+  min-width: 0;
+  min-height: 11.6rem;
+  overflow: hidden;
+  border: 1px solid rgba(167, 203, 187, 0.22);
+  border-radius: 24px;
+  padding: 0.95rem;
+  color: #e7f1ec;
+  text-align: left;
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    rgba(18, 33, 28, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 20px 60px rgba(0, 0, 0, 0.38);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.createChoiceCard strong {
+  margin-top: 0.1rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.createChoiceCard:hover {
+  transform: translateY(-2px);
+}
+
+.createChoiceCard:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.createChoiceCard:focus-visible,
+.addCareChoicePanel button:focus-visible {
+  outline: 2px solid #6ee7b7;
+  outline-offset: 4px;
+}
+
+.modalPanel.addCareChoicePanel {
+  --care-bg: #081512;
+  --care-surface: #12211c;
+  --care-surface-2: rgba(18, 33, 28, 0.72);
+  --care-border: rgba(167, 203, 187, 0.22);
+  --care-border-strong: rgba(167, 203, 187, 0.36);
+  --care-text: #e7f1ec;
+  --care-muted: #a9b8b0;
+  --care-accent: #6ee7b7;
+  --care-gold: #f8c27a;
+
+  width: min(45rem, 100%);
+  max-height: min(92vh, 58rem);
+  gap: 0.52rem;
+  isolation: isolate;
+  border-color: var(--care-border-strong);
+  border-radius: 32px;
+  padding: 1.16rem 1.16rem 1.28rem;
+  color: var(--care-text);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 28%),
+    var(--care-bg);
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(110, 231, 183, 0.08),
+    0 0 80px rgba(46, 204, 139, 0.16);
+}
+
+.addCareChoicePanel::before {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 0;
+  height: clamp(19rem, 58vw, 31rem);
+  content: '';
+  background:
+    linear-gradient(
+      180deg,
+      rgba(8, 21, 18, 0.38) 0%,
+      rgba(8, 21, 18, 0.1) 26%,
+      rgba(8, 21, 18, 0.08) 58%,
+      var(--care-bg) 100%
+    ),
+    url('/self-care/add-care/hero-wellness-dark.png') center top / cover
+      no-repeat;
+  pointer-events: none;
+}
+
+.addCareChoicePanel::after {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  content: '';
+  background:
+    radial-gradient(
+      circle at 50% 18%,
+      rgba(248, 194, 122, 0.12),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 50% 78%,
+      rgba(110, 231, 183, 0.1),
+      transparent 46%
+    );
+  pointer-events: none;
+}
+
+.addCareChoicePanel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.addCareChoicePanel .modalHeader {
+  align-items: center;
+  position: static;
+  padding-right: 3.1rem;
+}
+
+.addCareChoicePanel .modalHeader > div {
+  position: relative;
+  z-index: 1;
+}
+
+.addCareChoicePanel .modalHeader h2 {
+  color: var(--care-text);
+  font-size: clamp(1.52rem, 3.2vw, 1.72rem);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  line-height: 1.16;
+}
+
+.addCareChoicePanel .modalHeader p {
+  max-width: 25rem;
+  margin-top: 0.38rem;
+  color: var(--care-muted);
+  font-size: 0.96rem;
+  line-height: 1.42;
+}
+
+.addCareChoicePanel .closeButton {
+  position: absolute;
+  top: 1.05rem;
+  right: 1.05rem;
+  z-index: 2;
+  width: 2.9rem;
+  height: 2.9rem;
+  border-color: var(--care-border);
+  border-radius: 16px;
+  color: var(--care-text);
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 28px rgba(0, 0, 0, 0.22);
+}
+
+.addCareChoiceContent {
+  display: grid;
+  padding-top: calc(clamp(12.5rem, 32vw, 18.5rem) + 14px);
+}
+
+.addCareCreateCard {
+  border-color: rgba(110, 231, 183, 0.28);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(8, 21, 18, 0.94) 0%,
+      rgba(8, 21, 18, 0.82) 46%,
+      rgba(8, 21, 18, 0.36) 100%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    url('/self-care/add-care/create-card-bg-dark.png') center right / cover
+      no-repeat;
+}
+
+:global(:root[data-theme='light']) .addCareCreateCard {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(8, 21, 18, 0.94) 0%,
+      rgba(8, 21, 18, 0.8) 48%,
+      rgba(8, 21, 18, 0.42) 100%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
+    url('/self-care/add-care/create-card-bg-light.png') center right / cover
+      no-repeat;
+}
+
+.addCareCreateCard:hover {
+  border-color: rgba(110, 231, 183, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(110, 231, 183, 0.18),
+    0 0 30px rgba(110, 231, 183, 0.22),
+    0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.addCareTemplateCard {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: rgba(248, 194, 122, 0.28);
+}
+
+.addCareTemplateCard strong {
+  grid-column: 1;
+  min-width: 0;
+  padding-right: 0.65rem;
+}
+
+.addCareTemplateCard:hover {
+  border-color: rgba(248, 194, 122, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 1px rgba(248, 194, 122, 0.16),
+    0 0 30px rgba(248, 194, 122, 0.18),
+    0 24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.addCareChoiceText {
+  grid-column: 1 / -1;
+  max-width: none;
+  color: var(--care-muted);
+  font-size: 0.96rem;
+  line-height: 1.42;
+}
+
+.addCareArrowButton {
+  display: grid;
+  place-items: center;
+  align-self: start;
+  justify-self: end;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  color: rgba(248, 194, 122, 0.9);
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  transition:
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.addCareArrowButton {
+  grid-row: 1;
+  grid-column: 2;
+  cursor: pointer;
+}
+
+.addCareArrowButton:hover {
+  color: #ffd99e;
+  transform: translateX(2px);
+}
+
+.addCareCategoryGrid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.36rem;
+  margin-top: 0.04rem;
+}
+
+.addCareCategoryButton {
+  position: relative;
+  display: grid;
+  align-content: end;
+  justify-items: start;
+  aspect-ratio: 9 / 16;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(167, 203, 187, 0.2);
+  border-radius: 12px;
+  padding: 0.38rem;
+  color: var(--care-text);
+  background:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
+    rgba(255, 255, 255, 0.055);
+  background-position: center;
+  background-size: cover;
+  font: inherit;
+  font-size: 0.56rem;
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.addCareCategoryButton::before {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background:
+    radial-gradient(
+      circle at 20% 8%,
+      rgba(255, 255, 255, 0.22),
+      transparent 30%
+    ),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 46%);
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.addCareCategoryButton span {
+  position: relative;
+  z-index: 1;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  max-width: 100%;
+  padding: 0.18rem 0.26rem;
+  color: var(--care-text);
+  background: rgba(8, 21, 18, 0.58);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+  font-weight: 500;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.addCareCategoryButton:hover {
+  transform: translateY(-2px);
+  border-color: rgba(248, 194, 122, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 12px 28px rgba(0, 0, 0, 0.2),
+    0 0 24px rgba(248, 194, 122, 0.12);
+}
+
+.addCareCategoryButton:active {
+  transform: translateY(0) scale(0.99);
+}
+
+.addCareCategoryBeauty {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
+    url('/self-care/add-care/template-tile-beauty-dark.png');
+}
+
+.addCareCategoryHealth {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
+    url('/self-care/add-care/template-tile-health-dark.png');
+}
+
+.addCareCategoryMovement {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
+    url('/self-care/add-care/template-tile-movement-dark.png');
+}
+
+.addCareCategoryRest {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
+    url('/self-care/add-care/template-tile-rest-dark.png');
+}
+
+:global(:root[data-theme='light']) .addCareCategoryBeauty {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
+    url('/self-care/add-care/template-tile-beauty-light.png');
+}
+
+:global(:root[data-theme='light']) .addCareCategoryHealth {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
+    url('/self-care/add-care/template-tile-health-light.png');
+}
+
+:global(:root[data-theme='light']) .addCareCategoryMovement {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
+    url('/self-care/add-care/template-tile-movement-light.png');
+}
+
+:global(:root[data-theme='light']) .addCareCategoryRest {
+  background-image:
+    linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
+    url('/self-care/add-care/template-tile-rest-light.png');
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding: 1rem;
+  background: rgba(5, 14, 12, 0.92);
+  backdrop-filter: blur(10px);
+  isolation: isolate;
+}
+
+.backdropButton {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.modalPanel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.9rem;
+  width: min(42rem, 100%);
+  max-height: calc(100vh - 2rem);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 1rem;
+  background: var(--surface);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.modalHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 1rem;
+}
+
+.modalHeader > div {
+  min-width: 0;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.modalHeader p {
+  margin: 0.28rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.93rem;
+}
+
+.closeButton {
+  display: inline-grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--surface-muted);
+}
+
+.scheduleForm {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.createForm {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.settingsForm {
+  display: grid;
+  gap: 0.72rem;
+  margin-top: 0.66rem;
+}
+
+.settingsToggleList {
+  display: grid;
+  gap: 0.48rem;
+}
+
+.createFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.56rem;
+}
+
+.scheduleTarget {
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: var(--surface-muted);
+}
+
+.scheduleTarget strong {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.scheduleTarget span {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+}
+
+.dateField {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.dateField input,
+.dateField select,
+.dateField textarea {
+  width: 100%;
+  min-height: 2.55rem;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.62rem 0.72rem;
+  color: var(--text);
+  background: var(--field-bg);
+  font: inherit;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.dateField textarea {
+  min-height: 4.9rem;
+  resize: vertical;
+}
+
+.dateField input:focus,
+.dateField select:focus,
+.dateField textarea:focus {
+  outline: none;
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+}
+
+.fieldHint {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.toggleField {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.toggleField input {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+}
+
+.scheduleDetailsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.56rem;
+}
+
+.quickDateGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+}
+
+.quickDateButton {
+  min-width: 0;
+  border: 1px solid var(--accent-muted-strong);
+  padding: 0.48rem 0.72rem;
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.quickDateButtonActive {
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+}
+
+.modalActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.48rem;
+}
+
+.timeline {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.historyCard {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.22fr) minmax(0, 1fr);
+  gap: 0.72rem;
+  padding: 0.78rem;
+}
+
+.historyCard time {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.historyCard h3,
+.historyCard p {
+  margin: 0;
+}
+
+.historyCard h3 {
+  font-weight: 600;
+}
+
+.analyticsHero {
+  display: grid;
+  gap: 0.12rem;
+  padding: 1rem;
+  background: var(--surface);
+}
+
+.analyticsHero p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+.analyticsHero strong {
+  font-family: inherit;
+  font-size: clamp(2rem, 6vw, 3.4rem);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.analyticsHero span {
+  color: var(--text-soft);
+}
+
+.metricList {
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.66rem;
+}
+
+.metricRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.42rem 0;
+}
+
+.metricRow span {
+  color: var(--text-soft);
+}
+
+.errorText {
+  margin: 0;
+  border: 1px solid rgba(173, 78, 47, 0.16);
+  border-radius: 10px;
+  padding: 0.72rem;
+  color: var(--danger);
+  background: rgba(173, 78, 47, 0.08);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+@media (max-width: 860px) {
+  .card,
+  .historyCard,
+  .gridTwo,
+  .createChoiceGrid,
+  .createFormGrid,
+  .clearStatePanel {
+    grid-template-columns: 1fr;
+  }
+
+  .cardActions {
+    justify-content: flex-start;
+  }
+
+  .clearStateArtwork {
+    order: -1;
+  }
+
+  .clearStateActions,
+  .tomorrowPreview {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .page {
+    gap: 0.68rem;
+  }
+
+  .panel,
+  .sectionBlock,
+  .emptyPanel,
+  .analyticsHero,
+  .panelHeader {
+    border-radius: 12px;
+  }
+
+  .modalOverlay {
+    place-items: stretch;
+    padding: 0.55rem;
+  }
+
+  .modalPanel {
+    width: 100%;
+    height: calc(100vh - 1.5rem);
+    max-height: none;
+    border-radius: 14px;
+  }
+
+  .modalPanel.addCareChoicePanel {
+    align-self: end;
+    height: auto;
+    max-height: 96vh;
+    border-radius: 28px 28px 0 0;
+    padding: 0.86rem 0.72rem 0.96rem;
+  }
+
+  .addCareChoicePanel .modalHeader {
+    padding-right: 2.7rem;
+  }
+
+  .addCareChoicePanel .closeButton {
+    top: 0.78rem;
+    right: 0.78rem;
+    width: 2.55rem;
+    height: 2.55rem;
+    border-radius: 14px;
+  }
+
+  .addCareChoicePanel .modalHeader h2 {
+    font-size: 1.48rem;
+    font-weight: 500;
+  }
+
+  .addCareChoicePanel .modalHeader p {
+    max-width: 17rem;
+    font-size: 0.9rem;
+  }
+
+  .addCareChoiceContent {
+    padding-top: calc(clamp(7.8rem, 34vw, 9.1rem) + 12px);
+  }
+
+  .createChoiceCard {
+    grid-template-columns: 1fr;
+    gap: 0.58rem;
+    min-height: 10.45rem;
+    border-radius: 22px;
+    padding: 0.74rem;
+  }
+
+  .addCareCreateCard {
+    min-height: 8rem;
+  }
+
+  .addCareTemplateCard {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .addCareChoiceText,
+  .addCareCategoryGrid {
+    grid-column: 1 / -1;
+  }
+
+  .addCareArrowButton {
+    grid-column: 2;
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  .addCareCategoryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.28rem;
+  }
+
+  .addCareCategoryButton {
+    min-height: 0;
+    border-radius: 10px;
+    padding: 0.3rem;
+    font-size: 0.56rem;
+  }
+
+  .addCareCategoryButton span {
+    padding: 0.18rem 0.24rem;
+  }
+
+  .modalActions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .quickDateGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduleDetailsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  @supports (height: 100dvh) {
+    .modalPanel {
+      height: calc(100dvh - 1.5rem);
+    }
+
+    .modalPanel.addCareChoicePanel {
+      height: auto;
+      max-height: 96dvh;
+    }
+  }
+
+  .tabButton {
+    padding-inline: 0.68rem;
+  }
+}

@@ -49,8 +49,8 @@ export function HabitRoutineTaskCard({
     getHabitEntryTargetValue(habit, entry),
   )
   const actionLabel = canUndo
-    ? `Отменить отметку привычки ${habit.title}`
-    : `Завершить привычку ${habit.title}`
+    ? `Отменить отметку регулярной заботы ${habit.title}`
+    : `Завершить регулярную заботу ${habit.title}`
   const isCompactView = variant === 'compact'
   const actionButton = (
     <button
@@ -124,7 +124,7 @@ export function HabitRoutineTaskCard({
             ) : null}
 
             <div className={styles.meta}>
-              <span className={styles.metaChip}>Привычка</span>
+              <span className={styles.metaChip}>Регулярная забота</span>
               <span className={styles.metaChip}>
                 {getHabitFrequencyLabel(habit)}
               </span>

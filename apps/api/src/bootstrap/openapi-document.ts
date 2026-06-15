@@ -99,6 +99,11 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'habits',
       },
       {
+        description:
+          'Private self-care items, rituals, procedures, appointments, state tracking and analytics.',
+        name: 'selfCare',
+      },
+      {
         description: 'Cleaning zones, routines and completion history.',
         name: 'cleaning',
       },

@@ -1,0 +1,5 @@
+export type { SelfCareRepository } from './self-care.repository.js'
+export { MemorySelfCareRepository } from './self-care.repository.memory.js'
+export { PostgresSelfCareRepository } from './self-care.repository.postgres.js'
+export { registerSelfCareRoutes } from './self-care.routes.js'
+export { SelfCareService } from './self-care.service.js'
