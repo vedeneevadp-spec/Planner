@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import type {
+  CreateTaskCommand,
+  UpdateTaskStatusCommand,
+} from './task.model.js'
 import { MemoryTaskRepository } from './task.repository.memory.js'
 import { TaskService } from './task.service.js'
 
@@ -122,6 +126,74 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.status, 'todo')
   assert.equal(nextTask?.plannedDate, '2099-01-02')
   assert.equal(nextTask?.title, 'Умыться')
+})
+
+void test('TaskService uses client timezone for next recurring reminder occurrence', async () => {
+  const repository = new RecordingMemoryTaskRepository()
+  const service = new TaskService(repository)
+  const context = {
+    ...PERSONAL_CONTEXT,
+    clientTimeZone: 'America/New_York',
+  }
+  const task = await service.createTask(context, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000006',
+      startDate: '2099-01-01',
+    },
+    remindBeforeStart: true,
+    reminderOffsets: [15],
+    reminderTimeZone: 'Asia/Novosibirsk',
+    title: 'Повтор со сменой timezone',
+  })
+
+  await service.setTaskStatus(context, task.id, 'done', task.version)
+
+  assert.deepEqual(repository.createdReminderTimeZones, [
+    'Asia/Novosibirsk',
+    'America/New_York',
+  ])
+})
+
+void test('TaskService uses client timezone for recurring completion reference date', async () => {
+  const service = new TaskService(
+    new FixedCompletionTimeTaskRepository('2026-06-14T21:30:00.000Z'),
+  )
+  const context = {
+    ...PERSONAL_CONTEXT,
+    clientTimeZone: 'Europe/Samara',
+  }
+  const task = await service.createTask(context, {
+    ...BASE_INPUT,
+    plannedDate: '2026-06-14',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000007',
+      startDate: '2026-06-14',
+    },
+    title: 'Повтор у границы дня',
+  })
+
+  await service.setTaskStatus(context, task.id, 'done', task.version)
+
+  const tasks = await service.listTasks(context)
+  const nextTask = tasks.find(
+    (candidate) =>
+      candidate.id !== task.id &&
+      candidate.recurrence?.seriesId === task.recurrence?.seriesId,
+  )
+
+  assert.equal(nextTask?.plannedDate, '2026-06-16')
 })
 
 void test('TaskService archives recurring tasks without creating the next occurrence', async () => {
@@ -342,6 +414,33 @@ void test('TaskService creates a linked personal copy and syncs status', async (
 
   assert.equal(updatedSharedTask?.status, 'done')
 })
+
+class RecordingMemoryTaskRepository extends MemoryTaskRepository {
+  readonly createdReminderTimeZones: Array<string | undefined> = []
+
+  override create(command: CreateTaskCommand) {
+    this.createdReminderTimeZones.push(command.input.reminderTimeZone)
+
+    return super.create(command)
+  }
+}
+
+class FixedCompletionTimeTaskRepository extends MemoryTaskRepository {
+  constructor(private readonly completedAt: string) {
+    super()
+  }
+
+  override async updateStatus(command: UpdateTaskStatusCommand) {
+    const task = await super.updateStatus(command)
+
+    return command.status === 'done'
+      ? {
+          ...task,
+          completedAt: this.completedAt,
+        }
+      : task
+  }
+}
 
 void test('TaskService moves only authored shared tasks to personal workspace', async () => {
   const service = new TaskService(new MemoryTaskRepository())

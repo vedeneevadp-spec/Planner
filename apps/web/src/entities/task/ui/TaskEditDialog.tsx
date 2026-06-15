@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKey } from '@/shared/lib/date'
+import { getDateKey, resolveClientTimeZone } from '@/shared/lib/date'
 import { IconChoicePicker, type UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
@@ -459,12 +459,4 @@ function getEmptyProjectLabel(): string {
 
 function getSpherePickerLabel(): string {
   return 'Сфера'
-}
-
-function resolveClientTimeZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
-  } catch {
-    return undefined
-  }
 }

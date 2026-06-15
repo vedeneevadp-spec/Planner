@@ -87,6 +87,7 @@ export interface PlannerApiClientConfig {
   accessToken?: string
   actorUserId: string
   apiBaseUrl: string
+  clientTimeZone?: string | undefined
   workspaceId: string
 }
 

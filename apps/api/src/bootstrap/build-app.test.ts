@@ -2456,7 +2456,7 @@ void describe('buildApiApp', () => {
     const patchResponse = await app.inject({
       headers: {
         'access-control-request-headers':
-          'content-type,x-actor-user-id,x-workspace-id',
+          'content-type,x-actor-user-id,x-client-timezone,x-workspace-id',
         'access-control-request-method': 'PATCH',
         origin: 'http://127.0.0.1:5173',
       },
@@ -2468,6 +2468,10 @@ void describe('buildApiApp', () => {
     assert.equal(
       patchResponse.headers['access-control-allow-methods'],
       'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
+    )
+    assert.equal(
+      patchResponse.headers['access-control-allow-headers'],
+      'content-type,x-actor-user-id,x-client-timezone,x-workspace-id',
     )
 
     const deleteResponse = await app.inject({

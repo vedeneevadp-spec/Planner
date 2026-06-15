@@ -6,6 +6,28 @@ export function getDateKey(date: Date): string {
   return `${year}-${month}-${day}`
 }
 
+export function resolveClientTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
+  } catch {
+    return undefined
+  }
+}
+
+export function formatTimeZoneOffsetLabel(date: Date = new Date()): string {
+  const offsetMinutes = -date.getTimezoneOffset()
+  const sign = offsetMinutes >= 0 ? '+' : '-'
+  const absoluteOffsetMinutes = Math.abs(offsetMinutes)
+  const hours = Math.floor(absoluteOffsetMinutes / 60)
+  const minutes = absoluteOffsetMinutes % 60
+
+  if (minutes === 0) {
+    return `GMT${sign}${hours}`
+  }
+
+  return `GMT${sign}${hours}:${String(minutes).padStart(2, '0')}`
+}
+
 function parseDateKey(value: string): Date {
   const [yearRaw, monthRaw, dayRaw] = value.split('-')
   const year = Number(yearRaw)

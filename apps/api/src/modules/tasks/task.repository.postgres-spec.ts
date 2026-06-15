@@ -200,6 +200,80 @@ void describe('PostgresTaskRepository', () => {
       [null, null],
     )
   })
+
+  void test('uses client timezone for new recurring task reminders when provided', async () => {
+    const repository = new PostgresTaskRepository(connection.db)
+    const service = new TaskService(repository)
+    const context = {
+      actorDisplayName: `${fixture.prefix} User`,
+      actorUserId: fixture.userId,
+      auth: null,
+      clientTimeZone: 'America/New_York',
+      role: 'owner' as const,
+      workspaceKind: 'personal' as const,
+      workspaceId: fixture.workspaceId,
+    }
+    const seriesId = generateUuidV7()
+    const task = await service.createTask(context, {
+      assigneeUserId: null,
+      dueDate: null,
+      icon: '',
+      importance: 'not_important',
+      note: '',
+      plannedDate: '2099-02-01',
+      plannedEndTime: null,
+      plannedStartTime: '09:00',
+      project: '',
+      projectId: null,
+      recurrence: {
+        daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+        endDate: null,
+        frequency: 'daily',
+        interval: 1,
+        isActive: true,
+        seriesId,
+        startDate: '2099-02-01',
+      },
+      remindBeforeStart: true,
+      reminderOffsets: [15],
+      reminderTimeZone: 'Asia/Novosibirsk',
+      resource: null,
+      requiresConfirmation: false,
+      routine: null,
+      sphereId: null,
+      title: `${fixture.prefix} recurring reminder timezone change`,
+      urgency: 'not_urgent',
+    })
+
+    await service.setTaskStatus(context, task.id, 'done', task.version)
+
+    const tasks = await service.listTasks(context)
+    const nextTask = tasks.find(
+      (candidate) =>
+        candidate.id !== task.id &&
+        candidate.status === 'todo' &&
+        candidate.recurrence?.seriesId === seriesId,
+    )
+
+    assert.ok(nextTask)
+
+    const reminders = await connection.pool.query<{
+      time_zone: string
+    }>(
+      `
+        select time_zone
+        from app.task_reminders
+        where task_id = $1
+        order by remind_offset_minutes asc
+      `,
+      [nextTask.id],
+    )
+
+    assert.deepEqual(
+      reminders.rows.map((reminder) => reminder.time_zone),
+      ['America/New_York'],
+    )
+  })
 })
 
 function createFixture(): Fixture {

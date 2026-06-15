@@ -156,6 +156,29 @@ describe('plannerApi', () => {
     expect(requestInit?.signal).toBe(signal)
   })
 
+  it('sends the configured client timezone header', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+      }),
+    )
+    const api = createPlannerApiClient(
+      {
+        ...TEST_CONFIG,
+        clientTimeZone: 'America/New_York',
+      },
+      fetchMock,
+    )
+
+    await api.listTasks()
+
+    const [, requestInit] = fetchMock.mock.calls[0]!
+
+    expect(new Headers(requestInit?.headers).get('x-client-timezone')).toBe(
+      'America/New_York',
+    )
+  })
+
   it('requests task event cursor with workspace header', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(

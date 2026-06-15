@@ -5,6 +5,8 @@ import {
   type TaskReminderOffsetMinutes,
 } from '@planner/contracts'
 
+import { resolveClientTimeZone } from '@/shared/lib/date'
+
 import { formatShoppingListText } from './shopping-list-text'
 
 interface IntentSchedule {
@@ -198,13 +200,5 @@ function buildTaskRecurrenceFromPlannerIntent(
     isActive: true,
     seriesId: generateUuidV7(),
     startDate: schedule.plannedDate,
-  }
-}
-
-function resolveClientTimeZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
-  } catch {
-    return undefined
   }
 }

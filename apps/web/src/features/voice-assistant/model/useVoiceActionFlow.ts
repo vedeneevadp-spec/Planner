@@ -29,6 +29,7 @@ import {
   useShoppingListSummary,
   useUpdateShoppingListItem,
 } from '@/features/shopping-list'
+import { resolveClientTimeZone } from '@/shared/lib/date'
 
 import { notifyAndroidVoiceActionResult } from '../lib/native-voice-assistant'
 import {
@@ -804,7 +805,7 @@ function createVoiceActionContext(
     isDeviceLocked: false,
     now: new Date().toISOString(),
     source: getVoiceActionSource(source),
-    timezone: resolveVoiceClientTimeZone() ?? 'Europe/Moscow',
+    timezone: resolveVoiceClientTimeZone() ?? 'UTC',
     userId: session.actorUserId,
     workspaceId: session.workspaceId,
   }
@@ -835,11 +836,7 @@ function getPlannerIntentParserSource(
 }
 
 function resolveVoiceClientTimeZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
-  } catch {
-    return undefined
-  }
+  return resolveClientTimeZone()
 }
 
 function hasVoiceActionMutatedData(result: VoiceActionResult): boolean {

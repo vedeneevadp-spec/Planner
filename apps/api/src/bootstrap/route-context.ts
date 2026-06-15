@@ -22,6 +22,8 @@ export const routeWriteHeadersSchema = routeReadHeadersSchema.extend({
   'x-actor-user-id': z.string().min(1),
 })
 
+const CLIENT_TIME_ZONE_HEADER = 'x-client-timezone'
+
 export type RouteReadHeaders = z.infer<typeof routeReadHeadersSchema>
 export type RouteWriteHeaders = z.infer<typeof routeWriteHeadersSchema>
 
@@ -101,6 +103,7 @@ export async function resolveRouteReadContext(
       appRole: undefined,
       actorUserId: undefined,
       auth: null,
+      clientTimeZone: readClientTimeZoneHeader(request),
       role: undefined,
       workspaceId: headers['x-workspace-id'],
     }
@@ -116,6 +119,7 @@ export async function resolveRouteReadContext(
     appRole: session.appRole,
     actorUserId: session.actorUserId,
     auth: authContext,
+    clientTimeZone: readClientTimeZoneHeader(request),
     groupRole: session.groupRole,
     role: session.role,
     workspaceKind: session.workspace.kind,
@@ -144,6 +148,7 @@ export async function resolveRouteWriteContext(
       actorDisplayName: session.actor.displayName,
       actorUserId: session.actorUserId,
       auth: null,
+      clientTimeZone: readClientTimeZoneHeader(request),
       groupRole: session.groupRole,
       personalWorkspace: findPersonalWorkspace(session.workspaces),
       role: session.role,
@@ -164,6 +169,7 @@ export async function resolveRouteWriteContext(
     actorDisplayName: session.actor.displayName,
     actorUserId: session.actorUserId,
     auth: authContext,
+    clientTimeZone: readClientTimeZoneHeader(request),
     groupRole: session.groupRole,
     personalWorkspace: findPersonalWorkspace(session.workspaces),
     role: session.role,
@@ -189,6 +195,24 @@ export function areLegacySessionOverridesAllowed(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   return env.NODE_ENV !== 'production'
+}
+
+function readClientTimeZoneHeader(request: FastifyRequest): string | undefined {
+  const rawValue = request.headers[CLIENT_TIME_ZONE_HEADER]
+  const value = Array.isArray(rawValue) ? rawValue[0] : rawValue
+  const timeZone = typeof value === 'string' ? value.trim() : ''
+
+  if (!timeZone) {
+    return undefined
+  }
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date(0))
+
+    return timeZone
+  } catch {
+    return undefined
+  }
 }
 
 function findPersonalWorkspace(

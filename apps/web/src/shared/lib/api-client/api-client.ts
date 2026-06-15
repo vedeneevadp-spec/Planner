@@ -1,5 +1,7 @@
 import { apiErrorSchema } from '@planner/contracts'
 
+import { resolveClientTimeZone } from '@/shared/lib/date'
+
 export type ApiClientFetch = typeof fetch
 export type ApiRequestSignal = AbortSignal | undefined
 
@@ -13,6 +15,7 @@ export interface ApiClientConfig {
   accessToken?: string | undefined
   actorUserId?: string | undefined
   apiBaseUrl: string
+  clientTimeZone?: string | undefined
   workspaceId?: string | undefined
 }
 
@@ -153,6 +156,12 @@ function createRequestHeaders(
 
   if (config.accessToken) {
     headers.set('authorization', `Bearer ${config.accessToken}`)
+  }
+
+  const clientTimeZone = config.clientTimeZone ?? resolveClientTimeZone()
+
+  if (clientTimeZone) {
+    headers.set('x-client-timezone', clientTimeZone)
   }
 
   const actorHeader =

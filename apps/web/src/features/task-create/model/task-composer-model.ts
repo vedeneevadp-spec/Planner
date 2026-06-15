@@ -14,7 +14,7 @@ import {
   type TaskReminderOffsetMinutes,
   type TaskTypeValue,
 } from '@/entities/task'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import { addDays, getDateKey, resolveClientTimeZone } from '@/shared/lib/date'
 
 export interface TaskComposerDraft {
   dueDate?: string | null | undefined
@@ -34,14 +34,6 @@ export function getSpherePickerLabel(): string {
 
 export function getEmptyProjectLabel(): string {
   return 'Без сферы'
-}
-
-export function resolveClientTimeZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined
-  } catch {
-    return undefined
-  }
 }
 
 export interface BuildTaskComposerTaskInputParams {

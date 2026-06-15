@@ -38,13 +38,16 @@ export class TaskService {
     assertCanWriteTasks(context)
     assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
-    assertCanUseTaskReminder(
+    const reminderOffsets = normalizeTaskReminderOffsets(input)
+    const resolvedInput = withClientReminderTimeZone(
       context,
-      normalizeTaskReminderOffsets(input),
       input,
+      reminderOffsets,
     )
 
-    return this.repository.create({ context, input })
+    assertCanUseTaskReminder(context, reminderOffsets, resolvedInput)
+
+    return this.repository.create({ context, input: resolvedInput })
   }
 
   copyTaskToPersonal(
@@ -115,11 +118,14 @@ export class TaskService {
     assertCanWriteTasks(context)
     assertCanUseSharedReviewWorkflow(context, input.requiresConfirmation)
     assertCanAssignTask(context, input.assigneeUserId)
-    assertCanUseTaskReminder(
+    const reminderOffsets = normalizeTaskReminderOffsets(input)
+    const resolvedInput = withClientReminderTimeZone(
       context,
-      normalizeTaskReminderOffsets(input),
       input,
+      reminderOffsets,
     )
+
+    assertCanUseTaskReminder(context, reminderOffsets, resolvedInput)
 
     return this.repository.findById(context, taskId).then((task) => {
       if (!task) {
@@ -135,7 +141,7 @@ export class TaskService {
 
       const command: UpdateTaskCommand = {
         context,
-        input,
+        input: resolvedInput,
         taskId,
       }
 
@@ -284,14 +290,17 @@ export class TaskService {
     context: TaskWriteContext,
     completedTask: StoredTaskRecord,
   ): Promise<void> {
-    const recurrence = getTaskRecurrencePattern(completedTask)
+    const recurrence = getTaskRecurrencePattern(
+      completedTask,
+      context.clientTimeZone,
+    )
 
     if (!recurrence) {
       return
     }
 
     const nextPlannedDate = getNextRecurringDate(
-      getRecurringReferenceDate(completedTask),
+      getRecurringReferenceDate(completedTask, context.clientTimeZone),
       recurrence,
     )
 
@@ -331,6 +340,7 @@ export class TaskService {
         recurrence: completedTask.recurrence,
         remindBeforeStart: completedTask.remindBeforeStart === true,
         reminderOffsets: completedTask.reminderOffsets,
+        reminderTimeZone: context.clientTimeZone,
         resource: completedTask.resource,
         requiresConfirmation: completedTask.requiresConfirmation,
         routine: completedTask.routine,
@@ -344,6 +354,7 @@ export class TaskService {
 
 function getTaskRecurrencePattern(
   task: StoredTaskRecord,
+  timeZone?: string,
 ): NonNullable<StoredTaskRecord['recurrence']> | null {
   if (task.recurrence) {
     return task.recurrence.isActive ? task.recurrence : null
@@ -360,7 +371,7 @@ function getTaskRecurrencePattern(
     interval: 1,
     isActive: true,
     seriesId: task.routine.seriesId,
-    startDate: task.plannedDate ?? getRecurringReferenceDate(task),
+    startDate: task.plannedDate ?? getRecurringReferenceDate(task, timeZone),
   }
 }
 
@@ -371,16 +382,45 @@ function hasRecurringSeries(task: StoredTaskRecord, seriesId: string): boolean {
   )
 }
 
-function getRecurringReferenceDate(task: StoredTaskRecord): string {
+function getRecurringReferenceDate(
+  task: StoredTaskRecord,
+  timeZone?: string,
+): string {
   const completedDate = task.completedAt
-    ? task.completedAt.slice(0, 10)
-    : new Date().toISOString().slice(0, 10)
+    ? getDateKeyInTimeZone(new Date(task.completedAt), timeZone)
+    : getDateKeyInTimeZone(new Date(), timeZone)
 
   if (!task.plannedDate) {
     return completedDate
   }
 
   return task.plannedDate > completedDate ? task.plannedDate : completedDate
+}
+
+function getDateKeyInTimeZone(date: Date, timeZone?: string): string {
+  if (!timeZone || Number.isNaN(date.getTime())) {
+    return date.toISOString().slice(0, 10)
+  }
+
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      day: '2-digit',
+      month: '2-digit',
+      timeZone,
+      year: 'numeric',
+    }).formatToParts(date)
+    const year = parts.find((part) => part.type === 'year')?.value
+    const month = parts.find((part) => part.type === 'month')?.value
+    const day = parts.find((part) => part.type === 'day')?.value
+
+    if (year && month && day) {
+      return `${year}-${month}-${day}`
+    }
+  } catch {
+    // Keep the previous UTC behavior if a non-route caller passes bad timezone.
+  }
+
+  return date.toISOString().slice(0, 10)
 }
 
 function getNextRecurringDate(
@@ -579,6 +619,23 @@ function assertCanUseTaskReminder(
       'task_reminder_invalid_timezone',
       'Task reminder timezone is invalid.',
     )
+  }
+}
+
+function withClientReminderTimeZone<
+  TInput extends { reminderTimeZone?: string | undefined },
+>(context: TaskWriteContext, input: TInput, reminderOffsets: number[]): TInput {
+  if (
+    reminderOffsets.length === 0 ||
+    input.reminderTimeZone?.trim() ||
+    !context.clientTimeZone
+  ) {
+    return input
+  }
+
+  return {
+    ...input,
+    reminderTimeZone: context.clientTimeZone,
   }
 }
 

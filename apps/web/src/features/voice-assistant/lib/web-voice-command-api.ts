@@ -5,6 +5,7 @@ import {
 
 import type { SessionFeatureApiConfig } from '@/features/session'
 import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
+import { resolveClientTimeZone } from '@/shared/lib/date'
 
 import {
   WEB_VOICE_BACKEND_TIMEOUT_MS,
@@ -190,9 +191,5 @@ function createUuid(): string {
 }
 
 function resolveClientTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow'
-  } catch {
-    return 'Europe/Moscow'
-  }
+  return resolveClientTimeZone() ?? 'UTC'
 }

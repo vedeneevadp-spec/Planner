@@ -50,6 +50,7 @@ export type TaskEventFilters = TaskEventListFilters
 export interface TaskReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
@@ -65,6 +66,7 @@ export interface TaskWriteContext {
   actorUserId: string
   actorDisplayName: string
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   personalWorkspace?: PersonalWorkspaceTarget | null | undefined
   role?: WorkspaceRole | undefined

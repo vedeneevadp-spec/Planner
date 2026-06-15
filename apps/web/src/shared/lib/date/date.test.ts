@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { addDays, formatTimeRange, getDateKey, isBeforeDate } from './date'
+import {
+  addDays,
+  formatTimeRange,
+  formatTimeZoneOffsetLabel,
+  getDateKey,
+  isBeforeDate,
+} from './date'
 
 describe('date helpers', () => {
   it('creates a stable date key', () => {
@@ -23,5 +29,13 @@ describe('date helpers', () => {
   it('formats timeline ranges', () => {
     expect(formatTimeRange('9:00', null)).toBe('09:00')
     expect(formatTimeRange('09:00', '10:30')).toBe('09:00 - 10:30')
+  })
+
+  it('formats the device timezone offset label', () => {
+    const date = new Date('2026-01-01T00:00:00.000Z')
+
+    vi.spyOn(date, 'getTimezoneOffset').mockReturnValue(-330)
+
+    expect(formatTimeZoneOffsetLabel(date)).toBe('GMT+5:30')
   })
 })

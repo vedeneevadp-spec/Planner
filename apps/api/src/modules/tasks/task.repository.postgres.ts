@@ -843,7 +843,7 @@ export class PostgresTaskRepository implements TaskRepository {
           plannedStartTime: record.plannedStartTime,
           remindBeforeStart: record.remindBeforeStart === true,
           reminderOffsets: record.reminderOffsets ?? [],
-          reminderTimeZone: undefined,
+          reminderTimeZone: command.context.clientTimeZone,
           taskId: command.taskId,
           userId: updatedTask.created_by ?? command.context.actorUserId,
           workspaceId: command.context.workspaceId,

@@ -25,7 +25,9 @@ import {
   addDays,
   formatLongDate,
   formatTimeRange,
+  formatTimeZoneOffsetLabel,
   getDateKey,
+  resolveClientTimeZone,
 } from '@/shared/lib/date'
 import {
   ChevronLeftIcon,
@@ -510,6 +512,8 @@ export function CalendarPage() {
   const { mutate: updateUserPreferences } = useUpdateUserPreferences()
   const [currentTime, setCurrentTime] = useState(() => new Date())
   const todayKey = getDateKey(currentTime)
+  const clientTimeZoneLabel = formatTimeZoneOffsetLabel(currentTime)
+  const clientTimeZone = resolveClientTimeZone()
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
@@ -1039,7 +1043,12 @@ export function CalendarPage() {
           aria-label="Неделя"
         >
           <div className={styles.weekHeaderGrid}>
-            <div className={styles.timeZoneLabel}>GMT+7</div>
+            <div
+              className={styles.timeZoneLabel}
+              title={clientTimeZone ?? clientTimeZoneLabel}
+            >
+              {clientTimeZoneLabel}
+            </div>
             {weekDateKeys.map((dateKey, index) => {
               const isToday = dateKey === todayKey
 
