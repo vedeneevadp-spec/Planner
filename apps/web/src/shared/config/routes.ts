@@ -217,7 +217,7 @@ export const navigationRouteDefinitions = [
     label: 'Забота',
     mobileOrder: 1,
     mobilePlacement: 'more',
-    plannerTabColor: 'green',
+    plannerTabColor: 'lavender',
     plannerTabOrder: 5,
     plannerTabPlacement: 'side',
     plannerTabShortLabel: 'Забота',
