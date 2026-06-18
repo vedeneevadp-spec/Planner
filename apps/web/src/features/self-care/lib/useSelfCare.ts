@@ -14,7 +14,12 @@ import {
   type SelfCareSettingsUpdateInput,
   type SelfCareTemplateCreateInput,
 } from '@planner/contracts'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { useSessionFeatureReadiness } from '@/features/session'
@@ -29,11 +34,14 @@ import {
 interface OccurrenceMutationVariables<TInput> {
   input?: TInput | undefined
   occurrenceId: string
+  skipInvalidation?: boolean | undefined
 }
 
 interface RequiredOccurrenceMutationVariables<TInput> {
   input: TInput
+  invalidationScopes?: readonly SelfCareQueryScope[] | undefined
   occurrenceId: string
+  skipInvalidation?: boolean | undefined
 }
 
 interface ItemCompletionVariables<TInput> {
@@ -43,12 +51,20 @@ interface ItemCompletionVariables<TInput> {
 
 interface ItemScheduleVariables {
   input: SelfCareItemScheduleInput
+  invalidationScopes?: readonly SelfCareQueryScope[] | undefined
   itemId: string
+  skipInvalidation?: boolean | undefined
 }
 
 interface ItemUpdateVariables {
   input: SelfCareItemUpdateInput
   itemId: string
+  skipInvalidation?: boolean | undefined
+}
+
+interface CreateItemVariables {
+  input: SelfCareItemInput
+  skipInvalidation?: boolean | undefined
 }
 
 interface CreateFromTemplateVariables {
@@ -61,6 +77,42 @@ interface RitualStepDraftDeleteVariables {
   itemId: string
   occurrenceId: string | null
 }
+
+type SelfCareQueryScope =
+  | 'analytics'
+  | 'dashboard'
+  | 'history'
+  | 'items'
+  | 'plan'
+  | 'ritual-step-drafts'
+  | 'settings'
+  | 'templates'
+
+const SELF_CARE_ITEM_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
+  'dashboard',
+  'items',
+  'plan',
+  'history',
+  'analytics',
+]
+const SELF_CARE_OCCURRENCE_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
+  'dashboard',
+  'plan',
+  'history',
+  'analytics',
+]
+const SELF_CARE_COMPLETION_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
+  'dashboard',
+  'items',
+  'plan',
+  'history',
+  'analytics',
+  'ritual-step-drafts',
+]
+const SELF_CARE_SETTINGS_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
+  'dashboard',
+  'settings',
+]
 
 export function selfCareDashboardQueryKey(workspaceId: string, date: string) {
   return ['self-care', workspaceId, 'dashboard', date] as const
@@ -255,10 +307,17 @@ export function useCreateSelfCareItem() {
   const { api, session, workspaceId } = useSelfCareApi()
 
   return useMutation({
-    mutationFn: async (input: SelfCareItemInput) => {
+    mutationFn: async (variables: SelfCareItemInput | CreateItemVariables) => {
+      const { input, skipInvalidation } =
+        normalizeCreateItemVariables(variables)
       assertSession(session, 'создать заботу')
       const item = await requireSelfCareApi(api).createItem(input)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidationUnlessSkipped(
+        queryClient,
+        workspaceId,
+        SELF_CARE_ITEM_CHANGE_SCOPES,
+        { skipInvalidation },
+      )
       return item
     },
   })
@@ -275,7 +334,11 @@ export function useCreateSelfCareItemFromTemplate() {
         templateId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_ITEM_CHANGE_SCOPES,
+      )
       return item
     },
   })
@@ -286,10 +349,19 @@ export function useUpdateSelfCareItem() {
   const { api, session, workspaceId } = useSelfCareApi()
 
   return useMutation({
-    mutationFn: async ({ input, itemId }: ItemUpdateVariables) => {
+    mutationFn: async ({
+      input,
+      itemId,
+      skipInvalidation,
+    }: ItemUpdateVariables) => {
       assertSession(session, 'обновить заботу')
       const item = await requireSelfCareApi(api).updateItem(itemId, input)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidationUnlessSkipped(
+        queryClient,
+        workspaceId,
+        SELF_CARE_ITEM_CHANGE_SCOPES,
+        { skipInvalidation },
+      )
       return item
     },
   })
@@ -303,8 +375,12 @@ export function useArchiveSelfCareItem() {
     mutationFn: async (itemId: string) => {
       assertSession(session, 'архивировать заботу')
       const item = await requireSelfCareApi(api).archiveItem(itemId)
-      await invalidateSelfCare(queryClient, workspaceId)
-      await invalidateMigratedHabitRoutine(
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_ITEM_CHANGE_SCOPES,
+      )
+      void invalidateMigratedHabitRoutine(
         queryClient,
         workspaceId,
         item.migratedFromHabitId,
@@ -323,7 +399,11 @@ export function useCancelSelfCareOccurrence() {
       assertSession(session, 'убрать заботу из плана')
       const occurrence =
         await requireSelfCareApi(api).cancelOccurrence(occurrenceId)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+      )
       return occurrence
     },
   })
@@ -343,7 +423,11 @@ export function useCompleteSelfCareOccurrence() {
         occurrenceId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_COMPLETION_CHANGE_SCOPES,
+      )
       return completion
     },
   })
@@ -391,7 +475,11 @@ export function useCompleteSelfCareItemNow() {
         itemId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_COMPLETION_CHANGE_SCOPES,
+      )
       return completion
     },
   })
@@ -411,7 +499,11 @@ export function useCompleteSelfCareFlexibleGoal() {
         itemId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+      )
       return completion
     },
   })
@@ -431,7 +523,11 @@ export function useCompleteSelfCareCourseSession() {
         itemId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_COMPLETION_CHANGE_SCOPES,
+      )
       return completion
     },
   })
@@ -451,7 +547,11 @@ export function useSkipSelfCareOccurrence() {
         occurrenceId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+      )
       return occurrence
     },
   })
@@ -464,14 +564,21 @@ export function useMoveSelfCareOccurrence() {
   return useMutation({
     mutationFn: async ({
       input,
+      invalidationScopes,
       occurrenceId,
+      skipInvalidation,
     }: RequiredOccurrenceMutationVariables<SelfCareOccurrenceMoveInput>) => {
       assertSession(session, 'перенести заботу')
       const occurrence = await requireSelfCareApi(api).moveOccurrence(
         occurrenceId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidationUnlessSkipped(
+        queryClient,
+        workspaceId,
+        invalidationScopes ?? SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+        { skipInvalidation },
+      )
       return occurrence
     },
   })
@@ -482,13 +589,23 @@ export function useScheduleSelfCareItem() {
   const { api, session, workspaceId } = useSelfCareApi()
 
   return useMutation({
-    mutationFn: async ({ input, itemId }: ItemScheduleVariables) => {
+    mutationFn: async ({
+      input,
+      invalidationScopes,
+      itemId,
+      skipInvalidation,
+    }: ItemScheduleVariables) => {
       assertSession(session, 'запланировать заботу')
       const occurrence = await requireSelfCareApi(api).scheduleItem(
         itemId,
         input,
       )
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidationUnlessSkipped(
+        queryClient,
+        workspaceId,
+        invalidationScopes ?? SELF_CARE_ITEM_CHANGE_SCOPES,
+        { skipInvalidation },
+      )
       return occurrence
     },
   })
@@ -502,7 +619,11 @@ export function useEnableSelfCareGentleMode() {
     mutationFn: async (date: string) => {
       assertSession(session, 'включить бережный режим')
       const settings = await requireSelfCareApi(api).enableGentleMode(date)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_SETTINGS_CHANGE_SCOPES,
+      )
       return settings
     },
   })
@@ -516,7 +637,11 @@ export function useDisableSelfCareGentleMode() {
     mutationFn: async (date: string) => {
       assertSession(session, 'выключить бережный режим')
       const settings = await requireSelfCareApi(api).disableGentleMode(date)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_SETTINGS_CHANGE_SCOPES,
+      )
       return settings
     },
   })
@@ -530,7 +655,11 @@ export function useUpdateSelfCareMinimumItems() {
     mutationFn: async (input: SelfCareMinimumItemsUpdateInput) => {
       assertSession(session, 'обновить минимум заботы')
       const settings = await requireSelfCareApi(api).updateMinimumItems(input)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_SETTINGS_CHANGE_SCOPES,
+      )
       return settings
     },
   })
@@ -544,7 +673,11 @@ export function useUpdateSelfCareSettings() {
     mutationFn: async (input: SelfCareSettingsUpdateInput) => {
       assertSession(session, 'обновить настройки заботы')
       const settings = await requireSelfCareApi(api).updateSettings(input)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_SETTINGS_CHANGE_SCOPES,
+      )
       return settings
     },
   })
@@ -564,7 +697,10 @@ export function useUpsertSelfCareDailyState() {
     }) => {
       assertSession(session, 'сохранить состояние')
       const state = await requireSelfCareApi(api).upsertDailyState(date, input)
-      await invalidateSelfCare(queryClient, workspaceId)
+      queueSelfCareInvalidation(queryClient, workspaceId, [
+        'dashboard',
+        'analytics',
+      ])
       return state
     },
   })
@@ -612,20 +748,52 @@ function assertSession(session: unknown, action: string): void {
   }
 }
 
-async function invalidateSelfCare(
-  queryClient: ReturnType<typeof useQueryClient>,
+function normalizeCreateItemVariables(
+  variables: SelfCareItemInput | CreateItemVariables,
+): CreateItemVariables {
+  if (
+    typeof variables === 'object' &&
+    variables !== null &&
+    'input' in variables
+  ) {
+    return variables
+  }
+
+  return { input: variables }
+}
+
+function queueSelfCareInvalidationUnlessSkipped(
+  queryClient: QueryClient,
   workspaceId: string,
-): Promise<void> {
-  await queryClient.invalidateQueries({
+  scopes: readonly SelfCareQueryScope[],
+  options: { skipInvalidation?: boolean | undefined } = {},
+): void {
+  if (options.skipInvalidation) {
+    return
+  }
+
+  queueSelfCareInvalidation(queryClient, workspaceId, scopes)
+}
+
+function queueSelfCareInvalidation(
+  queryClient: QueryClient,
+  workspaceId: string,
+  scopes: readonly SelfCareQueryScope[],
+): void {
+  const scopeSet = new Set<SelfCareQueryScope>(scopes)
+
+  void queryClient.invalidateQueries({
     predicate: (query) =>
       Array.isArray(query.queryKey) &&
       query.queryKey[0] === 'self-care' &&
-      query.queryKey[1] === workspaceId,
+      query.queryKey[1] === workspaceId &&
+      typeof query.queryKey[2] === 'string' &&
+      scopeSet.has(query.queryKey[2] as SelfCareQueryScope),
   })
 }
 
 function setRitualStepDraftQueryData(
-  queryClient: ReturnType<typeof useQueryClient>,
+  queryClient: QueryClient,
   workspaceId: string,
   result: SelfCareRitualStepDraftListResponse,
 ): void {
@@ -636,7 +804,7 @@ function setRitualStepDraftQueryData(
 }
 
 async function invalidateMigratedHabitRoutine(
-  queryClient: ReturnType<typeof useQueryClient>,
+  queryClient: QueryClient,
   workspaceId: string,
   habitId: string | null,
 ): Promise<void> {

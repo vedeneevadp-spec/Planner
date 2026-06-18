@@ -110,6 +110,7 @@ const HIDDEN_TODAY_OCCURRENCE_STATUSES: ReadonlySet<
   NonNullable<SelfCareTodayItem['occurrence']>['status']
 > = new Set(['cancelled', 'done', 'missed', 'moved', 'partial', 'skipped'])
 const DAY_MS = 86_400_000
+const SELF_CARE_PLAN_LOOKAHEAD_DAYS = 45
 
 const SELF_CARE_TABS: Array<{ id: SelfCareTab; label: string }> = [
   { id: 'today', label: 'Сегодня' },
@@ -375,18 +376,48 @@ export function SelfCarePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const todayKey = getDateKey(new Date())
   const rangeFrom = getDateKey(addDays(new Date(), -30))
-  const planTo = getDateKey(addDays(new Date(), 180))
+  const planTo = getDateKey(addDays(new Date(), SELF_CARE_PLAN_LOOKAHEAD_DAYS))
   const activeTab = getSelfCareTab(searchParams)
+  const createDialogMode = getSelfCareCreateDialogMode(searchParams)
   const tabsRef = useRef<HTMLElement | null>(null)
   const { uploadedIcons } = useUploadedIconAssets()
-  const dashboardQuery = useSelfCareDashboard(todayKey)
-  const itemsQuery = useSelfCareItems()
-  const planQuery = useSelfCarePlan(todayKey, planTo)
-  const stepDraftsQuery = useSelfCareRitualStepDrafts(todayKey)
-  const historyQuery = useSelfCareHistory(rangeFrom, todayKey)
-  const analyticsQuery = useSelfCareAnalytics(rangeFrom, todayKey)
-  const settingsQuery = useSelfCareSettings()
-  const templatesQuery = useSelfCareTemplates()
+  const shouldLoadDashboard = activeTab === 'today' || activeTab === 'rituals'
+  const shouldLoadItems =
+    activeTab === 'today' ||
+    activeTab === 'rituals' ||
+    activeTab === 'settings' ||
+    Boolean(createDialogMode)
+  const shouldLoadPlan =
+    activeTab === 'today' || activeTab === 'plan' || activeTab === 'rituals'
+  const shouldLoadHistory =
+    activeTab === 'today' ||
+    activeTab === 'plan' ||
+    activeTab === 'rituals' ||
+    activeTab === 'history'
+  const shouldLoadRitualStepDrafts =
+    activeTab === 'today' || activeTab === 'rituals'
+  const shouldLoadSettings =
+    activeTab === 'settings' || Boolean(createDialogMode)
+  const shouldLoadTemplates =
+    activeTab === 'settings' || Boolean(createDialogMode)
+  const dashboardQuery = useSelfCareDashboard(todayKey, {
+    enabled: shouldLoadDashboard,
+  })
+  const itemsQuery = useSelfCareItems({ enabled: shouldLoadItems })
+  const planQuery = useSelfCarePlan(todayKey, planTo, {
+    enabled: shouldLoadPlan,
+  })
+  const stepDraftsQuery = useSelfCareRitualStepDrafts(todayKey, {
+    enabled: shouldLoadRitualStepDrafts,
+  })
+  const historyQuery = useSelfCareHistory(rangeFrom, todayKey, {
+    enabled: shouldLoadHistory,
+  })
+  const analyticsQuery = useSelfCareAnalytics(rangeFrom, todayKey, {
+    enabled: activeTab === 'analytics',
+  })
+  const settingsQuery = useSelfCareSettings({ enabled: shouldLoadSettings })
+  const templatesQuery = useSelfCareTemplates({ enabled: shouldLoadTemplates })
   const completeOccurrenceMutation = useCompleteSelfCareOccurrence()
   const completeItemNowMutation = useCompleteSelfCareItemNow()
   const completeFlexibleGoalMutation = useCompleteSelfCareFlexibleGoal()
@@ -423,12 +454,18 @@ export function SelfCarePage() {
   const plan = planQuery.data
   const history = historyQuery.data
   const analytics = analyticsQuery.data
-  const createDialogMode = getSelfCareCreateDialogMode(searchParams)
   const settingsResponse =
     settingsQuery.data ??
     (dashboard ? { minimumItems: [], settings: dashboard.settings } : undefined)
   const defaultCurrency = settingsResponse?.settings.currency ?? 'RUB'
   const templates = templatesQuery.data ?? []
+  const isActiveTabLoading =
+    (activeTab === 'today' && dashboardQuery.isLoading && !dashboard) ||
+    (activeTab === 'plan' && planQuery.isLoading && !plan) ||
+    (activeTab === 'rituals' && itemsQuery.isLoading && !list) ||
+    (activeTab === 'history' && historyQuery.isLoading && !history) ||
+    (activeTab === 'analytics' && analyticsQuery.isLoading && !analytics) ||
+    (activeTab === 'settings' && settingsQuery.isLoading && !settingsResponse)
   const serverRitualStepDrafts = useMemo(
     () =>
       stepDraftsQuery.data ? buildRitualStepDraftMap(stepDraftsQuery.data) : {},
@@ -534,8 +571,12 @@ export function SelfCarePage() {
   function handleCreateCustomCare(payload: SelfCareCustomCreatePayload): void {
     setFormError(null)
 
+    const shouldSchedule = Boolean(payload.scheduleInput)
     void createItemMutation
-      .mutateAsync(payload.input)
+      .mutateAsync({
+        input: payload.input,
+        skipInvalidation: shouldSchedule,
+      })
       .then(async (item) => {
         if (payload.scheduleInput) {
           await scheduleItemMutation.mutateAsync({
@@ -646,6 +687,7 @@ export function SelfCarePage() {
       await updateItemMutation.mutateAsync({
         input: payload.input,
         itemId: entry.item.id,
+        skipInvalidation: Boolean(payload.scheduleInput),
       })
 
       if (payload.scheduleInput) {
@@ -691,24 +733,33 @@ export function SelfCarePage() {
     }
 
     const entry = scheduleDialogEntry
+    const occurrence = entry.occurrence
+    const shouldMoveOverdue = occurrence
+      ? occurrence.scheduledFor < todayKey &&
+        input.scheduledFor !== occurrence.scheduledFor
+      : false
     setFormError(null)
     void scheduleItemMutation
       .mutateAsync({
         input,
         itemId: entry.item.id,
+        skipInvalidation: shouldMoveOverdue,
       })
       .then(async () => {
-        if (
-          entry.occurrence &&
-          entry.occurrence.scheduledFor < todayKey &&
-          input.scheduledFor !== entry.occurrence.scheduledFor
-        ) {
+        if (occurrence && shouldMoveOverdue) {
           await moveOccurrenceMutation.mutateAsync({
+            invalidationScopes: [
+              'dashboard',
+              'items',
+              'plan',
+              'history',
+              'analytics',
+            ],
             input: {
               newDate: input.scheduledFor,
               note: 'Перенесено из просроченного плана.',
             },
-            occurrenceId: entry.occurrence.id,
+            occurrenceId: occurrence.id,
           })
         }
       })
@@ -954,7 +1005,7 @@ export function SelfCarePage() {
         ))}
       </nav>
 
-      {dashboardQuery.isLoading && !dashboard ? (
+      {isActiveTabLoading ? (
         <section className={styles.emptyPanel}>
           Загружаем заботу о себе.
         </section>

@@ -62,6 +62,7 @@ import type {
 } from './self-care.model.js'
 import type { SelfCareRepository } from './self-care.repository.js'
 import {
+  addDays,
   buildAnalyticsResponse,
   buildDashboardResponse,
   buildDueAt,
@@ -88,15 +89,14 @@ import {
   generateSelfCareOccurrencesForRange,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
-  isCompletionProgressStatus,
   parseJsonArray,
+  type SelfCareStateSnapshot,
   serializeDate,
   serializeNullableDate,
   serializeNullableTime,
   serializeNullableTimestamp,
   serializeTimestamp,
   shouldDeduplicateSelfCareItemCompletion,
-  shouldMarkSelfCareOccurrenceMissed,
   updateOccurrenceStatus,
 } from './self-care.shared.js'
 
@@ -130,6 +130,34 @@ type TemplateRow = Selectable<DatabaseSchema['app.self_care_templates']>
 type SettingsRow = Selectable<DatabaseSchema['app.self_care_settings']>
 type MinimumRow = Selectable<DatabaseSchema['app.self_care_minimum_items']>
 
+interface LoadStateDateRange {
+  from: string
+  to: string
+}
+
+interface LoadStateOptions {
+  completionRange?: LoadStateDateRange | undefined
+  dailyStateRange?: LoadStateDateRange | undefined
+  includeAlternatives?: boolean | undefined
+  includeAppointmentDetails?: boolean | undefined
+  includeCompletions?: boolean | undefined
+  includeCourseDetails?: boolean | undefined
+  includeDailyStates?: boolean | undefined
+  includeMedicalDetails?: boolean | undefined
+  includeMeasurementDetails?: boolean | undefined
+  includeMinimumItems?: boolean | undefined
+  includeOccurrences?: boolean | undefined
+  includeProcedureDetails?: boolean | undefined
+  includeScheduleRules?: boolean | undefined
+  includeSettings?: boolean | undefined
+  includeStepCompletions?: boolean | undefined
+  includeSteps?: boolean | undefined
+  includeTemplates?: boolean | undefined
+  includeAllScheduledOccurrences?: boolean | undefined
+  occurrenceRange?: LoadStateDateRange | undefined
+  scheduledOccurrencesBefore?: string | undefined
+}
+
 export class PostgresSelfCareRepository implements SelfCareRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
@@ -137,7 +165,18 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     context: SelfCareReadContext,
     filters: SelfCareListFilters = {},
   ) {
-    return buildSelfCareListResponse(await this.loadState(context), filters)
+    return buildSelfCareListResponse(
+      await this.loadState(context, {
+        includeCompletions: false,
+        includeDailyStates: false,
+        includeMinimumItems: false,
+        includeOccurrences: false,
+        includeSettings: false,
+        includeStepCompletions: false,
+        includeTemplates: false,
+      }),
+      filters,
+    )
   }
 
   async createItem(command: CreateSelfCareItemCommand) {
@@ -509,48 +548,53 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async generateOccurrences(command: GenerateSelfCareOccurrencesCommand) {
-    const state = await this.loadState(command.context)
+    const state = await this.loadState(command.context, {
+      includeAlternatives: false,
+      includeAppointmentDetails: false,
+      includeDailyStates: false,
+      includeMedicalDetails: false,
+      includeMeasurementDetails: false,
+      includeMinimumItems: false,
+      includeProcedureDetails: false,
+      includeSettings: false,
+      includeStepCompletions: false,
+      includeSteps: false,
+      includeTemplates: false,
+      occurrenceRange: { from: command.from, to: command.to },
+    })
     const generated: StoredSelfCareOccurrenceRecord[] = []
 
-    await withWriteTransaction(
+    for (const item of state.items) {
+      const rule =
+        state.scheduleRules.find((candidate) => candidate.itemId === item.id) ??
+        null
+      const course =
+        state.courseDetails.find((candidate) => candidate.itemId === item.id) ??
+        null
+      generated.push(
+        ...generateSelfCareOccurrencesForRange({
+          completions: state.completions,
+          courseDetails: course,
+          existingOccurrences: state.occurrences,
+          from: command.from,
+          item,
+          scheduleRule: rule,
+          to: command.to,
+        }),
+      )
+    }
+
+    if (generated.length === 0) {
+      return []
+    }
+
+    return withWriteTransaction(
       this.db,
       command.context.auth,
-      async (trx) => {
-        for (const item of state.items) {
-          const rule =
-            state.scheduleRules.find(
-              (candidate) => candidate.itemId === item.id,
-            ) ?? null
-          const course =
-            state.courseDetails.find(
-              (candidate) => candidate.itemId === item.id,
-            ) ?? null
-          const occurrences = generateSelfCareOccurrencesForRange({
-            completions: state.completions,
-            courseDetails: course,
-            existingOccurrences: state.occurrences,
-            from: command.from,
-            item,
-            scheduleRule: rule,
-            to: command.to,
-          })
-
-          for (const occurrence of occurrences) {
-            const inserted = await this.insertOccurrence(
-              trx,
-              occurrence,
-              command.context.actorUserId,
-            )
-            if (inserted) {
-              generated.push(inserted)
-            }
-          }
-        }
-      },
+      (trx) =>
+        this.insertOccurrences(trx, generated, command.context.actorUserId),
       command.context.actorUserId,
     )
-
-    return generated
   }
 
   async getDashboard(command: GetSelfCareDashboardCommand) {
@@ -562,7 +606,16 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await this.markMissedOccurrences(command.context, command.date)
     return buildDashboardResponse({
       date: command.date,
-      state: await this.loadState(command.context),
+      state: await this.loadState(command.context, {
+        dailyStateRange: { from: command.date, to: command.date },
+        includeTemplates: false,
+        occurrenceRange: {
+          from: command.date,
+          to: addDays(command.date, 45),
+        },
+        includeAllScheduledOccurrences: true,
+        scheduledOccurrencesBefore: command.date,
+      }),
     })
   }
 
@@ -575,7 +628,14 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await this.markMissedOccurrences(command.context, command.from)
     return buildPlanResponse({
       from: command.from,
-      state: await this.loadState(command.context),
+      state: await this.loadState(command.context, {
+        includeDailyStates: false,
+        includeMinimumItems: false,
+        includeSettings: false,
+        includeTemplates: false,
+        includeAllScheduledOccurrences: true,
+        occurrenceRange: { from: command.from, to: command.to },
+      }),
       to: command.to,
     })
   }
@@ -587,7 +647,23 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.to,
     )
     await this.markMissedOccurrences(command.context, command.from)
-    const state = await this.loadState(command.context)
+    const state = await this.loadState(command.context, {
+      includeAlternatives: false,
+      includeAppointmentDetails: false,
+      includeCompletions: false,
+      includeCourseDetails: false,
+      includeDailyStates: false,
+      includeMedicalDetails: false,
+      includeMeasurementDetails: false,
+      includeMinimumItems: false,
+      includeProcedureDetails: false,
+      includeScheduleRules: false,
+      includeSettings: false,
+      includeStepCompletions: false,
+      includeSteps: false,
+      includeTemplates: false,
+      occurrenceRange: { from: command.from, to: command.to },
+    })
     return state.occurrences.filter(
       (occurrence) =>
         occurrence.scheduledFor >= command.from &&
@@ -987,8 +1063,28 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async getDailyState(context: SelfCareReadContext, date: string) {
-    const state = await this.loadState(context)
-    return state.dailyStates.find((item) => item.date === date) ?? null
+    const actorUserId =
+      context.actorUserId ??
+      (await this.findUserIdForWorkspace(context.workspaceId, context.auth))
+
+    if (!actorUserId) {
+      return null
+    }
+
+    const row = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        executor
+          .selectFrom('app.self_care_daily_states')
+          .selectAll()
+          .where('user_id', '=', actorUserId)
+          .where('date', '=', date)
+          .executeTakeFirst(),
+      actorUserId,
+    )
+
+    return row ? this.mapDailyState(row) : null
   }
 
   async upsertDailyState(command: UpsertSelfCareDailyStateCommand) {
@@ -1030,8 +1126,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async getSettings(context: SelfCareReadContext) {
-    const state = await this.loadState(context)
-    return { minimumItems: state.minimumItems, settings: state.settings }
+    return this.loadSettingsState(context)
   }
 
   async updateSettings(command: UpdateSelfCareSettingsCommand) {
@@ -1234,7 +1329,22 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   async getHistory(context: SelfCareReadContext, from: string, to: string) {
     return buildHistoryResponse({
       from,
-      state: await this.loadState(context),
+      state: await this.loadState(context, {
+        completionRange: { from, to },
+        includeAlternatives: false,
+        includeAppointmentDetails: false,
+        includeCourseDetails: false,
+        includeDailyStates: false,
+        includeMedicalDetails: false,
+        includeMeasurementDetails: false,
+        includeMinimumItems: false,
+        includeOccurrences: false,
+        includeProcedureDetails: false,
+        includeScheduleRules: false,
+        includeSettings: false,
+        includeSteps: false,
+        includeTemplates: false,
+      }),
       to,
     })
   }
@@ -1242,7 +1352,14 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   async getAnalytics(context: SelfCareReadContext, from: string, to: string) {
     return buildAnalyticsResponse({
       from,
-      state: await this.loadState(context),
+      state: await this.loadState(context, {
+        completionRange: { from, to },
+        dailyStateRange: { from, to },
+        includeMinimumItems: false,
+        includeSettings: false,
+        includeTemplates: false,
+        occurrenceRange: { from: to, to: addDays(to, 45) },
+      }),
       to,
     })
   }
@@ -1443,6 +1560,49 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     })
   }
 
+  private async loadSettingsState(context: SelfCareReadContext) {
+    const actorUserId =
+      context.actorUserId ??
+      (await this.findUserIdForWorkspace(context.workspaceId, context.auth))
+    const userId = actorUserId ?? '00000000-0000-0000-0000-000000000000'
+
+    if (!actorUserId) {
+      return {
+        minimumItems: createDefaultMinimumItems(userId),
+        settings: createDefaultSelfCareSettings({ userId }),
+      }
+    }
+
+    const [settingsRows, minimumRows] = await withOptionalRls(
+      this.db,
+      context.auth,
+      async (executor) =>
+        [
+          await executor
+            .selectFrom('app.self_care_settings')
+            .selectAll()
+            .where('user_id', '=', actorUserId)
+            .execute(),
+          await executor
+            .selectFrom('app.self_care_minimum_items')
+            .selectAll()
+            .where('user_id', '=', actorUserId)
+            .execute(),
+        ] as const,
+      actorUserId,
+    )
+
+    return {
+      minimumItems:
+        minimumRows.length > 0
+          ? minimumRows.map((row) => this.mapMinimum(row))
+          : createDefaultMinimumItems(userId),
+      settings: settingsRows[0]
+        ? this.mapSettings(settingsRows[0])
+        : createDefaultSelfCareSettings({ userId }),
+    }
+  }
+
   private async loadProgressCompletionForDate(
     executor: DatabaseExecutor,
     input: {
@@ -1451,25 +1611,18 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       userId: string
     },
   ): Promise<StoredSelfCareCompletionRecord | null> {
-    const rows = await executor
+    const row = await executor
       .selectFrom('app.self_care_completions')
       .selectAll()
       .where('user_id', '=', input.userId)
       .where('item_id', '=', input.itemId)
-      .execute()
+      .where('completed_at', '>=', toStartOfDayTimestamp(input.date))
+      .where('completed_at', '<', toStartOfDayTimestamp(addDays(input.date, 1)))
+      .where('status', 'in', ['done', 'partial', 'alternative_done'])
+      .orderBy('completed_at', 'desc')
+      .executeTakeFirst()
 
-    return (
-      rows
-        .map((row) => this.mapCompletion(row))
-        .filter(
-          (completion) =>
-            completion.completedAt.slice(0, 10) === input.date &&
-            isCompletionProgressStatus(completion.status),
-        )
-        .sort((left, right) =>
-          right.completedAt.localeCompare(left.completedAt),
-        )[0] ?? null
-    )
+    return row ? this.mapCompletion(row) : null
   }
 
   private async markMissedOccurrences(
@@ -1481,46 +1634,71 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     }
 
     const actorUserId = context.actorUserId
-    const state = await this.loadState(context)
-    const itemById = new Map(state.items.map((item) => [item.id, item]))
-    const missedOccurrenceIds = state.occurrences
-      .filter((occurrence) => {
-        const item = itemById.get(occurrence.itemId)
-        return item
-          ? shouldMarkSelfCareOccurrenceMissed({
-              date,
-              item,
-              occurrence,
-              state,
-            })
-          : false
-      })
-      .map((occurrence) => occurrence.id)
-
-    if (missedOccurrenceIds.length === 0) {
-      return
-    }
 
     await withWriteTransaction(
       this.db,
       context.auth,
       (trx) =>
-        trx
-          .updateTable('app.self_care_occurrences')
-          .set({
-            status: 'missed',
-            updated_by: actorUserId,
-          })
-          .where('user_id', '=', actorUserId)
-          .where('status', '=', 'scheduled')
-          .where('id', 'in', missedOccurrenceIds)
-          .execute(),
+        sql`
+          update app.self_care_occurrences as occurrence
+          set status = 'missed',
+              updated_by = ${actorUserId}
+          from app.self_care_items as item
+          left join app.self_care_schedule_rules as rule
+            on rule.item_id = item.id
+          where occurrence.item_id = item.id
+            and occurrence.user_id = ${actorUserId}
+            and item.user_id = ${actorUserId}
+            and item.workspace_id = ${context.workspaceId}
+            and occurrence.status = 'scheduled'
+            and occurrence.scheduled_for < ${date}
+            and item.deleted_at is null
+            and item.is_active = true
+            and item.is_archived = false
+            and (
+              occurrence.schedule_rule_id = rule.id
+              or occurrence.schedule_rule_id is null
+              or rule.id is null
+            )
+            and not (
+              item.type in (
+                'appointment',
+                'medical',
+                'procedure',
+                'rest_action',
+                'task'
+              )
+              or occurrence.schedule_rule_id is null
+              or rule.id is null
+              or rule.repeat_kind = 'after_completion'
+            )
+        `.execute(trx),
       actorUserId,
     )
   }
 
-  private async loadState(context: SelfCareReadContext) {
+  private async loadState(
+    context: SelfCareReadContext,
+    options: LoadStateOptions = {},
+  ): Promise<SelfCareStateSnapshot> {
     const actorUserId = context.actorUserId
+    const includeAlternatives = options.includeAlternatives !== false
+    const includeAppointmentDetails =
+      options.includeAppointmentDetails !== false
+    const includeCompletions = options.includeCompletions !== false
+    const includeCourseDetails = options.includeCourseDetails !== false
+    const includeDailyStates = options.includeDailyStates !== false
+    const includeMedicalDetails = options.includeMedicalDetails !== false
+    const includeMeasurementDetails =
+      options.includeMeasurementDetails !== false
+    const includeMinimumItems = options.includeMinimumItems !== false
+    const includeOccurrences = options.includeOccurrences !== false
+    const includeProcedureDetails = options.includeProcedureDetails !== false
+    const includeScheduleRules = options.includeScheduleRules !== false
+    const includeSettings = options.includeSettings !== false
+    const includeStepCompletions = options.includeStepCompletions !== false
+    const includeSteps = options.includeSteps !== false
+    const includeTemplates = options.includeTemplates !== false
     const [
       itemRows,
       alternativeRows,
@@ -1528,7 +1706,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       occurrenceRows,
       completionRows,
       stepRows,
-      stepCompletionRows,
       procedureRows,
       appointmentRows,
       medicalRows,
@@ -1558,89 +1735,119 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
         return [
           items,
-          await selectChildren(
-            executor,
-            'app.self_care_item_alternatives',
-            itemIds,
-          ),
-          await selectChildren(
-            executor,
-            'app.self_care_schedule_rules',
-            itemIds,
-          ),
-          await (actorUserId
-            ? executor
-                .selectFrom('app.self_care_occurrences')
+          includeAlternatives
+            ? await selectChildren(
+                executor,
+                'app.self_care_item_alternatives',
+                itemIds,
+              )
+            : [],
+          includeScheduleRules
+            ? await selectChildren(
+                executor,
+                'app.self_care_schedule_rules',
+                itemIds,
+              )
+            : [],
+          includeOccurrences
+            ? await selectOccurrences(executor, {
+                actorUserId: actorUserId ?? null,
+                includeAllScheduledOccurrences:
+                  options.includeAllScheduledOccurrences,
+                occurrenceRange: options.occurrenceRange,
+                scheduledOccurrencesBefore: options.scheduledOccurrencesBefore,
+              })
+            : [],
+          includeCompletions
+            ? await selectCompletions(executor, {
+                actorUserId: actorUserId ?? null,
+                completionRange: options.completionRange,
+              })
+            : [],
+          includeSteps
+            ? await selectChildren(
+                executor,
+                'app.self_care_ritual_steps',
+                itemIds,
+              )
+            : [],
+          includeProcedureDetails
+            ? await selectChildren(
+                executor,
+                'app.self_care_procedure_details',
+                itemIds,
+              )
+            : [],
+          includeAppointmentDetails
+            ? await selectChildren(
+                executor,
+                'app.self_care_appointment_details',
+                itemIds,
+              )
+            : [],
+          includeMedicalDetails
+            ? await selectChildren(
+                executor,
+                'app.self_care_medical_details',
+                itemIds,
+              )
+            : [],
+          includeMeasurementDetails
+            ? await selectChildren(
+                executor,
+                'app.self_care_measurement_details',
+                itemIds,
+              )
+            : [],
+          includeCourseDetails
+            ? await selectChildren(
+                executor,
+                'app.self_care_course_details',
+                itemIds,
+              )
+            : [],
+          includeDailyStates
+            ? await selectDailyStates(executor, {
+                dailyStateRange: options.dailyStateRange,
+                userId,
+              })
+            : [],
+          includeSettings
+            ? await executor
+                .selectFrom('app.self_care_settings')
                 .selectAll()
-                .where('user_id', '=', actorUserId)
+                .where('user_id', '=', userId)
                 .execute()
-            : executor
-                .selectFrom('app.self_care_occurrences')
+            : [],
+          includeMinimumItems
+            ? await executor
+                .selectFrom('app.self_care_minimum_items')
                 .selectAll()
-                .execute()),
-          await (actorUserId
-            ? executor
-                .selectFrom('app.self_care_completions')
-                .selectAll()
-                .where('user_id', '=', actorUserId)
+                .where('user_id', '=', userId)
                 .execute()
-            : executor
-                .selectFrom('app.self_care_completions')
+            : [],
+          includeTemplates
+            ? await executor
+                .selectFrom('app.self_care_templates')
                 .selectAll()
-                .execute()),
-          await selectChildren(executor, 'app.self_care_ritual_steps', itemIds),
-          await executor
-            .selectFrom('app.self_care_ritual_step_completions')
-            .selectAll()
-            .execute(),
-          await selectChildren(
-            executor,
-            'app.self_care_procedure_details',
-            itemIds,
-          ),
-          await selectChildren(
-            executor,
-            'app.self_care_appointment_details',
-            itemIds,
-          ),
-          await selectChildren(
-            executor,
-            'app.self_care_medical_details',
-            itemIds,
-          ),
-          await selectChildren(
-            executor,
-            'app.self_care_measurement_details',
-            itemIds,
-          ),
-          await selectChildren(
-            executor,
-            'app.self_care_course_details',
-            itemIds,
-          ),
-          await executor
-            .selectFrom('app.self_care_daily_states')
-            .selectAll()
-            .where('user_id', '=', userId)
-            .execute(),
-          await executor
-            .selectFrom('app.self_care_settings')
-            .selectAll()
-            .where('user_id', '=', userId)
-            .execute(),
-          await executor
-            .selectFrom('app.self_care_minimum_items')
-            .selectAll()
-            .where('user_id', '=', userId)
-            .execute(),
-          await executor
-            .selectFrom('app.self_care_templates')
-            .selectAll()
-            .execute(),
+                .execute()
+            : [],
         ] as const
       },
       context.actorUserId,
     )
+    const filteredStepCompletionRows = includeStepCompletions
+      ? await withOptionalRls(
+          this.db,
+          context.auth,
+          (executor) =>
+            selectStepCompletions(
+              executor,
+              completionRows.map((row) => row.id),
+            ),
+          context.actorUserId,
+        )
+      : []
     const userId =
       actorUserId ??
       itemRows[0]?.user_id ??
@@ -1671,7 +1878,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       procedureDetails: procedureRows.map((row) => this.mapProcedure(row)),
       scheduleRules: ruleRows.map((row) => this.mapRule(row)),
       settings,
-      stepCompletions: stepCompletionRows.map((row) =>
+      stepCompletions: filteredStepCompletionRows.map((row) =>
         this.mapStepCompletion(row),
       ),
       steps: stepRows.map((row) => this.mapStep(row)),
@@ -2081,6 +2288,40 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
       throw error
     }
+  }
+
+  private async insertOccurrences(
+    executor: DatabaseExecutor,
+    occurrences: SelfCareOccurrence[],
+    actorUserId: string,
+  ) {
+    if (occurrences.length === 0) {
+      return []
+    }
+
+    const rows = await executor
+      .insertInto('app.self_care_occurrences')
+      .values(
+        occurrences.map((occurrence) => ({
+          completed_at: occurrence.completedAt,
+          created_by: actorUserId,
+          due_at: occurrence.dueAt,
+          generated_at: occurrence.generatedAt,
+          id: occurrence.id,
+          item_id: occurrence.itemId,
+          moved_to: occurrence.movedTo,
+          scheduled_for: occurrence.scheduledFor,
+          schedule_rule_id: occurrence.scheduleRuleId,
+          status: occurrence.status,
+          updated_by: actorUserId,
+          user_id: occurrence.userId,
+        })),
+      )
+      .onConflict((conflict) => conflict.doNothing())
+      .returningAll()
+      .execute()
+
+    return rows.map((row) => this.mapOccurrence(row))
   }
 
   private insertCompletion(
@@ -2618,6 +2859,123 @@ async function selectChildren<TTable extends keyof DatabaseSchema>(
   `.execute(executor)
 
   return result.rows
+}
+
+function selectOccurrences(
+  executor: DatabaseExecutor,
+  input: {
+    actorUserId: string | null
+    includeAllScheduledOccurrences?: boolean | undefined
+    occurrenceRange?: LoadStateDateRange | undefined
+    scheduledOccurrencesBefore?: string | undefined
+  },
+) {
+  let query = executor.selectFrom('app.self_care_occurrences').selectAll()
+
+  if (input.actorUserId) {
+    query = query.where('user_id', '=', input.actorUserId)
+  }
+
+  if (input.occurrenceRange && input.includeAllScheduledOccurrences) {
+    query = query.where(sql<boolean>`
+      (
+        (scheduled_for >= ${input.occurrenceRange.from}
+          and scheduled_for <= ${input.occurrenceRange.to})
+        or status = 'scheduled'
+      )
+    `)
+  } else if (input.occurrenceRange && input.scheduledOccurrencesBefore) {
+    query = query.where(sql<boolean>`
+      (
+        (scheduled_for >= ${input.occurrenceRange.from}
+          and scheduled_for <= ${input.occurrenceRange.to})
+        or (status = 'scheduled'
+          and scheduled_for < ${input.scheduledOccurrencesBefore})
+      )
+    `)
+  } else if (input.occurrenceRange) {
+    query = query
+      .where('scheduled_for', '>=', input.occurrenceRange.from)
+      .where('scheduled_for', '<=', input.occurrenceRange.to)
+  } else if (input.scheduledOccurrencesBefore) {
+    query = query
+      .where('status', '=', 'scheduled')
+      .where('scheduled_for', '<', input.scheduledOccurrencesBefore)
+  }
+
+  return query.execute()
+}
+
+function selectCompletions(
+  executor: DatabaseExecutor,
+  input: {
+    actorUserId: string | null
+    completionRange?: LoadStateDateRange | undefined
+  },
+) {
+  let query = executor.selectFrom('app.self_care_completions').selectAll()
+
+  if (input.actorUserId) {
+    query = query.where('user_id', '=', input.actorUserId)
+  }
+
+  if (input.completionRange) {
+    query = query
+      .where(
+        'completed_at',
+        '>=',
+        toStartOfDayTimestamp(input.completionRange.from),
+      )
+      .where(
+        'completed_at',
+        '<',
+        toStartOfDayTimestamp(addDays(input.completionRange.to, 1)),
+      )
+  }
+
+  return query.execute()
+}
+
+function selectDailyStates(
+  executor: DatabaseExecutor,
+  input: {
+    dailyStateRange?: LoadStateDateRange | undefined
+    userId: string
+  },
+) {
+  let query = executor
+    .selectFrom('app.self_care_daily_states')
+    .selectAll()
+    .where('user_id', '=', input.userId)
+
+  if (input.dailyStateRange) {
+    query = query
+      .where('date', '>=', input.dailyStateRange.from)
+      .where('date', '<=', input.dailyStateRange.to)
+  }
+
+  return query.execute()
+}
+
+async function selectStepCompletions(
+  executor: DatabaseExecutor,
+  completionIds: string[],
+) {
+  if (completionIds.length === 0) {
+    return [] as StepCompletionRow[]
+  }
+
+  const result = await sql<StepCompletionRow>`
+    select *
+    from app.self_care_ritual_step_completions
+    where completion_id = any(${completionIds})
+  `.execute(executor)
+
+  return result.rows
+}
+
+function toStartOfDayTimestamp(dateKey: string): string {
+  return `${dateKey}T00:00:00.000Z`
 }
 
 function mapCompletionStatusToOccurrenceStatus(
