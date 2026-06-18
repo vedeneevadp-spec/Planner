@@ -41,6 +41,7 @@ import {
 } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { addDays, getDateKey } from '@/shared/lib/date'
+import { IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 
 import type { EnergyMode } from '../lib/resource-plan'
@@ -258,6 +259,16 @@ function getSelfCareTaskKey(entry: SelfCareTodayItem): string {
   return `self-care-${entry.occurrence?.id ?? entry.item.id}`
 }
 
+function getMigratedSelfCareHabitIds(
+  entries: readonly SelfCareTodayItem[],
+): ReadonlySet<string> {
+  const habitIds = entries
+    .map((entry) => entry.item.migratedFromHabitId)
+    .filter((habitId): habitId is string => Boolean(habitId))
+
+  return new Set(habitIds)
+}
+
 function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
   const sourceTime =
     entry.occurrence?.dueAt ??
@@ -283,12 +294,14 @@ function formatSelfCareTaskMeta(entry: SelfCareTodayItem): string {
 
 function SelfCareTodayTaskCard({
   entry,
+  uploadedIcons,
   variant,
 }: {
   entry: SelfCareTodayItem
+  uploadedIcons: UploadedIconAsset[]
   variant: 'card' | 'compact'
 }) {
-  const icon = entry.item.icon?.trim() || '✓'
+  const icon = entry.item.icon?.trim()
 
   return (
     <Link
@@ -299,7 +312,15 @@ function SelfCareTodayTaskCard({
       aria-label={`Открыть заботу: ${entry.item.title}`}
     >
       <span className={styles.selfCareTaskIcon} aria-hidden="true">
-        {icon}
+        {icon ? (
+          <IconMark
+            className={styles.selfCareTaskIconMark}
+            value={icon}
+            uploadedIcons={uploadedIcons}
+          />
+        ) : (
+          '✓'
+        )}
       </span>
       <span className={styles.selfCareTaskBody}>
         <span className={styles.selfCareTaskTitle}>{entry.item.title}</span>
@@ -426,10 +447,35 @@ function PersonalTodayPage() {
           isVisibleSelfCareMainTask,
         )
       : []
+  const migratedSelfCareHabitIds = useMemo(
+    () =>
+      showSelfCareMainTasks && selfCareDashboardQuery.data
+        ? getMigratedSelfCareHabitIds([
+            ...selfCareDashboardQuery.data.todayItems,
+            ...selfCareDashboardQuery.data.overdueItems,
+            ...selfCareDashboardQuery.data.flexibleGoals,
+          ])
+        : new Set<string>(),
+    [selfCareDashboardQuery.data, showSelfCareMainTasks],
+  )
+  const activeHabitItems = useMemo(
+    () =>
+      todayHabitRoutine.activeHabitItems.filter(
+        (item) => !migratedSelfCareHabitIds.has(item.habit.id),
+      ),
+    [migratedSelfCareHabitIds, todayHabitRoutine.activeHabitItems],
+  )
+  const completedHabitItems = useMemo(
+    () =>
+      todayHabitRoutine.completedHabitItems.filter(
+        (item) => !migratedSelfCareHabitIds.has(item.habit.id),
+      ),
+    [migratedSelfCareHabitIds, todayHabitRoutine.completedHabitItems],
+  )
   const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
     activeHabitItemCount:
-      todayHabitRoutine.activeHabitItems.length + selfCareRoutineEntries.length,
-    completedHabitItemCount: todayHabitRoutine.completedHabitItems.length,
+      activeHabitItems.length + selfCareRoutineEntries.length,
+    completedHabitItemCount: completedHabitItems.length,
     doneTodayTasks,
     mainTodayTasks,
     otherTasks,
@@ -437,7 +483,7 @@ function PersonalTodayPage() {
     routineTasks,
     tomorrowTasks,
   })
-  const routineHabitCards = todayHabitRoutine.activeHabitItems.map((item) => (
+  const routineHabitCards = activeHabitItems.map((item) => (
     <HabitRoutineTaskCard
       key={item.habit.id}
       item={item}
@@ -448,24 +494,23 @@ function PersonalTodayPage() {
       onUndo={todayHabitRoutine.undoHabit}
     />
   ))
-  const completedHabitCards = todayHabitRoutine.completedHabitItems.map(
-    (item) => (
-      <HabitRoutineTaskCard
-        key={item.habit.id}
-        item={item}
-        isPending={todayHabitRoutine.isHabitPending}
-        tone="success"
-        uploadedIcons={uploadedIcons}
-        variant={taskCardVariant}
-        onComplete={todayHabitRoutine.completeHabit}
-        onUndo={todayHabitRoutine.undoHabit}
-      />
-    ),
-  )
+  const completedHabitCards = completedHabitItems.map((item) => (
+    <HabitRoutineTaskCard
+      key={item.habit.id}
+      item={item}
+      isPending={todayHabitRoutine.isHabitPending}
+      tone="success"
+      uploadedIcons={uploadedIcons}
+      variant={taskCardVariant}
+      onComplete={todayHabitRoutine.completeHabit}
+      onUndo={todayHabitRoutine.undoHabit}
+    />
+  ))
   const selfCareRoutineTaskCards = selfCareRoutineEntries.map((entry) => (
     <SelfCareTodayTaskCard
       key={getSelfCareTaskKey(entry)}
       entry={entry}
+      uploadedIcons={uploadedIcons}
       variant={taskCardVariant}
     />
   ))
@@ -473,6 +518,7 @@ function PersonalTodayPage() {
     <SelfCareTodayTaskCard
       key={`overdue-${getSelfCareTaskKey(entry)}`}
       entry={entry}
+      uploadedIcons={uploadedIcons}
       variant={taskCardVariant}
     />
   ))
@@ -563,8 +609,7 @@ function PersonalTodayPage() {
                 'Рутинных задач на сегодня пока нет.',
                 {
                   extraItemCount:
-                    todayHabitRoutine.activeHabitItems.length +
-                    selfCareRoutineTaskCards.length,
+                    activeHabitItems.length + selfCareRoutineTaskCards.length,
                   extraItems: [
                     ...routineHabitCards,
                     ...selfCareRoutineTaskCards,
@@ -614,7 +659,7 @@ function PersonalTodayPage() {
             'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
             {
               defaultCollapsed: defaultCollapsedSections.doneToday,
-              extraItemCount: todayHabitRoutine.completedHabitItems.length,
+              extraItemCount: completedHabitItems.length,
               extraItems: completedHabitCards,
               tone: 'success',
             },

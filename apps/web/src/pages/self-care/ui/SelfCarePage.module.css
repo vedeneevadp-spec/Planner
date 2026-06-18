@@ -165,12 +165,29 @@
 
 .backLinkButton {
   justify-self: start;
-  min-height: 2rem;
-  border: 1px solid transparent;
-  padding: 0.22rem 0;
-  color: var(--text-soft);
-  background: transparent;
-  font-size: 0.9rem;
+  min-height: 2.24rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.38rem 0.74rem 0.38rem 0.54rem;
+  color: var(--text);
+  background: var(--field-bg);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.backLinkButton:hover {
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+  transform: translateX(-1px);
+}
+
+.backLinkButton:active {
+  transform: translateX(-1px) scale(0.98);
 }
 
 .sectionBlock {
@@ -229,6 +246,16 @@
   color: var(--accent);
   background: var(--accent-muted);
   font-size: 1.04rem;
+}
+
+.cardIconMark {
+  width: 1.36rem;
+  height: 1.36rem;
+  font-size: 1rem;
+}
+
+.cardIconPlaceholder {
+  line-height: 1;
 }
 
 .cardTitleRow {
@@ -836,14 +863,37 @@
 }
 
 .addCareTemplateCard {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(4.45rem, 1fr) auto;
   border-color: rgba(248, 194, 122, 0.28);
 }
 
-.addCareTemplateCard strong {
-  grid-column: 1;
+.addCareTemplateMainButton {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.62rem;
+  align-items: start;
+  align-self: stretch;
+  width: calc(100% + 0.8rem);
+  min-height: 100%;
+  margin: -0.4rem -0.4rem 0;
+  border: 0;
+  border-radius: 18px;
+  padding: 0.4rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.addCareTemplateCopy {
+  display: grid;
+  gap: 0.68rem;
   min-width: 0;
-  padding-right: 0.65rem;
+}
+
+.addCareTemplateCard strong {
+  min-width: 0;
 }
 
 .addCareTemplateCard:hover {
@@ -863,6 +913,10 @@
   line-height: 1.42;
 }
 
+.addCareTemplateMainButton .addCareChoiceText {
+  grid-column: auto;
+}
+
 .addCareArrowButton {
   display: grid;
   place-items: center;
@@ -877,18 +931,18 @@
   background: transparent;
   box-shadow: none;
   font: inherit;
+  pointer-events: none;
   transition:
     color 180ms ease,
     transform 180ms ease;
 }
 
 .addCareArrowButton {
-  grid-row: 1;
   grid-column: 2;
-  cursor: pointer;
+  grid-row: 1;
 }
 
-.addCareArrowButton:hover {
+.addCareTemplateMainButton:hover .addCareArrowButton {
   color: #ffd99e;
   transform: translateX(2px);
 }
@@ -1059,6 +1113,20 @@
   padding: 1rem;
   background: var(--surface);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+.iconPickerDialogOverlay {
+  z-index: 1010;
+  background: rgba(5, 14, 12, 0.78);
+}
+
+.iconPickerDialogPanel {
+  width: min(30rem, 100%);
+  gap: 0.76rem;
+}
+
+.iconPickerDialogPicker {
+  --icon-choice-picker-max-height: min(18rem, 48vh);
 }
 
 .modalHeader {
@@ -1234,6 +1302,67 @@
   outline: none;
   border-color: var(--accent-border-strong);
   background: var(--field-bg-strong);
+}
+
+.titleIconFieldRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.56rem;
+  align-items: end;
+  min-width: 0;
+}
+
+.titleIconFieldRow .dateField {
+  min-width: 0;
+}
+
+.iconSelectButton {
+  display: grid;
+  width: 2.55rem;
+  min-height: 2.55rem;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.32rem;
+  place-items: center;
+  color: var(--text);
+  background: var(--field-bg);
+  font: inherit;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.iconSelectButton:hover {
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+  transform: translateY(-1px);
+}
+
+.iconSelectButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.iconSelectButtonMark {
+  display: grid;
+  width: 1.6rem;
+  height: 1.6rem;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--accent);
+}
+
+.iconSelectButtonIcon {
+  width: 1.32rem;
+  height: 1.32rem;
+  font-size: 1rem;
+}
+
+.iconSelectButtonPlaceholder {
+  font-size: 1.12rem;
+  line-height: 1;
 }
 
 .selectField {
@@ -1648,7 +1777,8 @@ button:disabled {
   }
 
   .addCareTemplateCard {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(4rem, 1fr) auto;
   }
 
   .addCareChoiceText,

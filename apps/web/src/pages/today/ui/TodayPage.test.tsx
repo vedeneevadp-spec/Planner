@@ -1,3 +1,7 @@
+import type {
+  SelfCareDashboardResponse,
+  SelfCareTodayItem,
+} from '@planner/contracts'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   habitTodayItems: [] as unknown[],
   moveTaskToPersonal: vi.fn(),
   removeTask: vi.fn(),
+  selfCareDashboard: undefined as SelfCareDashboardResponse | undefined,
   setTaskPlannedDate: vi.fn(),
   setTaskStatus: vi.fn(),
   updateTask: vi.fn(),
@@ -64,7 +69,7 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/self-care', () => ({
-  useSelfCareDashboard: () => ({ data: undefined }),
+  useSelfCareDashboard: () => ({ data: mocks.selfCareDashboard }),
 }))
 
 vi.mock('@/features/session', () => ({
@@ -185,6 +190,74 @@ function createHabitTodayItem(overrides: Record<string, unknown> = {}) {
   }
 }
 
+type SelfCareTodayItemOverrides = Omit<Partial<SelfCareTodayItem>, 'item'> & {
+  item?: Partial<SelfCareTodayItem['item']>
+}
+
+function createSelfCareTodayItem(
+  overrides: SelfCareTodayItemOverrides = {},
+): SelfCareTodayItem {
+  const { item: itemOverrides, ...entryOverrides } = overrides
+
+  return {
+    appointment: null,
+    completion: null,
+    courseDetails: null,
+    flexibleProgress: null,
+    item: {
+      category: 'daily_base',
+      color: null,
+      createdAt: '2026-05-19T08:00:00.000Z',
+      customCategoryId: null,
+      defaultDurationMinutes: null,
+      deletedAt: null,
+      description: '',
+      icon: 'image:legacy-icon',
+      id: 'self-care-1',
+      importance: 'recommended',
+      isActive: true,
+      isArchived: false,
+      isPrivate: true,
+      migratedFromHabitId: 'habit-1',
+      preferredTimeOfDay: 'anytime',
+      title: 'Компактная привычка',
+      type: 'habit',
+      updatedAt: '2026-05-19T08:00:00.000Z',
+      userId: 'user-1',
+      version: 1,
+      workspaceId: 'personal-workspace',
+      ...itemOverrides,
+    } as SelfCareTodayItem['item'],
+    lastMeasurement: null,
+    measurement: null,
+    occurrence: null,
+    procedure: null,
+    scheduleRule: null,
+    steps: [],
+    timeGroup: 'anytime',
+    ...entryOverrides,
+  }
+}
+
+function createSelfCareDashboard(
+  todayItems: SelfCareTodayItem[],
+): SelfCareDashboardResponse {
+  return {
+    date: getDateKey(new Date()),
+    dailyState: null,
+    flexibleGoals: [],
+    gentleMode: false,
+    minimumItems: [],
+    overdueItems: [],
+    planningHints: [],
+    settings: {
+      showSelfCareInMainTasks: true,
+    } as SelfCareDashboardResponse['settings'],
+    todayItems,
+    upcomingImportant: [],
+  } as SelfCareDashboardResponse
+}
+
 function renderTodayPage({
   initialEntry = '/today',
   kind = 'personal',
@@ -212,6 +285,7 @@ describe('TodayPage', () => {
     mocks.habitTodayItems.length = 0
     mocks.moveTaskToPersonal.mockReset()
     mocks.removeTask.mockReset()
+    mocks.selfCareDashboard = undefined
     mocks.setTaskPlannedDate.mockReset()
     mocks.setTaskStatus.mockReset()
     mocks.updateTask.mockReset()
@@ -412,5 +486,24 @@ describe('TodayPage', () => {
         variant: 'compact',
       }),
     )
+  })
+
+  it('hides a legacy habit card when a migrated self-care item replaces it in routine', () => {
+    mocks.habitTodayItems.push(createHabitTodayItem())
+    mocks.selfCareDashboard = createSelfCareDashboard([
+      createSelfCareTodayItem(),
+    ])
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(mocks.habitRoutineTaskCard).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('link', {
+        name: 'Открыть заботу: Компактная привычка',
+      }),
+    ).toBeVisible()
+    expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
   })
 })

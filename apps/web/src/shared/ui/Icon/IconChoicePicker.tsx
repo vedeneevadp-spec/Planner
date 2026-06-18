@@ -11,6 +11,7 @@ import styles from './IconValue.module.css'
 interface IconChoicePickerProps {
   allowEmpty?: boolean | undefined
   className?: string | undefined
+  hideLabel?: boolean | undefined
   label: string
   showEmojiChoices?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
@@ -21,6 +22,7 @@ interface IconChoicePickerProps {
 export function IconChoicePicker({
   allowEmpty = true,
   className,
+  hideLabel = false,
   label,
   showEmojiChoices = true,
   uploadedIcons = [],
@@ -33,7 +35,7 @@ export function IconChoicePicker({
 
   return (
     <div className={rootClassName}>
-      <span className={styles.pickerLabel}>{label}</span>
+      {hideLabel ? null : <span className={styles.pickerLabel}>{label}</span>}
       <div className={styles.optionList}>
         {allowEmpty ? (
           <IconOptionButton

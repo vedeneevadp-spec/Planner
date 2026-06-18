@@ -24,6 +24,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 
+import { useUploadedIconAssets } from '@/features/emoji-library'
 import {
   getSelfCareErrorMessage,
   useArchiveSelfCareItem,
@@ -52,10 +53,15 @@ import { cx } from '@/shared/lib/classnames'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import {
   CheckIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
   GearIcon,
+  getIconLabel,
+  IconChoicePicker,
+  IconMark,
   TrashIcon,
+  type UploadedIconAsset,
 } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
@@ -353,6 +359,14 @@ const ADD_CARE_TEMPLATE_FILTERS: ReadonlyArray<{
 
 const SELF_CARE_ACTION_SEARCH_PARAM = 'selfCareAction'
 const SELF_CARE_ACTION_REQUEST_SEARCH_PARAM = 'selfCareActionRequest'
+const SELF_CARE_ICON_PICKER_OPEN_DATA_KEY = 'selfCareIconPickerOpen'
+
+function isSelfCareIconPickerOpen(): boolean {
+  return (
+    typeof document !== 'undefined' &&
+    document.body.dataset[SELF_CARE_ICON_PICKER_OPEN_DATA_KEY] === 'true'
+  )
+}
 
 export function SelfCarePage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -361,6 +375,7 @@ export function SelfCarePage() {
   const planTo = getDateKey(addDays(new Date(), 180))
   const activeTab = getSelfCareTab(searchParams)
   const tabsRef = useRef<HTMLElement | null>(null)
+  const { uploadedIcons } = useUploadedIconAssets()
   const dashboardQuery = useSelfCareDashboard(todayKey)
   const itemsQuery = useSelfCareItems()
   const planQuery = useSelfCarePlan(todayKey, planTo)
@@ -952,6 +967,7 @@ export function SelfCarePage() {
           plan={plan}
           ritualStepDrafts={ritualStepDrafts}
           todayKey={todayKey}
+          uploadedIcons={uploadedIcons}
           onAddCare={openCreateDialog}
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
@@ -970,6 +986,7 @@ export function SelfCarePage() {
           isBusy={isActionBusy}
           plan={plan}
           todayKey={todayKey}
+          uploadedIcons={uploadedIcons}
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
           onCancelOccurrence={handleCancelPlannedOccurrence}
@@ -990,6 +1007,7 @@ export function SelfCarePage() {
           isBusy={isActionBusy}
           ritualStepDrafts={ritualStepDrafts}
           todayKey={todayKey}
+          uploadedIcons={uploadedIcons}
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
           onEditItem={handleEditItem}
@@ -1028,6 +1046,7 @@ export function SelfCarePage() {
           isBusy={isActionBusy || !list}
           todayKey={todayKey}
           templates={templates}
+          uploadedIcons={uploadedIcons}
           onBack={() => setCreateDialogMode('choice')}
           onClose={closeCreateDialog}
           onCreateCustom={handleCreateCustomCare}
@@ -1088,6 +1107,7 @@ export function SelfCarePage() {
           errorMessage={formError}
           isBusy={updateItemMutation.isPending}
           todayKey={todayKey}
+          uploadedIcons={uploadedIcons}
           onClose={closeEditDialog}
           onSubmit={handleUpdateItem}
         />
@@ -1112,6 +1132,7 @@ function SelfCareTodayTab({
   plan,
   ritualStepDrafts,
   todayKey,
+  uploadedIcons,
   onToggleRitualStep,
 }: {
   dashboard: ReturnType<typeof useSelfCareDashboard>['data'] | undefined
@@ -1129,6 +1150,7 @@ function SelfCareTodayTab({
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
   ritualStepDrafts: RitualStepDrafts
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
   onToggleRitualStep: (entry: SelfCareTodayItem, stepId: string) => void
 }) {
   const latestCompletionByItemId = useMemo(
@@ -1225,6 +1247,7 @@ function SelfCareTodayTab({
               isBusy={isBusy}
               scheduleActionLabel="Перенести"
               stepDraft={getRitualStepDraft(ritualStepDrafts, entry, todayKey)}
+              uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
@@ -1244,6 +1267,7 @@ function SelfCareTodayTab({
               isTodayView
               isBusy={isBusy}
               nextOccurrenceDate={nextPlannedDateByItemId.get(entry.item.id)}
+              uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
@@ -1267,6 +1291,7 @@ function SelfCareTodayTab({
                     entry,
                     todayKey,
                   )}
+                  uploadedIcons={uploadedIcons}
                   onAction={onCardAction}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
@@ -1286,6 +1311,7 @@ function SelfCareTodayTab({
               isTodayView
               isBusy={isBusy}
               stepDraft={getRitualStepDraft(ritualStepDrafts, entry, todayKey)}
+              uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
@@ -1303,6 +1329,7 @@ function SelfCareTodayTab({
               entry={entry}
               isTodayView
               isBusy={isBusy}
+              uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
@@ -1428,6 +1455,7 @@ function SelfCarePlanTab({
   onScheduleItem,
   plan,
   todayKey,
+  uploadedIcons,
 }: {
   hiddenScheduledItemIds: ReadonlySet<string>
   history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
@@ -1439,6 +1467,7 @@ function SelfCarePlanTab({
   onScheduleItem: (entry: SelfCareTodayItem) => void
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
 }) {
   const latestCompletionByItemId = useMemo(
     () => getLatestProgressCompletionByItemId(history),
@@ -1475,6 +1504,7 @@ function SelfCarePlanTab({
               key={entry.occurrence?.id ?? entry.item.id}
               entry={entry}
               isBusy={isBusy}
+              uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onCancelOccurrence={onCancelOccurrence}
@@ -1525,6 +1555,7 @@ function SelfCarePlanTab({
               entry={entry}
               isBusy={isBusy}
               nextOccurrenceDate={nextPlannedDateByItemId.get(entry.item.id)}
+              uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
@@ -1544,6 +1575,7 @@ function SelfCareRitualsTab({
   plan,
   ritualStepDrafts,
   todayKey,
+  uploadedIcons,
   onCardAction,
   onArchiveItem,
   onEditItem,
@@ -1556,6 +1588,7 @@ function SelfCareRitualsTab({
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
   ritualStepDrafts: RitualStepDrafts
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
   onCardAction: (entry: SelfCareTodayItem) => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
@@ -1614,6 +1647,7 @@ function SelfCareRitualsTab({
                     entry,
                     todayKey,
                   )}
+                  uploadedIcons={uploadedIcons}
                   onAction={onCardAction}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
@@ -1931,6 +1965,30 @@ function SelfCareSettingsForm({
   )
 }
 
+function SelfCareCardIcon({
+  uploadedIcons,
+  value,
+}: {
+  uploadedIcons: UploadedIconAsset[]
+  value: string | null | undefined
+}) {
+  const iconValue = value?.trim()
+
+  return (
+    <div className={styles.cardIcon} aria-hidden="true">
+      {iconValue ? (
+        <IconMark
+          className={styles.cardIconMark}
+          uploadedIcons={uploadedIcons}
+          value={iconValue}
+        />
+      ) : (
+        <span className={styles.cardIconPlaceholder}>♡</span>
+      )}
+    </div>
+  )
+}
+
 function SelfCareItemCard({
   actions = 'today',
   compact = false,
@@ -1946,6 +2004,7 @@ function SelfCareItemCard({
   onToggleStep,
   scheduleActionLabel = 'Перенести',
   stepDraft,
+  uploadedIcons,
 }: {
   actions?: 'plan' | 'today'
   compact?: boolean
@@ -1961,6 +2020,7 @@ function SelfCareItemCard({
   onToggleStep?: (entry: SelfCareTodayItem, stepId: string) => void
   scheduleActionLabel?: string
   stepDraft?: readonly string[] | undefined
+  uploadedIcons: UploadedIconAsset[]
 }) {
   const todayKey = getDateKey(new Date())
   const isDone = isEntryDoneToday(entry, todayKey)
@@ -1994,9 +2054,10 @@ function SelfCareItemCard({
       )}
     >
       <div className={styles.cardMain}>
-        <div className={styles.cardIcon} aria-hidden="true">
-          {entry.item.icon ?? '♡'}
-        </div>
+        <SelfCareCardIcon
+          uploadedIcons={uploadedIcons}
+          value={entry.item.icon}
+        />
         <div>
           <div className={styles.cardTitleRow}>
             <h3>{entry.item.title}</h3>
@@ -2274,6 +2335,7 @@ function SelfCareCreateDialog({
   onSelectTemplate,
   templates,
   todayKey,
+  uploadedIcons,
 }: {
   defaultCurrency: string
   disabledTemplateIds: ReadonlySet<string>
@@ -2288,6 +2350,7 @@ function SelfCareCreateDialog({
   onSelectTemplate: () => void
   templates: SelfCareTemplate[]
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
 }) {
   const [templateFilter, setTemplateFilter] =
     useState<AddCareTemplateFilter | null>(null)
@@ -2295,6 +2358,10 @@ function SelfCareCreateDialog({
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
+        if (isSelfCareIconPickerOpen()) {
+          return
+        }
+
         onClose()
       }
     }
@@ -2315,12 +2382,6 @@ function SelfCareCreateDialog({
       : mode === 'custom'
         ? 'Создать свою заботу'
         : 'Добавить заботу'
-  const description =
-    mode === 'template'
-      ? 'Выбери готовую идею. После добавления ее можно настроить во вкладке «Все заботы».'
-      : mode === 'custom'
-        ? 'Добавь понятную основу. Детали, историю и планирование можно дополнять дальше.'
-        : 'Можно создать заботу с нуля или начать с готового шаблона.'
   const filteredTemplates = templateFilter
     ? templates.filter((template) =>
         getAddCareFilterCategories(templateFilter).includes(template.category),
@@ -2337,7 +2398,6 @@ function SelfCareCreateDialog({
       className={styles.modalOverlay}
       role="dialog"
       aria-modal="true"
-      aria-describedby="add-care-description"
       aria-labelledby="add-care-title"
     >
       <button
@@ -2357,7 +2417,6 @@ function SelfCareCreateDialog({
         <div className={styles.modalHeader}>
           <div>
             <h2 id="add-care-title">{heading}</h2>
-            <p id="add-care-description">{description}</p>
           </div>
           <button
             className={styles.closeButton}
@@ -2376,6 +2435,7 @@ function SelfCareCreateDialog({
             disabled={isBusy}
             onClick={onBack}
           >
+            <ChevronLeftIcon size={17} strokeWidth={2.2} />
             Назад к выбору
           </button>
         ) : null}
@@ -2409,18 +2469,26 @@ function SelfCareCreateDialog({
                 )}
                 aria-labelledby="add-care-template-title"
               >
-                <strong id="add-care-template-title">Выбрать из шаблона</strong>
-                <span className={styles.addCareChoiceText}>
-                  Готовые идеи для ухода, здоровья и восстановления.
-                </span>
                 <button
-                  className={styles.addCareArrowButton}
+                  className={styles.addCareTemplateMainButton}
                   type="button"
                   disabled={isBusy}
-                  aria-label="Открыть все шаблоны заботы"
                   onClick={() => openTemplatePicker(null)}
                 >
-                  <ChevronRightIcon size={18} strokeWidth={2.15} />
+                  <span className={styles.addCareTemplateCopy}>
+                    <strong id="add-care-template-title">
+                      Выбрать из шаблона
+                    </strong>
+                    <span className={styles.addCareChoiceText}>
+                      Готовые идеи для ухода, здоровья и восстановления.
+                    </span>
+                  </span>
+                  <span
+                    className={styles.addCareArrowButton}
+                    aria-hidden="true"
+                  >
+                    <ChevronRightIcon size={18} strokeWidth={2.15} />
+                  </span>
                 </button>
                 <div
                   className={styles.addCareCategoryGrid}
@@ -2451,6 +2519,7 @@ function SelfCareCreateDialog({
             defaultCurrency={defaultCurrency}
             isBusy={isBusy}
             todayKey={todayKey}
+            uploadedIcons={uploadedIcons}
             onCreate={onCreateCustom}
           />
         ) : null}
@@ -2493,19 +2562,170 @@ function SelfCareCreateDialog({
   )
 }
 
+function SelfCareTitleIconField({
+  icon,
+  maxLength,
+  placeholder,
+  required = false,
+  title,
+  uploadedIcons,
+  onOpenIconPicker,
+  onTitleChange,
+}: {
+  icon: string
+  maxLength: number
+  placeholder?: string | undefined
+  required?: boolean | undefined
+  title: string
+  uploadedIcons: UploadedIconAsset[]
+  onOpenIconPicker: () => void
+  onTitleChange: (title: string) => void
+}) {
+  const normalizedIcon = icon.trim()
+  const iconLabel = getIconLabel(normalizedIcon, uploadedIcons)
+
+  return (
+    <div className={styles.titleIconFieldRow}>
+      <label className={styles.dateField}>
+        <span>Название</span>
+        <input
+          type="text"
+          autoComplete="off"
+          maxLength={maxLength}
+          required={required}
+          placeholder={placeholder}
+          value={title}
+          onChange={(event) => onTitleChange(event.target.value)}
+        />
+      </label>
+
+      <button
+        className={styles.iconSelectButton}
+        type="button"
+        aria-label={`Выбрать иконку. Сейчас: ${iconLabel}`}
+        onClick={onOpenIconPicker}
+      >
+        <span className={styles.iconSelectButtonMark} aria-hidden="true">
+          {normalizedIcon ? (
+            <IconMark
+              className={styles.iconSelectButtonIcon}
+              uploadedIcons={uploadedIcons}
+              value={normalizedIcon}
+            />
+          ) : (
+            <span className={styles.iconSelectButtonPlaceholder}>♡</span>
+          )}
+        </span>
+      </button>
+    </div>
+  )
+}
+
+function SelfCareIconPickerDialog({
+  uploadedIcons,
+  value,
+  onChange,
+  onClose,
+}: {
+  uploadedIcons: UploadedIconAsset[]
+  value: string
+  onChange: (value: string) => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const previousValue =
+      document.body.dataset[SELF_CARE_ICON_PICKER_OPEN_DATA_KEY]
+    document.body.dataset[SELF_CARE_ICON_PICKER_OPEN_DATA_KEY] = 'true'
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+
+      if (previousValue === undefined) {
+        delete document.body.dataset[SELF_CARE_ICON_PICKER_OPEN_DATA_KEY]
+        return
+      }
+
+      document.body.dataset[SELF_CARE_ICON_PICKER_OPEN_DATA_KEY] = previousValue
+    }
+  }, [onClose])
+
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className={cx(styles.modalOverlay, styles.iconPickerDialogOverlay)}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="self-care-icon-picker-title"
+    >
+      <button
+        className={styles.backdropButton}
+        type="button"
+        tabIndex={-1}
+        aria-label="Закрыть выбор иконки"
+        onClick={onClose}
+      />
+
+      <section className={cx(styles.modalPanel, styles.iconPickerDialogPanel)}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 id="self-care-icon-picker-title">Иконка</h2>
+          </div>
+          <button
+            className={styles.closeButton}
+            type="button"
+            aria-label="Закрыть выбор иконки"
+            onClick={onClose}
+          >
+            <CloseIcon size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <IconChoicePicker
+          className={styles.iconPickerDialogPicker}
+          hideLabel
+          label="Иконка"
+          uploadedIcons={uploadedIcons}
+          value={value}
+          onChange={(nextValue) => {
+            onChange(nextValue)
+            onClose()
+          }}
+        />
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
 function SelfCareCustomCreateForm({
   defaultCurrency,
   isBusy,
   onCreate,
   todayKey,
+  uploadedIcons,
 }: {
   defaultCurrency: string
   isBusy: boolean
   onCreate: (payload: SelfCareCustomCreatePayload) => void
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
 }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const [icon, setIcon] = useState('')
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [type, setType] = useState<SelfCareItemType>('task')
   const [category, setCategory] = useState<SelfCareCategory>('daily_base')
   const [preferredTimeOfDay, setPreferredTimeOfDay] =
@@ -2710,7 +2930,7 @@ function SelfCareCustomCreateForm({
             customCategoryId: null,
             defaultDurationMinutes: null,
             description: description.trim(),
-            icon: null,
+            icon: normalizeOptionalText(icon),
             importance: 'recommended',
             isActive: true,
             isArchived: false,
@@ -2788,18 +3008,25 @@ function SelfCareCustomCreateForm({
         })
       }}
     >
-      <label className={styles.dateField}>
-        <span>Название</span>
-        <input
-          type="text"
-          autoComplete="off"
-          maxLength={160}
-          required
-          placeholder="Например: растяжка, стоматолог, стрижка"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
+      <SelfCareTitleIconField
+        icon={icon}
+        maxLength={160}
+        placeholder="Например: растяжка, стоматолог, стрижка"
+        required
+        title={title}
+        uploadedIcons={uploadedIcons}
+        onOpenIconPicker={() => setIsIconPickerOpen(true)}
+        onTitleChange={setTitle}
+      />
+
+      {isIconPickerOpen ? (
+        <SelfCareIconPickerDialog
+          uploadedIcons={uploadedIcons}
+          value={icon}
+          onChange={setIcon}
+          onClose={() => setIsIconPickerOpen(false)}
         />
-      </label>
+      ) : null}
 
       <div className={styles.selectWithHint}>
         <SelectPicker<SelfCareItemType>
@@ -3252,6 +3479,7 @@ function SelfCareEditDialog({
   onClose,
   onSubmit,
   todayKey,
+  uploadedIcons,
 }: {
   defaultCurrency: string
   entry: SelfCareTodayItem
@@ -3260,10 +3488,15 @@ function SelfCareEditDialog({
   onClose: () => void
   onSubmit: (payload: SelfCareEditSubmitPayload) => void
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
 }) {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
       if (event.key === 'Escape') {
+        if (isSelfCareIconPickerOpen()) {
+          return
+        }
+
         onClose()
       }
     }
@@ -3315,6 +3548,7 @@ function SelfCareEditDialog({
           entry={entry}
           isBusy={isBusy}
           todayKey={todayKey}
+          uploadedIcons={uploadedIcons}
           onCancel={onClose}
           onSubmit={onSubmit}
         />
@@ -3331,6 +3565,7 @@ function SelfCareEditForm({
   onCancel,
   onSubmit,
   todayKey,
+  uploadedIcons,
 }: {
   defaultCurrency: string
   entry: SelfCareTodayItem
@@ -3338,9 +3573,12 @@ function SelfCareEditForm({
   onCancel: () => void
   onSubmit: (payload: SelfCareEditSubmitPayload) => void
   todayKey: string
+  uploadedIcons: UploadedIconAsset[]
 }) {
   const [title, setTitle] = useState(entry.item.title)
   const [description, setDescription] = useState(entry.item.description)
+  const [icon, setIcon] = useState(entry.item.icon ?? '')
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [category, setCategory] = useState<SelfCareCategory>(
     entry.item.category,
   )
@@ -3462,6 +3700,7 @@ function SelfCareEditForm({
           category,
           description: description.trim(),
           expectedVersion: entry.item.version,
+          icon: normalizeOptionalText(icon),
           minimumVersion: null,
           preferredTimeOfDay,
           title: title.trim(),
@@ -3548,17 +3787,24 @@ function SelfCareEditForm({
         </span>
       </div>
 
-      <label className={styles.dateField}>
-        <span>Название</span>
-        <input
-          type="text"
-          autoComplete="off"
-          maxLength={160}
-          required
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
+      <SelfCareTitleIconField
+        icon={icon}
+        maxLength={160}
+        required
+        title={title}
+        uploadedIcons={uploadedIcons}
+        onOpenIconPicker={() => setIsIconPickerOpen(true)}
+        onTitleChange={setTitle}
+      />
+
+      {isIconPickerOpen ? (
+        <SelfCareIconPickerDialog
+          uploadedIcons={uploadedIcons}
+          value={icon}
+          onChange={setIcon}
+          onClose={() => setIsIconPickerOpen(false)}
         />
-      </label>
+      ) : null}
 
       <SelectPicker<SelfCareCategory>
         className={styles.selectField}
