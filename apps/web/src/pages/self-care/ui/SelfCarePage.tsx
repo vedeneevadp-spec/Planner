@@ -20,7 +20,7 @@ import type {
   SelfCareTimeOfDay,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 
@@ -360,6 +360,7 @@ export function SelfCarePage() {
   const rangeFrom = getDateKey(addDays(new Date(), -30))
   const planTo = getDateKey(addDays(new Date(), 180))
   const activeTab = getSelfCareTab(searchParams)
+  const tabsRef = useRef<HTMLElement | null>(null)
   const dashboardQuery = useSelfCareDashboard(todayKey)
   const itemsQuery = useSelfCareItems()
   const planQuery = useSelfCarePlan(todayKey, planTo)
@@ -898,11 +899,27 @@ export function SelfCarePage() {
     })
   }
 
+  useEffect(() => {
+    const activeTabButton = tabsRef.current?.querySelector<HTMLElement>(
+      '[aria-current="page"]',
+    )
+
+    activeTabButton?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    })
+  }, [activeTab])
+
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
       {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
 
-      <nav className={styles.tabs} aria-label="Разделы заботы о себе">
+      <nav
+        ref={tabsRef}
+        className={styles.tabs}
+        aria-label="Разделы заботы о себе"
+      >
         {SELF_CARE_TABS.map((tab) => (
           <button
             key={tab.id}

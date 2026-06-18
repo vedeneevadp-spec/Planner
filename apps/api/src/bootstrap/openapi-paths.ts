@@ -1490,6 +1490,41 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['selfCare'],
       }),
     },
+    '/api/v1/self-care/ritual-step-drafts': {
+      get: createJsonOperation({
+        operationId: 'getSelfCareRitualStepDrafts',
+        parameters: [
+          ...workspaceReadParameters(),
+          optionalStringQueryParameter('date'),
+        ],
+        responseSchema: 'SelfCareRitualStepDraftListResponse',
+        security: authenticatedSecurity(),
+        summary: 'Get ritual step drafts for a date',
+        tags: ['selfCare'],
+      }),
+      put: createJsonOperation({
+        operationId: 'upsertSelfCareRitualStepDraft',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'SelfCareRitualStepDraftInput',
+        responseSchema: 'SelfCareRitualStepDraftListResponse',
+        security: authenticatedSecurity(),
+        summary: 'Create or update a ritual step draft',
+        tags: ['selfCare'],
+      }),
+      delete: createJsonOperation({
+        operationId: 'deleteSelfCareRitualStepDraft',
+        parameters: [
+          ...workspaceWriteParameters(),
+          requiredStringQueryParameter('date'),
+          requiredStringQueryParameter('itemId'),
+          optionalStringQueryParameter('occurrenceId'),
+        ],
+        responseSchema: 'SelfCareRitualStepDraftListResponse',
+        security: authenticatedSecurity(),
+        summary: 'Delete a ritual step draft',
+        tags: ['selfCare'],
+      }),
+    },
     '/api/v1/self-care/history': {
       get: createJsonOperation({
         operationId: 'getSelfCareHistory',

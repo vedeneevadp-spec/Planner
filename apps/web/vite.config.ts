@@ -13,6 +13,40 @@ const contractsPath = fileURLToPath(
 export default defineConfig({
   root: appRoot,
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('/node_modules/@tanstack/react-query/')) {
+            return 'vendor-query'
+          }
+
+          if (
+            id.includes('/node_modules/react-router/') ||
+            id.includes('/node_modules/react-router-dom/')
+          ) {
+            return 'vendor-router'
+          }
+
+          if (
+            id.includes('/node_modules/react/') ||
+            id.includes('/node_modules/react-dom/') ||
+            id.includes('/node_modules/scheduler/')
+          ) {
+            return 'vendor-react'
+          }
+
+          if (id.includes('/node_modules/zod/')) {
+            return 'vendor-zod'
+          }
+
+          if (id.startsWith(contractsPath)) {
+            return 'planner-contracts'
+          }
+        },
+      },
+    },
+  },
   server: {
     open: process.env.VITE_OPEN_BROWSER !== 'false',
   },

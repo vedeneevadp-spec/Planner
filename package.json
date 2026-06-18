@@ -77,7 +77,7 @@
     "coverage:api:postgres": "npm run coverage:api:postgres-contracts && npm run coverage:api:postgres-pooler-contracts",
     "coverage:api:postgres-contracts": "npm run -w apps/api coverage:postgres-contracts",
     "coverage:api:postgres-pooler-contracts": "npm run -w apps/api coverage:postgres-pooler-contracts",
-    "voice-quality-report": "tsx ./scripts/voice-quality-report.mjs",
+    "voice-quality-report": "TSX_TSCONFIG_PATH=apps/web/tsconfig.json tsx ./scripts/voice-quality-report.mjs",
     "openapi:check": "node --import tsx ./scripts/openapi-contract-check.mjs",
     "check": "npm run db:migrations:check && npm run lint && npm run format:check && npm run typecheck && npm run voice-quality-report && npm run test:run",
     "ci": "npm run audit:prod && npm run audit:dev-tooling && npm run check && npm run coverage && npm run openapi:check && npm run mobile:ci-check && npm run build && npm run build:budget",
@@ -125,10 +125,10 @@
     "jsdom": "^27.0.1",
     "lint-staged": "^16.2.4",
     "prettier": "3.8.3",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.2",
     "typescript-eslint": "8.58.2",
-    "vite": "8.0.8",
+    "vite": "^8.0.16",
     "vitest": "^4.0.7"
   }
 }
