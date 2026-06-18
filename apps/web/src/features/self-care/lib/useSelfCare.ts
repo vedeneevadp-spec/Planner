@@ -728,7 +728,7 @@ function useSelfCareApi(options: { enabled?: boolean } = {}) {
 
   return {
     api,
-    isEnabled: isApiEnabled,
+    isEnabled: isApiEnabled && api !== null,
     session,
     workspaceId,
   }
