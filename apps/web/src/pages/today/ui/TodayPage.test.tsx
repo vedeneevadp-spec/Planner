@@ -506,4 +506,26 @@ describe('TodayPage', () => {
     ).toBeVisible()
     expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
   })
+
+  it('keeps a migrated legacy habit hidden when self-care main tasks are disabled', () => {
+    mocks.habitTodayItems.push(createHabitTodayItem())
+    mocks.selfCareDashboard = {
+      ...createSelfCareDashboard([createSelfCareTodayItem()]),
+      settings: {
+        showSelfCareInMainTasks: false,
+      } as SelfCareDashboardResponse['settings'],
+    }
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(mocks.habitRoutineTaskCard).not.toHaveBeenCalled()
+    expect(
+      screen.queryByRole('link', {
+        name: 'Открыть заботу: Компактная привычка',
+      }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
+  })
 })

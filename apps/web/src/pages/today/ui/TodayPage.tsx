@@ -449,14 +449,14 @@ function PersonalTodayPage() {
       : []
   const migratedSelfCareHabitIds = useMemo(
     () =>
-      showSelfCareMainTasks && selfCareDashboardQuery.data
+      selfCareDashboardQuery.data
         ? getMigratedSelfCareHabitIds([
             ...selfCareDashboardQuery.data.todayItems,
             ...selfCareDashboardQuery.data.overdueItems,
             ...selfCareDashboardQuery.data.flexibleGoals,
           ])
         : new Set<string>(),
-    [selfCareDashboardQuery.data, showSelfCareMainTasks],
+    [selfCareDashboardQuery.data],
   )
   const activeHabitItems = useMemo(
     () =>

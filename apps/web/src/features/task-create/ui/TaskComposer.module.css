@@ -65,13 +65,19 @@
   inset: var(--task-composer-viewport-offset-top, 0px) 0 auto;
   z-index: 120;
   display: grid;
+  grid-template-rows:
+    minmax(calc(1rem + var(--safe-area-top)), 1fr) auto
+    minmax(calc(1rem + var(--safe-area-bottom)), 1fr);
   height: var(--task-composer-viewport-height, 100vh);
-  place-items: center;
-  overflow: hidden;
-  padding: calc(1rem + var(--safe-area-top)) calc(1rem + var(--safe-area-right))
-    calc(1rem + var(--safe-area-bottom)) calc(1rem + var(--safe-area-left));
+  justify-items: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-inline: calc(1rem + var(--safe-area-left))
+    calc(1rem + var(--safe-area-right));
   background: var(--surface-scrim);
   backdrop-filter: blur(10px);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 @supports (height: 100dvh) {
@@ -94,12 +100,12 @@
   --hero-control-height: 3.35rem;
   position: relative;
   z-index: 1;
+  grid-row: 2;
   display: flex;
   flex-direction: column;
   gap: 1rem;
   width: min(1080px, 100%);
-  max-height: 100%;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 24px;
   padding: 1.1rem;
   backdrop-filter: blur(18px);
@@ -114,10 +120,7 @@
   flex: 1 1 auto;
   flex-direction: column;
   gap: 1rem;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
 }
 
 .modalHeader {
@@ -472,11 +475,11 @@
   }
 
   .modalOverlay {
-    align-items: end;
-    padding: calc(0.75rem + var(--safe-area-top))
-      calc(0.55rem + var(--safe-area-right))
-      calc(0.75rem + var(--safe-area-bottom))
-      calc(0.55rem + var(--safe-area-left));
+    grid-template-rows:
+      minmax(calc(1.35rem + var(--safe-area-top)), 1fr) auto
+      minmax(calc(1.35rem + var(--safe-area-bottom)), 1fr);
+    padding-inline: calc(0.55rem + var(--safe-area-left))
+      calc(0.55rem + var(--safe-area-right));
   }
 
   .panel {

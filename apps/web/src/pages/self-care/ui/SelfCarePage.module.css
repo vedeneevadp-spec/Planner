@@ -1081,12 +1081,19 @@
   inset: 0;
   z-index: 1000;
   display: grid;
-  place-items: center;
-  overflow: hidden;
-  padding: 1rem;
+  grid-template-rows:
+    minmax(calc(1rem + var(--safe-area-top)), 1fr) auto
+    minmax(calc(1rem + var(--safe-area-bottom)), 1fr);
+  justify-items: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-inline: calc(1rem + var(--safe-area-left))
+    calc(1rem + var(--safe-area-right));
   background: rgba(5, 14, 12, 0.92);
   backdrop-filter: blur(10px);
   isolation: isolate;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .backdropButton {
@@ -1101,13 +1108,12 @@
 .modalPanel {
   position: relative;
   z-index: 1;
+  grid-row: 2;
   display: grid;
   gap: 0.9rem;
   width: min(42rem, 100%);
-  max-height: calc(100vh - 2rem);
   box-sizing: border-box;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 1rem;
@@ -1719,22 +1725,22 @@ button:disabled {
   }
 
   .modalOverlay {
-    place-items: stretch;
-    padding: 0.55rem;
+    grid-template-rows:
+      minmax(calc(1.35rem + var(--safe-area-top)), 1fr) auto
+      minmax(calc(1.35rem + var(--safe-area-bottom)), 1fr);
+    padding-inline: calc(0.72rem + var(--safe-area-left))
+      calc(0.72rem + var(--safe-area-right));
   }
 
   .modalPanel {
     width: 100%;
-    height: calc(100vh - 1.5rem);
-    max-height: none;
-    border-radius: 14px;
+    height: auto;
+    border-radius: 18px;
   }
 
   .modalPanel.addCareChoicePanel {
-    align-self: end;
     height: auto;
-    max-height: 96vh;
-    border-radius: 28px 28px 0 0;
+    border-radius: 24px;
     padding: 0.86rem 0.72rem 0.96rem;
   }
 
@@ -1824,17 +1830,6 @@ button:disabled {
 
   .scheduleDetailsGrid {
     grid-template-columns: 1fr;
-  }
-
-  @supports (height: 100dvh) {
-    .modalPanel {
-      height: calc(100dvh - 1.5rem);
-    }
-
-    .modalPanel.addCareChoicePanel {
-      height: auto;
-      max-height: 96dvh;
-    }
   }
 
   .tabButton {
