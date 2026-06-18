@@ -274,6 +274,55 @@ void test('MemorySelfCareRepository deduplicates ad-hoc item completion per day'
   assert.equal(history.completions.length, 1)
 })
 
+void test('MemorySelfCareRepository allows repeated completions for migrated flexible habits', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      migratedFromHabitId: 'legacy-habit-1',
+      scheduleRule: {
+        flexiblePeriod: 'day',
+        flexibleTargetCount: 3,
+        repeatKind: 'flexible_goal',
+        startDate: '2026-06-10',
+      },
+      title: 'Вода',
+      type: 'habit',
+    }),
+  })
+  const input = selfCareRitualCompletionInputSchema.parse({
+    completedAt: '2026-06-10T12:00:00.000Z',
+    status: 'done',
+  })
+
+  const first = await repository.completeItemNow({
+    context,
+    input,
+    itemId: item.id,
+  })
+  const second = await repository.completeItemNow({
+    context,
+    input,
+    itemId: item.id,
+  })
+  const history = await repository.getHistory(
+    context,
+    '2026-06-10',
+    '2026-06-10',
+  )
+  const dashboard = await repository.getDashboard({
+    context,
+    date: '2026-06-10',
+  })
+
+  assert.notEqual(second.id, first.id)
+  assert.equal(history.completions.length, 2)
+  assert.equal(dashboard.flexibleGoals[0]?.flexibleProgress?.completedCount, 2)
+  assert.equal(dashboard.flexibleGoals[0]?.flexibleProgress?.targetCount, 3)
+})
+
 void test('MemorySelfCareRepository stores ad-hoc ritual step completion', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()

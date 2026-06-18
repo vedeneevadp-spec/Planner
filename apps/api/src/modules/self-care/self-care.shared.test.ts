@@ -26,6 +26,7 @@ import {
   mapHabitEntryToSelfCareCompletion,
   mapHabitToSelfCareInput,
   type SelfCareStateSnapshot,
+  shouldDeduplicateSelfCareItemCompletion,
 } from './self-care.shared.js'
 
 const NOW = '2026-06-01T00:00:00.000Z'
@@ -830,6 +831,41 @@ void test('mapHabitToSelfCareInput keeps old habits as regular self-care', () =>
   })
 })
 
+void test('mapHabitToSelfCareInput preserves old habit daily target as flexible progress', () => {
+  const input = mapHabitToSelfCareInput({
+    ...BASE_HABIT,
+    daysOfWeek: [1, 3, 5],
+    frequency: 'weekly',
+    reminderTime: '08:30',
+    targetType: 'count',
+    targetValue: 3,
+    unit: 'раза',
+  })
+
+  assert.equal(input.type, 'habit')
+  assert.equal(input.migratedFromHabitId, BASE_HABIT.id)
+  assert.equal(input.preferredTimeOfDay, 'morning')
+  assert.deepEqual(input.scheduleRule, {
+    allowMultiplePerDay: false,
+    dayOfMonth: null,
+    daysOfWeek: [1, 3, 5],
+    endDate: null,
+    flexiblePeriod: 'day',
+    flexibleTargetCount: 3,
+    generateInCalendar: false,
+    generateInTaskList: true,
+    intervalUnit: null,
+    intervalValue: null,
+    monthOfYear: null,
+    preferredTime: '08:30',
+    reminderOffsetsMinutes: [],
+    repeatKind: 'flexible_goal',
+    startDate: BASE_HABIT.startDate,
+    timezone: null,
+    weekOfMonth: null,
+  })
+})
+
 void test('mapHabitEntryToSelfCareCompletion preserves old habit history', () => {
   const completion = mapHabitEntryToSelfCareCompletion({
     entry: habitEntry({ status: 'skipped' }),
@@ -845,6 +881,27 @@ void test('mapHabitEntryToSelfCareCompletion preserves old habit history', () =>
   assert.equal(completion.completedAt, '2026-06-03T12:00:00.000Z')
   assert.equal(completion.scheduledFor, '2026-06-03')
   assert.equal(completion.note, 'без сил')
+})
+
+void test('shouldDeduplicateSelfCareItemCompletion allows repeated flexible-goal clicks for migrated habits', () => {
+  assert.equal(
+    shouldDeduplicateSelfCareItemCompletion({
+      item: selfCareItem({ type: 'habit' }),
+      scheduleRule: rule({
+        flexiblePeriod: 'day',
+        flexibleTargetCount: 3,
+        repeatKind: 'flexible_goal',
+      }),
+    }),
+    false,
+  )
+  assert.equal(
+    shouldDeduplicateSelfCareItemCompletion({
+      item: selfCareItem({ type: 'habit' }),
+      scheduleRule: rule({ repeatKind: 'daily' }),
+    }),
+    true,
+  )
 })
 
 function dates(

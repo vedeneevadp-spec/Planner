@@ -1258,6 +1258,9 @@ export function buildItemInputFromTemplate(
 }
 
 export function mapHabitToSelfCareInput(habit: HabitRecord): SelfCareItemInput {
+  const shouldUseFlexibleProgress =
+    habit.targetType !== 'duration' && habit.targetValue > 1
+
   return {
     alternatives: [],
     category: 'daily_base',
@@ -1278,8 +1281,8 @@ export function mapHabitToSelfCareInput(habit: HabitRecord): SelfCareItemInput {
       dayOfMonth: null,
       daysOfWeek: habit.daysOfWeek,
       endDate: habit.endDate,
-      flexiblePeriod: null,
-      flexibleTargetCount: null,
+      flexiblePeriod: shouldUseFlexibleProgress ? 'day' : null,
+      flexibleTargetCount: shouldUseFlexibleProgress ? habit.targetValue : null,
       generateInCalendar: false,
       generateInTaskList: true,
       intervalUnit: null,
@@ -1287,7 +1290,11 @@ export function mapHabitToSelfCareInput(habit: HabitRecord): SelfCareItemInput {
       monthOfYear: null,
       preferredTime: habit.reminderTime,
       reminderOffsetsMinutes: [],
-      repeatKind: habit.frequency === 'daily' ? 'daily' : 'weekly',
+      repeatKind: shouldUseFlexibleProgress
+        ? 'flexible_goal'
+        : habit.frequency === 'daily'
+          ? 'daily'
+          : 'weekly',
       startDate: habit.startDate,
       timezone: null,
       weekOfMonth: null,
@@ -1558,11 +1565,15 @@ export function getSelfCareCompletionDateKey(
 
 export function shouldDeduplicateSelfCareItemCompletion(input: {
   item: Pick<SelfCareItem, 'type'>
-  scheduleRule: Pick<SelfCareScheduleRule, 'allowMultiplePerDay'> | null
+  scheduleRule: Pick<
+    SelfCareScheduleRule,
+    'allowMultiplePerDay' | 'repeatKind'
+  > | null
 }): boolean {
   return (
     input.item.type !== 'course' &&
     input.item.type !== 'flexible_goal' &&
+    input.scheduleRule?.repeatKind !== 'flexible_goal' &&
     input.scheduleRule?.allowMultiplePerDay !== true
   )
 }
