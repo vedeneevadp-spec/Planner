@@ -325,6 +325,9 @@ const WEEKDAY_OPTIONS: ReadonlyArray<{ label: string; value: number }> = [
   { label: 'Вс', value: 7 },
 ]
 
+const EVERY_WEEKDAY_VALUES = WEEKDAY_OPTIONS.map(({ value }) => value)
+const WORKDAY_VALUES = [1, 2, 3, 4, 5] as const
+
 const ADD_CARE_TEMPLATE_FILTERS: ReadonlyArray<{
   categories: SelfCareCategory[]
   label: string
@@ -2030,6 +2033,7 @@ function SelfCareItemCard({
     : null
   const courseProgress = getCourseProgress(entry.courseDetails)
   const scheduleLabel = formatSchedule(entry.scheduleRule)
+  const todayScheduleLabel = isTodayView ? getTodayScheduleLabel(entry) : null
   const detailsLabel = formatEntryDetails(entry)
   const measurementLabel = formatMeasurementSummary(entry)
   const measurementTargetLabel = formatMeasurementTarget(entry)
@@ -2067,6 +2071,9 @@ function SelfCareItemCard({
               {CATEGORY_LABELS[entry.item.category]} ·{' '}
               {getTypeLabel(entry.item)} · {scheduleLabel}
             </p>
+          ) : null}
+          {todayScheduleLabel ? (
+            <p className={styles.cardMeta}>{todayScheduleLabel}</p>
           ) : null}
           {!isTodayView && entry.occurrence ? (
             <p className={styles.cardMeta}>
@@ -5910,7 +5917,60 @@ function formatSchedule(rule: SelfCareScheduleRule | null): string {
     return `каждые ${rule.intervalValue} ${formatIntervalUnit(rule.intervalUnit)}`
   }
 
+  if (rule.repeatKind === 'weekly') {
+    return formatWeeklySchedule(rule)
+  }
+
   return REPEAT_LABELS[rule.repeatKind]
+}
+
+function formatWeeklySchedule(rule: SelfCareScheduleRule): string {
+  const days = [...new Set(rule.daysOfWeek)].sort((left, right) => left - right)
+
+  if (areSameWeekdays(days, EVERY_WEEKDAY_VALUES)) {
+    return 'каждый день'
+  }
+
+  if (areSameWeekdays(days, WORKDAY_VALUES)) {
+    return 'по будням'
+  }
+
+  if (days.length > 0) {
+    return days
+      .map(
+        (day) =>
+          WEEKDAY_OPTIONS.find((option) => option.value === day)?.label ??
+          String(day),
+      )
+      .join(', ')
+  }
+
+  return REPEAT_LABELS.weekly
+}
+
+function areSameWeekdays(
+  left: ReadonlyArray<number>,
+  right: ReadonlyArray<number>,
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  )
+}
+
+function getTodayScheduleLabel(entry: SelfCareTodayItem): string | null {
+  const rule = entry.scheduleRule
+
+  if (
+    entry.item.type !== 'habit' ||
+    !rule ||
+    rule.repeatKind === 'none' ||
+    rule.repeatKind === 'flexible_goal'
+  ) {
+    return null
+  }
+
+  return formatSchedule(rule)
 }
 
 function formatIntervalUnit(

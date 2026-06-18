@@ -134,6 +134,7 @@ export function HabitsPage() {
   return (
     <section className={pageStyles.page}>
       <TaskComposer
+        allowHabitTaskType
         defaultTaskType="habit"
         hideOpenButton
         initialPlannedDate={todayKey}

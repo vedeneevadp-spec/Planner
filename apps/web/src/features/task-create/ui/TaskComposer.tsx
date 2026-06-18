@@ -31,6 +31,7 @@ import { TaskComposerOpenButton } from './TaskComposerOpenButton'
 import { TaskComposerPrimaryFields } from './TaskComposerPrimaryFields'
 
 interface TaskComposerProps {
+  allowHabitTaskType?: boolean | undefined
   desktopOpenButtonHidden?: boolean | undefined
   hideOpenButton?: boolean
   initialPlannedDate: string | null
@@ -44,6 +45,7 @@ interface TaskComposerProps {
 }
 
 export function TaskComposer({
+  allowHabitTaskType = false,
   desktopOpenButtonHidden = false,
   hideOpenButton = false,
   initialPlannedDate,
@@ -73,9 +75,15 @@ export function TaskComposer({
   const reminderAvailabilityRef = useRef(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const todayKey = getDateKey(new Date())
+  const normalizedDefaultTaskType = normalizeTaskComposerTaskType(
+    defaultTaskType,
+    allowHabitTaskType,
+  )
   const [title, setTitle] = useState('')
   const [icon, setIcon] = useState('')
-  const [taskType, setTaskType] = useState<TaskTypeValue>(defaultTaskType)
+  const [taskType, setTaskType] = useState<TaskTypeValue>(
+    normalizedDefaultTaskType,
+  )
   const [resource, setResource] = useState<ResourceValue>('')
   const [routineForm, setRoutineForm] = useState<RoutineTaskFormState>(() =>
     createDefaultRoutineTaskForm(),
@@ -175,7 +183,12 @@ export function TaskComposer({
     openDraftRequestIdRef.current = openDraft.requestId
     setTitle(openDraft.title ?? '')
     setIcon(openDraft.icon ?? '')
-    setTaskType(openDraft.taskType ?? defaultTaskType)
+    setTaskType(
+      normalizeTaskComposerTaskType(
+        openDraft.taskType ?? defaultTaskType,
+        allowHabitTaskType,
+      ),
+    )
     setResource(openDraft.resource ?? '')
     setRoutineForm(createDefaultRoutineTaskForm())
     setRecurrenceForm(createDefaultTaskRecurrenceForm())
@@ -189,7 +202,13 @@ export function TaskComposer({
     reminderAvailabilityRef.current = false
     setNote(openDraft.note ?? '')
     setIsOpen(true)
-  }, [defaultTaskType, initialPlannedDate, isSharedWorkspace, openDraft])
+  }, [
+    allowHabitTaskType,
+    defaultTaskType,
+    initialPlannedDate,
+    isSharedWorkspace,
+    openDraft,
+  ])
 
   const isReminderAvailable =
     !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
@@ -305,7 +324,7 @@ export function TaskComposer({
   function resetForm() {
     setTitle('')
     setIcon('')
-    setTaskType(defaultTaskType)
+    setTaskType(normalizedDefaultTaskType)
     setResource('')
     setRoutineForm(createDefaultRoutineTaskForm())
     setRecurrenceForm(createDefaultTaskRecurrenceForm())
@@ -432,6 +451,7 @@ export function TaskComposer({
 
                     <TaskComposerDetailsFields
                       assigneeUserId={assigneeUserId}
+                      allowHabitTaskType={allowHabitTaskType}
                       canUseRecurrence={canUseRecurrence}
                       confirmationFieldId={confirmationFieldId}
                       isHabitTaskType={isHabitTaskType}
@@ -489,4 +509,15 @@ function restoreCssVariable(
   }
 
   style.removeProperty(propertyName)
+}
+
+function normalizeTaskComposerTaskType(
+  taskType: TaskTypeValue | undefined,
+  allowHabitTaskType: boolean,
+): TaskTypeValue {
+  if (taskType === 'habit' && !allowHabitTaskType) {
+    return ''
+  }
+
+  return taskType ?? ''
 }

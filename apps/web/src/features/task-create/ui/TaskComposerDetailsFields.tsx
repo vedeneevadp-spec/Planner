@@ -29,6 +29,7 @@ interface WorkspaceUserOption {
 
 interface TaskComposerDetailsFieldsProps {
   assigneeUserId: string
+  allowHabitTaskType: boolean
   canUseRecurrence: boolean
   confirmationFieldId: string
   isHabitTaskType: boolean
@@ -64,6 +65,7 @@ interface TaskComposerDetailsFieldsProps {
 
 export function TaskComposerDetailsFields({
   assigneeUserId,
+  allowHabitTaskType,
   canUseRecurrence,
   confirmationFieldId,
   isHabitTaskType,
@@ -194,6 +196,7 @@ export function TaskComposerDetailsFields({
       <section className={cx(styles.columnSection, styles.typeSection)}>
         <TaskTypePicker
           className={styles.fieldType}
+          includeHabit={allowHabitTaskType}
           value={taskType}
           onChange={onTaskTypeChange}
         />
