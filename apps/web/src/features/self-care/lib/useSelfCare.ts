@@ -1,4 +1,5 @@
 import {
+  type HabitTodayResponse,
   type SelfCareCompletionInput,
   type SelfCareDailyStateInput,
   type SelfCareItemInput,
@@ -8,6 +9,8 @@ import {
   type SelfCareOccurrenceMoveInput,
   type SelfCareOccurrenceSkipInput,
   type SelfCareRitualCompletionInput,
+  type SelfCareRitualStepDraftInput,
+  type SelfCareRitualStepDraftListResponse,
   type SelfCareSettingsUpdateInput,
   type SelfCareTemplateCreateInput,
 } from '@planner/contracts'
@@ -53,6 +56,12 @@ interface CreateFromTemplateVariables {
   templateId: string
 }
 
+interface RitualStepDraftDeleteVariables {
+  date: string
+  itemId: string
+  occurrenceId: string | null
+}
+
 export function selfCareDashboardQueryKey(workspaceId: string, date: string) {
   return ['self-care', workspaceId, 'dashboard', date] as const
 }
@@ -67,6 +76,13 @@ export function selfCarePlanQueryKey(
   to: string,
 ) {
   return ['self-care', workspaceId, 'plan', from, to] as const
+}
+
+export function selfCareRitualStepDraftsQueryKey(
+  workspaceId: string,
+  date: string,
+) {
+  return ['self-care', workspaceId, 'ritual-step-drafts', date] as const
 }
 
 export function selfCareHistoryQueryKey(
@@ -142,6 +158,25 @@ export function useSelfCarePlan(
     queryFn: ({ signal }) => requireSelfCareApi(api).getPlan(from, to, signal),
     queryKey,
     staleTime: 30_000,
+  })
+}
+
+export function useSelfCareRitualStepDrafts(
+  date = getDateKey(new Date()),
+  options: { enabled?: boolean } = {},
+) {
+  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
+  const queryKey = useMemo(
+    () => selfCareRitualStepDraftsQueryKey(workspaceId, date),
+    [date, workspaceId],
+  )
+
+  return useQuery({
+    enabled: isEnabled,
+    queryFn: ({ signal }) =>
+      requireSelfCareApi(api).getRitualStepDrafts(date, signal),
+    queryKey,
+    staleTime: 20_000,
   })
 }
 
@@ -269,6 +304,11 @@ export function useArchiveSelfCareItem() {
       assertSession(session, 'архивировать заботу')
       const item = await requireSelfCareApi(api).archiveItem(itemId)
       await invalidateSelfCare(queryClient, workspaceId)
+      await invalidateMigratedHabitRoutine(
+        queryClient,
+        workspaceId,
+        item.migratedFromHabitId,
+      )
       return item
     },
   })
@@ -305,6 +345,34 @@ export function useCompleteSelfCareOccurrence() {
       )
       await invalidateSelfCare(queryClient, workspaceId)
       return completion
+    },
+  })
+}
+
+export function useUpsertSelfCareRitualStepDraft() {
+  const queryClient = useQueryClient()
+  const { api, session, workspaceId } = useSelfCareApi()
+
+  return useMutation({
+    mutationFn: async (input: SelfCareRitualStepDraftInput) => {
+      assertSession(session, 'сохранить этапы заботы')
+      const result = await requireSelfCareApi(api).upsertRitualStepDraft(input)
+      setRitualStepDraftQueryData(queryClient, workspaceId, result)
+      return result
+    },
+  })
+}
+
+export function useDeleteSelfCareRitualStepDraft() {
+  const queryClient = useQueryClient()
+  const { api, session, workspaceId } = useSelfCareApi()
+
+  return useMutation({
+    mutationFn: async (input: RitualStepDraftDeleteVariables) => {
+      assertSession(session, 'очистить этапы заботы')
+      const result = await requireSelfCareApi(api).deleteRitualStepDraft(input)
+      setRitualStepDraftQueryData(queryClient, workspaceId, result)
+      return result
     },
   })
 }
@@ -553,5 +621,47 @@ async function invalidateSelfCare(
       Array.isArray(query.queryKey) &&
       query.queryKey[0] === 'self-care' &&
       query.queryKey[1] === workspaceId,
+  })
+}
+
+function setRitualStepDraftQueryData(
+  queryClient: ReturnType<typeof useQueryClient>,
+  workspaceId: string,
+  result: SelfCareRitualStepDraftListResponse,
+): void {
+  queryClient.setQueryData(
+    selfCareRitualStepDraftsQueryKey(workspaceId, result.date),
+    result,
+  )
+}
+
+async function invalidateMigratedHabitRoutine(
+  queryClient: ReturnType<typeof useQueryClient>,
+  workspaceId: string,
+  habitId: string | null,
+): Promise<void> {
+  if (!habitId) {
+    return
+  }
+
+  queryClient.setQueriesData<HabitTodayResponse>(
+    {
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey[0] === 'habits' &&
+        query.queryKey[1] === workspaceId &&
+        query.queryKey[2] === 'today',
+    },
+    (current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.filter((item) => item.habit.id !== habitId),
+          }
+        : current,
+  )
+
+  await queryClient.invalidateQueries({
+    queryKey: ['habits', workspaceId],
   })
 }

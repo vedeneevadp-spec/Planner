@@ -8,10 +8,12 @@ import type {
   CreateSelfCareItemCommand,
   CreateSelfCareItemFromTemplateCommand,
   DeleteSelfCareItemCommand,
+  DeleteSelfCareRitualStepDraftCommand,
   GenerateSelfCareOccurrencesCommand,
   GetSelfCareDashboardCommand,
   GetSelfCareOccurrencesCommand,
   GetSelfCarePlanCommand,
+  GetSelfCareRitualStepDraftsCommand,
   MoveSelfCareOccurrenceCommand,
   RestoreSelfCareItemCommand,
   ScheduleSelfCareItemCommand,
@@ -22,6 +24,7 @@ import type {
   SelfCareListResult,
   SelfCarePlanResult,
   SelfCareReadContext,
+  SelfCareRitualStepDraftListResult,
   SelfCareSettingsResult,
   SkipSelfCareOccurrenceCommand,
   StoredSelfCareCompletionRecord,
@@ -35,6 +38,7 @@ import type {
   UpdateSelfCareRitualStepsCommand,
   UpdateSelfCareSettingsCommand,
   UpsertSelfCareDailyStateCommand,
+  UpsertSelfCareRitualStepDraftCommand,
 } from './self-care.model.js'
 
 export interface SelfCareRepository {
@@ -93,6 +97,9 @@ export interface SelfCareRepository {
     command: GetSelfCareOccurrencesCommand,
   ) => Promise<StoredSelfCareOccurrenceRecord[]>
   getPlan: (command: GetSelfCarePlanCommand) => Promise<SelfCarePlanResult>
+  getRitualStepDrafts: (
+    command: GetSelfCareRitualStepDraftsCommand,
+  ) => Promise<SelfCareRitualStepDraftListResult>
   getSettings: (context: SelfCareReadContext) => Promise<SelfCareSettingsResult>
   listItems: (
     context: SelfCareReadContext,
@@ -122,6 +129,12 @@ export interface SelfCareRepository {
   updateRitualSteps: (
     command: UpdateSelfCareRitualStepsCommand,
   ) => Promise<SelfCareListResult>
+  upsertRitualStepDraft: (
+    command: UpsertSelfCareRitualStepDraftCommand,
+  ) => Promise<SelfCareRitualStepDraftListResult>
+  deleteRitualStepDraft: (
+    command: DeleteSelfCareRitualStepDraftCommand,
+  ) => Promise<SelfCareRitualStepDraftListResult>
   updateSettings: (
     command: UpdateSelfCareSettingsCommand,
   ) => Promise<SelfCareSettingsResult>

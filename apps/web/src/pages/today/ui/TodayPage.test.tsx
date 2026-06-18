@@ -63,6 +63,10 @@ vi.mock('@/features/planner', () => ({
   }),
 }))
 
+vi.mock('@/features/self-care', () => ({
+  useSelfCareDashboard: () => ({ data: undefined }),
+}))
+
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
   useUpdateUserPreferences: () => ({

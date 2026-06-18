@@ -20,6 +20,8 @@ import {
   selfCarePlanResponseSchema,
   selfCareRangeQuerySchema,
   selfCareRitualCompletionInputSchema,
+  selfCareRitualStepDraftInputSchema,
+  selfCareRitualStepDraftListResponseSchema,
   selfCareRitualStepInputSchema,
   selfCareSettingsResponseSchema,
   selfCareSettingsUpdateInputSchema,
@@ -43,6 +45,11 @@ const occurrenceParamsSchema = z.object({ occurrenceId: z.string().min(1) })
 const templateParamsSchema = z.object({ templateId: z.string().min(1) })
 const stepsInputSchema = z.object({
   steps: z.array(selfCareRitualStepInputSchema),
+})
+const ritualStepDraftDeleteQuerySchema = z.object({
+  date: z.string().min(1),
+  itemId: z.string().min(1),
+  occurrenceId: z.string().min(1).optional(),
 })
 
 export function registerSelfCareRoutes(
@@ -95,6 +102,20 @@ export function registerSelfCareRoutes(
     const context = await resolveRouteReadContext(request, sessionService)
     const result = await service.getOccurrences(context, query.from, query.to)
     return z.array(selfCareOccurrenceSchema).parse(result)
+  })
+
+  app.get('/api/v1/self-care/ritual-step-drafts', async (request) => {
+    const query = parseOrThrow(
+      selfCareDateQuerySchema,
+      request.query,
+      'invalid_query',
+    )
+    const context = await resolveRouteReadContext(request, sessionService)
+    const result = await service.getRitualStepDrafts(
+      context,
+      query.date ?? getDateKey(new Date()),
+    )
+    return selfCareRitualStepDraftListResponseSchema.parse(result)
   })
 
   app.get('/api/v1/self-care/history', async (request) => {
@@ -408,6 +429,33 @@ export function registerSelfCareRoutes(
       input.steps,
     )
     return selfCareListResponseSchema.parse(result)
+  })
+
+  app.put('/api/v1/self-care/ritual-step-drafts', async (request) => {
+    const input = parseOrThrow(
+      selfCareRitualStepDraftInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const result = await service.upsertRitualStepDraft(context, input)
+    return selfCareRitualStepDraftListResponseSchema.parse(result)
+  })
+
+  app.delete('/api/v1/self-care/ritual-step-drafts', async (request) => {
+    const query = parseOrThrow(
+      ritualStepDraftDeleteQuerySchema,
+      request.query,
+      'invalid_query',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const result = await service.deleteRitualStepDraft(
+      context,
+      query.date,
+      query.itemId,
+      query.occurrenceId ?? null,
+    )
+    return selfCareRitualStepDraftListResponseSchema.parse(result)
   })
 
   app.put('/api/v1/self-care/daily-state', async (request) => {

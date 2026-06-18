@@ -27,6 +27,11 @@ export class SelfCareService {
     return this.repository.getPlan({ context, from, to })
   }
 
+  getRitualStepDrafts(context: SelfCareReadContext, date: string) {
+    assertCanReadSelfCare(context)
+    return this.repository.getRitualStepDrafts({ context, date })
+  }
+
   getOccurrences(context: SelfCareReadContext, from: string, to: string) {
     assertCanReadSelfCare(context)
     return this.repository.getOccurrences({ context, from, to })
@@ -169,6 +174,29 @@ export class SelfCareService {
   ) {
     assertCanWriteSelfCare(context)
     return this.repository.updateRitualSteps({ context, itemId, steps })
+  }
+
+  upsertRitualStepDraft(
+    context: SelfCareWriteContext,
+    input: Parameters<SelfCareRepository['upsertRitualStepDraft']>[0]['input'],
+  ) {
+    assertCanWriteSelfCare(context)
+    return this.repository.upsertRitualStepDraft({ context, input })
+  }
+
+  deleteRitualStepDraft(
+    context: SelfCareWriteContext,
+    date: string,
+    itemId: string,
+    occurrenceId: string | null,
+  ) {
+    assertCanWriteSelfCare(context)
+    return this.repository.deleteRitualStepDraft({
+      context,
+      date,
+      itemId,
+      occurrenceId,
+    })
   }
 
   upsertDailyState(

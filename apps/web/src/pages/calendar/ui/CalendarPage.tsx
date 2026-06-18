@@ -1,4 +1,8 @@
-import type { CalendarViewMode } from '@planner/contracts'
+import type {
+  CalendarViewMode,
+  SelfCareSettings,
+  SelfCareTodayItem,
+} from '@planner/contracts'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
@@ -14,6 +18,7 @@ import {
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { useSelfCarePlan, useSelfCareSettings } from '@/features/self-care'
 import {
   usePlannerSession,
   useUpdateUserPreferences,
@@ -41,8 +46,10 @@ import {
   buildCalendarMonthLoad,
   buildRecurringGhostTasks,
   type CalendarDisplayTask,
+  type CalendarSelfCareTask,
   getCalendarMonthDateRange,
   isRecurringGhostTask,
+  isSelfCareCalendarTask,
 } from '../lib/calendar-load'
 import {
   type CalendarPeriodDirection,
@@ -63,6 +70,12 @@ const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
 const DAY_SCHEDULE_SEARCH_PARAM = 'calendarDaySchedule'
 const LEGACY_TIMELINE_SCHEDULE_SEARCH_PARAM = 'timelineSchedule'
 const TASK_CREATE_SEARCH_PARAM = 'createTask'
+const HIDDEN_SELF_CARE_CALENDAR_OCCURRENCE_STATUSES: ReadonlySet<
+  NonNullable<SelfCareTodayItem['occurrence']>['status']
+> = new Set(['cancelled', 'done', 'missed', 'moved', 'partial', 'skipped'])
+const SELF_CARE_APPOINTMENT_CALENDAR_TYPES = new Set<
+  SelfCareTodayItem['item']['type']
+>(['appointment', 'procedure', 'medical'])
 
 function getMillisecondsUntilNextMinute(date: Date): number {
   const elapsedMinuteMilliseconds =
@@ -210,6 +223,147 @@ function sortCalendarTasks(
   )
 }
 
+function extractSelfCareTime(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+
+  const isoTime = /T(\d{2}:\d{2})/.exec(value)?.[1]
+  const plainTime = /^(\d{2}:\d{2})/.exec(value)?.[1]
+
+  return isoTime ?? plainTime ?? null
+}
+
+function getSelfCareCalendarStartTime(entry: SelfCareTodayItem): string | null {
+  return (
+    extractSelfCareTime(entry.occurrence?.dueAt) ??
+    extractSelfCareTime(entry.appointment?.startsAt) ??
+    extractSelfCareTime(entry.scheduleRule?.preferredTime)
+  )
+}
+
+function addMinutesToTime(startTime: string, minutes: number): string | null {
+  const startMinutes = parseTimeMinutes(startTime)
+
+  if (startMinutes === null) {
+    return null
+  }
+
+  const endMinutes = Math.min(startMinutes + minutes, 23 * 60 + 59)
+
+  if (endMinutes <= startMinutes) {
+    return null
+  }
+
+  const hours = Math.floor(endMinutes / 60)
+  const minutesPart = endMinutes % 60
+
+  return `${String(hours).padStart(2, '0')}:${String(minutesPart).padStart(
+    2,
+    '0',
+  )}`
+}
+
+function getSelfCareCalendarEndTime(
+  entry: SelfCareTodayItem,
+  startTime: string | null,
+): string | null {
+  if (!startTime) {
+    return null
+  }
+
+  const appointmentEndTime = extractSelfCareTime(entry.appointment?.endsAt)
+
+  if (appointmentEndTime && appointmentEndTime > startTime) {
+    return appointmentEndTime
+  }
+
+  return addMinutesToTime(startTime, entry.item.defaultDurationMinutes ?? 45)
+}
+
+function shouldShowSelfCareCalendarEntry(
+  entry: SelfCareTodayItem,
+  settings: SelfCareSettings | null | undefined,
+): boolean {
+  if (!settings || entry.item.isArchived || !entry.item.isActive) {
+    return false
+  }
+
+  if (!entry.occurrence) {
+    return false
+  }
+
+  if (
+    HIDDEN_SELF_CARE_CALENDAR_OCCURRENCE_STATUSES.has(entry.occurrence.status)
+  ) {
+    return false
+  }
+
+  if (!SELF_CARE_APPOINTMENT_CALENDAR_TYPES.has(entry.item.type)) {
+    return false
+  }
+
+  return (
+    settings.showAppointmentsInCalendar &&
+    getSelfCareCalendarStartTime(entry) !== null
+  )
+}
+
+function buildSelfCareCalendarTask(
+  entry: SelfCareTodayItem,
+): CalendarSelfCareTask | null {
+  const occurrence = entry.occurrence
+
+  if (!occurrence) {
+    return null
+  }
+
+  const plannedStartTime = getSelfCareCalendarStartTime(entry)
+
+  return {
+    assigneeDisplayName: null,
+    assigneeUserId: null,
+    authorDisplayName: null,
+    authorUserId: null,
+    completedAt: null,
+    createdAt: occurrence.createdAt,
+    dueDate: null,
+    icon: entry.item.icon ?? '',
+    id: `self-care:${occurrence.id}`,
+    importance: 'not_important',
+    isSelfCare: true,
+    linkedTask: null,
+    note: entry.item.description,
+    plannedDate: occurrence.scheduledFor,
+    plannedEndTime: getSelfCareCalendarEndTime(entry, plannedStartTime),
+    plannedStartTime,
+    project: 'Забота',
+    projectId: null,
+    recurrence: null,
+    reminderOffsets: undefined,
+    remindBeforeStart: undefined,
+    requiresConfirmation: false,
+    resource: null,
+    routine: null,
+    selfCareEntry: entry,
+    sourceWorkspace: null,
+    sphereId: null,
+    status: 'todo',
+    title: entry.item.title,
+    urgency: 'not_urgent',
+  }
+}
+
+function buildSelfCareCalendarTasks(
+  entries: SelfCareTodayItem[],
+  settings: SelfCareSettings | null | undefined,
+): CalendarSelfCareTask[] {
+  return entries
+    .filter((entry) => shouldShowSelfCareCalendarEntry(entry, settings))
+    .map(buildSelfCareCalendarTask)
+    .filter((task): task is CalendarSelfCareTask => task !== null)
+}
+
 function getTasksForDate(
   tasks: CalendarDisplayTask[],
   dateKey: string,
@@ -292,6 +446,10 @@ function getTimeRange(tasks: CalendarDisplayTask[], weekDateKeys: string[]) {
 }
 
 function getTaskTone(task: CalendarDisplayTask) {
+  if (isSelfCareCalendarTask(task)) {
+    return styles.taskToneSelfCare
+  }
+
   if (task.importance === 'important') {
     return styles.taskToneImportant
   }
@@ -308,6 +466,10 @@ function getTaskTone(task: CalendarDisplayTask) {
 }
 
 function getScheduleDotTone(task: CalendarDisplayTask) {
+  if (isSelfCareCalendarTask(task)) {
+    return styles.scheduleDotSelfCare
+  }
+
   if (task.importance === 'important') {
     return styles.scheduleDotImportant
   }
@@ -321,6 +483,22 @@ function getScheduleDotTone(task: CalendarDisplayTask) {
   }
 
   return styles.scheduleDotDefault
+}
+
+function isReadOnlyCalendarTask(task: CalendarDisplayTask): boolean {
+  return isRecurringGhostTask(task) || isSelfCareCalendarTask(task)
+}
+
+function getCalendarTaskAriaLabel(task: CalendarDisplayTask): string {
+  if (isRecurringGhostTask(task)) {
+    return `Будущий повтор задачи ${task.title}`
+  }
+
+  if (isSelfCareCalendarTask(task)) {
+    return `Забота: ${task.title}`
+  }
+
+  return `Открыть задачу ${task.title}`
 }
 
 function formatScheduleDateMeta(dateKey: string): string {
@@ -426,6 +604,8 @@ function CalendarTaskPill({
   task: CalendarDisplayTask
 }) {
   const isGhost = isRecurringGhostTask(task)
+  const isSelfCare = isSelfCareCalendarTask(task)
+  const isReadOnly = isReadOnlyCalendarTask(task)
 
   return (
     <button
@@ -434,16 +614,13 @@ function CalendarTaskPill({
         styles.taskPill,
         compact && styles.taskPillCompact,
         isGhost && styles.ghostTask,
+        isSelfCare && styles.selfCareCalendarTask,
         getTaskTone(task),
       )}
       type="button"
-      aria-label={
-        isGhost
-          ? `Будущий повтор задачи ${task.title}`
-          : `Открыть задачу ${task.title}`
-      }
+      aria-label={getCalendarTaskAriaLabel(task)}
       title={task.title}
-      disabled={isGhost}
+      disabled={isReadOnly}
       onClick={() => onOpenTask?.(task)}
     >
       <span>{task.title}</span>
@@ -459,6 +636,8 @@ function CalendarScheduleTask({
   task: CalendarDisplayTask
 }) {
   const isGhost = isRecurringGhostTask(task)
+  const isSelfCare = isSelfCareCalendarTask(task)
+  const isReadOnly = isReadOnlyCalendarTask(task)
   const timeLabel = task.plannedStartTime
     ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
     : 'Без времени'
@@ -467,15 +646,15 @@ function CalendarScheduleTask({
   return (
     <button
       data-no-swipe
-      className={cx(styles.scheduleTask, isGhost && styles.ghostTask)}
+      className={cx(
+        styles.scheduleTask,
+        isGhost && styles.ghostTask,
+        isSelfCare && styles.selfCareCalendarTask,
+      )}
       type="button"
-      aria-label={
-        isGhost
-          ? `Будущий повтор задачи ${task.title}`
-          : `Открыть задачу ${task.title}`
-      }
+      aria-label={getCalendarTaskAriaLabel(task)}
       title={task.title}
-      disabled={isGhost}
+      disabled={isReadOnly}
       onClick={() => onOpenTask(task)}
     >
       <span
@@ -594,6 +773,25 @@ export function CalendarPage() {
       startDateKey: weekDateKeys[0] ?? anchorDate,
     }
   }, [anchorDate, scheduleDateKeys, viewMode, weekDateKeys])
+  const isSelfCareCalendarEnabled = session?.workspace.kind === 'personal'
+  const selfCareSettingsQuery = useSelfCareSettings({
+    enabled: isSelfCareCalendarEnabled,
+  })
+  const selfCarePlanQuery = useSelfCarePlan(
+    visibleDateRange.startDateKey,
+    visibleDateRange.endDateKey,
+    {
+      enabled: isSelfCareCalendarEnabled,
+    },
+  )
+  const selfCareCalendarTasks = useMemo(
+    () =>
+      buildSelfCareCalendarTasks(
+        selfCarePlanQuery.data?.occurrences ?? [],
+        selfCareSettingsQuery.data?.settings,
+      ),
+    [selfCarePlanQuery.data?.occurrences, selfCareSettingsQuery.data?.settings],
+  )
   const calendarTasks = useMemo<CalendarDisplayTask[]>(
     () => [
       ...tasks,
@@ -603,8 +801,9 @@ export function CalendarPage() {
         visibleDateRange.endDateKey,
         todayKey,
       ),
+      ...selfCareCalendarTasks,
     ],
-    [tasks, todayKey, visibleDateRange],
+    [selfCareCalendarTasks, tasks, todayKey, visibleDateRange],
   )
   const monthLoad = useMemo(
     () => buildCalendarMonthLoad(calendarTasks, anchorDate),
@@ -705,7 +904,7 @@ export function CalendarPage() {
   }
 
   function openTaskCard(task: CalendarDisplayTask) {
-    if (isRecurringGhostTask(task)) {
+    if (isReadOnlyCalendarTask(task)) {
       return
     }
 
@@ -978,48 +1177,51 @@ export function CalendarPage() {
                 {timeRange.hours.map((hour) => (
                   <div key={hour} className={styles.hourSlot} />
                 ))}
-                {dayTimelineEntries.map((entry) => (
-                  <button
-                    data-no-swipe
-                    key={entry.task.id}
-                    className={cx(
-                      styles.timedTask,
-                      styles.dayTimedTask,
-                      isRecurringGhostTask(entry.task) && styles.ghostTask,
-                      getTaskTone(entry.task),
-                    )}
-                    type="button"
-                    disabled={isRecurringGhostTask(entry.task)}
-                    style={getTimedTaskStyle(
-                      entry,
-                      timeRange.startHour,
-                      timeRange.endHour,
-                    )}
-                    aria-label={
-                      isRecurringGhostTask(entry.task)
-                        ? `Будущий повтор задачи ${entry.task.title}`
-                        : `Открыть задачу ${entry.task.title}`
-                    }
-                    title={entry.task.title}
-                    onClick={() => openTaskCard(entry.task)}
-                  >
-                    <strong className={styles.timedTaskTitle}>
-                      {entry.task.icon ? (
-                        <IconMark
-                          className={styles.timedTaskIcon}
-                          value={entry.task.icon}
-                          uploadedIcons={uploadedIcons}
-                        />
+                {dayTimelineEntries.map((entry) => {
+                  const isGhost = isRecurringGhostTask(entry.task)
+                  const isSelfCare = isSelfCareCalendarTask(entry.task)
+                  const isReadOnly = isReadOnlyCalendarTask(entry.task)
+
+                  return (
+                    <button
+                      data-no-swipe
+                      key={entry.task.id}
+                      className={cx(
+                        styles.timedTask,
+                        styles.dayTimedTask,
+                        isGhost && styles.ghostTask,
+                        isSelfCare && styles.selfCareCalendarTask,
+                        getTaskTone(entry.task),
+                      )}
+                      type="button"
+                      disabled={isReadOnly}
+                      style={getTimedTaskStyle(
+                        entry,
+                        timeRange.startHour,
+                        timeRange.endHour,
+                      )}
+                      aria-label={getCalendarTaskAriaLabel(entry.task)}
+                      title={entry.task.title}
+                      onClick={() => openTaskCard(entry.task)}
+                    >
+                      <strong className={styles.timedTaskTitle}>
+                        {entry.task.icon ? (
+                          <IconMark
+                            className={styles.timedTaskIcon}
+                            value={entry.task.icon}
+                            uploadedIcons={uploadedIcons}
+                          />
+                        ) : null}
+                        <span>{entry.task.title}</span>
+                      </strong>
+                      {entry.task.project ? (
+                        <span className={styles.timedTaskProject}>
+                          {entry.task.project}
+                        </span>
                       ) : null}
-                      <span>{entry.task.title}</span>
-                    </strong>
-                    {entry.task.project ? (
-                      <span className={styles.timedTaskProject}>
-                        {entry.task.project}
-                      </span>
-                    ) : null}
-                  </button>
-                ))}
+                    </button>
+                  )
+                })}
                 {anchorDate === todayKey ? (
                   <CurrentTimeMarker
                     currentTime={currentTime}
@@ -1123,33 +1325,36 @@ export function CalendarPage() {
                     {timeRange.hours.map((hour) => (
                       <div key={hour} className={styles.hourSlot} />
                     ))}
-                    {timelineEntries.map((entry) => (
-                      <button
-                        data-no-swipe
-                        key={entry.task.id}
-                        className={cx(
-                          styles.timedTask,
-                          isRecurringGhostTask(entry.task) && styles.ghostTask,
-                          getTaskTone(entry.task),
-                        )}
-                        type="button"
-                        disabled={isRecurringGhostTask(entry.task)}
-                        style={getTimedTaskStyle(
-                          entry,
-                          timeRange.startHour,
-                          timeRange.endHour,
-                        )}
-                        aria-label={
-                          isRecurringGhostTask(entry.task)
-                            ? `Будущий повтор задачи ${entry.task.title}`
-                            : `Открыть задачу ${entry.task.title}`
-                        }
-                        title={entry.task.title}
-                        onClick={() => openTaskCard(entry.task)}
-                      >
-                        <strong>{entry.task.title}</strong>
-                      </button>
-                    ))}
+                    {timelineEntries.map((entry) => {
+                      const isGhost = isRecurringGhostTask(entry.task)
+                      const isSelfCare = isSelfCareCalendarTask(entry.task)
+                      const isReadOnly = isReadOnlyCalendarTask(entry.task)
+
+                      return (
+                        <button
+                          data-no-swipe
+                          key={entry.task.id}
+                          className={cx(
+                            styles.timedTask,
+                            isGhost && styles.ghostTask,
+                            isSelfCare && styles.selfCareCalendarTask,
+                            getTaskTone(entry.task),
+                          )}
+                          type="button"
+                          disabled={isReadOnly}
+                          style={getTimedTaskStyle(
+                            entry,
+                            timeRange.startHour,
+                            timeRange.endHour,
+                          )}
+                          aria-label={getCalendarTaskAriaLabel(entry.task)}
+                          title={entry.task.title}
+                          onClick={() => openTaskCard(entry.task)}
+                        >
+                          <strong>{entry.task.title}</strong>
+                        </button>
+                      )
+                    })}
                     {dateKey === todayKey ? (
                       <CurrentTimeMarker
                         currentTime={currentTime}

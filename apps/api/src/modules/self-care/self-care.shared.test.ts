@@ -8,12 +8,16 @@ import type {
   SelfCareCompletion,
   SelfCareCourseDetails,
   SelfCareItem,
+  SelfCareMeasurementDetails,
   SelfCareOccurrence,
+  SelfCareProcedureDetails,
   SelfCareScheduleRule,
 } from '@planner/contracts'
 
 import {
+  buildAnalyticsResponse,
   buildDashboardResponse,
+  buildDueAt,
   buildPlanResponse,
   buildTodayItem,
   createDefaultSelfCareSettings,
@@ -21,9 +25,15 @@ import {
   getFlexibleGoalProgress,
   mapHabitEntryToSelfCareCompletion,
   mapHabitToSelfCareInput,
+  type SelfCareStateSnapshot,
 } from './self-care.shared.js'
 
 const NOW = '2026-06-01T00:00:00.000Z'
+
+void test('buildDueAt supports form and database time formats', () => {
+  assert.equal(buildDueAt('2026-06-15', '08:30'), '2026-06-15T08:30:00.000Z')
+  assert.equal(buildDueAt('2026-06-15', '08:30:00'), '2026-06-15T08:30:00.000Z')
+})
 
 void test('generateSelfCareOccurrenceDates supports daily recurrences', () => {
   assert.deepEqual(
@@ -163,11 +173,11 @@ void test('getFlexibleGoalProgress counts supportive completion statuses in peri
   })
 })
 
-void test('buildDashboardResponse hides non-essential flexible goals in gentle mode', () => {
+void test('buildDashboardResponse keeps only base flexible goals in gentle mode', () => {
   const date = '2026-06-06'
-  const requiredGoal = selfCareItem({
-    id: 'required-goal',
-    importance: 'required',
+  const baseGoal = selfCareItem({
+    category: 'daily_base',
+    id: 'base-goal',
     title: 'Врач',
     type: 'flexible_goal',
   })
@@ -187,7 +197,7 @@ void test('buildDashboardResponse hides non-essential flexible goals in gentle m
       completions: [],
       courseDetails: [],
       dailyStates: [],
-      items: [requiredGoal, gentleGoal],
+      items: [baseGoal, gentleGoal],
       medicalDetails: [],
       minimumItems: [],
       occurrences: [],
@@ -196,8 +206,8 @@ void test('buildDashboardResponse hides non-essential flexible goals in gentle m
         rule({
           flexiblePeriod: 'week',
           flexibleTargetCount: 1,
-          id: 'required-rule',
-          itemId: requiredGoal.id,
+          id: 'base-rule',
+          itemId: baseGoal.id,
           repeatKind: 'flexible_goal',
         }),
         rule({
@@ -221,8 +231,203 @@ void test('buildDashboardResponse hides non-essential flexible goals in gentle m
 
   assert.deepEqual(
     response.flexibleGoals.map((entry) => entry.item.id),
-    ['required-goal'],
+    ['base-goal'],
   )
+})
+
+void test('buildAnalyticsResponse keeps only visible unique flexible goals', () => {
+  const activeGoal = selfCareItem({
+    id: 'active-goal',
+    title: 'Прогулка',
+    type: 'flexible_goal',
+  })
+  const archivedGoal = selfCareItem({
+    id: 'archived-goal',
+    isActive: false,
+    isArchived: true,
+    title: 'Йога',
+    type: 'flexible_goal',
+  })
+  const deletedGoal = selfCareItem({
+    deletedAt: NOW,
+    id: 'deleted-goal',
+    isActive: false,
+    isArchived: true,
+    title: 'Релакс',
+    type: 'flexible_goal',
+  })
+
+  const response = buildAnalyticsResponse({
+    from: '2026-06-01',
+    to: '2026-06-07',
+    state: {
+      alternatives: [],
+      appointmentDetails: [],
+      completions: [],
+      courseDetails: [],
+      dailyStates: [],
+      items: [activeGoal, archivedGoal, deletedGoal],
+      medicalDetails: [],
+      minimumItems: [],
+      occurrences: [],
+      procedureDetails: [],
+      scheduleRules: [
+        rule({
+          flexiblePeriod: 'week',
+          flexibleTargetCount: 5,
+          id: 'active-rule-1',
+          itemId: activeGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+        rule({
+          flexiblePeriod: 'week',
+          flexibleTargetCount: 5,
+          id: 'active-rule-2',
+          itemId: activeGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+        rule({
+          flexiblePeriod: 'week',
+          flexibleTargetCount: 3,
+          id: 'archived-rule',
+          itemId: archivedGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+        rule({
+          flexiblePeriod: 'week',
+          flexibleTargetCount: 2,
+          id: 'deleted-rule',
+          itemId: deletedGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+      ],
+      settings: createDefaultSelfCareSettings({ userId: 'user-1' }),
+      stepCompletions: [],
+      steps: [],
+      templates: [],
+    },
+  })
+
+  assert.deepEqual(
+    response.flexibleGoals.map((entry) => entry.item.id),
+    ['active-goal'],
+  )
+})
+
+void test('buildAnalyticsResponse groups procedure costs by completion month', () => {
+  const procedure = selfCareItem({
+    category: 'beauty',
+    id: 'procedure-1',
+    title: 'Массаж',
+    type: 'procedure',
+  })
+
+  const response = buildAnalyticsResponse({
+    from: '2026-05-01',
+    to: '2026-06-30',
+    state: selfCareState({
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-05-20T12:00:00.000Z',
+          id: 'procedure-completion-1',
+          itemId: procedure.id,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-10T12:00:00.000Z',
+          id: 'procedure-completion-2',
+          itemId: procedure.id,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-12T12:00:00.000Z',
+          id: 'procedure-skipped',
+          itemId: procedure.id,
+          status: 'skipped',
+        }),
+      ],
+      items: [procedure],
+      procedureDetails: [
+        procedureDetails({
+          defaultPrice: 2500,
+          itemId: procedure.id,
+        }),
+      ],
+    }),
+  })
+
+  assert.equal(response.procedureCosts, 5000)
+  assert.deepEqual(response.procedureCostsByMonth, {
+    '2026-05': 2500,
+    '2026-06': 2500,
+  })
+})
+
+void test('buildAnalyticsResponse returns measurement trends by item', () => {
+  const measurement = selfCareItem({
+    category: 'health',
+    id: 'weight-1',
+    title: 'Вес',
+    type: 'measurement',
+  })
+
+  const response = buildAnalyticsResponse({
+    from: '2026-06-01',
+    to: '2026-06-30',
+    state: selfCareState({
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-06-10T08:00:00.000Z',
+          id: 'weight-completion-2',
+          itemId: measurement.id,
+          measurementUnit: 'кг',
+          measurementValue: 79.4,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-02T08:00:00.000Z',
+          id: 'weight-completion-1',
+          itemId: measurement.id,
+          measurementUnit: 'кг',
+          measurementValue: 80.1,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-12T08:00:00.000Z',
+          id: 'weight-skipped',
+          itemId: measurement.id,
+          measurementUnit: 'кг',
+          measurementValue: 79.2,
+          status: 'skipped',
+        }),
+      ],
+      items: [measurement],
+      measurementDetails: [
+        measurementDetails({
+          itemId: measurement.id,
+          unit: 'кг',
+          valueLabel: 'Вес',
+        }),
+      ],
+    }),
+  })
+
+  assert.deepEqual(response.measurementTrends, [
+    {
+      itemId: measurement.id,
+      points: [
+        {
+          completedAt: '2026-06-02T08:00:00.000Z',
+          date: '2026-06-02',
+          value: 80.1,
+        },
+        {
+          completedAt: '2026-06-10T08:00:00.000Z',
+          date: '2026-06-10',
+          value: 79.4,
+        },
+      ],
+      title: 'Вес',
+      unit: 'кг',
+      valueLabel: 'Вес',
+    },
+  ])
 })
 
 void test('buildDashboardResponse removes planning hints after item is scheduled', () => {
@@ -230,7 +435,7 @@ void test('buildDashboardResponse removes planning hints after item is scheduled
   const item = selfCareItem({
     category: 'beauty',
     id: 'procedure-1',
-    title: 'Маникюр',
+    title: 'Стрижка',
     type: 'procedure',
   })
   const scheduleRule = rule({
@@ -276,7 +481,7 @@ void test('buildDashboardResponse carries overdue planned care without planning 
   const item = selfCareItem({
     category: 'beauty',
     id: 'procedure-1',
-    title: 'Маникюр',
+    title: 'Стрижка',
     type: 'procedure',
   })
   const scheduleRule = rule({
@@ -370,7 +575,7 @@ void test('buildTodayItem prefers details of the scheduled occurrence', () => {
   const item = selfCareItem({
     category: 'beauty',
     id: 'procedure-1',
-    title: 'Маникюр',
+    title: 'Стрижка',
     type: 'procedure',
   })
   const occurrence = selfCareOccurrence({
@@ -662,6 +867,30 @@ function dates(
   })
 }
 
+function selfCareState(
+  overrides: Partial<SelfCareStateSnapshot> = {},
+): SelfCareStateSnapshot {
+  return {
+    alternatives: [],
+    appointmentDetails: [],
+    completions: [],
+    courseDetails: [],
+    dailyStates: [],
+    items: [],
+    medicalDetails: [],
+    measurementDetails: [],
+    minimumItems: [],
+    occurrences: [],
+    procedureDetails: [],
+    scheduleRules: [],
+    settings: createDefaultSelfCareSettings({ userId: 'user-1' }),
+    stepCompletions: [],
+    steps: [],
+    templates: [],
+    ...overrides,
+  }
+}
+
 function rule(overrides: Partial<SelfCareScheduleRule>): SelfCareScheduleRule {
   return {
     allowMultiplePerDay: false,
@@ -702,6 +931,8 @@ function selfCareCompletion(
     energyBefore: null,
     id: 'completion-1',
     itemId: 'self-care-1',
+    measurementUnit: null,
+    measurementValue: null,
     moodAfter: null,
     moodBefore: null,
     note: '',
@@ -770,6 +1001,39 @@ function courseDetails(
     startDate: '2026-06-01',
     totalCount: 30,
     updatedAt: NOW,
+    ...overrides,
+  }
+}
+
+function procedureDetails(
+  overrides: Partial<SelfCareProcedureDetails> = {},
+): SelfCareProcedureDetails {
+  return {
+    contact: null,
+    createdAt: NOW,
+    currency: 'RUB',
+    defaultPrice: null,
+    id: 'procedure-details-1',
+    itemId: 'self-care-1',
+    place: null,
+    specialistName: null,
+    updatedAt: NOW,
+    ...overrides,
+  }
+}
+
+function measurementDetails(
+  overrides: Partial<SelfCareMeasurementDetails> = {},
+): SelfCareMeasurementDetails {
+  return {
+    createdAt: NOW,
+    id: 'measurement-details-1',
+    itemId: 'self-care-1',
+    targetMax: null,
+    targetMin: null,
+    unit: '',
+    updatedAt: NOW,
+    valueLabel: 'Значение',
     ...overrides,
   }
 }

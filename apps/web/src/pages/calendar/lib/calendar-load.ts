@@ -1,3 +1,5 @@
+import type { SelfCareTodayItem } from '@planner/contracts'
+
 import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
 import { addDays, getDateKey } from '@/shared/lib/date'
 
@@ -11,7 +13,15 @@ export interface CalendarGhostTask extends Task {
   sourceTaskId: string
 }
 
-export type CalendarDisplayTask = Task | CalendarGhostTask
+export interface CalendarSelfCareTask extends Task {
+  isSelfCare: true
+  selfCareEntry: SelfCareTodayItem
+}
+
+export type CalendarDisplayTask =
+  | CalendarGhostTask
+  | CalendarSelfCareTask
+  | Task
 
 export interface CalendarDaySummary {
   dateKey: string
@@ -92,6 +102,10 @@ function getTimedTaskMinutes(
 }
 
 function getTaskLoadUnits(task: CalendarDisplayTask): number {
+  if (isSelfCareCalendarTask(task)) {
+    return 1
+  }
+
   const resource = getTaskResource(task)
 
   if (resource < 0) {
@@ -233,8 +247,16 @@ export function buildCalendarMonthLoad(
   }
 }
 
-export function isRecurringGhostTask(task: Task): task is CalendarGhostTask {
+export function isRecurringGhostTask(
+  task: CalendarDisplayTask,
+): task is CalendarGhostTask {
   return 'isRecurringGhost' in task && task.isRecurringGhost === true
+}
+
+export function isSelfCareCalendarTask(
+  task: CalendarDisplayTask,
+): task is CalendarSelfCareTask {
+  return 'isSelfCare' in task && task.isSelfCare === true
 }
 
 export function buildRecurringGhostTasks(

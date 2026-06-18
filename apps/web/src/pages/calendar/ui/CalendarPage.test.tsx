@@ -62,6 +62,11 @@ vi.mock('@/features/planner', () => ({
   }),
 }))
 
+vi.mock('@/features/self-care', () => ({
+  useSelfCarePlan: () => ({ data: { occurrences: [] } }),
+  useSelfCareSettings: () => ({ data: undefined }),
+}))
+
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
   useUpdateUserPreferences: () => ({

@@ -20,6 +20,9 @@ import {
   type SelfCareItemAlternative,
   type SelfCareItemInput,
   type SelfCareListResponse,
+  type SelfCareMeasurementDetails,
+  type SelfCareMeasurementDetailsInput,
+  type SelfCareMeasurementTrend,
   type SelfCareMedicalDetails,
   type SelfCareMedicalDetailsInput,
   type SelfCareMinimumItem,
@@ -62,6 +65,7 @@ export interface SelfCareStateSnapshot {
   dailyStates: SelfCareDailyState[]
   items: SelfCareItem[]
   medicalDetails: SelfCareMedicalDetails[]
+  measurementDetails?: SelfCareMeasurementDetails[] | undefined
   minimumItems: SelfCareMinimumItem[]
   occurrences: SelfCareOccurrence[]
   procedureDetails: SelfCareProcedureDetails[]
@@ -78,6 +82,7 @@ export interface CreateSelfCareRecordsResult {
   courseDetails: SelfCareCourseDetails | null
   item: SelfCareItem
   medicalDetails: SelfCareMedicalDetails | null
+  measurementDetails: SelfCareMeasurementDetails | null
   procedureDetails: SelfCareProcedureDetails | null
   scheduleRule: SelfCareScheduleRule | null
   steps: SelfCareRitualStep[]
@@ -139,6 +144,9 @@ export function createSelfCareRecords(
     item,
     medicalDetails: input.medicalDetails
       ? createMedicalDetailsRecord(itemId, input.medicalDetails, now)
+      : null,
+    measurementDetails: input.measurementDetails
+      ? createMeasurementDetailsRecord(itemId, input.measurementDetails, now)
       : null,
     procedureDetails: input.procedureDetails
       ? createProcedureDetailsRecord(itemId, input.procedureDetails, now)
@@ -284,6 +292,23 @@ export function createCourseDetailsRecord(
   }
 }
 
+export function createMeasurementDetailsRecord(
+  itemId: string,
+  input: SelfCareMeasurementDetailsInput,
+  now = new Date().toISOString(),
+): SelfCareMeasurementDetails {
+  return {
+    createdAt: now,
+    id: generateUuidV7(),
+    itemId,
+    targetMax: input.targetMax,
+    targetMin: input.targetMin,
+    unit: input.unit,
+    updatedAt: now,
+    valueLabel: input.valueLabel,
+  }
+}
+
 export function createDefaultSelfCareSettings(input: {
   date?: string | undefined
   userId: string
@@ -300,7 +325,6 @@ export function createDefaultSelfCareSettings(input: {
     quietHoursEnd: '08:00',
     quietHoursStart: '22:00',
     showAppointmentsInCalendar: true,
-    showDailyRitualsInCalendar: false,
     showSelfCareInMainTasks: true,
     updatedAt: now,
     userId: input.userId,
@@ -385,6 +409,8 @@ export function createCompletionRecord(
     energyBefore: input.energyBefore,
     id: generateUuidV7(),
     itemId: context.itemId,
+    measurementUnit: input.measurementUnit ?? null,
+    measurementValue: input.measurementValue ?? null,
     moodAfter: input.moodAfter,
     moodBefore: input.moodBefore,
     note: input.note,
@@ -503,14 +529,16 @@ export function generateSelfCareOccurrencesForRange(input: {
     return []
   }
 
-  const existingKeys = new Set(
+  const existingDates = new Set(
     input.existingOccurrences
       .filter(
         (occurrence) =>
           occurrence.itemId === item.id &&
-          occurrence.scheduleRuleId === scheduleRule.id,
+          (occurrence.scheduleRuleId === scheduleRule.id ||
+            (!scheduleRule.allowMultiplePerDay &&
+              occurrence.scheduleRuleId === null)),
       )
-      .map((occurrence) => occurrenceKey(occurrence)),
+      .map((occurrence) => occurrence.scheduledFor),
   )
   const dates = generateSelfCareOccurrenceDates({
     completions: input.completions.filter(
@@ -523,9 +551,7 @@ export function generateSelfCareOccurrencesForRange(input: {
   })
 
   return dates.flatMap((scheduledFor) => {
-    const key = `${item.id}:${scheduleRule.id}:${scheduledFor}`
-
-    if (existingKeys.has(key)) {
+    if (existingDates.has(scheduledFor)) {
       return []
     }
 
@@ -708,7 +734,7 @@ export function buildPlanResponse(input: {
           ]
         : []
     })
-    .sort(sortTodayItems)
+    .sort(sortPlanItems)
   const courses = state.courseDetails.flatMap((course) => {
     const item = itemById.get(course.itemId)
     return item && isVisibleSelfCareItem(item) && !course.isCompleted
@@ -757,9 +783,21 @@ export function buildAnalyticsResponse(input: {
 }): SelfCareAnalyticsResponse {
   const history = buildHistoryResponse(input)
   const itemById = new Map(input.state.items.map((item) => [item.id, item]))
+  const measurementDetailsByItemId = new Map(
+    (input.state.measurementDetails ?? []).map((details) => [
+      details.itemId,
+      details,
+    ]),
+  )
+  const procedureDetailsByItemId = new Map(
+    input.state.procedureDetails.map((details) => [details.itemId, details]),
+  )
   const balanceByCategory = createEmptyCategoryCounts()
   const completionsByDay: Record<string, number> = {}
+  const flexibleGoalItemIds = new Set<string>()
+  const measurementTrendByItemId = new Map<string, SelfCareMeasurementTrend>()
   let procedureCosts = 0
+  const procedureCostsByMonth: Record<string, number> = {}
 
   for (const completion of history.completions) {
     if (!isCompletionProgressStatus(completion.status)) {
@@ -774,11 +812,51 @@ export function buildAnalyticsResponse(input: {
 
     const dateKey = completion.completedAt.slice(0, 10)
     completionsByDay[dateKey] = (completionsByDay[dateKey] ?? 0) + 1
+
+    if (item?.type === 'procedure') {
+      const price = procedureDetailsByItemId.get(item.id)?.defaultPrice ?? 0
+
+      if (price > 0) {
+        const monthKey = dateKey.slice(0, 7)
+        procedureCosts += price
+        procedureCostsByMonth[monthKey] =
+          (procedureCostsByMonth[monthKey] ?? 0) + price
+      }
+    }
+
+    if (item?.type === 'measurement' && completion.measurementValue !== null) {
+      const details = measurementDetailsByItemId.get(item.id)
+      const trend = measurementTrendByItemId.get(item.id) ?? {
+        itemId: item.id,
+        points: [],
+        title: item.title,
+        unit: completion.measurementUnit ?? details?.unit ?? null,
+        valueLabel: details?.valueLabel ?? 'Значение',
+      }
+
+      trend.points.push({
+        completedAt: completion.completedAt,
+        date: dateKey,
+        value: completion.measurementValue,
+      })
+      measurementTrendByItemId.set(item.id, trend)
+    }
   }
 
-  for (const details of input.state.procedureDetails) {
-    procedureCosts += details.defaultPrice ?? 0
-  }
+  const measurementTrends = [...measurementTrendByItemId.values()]
+    .map((trend) => ({
+      ...trend,
+      points: [...trend.points].sort((left, right) =>
+        left.completedAt.localeCompare(right.completedAt),
+      ),
+    }))
+    .sort((left, right) => {
+      const leftLatest = left.points[left.points.length - 1]?.completedAt ?? ''
+      const rightLatest =
+        right.points[right.points.length - 1]?.completedAt ?? ''
+
+      return rightLatest.localeCompare(leftLatest)
+    })
 
   return {
     balanceByCategory,
@@ -800,20 +878,28 @@ export function buildAnalyticsResponse(input: {
       .filter((rule) => rule.repeatKind === 'flexible_goal')
       .flatMap((rule) => {
         const item = itemById.get(rule.itemId)
-        return item
-          ? [
-              buildTodayItem({
-                date: input.to,
-                item,
-                occurrence: null,
-                state: input.state,
-              }),
-            ]
-          : []
+        if (
+          !item ||
+          !isVisibleSelfCareItem(item) ||
+          flexibleGoalItemIds.has(item.id)
+        ) {
+          return []
+        }
+
+        flexibleGoalItemIds.add(item.id)
+        return [
+          buildTodayItem({
+            date: input.to,
+            item,
+            occurrence: null,
+            state: input.state,
+          }),
+        ]
       }),
     medicalUpcoming: buildUpcomingImportant(input.to, input.state).filter(
       (entry) => entry.item.type === 'medical',
     ),
+    measurementTrends,
     minimumCompletionCount: history.completions.filter((completion) =>
       completion.note.toLowerCase().includes('миним'),
     ).length,
@@ -822,6 +908,7 @@ export function buildAnalyticsResponse(input: {
         dailyState.date >= input.from && dailyState.date <= input.to,
     ),
     procedureCosts,
+    procedureCostsByMonth,
     selectedSelfCareCount: history.completions.filter((completion) =>
       isCompletionProgressStatus(completion.status),
     ).length,
@@ -871,6 +958,14 @@ export function buildTodayItem(input: {
       ) ?? null,
     flexibleProgress,
     item: input.item,
+    lastMeasurement: findLastMeasurementCompletion(
+      input.state.completions,
+      input.item.id,
+    ),
+    measurement:
+      input.state.measurementDetails?.find(
+        (details) => details.itemId === input.item.id,
+      ) ?? null,
     occurrence: input.occurrence,
     procedure:
       input.state.procedureDetails.find(
@@ -914,6 +1009,7 @@ export function buildSelfCareListResponse(
     courseDetails: state.courseDetails,
     items: sortSelfCareItems(items),
     medicalDetails: state.medicalDetails,
+    measurementDetails: state.measurementDetails ?? [],
     procedureDetails: state.procedureDetails,
     scheduleRules: state.scheduleRules,
     steps: state.steps.sort((left, right) => left.order - right.order),
@@ -947,26 +1043,26 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
       },
     ),
     template(
-      'Маникюр',
-      'Каждые 4 недели после выполнения.',
+      'Стрижка',
+      'Каждые 6 недель после выполнения.',
       'procedure',
       'beauty',
       'recommended',
       {
         intervalUnit: 'week',
-        intervalValue: 4,
+        intervalValue: 6,
         repeatKind: 'after_completion',
       },
     ),
     template(
-      'Педикюр',
-      'Каждые 5 недель после выполнения.',
+      'Массаж',
+      'Каждые 4 недели после выполнения.',
       'procedure',
-      'beauty',
+      'relax',
       'recommended',
       {
         intervalUnit: 'week',
-        intervalValue: 5,
+        intervalValue: 4,
         repeatKind: 'after_completion',
       },
     ),
@@ -975,22 +1071,28 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
       repeatKind: 'daily',
     }),
     template(
-      'Утренний уход',
-      'Ритуал с мягким чеклистом.',
+      'Утренний минимум',
+      'Короткий чеклист для старта дня.',
       'ritual',
-      'beauty',
+      'daily_base',
       'recommended',
       { preferredTime: '08:30', repeatKind: 'daily' },
-      ['умыться', 'тоник', 'сыворотка', 'крем', 'SPF'],
+      ['умыться', 'вода', 'лекарства или витамины', 'SPF', 'план дня'],
     ),
     template(
-      'Вечерний уход',
+      'Вечернее восстановление',
       'Можно сделать полную или минимальную версию.',
       'ritual',
-      'beauty',
+      'sleep',
       'gentle',
       { preferredTime: '21:30', repeatKind: 'daily' },
-      ['снять макияж', 'умыться', 'актив', 'крем', 'крем для рук'],
+      [
+        'душ или умывание',
+        'подготовить вещи',
+        'отложить экран',
+        'короткая пауза',
+        'лечь вовремя',
+      ],
     ),
     template(
       'Йога',
@@ -1017,7 +1119,7 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
       },
     ),
     template(
-      'Релакс 20 минут',
+      'Пауза 20 минут',
       '3 раза в неделю.',
       'flexible_goal',
       'relax',
@@ -1210,6 +1312,8 @@ export function mapHabitEntryToSelfCareCompletion(input: {
     energyBefore: null,
     id: generateUuidV7(),
     itemId: input.item.id,
+    measurementUnit: null,
+    measurementValue: null,
     moodAfter: null,
     moodBefore: null,
     note: input.entry.note,
@@ -1379,7 +1483,7 @@ function buildUpcomingImportant(date: string, state: SelfCareStateSnapshot) {
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
 
-      return item && (item.importance === 'required' || item.type === 'medical')
+      return item && item.type === 'medical'
         ? [
             buildTodayItem({
               date: occurrence.scheduledFor,
@@ -1476,9 +1580,7 @@ function shouldShowInDashboard(
     return true
   }
 
-  return (
-    entry.item.importance === 'required' || entry.item.category === 'daily_base'
-  )
+  return entry.item.category === 'daily_base' || entry.item.type === 'medical'
 }
 
 function resolveTimeGroup(
@@ -1512,14 +1614,18 @@ export function sortTodayItems(
     return leftTime.localeCompare(rightTime)
   }
 
-  if (left.item.importance !== right.item.importance) {
-    return (
-      importanceWeight(left.item.importance) -
-      importanceWeight(right.item.importance)
-    )
-  }
-
   return left.item.title.localeCompare(right.item.title, 'ru')
+}
+
+function sortPlanItems(
+  left: SelfCareTodayItem,
+  right: SelfCareTodayItem,
+): number {
+  const dateDiff = (left.occurrence?.scheduledFor ?? '').localeCompare(
+    right.occurrence?.scheduledFor ?? '',
+  )
+
+  return dateDiff === 0 ? sortTodayItems(left, right) : dateDiff
 }
 
 export function sortSelfCareItems(items: SelfCareItem[]): SelfCareItem[] {
@@ -1541,16 +1647,6 @@ export function isGentleModeEnabled(
   date: string,
 ): boolean {
   return settings.gentleModeEnabledToday && settings.gentleModeDate === date
-}
-
-function importanceWeight(importance: SelfCareItem['importance']): number {
-  if (importance === 'required') return 0
-  if (importance === 'recommended') return 1
-  return 2
-}
-
-function occurrenceKey(occurrence: SelfCareOccurrence): string {
-  return `${occurrence.itemId}:${occurrence.scheduleRuleId ?? ''}:${occurrence.scheduledFor}`
 }
 
 function generateMonthlyDates(
@@ -1741,6 +1837,26 @@ export function serializeNullableDate(value: unknown): string | null {
   return value === null || value === undefined ? null : serializeDate(value)
 }
 
+export function serializeNullableTime(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString().slice(11, 16)
+  }
+
+  if (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'bigint'
+  ) {
+    return String(value).slice(0, 5)
+  }
+
+  throw new Error('Unsupported time value.')
+}
+
 export function parseJsonArray<T>(value: unknown, fallback: T[] = []): T[] {
   if (Array.isArray(value)) return value as T[]
   if (typeof value === 'string') {
@@ -1809,7 +1925,16 @@ export function buildDueAt(
   dateKey: string,
   preferredTime: string | null,
 ): string | null {
-  return preferredTime ? `${dateKey}T${preferredTime}:00.000Z` : null
+  if (!preferredTime) {
+    return null
+  }
+
+  const match = preferredTime.match(/^(\d{2}:\d{2})(?::(\d{2}))?$/)
+  if (!match) {
+    return null
+  }
+
+  return `${dateKey}T${match[1]}:${match[2] ?? '00'}.000Z`
 }
 
 function parseDateKey(dateKey: string): Date {
@@ -1907,6 +2032,24 @@ function findLastCompletion(
       .filter(
         (completion) =>
           completion.itemId === itemId &&
+          isCompletionProgressStatus(completion.status),
+      )
+      .sort((left, right) =>
+        right.completedAt.localeCompare(left.completedAt),
+      )[0] ?? null
+  )
+}
+
+function findLastMeasurementCompletion(
+  completions: SelfCareCompletion[],
+  itemId: string,
+): SelfCareCompletion | null {
+  return (
+    completions
+      .filter(
+        (completion) =>
+          completion.itemId === itemId &&
+          completion.measurementValue !== null &&
           isCompletionProgressStatus(completion.status),
       )
       .sort((left, right) =>

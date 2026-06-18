@@ -4,6 +4,7 @@ import type {
   SelfCareCompletion,
   SelfCareCourseDetails,
   SelfCareItemAlternative,
+  SelfCareMeasurementDetails,
   SelfCareMedicalDetails,
   SelfCareMinimumItem,
   SelfCareProcedureDetails,
@@ -24,10 +25,12 @@ import type {
   CreateSelfCareItemCommand,
   CreateSelfCareItemFromTemplateCommand,
   DeleteSelfCareItemCommand,
+  DeleteSelfCareRitualStepDraftCommand,
   GenerateSelfCareOccurrencesCommand,
   GetSelfCareDashboardCommand,
   GetSelfCareOccurrencesCommand,
   GetSelfCarePlanCommand,
+  GetSelfCareRitualStepDraftsCommand,
   MoveSelfCareOccurrenceCommand,
   RestoreSelfCareItemCommand,
   ScheduleSelfCareItemCommand,
@@ -39,12 +42,14 @@ import type {
   StoredSelfCareDailyStateRecord,
   StoredSelfCareItemRecord,
   StoredSelfCareOccurrenceRecord,
+  StoredSelfCareRitualStepDraftRecord,
   ToggleSelfCareGentleModeCommand,
   UpdateSelfCareItemCommand,
   UpdateSelfCareMinimumItemsCommand,
   UpdateSelfCareRitualStepsCommand,
   UpdateSelfCareSettingsCommand,
   UpsertSelfCareDailyStateCommand,
+  UpsertSelfCareRitualStepDraftCommand,
 } from './self-care.model.js'
 import type { SelfCareRepository } from './self-care.repository.js'
 import {
@@ -62,6 +67,7 @@ import {
   createDailyStateRecord,
   createDefaultMinimumItems,
   createDefaultSelfCareSettings,
+  createMeasurementDetailsRecord,
   createMedicalDetailsRecord,
   createMinimumItemRecord,
   createOccurrenceRecord,
@@ -93,6 +99,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   >()
   private readonly items = new Map<string, StoredSelfCareItemRecord>()
   private readonly medicalDetails = new Map<string, SelfCareMedicalDetails>()
+  private readonly measurementDetails = new Map<
+    string,
+    SelfCareMeasurementDetails
+  >()
   private readonly minimumItems = new Map<string, SelfCareMinimumItem>()
   private readonly occurrences = new Map<
     string,
@@ -107,6 +117,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   private readonly stepCompletions = new Map<
     string,
     SelfCareRitualStepCompletion
+  >()
+  private readonly stepDrafts = new Map<
+    string,
+    StoredSelfCareRitualStepDraftRecord
   >()
   private readonly steps = new Map<string, SelfCareRitualStep>()
   private readonly templates = buildSystemSelfCareTemplates()
@@ -195,17 +209,25 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     this.items.set(nextItem.id, nextItem)
 
     if (command.input.scheduleRule) {
-      this.deleteForItem(this.scheduleRules, nextItem.id)
+      const existingRule =
+        [...this.scheduleRules.values()].find(
+          (candidate) => candidate.itemId === nextItem.id,
+        ) ?? null
       const rule = createScheduleRuleRecord(
         nextItem.id,
-        command.input.scheduleRule,
+        {
+          ...command.input.scheduleRule,
+          id: existingRule?.id ?? command.input.scheduleRule.id,
+        },
         now,
       )
       this.scheduleRules.set(rule.id, rule)
+      this.relinkOpenOccurrencesToScheduleRule(rule)
     }
 
     if (command.input.steps) {
       this.deleteForItem(this.steps, nextItem.id)
+      this.deleteForItem(this.stepDrafts, nextItem.id)
       command.input.steps.forEach((step, index) => {
         const record = createRitualStepRecord(nextItem.id, step, index, now)
         this.steps.set(record.id, record)
@@ -256,6 +278,16 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       this.medicalDetails.set(record.id, record)
     }
 
+    if (command.input.measurementDetails) {
+      this.deleteForItem(this.measurementDetails, nextItem.id)
+      const record = createMeasurementDetailsRecord(
+        nextItem.id,
+        command.input.measurementDetails,
+        now,
+      )
+      this.measurementDetails.set(record.id, record)
+    }
+
     if (command.input.courseDetails) {
       this.deleteForItem(this.courseDetails, nextItem.id)
       const record = createCourseDetailsRecord(
@@ -286,6 +318,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       isArchived: true,
       version: item.version + 1,
     })
+    this.deleteForItem(this.stepDrafts, item.id)
   }
 
   async generateOccurrences(command: GenerateSelfCareOccurrencesCommand) {
@@ -350,6 +383,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   async completeOccurrence(command: CompleteSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
     const item = this.getWritableItem(command.context, occurrence.itemId)
+    assertMeasurementCompletionInput(item, command.input)
+    assertMoodCheckCompletionInput(item, command.input)
     const stepCompletions = createRitualStepCompletions(
       'pending',
       command.input,
@@ -386,6 +421,20 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         },
       ),
     )
+    this.deleteRitualStepDraftRecord({
+      date: getSelfCareCompletionDateKey(command.input),
+      itemId: item.id,
+      occurrenceId: occurrence.id,
+      userId: command.context.actorUserId,
+      workspaceId: command.context.workspaceId,
+    })
+    this.deleteRitualStepDraftRecord({
+      date: occurrence.scheduledFor,
+      itemId: item.id,
+      occurrenceId: occurrence.id,
+      userId: command.context.actorUserId,
+      workspaceId: command.context.workspaceId,
+    })
     this.incrementCourseIfNeeded(item.id)
 
     return completion
@@ -393,6 +442,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async completeItemNow(command: CompleteSelfCareItemNowCommand) {
     const item = this.getWritableItem(command.context, command.itemId)
+    assertMeasurementCompletionInput(item, command.input)
+    assertMoodCheckCompletionInput(item, command.input)
     const scheduleRule = this.findScheduleRuleForItem(item.id)
     const completionDate = getSelfCareCompletionDateKey(command.input)
     const existingCompletion = shouldDeduplicateSelfCareItemCompletion({
@@ -436,6 +487,13 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     finalStepCompletions.forEach((step) =>
       this.stepCompletions.set(step.id, step),
     )
+    this.deleteRitualStepDraftRecord({
+      date: completionDate,
+      itemId: item.id,
+      occurrenceId: null,
+      userId: command.context.actorUserId,
+      workspaceId: command.context.workspaceId,
+    })
     this.incrementCourseIfNeeded(item.id)
     return completion
   }
@@ -465,6 +523,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
+        measurementUnit: null,
+        measurementValue: null,
         moodAfter: null,
         moodBefore: null,
         note: command.input.reason,
@@ -491,6 +551,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
+        measurementUnit: null,
+        measurementValue: null,
         moodAfter: null,
         moodBefore: null,
         note: command.input.note,
@@ -524,7 +586,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const existing = [...this.occurrences.values()].find(
       (occurrence) =>
         occurrence.itemId === item.id &&
-        occurrence.scheduleRuleId === (scheduleRule?.id ?? null) &&
+        isSameScheduleSlot(occurrence, scheduleRule) &&
         occurrence.scheduledFor === command.input.scheduledFor,
     )
 
@@ -534,6 +596,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         completedAt: null,
         dueAt,
         movedTo: null,
+        scheduleRuleId: scheduleRule?.id ?? null,
         status: 'scheduled' as const,
         updatedAt: new Date().toISOString(),
       }
@@ -637,6 +700,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
+        measurementUnit: null,
+        measurementValue: null,
         moodAfter: null,
         moodBefore: null,
         note: '',
@@ -691,25 +756,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ...(command.input.currency !== undefined
         ? { currency: command.input.currency }
         : {}),
-      ...(command.input.defaultReminderTone !== undefined
-        ? { defaultReminderTone: command.input.defaultReminderTone }
-        : {}),
-      ...(command.input.quietHoursEnd !== undefined
-        ? { quietHoursEnd: command.input.quietHoursEnd }
-        : {}),
-      ...(command.input.quietHoursStart !== undefined
-        ? { quietHoursStart: command.input.quietHoursStart }
-        : {}),
       ...(command.input.showAppointmentsInCalendar !== undefined
         ? {
             showAppointmentsInCalendar:
               command.input.showAppointmentsInCalendar,
-          }
-        : {}),
-      ...(command.input.showDailyRitualsInCalendar !== undefined
-        ? {
-            showDailyRitualsInCalendar:
-              command.input.showDailyRitualsInCalendar,
           }
         : {}),
       ...(command.input.showSelfCareInMainTasks !== undefined
@@ -760,11 +810,69 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   async updateRitualSteps(command: UpdateSelfCareRitualStepsCommand) {
     this.getWritableItem(command.context, command.itemId)
     this.deleteForItem(this.steps, command.itemId)
+    this.deleteForItem(this.stepDrafts, command.itemId)
     command.steps.forEach((step, index) => {
       const record = createRitualStepRecord(command.itemId, step, index)
       this.steps.set(record.id, record)
     })
     return this.listItems(command.context)
+  }
+
+  async getRitualStepDrafts(command: GetSelfCareRitualStepDraftsCommand) {
+    const userId =
+      command.context.actorUserId ??
+      this.findUserIdForWorkspace(command.context.workspaceId)
+
+    return {
+      date: command.date,
+      drafts: [...this.stepDrafts.values()]
+        .filter(
+          (draft) =>
+            draft.date === command.date &&
+            draft.userId === userId &&
+            draft.workspaceId === command.context.workspaceId,
+        )
+        .map((draft) => toPublicRitualStepDraft(draft)),
+    }
+  }
+
+  async upsertRitualStepDraft(command: UpsertSelfCareRitualStepDraftCommand) {
+    const item = this.getWritableItem(command.context, command.input.itemId)
+    this.assertRitualStepDraftOccurrence(command)
+    this.assertRitualStepDraftSteps(item.id, command.input.stepIds)
+
+    const draft: StoredSelfCareRitualStepDraftRecord = {
+      date: command.input.date,
+      itemId: item.id,
+      occurrenceId: command.input.occurrenceId,
+      stepIds: [...new Set(command.input.stepIds)],
+      userId: command.context.actorUserId,
+      workspaceId: command.context.workspaceId,
+    }
+    this.stepDrafts.set(getRitualStepDraftKey(draft), draft)
+
+    return this.getRitualStepDrafts({
+      context: command.context,
+      date: command.input.date,
+    })
+  }
+
+  async deleteRitualStepDraft(command: DeleteSelfCareRitualStepDraftCommand) {
+    const item = this.getWritableItem(command.context, command.itemId)
+    this.stepDrafts.delete(
+      getRitualStepDraftKey({
+        date: command.date,
+        itemId: item.id,
+        occurrenceId: command.occurrenceId,
+        userId: command.context.actorUserId,
+        workspaceId: command.context.workspaceId,
+      }),
+    )
+
+    return this.getRitualStepDrafts({
+      context: command.context,
+      date: command.date,
+    })
   }
 
   async getHistory(context: SelfCareReadContext, from: string, to: string) {
@@ -806,10 +914,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     itemId: string,
     isArchived: boolean,
   ) {
-    const item = this.getWritableItem(context, itemId)
+    const item = this.getWritableItem(context, itemId, {
+      allowArchived: !isArchived,
+    })
     const next = {
       ...item,
-      isActive: isArchived ? false : item.isActive,
+      isActive: isArchived ? false : true,
       isArchived,
       updatedAt: new Date().toISOString(),
       version: item.version + 1,
@@ -840,6 +950,11 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       )
     if (records.medicalDetails)
       this.medicalDetails.set(records.medicalDetails.id, records.medicalDetails)
+    if (records.measurementDetails)
+      this.measurementDetails.set(
+        records.measurementDetails.id,
+        records.measurementDetails,
+      )
     if (records.courseDetails)
       this.courseDetails.set(records.courseDetails.id, records.courseDetails)
   }
@@ -873,6 +988,9 @@ export class MemorySelfCareRepository implements SelfCareRepository {
           item.deletedAt === null,
       ),
       medicalDetails: [...this.medicalDetails.values()].filter((item) =>
+        this.itemBelongsToUser(item.itemId, userId),
+      ),
+      measurementDetails: [...this.measurementDetails.values()].filter((item) =>
         this.itemBelongsToUser(item.itemId, userId),
       ),
       minimumItems: [...this.minimumItems.values()]
@@ -938,6 +1056,25 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     )
   }
 
+  private relinkOpenOccurrencesToScheduleRule(rule: SelfCareScheduleRule) {
+    for (const occurrence of this.occurrences.values()) {
+      if (
+        occurrence.itemId !== rule.itemId ||
+        occurrence.scheduleRuleId !== null ||
+        occurrence.completedAt !== null ||
+        (occurrence.status !== 'scheduled' && occurrence.status !== 'missed')
+      ) {
+        continue
+      }
+
+      this.occurrences.set(occurrence.id, {
+        ...occurrence,
+        scheduleRuleId: rule.id,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  }
+
   private findProgressCompletionForDate(input: {
     date: string
     itemId: string
@@ -958,7 +1095,11 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     )
   }
 
-  private getWritableItem(context: SelfCareWriteContext, itemId: string) {
+  private getWritableItem(
+    context: SelfCareWriteContext,
+    itemId: string,
+    options: { allowArchived?: boolean | undefined } = {},
+  ) {
     const item = this.items.get(itemId)
     if (
       !item ||
@@ -972,7 +1113,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         'Self-care item not found.',
       )
     }
-    if (item.isArchived) {
+    if (item.isArchived && !options.allowArchived) {
       throw new HttpError(
         400,
         'self_care_item_archived',
@@ -996,6 +1137,54 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   private loadStepsForItem(itemId: string) {
     return [...this.steps.values()].filter((step) => step.itemId === itemId)
+  }
+
+  private assertRitualStepDraftOccurrence(
+    command: UpsertSelfCareRitualStepDraftCommand,
+  ): void {
+    if (!command.input.occurrenceId) {
+      return
+    }
+
+    const occurrence = this.getOccurrence(
+      command.context,
+      command.input.occurrenceId,
+    )
+
+    if (occurrence.itemId !== command.input.itemId) {
+      throw new HttpError(
+        400,
+        'self_care_ritual_step_draft_occurrence_mismatch',
+        'Self-care occurrence does not belong to this item.',
+      )
+    }
+  }
+
+  private assertRitualStepDraftSteps(itemId: string, stepIds: string[]): void {
+    const availableStepIds = new Set(
+      this.loadStepsForItem(itemId).map((step) => step.id),
+    )
+    const hasInvalidStep = stepIds.some(
+      (stepId) => !availableStepIds.has(stepId),
+    )
+
+    if (hasInvalidStep) {
+      throw new HttpError(
+        400,
+        'self_care_ritual_step_draft_invalid_step',
+        'Self-care ritual step draft contains an unknown step.',
+      )
+    }
+  }
+
+  private deleteRitualStepDraftRecord(input: {
+    date: string
+    itemId: string
+    occurrenceId: string | null
+    userId: string
+    workspaceId: string
+  }): void {
+    this.stepDrafts.delete(getRitualStepDraftKey(input))
   }
 
   private incrementCourseIfNeeded(itemId: string) {
@@ -1064,11 +1253,88 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   }
 }
 
+function getRitualStepDraftKey(input: {
+  date: string
+  itemId: string
+  occurrenceId: string | null
+  userId: string
+  workspaceId: string
+}): string {
+  return [
+    input.workspaceId,
+    input.userId,
+    input.date,
+    input.itemId,
+    input.occurrenceId ?? '',
+  ].join(':')
+}
+
+function toPublicRitualStepDraft(draft: StoredSelfCareRitualStepDraftRecord) {
+  return {
+    date: draft.date,
+    itemId: draft.itemId,
+    occurrenceId: draft.occurrenceId,
+    stepIds: draft.stepIds,
+  }
+}
+
 function mapCompletionStatusToOccurrenceStatus(
   status: StoredSelfCareCompletionRecord['status'],
 ): StoredSelfCareOccurrenceRecord['status'] {
   if (status === 'alternative_done') return 'partial'
   return status
+}
+
+function isSameScheduleSlot(
+  occurrence: StoredSelfCareOccurrenceRecord,
+  scheduleRule: SelfCareScheduleRule | null,
+): boolean {
+  if (!scheduleRule) {
+    return occurrence.scheduleRuleId === null
+  }
+
+  if (occurrence.scheduleRuleId === scheduleRule.id) {
+    return true
+  }
+
+  return !scheduleRule.allowMultiplePerDay && occurrence.scheduleRuleId === null
+}
+
+function assertMeasurementCompletionInput(
+  item: StoredSelfCareItemRecord,
+  input: CompleteSelfCareItemNowCommand['input'],
+): void {
+  if (item.type !== 'measurement') {
+    return
+  }
+
+  if (input.measurementValue === null || input.measurementValue === undefined) {
+    throw new HttpError(
+      400,
+      'self_care_measurement_value_required',
+      'Measurement value is required.',
+    )
+  }
+}
+
+function assertMoodCheckCompletionInput(
+  item: StoredSelfCareItemRecord,
+  input: CompleteSelfCareItemNowCommand['input'],
+): void {
+  if (item.type !== 'mood_check') {
+    return
+  }
+
+  if (
+    (input.moodAfter === null || input.moodAfter === undefined) &&
+    (input.energyAfter === null || input.energyAfter === undefined)
+  ) {
+    throw new HttpError(
+      400,
+      'self_care_state_value_required',
+      'Mood or energy value is required.',
+    )
+  }
 }
 
 function hasScheduleDetails(

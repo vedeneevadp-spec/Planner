@@ -1,3 +1,4 @@
+import type { SelfCareTodayItem } from '@planner/contracts'
 import {
   type ReactElement,
   type ReactNode,
@@ -6,7 +7,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import {
   getNextHabitEntryProgressValue,
@@ -32,6 +33,7 @@ import {
   useUpsertHabitEntry,
 } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
+import { useSelfCareDashboard } from '@/features/self-care'
 import {
   usePlannerSession,
   useUpdateUserPreferences,
@@ -49,6 +51,9 @@ type TaskSectionTone = 'default' | 'warning' | 'success'
 type TodayTaskView = 'cards' | 'list'
 
 const TASK_VIEW_SEARCH_PARAM = 'taskView'
+const HIDDEN_SELF_CARE_OCCURRENCE_STATUSES: ReadonlySet<
+  NonNullable<SelfCareTodayItem['occurrence']>['status']
+> = new Set(['cancelled', 'done', 'missed', 'moved', 'partial', 'skipped'])
 
 interface TaskSectionOptions {
   defaultCollapsed?: boolean
@@ -234,6 +239,78 @@ function useTodayHabitRoutine(todayKey: string) {
   }
 }
 
+function isVisibleSelfCareMainTask(entry: SelfCareTodayItem): boolean {
+  if (entry.item.isArchived || !entry.item.isActive || entry.completion) {
+    return false
+  }
+
+  if (
+    entry.occurrence &&
+    HIDDEN_SELF_CARE_OCCURRENCE_STATUSES.has(entry.occurrence.status)
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function getSelfCareTaskKey(entry: SelfCareTodayItem): string {
+  return `self-care-${entry.occurrence?.id ?? entry.item.id}`
+}
+
+function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
+  const sourceTime =
+    entry.occurrence?.dueAt ??
+    entry.appointment?.startsAt ??
+    entry.scheduleRule?.preferredTime ??
+    null
+
+  if (!sourceTime) {
+    return null
+  }
+
+  const isoTime = /T(\d{2}:\d{2})/.exec(sourceTime)?.[1]
+  const plainTime = /^(\d{2}:\d{2})/.exec(sourceTime)?.[1]
+
+  return isoTime ?? plainTime ?? null
+}
+
+function formatSelfCareTaskMeta(entry: SelfCareTodayItem): string {
+  const time = getSelfCareTaskTime(entry)
+
+  return time ? `Забота · ${time}` : 'Забота'
+}
+
+function SelfCareTodayTaskCard({
+  entry,
+  variant,
+}: {
+  entry: SelfCareTodayItem
+  variant: 'card' | 'compact'
+}) {
+  const icon = entry.item.icon?.trim() || '✓'
+
+  return (
+    <Link
+      className={`${styles.selfCareTaskCard} ${
+        variant === 'compact' ? styles.selfCareTaskCardCompact : ''
+      }`}
+      to="/self-care"
+      aria-label={`Открыть заботу: ${entry.item.title}`}
+    >
+      <span className={styles.selfCareTaskIcon} aria-hidden="true">
+        {icon}
+      </span>
+      <span className={styles.selfCareTaskBody}>
+        <span className={styles.selfCareTaskTitle}>{entry.item.title}</span>
+        <span className={styles.selfCareTaskMeta}>
+          {formatSelfCareTaskMeta(entry)}
+        </span>
+      </span>
+    </Link>
+  )
+}
+
 export function TodayPage() {
   const { data: session } = usePlannerSession()
 
@@ -266,6 +343,9 @@ function PersonalTodayPage() {
   const todayKey = getDateKey(new Date())
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const todayHabitRoutine = useTodayHabitRoutine(todayKey)
+  const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
+    enabled: sessionQuery.data?.workspace.kind === 'personal',
+  })
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const taskView = getTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
@@ -334,8 +414,21 @@ function PersonalTodayPage() {
     () => [...todayTasks, ...doneTodayTasks],
     [doneTodayTasks, todayTasks],
   )
+  const showSelfCareMainTasks =
+    selfCareDashboardQuery.data?.settings.showSelfCareInMainTasks === true
+  const selfCareRoutineEntries =
+    showSelfCareMainTasks && selfCareDashboardQuery.data
+      ? selfCareDashboardQuery.data.todayItems.filter(isVisibleSelfCareMainTask)
+      : []
+  const selfCareOverdueEntries =
+    showSelfCareMainTasks && selfCareDashboardQuery.data
+      ? selfCareDashboardQuery.data.overdueItems.filter(
+          isVisibleSelfCareMainTask,
+        )
+      : []
   const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
-    activeHabitItemCount: todayHabitRoutine.activeHabitItems.length,
+    activeHabitItemCount:
+      todayHabitRoutine.activeHabitItems.length + selfCareRoutineEntries.length,
     completedHabitItemCount: todayHabitRoutine.completedHabitItems.length,
     doneTodayTasks,
     mainTodayTasks,
@@ -369,6 +462,20 @@ function PersonalTodayPage() {
       />
     ),
   )
+  const selfCareRoutineTaskCards = selfCareRoutineEntries.map((entry) => (
+    <SelfCareTodayTaskCard
+      key={getSelfCareTaskKey(entry)}
+      entry={entry}
+      variant={taskCardVariant}
+    />
+  ))
+  const selfCareOverdueTaskCards = selfCareOverdueEntries.map((entry) => (
+    <SelfCareTodayTaskCard
+      key={`overdue-${getSelfCareTaskKey(entry)}`}
+      entry={entry}
+      variant={taskCardVariant}
+    />
+  ))
 
   function buildTaskSection(
     key: string,
@@ -455,8 +562,13 @@ function PersonalTodayPage() {
                 routineTasks,
                 'Рутинных задач на сегодня пока нет.',
                 {
-                  extraItemCount: todayHabitRoutine.activeHabitItems.length,
-                  extraItems: routineHabitCards,
+                  extraItemCount:
+                    todayHabitRoutine.activeHabitItems.length +
+                    selfCareRoutineTaskCards.length,
+                  extraItems: [
+                    ...routineHabitCards,
+                    ...selfCareRoutineTaskCards,
+                  ],
                 },
               ),
             ],
@@ -468,7 +580,11 @@ function PersonalTodayPage() {
             'Требуют внимания',
             overdueTasks,
             'Просроченных задач сейчас нет.',
-            { tone: 'warning' },
+            {
+              extraItemCount: selfCareOverdueTaskCards.length,
+              extraItems: selfCareOverdueTaskCards,
+              tone: 'warning',
+            },
           )}
 
           {renderTaskSectionGroup(

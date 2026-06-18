@@ -17,6 +17,9 @@ import type {
   SelfCareOccurrenceSkipInput,
   SelfCarePlanResponse,
   SelfCareRitualCompletionInput,
+  SelfCareRitualStepDraft,
+  SelfCareRitualStepDraftInput,
+  SelfCareRitualStepDraftListResponse,
   SelfCareRitualStepInput,
   SelfCareSettingsResponse,
   SelfCareSettingsUpdateInput,
@@ -33,6 +36,10 @@ export type StoredSelfCareItemRecord = SelfCareItem
 export type StoredSelfCareOccurrenceRecord = SelfCareOccurrence
 export type StoredSelfCareCompletionRecord = SelfCareCompletion
 export type StoredSelfCareDailyStateRecord = SelfCareDailyState
+export interface StoredSelfCareRitualStepDraftRecord extends SelfCareRitualStepDraft {
+  userId: string
+  workspaceId: string
+}
 export type StoredSelfCareTemplateRecord = SelfCareTemplate
 
 export interface SelfCareReadContext {
@@ -177,6 +184,23 @@ export interface UpdateSelfCareRitualStepsCommand {
   steps: SelfCareRitualStepInput[]
 }
 
+export interface GetSelfCareRitualStepDraftsCommand {
+  context: SelfCareReadContext
+  date: string
+}
+
+export interface UpsertSelfCareRitualStepDraftCommand {
+  context: SelfCareWriteContext
+  input: SelfCareRitualStepDraftInput
+}
+
+export interface DeleteSelfCareRitualStepDraftCommand {
+  context: SelfCareWriteContext
+  date: string
+  itemId: string
+  occurrenceId: string | null
+}
+
 export interface CreateSelfCareItemFromTemplateCommand {
   context: SelfCareWriteContext
   input: SelfCareTemplateCreateInput
@@ -186,6 +210,8 @@ export interface CreateSelfCareItemFromTemplateCommand {
 export type SelfCareListResult = SelfCareListResponse
 export type SelfCareDashboardResult = SelfCareDashboardResponse
 export type SelfCarePlanResult = SelfCarePlanResponse
+export type SelfCareRitualStepDraftListResult =
+  SelfCareRitualStepDraftListResponse
 export type SelfCareHistoryResult = SelfCareHistoryResponse
 export type SelfCareAnalyticsResult = SelfCareAnalyticsResponse
 export type SelfCareSettingsResult = SelfCareSettingsResponse

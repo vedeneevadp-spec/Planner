@@ -5,8 +5,10 @@ import test from 'node:test'
 import {
   selfCareItemInputSchema,
   selfCareItemScheduleInputSchema,
+  selfCareItemUpdateInputSchema,
   selfCareOccurrenceSkipInputSchema,
   selfCareRitualCompletionInputSchema,
+  selfCareRitualStepDraftInputSchema,
 } from '@planner/contracts'
 
 import type { SelfCareWriteContext } from './self-care.model.js'
@@ -18,14 +20,14 @@ void test('MemorySelfCareRepository reactivates an existing occurrence when it i
   const item = await repository.createItem({
     context,
     input: selfCareItemInputSchema.parse({
-      category: 'beauty',
+      category: 'relax',
       scheduleRule: {
         intervalUnit: 'week',
         intervalValue: 5,
         repeatKind: 'after_completion',
         startDate: '2026-06-08',
       },
-      title: 'Педикюр',
+      title: 'Массаж',
       type: 'procedure',
     }),
   })
@@ -121,6 +123,73 @@ void test('MemorySelfCareRepository marks stale daily occurrences as missed', as
   assert.deepEqual(dashboard.overdueItems, [])
 })
 
+void test('MemorySelfCareRepository keeps existing occurrences when schedule rule is updated', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'movement',
+      preferredTimeOfDay: 'morning',
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: '2026-06-10',
+      },
+      title: 'Йога',
+      type: 'habit',
+    }),
+  })
+
+  await repository.generateOccurrences({
+    context,
+    from: '2026-06-10',
+    to: '2026-06-10',
+  })
+  const initialPlan = await repository.getPlan({
+    context,
+    from: '2026-06-10',
+    to: '2026-06-10',
+  })
+  const initialOccurrence = initialPlan.occurrences[0]?.occurrence
+
+  assert.ok(initialOccurrence)
+
+  const updated = await repository.updateItem({
+    context,
+    input: selfCareItemUpdateInputSchema.parse({
+      expectedVersion: item.version,
+      preferredTimeOfDay: 'afternoon',
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: '2026-06-10',
+      },
+    }),
+    itemId: item.id,
+  })
+
+  await repository.generateOccurrences({
+    context,
+    from: '2026-06-10',
+    to: '2026-06-10',
+  })
+  const plan = await repository.getPlan({
+    context,
+    from: '2026-06-10',
+    to: '2026-06-10',
+  })
+  const occurrences = plan.occurrences.filter(
+    (entry) => entry.item.id === item.id,
+  )
+
+  assert.equal(updated.preferredTimeOfDay, 'afternoon')
+  assert.equal(occurrences.length, 1)
+  assert.equal(occurrences[0]?.occurrence?.id, initialOccurrence.id)
+  assert.equal(
+    occurrences[0]?.occurrence?.scheduleRuleId,
+    initialOccurrence.scheduleRuleId,
+  )
+})
+
 void test('MemorySelfCareRepository keeps carry-over procedures scheduled overdue', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()
@@ -134,7 +203,7 @@ void test('MemorySelfCareRepository keeps carry-over procedures scheduled overdu
         repeatKind: 'after_completion',
         startDate: '2026-06-08',
       },
-      title: 'Маникюр',
+      title: 'Стрижка',
       type: 'procedure',
     }),
   })
@@ -211,7 +280,7 @@ void test('MemorySelfCareRepository stores ad-hoc ritual step completion', async
   const item = await repository.createItem({
     context,
     input: selfCareItemInputSchema.parse({
-      category: 'beauty',
+      category: 'daily_base',
       scheduleRule: {
         repeatKind: 'daily',
         startDate: '2026-06-10',
@@ -230,7 +299,7 @@ void test('MemorySelfCareRepository stores ad-hoc ritual step completion', async
           title: 'SPF',
         },
       ],
-      title: 'Утренний уход',
+      title: 'Утренний минимум',
       type: 'ritual',
     }),
   })
@@ -271,6 +340,211 @@ void test('MemorySelfCareRepository stores ad-hoc ritual step completion', async
   )
   assert.equal(stepDoneById.get(firstStep.id), true)
   assert.equal(stepDoneById.get(secondStep.id), false)
+})
+
+void test('MemorySelfCareRepository stores measurement details and reading', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'body',
+      measurementDetails: {
+        targetMax: 82,
+        targetMin: 78,
+        unit: 'кг',
+        valueLabel: 'Вес',
+      },
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: '2026-06-10',
+      },
+      title: 'Вес',
+      type: 'measurement',
+    }),
+  })
+
+  await assert.rejects(
+    () =>
+      repository.completeItemNow({
+        context,
+        input: selfCareRitualCompletionInputSchema.parse({
+          completedAt: '2026-06-10T12:00:00.000Z',
+          status: 'done',
+        }),
+        itemId: item.id,
+      }),
+    /Measurement value is required/u,
+  )
+
+  const completion = await repository.completeItemNow({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-10T12:00:00.000Z',
+      measurementUnit: 'кг',
+      measurementValue: 80.4,
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  const list = await repository.listItems(context)
+  const history = await repository.getHistory(
+    context,
+    '2026-06-10',
+    '2026-06-10',
+  )
+
+  assert.equal(completion.measurementValue, 80.4)
+  assert.equal(completion.measurementUnit, 'кг')
+  assert.equal(list.measurementDetails[0]?.itemId, item.id)
+  assert.equal(list.measurementDetails[0]?.targetMin, 78)
+  assert.equal(history.completions[0]?.measurementValue, 80.4)
+})
+
+void test('MemorySelfCareRepository stores mood check state values', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'emotional',
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: '2026-06-10',
+      },
+      title: 'Дневник состояния',
+      type: 'mood_check',
+    }),
+  })
+
+  await assert.rejects(
+    () =>
+      repository.completeItemNow({
+        context,
+        input: selfCareRitualCompletionInputSchema.parse({
+          completedAt: '2026-06-10T12:00:00.000Z',
+          status: 'done',
+        }),
+        itemId: item.id,
+      }),
+    /Mood or energy value is required/u,
+  )
+
+  const completion = await repository.completeItemNow({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-10T12:00:00.000Z',
+      energyAfter: 3,
+      moodAfter: 4,
+      note: 'Спокойный день.',
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  const history = await repository.getHistory(
+    context,
+    '2026-06-10',
+    '2026-06-10',
+  )
+
+  assert.equal(completion.moodAfter, 4)
+  assert.equal(completion.energyAfter, 3)
+  assert.equal(history.completions[0]?.moodAfter, 4)
+  assert.equal(history.completions[0]?.energyAfter, 3)
+})
+
+void test('MemorySelfCareRepository persists ritual step drafts until completion', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: '2026-06-10',
+      },
+      steps: [
+        { defaultChecked: true, title: 'Подготовить место' },
+        { title: 'Сделать практику' },
+      ],
+      title: 'Вечерний ритуал',
+      type: 'ritual',
+    }),
+  })
+
+  await repository.generateOccurrences({
+    context,
+    from: '2026-06-10',
+    to: '2026-06-10',
+  })
+  const plan = await repository.getPlan({
+    context,
+    from: '2026-06-10',
+    to: '2026-06-10',
+  })
+  const occurrence = plan.occurrences.find(
+    (entry) => entry.item.id === item.id,
+  )?.occurrence
+  const steps = (await repository.listItems(context)).steps.filter(
+    (step) => step.itemId === item.id,
+  )
+
+  assert.ok(occurrence)
+  assert.equal(steps.length, 2)
+  const secondStep = steps[1]
+  assert.ok(secondStep)
+
+  await repository.upsertRitualStepDraft({
+    context,
+    input: selfCareRitualStepDraftInputSchema.parse({
+      date: '2026-06-10',
+      itemId: item.id,
+      occurrenceId: occurrence.id,
+      stepIds: [secondStep.id],
+    }),
+  })
+
+  let drafts = await repository.getRitualStepDrafts({
+    context,
+    date: '2026-06-10',
+  })
+
+  assert.deepEqual(drafts.drafts[0]?.stepIds, [secondStep.id])
+
+  await repository.upsertRitualStepDraft({
+    context,
+    input: selfCareRitualStepDraftInputSchema.parse({
+      date: '2026-06-10',
+      itemId: item.id,
+      occurrenceId: occurrence.id,
+      stepIds: [],
+    }),
+  })
+
+  drafts = await repository.getRitualStepDrafts({
+    context,
+    date: '2026-06-10',
+  })
+
+  assert.deepEqual(drafts.drafts[0]?.stepIds, [])
+
+  await repository.completeOccurrence({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-10T12:00:00.000Z',
+      status: 'done',
+      steps: steps.map((step) => ({ isDone: false, stepId: step.id })),
+    }),
+    occurrenceId: occurrence.id,
+  })
+
+  drafts = await repository.getRitualStepDrafts({
+    context,
+    date: '2026-06-10',
+  })
+
+  assert.deepEqual(drafts.drafts, [])
 })
 
 function createWriteContext(): SelfCareWriteContext {

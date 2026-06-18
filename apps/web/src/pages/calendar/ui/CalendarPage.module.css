@@ -545,6 +545,20 @@
   color: var(--text);
 }
 
+.selfCareCalendarTask {
+  cursor: default;
+}
+
+.selfCareCalendarTask:hover {
+  transform: none;
+  filter: none;
+}
+
+.selfCareCalendarTask:disabled {
+  color: var(--text);
+  opacity: 0.9;
+}
+
 .taskPillCompact {
   min-height: 1.35rem;
   padding: 0.22rem 0.36rem;
@@ -580,6 +594,11 @@
 .taskToneRestore {
   background: rgba(108, 171, 134, 0.28);
   border-color: var(--accent-border-strong);
+}
+
+.taskToneSelfCare {
+  background: rgba(127, 179, 164, 0.24);
+  border-color: rgba(82, 141, 123, 0.62);
 }
 
 .scheduleSurface {
@@ -679,6 +698,10 @@
   background: var(--accent-muted);
 }
 
+.scheduleTask.selfCareCalendarTask:hover {
+  background: transparent;
+}
+
 .scheduleDot {
   width: 0.72rem;
   height: 0.72rem;
@@ -699,6 +722,10 @@
 
 .scheduleDotRestore {
   background: #2f9c5a;
+}
+
+.scheduleDotSelfCare {
+  background: #4f9f8a;
 }
 
 .scheduleTime {

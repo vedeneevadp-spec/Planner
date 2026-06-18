@@ -256,6 +256,12 @@ export interface AppSelfCareCompletionsTable {
   energy_before: number | null
   id: Generated<string>
   item_id: string
+  measurement_unit: string | null
+  measurement_value: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
   mood_after: number | null
   mood_before: number | null
   note: string
@@ -287,6 +293,18 @@ export interface AppSelfCareRitualStepCompletionsTable {
   id: Generated<string>
   is_done: boolean
   step_id: string
+}
+
+export interface AppSelfCareRitualStepDraftsTable {
+  created_at: Generated<TimestampColumn>
+  date: DateColumn
+  id: Generated<string>
+  item_id: string
+  occurrence_id: string | null
+  step_ids: ColumnType<string[], string[] | string, string[] | string>
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+  workspace_id: string
 }
 
 export interface AppSelfCareProcedureDetailsTable {
@@ -355,6 +373,25 @@ export interface AppSelfCareCourseDetailsTable {
   start_date: DateColumn | null
   total_count: number
   updated_at: Generated<TimestampColumn>
+}
+
+export interface AppSelfCareMeasurementDetailsTable {
+  created_at: Generated<TimestampColumn>
+  id: Generated<string>
+  item_id: string
+  target_max: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
+  target_min: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
+  unit: string
+  updated_at: Generated<TimestampColumn>
+  value_label: string
 }
 
 export interface AppSelfCareDailyStatesTable {
@@ -836,10 +873,12 @@ export interface DatabaseSchema {
   'app.self_care_item_alternatives': AppSelfCareItemAlternativesTable
   'app.self_care_items': AppSelfCareItemsTable
   'app.self_care_medical_details': AppSelfCareMedicalDetailsTable
+  'app.self_care_measurement_details': AppSelfCareMeasurementDetailsTable
   'app.self_care_minimum_items': AppSelfCareMinimumItemsTable
   'app.self_care_occurrences': AppSelfCareOccurrencesTable
   'app.self_care_procedure_details': AppSelfCareProcedureDetailsTable
   'app.self_care_ritual_step_completions': AppSelfCareRitualStepCompletionsTable
+  'app.self_care_ritual_step_drafts': AppSelfCareRitualStepDraftsTable
   'app.self_care_ritual_steps': AppSelfCareRitualStepsTable
   'app.self_care_schedule_rules': AppSelfCareScheduleRulesTable
   'app.self_care_settings': AppSelfCareSettingsTable

@@ -18,6 +18,12 @@ const positiveNullableIntegerInput = z
   .transform((value) => value ?? null)
 const optionalRatingSchema = z.number().int().min(1).max(5).optional()
 const optionalMoneySchema = z.number().nonnegative().optional()
+const nullableNumberInput = z
+  .number()
+  .finite()
+  .nullable()
+  .optional()
+  .transform((value) => value ?? null)
 
 export const selfCareItemTypeSchema = z.enum([
   'task',
@@ -203,6 +209,8 @@ export const selfCareCompletionSchema = z.object({
   energyBefore: optionalRatingSchema.nullable().optional().default(null),
   id: z.string(),
   itemId: z.string(),
+  measurementUnit: z.string().nullable(),
+  measurementValue: z.number().nullable(),
   moodAfter: optionalRatingSchema.nullable().optional().default(null),
   moodBefore: optionalRatingSchema.nullable().optional().default(null),
   note: z.string(),
@@ -228,6 +236,22 @@ export const selfCareRitualStepCompletionSchema = z.object({
   id: z.string(),
   isDone: z.boolean(),
   stepId: z.string(),
+})
+
+export const selfCareRitualStepDraftSchema = z.object({
+  date: z.string().min(1),
+  itemId: z.string().min(1),
+  occurrenceId: z.string().min(1).nullable(),
+  stepIds: z
+    .array(z.string().min(1))
+    .transform((values) => [...new Set(values)]),
+})
+
+export const selfCareRitualStepDraftInputSchema = selfCareRitualStepDraftSchema
+
+export const selfCareRitualStepDraftListResponseSchema = z.object({
+  date: z.string().min(1),
+  drafts: z.array(selfCareRitualStepDraftSchema),
 })
 
 export const selfCareProcedureDetailsSchema = z.object({
@@ -290,6 +314,17 @@ export const selfCareCourseDetailsSchema = z.object({
   updatedAt: z.string(),
 })
 
+export const selfCareMeasurementDetailsSchema = z.object({
+  createdAt: z.string(),
+  id: z.string(),
+  itemId: z.string(),
+  targetMax: z.number().nullable(),
+  targetMin: z.number().nullable(),
+  unit: z.string(),
+  updatedAt: z.string(),
+  valueLabel: z.string(),
+})
+
 export const selfCareDailyStateSchema = z.object({
   createdAt: z.string(),
   date: z.string(),
@@ -330,7 +365,6 @@ export const selfCareSettingsSchema = z.object({
   quietHoursEnd: z.string().nullable(),
   quietHoursStart: z.string().nullable(),
   showAppointmentsInCalendar: z.boolean(),
-  showDailyRitualsInCalendar: z.boolean(),
   showSelfCareInMainTasks: z.boolean(),
   updatedAt: z.string(),
   userId: z.string(),
@@ -361,6 +395,7 @@ export const selfCareListResponseSchema = z.object({
   courseDetails: z.array(selfCareCourseDetailsSchema),
   items: z.array(selfCareItemSchema),
   medicalDetails: z.array(selfCareMedicalDetailsSchema),
+  measurementDetails: z.array(selfCareMeasurementDetailsSchema),
   procedureDetails: z.array(selfCareProcedureDetailsSchema),
   scheduleRules: z.array(selfCareScheduleRuleSchema),
   steps: z.array(selfCareRitualStepSchema),
@@ -380,6 +415,8 @@ export const selfCareTodayItemSchema = z.object({
   courseDetails: selfCareCourseDetailsSchema.nullable(),
   flexibleProgress: selfCareFlexibleGoalProgressSchema.nullable(),
   item: selfCareItemSchema,
+  lastMeasurement: selfCareCompletionSchema.nullable(),
+  measurement: selfCareMeasurementDetailsSchema.nullable(),
   occurrence: selfCareOccurrenceSchema.nullable(),
   procedure: selfCareProcedureDetailsSchema.nullable(),
   scheduleRule: selfCareScheduleRuleSchema.nullable(),
@@ -415,6 +452,20 @@ export const selfCareHistoryResponseSchema = z.object({
   stepCompletions: z.array(selfCareRitualStepCompletionSchema),
 })
 
+export const selfCareMeasurementTrendPointSchema = z.object({
+  completedAt: z.string(),
+  date: z.string(),
+  value: z.number(),
+})
+
+export const selfCareMeasurementTrendSchema = z.object({
+  itemId: z.string(),
+  points: z.array(selfCareMeasurementTrendPointSchema),
+  title: z.string(),
+  unit: z.string().nullable(),
+  valueLabel: z.string(),
+})
+
 export const selfCareAnalyticsResponseSchema = z.object({
   balanceByCategory: z.record(
     selfCareCategorySchema,
@@ -423,10 +474,12 @@ export const selfCareAnalyticsResponseSchema = z.object({
   completionsByDay: z.record(z.string(), z.number().int().nonnegative()),
   courses: z.array(selfCareTodayItemSchema),
   flexibleGoals: z.array(selfCareTodayItemSchema),
+  measurementTrends: z.array(selfCareMeasurementTrendSchema),
   medicalUpcoming: z.array(selfCareTodayItemSchema),
   minimumCompletionCount: z.number().int().nonnegative(),
   moodEnergyTrend: z.array(selfCareDailyStateSchema),
   procedureCosts: z.number().nonnegative(),
+  procedureCostsByMonth: z.record(z.string(), z.number().nonnegative()),
   selectedSelfCareCount: z.number().int().nonnegative(),
 })
 
@@ -582,6 +635,27 @@ export const selfCareCourseDetailsInputSchema = z.object({
   totalCount: z.number().int().positive(),
 })
 
+export const selfCareMeasurementDetailsInputSchema = z
+  .object({
+    targetMax: nullableNumberInput,
+    targetMin: nullableNumberInput,
+    unit: z.string().trim().min(1).max(32),
+    valueLabel: z.string().trim().min(1).max(80).optional().default('Значение'),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.targetMin !== null &&
+      value.targetMax !== null &&
+      value.targetMin > value.targetMax
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'targetMin must be less than or equal to targetMax.',
+        path: ['targetMin'],
+      })
+    }
+  })
+
 export const selfCareItemInputObjectSchema = z.object({
   alternatives: z.array(selfCareAlternativeInputSchema).optional().default([]),
   appointmentDetails: selfCareAppointmentDetailsInputSchema.optional(),
@@ -598,6 +672,7 @@ export const selfCareItemInputObjectSchema = z.object({
   isArchived: z.boolean().optional().default(false),
   isPrivate: z.boolean().optional().default(true),
   medicalDetails: selfCareMedicalDetailsInputSchema.optional(),
+  measurementDetails: selfCareMeasurementDetailsInputSchema.optional(),
   migratedFromHabitId: z.string().nullable().optional().default(null),
   minimumVersion: selfCareMinimumVersionInputSchema.optional(),
   preferredTimeOfDay: selfCareTimeOfDaySchema
@@ -638,6 +713,14 @@ export const selfCareItemInputSchema =
         path: ['appointmentDetails', 'startsAt'],
       })
     }
+
+    if (value.type === 'measurement' && !value.measurementDetails) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Measurement details are required for measurement items.',
+        path: ['measurementDetails'],
+      })
+    }
   })
 
 export const selfCareItemUpdateInputSchema = selfCareItemInputObjectSchema
@@ -661,6 +744,8 @@ export const selfCareCompletionInputSchema = z.object({
   durationMinutes: positiveNullableIntegerInput,
   energyAfter: optionalRatingSchema.nullable().optional().default(null),
   energyBefore: optionalRatingSchema.nullable().optional().default(null),
+  measurementUnit: nullableStringInput,
+  measurementValue: nullableNumberInput,
   moodAfter: optionalRatingSchema.nullable().optional().default(null),
   moodBefore: optionalRatingSchema.nullable().optional().default(null),
   note: z.string().trim().max(1200).optional().default(''),
@@ -711,11 +796,7 @@ export const selfCareDailyStateInputSchema = z.object({
 
 export const selfCareSettingsUpdateInputSchema = z.object({
   currency: nullableStringInput,
-  defaultReminderTone: selfCareReminderToneSchema.optional(),
-  quietHoursEnd: nullableStringInput,
-  quietHoursStart: nullableStringInput,
   showAppointmentsInCalendar: z.boolean().optional(),
-  showDailyRitualsInCalendar: z.boolean().optional(),
   showSelfCareInMainTasks: z.boolean().optional(),
 })
 
@@ -811,6 +892,18 @@ export type SelfCareMedicalDetails = z.infer<
 export type SelfCareMedicalDetailsInput = z.infer<
   typeof selfCareMedicalDetailsInputSchema
 >
+export type SelfCareMeasurementDetails = z.infer<
+  typeof selfCareMeasurementDetailsSchema
+>
+export type SelfCareMeasurementDetailsInput = z.infer<
+  typeof selfCareMeasurementDetailsInputSchema
+>
+export type SelfCareMeasurementTrend = z.infer<
+  typeof selfCareMeasurementTrendSchema
+>
+export type SelfCareMeasurementTrendPoint = z.infer<
+  typeof selfCareMeasurementTrendPointSchema
+>
 export type SelfCareMinimumItem = z.infer<typeof selfCareMinimumItemSchema>
 export type SelfCareMinimumItemInput = z.infer<
   typeof selfCareMinimumItemInputSchema
@@ -843,6 +936,15 @@ export type SelfCareRitualCompletionInput = z.infer<
 export type SelfCareRitualStep = z.infer<typeof selfCareRitualStepSchema>
 export type SelfCareRitualStepCompletion = z.infer<
   typeof selfCareRitualStepCompletionSchema
+>
+export type SelfCareRitualStepDraft = z.infer<
+  typeof selfCareRitualStepDraftSchema
+>
+export type SelfCareRitualStepDraftInput = z.infer<
+  typeof selfCareRitualStepDraftInputSchema
+>
+export type SelfCareRitualStepDraftListResponse = z.infer<
+  typeof selfCareRitualStepDraftListResponseSchema
 >
 export type SelfCareRitualStepInput = z.infer<
   typeof selfCareRitualStepInputSchema

@@ -35,6 +35,10 @@ import {
   selfCarePlanResponseSchema,
   type SelfCareRitualCompletionInput,
   selfCareRitualCompletionInputSchema,
+  type SelfCareRitualStepDraftInput,
+  selfCareRitualStepDraftInputSchema,
+  type SelfCareRitualStepDraftListResponse,
+  selfCareRitualStepDraftListResponseSchema,
   type SelfCareRitualStepInput,
   selfCareRitualStepInputSchema,
   type SelfCareSettingsResponse,
@@ -115,6 +119,11 @@ export interface SelfCareApiClient {
     input?: SelfCareTemplateCreateInput,
   ) => Promise<SelfCareItem>
   deleteItem: (itemId: string) => Promise<void>
+  deleteRitualStepDraft: (input: {
+    date: string
+    itemId: string
+    occurrenceId: string | null
+  }) => Promise<SelfCareRitualStepDraftListResponse>
   disableGentleMode: (date: string) => Promise<SelfCareSettingsResponse>
   enableGentleMode: (date: string) => Promise<SelfCareSettingsResponse>
   generateOccurrences: (
@@ -149,6 +158,10 @@ export interface SelfCareApiClient {
     to: string,
     signal?: RequestSignal,
   ) => Promise<SelfCarePlanResponse>
+  getRitualStepDrafts: (
+    date: string,
+    signal?: RequestSignal,
+  ) => Promise<SelfCareRitualStepDraftListResponse>
   getSettings: (signal?: RequestSignal) => Promise<SelfCareSettingsResponse>
   listItems: (
     filters?: SelfCareListFilters,
@@ -186,6 +199,9 @@ export interface SelfCareApiClient {
     date: string,
     input: SelfCareDailyStateInput,
   ) => Promise<SelfCareDailyState>
+  upsertRitualStepDraft: (
+    input: SelfCareRitualStepDraftInput,
+  ) => Promise<SelfCareRitualStepDraftListResponse>
 }
 
 const selfCareOccurrenceListSchema = z.array(selfCareOccurrenceSchema)
@@ -287,6 +303,19 @@ export function createSelfCareApiClient(
         writeAccess: true,
       })
     },
+    deleteRitualStepDraft(input) {
+      return request({
+        method: 'DELETE',
+        path: '/api/v1/self-care/ritual-step-drafts',
+        query: {
+          date: input.date,
+          itemId: input.itemId,
+          occurrenceId: input.occurrenceId ?? undefined,
+        },
+        responseSchema: selfCareRitualStepDraftListResponseSchema,
+        writeAccess: true,
+      })
+    },
     disableGentleMode(date) {
       return request({
         method: 'POST',
@@ -359,6 +388,14 @@ export function createSelfCareApiClient(
         path: '/api/v1/self-care/plan',
         query: { from, to },
         responseSchema: selfCarePlanResponseSchema,
+        signal,
+      })
+    },
+    getRitualStepDrafts(date, signal) {
+      return request({
+        path: '/api/v1/self-care/ritual-step-drafts',
+        query: { date },
+        responseSchema: selfCareRitualStepDraftListResponseSchema,
         signal,
       })
     },
@@ -466,6 +503,15 @@ export function createSelfCareApiClient(
         path: '/api/v1/self-care/daily-state',
         query: { date },
         responseSchema: selfCareDailyStateSchema,
+        writeAccess: true,
+      })
+    },
+    upsertRitualStepDraft(input) {
+      return request({
+        body: selfCareRitualStepDraftInputSchema.parse(input),
+        method: 'PUT',
+        path: '/api/v1/self-care/ritual-step-drafts',
+        responseSchema: selfCareRitualStepDraftListResponseSchema,
         writeAccess: true,
       })
     },

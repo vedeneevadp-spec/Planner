@@ -33,6 +33,84 @@
   gap: 0.78rem;
 }
 
+.selfCareTaskCard {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.62rem;
+  min-width: 0;
+  min-height: 3.3rem;
+  border: 1px solid rgba(127, 179, 164, 0.55);
+  border-radius: 12px;
+  padding: 0.62rem 0.72rem;
+  background: rgba(127, 179, 164, 0.14);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.selfCareTaskCard:hover {
+  border-color: rgba(82, 141, 123, 0.72);
+  background: rgba(127, 179, 164, 0.2);
+  transform: translateY(-1px);
+}
+
+.selfCareTaskCard:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.selfCareTaskCardCompact {
+  min-height: 2.55rem;
+  border-radius: 10px;
+  padding: 0.45rem 0.58rem;
+}
+
+.selfCareTaskIcon {
+  display: inline-grid;
+  width: 1.9rem;
+  height: 1.9rem;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--field-bg);
+  font-size: 1.08rem;
+  line-height: 1;
+}
+
+.selfCareTaskCardCompact .selfCareTaskIcon {
+  width: 1.65rem;
+  height: 1.65rem;
+  font-size: 0.98rem;
+}
+
+.selfCareTaskBody {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.selfCareTaskTitle {
+  overflow: hidden;
+  font-size: 0.94rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selfCareTaskMeta {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 920px) {
   .topWidgetGrid {
     grid-template-columns: 1fr;
