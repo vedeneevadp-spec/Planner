@@ -528,4 +528,40 @@ describe('TodayPage', () => {
     ).not.toBeInTheDocument()
     expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
   })
+
+  it('keeps completed self-care courses out of the main today routine', () => {
+    mocks.selfCareDashboard = createSelfCareDashboard([
+      createSelfCareTodayItem({
+        courseDetails: {
+          completedCount: 1,
+          courseType: 'days',
+          createdAt: '2026-05-19T08:00:00.000Z',
+          endDate: null,
+          id: 'course-details-1',
+          isCompleted: true,
+          isPaused: false,
+          itemId: 'self-care-course',
+          startDate: getDateKey(new Date()),
+          totalCount: 1,
+          updatedAt: '2026-05-19T08:00:00.000Z',
+        },
+        item: {
+          id: 'self-care-course',
+          migratedFromHabitId: null,
+          title: 'Завершённый курс',
+          type: 'course',
+        },
+      }),
+    ])
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(
+      screen.queryByRole('link', {
+        name: 'Открыть заботу: Завершённый курс',
+      }),
+    ).not.toBeInTheDocument()
+  })
 })

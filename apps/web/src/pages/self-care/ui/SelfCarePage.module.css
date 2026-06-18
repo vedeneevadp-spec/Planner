@@ -722,6 +722,7 @@
   max-height: min(92vh, 58rem);
   gap: 0.52rem;
   isolation: isolate;
+  overflow: hidden;
   border-color: var(--care-border-strong);
   border-radius: 32px;
   padding: 1.16rem 1.16rem 1.28rem;
@@ -1198,6 +1199,43 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.56rem;
+}
+
+.visitDetailsDisclosure {
+  display: grid;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-muted);
+}
+
+.visitDetailsDisclosure summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 2.55rem;
+  padding: 0.62rem 0.72rem;
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+
+.visitDetailsDisclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.visitDetailsDisclosure summary::after {
+  color: var(--text-soft);
+  content: '▾';
+  transition: transform 150ms ease;
+}
+
+.visitDetailsDisclosure[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.visitDetailsDisclosure .createFormGrid {
+  padding: 0 0.72rem 0.72rem;
 }
 
 .scheduleTarget {

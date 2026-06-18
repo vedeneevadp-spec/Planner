@@ -78,7 +78,13 @@ type SelfCareTab =
 
 type SelfCareCreateDialogMode = 'choice' | 'custom' | 'template'
 type SelfCareCreateRepeatKind = SelfCareRepeatKind
-type SelfCareEditRepeatMode = SelfCareCreateRepeatKind | 'keep'
+type SelfCareStandardRepeatKind = Exclude<
+  SelfCareCreateRepeatKind,
+  'course' | 'flexible_goal'
+>
+type SelfCareEditRepeatMode = SelfCareStandardRepeatKind | 'keep'
+type SelfCareCourseScheduleMode = 'daily' | 'weekly' | 'interval'
+type SelfCareCourseEditScheduleMode = SelfCareCourseScheduleMode | 'keep'
 type SelfCareCreateScheduleRuleInput = NonNullable<
   SelfCareItemInput['scheduleRule']
 >
@@ -91,10 +97,18 @@ type SelfCareEditSubmitPayload = {
   input: SelfCareItemUpdateInput
   scheduleInput?: SelfCareItemScheduleInput | undefined
 }
+type SelfCareCourseRestartPayload = {
+  input: SelfCareItemUpdateInput
+  restartDate: string
+}
 type SelfCareSettingsPatch = SelfCareSettingsUpdateInput
 type AddCareTemplateFilter = 'beauty' | 'health' | 'movement' | 'rest'
 type RitualStepDrafts = Record<string, readonly string[]>
 type RitualStepDraftOverrides = Record<string, readonly string[] | null>
+type VisibleSelfCareCategory = Extract<
+  SelfCareCategory,
+  'beauty' | 'body' | 'custom' | 'health' | 'movement' | 'relax'
+>
 
 const TYPES_WITH_EXACT_SCHEDULE: ReadonlySet<SelfCareItemType> = new Set([
   'appointment',
@@ -123,21 +137,41 @@ const SELF_CARE_TABS: Array<{ id: SelfCareTab; label: string }> = [
 
 const CATEGORY_LABELS: Record<SelfCareCategory, string> = {
   beauty: 'Уход',
-  body: 'Тело',
-  custom: 'Другое',
-  daily_base: 'База',
-  emotional: 'Эмоции',
+  body: 'Красота',
+  custom: 'Прочее',
+  daily_base: 'Прочее',
+  emotional: 'Прочее',
   health: 'Здоровье',
-  medical: 'Медицинское',
-  movement: 'Движение',
-  nutrition: 'Питание',
+  medical: 'Здоровье',
+  movement: 'Спорт',
+  nutrition: 'Здоровье',
   relax: 'Восстановление',
-  sleep: 'Сон',
+  sleep: 'Восстановление',
 }
 
-const CATEGORY_SELECT_OPTIONS: Array<SelectPickerOption<SelfCareCategory>> = (
-  Object.entries(CATEGORY_LABELS) as Array<[SelfCareCategory, string]>
-).map(([value, label]) => ({ label, value }))
+const VISIBLE_CATEGORY_LABELS: Record<VisibleSelfCareCategory, string> = {
+  beauty: 'Уход',
+  body: 'Красота',
+  custom: 'Прочее',
+  health: 'Здоровье',
+  movement: 'Спорт',
+  relax: 'Восстановление',
+}
+
+const VISIBLE_CATEGORY_ORDER: readonly VisibleSelfCareCategory[] = [
+  'beauty',
+  'body',
+  'health',
+  'movement',
+  'relax',
+  'custom',
+]
+
+const CATEGORY_SELECT_OPTIONS: Array<SelectPickerOption<SelfCareCategory>> =
+  VISIBLE_CATEGORY_ORDER.map((value) => ({
+    label: VISIBLE_CATEGORY_LABELS[value],
+    value,
+  }))
 
 const TIME_GROUP_LABELS: Record<SelfCareTimeOfDay, string> = {
   afternoon: 'День',
@@ -173,40 +207,16 @@ const STATUS_LABELS: Record<SelfCareCompletion['status'], string> = {
   skipped: 'мягко пропущено',
 }
 
-const STATE_RATING_VALUES = [1, 2, 3, 4, 5] as const
-const MOOD_RATING_LABELS: Record<(typeof STATE_RATING_VALUES)[number], string> =
-  {
-    1: 'Очень тяжело',
-    2: 'Тяжело',
-    3: 'Нейтрально',
-    4: 'Хорошо',
-    5: 'Отлично',
-  }
-const ENERGY_RATING_LABELS: Record<
-  (typeof STATE_RATING_VALUES)[number],
-  string
-> = {
-  1: 'Нет сил',
-  2: 'Мало',
-  3: 'Нормально',
-  4: 'Много',
-  5: 'Очень много',
-}
-
 const CREATE_TYPE_OPTIONS: ReadonlyArray<{
   description: string
   label: string
   value: SelfCareItemType
 }> = [
   {
-    description: 'Разовое действие: купить, выбрать, уточнить, записаться.',
+    description:
+      'Разовое или повторяемое действие: купить, выбрать, уточнить, записаться.',
     label: 'Задача',
     value: 'task',
-  },
-  {
-    description: 'Повторяющееся действие: вода, зарядка, прогулка, сон.',
-    label: 'Регулярная забота',
-    value: 'habit',
   },
   {
     description: 'Уход или подготовка с несколькими шагами.',
@@ -214,19 +224,10 @@ const CREATE_TYPE_OPTIONS: ReadonlyArray<{
     value: 'ritual',
   },
   {
-    description: 'Стрижка, массаж, уход или другая регулярная запись.',
-    label: 'Процедура',
-    value: 'procedure',
-  },
-  {
-    description: 'Конкретная запись с датой, временем, местом и специалистом.',
+    description:
+      'Запись с датой, временем, местом, специалистом и повтором при необходимости.',
     label: 'Запись',
     value: 'appointment',
-  },
-  {
-    description: 'Чекапы, стоматолог, анализы и личные напоминания.',
-    label: 'Медицинское',
-    value: 'medical',
   },
   {
     description: 'Набрать несколько выполнений за день, неделю или месяц.',
@@ -239,16 +240,6 @@ const CREATE_TYPE_OPTIONS: ReadonlyArray<{
     value: 'course',
   },
   {
-    description: 'Мягкая отметка настроения, энергии или общего состояния.',
-    label: 'Дневник состояния',
-    value: 'mood_check',
-  },
-  {
-    description: 'Отдых, релакс, тишина, восстановление.',
-    label: 'Восстановление',
-    value: 'rest_action',
-  },
-  {
     description: 'Числовой показатель: вес, пульс, температура, объем.',
     label: 'Измерение',
     value: 'measurement',
@@ -258,9 +249,9 @@ const CREATE_TYPE_OPTIONS: ReadonlyArray<{
 const CREATE_TYPE_SELECT_OPTIONS: Array<SelectPickerOption<SelfCareItemType>> =
   CREATE_TYPE_OPTIONS.map(({ label, value }) => ({ label, value }))
 
-const CREATE_REPEAT_OPTIONS: ReadonlyArray<{
+const STANDARD_REPEAT_OPTIONS: ReadonlyArray<{
   label: string
-  value: SelfCareCreateRepeatKind
+  value: SelfCareStandardRepeatKind
 }> = [
   { label: 'Без повтора', value: 'none' },
   { label: 'Каждый день', value: 'daily' },
@@ -269,13 +260,24 @@ const CREATE_REPEAT_OPTIONS: ReadonlyArray<{
   { label: 'Ежегодно', value: 'yearly' },
   { label: 'По интервалу', value: 'interval' },
   { label: 'После выполнения', value: 'after_completion' },
-  { label: 'Цель на период', value: 'flexible_goal' },
-  { label: 'Курс', value: 'course' },
 ]
 
-const CREATE_REPEAT_SELECT_OPTIONS: Array<
-  SelectPickerOption<SelfCareCreateRepeatKind>
-> = CREATE_REPEAT_OPTIONS.map(({ label, value }) => ({ label, value }))
+const STANDARD_REPEAT_SELECT_OPTIONS: Array<
+  SelectPickerOption<SelfCareStandardRepeatKind>
+> = STANDARD_REPEAT_OPTIONS.map(({ label, value }) => ({ label, value }))
+
+const COURSE_SCHEDULE_OPTIONS: ReadonlyArray<{
+  label: string
+  value: SelfCareCourseScheduleMode
+}> = [
+  { label: 'Каждый день', value: 'daily' },
+  { label: 'По дням недели', value: 'weekly' },
+  { label: 'По интервалу', value: 'interval' },
+]
+
+const COURSE_SCHEDULE_SELECT_OPTIONS: Array<
+  SelectPickerOption<SelfCareCourseScheduleMode>
+> = COURSE_SCHEDULE_OPTIONS.map(({ label, value }) => ({ label, value }))
 
 const INTERVAL_UNIT_OPTIONS: ReadonlyArray<{
   label: string
@@ -336,25 +338,25 @@ const ADD_CARE_TEMPLATE_FILTERS: ReadonlyArray<{
   value: AddCareTemplateFilter
 }> = [
   {
-    categories: ['beauty'],
+    categories: ['beauty', 'body'],
     label: 'Уход',
     tileClassName: styles.addCareCategoryBeauty,
     value: 'beauty',
   },
   {
-    categories: ['health', 'medical'],
+    categories: ['health', 'medical', 'nutrition'],
     label: 'Здоровье',
     tileClassName: styles.addCareCategoryHealth,
     value: 'health',
   },
   {
-    categories: ['movement', 'body'],
+    categories: ['movement'],
     label: 'Движение',
     tileClassName: styles.addCareCategoryMovement,
     value: 'movement',
   },
   {
-    categories: ['relax', 'emotional', 'sleep'],
+    categories: ['relax', 'sleep'],
     label: 'Отдых',
     tileClassName: styles.addCareCategoryRest,
     value: 'rest',
@@ -436,9 +438,9 @@ export function SelfCarePage() {
     useState<SelfCareTodayItem | null>(null)
   const [editDialogEntry, setEditDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
-  const [measurementDialogEntry, setMeasurementDialogEntry] =
+  const [restartCourseDialogEntry, setRestartCourseDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
-  const [moodDialogEntry, setMoodDialogEntry] =
+  const [measurementDialogEntry, setMeasurementDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
   const [scheduleDate, setScheduleDate] = useState(todayKey)
   const [hiddenScheduledItemIds, setHiddenScheduledItemIds] = useState<
@@ -458,7 +460,10 @@ export function SelfCarePage() {
     settingsQuery.data ??
     (dashboard ? { minimumItems: [], settings: dashboard.settings } : undefined)
   const defaultCurrency = settingsResponse?.settings.currency ?? 'RUB'
-  const templates = templatesQuery.data ?? []
+  const templates = useMemo(
+    () => (templatesQuery.data ?? []).filter(isVisibleSelfCareTemplate),
+    [templatesQuery.data],
+  )
   const isActiveTabLoading =
     (activeTab === 'today' && dashboardQuery.isLoading && !dashboard) ||
     (activeTab === 'plan' && planQuery.isLoading && !plan) ||
@@ -676,6 +681,43 @@ export function SelfCarePage() {
     setEditDialogEntry(null)
   }
 
+  function handleRestartCourse(entry: SelfCareTodayItem): void {
+    if (!canRestartCourse(entry)) {
+      return
+    }
+
+    setFormError(null)
+    setRestartCourseDialogEntry(entry)
+  }
+
+  function closeRestartCourseDialog(): void {
+    setFormError(null)
+    setRestartCourseDialogEntry(null)
+  }
+
+  function handleRestartCourseSubmit(
+    payload: SelfCareCourseRestartPayload,
+  ): void {
+    if (!restartCourseDialogEntry) {
+      return
+    }
+
+    const entry = restartCourseDialogEntry
+    setFormError(null)
+    void updateItemMutation
+      .mutateAsync({
+        input: payload.input,
+        itemId: entry.item.id,
+      })
+      .then(() => {
+        closeRestartCourseDialog()
+        setActiveTab(payload.restartDate === todayKey ? 'today' : 'plan')
+      })
+      .catch((error: unknown) => {
+        setFormError(getSelfCareErrorMessage(error))
+      })
+  }
+
   function handleUpdateItem(payload: SelfCareEditSubmitPayload): void {
     if (!editDialogEntry) {
       return
@@ -720,11 +762,6 @@ export function SelfCarePage() {
   function closeMeasurementDialog(): void {
     setFormError(null)
     setMeasurementDialogEntry(null)
-  }
-
-  function closeMoodDialog(): void {
-    setFormError(null)
-    setMoodDialogEntry(null)
   }
 
   function handleScheduleSubmit(input: SelfCareItemScheduleInput): void {
@@ -833,36 +870,6 @@ export function SelfCarePage() {
       })
   }
 
-  function handleMoodSubmit(input: SelfCareCompletionInput): void {
-    if (!moodDialogEntry) {
-      return
-    }
-
-    const entry = moodDialogEntry
-    setFormError(null)
-
-    void (async () => {
-      if (entry.occurrence) {
-        await completeOccurrenceMutation.mutateAsync({
-          input: { ...input, steps: [] },
-          occurrenceId: entry.occurrence.id,
-        })
-        return
-      }
-
-      await completeItemNowMutation.mutateAsync({
-        input: { ...input, steps: [] },
-        itemId: entry.item.id,
-      })
-    })()
-      .then(() => {
-        closeMoodDialog()
-      })
-      .catch((error: unknown) => {
-        setFormError(getSelfCareErrorMessage(error))
-      })
-  }
-
   function handleToggleRitualStep(
     entry: SelfCareTodayItem,
     stepId: string,
@@ -915,11 +922,6 @@ export function SelfCarePage() {
 
     if (entry.item.type === 'measurement') {
       setMeasurementDialogEntry(entry)
-      return
-    }
-
-    if (entry.item.type === 'mood_check') {
-      setMoodDialogEntry(entry)
       return
     }
 
@@ -1026,6 +1028,7 @@ export function SelfCarePage() {
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
           onEditItem={handleEditItem}
+          onRestartCourse={handleRestartCourse}
           onScheduleItem={handleScheduleItem}
           onShowHistory={() => setActiveTab('history')}
           onShowPlan={() => setActiveTab('plan')}
@@ -1045,6 +1048,7 @@ export function SelfCarePage() {
           onArchiveItem={handleArchiveItem}
           onCancelOccurrence={handleCancelPlannedOccurrence}
           onEditItem={handleEditItem}
+          onRestartCourse={handleRestartCourse}
           onScheduleItem={handleScheduleItem}
         />
       ) : null}
@@ -1065,6 +1069,7 @@ export function SelfCarePage() {
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
           onEditItem={handleEditItem}
+          onRestartCourse={handleRestartCourse}
           onToggleRitualStep={handleToggleRitualStep}
         />
       ) : null}
@@ -1141,19 +1146,6 @@ export function SelfCarePage() {
         />
       ) : null}
 
-      {moodDialogEntry ? (
-        <SelfCareMoodDialog
-          entry={moodDialogEntry}
-          errorMessage={formError}
-          isBusy={
-            completeOccurrenceMutation.isPending ||
-            completeItemNowMutation.isPending
-          }
-          onClose={closeMoodDialog}
-          onSubmit={handleMoodSubmit}
-        />
-      ) : null}
-
       {editDialogEntry ? (
         <SelfCareEditDialog
           defaultCurrency={defaultCurrency}
@@ -1164,6 +1156,17 @@ export function SelfCarePage() {
           uploadedIcons={uploadedIcons}
           onClose={closeEditDialog}
           onSubmit={handleUpdateItem}
+        />
+      ) : null}
+
+      {restartCourseDialogEntry ? (
+        <SelfCareCourseRestartDialog
+          entry={restartCourseDialogEntry}
+          errorMessage={formError}
+          isBusy={updateItemMutation.isPending}
+          todayKey={todayKey}
+          onClose={closeRestartCourseDialog}
+          onSubmit={handleRestartCourseSubmit}
         />
       ) : null}
     </section>
@@ -1180,6 +1183,7 @@ function SelfCareTodayTab({
   onCardAction,
   onArchiveItem,
   onEditItem,
+  onRestartCourse,
   onScheduleItem,
   onShowHistory,
   onShowPlan,
@@ -1198,6 +1202,7 @@ function SelfCareTodayTab({
   onCardAction: (entry: SelfCareTodayItem) => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
+  onRestartCourse: (entry: SelfCareTodayItem) => void
   onScheduleItem: (entry: SelfCareTodayItem) => void
   onShowHistory: () => void
   onShowPlan: () => void
@@ -1223,22 +1228,17 @@ function SelfCareTodayTab({
   const dashboardTodayItems = dashboard.todayItems
   const dashboardFlexibleGoals = dashboard.flexibleGoals
   const overdueItems = dashboard.overdueItems.filter(shouldShowTodayEntry)
-  const todayItems = dashboardTodayItems.filter(shouldShowTodayEntry)
+  const todayItems = dashboardTodayItems
+    .filter(shouldShowTodayEntry)
+    .filter((entry) => entry.item.type !== 'course')
   const flexibleGoals = dashboardFlexibleGoals.filter(shouldShowTodayEntry)
-  const courseEntries = (plan?.courses ?? [])
-    .map((entry) =>
-      mergeLatestProgressCompletion(
-        entry,
-        latestCompletionByItemId.get(entry.item.id) ?? null,
-      ),
-    )
-    .filter((entry) =>
-      shouldShowCourseInToday(
-        entry,
-        todayKey,
-        nextPlannedDateByItemId.get(entry.item.id),
-      ),
-    )
+  const courseEntries = buildTodayCourseEntries({
+    dashboardTodayItems,
+    latestCompletionByItemId,
+    nextPlannedDateByItemId,
+    planCourses: plan?.courses ?? [],
+    todayKey,
+  })
   const availableTodayEntries = buildAvailableTodayEntries({
     dashboard,
     history,
@@ -1325,6 +1325,7 @@ function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onRestartCourse={onRestartCourse}
             />
           ))}
         </SelfCareSection>
@@ -1349,6 +1350,7 @@ function SelfCareTodayTab({
                   onAction={onCardAction}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
+                  onRestartCourse={onRestartCourse}
                   onToggleStep={onToggleRitualStep}
                 />
               ))}
@@ -1369,6 +1371,7 @@ function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onRestartCourse={onRestartCourse}
               onToggleStep={onToggleRitualStep}
             />
           ))}
@@ -1387,6 +1390,7 @@ function SelfCareTodayTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onRestartCourse={onRestartCourse}
             />
           ))}
         </SelfCareSection>
@@ -1506,6 +1510,7 @@ function SelfCarePlanTab({
   onArchiveItem,
   onCancelOccurrence,
   onEditItem,
+  onRestartCourse,
   onScheduleItem,
   plan,
   todayKey,
@@ -1518,6 +1523,7 @@ function SelfCarePlanTab({
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onCancelOccurrence: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
+  onRestartCourse: (entry: SelfCareTodayItem) => void
   onScheduleItem: (entry: SelfCareTodayItem) => void
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
   todayKey: string
@@ -1588,7 +1594,7 @@ function SelfCarePlanTab({
       ) : null}
 
       {medicalEntries.length ? (
-        <SelfCareSection title="Медицинское">
+        <SelfCareSection title="Записи и здоровье">
           {medicalEntries.map((entry) => (
             <PlanningHintCard
               key={`medical-${entry.item.id}-${entry.occurrence?.id ?? 'item'}`}
@@ -1613,6 +1619,7 @@ function SelfCarePlanTab({
               onAction={onCardAction}
               onArchive={onArchiveItem}
               onEdit={onEditItem}
+              onRestartCourse={onRestartCourse}
             />
           ))}
         </SelfCareSection>
@@ -1633,6 +1640,7 @@ function SelfCareRitualsTab({
   onCardAction,
   onArchiveItem,
   onEditItem,
+  onRestartCourse,
   onToggleRitualStep,
 }: {
   dashboardItems: SelfCareTodayItem[]
@@ -1646,6 +1654,7 @@ function SelfCareRitualsTab({
   onCardAction: (entry: SelfCareTodayItem) => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
+  onRestartCourse: (entry: SelfCareTodayItem) => void
   onToggleRitualStep: (entry: SelfCareTodayItem, stepId: string) => void
 }) {
   const grouped = useMemo(() => groupItemsByCategory(list), [list])
@@ -1671,7 +1680,7 @@ function SelfCareRitualsTab({
         items.length ? (
           <SelfCareSection
             key={category}
-            title={CATEGORY_LABELS[category as SelfCareCategory]}
+            title={VISIBLE_CATEGORY_LABELS[category as VisibleSelfCareCategory]}
           >
             {items.map((item) => {
               const baseEntry =
@@ -1705,6 +1714,7 @@ function SelfCareRitualsTab({
                   onAction={onCardAction}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
+                  onRestartCourse={onRestartCourse}
                   onToggleStep={onToggleRitualStep}
                   compact
                 />
@@ -1779,11 +1789,9 @@ function SelfCareAnalyticsTab({
   analytics: ReturnType<typeof useSelfCareAnalytics>['data'] | undefined
   defaultCurrency: string
 }) {
-  const categoryDistribution = Object.entries(
+  const categoryDistribution = buildVisibleCategoryDistribution(
     analytics?.balanceByCategory ?? {},
   )
-    .filter(([, value]) => value > 0)
-    .sort((left, right) => right[1] - left[1])
   const categoryTotal = categoryDistribution.reduce(
     (total, [, count]) => total + count,
     0,
@@ -1815,7 +1823,7 @@ function SelfCareAnalyticsTab({
                 <CategoryDistributionRow
                   key={category}
                   count={count}
-                  label={CATEGORY_LABELS[category as SelfCareCategory]}
+                  label={VISIBLE_CATEGORY_LABELS[category]}
                   percent={getPercent(count, categoryTotal)}
                 />
               ))}
@@ -1828,17 +1836,17 @@ function SelfCareAnalyticsTab({
         </section>
 
         <section className={cx(styles.panel, styles.analyticsPanel)}>
-          <h3>Процедуры и здоровье</h3>
+          <h3>Записи и здоровье</h3>
           <div className={styles.metricList}>
             <MetricRow
-              label="Расходы на процедуры"
+              label="Расходы на записи"
               value={formatMoney(
                 analytics?.procedureCosts ?? 0,
                 defaultCurrency,
               )}
             />
             <MetricRow
-              label="Медицинское скоро"
+              label="Важные записи скоро"
               value={String(analytics?.medicalUpcoming.length ?? 0)}
             />
           </div>
@@ -2054,6 +2062,7 @@ function SelfCareItemCard({
   onArchive,
   onCancelOccurrence,
   onEdit,
+  onRestartCourse,
   onSchedule,
   onToggleStep,
   scheduleActionLabel = 'Перенести',
@@ -2070,6 +2079,7 @@ function SelfCareItemCard({
   onArchive: (entry: SelfCareTodayItem) => void
   onCancelOccurrence?: (entry: SelfCareTodayItem) => void
   onEdit: (entry: SelfCareTodayItem) => void
+  onRestartCourse?: ((entry: SelfCareTodayItem) => void) | undefined
   onSchedule?: (entry: SelfCareTodayItem) => void
   onToggleStep?: (entry: SelfCareTodayItem, stepId: string) => void
   scheduleActionLabel?: string
@@ -2083,7 +2093,15 @@ function SelfCareItemCard({
     ? `${entry.flexibleProgress.completedCount} из ${entry.flexibleProgress.targetCount}`
     : null
   const courseProgress = getCourseProgress(entry.courseDetails)
+  const typeLabel = getTypeLabel(entry.item)
   const scheduleLabel = formatSchedule(entry.scheduleRule)
+  const cardMetaLabel = [
+    CATEGORY_LABELS[entry.item.category],
+    typeLabel,
+    scheduleLabel === typeLabel ? null : scheduleLabel,
+  ]
+    .filter(Boolean)
+    .join(' · ')
   const todayScheduleLabel = isTodayView ? getTodayScheduleLabel(entry) : null
   const detailsLabel = formatEntryDetails(entry)
   const measurementLabel = formatMeasurementSummary(entry)
@@ -2092,13 +2110,15 @@ function SelfCareItemCard({
   const completionLabel =
     entry.item.type === 'course'
       ? formatCourseCompletionState(entry, todayKey)
-      : entry.item.type === 'mood_check' &&
-          !hasStateCompletionValues(entry.completion)
-        ? null
-        : formatCompletionState(entry.completion, todayKey)
+      : formatCompletionState(entry.completion, todayKey)
   const nextLabel = nextOccurrenceDate
-    ? `Следующее выполнение: ${formatDate(nextOccurrenceDate)}`
+    ? canRestartCourse(entry)
+      ? null
+      : `Следующее выполнение: ${formatDate(nextOccurrenceDate)}`
     : null
+  const restartCourseAction = canRestartCourse(entry)
+    ? onRestartCourse
+    : undefined
 
   return (
     <article
@@ -2118,10 +2138,7 @@ function SelfCareItemCard({
             <h3>{entry.item.title}</h3>
           </div>
           {!isTodayView ? (
-            <p className={styles.cardMeta}>
-              {CATEGORY_LABELS[entry.item.category]} ·{' '}
-              {getTypeLabel(entry.item)} · {scheduleLabel}
-            </p>
+            <p className={styles.cardMeta}>{cardMetaLabel}</p>
           ) : null}
           {todayScheduleLabel ? (
             <p className={styles.cardMeta}>{todayScheduleLabel}</p>
@@ -2205,19 +2222,30 @@ function SelfCareItemCard({
           </>
         ) : (
           <>
-            <button
-              className={cx(
-                styles.cardActionButton,
-                styles.cardActionButtonDone,
-              )}
-              type="button"
-              disabled={isBusy || isDone}
-              title={primaryActionLabel}
-              aria-label={`${primaryActionLabel}: «${entry.item.title}»`}
-              onClick={() => onAction(entry)}
-            >
-              <CheckIcon size={18} strokeWidth={2.3} />
-            </button>
+            {restartCourseAction ? (
+              <button
+                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
+                type="button"
+                disabled={isBusy}
+                onClick={() => restartCourseAction(entry)}
+              >
+                Повторить
+              </button>
+            ) : (
+              <button
+                className={cx(
+                  styles.cardActionButton,
+                  styles.cardActionButtonDone,
+                )}
+                type="button"
+                disabled={isBusy || isDone}
+                title={primaryActionLabel}
+                aria-label={`${primaryActionLabel}: «${entry.item.title}»`}
+                onClick={() => onAction(entry)}
+              >
+                <CheckIcon size={18} strokeWidth={2.3} />
+              </button>
+            )}
             {onSchedule && entry.occurrence ? (
               <button
                 className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
@@ -2785,10 +2813,13 @@ function SelfCareCustomCreateForm({
   const [icon, setIcon] = useState('')
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [type, setType] = useState<SelfCareItemType>('task')
-  const [category, setCategory] = useState<SelfCareCategory>('daily_base')
+  const [category, setCategory] = useState<SelfCareCategory>('custom')
   const [preferredTimeOfDay, setPreferredTimeOfDay] =
     useState<SelfCareTimeOfDay>('anytime')
-  const [repeatKind, setRepeatKind] = useState<SelfCareCreateRepeatKind>('none')
+  const [repeatKind, setRepeatKind] =
+    useState<SelfCareStandardRepeatKind>('none')
+  const [courseScheduleMode, setCourseScheduleMode] =
+    useState<SelfCareCourseScheduleMode>('daily')
   const [intervalValue, setIntervalValue] = useState('4')
   const [intervalUnit, setIntervalUnit] = useState<SelfCareIntervalUnit>('week')
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(() => [
@@ -2806,13 +2837,11 @@ function SelfCareCustomCreateForm({
   const [courseType, setCourseType] = useState<SelfCareCourseType>('days')
   const [courseTotalCount, setCourseTotalCount] = useState('30')
   const [scheduledDate, setScheduledDate] = useState(todayKey)
-  const [scheduledTime, setScheduledTime] = useState('09:00')
+  const [scheduledTime, setScheduledTime] = useState('')
   const [detailsPlace, setDetailsPlace] = useState('')
   const [detailsSpecialist, setDetailsSpecialist] = useState('')
   const [detailsContact, setDetailsContact] = useState('')
   const [detailsPrice, setDetailsPrice] = useState('')
-  const [detailsCurrency, setDetailsCurrency] = useState(defaultCurrency)
-  const [detailsNote, setDetailsNote] = useState('')
   const [measurementValueLabel, setMeasurementValueLabel] = useState('Значение')
   const [measurementUnit, setMeasurementUnit] = useState('')
   const [measurementTargetMin, setMeasurementTargetMin] = useState('')
@@ -2831,15 +2860,21 @@ function SelfCareCustomCreateForm({
   const usesExactSchedule = shouldUseExactSchedule(type)
   const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
   const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
-  const needsInterval = repeatKindRequiresInterval(repeatKind)
+  const scheduleRepeatKind = getCreateScheduleRepeatKind(type, repeatKind)
+  const visibleRepeatKind = getVisibleRepeatKind(type, repeatKind, {
+    courseScheduleMode,
+  })
+  const needsInterval =
+    repeatKindRequiresInterval(scheduleRepeatKind) ||
+    (type === 'course' && courseScheduleMode === 'interval')
   const canSubmit =
     title.trim().length > 0 &&
     (!needsInterval || Boolean(intervalNumber)) &&
-    (repeatKind !== 'weekly' || daysOfWeek.length > 0) &&
-    (repeatKind !== 'monthly' || Boolean(dayOfMonthNumber)) &&
-    (repeatKind !== 'yearly' ||
+    (visibleRepeatKind !== 'weekly' || daysOfWeek.length > 0) &&
+    (visibleRepeatKind !== 'monthly' || Boolean(dayOfMonthNumber)) &&
+    (visibleRepeatKind !== 'yearly' ||
       (Boolean(dayOfMonthNumber) && Boolean(monthOfYearNumber))) &&
-    (repeatKind !== 'flexible_goal' || Boolean(flexibleTargetNumber)) &&
+    (scheduleRepeatKind !== 'flexible_goal' || Boolean(flexibleTargetNumber)) &&
     (type !== 'course' || Boolean(courseTotalNumber)) &&
     (!usesExactSchedule || scheduledDate.length > 0) &&
     (type !== 'measurement' ||
@@ -2852,71 +2887,41 @@ function SelfCareCustomCreateForm({
   function handleTypeChange(nextType: SelfCareItemType): void {
     setType(nextType)
 
+    if (nextType === 'task') {
+      setCategory('custom')
+      setRepeatKind('none')
+      setScheduledTime('')
+    }
+
     if (nextType === 'habit' || nextType === 'ritual') {
       setRepeatKind('daily')
     }
 
-    if (nextType === 'procedure') {
-      setCategory('beauty')
+    if (nextType === 'appointment') {
+      setCategory('health')
       setRepeatKind('after_completion')
       setIntervalValue('4')
       setIntervalUnit('week')
-    }
-
-    if (nextType === 'appointment') {
-      setCategory('health')
-      setRepeatKind('none')
-    }
-
-    if (nextType === 'medical') {
-      setCategory('medical')
-      setRepeatKind('none')
+      setScheduledTime((value) => value || '09:00')
     }
 
     if (nextType === 'flexible_goal') {
       setCategory('movement')
-      setRepeatKind('flexible_goal')
       setFlexibleTargetCount('3')
       setFlexiblePeriod('week')
     }
 
     if (nextType === 'course') {
       setCategory('health')
-      setRepeatKind('course')
+      setCourseScheduleMode('daily')
       setCourseTotalCount('30')
     }
 
-    if (nextType === 'mood_check') {
-      setCategory('emotional')
-      setRepeatKind('daily')
-    }
-
-    if (nextType === 'rest_action') {
-      setCategory('relax')
-    }
-
     if (nextType === 'measurement') {
-      setCategory('body')
-      setRepeatKind('daily')
-      setMeasurementValueLabel((value) => value || 'Значение')
-    }
-  }
-
-  function handleRepeatKindChange(
-    nextRepeatKind: SelfCareCreateRepeatKind,
-  ): void {
-    setRepeatKind(nextRepeatKind)
-
-    if (nextRepeatKind === 'flexible_goal') {
-      setType('flexible_goal')
-      setCategory('movement')
-      setFlexibleTargetCount((value) => value || '3')
-    }
-
-    if (nextRepeatKind === 'course') {
-      setType('course')
       setCategory('health')
-      setCourseTotalCount((value) => value || '30')
+      setRepeatKind('daily')
+      setScheduledTime((value) => value || '09:00')
+      setMeasurementValueLabel((value) => value || 'Значение')
     }
   }
 
@@ -2931,13 +2936,15 @@ function SelfCareCustomCreateForm({
         }
 
         const detailsPriceValue = parseOptionalPrice(detailsPrice)
-        const normalizedDetailsCurrency = normalizeOptionalText(detailsCurrency)
+        const defaultDetailsCurrency = normalizeOptionalText(defaultCurrency)
         const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
         const canStoreVisitDetails = shouldShowVisitDetails(type)
         const scheduleRule =
-          type === 'task' && repeatKind === 'none'
+          type === 'task' && scheduleRepeatKind === 'none'
             ? undefined
             : buildCreateScheduleRule({
+                courseScheduleMode:
+                  type === 'course' ? courseScheduleMode : undefined,
                 dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
                 daysOfWeek,
                 flexiblePeriod,
@@ -2946,7 +2953,7 @@ function SelfCareCustomCreateForm({
                 intervalValue: intervalNumber ?? 1,
                 monthOfYear:
                   monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-                repeatKind,
+                repeatKind: scheduleRepeatKind,
                 startDate: usesExactSchedule ? scheduledDate : todayKey,
               })
         const scheduledStartsAt = buildDateTimeInput(
@@ -2960,10 +2967,13 @@ function SelfCareCustomCreateForm({
             appointmentDetails:
               type === 'appointment'
                 ? {
-                    currency: normalizedDetailsCurrency,
+                    currency:
+                      detailsPriceValue === null
+                        ? null
+                        : defaultDetailsCurrency,
                     endsAt: null,
                     place: normalizeOptionalText(detailsPlace),
-                    preparationNote: normalizeOptionalText(detailsNote),
+                    preparationNote: null,
                     price: detailsPriceValue,
                     resultNote: null,
                     specialistContact: normalizeOptionalText(detailsContact),
@@ -3004,7 +3014,7 @@ function SelfCareCustomCreateForm({
                     nextControlDate: scheduledDate || null,
                     phone: normalizeOptionalText(detailsContact),
                     reminderStrategy: 'soft',
-                    resultNote: normalizeOptionalText(detailsNote),
+                    resultNote: null,
                     website: null,
                   }
                 : undefined,
@@ -3023,7 +3033,7 @@ function SelfCareCustomCreateForm({
               type === 'procedure'
                 ? {
                     contact: normalizeOptionalText(detailsContact),
-                    currency: normalizedDetailsCurrency,
+                    currency: defaultDetailsCurrency,
                     defaultPrice: detailsPriceValue,
                     place: normalizeOptionalText(detailsPlace),
                     specialistName: normalizeOptionalText(detailsSpecialist),
@@ -3047,8 +3057,8 @@ function SelfCareCustomCreateForm({
                 currency:
                   !canStoreVisitDetails || detailsPriceValue === null
                     ? null
-                    : normalizedDetailsCurrency,
-                note: canStoreVisitDetails ? detailsNote : '',
+                    : defaultDetailsCurrency,
+                note: '',
                 place: canStoreVisitDetails
                   ? normalizeOptionalText(detailsPlace)
                   : null,
@@ -3116,13 +3126,23 @@ function SelfCareCustomCreateForm({
           onChange={setPreferredTimeOfDay}
         />
 
-        <SelectPicker<SelfCareCreateRepeatKind>
-          className={styles.selectField}
-          label="Регулярность"
-          value={repeatKind}
-          options={CREATE_REPEAT_SELECT_OPTIONS}
-          onChange={handleRepeatKindChange}
-        />
+        {type === 'course' ? (
+          <SelectPicker<SelfCareCourseScheduleMode>
+            className={styles.selectField}
+            label="Расписание курса"
+            value={courseScheduleMode}
+            options={COURSE_SCHEDULE_SELECT_OPTIONS}
+            onChange={setCourseScheduleMode}
+          />
+        ) : type === 'flexible_goal' ? null : (
+          <SelectPicker<SelfCareStandardRepeatKind>
+            className={styles.selectField}
+            label="Регулярность"
+            value={repeatKind}
+            options={STANDARD_REPEAT_SELECT_OPTIONS}
+            onChange={setRepeatKind}
+          />
+        )}
       </div>
 
       <SelfCareRepeatFields
@@ -3133,7 +3153,7 @@ function SelfCareCustomCreateForm({
         intervalUnit={intervalUnit}
         intervalValue={intervalValue}
         monthOfYear={monthOfYear}
-        repeatKind={repeatKind}
+        repeatKind={visibleRepeatKind}
         onChangeDayOfMonth={setDayOfMonth}
         onChangeFlexiblePeriod={setFlexiblePeriod}
         onChangeFlexibleTargetCount={setFlexibleTargetCount}
@@ -3249,74 +3269,16 @@ function SelfCareCustomCreateForm({
       ) : null}
 
       {shouldShowVisitDetails(type) ? (
-        <div className={styles.createFormGrid}>
-          <label className={styles.dateField}>
-            <span>Место</span>
-            <input
-              type="text"
-              autoComplete="off"
-              placeholder="Салон, клиника, адрес"
-              value={detailsPlace}
-              onChange={(event) => setDetailsPlace(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Мастер / специалист</span>
-            <input
-              type="text"
-              autoComplete="off"
-              placeholder="Имя мастера или врача"
-              value={detailsSpecialist}
-              onChange={(event) => setDetailsSpecialist(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Контакт</span>
-            <input
-              type="text"
-              autoComplete="off"
-              placeholder="Телефон, ссылка, мессенджер"
-              value={detailsContact}
-              onChange={(event) => setDetailsContact(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Стоимость</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              inputMode="decimal"
-              value={detailsPrice}
-              onChange={(event) => setDetailsPrice(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Валюта</span>
-            <input
-              type="text"
-              autoComplete="off"
-              maxLength={8}
-              value={detailsCurrency}
-              onChange={(event) => setDetailsCurrency(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Комментарий</span>
-            <textarea
-              rows={3}
-              maxLength={600}
-              placeholder="Что важно помнить"
-              value={detailsNote}
-              onChange={(event) => setDetailsNote(event.target.value)}
-            />
-          </label>
-        </div>
+        <SelfCareVisitDetailsFields
+          contact={detailsContact}
+          place={detailsPlace}
+          price={detailsPrice}
+          specialist={detailsSpecialist}
+          onChangeContact={setDetailsContact}
+          onChangePlace={setDetailsPlace}
+          onChangePrice={setDetailsPrice}
+          onChangeSpecialist={setDetailsSpecialist}
+        />
       ) : null}
 
       {type === 'ritual' ? (
@@ -3353,6 +3315,78 @@ function SelfCareCustomCreateForm({
         </button>
       </div>
     </form>
+  )
+}
+
+function SelfCareVisitDetailsFields({
+  contact,
+  onChangeContact,
+  onChangePlace,
+  onChangePrice,
+  onChangeSpecialist,
+  place,
+  price,
+  specialist,
+}: {
+  contact: string
+  onChangeContact: (value: string) => void
+  onChangePlace: (value: string) => void
+  onChangePrice: (value: string) => void
+  onChangeSpecialist: (value: string) => void
+  place: string
+  price: string
+  specialist: string
+}) {
+  return (
+    <details className={styles.visitDetailsDisclosure}>
+      <summary>Детали</summary>
+      <div className={styles.createFormGrid}>
+        <label className={styles.dateField}>
+          <span>Место</span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Салон, клиника, адрес"
+            value={place}
+            onChange={(event) => onChangePlace(event.target.value)}
+          />
+        </label>
+
+        <label className={styles.dateField}>
+          <span>Мастер / специалист</span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Имя мастера или врача"
+            value={specialist}
+            onChange={(event) => onChangeSpecialist(event.target.value)}
+          />
+        </label>
+
+        <label className={styles.dateField}>
+          <span>Контакт</span>
+          <input
+            type="text"
+            autoComplete="off"
+            placeholder="Телефон, ссылка, мессенджер"
+            value={contact}
+            onChange={(event) => onChangeContact(event.target.value)}
+          />
+        </label>
+
+        <label className={styles.dateField}>
+          <span>Стоимость</span>
+          <input
+            type="number"
+            min="0"
+            step="1"
+            inputMode="decimal"
+            value={price}
+            onChange={(event) => onChangePrice(event.target.value)}
+          />
+        </label>
+      </div>
+    </details>
   )
 }
 
@@ -3645,6 +3679,8 @@ function SelfCareEditForm({
   const [repeatMode, setRepeatMode] = useState<SelfCareEditRepeatMode>(
     getInitialEditRepeatMode(entry.scheduleRule),
   )
+  const [courseScheduleMode, setCourseScheduleMode] =
+    useState<SelfCareCourseEditScheduleMode>('keep')
   const [intervalValue, setIntervalValue] = useState(
     formatOptionalNumber(entry.scheduleRule?.intervalValue ?? 4),
   )
@@ -3695,9 +3731,8 @@ function SelfCareEditForm({
       entry.appointment?.price ?? entry.procedure?.defaultPrice,
     ),
   )
-  const [procedureCurrency, setProcedureCurrency] = useState(
-    entry.appointment?.currency ?? entry.procedure?.currency ?? defaultCurrency,
-  )
+  const procedureCurrency =
+    entry.appointment?.currency ?? entry.procedure?.currency ?? defaultCurrency
   const [measurementValueLabel, setMeasurementValueLabel] = useState(
     entry.measurement?.valueLabel ?? 'Значение',
   )
@@ -3719,20 +3754,30 @@ function SelfCareEditForm({
   const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
   const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
   const selectedRepeatKind = repeatMode === 'keep' ? null : repeatMode
+  const selectedCourseScheduleMode =
+    courseScheduleMode === 'keep' ? null : courseScheduleMode
+  const isFlexibleGoal = entry.item.type === 'flexible_goal'
+  const editVisibleRepeatKind = selectedCourseScheduleMode
+    ? getCourseVisibleRepeatKind(selectedCourseScheduleMode)
+    : selectedRepeatKind
   const usesExactSchedule = shouldUseExactSchedule(entry.item.type)
   const canStoreVisitDetails = shouldShowVisitDetails(entry.item.type)
   const canSubmit =
     title.trim().length > 0 &&
     (!usesExactSchedule || scheduledDate.length > 0) &&
-    (!selectedRepeatKind ||
-      ((!repeatKindRequiresInterval(selectedRepeatKind) ||
+    (!editVisibleRepeatKind ||
+      ((!(
+        repeatKindRequiresInterval(editVisibleRepeatKind) ||
+        selectedCourseScheduleMode === 'interval'
+      ) ||
         Boolean(intervalNumber)) &&
-        (selectedRepeatKind !== 'weekly' || daysOfWeek.length > 0) &&
-        (selectedRepeatKind !== 'monthly' || Boolean(dayOfMonthNumber)) &&
-        (selectedRepeatKind !== 'yearly' ||
+        (editVisibleRepeatKind !== 'weekly' || daysOfWeek.length > 0) &&
+        (editVisibleRepeatKind !== 'monthly' || Boolean(dayOfMonthNumber)) &&
+        (editVisibleRepeatKind !== 'yearly' ||
           (Boolean(dayOfMonthNumber) && Boolean(monthOfYearNumber))) &&
-        (selectedRepeatKind !== 'flexible_goal' ||
+        (editVisibleRepeatKind !== 'flexible_goal' ||
           Boolean(flexibleTargetNumber)))) &&
+    (!isFlexibleGoal || Boolean(flexibleTargetNumber)) &&
     (entry.item.type !== 'measurement' ||
       (measurementUnit.trim().length > 0 &&
         isValidMeasurementTargetRange(
@@ -3764,7 +3809,20 @@ function SelfCareEditForm({
           title: title.trim(),
         }
 
-        if (repeatMode !== 'keep') {
+        if (entry.item.type === 'course' && selectedCourseScheduleMode) {
+          input.scheduleRule = buildCreateScheduleRule({
+            courseScheduleMode: selectedCourseScheduleMode,
+            dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
+            daysOfWeek,
+            flexiblePeriod,
+            flexibleTargetCount: flexibleTargetNumber ?? 1,
+            intervalUnit,
+            intervalValue: intervalNumber ?? 1,
+            monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
+            repeatKind: 'course',
+            startDate: entry.scheduleRule?.startDate ?? todayKey,
+          })
+        } else if (entry.item.type === 'flexible_goal') {
           input.scheduleRule = buildCreateScheduleRule({
             dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
             daysOfWeek,
@@ -3773,7 +3831,19 @@ function SelfCareEditForm({
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-            repeatKind: repeatMode,
+            repeatKind: 'flexible_goal',
+            startDate: entry.scheduleRule?.startDate ?? todayKey,
+          })
+        } else if (selectedRepeatKind) {
+          input.scheduleRule = buildCreateScheduleRule({
+            dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
+            daysOfWeek,
+            flexiblePeriod,
+            flexibleTargetCount: flexibleTargetNumber ?? 1,
+            intervalUnit,
+            intervalValue: intervalNumber ?? 1,
+            monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
+            repeatKind: selectedRepeatKind,
             startDate: usesExactSchedule
               ? scheduledDate
               : (entry.scheduleRule?.startDate ?? todayKey),
@@ -3881,22 +3951,38 @@ function SelfCareEditForm({
           onChange={setPreferredTimeOfDay}
         />
 
-        <SelectPicker<SelfCareEditRepeatMode>
-          className={styles.selectField}
-          label="Регулярность"
-          value={repeatMode}
-          options={[
-            {
-              label: `Не менять: ${formatSchedule(entry.scheduleRule)}`,
-              value: 'keep',
-            },
-            ...CREATE_REPEAT_SELECT_OPTIONS,
-          ]}
-          onChange={setRepeatMode}
-        />
+        {entry.item.type === 'course' ? (
+          <SelectPicker<SelfCareCourseEditScheduleMode>
+            className={styles.selectField}
+            label="Расписание курса"
+            value={courseScheduleMode}
+            options={[
+              {
+                label: `Не менять: ${formatSchedule(entry.scheduleRule)}`,
+                value: 'keep',
+              },
+              ...COURSE_SCHEDULE_SELECT_OPTIONS,
+            ]}
+            onChange={setCourseScheduleMode}
+          />
+        ) : entry.item.type === 'flexible_goal' ? null : (
+          <SelectPicker<SelfCareEditRepeatMode>
+            className={styles.selectField}
+            label="Регулярность"
+            value={repeatMode}
+            options={[
+              {
+                label: `Не менять: ${formatSchedule(entry.scheduleRule)}`,
+                value: 'keep',
+              },
+              ...STANDARD_REPEAT_SELECT_OPTIONS,
+            ]}
+            onChange={setRepeatMode}
+          />
+        )}
       </div>
 
-      {repeatMode !== 'keep' ? (
+      {entry.item.type === 'course' && selectedCourseScheduleMode ? (
         <SelfCareRepeatFields
           dayOfMonth={dayOfMonth}
           daysOfWeek={daysOfWeek}
@@ -3905,7 +3991,47 @@ function SelfCareEditForm({
           intervalUnit={intervalUnit}
           intervalValue={intervalValue}
           monthOfYear={monthOfYear}
-          repeatKind={repeatMode}
+          repeatKind={getCourseVisibleRepeatKind(selectedCourseScheduleMode)}
+          onChangeDayOfMonth={setDayOfMonth}
+          onChangeFlexiblePeriod={setFlexiblePeriod}
+          onChangeFlexibleTargetCount={setFlexibleTargetCount}
+          onChangeIntervalUnit={setIntervalUnit}
+          onChangeIntervalValue={setIntervalValue}
+          onChangeMonthOfYear={setMonthOfYear}
+          onToggleWeekday={(weekday) =>
+            setDaysOfWeek((current) => toggleWeekday(current, weekday))
+          }
+        />
+      ) : entry.item.type === 'flexible_goal' ? (
+        <SelfCareRepeatFields
+          dayOfMonth={dayOfMonth}
+          daysOfWeek={daysOfWeek}
+          flexiblePeriod={flexiblePeriod}
+          flexibleTargetCount={flexibleTargetCount}
+          intervalUnit={intervalUnit}
+          intervalValue={intervalValue}
+          monthOfYear={monthOfYear}
+          repeatKind="flexible_goal"
+          onChangeDayOfMonth={setDayOfMonth}
+          onChangeFlexiblePeriod={setFlexiblePeriod}
+          onChangeFlexibleTargetCount={setFlexibleTargetCount}
+          onChangeIntervalUnit={setIntervalUnit}
+          onChangeIntervalValue={setIntervalValue}
+          onChangeMonthOfYear={setMonthOfYear}
+          onToggleWeekday={(weekday) =>
+            setDaysOfWeek((current) => toggleWeekday(current, weekday))
+          }
+        />
+      ) : selectedRepeatKind ? (
+        <SelfCareRepeatFields
+          dayOfMonth={dayOfMonth}
+          daysOfWeek={daysOfWeek}
+          flexiblePeriod={flexiblePeriod}
+          flexibleTargetCount={flexibleTargetCount}
+          intervalUnit={intervalUnit}
+          intervalValue={intervalValue}
+          monthOfYear={monthOfYear}
+          repeatKind={selectedRepeatKind}
           onChangeDayOfMonth={setDayOfMonth}
           onChangeFlexiblePeriod={setFlexiblePeriod}
           onChangeFlexibleTargetCount={setFlexibleTargetCount}
@@ -3956,60 +4082,16 @@ function SelfCareEditForm({
       ) : null}
 
       {canStoreVisitDetails ? (
-        <div className={styles.createFormGrid}>
-          <label className={styles.dateField}>
-            <span>Место</span>
-            <input
-              type="text"
-              autoComplete="off"
-              value={procedurePlace}
-              onChange={(event) => setProcedurePlace(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Мастер / специалист</span>
-            <input
-              type="text"
-              autoComplete="off"
-              value={procedureSpecialist}
-              onChange={(event) => setProcedureSpecialist(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Контакт</span>
-            <input
-              type="text"
-              autoComplete="off"
-              value={procedureContact}
-              onChange={(event) => setProcedureContact(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Стоимость</span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              inputMode="decimal"
-              value={procedurePrice}
-              onChange={(event) => setProcedurePrice(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Валюта</span>
-            <input
-              type="text"
-              autoComplete="off"
-              maxLength={8}
-              value={procedureCurrency}
-              onChange={(event) => setProcedureCurrency(event.target.value)}
-            />
-          </label>
-        </div>
+        <SelfCareVisitDetailsFields
+          contact={procedureContact}
+          place={procedurePlace}
+          price={procedurePrice}
+          specialist={procedureSpecialist}
+          onChangeContact={setProcedureContact}
+          onChangePlace={setProcedurePlace}
+          onChangePrice={setProcedurePrice}
+          onChangeSpecialist={setProcedureSpecialist}
+        />
       ) : null}
 
       {entry.item.type === 'measurement' ? (
@@ -4091,6 +4173,206 @@ function SelfCareEditForm({
         </button>
       </div>
     </form>
+  )
+}
+
+function SelfCareCourseRestartDialog({
+  entry,
+  errorMessage,
+  isBusy,
+  onClose,
+  onSubmit,
+  todayKey,
+}: {
+  entry: SelfCareTodayItem
+  errorMessage: string | null
+  isBusy: boolean
+  onClose: () => void
+  onSubmit: (payload: SelfCareCourseRestartPayload) => void
+  todayKey: string
+}) {
+  const [restartMode, setRestartMode] = useState<'now' | 'delay'>('now')
+  const [intervalValue, setIntervalValue] = useState('1')
+  const [intervalUnit, setIntervalUnit] =
+    useState<SelfCareIntervalUnit>('month')
+  const intervalNumber = parsePositiveInteger(intervalValue)
+  const restartDate =
+    restartMode === 'now'
+      ? todayKey
+      : intervalNumber
+        ? addIntervalDateKey(todayKey, intervalNumber, intervalUnit)
+        : ''
+  const course = entry.courseDetails
+  const canSubmit = Boolean(course && restartDate)
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  if (typeof document === 'undefined' || !course) {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className={styles.modalOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="self-care-course-restart-title"
+    >
+      <button
+        className={styles.backdropButton}
+        type="button"
+        tabIndex={-1}
+        aria-label="Закрыть повтор курса"
+        onClick={onClose}
+      />
+
+      <section className={styles.modalPanel}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 id="self-care-course-restart-title">Повторить курс</h2>
+          </div>
+          <button
+            className={styles.closeButton}
+            type="button"
+            aria-label="Закрыть повтор курса"
+            onClick={onClose}
+          >
+            <CloseIcon size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <form
+          className={styles.scheduleForm}
+          onSubmit={(event) => {
+            event.preventDefault()
+
+            if (!canSubmit) {
+              return
+            }
+
+            onSubmit({
+              input: {
+                courseDetails: {
+                  completedCount: 0,
+                  courseType: course.courseType,
+                  endDate: null,
+                  isCompleted: false,
+                  isPaused: false,
+                  startDate: restartDate,
+                  totalCount: course.totalCount,
+                },
+                expectedVersion: entry.item.version,
+                scheduleRule: buildRestartCourseScheduleRule(
+                  entry,
+                  restartDate,
+                ),
+              },
+              restartDate,
+            })
+          }}
+        >
+          <div className={styles.scheduleTarget}>
+            <strong>{entry.item.title}</strong>
+            <span>
+              {course.totalCount}{' '}
+              {getCourseUnitLabel(course.courseType, course.totalCount)}
+            </span>
+          </div>
+
+          <div
+            className={styles.quickDateGrid}
+            role="group"
+            aria-label="Когда повторить курс"
+          >
+            <button
+              className={cx(
+                styles.quickDateButton,
+                restartMode === 'now' && styles.quickDateButtonActive,
+              )}
+              type="button"
+              disabled={isBusy}
+              aria-pressed={restartMode === 'now'}
+              onClick={() => setRestartMode('now')}
+            >
+              Активировать сейчас
+            </button>
+            <button
+              className={cx(
+                styles.quickDateButton,
+                restartMode === 'delay' && styles.quickDateButtonActive,
+              )}
+              type="button"
+              disabled={isBusy}
+              aria-pressed={restartMode === 'delay'}
+              onClick={() => setRestartMode('delay')}
+            >
+              Повторить через период
+            </button>
+          </div>
+
+          {restartMode === 'delay' ? (
+            <div className={styles.createFormGrid}>
+              <label className={styles.dateField}>
+                <span>Повторить через</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  required
+                  value={intervalValue}
+                  onChange={(event) => setIntervalValue(event.target.value)}
+                />
+              </label>
+
+              <SelectPicker<SelfCareIntervalUnit>
+                className={styles.selectField}
+                label="Период"
+                value={intervalUnit}
+                options={INTERVAL_UNIT_SELECT_OPTIONS}
+                onChange={setIntervalUnit}
+              />
+            </div>
+          ) : null}
+
+          <p className={styles.mutedText}>
+            Новый старт: {restartDate ? formatDate(restartDate) : 'выбери срок'}
+          </p>
+
+          {errorMessage ? (
+            <p className={styles.errorText}>{errorMessage}</p>
+          ) : null}
+
+          <div className={styles.modalActions}>
+            <button
+              className={styles.softButton}
+              type="button"
+              disabled={isBusy}
+              onClick={onClose}
+            >
+              Отмена
+            </button>
+            <button
+              className={styles.doneButton}
+              type="submit"
+              disabled={isBusy || !canSubmit}
+            >
+              Повторить
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
   )
 }
 
@@ -4494,189 +4776,6 @@ function SelfCareMeasurementDialog({
   )
 }
 
-function SelfCareMoodDialog({
-  entry,
-  errorMessage,
-  isBusy,
-  onClose,
-  onSubmit,
-}: {
-  entry: SelfCareTodayItem
-  errorMessage: string | null
-  isBusy: boolean
-  onClose: () => void
-  onSubmit: (input: SelfCareCompletionInput) => void
-}) {
-  const [energy, setEnergy] = useState<number | null>(null)
-  const [mood, setMood] = useState<number | null>(null)
-  const [note, setNote] = useState('')
-  const canSubmit = mood !== null || energy !== null
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  if (typeof document === 'undefined') {
-    return null
-  }
-
-  return createPortal(
-    <div
-      className={styles.modalOverlay}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="self-care-mood-title"
-    >
-      <button
-        className={styles.backdropButton}
-        type="button"
-        tabIndex={-1}
-        aria-label="Закрыть ввод состояния"
-        onClick={onClose}
-      />
-
-      <section className={styles.modalPanel}>
-        <div className={styles.modalHeader}>
-          <div>
-            <h2 id="self-care-mood-title">Записать состояние</h2>
-            <p>{entry.item.title}</p>
-          </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            aria-label="Закрыть ввод состояния"
-            onClick={onClose}
-          >
-            <CloseIcon size={18} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <form
-          className={styles.scheduleForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-
-            if (!canSubmit) {
-              return
-            }
-
-            onSubmit({
-              alternativeTitle: null,
-              completedVariant: 'full',
-              durationMinutes: null,
-              energyAfter: energy,
-              energyBefore: null,
-              measurementUnit: null,
-              measurementValue: null,
-              moodAfter: mood,
-              moodBefore: null,
-              note,
-              status: 'done',
-            })
-          }}
-        >
-          <div className={styles.scheduleTarget}>
-            <strong>Как сейчас?</strong>
-            <span>
-              Выберите настроение или энергию, можно добавить заметку.
-            </span>
-          </div>
-
-          <RatingPicker
-            label="Настроение"
-            labels={MOOD_RATING_LABELS}
-            value={mood}
-            onChange={setMood}
-          />
-
-          <RatingPicker
-            label="Энергия"
-            labels={ENERGY_RATING_LABELS}
-            value={energy}
-            onChange={setEnergy}
-          />
-
-          <label className={styles.dateField}>
-            <span>Заметка</span>
-            <textarea
-              rows={3}
-              maxLength={1200}
-              placeholder="Что повлияло на состояние"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
-
-          {errorMessage ? (
-            <p className={styles.errorText}>{errorMessage}</p>
-          ) : null}
-
-          <div className={styles.modalActions}>
-            <button
-              className={styles.softButton}
-              type="button"
-              disabled={isBusy}
-              onClick={onClose}
-            >
-              Отмена
-            </button>
-            <button
-              className={styles.doneButton}
-              type="submit"
-              disabled={isBusy || !canSubmit}
-            >
-              Сохранить
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
-function RatingPicker({
-  label,
-  labels,
-  onChange,
-  value,
-}: {
-  label: string
-  labels: Record<(typeof STATE_RATING_VALUES)[number], string>
-  onChange: (value: number) => void
-  value: number | null
-}) {
-  return (
-    <fieldset className={styles.ratingField}>
-      <legend>{label}</legend>
-      <div className={styles.ratingGrid}>
-        {STATE_RATING_VALUES.map((rating) => (
-          <button
-            key={rating}
-            className={cx(
-              styles.ratingButton,
-              value === rating && styles.ratingButtonActive,
-            )}
-            type="button"
-            aria-pressed={value === rating}
-            onClick={() => onChange(rating)}
-          >
-            <strong>{rating}</strong>
-            <span>{labels[rating]}</span>
-          </button>
-        ))}
-      </div>
-    </fieldset>
-  )
-}
-
 function SelfCareSection({
   children,
   title,
@@ -4968,19 +5067,73 @@ function groupTodayItems(
 
 function groupItemsByCategory(
   list: SelfCareListResponse | undefined,
-): Record<SelfCareCategory, SelfCareItem[]> {
-  const groups = Object.keys(CATEGORY_LABELS).reduce(
+): Record<VisibleSelfCareCategory, SelfCareItem[]> {
+  const groups = VISIBLE_CATEGORY_ORDER.reduce(
     (current, category) => ({ ...current, [category]: [] }),
-    {} as Record<SelfCareCategory, SelfCareItem[]>,
+    {} as Record<VisibleSelfCareCategory, SelfCareItem[]>,
   )
 
   for (const item of list?.items ?? []) {
     if (!item.isArchived) {
-      groups[item.category].push(item)
+      groups[getVisibleSelfCareCategory(item.category)].push(item)
     }
   }
 
   return groups
+}
+
+function getVisibleSelfCareCategory(
+  category: SelfCareCategory,
+): VisibleSelfCareCategory {
+  if (category === 'body') {
+    return 'body'
+  }
+
+  if (category === 'beauty') {
+    return 'beauty'
+  }
+
+  if (category === 'movement') {
+    return 'movement'
+  }
+
+  if (category === 'relax' || category === 'sleep') {
+    return 'relax'
+  }
+
+  if (
+    category === 'health' ||
+    category === 'medical' ||
+    category === 'nutrition'
+  ) {
+    return 'health'
+  }
+
+  return 'custom'
+}
+
+function buildVisibleCategoryDistribution(
+  countsByCategory: Partial<Record<SelfCareCategory, number>>,
+): Array<[VisibleSelfCareCategory, number]> {
+  const totals = VISIBLE_CATEGORY_ORDER.reduce(
+    (current, category) => ({ ...current, [category]: 0 }),
+    {} as Record<VisibleSelfCareCategory, number>,
+  )
+
+  for (const [category, value] of Object.entries(countsByCategory) as Array<
+    [SelfCareCategory, number]
+  >) {
+    if (value > 0) {
+      totals[getVisibleSelfCareCategory(category)] += value
+    }
+  }
+
+  return VISIBLE_CATEGORY_ORDER.map(
+    (category) =>
+      [category, totals[category]] as [VisibleSelfCareCategory, number],
+  )
+    .filter(([, value]) => value > 0)
+    .sort((left, right) => right[1] - left[1])
 }
 
 function buildItemEntry(
@@ -5013,6 +5166,44 @@ function buildItemEntry(
       .sort((left, right) => left.order - right.order),
     timeGroup: item.preferredTimeOfDay ?? 'anytime',
   }
+}
+
+function buildTodayCourseEntries(input: {
+  dashboardTodayItems: SelfCareTodayItem[]
+  latestCompletionByItemId: ReadonlyMap<string, SelfCareCompletion>
+  nextPlannedDateByItemId: ReadonlyMap<string, string>
+  planCourses: SelfCareTodayItem[]
+  todayKey: string
+}): SelfCareTodayItem[] {
+  const byItemId = new Map<string, SelfCareTodayItem>()
+
+  for (const entry of input.dashboardTodayItems) {
+    if (entry.item.type === 'course') {
+      byItemId.set(entry.item.id, entry)
+    }
+  }
+
+  for (const entry of input.planCourses) {
+    if (!byItemId.has(entry.item.id)) {
+      byItemId.set(entry.item.id, entry)
+    }
+  }
+
+  return [...byItemId.values()]
+    .map((entry) =>
+      mergeLatestProgressCompletion(
+        entry,
+        input.latestCompletionByItemId.get(entry.item.id) ?? null,
+      ),
+    )
+    .filter((entry) =>
+      shouldShowCourseInToday(
+        entry,
+        input.todayKey,
+        input.nextPlannedDateByItemId.get(entry.item.id),
+      ),
+    )
+    .sort(compareTodayEntries)
 }
 
 function buildAvailableTodayEntries(input: {
@@ -5141,6 +5332,17 @@ function shouldShowCourseInToday(
   )
 
   if (!isActiveCourse) {
+    return false
+  }
+
+  if (isStaleCourseOccurrence(entry)) {
+    return false
+  }
+
+  if (
+    entry.scheduleRule?.startDate &&
+    entry.scheduleRule.startDate > todayKey
+  ) {
     return false
   }
 
@@ -5656,16 +5858,8 @@ function shouldShowVisitDetails(type: SelfCareItemType): boolean {
 }
 
 function getExactScheduleDateLabel(type: SelfCareItemType): string {
-  if (type === 'appointment') {
+  if (type === 'appointment' || type === 'procedure' || type === 'medical') {
     return 'Дата записи'
-  }
-
-  if (type === 'procedure') {
-    return 'Дата процедуры'
-  }
-
-  if (type === 'medical') {
-    return 'Дата визита / контроля'
   }
 
   if (type === 'measurement') {
@@ -5680,16 +5874,8 @@ function getExactScheduleDateLabel(type: SelfCareItemType): string {
 }
 
 function getExactScheduleTimeLabel(type: SelfCareItemType): string {
-  if (type === 'appointment') {
+  if (type === 'appointment' || type === 'procedure' || type === 'medical') {
     return 'Время записи'
-  }
-
-  if (type === 'procedure') {
-    return 'Время процедуры'
-  }
-
-  if (type === 'medical') {
-    return 'Время визита'
   }
 
   if (type === 'measurement') {
@@ -5713,7 +5899,11 @@ function getInitialMeasurementValue(entry: SelfCareTodayItem): string {
 function getInitialEditRepeatMode(
   rule: SelfCareScheduleRule | null,
 ): SelfCareEditRepeatMode {
-  if (rule) {
+  if (
+    rule &&
+    rule.repeatKind !== 'course' &&
+    rule.repeatKind !== 'flexible_goal'
+  ) {
     return rule.repeatKind
   }
 
@@ -5790,6 +5980,7 @@ function parseMultilineTitles(value: string): string[] {
 }
 
 function buildCreateScheduleRule(input: {
+  courseScheduleMode?: SelfCareCourseScheduleMode | undefined
   dayOfMonth: number
   daysOfWeek: number[]
   flexiblePeriod: SelfCareFlexiblePeriod
@@ -5800,17 +5991,19 @@ function buildCreateScheduleRule(input: {
   repeatKind: SelfCareCreateRepeatKind
   startDate: string
 }): SelfCareCreateScheduleRuleInput {
-  const needsInterval = repeatKindRequiresInterval(input.repeatKind)
+  const needsInterval =
+    repeatKindRequiresInterval(input.repeatKind) ||
+    (input.repeatKind === 'course' && input.courseScheduleMode === 'interval')
   const usesDayOfMonth =
     input.repeatKind === 'monthly' || input.repeatKind === 'yearly'
+  const usesDaysOfWeek =
+    input.repeatKind === 'weekly' ||
+    (input.repeatKind === 'course' && input.courseScheduleMode === 'weekly')
 
   return {
     allowMultiplePerDay: false,
     dayOfMonth: usesDayOfMonth ? input.dayOfMonth : null,
-    daysOfWeek:
-      input.repeatKind === 'weekly' || input.repeatKind === 'course'
-        ? input.daysOfWeek
-        : [],
+    daysOfWeek: usesDaysOfWeek ? input.daysOfWeek : [],
     endDate: null,
     flexiblePeriod:
       input.repeatKind === 'flexible_goal' ? input.flexiblePeriod : null,
@@ -5834,6 +6027,49 @@ function repeatKindRequiresInterval(
   repeatKind: SelfCareCreateRepeatKind,
 ): boolean {
   return repeatKind === 'after_completion' || repeatKind === 'interval'
+}
+
+function getCreateScheduleRepeatKind(
+  type: SelfCareItemType,
+  repeatKind: SelfCareStandardRepeatKind,
+): SelfCareCreateRepeatKind {
+  if (type === 'course') {
+    return 'course'
+  }
+
+  if (type === 'flexible_goal') {
+    return 'flexible_goal'
+  }
+
+  return repeatKind
+}
+
+function getVisibleRepeatKind(
+  type: SelfCareItemType,
+  repeatKind: SelfCareStandardRepeatKind,
+  options: {
+    courseScheduleMode: SelfCareCourseScheduleMode
+  },
+): SelfCareCreateRepeatKind {
+  if (type === 'course') {
+    return getCourseVisibleRepeatKind(options.courseScheduleMode)
+  }
+
+  return getCreateScheduleRepeatKind(type, repeatKind)
+}
+
+function getCourseVisibleRepeatKind(
+  courseScheduleMode: SelfCareCourseScheduleMode,
+): SelfCareCreateRepeatKind {
+  if (courseScheduleMode === 'weekly') {
+    return 'weekly'
+  }
+
+  if (courseScheduleMode === 'interval') {
+    return 'interval'
+  }
+
+  return 'daily'
 }
 
 function toggleWeekday(current: number[], weekday: number): number[] {
@@ -5867,8 +6103,16 @@ function getCreatedTemplateIds(
   )
 }
 
+function isVisibleSelfCareTemplate(template: SelfCareTemplate): boolean {
+  return template.type !== 'mood_check' && template.category !== 'emotional'
+}
+
 function shouldShowTodayEntry(entry: SelfCareTodayItem): boolean {
   if (entry.item.isArchived || !entry.item.isActive) {
+    return false
+  }
+
+  if (entry.item.type === 'course') {
     return false
   }
 
@@ -5898,6 +6142,17 @@ function shouldShowPlannedEntry(entry: SelfCareTodayItem): boolean {
     return false
   }
 
+  if (
+    entry.item.type === 'course' &&
+    (entry.courseDetails?.isCompleted || entry.courseDetails?.isPaused)
+  ) {
+    return false
+  }
+
+  if (isStaleCourseOccurrence(entry)) {
+    return false
+  }
+
   if (entry.completion) {
     return false
   }
@@ -5907,7 +6162,58 @@ function shouldShowPlannedEntry(entry: SelfCareTodayItem): boolean {
     : true
 }
 
+function isStaleCourseOccurrence(entry: SelfCareTodayItem): boolean {
+  return Boolean(
+    entry.item.type === 'course' &&
+    entry.occurrence &&
+    entry.scheduleRule?.repeatKind === 'course' &&
+    entry.scheduleRule.startDate &&
+    entry.occurrence.scheduledFor < entry.scheduleRule.startDate,
+  )
+}
+
+function canRestartCourse(entry: SelfCareTodayItem): boolean {
+  return Boolean(
+    entry.item.type === 'course' &&
+    entry.item.isActive &&
+    !entry.item.isArchived &&
+    !entry.item.deletedAt &&
+    entry.courseDetails?.isCompleted,
+  )
+}
+
+function buildRestartCourseScheduleRule(
+  entry: SelfCareTodayItem,
+  restartDate: string,
+): SelfCareCreateScheduleRuleInput {
+  const rule = entry.scheduleRule
+
+  return {
+    allowMultiplePerDay: rule?.allowMultiplePerDay ?? false,
+    dayOfMonth: null,
+    daysOfWeek: rule?.repeatKind === 'course' ? rule.daysOfWeek : [],
+    endDate: null,
+    flexiblePeriod: null,
+    flexibleTargetCount: null,
+    generateInCalendar: rule?.generateInCalendar ?? false,
+    generateInTaskList: rule?.generateInTaskList ?? true,
+    intervalUnit: rule?.repeatKind === 'course' ? rule.intervalUnit : null,
+    intervalValue: rule?.repeatKind === 'course' ? rule.intervalValue : null,
+    monthOfYear: null,
+    preferredTime: rule?.preferredTime ?? null,
+    reminderOffsetsMinutes: rule?.reminderOffsetsMinutes ?? [],
+    repeatKind: 'course',
+    startDate: restartDate,
+    timezone: rule?.timezone ?? null,
+    weekOfMonth: null,
+  }
+}
+
 function isClosedTodayEntry(entry: SelfCareTodayItem): boolean {
+  if (entry.item.type === 'course' && entry.courseDetails?.isCompleted) {
+    return true
+  }
+
   if (entry.completion) {
     return true
   }
@@ -5966,6 +6272,18 @@ function formatSchedule(rule: SelfCareScheduleRule | null): string {
     rule.intervalUnit
   ) {
     return `каждые ${rule.intervalValue} ${formatIntervalUnit(rule.intervalUnit)}`
+  }
+
+  if (rule.repeatKind === 'course') {
+    if (rule.daysOfWeek.length > 0) {
+      return `курс: ${formatWeeklySchedule(rule)}`
+    }
+
+    if (rule.intervalValue && rule.intervalUnit) {
+      return `курс: каждые ${rule.intervalValue} ${formatIntervalUnit(rule.intervalUnit)}`
+    }
+
+    return 'курс: каждый день'
   }
 
   if (rule.repeatKind === 'weekly') {
@@ -6037,10 +6355,14 @@ function getTypeLabel(item: SelfCareItem): string {
   if (item.type === 'habit') return 'регулярная забота'
   if (item.type === 'flexible_goal') return 'цель на период'
   if (item.type === 'mood_check') return 'состояние'
-  if (item.type === 'rest_action') return 'восстановление'
-  if (item.type === 'medical') return 'медицинское'
-  if (item.type === 'appointment') return 'запись'
-  if (item.type === 'procedure') return 'процедура'
+  if (item.type === 'rest_action') return 'задача'
+  if (
+    item.type === 'medical' ||
+    item.type === 'appointment' ||
+    item.type === 'procedure'
+  ) {
+    return 'запись'
+  }
   if (item.type === 'course') return 'курс'
   if (item.type === 'ritual') return 'ритуал'
   if (item.type === 'measurement') return 'измерение'
@@ -6273,10 +6595,6 @@ function formatCourseCompletionState(
 }
 
 function isEntryDoneToday(entry: SelfCareTodayItem, todayKey: string): boolean {
-  if (entry.item.type === 'mood_check') {
-    return isStateCompletionDoneToday(entry.completion, todayKey)
-  }
-
   if (entry.item.type === 'course') {
     if (entry.courseDetails?.isCompleted) {
       return true
@@ -6300,18 +6618,6 @@ function isEntryDoneToday(entry: SelfCareTodayItem, todayKey: string): boolean {
   }
 
   return isOccurrenceDoneToday(entry.occurrence, todayKey)
-}
-
-function isStateCompletionDoneToday(
-  completion: SelfCareCompletion | null,
-  todayKey: string,
-): boolean {
-  return Boolean(
-    completion &&
-    hasStateCompletionValues(completion) &&
-    isProgressCompletionStatus(completion.status) &&
-    completion.completedAt.slice(0, 10) === todayKey,
-  )
 }
 
 function isCompletionDoneToday(
@@ -6345,10 +6651,6 @@ function getPrimaryActionLabel(
   isDone: boolean,
 ): string {
   if (entry.item.type === 'measurement') {
-    return isDone ? 'Записано' : 'Записать'
-  }
-
-  if (entry.item.type === 'mood_check') {
     return isDone ? 'Записано' : 'Записать'
   }
 

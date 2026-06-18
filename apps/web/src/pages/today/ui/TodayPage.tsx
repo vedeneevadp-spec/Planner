@@ -246,6 +246,18 @@ function isVisibleSelfCareMainTask(entry: SelfCareTodayItem): boolean {
   }
 
   if (
+    entry.item.type === 'course' &&
+    (entry.courseDetails?.isCompleted ||
+      entry.courseDetails?.isPaused ||
+      (entry.occurrence &&
+        entry.scheduleRule?.repeatKind === 'course' &&
+        entry.scheduleRule.startDate &&
+        entry.occurrence.scheduledFor < entry.scheduleRule.startDate))
+  ) {
+    return false
+  }
+
+  if (
     entry.occurrence &&
     HIDDEN_SELF_CARE_OCCURRENCE_STATUSES.has(entry.occurrence.status)
   ) {

@@ -12,13 +12,17 @@ import type {
   SelfCareOccurrence,
   SelfCareProcedureDetails,
   SelfCareScheduleRule,
+  SelfCareTemplate,
 } from '@planner/contracts'
 
 import {
   buildAnalyticsResponse,
   buildDashboardResponse,
   buildDueAt,
+  buildItemInputFromTemplate,
   buildPlanResponse,
+  buildSelfCareListResponse,
+  buildSystemSelfCareTemplates,
   buildTodayItem,
   createDefaultSelfCareSettings,
   generateSelfCareOccurrenceDates,
@@ -711,6 +715,45 @@ void test('buildTodayItem includes course details for course progress', () => {
   assert.equal(entry.courseDetails?.totalCount, 30)
 })
 
+void test('buildDashboardResponse omits completed course occurrences', () => {
+  const item = selfCareItem({
+    id: 'course-1',
+    title: 'Витамины',
+    type: 'course',
+  })
+
+  const response = buildDashboardResponse({
+    date: '2026-06-10',
+    state: selfCareState({
+      courseDetails: [
+        courseDetails({
+          completedCount: 30,
+          id: 'course-details-1',
+          isCompleted: true,
+          itemId: item.id,
+          totalCount: 30,
+        }),
+      ],
+      items: [item],
+      occurrences: [
+        selfCareOccurrence({
+          itemId: item.id,
+          scheduledFor: '2026-06-10',
+        }),
+      ],
+      scheduleRules: [
+        rule({
+          itemId: item.id,
+          repeatKind: 'course',
+          startDate: '2026-06-01',
+        }),
+      ],
+    }),
+  })
+
+  assert.deepEqual(response.todayItems, [])
+})
+
 void test('buildPlanResponse omits archived courses', () => {
   const activeCourse = selfCareItem({
     category: 'health',
@@ -762,6 +805,70 @@ void test('buildPlanResponse omits archived courses', () => {
     response.courses.map((entry) => entry.item.id),
     ['active-course'],
   )
+})
+
+void test('buildSystemSelfCareTemplates creates visit templates as appointments', () => {
+  const templates = buildSystemSelfCareTemplates()
+  const visitTemplates = templates.filter((template) =>
+    ['Медицинский чекап', 'Стоматолог', 'Стрижка', 'Массаж'].includes(
+      template.title,
+    ),
+  )
+
+  assert.equal(visitTemplates.length, 4)
+  assert.deepEqual(
+    visitTemplates.map((template) => template.type),
+    ['appointment', 'appointment', 'appointment', 'appointment'],
+  )
+  assert.equal(
+    templates.some((template) => template.type === 'mood_check'),
+    false,
+  )
+})
+
+void test('buildSelfCareListResponse hides legacy mood check items', () => {
+  const response = buildSelfCareListResponse(
+    selfCareState({
+      items: [
+        selfCareItem({ id: 'task-1', title: 'Пауза' }),
+        selfCareItem({
+          category: 'emotional',
+          id: 'mood-1',
+          title: 'Дневник состояния',
+          type: 'mood_check',
+        }),
+      ],
+    }),
+  )
+
+  assert.deepEqual(
+    response.items.map((item) => item.id),
+    ['task-1'],
+  )
+})
+
+void test('buildItemInputFromTemplate normalizes legacy visit templates to appointments', () => {
+  const input = buildItemInputFromTemplate(
+    selfCareTemplate({
+      defaultSchedule: {
+        intervalUnit: 'week',
+        intervalValue: 4,
+        preferredTime: '10:30',
+        repeatKind: 'after_completion',
+      },
+      type: 'procedure',
+    }),
+  )
+
+  assert.equal(input.type, 'appointment')
+  assert.equal(input.scheduleRule?.repeatKind, 'after_completion')
+  assert.equal(input.scheduleRule?.intervalValue, 4)
+  assert.equal(
+    input.appointmentDetails?.startsAt.endsWith('T10:30:00.000Z'),
+    true,
+  )
+  assert.equal(input.procedureDetails, undefined)
+  assert.equal(input.medicalDetails, undefined)
 })
 
 void test('generateSelfCareOccurrenceDates supports course schedules', () => {
@@ -1091,6 +1198,27 @@ function measurementDetails(
     unit: '',
     updatedAt: NOW,
     valueLabel: 'Значение',
+    ...overrides,
+  }
+}
+
+function selfCareTemplate(
+  overrides: Partial<SelfCareTemplate> = {},
+): SelfCareTemplate {
+  return {
+    category: 'beauty',
+    color: null,
+    createdAt: NOW,
+    defaultSchedule: null,
+    defaultSteps: [],
+    description: '',
+    icon: null,
+    id: 'template-1',
+    importance: 'recommended',
+    isSystem: true,
+    title: 'Шаблон',
+    type: 'appointment',
+    updatedAt: NOW,
     ...overrides,
   }
 }

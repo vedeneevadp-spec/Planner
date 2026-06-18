@@ -789,6 +789,9 @@ export function buildAnalyticsResponse(input: {
       details,
     ]),
   )
+  const appointmentDetailsByItemId = new Map(
+    input.state.appointmentDetails.map((details) => [details.itemId, details]),
+  )
   const procedureDetailsByItemId = new Map(
     input.state.procedureDetails.map((details) => [details.itemId, details]),
   )
@@ -813,8 +816,11 @@ export function buildAnalyticsResponse(input: {
     const dateKey = completion.completedAt.slice(0, 10)
     completionsByDay[dateKey] = (completionsByDay[dateKey] ?? 0) + 1
 
-    if (item?.type === 'procedure') {
-      const price = procedureDetailsByItemId.get(item.id)?.defaultPrice ?? 0
+    if (item?.type === 'appointment' || item?.type === 'procedure') {
+      const price =
+        item.type === 'appointment'
+          ? (appointmentDetailsByItemId.get(item.id)?.price ?? 0)
+          : (procedureDetailsByItemId.get(item.id)?.defaultPrice ?? 0)
 
       if (price > 0) {
         const monthKey = dateKey.slice(0, 7)
@@ -988,6 +994,10 @@ export function buildSelfCareListResponse(
   } = {},
 ): SelfCareListResponse {
   const items = state.items.filter((item) => {
+    if (item.type === 'mood_check') {
+      return false
+    }
+
     if (!filters.includeArchived && item.isArchived) {
       return false
     }
@@ -1024,7 +1034,7 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
     template(
       'Медицинский чекап',
       'Раз в год: сохранить дату и результаты без медицинских интерпретаций.',
-      'medical',
+      'appointment',
       'medical',
       'required',
       { repeatKind: 'yearly', reminderOffsetsMinutes: [43_200, 10_080, 1_440] },
@@ -1032,7 +1042,7 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
     template(
       'Стоматолог',
       'Мягкое напоминание раз в 6 месяцев.',
-      'medical',
+      'appointment',
       'medical',
       'required',
       {
@@ -1045,7 +1055,7 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
     template(
       'Стрижка',
       'Каждые 6 недель после выполнения.',
-      'procedure',
+      'appointment',
       'beauty',
       'recommended',
       {
@@ -1057,7 +1067,7 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
     template(
       'Массаж',
       'Каждые 4 недели после выполнения.',
-      'procedure',
+      'appointment',
       'relax',
       'recommended',
       {
@@ -1138,14 +1148,6 @@ export function buildSystemSelfCareTemplates(): SelfCareTemplate[] {
       'recommended',
       { repeatKind: 'course' },
     ),
-    template(
-      'Дневник состояния',
-      'Отметка без обязательности.',
-      'mood_check',
-      'emotional',
-      'gentle',
-      { repeatKind: 'daily' },
-    ),
   ]
 
   return templates.map((item, index) => ({
@@ -1186,6 +1188,18 @@ export function buildItemInputFromTemplate(
   const schedule = isRecord(templateRecord.defaultSchedule)
     ? templateRecord.defaultSchedule
     : {}
+  const templateType =
+    templateRecord.type === 'procedure' || templateRecord.type === 'medical'
+      ? 'appointment'
+      : templateRecord.type
+  const scheduleDate =
+    typeof schedule.startDate === 'string'
+      ? schedule.startDate
+      : getDateKey(new Date())
+  const scheduleTime =
+    typeof schedule.preferredTime === 'string'
+      ? schedule.preferredTime
+      : '09:00'
   const base: SelfCareItemInput = {
     alternatives: [],
     category: templateRecord.category,
@@ -1227,8 +1241,23 @@ export function buildItemInputFromTemplate(
       title,
     })),
     title: templateRecord.title,
-    type: templateRecord.type,
-    ...(templateRecord.type === 'course'
+    type: templateType,
+    ...(templateType === 'appointment'
+      ? {
+          appointmentDetails: {
+            currency: null,
+            endsAt: null,
+            place: null,
+            preparationNote: '',
+            price: null,
+            resultNote: null,
+            specialistContact: null,
+            specialistName: null,
+            startsAt: `${scheduleDate}T${scheduleTime}:00.000Z`,
+          },
+        }
+      : {}),
+    ...(templateType === 'course'
       ? {
           courseDetails: {
             completedCount: 0,
@@ -1417,7 +1446,9 @@ function buildPlanningHints(date: string, state: SelfCareStateSnapshot) {
         item.isActive &&
         !item.isArchived &&
         item.deletedAt === null &&
-        (item.type === 'procedure' || item.type === 'medical'),
+        (item.type === 'appointment' ||
+          item.type === 'procedure' ||
+          item.type === 'medical'),
     )
     .flatMap((item) => {
       const rule = state.scheduleRules.find(
@@ -1579,7 +1610,12 @@ export function shouldDeduplicateSelfCareItemCompletion(input: {
 }
 
 function isVisibleSelfCareItem(item: SelfCareItem): boolean {
-  return item.isActive && !item.isArchived && item.deletedAt === null
+  return (
+    item.type !== 'mood_check' &&
+    item.isActive &&
+    !item.isArchived &&
+    item.deletedAt === null
+  )
 }
 
 function shouldShowInDashboard(
@@ -1587,11 +1623,32 @@ function shouldShowInDashboard(
   settings: SelfCareSettings,
   date: string,
 ): boolean {
+  if (shouldHideCourseDashboardEntry(entry)) {
+    return false
+  }
+
   if (!isGentleModeEnabled(settings, entry.occurrence?.scheduledFor ?? date)) {
     return true
   }
 
   return entry.item.category === 'daily_base' || entry.item.type === 'medical'
+}
+
+function shouldHideCourseDashboardEntry(entry: SelfCareTodayItem): boolean {
+  if (entry.item.type !== 'course') {
+    return false
+  }
+
+  if (entry.courseDetails?.isCompleted || entry.courseDetails?.isPaused) {
+    return true
+  }
+
+  return Boolean(
+    entry.occurrence &&
+    entry.scheduleRule?.repeatKind === 'course' &&
+    entry.scheduleRule.startDate &&
+    entry.occurrence.scheduledFor < entry.scheduleRule.startDate,
+  )
 }
 
 function resolveTimeGroup(
