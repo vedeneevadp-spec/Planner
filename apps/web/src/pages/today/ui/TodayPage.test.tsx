@@ -190,11 +190,12 @@ function createSelfCareTodayItem(
 
 function createSelfCareDashboard(
   todayItems: SelfCareTodayItem[],
+  options: { flexibleGoals?: SelfCareTodayItem[] } = {},
 ): SelfCareDashboardResponse {
   return {
     date: getDateKey(new Date()),
     dailyState: null,
-    flexibleGoals: [],
+    flexibleGoals: options.flexibleGoals ?? [],
     gentleMode: false,
     minimumItems: [],
     overdueItems: [],
@@ -435,6 +436,59 @@ describe('TodayPage', () => {
       }),
     ).toBeVisible()
     expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
+  })
+
+  it('renders daily flexible self-care goals from the self-care dashboard in routine', () => {
+    mocks.selfCareDashboard = createSelfCareDashboard([], {
+      flexibleGoals: [
+        createSelfCareTodayItem({
+          flexibleProgress: {
+            completedCount: 0,
+            periodEnd: getDateKey(new Date()),
+            periodStart: getDateKey(new Date()),
+            remainingCount: 3,
+            targetCount: 3,
+          },
+          item: {
+            id: 'self-care-water',
+            title: 'Вода',
+          },
+          scheduleRule: {
+            allowMultiplePerDay: false,
+            createdAt: '2026-05-14T08:00:00.000Z',
+            dayOfMonth: null,
+            daysOfWeek: [],
+            endDate: null,
+            flexiblePeriod: 'day',
+            flexibleTargetCount: 3,
+            generateInCalendar: false,
+            generateInTaskList: true,
+            id: 'self-care-water-rule',
+            intervalUnit: null,
+            intervalValue: null,
+            itemId: 'self-care-water',
+            monthOfYear: null,
+            preferredTime: null,
+            reminderOffsetsMinutes: [],
+            repeatKind: 'flexible_goal',
+            startDate: '2026-05-14',
+            timezone: null,
+            updatedAt: '2026-05-14T08:00:00.000Z',
+            weekOfMonth: null,
+          },
+        }),
+      ],
+    })
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(
+      screen.getByRole('link', {
+        name: 'Открыть заботу: Вода',
+      }),
+    ).toBeVisible()
   })
 
   it('keeps self-care dashboard items hidden when main tasks integration is disabled', () => {

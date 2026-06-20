@@ -192,7 +192,21 @@ function isVisibleSelfCareMainTask(entry: SelfCareTodayItem): boolean {
     return false
   }
 
+  if (
+    entry.flexibleProgress &&
+    entry.flexibleProgress.completedCount >= entry.flexibleProgress.targetCount
+  ) {
+    return false
+  }
+
   return true
+}
+
+function isSelfCareDailyFlexibleGoal(entry: SelfCareTodayItem): boolean {
+  return (
+    entry.scheduleRule?.repeatKind === 'flexible_goal' &&
+    entry.scheduleRule.flexiblePeriod === 'day'
+  )
 }
 
 function getSelfCareTaskKey(entry: SelfCareTodayItem): string {
@@ -368,7 +382,12 @@ function PersonalTodayPage() {
     selfCareDashboardQuery.data?.settings.showSelfCareInMainTasks === true
   const selfCareRoutineEntries =
     showSelfCareMainTasks && selfCareDashboardQuery.data
-      ? selfCareDashboardQuery.data.todayItems.filter(isVisibleSelfCareMainTask)
+      ? [
+          ...selfCareDashboardQuery.data.todayItems,
+          ...selfCareDashboardQuery.data.flexibleGoals.filter(
+            isSelfCareDailyFlexibleGoal,
+          ),
+        ].filter(isVisibleSelfCareMainTask)
       : []
   const selfCareOverdueEntries =
     showSelfCareMainTasks && selfCareDashboardQuery.data

@@ -87,6 +87,7 @@ import {
   createScheduleRuleRecord,
   createSelfCareRecords,
   generateSelfCareOccurrencesForRange,
+  getMissedOccurrenceCutoffDate,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   parseJsonArray,
@@ -1634,6 +1635,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     }
 
     const actorUserId = context.actorUserId
+    const cutoffDate = getMissedOccurrenceCutoffDate(date)
 
     await withWriteTransaction(
       this.db,
@@ -1651,7 +1653,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             and item.user_id = ${actorUserId}
             and item.workspace_id = ${context.workspaceId}
             and occurrence.status = 'scheduled'
-            and occurrence.scheduled_for < ${date}
+            and occurrence.scheduled_for < ${cutoffDate}
             and item.deleted_at is null
             and item.is_active = true
             and item.is_archived = false

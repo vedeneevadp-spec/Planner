@@ -1601,6 +1601,14 @@ export function shouldMarkSelfCareOccurrenceMissed(input: {
   )
 }
 
+export function getMissedOccurrenceCutoffDate(
+  requestedDate: string,
+  now: Date = new Date(),
+): string {
+  const today = getDateKey(now)
+  return requestedDate < today ? requestedDate : today
+}
+
 export function getSelfCareCompletionDateKey(
   input: Pick<SelfCareCompletionInput, 'completedAt'>,
 ): string {

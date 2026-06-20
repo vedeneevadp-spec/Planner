@@ -13,6 +13,7 @@ import {
 
 import type { SelfCareWriteContext } from './self-care.model.js'
 import { MemorySelfCareRepository } from './self-care.repository.memory.js'
+import { addDays, getDateKey } from './self-care.shared.js'
 
 void test('MemorySelfCareRepository reactivates an existing occurrence when it is scheduled again', async () => {
   const repository = new MemorySelfCareRepository()
@@ -121,6 +122,53 @@ void test('MemorySelfCareRepository marks stale daily occurrences as missed', as
 
   assert.equal(occurrences[0]?.status, 'missed')
   assert.deepEqual(dashboard.overdueItems, [])
+})
+
+void test('MemorySelfCareRepository does not mark today or future occurrences missed from a future dashboard read', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const today = getDateKey(new Date())
+  const tomorrow = addDays(today, 1)
+  const futureDate = addDays(today, 2)
+
+  await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'movement',
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: today,
+      },
+      title: 'Йога',
+      type: 'habit',
+    }),
+  })
+
+  await repository.generateOccurrences({
+    context,
+    from: today,
+    to: tomorrow,
+  })
+  await repository.getDashboard({
+    context,
+    date: futureDate,
+  })
+  const occurrences = await repository.getOccurrences({
+    context,
+    from: today,
+    to: tomorrow,
+  })
+
+  assert.deepEqual(
+    occurrences.map((occurrence) => [
+      occurrence.scheduledFor,
+      occurrence.status,
+    ]),
+    [
+      [today, 'scheduled'],
+      [tomorrow, 'scheduled'],
+    ],
+  )
 })
 
 void test('MemorySelfCareRepository keeps existing occurrences when schedule rule is updated', async () => {

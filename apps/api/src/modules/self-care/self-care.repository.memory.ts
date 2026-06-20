@@ -77,6 +77,7 @@ import {
   createScheduleRuleRecord,
   createSelfCareRecords,
   generateSelfCareOccurrencesForRange,
+  getMissedOccurrenceCutoffDate,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   isCompletionProgressStatus,
@@ -1031,6 +1032,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   }
 
   private markMissedOccurrences(context: SelfCareReadContext, date: string) {
+    const cutoffDate = getMissedOccurrenceCutoffDate(date)
     const state = this.loadState(context)
     const itemById = new Map(state.items.map((item) => [item.id, item]))
 
@@ -1039,7 +1041,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
       if (
         item &&
-        shouldMarkSelfCareOccurrenceMissed({ date, item, occurrence, state })
+        shouldMarkSelfCareOccurrenceMissed({
+          date: cutoffDate,
+          item,
+          occurrence,
+          state,
+        })
       ) {
         this.occurrences.set(
           occurrence.id,
