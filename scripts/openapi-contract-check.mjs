@@ -53,6 +53,9 @@ try {
     '/api/v1/tasks/page',
     '/api/v1/tasks/{taskId}/status',
     '/api/v1/task-templates',
+    '/api/v1/self-care',
+    '/api/v1/self-care/dashboard',
+    '/api/v1/self-care/plan',
   ]
   const requiredSchemas = [
     'ApiError',
@@ -63,6 +66,12 @@ try {
     'TaskTemplateRecord',
     'EmojiSetRecord',
     'LifeSphereRecord',
+    'SelfCareDashboardResponse',
+    'SelfCareItem',
+    'SelfCareListResponse',
+    'SelfCareOccurrence',
+    'SelfCareRitualStepDraftListResponse',
+    'SelfCareSettingsResponse',
   ]
 
   for (const path of requiredPaths) {
@@ -115,6 +124,58 @@ try {
   ])
   assertSchemaProperties(document, 'HabitTodayResponse', ['date', 'items'])
   assertSchemaProperties(document, 'NewHabitInput', ['title'])
+  assertSchemaProperties(document, 'SelfCareAnalyticsResponse', [
+    'balanceByCategory',
+    'completionsByDay',
+    'selectedSelfCareCount',
+  ])
+  assertSchemaProperties(document, 'SelfCareCompletion', [
+    'completedAt',
+    'itemId',
+    'status',
+  ])
+  assertSchemaProperties(document, 'SelfCareDashboardResponse', [
+    'date',
+    'settings',
+    'todayItems',
+  ])
+  assertSchemaProperties(document, 'SelfCareItem', [
+    'category',
+    'id',
+    'title',
+    'type',
+    'version',
+    'workspaceId',
+  ])
+  assertSchemaProperties(document, 'SelfCareItemInput', [
+    'category',
+    'scheduleRule',
+    'title',
+    'type',
+  ])
+  assertSchemaProperties(document, 'SelfCareListResponse', [
+    'items',
+    'scheduleRules',
+    'steps',
+  ])
+  assertSchemaProperties(document, 'SelfCareOccurrence', [
+    'itemId',
+    'scheduledFor',
+    'status',
+  ])
+  assertSchemaProperties(document, 'SelfCarePlanResponse', [
+    'from',
+    'occurrences',
+    'to',
+  ])
+  assertSchemaProperties(document, 'SelfCareRitualStepDraftListResponse', [
+    'date',
+    'drafts',
+  ])
+  assertSchemaProperties(document, 'SelfCareSettingsResponse', [
+    'minimumItems',
+    'settings',
+  ])
 
   const missingOpenApiRoutes = registeredRoutes
     .map((route) => routeKey(route.method, route.path))

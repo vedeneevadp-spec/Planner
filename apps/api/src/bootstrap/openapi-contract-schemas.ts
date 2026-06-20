@@ -10,6 +10,16 @@ import {
   habitEntryStatusSchema,
   habitFrequencySchema,
   habitTargetTypeSchema,
+  selfCareCategorySchema,
+  selfCareCompletionStatusSchema,
+  selfCareFlexiblePeriodSchema,
+  selfCareImportanceSchema,
+  selfCareIntervalUnitSchema,
+  selfCareItemTypeSchema,
+  selfCareOccurrenceStatusSchema,
+  selfCareReminderToneSchema,
+  selfCareRepeatKindSchema,
+  selfCareTimeOfDaySchema,
 } from '@planner/contracts'
 import type { OpenAPIV3 } from 'openapi-types'
 
@@ -523,6 +533,717 @@ export function createHabitContractSchemas(): Record<
   }
 }
 
+export function createSelfCareContractSchemas(): Record<
+  string,
+  OpenAPIV3.SchemaObject
+> {
+  return {
+    SelfCareAlternativeInput: objectSchema(
+      {
+        countsAsCompletion: {
+          default: true,
+          type: 'boolean',
+        },
+        description: {
+          default: '',
+          maxLength: 600,
+          type: 'string',
+        },
+        id: stringSchema(),
+        title: {
+          maxLength: 160,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['title'],
+    ),
+    SelfCareAnalyticsResponse: objectSchema({
+      balanceByCategory: recordOf(nonnegativeIntegerSchema()),
+      completionsByDay: recordOf(nonnegativeIntegerSchema()),
+      courses: arrayOfRef('SelfCareTodayItem'),
+      flexibleGoals: arrayOfRef('SelfCareTodayItem'),
+      measurementTrends: arrayOfRef('SelfCareMeasurementTrend'),
+      medicalUpcoming: arrayOfRef('SelfCareTodayItem'),
+      minimumCompletionCount: nonnegativeIntegerSchema(),
+      moodEnergyTrend: arrayOfRef('SelfCareDailyState'),
+      procedureCosts: nonnegativeNumberSchema(),
+      procedureCostsByMonth: recordOf(nonnegativeNumberSchema()),
+      selectedSelfCareCount: nonnegativeIntegerSchema(),
+    }),
+    SelfCareAppointmentDetails: objectSchema({
+      createdAt: stringSchema(),
+      currency: nullableStringSchema(),
+      endsAt: nullableStringSchema(),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      occurrenceId: nullableStringSchema(),
+      place: nullableStringSchema(),
+      preparationNote: nullableStringSchema(),
+      price: nullableNonnegativeNumberSchema(),
+      resultNote: nullableStringSchema(),
+      specialistContact: nullableStringSchema(),
+      specialistName: nullableStringSchema(),
+      startsAt: stringSchema(),
+      updatedAt: stringSchema(),
+    }),
+    SelfCareAppointmentDetailsInput: objectSchema(
+      {
+        currency: nullableStringSchema(),
+        endsAt: nullableStringSchema(),
+        place: nullableStringSchema(),
+        preparationNote: nullableStringSchema(),
+        price: nullableNonnegativeNumberSchema(),
+        resultNote: nullableStringSchema(),
+        specialistContact: nullableStringSchema(),
+        specialistName: nullableStringSchema(),
+        startsAt: {
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['startsAt'],
+    ),
+    SelfCareCompletion: objectSchema({
+      alternativeTitle: nullableStringSchema(),
+      completedAt: stringSchema(),
+      completedVariant: nullableEnumSchema(['full', 'minimum', 'alternative']),
+      createdAt: stringSchema(),
+      durationMinutes: nullablePositiveIntegerSchema(),
+      energyAfter: nullableIntegerRangeSchema(1, 5),
+      energyBefore: nullableIntegerRangeSchema(1, 5),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      measurementUnit: nullableStringSchema(),
+      measurementValue: nullableNumberSchema(),
+      moodAfter: nullableIntegerRangeSchema(1, 5),
+      moodBefore: nullableIntegerRangeSchema(1, 5),
+      note: stringSchema(),
+      occurrenceId: nullableStringSchema(),
+      scheduledFor: nullableStringSchema(),
+      status: enumSchema(selfCareCompletionStatusSchema.options),
+      userId: stringSchema(),
+    }),
+    SelfCareCompletionInput: objectSchema(
+      selfCareCompletionInputProperties(),
+      [],
+    ),
+    SelfCareCourseDetails: objectSchema({
+      completedCount: nonnegativeIntegerSchema(),
+      courseType: enumSchema(['sessions', 'days']),
+      createdAt: stringSchema(),
+      endDate: nullableStringSchema(),
+      id: stringSchema(),
+      isCompleted: booleanSchema(),
+      isPaused: booleanSchema(),
+      itemId: stringSchema(),
+      startDate: nullableStringSchema(),
+      totalCount: positiveIntegerSchema(),
+      updatedAt: stringSchema(),
+    }),
+    SelfCareCourseDetailsInput: objectSchema({
+      completedCount: {
+        ...nonnegativeIntegerSchema(),
+        default: 0,
+      },
+      courseType: enumSchema(['sessions', 'days']),
+      endDate: nullableStringSchema(),
+      isCompleted: {
+        default: false,
+        type: 'boolean',
+      },
+      isPaused: {
+        default: false,
+        type: 'boolean',
+      },
+      startDate: nullableStringSchema(),
+      totalCount: positiveIntegerSchema(),
+    }),
+    SelfCareDailyState: objectSchema({
+      createdAt: stringSchema(),
+      date: stringSchema(),
+      energy: nullableIntegerRangeSchema(1, 5),
+      id: stringSchema(),
+      mood: nullableIntegerRangeSchema(1, 5),
+      note: stringSchema(),
+      pain: nullableIntegerRangeSchema(1, 5),
+      sleepQuality: nullableIntegerRangeSchema(1, 5),
+      stress: nullableIntegerRangeSchema(1, 5),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+    }),
+    SelfCareDailyStateInput: objectSchema(
+      {
+        energy: nullableIntegerRangeSchema(1, 5),
+        mood: nullableIntegerRangeSchema(1, 5),
+        note: {
+          default: '',
+          maxLength: 1200,
+          type: 'string',
+        },
+        pain: nullableIntegerRangeSchema(1, 5),
+        sleepQuality: nullableIntegerRangeSchema(1, 5),
+        stress: nullableIntegerRangeSchema(1, 5),
+      },
+      [],
+    ),
+    SelfCareDashboardResponse: objectSchema({
+      dailyState: nullableRef('SelfCareDailyState'),
+      date: stringSchema(),
+      flexibleGoals: arrayOfRef('SelfCareTodayItem'),
+      gentleMode: booleanSchema(),
+      minimumItems: arrayOfRef('SelfCareMinimumItem'),
+      overdueItems: arrayOfRef('SelfCareTodayItem'),
+      planningHints: arrayOfRef('SelfCareTodayItem'),
+      settings: ref('SelfCareSettings'),
+      todayItems: arrayOfRef('SelfCareTodayItem'),
+      upcomingImportant: arrayOfRef('SelfCareTodayItem'),
+    }),
+    SelfCareFlexibleGoalProgress: objectSchema({
+      completedCount: nonnegativeIntegerSchema(),
+      periodEnd: stringSchema(),
+      periodStart: stringSchema(),
+      remainingCount: nonnegativeIntegerSchema(),
+      targetCount: nonnegativeIntegerSchema(),
+    }),
+    SelfCareHistoryResponse: objectSchema({
+      completions: arrayOfRef('SelfCareCompletion'),
+      items: arrayOfRef('SelfCareItem'),
+      stepCompletions: arrayOfRef('SelfCareRitualStepCompletion'),
+    }),
+    SelfCareItem: objectSchema({
+      category: enumSchema(selfCareCategorySchema.options),
+      color: nullableStringSchema(),
+      createdAt: stringSchema(),
+      createdFromTemplateId: nullableStringSchema(),
+      customCategoryId: nullableStringSchema(),
+      defaultDurationMinutes: nullablePositiveIntegerSchema(),
+      deletedAt: nullableStringSchema(),
+      description: stringSchema(),
+      icon: nullableStringSchema(),
+      id: stringSchema(),
+      importance: enumSchema(selfCareImportanceSchema.options),
+      isActive: booleanSchema(),
+      isArchived: booleanSchema(),
+      isPrivate: booleanSchema(),
+      migratedFromHabitId: nullableStringSchema(),
+      minimumVersionDescription: nullableStringSchema(),
+      minimumVersionDurationMinutes: nullablePositiveIntegerSchema(),
+      minimumVersionTitle: nullableStringSchema(),
+      preferredTimeOfDay: nullableEnumSchema(selfCareTimeOfDaySchema.options),
+      title: {
+        minLength: 1,
+        type: 'string',
+      },
+      type: enumSchema(selfCareItemTypeSchema.options),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+      version: positiveIntegerSchema(),
+      workspaceId: stringSchema(),
+    }),
+    SelfCareItemAlternative: objectSchema({
+      countsAsCompletion: booleanSchema(),
+      description: stringSchema(),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      title: {
+        minLength: 1,
+        type: 'string',
+      },
+    }),
+    SelfCareItemInput: objectSchema(
+      {
+        alternatives: arrayOfRef('SelfCareAlternativeInput'),
+        appointmentDetails: ref('SelfCareAppointmentDetailsInput'),
+        category: enumSchema(selfCareCategorySchema.options),
+        color: nullableStringSchema(),
+        courseDetails: ref('SelfCareCourseDetailsInput'),
+        customCategoryId: nullableStringSchema(),
+        defaultDurationMinutes: nullablePositiveIntegerSchema(),
+        description: {
+          default: '',
+          maxLength: 1200,
+          type: 'string',
+        },
+        icon: nullableStringSchema(),
+        id: stringSchema(),
+        importance: {
+          ...enumSchema(selfCareImportanceSchema.options),
+          default: 'recommended',
+        },
+        isActive: {
+          default: true,
+          type: 'boolean',
+        },
+        isArchived: {
+          default: false,
+          type: 'boolean',
+        },
+        isPrivate: {
+          default: true,
+          type: 'boolean',
+        },
+        medicalDetails: ref('SelfCareMedicalDetailsInput'),
+        measurementDetails: ref('SelfCareMeasurementDetailsInput'),
+        migratedFromHabitId: nullableStringSchema(),
+        minimumVersion: ref('SelfCareMinimumVersionInput'),
+        preferredTimeOfDay: nullableEnumSchema(selfCareTimeOfDaySchema.options),
+        procedureDetails: ref('SelfCareProcedureDetailsInput'),
+        scheduleRule: ref('SelfCareScheduleRuleInput'),
+        steps: arrayOfRef('SelfCareRitualStepInput'),
+        title: {
+          maxLength: 160,
+          minLength: 1,
+          type: 'string',
+        },
+        type: enumSchema(selfCareItemTypeSchema.options),
+      },
+      ['category', 'title', 'type'],
+    ),
+    SelfCareItemScheduleInput: objectSchema({
+      currency: nullableStringSchema(),
+      note: {
+        default: '',
+        maxLength: 600,
+        type: 'string',
+      },
+      place: nullableStringSchema(),
+      price: nullableNonnegativeNumberSchema(),
+      scheduledFor: {
+        minLength: 1,
+        type: 'string',
+      },
+      scheduledTime: nullableTimeStringSchema(),
+      specialistContact: nullableStringSchema(),
+      specialistName: nullableStringSchema(),
+    }),
+    SelfCareItemUpdateInput: objectSchema(
+      {
+        ...selfCareItemInputProperties(),
+        expectedVersion: positiveIntegerSchema(),
+      },
+      [],
+    ),
+    SelfCareListResponse: objectSchema({
+      alternatives: arrayOfRef('SelfCareItemAlternative'),
+      appointmentDetails: arrayOfRef('SelfCareAppointmentDetails'),
+      courseDetails: arrayOfRef('SelfCareCourseDetails'),
+      items: arrayOfRef('SelfCareItem'),
+      medicalDetails: arrayOfRef('SelfCareMedicalDetails'),
+      measurementDetails: arrayOfRef('SelfCareMeasurementDetails'),
+      procedureDetails: arrayOfRef('SelfCareProcedureDetails'),
+      scheduleRules: arrayOfRef('SelfCareScheduleRule'),
+      steps: arrayOfRef('SelfCareRitualStep'),
+    }),
+    SelfCareMeasurementDetails: objectSchema({
+      createdAt: stringSchema(),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      targetMax: nullableNumberSchema(),
+      targetMin: nullableNumberSchema(),
+      unit: stringSchema(),
+      updatedAt: stringSchema(),
+      valueLabel: stringSchema(),
+    }),
+    SelfCareMeasurementDetailsInput: objectSchema({
+      targetMax: nullableNumberSchema(),
+      targetMin: nullableNumberSchema(),
+      unit: {
+        maxLength: 32,
+        minLength: 1,
+        type: 'string',
+      },
+      valueLabel: {
+        default: 'Value',
+        maxLength: 80,
+        minLength: 1,
+        type: 'string',
+      },
+    }),
+    SelfCareMeasurementTrend: objectSchema({
+      itemId: stringSchema(),
+      points: arrayOfRef('SelfCareMeasurementTrendPoint'),
+      title: stringSchema(),
+      unit: nullableStringSchema(),
+      valueLabel: stringSchema(),
+    }),
+    SelfCareMeasurementTrendPoint: objectSchema({
+      completedAt: stringSchema(),
+      date: stringSchema(),
+      value: numberSchema(),
+    }),
+    SelfCareMedicalDetails: objectSchema({
+      analysisList: stringArraySchema(),
+      clinicAddress: nullableStringSchema(),
+      clinicName: nullableStringSchema(),
+      createdAt: stringSchema(),
+      documentUrls: stringArraySchema(),
+      doctorName: nullableStringSchema(),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      nextControlDate: nullableStringSchema(),
+      phone: nullableStringSchema(),
+      reminderStrategy: enumSchema(['soft', 'normal', 'persistent']),
+      resultNote: nullableStringSchema(),
+      updatedAt: stringSchema(),
+      website: nullableStringSchema(),
+    }),
+    SelfCareMedicalDetailsInput: objectSchema(
+      {
+        analysisList: stringArraySchema(),
+        clinicAddress: nullableStringSchema(),
+        clinicName: nullableStringSchema(),
+        documentUrls: stringArraySchema(),
+        doctorName: nullableStringSchema(),
+        nextControlDate: nullableStringSchema(),
+        phone: nullableStringSchema(),
+        reminderStrategy: enumSchema(['soft', 'normal', 'persistent']),
+        resultNote: nullableStringSchema(),
+        website: nullableStringSchema(),
+      },
+      [],
+    ),
+    SelfCareMinimumItem: objectSchema({
+      createdAt: stringSchema(),
+      id: stringSchema(),
+      isActive: booleanSchema(),
+      linkedItemId: nullableStringSchema(),
+      order: nonnegativeIntegerSchema(),
+      title: {
+        minLength: 1,
+        type: 'string',
+      },
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+    }),
+    SelfCareMinimumItemInput: objectSchema(
+      {
+        id: stringSchema(),
+        isActive: {
+          default: true,
+          type: 'boolean',
+        },
+        linkedItemId: nullableStringSchema(),
+        order: nonnegativeIntegerSchema(),
+        title: {
+          maxLength: 120,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['title'],
+    ),
+    SelfCareMinimumItemsUpdateInput: objectSchema({
+      items: {
+        items: ref('SelfCareMinimumItemInput'),
+        maxItems: 20,
+        type: 'array',
+      },
+    }),
+    SelfCareMinimumVersionInput: objectSchema({
+      description: {
+        default: '',
+        maxLength: 600,
+        type: 'string',
+      },
+      durationMinutes: nullablePositiveIntegerSchema(),
+      title: {
+        maxLength: 160,
+        minLength: 1,
+        type: 'string',
+      },
+    }),
+    SelfCareOccurrence: objectSchema({
+      completedAt: nullableStringSchema(),
+      createdAt: stringSchema(),
+      dueAt: nullableStringSchema(),
+      generatedAt: nullableStringSchema(),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      movedTo: nullableStringSchema(),
+      scheduledFor: stringSchema(),
+      scheduleRuleId: nullableStringSchema(),
+      status: enumSchema(selfCareOccurrenceStatusSchema.options),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+    }),
+    SelfCareOccurrenceListResponse: arrayOfRef('SelfCareOccurrence'),
+    SelfCareOccurrenceMoveInput: objectSchema({
+      newDate: {
+        minLength: 1,
+        type: 'string',
+      },
+      note: {
+        default: '',
+        maxLength: 600,
+        type: 'string',
+      },
+    }),
+    SelfCareOccurrenceSkipInput: objectSchema(
+      {
+        reason: {
+          default: '',
+          maxLength: 600,
+          type: 'string',
+        },
+      },
+      [],
+    ),
+    SelfCarePlanResponse: objectSchema({
+      courses: arrayOfRef('SelfCareTodayItem'),
+      from: stringSchema(),
+      medical: arrayOfRef('SelfCareTodayItem'),
+      occurrences: arrayOfRef('SelfCareTodayItem'),
+      planningHints: arrayOfRef('SelfCareTodayItem'),
+      to: stringSchema(),
+    }),
+    SelfCareProcedureDetails: objectSchema({
+      contact: nullableStringSchema(),
+      createdAt: stringSchema(),
+      currency: nullableStringSchema(),
+      defaultPrice: nullableNonnegativeNumberSchema(),
+      id: stringSchema(),
+      itemId: stringSchema(),
+      place: nullableStringSchema(),
+      specialistName: nullableStringSchema(),
+      updatedAt: stringSchema(),
+    }),
+    SelfCareProcedureDetailsInput: objectSchema(
+      {
+        contact: nullableStringSchema(),
+        currency: nullableStringSchema(),
+        defaultPrice: nullableNonnegativeNumberSchema(),
+        place: nullableStringSchema(),
+        specialistName: nullableStringSchema(),
+      },
+      [],
+    ),
+    SelfCareRangeInput: objectSchema({
+      from: stringSchema(),
+      to: stringSchema(),
+    }),
+    SelfCareRitualCompletionInput: objectSchema(
+      {
+        ...selfCareCompletionInputProperties(),
+        steps: {
+          default: [],
+          items: objectSchema({
+            isDone: booleanSchema(),
+            stepId: {
+              minLength: 1,
+              type: 'string',
+            },
+          }),
+          type: 'array',
+        },
+      },
+      [],
+    ),
+    SelfCareRitualStep: objectSchema({
+      createdAt: stringSchema(),
+      defaultChecked: booleanSchema(),
+      id: stringSchema(),
+      isOptional: booleanSchema(),
+      itemId: stringSchema(),
+      order: nonnegativeIntegerSchema(),
+      title: {
+        minLength: 1,
+        type: 'string',
+      },
+      updatedAt: stringSchema(),
+    }),
+    SelfCareRitualStepCompletion: objectSchema({
+      completionId: stringSchema(),
+      id: stringSchema(),
+      isDone: booleanSchema(),
+      stepId: stringSchema(),
+    }),
+    SelfCareRitualStepDraft: objectSchema({
+      date: {
+        minLength: 1,
+        type: 'string',
+      },
+      itemId: {
+        minLength: 1,
+        type: 'string',
+      },
+      occurrenceId: nullableStringSchema(),
+      stepIds: stringArraySchema(),
+    }),
+    SelfCareRitualStepDraftInput: objectSchema({
+      date: {
+        minLength: 1,
+        type: 'string',
+      },
+      itemId: {
+        minLength: 1,
+        type: 'string',
+      },
+      occurrenceId: nullableStringSchema(),
+      stepIds: stringArraySchema(),
+    }),
+    SelfCareRitualStepDraftListResponse: objectSchema({
+      date: {
+        minLength: 1,
+        type: 'string',
+      },
+      drafts: arrayOfRef('SelfCareRitualStepDraft'),
+    }),
+    SelfCareRitualStepInput: objectSchema(
+      {
+        defaultChecked: {
+          default: false,
+          type: 'boolean',
+        },
+        id: stringSchema(),
+        isOptional: {
+          default: false,
+          type: 'boolean',
+        },
+        order: nonnegativeIntegerSchema(),
+        title: {
+          maxLength: 160,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['title'],
+    ),
+    SelfCareRitualStepsUpdateInput: objectSchema({
+      steps: arrayOfRef('SelfCareRitualStepInput'),
+    }),
+    SelfCareScheduleRule: objectSchema({
+      allowMultiplePerDay: booleanSchema(),
+      createdAt: stringSchema(),
+      dayOfMonth: nullableIntegerRangeSchema(1, 31),
+      daysOfWeek: weekdayArraySchema(),
+      endDate: nullableStringSchema(),
+      flexiblePeriod: nullableEnumSchema(selfCareFlexiblePeriodSchema.options),
+      flexibleTargetCount: nullablePositiveIntegerSchema(),
+      generateInCalendar: booleanSchema(),
+      generateInTaskList: booleanSchema(),
+      id: stringSchema(),
+      intervalUnit: nullableEnumSchema(selfCareIntervalUnitSchema.options),
+      intervalValue: nullablePositiveIntegerSchema(),
+      itemId: stringSchema(),
+      monthOfYear: nullableIntegerRangeSchema(1, 12),
+      preferredTime: nullableTimeStringSchema(),
+      reminderOffsetsMinutes: {
+        items: integerSchema(),
+        type: 'array',
+      },
+      repeatKind: enumSchema(selfCareRepeatKindSchema.options),
+      startDate: nullableStringSchema(),
+      timezone: nullableStringSchema(),
+      updatedAt: stringSchema(),
+      weekOfMonth: nullableIntegerRangeSchema(-1, 5),
+    }),
+    SelfCareScheduleRuleInput: objectSchema(
+      {
+        allowMultiplePerDay: {
+          default: false,
+          type: 'boolean',
+        },
+        dayOfMonth: nullableIntegerRangeSchema(1, 31),
+        daysOfWeek: weekdayArraySchema(),
+        endDate: nullableStringSchema(),
+        flexiblePeriod: nullableEnumSchema(
+          selfCareFlexiblePeriodSchema.options,
+        ),
+        flexibleTargetCount: nullablePositiveIntegerSchema(),
+        generateInCalendar: {
+          default: false,
+          type: 'boolean',
+        },
+        generateInTaskList: {
+          default: true,
+          type: 'boolean',
+        },
+        id: stringSchema(),
+        intervalUnit: nullableEnumSchema(selfCareIntervalUnitSchema.options),
+        intervalValue: nullablePositiveIntegerSchema(),
+        monthOfYear: nullableIntegerRangeSchema(1, 12),
+        preferredTime: nullableTimeStringSchema(),
+        reminderOffsetsMinutes: {
+          items: integerSchema(),
+          maxItems: 8,
+          type: 'array',
+        },
+        repeatKind: enumSchema(selfCareRepeatKindSchema.options),
+        startDate: nullableStringSchema(),
+        timezone: nullableStringSchema(),
+        weekOfMonth: nullableIntegerRangeSchema(-1, 5),
+      },
+      ['repeatKind'],
+    ),
+    SelfCareSettings: objectSchema({
+      createdAt: stringSchema(),
+      currency: nullableStringSchema(),
+      defaultReminderTone: enumSchema(selfCareReminderToneSchema.options),
+      gentleModeDate: nullableStringSchema(),
+      gentleModeEnabledToday: booleanSchema(),
+      id: stringSchema(),
+      quietHoursEnd: nullableTimeStringSchema(),
+      quietHoursStart: nullableTimeStringSchema(),
+      showAppointmentsInCalendar: booleanSchema(),
+      showSelfCareInMainTasks: booleanSchema(),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+    }),
+    SelfCareSettingsResponse: objectSchema({
+      minimumItems: arrayOfRef('SelfCareMinimumItem'),
+      settings: ref('SelfCareSettings'),
+    }),
+    SelfCareSettingsUpdateInput: objectSchema(
+      {
+        currency: nullableStringSchema(),
+        showAppointmentsInCalendar: booleanSchema(),
+        showSelfCareInMainTasks: booleanSchema(),
+      },
+      [],
+    ),
+    SelfCareTemplate: objectSchema({
+      category: enumSchema(selfCareCategorySchema.options),
+      color: nullableStringSchema(),
+      createdAt: stringSchema(),
+      defaultSchedule: genericJsonSchema(),
+      defaultSteps: stringArraySchema(),
+      description: stringSchema(),
+      icon: nullableStringSchema(),
+      id: stringSchema(),
+      importance: enumSchema(selfCareImportanceSchema.options),
+      isSystem: booleanSchema(),
+      title: {
+        minLength: 1,
+        type: 'string',
+      },
+      type: enumSchema(selfCareItemTypeSchema.options),
+      updatedAt: stringSchema(),
+    }),
+    SelfCareTemplateCreateInput: objectSchema(
+      {
+        overrides: ref('SelfCareItemUpdateInput'),
+      },
+      [],
+    ),
+    SelfCareTemplateListResponse: arrayOfRef('SelfCareTemplate'),
+    SelfCareTodayItem: objectSchema({
+      appointment: nullableRef('SelfCareAppointmentDetails'),
+      completion: nullableRef('SelfCareCompletion'),
+      courseDetails: nullableRef('SelfCareCourseDetails'),
+      flexibleProgress: nullableRef('SelfCareFlexibleGoalProgress'),
+      item: ref('SelfCareItem'),
+      lastMeasurement: nullableRef('SelfCareCompletion'),
+      measurement: nullableRef('SelfCareMeasurementDetails'),
+      occurrence: nullableRef('SelfCareOccurrence'),
+      procedure: nullableRef('SelfCareProcedureDetails'),
+      scheduleRule: nullableRef('SelfCareScheduleRule'),
+      steps: arrayOfRef('SelfCareRitualStep'),
+      timeGroup: enumSchema(selfCareTimeOfDaySchema.options),
+    }),
+  }
+}
+
 function objectSchema(
   properties: SchemaProperties,
   required = Object.keys(properties),
@@ -538,6 +1259,19 @@ function objectSchema(
   }
 
   return schema
+}
+
+function genericJsonSchema(): OpenAPIV3.SchemaObject {
+  return {
+    nullable: true,
+  }
+}
+
+function recordOf(valueSchema: OpenAPIV3.SchemaObject): OpenAPIV3.SchemaObject {
+  return {
+    additionalProperties: valueSchema,
+    type: 'object',
+  }
 }
 
 function arrayOfRef(schemaName: string): OpenAPIV3.SchemaObject {
@@ -577,6 +1311,23 @@ function integerSchema(): OpenAPIV3.SchemaObject {
   }
 }
 
+function nullableEnumSchema(values: readonly string[]): OpenAPIV3.SchemaObject {
+  return {
+    ...enumSchema(values),
+    nullable: true,
+  }
+}
+
+function nullableIntegerRangeSchema(
+  minimum: number,
+  maximum: number,
+): OpenAPIV3.SchemaObject {
+  return {
+    ...integerRangeSchema(minimum, maximum),
+    nullable: true,
+  }
+}
+
 function monthArraySchema(): OpenAPIV3.SchemaObject {
   return {
     items: integerRangeSchema(1, 12),
@@ -589,6 +1340,27 @@ function nonnegativeIntegerSchema(): OpenAPIV3.SchemaObject {
   return {
     minimum: 0,
     type: 'integer',
+  }
+}
+
+function nonnegativeNumberSchema(): OpenAPIV3.SchemaObject {
+  return {
+    minimum: 0,
+    type: 'number',
+  }
+}
+
+function nullableNonnegativeNumberSchema(): OpenAPIV3.SchemaObject {
+  return {
+    ...nonnegativeNumberSchema(),
+    nullable: true,
+  }
+}
+
+function nullableNumberSchema(): OpenAPIV3.SchemaObject {
+  return {
+    nullable: true,
+    type: 'number',
   }
 }
 
@@ -611,6 +1383,12 @@ function nullableTimeStringSchema(): OpenAPIV3.SchemaObject {
     nullable: true,
     pattern: '^\\d{2}:\\d{2}$',
     type: 'string',
+  }
+}
+
+function numberSchema(): OpenAPIV3.SchemaObject {
+  return {
+    type: 'number',
   }
 }
 
@@ -645,5 +1423,65 @@ function weekdayArraySchema(
         }
       : {}),
     type: 'array',
+  }
+}
+
+function selfCareCompletionInputProperties(): SchemaProperties {
+  return {
+    alternativeTitle: nullableStringSchema(),
+    completedAt: stringSchema(),
+    completedVariant: nullableEnumSchema(['full', 'minimum', 'alternative']),
+    durationMinutes: nullablePositiveIntegerSchema(),
+    energyAfter: nullableIntegerRangeSchema(1, 5),
+    energyBefore: nullableIntegerRangeSchema(1, 5),
+    measurementUnit: nullableStringSchema(),
+    measurementValue: nullableNumberSchema(),
+    moodAfter: nullableIntegerRangeSchema(1, 5),
+    moodBefore: nullableIntegerRangeSchema(1, 5),
+    note: {
+      default: '',
+      maxLength: 1200,
+      type: 'string',
+    },
+    status: {
+      ...enumSchema(selfCareCompletionStatusSchema.options),
+      default: 'done',
+    },
+  }
+}
+
+function selfCareItemInputProperties(): SchemaProperties {
+  return {
+    alternatives: arrayOfRef('SelfCareAlternativeInput'),
+    appointmentDetails: ref('SelfCareAppointmentDetailsInput'),
+    category: enumSchema(selfCareCategorySchema.options),
+    color: nullableStringSchema(),
+    courseDetails: ref('SelfCareCourseDetailsInput'),
+    customCategoryId: nullableStringSchema(),
+    defaultDurationMinutes: nullablePositiveIntegerSchema(),
+    description: {
+      maxLength: 1200,
+      type: 'string',
+    },
+    icon: nullableStringSchema(),
+    id: stringSchema(),
+    importance: enumSchema(selfCareImportanceSchema.options),
+    isActive: booleanSchema(),
+    isArchived: booleanSchema(),
+    isPrivate: booleanSchema(),
+    medicalDetails: ref('SelfCareMedicalDetailsInput'),
+    measurementDetails: ref('SelfCareMeasurementDetailsInput'),
+    migratedFromHabitId: nullableStringSchema(),
+    minimumVersion: nullableRef('SelfCareMinimumVersionInput'),
+    preferredTimeOfDay: nullableEnumSchema(selfCareTimeOfDaySchema.options),
+    procedureDetails: ref('SelfCareProcedureDetailsInput'),
+    scheduleRule: ref('SelfCareScheduleRuleInput'),
+    steps: arrayOfRef('SelfCareRitualStepInput'),
+    title: {
+      maxLength: 160,
+      minLength: 1,
+      type: 'string',
+    },
+    type: enumSchema(selfCareItemTypeSchema.options),
   }
 }

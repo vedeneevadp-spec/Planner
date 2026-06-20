@@ -196,16 +196,12 @@ describe('loadPlannerSession', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2)
     })
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      headers: {
-        authorization: 'Bearer old-token',
-      },
-    })
-    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
-      headers: {
-        authorization: 'Bearer new-token',
-      },
-    })
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get('authorization'),
+    ).toBe('Bearer old-token')
+    expect(
+      new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get('authorization'),
+    ).toBe('Bearer new-token')
 
     fetchMock.mockRestore()
   })

@@ -13,11 +13,8 @@ import {
   userProfileSchema,
 } from '@planner/contracts'
 
-import {
-  getPlannerSessionOverrideHeaders,
-  plannerApiConfig,
-} from '@/shared/config/planner-api'
-import { readResponsePayload, throwApiError } from '@/shared/lib/api-client'
+import { plannerApiConfig } from '@/shared/config/planner-api'
+import { createApiRequester } from '@/shared/lib/api-client'
 
 export class SessionApiError extends Error {
   readonly code: string
@@ -57,30 +54,16 @@ export async function resolvePlannerSession(
   options: ResolvePlannerSessionOptions = {},
   fetchFn: typeof fetch = fetch,
 ): Promise<SessionResponse> {
-  const headers = getPlannerSessionOverrideHeaders({
-    accessToken: options.accessToken,
-    actorUserId: options.actorUserId,
-    workspaceId: options.workspaceId,
+  const request = createSessionRequest(options, fetchFn)
+  const session = await request({
+    actorHeader: 'always',
+    fallbackErrorMessage: 'Failed to resolve planner session.',
+    path: '/api/v1/session',
+    responseSchema: sessionResponseSchema,
+    signal: options.signal,
   })
-  const requestInit = {
-    ...(headers ? { headers } : {}),
-    ...(options.signal ? { signal: options.signal } : {}),
-  }
-  const response = await fetchFn(
-    new URL('/api/v1/session', plannerApiConfig.apiBaseUrl),
-    requestInit,
-  )
-  const payload = (await response.json()) as unknown
 
-  if (!response.ok) {
-    throwSessionApiError(
-      response,
-      payload,
-      'Failed to resolve planner session.',
-    )
-  }
-
-  return resolveSessionAssetUrls(sessionResponseSchema.parse(payload))
+  return resolveSessionAssetUrls(session)
 }
 
 export interface CreateSharedWorkspaceOptions {
@@ -94,29 +77,17 @@ export async function createSharedWorkspace(
   options: CreateSharedWorkspaceOptions = {},
   fetchFn: typeof fetch = fetch,
 ): Promise<SessionWorkspaceMembership> {
-  const headers = getPlannerSessionOverrideHeaders({
-    accessToken: options.accessToken,
-    actorUserId: options.actorUserId,
-    workspaceId: options.workspaceId,
-  })
-  const requestHeaders = new Headers(headers)
-  requestHeaders.set('content-type', 'application/json')
+  const request = createSessionRequest(options, fetchFn)
   const input = createSharedWorkspaceInputSchema.parse(options.input ?? {})
-  const response = await fetchFn(
-    new URL('/api/v1/workspaces/shared', plannerApiConfig.apiBaseUrl),
-    {
-      body: JSON.stringify(input),
-      headers: requestHeaders,
-      method: 'POST',
-    },
-  )
-  const payload = await readResponsePayload(response)
 
-  if (!response.ok) {
-    throwSessionApiError(response, payload, 'Failed to create workspace.')
-  }
-
-  return sessionWorkspaceMembershipSchema.parse(payload)
+  return request({
+    actorHeader: 'always',
+    body: input,
+    fallbackErrorMessage: 'Failed to create workspace.',
+    method: 'POST',
+    path: '/api/v1/workspaces/shared',
+    responseSchema: sessionWorkspaceMembershipSchema,
+  })
 }
 
 export interface UpdateSharedWorkspaceOptions {
@@ -137,58 +108,35 @@ export async function updateSharedWorkspace(
   options: UpdateSharedWorkspaceOptions,
   fetchFn: typeof fetch = fetch,
 ): Promise<SessionWorkspaceMembership> {
-  const headers = getPlannerSessionOverrideHeaders({
-    accessToken: options.accessToken,
-    actorUserId: options.actorUserId,
-    workspaceId: options.workspaceId,
-  })
-  const requestHeaders = new Headers(headers)
-  requestHeaders.set('content-type', 'application/json')
+  const request = createSessionRequest(options, fetchFn)
   const input = updateSharedWorkspaceInputSchema.parse(options.input)
-  const response = await fetchFn(
-    new URL('/api/v1/workspaces/shared', plannerApiConfig.apiBaseUrl),
-    {
-      body: JSON.stringify(input),
-      headers: requestHeaders,
-      method: 'PATCH',
-    },
-  )
-  const payload = await readResponsePayload(response)
 
-  if (!response.ok) {
-    throwSessionApiError(response, payload, 'Failed to rename workspace.')
-  }
-
-  return sessionWorkspaceMembershipSchema.parse(payload)
+  return request({
+    actorHeader: 'always',
+    body: input,
+    fallbackErrorMessage: 'Failed to rename workspace.',
+    method: 'PATCH',
+    path: '/api/v1/workspaces/shared',
+    responseSchema: sessionWorkspaceMembershipSchema,
+  })
 }
 
 export async function updateUserProfile(
   options: UpdateUserProfileOptions,
   fetchFn: typeof fetch = fetch,
 ): Promise<UserProfile> {
-  const headers = getPlannerSessionOverrideHeaders({
-    accessToken: options.accessToken,
-    actorUserId: options.actorUserId,
-    workspaceId: options.workspaceId,
-  })
-  const requestHeaders = new Headers(headers)
-  requestHeaders.set('content-type', 'application/json')
+  const request = createSessionRequest(options, fetchFn)
   const input = updateUserProfileInputSchema.parse(options.input)
-  const response = await fetchFn(
-    new URL('/api/v1/profile', plannerApiConfig.apiBaseUrl),
-    {
-      body: JSON.stringify(input),
-      headers: requestHeaders,
-      method: 'PATCH',
-    },
-  )
-  const payload = await readResponsePayload(response)
+  const profile = await request({
+    actorHeader: 'always',
+    body: input,
+    fallbackErrorMessage: 'Failed to update profile.',
+    method: 'PATCH',
+    path: '/api/v1/profile',
+    responseSchema: userProfileSchema,
+  })
 
-  if (!response.ok) {
-    throwSessionApiError(response, payload, 'Failed to update profile.')
-  }
-
-  return resolveUserProfileAssetUrls(userProfileSchema.parse(payload))
+  return resolveUserProfileAssetUrls(profile)
 }
 
 export interface DeleteSharedWorkspaceOptions {
@@ -201,60 +149,60 @@ export async function deleteSharedWorkspace(
   options: DeleteSharedWorkspaceOptions,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const headers = getPlannerSessionOverrideHeaders({
-    accessToken: options.accessToken,
-    actorUserId: options.actorUserId,
-    workspaceId: options.workspaceId,
-  })
-  const response = await fetchFn(
-    new URL('/api/v1/workspaces/shared', plannerApiConfig.apiBaseUrl),
-    {
-      ...(headers ? { headers } : {}),
-      method: 'DELETE',
-    },
-  )
-  const payload = await readResponsePayload(response)
+  const request = createSessionRequest(options, fetchFn)
 
-  if (!response.ok) {
-    throwSessionApiError(response, payload, 'Failed to delete workspace.')
-  }
+  await request({
+    actorHeader: 'always',
+    fallbackErrorMessage: 'Failed to delete workspace.',
+    method: 'DELETE',
+    path: '/api/v1/workspaces/shared',
+  })
 }
 
 export async function leaveSharedWorkspace(
   options: DeleteSharedWorkspaceOptions,
   fetchFn: typeof fetch = fetch,
 ): Promise<void> {
-  const headers = getPlannerSessionOverrideHeaders({
-    accessToken: options.accessToken,
-    actorUserId: options.actorUserId,
-    workspaceId: options.workspaceId,
-  })
-  const response = await fetchFn(
-    new URL('/api/v1/workspaces/shared/leave', plannerApiConfig.apiBaseUrl),
-    {
-      ...(headers ? { headers } : {}),
-      method: 'POST',
-    },
-  )
-  const payload = await readResponsePayload(response)
+  const request = createSessionRequest(options, fetchFn)
 
-  if (!response.ok) {
-    throwSessionApiError(response, payload, 'Failed to leave workspace.')
-  }
+  await request({
+    actorHeader: 'always',
+    fallbackErrorMessage: 'Failed to leave workspace.',
+    method: 'POST',
+    path: '/api/v1/workspaces/shared/leave',
+  })
 }
 
-function throwSessionApiError(
-  response: Response,
-  payload: unknown,
-  fallbackMessage: string,
-): never {
-  throwApiError({
-    createError: (message, options) => new SessionApiError(message, options),
-    fallbackCode: 'session_request_failed',
-    fallbackMessage,
-    payload,
-    response,
-  })
+function createSessionRequest(
+  options: {
+    accessToken?: string | undefined
+    actorUserId?: string | undefined
+    workspaceId?: string | undefined
+  },
+  fetchFn: typeof fetch,
+) {
+  const accessToken = options.accessToken ?? plannerApiConfig.apiAccessToken
+  const workspaceId =
+    options.workspaceId ?? plannerApiConfig.workspaceIdOverride
+  const actorUserId = workspaceId
+    ? (options.actorUserId ?? plannerApiConfig.actorUserIdOverride)
+    : undefined
+
+  const { request } = createApiRequester(
+    {
+      apiBaseUrl: plannerApiConfig.apiBaseUrl,
+      ...(accessToken ? { accessToken } : {}),
+      ...(actorUserId ? { actorUserId } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
+    },
+    (message, errorOptions) => new SessionApiError(message, errorOptions),
+    fetchFn,
+    {
+      fallbackErrorCode: 'session_request_failed',
+    },
+  )
+
+  return request
 }
 
 function resolveSessionAssetUrls(session: SessionResponse): SessionResponse {

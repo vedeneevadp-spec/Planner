@@ -14,60 +14,13 @@ const connectionString =
 const requireRuntimeNonOwner = process.env.DB_SECURITY_REQUIRE_NON_OWNER === '1'
 const rlsMode = normalizeRlsMode(process.env.API_DB_RLS_MODE)
 
-const requiredRlsTables = [
-  'auth_credentials',
-  'auth_password_reset_tokens',
-  'auth_refresh_tokens',
-  'chaos_inbox_items',
-  'cleaning_task_history',
-  'cleaning_task_states',
-  'cleaning_tasks',
-  'cleaning_zones',
-  'daily_plans',
-  'emoji_assets',
-  'emoji_sets',
-  'habit_entries',
-  'habits',
-  'life_spheres',
-  'oauth_authorization_codes',
-  'projects',
-  'push_devices',
-  'task_attachments',
-  'task_events',
-  'task_reminders',
-  'task_templates',
-  'task_time_blocks',
-  'tasks',
-  'workspace_members',
-  'workspaces',
-]
-
 const client = new Client(createPgConnectionConfig(connectionString))
 
 try {
   await client.connect()
   await preparePgAdminConnection(client)
 
-  const rlsResult = await client.query(
-    `
-      select relname as table_name, relrowsecurity as rls_enabled
-      from pg_class
-      join pg_namespace on pg_namespace.oid = pg_class.relnamespace
-      where pg_namespace.nspname = 'app'
-        and relname = any($1)
-      order by relname
-    `,
-    [requiredRlsTables],
-  )
-  const rlsByTable = new Map(
-    rlsResult.rows.map((row) => [row.table_name, row.rls_enabled]),
-  )
-
-  for (const tableName of requiredRlsTables) {
-    if (!rlsByTable.get(tableName)) {
-      throw new Error(`RLS is not enabled for app.${tableName}.`)
-    }
-  }
+  await verifyAuthenticatedTableRls(client)
 
   const ownerResult = await client.query(
     `
@@ -119,6 +72,52 @@ function normalizeRlsMode(value) {
   }
 
   throw new Error(`Invalid API_DB_RLS_MODE: ${value}`)
+}
+
+async function verifyAuthenticatedTableRls(client) {
+  const rlsResult = await client.query(
+    `
+      with app_tables as (
+        select
+          pg_class.relname as table_name,
+          pg_class.relrowsecurity as rls_enabled,
+          array_remove(array[
+            case when has_table_privilege('authenticated', pg_class.oid, 'SELECT') then 'SELECT' end,
+            case when has_table_privilege('authenticated', pg_class.oid, 'INSERT') then 'INSERT' end,
+            case when has_table_privilege('authenticated', pg_class.oid, 'UPDATE') then 'UPDATE' end,
+            case when has_table_privilege('authenticated', pg_class.oid, 'DELETE') then 'DELETE' end
+          ]::text[], null) as privileges
+        from pg_class
+        join pg_namespace on pg_namespace.oid = pg_class.relnamespace
+        where pg_namespace.nspname = 'app'
+          and pg_class.relkind in ('r', 'p')
+      )
+      select table_name, rls_enabled, privileges
+      from app_tables
+      where cardinality(privileges) > 0
+      order by table_name
+    `,
+  )
+
+  const missingRlsTables = rlsResult.rows
+    .filter((row) => !row.rls_enabled)
+    .map((row) => {
+      const privileges = Array.isArray(row.privileges)
+        ? row.privileges.join(', ')
+        : 'unknown privileges'
+
+      return `app.${row.table_name} (${privileges})`
+    })
+
+  if (missingRlsTables.length > 0) {
+    throw new Error(
+      [
+        'RLS is not enabled for app tables accessible by authenticated:',
+        missingRlsTables.join(', '),
+        'Enable RLS before granting authenticated table privileges.',
+      ].join(' '),
+    )
+  }
 }
 
 async function verifyRuntimeRlsMode(client, mode) {
