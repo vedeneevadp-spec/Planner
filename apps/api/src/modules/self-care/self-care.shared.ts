@@ -672,6 +672,9 @@ export function buildDashboardResponse(input: {
   const todayOccurrences = state.occurrences.filter(
     (occurrence) => occurrence.scheduledFor === date,
   )
+  const todayOccurrenceItemIds = new Set(
+    todayOccurrences.map((occurrence) => occurrence.itemId),
+  )
   const todayItems = todayOccurrences
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
@@ -680,7 +683,11 @@ export function buildDashboardResponse(input: {
     .filter((entry) => shouldShowInDashboard(entry, state.settings, date))
     .sort(sortTodayItems)
   const flexibleGoals = state.scheduleRules
-    .filter((rule) => rule.repeatKind === 'flexible_goal')
+    .filter(
+      (rule) =>
+        rule.repeatKind === 'flexible_goal' &&
+        !todayOccurrenceItemIds.has(rule.itemId),
+    )
     .flatMap((rule) => {
       const item = itemById.get(rule.itemId)
       return item && item.isActive && !item.isArchived

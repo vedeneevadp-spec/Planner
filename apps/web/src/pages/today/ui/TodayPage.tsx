@@ -2,18 +2,12 @@ import type { SelfCareTodayItem } from '@planner/contracts'
 import {
   type ReactElement,
   type ReactNode,
-  useCallback,
   useEffect,
   useMemo,
   useState,
 } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import {
-  getNextHabitEntryProgressValue,
-  type HabitTodayListItem,
-  isHabitEntryComplete,
-} from '@/entities/habit'
 import {
   selectArchivedTasks,
   selectDoneBeforeTodayTasks,
@@ -26,12 +20,6 @@ import {
   TaskSection,
 } from '@/entities/task'
 import { useUploadedIconAssets } from '@/features/emoji-library'
-import {
-  HabitRoutineTaskCard,
-  useHabitsToday,
-  useRemoveHabitEntry,
-  useUpsertHabitEntry,
-} from '@/features/habits'
 import { usePlanner } from '@/features/planner'
 import { useSelfCareDashboard } from '@/features/self-care'
 import {
@@ -180,66 +168,6 @@ function useWidgetTaskComposerDraft(
   )
 }
 
-function useTodayHabitRoutine(todayKey: string) {
-  const habitsTodayQuery = useHabitsToday(todayKey)
-  const upsertHabitEntry = useUpsertHabitEntry()
-  const removeHabitEntry = useRemoveHabitEntry()
-  const habitItems = useMemo(
-    () => habitsTodayQuery.data?.items ?? [],
-    [habitsTodayQuery.data?.items],
-  )
-  const activeHabitItems = useMemo(
-    () =>
-      habitItems.filter(
-        (item) =>
-          item.entry?.status !== 'skipped' &&
-          !isHabitEntryComplete(item.habit, item.entry),
-      ),
-    [habitItems],
-  )
-  const completedHabitItems = useMemo(
-    () =>
-      habitItems.filter((item) => isHabitEntryComplete(item.habit, item.entry)),
-    [habitItems],
-  )
-  const isHabitPending =
-    upsertHabitEntry.isPending || removeHabitEntry.isPending
-  const completeHabit = useCallback(
-    (item: HabitTodayListItem) => {
-      upsertHabitEntry.mutate({
-        date: todayKey,
-        habitId: item.habit.id,
-        input: {
-          date: todayKey,
-          expectedVersion: item.entry?.version,
-          note: item.entry?.note ?? '',
-          status: 'done',
-          value: getNextHabitEntryProgressValue(item.habit, item.entry),
-        },
-      })
-    },
-    [todayKey, upsertHabitEntry],
-  )
-  const undoHabit = useCallback(
-    (item: HabitTodayListItem) => {
-      removeHabitEntry.mutate({
-        date: todayKey,
-        habitId: item.habit.id,
-        input: item.entry ? { expectedVersion: item.entry.version } : {},
-      })
-    },
-    [removeHabitEntry, todayKey],
-  )
-
-  return {
-    activeHabitItems,
-    completedHabitItems,
-    completeHabit,
-    isHabitPending,
-    undoHabit,
-  }
-}
-
 function isVisibleSelfCareMainTask(entry: SelfCareTodayItem): boolean {
   if (entry.item.isArchived || !entry.item.isActive || entry.completion) {
     return false
@@ -269,16 +197,6 @@ function isVisibleSelfCareMainTask(entry: SelfCareTodayItem): boolean {
 
 function getSelfCareTaskKey(entry: SelfCareTodayItem): string {
   return `self-care-${entry.occurrence?.id ?? entry.item.id}`
-}
-
-function getMigratedSelfCareHabitIds(
-  entries: readonly SelfCareTodayItem[],
-): ReadonlySet<string> {
-  const habitIds = entries
-    .map((entry) => entry.item.migratedFromHabitId)
-    .filter((habitId): habitId is string => Boolean(habitId))
-
-  return new Set(habitIds)
 }
 
 function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
@@ -375,7 +293,6 @@ function PersonalTodayPage() {
   const [energyMode, setEnergyMode] = useState<EnergyMode>(persistedEnergyMode)
   const todayKey = getDateKey(new Date())
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
-  const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
     enabled: sessionQuery.data?.workspace.kind === 'personal',
   })
@@ -459,35 +376,9 @@ function PersonalTodayPage() {
           isVisibleSelfCareMainTask,
         )
       : []
-  const migratedSelfCareHabitIds = useMemo(
-    () =>
-      selfCareDashboardQuery.data
-        ? getMigratedSelfCareHabitIds([
-            ...selfCareDashboardQuery.data.todayItems,
-            ...selfCareDashboardQuery.data.overdueItems,
-            ...selfCareDashboardQuery.data.flexibleGoals,
-          ])
-        : new Set<string>(),
-    [selfCareDashboardQuery.data],
-  )
-  const activeHabitItems = useMemo(
-    () =>
-      todayHabitRoutine.activeHabitItems.filter(
-        (item) => !migratedSelfCareHabitIds.has(item.habit.id),
-      ),
-    [migratedSelfCareHabitIds, todayHabitRoutine.activeHabitItems],
-  )
-  const completedHabitItems = useMemo(
-    () =>
-      todayHabitRoutine.completedHabitItems.filter(
-        (item) => !migratedSelfCareHabitIds.has(item.habit.id),
-      ),
-    [migratedSelfCareHabitIds, todayHabitRoutine.completedHabitItems],
-  )
   const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
-    activeHabitItemCount:
-      activeHabitItems.length + selfCareRoutineEntries.length,
-    completedHabitItemCount: completedHabitItems.length,
+    activeHabitItemCount: selfCareRoutineEntries.length,
+    completedHabitItemCount: 0,
     doneTodayTasks,
     mainTodayTasks,
     otherTasks,
@@ -495,29 +386,6 @@ function PersonalTodayPage() {
     routineTasks,
     tomorrowTasks,
   })
-  const routineHabitCards = activeHabitItems.map((item) => (
-    <HabitRoutineTaskCard
-      key={item.habit.id}
-      item={item}
-      isPending={todayHabitRoutine.isHabitPending}
-      uploadedIcons={uploadedIcons}
-      variant={taskCardVariant}
-      onComplete={todayHabitRoutine.completeHabit}
-      onUndo={todayHabitRoutine.undoHabit}
-    />
-  ))
-  const completedHabitCards = completedHabitItems.map((item) => (
-    <HabitRoutineTaskCard
-      key={item.habit.id}
-      item={item}
-      isPending={todayHabitRoutine.isHabitPending}
-      tone="success"
-      uploadedIcons={uploadedIcons}
-      variant={taskCardVariant}
-      onComplete={todayHabitRoutine.completeHabit}
-      onUndo={todayHabitRoutine.undoHabit}
-    />
-  ))
   const selfCareRoutineTaskCards = selfCareRoutineEntries.map((entry) => (
     <SelfCareTodayTaskCard
       key={getSelfCareTaskKey(entry)}
@@ -620,12 +488,8 @@ function PersonalTodayPage() {
                 routineTasks,
                 'Рутинных задач на сегодня пока нет.',
                 {
-                  extraItemCount:
-                    activeHabitItems.length + selfCareRoutineTaskCards.length,
-                  extraItems: [
-                    ...routineHabitCards,
-                    ...selfCareRoutineTaskCards,
-                  ],
+                  extraItemCount: selfCareRoutineTaskCards.length,
+                  extraItems: selfCareRoutineTaskCards,
                 },
               ),
             ],
@@ -671,8 +535,6 @@ function PersonalTodayPage() {
             'Когда начнёшь закрывать задачи, последние завершённые появятся здесь.',
             {
               defaultCollapsed: defaultCollapsedSections.doneToday,
-              extraItemCount: completedHabitItems.length,
-              extraItems: completedHabitCards,
               tone: 'success',
             },
           )}
@@ -720,7 +582,6 @@ function SharedTodayPage() {
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const todayKey = getDateKey(new Date())
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
-  const todayHabitRoutine = useTodayHabitRoutine(todayKey)
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const taskView = getTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
@@ -768,8 +629,8 @@ function SharedTodayPage() {
     [tasks, visibleTaskIds],
   )
   const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
-    activeHabitItemCount: todayHabitRoutine.activeHabitItems.length,
-    completedHabitItemCount: todayHabitRoutine.completedHabitItems.length,
+    activeHabitItemCount: 0,
+    completedHabitItemCount: 0,
     doneTodayTasks,
     mainTodayTasks,
     otherTasks,
@@ -777,31 +638,6 @@ function SharedTodayPage() {
     routineTasks,
     tomorrowTasks,
   })
-  const routineHabitCards = todayHabitRoutine.activeHabitItems.map((item) => (
-    <HabitRoutineTaskCard
-      key={item.habit.id}
-      item={item}
-      isPending={todayHabitRoutine.isHabitPending}
-      uploadedIcons={uploadedIcons}
-      variant={taskCardVariant}
-      onComplete={todayHabitRoutine.completeHabit}
-      onUndo={todayHabitRoutine.undoHabit}
-    />
-  ))
-  const completedHabitCards = todayHabitRoutine.completedHabitItems.map(
-    (item) => (
-      <HabitRoutineTaskCard
-        key={item.habit.id}
-        item={item}
-        isPending={todayHabitRoutine.isHabitPending}
-        tone="success"
-        uploadedIcons={uploadedIcons}
-        variant={taskCardVariant}
-        onComplete={todayHabitRoutine.completeHabit}
-        onUndo={todayHabitRoutine.undoHabit}
-      />
-    ),
-  )
 
   function buildTaskSection(
     key: string,
@@ -882,10 +718,6 @@ function SharedTodayPage() {
                 'Рутина',
                 routineTasks,
                 'Рутинных задач на сегодня пока нет.',
-                {
-                  extraItemCount: todayHabitRoutine.activeHabitItems.length,
-                  extraItems: routineHabitCards,
-                },
               ),
             ],
             taskView,
@@ -926,8 +758,6 @@ function SharedTodayPage() {
             'Закрытые сегодня задачи общего workspace появятся здесь.',
             {
               defaultCollapsed: defaultCollapsedSections.doneToday,
-              extraItemCount: todayHabitRoutine.completedHabitItems.length,
-              extraItems: completedHabitCards,
               tone: 'success',
             },
           )}

@@ -240,6 +240,60 @@ void test('buildDashboardResponse keeps only base flexible goals in gentle mode'
   )
 })
 
+void test('buildDashboardResponse does not duplicate scheduled flexible goals', () => {
+  const date = '2026-06-06'
+  const scheduledGoal = selfCareItem({
+    id: 'scheduled-goal',
+    title: 'Вода',
+    type: 'habit',
+  })
+  const openGoal = selfCareItem({
+    id: 'open-goal',
+    title: 'Отжимания',
+    type: 'habit',
+  })
+
+  const response = buildDashboardResponse({
+    date,
+    state: selfCareState({
+      items: [scheduledGoal, openGoal],
+      occurrences: [
+        selfCareOccurrence({
+          id: 'scheduled-goal-occurrence',
+          itemId: scheduledGoal.id,
+          scheduledFor: date,
+          scheduleRuleId: 'scheduled-goal-rule',
+        }),
+      ],
+      scheduleRules: [
+        rule({
+          flexiblePeriod: 'day',
+          flexibleTargetCount: 3,
+          id: 'scheduled-goal-rule',
+          itemId: scheduledGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+        rule({
+          flexiblePeriod: 'day',
+          flexibleTargetCount: 3,
+          id: 'open-goal-rule',
+          itemId: openGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+      ],
+    }),
+  })
+
+  assert.deepEqual(
+    response.todayItems.map((entry) => entry.item.id),
+    ['scheduled-goal'],
+  )
+  assert.deepEqual(
+    response.flexibleGoals.map((entry) => entry.item.id),
+    ['open-goal'],
+  )
+})
+
 void test('buildAnalyticsResponse keeps only visible unique flexible goals', () => {
   const activeGoal = selfCareItem({
     id: 'active-goal',

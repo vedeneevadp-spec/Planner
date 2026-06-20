@@ -30,8 +30,6 @@ interface PlannerSessionStub {
 
 const mocks = vi.hoisted(() => ({
   copyTaskToPersonal: vi.fn(),
-  habitRoutineTaskCard: vi.fn((_props: { variant?: string }) => null),
-  habitTodayItems: [] as unknown[],
   moveTaskToPersonal: vi.fn(),
   removeTask: vi.fn(),
   selfCareDashboard: undefined as SelfCareDashboardResponse | undefined,
@@ -44,14 +42,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/emoji-library', () => ({
   useUploadedIconAssets: () => ({ uploadedIcons: [] }),
-}))
-
-vi.mock('@/features/habits', () => ({
-  HabitRoutineTaskCard: (props: { variant?: string }) =>
-    mocks.habitRoutineTaskCard(props),
-  useHabitsToday: () => ({ data: { items: mocks.habitTodayItems } }),
-  useRemoveHabitEntry: () => ({ isPending: false, mutate: vi.fn() }),
-  useUpsertHabitEntry: () => ({ isPending: false, mutate: vi.fn() }),
 }))
 
 vi.mock('@/features/planner', () => ({
@@ -149,47 +139,6 @@ function createRoutineTask(overrides: Partial<Task> = {}): Task {
   })
 }
 
-function createHabitTodayItem(overrides: Record<string, unknown> = {}) {
-  return {
-    entry: null,
-    habit: {
-      color: '#2f6f62',
-      createdAt: '2026-05-19T08:00:00.000Z',
-      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
-      deletedAt: null,
-      description: 'Подробности привычки',
-      endDate: null,
-      frequency: 'daily',
-      icon: 'target',
-      id: 'habit-1',
-      isActive: true,
-      reminderTime: null,
-      sortOrder: 0,
-      sphereId: null,
-      startDate: '2026-05-19',
-      targetType: 'count',
-      targetValue: 3,
-      title: 'Компактная привычка',
-      unit: 'раза',
-      updatedAt: '2026-05-19T08:00:00.000Z',
-      userId: 'user-1',
-      version: 1,
-      workspaceId: 'personal-workspace',
-    },
-    isDueToday: true,
-    progressPercent: 0,
-    stats: {
-      bestStreak: 0,
-      completedCount: 0,
-      habitId: 'habit-1',
-      scheduledCount: 1,
-      skippedCount: 0,
-      streak: 0,
-    },
-    ...overrides,
-  }
-}
-
 type SelfCareTodayItemOverrides = Omit<Partial<SelfCareTodayItem>, 'item'> & {
   item?: Partial<SelfCareTodayItem['item']>
 }
@@ -281,8 +230,6 @@ describe('TodayPage', () => {
   beforeEach(() => {
     plannerTasks = []
     mocks.copyTaskToPersonal.mockReset()
-    mocks.habitRoutineTaskCard.mockClear()
-    mocks.habitTodayItems.length = 0
     mocks.moveTaskToPersonal.mockReset()
     mocks.removeTask.mockReset()
     mocks.selfCareDashboard = undefined
@@ -473,23 +420,7 @@ describe('TodayPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('uses compact habit cards when task view is list', () => {
-    mocks.habitTodayItems.push(createHabitTodayItem())
-
-    renderTodayPage({
-      initialEntry: '/today?taskView=list',
-      tasks: [],
-    })
-
-    expect(mocks.habitRoutineTaskCard).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variant: 'compact',
-      }),
-    )
-  })
-
-  it('hides a legacy habit card when a migrated self-care item replaces it in routine', () => {
-    mocks.habitTodayItems.push(createHabitTodayItem())
+  it('renders migrated self-care items from the self-care dashboard in routine', () => {
     mocks.selfCareDashboard = createSelfCareDashboard([
       createSelfCareTodayItem(),
     ])
@@ -498,7 +429,6 @@ describe('TodayPage', () => {
       tasks: [],
     })
 
-    expect(mocks.habitRoutineTaskCard).not.toHaveBeenCalled()
     expect(
       screen.getByRole('link', {
         name: 'Открыть заботу: Компактная привычка',
@@ -507,8 +437,7 @@ describe('TodayPage', () => {
     expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
   })
 
-  it('keeps a migrated legacy habit hidden when self-care main tasks are disabled', () => {
-    mocks.habitTodayItems.push(createHabitTodayItem())
+  it('keeps self-care dashboard items hidden when main tasks integration is disabled', () => {
     mocks.selfCareDashboard = {
       ...createSelfCareDashboard([createSelfCareTodayItem()]),
       settings: {
@@ -520,13 +449,11 @@ describe('TodayPage', () => {
       tasks: [],
     })
 
-    expect(mocks.habitRoutineTaskCard).not.toHaveBeenCalled()
     expect(
       screen.queryByRole('link', {
         name: 'Открыть заботу: Компактная привычка',
       }),
     ).not.toBeInTheDocument()
-    expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
   })
 
   it('keeps completed self-care courses out of the main today routine', () => {
