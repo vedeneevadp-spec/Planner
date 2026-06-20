@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chaotika-runtime-v1'
+const CACHE_NAME = 'chaotika-runtime-v2'
 const CACHE_PREFIX = 'chaotika-'
 const APP_SHELL_URLS = [
   '/',
@@ -17,6 +17,12 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL_URLS)),
   )
+})
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
 })
 
 self.addEventListener('activate', (event) => {

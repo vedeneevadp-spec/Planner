@@ -294,6 +294,46 @@ void test('buildDashboardResponse does not duplicate scheduled flexible goals', 
   )
 })
 
+void test('buildDashboardResponse returns cancelled scheduled flexible goals to flexible list', () => {
+  const date = '2026-06-06'
+  const cancelledGoal = selfCareItem({
+    id: 'cancelled-goal',
+    title: 'Вода',
+    type: 'habit',
+  })
+
+  const response = buildDashboardResponse({
+    date,
+    state: selfCareState({
+      items: [cancelledGoal],
+      occurrences: [
+        selfCareOccurrence({
+          id: 'cancelled-goal-occurrence',
+          itemId: cancelledGoal.id,
+          scheduledFor: date,
+          scheduleRuleId: 'cancelled-goal-rule',
+          status: 'cancelled',
+        }),
+      ],
+      scheduleRules: [
+        rule({
+          flexiblePeriod: 'day',
+          flexibleTargetCount: 3,
+          id: 'cancelled-goal-rule',
+          itemId: cancelledGoal.id,
+          repeatKind: 'flexible_goal',
+        }),
+      ],
+    }),
+  })
+
+  assert.equal(response.todayItems[0]?.occurrence?.status, 'cancelled')
+  assert.deepEqual(
+    response.flexibleGoals.map((entry) => entry.item.id),
+    ['cancelled-goal'],
+  )
+})
+
 void test('buildAnalyticsResponse keeps only visible unique flexible goals', () => {
   const activeGoal = selfCareItem({
     id: 'active-goal',

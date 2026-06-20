@@ -672,8 +672,10 @@ export function buildDashboardResponse(input: {
   const todayOccurrences = state.occurrences.filter(
     (occurrence) => occurrence.scheduledFor === date,
   )
-  const todayOccurrenceItemIds = new Set(
-    todayOccurrences.map((occurrence) => occurrence.itemId),
+  const flexibleGoalBlockedItemIds = new Set(
+    todayOccurrences
+      .filter(isFlexibleGoalBlockedByTodayOccurrence)
+      .map((occurrence) => occurrence.itemId),
   )
   const todayItems = todayOccurrences
     .flatMap((occurrence) => {
@@ -686,7 +688,7 @@ export function buildDashboardResponse(input: {
     .filter(
       (rule) =>
         rule.repeatKind === 'flexible_goal' &&
-        !todayOccurrenceItemIds.has(rule.itemId),
+        !flexibleGoalBlockedItemIds.has(rule.itemId),
     )
     .flatMap((rule) => {
       const item = itemById.get(rule.itemId)
@@ -714,6 +716,12 @@ export function buildDashboardResponse(input: {
     todayItems,
     upcomingImportant,
   }
+}
+
+function isFlexibleGoalBlockedByTodayOccurrence(
+  occurrence: SelfCareOccurrence,
+): boolean {
+  return occurrence.status !== 'cancelled'
 }
 
 export function buildPlanResponse(input: {
