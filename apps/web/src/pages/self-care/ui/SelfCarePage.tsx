@@ -67,6 +67,7 @@ import pageStyles from '@/shared/ui/Page'
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
 
 import styles from './SelfCarePage.module.css'
+import { scheduleSelfCareEntryOccurrence } from './SelfCarePage.schedule'
 
 type SelfCareTab =
   | 'today'
@@ -733,9 +734,12 @@ export function SelfCarePage() {
       })
 
       if (payload.scheduleInput) {
-        await scheduleItemMutation.mutateAsync({
+        await scheduleSelfCareEntryOccurrence({
+          entry,
           input: payload.scheduleInput,
-          itemId: entry.item.id,
+          moveNote: 'Дата записи изменена в настройках.',
+          moveOccurrence: moveOccurrenceMutation.mutateAsync,
+          scheduleItem: scheduleItemMutation.mutateAsync,
         })
       }
     })()
@@ -770,36 +774,17 @@ export function SelfCarePage() {
     }
 
     const entry = scheduleDialogEntry
-    const occurrence = entry.occurrence
-    const shouldMoveOverdue = occurrence
-      ? occurrence.scheduledFor < todayKey &&
-        input.scheduledFor !== occurrence.scheduledFor
-      : false
     setFormError(null)
-    void scheduleItemMutation
-      .mutateAsync({
-        input,
-        itemId: entry.item.id,
-        skipInvalidation: shouldMoveOverdue,
-      })
-      .then(async () => {
-        if (occurrence && shouldMoveOverdue) {
-          await moveOccurrenceMutation.mutateAsync({
-            invalidationScopes: [
-              'dashboard',
-              'items',
-              'plan',
-              'history',
-              'analytics',
-            ],
-            input: {
-              newDate: input.scheduledFor,
-              note: 'Перенесено из просроченного плана.',
-            },
-            occurrenceId: occurrence.id,
-          })
-        }
-      })
+    void scheduleSelfCareEntryOccurrence({
+      entry,
+      input,
+      moveNote:
+        entry.occurrence && entry.occurrence.scheduledFor < todayKey
+          ? 'Перенесено из просроченного плана.'
+          : 'Дата записи изменена в плане.',
+      moveOccurrence: moveOccurrenceMutation.mutateAsync,
+      scheduleItem: scheduleItemMutation.mutateAsync,
+    })
       .then(() => {
         setHiddenScheduledItemIds((current) =>
           new Set(current).add(entry.item.id),
@@ -1151,7 +1136,11 @@ export function SelfCarePage() {
           defaultCurrency={defaultCurrency}
           entry={editDialogEntry}
           errorMessage={formError}
-          isBusy={updateItemMutation.isPending}
+          isBusy={
+            updateItemMutation.isPending ||
+            scheduleItemMutation.isPending ||
+            moveOccurrenceMutation.isPending
+          }
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
           onClose={closeEditDialog}

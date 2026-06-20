@@ -736,7 +736,9 @@ function useSelfCareApi(options: { enabled?: boolean } = {}) {
 
 function requireSelfCareApi(api: SelfCareApiClient | null): SelfCareApiClient {
   if (!api) {
-    throw new Error('Self-care API is not ready.')
+    throw new Error(
+      'Сессия еще не готова. Подожди пару секунд и попробуй снова.',
+    )
   }
 
   return api
