@@ -138,7 +138,7 @@ export class SessionService {
     assertSharedWorkspace(session)
 
     return withRepositoryErrorMapping(() =>
-      this.repository.listWorkspaceUsers(session),
+      this.repository.listWorkspaceUsers(session, context.auth),
     )
   }
 
@@ -149,7 +149,7 @@ export class SessionService {
     assertCanManageWorkspaceParticipants(session)
 
     return withRepositoryErrorMapping(() =>
-      this.repository.listWorkspaceInvitations(session),
+      this.repository.listWorkspaceInvitations(session, context.auth),
     )
   }
 
@@ -163,7 +163,7 @@ export class SessionService {
     assertCanManageWorkspaceParticipants(session)
 
     const invitation = await withRepositoryErrorMapping(() =>
-      this.repository.createWorkspaceInvitation(session, input),
+      this.repository.createWorkspaceInvitation(session, input, context.auth),
     )
 
     this.authSessionCache.clear()
@@ -186,6 +186,7 @@ export class SessionService {
         session,
         membershipId,
         groupRole,
+        context.auth,
       ),
     )
 
@@ -201,7 +202,7 @@ export class SessionService {
     assertCanManageWorkspaceParticipants(session)
 
     await withRepositoryErrorMapping(() =>
-      this.repository.removeWorkspaceUser(session, membershipId),
+      this.repository.removeWorkspaceUser(session, membershipId, context.auth),
     )
 
     this.authSessionCache.clear()
@@ -217,7 +218,11 @@ export class SessionService {
     assertCanManageWorkspaceParticipants(session)
 
     await withRepositoryErrorMapping(() =>
-      this.repository.revokeWorkspaceInvitation(session, invitationId),
+      this.repository.revokeWorkspaceInvitation(
+        session,
+        invitationId,
+        context.auth,
+      ),
     )
 
     this.authSessionCache.clear()
@@ -227,7 +232,7 @@ export class SessionService {
     const session = await this.resolveSession(context)
 
     return withRepositoryErrorMapping(() =>
-      this.repository.listReceivedWorkspaceInvitations(session),
+      this.repository.listReceivedWorkspaceInvitations(session, context.auth),
     )
   }
 
@@ -238,7 +243,11 @@ export class SessionService {
     const session = await this.resolveSession(context)
 
     await withRepositoryErrorMapping(() =>
-      this.repository.acceptWorkspaceInvitation(session, invitationId),
+      this.repository.acceptWorkspaceInvitation(
+        session,
+        invitationId,
+        context.auth,
+      ),
     )
 
     this.authSessionCache.clear()
@@ -251,7 +260,11 @@ export class SessionService {
     const session = await this.resolveSession(context)
 
     await withRepositoryErrorMapping(() =>
-      this.repository.declineWorkspaceInvitation(session, invitationId),
+      this.repository.declineWorkspaceInvitation(
+        session,
+        invitationId,
+        context.auth,
+      ),
     )
 
     this.authSessionCache.clear()

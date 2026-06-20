@@ -246,33 +246,44 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async listWorkspaceUsers(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<WorkspaceUserRecord[]> {
-    const rows = await createWorkspaceUserQuery(this.db, session.workspaceId)
-      .orderBy(
-        sql<number>`case
-          when membership.role = 'owner' then 0
-          when membership.group_role = 'group_admin' then 1
-          when membership.group_role = 'senior_member' then 2
-          else 3
-        end`,
-      )
-      .orderBy('actor.display_name', 'asc')
-      .orderBy('actor.email', 'asc')
-      .execute()
+    const rows = await withOptionalRls(
+      this.db,
+      authContext,
+      (executor) =>
+        createWorkspaceUserQuery(executor, session.workspaceId)
+          .orderBy(
+            sql<number>`case
+              when membership.role = 'owner' then 0
+              when membership.group_role = 'group_admin' then 1
+              when membership.group_role = 'senior_member' then 2
+              else 3
+            end`,
+          )
+          .orderBy('actor.display_name', 'asc')
+          .orderBy('actor.email', 'asc')
+          .execute(),
+      session.actorUserId,
+    )
 
     return rows.map(mapWorkspaceUserRecord)
   }
 
   async listWorkspaceInvitations(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<WorkspaceInvitationRecord[]> {
-    const rows = await createWorkspaceInvitationQuery(
+    const rows = await withOptionalRls(
       this.db,
-      session.workspaceId,
+      authContext,
+      (executor) =>
+        createWorkspaceInvitationQuery(executor, session.workspaceId)
+          .orderBy('invitation.created_at', 'desc')
+          .orderBy('invitation.email', 'asc')
+          .execute(),
+      session.actorUserId,
     )
-      .orderBy('invitation.created_at', 'desc')
-      .orderBy('invitation.email', 'asc')
-      .execute()
 
     return rows.map(mapWorkspaceInvitationRecord)
   }
@@ -280,200 +291,228 @@ export class PostgresSessionRepository implements SessionRepository {
   async createWorkspaceInvitation(
     session: SessionSnapshot,
     input: WorkspaceInvitationCreateInput,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<WorkspaceInvitationRecord> {
-    return this.db.transaction().execute(async (trx) => {
-      const normalizedEmail = normalizeEmail(input.email)
-      const existingMember = await findWorkspaceUserByEmail(
-        trx,
-        session.workspaceId,
-        normalizedEmail,
-      )
-
-      if (existingMember) {
-        throw new HttpError(
-          409,
-          'workspace_user_already_exists',
-          'The user is already a participant in this workspace.',
+    return withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        const normalizedEmail = normalizeEmail(input.email)
+        const existingMember = await findWorkspaceUserByEmail(
+          trx,
+          session.workspaceId,
+          normalizedEmail,
         )
-      }
 
-      const invitation = await trx
-        .insertInto('app.workspace_invitations')
-        .values({
-          email: normalizedEmail,
-          group_role: input.groupRole,
-          id: generateUuidV7(),
-          invited_by: session.actorUserId,
-          workspace_id: session.workspaceId,
-        })
-        .onConflict((conflict) =>
-          conflict.columns(['workspace_id', 'email']).doUpdateSet({
-            accepted_at: null,
-            accepted_by: null,
-            deleted_at: null,
-            declined_at: null,
-            declined_by: null,
+        if (existingMember) {
+          throw new HttpError(
+            409,
+            'workspace_user_already_exists',
+            'The user is already a participant in this workspace.',
+          )
+        }
+
+        const invitation = await trx
+          .insertInto('app.workspace_invitations')
+          .values({
+            email: normalizedEmail,
             group_role: input.groupRole,
+            id: generateUuidV7(),
             invited_by: session.actorUserId,
-          }),
-        )
-        .returning([
-          'email',
-          'declined_at as declinedAt',
-          'group_role as groupRole',
-          'id',
-          'created_at as invitedAt',
-          'updated_at as updatedAt',
-        ])
-        .executeTakeFirstOrThrow()
+            workspace_id: session.workspaceId,
+          })
+          .onConflict((conflict) =>
+            conflict.columns(['workspace_id', 'email']).doUpdateSet({
+              accepted_at: null,
+              accepted_by: null,
+              deleted_at: null,
+              declined_at: null,
+              declined_by: null,
+              group_role: input.groupRole,
+              invited_by: session.actorUserId,
+            }),
+          )
+          .returning([
+            'email',
+            'declined_at as declinedAt',
+            'group_role as groupRole',
+            'id',
+            'created_at as invitedAt',
+            'updated_at as updatedAt',
+          ])
+          .executeTakeFirstOrThrow()
 
-      return mapWorkspaceInvitationRecord(invitation)
-    })
+        return mapWorkspaceInvitationRecord(invitation)
+      },
+      session.actorUserId,
+    )
   }
 
   async updateWorkspaceUserGroupRole(
     session: SessionSnapshot,
     membershipId: string,
     groupRole: WorkspaceUserGroupRole,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<WorkspaceUserRecord> {
-    return this.db.transaction().execute(async (trx) => {
-      const existingMember = await findWorkspaceUserByMembershipId(
-        trx,
-        session.workspaceId,
-        membershipId,
-      )
-
-      if (!existingMember) {
-        throw new HttpError(
-          404,
-          'workspace_user_not_found',
-          'Workspace participant was not found.',
+    return withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        const existingMember = await findWorkspaceUserByMembershipId(
+          trx,
+          session.workspaceId,
+          membershipId,
         )
-      }
 
-      if (existingMember.isOwner) {
-        throw new HttpError(
-          400,
-          'workspace_owner_group_role_immutable',
-          'The workspace owner access is managed separately.',
+        if (!existingMember) {
+          throw new HttpError(
+            404,
+            'workspace_user_not_found',
+            'Workspace participant was not found.',
+          )
+        }
+
+        if (existingMember.isOwner) {
+          throw new HttpError(
+            400,
+            'workspace_owner_group_role_immutable',
+            'The workspace owner access is managed separately.',
+          )
+        }
+
+        if (existingMember.userId === session.actorUserId) {
+          throw new HttpError(
+            400,
+            'workspace_self_group_role_change_forbidden',
+            'Change your own group role through a dedicated ownership flow.',
+          )
+        }
+
+        await trx
+          .updateTable('app.workspace_members')
+          .set({ group_role: groupRole })
+          .where('id', '=', membershipId)
+          .where('workspace_id', '=', session.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        const updatedMember = await findWorkspaceUserByMembershipId(
+          trx,
+          session.workspaceId,
+          membershipId,
         )
-      }
 
-      if (existingMember.userId === session.actorUserId) {
-        throw new HttpError(
-          400,
-          'workspace_self_group_role_change_forbidden',
-          'Change your own group role through a dedicated ownership flow.',
-        )
-      }
+        if (!updatedMember) {
+          throw new Error('Failed to resolve updated workspace participant.')
+        }
 
-      await trx
-        .updateTable('app.workspace_members')
-        .set({ group_role: groupRole })
-        .where('id', '=', membershipId)
-        .where('workspace_id', '=', session.workspaceId)
-        .where('deleted_at', 'is', null)
-        .executeTakeFirst()
-
-      const updatedMember = await findWorkspaceUserByMembershipId(
-        trx,
-        session.workspaceId,
-        membershipId,
-      )
-
-      if (!updatedMember) {
-        throw new Error('Failed to resolve updated workspace participant.')
-      }
-
-      return mapWorkspaceUserRecord(updatedMember)
-    })
+        return mapWorkspaceUserRecord(updatedMember)
+      },
+      session.actorUserId,
+    )
   }
 
   async removeWorkspaceUser(
     session: SessionSnapshot,
     membershipId: string,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      const existingMember = await findWorkspaceUserByMembershipId(
-        trx,
-        session.workspaceId,
-        membershipId,
-      )
-
-      if (!existingMember) {
-        throw new HttpError(
-          404,
-          'workspace_user_not_found',
-          'Workspace participant was not found.',
+    await withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        const existingMember = await findWorkspaceUserByMembershipId(
+          trx,
+          session.workspaceId,
+          membershipId,
         )
-      }
 
-      if (existingMember.isOwner) {
-        throw new HttpError(
-          400,
-          'workspace_owner_removal_forbidden',
-          'The workspace owner cannot be removed.',
-        )
-      }
+        if (!existingMember) {
+          throw new HttpError(
+            404,
+            'workspace_user_not_found',
+            'Workspace participant was not found.',
+          )
+        }
 
-      if (existingMember.userId === session.actorUserId) {
-        throw new HttpError(
-          400,
-          'workspace_self_removal_forbidden',
-          'Remove your own membership through a dedicated leave flow.',
-        )
-      }
+        if (existingMember.isOwner) {
+          throw new HttpError(
+            400,
+            'workspace_owner_removal_forbidden',
+            'The workspace owner cannot be removed.',
+          )
+        }
 
-      await trx
-        .updateTable('app.workspace_members')
-        .set({ deleted_at: new Date() })
-        .where('id', '=', membershipId)
-        .where('workspace_id', '=', session.workspaceId)
-        .where('deleted_at', 'is', null)
-        .executeTakeFirst()
-    })
+        if (existingMember.userId === session.actorUserId) {
+          throw new HttpError(
+            400,
+            'workspace_self_removal_forbidden',
+            'Remove your own membership through a dedicated leave flow.',
+          )
+        }
+
+        await trx
+          .updateTable('app.workspace_members')
+          .set({ deleted_at: new Date() })
+          .where('id', '=', membershipId)
+          .where('workspace_id', '=', session.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+      },
+      session.actorUserId,
+    )
   }
 
   async revokeWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      const existingInvitation = await findWorkspaceInvitationById(
-        trx,
-        session.workspaceId,
-        invitationId,
-      )
-
-      if (!existingInvitation) {
-        throw new HttpError(
-          404,
-          'workspace_invitation_not_found',
-          'Workspace invitation was not found.',
+    await withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        const existingInvitation = await findWorkspaceInvitationById(
+          trx,
+          session.workspaceId,
+          invitationId,
         )
-      }
 
-      await trx
-        .updateTable('app.workspace_invitations')
-        .set({ deleted_at: new Date() })
-        .where('id', '=', invitationId)
-        .where('workspace_id', '=', session.workspaceId)
-        .where('accepted_at', 'is', null)
-        .where('deleted_at', 'is', null)
-        .executeTakeFirst()
-    })
+        if (!existingInvitation) {
+          throw new HttpError(
+            404,
+            'workspace_invitation_not_found',
+            'Workspace invitation was not found.',
+          )
+        }
+
+        await trx
+          .updateTable('app.workspace_invitations')
+          .set({ deleted_at: new Date() })
+          .where('id', '=', invitationId)
+          .where('workspace_id', '=', session.workspaceId)
+          .where('accepted_at', 'is', null)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+      },
+      session.actorUserId,
+    )
   }
 
   async listReceivedWorkspaceInvitations(
     session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<ReceivedWorkspaceInvitationRecord[]> {
-    const rows = await createReceivedWorkspaceInvitationQuery(
+    const rows = await withOptionalRls(
       this.db,
-      session.actor.email,
+      authContext,
+      (executor) =>
+        createReceivedWorkspaceInvitationQuery(executor, session.actor.email)
+          .orderBy('invitation.created_at', 'desc')
+          .orderBy('workspace.name', 'asc')
+          .execute(),
+      session.actorUserId,
     )
-      .orderBy('invitation.created_at', 'desc')
-      .orderBy('workspace.name', 'asc')
-      .execute()
 
     return rows.map(mapReceivedWorkspaceInvitationRecord)
   }
@@ -481,84 +520,97 @@ export class PostgresSessionRepository implements SessionRepository {
   async acceptWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<void> {
-    await this.db.transaction().execute(async (trx) => {
-      const invitation = await findReceivedWorkspaceInvitationById(
-        trx,
-        session.actor.email,
-        invitationId,
-      )
-
-      if (!invitation) {
-        throw new HttpError(
-          404,
-          'workspace_invitation_not_found',
-          'Workspace invitation was not found.',
+    await withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        const invitation = await findReceivedWorkspaceInvitationById(
+          trx,
+          session.actor.email,
+          invitationId,
         )
-      }
 
-      const existingMember = await findWorkspaceMemberByUserId(
-        trx,
-        invitation.workspaceId,
-        session.actorUserId,
-      )
+        if (!invitation) {
+          throw new HttpError(
+            404,
+            'workspace_invitation_not_found',
+            'Workspace invitation was not found.',
+          )
+        }
 
-      if (!existingMember) {
+        const existingMember = await findWorkspaceMemberByUserId(
+          trx,
+          invitation.workspaceId,
+          session.actorUserId,
+        )
+
+        if (!existingMember) {
+          await trx
+            .insertInto('app.workspace_members')
+            .values({
+              group_role: invitation.groupRole,
+              id: generateUuidV7(),
+              invited_by: invitation.invitedBy,
+              role: 'user',
+              user_id: session.actorUserId,
+              workspace_id: invitation.workspaceId,
+            })
+            .execute()
+        } else if (existingMember.deletedAt) {
+          await trx
+            .updateTable('app.workspace_members')
+            .set({
+              deleted_at: null,
+              group_role: invitation.groupRole,
+              invited_by: invitation.invitedBy,
+              role: existingMember.role === 'owner' ? 'owner' : 'user',
+            })
+            .where('id', '=', existingMember.id)
+            .executeTakeFirst()
+        }
+
         await trx
-          .insertInto('app.workspace_members')
-          .values({
-            group_role: invitation.groupRole,
-            id: generateUuidV7(),
-            invited_by: invitation.invitedBy,
-            role: 'user',
-            user_id: session.actorUserId,
-            workspace_id: invitation.workspaceId,
-          })
-          .execute()
-      } else if (existingMember.deletedAt) {
-        await trx
-          .updateTable('app.workspace_members')
+          .updateTable('app.workspace_invitations')
           .set({
-            deleted_at: null,
-            group_role: invitation.groupRole,
-            invited_by: invitation.invitedBy,
-            role: existingMember.role === 'owner' ? 'owner' : 'user',
+            accepted_at: new Date(),
+            accepted_by: session.actorUserId,
           })
-          .where('id', '=', existingMember.id)
+          .where('id', '=', invitationId)
+          .where('accepted_at', 'is', null)
+          .where('declined_at', 'is', null)
+          .where('deleted_at', 'is', null)
           .executeTakeFirst()
-      }
-
-      await trx
-        .updateTable('app.workspace_invitations')
-        .set({
-          accepted_at: new Date(),
-          accepted_by: session.actorUserId,
-        })
-        .where('id', '=', invitationId)
-        .where('accepted_at', 'is', null)
-        .where('declined_at', 'is', null)
-        .where('deleted_at', 'is', null)
-        .executeTakeFirst()
-    })
+      },
+      session.actorUserId,
+    )
   }
 
   async declineWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<void> {
-    const declinedInvitation = await this.db
-      .updateTable('app.workspace_invitations')
-      .set({
-        declined_at: new Date(),
-        declined_by: session.actorUserId,
-      })
-      .where('id', '=', invitationId)
-      .where('email', '=', session.actor.email)
-      .where('accepted_at', 'is', null)
-      .where('declined_at', 'is', null)
-      .where('deleted_at', 'is', null)
-      .returning('id')
-      .executeTakeFirst()
+    const declinedInvitation = await withWriteTransaction(
+      this.db,
+      authContext,
+      (trx) =>
+        trx
+          .updateTable('app.workspace_invitations')
+          .set({
+            declined_at: new Date(),
+            declined_by: session.actorUserId,
+          })
+          .where('id', '=', invitationId)
+          .where('email', '=', session.actor.email)
+          .where('accepted_at', 'is', null)
+          .where('declined_at', 'is', null)
+          .where('deleted_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst(),
+      session.actorUserId,
+    )
 
     if (!declinedInvitation) {
       throw new HttpError(

@@ -35,37 +35,48 @@ export interface SessionRepository {
   ): Promise<SessionWorkspaceMembership>
   deleteSharedWorkspace(session: SessionSnapshot): Promise<void>
   leaveSharedWorkspace(session: SessionSnapshot): Promise<void>
-  listWorkspaceUsers(session: SessionSnapshot): Promise<WorkspaceUserRecord[]>
+  listWorkspaceUsers(
+    session: SessionSnapshot,
+    authContext?: AuthenticatedRequestContext | null,
+  ): Promise<WorkspaceUserRecord[]>
   listWorkspaceInvitations(
     session: SessionSnapshot,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<WorkspaceInvitationRecord[]>
   createWorkspaceInvitation(
     session: SessionSnapshot,
     input: WorkspaceInvitationCreateInput,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<WorkspaceInvitationRecord>
   updateWorkspaceUserGroupRole(
     session: SessionSnapshot,
     membershipId: string,
     groupRole: WorkspaceUserGroupRole,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<WorkspaceUserRecord>
   removeWorkspaceUser(
     session: SessionSnapshot,
     membershipId: string,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<void>
   revokeWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<void>
   listReceivedWorkspaceInvitations(
     session: SessionSnapshot,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<ReceivedWorkspaceInvitationRecord[]>
   acceptWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<void>
   declineWorkspaceInvitation(
     session: SessionSnapshot,
     invitationId: string,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<void>
   listAdminUsers(
     session: SessionSnapshot,
