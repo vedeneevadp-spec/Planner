@@ -32,8 +32,19 @@ chaotika.ru {
     file_server
   }
 
-  header {
+  @oauth_flow path /oauth/*
+  header @oauth_flow {
+    Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self' https://social.yandex.net https://social.yandex.ru https://chatgpt.com; navigate-to 'self' https://chatgpt.com; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+  }
+
+  @not_oauth_flow {
+    not path /oauth/*
+  }
+  header @not_oauth_flow {
     Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self' data:; form-action 'self' https://social.yandex.net https://social.yandex.ru; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+  }
+
+  header {
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
     X-Content-Type-Options nosniff
     X-Frame-Options DENY
