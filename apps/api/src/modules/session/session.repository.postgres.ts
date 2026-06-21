@@ -929,8 +929,10 @@ export class PostgresSessionRepository implements SessionRepository {
     requestedWorkspaceId?: string,
   ): Promise<AppActorRow> {
     const authActor = await findActorById(executor, authContext.claims.sub)
-    const authEmail = this.resolveAuthEmail(authContext)
-    const emailActor = await findActorByEmail(executor, authEmail)
+    const authEmail = this.resolveOptionalAuthEmail(authContext)
+    const emailActor = authEmail
+      ? await findActorByEmail(executor, authEmail)
+      : null
 
     if (authActor && emailActor && emailActor.id !== authActor.id) {
       const preferredActor = await this.selectPreferredAuthenticatedActor(
@@ -1027,12 +1029,12 @@ export class PostgresSessionRepository implements SessionRepository {
     actor: AppActorRow,
     authContext: AuthenticatedRequestContext,
   ): Promise<AppActorRow> {
-    const desiredEmail = this.resolveAuthEmail(authContext)
+    const desiredEmail = this.resolveOptionalAuthEmail(authContext)
 
-    if (actor.email === desiredEmail) {
+    if (!desiredEmail || actor.email === desiredEmail) {
       return {
         ...actor,
-        email: desiredEmail,
+        email: actor.email,
       }
     }
 
@@ -1214,17 +1216,25 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   private resolveAuthEmail(authContext: AuthenticatedRequestContext): string {
+    const email = this.resolveOptionalAuthEmail(authContext)
+
+    if (email) {
+      return email
+    }
+
+    return `${authContext.claims.sub}@users.planner.local`
+  }
+
+  private resolveOptionalAuthEmail(
+    authContext: AuthenticatedRequestContext,
+  ): string | null {
     const payloadEmail = this.getStringClaim(
       authContext.claims.payload,
       'email',
     )
     const email = authContext.claims.email ?? payloadEmail
 
-    if (email) {
-      return email.toLowerCase()
-    }
-
-    return `${authContext.claims.sub}@users.planner.local`
+    return email ? email.toLowerCase() : null
   }
 
   private resolveAuthProvidedDisplayName(

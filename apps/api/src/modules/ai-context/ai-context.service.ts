@@ -567,11 +567,13 @@ export class AiContextService {
     userId: string,
     timezone: string,
   ): Promise<AiServiceReadContext> {
+    const bootstrapAuth = createSyntheticAuthContext(userId)
     const baseSession = await this.dependencies.sessionService.resolveSession({
-      actorUserId: userId,
-      auth: null,
+      actorUserId: undefined,
+      auth: bootstrapAuth,
       workspaceId: undefined,
     })
+    const auth = createSyntheticAuthContext(userId, baseSession.actor.email)
     const personalWorkspace =
       baseSession.workspaces.find(
         (workspace) => workspace.kind === 'personal',
@@ -590,13 +592,12 @@ export class AiContextService {
       )
     }
 
-    const auth = createSyntheticAuthContext(userId, baseSession.actor.email)
     const session =
       personalWorkspace.id === baseSession.workspaceId
         ? baseSession
         : await this.dependencies.sessionService.resolveSession({
-            actorUserId: userId,
-            auth: null,
+            actorUserId: undefined,
+            auth,
             workspaceId: personalWorkspace.id,
           })
 

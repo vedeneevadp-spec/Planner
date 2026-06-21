@@ -11,6 +11,25 @@ const OTHER_USER_ID = '99999999-9999-4999-8999-999999999999'
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 
 void describe('AiContextService', () => {
+  void it('resolves the read context through synthetic auth for MCP users', async () => {
+    const resolveSessionCalls: unknown[] = []
+    const service = createService([], resolveSessionCalls)
+
+    await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['tasks'],
+      userId: USER_ID,
+    })
+
+    const firstCall = resolveSessionCalls[0] as {
+      actorUserId?: string
+      auth?: { claims?: { sub?: string } } | null
+    }
+
+    assert.equal(firstCall.actorUserId, undefined)
+    assert.equal(firstCall.auth?.claims?.sub, USER_ID)
+  })
+
   void it('getTodayContext returns only records for the authenticated user', async () => {
     const service = createService([
       createTask({
@@ -66,11 +85,16 @@ void describe('AiContextService', () => {
   })
 })
 
-function createService(tasks: Task[]): AiContextService {
+function createService(
+  tasks: Task[],
+  resolveSessionCalls: unknown[] = [],
+): AiContextService {
   return new AiContextService({
     sessionService: {
-      resolveSession: () =>
-        Promise.resolve({
+      resolveSession: (input) => {
+        resolveSessionCalls.push(input)
+
+        return Promise.resolve({
           actor: {
             email: 'owner@example.test',
           },
@@ -89,7 +113,8 @@ function createService(tasks: Task[]): AiContextService {
               name: 'Personal',
             },
           ],
-        }),
+        })
+      },
     },
     taskService: {
       listTasks: () => Promise.resolve(tasks),
