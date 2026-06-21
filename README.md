@@ -52,6 +52,7 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run dev:api:postgres`                              | API с локальным Docker Postgres                         |
 | `npm run start:api`                                     | единичный запуск API                                    |
 | `npm run smoke:api:prod`                                | production-mode smoke API против локального Postgres    |
+| `npm run smoke:mcp`                                     | smoke ChatGPT MCP/OAuth connector flow                  |
 | `npm run db:up` / `npm run db:down`                     | поднять/остановить локальный Postgres                   |
 | `npm run db:backup`                                     | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR` |
 | `npm run db:migrations:check`                           | проверить порядок и имена SQL-миграций                  |
@@ -144,6 +145,8 @@ scripts/       локальные DB, mobile и deploy workflows
   confirmation UI, clarify loop, Undo и auto-confirm policy
 - [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -
   Android wake-word provider и модель `Хаотика`
+- [docs/mcp-haotika-chatgpt.md](docs/mcp-haotika-chatgpt.md) - подключение
+  Haotika MCP Connector в ChatGPT Developer Mode
 
 ## API Runtime
 

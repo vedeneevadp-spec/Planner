@@ -624,6 +624,41 @@ export interface AppAuthPasswordResetTokensTable {
   user_id: string
 }
 
+export interface AppMcpOAuthTokensTable {
+  access_token_hash: string
+  client_id: string | null
+  created_at: Generated<TimestampColumn>
+  expires_at: TimestampColumn
+  id: Generated<string>
+  issuer: string
+  last_used_at: TimestampColumn | null
+  refresh_token_hash: string | null
+  resource: string
+  revoked_at: TimestampColumn | null
+  scopes: ColumnType<string[], string[] | string, string[] | string>
+  user_id: string
+}
+
+export interface AppMcpAuditLogsTable {
+  created_at: Generated<TimestampColumn>
+  id: Generated<string>
+  input: ColumnType<
+    JsonObject | null,
+    JsonObject | string | null,
+    JsonObject | string | null
+  >
+  ip_hash: string | null
+  output_summary: ColumnType<
+    JsonObject | null,
+    JsonObject | string | null,
+    JsonObject | string | null
+  >
+  token_id: string | null
+  tool_name: string
+  user_agent: string | null
+  user_id: string | null
+}
+
 export interface AppOAuthAuthorizationCodesTable {
   client_id: string
   code_hash: string
@@ -862,6 +897,8 @@ export interface DatabaseSchema {
   'app.habit_entries': AppHabitEntriesTable
   'app.habits': AppHabitsTable
   'app.life_spheres': AppLifeSpheresTable
+  'app.mcp_audit_logs': AppMcpAuditLogsTable
+  'app.mcp_oauth_tokens': AppMcpOAuthTokensTable
   'app.outbox': AppOutboxTable
   'app.oauth_authorization_codes': AppOAuthAuthorizationCodesTable
   'app.push_devices': AppPushDevicesTable

@@ -12,6 +12,7 @@ import {
   destroyDatabaseConnection,
 } from './infrastructure/db/client.js'
 import { createDatabaseConfig } from './infrastructure/db/config.js'
+import { AiContextService } from './modules/ai-context/index.js'
 import {
   AuthService,
   NoopAuthEmailSender,
@@ -49,6 +50,13 @@ import {
   MemoryLifeSphereRepository,
   PostgresLifeSphereRepository,
 } from './modules/life-spheres/index.js'
+import {
+  McpOAuthService,
+  MemoryMcpAuditLogRepository,
+  MemoryMcpOAuthTokenRepository,
+  PostgresMcpAuditLogRepository,
+  PostgresMcpOAuthTokenRepository,
+} from './modules/mcp-haotika/index.js'
 import {
   FirebasePushNotificationSender,
   MemoryPushNotificationsRepository,
@@ -186,12 +194,32 @@ export function createApiKernel(
       },
     },
   )
+  const aiContextService = new AiContextService({
+    chaosInboxService,
+    cleaningService,
+    habitService,
+    selfCareService,
+    sessionService,
+    taskService,
+  })
+  const mcpOAuthTokenRepository = database
+    ? new PostgresMcpOAuthTokenRepository(database.db)
+    : new MemoryMcpOAuthTokenRepository()
+  const mcpAuditRepository = database
+    ? new PostgresMcpAuditLogRepository(database.db)
+    : new MemoryMcpAuditLogRepository()
+  const mcpOAuthService = new McpOAuthService(
+    mcpOAuthTokenRepository,
+    config.mcpHaotika,
+    authService,
+  )
   const backgroundJobs: Array<{ stop: () => Promise<void> }> = []
   const requestAuthenticator =
     config.authMode === 'jwt' && config.jwtAuth
       ? new JwtRequestAuthenticator(config.jwtAuth)
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
+    aiContextService,
     config,
     ...(authService ? { authService } : {}),
     chaosInboxService,
@@ -201,6 +229,8 @@ export function createApiKernel(
     emojiSetService,
     habitService,
     lifeSphereService,
+    mcpAuditRepository,
+    mcpOAuthService,
     pushNotificationsService,
     requestAuthenticator,
     selfCareService,

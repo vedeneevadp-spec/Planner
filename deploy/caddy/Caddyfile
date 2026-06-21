@@ -7,6 +7,26 @@ chaotika.ru {
     reverse_proxy 127.0.0.1:3001
   }
 
+  handle /.well-known/oauth-authorization-server {
+    reverse_proxy 127.0.0.1:3001
+  }
+
+  handle /.well-known/oauth-protected-resource {
+    reverse_proxy 127.0.0.1:3001
+  }
+
+  handle /mcp {
+    reverse_proxy 127.0.0.1:3001
+  }
+
+  handle /oauth/* {
+    reverse_proxy 127.0.0.1:3001
+  }
+
+  handle /docs/mcp-haotika {
+    reverse_proxy 127.0.0.1:3001
+  }
+
   handle {
     try_files {path} /index.html
     file_server

@@ -7,6 +7,7 @@ import {
 
 import type { JwtAuthRuntimeConfig } from '../infrastructure/auth/jwt-request-authenticator.js'
 import type { PlannerAuthRuntimeConfig } from '../modules/auth/index.js'
+import type { McpHaotikaRuntimeConfig } from '../modules/mcp-haotika/index.js'
 
 export type ApiAuthMode = 'disabled' | 'jwt'
 export type ApiDatabaseRlsMode =
@@ -62,6 +63,7 @@ export interface ApiConfig {
   host: string
   iconAssetDirectory: string
   jwtAuth: JwtAuthRuntimeConfig | null
+  mcpHaotika: McpHaotikaRuntimeConfig
   plannerAuth: PlannerAuthRuntimeConfig | null
   port: number
   storageDriver: StorageDriver
@@ -487,6 +489,43 @@ function createVoiceSttConfig(env: NodeJS.ProcessEnv): VoiceSttConfig {
   }
 }
 
+function createMcpHaotikaConfig(
+  env: NodeJS.ProcessEnv,
+): McpHaotikaRuntimeConfig {
+  const publicBaseUrl = (
+    env.HAOTIKA_MCP_PUBLIC_BASE_URL?.trim() || 'https://chaotika.ru'
+  ).replace(/\/$/, '')
+
+  return {
+    allowedRedirectUris: parseCommaSeparatedList(
+      env.HAOTIKA_OAUTH_ALLOWED_REDIRECT_URIS,
+    ),
+    devNoAuth: parseBoolean(env.HAOTIKA_MCP_DEV_NO_AUTH),
+    enabled: parseBoolean(env.HAOTIKA_MCP_ENABLED),
+    oauthIssuer: (env.HAOTIKA_OAUTH_ISSUER?.trim() || publicBaseUrl).replace(
+      /\/$/,
+      '',
+    ),
+    publicBaseUrl,
+    rateLimitPerMinute: parsePositiveInteger(
+      env.HAOTIKA_MCP_RATE_LIMIT_PER_MINUTE,
+      30,
+      'HAOTIKA_MCP_RATE_LIMIT_PER_MINUTE',
+    ),
+  }
+}
+
+function parseCommaSeparatedList(value: string | undefined): string[] {
+  return [
+    ...new Set(
+      (value ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ]
+}
+
 function createSmtpConfig(
   env: NodeJS.ProcessEnv,
 ): PlannerAuthRuntimeConfig['smtp'] {
@@ -555,6 +594,7 @@ export function createApiConfig(
     host: env.API_HOST ?? '0.0.0.0',
     iconAssetDirectory: env.API_ICON_ASSET_DIR ?? 'tmp/icon-assets',
     jwtAuth,
+    mcpHaotika: createMcpHaotikaConfig(env),
     plannerAuth: createPlannerAuthConfig(env, jwtAuth),
     port: parsePort(env.API_PORT ?? env.PORT),
     storageDriver: parseStorageDriver(env.API_STORAGE_DRIVER, appEnv),

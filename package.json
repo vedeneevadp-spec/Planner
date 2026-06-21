@@ -20,6 +20,7 @@
     "start:api": "npm run -w apps/api start",
     "start:api:postgres": "API_STORAGE_DRIVER=postgres DATABASE_URL=postgres://planner:planner@127.0.0.1:54329/planner_development npm run -w apps/api start",
     "smoke:api:prod": "node ./scripts/api-prod-smoke.mjs",
+    "smoke:mcp": "tsx ./scripts/mcp-smoke-test.ts",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:status": "docker compose ps postgres",

@@ -11,6 +11,7 @@ import Fastify from 'fastify'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
+import type { AiContextService } from '../modules/ai-context/index.js'
 import {
   createAliceCommandParser,
   registerAliceRoutes,
@@ -35,6 +36,11 @@ import type { HabitService } from '../modules/habits/index.js'
 import { registerHabitRoutes } from '../modules/habits/index.js'
 import type { LifeSphereService } from '../modules/life-spheres/index.js'
 import { registerLifeSphereRoutes } from '../modules/life-spheres/index.js'
+import {
+  type McpAuditLogRepository,
+  type McpOAuthService,
+  registerMcpHaotikaRoutes,
+} from '../modules/mcp-haotika/index.js'
 import type { PushNotificationsService } from '../modules/push-notifications/index.js'
 import { registerPushNotificationsRoutes } from '../modules/push-notifications/index.js'
 import type { SelfCareService } from '../modules/self-care/index.js'
@@ -70,12 +76,15 @@ export interface BuildApiAppOptions {
   database: DatabaseConnection | null
   requestAuthenticator?: RequestAuthenticator
   authService?: AuthService
+  aiContextService?: AiContextService
   chaosInboxService?: ChaosInboxService
   cleaningService?: CleaningService
   dailyPlanService?: DailyPlanService
   emojiSetService?: EmojiSetService
   habitService?: HabitService
   lifeSphereService?: LifeSphereService
+  mcpAuditRepository?: McpAuditLogRepository
+  mcpOAuthService?: McpOAuthService
   pushNotificationsService?: PushNotificationsService
   selfCareService?: SelfCareService
   sessionService: SessionService
@@ -89,12 +98,15 @@ export function buildApiApp({
   database,
   requestAuthenticator = new NoopRequestAuthenticator(),
   authService,
+  aiContextService,
   chaosInboxService,
   cleaningService,
   dailyPlanService,
   emojiSetService,
   habitService,
   lifeSphereService,
+  mcpAuditRepository,
+  mcpOAuthService,
   pushNotificationsService,
   selfCareService,
   sessionService,
@@ -120,6 +132,15 @@ export function buildApiApp({
   registerApiRouteRegistry(app)
   registerApiObservability(app)
   registerOpenApi(app, config)
+  if (aiContextService && mcpOAuthService && mcpAuditRepository) {
+    registerMcpHaotikaRoutes(app, {
+      aiContextService,
+      auditRepository: mcpAuditRepository,
+      config: config.mcpHaotika,
+      oauthService: mcpOAuthService,
+      sessionService,
+    })
+  }
   registerIconAssetRoutes(app, config.iconAssetDirectory)
   registerProfileAvatarRoutes(
     app,
@@ -286,6 +307,13 @@ function isPublicRequest(method: string, url: string): boolean {
     path === '/api/v1/alice/webhook' ||
     path === '/api/v1/oauth/alice/authorize' ||
     path === '/api/v1/oauth/alice/token' ||
+    path === '/.well-known/oauth-authorization-server' ||
+    path === '/.well-known/oauth-protected-resource' ||
+    path === '/docs/mcp-haotika' ||
+    path === '/mcp' ||
+    path === '/oauth/authorize' ||
+    path === '/oauth/revoke' ||
+    path === '/oauth/token' ||
     path.startsWith('/api/v1/icon-assets/') ||
     path.startsWith('/api/v1/profile-assets/') ||
     path === '/api/openapi.json' ||
