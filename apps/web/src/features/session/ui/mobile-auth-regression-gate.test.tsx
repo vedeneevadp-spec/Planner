@@ -198,12 +198,14 @@ describe('mobile auth regression gate', () => {
       )
     })
 
+    await flushReactEffects()
+
     storageEmptyOnResume = true
 
     await act(async () => {
       appStateListener?.(false)
       appStateListener?.(true)
-      await Promise.resolve()
+      await flushReactEffects()
     })
 
     await waitFor(() => {
@@ -320,6 +322,12 @@ function renderMobileApp() {
       </AuthGate>
     </SessionProvider>,
   )
+}
+
+function flushReactEffects() {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0)
+  })
 }
 
 function AuthProbe() {
