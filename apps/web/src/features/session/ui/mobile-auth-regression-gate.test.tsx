@@ -176,9 +176,13 @@ describe('mobile auth regression gate', () => {
   })
 
   it('keeps content visible on startup and resume when native storage is temporarily empty', async () => {
-    authStorageMocks.readStoredAuthSession
-      .mockResolvedValueOnce(createUsableNativeStoredSession())
-      .mockResolvedValue(null)
+    let storageEmptyOnResume = false
+
+    authStorageMocks.readStoredAuthSession.mockImplementation(() =>
+      Promise.resolve(
+        storageEmptyOnResume ? null : createUsableNativeStoredSession(),
+      ),
+    )
 
     renderMobileApp()
 
@@ -194,22 +198,27 @@ describe('mobile auth regression gate', () => {
       )
     })
 
+    storageEmptyOnResume = true
+
     await act(async () => {
       appStateListener?.(false)
       appStateListener?.(true)
       await Promise.resolve()
     })
 
+    await waitFor(() => {
+      expect(
+        readClientEvents().some(
+          (event) =>
+            event.name === 'auth_device_session_kept' &&
+            event.details.reason === 'storage_empty_on_resume',
+        ),
+      ).toBe(true)
+    })
+
     expect(screen.getByText('Planner content')).toBeVisible()
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
-    expect(
-      readClientEvents().some(
-        (event) =>
-          event.name === 'auth_device_session_kept' &&
-          event.details.reason === 'storage_empty_on_resume',
-      ),
-    ).toBe(true)
   })
 
   it('keeps content visible offline and does not sign out the native device session', async () => {
