@@ -15,7 +15,8 @@ void describe('MCP audit logs', () => {
         totalCount: 12,
       },
       shopping: {
-        totalCount: 5,
+        activeCount: 4,
+        completedCount: 1,
         urgent: [{ title: 'Medicine' }],
       },
     }
@@ -37,7 +38,9 @@ void describe('MCP audit logs', () => {
     assert.equal(repository.logs.length, 1)
     assert.deepEqual(repository.logs[0]?.input, { query: 'milk' })
     assert.deepEqual(repository.logs[0]?.outputSummary, {
-      shoppingItemsCount: 5,
+      shoppingActiveCount: 4,
+      shoppingCompletedCount: 1,
+      shoppingItemsCount: 4,
       tasksCount: 12,
     })
     assert.equal(

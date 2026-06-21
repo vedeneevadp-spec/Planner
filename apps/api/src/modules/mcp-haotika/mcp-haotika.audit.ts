@@ -74,11 +74,23 @@ function summarizeToolOutput(
           ]),
         }
       : {}),
-    ...(readNestedCount(output, ['shopping', 'totalCount']) !== null
+    ...(readNestedCount(output, ['shopping', 'activeCount']) !== null
       ? {
+          shoppingActiveCount: readNestedCount(output, [
+            'shopping',
+            'activeCount',
+          ]),
           shoppingItemsCount: readNestedCount(output, [
             'shopping',
-            'totalCount',
+            'activeCount',
+          ]),
+        }
+      : {}),
+    ...(readNestedCount(output, ['shopping', 'completedCount']) !== null
+      ? {
+          shoppingCompletedCount: readNestedCount(output, [
+            'shopping',
+            'completedCount',
           ]),
         }
       : {}),
@@ -90,11 +102,11 @@ function summarizeToolOutput(
           ]),
         }
       : {}),
-    ...(readNestedArrayCount(output, ['selfCare', 'planned']) !== null
+    ...(readNestedArrayCount(output, ['selfCare', 'remaining']) !== null
       ? {
           selfCareItemsCount: readNestedArrayCount(output, [
             'selfCare',
-            'planned',
+            'remaining',
           ]),
         }
       : {}),
