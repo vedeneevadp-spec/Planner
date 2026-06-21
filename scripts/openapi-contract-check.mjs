@@ -20,7 +20,19 @@ const OPTIONAL_DOCUMENTED_ROUTES = new Set([
   routeKey('post', '/api/v1/oauth/alice/token'),
 ])
 
-const OPENAPI_DOCUMENTATION_BACKLOG = new Set()
+const OPENAPI_DOCUMENTATION_BACKLOG = new Set([
+  // Follow-up: document the ChatGPT MCP/OAuth root endpoints once public API docs
+  // include non-/api integration surfaces. Current MCP docs live in
+  // docs/mcp-haotika-chatgpt.md and /docs/mcp-haotika.
+  routeKey('get', '/.well-known/oauth-authorization-server'),
+  routeKey('get', '/.well-known/oauth-protected-resource'),
+  routeKey('get', '/docs/mcp-haotika'),
+  routeKey('get', '/oauth/authorize'),
+  routeKey('post', '/mcp'),
+  routeKey('post', '/oauth/authorize'),
+  routeKey('post', '/oauth/revoke'),
+  routeKey('post', '/oauth/token'),
+])
 
 const kernel = createApiKernel({
   API_AUTH_MODE: 'disabled',
