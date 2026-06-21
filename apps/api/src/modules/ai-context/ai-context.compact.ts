@@ -106,7 +106,7 @@ function compactValue(
   const result: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(input)) {
-    if (shouldDropKey(key)) {
+    if (shouldDropKey(key, input)) {
       continue
     }
 
@@ -136,7 +136,12 @@ function scoreItem(item: unknown): number {
     score += 100
   }
 
-  if (status === 'todo' || status === 'planned' || status === 'scheduled') {
+  if (
+    status === 'todo' ||
+    status === 'planned' ||
+    status === 'scheduled' ||
+    status === 'in_progress'
+  ) {
     score += 10
   }
 
@@ -156,8 +161,12 @@ function scoreItem(item: unknown): number {
   return score
 }
 
-function shouldDropKey(key: string): boolean {
+function shouldDropKey(key: string, parent?: unknown): boolean {
   if (key === 'source') {
+    return false
+  }
+
+  if (key === 'id' && isFlexibleGoalContext(parent)) {
     return false
   }
 
@@ -173,6 +182,16 @@ function shouldDropKey(key: string): boolean {
     normalizedKey.includes('password') ||
     normalizedKey.includes('session') ||
     normalizedKey.includes('auth')
+  )
+}
+
+function isFlexibleGoalContext(
+  value: unknown,
+): value is Record<string, unknown> {
+  return (
+    isRecord(value) &&
+    value.type === 'flexible_goal' &&
+    value.expectedRepeats === true
   )
 }
 

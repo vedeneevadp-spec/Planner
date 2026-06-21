@@ -50,12 +50,39 @@ export interface AiCleaningTask {
   zone?: string | null
 }
 
+export interface AiCleaningOverdueZoneGroup {
+  count: number
+  items: AiCleaningTask[]
+  zone: string
+}
+
 export interface AiSelfCareItem {
   date?: string | null
   source: 'selfcare'
   status: 'done' | 'missed' | 'planned' | (string & {})
   title: string
   type?: string | null
+}
+
+export interface AiFlexibleGoalContext {
+  date: string
+  doneCount: number
+  expectedRepeats: true
+  id: string
+  remainingCount: number
+  source: 'selfcare'
+  status: 'done' | 'in_progress' | 'planned'
+  targetCount: number
+  title: string
+  type: 'flexible_goal'
+  unit?: string | null
+}
+
+export interface AiFlexibleGoalSummary {
+  completedGoals: number
+  inProgressGoals: number
+  items: AiFlexibleGoalContext[]
+  totalGoals: number
 }
 
 export interface AiHabitItem {
@@ -107,6 +134,7 @@ export interface TodayContext {
     tasks: AiCleaningTask[]
     todayZone?: string | null
   }
+  cleaningOverdueByZone?: AiCleaningOverdueZoneGroup[]
   date: string
   generatedAt: string
   habits?: {
@@ -118,12 +146,14 @@ export interface TodayContext {
   overdueItemsByDomain?: AiOverdueItemsByDomain
   selfCare?: {
     completed: AiSelfCareItem[]
+    flexibleGoals: AiFlexibleGoalContext[]
     missed: AiSelfCareItem[]
     planned: AiSelfCareItem[]
     remaining: AiSelfCareItem[]
     scheduled: AiSelfCareItem[]
     suggestedFocus?: string | null
   }
+  selfCareFlexibleGoals?: AiFlexibleGoalSummary
   shopping?: {
     active: AiShoppingItem[]
     activeCount: number
@@ -204,6 +234,7 @@ export interface WeekContext {
       count: number
       items: AiSelfCareItem[]
     }
+    selfCareFlexibleGoals: AiFlexibleGoalSummary
     shoppingCompleted: {
       count: number
       items: AiShoppingItem[]
@@ -215,6 +246,8 @@ export interface WeekContext {
   }
   remaining: {
     cleaningOverdue: AiCleaningTask[]
+    cleaningOverdueByZone: AiCleaningOverdueZoneGroup[]
+    selfCareFlexibleGoals: AiFlexibleGoalSummary
     selfCareRemaining: AiSelfCareItem[]
     shoppingActive: AiShoppingItem[]
     tasksActive: AiTaskItem[]
@@ -233,6 +266,7 @@ export interface WeekContext {
     selfCareRemaining: number
     selfCareScheduled: number
     selfCareCompleted: number
+    selfCareFlexibleGoals: AiFlexibleGoalSummary
     selfCareMissed: number
     shoppingActive: number
     shoppingCompleted: number
@@ -328,6 +362,7 @@ export interface OverloadContext {
     score: number
     structuredReasons: AiLoadReason[]
   }
+  cleaningOverdueByZone?: AiCleaningOverdueZoneGroup[]
   overdue?: AiOverdueSummary
   overdueItemsByDomain?: AiOverdueItemsByDomain
   suggestedFocus: string[]
@@ -344,6 +379,7 @@ export interface GetSelfCareContextParams {
 
 export interface SelfCareContext {
   completed: AiSelfCareItem[]
+  flexibleGoals: AiFlexibleGoalContext[]
   from: string
   generatedAt: string
   missed: AiSelfCareItem[]
@@ -353,11 +389,13 @@ export interface SelfCareContext {
   scheduled: AiSelfCareItem[]
   summary: {
     completedCount: number
+    flexibleGoals: AiFlexibleGoalSummary
     missedCount: number
     potentialDuplicateCount: number
     plannedCount: number
     remainingCount: number
     scheduledCount: number
+    selfCareFlexibleGoals: AiFlexibleGoalSummary
     suggestedGentleFocus: string | null
     weakSpots: string[]
   }

@@ -5,7 +5,7 @@ import { describe, it } from 'node:test'
 import type {
   ChaosInboxItemRecord,
   CleaningTodayResponse,
-  HabitTodayResponse,
+  SelfCareAnalyticsResponse,
   SelfCareHistoryResponse,
   SelfCarePlanResponse,
   SelfCareTodayItem,
@@ -211,8 +211,8 @@ void describe('AiContextService', () => {
       [],
       {
         cleaningToday: createCleaningTodayResponse(),
-        habitToday: createHabitTodayResponse(),
         selfCareDashboard: {
+          flexibleGoals: [],
           overdueItems: [
             createSelfCareTodayItem({
               date: '2026-06-20',
@@ -244,19 +244,19 @@ void describe('AiContextService', () => {
 
     assert.deepEqual(context.stats?.overdueByDomain, {
       cleaning: 1,
-      habits: 1,
+      habits: 0,
       selfCare: 1,
       shopping: 1,
       tasks: 1,
-      total: 5,
+      total: 4,
     })
     assert.deepEqual(context.overdue, {
       cleaning: 1,
-      habits: 1,
+      habits: 0,
       selfcare: 1,
       shopping: 1,
       tasks: 1,
-      total: 5,
+      total: 4,
     })
     assert.deepEqual(
       context.overdueItemsByDomain?.cleaning.map((item) => item.title),
@@ -265,6 +265,68 @@ void describe('AiContextService', () => {
     assert.deepEqual(
       context.overdueItemsByDomain?.selfcare.map((item) => item.title),
       ['Missed self care'],
+    )
+  })
+
+  void it('groups overdue cleaning backlog by zone', async () => {
+    const service = createService([], [], {
+      cleaningToday: createCleaningTodayResponse([
+        { title: 'Change bedding', zone: 'Спальня' },
+        { title: 'Vacuum bedroom', zone: 'Спальня' },
+        { title: 'Dust bedroom', zone: 'Спальня' },
+        { title: 'Wipe table', zone: 'Гостиная' },
+        { title: 'Vacuum living room', zone: 'Гостиная' },
+        { title: 'Check boiler', zone: 'Котельная' },
+        { title: 'No zone task', zone: null },
+      ]),
+    })
+
+    const todayContext = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['cleaning'],
+      userId: USER_ID,
+    })
+    const weekContext = await service.getWeekContext({
+      from: '2026-06-15',
+      to: '2026-06-21',
+      userId: USER_ID,
+    })
+    const overloadContext = await service.getOverloadContext({
+      from: '2026-06-15',
+      to: '2026-06-21',
+      userId: USER_ID,
+    })
+    const expectedGroups = [
+      { count: 3, zone: 'Спальня' },
+      { count: 2, zone: 'Гостиная' },
+      { count: 1, zone: 'Без зоны' },
+      { count: 1, zone: 'Котельная' },
+    ]
+
+    assert.deepEqual(
+      todayContext.cleaningOverdueByZone?.map(({ count, zone }) => ({
+        count,
+        zone,
+      })),
+      expectedGroups,
+    )
+    assert.deepEqual(
+      todayContext.cleaningOverdueByZone?.[0]?.items.map((item) => item.title),
+      ['Change bedding', 'Vacuum bedroom', 'Dust bedroom'],
+    )
+    assert.deepEqual(
+      weekContext.remaining.cleaningOverdueByZone.map(({ count, zone }) => ({
+        count,
+        zone,
+      })),
+      expectedGroups,
+    )
+    assert.deepEqual(
+      overloadContext.cleaningOverdueByZone?.map(({ count, zone }) => ({
+        count,
+        zone,
+      })),
+      expectedGroups,
     )
   })
 
@@ -518,11 +580,219 @@ void describe('AiContextService', () => {
     assert.equal(context.potentialDuplicates[0]?.title, 'Drink water')
     assert.equal(context.potentialDuplicates[0]?.count, 2)
   })
+
+  void it('filters legacy habit artifacts from today self-care context', async () => {
+    const service = createService([], [], {
+      selfCareDashboard: {
+        flexibleGoals: [],
+        overdueItems: [
+          createSelfCareTodayItem({
+            date: '2026-06-20',
+            occurrenceId: 'legacy-habit-missed',
+            occurrenceStatus: 'missed',
+            title: 'Legacy missed habit',
+            type: 'habit',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-20',
+            occurrenceId: 'care-missed',
+            occurrenceStatus: 'missed',
+            title: 'Missed care',
+            type: 'ritual',
+          }),
+        ],
+        planningHints: [
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'legacy-habit-hint',
+            title: 'Legacy hint',
+            type: 'habit',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'morning-care-hint',
+            title: 'Утренний уход',
+            type: 'ritual',
+          }),
+        ],
+        todayItems: [
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'yoga-task',
+            title: 'Йога',
+            type: 'task',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'yoga-habit',
+            title: 'Йога',
+            type: 'habit',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'coffee-habit',
+            title: 'Утренний кофе',
+            type: 'habit',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'coffee-task',
+            title: 'Утренний кофе',
+            type: 'task',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-21',
+            occurrenceId: 'morning-care',
+            title: 'Утренний уход',
+            type: 'ritual',
+          }),
+        ],
+        upcomingImportant: [],
+      },
+    })
+
+    const context = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['selfcare', 'habits', 'stats'],
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(
+      context.selfCare?.remaining.map((item) => ({
+        title: item.title,
+        type: item.type,
+      })),
+      [
+        { title: 'Йога', type: 'task' },
+        { title: 'Утренний кофе', type: 'task' },
+        { title: 'Утренний уход', type: 'ritual' },
+      ],
+    )
+    assert.deepEqual(
+      context.selfCare?.missed.map((item) => item.title),
+      ['Missed care'],
+    )
+    assert.equal(context.selfCare?.suggestedFocus, 'Утренний уход')
+    assert.equal(context.habits, undefined)
+    assert.equal(context.stats?.activeCounts.habits, 0)
+    assert.equal(context.stats?.overdueByDomain.habits, 0)
+    assert.equal(context.stats?.overdueByDomain.selfCare, 1)
+  })
+
+  void it('returns flexible self-care goals as one progress object per goal', async () => {
+    const waterGoal = createSelfCareTodayItem({
+      completedCount: 1,
+      date: '2026-06-21',
+      occurrenceId: 'water-goal',
+      remainingCount: 2,
+      targetCount: 3,
+      title: 'Вода',
+      type: 'flexible_goal',
+    })
+    const pushupsGoal = createSelfCareTodayItem({
+      completedCount: 0,
+      date: '2026-06-21',
+      occurrenceId: 'pushups-goal',
+      remainingCount: 3,
+      targetCount: 3,
+      title: 'Отжимания',
+      type: 'flexible_goal',
+    })
+    const service = createService([], [], {
+      selfCareAnalytics: createSelfCareAnalyticsResponse({
+        completionsByDay: {},
+        courses: [],
+        flexibleGoals: [waterGoal, pushupsGoal, waterGoal],
+        measurementTrends: [],
+        medicalUpcoming: [],
+        minimumCompletionCount: 0,
+        moodEnergyTrend: [],
+        procedureCosts: 0,
+        procedureCostsByMonth: {},
+        selectedSelfCareCount: 0,
+      }),
+      selfCareDashboard: {
+        flexibleGoals: [waterGoal, pushupsGoal, waterGoal],
+        overdueItems: [],
+        planningHints: [],
+        todayItems: [waterGoal, pushupsGoal, waterGoal],
+        upcomingImportant: [],
+      },
+    })
+
+    const todayContext = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['selfcare', 'stats'],
+      userId: USER_ID,
+    })
+    const selfCareContext = await service.getSelfCareContext({
+      from: '2026-06-21',
+      to: '2026-06-21',
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(todayContext.selfCare?.remaining, [])
+    assert.deepEqual(todayContext.selfCare?.flexibleGoals, [
+      {
+        date: '2026-06-21',
+        doneCount: 1,
+        expectedRepeats: true,
+        id: 'вода-2026-06-21',
+        remainingCount: 2,
+        source: 'selfcare',
+        status: 'in_progress',
+        targetCount: 3,
+        title: 'Вода',
+        type: 'flexible_goal',
+        unit: null,
+      },
+      {
+        date: '2026-06-21',
+        doneCount: 0,
+        expectedRepeats: true,
+        id: 'отжимания-2026-06-21',
+        remainingCount: 3,
+        source: 'selfcare',
+        status: 'planned',
+        targetCount: 3,
+        title: 'Отжимания',
+        type: 'flexible_goal',
+        unit: null,
+      },
+    ])
+    assert.equal(todayContext.selfCareFlexibleGoals?.totalGoals, 2)
+    assert.equal(todayContext.selfCareFlexibleGoals?.inProgressGoals, 1)
+    assert.equal(todayContext.selfCareFlexibleGoals?.completedGoals, 0)
+    assert.equal(todayContext.stats?.activeCounts.selfCare, 0)
+    assert.deepEqual(
+      selfCareContext.summary.flexibleGoals.items.map((goal) => goal.title),
+      ['Вода', 'Отжимания'],
+    )
+    assert.deepEqual(
+      selfCareContext.summary.selfCareFlexibleGoals.items.map(
+        (goal) => goal.title,
+      ),
+      ['Вода', 'Отжимания'],
+    )
+  })
+
+  void it('does not return legacy habits through planner search', async () => {
+    const service = createService([])
+
+    const result = await service.searchPlanner({
+      query: 'Daily habit',
+      types: ['habits'],
+      userId: USER_ID,
+    })
+
+    assert.equal(result.totalCount, 0)
+    assert.deepEqual(result.items, [])
+  })
 })
 
 interface CreateServiceOptions {
   cleaningToday?: CleaningTodayResponse | undefined
-  habitToday?: HabitTodayResponse | undefined
+  selfCareAnalytics?: SelfCareAnalyticsResponse | undefined
   selfCareDashboard?:
     | Awaited<
         ReturnType<
@@ -590,28 +860,21 @@ function createService(
     }
   }
 
-  if (options.habitToday) {
-    dependencies.habitService = {
-      getStats: () =>
-        Promise.resolve({
-          stats: options.habitToday!.items.map((item) => ({
-            currentStreak: 0,
-            habitId: item.habit.id,
-          })),
-        }),
-      getToday: () => Promise.resolve(options.habitToday!),
-    }
-  }
-
   if (
     options.selfCareDashboard ||
     options.selfCarePlan ||
-    options.selfCareHistory
+    options.selfCareHistory ||
+    options.selfCareAnalytics
   ) {
     dependencies.selfCareService = {
+      getAnalytics: () =>
+        Promise.resolve(
+          options.selfCareAnalytics ?? createSelfCareAnalyticsResponse(),
+        ),
       getDashboard: () =>
         Promise.resolve(
           options.selfCareDashboard ?? {
+            flexibleGoals: [],
             overdueItems: [],
             planningHints: [],
             todayItems: [],
@@ -706,35 +969,35 @@ function createShoppingItem(
   }
 }
 
-function createCleaningTodayResponse(): CleaningTodayResponse {
+function createCleaningTodayResponse(
+  overdueItems: Array<{ title: string; zone?: string | null }> = [
+    { title: 'Overdue cleaning', zone: 'Kitchen' },
+  ],
+): CleaningTodayResponse {
   return {
-    accumulatedItems: [
-      {
-        isDue: true,
-        isOverdue: true,
-        state: {
-          nextDueAt: '2026-06-20',
-        },
-        task: {
-          title: 'Overdue cleaning',
-        },
-        zone: {
-          title: 'Kitchen',
-        },
+    accumulatedItems: overdueItems.map((item) => ({
+      isDue: true,
+      isOverdue: true,
+      state: {
+        nextDueAt: '2026-06-20',
       },
-    ],
+      task: {
+        title: item.title,
+      },
+      zone: item.zone ? { title: item.zone } : null,
+    })),
     dayOfWeek: 7,
     history: [],
     items: [],
     summary: {
-      accumulatedCount: 1,
+      accumulatedCount: overdueItems.length,
       activeZoneCount: 1,
       completedTodayCount: 0,
       dueCount: 0,
       generalCount: 0,
       quickCount: 0,
       seasonalCount: 0,
-      urgentCount: 1,
+      urgentCount: overdueItems.length,
     },
     zones: [
       {
@@ -745,38 +1008,45 @@ function createCleaningTodayResponse(): CleaningTodayResponse {
   } as unknown as CleaningTodayResponse
 }
 
-function createHabitTodayResponse(): HabitTodayResponse {
-  return {
-    date: '2026-06-21',
-    items: [
-      {
-        entry: {
-          status: 'skipped',
-        },
-        habit: {
-          id: 'habit-1',
-          title: 'Daily habit',
-        },
-        isDueToday: true,
-      },
-    ],
-  } as unknown as HabitTodayResponse
-}
-
 function createSelfCareTodayItem(input: {
+  completedCount?: number
   date: string
   occurrenceId: string
   occurrenceStatus?: 'done' | 'missed' | 'moved' | 'scheduled' | 'skipped'
+  remainingCount?: number
+  targetCount?: number
   title: string
   type: string
+  unit?: string | null
 }): SelfCareTodayItem {
   return {
     completion: null,
+    flexibleProgress:
+      input.type === 'flexible_goal'
+        ? {
+            completedCount: input.completedCount ?? 0,
+            periodEnd: input.date,
+            periodStart: input.date,
+            remainingCount:
+              input.remainingCount ??
+              Math.max(
+                0,
+                (input.targetCount ?? 1) - (input.completedCount ?? 0),
+              ),
+            targetCount: input.targetCount ?? 1,
+          }
+        : null,
     item: createSelfCareItem({
       id: `${input.occurrenceId}-item`,
       title: input.title,
       type: input.type,
     }),
+    lastMeasurement: input.unit
+      ? ({
+          measurementUnit: input.unit,
+        } as SelfCareTodayItem['lastMeasurement'])
+      : null,
+    measurement: null,
     occurrence: {
       completedAt:
         input.occurrenceStatus === 'done'
@@ -788,6 +1058,37 @@ function createSelfCareTodayItem(input: {
       status: input.occurrenceStatus ?? 'scheduled',
     },
   } as SelfCareTodayItem
+}
+
+function createSelfCareAnalyticsResponse(
+  overrides: Partial<SelfCareAnalyticsResponse> = {},
+): SelfCareAnalyticsResponse {
+  return {
+    balanceByCategory: {
+      beauty: 0,
+      body: 0,
+      custom: 0,
+      daily_base: 0,
+      emotional: 0,
+      health: 0,
+      medical: 0,
+      movement: 0,
+      nutrition: 0,
+      relax: 0,
+      sleep: 0,
+    },
+    completionsByDay: {},
+    courses: [],
+    flexibleGoals: [],
+    measurementTrends: [],
+    medicalUpcoming: [],
+    minimumCompletionCount: 0,
+    moodEnergyTrend: [],
+    procedureCosts: 0,
+    procedureCostsByMonth: {},
+    selectedSelfCareCount: 0,
+    ...overrides,
+  }
 }
 
 function createSelfCareItem(overrides: {

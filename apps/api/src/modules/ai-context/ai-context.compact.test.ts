@@ -44,4 +44,25 @@ void describe('compactForAi', () => {
     assert.equal(compacted.items.length, 30)
     assert.equal(compacted.items[0]?.status, 'overdue')
   })
+
+  void it('preserves semantic flexible goal ids only', () => {
+    const compacted = compactForAi({
+      flexibleGoal: {
+        doneCount: 1,
+        expectedRepeats: true,
+        id: 'water-2026-06-21',
+        source: 'selfcare',
+        title: 'Water',
+        type: 'flexible_goal',
+      },
+      regular: {
+        id: 'internal-id',
+        source: 'tasks',
+        title: 'Task',
+      },
+    })
+
+    assert.equal(compacted.flexibleGoal.id, 'water-2026-06-21')
+    assert.equal('id' in compacted.regular, false)
+  })
 })

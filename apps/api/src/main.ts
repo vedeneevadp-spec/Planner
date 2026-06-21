@@ -197,7 +197,6 @@ export function createApiKernel(
   const aiContextService = new AiContextService({
     chaosInboxService,
     cleaningService,
-    habitService,
     selfCareService,
     sessionService,
     taskService,
