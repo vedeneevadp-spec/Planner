@@ -25,6 +25,9 @@ import type {
   AiCleaningTask,
   AiHabitItem,
   AiLoadLevel,
+  AiLoadReason,
+  AiOverdueItemsByDomain,
+  AiOverdueSummary,
   AiSelfCareDuplicate,
   AiSelfCareItem,
   AiShoppingItem,
@@ -205,12 +208,40 @@ export class AiContextService {
       generatedAt: new Date().toISOString(),
       timezone,
     }
+    const shopping = markShoppingOverdue(loaded.shopping, date)
+    const activeShopping = shopping.filter(isActiveShoppingItem)
+    const completedShopping = shopping.filter(isCompletedShoppingItem)
+    const overdueShopping = activeShopping.filter(
+      (item) => item.status === 'overdue',
+    )
+    const overdueByDomain = {
+      cleaning: loaded.cleaning.overdue.length,
+      habits: loaded.habits.missed.length,
+      selfCare: loaded.selfCare.missed.length,
+      shopping: overdueShopping.length,
+      tasks: loaded.tasks.overdue.length,
+    }
+
+    result.overdue = buildOverdueSummary(overdueByDomain)
+    result.overdueItemsByDomain = buildOverdueItemsByDomain({
+      cleaning: loaded.cleaning.overdue,
+      habits: loaded.habits.missed,
+      selfCare: loaded.selfCare.missed,
+      shopping: overdueShopping,
+      tasks: loaded.tasks.overdue,
+    })
 
     if (include.includes('tasks')) {
       result.tasks = {
+        activeToday: limitItems(loaded.tasks.today),
         activeTodayCount: loaded.tasks.today.length,
+        completedToday: limitItems(loaded.tasks.completedToday),
         completedTodayCount: loaded.tasks.completedToday.length,
         important: limitItems(loaded.tasks.important),
+        importantActiveToday: limitItems(loaded.tasks.important),
+        importantOverdue: limitItems(
+          loaded.tasks.overdue.filter((item) => item.priority === 'high'),
+        ),
         lowEnergy: limitItems(loaded.tasks.lowEnergy),
         overdue: limitItems(loaded.tasks.overdue),
         overdueCount: loaded.tasks.overdue.length,
@@ -227,20 +258,18 @@ export class AiContextService {
     }
 
     if (include.includes('shopping')) {
-      const shopping = markShoppingOverdue(loaded.shopping, date)
-      const active = shopping.filter(isActiveShoppingItem)
-      const completed = shopping.filter(isCompletedShoppingItem)
-      const urgent = active.filter((item) => item.urgent)
-      const normal = active.filter((item) => !item.urgent)
+      const urgent = activeShopping.filter((item) => item.urgent)
+      const normal = activeShopping.filter((item) => !item.urgent)
 
       result.shopping = {
-        active: limitItems(active),
-        activeCount: active.length,
-        completed: limitItems(completed),
-        completedCount: completed.length,
+        active: limitItems(activeShopping),
+        activeCount: activeShopping.length,
+        completed: limitItems(completedShopping),
+        completedCount: completedShopping.length,
         normal: limitItems(normal),
         totalCount: shopping.length,
         urgent: limitItems(urgent),
+        urgentActiveCount: urgent.length,
       }
     }
 
@@ -272,17 +301,6 @@ export class AiContextService {
     }
 
     if (include.includes('stats')) {
-      const shopping = markShoppingOverdue(loaded.shopping, date)
-      const activeShopping = shopping.filter(isActiveShoppingItem)
-      const overdueByDomain = {
-        cleaning: loaded.cleaning.overdue.length,
-        habits: loaded.habits.missed.length,
-        selfCare: loaded.selfCare.missed.length,
-        shopping: activeShopping.filter((item) => item.status === 'overdue')
-          .length,
-        tasks: loaded.tasks.overdue.length,
-      }
-
       result.stats = buildStats({
         activeCounts: {
           calendar: loaded.calendar.length,
@@ -326,8 +344,14 @@ export class AiContextService {
     )
     const cleaning = await this.getCleaningRange(context, from, to)
     const cleaningActive = countActiveCleaningTasks(cleaning)
+    const cleaningCompleted = cleaning.tasks.filter(
+      (item) => item.status === 'done',
+    )
     const selfCare = await this.getSelfCareRange(context, from, to)
     const taskItems = weekTasks.map((task) => mapTaskItem(task, from))
+    const completedTaskItems = completedRangeTasks.map((task) =>
+      mapTaskItem(task, to),
+    )
     const activeTaskGroups = groupTaskOccurrences(weekTasks)
     const overdueItems = overdueTasks.map((task) => mapTaskItem(task, to))
     const repeatedRoutineGroups = groupTaskOccurrences(
@@ -357,9 +381,7 @@ export class AiContextService {
       from,
       generatedAt: new Date().toISOString(),
       highlights: {
-        completed: limitItems(
-          completedRangeTasks.map((task) => mapTaskItem(task, to)),
-        ),
+        completed: limitItems(completedTaskItems),
         overdue: limitItems(overdueItems),
         repeatedRoutineGroups: limitItems(repeatedRoutineGroups),
         repeatedOrStuck: limitItems(repeatedOrStuck),
@@ -368,9 +390,35 @@ export class AiContextService {
         ),
       },
       possibleSimplifications: buildSimplifications(stats),
+      progress: {
+        cleaningCompleted: {
+          count: cleaningCompleted.length,
+          items: limitItems(cleaningCompleted),
+        },
+        selfCareCompleted: {
+          count: selfCare.completed.length,
+          items: limitItems(selfCare.completed),
+        },
+        shoppingCompleted: {
+          count: completedShopping.length,
+          items: limitItems(completedShopping),
+        },
+        tasksCompleted: {
+          count: completedRangeTasks.length,
+          items: limitItems(completedTaskItems),
+        },
+      },
+      remaining: {
+        cleaningOverdue: limitItems(cleaning.overdue),
+        selfCareRemaining: limitItems(selfCare.remaining),
+        shoppingActive: limitItems(activeShopping),
+        tasksActive: limitItems(taskItems),
+      },
       summary: {
         cleaningActive,
         cleaningOverdue: cleaning.overdue.length,
+        cleaningOverdueCurrentBacklog: cleaning.overdue.length,
+        cleaningScheduledThisPeriod: cleaning.tasks.length,
         cleaningTasks: cleaningActive,
         completedTasks: completedRangeTasks.length,
         loadLevel: stats.loadLevel,
@@ -383,6 +431,9 @@ export class AiContextService {
         shoppingActive: activeShopping.length,
         shoppingCompleted: completedShopping.length,
         shoppingItems: activeShopping.length,
+        shoppingTotal: shopping.length,
+        shoppingUrgentActive: activeShopping.filter((item) => item.urgent)
+          .length,
         taskGroupsActive: activeTaskGroups.length,
         taskOccurrencesActive: weekTasks.length,
         tasksActive: activeTaskGroups.length,
@@ -518,6 +569,9 @@ export class AiContextService {
     const rangeTasks = activeTasks.filter((task) =>
       isTaskInRange(task, from, to),
     )
+    const completedRangeTasks = tasks
+      .filter(isTaskCompleted)
+      .filter((task) => isTaskInRange(task, from, to))
     const activeTaskGroups = groupTaskOccurrences(rangeTasks)
     const overdueTasks = activeTasks.filter((task) => isTaskOverdue(task, to))
     const shopping = markShoppingOverdue(
@@ -534,6 +588,8 @@ export class AiContextService {
     const selfCare = await this.getSelfCareRange(context, from, to)
     const calendarEvents = rangeTasks.filter((task) => task.plannedStartTime)
     const tasksHighPriorityActive = rangeTasks.filter(isHighPriorityTask).length
+    const completedHighPriorityTasks =
+      completedRangeTasks.filter(isHighPriorityTask).length
     const overdueByDomain = {
       cleaning: cleaning.overdue.length,
       habits: 0,
@@ -551,6 +607,23 @@ export class AiContextService {
         tasks: activeTaskGroups.length,
       },
       overdueByDomain,
+    })
+    const loadScore = calculateLoadScore(stats)
+    const structuredReasons = buildStructuredLoadReasons({
+      calendarEvents: calendarEvents.length,
+      cleaningOverdue: cleaning.overdue.length,
+      habitsMissed: 0,
+      selfcareMissed: selfCare.missed.length,
+      shoppingActive: activeShopping.length,
+      tasksActive: activeTaskGroups.length,
+      tasksHighPriorityActive,
+    })
+    const overdueItemsByDomain = buildOverdueItemsByDomain({
+      cleaning: cleaning.overdue,
+      habits: [],
+      selfCare: selfCare.missed,
+      shopping: overdueShopping,
+      tasks: overdueTasks.map((task) => mapTaskItem(task, to)),
     })
 
     return compactForAi({
@@ -585,10 +658,28 @@ export class AiContextService {
       from,
       generatedAt: new Date().toISOString(),
       load: {
+        activeCounts: {
+          calendarEvents: calendarEvents.length,
+          cleaningOverdue: cleaning.overdue.length,
+          selfcareMissed: selfCare.missed.length,
+          shoppingActive: activeShopping.length,
+          tasksActive: activeTaskGroups.length,
+          tasksHighPriorityActive,
+        },
+        activeScore: loadScore,
+        ignoredCounts: {
+          completedHighPriorityTasks,
+          completedSelfcare: selfCare.completed.length,
+          completedShopping: completedShopping.length,
+          completedTasks: completedRangeTasks.length,
+        },
         level: stats.loadLevel,
         reasons: stats.reasons,
-        score: calculateLoadScore(stats),
+        score: loadScore,
+        structuredReasons,
       },
+      overdue: buildOverdueSummary(overdueByDomain),
+      overdueItemsByDomain,
       suggestedFocus: buildSuggestedFocus(stats),
       timezone,
       to,
@@ -1262,6 +1353,39 @@ function sumDomainCounts(input: {
   )
 }
 
+function buildOverdueSummary(input: {
+  cleaning: number
+  habits: number
+  selfCare: number
+  shopping: number
+  tasks: number
+}): AiOverdueSummary {
+  return {
+    cleaning: input.cleaning,
+    habits: input.habits,
+    selfcare: input.selfCare,
+    shopping: input.shopping,
+    tasks: input.tasks,
+    total: sumDomainCounts(input),
+  }
+}
+
+function buildOverdueItemsByDomain(input: {
+  cleaning: AiCleaningTask[]
+  habits: AiHabitItem[]
+  selfCare: AiSelfCareItem[]
+  shopping: AiShoppingItem[]
+  tasks: AiTaskItem[]
+}): AiOverdueItemsByDomain {
+  return {
+    cleaning: limitItems(input.cleaning),
+    habits: limitItems(input.habits),
+    selfcare: limitItems(input.selfCare),
+    shopping: limitItems(input.shopping),
+    tasks: limitItems(input.tasks),
+  }
+}
+
 function buildStats(input: {
   activeCounts: {
     calendar: number
@@ -1363,6 +1487,88 @@ function calculateLoadScore(stats: NonNullable<TodayContext['stats']>): number {
     stats.reasons.length * 3
 
   return Math.min(100, base)
+}
+
+function buildStructuredLoadReasons(input: {
+  calendarEvents: number
+  cleaningOverdue: number
+  habitsMissed: number
+  selfcareMissed: number
+  shoppingActive: number
+  tasksActive: number
+  tasksHighPriorityActive: number
+}): AiLoadReason[] {
+  const reasons: AiLoadReason[] = []
+
+  if (input.cleaningOverdue > 0) {
+    reasons.push({
+      code: 'cleaning_overdue_high',
+      count: input.cleaningOverdue,
+      domain: 'cleaning',
+      severity:
+        input.cleaningOverdue >= 20
+          ? 'critical'
+          : input.cleaningOverdue >= 5
+            ? 'high'
+            : 'medium',
+    })
+  }
+
+  if (input.calendarEvents >= 4) {
+    reasons.push({
+      code: 'calendar_blocks_many',
+      count: input.calendarEvents,
+      domain: 'calendar',
+      severity: input.calendarEvents >= 8 ? 'high' : 'medium',
+    })
+  }
+
+  if (input.selfcareMissed > 0) {
+    reasons.push({
+      code: 'selfcare_missed',
+      count: input.selfcareMissed,
+      domain: 'selfcare',
+      severity: input.selfcareMissed >= 3 ? 'high' : 'medium',
+    })
+  }
+
+  if (input.habitsMissed > 0) {
+    reasons.push({
+      code: 'habits_missed',
+      count: input.habitsMissed,
+      domain: 'habits',
+      severity: input.habitsMissed >= 3 ? 'high' : 'medium',
+    })
+  }
+
+  if (input.tasksHighPriorityActive > 0) {
+    reasons.push({
+      code: 'tasks_high_priority_active',
+      count: input.tasksHighPriorityActive,
+      domain: 'tasks',
+      severity: input.tasksHighPriorityActive >= 3 ? 'high' : 'medium',
+    })
+  }
+
+  if (input.tasksActive >= 5) {
+    reasons.push({
+      code: 'tasks_active_many',
+      count: input.tasksActive,
+      domain: 'tasks',
+      severity: input.tasksActive >= 10 ? 'high' : 'medium',
+    })
+  }
+
+  if (input.shoppingActive > 0) {
+    reasons.push({
+      code: 'shopping_active',
+      count: input.shoppingActive,
+      domain: 'shopping',
+      severity: input.shoppingActive >= 5 ? 'medium' : 'low',
+    })
+  }
+
+  return reasons
 }
 
 function buildBottlenecks(reasons: string[], overdueCount: number): string[] {

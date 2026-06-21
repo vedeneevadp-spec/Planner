@@ -4,6 +4,7 @@ import type {
 } from './ai-context.permissions.js'
 
 export type AiLoadLevel = 'critical' | 'high' | 'low' | 'normal'
+export type AiLoadReasonSeverity = 'critical' | 'high' | 'low' | 'medium'
 export type AiSuggestedMode = 'light' | 'minimum' | 'normal'
 
 export interface AiTaskItem {
@@ -65,6 +66,30 @@ export interface AiHabitItem {
   title: string
 }
 
+export interface AiOverdueSummary {
+  cleaning: number
+  habits: number
+  selfcare: number
+  shopping: number
+  tasks: number
+  total: number
+}
+
+export interface AiOverdueItemsByDomain {
+  cleaning: AiCleaningTask[]
+  habits: AiHabitItem[]
+  selfcare: AiSelfCareItem[]
+  shopping: AiShoppingItem[]
+  tasks: AiTaskItem[]
+}
+
+export interface AiLoadReason {
+  code: string
+  count: number
+  domain: 'calendar' | 'cleaning' | 'habits' | 'selfcare' | 'shopping' | 'tasks'
+  severity: AiLoadReasonSeverity
+}
+
 export interface GetTodayContextParams {
   date?: string | undefined
   include?: TodayContextInclude[] | undefined
@@ -89,6 +114,8 @@ export interface TodayContext {
     missed: AiHabitItem[]
     planned: AiHabitItem[]
   }
+  overdue?: AiOverdueSummary
+  overdueItemsByDomain?: AiOverdueItemsByDomain
   selfCare?: {
     completed: AiSelfCareItem[]
     missed: AiSelfCareItem[]
@@ -105,6 +132,7 @@ export interface TodayContext {
     normal: AiShoppingItem[]
     totalCount: number
     urgent: AiShoppingItem[]
+    urgentActiveCount: number
   }
   stats?: {
     activeCounts: {
@@ -131,9 +159,13 @@ export interface TodayContext {
     totalPlannedItems: number
   }
   tasks?: {
+    activeToday: AiTaskItem[]
     activeTodayCount: number
+    completedToday: AiTaskItem[]
     completedTodayCount: number
     important: AiTaskItem[]
+    importantActiveToday: AiTaskItem[]
+    importantOverdue: AiTaskItem[]
     lowEnergy: AiTaskItem[]
     overdue: AiTaskItem[]
     overdueCount: number
@@ -163,8 +195,34 @@ export interface WeekContext {
     upcomingImportant: AiTaskItem[]
   }
   possibleSimplifications: string[]
+  progress: {
+    cleaningCompleted: {
+      count: number
+      items: AiCleaningTask[]
+    }
+    selfCareCompleted: {
+      count: number
+      items: AiSelfCareItem[]
+    }
+    shoppingCompleted: {
+      count: number
+      items: AiShoppingItem[]
+    }
+    tasksCompleted: {
+      count: number
+      items: AiTaskItem[]
+    }
+  }
+  remaining: {
+    cleaningOverdue: AiCleaningTask[]
+    selfCareRemaining: AiSelfCareItem[]
+    shoppingActive: AiShoppingItem[]
+    tasksActive: AiTaskItem[]
+  }
   summary: {
     cleaningActive: number
+    cleaningOverdueCurrentBacklog: number
+    cleaningScheduledThisPeriod: number
     cleaningTasks: number
     cleaningOverdue: number
     completedTasks: number
@@ -179,6 +237,8 @@ export interface WeekContext {
     shoppingActive: number
     shoppingCompleted: number
     shoppingItems: number
+    shoppingTotal: number
+    shoppingUrgentActive: number
     taskGroupsActive: number
     taskOccurrencesActive: number
     tasksActive: number
@@ -248,10 +308,28 @@ export interface OverloadContext {
   from: string
   generatedAt: string
   load: {
+    activeCounts: {
+      calendarEvents: number
+      cleaningOverdue: number
+      selfcareMissed: number
+      shoppingActive: number
+      tasksActive: number
+      tasksHighPriorityActive: number
+    }
+    activeScore: number
+    ignoredCounts: {
+      completedHighPriorityTasks: number
+      completedSelfcare: number
+      completedShopping: number
+      completedTasks: number
+    }
     level: AiLoadLevel
     reasons: string[]
     score: number
+    structuredReasons: AiLoadReason[]
   }
+  overdue?: AiOverdueSummary
+  overdueItemsByDomain?: AiOverdueItemsByDomain
   suggestedFocus: string[]
   timezone: string
   to: string

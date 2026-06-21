@@ -122,6 +122,7 @@ void describe('AiContextService', () => {
 
     assert.equal(context.shopping?.activeCount, 2)
     assert.equal(context.shopping?.completedCount, 1)
+    assert.equal(context.shopping?.urgentActiveCount, 0)
     assert.deepEqual(
       context.shopping?.active.map((item) => item.title),
       ['Expired milk', 'Fresh bread'],
@@ -132,6 +133,11 @@ void describe('AiContextService', () => {
     )
     assert.equal(context.stats?.activeCounts.shopping, 2)
     assert.equal(context.stats?.overdueByDomain.shopping, 1)
+    assert.equal(context.overdue?.shopping, 1)
+    assert.deepEqual(
+      context.overdueItemsByDomain?.shopping.map((item) => item.title),
+      ['Expired milk'],
+    )
   })
 
   void it('keeps today important limited to active selected-date tasks', async () => {
@@ -142,6 +148,13 @@ void describe('AiContextService', () => {
         plannedDate: '2026-06-10',
         status: 'done',
         title: 'Old completed important',
+      }),
+      createTask({
+        completedAt: '2026-06-21T08:00:00.000Z',
+        importance: 'important',
+        plannedDate: '2026-06-21',
+        status: 'done',
+        title: 'Done today important',
       }),
       createTask({
         importance: 'important',
@@ -166,11 +179,24 @@ void describe('AiContextService', () => {
       ['Today important'],
     )
     assert.deepEqual(
+      context.tasks?.importantActiveToday.map((task) => task.title),
+      ['Today important'],
+    )
+    assert.deepEqual(context.tasks?.importantOverdue, [])
+    assert.deepEqual(
       context.tasks?.today.map((task) => task.title),
       ['Today important'],
     )
+    assert.deepEqual(
+      context.tasks?.activeToday.map((task) => task.title),
+      ['Today important'],
+    )
+    assert.deepEqual(
+      context.tasks?.completedToday.map((task) => task.title),
+      ['Done today important'],
+    )
     assert.equal(context.tasks?.activeTodayCount, 1)
-    assert.equal(context.tasks?.completedTodayCount, 0)
+    assert.equal(context.tasks?.completedTodayCount, 1)
     assert.equal(context.stats?.activeCounts.tasks, 1)
   })
 
@@ -224,6 +250,22 @@ void describe('AiContextService', () => {
       tasks: 1,
       total: 5,
     })
+    assert.deepEqual(context.overdue, {
+      cleaning: 1,
+      habits: 1,
+      selfcare: 1,
+      shopping: 1,
+      tasks: 1,
+      total: 5,
+    })
+    assert.deepEqual(
+      context.overdueItemsByDomain?.cleaning.map((item) => item.title),
+      ['Overdue cleaning'],
+    )
+    assert.deepEqual(
+      context.overdueItemsByDomain?.selfcare.map((item) => item.title),
+      ['Missed self care'],
+    )
   })
 
   void it('computes overload from active and overdue items, not completed history', async () => {
@@ -264,7 +306,107 @@ void describe('AiContextService', () => {
     assert.equal(context.counts.tasksTotal, 1)
     assert.equal(context.counts.shoppingActive, 0)
     assert.equal(context.counts.shoppingCompleted, 5)
+    assert.equal(context.load.activeCounts.shoppingActive, 0)
+    assert.equal(context.load.ignoredCounts.completedShopping, 5)
+    assert.equal(context.load.ignoredCounts.completedTasks, 6)
+    assert.equal(
+      context.load.structuredReasons.some(
+        (reason) => reason.code === 'shopping_active',
+      ),
+      false,
+    )
     assert.equal(context.load.level, 'low')
+  })
+
+  void it('exposes weekly progress separately from remaining work', async () => {
+    const service = createService(
+      [
+        createTask({
+          completedAt: '2026-06-16T08:00:00.000Z',
+          plannedDate: '2026-06-16',
+          status: 'done',
+          title: 'Done task',
+        }),
+        createTask({
+          importance: 'important',
+          plannedDate: '2026-06-21',
+          title: 'Active task',
+        }),
+      ],
+      [],
+      {
+        selfCareHistory: {
+          completions: [
+            createSelfCareCompletion({
+              completedAt: '2026-06-17T09:00:00.000Z',
+              itemId: 'care-item',
+              scheduledFor: '2026-06-17',
+              status: 'done',
+            }),
+          ],
+          items: [
+            createSelfCareItem({
+              id: 'care-item',
+              title: 'Care done',
+              type: 'ritual',
+            }),
+          ],
+          stepCompletions: [],
+        } as SelfCareHistoryResponse,
+        selfCarePlan: {
+          courses: [],
+          from: '2026-06-15',
+          medical: [],
+          occurrences: [
+            createSelfCareTodayItem({
+              date: '2026-06-21',
+              occurrenceId: 'care-remaining',
+              title: 'Care remaining',
+              type: 'ritual',
+            }),
+          ],
+          planningHints: [],
+          to: '2026-06-21',
+        } as SelfCarePlanResponse,
+        shoppingItems: [
+          createShoppingItem({
+            status: 'archived',
+            text: 'Bought milk',
+          }),
+          createShoppingItem({
+            priority: 'high',
+            status: 'new',
+            text: 'Buy bread',
+          }),
+        ],
+      },
+    )
+
+    const context = await service.getWeekContext({
+      from: '2026-06-15',
+      to: '2026-06-21',
+      userId: USER_ID,
+    })
+
+    assert.equal(context.progress.tasksCompleted.count, 1)
+    assert.deepEqual(
+      context.progress.tasksCompleted.items.map((item) => item.title),
+      ['Done task'],
+    )
+    assert.equal(context.progress.shoppingCompleted.count, 1)
+    assert.equal(context.progress.selfCareCompleted.count, 1)
+    assert.deepEqual(
+      context.remaining.tasksActive.map((item) => item.title),
+      ['Active task'],
+    )
+    assert.deepEqual(
+      context.remaining.shoppingActive.map((item) => item.title),
+      ['Buy bread'],
+    )
+    assert.equal(context.summary.shoppingActive, 1)
+    assert.equal(context.summary.shoppingCompleted, 1)
+    assert.equal(context.summary.shoppingTotal, 2)
+    assert.equal(context.summary.shoppingUrgentActive, 1)
   })
 
   void it('groups repeated weekly routines for analytics counts', async () => {
