@@ -84,6 +84,7 @@ import {
   getPercent,
   getPrimaryActionLabel,
   getRitualStepDraft,
+  getSelfCareTodayCardActionOrder,
   getTemplateTypeLabel,
   getTodayScheduleLabel,
   getTypeLabel,
@@ -112,6 +113,7 @@ import {
   type SelfCareEditSubmitPayload,
   type SelfCareSettingsPatch,
   type SelfCareStandardRepeatKind,
+  shouldShowSelfCareSkipAction,
   shouldShowVisitDetails,
   shouldUseExactSchedule,
   STANDARD_REPEAT_SELECT_OPTIONS,
@@ -338,7 +340,11 @@ export function SelfCareTodayTab({
               onArchive={onArchiveItem}
               onEdit={onEditItem}
               onSchedule={onScheduleItem}
-              onSkipOccurrence={onSkipOccurrence}
+              onSkipOccurrence={
+                shouldShowSelfCareSkipAction(entry, 'overdue')
+                  ? onSkipOccurrence
+                  : undefined
+              }
               onToggleStep={onToggleRitualStep}
             />
           ))}
@@ -1154,6 +1160,104 @@ function SelfCareItemCard({
   const restartCourseAction = canRestartCourse(entry)
     ? onRestartCourse
     : undefined
+  const shouldShowSkipAction = Boolean(onSkipOccurrence && entry.occurrence)
+  const shouldShowScheduleAction = Boolean(onSchedule && entry.occurrence)
+  const todayActionOrder = getSelfCareTodayCardActionOrder({
+    hasRestartAction: Boolean(restartCourseAction),
+    hasScheduleAction: shouldShowScheduleAction,
+    hasSkipAction: shouldShowSkipAction,
+  })
+
+  function renderTodayAction(action: (typeof todayActionOrder)[number]) {
+    switch (action) {
+      case 'complete':
+        return (
+          <button
+            key={action}
+            className={cx(styles.cardActionButton, styles.cardActionButtonDone)}
+            type="button"
+            disabled={isBusy || isDone}
+            title={primaryActionLabel}
+            aria-label={`${primaryActionLabel}: «${entry.item.title}»`}
+            onClick={() => onAction(entry)}
+          >
+            <CheckIcon size={18} strokeWidth={2.3} />
+          </button>
+        )
+
+      case 'edit':
+        return (
+          <button
+            key={action}
+            className={cx(styles.cardActionButton, styles.cardActionButtonSoft)}
+            type="button"
+            disabled={isBusy}
+            title="Настроить"
+            aria-label={`Настроить заботу «${entry.item.title}»`}
+            onClick={() => onEdit(entry)}
+          >
+            <GearIcon size={18} strokeWidth={2.1} />
+          </button>
+        )
+
+      case 'archive':
+        return (
+          <button
+            key={action}
+            className={cx(
+              styles.cardActionButton,
+              styles.cardActionButtonDanger,
+            )}
+            type="button"
+            disabled={isBusy}
+            title="Удалить"
+            aria-label={`Удалить заботу «${entry.item.title}»`}
+            onClick={() => onArchive(entry)}
+          >
+            <TrashIcon size={18} strokeWidth={2.1} />
+          </button>
+        )
+
+      case 'restart':
+        return restartCourseAction ? (
+          <button
+            key={action}
+            className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
+            type="button"
+            disabled={isBusy}
+            onClick={() => restartCourseAction(entry)}
+          >
+            Повторить
+          </button>
+        ) : null
+
+      case 'skip':
+        return onSkipOccurrence ? (
+          <button
+            key={action}
+            className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
+            type="button"
+            disabled={isBusy || isDone}
+            onClick={() => onSkipOccurrence(entry)}
+          >
+            Пропустить
+          </button>
+        ) : null
+
+      case 'schedule':
+        return onSchedule ? (
+          <button
+            key={action}
+            className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
+            type="button"
+            disabled={isBusy || isDone}
+            onClick={() => onSchedule(entry)}
+          >
+            {scheduleActionLabel}
+          </button>
+        ) : null
+    }
+  }
 
   return (
     <article
@@ -1256,79 +1360,7 @@ function SelfCareItemCard({
             </button>
           </>
         ) : (
-          <>
-            {restartCourseAction ? null : (
-              <button
-                className={cx(
-                  styles.cardActionButton,
-                  styles.cardActionButtonDone,
-                )}
-                type="button"
-                disabled={isBusy || isDone}
-                title={primaryActionLabel}
-                aria-label={`${primaryActionLabel}: «${entry.item.title}»`}
-                onClick={() => onAction(entry)}
-              >
-                <CheckIcon size={18} strokeWidth={2.3} />
-              </button>
-            )}
-            <button
-              className={cx(
-                styles.cardActionButton,
-                styles.cardActionButtonSoft,
-              )}
-              type="button"
-              disabled={isBusy}
-              title="Настроить"
-              aria-label={`Настроить заботу «${entry.item.title}»`}
-              onClick={() => onEdit(entry)}
-            >
-              <GearIcon size={18} strokeWidth={2.1} />
-            </button>
-            <button
-              className={cx(
-                styles.cardActionButton,
-                styles.cardActionButtonDanger,
-              )}
-              type="button"
-              disabled={isBusy}
-              title="Удалить"
-              aria-label={`Удалить заботу «${entry.item.title}»`}
-              onClick={() => onArchive(entry)}
-            >
-              <TrashIcon size={18} strokeWidth={2.1} />
-            </button>
-            {restartCourseAction ? (
-              <button
-                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
-                type="button"
-                disabled={isBusy}
-                onClick={() => restartCourseAction(entry)}
-              >
-                Повторить
-              </button>
-            ) : null}
-            {onSkipOccurrence && entry.occurrence ? (
-              <button
-                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
-                type="button"
-                disabled={isBusy || isDone}
-                onClick={() => onSkipOccurrence(entry)}
-              >
-                Пропустить
-              </button>
-            ) : null}
-            {onSchedule && entry.occurrence ? (
-              <button
-                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
-                type="button"
-                disabled={isBusy || isDone}
-                onClick={() => onSchedule(entry)}
-              >
-                {scheduleActionLabel}
-              </button>
-            ) : null}
-          </>
+          todayActionOrder.map(renderTodayAction)
         )}
       </div>
     </article>

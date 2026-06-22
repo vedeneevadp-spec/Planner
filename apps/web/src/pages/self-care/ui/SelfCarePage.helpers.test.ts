@@ -53,6 +53,7 @@ import {
   getPrimaryActionLabel,
   getSelfCareCreateDialogMode,
   getSelfCareTab,
+  getSelfCareTodayCardActionOrder,
   getTemplateTypeLabel,
   getTodayScheduleLabel,
   getTypeLabel,
@@ -73,12 +74,40 @@ import {
   pluralizeRu,
   pluralRu,
   repeatKindRequiresInterval,
+  shouldShowSelfCareSkipAction,
   shouldShowVisitDetails,
   shouldUseExactSchedule,
   toggleWeekday,
 } from './SelfCarePage.helpers'
 
 describe('SelfCarePage helpers', () => {
+  it('shows skip only for overdue planned occurrences', () => {
+    const plannedEntry = createTodayEntry({ occurrence: createOccurrence() })
+    const adHocEntry = createTodayEntry({ occurrence: null })
+
+    expect(shouldShowSelfCareSkipAction(plannedEntry, 'overdue')).toBe(true)
+    expect(shouldShowSelfCareSkipAction(plannedEntry, 'today')).toBe(false)
+    expect(shouldShowSelfCareSkipAction(adHocEntry, 'overdue')).toBe(false)
+  })
+
+  it('keeps icon actions before text actions on today cards', () => {
+    expect(
+      getSelfCareTodayCardActionOrder({
+        hasRestartAction: false,
+        hasScheduleAction: true,
+        hasSkipAction: true,
+      }),
+    ).toEqual(['complete', 'edit', 'archive', 'skip', 'schedule'])
+
+    expect(
+      getSelfCareTodayCardActionOrder({
+        hasRestartAction: true,
+        hasScheduleAction: false,
+        hasSkipAction: false,
+      }),
+    ).toEqual(['edit', 'archive', 'restart'])
+  })
+
   it('builds create schedule rules only with fields used by the selected cadence', () => {
     expect(
       buildCreateScheduleRule({

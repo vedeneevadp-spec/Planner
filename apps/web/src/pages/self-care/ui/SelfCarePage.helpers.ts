@@ -70,6 +70,14 @@ export type VisibleSelfCareCategory = Extract<
   SelfCareCategory,
   'beauty' | 'body' | 'custom' | 'health' | 'movement' | 'relax'
 >
+export type SelfCareTodayCardActionKind =
+  | 'archive'
+  | 'complete'
+  | 'edit'
+  | 'restart'
+  | 'schedule'
+  | 'skip'
+export type SelfCareSkipActionSection = 'overdue' | 'today'
 
 export const TYPES_WITH_EXACT_SCHEDULE: ReadonlySet<SelfCareItemType> = new Set(
   [
@@ -93,6 +101,28 @@ export const SELF_CARE_TABS: Array<{ id: SelfCareTab; label: string }> = [
   { id: 'analytics', label: 'Аналитика' },
   { id: 'settings', label: 'Настройки' },
 ]
+
+export function shouldShowSelfCareSkipAction(
+  entry: SelfCareTodayItem,
+  section: SelfCareSkipActionSection,
+): boolean {
+  return section === 'overdue' && entry.occurrence !== null
+}
+
+export function getSelfCareTodayCardActionOrder(input: {
+  hasRestartAction: boolean
+  hasScheduleAction: boolean
+  hasSkipAction: boolean
+}): SelfCareTodayCardActionKind[] {
+  return [
+    ...(input.hasRestartAction ? [] : (['complete'] as const)),
+    'edit',
+    'archive',
+    ...(input.hasRestartAction ? (['restart'] as const) : []),
+    ...(input.hasSkipAction ? (['skip'] as const) : []),
+    ...(input.hasScheduleAction ? (['schedule'] as const) : []),
+  ]
+}
 
 export const CATEGORY_LABELS: Record<SelfCareCategory, string> = {
   beauty: 'Уход',
