@@ -384,7 +384,6 @@ export function SelfCareTodayTab({
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
                   onRestartCourse={onRestartCourse}
-                  onSkipOccurrence={onSkipOccurrence}
                   onToggleStep={onToggleRitualStep}
                 />
               ))}
@@ -1258,16 +1257,7 @@ function SelfCareItemCard({
           </>
         ) : (
           <>
-            {restartCourseAction ? (
-              <button
-                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
-                type="button"
-                disabled={isBusy}
-                onClick={() => restartCourseAction(entry)}
-              >
-                Повторить
-              </button>
-            ) : (
+            {restartCourseAction ? null : (
               <button
                 className={cx(
                   styles.cardActionButton,
@@ -1282,6 +1272,42 @@ function SelfCareItemCard({
                 <CheckIcon size={18} strokeWidth={2.3} />
               </button>
             )}
+            <button
+              className={cx(
+                styles.cardActionButton,
+                styles.cardActionButtonSoft,
+              )}
+              type="button"
+              disabled={isBusy}
+              title="Настроить"
+              aria-label={`Настроить заботу «${entry.item.title}»`}
+              onClick={() => onEdit(entry)}
+            >
+              <GearIcon size={18} strokeWidth={2.1} />
+            </button>
+            <button
+              className={cx(
+                styles.cardActionButton,
+                styles.cardActionButtonDanger,
+              )}
+              type="button"
+              disabled={isBusy}
+              title="Удалить"
+              aria-label={`Удалить заботу «${entry.item.title}»`}
+              onClick={() => onArchive(entry)}
+            >
+              <TrashIcon size={18} strokeWidth={2.1} />
+            </button>
+            {restartCourseAction ? (
+              <button
+                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
+                type="button"
+                disabled={isBusy}
+                onClick={() => restartCourseAction(entry)}
+              >
+                Повторить
+              </button>
+            ) : null}
             {onSkipOccurrence && entry.occurrence ? (
               <button
                 className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
@@ -1302,36 +1328,8 @@ function SelfCareItemCard({
                 {scheduleActionLabel}
               </button>
             ) : null}
-            <button
-              className={cx(
-                styles.cardActionButton,
-                styles.cardActionButtonSoft,
-              )}
-              type="button"
-              disabled={isBusy}
-              title="Настроить"
-              aria-label={`Настроить заботу «${entry.item.title}»`}
-              onClick={() => onEdit(entry)}
-            >
-              <GearIcon size={18} strokeWidth={2.1} />
-            </button>
           </>
         )}
-        {actions === 'today' ? (
-          <button
-            className={cx(
-              styles.cardActionButton,
-              styles.cardActionButtonDanger,
-            )}
-            type="button"
-            disabled={isBusy}
-            title="Удалить"
-            aria-label={`Удалить заботу «${entry.item.title}»`}
-            onClick={() => onArchive(entry)}
-          >
-            <TrashIcon size={18} strokeWidth={2.1} />
-          </button>
-        ) : null}
       </div>
     </article>
   )

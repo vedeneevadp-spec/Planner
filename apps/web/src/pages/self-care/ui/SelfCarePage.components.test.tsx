@@ -4,12 +4,16 @@ import type {
   SelfCareListResponse,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { SelfCareTodayTab } from './SelfCarePage.components'
 
 const TODAY_KEY = '2026-06-22'
+
+afterEach(() => {
+  cleanup()
+})
 
 describe('SelfCareTodayTab', () => {
   it('lets overdue occurrences be skipped', () => {
@@ -18,7 +22,7 @@ describe('SelfCareTodayTab', () => {
 
     render(
       <SelfCareTodayTab
-        dashboard={createDashboard([overdueEntry])}
+        dashboard={createDashboard({ overdueItems: [overdueEntry] })}
         history={createHistory()}
         hiddenScheduledItemIds={new Set()}
         isBusy={false}
@@ -40,9 +44,59 @@ describe('SelfCareTodayTab', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Пропустить' }))
+    const completeButton = screen.getByRole('button', {
+      name: 'Выполнить: «Утренний кофе»',
+    })
+    const editButton = screen.getByRole('button', {
+      name: 'Настроить заботу «Утренний кофе»',
+    })
+    const archiveButton = screen.getByRole('button', {
+      name: 'Удалить заботу «Утренний кофе»',
+    })
+    const skipButton = screen.getByRole('button', { name: 'Пропустить' })
+    const scheduleButton = screen.getByRole('button', { name: 'Перенести' })
+
+    expect(appearsBefore(completeButton, skipButton)).toBe(true)
+    expect(appearsBefore(editButton, skipButton)).toBe(true)
+    expect(appearsBefore(archiveButton, skipButton)).toBe(true)
+    expect(appearsBefore(skipButton, scheduleButton)).toBe(true)
+
+    fireEvent.click(skipButton)
 
     expect(onSkipOccurrence).toHaveBeenCalledWith(overdueEntry)
+  })
+
+  it('does not show skip action for today occurrences', () => {
+    const todayEntry = createSelfCareTodayItem()
+    if (todayEntry.occurrence) {
+      todayEntry.occurrence.scheduledFor = TODAY_KEY
+    }
+
+    render(
+      <SelfCareTodayTab
+        dashboard={createDashboard({ todayItems: [todayEntry] })}
+        history={createHistory()}
+        hiddenScheduledItemIds={new Set()}
+        isBusy={false}
+        list={createList()}
+        plan={undefined}
+        ritualStepDrafts={{}}
+        todayKey={TODAY_KEY}
+        uploadedIcons={[]}
+        onAddCare={vi.fn()}
+        onCardAction={vi.fn()}
+        onArchiveItem={vi.fn()}
+        onEditItem={vi.fn()}
+        onRestartCourse={vi.fn()}
+        onScheduleItem={vi.fn()}
+        onShowHistory={vi.fn()}
+        onShowPlan={vi.fn()}
+        onSkipOccurrence={vi.fn()}
+        onToggleRitualStep={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Пропустить' })).toBeNull()
   })
 })
 
@@ -103,7 +157,10 @@ function createSelfCareTodayItem(): SelfCareTodayItem {
 }
 
 function createDashboard(
-  overdueItems: SelfCareTodayItem[],
+  input: {
+    overdueItems?: SelfCareTodayItem[]
+    todayItems?: SelfCareTodayItem[]
+  } = {},
 ): SelfCareDashboardResponse {
   return {
     date: TODAY_KEY,
@@ -111,7 +168,7 @@ function createDashboard(
     flexibleGoals: [],
     gentleMode: false,
     minimumItems: [],
-    overdueItems,
+    overdueItems: input.overdueItems ?? [],
     planningHints: [],
     settings: {
       currency: 'RUB',
@@ -127,9 +184,15 @@ function createDashboard(
       updatedAt: '2026-06-01T08:00:00.000Z',
       userId: 'user-1',
     },
-    todayItems: [],
+    todayItems: input.todayItems ?? [],
     upcomingImportant: [],
   }
+}
+
+function appearsBefore(left: HTMLElement, right: HTMLElement): boolean {
+  return Boolean(
+    left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING,
+  )
 }
 
 function createHistory(): SelfCareHistoryResponse {
