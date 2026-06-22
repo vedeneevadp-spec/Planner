@@ -2,21 +2,15 @@ import type {
   SelfCareAppointmentDetails,
   SelfCareCompletion,
   SelfCareCourseDetails,
-  SelfCareDailyState,
-  SelfCareItemAlternative,
   SelfCareMeasurementDetails,
   SelfCareMedicalDetails,
-  SelfCareMinimumItem,
   SelfCareOccurrence,
   SelfCareProcedureDetails,
   SelfCareRitualStep,
-  SelfCareRitualStepCompletion,
-  SelfCareRitualStepDraft,
   SelfCareScheduleRule,
   SelfCareSettings,
-  SelfCareTemplate,
 } from '@planner/contracts'
-import { type Kysely, type Selectable, sql } from 'kysely'
+import { type Kysely, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import { getDatabaseErrorCode } from '../../infrastructure/db/errors.js'
@@ -51,7 +45,6 @@ import type {
   StoredSelfCareCompletionRecord,
   StoredSelfCareItemRecord,
   StoredSelfCareOccurrenceRecord,
-  StoredSelfCareRitualStepDraftRecord,
   ToggleSelfCareGentleModeCommand,
   UpdateSelfCareItemCommand,
   UpdateSelfCareMinimumItemsCommand,
@@ -61,6 +54,39 @@ import type {
   UpsertSelfCareRitualStepDraftCommand,
 } from './self-care.model.js'
 import type { SelfCareRepository } from './self-care.repository.js'
+import {
+  assertMeasurementCompletionInput,
+  assertMoodCheckCompletionInput,
+  buildScheduleDetailsStartsAt,
+  hasScheduleDetails,
+  type LoadStateDateRange,
+  mapAlternativeRow,
+  mapAppointmentRow,
+  mapCompletionRow,
+  mapCompletionStatusToOccurrenceStatus,
+  mapCourseRow,
+  mapDailyStateRow,
+  mapItemRow,
+  mapMeasurementRow,
+  mapMedicalRow,
+  mapMinimumRow,
+  mapOccurrenceRow,
+  mapProcedureRow,
+  mapRuleRow,
+  mapSettingsRow,
+  mapStepCompletionRow,
+  mapStepDraftRow,
+  mapStepRow,
+  mapTemplateRow,
+  selectChildren,
+  selectCompletions,
+  selectDailyStates,
+  selectOccurrences,
+  selectStepCompletions,
+  shouldStoreAppointmentDetails,
+  toPublicRitualStepDraft,
+  toStartOfDayTimestamp,
+} from './self-care.repository.postgres.helpers.js'
 import {
   addDays,
   buildAnalyticsResponse,
@@ -90,51 +116,10 @@ import {
   getMissedOccurrenceCutoffDate,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
-  parseJsonArray,
   type SelfCareStateSnapshot,
-  serializeDate,
-  serializeNullableDate,
-  serializeNullableTime,
-  serializeNullableTimestamp,
-  serializeTimestamp,
   shouldDeduplicateSelfCareItemCompletion,
   updateOccurrenceStatus,
 } from './self-care.shared.js'
-
-type ItemRow = Selectable<DatabaseSchema['app.self_care_items']>
-type AlternativeRow = Selectable<
-  DatabaseSchema['app.self_care_item_alternatives']
->
-type RuleRow = Selectable<DatabaseSchema['app.self_care_schedule_rules']>
-type OccurrenceRow = Selectable<DatabaseSchema['app.self_care_occurrences']>
-type CompletionRow = Selectable<DatabaseSchema['app.self_care_completions']>
-type StepRow = Selectable<DatabaseSchema['app.self_care_ritual_steps']>
-type StepCompletionRow = Selectable<
-  DatabaseSchema['app.self_care_ritual_step_completions']
->
-type StepDraftRow = Selectable<
-  DatabaseSchema['app.self_care_ritual_step_drafts']
->
-type ProcedureRow = Selectable<
-  DatabaseSchema['app.self_care_procedure_details']
->
-type AppointmentRow = Selectable<
-  DatabaseSchema['app.self_care_appointment_details']
->
-type MedicalRow = Selectable<DatabaseSchema['app.self_care_medical_details']>
-type MeasurementRow = Selectable<
-  DatabaseSchema['app.self_care_measurement_details']
->
-type CourseRow = Selectable<DatabaseSchema['app.self_care_course_details']>
-type DailyStateRow = Selectable<DatabaseSchema['app.self_care_daily_states']>
-type TemplateRow = Selectable<DatabaseSchema['app.self_care_templates']>
-type SettingsRow = Selectable<DatabaseSchema['app.self_care_settings']>
-type MinimumRow = Selectable<DatabaseSchema['app.self_care_minimum_items']>
-
-interface LoadStateDateRange {
-  from: string
-  to: string
-}
 
 interface LoadStateOptions {
   completionRange?: LoadStateDateRange | undefined
@@ -416,7 +401,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           })
         }
 
-        return this.mapItem(updated)
+        return mapItemRow(updated)
       },
       command.context.actorUserId,
     )
@@ -682,13 +667,13 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           command.context.actorUserId,
           command.occurrenceId,
         )
-        const occurrence = this.mapOccurrence(occurrenceRow)
+        const occurrence = mapOccurrenceRow(occurrenceRow)
         const itemRow = await this.loadActiveItemRow(
           trx,
           command.context,
           occurrence.itemId,
         )
-        const item = this.mapItem(itemRow)
+        const item = mapItemRow(itemRow)
         assertMeasurementCompletionInput(item, command.input)
         assertMoodCheckCompletionInput(item, command.input)
         const stepRows = await trx
@@ -696,7 +681,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .selectAll()
           .where('item_id', '=', item.id)
           .execute()
-        const steps = stepRows.map((row) => this.mapStep(row))
+        const steps = stepRows.map((row) => mapStepRow(row))
         const pendingStepCompletions = createRitualStepCompletions(
           'pending',
           command.input,
@@ -764,7 +749,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const item = this.mapItem(
+        const item = mapItemRow(
           await this.loadActiveItemRow(trx, command.context, command.itemId),
         )
         assertMeasurementCompletionInput(item, command.input)
@@ -774,7 +759,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .selectAll()
           .where('item_id', '=', item.id)
           .executeTakeFirst()
-        const scheduleRule = ruleRow ? this.mapRule(ruleRow) : null
+        const scheduleRule = ruleRow ? mapRuleRow(ruleRow) : null
         const completionDate = getSelfCareCompletionDateKey(command.input)
         const existingCompletion = shouldDeduplicateSelfCareItemCompletion({
           item,
@@ -796,7 +781,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .selectAll()
           .where('item_id', '=', item.id)
           .execute()
-        const steps = stepRows.map((row) => this.mapStep(row))
+        const steps = stepRows.map((row) => mapStepRow(row))
         const pendingStepCompletions = createRitualStepCompletions(
           'pending',
           command.input,
@@ -874,7 +859,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const occurrence = this.mapOccurrence(
+        const occurrence = mapOccurrenceRow(
           await this.loadOccurrenceRow(
             trx,
             command.context.actorUserId,
@@ -921,7 +906,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const item = this.mapItem(
+        const item = mapItemRow(
           await this.loadActiveItemRow(trx, command.context, command.itemId),
         )
         const ruleRow = await trx
@@ -929,7 +914,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .selectAll()
           .where('item_id', '=', item.id)
           .executeTakeFirst()
-        const scheduleRule = ruleRow ? this.mapRule(ruleRow) : null
+        const scheduleRule = ruleRow ? mapRuleRow(ruleRow) : null
         const existingRow = await trx
           .selectFrom('app.self_care_occurrences')
           .selectAll()
@@ -965,7 +950,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
         if (existingRow) {
           const occurrence = {
-            ...this.mapOccurrence(existingRow),
+            ...mapOccurrenceRow(existingRow),
             completedAt: null,
             dueAt,
             movedTo: null,
@@ -1041,7 +1026,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           )
         }
 
-        const mappedFallback = this.mapOccurrence(fallback)
+        const mappedFallback = mapOccurrenceRow(fallback)
         await this.upsertScheduledDetails(
           trx,
           item,
@@ -1085,7 +1070,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       actorUserId,
     )
 
-    return row ? this.mapDailyState(row) : null
+    return row ? mapDailyStateRow(row) : null
   }
 
   async upsertDailyState(command: UpsertSelfCareDailyStateCommand) {
@@ -1123,7 +1108,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .executeTakeFirstOrThrow(),
       command.context.actorUserId,
     )
-    return this.mapDailyState(row)
+    return mapDailyStateRow(row)
   }
 
   async getSettings(context: SelfCareReadContext) {
@@ -1239,9 +1224,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
     return {
       date: command.date,
-      drafts: rows.map((row) =>
-        toPublicRitualStepDraft(this.mapStepDraft(row)),
-      ),
+      drafts: rows.map((row) => toPublicRitualStepDraft(mapStepDraftRow(row))),
     }
   }
 
@@ -1373,7 +1356,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         executor.selectFrom('app.self_care_templates').selectAll().execute(),
       context.actorUserId,
     )
-    const templates = rows.map((row) => this.mapTemplate(row))
+    const templates = rows.map((row) => mapTemplateRow(row))
     return templates.length > 0 ? templates : buildSystemSelfCareTemplates()
   }
 
@@ -1447,7 +1430,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         'self_care_item_not_found',
         'Self-care item not found.',
       )
-    return this.mapItem(row)
+    return mapItemRow(row)
   }
 
   private async updateMigratedHabitState(
@@ -1492,7 +1475,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       context.auth,
       async (trx) => {
-        const occurrence = this.mapOccurrence(
+        const occurrence = mapOccurrenceRow(
           await this.loadOccurrenceRow(trx, context.actorUserId, occurrenceId),
         )
         const completion = createCompletionRecord(
@@ -1596,10 +1579,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return {
       minimumItems:
         minimumRows.length > 0
-          ? minimumRows.map((row) => this.mapMinimum(row))
+          ? minimumRows.map((row) => mapMinimumRow(row))
           : createDefaultMinimumItems(userId),
       settings: settingsRows[0]
-        ? this.mapSettings(settingsRows[0])
+        ? mapSettingsRow(settingsRows[0])
         : createDefaultSelfCareSettings({ userId }),
     }
   }
@@ -1623,7 +1606,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .orderBy('completed_at', 'desc')
       .executeTakeFirst()
 
-    return row ? this.mapCompletion(row) : null
+    return row ? mapCompletionRow(row) : null
   }
 
   private async markMissedOccurrences(
@@ -1855,36 +1838,32 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       itemRows[0]?.user_id ??
       '00000000-0000-0000-0000-000000000000'
     const settings = settingsRows[0]
-      ? this.mapSettings(settingsRows[0])
+      ? mapSettingsRow(settingsRows[0])
       : createDefaultSelfCareSettings({ userId })
     const minimumItems =
       minimumRows.length > 0
-        ? minimumRows.map((row) => this.mapMinimum(row))
+        ? minimumRows.map((row) => mapMinimumRow(row))
         : createDefaultMinimumItems(userId)
 
     return {
-      alternatives: alternativeRows.map((row) => this.mapAlternative(row)),
-      appointmentDetails: appointmentRows.map((row) =>
-        this.mapAppointment(row),
-      ),
-      completions: completionRows.map((row) => this.mapCompletion(row)),
-      courseDetails: courseRows.map((row) => this.mapCourse(row)),
-      dailyStates: dailyStateRows.map((row) => this.mapDailyState(row)),
-      items: itemRows.map((row) => this.mapItem(row)),
-      medicalDetails: medicalRows.map((row) => this.mapMedical(row)),
-      measurementDetails: measurementRows.map((row) =>
-        this.mapMeasurement(row),
-      ),
+      alternatives: alternativeRows.map((row) => mapAlternativeRow(row)),
+      appointmentDetails: appointmentRows.map((row) => mapAppointmentRow(row)),
+      completions: completionRows.map((row) => mapCompletionRow(row)),
+      courseDetails: courseRows.map((row) => mapCourseRow(row)),
+      dailyStates: dailyStateRows.map((row) => mapDailyStateRow(row)),
+      items: itemRows.map((row) => mapItemRow(row)),
+      medicalDetails: medicalRows.map((row) => mapMedicalRow(row)),
+      measurementDetails: measurementRows.map((row) => mapMeasurementRow(row)),
       minimumItems,
-      occurrences: occurrenceRows.map((row) => this.mapOccurrence(row)),
-      procedureDetails: procedureRows.map((row) => this.mapProcedure(row)),
-      scheduleRules: ruleRows.map((row) => this.mapRule(row)),
+      occurrences: occurrenceRows.map((row) => mapOccurrenceRow(row)),
+      procedureDetails: procedureRows.map((row) => mapProcedureRow(row)),
+      scheduleRules: ruleRows.map((row) => mapRuleRow(row)),
       settings,
       stepCompletions: filteredStepCompletionRows.map((row) =>
-        this.mapStepCompletion(row),
+        mapStepCompletionRow(row),
       ),
-      steps: stepRows.map((row) => this.mapStep(row)),
-      templates: templateRows.map((row) => this.mapTemplate(row)),
+      steps: stepRows.map((row) => mapStepRow(row)),
+      templates: templateRows.map((row) => mapTemplateRow(row)),
     }
   }
 
@@ -2282,7 +2261,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         })
         .returningAll()
         .executeTakeFirst()
-      return row ? this.mapOccurrence(row) : null
+      return row ? mapOccurrenceRow(row) : null
     } catch (error) {
       if (getDatabaseErrorCode(error) === '23505') {
         return null
@@ -2323,7 +2302,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .returningAll()
       .execute()
 
-    return rows.map((row) => this.mapOccurrence(row))
+    return rows.map((row) => mapOccurrenceRow(row))
   }
 
   private insertCompletion(
@@ -2552,513 +2531,4 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       ? query.where('occurrence_id', '=', input.occurrenceId).execute()
       : query.where('occurrence_id', 'is', null).execute()
   }
-
-  private mapItem(row: ItemRow): StoredSelfCareItemRecord {
-    return {
-      category: row.category,
-      color: row.color,
-      createdAt: serializeTimestamp(row.created_at),
-      createdFromTemplateId: row.created_from_template_id,
-      customCategoryId: row.custom_category_id,
-      defaultDurationMinutes: row.default_duration_minutes,
-      deletedAt: serializeNullableTimestamp(row.deleted_at),
-      description: row.description,
-      icon: row.icon,
-      id: row.id,
-      importance: row.importance,
-      isActive: row.is_active,
-      isArchived: row.is_archived,
-      isPrivate: row.is_private,
-      migratedFromHabitId: row.migrated_from_habit_id,
-      minimumVersionDescription: row.minimum_version_description,
-      minimumVersionDurationMinutes: row.minimum_version_duration_minutes,
-      minimumVersionTitle: row.minimum_version_title,
-      preferredTimeOfDay: row.preferred_time_of_day,
-      title: row.title,
-      type: row.type,
-      updatedAt: serializeTimestamp(row.updated_at),
-      userId: row.user_id,
-      version: Number(row.version),
-      workspaceId: row.workspace_id,
-    }
-  }
-
-  private mapAlternative(row: AlternativeRow): SelfCareItemAlternative {
-    return {
-      countsAsCompletion: row.counts_as_completion,
-      description: row.description,
-      id: row.id,
-      itemId: row.item_id,
-      title: row.title,
-    }
-  }
-
-  private mapRule(row: RuleRow): SelfCareScheduleRule {
-    return {
-      allowMultiplePerDay: row.allow_multiple_per_day,
-      createdAt: serializeTimestamp(row.created_at),
-      dayOfMonth: row.day_of_month,
-      daysOfWeek: parseJsonArray<number>(row.days_of_week, []),
-      endDate: serializeNullableDate(row.end_date),
-      flexiblePeriod: row.flexible_period,
-      flexibleTargetCount: row.flexible_target_count,
-      generateInCalendar: row.generate_in_calendar,
-      generateInTaskList: row.generate_in_task_list,
-      id: row.id,
-      intervalUnit: row.interval_unit,
-      intervalValue: row.interval_value,
-      itemId: row.item_id,
-      monthOfYear: row.month_of_year,
-      preferredTime: serializeNullableTime(row.preferred_time),
-      reminderOffsetsMinutes: parseJsonArray<number>(
-        row.reminder_offsets_minutes,
-        [],
-      ),
-      repeatKind: row.repeat_kind,
-      startDate: serializeNullableDate(row.start_date),
-      timezone: row.timezone,
-      updatedAt: serializeTimestamp(row.updated_at),
-      weekOfMonth: row.week_of_month,
-    }
-  }
-
-  private mapOccurrence(row: OccurrenceRow): StoredSelfCareOccurrenceRecord {
-    return {
-      completedAt: serializeNullableTimestamp(row.completed_at),
-      createdAt: serializeTimestamp(row.created_at),
-      dueAt: serializeNullableTimestamp(row.due_at),
-      generatedAt: serializeNullableTimestamp(row.generated_at),
-      id: row.id,
-      itemId: row.item_id,
-      movedTo: serializeNullableDate(row.moved_to),
-      scheduledFor: serializeDate(row.scheduled_for),
-      scheduleRuleId: row.schedule_rule_id,
-      status: row.status,
-      updatedAt: serializeTimestamp(row.updated_at),
-      userId: row.user_id,
-    }
-  }
-
-  private mapCompletion(row: CompletionRow): StoredSelfCareCompletionRecord {
-    return {
-      alternativeTitle: row.alternative_title,
-      completedAt: serializeTimestamp(row.completed_at),
-      completedVariant: row.completed_variant,
-      createdAt: serializeTimestamp(row.created_at),
-      durationMinutes: row.duration_minutes,
-      energyAfter: row.energy_after,
-      energyBefore: row.energy_before,
-      id: row.id,
-      itemId: row.item_id,
-      measurementUnit: row.measurement_unit,
-      measurementValue:
-        row.measurement_value === null ? null : Number(row.measurement_value),
-      moodAfter: row.mood_after,
-      moodBefore: row.mood_before,
-      note: row.note,
-      occurrenceId: row.occurrence_id,
-      scheduledFor: serializeNullableDate(row.scheduled_for),
-      status: row.status,
-      userId: row.user_id,
-    }
-  }
-
-  private mapStep(row: StepRow): SelfCareRitualStep {
-    return {
-      createdAt: serializeTimestamp(row.created_at),
-      defaultChecked: row.default_checked,
-      id: row.id,
-      isOptional: row.is_optional,
-      itemId: row.item_id,
-      order: row.sort_order,
-      title: row.title,
-      updatedAt: serializeTimestamp(row.updated_at),
-    }
-  }
-
-  private mapStepCompletion(
-    row: StepCompletionRow,
-  ): SelfCareRitualStepCompletion {
-    return {
-      completionId: row.completion_id,
-      id: row.id,
-      isDone: row.is_done,
-      stepId: row.step_id,
-    }
-  }
-
-  private mapStepDraft(row: StepDraftRow): StoredSelfCareRitualStepDraftRecord {
-    return {
-      date: serializeDate(row.date),
-      itemId: row.item_id,
-      occurrenceId: row.occurrence_id,
-      stepIds: parseJsonArray<string>(row.step_ids, []),
-      userId: row.user_id,
-      workspaceId: row.workspace_id,
-    }
-  }
-
-  private mapProcedure(row: ProcedureRow): SelfCareProcedureDetails {
-    return {
-      contact: row.contact,
-      createdAt: serializeTimestamp(row.created_at),
-      currency: row.currency,
-      defaultPrice:
-        row.default_price === null ? null : Number(row.default_price),
-      id: row.id,
-      itemId: row.item_id,
-      place: row.place,
-      specialistName: row.specialist_name,
-      updatedAt: serializeTimestamp(row.updated_at),
-    }
-  }
-
-  private mapAppointment(row: AppointmentRow): SelfCareAppointmentDetails {
-    return {
-      createdAt: serializeTimestamp(row.created_at),
-      currency: row.currency,
-      endsAt: serializeNullableTimestamp(row.ends_at),
-      id: row.id,
-      itemId: row.item_id,
-      occurrenceId: row.occurrence_id,
-      place: row.place,
-      preparationNote: row.preparation_note,
-      price: row.price === null ? null : Number(row.price),
-      resultNote: row.result_note,
-      specialistContact: row.specialist_contact,
-      specialistName: row.specialist_name,
-      startsAt: serializeTimestamp(row.starts_at),
-      updatedAt: serializeTimestamp(row.updated_at),
-    }
-  }
-
-  private mapMedical(row: MedicalRow): SelfCareMedicalDetails {
-    return {
-      analysisList: parseJsonArray<string>(row.analysis_list, []),
-      clinicAddress: row.clinic_address,
-      clinicName: row.clinic_name,
-      createdAt: serializeTimestamp(row.created_at),
-      documentUrls: parseJsonArray<string>(row.document_urls, []),
-      doctorName: row.doctor_name,
-      id: row.id,
-      itemId: row.item_id,
-      nextControlDate: serializeNullableDate(row.next_control_date),
-      phone: row.phone,
-      reminderStrategy: row.reminder_strategy,
-      resultNote: row.result_note,
-      updatedAt: serializeTimestamp(row.updated_at),
-      website: row.website,
-    }
-  }
-
-  private mapMeasurement(row: MeasurementRow): SelfCareMeasurementDetails {
-    return {
-      createdAt: serializeTimestamp(row.created_at),
-      id: row.id,
-      itemId: row.item_id,
-      targetMax: row.target_max === null ? null : Number(row.target_max),
-      targetMin: row.target_min === null ? null : Number(row.target_min),
-      unit: row.unit,
-      updatedAt: serializeTimestamp(row.updated_at),
-      valueLabel: row.value_label,
-    }
-  }
-
-  private mapCourse(row: CourseRow): SelfCareCourseDetails {
-    return {
-      completedCount: row.completed_count,
-      courseType: row.course_type,
-      createdAt: serializeTimestamp(row.created_at),
-      endDate: serializeNullableDate(row.end_date),
-      id: row.id,
-      isCompleted: row.is_completed,
-      isPaused: row.is_paused,
-      itemId: row.item_id,
-      startDate: serializeNullableDate(row.start_date),
-      totalCount: row.total_count,
-      updatedAt: serializeTimestamp(row.updated_at),
-    }
-  }
-
-  private mapDailyState(row: DailyStateRow): SelfCareDailyState {
-    return {
-      createdAt: serializeTimestamp(row.created_at),
-      date: serializeDate(row.date),
-      energy: row.energy,
-      id: row.id,
-      mood: row.mood,
-      note: row.note,
-      pain: row.pain,
-      sleepQuality: row.sleep_quality,
-      stress: row.stress,
-      updatedAt: serializeTimestamp(row.updated_at),
-      userId: row.user_id,
-    }
-  }
-
-  private mapTemplate(row: TemplateRow): SelfCareTemplate {
-    return {
-      category: row.category,
-      color: row.color,
-      createdAt: serializeTimestamp(row.created_at),
-      defaultSchedule: row.default_schedule,
-      defaultSteps: parseJsonArray<string>(row.default_steps, []),
-      description: row.description,
-      icon: row.icon,
-      id: row.id,
-      importance: row.importance,
-      isSystem: row.is_system,
-      title: row.title,
-      type: row.type,
-      updatedAt: serializeTimestamp(row.updated_at),
-    }
-  }
-
-  private mapSettings(row: SettingsRow): SelfCareSettings {
-    return {
-      createdAt: serializeTimestamp(row.created_at),
-      currency: row.currency,
-      defaultReminderTone: row.default_reminder_tone,
-      gentleModeDate: serializeNullableDate(row.gentle_mode_date),
-      gentleModeEnabledToday: row.gentle_mode_enabled_today,
-      id: row.id,
-      quietHoursEnd: row.quiet_hours_end,
-      quietHoursStart: row.quiet_hours_start,
-      showAppointmentsInCalendar: row.show_appointments_in_calendar,
-      showSelfCareInMainTasks: row.show_self_care_in_main_tasks,
-      updatedAt: serializeTimestamp(row.updated_at),
-      userId: row.user_id,
-    }
-  }
-
-  private mapMinimum(row: MinimumRow): SelfCareMinimumItem {
-    return {
-      createdAt: serializeTimestamp(row.created_at),
-      id: row.id,
-      isActive: row.is_active,
-      linkedItemId: row.linked_item_id,
-      order: row.sort_order,
-      title: row.title,
-      updatedAt: serializeTimestamp(row.updated_at),
-      userId: row.user_id,
-    }
-  }
-}
-
-async function selectChildren<TTable extends keyof DatabaseSchema>(
-  executor: DatabaseExecutor,
-  table: TTable,
-  itemIds: string[],
-) {
-  if (itemIds.length === 0) {
-    return [] as Array<Selectable<DatabaseSchema[TTable]>>
-  }
-
-  const result = await sql<Selectable<DatabaseSchema[TTable]>>`
-    select *
-    from ${sql.table(String(table))}
-    where item_id = any(${itemIds})
-  `.execute(executor)
-
-  return result.rows
-}
-
-function selectOccurrences(
-  executor: DatabaseExecutor,
-  input: {
-    actorUserId: string | null
-    includeAllScheduledOccurrences?: boolean | undefined
-    occurrenceRange?: LoadStateDateRange | undefined
-    scheduledOccurrencesBefore?: string | undefined
-  },
-) {
-  let query = executor.selectFrom('app.self_care_occurrences').selectAll()
-
-  if (input.actorUserId) {
-    query = query.where('user_id', '=', input.actorUserId)
-  }
-
-  if (input.occurrenceRange && input.includeAllScheduledOccurrences) {
-    query = query.where(sql<boolean>`
-      (
-        (scheduled_for >= ${input.occurrenceRange.from}
-          and scheduled_for <= ${input.occurrenceRange.to})
-        or status = 'scheduled'
-      )
-    `)
-  } else if (input.occurrenceRange && input.scheduledOccurrencesBefore) {
-    query = query.where(sql<boolean>`
-      (
-        (scheduled_for >= ${input.occurrenceRange.from}
-          and scheduled_for <= ${input.occurrenceRange.to})
-        or (status = 'scheduled'
-          and scheduled_for < ${input.scheduledOccurrencesBefore})
-      )
-    `)
-  } else if (input.occurrenceRange) {
-    query = query
-      .where('scheduled_for', '>=', input.occurrenceRange.from)
-      .where('scheduled_for', '<=', input.occurrenceRange.to)
-  } else if (input.scheduledOccurrencesBefore) {
-    query = query
-      .where('status', '=', 'scheduled')
-      .where('scheduled_for', '<', input.scheduledOccurrencesBefore)
-  }
-
-  return query.execute()
-}
-
-function selectCompletions(
-  executor: DatabaseExecutor,
-  input: {
-    actorUserId: string | null
-    completionRange?: LoadStateDateRange | undefined
-  },
-) {
-  let query = executor.selectFrom('app.self_care_completions').selectAll()
-
-  if (input.actorUserId) {
-    query = query.where('user_id', '=', input.actorUserId)
-  }
-
-  if (input.completionRange) {
-    query = query
-      .where(
-        'completed_at',
-        '>=',
-        toStartOfDayTimestamp(input.completionRange.from),
-      )
-      .where(
-        'completed_at',
-        '<',
-        toStartOfDayTimestamp(addDays(input.completionRange.to, 1)),
-      )
-  }
-
-  return query.execute()
-}
-
-function selectDailyStates(
-  executor: DatabaseExecutor,
-  input: {
-    dailyStateRange?: LoadStateDateRange | undefined
-    userId: string
-  },
-) {
-  let query = executor
-    .selectFrom('app.self_care_daily_states')
-    .selectAll()
-    .where('user_id', '=', input.userId)
-
-  if (input.dailyStateRange) {
-    query = query
-      .where('date', '>=', input.dailyStateRange.from)
-      .where('date', '<=', input.dailyStateRange.to)
-  }
-
-  return query.execute()
-}
-
-async function selectStepCompletions(
-  executor: DatabaseExecutor,
-  completionIds: string[],
-) {
-  if (completionIds.length === 0) {
-    return [] as StepCompletionRow[]
-  }
-
-  const result = await sql<StepCompletionRow>`
-    select *
-    from app.self_care_ritual_step_completions
-    where completion_id = any(${completionIds})
-  `.execute(executor)
-
-  return result.rows
-}
-
-function toStartOfDayTimestamp(dateKey: string): string {
-  return `${dateKey}T00:00:00.000Z`
-}
-
-function mapCompletionStatusToOccurrenceStatus(
-  status: StoredSelfCareCompletionRecord['status'],
-): StoredSelfCareOccurrenceRecord['status'] {
-  if (status === 'alternative_done') return 'partial'
-  return status
-}
-
-function toPublicRitualStepDraft(
-  draft: StoredSelfCareRitualStepDraftRecord,
-): SelfCareRitualStepDraft {
-  return {
-    date: draft.date,
-    itemId: draft.itemId,
-    occurrenceId: draft.occurrenceId,
-    stepIds: draft.stepIds,
-  }
-}
-
-function assertMeasurementCompletionInput(
-  item: StoredSelfCareItemRecord,
-  input: CompleteSelfCareItemNowCommand['input'],
-): void {
-  if (item.type !== 'measurement') {
-    return
-  }
-
-  if (input.measurementValue === null || input.measurementValue === undefined) {
-    throw new HttpError(
-      400,
-      'self_care_measurement_value_required',
-      'Measurement value is required.',
-    )
-  }
-}
-
-function assertMoodCheckCompletionInput(
-  item: StoredSelfCareItemRecord,
-  input: CompleteSelfCareItemNowCommand['input'],
-): void {
-  if (item.type !== 'mood_check') {
-    return
-  }
-
-  if (
-    (input.moodAfter === null || input.moodAfter === undefined) &&
-    (input.energyAfter === null || input.energyAfter === undefined)
-  ) {
-    throw new HttpError(
-      400,
-      'self_care_state_value_required',
-      'Mood or energy value is required.',
-    )
-  }
-}
-
-function hasScheduleDetails(
-  input: ScheduleSelfCareItemCommand['input'],
-): boolean {
-  return Boolean(
-    input.place?.trim() ||
-    input.specialistName?.trim() ||
-    input.specialistContact?.trim() ||
-    input.currency?.trim() ||
-    input.note?.trim() ||
-    input.price !== null,
-  )
-}
-
-function shouldStoreAppointmentDetails(
-  item: StoredSelfCareItemRecord,
-  input: ScheduleSelfCareItemCommand['input'],
-): boolean {
-  return (
-    item.type === 'appointment' ||
-    Boolean(input.scheduledTime) ||
-    hasScheduleDetails(input)
-  )
-}
-
-function buildScheduleDetailsStartsAt(scheduledFor: string): string {
-  return `${scheduledFor}T00:00:00.000Z`
 }
