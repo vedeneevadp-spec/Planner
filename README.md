@@ -6,7 +6,7 @@ SQL-first схема PostgreSQL.
 ## Стек
 
 - npm workspaces monorepo: `apps/web`, `apps/api`, `packages/contracts`
-- Web: React 19.2, React Router DOM 7.14, Vite 8, TanStack Query 5, Dexie 4
+- Web: React 19.2, React Router DOM 7.16, Vite 8, TanStack Query 5, Dexie 4
 - TypeScript 6 в strict mode; shared contracts на Zod 4
 - API: Fastify 5.8, Kysely 0.28, PostgreSQL через `pg`, OpenAPI/Swagger UI
 - Timeweb Managed PostgreSQL как production data store; Docker PostgreSQL локально
@@ -23,12 +23,17 @@ SQL-first схема PostgreSQL.
 - Docker для локального Postgres
 
 Версии Node зафиксированы в `.nvmrc` и `.node-version`.
+`npm run toolchain:check` проверяет, что активны именно зафиксированный Node и
+`packageManager` из `package.json`. Если npm пишет
+`Unknown env config "min-release-age"`, в окружение попал неподдерживаемый npm
+env config; перед project commands уберите `NPM_CONFIG_MIN_RELEASE_AGE`.
 
 ## Быстрый запуск
 
 Локальный Postgres:
 
 ```bash
+npm run toolchain:check
 npm ci
 npm run dev:local
 ```
@@ -61,6 +66,7 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run db:setup`                                      | `db:up` + migrations + seed                             |
 | `npm run outbox:run`                                    | обработать одну пачку outbox-сообщений                  |
 | `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний               |
+| `npm run toolchain:check`                               | проверить pinned Node/npm перед quality gates           |
 | `npm run lint` / `npm run lint:fix`                     | ESLint                                                  |
 | `npm run format:check` / `npm run format`               | Prettier                                                |
 | `npm run typecheck`                                     | typecheck web, contracts и API                          |
@@ -419,8 +425,9 @@ Workspace`: роли, права, жизненный цикл и правила 
 
 - pre-commit hook запускает `lint-staged`
 - CI запускает `npm run ci`
-- `npm run check` начинается с `npm run db:migrations:check`, чтобы новые
-  SQL-миграции не расходились по sequence до запуска тяжелых проверок
+- `npm run check` начинается с `npm run toolchain:check` и
+  `npm run db:migrations:check`, чтобы Node/npm и SQL-миграции не расходились
+  до запуска тяжелых проверок
 - CI дополнительно поднимает PostgreSQL, применяет миграции, запускает
   `npm run db:security:check`, `npm run test:api:postgres`,
   `npm run smoke:api:prod` и `npm run test:e2e`
