@@ -301,6 +301,7 @@ export function createCourseDetailsRecord(
   now = new Date().toISOString(),
 ): SelfCareCourseDetails {
   return {
+    breakDays: input.breakDays,
     completedCount: input.completedCount,
     courseType: input.courseType,
     createdAt: now,
@@ -309,6 +310,7 @@ export function createCourseDetailsRecord(
     isCompleted: input.isCompleted || input.completedCount >= input.totalCount,
     isPaused: input.isPaused,
     itemId,
+    repeatAfterCompletion: input.repeatAfterCompletion,
     startDate: input.startDate,
     totalCount: input.totalCount,
     updatedAt: now,
@@ -535,6 +537,7 @@ export function generateSelfCareOccurrencesForRange(input: {
     item.isArchived ||
     item.deletedAt !== null ||
     !scheduleRule ||
+    item.type === 'flexible_goal' ||
     scheduleRule.repeatKind === 'none' ||
     scheduleRule.repeatKind === 'flexible_goal'
   ) {
@@ -613,8 +616,11 @@ export function buildDashboardResponse(input: {
   const flexibleGoals = state.scheduleRules
     .filter(
       (rule) =>
-        rule.repeatKind === 'flexible_goal' &&
-        !flexibleGoalBlockedItemIds.has(rule.itemId),
+        isFlexibleGoalRuleActiveOnDate({
+          date,
+          item: itemById.get(rule.itemId) ?? null,
+          rule,
+        }) && !flexibleGoalBlockedItemIds.has(rule.itemId),
     )
     .flatMap((rule) => {
       const item = itemById.get(rule.itemId)
@@ -822,11 +828,12 @@ export function buildAnalyticsResponse(input: {
         : []
     }),
     flexibleGoals: input.state.scheduleRules
-      .filter((rule) => rule.repeatKind === 'flexible_goal')
+      .filter((rule) => rule.flexibleTargetCount && rule.flexiblePeriod)
       .flatMap((rule) => {
         const item = itemById.get(rule.itemId)
         if (
           !item ||
+          item.type !== 'flexible_goal' ||
           !isVisibleSelfCareItem(item) ||
           flexibleGoalItemIds.has(item.id)
         ) {
@@ -872,7 +879,10 @@ export function buildTodayItem(input: {
     input.state.scheduleRules.find((rule) => rule.itemId === input.item.id) ??
     null
   const flexibleProgress =
-    scheduleRule?.repeatKind === 'flexible_goal'
+    (input.item.type === 'flexible_goal' ||
+      scheduleRule?.repeatKind === 'flexible_goal') &&
+    scheduleRule?.flexibleTargetCount &&
+    scheduleRule.flexiblePeriod
       ? buildFlexibleProgressForRule(
           input.date,
           scheduleRule,
@@ -1201,11 +1211,13 @@ export function buildItemInputFromTemplate(
     ...(templateType === 'course'
       ? {
           courseDetails: {
+            breakDays: 0,
             completedCount: 0,
             courseType: 'days',
             endDate: null,
             isCompleted: false,
             isPaused: false,
+            repeatAfterCompletion: false,
             startDate: getDateKey(new Date()),
             totalCount: 30,
           },
@@ -1378,6 +1390,103 @@ function buildFlexibleProgressForRule(
     periodStart: period.periodStart,
     targetCount: rule.flexibleTargetCount,
   })
+}
+
+function isFlexibleGoalRuleActiveOnDate(input: {
+  date: string
+  item: SelfCareItem | null
+  rule: SelfCareScheduleRule
+}): boolean {
+  const { date, item, rule } = input
+
+  if (
+    !item ||
+    (item.type !== 'flexible_goal' && rule.repeatKind !== 'flexible_goal') ||
+    !isVisibleSelfCareItem(item) ||
+    !rule.flexibleTargetCount ||
+    !rule.flexiblePeriod
+  ) {
+    return false
+  }
+
+  const startDate = rule.startDate ?? item.createdAt.slice(0, 10)
+
+  if (date < startDate || (rule.endDate && date > rule.endDate)) {
+    return false
+  }
+
+  if (rule.repeatKind === 'none') {
+    const firstPeriod = getFlexibleGoalPeriod(startDate, rule.flexiblePeriod)
+    return date >= firstPeriod.periodStart && date <= firstPeriod.periodEnd
+  }
+
+  if (rule.repeatKind === 'flexible_goal') {
+    return true
+  }
+
+  if (rule.repeatKind === 'course' || rule.repeatKind === 'after_completion') {
+    return false
+  }
+
+  const currentPeriod = getFlexibleGoalPeriod(date, rule.flexiblePeriod)
+  const repeatInterval = getFlexibleGoalRepeatInterval(rule)
+
+  return isRepeatingFlexiblePeriodActive({
+    periodEnd: currentPeriod.periodEnd,
+    periodStart: currentPeriod.periodStart,
+    repeatInterval,
+    startDate,
+  })
+}
+
+function getFlexibleGoalRepeatInterval(rule: SelfCareScheduleRule): {
+  unit: NonNullable<SelfCareScheduleRule['intervalUnit']>
+  value: number
+} {
+  if (rule.repeatKind === 'daily') {
+    return { unit: 'day', value: rule.intervalValue ?? 1 }
+  }
+
+  if (rule.repeatKind === 'weekly') {
+    return { unit: 'week', value: rule.intervalValue ?? 1 }
+  }
+
+  if (rule.repeatKind === 'monthly') {
+    return { unit: 'month', value: rule.intervalValue ?? 1 }
+  }
+
+  if (rule.repeatKind === 'yearly') {
+    return { unit: 'year', value: rule.intervalValue ?? 1 }
+  }
+
+  return {
+    unit: rule.intervalUnit ?? 'day',
+    value: rule.intervalValue ?? 1,
+  }
+}
+
+function isRepeatingFlexiblePeriodActive(input: {
+  periodEnd: string
+  periodStart: string
+  repeatInterval: {
+    unit: NonNullable<SelfCareScheduleRule['intervalUnit']>
+    value: number
+  }
+  startDate: string
+}): boolean {
+  let cursor = input.startDate
+  let guard = 0
+
+  while (cursor < input.periodStart && guard < 5000) {
+    cursor = addInterval(
+      cursor,
+      input.repeatInterval.value,
+      input.repeatInterval.unit,
+    )
+    guard += 1
+  }
+
+  return cursor <= input.periodEnd
 }
 
 function buildPlanningHints(date: string, state: SelfCareStateSnapshot) {
@@ -1556,6 +1665,45 @@ export function shouldDeduplicateSelfCareItemCompletion(input: {
     input.scheduleRule?.repeatKind !== 'flexible_goal' &&
     input.scheduleRule?.allowMultiplePerDay !== true
   )
+}
+
+export function shouldDeactivateCompletedFlexibleGoal(input: {
+  completion: SelfCareCompletion
+  completions: SelfCareCompletion[]
+  item: SelfCareItem
+  scheduleRule: SelfCareScheduleRule | null
+}): boolean {
+  const { completion, completions, item, scheduleRule } = input
+
+  if (
+    item.type !== 'flexible_goal' ||
+    scheduleRule?.repeatKind !== 'none' ||
+    !scheduleRule.flexiblePeriod ||
+    !scheduleRule.flexibleTargetCount
+  ) {
+    return false
+  }
+
+  const startDate = scheduleRule.startDate ?? item.createdAt.slice(0, 10)
+  const completionDate = completion.completedAt.slice(0, 10)
+  const period = getFlexibleGoalPeriod(startDate, scheduleRule.flexiblePeriod)
+
+  if (
+    completionDate < period.periodStart ||
+    completionDate > period.periodEnd
+  ) {
+    return false
+  }
+
+  const progress = getFlexibleGoalProgress({
+    completions,
+    itemId: item.id,
+    periodEnd: period.periodEnd,
+    periodStart: period.periodStart,
+    targetCount: scheduleRule.flexibleTargetCount,
+  })
+
+  return progress.completedCount >= progress.targetCount
 }
 
 function isVisibleSelfCareItem(item: SelfCareItem): boolean {

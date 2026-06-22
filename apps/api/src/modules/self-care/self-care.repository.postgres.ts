@@ -117,6 +117,7 @@ import {
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   type SelfCareStateSnapshot,
+  shouldDeactivateCompletedFlexibleGoal,
   shouldDeduplicateSelfCareItemCompletion,
   updateOccurrenceStatus,
 } from './self-care.shared.js'
@@ -737,7 +738,11 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             workspaceId: command.context.workspaceId,
           })
         }
-        await this.incrementCourse(trx, item.id)
+        await this.incrementCourse(
+          trx,
+          item.id,
+          completion.completedAt.slice(0, 10),
+        )
         return completion
       },
       command.context.actorUserId,
@@ -822,7 +827,13 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           userId: command.context.actorUserId,
           workspaceId: command.context.workspaceId,
         })
-        await this.incrementCourse(trx, item.id)
+        await this.deactivateFlexibleGoalIfCompleted(trx, {
+          actorUserId: command.context.actorUserId,
+          completion,
+          item,
+          scheduleRule,
+        })
+        await this.incrementCourse(trx, item.id, completionDate)
         return completion
       },
       command.context.actorUserId,
@@ -2224,6 +2235,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return executor
       .insertInto('app.self_care_course_details')
       .values({
+        break_days: details.breakDays,
         completed_count: details.completedCount,
         course_type: details.courseType,
         end_date: details.endDate,
@@ -2231,6 +2243,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         is_completed: details.isCompleted,
         is_paused: details.isPaused,
         item_id: details.itemId,
+        repeat_after_completion: details.repeatAfterCompletion,
         start_date: details.startDate,
         total_count: details.totalCount,
       })
@@ -2353,7 +2366,11 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .execute()
   }
 
-  private async incrementCourse(executor: DatabaseExecutor, itemId: string) {
+  private async incrementCourse(
+    executor: DatabaseExecutor,
+    itemId: string,
+    completionDate: string,
+  ) {
     const row = await executor
       .selectFrom('app.self_care_course_details')
       .selectAll()
@@ -2361,13 +2378,77 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .executeTakeFirst()
     if (!row || row.is_completed) return
     const completedCount = Math.min(row.total_count, row.completed_count + 1)
+
+    if (completedCount >= row.total_count && row.repeat_after_completion) {
+      const nextStartDate = addDays(completionDate, row.break_days + 1)
+      await executor
+        .updateTable('app.self_care_course_details')
+        .set({
+          completed_count: 0,
+          end_date: null,
+          is_completed: false,
+          start_date: nextStartDate,
+          updated_at: sql`now()`,
+        })
+        .where('id', '=', row.id)
+        .execute()
+      await executor
+        .updateTable('app.self_care_schedule_rules')
+        .set({ start_date: nextStartDate, updated_at: sql`now()` })
+        .where('item_id', '=', itemId)
+        .where('repeat_kind', '=', 'course')
+        .execute()
+      return
+    }
+
     await executor
       .updateTable('app.self_care_course_details')
       .set({
         completed_count: completedCount,
         is_completed: completedCount >= row.total_count,
+        updated_at: sql`now()`,
       })
       .where('id', '=', row.id)
+      .execute()
+  }
+
+  private async deactivateFlexibleGoalIfCompleted(
+    executor: DatabaseExecutor,
+    input: {
+      actorUserId: string
+      completion: SelfCareCompletion
+      item: StoredSelfCareItemRecord
+      scheduleRule: SelfCareScheduleRule | null
+    },
+  ): Promise<void> {
+    const completionRows = await executor
+      .selectFrom('app.self_care_completions')
+      .selectAll()
+      .where('item_id', '=', input.item.id)
+      .where('user_id', '=', input.actorUserId)
+      .execute()
+    const completions = completionRows.map((row) => mapCompletionRow(row))
+
+    if (
+      !shouldDeactivateCompletedFlexibleGoal({
+        completion: input.completion,
+        completions,
+        item: input.item,
+        scheduleRule: input.scheduleRule,
+      })
+    ) {
+      return
+    }
+
+    await executor
+      .updateTable('app.self_care_items')
+      .set({
+        is_active: false,
+        updated_at: sql`now()`,
+        version: sql`version + 1`,
+      })
+      .where('id', '=', input.item.id)
+      .where('user_id', '=', input.actorUserId)
       .execute()
   }
 

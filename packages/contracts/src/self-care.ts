@@ -301,6 +301,7 @@ export const selfCareMedicalDetailsSchema = z.object({
 })
 
 export const selfCareCourseDetailsSchema = z.object({
+  breakDays: z.number().int().nonnegative(),
   completedCount: z.number().int().nonnegative(),
   courseType: selfCareCourseTypeSchema,
   createdAt: z.string(),
@@ -309,6 +310,7 @@ export const selfCareCourseDetailsSchema = z.object({
   isCompleted: z.boolean(),
   isPaused: z.boolean(),
   itemId: z.string(),
+  repeatAfterCompletion: z.boolean(),
   startDate: z.string().nullable(),
   totalCount: z.number().int().positive(),
   updatedAt: z.string(),
@@ -626,11 +628,13 @@ export const selfCareMedicalDetailsInputSchema = z.object({
 })
 
 export const selfCareCourseDetailsInputSchema = z.object({
+  breakDays: z.number().int().nonnegative().optional().default(0),
   completedCount: z.number().int().nonnegative().optional().default(0),
   courseType: selfCareCourseTypeSchema,
   endDate: nullableStringInput,
   isCompleted: z.boolean().optional().default(false),
   isPaused: z.boolean().optional().default(false),
+  repeatAfterCompletion: z.boolean().optional().default(false),
   startDate: nullableStringInput,
   totalCount: z.number().int().positive(),
 })
@@ -689,12 +693,36 @@ export const selfCareItemInputObjectSchema = z.object({
 export const selfCareItemInputSchema =
   selfCareItemInputObjectSchema.superRefine((value, ctx) => {
     if (value.type === 'flexible_goal') {
-      if (value.scheduleRule?.repeatKind !== 'flexible_goal') {
+      if (!value.scheduleRule) {
         ctx.addIssue({
           code: 'custom',
-          message: 'Flexible goals require a flexible_goal schedule rule.',
+          message: 'Flexible goals require a schedule rule.',
           path: ['scheduleRule'],
         })
+      } else {
+        if (
+          value.scheduleRule.repeatKind === 'course' ||
+          value.scheduleRule.repeatKind === 'after_completion'
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              'Flexible goals cannot use course or after-completion schedules.',
+            path: ['scheduleRule', 'repeatKind'],
+          })
+        }
+
+        if (
+          !value.scheduleRule.flexibleTargetCount ||
+          !value.scheduleRule.flexiblePeriod
+        ) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              'Flexible goals require flexibleTargetCount and flexiblePeriod.',
+            path: ['scheduleRule', 'flexibleTargetCount'],
+          })
+        }
       }
     }
 

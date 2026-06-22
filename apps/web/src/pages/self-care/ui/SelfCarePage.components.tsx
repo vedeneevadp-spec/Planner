@@ -47,8 +47,10 @@ import {
   canRestartCourse,
   CATEGORY_LABELS,
   CATEGORY_SELECT_OPTIONS,
+  COURSE_REPEAT_SELECT_OPTIONS,
   COURSE_SCHEDULE_SELECT_OPTIONS,
   COURSE_TYPE_SELECT_OPTIONS,
+  FLEXIBLE_GOAL_REPEAT_SELECT_OPTIONS,
   FLEXIBLE_PERIOD_SELECT_OPTIONS,
   formatCompletionState,
   formatCourseCompletionState,
@@ -74,10 +76,13 @@ import {
   getCourseUnitLabel,
   getCourseVisibleRepeatKind,
   getCreateScheduleRepeatKind,
+  getDefaultFlexibleGoalIntervalUnit,
+  getDefaultFlexibleGoalRepeatKind,
   getEffectiveRitualStepIds,
   getExactScheduleDateLabel,
   getExactScheduleTimeLabel,
   getInitialEditRepeatMode,
+  getInitialFlexibleGoalRepeatMode,
   getInitialMeasurementValue,
   getInitialScheduleDate,
   getInitialScheduleTime,
@@ -96,6 +101,7 @@ import {
   normalizeOptionalText,
   parseBoundedInteger,
   parseMultilineTitles,
+  parseNonnegativeInteger,
   parseOptionalMeasurementNumber,
   parseOptionalPrice,
   parsePositiveInteger,
@@ -103,6 +109,7 @@ import {
   repeatKindRequiresInterval,
   type RitualStepDrafts,
   type SelfCareCourseEditScheduleMode,
+  type SelfCareCourseRepeatMode,
   type SelfCareCourseRestartPayload,
   type SelfCareCourseScheduleMode,
   type SelfCareCourseType,
@@ -1128,6 +1135,7 @@ function SelfCareItemCard({
   uploadedIcons: UploadedIconAsset[]
 }) {
   const todayKey = getDateKey(new Date())
+  const isInactive = !entry.item.isActive || entry.item.isArchived
   const isDone = isEntryDoneToday(entry, todayKey)
   const primaryActionLabel = getPrimaryActionLabel(entry, isDone)
   const flexibleProgressLabel = entry.flexibleProgress
@@ -1176,7 +1184,7 @@ function SelfCareItemCard({
             key={action}
             className={cx(styles.cardActionButton, styles.cardActionButtonDone)}
             type="button"
-            disabled={isBusy || isDone}
+            disabled={isBusy || isDone || isInactive}
             title={primaryActionLabel}
             aria-label={`${primaryActionLabel}: «${entry.item.title}»`}
             onClick={() => onAction(entry)}
@@ -1264,7 +1272,7 @@ function SelfCareItemCard({
       className={cx(
         styles.card,
         compact && styles.cardCompact,
-        isDone && styles.cardDone,
+        (isDone || isInactive) && styles.cardDone,
       )}
     >
       <div className={styles.cardMain}>
@@ -1279,6 +1287,7 @@ function SelfCareItemCard({
           {!isTodayView ? (
             <p className={styles.cardMeta}>{cardMetaLabel}</p>
           ) : null}
+          {isInactive ? <p className={styles.progressText}>Неактивна</p> : null}
           {todayScheduleLabel ? (
             <p className={styles.cardMeta}>{todayScheduleLabel}</p>
           ) : null}
@@ -1912,6 +1921,9 @@ function SelfCareCustomCreateForm({
     useState<SelfCareFlexiblePeriod>('week')
   const [courseType, setCourseType] = useState<SelfCareCourseType>('days')
   const [courseTotalCount, setCourseTotalCount] = useState('30')
+  const [courseRepeatMode, setCourseRepeatMode] =
+    useState<SelfCareCourseRepeatMode>('once')
+  const [courseBreakDays, setCourseBreakDays] = useState('7')
   const [scheduledDate, setScheduledDate] = useState(todayKey)
   const [scheduledTime, setScheduledTime] = useState('')
   const [detailsPlace, setDetailsPlace] = useState('')
@@ -1929,6 +1941,7 @@ function SelfCareCustomCreateForm({
   const intervalNumber = parsePositiveInteger(intervalValue)
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
+  const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
   const measurementTargetMinNumber =
     parseOptionalMeasurementNumber(measurementTargetMin)
   const measurementTargetMaxNumber =
@@ -1943,15 +1956,24 @@ function SelfCareCustomCreateForm({
   const needsInterval =
     repeatKindRequiresInterval(scheduleRepeatKind) ||
     (type === 'course' && courseScheduleMode === 'interval')
+  const usesFlexibleGoalRepeat = type === 'flexible_goal'
   const canSubmit =
     title.trim().length > 0 &&
     (!needsInterval || Boolean(intervalNumber)) &&
-    (visibleRepeatKind !== 'weekly' || daysOfWeek.length > 0) &&
-    (visibleRepeatKind !== 'monthly' || Boolean(dayOfMonthNumber)) &&
-    (visibleRepeatKind !== 'yearly' ||
+    (usesFlexibleGoalRepeat ||
+      visibleRepeatKind !== 'weekly' ||
+      daysOfWeek.length > 0) &&
+    (usesFlexibleGoalRepeat ||
+      visibleRepeatKind !== 'monthly' ||
+      Boolean(dayOfMonthNumber)) &&
+    (usesFlexibleGoalRepeat ||
+      visibleRepeatKind !== 'yearly' ||
       (Boolean(dayOfMonthNumber) && Boolean(monthOfYearNumber))) &&
-    (scheduleRepeatKind !== 'flexible_goal' || Boolean(flexibleTargetNumber)) &&
+    (type !== 'flexible_goal' || Boolean(flexibleTargetNumber)) &&
     (type !== 'course' || Boolean(courseTotalNumber)) &&
+    (type !== 'course' ||
+      courseRepeatMode !== 'cycle' ||
+      courseBreakDaysNumber !== null) &&
     (!usesExactSchedule || scheduledDate.length > 0) &&
     (type !== 'measurement' ||
       (measurementUnit.trim().length > 0 &&
@@ -1985,12 +2007,17 @@ function SelfCareCustomCreateForm({
       setCategory('movement')
       setFlexibleTargetCount('3')
       setFlexiblePeriod('week')
+      setIntervalValue('1')
+      setIntervalUnit('week')
+      setRepeatKind('weekly')
     }
 
     if (nextType === 'course') {
       setCategory('health')
       setCourseScheduleMode('daily')
       setCourseTotalCount('30')
+      setCourseRepeatMode('once')
+      setCourseBreakDays('7')
     }
 
     if (nextType === 'measurement') {
@@ -2025,6 +2052,7 @@ function SelfCareCustomCreateForm({
                 daysOfWeek,
                 flexiblePeriod,
                 flexibleTargetCount: flexibleTargetNumber ?? 1,
+                hasFlexibleGoal: type === 'flexible_goal',
                 intervalUnit,
                 intervalValue: intervalNumber ?? 1,
                 monthOfYear:
@@ -2062,11 +2090,16 @@ function SelfCareCustomCreateForm({
             courseDetails:
               type === 'course'
                 ? {
+                    breakDays:
+                      courseRepeatMode === 'cycle'
+                        ? (courseBreakDaysNumber ?? 0)
+                        : 0,
                     completedCount: 0,
                     courseType,
                     endDate: null,
                     isCompleted: false,
                     isPaused: false,
+                    repeatAfterCompletion: courseRepeatMode === 'cycle',
                     startDate: todayKey,
                     totalCount: courseTotalNumber ?? 1,
                   }
@@ -2210,7 +2243,15 @@ function SelfCareCustomCreateForm({
             options={COURSE_SCHEDULE_SELECT_OPTIONS}
             onChange={setCourseScheduleMode}
           />
-        ) : type === 'flexible_goal' ? null : (
+        ) : type === 'flexible_goal' ? (
+          <SelectPicker<SelfCareStandardRepeatKind>
+            className={styles.selectField}
+            label="Повтор цели"
+            value={repeatKind}
+            options={FLEXIBLE_GOAL_REPEAT_SELECT_OPTIONS}
+            onChange={setRepeatKind}
+          />
+        ) : (
           <SelectPicker<SelfCareStandardRepeatKind>
             className={styles.selectField}
             label="Регулярность"
@@ -2221,11 +2262,25 @@ function SelfCareCustomCreateForm({
         )}
       </div>
 
+      {type === 'flexible_goal' ? (
+        <SelfCareFlexibleGoalFields
+          flexiblePeriod={flexiblePeriod}
+          flexibleTargetCount={flexibleTargetCount}
+          onChangeFlexiblePeriod={(nextPeriod) => {
+            setFlexiblePeriod(nextPeriod)
+            setIntervalUnit(getDefaultFlexibleGoalIntervalUnit(nextPeriod))
+            setRepeatKind(getDefaultFlexibleGoalRepeatKind(nextPeriod))
+          }}
+          onChangeFlexibleTargetCount={setFlexibleTargetCount}
+        />
+      ) : null}
+
       <SelfCareRepeatFields
         dayOfMonth={dayOfMonth}
         daysOfWeek={daysOfWeek}
         flexiblePeriod={flexiblePeriod}
         flexibleTargetCount={flexibleTargetCount}
+        hideCalendarDetails={type === 'flexible_goal'}
         intervalUnit={intervalUnit}
         intervalValue={intervalValue}
         monthOfYear={monthOfYear}
@@ -2266,28 +2321,55 @@ function SelfCareCustomCreateForm({
       ) : null}
 
       {type === 'course' ? (
-        <div className={styles.createFormGrid}>
-          <label className={styles.dateField}>
-            <span>Длина курса</span>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              inputMode="numeric"
-              required
-              value={courseTotalCount}
-              onChange={(event) => setCourseTotalCount(event.target.value)}
-            />
-          </label>
+        <>
+          <div className={styles.createFormGrid}>
+            <label className={styles.dateField}>
+              <span>Длина курса</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                required
+                value={courseTotalCount}
+                onChange={(event) => setCourseTotalCount(event.target.value)}
+              />
+            </label>
 
-          <SelectPicker<SelfCareCourseType>
-            className={styles.selectField}
-            label="Единица курса"
-            value={courseType}
-            options={COURSE_TYPE_SELECT_OPTIONS}
-            onChange={setCourseType}
-          />
-        </div>
+            <SelectPicker<SelfCareCourseType>
+              className={styles.selectField}
+              label="Единица курса"
+              value={courseType}
+              options={COURSE_TYPE_SELECT_OPTIONS}
+              onChange={setCourseType}
+            />
+          </div>
+
+          <div className={styles.createFormGrid}>
+            <SelectPicker<SelfCareCourseRepeatMode>
+              className={styles.selectField}
+              label="Повтор курса"
+              value={courseRepeatMode}
+              options={COURSE_REPEAT_SELECT_OPTIONS}
+              onChange={setCourseRepeatMode}
+            />
+
+            {courseRepeatMode === 'cycle' ? (
+              <label className={styles.dateField}>
+                <span>Перерыв, дней</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  required
+                  value={courseBreakDays}
+                  onChange={(event) => setCourseBreakDays(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+        </>
       ) : null}
 
       {type === 'measurement' ? (
@@ -2466,11 +2548,49 @@ function SelfCareVisitDetailsFields({
   )
 }
 
+function SelfCareFlexibleGoalFields({
+  flexiblePeriod,
+  flexibleTargetCount,
+  onChangeFlexiblePeriod,
+  onChangeFlexibleTargetCount,
+}: {
+  flexiblePeriod: SelfCareFlexiblePeriod
+  flexibleTargetCount: string
+  onChangeFlexiblePeriod: (value: SelfCareFlexiblePeriod) => void
+  onChangeFlexibleTargetCount: (value: string) => void
+}) {
+  return (
+    <div className={styles.createFormGrid}>
+      <label className={styles.dateField}>
+        <span>Цель</span>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          inputMode="numeric"
+          required
+          value={flexibleTargetCount}
+          onChange={(event) => onChangeFlexibleTargetCount(event.target.value)}
+        />
+      </label>
+
+      <SelectPicker<SelfCareFlexiblePeriod>
+        className={styles.selectField}
+        label="Период цели"
+        value={flexiblePeriod}
+        options={FLEXIBLE_PERIOD_SELECT_OPTIONS}
+        onChange={onChangeFlexiblePeriod}
+      />
+    </div>
+  )
+}
+
 function SelfCareRepeatFields({
   dayOfMonth,
   daysOfWeek,
   flexiblePeriod,
   flexibleTargetCount,
+  hideCalendarDetails = false,
   intervalUnit,
   intervalValue,
   monthOfYear,
@@ -2487,6 +2607,7 @@ function SelfCareRepeatFields({
   daysOfWeek: number[]
   flexiblePeriod: SelfCareFlexiblePeriod
   flexibleTargetCount: string
+  hideCalendarDetails?: boolean | undefined
   intervalUnit: SelfCareIntervalUnit
   intervalValue: string
   monthOfYear: string
@@ -2524,6 +2645,10 @@ function SelfCareRepeatFields({
         />
       </div>
     )
+  }
+
+  if (hideCalendarDetails) {
+    return null
   }
 
   if (repeatKind === 'weekly') {
@@ -2753,15 +2878,25 @@ function SelfCareEditForm({
   const [preferredTimeOfDay, setPreferredTimeOfDay] =
     useState<SelfCareTimeOfDay>(entry.item.preferredTimeOfDay ?? 'anytime')
   const [repeatMode, setRepeatMode] = useState<SelfCareEditRepeatMode>(
-    getInitialEditRepeatMode(entry.scheduleRule),
+    entry.item.type === 'flexible_goal'
+      ? getInitialFlexibleGoalRepeatMode(entry.scheduleRule)
+      : getInitialEditRepeatMode(entry.scheduleRule),
   )
   const [courseScheduleMode, setCourseScheduleMode] =
     useState<SelfCareCourseEditScheduleMode>('keep')
   const [intervalValue, setIntervalValue] = useState(
-    formatOptionalNumber(entry.scheduleRule?.intervalValue ?? 4),
+    formatOptionalNumber(
+      entry.scheduleRule?.intervalValue ??
+        (entry.item.type === 'flexible_goal' ? 1 : 4),
+    ),
   )
   const [intervalUnit, setIntervalUnit] = useState<SelfCareIntervalUnit>(
-    entry.scheduleRule?.intervalUnit ?? 'week',
+    entry.scheduleRule?.intervalUnit ??
+      (entry.item.type === 'flexible_goal'
+        ? getDefaultFlexibleGoalIntervalUnit(
+            entry.scheduleRule?.flexiblePeriod ?? 'week',
+          )
+        : 'week'),
   )
   const [daysOfWeek, setDaysOfWeek] = useState<number[]>(
     entry.scheduleRule?.daysOfWeek.length
@@ -2783,6 +2918,19 @@ function SelfCareEditForm({
   )
   const [flexiblePeriod, setFlexiblePeriod] = useState<SelfCareFlexiblePeriod>(
     entry.scheduleRule?.flexiblePeriod ?? 'week',
+  )
+  const [courseType, setCourseType] = useState<SelfCareCourseType>(
+    entry.courseDetails?.courseType ?? 'days',
+  )
+  const [courseTotalCount, setCourseTotalCount] = useState(
+    formatOptionalNumber(entry.courseDetails?.totalCount ?? 30),
+  )
+  const [courseRepeatMode, setCourseRepeatMode] =
+    useState<SelfCareCourseRepeatMode>(
+      entry.courseDetails?.repeatAfterCompletion ? 'cycle' : 'once',
+    )
+  const [courseBreakDays, setCourseBreakDays] = useState(
+    formatOptionalNumber(entry.courseDetails?.breakDays ?? 7),
   )
   const [stepsText, setStepsText] = useState(
     entry.steps.map((step) => step.title).join('\n'),
@@ -2823,6 +2971,8 @@ function SelfCareEditForm({
   )
   const intervalNumber = parsePositiveInteger(intervalValue)
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
+  const courseTotalNumber = parsePositiveInteger(courseTotalCount)
+  const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
   const measurementTargetMinNumber =
     parseOptionalMeasurementNumber(measurementTargetMin)
   const measurementTargetMaxNumber =
@@ -2833,6 +2983,7 @@ function SelfCareEditForm({
   const selectedCourseScheduleMode =
     courseScheduleMode === 'keep' ? null : courseScheduleMode
   const isFlexibleGoal = entry.item.type === 'flexible_goal'
+  const usesFlexibleGoalRepeat = entry.item.type === 'flexible_goal'
   const editVisibleRepeatKind = selectedCourseScheduleMode
     ? getCourseVisibleRepeatKind(selectedCourseScheduleMode)
     : selectedRepeatKind
@@ -2847,13 +2998,22 @@ function SelfCareEditForm({
         selectedCourseScheduleMode === 'interval'
       ) ||
         Boolean(intervalNumber)) &&
-        (editVisibleRepeatKind !== 'weekly' || daysOfWeek.length > 0) &&
-        (editVisibleRepeatKind !== 'monthly' || Boolean(dayOfMonthNumber)) &&
-        (editVisibleRepeatKind !== 'yearly' ||
+        (usesFlexibleGoalRepeat ||
+          editVisibleRepeatKind !== 'weekly' ||
+          daysOfWeek.length > 0) &&
+        (usesFlexibleGoalRepeat ||
+          editVisibleRepeatKind !== 'monthly' ||
+          Boolean(dayOfMonthNumber)) &&
+        (usesFlexibleGoalRepeat ||
+          editVisibleRepeatKind !== 'yearly' ||
           (Boolean(dayOfMonthNumber) && Boolean(monthOfYearNumber))) &&
-        (editVisibleRepeatKind !== 'flexible_goal' ||
+        (entry.item.type !== 'flexible_goal' ||
           Boolean(flexibleTargetNumber)))) &&
     (!isFlexibleGoal || Boolean(flexibleTargetNumber)) &&
+    (entry.item.type !== 'course' || Boolean(courseTotalNumber)) &&
+    (entry.item.type !== 'course' ||
+      courseRepeatMode !== 'cycle' ||
+      courseBreakDaysNumber !== null) &&
     (entry.item.type !== 'measurement' ||
       (measurementUnit.trim().length > 0 &&
         isValidMeasurementTargetRange(
@@ -2892,6 +3052,7 @@ function SelfCareEditForm({
             daysOfWeek,
             flexiblePeriod,
             flexibleTargetCount: flexibleTargetNumber ?? 1,
+            hasFlexibleGoal: false,
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
@@ -2899,15 +3060,22 @@ function SelfCareEditForm({
             startDate: entry.scheduleRule?.startDate ?? todayKey,
           })
         } else if (entry.item.type === 'flexible_goal') {
+          const flexibleRepeatKind =
+            selectedRepeatKind ??
+            (entry.scheduleRule?.repeatKind === 'flexible_goal'
+              ? 'flexible_goal'
+              : getInitialFlexibleGoalRepeatMode(entry.scheduleRule))
+          input.isActive = true
           input.scheduleRule = buildCreateScheduleRule({
             dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
             daysOfWeek,
             flexiblePeriod,
             flexibleTargetCount: flexibleTargetNumber ?? 1,
+            hasFlexibleGoal: true,
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-            repeatKind: 'flexible_goal',
+            repeatKind: flexibleRepeatKind,
             startDate: entry.scheduleRule?.startDate ?? todayKey,
           })
         } else if (selectedRepeatKind) {
@@ -2916,6 +3084,7 @@ function SelfCareEditForm({
             daysOfWeek,
             flexiblePeriod,
             flexibleTargetCount: flexibleTargetNumber ?? 1,
+            hasFlexibleGoal: false,
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
@@ -2935,6 +3104,25 @@ function SelfCareEditForm({
               title: stepTitle,
             }),
           )
+        }
+
+        if (entry.item.type === 'course') {
+          input.courseDetails = {
+            breakDays:
+              courseRepeatMode === 'cycle' ? (courseBreakDaysNumber ?? 0) : 0,
+            completedCount: entry.courseDetails?.completedCount ?? 0,
+            courseType,
+            endDate: entry.courseDetails?.endDate ?? null,
+            isCompleted: entry.courseDetails?.isCompleted ?? false,
+            isPaused: entry.courseDetails?.isPaused ?? false,
+            repeatAfterCompletion: courseRepeatMode === 'cycle',
+            startDate:
+              entry.courseDetails?.startDate ??
+              entry.scheduleRule?.startDate ??
+              todayKey,
+            totalCount:
+              courseTotalNumber ?? entry.courseDetails?.totalCount ?? 1,
+          }
         }
 
         if (entry.item.type === 'procedure') {
@@ -3041,7 +3229,15 @@ function SelfCareEditForm({
             ]}
             onChange={setCourseScheduleMode}
           />
-        ) : entry.item.type === 'flexible_goal' ? null : (
+        ) : entry.item.type === 'flexible_goal' ? (
+          <SelectPicker<SelfCareEditRepeatMode>
+            className={styles.selectField}
+            label="Повтор цели"
+            value={repeatMode}
+            options={FLEXIBLE_GOAL_REPEAT_SELECT_OPTIONS}
+            onChange={setRepeatMode}
+          />
+        ) : (
           <SelectPicker<SelfCareEditRepeatMode>
             className={styles.selectField}
             label="Регулярность"
@@ -3058,12 +3254,26 @@ function SelfCareEditForm({
         )}
       </div>
 
+      {entry.item.type === 'flexible_goal' ? (
+        <SelfCareFlexibleGoalFields
+          flexiblePeriod={flexiblePeriod}
+          flexibleTargetCount={flexibleTargetCount}
+          onChangeFlexiblePeriod={(nextPeriod) => {
+            setFlexiblePeriod(nextPeriod)
+            setIntervalUnit(getDefaultFlexibleGoalIntervalUnit(nextPeriod))
+            setRepeatMode(getDefaultFlexibleGoalRepeatKind(nextPeriod))
+          }}
+          onChangeFlexibleTargetCount={setFlexibleTargetCount}
+        />
+      ) : null}
+
       {entry.item.type === 'course' && selectedCourseScheduleMode ? (
         <SelfCareRepeatFields
           dayOfMonth={dayOfMonth}
           daysOfWeek={daysOfWeek}
           flexiblePeriod={flexiblePeriod}
           flexibleTargetCount={flexibleTargetCount}
+          hideCalendarDetails={false}
           intervalUnit={intervalUnit}
           intervalValue={intervalValue}
           monthOfYear={monthOfYear}
@@ -3084,10 +3294,11 @@ function SelfCareEditForm({
           daysOfWeek={daysOfWeek}
           flexiblePeriod={flexiblePeriod}
           flexibleTargetCount={flexibleTargetCount}
+          hideCalendarDetails
           intervalUnit={intervalUnit}
           intervalValue={intervalValue}
           monthOfYear={monthOfYear}
-          repeatKind="flexible_goal"
+          repeatKind={repeatMode === 'keep' ? 'none' : repeatMode}
           onChangeDayOfMonth={setDayOfMonth}
           onChangeFlexiblePeriod={setFlexiblePeriod}
           onChangeFlexibleTargetCount={setFlexibleTargetCount}
@@ -3104,6 +3315,7 @@ function SelfCareEditForm({
           daysOfWeek={daysOfWeek}
           flexiblePeriod={flexiblePeriod}
           flexibleTargetCount={flexibleTargetCount}
+          hideCalendarDetails={false}
           intervalUnit={intervalUnit}
           intervalValue={intervalValue}
           monthOfYear={monthOfYear}
@@ -3142,6 +3354,58 @@ function SelfCareEditForm({
             />
           </label>
         </div>
+      ) : null}
+
+      {entry.item.type === 'course' ? (
+        <>
+          <div className={styles.createFormGrid}>
+            <label className={styles.dateField}>
+              <span>Длина курса</span>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                inputMode="numeric"
+                required
+                value={courseTotalCount}
+                onChange={(event) => setCourseTotalCount(event.target.value)}
+              />
+            </label>
+
+            <SelectPicker<SelfCareCourseType>
+              className={styles.selectField}
+              label="Единица курса"
+              value={courseType}
+              options={COURSE_TYPE_SELECT_OPTIONS}
+              onChange={setCourseType}
+            />
+          </div>
+
+          <div className={styles.createFormGrid}>
+            <SelectPicker<SelfCareCourseRepeatMode>
+              className={styles.selectField}
+              label="Повтор курса"
+              value={courseRepeatMode}
+              options={COURSE_REPEAT_SELECT_OPTIONS}
+              onChange={setCourseRepeatMode}
+            />
+
+            {courseRepeatMode === 'cycle' ? (
+              <label className={styles.dateField}>
+                <span>Перерыв, дней</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  required
+                  value={courseBreakDays}
+                  onChange={(event) => setCourseBreakDays(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+        </>
       ) : null}
 
       {entry.item.type === 'ritual' ? (
@@ -3338,11 +3602,13 @@ export function SelfCareCourseRestartDialog({
             onSubmit({
               input: {
                 courseDetails: {
+                  breakDays: course.breakDays,
                   completedCount: 0,
                   courseType: course.courseType,
                   endDate: null,
                   isCompleted: false,
                   isPaused: false,
+                  repeatAfterCompletion: course.repeatAfterCompletion,
                   startDate: restartDate,
                   totalCount: course.totalCount,
                 },

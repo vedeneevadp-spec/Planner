@@ -629,6 +629,7 @@ export function createSelfCareContractSchemas(): Record<
       [],
     ),
     SelfCareCourseDetails: objectSchema({
+      breakDays: nonnegativeIntegerSchema(),
       completedCount: nonnegativeIntegerSchema(),
       courseType: enumSchema(['sessions', 'days']),
       createdAt: stringSchema(),
@@ -637,11 +638,16 @@ export function createSelfCareContractSchemas(): Record<
       isCompleted: booleanSchema(),
       isPaused: booleanSchema(),
       itemId: stringSchema(),
+      repeatAfterCompletion: booleanSchema(),
       startDate: nullableStringSchema(),
       totalCount: positiveIntegerSchema(),
       updatedAt: stringSchema(),
     }),
     SelfCareCourseDetailsInput: objectSchema({
+      breakDays: {
+        ...nonnegativeIntegerSchema(),
+        default: 0,
+      },
       completedCount: {
         ...nonnegativeIntegerSchema(),
         default: 0,
@@ -653,6 +659,10 @@ export function createSelfCareContractSchemas(): Record<
         type: 'boolean',
       },
       isPaused: {
+        default: false,
+        type: 'boolean',
+      },
+      repeatAfterCompletion: {
         default: false,
         type: 'boolean',
       },

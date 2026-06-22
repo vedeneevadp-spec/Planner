@@ -43,6 +43,7 @@ import {
   getCourseProgress,
   getCourseUnitLabel,
   getCreatedTemplateIds,
+  getDefaultFlexibleGoalIntervalUnit,
   getExactScheduleDateLabel,
   getExactScheduleTimeLabel,
   getInitialEditRepeatMode,
@@ -67,6 +68,7 @@ import {
   normalizeOptionalText,
   parseBoundedInteger,
   parseMultilineTitles,
+  parseNonnegativeInteger,
   parseOptionalMeasurementNumber,
   parseOptionalPrice,
   parsePositiveInteger,
@@ -169,6 +171,28 @@ describe('SelfCarePage helpers', () => {
       intervalValue: null,
       repeatKind: 'flexible_goal',
     })
+
+    expect(
+      buildCreateScheduleRule({
+        dayOfMonth: 1,
+        daysOfWeek: [1],
+        flexiblePeriod: 'day',
+        flexibleTargetCount: 1,
+        hasFlexibleGoal: true,
+        intervalUnit: 'day',
+        intervalValue: 3,
+        monthOfYear: 1,
+        repeatKind: 'interval',
+        startDate: '2026-06-22',
+      }),
+    ).toMatchObject({
+      daysOfWeek: [],
+      flexiblePeriod: 'day',
+      flexibleTargetCount: 1,
+      intervalUnit: 'day',
+      intervalValue: 3,
+      repeatKind: 'interval',
+    })
   })
 
   it('keeps numeric parsing and weekday toggles deterministic', () => {
@@ -181,6 +205,8 @@ describe('SelfCarePage helpers', () => {
     expect(parseRequiredMeasurementNumber('36,6')).toBe(36.6)
     expect(parsePositiveInteger('3')).toBe(3)
     expect(parsePositiveInteger('3.5')).toBeNull()
+    expect(parseNonnegativeInteger('0')).toBe(0)
+    expect(parseNonnegativeInteger('-1')).toBeNull()
     expect(parseBoundedInteger('13', 1, 12)).toBeNull()
     expect(isValidMeasurementTargetRange(10, 9)).toBe(false)
     expect(parseMultilineTitles(' Умыться \n\n Крем ')).toEqual([
@@ -340,7 +366,7 @@ describe('SelfCarePage helpers', () => {
           repeatKind: 'flexible_goal',
         }),
       ),
-    ).toBe('2 раза за день')
+    ).toBe('2 раза за день · каждый день')
     expect(formatMeasurementSummary(measurementEntry)).toContain('Вес: 62,5 кг')
     expect(formatMeasurementTarget(measurementEntry)).toBe(
       'Норма: 60 кг – 65 кг',
@@ -577,6 +603,9 @@ describe('SelfCarePage helpers', () => {
     ).toBe('каждый день')
     expect(getTypeLabel(createItem({ type: 'ritual' }))).toBe('ритуал')
     expect(getCourseProgress(null)).toBeNull()
+    expect(getDefaultFlexibleGoalIntervalUnit('day')).toBe('day')
+    expect(getDefaultFlexibleGoalIntervalUnit('week')).toBe('week')
+    expect(getDefaultFlexibleGoalIntervalUnit('month')).toBe('month')
   })
 })
 
@@ -706,6 +735,7 @@ function createCourseDetails(
   overrides: Partial<NonNullable<SelfCareTodayItem['courseDetails']>> = {},
 ): NonNullable<SelfCareTodayItem['courseDetails']> {
   return {
+    breakDays: 0,
     completedCount: 0,
     courseType: 'days',
     createdAt: '2026-06-01T00:00:00.000Z',
@@ -714,6 +744,7 @@ function createCourseDetails(
     isCompleted: false,
     isPaused: false,
     itemId: 'item-1',
+    repeatAfterCompletion: false,
     startDate: '2026-06-01',
     totalCount: 10,
     updatedAt: '2026-06-01T00:00:00.000Z',

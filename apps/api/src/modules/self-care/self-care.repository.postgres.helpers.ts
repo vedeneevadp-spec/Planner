@@ -308,6 +308,7 @@ export function mapMeasurementRow(
 
 export function mapCourseRow(row: CourseRow): SelfCareCourseDetails {
   return {
+    breakDays: row.break_days,
     completedCount: row.completed_count,
     courseType: row.course_type,
     createdAt: serializeTimestamp(row.created_at),
@@ -316,6 +317,7 @@ export function mapCourseRow(row: CourseRow): SelfCareCourseDetails {
     isCompleted: row.is_completed,
     isPaused: row.is_paused,
     itemId: row.item_id,
+    repeatAfterCompletion: row.repeat_after_completion,
     startDate: serializeNullableDate(row.start_date),
     totalCount: row.total_count,
     updatedAt: serializeTimestamp(row.updated_at),

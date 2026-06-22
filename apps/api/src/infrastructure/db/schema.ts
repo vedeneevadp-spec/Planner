@@ -362,6 +362,7 @@ export interface AppSelfCareMedicalDetailsTable {
 }
 
 export interface AppSelfCareCourseDetailsTable {
+  break_days: number
   completed_count: number
   course_type: 'days' | 'sessions'
   created_at: Generated<TimestampColumn>
@@ -370,6 +371,7 @@ export interface AppSelfCareCourseDetailsTable {
   is_completed: boolean
   is_paused: boolean
   item_id: string
+  repeat_after_completion: boolean
   start_date: DateColumn | null
   total_count: number
   updated_at: Generated<TimestampColumn>

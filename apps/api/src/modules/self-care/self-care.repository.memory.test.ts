@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import {
+  selfCareCompletionInputSchema,
   selfCareItemInputSchema,
   selfCareItemScheduleInputSchema,
   selfCareItemUpdateInputSchema,
@@ -369,6 +370,152 @@ void test('MemorySelfCareRepository allows repeated completions for migrated fle
   assert.equal(history.completions.length, 2)
   assert.equal(dashboard.flexibleGoals[0]?.flexibleProgress?.completedCount, 2)
   assert.equal(dashboard.flexibleGoals[0]?.flexibleProgress?.targetCount, 3)
+})
+
+void test('MemorySelfCareRepository repeats flexible goals with standard repeat rules', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'medical',
+      scheduleRule: {
+        flexiblePeriod: 'day',
+        flexibleTargetCount: 1,
+        intervalValue: 3,
+        repeatKind: 'daily',
+        startDate: '2026-06-01',
+      },
+      title: 'Таблетка',
+      type: 'flexible_goal',
+    }),
+  })
+
+  const activeDashboard = await repository.getDashboard({
+    context,
+    date: '2026-06-04',
+  })
+  const inactiveDashboard = await repository.getDashboard({
+    context,
+    date: '2026-06-05',
+  })
+
+  assert.deepEqual(
+    activeDashboard.flexibleGoals.map((entry) => entry.item.id),
+    [item.id],
+  )
+  assert.deepEqual(inactiveDashboard.flexibleGoals, [])
+})
+
+void test('MemorySelfCareRepository deactivates one-off flexible goals after target completion', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'movement',
+      scheduleRule: {
+        flexiblePeriod: 'week',
+        flexibleTargetCount: 2,
+        repeatKind: 'none',
+        startDate: '2026-06-01',
+      },
+      title: 'Две прогулки',
+      type: 'flexible_goal',
+    }),
+  })
+
+  await repository.completeFlexibleGoal({
+    context,
+    input: selfCareCompletionInputSchema.parse({
+      completedAt: '2026-06-02T12:00:00.000Z',
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  const inProgressDashboard = await repository.getDashboard({
+    context,
+    date: '2026-06-03',
+  })
+
+  await repository.completeFlexibleGoal({
+    context,
+    input: selfCareCompletionInputSchema.parse({
+      completedAt: '2026-06-03T12:00:00.000Z',
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  const list = await repository.listItems(context)
+  const completedDashboard = await repository.getDashboard({
+    context,
+    date: '2026-06-04',
+  })
+  const updatedItem = list.items.find((candidate) => candidate.id === item.id)
+
+  assert.equal(inProgressDashboard.flexibleGoals[0]?.item.id, item.id)
+  assert.equal(
+    inProgressDashboard.flexibleGoals[0]?.flexibleProgress?.completedCount,
+    1,
+  )
+  assert.equal(updatedItem?.isActive, false)
+  assert.deepEqual(completedDashboard.flexibleGoals, [])
+})
+
+void test('MemorySelfCareRepository restarts repeating courses after the configured break', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'medical',
+      courseDetails: {
+        breakDays: 7,
+        courseType: 'days',
+        endDate: null,
+        repeatAfterCompletion: true,
+        startDate: '2026-06-01',
+        totalCount: 2,
+      },
+      scheduleRule: {
+        repeatKind: 'course',
+        startDate: '2026-06-01',
+      },
+      title: 'Курс таблеток',
+      type: 'course',
+    }),
+  })
+
+  await repository.completeCourseSession({
+    context,
+    input: selfCareCompletionInputSchema.parse({
+      completedAt: '2026-06-01T12:00:00.000Z',
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  await repository.completeCourseSession({
+    context,
+    input: selfCareCompletionInputSchema.parse({
+      completedAt: '2026-06-02T12:00:00.000Z',
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  const list = await repository.listItems(context)
+  const course = list.courseDetails.find(
+    (details) => details.itemId === item.id,
+  )
+  const scheduleRule = list.scheduleRules.find(
+    (rule) => rule.itemId === item.id,
+  )
+
+  assert.equal(course?.completedCount, 0)
+  assert.equal(course?.isCompleted, false)
+  assert.equal(course?.repeatAfterCompletion, true)
+  assert.equal(course?.breakDays, 7)
+  assert.equal(course?.startDate, '2026-06-10')
+  assert.equal(scheduleRule?.startDate, '2026-06-10')
 })
 
 void test('MemorySelfCareRepository stores ad-hoc ritual step completion', async () => {

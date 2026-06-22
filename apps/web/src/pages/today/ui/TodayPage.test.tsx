@@ -514,6 +514,7 @@ describe('TodayPage', () => {
     mocks.selfCareDashboard = createSelfCareDashboard([
       createSelfCareTodayItem({
         courseDetails: {
+          breakDays: 0,
           completedCount: 1,
           courseType: 'days',
           createdAt: '2026-05-19T08:00:00.000Z',
@@ -522,6 +523,7 @@ describe('TodayPage', () => {
           isCompleted: true,
           isPaused: false,
           itemId: 'self-care-course',
+          repeatAfterCompletion: false,
           startDate: getDateKey(new Date()),
           totalCount: 1,
           updatedAt: '2026-05-19T08:00:00.000Z',

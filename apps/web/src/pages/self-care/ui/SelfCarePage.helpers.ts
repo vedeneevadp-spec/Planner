@@ -46,6 +46,7 @@ export type SelfCareStandardRepeatKind = Exclude<
 export type SelfCareEditRepeatMode = SelfCareStandardRepeatKind | 'keep'
 export type SelfCareCourseScheduleMode = 'daily' | 'weekly' | 'interval'
 export type SelfCareCourseEditScheduleMode = SelfCareCourseScheduleMode | 'keep'
+export type SelfCareCourseRepeatMode = 'cycle' | 'once'
 export type SelfCareCreateScheduleRuleInput = NonNullable<
   SelfCareItemInput['scheduleRule']
 >
@@ -228,6 +229,34 @@ export const COURSE_SCHEDULE_OPTIONS: ReadonlyArray<{
 export const COURSE_SCHEDULE_SELECT_OPTIONS: Array<
   SelectPickerOption<SelfCareCourseScheduleMode>
 > = COURSE_SCHEDULE_OPTIONS.map(({ label, value }) => ({ label, value }))
+
+export const FLEXIBLE_GOAL_REPEAT_OPTIONS: ReadonlyArray<{
+  label: string
+  value: SelfCareStandardRepeatKind
+}> = [
+  { label: 'Без повтора', value: 'none' },
+  { label: 'Каждый день', value: 'daily' },
+  { label: 'Еженедельно', value: 'weekly' },
+  { label: 'Ежемесячно', value: 'monthly' },
+  { label: 'Ежегодно', value: 'yearly' },
+  { label: 'По интервалу', value: 'interval' },
+]
+
+export const FLEXIBLE_GOAL_REPEAT_SELECT_OPTIONS: Array<
+  SelectPickerOption<SelfCareStandardRepeatKind>
+> = FLEXIBLE_GOAL_REPEAT_OPTIONS.map(({ label, value }) => ({ label, value }))
+
+export const COURSE_REPEAT_OPTIONS: ReadonlyArray<{
+  label: string
+  value: SelfCareCourseRepeatMode
+}> = [
+  { label: 'Один раз', value: 'once' },
+  { label: 'Циклом', value: 'cycle' },
+]
+
+export const COURSE_REPEAT_SELECT_OPTIONS: Array<
+  SelectPickerOption<SelfCareCourseRepeatMode>
+> = COURSE_REPEAT_OPTIONS.map(({ label, value }) => ({ label, value }))
 
 export const INTERVAL_UNIT_OPTIONS: ReadonlyArray<{
   label: string
@@ -709,6 +738,11 @@ export function parsePositiveInteger(value: string): number | null {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
+export function parseNonnegativeInteger(value: string): number | null {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null
+}
+
 export function parseBoundedInteger(
   value: string,
   min: number,
@@ -737,6 +771,7 @@ export function buildCreateScheduleRule(input: {
   daysOfWeek: number[]
   flexiblePeriod: SelfCareFlexiblePeriod
   flexibleTargetCount: number
+  hasFlexibleGoal?: boolean | undefined
   intervalUnit: SelfCareIntervalUnit
   intervalValue: number
   monthOfYear: number
@@ -746,26 +781,31 @@ export function buildCreateScheduleRule(input: {
   const needsInterval =
     repeatKindRequiresInterval(input.repeatKind) ||
     (input.repeatKind === 'course' && input.courseScheduleMode === 'interval')
+  const hasFlexibleGoal =
+    input.hasFlexibleGoal || input.repeatKind === 'flexible_goal'
   const usesDayOfMonth =
-    input.repeatKind === 'monthly' || input.repeatKind === 'yearly'
+    !hasFlexibleGoal &&
+    (input.repeatKind === 'monthly' || input.repeatKind === 'yearly')
   const usesDaysOfWeek =
-    input.repeatKind === 'weekly' ||
-    (input.repeatKind === 'course' && input.courseScheduleMode === 'weekly')
+    !hasFlexibleGoal &&
+    (input.repeatKind === 'weekly' ||
+      (input.repeatKind === 'course' && input.courseScheduleMode === 'weekly'))
 
   return {
     allowMultiplePerDay: false,
     dayOfMonth: usesDayOfMonth ? input.dayOfMonth : null,
     daysOfWeek: usesDaysOfWeek ? input.daysOfWeek : [],
     endDate: null,
-    flexiblePeriod:
-      input.repeatKind === 'flexible_goal' ? input.flexiblePeriod : null,
-    flexibleTargetCount:
-      input.repeatKind === 'flexible_goal' ? input.flexibleTargetCount : null,
+    flexiblePeriod: hasFlexibleGoal ? input.flexiblePeriod : null,
+    flexibleTargetCount: hasFlexibleGoal ? input.flexibleTargetCount : null,
     generateInCalendar: false,
     generateInTaskList: true,
     intervalUnit: needsInterval ? input.intervalUnit : null,
     intervalValue: needsInterval ? input.intervalValue : null,
-    monthOfYear: input.repeatKind === 'yearly' ? input.monthOfYear : null,
+    monthOfYear:
+      !hasFlexibleGoal && input.repeatKind === 'yearly'
+        ? input.monthOfYear
+        : null,
     preferredTime: null,
     reminderOffsetsMinutes: [],
     repeatKind: input.repeatKind,
@@ -790,7 +830,7 @@ export function getCreateScheduleRepeatKind(
   }
 
   if (type === 'flexible_goal') {
-    return 'flexible_goal'
+    return repeatKind
   }
 
   return repeatKind
@@ -863,6 +903,40 @@ export function canRestartCourse(entry: SelfCareTodayItem): boolean {
   )
 }
 
+export function getDefaultFlexibleGoalRepeatKind(
+  period: SelfCareFlexiblePeriod,
+): SelfCareStandardRepeatKind {
+  if (period === 'day') return 'daily'
+  if (period === 'month') return 'monthly'
+  return 'weekly'
+}
+
+export function getDefaultFlexibleGoalIntervalUnit(
+  period: SelfCareFlexiblePeriod,
+): SelfCareIntervalUnit {
+  if (period === 'day') return 'day'
+  if (period === 'month') return 'month'
+  return 'week'
+}
+
+export function getInitialFlexibleGoalRepeatMode(
+  rule: SelfCareScheduleRule | null,
+): SelfCareStandardRepeatKind {
+  if (!rule) {
+    return 'weekly'
+  }
+
+  if (rule.repeatKind === 'flexible_goal') {
+    return getDefaultFlexibleGoalRepeatKind(rule.flexiblePeriod ?? 'week')
+  }
+
+  if (rule.repeatKind === 'course' || rule.repeatKind === 'after_completion') {
+    return getDefaultFlexibleGoalRepeatKind(rule.flexiblePeriod ?? 'week')
+  }
+
+  return rule.repeatKind
+}
+
 export function buildRestartCourseScheduleRule(
   entry: SelfCareTodayItem,
   restartDate: string,
@@ -895,18 +969,15 @@ export function formatSchedule(rule: SelfCareScheduleRule | null): string {
     return 'по необходимости'
   }
 
-  if (
-    rule.repeatKind === 'flexible_goal' &&
-    rule.flexibleTargetCount &&
-    rule.flexiblePeriod
-  ) {
-    const period =
-      rule.flexiblePeriod === 'week'
-        ? 'неделю'
-        : rule.flexiblePeriod === 'month'
-          ? 'месяц'
-          : 'день'
-    return `${rule.flexibleTargetCount} раза за ${period}`
+  if (rule.flexibleTargetCount && rule.flexiblePeriod) {
+    const targetLabel = `${rule.flexibleTargetCount} ${pluralRu(
+      rule.flexibleTargetCount,
+      'раз',
+      'раза',
+      'раз',
+    )} за ${formatFlexiblePeriod(rule.flexiblePeriod)}`
+    const repeatLabel = formatFlexibleGoalRepeat(rule)
+    return repeatLabel ? `${targetLabel} · ${repeatLabel}` : targetLabel
   }
 
   if (
@@ -959,6 +1030,40 @@ export function formatWeeklySchedule(rule: SelfCareScheduleRule): string {
   }
 
   return REPEAT_LABELS.weekly
+}
+
+function formatFlexiblePeriod(period: SelfCareFlexiblePeriod): string {
+  if (period === 'day') return 'день'
+  if (period === 'month') return 'месяц'
+  return 'неделю'
+}
+
+function formatFlexibleGoalRepeat(rule: SelfCareScheduleRule): string | null {
+  if (rule.repeatKind === 'none') {
+    return 'без повтора'
+  }
+
+  if (rule.repeatKind === 'flexible_goal') {
+    const defaultRepeat = getDefaultFlexibleGoalRepeatKind(
+      rule.flexiblePeriod ?? 'week',
+    )
+    return REPEAT_LABELS[defaultRepeat]
+  }
+
+  if (
+    (rule.repeatKind === 'interval' ||
+      rule.repeatKind === 'after_completion') &&
+    rule.intervalValue &&
+    rule.intervalUnit
+  ) {
+    return `каждые ${rule.intervalValue} ${formatIntervalUnit(rule.intervalUnit)}`
+  }
+
+  if (rule.repeatKind === 'course') {
+    return null
+  }
+
+  return REPEAT_LABELS[rule.repeatKind]
 }
 
 export function areSameWeekdays(
@@ -1298,7 +1403,16 @@ export function getCourseProgress(course: SelfCareCourseDetails | null): {
   const label = `Курс: ${completedCount} из ${totalCount} ${totalUnit}`
   const meta = course.isCompleted
     ? 'Все итерации курса засчитаны'
-    : `Осталось ${remainingCount} ${remainingUnit}`
+    : course.repeatAfterCompletion
+      ? course.breakDays > 0
+        ? `Осталось ${remainingCount} ${remainingUnit}; затем перерыв ${course.breakDays} ${pluralRu(
+            course.breakDays,
+            'день',
+            'дня',
+            'дней',
+          )}`
+        : `Осталось ${remainingCount} ${remainingUnit}; затем следующий цикл`
+      : `Осталось ${remainingCount} ${remainingUnit}`
 
   return {
     ariaLabel: `${label}. ${meta}`,

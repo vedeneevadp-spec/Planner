@@ -1248,6 +1248,7 @@ function courseDetails(
   overrides: Partial<SelfCareCourseDetails> = {},
 ): SelfCareCourseDetails {
   return {
+    breakDays: 0,
     completedCount: 0,
     courseType: 'days',
     createdAt: NOW,
@@ -1256,6 +1257,7 @@ function courseDetails(
     isCompleted: false,
     isPaused: false,
     itemId: 'self-care-1',
+    repeatAfterCompletion: false,
     startDate: '2026-06-01',
     totalCount: 30,
     updatedAt: NOW,

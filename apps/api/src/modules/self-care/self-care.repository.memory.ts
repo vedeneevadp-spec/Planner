@@ -53,6 +53,7 @@ import type {
 } from './self-care.model.js'
 import type { SelfCareRepository } from './self-care.repository.js'
 import {
+  addDays,
   buildAnalyticsResponse,
   buildDashboardResponse,
   buildDueAt,
@@ -81,6 +82,7 @@ import {
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   isCompletionProgressStatus,
+  shouldDeactivateCompletedFlexibleGoal,
   shouldDeduplicateSelfCareItemCompletion,
   shouldMarkSelfCareOccurrenceMissed,
   updateOccurrenceStatus,
@@ -436,7 +438,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       userId: command.context.actorUserId,
       workspaceId: command.context.workspaceId,
     })
-    this.incrementCourseIfNeeded(item.id)
+    this.incrementCourseIfNeeded(item.id, completion.completedAt.slice(0, 10))
 
     return completion
   }
@@ -495,16 +497,24 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       userId: command.context.actorUserId,
       workspaceId: command.context.workspaceId,
     })
-    this.incrementCourseIfNeeded(item.id)
+    this.incrementCourseIfNeeded(item.id, completion.completedAt.slice(0, 10))
     return completion
   }
 
   async completeFlexibleGoal(command: CompleteFlexibleGoalCommand) {
-    return this.completeItemNow({
+    const completion = await this.completeItemNow({
       context: command.context,
       input: { ...command.input, steps: [] },
       itemId: command.itemId,
     })
+
+    this.deactivateFlexibleGoalIfCompleted(
+      command.context,
+      command.itemId,
+      completion,
+    )
+
+    return completion
   }
 
   async completeCourseSession(command: CompleteCourseSessionCommand) {
@@ -1194,7 +1204,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     this.stepDrafts.delete(getRitualStepDraftKey(input))
   }
 
-  private incrementCourseIfNeeded(itemId: string) {
+  private incrementCourseIfNeeded(itemId: string, completionDate: string) {
     const course = [...this.courseDetails.values()].find(
       (details) => details.itemId === itemId,
     )
@@ -1203,10 +1213,70 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       course.totalCount,
       course.completedCount + 1,
     )
+    const isCompleted = completedCount >= course.totalCount
+
+    if (isCompleted && course.repeatAfterCompletion) {
+      const nextStartDate = addDays(completionDate, course.breakDays + 1)
+      this.courseDetails.set(course.id, {
+        ...course,
+        completedCount: 0,
+        endDate: null,
+        isCompleted: false,
+        startDate: nextStartDate,
+        updatedAt: new Date().toISOString(),
+      })
+      this.moveCourseScheduleStartDate(itemId, nextStartDate)
+      return
+    }
+
     this.courseDetails.set(course.id, {
       ...course,
       completedCount,
-      isCompleted: completedCount >= course.totalCount,
+      isCompleted,
+      updatedAt: new Date().toISOString(),
+    })
+  }
+
+  private deactivateFlexibleGoalIfCompleted(
+    context: SelfCareWriteContext,
+    itemId: string,
+    completion: SelfCareCompletion,
+  ): void {
+    const item = this.items.get(itemId)
+    const scheduleRule = this.findScheduleRuleForItem(itemId)
+
+    if (
+      !item ||
+      !shouldDeactivateCompletedFlexibleGoal({
+        completion,
+        completions: [...this.completions.values()].filter(
+          (candidate) => candidate.userId === context.actorUserId,
+        ),
+        item,
+        scheduleRule,
+      })
+    ) {
+      return
+    }
+
+    this.items.set(item.id, {
+      ...item,
+      isActive: false,
+      updatedAt: new Date().toISOString(),
+      version: item.version + 1,
+    })
+  }
+
+  private moveCourseScheduleStartDate(itemId: string, startDate: string): void {
+    const rule = this.findScheduleRuleForItem(itemId)
+
+    if (!rule || rule.repeatKind !== 'course') {
+      return
+    }
+
+    this.scheduleRules.set(rule.id, {
+      ...rule,
+      startDate,
       updatedAt: new Date().toISOString(),
     })
   }

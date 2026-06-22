@@ -764,6 +764,7 @@ function createCourseDetails(
   overrides: Partial<NonNullable<SelfCareTodayItem['courseDetails']>> = {},
 ): NonNullable<SelfCareTodayItem['courseDetails']> {
   return {
+    breakDays: 0,
     completedCount: 0,
     courseType: 'days',
     createdAt: '2026-06-01T00:00:00.000Z',
@@ -772,6 +773,7 @@ function createCourseDetails(
     isCompleted: false,
     isPaused: false,
     itemId: 'item-1',
+    repeatAfterCompletion: false,
     startDate: '2026-06-20',
     totalCount: 10,
     updatedAt: '2026-06-01T00:00:00.000Z',
