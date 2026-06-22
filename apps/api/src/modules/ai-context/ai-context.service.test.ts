@@ -200,6 +200,66 @@ void describe('AiContextService', () => {
     assert.equal(context.stats?.activeCounts.tasks, 1)
   })
 
+  void it('exposes task decision fields for GPT prioritization', async () => {
+    const service = createService([
+      createTask({
+        importance: 'important',
+        plannedDate: '2026-06-21',
+        resource: -3,
+        title: 'Hard urgent task',
+        urgency: 'urgent',
+      }),
+      createTask({
+        plannedDate: '2026-06-21',
+        resource: 2,
+        title: 'Restorative task',
+      }),
+      createTask({
+        plannedDate: '2026-06-21',
+        resource: null,
+        title: 'Unspecified resource task',
+      }),
+    ])
+
+    const context = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['tasks'],
+      userId: USER_ID,
+    })
+    const hardTask = context.tasks?.today.find(
+      (task) => task.title === 'Hard urgent task',
+    )
+    const restorativeTask = context.tasks?.today.find(
+      (task) => task.title === 'Restorative task',
+    )
+    const unspecifiedTask = context.tasks?.today.find(
+      (task) => task.title === 'Unspecified resource task',
+    )
+
+    assert.deepEqual(
+      {
+        importance: hardTask?.importance,
+        priority: hardTask?.priority,
+        resource: hardTask?.resource,
+        resourceImpact: hardTask?.resourceImpact,
+        resourceMagnitude: hardTask?.resourceMagnitude,
+        urgency: hardTask?.urgency,
+      },
+      {
+        importance: 'important',
+        priority: 'high',
+        resource: -3,
+        resourceImpact: 'drain',
+        resourceMagnitude: 3,
+        urgency: 'urgent',
+      },
+    )
+    assert.equal(restorativeTask?.resourceImpact, 'restore')
+    assert.equal(restorativeTask?.resourceMagnitude, 2)
+    assert.equal(unspecifiedTask?.resourceImpact, 'unknown')
+    assert.equal(unspecifiedTask?.resourceMagnitude, null)
+  })
+
   void it('separates overdue counts by planner domain', async () => {
     const service = createService(
       [
@@ -529,6 +589,7 @@ void describe('AiContextService', () => {
         ],
         items: [
           createSelfCareItem({
+            category: 'movement',
             id: 'walk-item',
             title: 'Walk',
             type: 'ritual',
@@ -542,18 +603,21 @@ void describe('AiContextService', () => {
         medical: [],
         occurrences: [
           createSelfCareTodayItem({
+            category: 'nutrition',
             date: '2026-06-21',
             occurrenceId: 'water-1',
             title: 'Drink water',
             type: 'ritual',
           }),
           createSelfCareTodayItem({
+            category: 'nutrition',
             date: '2026-06-21',
             occurrenceId: 'water-2',
             title: 'Drink water',
             type: 'ritual',
           }),
           createSelfCareTodayItem({
+            category: 'sleep',
             date: '2026-06-19',
             occurrenceId: 'sleep-1',
             occurrenceStatus: 'missed',
@@ -579,6 +643,9 @@ void describe('AiContextService', () => {
     assert.equal(context.summary.potentialDuplicateCount, 1)
     assert.equal(context.potentialDuplicates[0]?.title, 'Drink water')
     assert.equal(context.potentialDuplicates[0]?.count, 2)
+    assert.equal(context.completed[0]?.category, 'movement')
+    assert.equal(context.remaining[0]?.category, 'nutrition')
+    assert.equal(context.missed[0]?.category, 'sleep')
   })
 
   void it('filters legacy habit artifacts from today self-care context', async () => {
@@ -681,6 +748,7 @@ void describe('AiContextService', () => {
 
   void it('returns flexible self-care goals as one progress object per goal', async () => {
     const waterGoal = createSelfCareTodayItem({
+      category: 'nutrition',
       completedCount: 1,
       date: '2026-06-21',
       occurrenceId: 'water-goal',
@@ -690,6 +758,7 @@ void describe('AiContextService', () => {
       type: 'flexible_goal',
     })
     const pushupsGoal = createSelfCareTodayItem({
+      category: 'movement',
       completedCount: 0,
       date: '2026-06-21',
       occurrenceId: 'pushups-goal',
@@ -734,6 +803,7 @@ void describe('AiContextService', () => {
     assert.deepEqual(todayContext.selfCare?.remaining, [])
     assert.deepEqual(todayContext.selfCare?.flexibleGoals, [
       {
+        category: 'nutrition',
         date: '2026-06-21',
         doneCount: 1,
         expectedRepeats: true,
@@ -747,6 +817,7 @@ void describe('AiContextService', () => {
         unit: null,
       },
       {
+        category: 'movement',
         date: '2026-06-21',
         doneCount: 0,
         expectedRepeats: true,
@@ -1009,6 +1080,7 @@ function createCleaningTodayResponse(
 }
 
 function createSelfCareTodayItem(input: {
+  category?: SelfCareHistoryResponse['items'][number]['category'] | undefined
   completedCount?: number
   date: string
   occurrenceId: string
@@ -1037,6 +1109,7 @@ function createSelfCareTodayItem(input: {
           }
         : null,
     item: createSelfCareItem({
+      category: input.category,
       id: `${input.occurrenceId}-item`,
       title: input.title,
       type: input.type,
@@ -1092,11 +1165,13 @@ function createSelfCareAnalyticsResponse(
 }
 
 function createSelfCareItem(overrides: {
+  category?: SelfCareHistoryResponse['items'][number]['category'] | undefined
   id: string
   title: string
   type: string
 }): SelfCareHistoryResponse['items'][number] {
   return {
+    category: overrides.category ?? 'health',
     id: overrides.id,
     title: overrides.title,
     type: overrides.type,

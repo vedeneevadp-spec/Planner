@@ -1007,6 +1007,7 @@ export class AiContextService {
           const item = itemsById.get(completion.itemId)
 
           return {
+            category: item?.category ?? null,
             date:
               completion.scheduledFor ?? completion.completedAt.slice(0, 10),
             source: 'selfcare' as const,
@@ -1044,12 +1045,17 @@ function mapTaskItem(
   return {
     area: task.project || task.sphereId || null,
     dueDate: task.dueDate ?? task.plannedDate,
+    importance: task.importance,
     priority:
       task.importance === 'important' || task.urgency === 'urgent'
         ? 'high'
         : task.resource !== null && task.resource <= 1
           ? 'low'
           : 'normal',
+    resource: task.resource,
+    resourceImpact: readTaskResourceImpact(task.resource),
+    resourceMagnitude:
+      typeof task.resource === 'number' ? Math.abs(task.resource) : null,
     snippet: buildTaskSnippet(task),
     source: 'tasks',
     status: isTaskOverdue(task, today)
@@ -1059,7 +1065,26 @@ function mapTaskItem(
         : task.status,
     tags: task.project ? [task.project] : [],
     title: task.title,
+    urgency: task.urgency,
   }
+}
+
+function readTaskResourceImpact(
+  resource: Task['resource'],
+): NonNullable<AiTaskItem['resourceImpact']> {
+  if (typeof resource !== 'number') {
+    return 'unknown'
+  }
+
+  if (resource < 0) {
+    return 'drain'
+  }
+
+  if (resource > 0) {
+    return 'restore'
+  }
+
+  return 'neutral'
 }
 
 function mapTaskCalendarEvent(task: Task): AiCalendarEvent {
@@ -1095,6 +1120,7 @@ function mapSelfCareTodayItem(
   status: AiSelfCareItem['status'],
 ): AiSelfCareItem {
   return {
+    category: item.item.category,
     date:
       item.occurrence?.scheduledFor ?? item.completion?.scheduledFor ?? null,
     source: 'selfcare',
@@ -1158,6 +1184,7 @@ function mapFlexibleGoalContext(
   const remainingCount = progress.remainingCount
 
   return {
+    category: entry.item.category,
     date,
     doneCount,
     expectedRepeats: true,
@@ -1350,12 +1377,17 @@ function mapTaskGroupToTaskItem(group: AiTaskGroup): AiTaskItem {
   return {
     area: null,
     dueDate: group.dates[0] ?? null,
+    importance: 'not_important',
     priority: 'normal',
+    resource: null,
+    resourceImpact: 'unknown',
+    resourceMagnitude: null,
     snippet: `${group.count} grouped occurrence${group.count === 1 ? '' : 's'}`,
     source: 'tasks',
     status: 'todo',
     tags: ['grouped-routine'],
     title: group.title,
+    urgency: 'not_urgent',
   }
 }
 

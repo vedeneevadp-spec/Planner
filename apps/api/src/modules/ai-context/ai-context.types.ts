@@ -10,12 +10,17 @@ export type AiSuggestedMode = 'light' | 'minimum' | 'normal'
 export interface AiTaskItem {
   area?: string | null
   dueDate?: string | null
+  importance?: 'important' | 'not_important' | (string & {}) | null
   priority?: 'high' | 'low' | 'normal' | (string & {}) | null
+  resource?: number | null
+  resourceImpact?: 'drain' | 'neutral' | 'restore' | 'unknown'
+  resourceMagnitude?: number | null
   snippet?: string | null
   source: 'tasks'
   status: 'cancelled' | 'done' | 'overdue' | 'todo' | (string & {})
   tags?: string[]
   title: string
+  urgency?: 'not_urgent' | 'urgent' | (string & {}) | null
 }
 
 export interface AiTaskGroup {
@@ -57,6 +62,7 @@ export interface AiCleaningOverdueZoneGroup {
 }
 
 export interface AiSelfCareItem {
+  category?: string | null
   date?: string | null
   source: 'selfcare'
   status: 'done' | 'missed' | 'planned' | (string & {})
@@ -65,6 +71,7 @@ export interface AiSelfCareItem {
 }
 
 export interface AiFlexibleGoalContext {
+  category?: string | null
   date: string
   doneCount: number
   expectedRepeats: true
