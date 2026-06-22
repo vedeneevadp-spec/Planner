@@ -709,6 +709,14 @@ void describe('AiContextService', () => {
           }),
           createSelfCareTodayItem({
             date: '2026-06-21',
+            isActive: false,
+            isArchived: true,
+            occurrenceId: 'archived-tail',
+            title: 'Медиана',
+            type: 'task',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-21',
             occurrenceId: 'morning-care',
             title: 'Утренний уход',
             type: 'ritual',
@@ -1083,6 +1091,9 @@ function createSelfCareTodayItem(input: {
   category?: SelfCareHistoryResponse['items'][number]['category'] | undefined
   completedCount?: number
   date: string
+  deletedAt?: string | null | undefined
+  isActive?: boolean | undefined
+  isArchived?: boolean | undefined
   occurrenceId: string
   occurrenceStatus?: 'done' | 'missed' | 'moved' | 'scheduled' | 'skipped'
   remainingCount?: number
@@ -1110,7 +1121,10 @@ function createSelfCareTodayItem(input: {
         : null,
     item: createSelfCareItem({
       category: input.category,
+      deletedAt: input.deletedAt,
       id: `${input.occurrenceId}-item`,
+      isActive: input.isActive,
+      isArchived: input.isArchived,
       title: input.title,
       type: input.type,
     }),
@@ -1166,13 +1180,19 @@ function createSelfCareAnalyticsResponse(
 
 function createSelfCareItem(overrides: {
   category?: SelfCareHistoryResponse['items'][number]['category'] | undefined
+  deletedAt?: string | null | undefined
   id: string
+  isActive?: boolean | undefined
+  isArchived?: boolean | undefined
   title: string
   type: string
 }): SelfCareHistoryResponse['items'][number] {
   return {
     category: overrides.category ?? 'health',
+    deletedAt: overrides.deletedAt ?? null,
     id: overrides.id,
+    isActive: overrides.isActive ?? true,
+    isArchived: overrides.isArchived ?? false,
     title: overrides.title,
     type: overrides.type,
   } as SelfCareHistoryResponse['items'][number]

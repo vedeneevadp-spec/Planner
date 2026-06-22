@@ -1131,7 +1131,13 @@ function mapSelfCareTodayItem(
 }
 
 function isSelfCareTodayItemVisibleForAi(item: SelfCareTodayItem): boolean {
-  return item.item.type !== 'habit' && !item.item.migratedFromHabitId
+  return (
+    item.item.type !== 'habit' &&
+    !item.item.migratedFromHabitId &&
+    item.item.isActive &&
+    !item.item.isArchived &&
+    item.item.deletedAt === null
+  )
 }
 
 function isRegularSelfCareTodayItemVisibleForAi(

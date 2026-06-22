@@ -1,4 +1,7 @@
-import type { SelfCareTodayItem } from '@planner/contracts'
+import type {
+  SelfCareDashboardResponse,
+  SelfCareTodayItem,
+} from '@planner/contracts'
 import {
   type ReactElement,
   type ReactNode,
@@ -70,6 +73,7 @@ interface TaskSectionDefaultCollapseStateInput {
   otherTasks: Task[]
   overdueTasks: Task[]
   routineTasks: Task[]
+  tomorrowExtraItemCount: number
   tomorrowTasks: Task[]
 }
 
@@ -81,6 +85,7 @@ function getTaskSectionDefaultCollapseState({
   otherTasks,
   overdueTasks,
   routineTasks,
+  tomorrowExtraItemCount,
   tomorrowTasks,
 }: TaskSectionDefaultCollapseStateInput) {
   const hasTodayTaskSection = hasTaskSectionItems(mainTodayTasks)
@@ -91,7 +96,10 @@ function getTaskSectionDefaultCollapseState({
   const hasOverdueTaskSection = hasTaskSectionItems(overdueTasks)
   const beforeTomorrow =
     hasTodayTaskSection || hasRoutineTaskSection || hasOverdueTaskSection
-  const hasTomorrowTaskSection = hasTaskSectionItems(tomorrowTasks)
+  const hasTomorrowTaskSection = hasTaskSectionItems(
+    tomorrowTasks,
+    tomorrowExtraItemCount,
+  )
   const beforeOther = beforeTomorrow || hasTomorrowTaskSection
   const hasOtherTaskSection = hasTaskSectionItems(otherTasks)
   const beforeDoneToday = beforeOther || hasOtherTaskSection
@@ -209,6 +217,15 @@ function isSelfCareDailyFlexibleGoal(entry: SelfCareTodayItem): boolean {
   )
 }
 
+function getSelfCareMainTaskEntries(
+  dashboard: SelfCareDashboardResponse,
+): SelfCareTodayItem[] {
+  return [
+    ...dashboard.todayItems,
+    ...dashboard.flexibleGoals.filter(isSelfCareDailyFlexibleGoal),
+  ].filter(isVisibleSelfCareMainTask)
+}
+
 function getSelfCareTaskKey(entry: SelfCareTodayItem): string {
   return `self-care-${entry.occurrence?.id ?? entry.item.id}`
 }
@@ -306,11 +323,16 @@ function PersonalTodayPage() {
     sessionQuery.data?.userPreferences.energyMode ?? 'normal'
   const [energyMode, setEnergyMode] = useState<EnergyMode>(persistedEnergyMode)
   const todayKey = getDateKey(new Date())
-  const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
-  const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
-    enabled: sessionQuery.data?.workspace.kind === 'personal',
-  })
   const tomorrowKey = getDateKey(addDays(new Date(), 1))
+  const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
+  const selfCareDashboardEnabled =
+    sessionQuery.data?.workspace.kind === 'personal'
+  const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
+    enabled: selfCareDashboardEnabled,
+  })
+  const tomorrowSelfCareDashboardQuery = useSelfCareDashboard(tomorrowKey, {
+    enabled: selfCareDashboardEnabled,
+  })
   const taskView = getTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
 
@@ -379,21 +401,22 @@ function PersonalTodayPage() {
     [doneTodayTasks, todayTasks],
   )
   const showSelfCareMainTasks =
-    selfCareDashboardQuery.data?.settings.showSelfCareInMainTasks === true
+    selfCareDashboardQuery.data?.settings.showSelfCareInMainTasks ??
+    tomorrowSelfCareDashboardQuery.data?.settings.showSelfCareInMainTasks ??
+    false
   const selfCareRoutineEntries =
     showSelfCareMainTasks && selfCareDashboardQuery.data
-      ? [
-          ...selfCareDashboardQuery.data.todayItems,
-          ...selfCareDashboardQuery.data.flexibleGoals.filter(
-            isSelfCareDailyFlexibleGoal,
-          ),
-        ].filter(isVisibleSelfCareMainTask)
+      ? getSelfCareMainTaskEntries(selfCareDashboardQuery.data)
       : []
   const selfCareOverdueEntries =
     showSelfCareMainTasks && selfCareDashboardQuery.data
       ? selfCareDashboardQuery.data.overdueItems.filter(
           isVisibleSelfCareMainTask,
         )
+      : []
+  const selfCareTomorrowEntries =
+    showSelfCareMainTasks && tomorrowSelfCareDashboardQuery.data
+      ? getSelfCareMainTaskEntries(tomorrowSelfCareDashboardQuery.data)
       : []
   const defaultCollapsedSections = getTaskSectionDefaultCollapseState({
     activeHabitItemCount: selfCareRoutineEntries.length,
@@ -403,6 +426,7 @@ function PersonalTodayPage() {
     otherTasks,
     overdueTasks,
     routineTasks,
+    tomorrowExtraItemCount: selfCareTomorrowEntries.length,
     tomorrowTasks,
   })
   const selfCareRoutineTaskCards = selfCareRoutineEntries.map((entry) => (
@@ -416,6 +440,14 @@ function PersonalTodayPage() {
   const selfCareOverdueTaskCards = selfCareOverdueEntries.map((entry) => (
     <SelfCareTodayTaskCard
       key={`overdue-${getSelfCareTaskKey(entry)}`}
+      entry={entry}
+      uploadedIcons={uploadedIcons}
+      variant={taskCardVariant}
+    />
+  ))
+  const selfCareTomorrowTaskCards = selfCareTomorrowEntries.map((entry) => (
+    <SelfCareTodayTaskCard
+      key={`tomorrow-${getSelfCareTaskKey(entry)}`}
       entry={entry}
       uploadedIcons={uploadedIcons}
       variant={taskCardVariant}
@@ -534,7 +566,11 @@ function PersonalTodayPage() {
                 'Завтра',
                 tomorrowTasks,
                 'На завтра пока ничего нет.',
-                { defaultCollapsed: defaultCollapsedSections.tomorrow },
+                {
+                  defaultCollapsed: defaultCollapsedSections.tomorrow,
+                  extraItemCount: selfCareTomorrowTaskCards.length,
+                  extraItems: selfCareTomorrowTaskCards,
+                },
               ),
               buildTaskSection(
                 'other',
@@ -655,6 +691,7 @@ function SharedTodayPage() {
     otherTasks,
     overdueTasks,
     routineTasks,
+    tomorrowExtraItemCount: 0,
     tomorrowTasks,
   })
 

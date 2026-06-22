@@ -32,7 +32,10 @@ const mocks = vi.hoisted(() => ({
   copyTaskToPersonal: vi.fn(),
   moveTaskToPersonal: vi.fn(),
   removeTask: vi.fn(),
-  selfCareDashboard: undefined as SelfCareDashboardResponse | undefined,
+  selfCareDashboards: {} as Record<
+    string,
+    SelfCareDashboardResponse | undefined
+  >,
   setTaskPlannedDate: vi.fn(),
   setTaskStatus: vi.fn(),
   updateTask: vi.fn(),
@@ -59,7 +62,9 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/self-care', () => ({
-  useSelfCareDashboard: () => ({ data: mocks.selfCareDashboard }),
+  useSelfCareDashboard: (date: string) => ({
+    data: mocks.selfCareDashboards[date],
+  }),
 }))
 
 vi.mock('@/features/session', () => ({
@@ -190,10 +195,14 @@ function createSelfCareTodayItem(
 
 function createSelfCareDashboard(
   todayItems: SelfCareTodayItem[],
-  options: { flexibleGoals?: SelfCareTodayItem[] } = {},
+  options: {
+    date?: string
+    flexibleGoals?: SelfCareTodayItem[]
+    showSelfCareInMainTasks?: boolean
+  } = {},
 ): SelfCareDashboardResponse {
   return {
-    date: getDateKey(new Date()),
+    date: options.date ?? getDateKey(new Date()),
     dailyState: null,
     flexibleGoals: options.flexibleGoals ?? [],
     gentleMode: false,
@@ -201,11 +210,18 @@ function createSelfCareDashboard(
     overdueItems: [],
     planningHints: [],
     settings: {
-      showSelfCareInMainTasks: true,
+      showSelfCareInMainTasks: options.showSelfCareInMainTasks ?? true,
     } as SelfCareDashboardResponse['settings'],
     todayItems,
     upcomingImportant: [],
   } as SelfCareDashboardResponse
+}
+
+function setSelfCareDashboard(
+  dashboard: SelfCareDashboardResponse,
+  date = dashboard.date,
+) {
+  mocks.selfCareDashboards[date] = dashboard
 }
 
 function renderTodayPage({
@@ -233,7 +249,7 @@ describe('TodayPage', () => {
     mocks.copyTaskToPersonal.mockReset()
     mocks.moveTaskToPersonal.mockReset()
     mocks.removeTask.mockReset()
-    mocks.selfCareDashboard = undefined
+    mocks.selfCareDashboards = {}
     mocks.setTaskPlannedDate.mockReset()
     mocks.setTaskStatus.mockReset()
     mocks.updateTask.mockReset()
@@ -422,9 +438,7 @@ describe('TodayPage', () => {
   })
 
   it('renders migrated self-care items from the self-care dashboard in routine', () => {
-    mocks.selfCareDashboard = createSelfCareDashboard([
-      createSelfCareTodayItem(),
-    ])
+    setSelfCareDashboard(createSelfCareDashboard([createSelfCareTodayItem()]))
 
     renderTodayPage({
       tasks: [],
@@ -439,46 +453,48 @@ describe('TodayPage', () => {
   })
 
   it('renders daily flexible self-care goals from the self-care dashboard in routine', () => {
-    mocks.selfCareDashboard = createSelfCareDashboard([], {
-      flexibleGoals: [
-        createSelfCareTodayItem({
-          flexibleProgress: {
-            completedCount: 0,
-            periodEnd: getDateKey(new Date()),
-            periodStart: getDateKey(new Date()),
-            remainingCount: 3,
-            targetCount: 3,
-          },
-          item: {
-            id: 'self-care-water',
-            title: 'Вода',
-          },
-          scheduleRule: {
-            allowMultiplePerDay: false,
-            createdAt: '2026-05-14T08:00:00.000Z',
-            dayOfMonth: null,
-            daysOfWeek: [],
-            endDate: null,
-            flexiblePeriod: 'day',
-            flexibleTargetCount: 3,
-            generateInCalendar: false,
-            generateInTaskList: true,
-            id: 'self-care-water-rule',
-            intervalUnit: null,
-            intervalValue: null,
-            itemId: 'self-care-water',
-            monthOfYear: null,
-            preferredTime: null,
-            reminderOffsetsMinutes: [],
-            repeatKind: 'flexible_goal',
-            startDate: '2026-05-14',
-            timezone: null,
-            updatedAt: '2026-05-14T08:00:00.000Z',
-            weekOfMonth: null,
-          },
-        }),
-      ],
-    })
+    setSelfCareDashboard(
+      createSelfCareDashboard([], {
+        flexibleGoals: [
+          createSelfCareTodayItem({
+            flexibleProgress: {
+              completedCount: 0,
+              periodEnd: getDateKey(new Date()),
+              periodStart: getDateKey(new Date()),
+              remainingCount: 3,
+              targetCount: 3,
+            },
+            item: {
+              id: 'self-care-water',
+              title: 'Вода',
+            },
+            scheduleRule: {
+              allowMultiplePerDay: false,
+              createdAt: '2026-05-14T08:00:00.000Z',
+              dayOfMonth: null,
+              daysOfWeek: [],
+              endDate: null,
+              flexiblePeriod: 'day',
+              flexibleTargetCount: 3,
+              generateInCalendar: false,
+              generateInTaskList: true,
+              id: 'self-care-water-rule',
+              intervalUnit: null,
+              intervalValue: null,
+              itemId: 'self-care-water',
+              monthOfYear: null,
+              preferredTime: null,
+              reminderOffsetsMinutes: [],
+              repeatKind: 'flexible_goal',
+              startDate: '2026-05-14',
+              timezone: null,
+              updatedAt: '2026-05-14T08:00:00.000Z',
+              weekOfMonth: null,
+            },
+          }),
+        ],
+      }),
+    )
 
     renderTodayPage({
       tasks: [],
@@ -492,12 +508,12 @@ describe('TodayPage', () => {
   })
 
   it('keeps self-care dashboard items hidden when main tasks integration is disabled', () => {
-    mocks.selfCareDashboard = {
+    setSelfCareDashboard({
       ...createSelfCareDashboard([createSelfCareTodayItem()]),
       settings: {
         showSelfCareInMainTasks: false,
       } as SelfCareDashboardResponse['settings'],
-    }
+    })
 
     renderTodayPage({
       tasks: [],
@@ -511,31 +527,33 @@ describe('TodayPage', () => {
   })
 
   it('keeps completed self-care courses out of the main today routine', () => {
-    mocks.selfCareDashboard = createSelfCareDashboard([
-      createSelfCareTodayItem({
-        courseDetails: {
-          breakDays: 0,
-          completedCount: 1,
-          courseType: 'days',
-          createdAt: '2026-05-19T08:00:00.000Z',
-          endDate: null,
-          id: 'course-details-1',
-          isCompleted: true,
-          isPaused: false,
-          itemId: 'self-care-course',
-          repeatAfterCompletion: false,
-          startDate: getDateKey(new Date()),
-          totalCount: 1,
-          updatedAt: '2026-05-19T08:00:00.000Z',
-        },
-        item: {
-          id: 'self-care-course',
-          migratedFromHabitId: null,
-          title: 'Завершённый курс',
-          type: 'course',
-        },
-      }),
-    ])
+    setSelfCareDashboard(
+      createSelfCareDashboard([
+        createSelfCareTodayItem({
+          courseDetails: {
+            breakDays: 0,
+            completedCount: 1,
+            courseType: 'days',
+            createdAt: '2026-05-19T08:00:00.000Z',
+            endDate: null,
+            id: 'course-details-1',
+            isCompleted: true,
+            isPaused: false,
+            itemId: 'self-care-course',
+            repeatAfterCompletion: false,
+            startDate: getDateKey(new Date()),
+            totalCount: 1,
+            updatedAt: '2026-05-19T08:00:00.000Z',
+          },
+          item: {
+            id: 'self-care-course',
+            migratedFromHabitId: null,
+            title: 'Завершённый курс',
+            type: 'course',
+          },
+        }),
+      ]),
+    )
 
     renderTodayPage({
       tasks: [],
@@ -544,6 +562,113 @@ describe('TodayPage', () => {
     expect(
       screen.queryByRole('link', {
         name: 'Открыть заботу: Завершённый курс',
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('renders tomorrow self-care items in the tomorrow section when main tasks integration is enabled', () => {
+    const todayKey = getDateKey(new Date())
+    const tomorrowKey = getDateKey(addDays(new Date(), 1))
+
+    setSelfCareDashboard(createSelfCareDashboard([], { date: todayKey }))
+    setSelfCareDashboard(
+      createSelfCareDashboard(
+        [
+          createSelfCareTodayItem({
+            appointment: {
+              createdAt: '2026-05-19T08:00:00.000Z',
+              currency: null,
+              endsAt: `${tomorrowKey}T12:00:00.000Z`,
+              id: 'appointment-1',
+              itemId: 'self-care-dentist',
+              occurrenceId: 'occurrence-dentist',
+              place: null,
+              preparationNote: null,
+              price: null,
+              resultNote: null,
+              specialistContact: null,
+              specialistName: null,
+              startsAt: `${tomorrowKey}T11:30:00.000Z`,
+              updatedAt: '2026-05-19T08:00:00.000Z',
+            },
+            item: {
+              id: 'self-care-dentist',
+              migratedFromHabitId: null,
+              title: 'Стоматолог',
+              type: 'appointment',
+            },
+            occurrence: {
+              completedAt: null,
+              createdAt: '2026-05-19T08:00:00.000Z',
+              dueAt: `${tomorrowKey}T11:30:00.000Z`,
+              generatedAt: '2026-05-19T08:00:00.000Z',
+              id: 'occurrence-dentist',
+              itemId: 'self-care-dentist',
+              movedTo: null,
+              scheduledFor: tomorrowKey,
+              scheduleRuleId: null,
+              status: 'scheduled',
+              updatedAt: '2026-05-19T08:00:00.000Z',
+              userId: 'user-1',
+            },
+          }),
+        ],
+        { date: tomorrowKey },
+      ),
+    )
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(screen.getByRole('button', { name: 'Завтра' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(
+      screen.getByRole('link', {
+        name: 'Открыть заботу: Стоматолог',
+      }),
+    ).toBeVisible()
+  })
+
+  it('keeps tomorrow self-care items hidden when main tasks integration is disabled', () => {
+    const todayKey = getDateKey(new Date())
+    const tomorrowKey = getDateKey(addDays(new Date(), 1))
+
+    setSelfCareDashboard(
+      createSelfCareDashboard([], {
+        date: todayKey,
+        showSelfCareInMainTasks: false,
+      }),
+    )
+    setSelfCareDashboard(
+      createSelfCareDashboard(
+        [
+          createSelfCareTodayItem({
+            item: {
+              id: 'self-care-dentist',
+              migratedFromHabitId: null,
+              title: 'Стоматолог',
+              type: 'appointment',
+            },
+          }),
+        ],
+        {
+          date: tomorrowKey,
+          showSelfCareInMainTasks: false,
+        },
+      ),
+    )
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(screen.queryByRole('button', { name: 'Завтра' })).toBeNull()
+    expect(
+      screen.queryByRole('link', {
+        name: 'Открыть заботу: Стоматолог',
       }),
     ).not.toBeInTheDocument()
   })

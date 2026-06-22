@@ -615,7 +615,9 @@ export function buildDashboardResponse(input: {
   const todayItems = todayOccurrences
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
-      return item ? [buildTodayItem({ date, item, occurrence, state })] : []
+      return item && isVisibleSelfCareItem(item)
+        ? [buildTodayItem({ date, item, occurrence, state })]
+        : []
     })
     .filter((entry) => shouldShowInDashboard(entry, state.settings, date))
     .sort(sortTodayItems)
@@ -1583,7 +1585,7 @@ function buildUpcomingImportant(date: string, state: SelfCareStateSnapshot) {
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
 
-      return item && item.type === 'medical'
+      return item && isVisibleSelfCareItem(item) && item.type === 'medical'
         ? [
             buildTodayItem({
               date: occurrence.scheduledFor,

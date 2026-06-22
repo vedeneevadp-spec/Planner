@@ -748,6 +748,67 @@ void test('buildDashboardResponse carries overdue planned care without planning 
   assert.deepEqual(response.planningHints, [])
 })
 
+void test('buildDashboardResponse omits invisible scheduled item leftovers', () => {
+  const date = '2026-06-22'
+  const activeItem = selfCareItem({
+    id: 'active-care',
+    title: 'Утренний уход',
+  })
+  const archivedItem = selfCareItem({
+    id: 'archived-care',
+    isActive: false,
+    isArchived: true,
+    title: 'Медиана',
+  })
+  const inactiveMedical = selfCareItem({
+    category: 'medical',
+    id: 'inactive-medical',
+    isActive: false,
+    title: 'Скрытая медицина',
+    type: 'medical',
+  })
+  const deletedItem = selfCareItem({
+    deletedAt: NOW,
+    id: 'deleted-care',
+    isActive: false,
+    title: 'Удаленный хвост',
+  })
+  const response = buildDashboardResponse({
+    date,
+    state: selfCareState({
+      items: [activeItem, archivedItem, inactiveMedical, deletedItem],
+      occurrences: [
+        selfCareOccurrence({
+          id: 'active-occurrence',
+          itemId: activeItem.id,
+          scheduledFor: date,
+        }),
+        selfCareOccurrence({
+          id: 'archived-occurrence',
+          itemId: archivedItem.id,
+          scheduledFor: date,
+        }),
+        selfCareOccurrence({
+          id: 'inactive-medical-occurrence',
+          itemId: inactiveMedical.id,
+          scheduledFor: date,
+        }),
+        selfCareOccurrence({
+          id: 'deleted-occurrence',
+          itemId: deletedItem.id,
+          scheduledFor: date,
+        }),
+      ],
+    }),
+  })
+
+  assert.deepEqual(
+    response.todayItems.map((entry) => entry.item.title),
+    ['Утренний уход'],
+  )
+  assert.deepEqual(response.upcomingImportant, [])
+})
+
 void test('buildDashboardResponse does not carry daily routine leftovers as overdue plan', () => {
   const date = '2026-06-09'
   const item = selfCareItem({
