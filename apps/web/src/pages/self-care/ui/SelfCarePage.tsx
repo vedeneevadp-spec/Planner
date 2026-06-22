@@ -27,6 +27,7 @@ import {
   useSelfCareRitualStepDrafts,
   useSelfCareSettings,
   useSelfCareTemplates,
+  useSkipSelfCareOccurrence,
   useUpdateSelfCareItem,
   useUpdateSelfCareSettings,
   useUpsertSelfCareRitualStepDraft,
@@ -133,6 +134,7 @@ export function SelfCarePage() {
   const completeFlexibleGoalMutation = useCompleteSelfCareFlexibleGoal()
   const completeCourseMutation = useCompleteSelfCareCourseSession()
   const cancelOccurrenceMutation = useCancelSelfCareOccurrence()
+  const skipOccurrenceMutation = useSkipSelfCareOccurrence()
   const archiveItemMutation = useArchiveSelfCareItem()
   const scheduleItemMutation = useScheduleSelfCareItem()
   const moveOccurrenceMutation = useMoveSelfCareOccurrence()
@@ -203,6 +205,7 @@ export function SelfCarePage() {
     completeFlexibleGoalMutation.isPending ||
     completeCourseMutation.isPending ||
     cancelOccurrenceMutation.isPending ||
+    skipOccurrenceMutation.isPending ||
     archiveItemMutation.isPending ||
     scheduleItemMutation.isPending ||
     moveOccurrenceMutation.isPending ||
@@ -226,6 +229,7 @@ export function SelfCarePage() {
       completeFlexibleGoalMutation.error,
       completeCourseMutation.error,
       cancelOccurrenceMutation.error,
+      skipOccurrenceMutation.error,
       archiveItemMutation.error,
       scheduleItemMutation.error,
       moveOccurrenceMutation.error,
@@ -532,6 +536,25 @@ export function SelfCarePage() {
       })
   }
 
+  function handleSkipOccurrence(entry: SelfCareTodayItem): void {
+    if (!entry.occurrence) {
+      return
+    }
+
+    setFormError(null)
+    void skipOccurrenceMutation
+      .mutateAsync({
+        input: { reason: 'Пропущено вручную.' },
+        occurrenceId: entry.occurrence.id,
+      })
+      .then(() => {
+        clearRitualStepDraft(entry)
+      })
+      .catch((error: unknown) => {
+        setFormError(getSelfCareErrorMessage(error))
+      })
+  }
+
   function handleMeasurementSubmit(input: SelfCareCompletionInput): void {
     if (!measurementDialogEntry) {
       return
@@ -722,6 +745,7 @@ export function SelfCarePage() {
           onEditItem={handleEditItem}
           onRestartCourse={handleRestartCourse}
           onScheduleItem={handleScheduleItem}
+          onSkipOccurrence={handleSkipOccurrence}
           onShowHistory={() => setActiveTab('history')}
           onShowPlan={() => setActiveTab('plan')}
           onToggleRitualStep={handleToggleRitualStep}

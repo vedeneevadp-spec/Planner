@@ -215,6 +215,7 @@ export function SelfCareTodayTab({
   onEditItem,
   onRestartCourse,
   onScheduleItem,
+  onSkipOccurrence,
   onShowHistory,
   onShowPlan,
   plan,
@@ -234,6 +235,7 @@ export function SelfCareTodayTab({
   onEditItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
   onScheduleItem: (entry: SelfCareTodayItem) => void
+  onSkipOccurrence: (entry: SelfCareTodayItem) => void
   onShowHistory: () => void
   onShowPlan: () => void
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
@@ -336,6 +338,7 @@ export function SelfCareTodayTab({
               onArchive={onArchiveItem}
               onEdit={onEditItem}
               onSchedule={onScheduleItem}
+              onSkipOccurrence={onSkipOccurrence}
               onToggleStep={onToggleRitualStep}
             />
           ))}
@@ -381,6 +384,7 @@ export function SelfCareTodayTab({
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
                   onRestartCourse={onRestartCourse}
+                  onSkipOccurrence={onSkipOccurrence}
                   onToggleStep={onToggleRitualStep}
                 />
               ))}
@@ -1094,6 +1098,7 @@ function SelfCareItemCard({
   onEdit,
   onRestartCourse,
   onSchedule,
+  onSkipOccurrence,
   onToggleStep,
   scheduleActionLabel = 'Перенести',
   stepDraft,
@@ -1111,6 +1116,7 @@ function SelfCareItemCard({
   onEdit: (entry: SelfCareTodayItem) => void
   onRestartCourse?: ((entry: SelfCareTodayItem) => void) | undefined
   onSchedule?: (entry: SelfCareTodayItem) => void
+  onSkipOccurrence?: ((entry: SelfCareTodayItem) => void) | undefined
   onToggleStep?: (entry: SelfCareTodayItem, stepId: string) => void
   scheduleActionLabel?: string
   stepDraft?: readonly string[] | undefined
@@ -1276,6 +1282,16 @@ function SelfCareItemCard({
                 <CheckIcon size={18} strokeWidth={2.3} />
               </button>
             )}
+            {onSkipOccurrence && entry.occurrence ? (
+              <button
+                className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
+                type="button"
+                disabled={isBusy || isDone}
+                onClick={() => onSkipOccurrence(entry)}
+              >
+                Пропустить
+              </button>
+            ) : null}
             {onSchedule && entry.occurrence ? (
               <button
                 className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
