@@ -8,7 +8,6 @@ import type {
   SelfCareItemUpdateInput,
   SelfCareListResponse,
   SelfCareTemplate,
-  SelfCareTimeOfDay,
   SelfCareTodayItem,
 } from '@planner/contracts'
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
@@ -97,12 +96,10 @@ import {
   groupItemsByCategory,
   groupTodayItems,
   INTERVAL_UNIT_SELECT_OPTIONS,
-  isValidMeasurementTargetRange,
   normalizeOptionalText,
   parseBoundedInteger,
   parseMultilineTitles,
   parseNonnegativeInteger,
-  parseOptionalMeasurementNumber,
   parseOptionalPrice,
   parsePositiveInteger,
   parseRequiredMeasurementNumber,
@@ -120,6 +117,7 @@ import {
   type SelfCareEditSubmitPayload,
   type SelfCareSettingsPatch,
   type SelfCareStandardRepeatKind,
+  type SelfCareTimePreference,
   shouldShowSelfCareSkipAction,
   shouldShowVisitDetails,
   shouldUseExactSchedule,
@@ -127,6 +125,7 @@ import {
   STATUS_LABELS,
   TIME_GROUP_LABELS,
   TIME_GROUP_SELECT_OPTIONS,
+  TIME_PREFERENCE_SELECT_OPTIONS,
   toggleWeekday,
   VISIBLE_CATEGORY_LABELS,
   type VisibleSelfCareCategory,
@@ -1899,8 +1898,8 @@ function SelfCareCustomCreateForm({
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [type, setType] = useState<SelfCareItemType>('task')
   const [category, setCategory] = useState<SelfCareCategory>('custom')
-  const [preferredTimeOfDay, setPreferredTimeOfDay] =
-    useState<SelfCareTimeOfDay>('anytime')
+  const [preferredTimePreference, setPreferredTimePreference] =
+    useState<SelfCareTimePreference>('anytime')
   const [repeatKind, setRepeatKind] =
     useState<SelfCareStandardRepeatKind>('none')
   const [courseScheduleMode, setCourseScheduleMode] =
@@ -1932,8 +1931,6 @@ function SelfCareCustomCreateForm({
   const [detailsPrice, setDetailsPrice] = useState('')
   const [measurementValueLabel, setMeasurementValueLabel] = useState('Значение')
   const [measurementUnit, setMeasurementUnit] = useState('')
-  const [measurementTargetMin, setMeasurementTargetMin] = useState('')
-  const [measurementTargetMax, setMeasurementTargetMax] = useState('')
   const [stepsText, setStepsText] = useState('')
   const selectedType = CREATE_TYPE_OPTIONS.find(
     (option) => option.value === type,
@@ -1942,10 +1939,10 @@ function SelfCareCustomCreateForm({
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
   const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
-  const measurementTargetMinNumber =
-    parseOptionalMeasurementNumber(measurementTargetMin)
-  const measurementTargetMaxNumber =
-    parseOptionalMeasurementNumber(measurementTargetMax)
+  const usesMeasurementExactTime =
+    type === 'measurement' && preferredTimePreference === 'exact'
+  const preferredTimeOfDay =
+    preferredTimePreference === 'exact' ? null : preferredTimePreference
   const usesExactSchedule = shouldUseExactSchedule(type)
   const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
   const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
@@ -1975,15 +1972,17 @@ function SelfCareCustomCreateForm({
       courseRepeatMode !== 'cycle' ||
       courseBreakDaysNumber !== null) &&
     (!usesExactSchedule || scheduledDate.length > 0) &&
-    (type !== 'measurement' ||
-      (measurementUnit.trim().length > 0 &&
-        isValidMeasurementTargetRange(
-          measurementTargetMinNumber,
-          measurementTargetMaxNumber,
-        )))
+    (!usesMeasurementExactTime || scheduledTime.length > 0) &&
+    (type !== 'measurement' || measurementUnit.trim().length > 0)
 
   function handleTypeChange(nextType: SelfCareItemType): void {
     setType(nextType)
+
+    if (nextType !== 'measurement') {
+      setPreferredTimePreference((value) =>
+        value === 'exact' ? 'anytime' : value,
+      )
+    }
 
     if (nextType === 'task') {
       setCategory('custom')
@@ -2023,7 +2022,7 @@ function SelfCareCustomCreateForm({
     if (nextType === 'measurement') {
       setCategory('health')
       setRepeatKind('daily')
-      setScheduledTime((value) => value || '09:00')
+      setScheduledTime('')
       setMeasurementValueLabel((value) => value || 'Значение')
     }
   }
@@ -2041,6 +2040,9 @@ function SelfCareCustomCreateForm({
         const detailsPriceValue = parseOptionalPrice(detailsPrice)
         const defaultDetailsCurrency = normalizeOptionalText(defaultCurrency)
         const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
+        const normalizedMeasurementTime = usesMeasurementExactTime
+          ? normalizedScheduledTime
+          : null
         const canStoreVisitDetails = shouldShowVisitDetails(type)
         const scheduleRule =
           type === 'task' && scheduleRepeatKind === 'none'
@@ -2057,6 +2059,8 @@ function SelfCareCustomCreateForm({
                 intervalValue: intervalNumber ?? 1,
                 monthOfYear:
                   monthOfYearNumber ?? getDatePart(todayKey, 'month'),
+                preferredTime:
+                  type === 'measurement' ? normalizedMeasurementTime : null,
                 repeatKind: scheduleRepeatKind,
                 startDate: usesExactSchedule ? scheduledDate : todayKey,
               })
@@ -2130,8 +2134,8 @@ function SelfCareCustomCreateForm({
             measurementDetails:
               type === 'measurement'
                 ? {
-                    targetMax: measurementTargetMaxNumber,
-                    targetMin: measurementTargetMinNumber,
+                    targetMax: null,
+                    targetMin: null,
                     unit: measurementUnit.trim(),
                     valueLabel: measurementValueLabel.trim() || 'Значение',
                   }
@@ -2173,7 +2177,10 @@ function SelfCareCustomCreateForm({
                   : null,
                 price: canStoreVisitDetails ? detailsPriceValue : null,
                 scheduledFor: scheduledDate,
-                scheduledTime: normalizedScheduledTime,
+                scheduledTime:
+                  type === 'measurement'
+                    ? normalizedMeasurementTime
+                    : normalizedScheduledTime,
                 specialistContact: canStoreVisitDetails
                   ? normalizeOptionalText(detailsContact)
                   : null,
@@ -2227,12 +2234,16 @@ function SelfCareCustomCreateForm({
       />
 
       <div className={styles.createFormGrid}>
-        <SelectPicker<SelfCareTimeOfDay>
+        <SelectPicker<SelfCareTimePreference>
           className={styles.selectField}
           label="Когда удобнее"
-          value={preferredTimeOfDay}
-          options={TIME_GROUP_SELECT_OPTIONS}
-          onChange={setPreferredTimeOfDay}
+          value={preferredTimePreference}
+          options={
+            type === 'measurement'
+              ? TIME_PREFERENCE_SELECT_OPTIONS
+              : TIME_GROUP_SELECT_OPTIONS
+          }
+          onChange={setPreferredTimePreference}
         />
 
         {type === 'course' ? (
@@ -2309,14 +2320,17 @@ function SelfCareCustomCreateForm({
             />
           </label>
 
-          <label className={styles.dateField}>
-            <span>{getExactScheduleTimeLabel(type)}</span>
-            <input
-              type="time"
-              value={scheduledTime}
-              onChange={(event) => setScheduledTime(event.target.value)}
-            />
-          </label>
+          {type !== 'measurement' || usesMeasurementExactTime ? (
+            <label className={styles.dateField}>
+              <span>{getExactScheduleTimeLabel(type)}</span>
+              <input
+                type="time"
+                required={usesMeasurementExactTime}
+                value={scheduledTime}
+                onChange={(event) => setScheduledTime(event.target.value)}
+              />
+            </label>
+          ) : null}
         </div>
       ) : null}
 
@@ -2397,30 +2411,6 @@ function SelfCareCustomCreateForm({
               placeholder="кг, см, °C"
               value={measurementUnit}
               onChange={(event) => setMeasurementUnit(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Нижняя граница</span>
-            <input
-              type="number"
-              step="0.1"
-              inputMode="decimal"
-              placeholder="Необязательно"
-              value={measurementTargetMin}
-              onChange={(event) => setMeasurementTargetMin(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Верхняя граница</span>
-            <input
-              type="number"
-              step="0.1"
-              inputMode="decimal"
-              placeholder="Необязательно"
-              value={measurementTargetMax}
-              onChange={(event) => setMeasurementTargetMax(event.target.value)}
             />
           </label>
         </div>
@@ -2875,8 +2865,12 @@ function SelfCareEditForm({
   const [category, setCategory] = useState<SelfCareCategory>(
     entry.item.category,
   )
-  const [preferredTimeOfDay, setPreferredTimeOfDay] =
-    useState<SelfCareTimeOfDay>(entry.item.preferredTimeOfDay ?? 'anytime')
+  const [preferredTimePreference, setPreferredTimePreference] =
+    useState<SelfCareTimePreference>(
+      entry.item.type === 'measurement' && entry.scheduleRule?.preferredTime
+        ? 'exact'
+        : (entry.item.preferredTimeOfDay ?? 'anytime'),
+    )
   const [repeatMode, setRepeatMode] = useState<SelfCareEditRepeatMode>(
     entry.item.type === 'flexible_goal'
       ? getInitialFlexibleGoalRepeatMode(entry.scheduleRule)
@@ -2963,20 +2957,14 @@ function SelfCareEditForm({
   const [measurementUnit, setMeasurementUnit] = useState(
     entry.measurement?.unit ?? '',
   )
-  const [measurementTargetMin, setMeasurementTargetMin] = useState(
-    formatOptionalNumber(entry.measurement?.targetMin),
-  )
-  const [measurementTargetMax, setMeasurementTargetMax] = useState(
-    formatOptionalNumber(entry.measurement?.targetMax),
-  )
   const intervalNumber = parsePositiveInteger(intervalValue)
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
   const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
-  const measurementTargetMinNumber =
-    parseOptionalMeasurementNumber(measurementTargetMin)
-  const measurementTargetMaxNumber =
-    parseOptionalMeasurementNumber(measurementTargetMax)
+  const usesMeasurementExactTime =
+    entry.item.type === 'measurement' && preferredTimePreference === 'exact'
+  const preferredTimeOfDay =
+    preferredTimePreference === 'exact' ? null : preferredTimePreference
   const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
   const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
   const selectedRepeatKind = repeatMode === 'keep' ? null : repeatMode
@@ -3014,12 +3002,8 @@ function SelfCareEditForm({
     (entry.item.type !== 'course' ||
       courseRepeatMode !== 'cycle' ||
       courseBreakDaysNumber !== null) &&
-    (entry.item.type !== 'measurement' ||
-      (measurementUnit.trim().length > 0 &&
-        isValidMeasurementTargetRange(
-          measurementTargetMinNumber,
-          measurementTargetMaxNumber,
-        )))
+    (!usesMeasurementExactTime || scheduledTime.length > 0) &&
+    (entry.item.type !== 'measurement' || measurementUnit.trim().length > 0)
 
   return (
     <form
@@ -3035,6 +3019,9 @@ function SelfCareEditForm({
         const normalizedProcedureCurrency =
           normalizeOptionalText(procedureCurrency)
         const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
+        const normalizedMeasurementTime = usesMeasurementExactTime
+          ? normalizedScheduledTime
+          : null
         const input: SelfCareItemUpdateInput = {
           category,
           description: description.trim(),
@@ -3088,11 +3075,45 @@ function SelfCareEditForm({
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
+            preferredTime:
+              entry.item.type === 'measurement'
+                ? normalizedMeasurementTime
+                : null,
             repeatKind: selectedRepeatKind,
             startDate: usesExactSchedule
               ? scheduledDate
               : (entry.scheduleRule?.startDate ?? todayKey),
           })
+        }
+
+        if (
+          entry.item.type === 'measurement' &&
+          !selectedRepeatKind &&
+          (entry.scheduleRule?.preferredTime ?? null) !==
+            normalizedMeasurementTime
+        ) {
+          input.scheduleRule = {
+            allowMultiplePerDay:
+              entry.scheduleRule?.allowMultiplePerDay ?? false,
+            dayOfMonth: entry.scheduleRule?.dayOfMonth ?? null,
+            daysOfWeek: entry.scheduleRule?.daysOfWeek ?? [],
+            endDate: entry.scheduleRule?.endDate ?? null,
+            flexiblePeriod: entry.scheduleRule?.flexiblePeriod ?? null,
+            flexibleTargetCount:
+              entry.scheduleRule?.flexibleTargetCount ?? null,
+            generateInCalendar: entry.scheduleRule?.generateInCalendar ?? false,
+            generateInTaskList: entry.scheduleRule?.generateInTaskList ?? true,
+            intervalUnit: entry.scheduleRule?.intervalUnit ?? null,
+            intervalValue: entry.scheduleRule?.intervalValue ?? null,
+            monthOfYear: entry.scheduleRule?.monthOfYear ?? null,
+            preferredTime: normalizedMeasurementTime,
+            reminderOffsetsMinutes:
+              entry.scheduleRule?.reminderOffsetsMinutes ?? [],
+            repeatKind: entry.scheduleRule?.repeatKind ?? 'daily',
+            startDate: entry.scheduleRule?.startDate ?? scheduledDate,
+            timezone: entry.scheduleRule?.timezone ?? null,
+            weekOfMonth: entry.scheduleRule?.weekOfMonth ?? null,
+          }
         }
 
         if (entry.item.type === 'ritual') {
@@ -3137,8 +3158,8 @@ function SelfCareEditForm({
 
         if (entry.item.type === 'measurement') {
           input.measurementDetails = {
-            targetMax: measurementTargetMaxNumber,
-            targetMin: measurementTargetMinNumber,
+            targetMax: null,
+            targetMin: null,
             unit: measurementUnit.trim(),
             valueLabel: measurementValueLabel.trim() || 'Значение',
           }
@@ -3160,7 +3181,10 @@ function SelfCareEditForm({
                   : null,
                 price: canStoreVisitDetails ? detailsPriceValue : null,
                 scheduledFor: scheduledDate,
-                scheduledTime: normalizedScheduledTime,
+                scheduledTime:
+                  entry.item.type === 'measurement'
+                    ? normalizedMeasurementTime
+                    : normalizedScheduledTime,
                 specialistContact: canStoreVisitDetails
                   ? normalizeOptionalText(procedureContact)
                   : null,
@@ -3207,12 +3231,16 @@ function SelfCareEditForm({
       />
 
       <div className={styles.createFormGrid}>
-        <SelectPicker<SelfCareTimeOfDay>
+        <SelectPicker<SelfCareTimePreference>
           className={styles.selectField}
           label="Когда удобнее"
-          value={preferredTimeOfDay}
-          options={TIME_GROUP_SELECT_OPTIONS}
-          onChange={setPreferredTimeOfDay}
+          value={preferredTimePreference}
+          options={
+            entry.item.type === 'measurement'
+              ? TIME_PREFERENCE_SELECT_OPTIONS
+              : TIME_GROUP_SELECT_OPTIONS
+          }
+          onChange={setPreferredTimePreference}
         />
 
         {entry.item.type === 'course' ? (
@@ -3345,14 +3373,17 @@ function SelfCareEditForm({
             />
           </label>
 
-          <label className={styles.dateField}>
-            <span>{getExactScheduleTimeLabel(entry.item.type)}</span>
-            <input
-              type="time"
-              value={scheduledTime}
-              onChange={(event) => setScheduledTime(event.target.value)}
-            />
-          </label>
+          {entry.item.type !== 'measurement' || usesMeasurementExactTime ? (
+            <label className={styles.dateField}>
+              <span>{getExactScheduleTimeLabel(entry.item.type)}</span>
+              <input
+                type="time"
+                required={usesMeasurementExactTime}
+                value={scheduledTime}
+                onChange={(event) => setScheduledTime(event.target.value)}
+              />
+            </label>
+          ) : null}
         </div>
       ) : null}
 
@@ -3457,28 +3488,6 @@ function SelfCareEditForm({
               required
               value={measurementUnit}
               onChange={(event) => setMeasurementUnit(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Нижняя граница</span>
-            <input
-              type="number"
-              step="0.1"
-              inputMode="decimal"
-              value={measurementTargetMin}
-              onChange={(event) => setMeasurementTargetMin(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Верхняя граница</span>
-            <input
-              type="number"
-              step="0.1"
-              inputMode="decimal"
-              value={measurementTargetMax}
-              onChange={(event) => setMeasurementTargetMax(event.target.value)}
             />
           </label>
         </div>

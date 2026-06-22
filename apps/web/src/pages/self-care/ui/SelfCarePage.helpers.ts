@@ -47,6 +47,7 @@ export type SelfCareEditRepeatMode = SelfCareStandardRepeatKind | 'keep'
 export type SelfCareCourseScheduleMode = 'daily' | 'weekly' | 'interval'
 export type SelfCareCourseEditScheduleMode = SelfCareCourseScheduleMode | 'keep'
 export type SelfCareCourseRepeatMode = 'cycle' | 'once'
+export type SelfCareTimePreference = SelfCareTimeOfDay | 'exact'
 export type SelfCareCreateScheduleRuleInput = NonNullable<
   SelfCareItemInput['scheduleRule']
 >
@@ -178,6 +179,16 @@ export const TIME_GROUP_SELECT_OPTIONS: Array<
 > = (
   Object.entries(TIME_GROUP_LABELS) as Array<[SelfCareTimeOfDay, string]>
 ).map(([value, label]) => ({ label, value }))
+
+export const TIME_PREFERENCE_SELECT_OPTIONS: Array<
+  SelectPickerOption<SelfCareTimePreference>
+> = [
+  ...TIME_GROUP_SELECT_OPTIONS,
+  {
+    label: 'Точное время',
+    value: 'exact',
+  },
+]
 
 export const REPEAT_LABELS: Record<SelfCareRepeatKind, string> = {
   after_completion: 'после выполнения',
@@ -775,6 +786,7 @@ export function buildCreateScheduleRule(input: {
   intervalUnit: SelfCareIntervalUnit
   intervalValue: number
   monthOfYear: number
+  preferredTime?: string | null | undefined
   repeatKind: SelfCareCreateRepeatKind
   startDate: string
 }): SelfCareCreateScheduleRuleInput {
@@ -806,7 +818,7 @@ export function buildCreateScheduleRule(input: {
       !hasFlexibleGoal && input.repeatKind === 'yearly'
         ? input.monthOfYear
         : null,
-    preferredTime: null,
+    preferredTime: input.preferredTime ?? null,
     reminderOffsetsMinutes: [],
     repeatKind: input.repeatKind,
     startDate: input.startDate,
