@@ -79,6 +79,8 @@ const DEFAULT_MINIMUM_TITLES = [
   'выйти на воздух',
   'лечь спать',
 ]
+const AFTER_COMPLETION_PLANNING_ITEM_TYPES: ReadonlySet<SelfCareItem['type']> =
+  new Set(['appointment', 'medical', 'procedure'])
 
 export interface SelfCareStateSnapshot {
   alternatives: SelfCareItemAlternative[]
@@ -555,6 +557,10 @@ export function generateSelfCareOccurrencesForRange(input: {
     return []
   }
 
+  if (isAfterCompletionPlanningItem(item, scheduleRule)) {
+    return []
+  }
+
   const existingDates = new Set(
     input.existingOccurrences
       .filter(
@@ -670,7 +676,13 @@ export function buildPlanResponse(input: {
     )
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
-      return item && isVisibleSelfCareItem(item)
+      return item &&
+        isVisibleSelfCareItem(item) &&
+        !isPlanningOnlyAfterCompletionOccurrence({
+          item,
+          occurrence,
+          state,
+        })
         ? [
             buildTodayItem({
               date: occurrence.scheduledFor,
@@ -1508,7 +1520,7 @@ function buildPlanningHints(date: string, state: SelfCareStateSnapshot) {
         return []
       }
 
-      if (hasOpenScheduledOccurrence(state, item.id)) {
+      if (hasOpenScheduledOccurrence(state, item, rule, date)) {
         return []
       }
 
@@ -1588,11 +1600,56 @@ function buildUpcomingImportant(date: string, state: SelfCareStateSnapshot) {
 
 function hasOpenScheduledOccurrence(
   state: SelfCareStateSnapshot,
-  itemId: string,
+  item: SelfCareItem,
+  rule: SelfCareScheduleRule,
+  date: string,
 ): boolean {
   return state.occurrences.some(
     (occurrence) =>
-      occurrence.itemId === itemId && occurrence.status === 'scheduled',
+      occurrence.itemId === item.id &&
+      occurrence.status === 'scheduled' &&
+      (occurrence.scheduledFor < date ||
+        !isPlanningOnlyAfterCompletionOccurrence({
+          item,
+          occurrence,
+          rule,
+          state,
+        })),
+  )
+}
+
+function isPlanningOnlyAfterCompletionOccurrence(input: {
+  item: SelfCareItem
+  occurrence: SelfCareOccurrence
+  rule?: SelfCareScheduleRule | null | undefined
+  state: SelfCareStateSnapshot
+}): boolean {
+  const rule =
+    input.rule ??
+    input.state.scheduleRules.find(
+      (candidate) => candidate.id === input.occurrence.scheduleRuleId,
+    ) ??
+    input.state.scheduleRules.find(
+      (candidate) => candidate.itemId === input.item.id,
+    ) ??
+    null
+
+  return (
+    input.occurrence.status === 'scheduled' &&
+    isAfterCompletionPlanningItem(input.item, rule) &&
+    !input.state.appointmentDetails.some(
+      (details) => details.occurrenceId === input.occurrence.id,
+    )
+  )
+}
+
+function isAfterCompletionPlanningItem(
+  item: SelfCareItem,
+  rule: SelfCareScheduleRule | null,
+): boolean {
+  return (
+    rule?.repeatKind === 'after_completion' &&
+    AFTER_COMPLETION_PLANNING_ITEM_TYPES.has(item.type)
   )
 }
 

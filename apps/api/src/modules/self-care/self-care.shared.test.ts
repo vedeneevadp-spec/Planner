@@ -26,6 +26,7 @@ import {
   buildTodayItem,
   createDefaultSelfCareSettings,
   generateSelfCareOccurrenceDates,
+  generateSelfCareOccurrencesForRange,
   getFlexibleGoalProgress,
   mapHabitEntryToSelfCareCompletion,
   mapHabitToSelfCareInput,
@@ -547,32 +548,153 @@ void test('buildDashboardResponse removes planning hints after item is scheduled
 
   const response = buildDashboardResponse({
     date,
-    state: {
-      alternatives: [],
-      appointmentDetails: [],
-      completions: [],
-      courseDetails: [],
-      dailyStates: [],
+    state: selfCareState({
+      appointmentDetails: [
+        appointmentDetails({
+          itemId: item.id,
+          occurrenceId: 'scheduled-visit',
+          startsAt: '2026-06-12T10:00:00.000Z',
+        }),
+      ],
       items: [item],
-      medicalDetails: [],
-      minimumItems: [],
       occurrences: [
         selfCareOccurrence({
+          id: 'scheduled-visit',
           itemId: item.id,
           scheduledFor: '2026-06-12',
           scheduleRuleId: scheduleRule.id,
         }),
       ],
-      procedureDetails: [],
       scheduleRules: [scheduleRule],
-      settings: createDefaultSelfCareSettings({ userId: 'user-1' }),
-      stepCompletions: [],
-      steps: [],
-      templates: [],
-    },
+    }),
   })
 
   assert.deepEqual(response.planningHints, [])
+})
+
+void test('buildDashboardResponse keeps after-completion visit repeat as a planning hint', () => {
+  const date = '2026-06-06'
+  const item = selfCareItem({
+    category: 'relax',
+    id: 'procedure-1',
+    title: 'Массаж',
+    type: 'procedure',
+  })
+  const scheduleRule = rule({
+    id: 'procedure-rule',
+    intervalUnit: 'day',
+    intervalValue: 5,
+    itemId: item.id,
+    repeatKind: 'after_completion',
+  })
+
+  const response = buildDashboardResponse({
+    date,
+    state: selfCareState({
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-06-01T18:00:00.000Z',
+          itemId: item.id,
+        }),
+      ],
+      items: [item],
+      occurrences: [
+        selfCareOccurrence({
+          itemId: item.id,
+          scheduledFor: date,
+          scheduleRuleId: scheduleRule.id,
+        }),
+      ],
+      scheduleRules: [scheduleRule],
+    }),
+  })
+
+  assert.deepEqual(
+    response.planningHints.map((entry) => [
+      entry.item.id,
+      entry.occurrence?.id ?? null,
+    ]),
+    [[item.id, null]],
+  )
+})
+
+void test('buildPlanResponse omits planning-only after-completion visit occurrences', () => {
+  const date = '2026-06-06'
+  const item = selfCareItem({
+    category: 'relax',
+    id: 'appointment-1',
+    title: 'Массаж',
+    type: 'appointment',
+  })
+  const scheduleRule = rule({
+    id: 'appointment-rule',
+    intervalUnit: 'day',
+    intervalValue: 5,
+    itemId: item.id,
+    repeatKind: 'after_completion',
+  })
+
+  const response = buildPlanResponse({
+    from: date,
+    state: selfCareState({
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-06-01T18:00:00.000Z',
+          itemId: item.id,
+        }),
+      ],
+      items: [item],
+      occurrences: [
+        selfCareOccurrence({
+          itemId: item.id,
+          scheduledFor: date,
+          scheduleRuleId: scheduleRule.id,
+        }),
+      ],
+      scheduleRules: [scheduleRule],
+    }),
+    to: '2026-06-20',
+  })
+
+  assert.deepEqual(response.occurrences, [])
+  assert.deepEqual(
+    response.planningHints.map((entry) => [
+      entry.item.id,
+      entry.occurrence?.id ?? null,
+    ]),
+    [[item.id, null]],
+  )
+})
+
+void test('generateSelfCareOccurrencesForRange defers after-completion visits to planning hints', () => {
+  const item = selfCareItem({
+    category: 'relax',
+    id: 'appointment-1',
+    title: 'Массаж',
+    type: 'appointment',
+  })
+  const scheduleRule = rule({
+    intervalUnit: 'day',
+    intervalValue: 5,
+    itemId: item.id,
+    repeatKind: 'after_completion',
+  })
+
+  const occurrences = generateSelfCareOccurrencesForRange({
+    completions: [
+      selfCareCompletion({
+        completedAt: '2026-06-01T18:00:00.000Z',
+        itemId: item.id,
+      }),
+    ],
+    existingOccurrences: [],
+    from: '2026-06-06',
+    item,
+    scheduleRule,
+    to: '2026-06-20',
+  })
+
+  assert.deepEqual(occurrences, [])
 })
 
 void test('buildDashboardResponse carries overdue planned care without planning duplicate', () => {

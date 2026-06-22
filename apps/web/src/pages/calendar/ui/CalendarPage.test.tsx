@@ -1,4 +1,8 @@
-import type { CalendarViewMode } from '@planner/contracts'
+import type {
+  CalendarViewMode,
+  SelfCareSettings,
+  SelfCareTodayItem,
+} from '@planner/contracts'
 import {
   cleanup,
   fireEvent,
@@ -11,6 +15,7 @@ import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { buildSelfCareCalendarTasks } from '../lib/calendar-load'
 import { CalendarPage } from './CalendarPage'
 
 interface SessionStub {
@@ -187,6 +192,42 @@ describe('CalendarPage', () => {
     expect(markers[0]).toHaveStyle({ top: '59.375%' })
   })
 
+  it('hides planning-only after-completion self-care repeats from the calendar', () => {
+    const tasks = buildSelfCareCalendarTasks(
+      [
+        createSelfCareCalendarEntry({
+          appointment: createSelfCareAppointmentDetails({
+            occurrenceId: null,
+          }),
+        }),
+      ],
+      createSelfCareSettings(),
+    )
+
+    expect(tasks).toHaveLength(0)
+  })
+
+  it('shows a manually scheduled after-completion self-care appointment in the calendar', () => {
+    const tasks = buildSelfCareCalendarTasks(
+      [
+        createSelfCareCalendarEntry({
+          appointment: createSelfCareAppointmentDetails({
+            occurrenceId: 'occurrence-1',
+          }),
+        }),
+      ],
+      createSelfCareSettings(),
+    )
+
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({
+      id: 'self-care:occurrence-1',
+      plannedDate: '2026-06-25',
+      plannedStartTime: '18:00',
+      title: 'Массаж',
+    })
+  })
+
   it.each([
     {
       afterNext: '13 июня',
@@ -289,5 +330,128 @@ function createSession(calendarViewMode: CalendarViewMode): SessionStub {
       kind: 'personal',
     },
     workspaceId: 'workspace-1',
+  }
+}
+
+function createSelfCareSettings(
+  overrides: Partial<SelfCareSettings> = {},
+): SelfCareSettings {
+  return {
+    createdAt: '2026-06-01T00:00:00.000Z',
+    currency: 'RUB',
+    defaultReminderTone: 'soft',
+    gentleModeDate: null,
+    gentleModeEnabledToday: false,
+    id: 'settings-1',
+    quietHoursEnd: '08:00',
+    quietHoursStart: '22:00',
+    showAppointmentsInCalendar: true,
+    showSelfCareInMainTasks: true,
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    userId: 'user-1',
+    ...overrides,
+  }
+}
+
+function createSelfCareCalendarEntry(
+  overrides: Partial<SelfCareTodayItem> = {},
+): SelfCareTodayItem {
+  return {
+    appointment: createSelfCareAppointmentDetails(),
+    completion: null,
+    courseDetails: null,
+    flexibleProgress: null,
+    item: {
+      category: 'relax',
+      color: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      createdFromTemplateId: null,
+      customCategoryId: null,
+      defaultDurationMinutes: 60,
+      deletedAt: null,
+      description: 'Массаж для жизни',
+      icon: '💆',
+      id: 'item-1',
+      importance: 'recommended',
+      isActive: true,
+      isArchived: false,
+      isPrivate: true,
+      migratedFromHabitId: null,
+      minimumVersionDescription: null,
+      minimumVersionDurationMinutes: null,
+      minimumVersionTitle: null,
+      preferredTimeOfDay: 'afternoon',
+      title: 'Массаж',
+      type: 'appointment',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      userId: 'user-1',
+      version: 1,
+      workspaceId: 'workspace-1',
+    },
+    lastMeasurement: null,
+    measurement: null,
+    occurrence: {
+      completedAt: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      dueAt: null,
+      generatedAt: '2026-06-01T00:00:00.000Z',
+      id: 'occurrence-1',
+      itemId: 'item-1',
+      movedTo: null,
+      scheduledFor: '2026-06-25',
+      scheduleRuleId: 'rule-1',
+      status: 'scheduled',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      userId: 'user-1',
+    },
+    procedure: null,
+    scheduleRule: {
+      allowMultiplePerDay: false,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      dayOfMonth: null,
+      daysOfWeek: [],
+      endDate: null,
+      flexiblePeriod: null,
+      flexibleTargetCount: null,
+      generateInCalendar: false,
+      generateInTaskList: true,
+      id: 'rule-1',
+      intervalUnit: 'day',
+      intervalValue: 5,
+      itemId: 'item-1',
+      monthOfYear: null,
+      preferredTime: null,
+      reminderOffsetsMinutes: [],
+      repeatKind: 'after_completion',
+      startDate: '2026-06-20',
+      timezone: null,
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      weekOfMonth: null,
+    },
+    steps: [],
+    timeGroup: 'afternoon',
+    ...overrides,
+  }
+}
+
+function createSelfCareAppointmentDetails(
+  overrides: Partial<NonNullable<SelfCareTodayItem['appointment']>> = {},
+): NonNullable<SelfCareTodayItem['appointment']> {
+  return {
+    createdAt: '2026-06-01T00:00:00.000Z',
+    currency: 'RUB',
+    endsAt: null,
+    id: 'appointment-details-1',
+    itemId: 'item-1',
+    occurrenceId: 'occurrence-1',
+    place: null,
+    preparationNote: null,
+    price: 4600,
+    resultNote: null,
+    specialistContact: null,
+    specialistName: 'Федор',
+    startsAt: '2026-06-25T18:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    ...overrides,
   }
 }

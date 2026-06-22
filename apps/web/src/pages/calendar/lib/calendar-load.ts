@@ -1,10 +1,16 @@
-import type { SelfCareTodayItem } from '@planner/contracts'
+import type { SelfCareSettings, SelfCareTodayItem } from '@planner/contracts'
 
 import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
 import { addDays, getDateKey } from '@/shared/lib/date'
 
 const CALENDAR_GRID_DAY_COUNT = 42
 const DEFAULT_TIMED_TASK_MINUTES = 60
+const HIDDEN_SELF_CARE_CALENDAR_OCCURRENCE_STATUSES: ReadonlySet<
+  NonNullable<SelfCareTodayItem['occurrence']>['status']
+> = new Set(['cancelled', 'done', 'missed', 'moved', 'partial', 'skipped'])
+const SELF_CARE_APPOINTMENT_CALENDAR_TYPES = new Set<
+  SelfCareTodayItem['item']['type']
+>(['appointment', 'procedure', 'medical'])
 
 export type CalendarLoadState = 'calm' | 'heavy' | 'overload' | 'steady'
 
@@ -257,6 +263,159 @@ export function isSelfCareCalendarTask(
   task: CalendarDisplayTask,
 ): task is CalendarSelfCareTask {
   return 'isSelfCare' in task && task.isSelfCare === true
+}
+
+function extractSelfCareTime(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+
+  const isoTime = /T(\d{2}:\d{2})/.exec(value)?.[1]
+  const plainTime = /^(\d{2}:\d{2})/.exec(value)?.[1]
+
+  return isoTime ?? plainTime ?? null
+}
+
+function getSelfCareCalendarStartTime(entry: SelfCareTodayItem): string | null {
+  return (
+    extractSelfCareTime(entry.occurrence?.dueAt) ??
+    extractSelfCareTime(entry.appointment?.startsAt) ??
+    extractSelfCareTime(entry.scheduleRule?.preferredTime)
+  )
+}
+
+function addMinutesToTime(startTime: string, minutes: number): string | null {
+  const startMinutes = parseTimeMinutes(startTime)
+
+  if (startMinutes === null) {
+    return null
+  }
+
+  const endMinutes = Math.min(startMinutes + minutes, 23 * 60 + 59)
+
+  if (endMinutes <= startMinutes) {
+    return null
+  }
+
+  const hours = Math.floor(endMinutes / 60)
+  const minutesPart = endMinutes % 60
+
+  return `${String(hours).padStart(2, '0')}:${String(minutesPart).padStart(
+    2,
+    '0',
+  )}`
+}
+
+function getSelfCareCalendarEndTime(
+  entry: SelfCareTodayItem,
+  startTime: string | null,
+): string | null {
+  if (!startTime) {
+    return null
+  }
+
+  const appointmentEndTime = extractSelfCareTime(entry.appointment?.endsAt)
+
+  if (appointmentEndTime && appointmentEndTime > startTime) {
+    return appointmentEndTime
+  }
+
+  return addMinutesToTime(startTime, entry.item.defaultDurationMinutes ?? 45)
+}
+
+function shouldShowSelfCareCalendarEntry(
+  entry: SelfCareTodayItem,
+  settings: SelfCareSettings | null | undefined,
+): boolean {
+  if (!settings || entry.item.isArchived || !entry.item.isActive) {
+    return false
+  }
+
+  if (!entry.occurrence) {
+    return false
+  }
+
+  if (
+    HIDDEN_SELF_CARE_CALENDAR_OCCURRENCE_STATUSES.has(entry.occurrence.status)
+  ) {
+    return false
+  }
+
+  if (!SELF_CARE_APPOINTMENT_CALENDAR_TYPES.has(entry.item.type)) {
+    return false
+  }
+
+  if (isPlanningOnlySelfCareRepeat(entry)) {
+    return false
+  }
+
+  return (
+    settings.showAppointmentsInCalendar &&
+    getSelfCareCalendarStartTime(entry) !== null
+  )
+}
+
+function isPlanningOnlySelfCareRepeat(entry: SelfCareTodayItem): boolean {
+  return Boolean(
+    entry.scheduleRule?.repeatKind === 'after_completion' &&
+    entry.occurrence &&
+    entry.appointment?.occurrenceId !== entry.occurrence.id,
+  )
+}
+
+export function buildSelfCareCalendarTask(
+  entry: SelfCareTodayItem,
+): CalendarSelfCareTask | null {
+  const occurrence = entry.occurrence
+
+  if (!occurrence) {
+    return null
+  }
+
+  const plannedStartTime = getSelfCareCalendarStartTime(entry)
+
+  return {
+    assigneeDisplayName: null,
+    assigneeUserId: null,
+    authorDisplayName: null,
+    authorUserId: null,
+    completedAt: null,
+    createdAt: occurrence.createdAt,
+    dueDate: null,
+    icon: entry.item.icon ?? '',
+    id: `self-care:${occurrence.id}`,
+    importance: 'not_important',
+    isSelfCare: true,
+    linkedTask: null,
+    note: entry.item.description,
+    plannedDate: occurrence.scheduledFor,
+    plannedEndTime: getSelfCareCalendarEndTime(entry, plannedStartTime),
+    plannedStartTime,
+    project: 'Забота',
+    projectId: null,
+    recurrence: null,
+    reminderOffsets: undefined,
+    remindBeforeStart: undefined,
+    requiresConfirmation: false,
+    resource: null,
+    routine: null,
+    selfCareEntry: entry,
+    sourceWorkspace: null,
+    sphereId: null,
+    status: 'todo',
+    title: entry.item.title,
+    urgency: 'not_urgent',
+  }
+}
+
+export function buildSelfCareCalendarTasks(
+  entries: SelfCareTodayItem[],
+  settings: SelfCareSettings | null | undefined,
+): CalendarSelfCareTask[] {
+  return entries
+    .filter((entry) => shouldShowSelfCareCalendarEntry(entry, settings))
+    .map(buildSelfCareCalendarTask)
+    .filter((task): task is CalendarSelfCareTask => task !== null)
 }
 
 export function buildRecurringGhostTasks(
