@@ -22,6 +22,11 @@ import type {
 } from '@planner/contracts'
 
 import { getSelfCareErrorMessage } from '@/features/self-care'
+import {
+  formatDateOnlyForLocale,
+  getDateKeyInTimeZone,
+  getDeviceTimeZone,
+} from '@/shared/time/time.service'
 import type { SelectPickerOption } from '@/shared/ui/SelectPicker'
 
 import {
@@ -1159,25 +1164,37 @@ export function getTemplateTypeLabel(template: SelfCareTemplate): string {
 }
 
 export function formatDate(dateKey: string): string {
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    weekday: 'long',
-  }).format(new Date(`${dateKey}T12:00:00`))
+  return formatDateOnlyForLocale({
+    localDate: dateKey,
+    locale: 'ru-RU',
+    options: {
+      day: 'numeric',
+      month: 'long',
+      weekday: 'long',
+    },
+  })
 }
 
 export function formatShortDate(dateKey: string): string {
-  return new Intl.DateTimeFormat('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-  }).format(new Date(`${dateKey}T12:00:00`))
+  return formatDateOnlyForLocale({
+    localDate: dateKey,
+    locale: 'ru-RU',
+    options: {
+      day: 'numeric',
+      month: 'short',
+    },
+  })
 }
 
 export function formatMonthKey(monthKey: string): string {
-  return new Intl.DateTimeFormat('ru-RU', {
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(`${monthKey}-01T12:00:00`))
+  return formatDateOnlyForLocale({
+    localDate: `${monthKey}-01`,
+    locale: 'ru-RU',
+    options: {
+      month: 'long',
+      year: 'numeric',
+    },
+  })
 }
 
 export function formatTime(value: string): string {
@@ -1197,17 +1214,11 @@ export function formatTime(value: string): string {
 }
 
 function formatLocalDateKey(value: string): string {
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) {
+  if (Number.isNaN(new Date(value).getTime())) {
     return value.slice(0, 10)
   }
 
-  return [
-    date.getFullYear(),
-    padTimePart(date.getMonth() + 1),
-    padTimePart(date.getDate()),
-  ].join('-')
+  return getDateKeyInTimeZone(value, getDeviceTimeZone() ?? 'UTC')
 }
 
 function padTimePart(value: number): string {

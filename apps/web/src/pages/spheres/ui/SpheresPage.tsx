@@ -3,8 +3,10 @@ import { Link, useSearchParams } from 'react-router-dom'
 
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
+import { usePlannerTimeZone } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
-import { formatShortDate, getDateKey } from '@/shared/lib/date'
+import { formatShortDate } from '@/shared/lib/date'
+import { getTodayDate } from '@/shared/time/time.service'
 import { IconMark } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 
@@ -58,8 +60,9 @@ export function SpheresPage() {
   const { addSphere, spheres, tasks } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
   const [searchParams, setSearchParams] = useSearchParams()
-  const week = getCurrentWeekRange(new Date())
-  const todayKey = getDateKey(new Date())
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
+  const week = getCurrentWeekRange(todayKey)
   const createTaskRequestId = searchParams.get(TASK_CREATE_SEARCH_PARAM)
   const spheresAction = searchParams.get(SPHERES_ACTION_SEARCH_PARAM)
   const spheresActionRequestId = searchParams.get(
@@ -78,8 +81,8 @@ export function SpheresPage() {
     [createTaskRequestId],
   )
   const stats = useMemo(
-    () => buildSphereStats(spheres, tasks, week, todayKey),
-    [spheres, tasks, todayKey, week],
+    () => buildSphereStats(spheres, tasks, week, todayKey, plannerTimeZone),
+    [plannerTimeZone, spheres, tasks, todayKey, week],
   )
   const statsBySphereId = useMemo(
     () => new Map(stats.map((stat) => [stat.sphereId, stat])),

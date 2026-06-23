@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, serializeDateOnly } from '@planner/contracts'
 import { type Kysely, type Selectable } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -458,16 +458,8 @@ function normalizeText(value: string): string {
 }
 
 function serializeNullableDate(value: unknown): string | null {
-  if (value === null) {
-    return null
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10)
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    return serializeDateOnly(value)
   }
 
   throw new TypeError(`Unexpected date value: ${typeof value}`)

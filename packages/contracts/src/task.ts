@@ -5,6 +5,10 @@ import {
   habitTargetTypeSchema,
   isoWeekdaySchema,
 } from './habit.js'
+import {
+  EMERGENCY_FALLBACK_TIME_ZONE,
+  getTodayDate,
+} from './time/time.service.js'
 import { generateUuidV7, uuidV7Schema } from './uuid.js'
 
 const nullableStringWithDefault = z
@@ -48,6 +52,34 @@ export const taskRecurrenceFrequencySchema = z.enum([
   'weekly',
   'monthly',
   'custom',
+])
+export const plannerTimeKindSchema = z.enum([
+  'instant',
+  'date_only',
+  'fixed_zone_datetime',
+  'floating_local_time',
+])
+export const dateOnlyScheduleSchema = z.object({
+  kind: z.literal('date_only'),
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+})
+export const fixedZoneDateTimeScheduleSchema = z.object({
+  instantUtc: z.string(),
+  kind: z.literal('fixed_zone_datetime'),
+  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u),
+  localTime: z.string().regex(/^\d{2}:\d{2}$/u),
+  timeZone: z.string().trim().min(1),
+  timeZoneInferred: z.boolean().optional(),
+})
+export const floatingLocalTimeScheduleSchema = z.object({
+  kind: z.literal('floating_local_time'),
+  localTime: z.string().regex(/^\d{2}:\d{2}$/u),
+  recurrenceRule: z.string().trim().min(1).optional(),
+})
+export const taskScheduleSchema = z.discriminatedUnion('kind', [
+  dateOnlyScheduleSchema,
+  fixedZoneDateTimeScheduleSchema,
+  floatingLocalTimeScheduleSchema,
 ])
 export const taskResourceSchema = z
   .number()
@@ -137,7 +169,7 @@ export const taskRecurrenceInputSchema = z
       value.daysOfWeek ??
       (value.frequency === 'daily' ? [1, 2, 3, 4, 5, 6, 7] : [1, 2, 3, 4, 5]),
     seriesId: value.seriesId ?? generateUuidV7(),
-    startDate: value.startDate ?? new Date().toISOString().slice(0, 10),
+    startDate: value.startDate ?? getTodayDate(EMERGENCY_FALLBACK_TIME_ZONE),
   }))
   .refine(
     (value) => value.endDate === null || value.endDate >= value.startDate,
@@ -169,6 +201,7 @@ export const taskSchema = z.object({
   status: taskStatusSchema,
   resource: taskResourceSchema,
   requiresConfirmation: booleanWithDefault,
+  schedule: taskScheduleSchema.nullable().optional(),
   plannedDate: nullableStringWithDefault,
   plannedStartTime: nullableStringWithDefault,
   plannedEndTime: nullableStringWithDefault,
@@ -242,6 +275,15 @@ export type TaskRecurrence = z.infer<typeof taskRecurrenceSchema>
 export type TaskRecurrenceFrequency = z.infer<
   typeof taskRecurrenceFrequencySchema
 >
+export type PlannerTimeKind = z.infer<typeof plannerTimeKindSchema>
+export type DateOnlySchedule = z.infer<typeof dateOnlyScheduleSchema>
+export type FixedZoneDateTimeSchedule = z.infer<
+  typeof fixedZoneDateTimeScheduleSchema
+>
+export type FloatingLocalTimeSchedule = z.infer<
+  typeof floatingLocalTimeScheduleSchema
+>
+export type TaskSchedule = z.infer<typeof taskScheduleSchema>
 export type TaskRecurrenceInput = z.input<typeof taskRecurrenceInputSchema>
 export type TaskUrgency = z.infer<typeof taskUrgencySchema>
 export type TaskResource = z.infer<typeof taskResourceSchema>

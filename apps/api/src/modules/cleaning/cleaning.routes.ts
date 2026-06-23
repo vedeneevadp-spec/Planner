@@ -8,6 +8,7 @@ import {
   cleaningTodayResponseSchema,
   cleaningZoneRecordSchema,
   cleaningZoneUpdateInputSchema,
+  getTodayDate,
   newCleaningTaskInputSchema,
   newCleaningZoneInputSchema,
 } from '@planner/contracts'
@@ -21,7 +22,6 @@ import {
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from '../session/index.js'
 import type { CleaningService } from './cleaning.service.js'
-import { getDateKey } from './cleaning.shared.js'
 
 const cleaningZoneParamsSchema = z.object({
   zoneId: z.string().min(1),
@@ -52,7 +52,7 @@ export function registerCleaningRoutes(
     const context = await resolveRouteReadContext(request, sessionService)
     const result = await service.getToday(
       context,
-      query.date ?? getDateKey(new Date()),
+      query.date ?? getTodayDate(context.clientTimeZone ?? 'UTC'),
     )
 
     return cleaningTodayResponseSchema.parse(result)

@@ -9,6 +9,7 @@ import {
   getSessionReadinessConnectionView,
   setSelectedWorkspaceIdForActors,
   usePlannerSession,
+  usePlannerTimeZone,
   UserAvatar,
   useSessionAuth,
   WorkspaceParticipantsDialog,
@@ -16,8 +17,8 @@ import {
 import { useShoppingListSummary } from '@/features/shopping-list'
 import { getVisibleNavigationRouteDefinitions } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKey } from '@/shared/lib/date'
 import { useColorTheme } from '@/shared/lib/theme'
+import { getTodayDate } from '@/shared/time/time.service'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -72,6 +73,7 @@ export function Sidebar({
   const auth = useSessionAuth()
   const { isDark, toggleTheme } = useColorTheme()
   const { data: session } = usePlannerSession()
+  const plannerTimeZone = usePlannerTimeZone()
   const [moreSheetLocation, setMoreSheetLocation] =
     useState<MobileMoreSheetLocation | null>(null)
   const [isDesktopWorkspaceActionsOpen, setIsDesktopWorkspaceActionsOpen] =
@@ -80,9 +82,9 @@ export function Sidebar({
     useState(false)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
-  const todayKey = getDateKey(new Date())
+  const todayKey = getTodayDate(plannerTimeZone)
   const isSharedWorkspace = session?.workspace.kind === 'shared'
-  const summary = getPlannerSummary(tasks, todayKey)
+  const summary = getPlannerSummary(tasks, todayKey, plannerTimeZone)
   const plannedTaskCount = tasks.filter(
     (task) => isActiveTaskStatus(task.status) && task.plannedDate !== null,
   ).length

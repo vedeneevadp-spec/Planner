@@ -11,12 +11,16 @@ import {
   type NewHabitInput,
 } from '@planner/contracts'
 
-import { getDateKey } from '@/shared/lib/date'
+import {
+  getIsoWeekday as getIsoWeekdayForDateOnly,
+  getTodayDate,
+} from '@/shared/time/time.service'
 
 export function createOptimisticHabit(
   input: NewHabitInput,
   context: {
     actorUserId: string
+    plannerTimeZone: string
     sortOrder: number
     workspaceId: string
   },
@@ -37,7 +41,7 @@ export function createOptimisticHabit(
     reminderTime: input.reminderTime,
     sortOrder: input.sortOrder ?? context.sortOrder,
     sphereId: input.sphereId,
-    startDate: input.startDate ?? getDateKey(new Date()),
+    startDate: input.startDate ?? getTodayDate(context.plannerTimeZone),
     targetType: input.targetType,
     targetValue: input.targetValue,
     title: input.title,
@@ -332,7 +336,5 @@ function getEntryTargetValue(
 }
 
 function getIsoWeekday(dateKey: string): number {
-  const day = new Date(`${dateKey}T00:00:00`).getDay()
-
-  return day === 0 ? 7 : day
+  return getIsoWeekdayForDateOnly(dateKey)
 }

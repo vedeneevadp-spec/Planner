@@ -21,7 +21,6 @@ import type {
   useSelfCareSettings,
 } from '@/features/self-care'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKey } from '@/shared/lib/date'
 import {
   CheckIcon,
   ChevronLeftIcon,
@@ -364,6 +363,7 @@ export function SelfCareTodayTab({
               entry={entry}
               isTodayView
               isBusy={isBusy}
+              todayKey={todayKey}
               scheduleActionLabel="Перенести"
               stepDraft={getRitualStepDraft(ritualStepDrafts, entry, todayKey)}
               uploadedIcons={uploadedIcons}
@@ -390,6 +390,7 @@ export function SelfCareTodayTab({
               entry={entry}
               isTodayView
               isBusy={isBusy}
+              todayKey={todayKey}
               nextOccurrenceDate={nextPlannedDateByItemId.get(entry.item.id)}
               uploadedIcons={uploadedIcons}
               onAction={onCardAction}
@@ -411,6 +412,7 @@ export function SelfCareTodayTab({
                   entry={entry}
                   isTodayView
                   isBusy={isBusy}
+                  todayKey={todayKey}
                   stepDraft={getRitualStepDraft(
                     ritualStepDrafts,
                     entry,
@@ -436,6 +438,7 @@ export function SelfCareTodayTab({
               entry={entry}
               isTodayView
               isBusy={isBusy}
+              todayKey={todayKey}
               stepDraft={getRitualStepDraft(ritualStepDrafts, entry, todayKey)}
               uploadedIcons={uploadedIcons}
               onAction={onCardAction}
@@ -456,6 +459,7 @@ export function SelfCareTodayTab({
               entry={entry}
               isTodayView
               isBusy={isBusy}
+              todayKey={todayKey}
               uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
@@ -634,6 +638,7 @@ export function SelfCarePlanTab({
               key={entry.occurrence?.id ?? entry.item.id}
               entry={entry}
               isBusy={isBusy}
+              todayKey={todayKey}
               uploadedIcons={uploadedIcons}
               onAction={onCardAction}
               onArchive={onArchiveItem}
@@ -684,6 +689,7 @@ export function SelfCarePlanTab({
               key={`course-${entry.item.id}`}
               entry={entry}
               isBusy={isBusy}
+              todayKey={todayKey}
               nextOccurrenceDate={nextPlannedDateByItemId.get(entry.item.id)}
               uploadedIcons={uploadedIcons}
               onAction={onCardAction}
@@ -774,6 +780,7 @@ export function SelfCareRitualsTab({
                   key={item.id}
                   entry={entry}
                   isBusy={isBusy}
+                  todayKey={todayKey}
                   nextOccurrenceDate={nextOccurrenceDate}
                   stepDraft={getRitualStepDraft(
                     ritualStepDrafts,
@@ -1138,6 +1145,7 @@ function SelfCareItemCard({
   onToggleStep,
   scheduleActionLabel = 'Перенести',
   stepDraft,
+  todayKey,
   uploadedIcons,
 }: {
   actions?: 'plan' | 'today'
@@ -1156,9 +1164,9 @@ function SelfCareItemCard({
   onToggleStep?: (entry: SelfCareTodayItem, stepId: string) => void
   scheduleActionLabel?: string
   stepDraft?: readonly string[] | undefined
+  todayKey: string
   uploadedIcons: UploadedIconAsset[]
 }) {
-  const todayKey = getDateKey(new Date())
   const isInactive = !entry.item.isActive || entry.item.isArchived
   const isDone = isEntryDoneToday(entry, todayKey)
   const primaryActionLabel = getPrimaryActionLabel(entry, isDone)

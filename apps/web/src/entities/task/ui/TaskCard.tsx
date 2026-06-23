@@ -9,12 +9,7 @@ import { createPortal } from 'react-dom'
 import type { Sphere } from '@/entities/sphere'
 import type { Task, TaskStatus, TaskUpdateInput } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
-import {
-  addDays,
-  formatShortDate,
-  formatTimeRange,
-  getDateKey,
-} from '@/shared/lib/date'
+import { formatShortDate, formatTimeRange } from '@/shared/lib/date'
 import { CheckIcon, IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 
 import { getTaskResource } from '../model/resource'
@@ -84,6 +79,8 @@ interface TaskCardProps {
   task: Task
   sphere?: Sphere | undefined
   spheres?: Sphere[] | undefined
+  todayKey: string
+  tomorrowKey: string
   variant?: 'card' | 'compact' | 'detail' | undefined
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
@@ -108,6 +105,8 @@ export function TaskCard({
   task,
   sphere,
   spheres = [],
+  todayKey,
+  tomorrowKey,
   variant = 'card',
   tone = 'default',
   isPending = false,
@@ -126,8 +125,6 @@ export function TaskCard({
   const actionMenuRef = useRef<HTMLDivElement | null>(null)
   const isCompactView = variant === 'compact'
   const isDetailView = variant === 'detail'
-  const todayKey = getDateKey(new Date())
-  const tomorrowKey = getDateKey(addDays(new Date(), 1))
   const rawProjectTitle = sphere?.name ?? task.project
   const projectTitle = getSphereDisplayTitle(rawProjectTitle)
   const normalizedRawProjectTitle = rawProjectTitle.trim()
@@ -631,6 +628,7 @@ export function TaskCard({
           currentActorUserId={currentActorUserId}
           isSharedWorkspace={isSharedWorkspace}
           task={task}
+          todayKey={todayKey}
           spheres={spheres}
           uploadedIcons={uploadedIcons}
           isPending={isPending}
@@ -674,6 +672,8 @@ export function TaskCard({
                   task={task}
                   sphere={sphere}
                   spheres={spheres}
+                  todayKey={todayKey}
+                  tomorrowKey={tomorrowKey}
                   variant="detail"
                   tone={tone}
                   isPending={isPending}

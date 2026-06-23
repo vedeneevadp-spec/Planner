@@ -1,7 +1,10 @@
+import { getTodayDate } from '@planner/contracts'
+
 export interface CompactForAiOptions {
   maxArrayItems?: number
   maxStringLength?: number
   mode?: 'default' | 'search'
+  todayDate?: string | undefined
 }
 
 const DEFAULT_MAX_ARRAY_ITEMS = 50
@@ -49,10 +52,12 @@ export function compactForAi<T>(input: T, options: CompactForAiOptions = {}) {
       ? SEARCH_MAX_ARRAY_ITEMS
       : DEFAULT_MAX_ARRAY_ITEMS)
   const maxStringLength = options.maxStringLength ?? DEFAULT_MAX_STRING_LENGTH
+  const todayDate = options.todayDate ?? getTodayDate('UTC')
 
   return compactValue(input, {
     maxArrayItems,
     maxStringLength,
+    todayDate,
   }) as T
 }
 
@@ -69,9 +74,11 @@ export function compactArrayForAi<T>(
     (options.mode === 'search'
       ? SEARCH_MAX_ARRAY_ITEMS
       : DEFAULT_MAX_ARRAY_ITEMS)
-  const items = compactForAi(sortImportantFirst([...input]), {
+  const todayDate = options.todayDate ?? getTodayDate('UTC')
+  const items = compactForAi(sortImportantFirst([...input], todayDate), {
     ...options,
     maxArrayItems,
+    todayDate,
   }).slice(0, maxArrayItems)
 
   return {
@@ -84,11 +91,11 @@ export function compactArrayForAi<T>(
 function compactValue(
   input: unknown,
   options: Required<
-    Pick<CompactForAiOptions, 'maxArrayItems' | 'maxStringLength'>
+    Pick<CompactForAiOptions, 'maxArrayItems' | 'maxStringLength' | 'todayDate'>
   >,
 ): unknown {
   if (Array.isArray(input)) {
-    return sortImportantFirst(input)
+    return sortImportantFirst(input, options.todayDate)
       .slice(0, options.maxArrayItems)
       .map((item) => compactValue(item, options))
   }
@@ -116,11 +123,16 @@ function compactValue(
   return result
 }
 
-export function sortImportantFirst<T>(items: readonly T[]): T[] {
-  return [...items].sort((left, right) => scoreItem(right) - scoreItem(left))
+export function sortImportantFirst<T>(
+  items: readonly T[],
+  todayDate: string = getTodayDate('UTC'),
+): T[] {
+  return [...items].sort(
+    (left, right) => scoreItem(right, todayDate) - scoreItem(left, todayDate),
+  )
 }
 
-function scoreItem(item: unknown): number {
+function scoreItem(item: unknown, todayDate: string): number {
   if (!isRecord(item)) {
     return 0
   }
@@ -154,7 +166,7 @@ function scoreItem(item: unknown): number {
     score += 30
   }
 
-  if (dueDate && dueDate < getTodayDateKey()) {
+  if (dueDate && dueDate < todayDate) {
     score += 40
   }
 
@@ -197,10 +209,6 @@ function isFlexibleGoalContext(
 
 function readString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
-}
-
-function getTodayDateKey(): string {
-  return new Date().toISOString().slice(0, 10)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/features/session', () => ({
+  usePlannerTimeZone: () => 'Europe/Astrakhan',
   useSessionFeatureReadiness: () => mocks.useSessionFeatureReadiness(),
 }))
 

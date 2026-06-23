@@ -172,7 +172,10 @@ describe('session admin hooks', () => {
         }),
       ).resolves.toEqual({
         calendarViewMode: 'month',
+        defaultTimeZone: null,
         energyMode: 'maximum',
+        lastSeenTimeZone: null,
+        timeZoneMode: 'device',
         voiceAssistantEnabled: false,
       })
     })
@@ -187,7 +190,10 @@ describe('session admin hooks', () => {
     expect(body.energyMode).toBe('maximum')
     expect(cachedSession?.userPreferences).toEqual({
       calendarViewMode: 'month',
+      defaultTimeZone: null,
       energyMode: 'maximum',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: false,
     })
   })
@@ -270,6 +276,7 @@ describe('session admin hooks', () => {
     ])
 
     expect(cachedSession?.workspaceSettings).toEqual({
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
       wakeWordTrainingModeEnabled: false,
     })
@@ -390,7 +397,10 @@ function createSessionResponse(): SessionResponse {
     source: 'access_token',
     userPreferences: {
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     },
     workspace: {
@@ -401,6 +411,7 @@ function createSessionResponse(): SessionResponse {
     },
     workspaceId: 'workspace-1',
     workspaceSettings: {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
       wakeWordTrainingModeEnabled: false,
     },

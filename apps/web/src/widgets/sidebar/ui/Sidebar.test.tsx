@@ -183,6 +183,7 @@ vi.mock('@/features/session', () => ({
   useDeleteSharedWorkspace: () => mocks.useDeleteSharedWorkspace(),
   useLeaveSharedWorkspace: () => mocks.useLeaveSharedWorkspace(),
   usePlannerSession: () => mocks.usePlannerSession(),
+  usePlannerTimeZone: () => 'Europe/Astrakhan',
   useReceivedWorkspaceInvitations: () =>
     mocks.useReceivedWorkspaceInvitations(),
   UserAvatar: ({ displayName }: { displayName: string }) => (

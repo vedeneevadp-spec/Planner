@@ -207,7 +207,10 @@ void test('PostgresSessionRepository updates user preferences under runtime RLS'
 
     assert.deepEqual(preferences, {
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'minimum',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     })
     assert.equal(updatedSession.userPreferences.energyMode, 'minimum')
@@ -251,6 +254,7 @@ void test('PostgresSessionRepository updates workspace settings under runtime RL
     })
 
     assert.deepEqual(settings, {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: false,
       wakeWordTrainingModeEnabled: true,
     })

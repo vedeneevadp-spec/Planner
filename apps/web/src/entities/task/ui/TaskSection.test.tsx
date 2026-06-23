@@ -80,6 +80,8 @@ function renderTaskSection(
       title="Сегодня"
       tasks={[]}
       emptyMessage="Задач нет"
+      todayKey="2026-04-23"
+      tomorrowKey="2026-04-24"
       onRemove={vi.fn()}
       onSetPlannedDate={vi.fn()}
       onSetStatus={vi.fn()}

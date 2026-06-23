@@ -27,11 +27,12 @@ import { usePlanner } from '@/features/planner'
 import { useSelfCareDashboard } from '@/features/self-care'
 import {
   usePlannerSession,
+  usePlannerTimeZone,
   useUpdateUserPreferences,
   useWorkspaceUsers,
 } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import { IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 
@@ -340,8 +341,9 @@ function PersonalTodayPage() {
   const persistedEnergyMode =
     sessionQuery.data?.userPreferences.energyMode ?? 'normal'
   const [energyMode, setEnergyMode] = useState<EnergyMode>(persistedEnergyMode)
-  const todayKey = getDateKey(new Date())
-  const tomorrowKey = getDateKey(addDays(new Date(), 1))
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
+  const tomorrowKey = addDateDays(todayKey, 1)
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
   const selfCareDashboardEnabled =
     sessionQuery.data?.workspace.kind === 'personal'
@@ -376,12 +378,12 @@ function PersonalTodayPage() {
     [tasks, todayKey],
   )
   const doneTodayTasks = useMemo(
-    () => selectDoneTodayTasks(tasks, todayKey),
-    [tasks, todayKey],
+    () => selectDoneTodayTasks(tasks, todayKey, plannerTimeZone),
+    [plannerTimeZone, tasks, todayKey],
   )
   const doneHistoryTasks = useMemo(
-    () => selectDoneBeforeTodayTasks(tasks, todayKey),
-    [tasks, todayKey],
+    () => selectDoneBeforeTodayTasks(tasks, todayKey, plannerTimeZone),
+    [plannerTimeZone, tasks, todayKey],
   )
   const archivedTasks = useMemo(() => selectArchivedTasks(tasks), [tasks])
   const routineTasks = useMemo(
@@ -502,6 +504,8 @@ function PersonalTodayPage() {
         extraItemCount={options.extraItemCount}
         extraItems={options.extraItems}
         taskCardVariant={taskCardVariant}
+        todayKey={todayKey}
+        tomorrowKey={tomorrowKey}
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)
@@ -653,9 +657,10 @@ function SharedTodayPage() {
   const { uploadedIcons } = useUploadedIconAssets()
   const workspaceUsersQuery = useWorkspaceUsers()
   const workspaceUsers = workspaceUsersQuery.data?.users ?? []
-  const todayKey = getDateKey(new Date())
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
-  const tomorrowKey = getDateKey(addDays(new Date(), 1))
+  const tomorrowKey = addDateDays(todayKey, 1)
   const taskView = getTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
   const todayTasks = useMemo(
@@ -679,12 +684,12 @@ function SharedTodayPage() {
     [tasks, tomorrowKey],
   )
   const doneTodayTasks = useMemo(
-    () => selectDoneTodayTasks(tasks, todayKey),
-    [tasks, todayKey],
+    () => selectDoneTodayTasks(tasks, todayKey, plannerTimeZone),
+    [plannerTimeZone, tasks, todayKey],
   )
   const doneHistoryTasks = useMemo(
-    () => selectDoneBeforeTodayTasks(tasks, todayKey),
-    [tasks, todayKey],
+    () => selectDoneBeforeTodayTasks(tasks, todayKey, plannerTimeZone),
+    [plannerTimeZone, tasks, todayKey],
   )
   const archivedTasks = useMemo(() => selectArchivedTasks(tasks), [tasks])
   const visibleTaskIds = useMemo(
@@ -748,6 +753,8 @@ function SharedTodayPage() {
         extraItemCount={options.extraItemCount}
         extraItems={options.extraItems}
         taskCardVariant={taskCardVariant}
+        todayKey={todayKey}
+        tomorrowKey={tomorrowKey}
         tone={options.tone ?? 'default'}
         onRemove={(taskId) => {
           void removeTask(taskId)

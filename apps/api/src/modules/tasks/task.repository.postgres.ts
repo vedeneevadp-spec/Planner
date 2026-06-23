@@ -53,6 +53,7 @@ import {
 import type { TaskRow } from './task.repository.postgres.types.js'
 import {
   buildDefaultEndTime,
+  buildTaskTimeFields,
   buildTimestampFromDateAndTime,
   isActiveTaskStatus,
   normalizeTaskInput,
@@ -220,11 +221,18 @@ export class PostgresTaskRepository implements TaskRepository {
       normalizedInput,
     )
     const taskId = normalizedInput.id ?? generateUuidV7()
+    const timeFields = buildTaskTimeFields({
+      plannerTimeZone:
+        normalizedInput.reminderTimeZone ?? command.context.clientTimeZone,
+      recurrence: normalizedInput.recurrence,
+      schedule: normalizedSchedule,
+    })
     const startsAt =
       normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
         ? buildTimestampFromDateAndTime(
             normalizedSchedule.plannedDate,
             normalizedSchedule.plannedStartTime,
+            timeFields.timeZone ?? undefined,
           )
         : null
     const endsAt =
@@ -233,6 +241,7 @@ export class PostgresTaskRepository implements TaskRepository {
             normalizedSchedule.plannedDate,
             normalizedSchedule.plannedEndTime ??
               buildDefaultEndTime(normalizedSchedule.plannedStartTime),
+            timeFields.timeZone ?? undefined,
           )
         : null
 
@@ -246,6 +255,7 @@ export class PostgresTaskRepository implements TaskRepository {
         projectId: project?.id ?? null,
         reminderTimeZone: normalizedInput.reminderTimeZone,
         startsAt,
+        timeFields,
         taskId,
       })
     }
@@ -264,6 +274,8 @@ export class PostgresTaskRepository implements TaskRepository {
             due_on: normalizedInput.dueDate,
             assignee_user_id: assignee?.id ?? null,
             id: taskId,
+            local_date: timeFields.localDate,
+            local_time: timeFields.localTime,
             metadata,
             planned_on: normalizedSchedule.plannedDate,
             priority: 2,
@@ -271,7 +283,14 @@ export class PostgresTaskRepository implements TaskRepository {
             resource: normalizedInput.resource,
             sphere_id: project?.id ?? null,
             sort_key: '',
+            starts_at_utc: timeFields.startsAtUtc,
             status: 'todo',
+            time_kind: timeFields.timeKind,
+            time_zone: timeFields.timeZone,
+            time_zone_inferred: timeFields.timeZoneInferred,
+            recurrence_rule: timeFields.recurrenceRule,
+            recurrence_start_date: timeFields.recurrenceStartDate,
+            recurrence_time_zone: timeFields.recurrenceTimeZone,
             title: normalizedInput.title,
             updated_by: command.context.actorUserId,
             workspace_id: command.context.workspaceId,
@@ -299,6 +318,7 @@ export class PostgresTaskRepository implements TaskRepository {
               endsAt,
               startsAt,
               taskId: task.id,
+              timeZone: timeFields.timeZone,
               workspaceId: command.context.workspaceId,
             })
           : await loadPrimaryTimeBlock(
@@ -463,11 +483,18 @@ export class PostgresTaskRepository implements TaskRepository {
       normalizedInput,
     )
     const deletedAt = new Date().toISOString()
+    const timeFields = buildTaskTimeFields({
+      plannerTimeZone:
+        normalizedInput.reminderTimeZone ?? command.context.clientTimeZone,
+      recurrence: normalizedInput.recurrence,
+      schedule: normalizedSchedule,
+    })
     const startsAt =
       normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
         ? buildTimestampFromDateAndTime(
             normalizedSchedule.plannedDate,
             normalizedSchedule.plannedStartTime,
+            timeFields.timeZone ?? undefined,
           )
         : null
     const endsAt =
@@ -476,6 +503,7 @@ export class PostgresTaskRepository implements TaskRepository {
             normalizedSchedule.plannedDate,
             normalizedSchedule.plannedEndTime ??
               buildDefaultEndTime(normalizedSchedule.plannedStartTime),
+            timeFields.timeZone ?? undefined,
           )
         : null
 
@@ -490,6 +518,7 @@ export class PostgresTaskRepository implements TaskRepository {
         projectId: project?.id ?? null,
         reminderTimeZone: normalizedInput.reminderTimeZone,
         startsAt,
+        timeFields,
       })
     }
 
@@ -503,11 +532,20 @@ export class PostgresTaskRepository implements TaskRepository {
             assignee_user_id: assignee?.id ?? null,
             description: normalizedInput.note,
             due_on: normalizedInput.dueDate,
+            local_date: timeFields.localDate,
+            local_time: timeFields.localTime,
             metadata,
             planned_on: normalizedSchedule.plannedDate,
             project_id: project?.id ?? null,
+            recurrence_rule: timeFields.recurrenceRule,
+            recurrence_start_date: timeFields.recurrenceStartDate,
+            recurrence_time_zone: timeFields.recurrenceTimeZone,
             resource: normalizedInput.resource,
             sphere_id: project?.id ?? null,
+            starts_at_utc: timeFields.startsAtUtc,
+            time_kind: timeFields.timeKind,
+            time_zone: timeFields.timeZone,
+            time_zone_inferred: timeFields.timeZoneInferred,
             title: normalizedInput.title,
             updated_by: command.context.actorUserId,
           })
@@ -561,6 +599,7 @@ export class PostgresTaskRepository implements TaskRepository {
           endsAt,
           startsAt,
           taskId: command.taskId,
+          timeZone: timeFields.timeZone,
           workspaceId: command.context.workspaceId,
         })
         const projectTitle = await loadProjectTitle(
@@ -728,11 +767,16 @@ export class PostgresTaskRepository implements TaskRepository {
   ): Promise<StoredTaskRecord> {
     const normalizedSchedule = normalizeTaskSchedule(command.schedule)
     const deletedAt = new Date().toISOString()
+    const timeFields = buildTaskTimeFields({
+      plannerTimeZone: command.context.clientTimeZone,
+      schedule: normalizedSchedule,
+    })
     const startsAt =
       normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
         ? buildTimestampFromDateAndTime(
             normalizedSchedule.plannedDate,
             normalizedSchedule.plannedStartTime,
+            timeFields.timeZone ?? undefined,
           )
         : null
     const endsAt =
@@ -741,6 +785,7 @@ export class PostgresTaskRepository implements TaskRepository {
             normalizedSchedule.plannedDate,
             normalizedSchedule.plannedEndTime ??
               buildDefaultEndTime(normalizedSchedule.plannedStartTime),
+            timeFields.timeZone ?? undefined,
           )
         : null
 
@@ -750,6 +795,7 @@ export class PostgresTaskRepository implements TaskRepository {
         endsAt,
         normalizedSchedule,
         startsAt,
+        timeFields,
       })
     }
 
@@ -760,8 +806,16 @@ export class PostgresTaskRepository implements TaskRepository {
         let updateQuery = trx
           .updateTable('app.tasks')
           .set({
+            local_date: timeFields.localDate,
+            local_time: timeFields.localTime,
             metadata: buildScheduleUpdateMetadataValue(normalizedSchedule),
             planned_on: normalizedSchedule.plannedDate,
+            recurrence_start_date: timeFields.recurrenceStartDate,
+            recurrence_time_zone: timeFields.recurrenceTimeZone,
+            starts_at_utc: timeFields.startsAtUtc,
+            time_kind: timeFields.timeKind,
+            time_zone: timeFields.timeZone,
+            time_zone_inferred: timeFields.timeZoneInferred,
             updated_by: command.context.actorUserId,
           })
           .where('id', '=', command.taskId)
@@ -814,6 +868,7 @@ export class PostgresTaskRepository implements TaskRepository {
           endsAt,
           startsAt,
           taskId: command.taskId,
+          timeZone: timeFields.timeZone,
           workspaceId: command.context.workspaceId,
         })
         const projectTitle = await loadProjectTitle(
@@ -995,11 +1050,25 @@ export class PostgresTaskRepository implements TaskRepository {
   ): Promise<StoredTaskRecord> {
     const sourceTask = command.task
     const taskId = generateUuidV7()
+    const sourceTimeZone =
+      sourceTask.schedule?.kind === 'fixed_zone_datetime'
+        ? sourceTask.schedule.timeZone
+        : command.context.clientTimeZone
+    const timeFields = buildTaskTimeFields({
+      plannerTimeZone: sourceTimeZone,
+      recurrence: sourceTask.recurrence,
+      schedule: {
+        plannedDate: sourceTask.plannedDate,
+        plannedEndTime: sourceTask.plannedEndTime,
+        plannedStartTime: sourceTask.plannedStartTime,
+      },
+    })
     const startsAt =
       sourceTask.plannedDate && sourceTask.plannedStartTime
         ? buildTimestampFromDateAndTime(
             sourceTask.plannedDate,
             sourceTask.plannedStartTime,
+            timeFields.timeZone ?? undefined,
           )
         : null
     const endsAt =
@@ -1008,6 +1077,7 @@ export class PostgresTaskRepository implements TaskRepository {
             sourceTask.plannedDate,
             sourceTask.plannedEndTime ??
               buildDefaultEndTime(sourceTask.plannedStartTime),
+            timeFields.timeZone ?? undefined,
           )
         : null
     const metadata = buildTaskMetadata('', {
@@ -1044,15 +1114,24 @@ export class PostgresTaskRepository implements TaskRepository {
         due_at: null,
         due_on: sourceTask.dueDate,
         id: taskId,
+        local_date: timeFields.localDate,
+        local_time: timeFields.localTime,
         metadata,
         parent_task_id: options.isLinkedCopy ? sourceTask.id : null,
         planned_on: sourceTask.plannedDate,
         priority: 2,
         project_id: null,
+        recurrence_rule: timeFields.recurrenceRule,
+        recurrence_start_date: timeFields.recurrenceStartDate,
+        recurrence_time_zone: timeFields.recurrenceTimeZone,
         resource: sourceTask.resource,
         sphere_id: null,
         sort_key: '',
+        starts_at_utc: timeFields.startsAtUtc,
         status: sourceTask.status,
+        time_kind: timeFields.timeKind,
+        time_zone: timeFields.timeZone,
+        time_zone_inferred: timeFields.timeZoneInferred,
         title: sourceTask.title,
         updated_by: command.context.actorUserId,
         workspace_id: command.targetWorkspace.id,
@@ -1069,6 +1148,7 @@ export class PostgresTaskRepository implements TaskRepository {
       endsAt,
       startsAt,
       taskId: insertedTask.id,
+      timeZone: timeFields.timeZone,
       workspaceId: command.targetWorkspace.id,
     })
 

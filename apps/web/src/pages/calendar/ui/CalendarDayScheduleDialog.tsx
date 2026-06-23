@@ -31,6 +31,7 @@ interface CalendarDayScheduleDialogProps {
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   spheres: Sphere[]
   tasks: Task[]
+  todayKey: string
   uploadedIcons?: UploadedIconAsset[] | undefined
 }
 
@@ -70,6 +71,7 @@ function CalendarDayScheduleTask({
   onUpdate,
   spheres,
   task,
+  todayKey,
   uploadedIcons = [],
 }: CalendarDayScheduleTaskProps) {
   const [isEditing, setIsEditing] = useState(false)
@@ -301,6 +303,7 @@ function CalendarDayScheduleTask({
       {isEditing ? (
         <TaskEditDialog
           task={task}
+          todayKey={todayKey}
           spheres={spheres}
           uploadedIcons={uploadedIcons}
           isPending={isPending}
@@ -322,6 +325,7 @@ export function CalendarDayScheduleDialog({
   onUpdate,
   spheres,
   tasks,
+  todayKey,
   uploadedIcons = [],
 }: CalendarDayScheduleDialogProps) {
   const unscheduledCount = tasks.length
@@ -359,6 +363,7 @@ export function CalendarDayScheduleDialog({
             <CalendarDayScheduleTask
               key={`${task.id}:${task.plannedStartTime ?? ''}:${task.plannedEndTime ?? ''}`}
               task={task}
+              todayKey={todayKey}
               spheres={spheres}
               isTaskPending={isTaskPending}
               uploadedIcons={uploadedIcons}

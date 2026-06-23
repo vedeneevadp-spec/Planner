@@ -32,8 +32,9 @@ import {
   useUpdateSelfCareSettings,
   useUpsertSelfCareRitualStepDraft,
 } from '@/features/self-care'
+import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 import pageStyles from '@/shared/ui/Page'
 
 import {
@@ -85,9 +86,10 @@ import {
 } from './SelfCarePage.schedule'
 export function SelfCarePage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const todayKey = getDateKey(new Date())
-  const rangeFrom = getDateKey(addDays(new Date(), -30))
-  const planTo = getDateKey(addDays(new Date(), SELF_CARE_PLAN_LOOKAHEAD_DAYS))
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
+  const rangeFrom = addDateDays(todayKey, -30)
+  const planTo = addDateDays(todayKey, SELF_CARE_PLAN_LOOKAHEAD_DAYS)
   const activeTab = getSelfCareTab(searchParams)
   const createDialogMode = getSelfCareCreateDialogMode(searchParams)
   const tabsRef = useRef<HTMLElement | null>(null)

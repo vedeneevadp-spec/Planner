@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, getTodayDate } from '@planner/contracts'
 import { type Kysely, type Selectable, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -31,7 +31,6 @@ import {
   calculateNextGeneralCleaningDueDate,
   calculateNextGeneralCleaningPostponeDate,
   createStoredCleaningTaskStateRecord,
-  getDateKey,
   normalizeSeasonMonths,
   normalizeTags,
   serializeDate,
@@ -622,7 +621,9 @@ export class PostgresCleaningRepository implements CleaningRepository {
               { taskId: task.id },
               { workspaceId: command.context.workspaceId },
             )
-        const date = command.input.date ?? getDateKey(new Date())
+        const date =
+          command.input.date ??
+          getTodayDate(command.context.clientTimeZone ?? 'UTC')
         const now = new Date().toISOString()
         const existingHistoryRow = await this.loadActionHistoryRow(trx, {
           action: command.action,

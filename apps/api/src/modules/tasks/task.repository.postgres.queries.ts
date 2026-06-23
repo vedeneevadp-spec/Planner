@@ -475,7 +475,13 @@ function applyTaskListFilters(
   }
 
   if (filters.plannedDate) {
-    filteredQuery = filteredQuery.where('planned_on', '=', filters.plannedDate)
+    const plannedDate = filters.plannedDate
+    filteredQuery = filteredQuery.where((expressionBuilder) =>
+      expressionBuilder.or([
+        expressionBuilder('local_date', '=', plannedDate),
+        expressionBuilder('planned_on', '=', plannedDate),
+      ]),
+    )
   }
 
   if (filters.project) {

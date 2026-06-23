@@ -29,6 +29,7 @@ import type { SessionRepository } from './session.repository.js'
 
 interface MemoryWorkspace {
   createdAt: string
+  defaultTimeZone: string | null
   id: string
   kind: WorkspaceKind
   name: string
@@ -68,7 +69,10 @@ interface MemoryInvitation {
 interface MemoryUser extends AdminUserRecord {
   avatarUrl: string | null
   calendarViewMode: CalendarViewMode
+  defaultTimeZone: string | null
   energyMode: EnergyMode
+  lastSeenTimeZone: string | null
+  timeZoneMode: 'device' | 'manual' | 'workspace'
   voiceAssistantEnabled: boolean
 }
 
@@ -77,6 +81,7 @@ const DEFAULT_WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 
 const DEFAULT_MEMORY_WORKSPACE: MemoryWorkspace = {
   createdAt: new Date(0).toISOString(),
+  defaultTimeZone: null,
   id: DEFAULT_WORKSPACE_ID,
   kind: 'personal',
   name: 'Personal Workspace',
@@ -92,7 +97,10 @@ export class MemorySessionRepository implements SessionRepository {
       appRole: 'owner',
       avatarUrl: null,
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: 'Tikondra',
       email: 'dev@planner.local',
@@ -105,7 +113,10 @@ export class MemorySessionRepository implements SessionRepository {
       appRole: 'user',
       avatarUrl: null,
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: 'Planner Reader',
       email: 'reader@planner.local',
@@ -184,6 +195,7 @@ export class MemorySessionRepository implements SessionRepository {
     const now = new Date().toISOString()
     const workspace: MemoryWorkspace = {
       createdAt: now,
+      defaultTimeZone: null,
       id,
       kind: 'shared',
       name:
@@ -655,8 +667,9 @@ export class MemorySessionRepository implements SessionRepository {
     session: SessionSnapshot,
     _authContext: AuthenticatedRequestContext | null,
     input: {
-      taskCompletionConfettiEnabled: boolean
-      wakeWordTrainingModeEnabled: boolean
+      defaultTimeZone?: string | null | undefined
+      taskCompletionConfettiEnabled?: boolean | undefined
+      wakeWordTrainingModeEnabled?: boolean | undefined
     },
   ) {
     const workspace = this.getWorkspaceById(session.workspaceId)
@@ -669,11 +682,19 @@ export class MemorySessionRepository implements SessionRepository {
       )
     }
 
-    workspace.taskCompletionConfettiEnabled =
-      input.taskCompletionConfettiEnabled
-    workspace.wakeWordTrainingModeEnabled = input.wakeWordTrainingModeEnabled
+    if (input.defaultTimeZone !== undefined) {
+      workspace.defaultTimeZone = input.defaultTimeZone
+    }
+    if (input.taskCompletionConfettiEnabled !== undefined) {
+      workspace.taskCompletionConfettiEnabled =
+        input.taskCompletionConfettiEnabled
+    }
+    if (input.wakeWordTrainingModeEnabled !== undefined) {
+      workspace.wakeWordTrainingModeEnabled = input.wakeWordTrainingModeEnabled
+    }
 
     return Promise.resolve({
+      defaultTimeZone: workspace.defaultTimeZone,
       taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
       wakeWordTrainingModeEnabled: workspace.wakeWordTrainingModeEnabled,
     })
@@ -684,7 +705,10 @@ export class MemorySessionRepository implements SessionRepository {
     _authContext: AuthenticatedRequestContext | null,
     input: {
       calendarViewMode?: CalendarViewMode
+      defaultTimeZone?: string | null
       energyMode?: EnergyMode
+      lastSeenTimeZone?: string | null
+      timeZoneMode?: 'device' | 'manual' | 'workspace'
       voiceAssistantEnabled?: boolean
     },
   ) {
@@ -699,14 +723,26 @@ export class MemorySessionRepository implements SessionRepository {
     }
 
     user.calendarViewMode = input.calendarViewMode ?? user.calendarViewMode
+    user.defaultTimeZone =
+      input.defaultTimeZone === undefined
+        ? user.defaultTimeZone
+        : input.defaultTimeZone
     user.energyMode = input.energyMode ?? user.energyMode
+    user.lastSeenTimeZone =
+      input.lastSeenTimeZone === undefined
+        ? user.lastSeenTimeZone
+        : input.lastSeenTimeZone
+    user.timeZoneMode = input.timeZoneMode ?? user.timeZoneMode
     user.voiceAssistantEnabled =
       input.voiceAssistantEnabled ?? user.voiceAssistantEnabled
     user.updatedAt = new Date().toISOString()
 
     return Promise.resolve({
       calendarViewMode: user.calendarViewMode,
+      defaultTimeZone: user.defaultTimeZone,
       energyMode: user.energyMode,
+      lastSeenTimeZone: user.lastSeenTimeZone,
+      timeZoneMode: user.timeZoneMode,
       voiceAssistantEnabled: user.voiceAssistantEnabled,
     })
   }
@@ -796,7 +832,10 @@ export class MemorySessionRepository implements SessionRepository {
       source,
       userPreferences: {
         calendarViewMode: actor.calendarViewMode,
+        defaultTimeZone: actor.defaultTimeZone,
         energyMode: actor.energyMode,
+        lastSeenTimeZone: actor.lastSeenTimeZone,
+        timeZoneMode: actor.timeZoneMode,
         voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
       workspace: {
@@ -807,6 +846,7 @@ export class MemorySessionRepository implements SessionRepository {
       },
       workspaceId: workspace.id,
       workspaceSettings: {
+        defaultTimeZone: workspace.defaultTimeZone,
         taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
         wakeWordTrainingModeEnabled: workspace.wakeWordTrainingModeEnabled,
       },
@@ -877,7 +917,10 @@ export class MemorySessionRepository implements SessionRepository {
       source,
       userPreferences: {
         calendarViewMode: actor.calendarViewMode,
+        defaultTimeZone: actor.defaultTimeZone,
         energyMode: actor.energyMode,
+        lastSeenTimeZone: actor.lastSeenTimeZone,
+        timeZoneMode: actor.timeZoneMode,
         voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
       workspace: {
@@ -888,6 +931,7 @@ export class MemorySessionRepository implements SessionRepository {
       },
       workspaceId: fallbackWorkspace.id,
       workspaceSettings: {
+        defaultTimeZone: fallbackWorkspace.defaultTimeZone,
         taskCompletionConfettiEnabled:
           fallbackWorkspace.taskCompletionConfettiEnabled,
         wakeWordTrainingModeEnabled:
@@ -922,7 +966,10 @@ export class MemorySessionRepository implements SessionRepository {
       appRole: 'user',
       avatarUrl: null,
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
       email: normalizedEmail,
@@ -948,7 +995,10 @@ export class MemorySessionRepository implements SessionRepository {
       appRole: 'user',
       avatarUrl: null,
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: 'Planner User',
       email: `${actorUserId}@planner.local`,
@@ -1029,6 +1079,7 @@ export class MemorySessionRepository implements SessionRepository {
     const now = new Date().toISOString()
     const workspace: MemoryWorkspace = {
       createdAt: now,
+      defaultTimeZone: null,
       id: workspaceId,
       kind: 'personal',
       name: `${displayName}'s Workspace`,

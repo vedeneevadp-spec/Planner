@@ -17,12 +17,15 @@ import {
 } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo } from 'react'
 
-import { useSessionFeatureReadiness } from '@/features/session'
-import { getDateKey } from '@/shared/lib/date'
+import {
+  usePlannerTimeZone,
+  useSessionFeatureReadiness,
+} from '@/features/session'
 import {
   createOfflineDrainCoordinator,
   useOfflineQueueDrain,
 } from '@/shared/lib/offline-sync'
+import { getTodayDate } from '@/shared/time/time.service'
 
 import {
   applyHabitUpdate,
@@ -180,14 +183,16 @@ export function useHabits(options: { enabled?: boolean } = {}) {
 }
 
 export function useHabitsToday(
-  date = getDateKey(new Date()),
+  date?: string,
   options: { enabled?: boolean } = {},
 ) {
   const queryClient = useQueryClient()
   const { api, isEnabled, workspaceId } = useHabitsApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedDate = date ?? getTodayDate(plannerTimeZone)
   const queryKey = useMemo(
-    () => habitsTodayQueryKey(workspaceId, date),
-    [date, workspaceId],
+    () => habitsTodayQueryKey(workspaceId, resolvedDate),
+    [resolvedDate, workspaceId],
   )
 
   useEffect(() => {
@@ -197,21 +202,23 @@ export function useHabitsToday(
 
     let isActive = true
 
-    void loadCachedHabitTodayOrFallback(workspaceId, date).then((response) => {
-      if (!isActive) {
-        return
-      }
+    void loadCachedHabitTodayOrFallback(workspaceId, resolvedDate).then(
+      (response) => {
+        if (!isActive) {
+          return
+        }
 
-      queryClient.setQueryData<HabitTodayResponse>(
-        queryKey,
-        (currentResponse) => currentResponse ?? response,
-      )
-    })
+        queryClient.setQueryData<HabitTodayResponse>(
+          queryKey,
+          (currentResponse) => currentResponse ?? response,
+        )
+      },
+    )
 
     return () => {
       isActive = false
     }
-  }, [date, options.enabled, queryClient, queryKey, workspaceId])
+  }, [options.enabled, queryClient, queryKey, resolvedDate, workspaceId])
 
   useEffect(() => {
     if (!api || !isEnabled) {
@@ -244,14 +251,18 @@ export function useHabitsToday(
           workspaceId,
         })
 
-        const response = await habitsApi.getToday(date, signal)
+        const response = await habitsApi.getToday(resolvedDate, signal)
 
-        await replaceCachedHabitTodayResponse(workspaceId, date, response)
+        await replaceCachedHabitTodayResponse(
+          workspaceId,
+          resolvedDate,
+          response,
+        )
 
         return response
       } catch (error) {
         if (isQueueableHabitMutationError(error)) {
-          return loadCachedHabitTodayOrFallback(workspaceId, date)
+          return loadCachedHabitTodayOrFallback(workspaceId, resolvedDate)
         }
 
         throw error
@@ -403,6 +414,7 @@ export function useHabitSyncStatus() {
 export function useCreateHabit() {
   const queryClient = useQueryClient()
   const { api, session, workspaceId } = useHabitsApi()
+  const plannerTimeZone = usePlannerTimeZone()
   const queryKey = useMemo(() => habitsQueryKey(workspaceId), [workspaceId])
 
   return useMutation({
@@ -425,6 +437,7 @@ export function useCreateHabit() {
       )
       const optimisticHabit = createOptimisticHabit(inputWithId, {
         actorUserId: session.actorUserId,
+        plannerTimeZone,
         sortOrder: previousHabits.length,
         workspaceId,
       })

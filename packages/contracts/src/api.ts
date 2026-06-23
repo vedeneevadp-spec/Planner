@@ -163,6 +163,7 @@ export const sessionWorkspaceMembershipSchema = sessionWorkspaceSchema.extend({
 })
 
 export const workspaceSettingsSchema = z.object({
+  defaultTimeZone: z.string().nullable().default(null),
   taskCompletionConfettiEnabled: z.boolean(),
   wakeWordTrainingModeEnabled: z.boolean().default(false),
 })
@@ -173,10 +174,14 @@ export const calendarViewModeSchema = z.enum([
   'month',
   'schedule',
 ])
+export const timeZoneModeSchema = z.enum(['device', 'manual', 'workspace'])
 
 export const userPreferencesSchema = z.object({
   calendarViewMode: calendarViewModeSchema,
+  defaultTimeZone: z.string().nullable().default(null),
   energyMode: energyModeSchema,
+  lastSeenTimeZone: z.string().nullable().default(null),
+  timeZoneMode: timeZoneModeSchema.default('device'),
   voiceAssistantEnabled: z.boolean().default(true),
 })
 
@@ -277,6 +282,7 @@ export const updateSharedWorkspaceInputSchema = z.object({
 })
 
 export const workspaceSettingsUpdateInputSchema = z.object({
+  defaultTimeZone: z.string().trim().min(1).nullable().optional(),
   taskCompletionConfettiEnabled: z.boolean(),
   wakeWordTrainingModeEnabled: z.boolean(),
 })
@@ -284,14 +290,20 @@ export const workspaceSettingsUpdateInputSchema = z.object({
 export const userPreferencesUpdateInputSchema = z
   .object({
     calendarViewMode: calendarViewModeSchema.optional(),
+    defaultTimeZone: z.string().trim().min(1).nullable().optional(),
     energyMode: energyModeSchema.optional(),
+    lastSeenTimeZone: z.string().trim().min(1).nullable().optional(),
+    timeZoneMode: timeZoneModeSchema.optional(),
     voiceAssistantEnabled: z.boolean().optional(),
   })
   .refine(
     (value) =>
       Boolean(
         value.calendarViewMode ||
+        value.defaultTimeZone !== undefined ||
         value.energyMode ||
+        value.lastSeenTimeZone !== undefined ||
+        value.timeZoneMode ||
         value.voiceAssistantEnabled !== undefined,
       ),
     'At least one preference must be updated.',

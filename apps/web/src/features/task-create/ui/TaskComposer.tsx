@@ -15,8 +15,12 @@ import {
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { useCreateHabit } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
-import { usePlannerSession, useWorkspaceUsers } from '@/features/session'
-import { getDateKey } from '@/shared/lib/date'
+import {
+  usePlannerSession,
+  usePlannerTimeZone,
+  useWorkspaceUsers,
+} from '@/features/session'
+import { getTodayDate } from '@/shared/time/time.service'
 
 import {
   buildTaskComposerHabitInput,
@@ -74,7 +78,8 @@ export function TaskComposer({
   const openDraftRequestIdRef = useRef<string | null>(null)
   const reminderAvailabilityRef = useRef(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  const todayKey = getDateKey(new Date())
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const normalizedDefaultTaskType = normalizeTaskComposerTaskType(
     defaultTaskType,
     allowHabitTaskType,
@@ -294,6 +299,7 @@ export function TaskComposer({
       plannedDate,
       plannedEndTime,
       plannedStartTime,
+      plannerTimeZone,
       projectId,
       recurrenceForm,
       reminderOffsets,

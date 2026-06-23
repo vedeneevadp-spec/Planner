@@ -149,7 +149,10 @@ function createSessionResponse(): SessionResponse {
     source: 'access_token',
     userPreferences: {
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     },
     workspace: {
@@ -160,6 +163,7 @@ function createSessionResponse(): SessionResponse {
     },
     workspaceId: 'workspace-1',
     workspaceSettings: {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
       wakeWordTrainingModeEnabled: false,
     },

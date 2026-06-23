@@ -10,7 +10,10 @@ import type {
 export interface SessionRow {
   actorAvatarUrl: string | null
   calendarViewMode: CalendarViewMode
+  defaultTimeZone: string | null
   energyMode: EnergyMode
+  lastSeenTimeZone: string | null
+  timeZoneMode: 'device' | 'manual' | 'workspace'
   voiceAssistantEnabled: boolean
   actorDisplayName: string
   actorEmail: string
@@ -19,6 +22,7 @@ export interface SessionRow {
   groupRole: WorkspaceGroupRole | null
   role: WorkspaceRole
   taskCompletionConfettiEnabled: boolean
+  workspaceDefaultTimeZone: string | null
   wakeWordTrainingModeEnabled: boolean
   workspaceId: string
   workspaceKind: WorkspaceKind
@@ -96,7 +100,10 @@ export interface AppActorRow {
   appRole: AppRole
   avatarUrl: string | null
   calendarViewMode: CalendarViewMode
+  defaultTimeZone: string | null
   energyMode: EnergyMode
+  lastSeenTimeZone: string | null
+  timeZoneMode: 'device' | 'manual' | 'workspace'
   voiceAssistantEnabled: boolean
   displayName: string
   email: string

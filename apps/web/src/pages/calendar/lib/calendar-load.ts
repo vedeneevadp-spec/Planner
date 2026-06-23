@@ -1,7 +1,16 @@
 import type { SelfCareSettings, SelfCareTodayItem } from '@planner/contracts'
 
 import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import {
+  addDateDays,
+  addDateMonthsClamped,
+  getDateDayOfMonth,
+  getDateDistance,
+  getDateMonthKey,
+  getIsoWeekday,
+  getIsoWeekStartDate,
+  getMonthStartDate,
+} from '@/shared/time/time.service'
 
 const CALENDAR_GRID_DAY_COUNT = 42
 const DEFAULT_TIMED_TASK_MINUTES = 60
@@ -54,23 +63,8 @@ export interface CalendarMonthLoad {
   overloadedDayCount: number
 }
 
-function parseDateKey(value: string): Date {
-  const [yearRaw, monthRaw, dayRaw] = value.split('-')
-  const year = Number(yearRaw)
-  const month = Number(monthRaw)
-  const day = Number(dayRaw)
-
-  return new Date(year, month - 1, day, 12)
-}
-
-function getIsoWeekday(date: Date): number {
-  const day = date.getDay()
-
-  return day === 0 ? 7 : day
-}
-
 function getCalendarMonthKey(dateKey: string): string {
-  return dateKey.slice(0, 7)
+  return getDateMonthKey(dateKey)
 }
 
 function parseTimeMinutes(value: string | null): number | null {
@@ -122,29 +116,20 @@ function getTaskLoadUnits(task: CalendarDisplayTask): number {
 }
 
 export function shiftCalendarMonth(dateKey: string, amount: number): string {
-  const date = parseDateKey(dateKey)
-  const nextDate = new Date(date.getFullYear(), date.getMonth() + amount, 1, 12)
-
-  return getDateKey(nextDate)
+  return addDateMonthsClamped(getMonthStartDate(dateKey), amount, 1)
 }
 
 export function getCalendarMonthDateRange(anchorDateKey: string): {
   endDateKey: string
   startDateKey: string
 } {
-  const anchorDate = parseDateKey(anchorDateKey)
-  const monthStart = new Date(
-    anchorDate.getFullYear(),
-    anchorDate.getMonth(),
-    1,
-    12,
-  )
-  const gridStart = addDays(monthStart, 1 - getIsoWeekday(monthStart))
-  const gridEnd = addDays(gridStart, CALENDAR_GRID_DAY_COUNT - 1)
+  const monthStart = getMonthStartDate(anchorDateKey)
+  const gridStart = addDateDays(monthStart, 1 - getIsoWeekday(monthStart))
+  const gridEnd = addDateDays(gridStart, CALENDAR_GRID_DAY_COUNT - 1)
 
   return {
-    endDateKey: getDateKey(gridEnd),
-    startDateKey: getDateKey(gridStart),
+    endDateKey: gridEnd,
+    startDateKey: gridStart,
   }
 }
 
@@ -204,23 +189,16 @@ export function buildCalendarMonthLoad(
   tasks: CalendarDisplayTask[],
   anchorDateKey: string,
 ): CalendarMonthLoad {
-  const anchorDate = parseDateKey(anchorDateKey)
-  const monthStart = new Date(
-    anchorDate.getFullYear(),
-    anchorDate.getMonth(),
-    1,
-    12,
-  )
-  const gridStart = addDays(monthStart, 1 - getIsoWeekday(monthStart))
-  const monthKey = getCalendarMonthKey(getDateKey(monthStart))
+  const monthStart = getMonthStartDate(anchorDateKey)
+  const gridStart = addDateDays(monthStart, 1 - getIsoWeekday(monthStart))
+  const monthKey = getCalendarMonthKey(monthStart)
   const days = Array.from({ length: CALENDAR_GRID_DAY_COUNT }, (_, index) => {
-    const date = addDays(gridStart, index)
-    const dateKey = getDateKey(date)
+    const dateKey = addDateDays(gridStart, index)
     const summary = getCalendarDaySummary(tasks, dateKey)
 
     return {
       ...summary,
-      dayOfMonth: date.getDate(),
+      dayOfMonth: getDateDayOfMonth(dateKey),
       isCurrentMonth: getCalendarMonthKey(dateKey) === monthKey,
     }
   })
@@ -560,13 +538,11 @@ function listMonthlyRecurringDateKeys(
   rangeStartDateKey: string,
   rangeEndDateKey: string,
 ): string[] {
-  const startDate = parseDateKey(startDateKey)
-  const targetDay = startDate.getDate()
+  const targetDay = getDateDayOfMonth(startDateKey)
   const dateKeys: string[] = []
 
   for (let offset = 0; offset <= 600; offset += interval) {
-    const candidate = addDateKeyMonthsClamped(startDateKey, offset, targetDay)
-    const dateKey = getDateKey(candidate)
+    const dateKey = addDateKeyMonthsClamped(startDateKey, offset, targetDay)
 
     if (dateKey > rangeEndDateKey) {
       break
@@ -591,11 +567,9 @@ function listWeeklyRecurringDateKeys(
   const startWeek = getWeekStartDate(recurrence.startDate)
 
   while (cursor <= rangeEndDateKey) {
-    const cursorDate = parseDateKey(cursor)
-
     if (
-      scheduledDays.has(getIsoWeekday(cursorDate)) &&
-      getWeekDistance(startWeek, cursorDate) % recurrence.interval === 0
+      scheduledDays.has(getIsoWeekday(cursor)) &&
+      getWeekDistance(startWeek, cursor) % recurrence.interval === 0
     ) {
       dateKeys.push(cursor)
     }
@@ -607,41 +581,24 @@ function listWeeklyRecurringDateKeys(
 }
 
 function addDateKeyDays(dateKey: string, amount: number): string {
-  return getDateKey(addDays(parseDateKey(dateKey), amount))
+  return addDateDays(dateKey, amount)
 }
 
 function addDateKeyMonthsClamped(
   dateKey: string,
   monthOffset: number,
   targetDay: number,
-): Date {
-  const date = parseDateKey(dateKey)
-  const year = date.getFullYear()
-  const month = date.getMonth() + monthOffset
-  const lastDay = new Date(year, month + 1, 0, 12).getDate()
-
-  return new Date(year, month, Math.min(targetDay, lastDay), 12)
+): string {
+  return addDateMonthsClamped(dateKey, monthOffset, targetDay)
 }
 
-function getDateDistance(leftDateKey: string, rightDateKey: string): number {
+function getWeekStartDate(dateKey: string): string {
+  return getIsoWeekStartDate(dateKey)
+}
+
+function getWeekDistance(startWeek: string, dateKey: string): number {
   return Math.floor(
-    (parseDateKey(rightDateKey).getTime() -
-      parseDateKey(leftDateKey).getTime()) /
-      (24 * 60 * 60 * 1000),
-  )
-}
-
-function getWeekStartDate(dateKey: string): Date {
-  const date = parseDateKey(dateKey)
-
-  return addDays(date, 1 - getIsoWeekday(date))
-}
-
-function getWeekDistance(startWeek: Date, date: Date): number {
-  const weekStart = addDays(date, 1 - getIsoWeekday(date))
-
-  return Math.floor(
-    (weekStart.getTime() - startWeek.getTime()) / (7 * 24 * 60 * 60 * 1000),
+    getDateDistance(startWeek, getIsoWeekStartDate(dateKey)) / 7,
   )
 }
 

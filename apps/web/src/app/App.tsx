@@ -9,6 +9,7 @@ import {
   AuthGate,
   NativePushRegistration,
   SessionProvider,
+  TimeZoneChangeBanner,
 } from '@/features/session'
 import { VoiceAssistant } from '@/features/voice-assistant'
 import { cx } from '@/shared/lib/classnames'
@@ -25,6 +26,7 @@ function App() {
       <PlannerQueryProvider>
         <AuthGate>
           <NativePushRegistration />
+          <TimeZoneChangeBanner />
           <PlannerProvider>
             <NativePlannerWidgetSync />
             <VoiceAssistant />

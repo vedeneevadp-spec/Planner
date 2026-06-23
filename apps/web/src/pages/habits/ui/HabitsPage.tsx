@@ -35,9 +35,11 @@ import {
   useUpdateHabit,
 } from '@/features/habits'
 import { usePlanner } from '@/features/planner'
+import { usePlannerTimeZone } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { cx } from '@/shared/lib/classnames'
-import { formatShortDate, getDateKey } from '@/shared/lib/date'
+import { formatShortDate } from '@/shared/lib/date'
+import { getTodayDate } from '@/shared/time/time.service'
 import {
   CloseIcon,
   EditIcon,
@@ -64,7 +66,8 @@ const HABITS_ACTION_REQUEST_SEARCH_PARAM = 'habitsActionRequest'
 const HABITS_ACTION_SEARCH_PARAM = 'habitsAction'
 
 export function HabitsPage() {
-  const todayKey = getDateKey(new Date())
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const monthStart = `${todayKey.slice(0, 7)}-01`
   const [editingHabitId, setEditingHabitId] = useState<string | null>(null)
   const [searchParams] = useSearchParams()

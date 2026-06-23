@@ -3,17 +3,24 @@ import type {
   RoutineTask,
   TaskRecurrence,
   TaskReminderOffsetMinutes,
+  TaskSchedule,
   TaskScheduleInput,
   TaskStatus,
   TaskUpdateInput,
 } from '@planner/contracts'
-import { generateUuidV7 } from '@planner/contracts'
+import {
+  generateUuidV7,
+  getTodayDate,
+  makeFixedZoneDateTime,
+  normalizeTimeZone,
+} from '@planner/contracts'
 
 import type { StoredTaskRecord } from './task.model.js'
 
 const DEFAULT_DURATION_MINUTES = 60
 const DEFAULT_TASK_REMINDER_OFFSETS: TaskReminderOffsetMinutes[] = [15]
 const TASK_REMINDER_OFFSETS = new Set<number>([15, 30, 60])
+const WEEKDAY_RRULE_VALUES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 
 export interface NormalizedTaskInput extends NewTaskInput {
   icon: string
@@ -31,6 +38,18 @@ export interface NormalizedTaskInput extends NewTaskInput {
   sphereId: string | null
   title: string
   urgency: NonNullable<NewTaskInput['urgency']>
+}
+
+export interface TaskTimeFields {
+  localDate: string | null
+  localTime: string | null
+  recurrenceRule: string | null
+  recurrenceStartDate: string | null
+  recurrenceTimeZone: string | null
+  startsAtUtc: string | null
+  timeKind: 'date_only' | 'fixed_zone_datetime' | 'floating_local_time'
+  timeZone: string | null
+  timeZoneInferred: boolean
 }
 
 export function normalizeTaskSchedule({
@@ -93,6 +112,115 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
   }
 }
 
+export function buildTaskScheduleValue(input: {
+  plannedDate: string | null
+  plannedStartTime: string | null
+  recurrence?: TaskRecurrence | null | undefined
+  startsAtUtc?: string | null | undefined
+  timeKind?: string | null | undefined
+  timeZone?: string | null | undefined
+  timeZoneInferred?: boolean | undefined
+}): TaskSchedule | null {
+  if (
+    input.timeKind === 'fixed_zone_datetime' &&
+    input.plannedDate &&
+    input.plannedStartTime &&
+    input.timeZone
+  ) {
+    return {
+      instantUtc:
+        input.startsAtUtc ??
+        makeFixedZoneDateTime({
+          localDate: input.plannedDate,
+          localTime: input.plannedStartTime,
+          timeZone: input.timeZone,
+        }).instantUtc,
+      kind: 'fixed_zone_datetime',
+      localDate: input.plannedDate,
+      localTime: input.plannedStartTime,
+      timeZone: input.timeZone,
+      ...(input.timeZoneInferred ? { timeZoneInferred: true } : {}),
+    }
+  }
+
+  if (input.timeKind === 'floating_local_time' && input.plannedStartTime) {
+    return {
+      kind: 'floating_local_time',
+      localTime: input.plannedStartTime,
+      ...(input.recurrence
+        ? { recurrenceRule: buildRecurrenceRule(input.recurrence) }
+        : {}),
+    }
+  }
+
+  if (input.plannedDate) {
+    return {
+      kind: 'date_only',
+      localDate: input.plannedDate,
+    }
+  }
+
+  return null
+}
+
+export function buildTaskTimeFields(input: {
+  plannerTimeZone?: string | null | undefined
+  recurrence?: TaskRecurrence | null | undefined
+  schedule: TaskScheduleInput
+}): TaskTimeFields {
+  const schedule = normalizeTaskSchedule(input.schedule)
+  const recurrenceRule = input.recurrence
+    ? buildRecurrenceRule(input.recurrence)
+    : null
+
+  if (schedule.plannedDate && schedule.plannedStartTime) {
+    const timeZone = normalizeTimeZone(input.plannerTimeZone)
+    const fixed = makeFixedZoneDateTime({
+      localDate: schedule.plannedDate,
+      localTime: schedule.plannedStartTime,
+      timeZone,
+    })
+
+    return {
+      localDate: fixed.localDate,
+      localTime: fixed.localTime,
+      recurrenceRule,
+      recurrenceStartDate: input.recurrence?.startDate ?? fixed.localDate,
+      recurrenceTimeZone: timeZone,
+      startsAtUtc: fixed.instantUtc,
+      timeKind: 'fixed_zone_datetime',
+      timeZone,
+      timeZoneInferred: true,
+    }
+  }
+
+  if (schedule.plannedDate) {
+    return {
+      localDate: schedule.plannedDate,
+      localTime: null,
+      recurrenceRule,
+      recurrenceStartDate: input.recurrence?.startDate ?? schedule.plannedDate,
+      recurrenceTimeZone: null,
+      startsAtUtc: null,
+      timeKind: 'date_only',
+      timeZone: null,
+      timeZoneInferred: false,
+    }
+  }
+
+  return {
+    localDate: null,
+    localTime: null,
+    recurrenceRule,
+    recurrenceStartDate: input.recurrence?.startDate ?? null,
+    recurrenceTimeZone: null,
+    startsAtUtc: null,
+    timeKind: 'date_only',
+    timeZone: null,
+    timeZoneInferred: false,
+  }
+}
+
 export function normalizeTaskReminderOffsets(
   input: Pick<NewTaskInput, 'remindBeforeStart' | 'reminderOffsets'>,
 ): TaskReminderOffsetMinutes[] {
@@ -145,8 +273,7 @@ function normalizeTaskRecurrence(
     return null
   }
 
-  const startDate =
-    recurrence.startDate ?? plannedDate ?? getDateKey(new Date())
+  const startDate = recurrence.startDate ?? plannedDate ?? getTodayDate('UTC')
   const frequency = recurrence.frequency ?? 'daily'
   const daysOfWeek =
     recurrence.daysOfWeek ??
@@ -246,6 +373,7 @@ export function createStoredTaskRecord(
   options: {
     authorDisplayName: string
     authorUserId: string
+    clientTimeZone?: string | undefined
     id?: string
     linkedTask?: StoredTaskRecord['linkedTask']
     now?: string
@@ -285,6 +413,14 @@ export function createStoredTaskRecord(
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
     routine: normalizedInput.routine,
+    schedule: buildTaskScheduleValue({
+      plannedDate: schedule.plannedDate,
+      plannedStartTime: schedule.plannedStartTime,
+      recurrence: normalizedInput.recurrence,
+      timeKind: schedule.plannedStartTime ? 'fixed_zone_datetime' : 'date_only',
+      timeZone: options.clientTimeZone,
+      timeZoneInferred: Boolean(schedule.plannedStartTime),
+    }),
     sphereId: normalizedInput.sphereId,
     sourceWorkspace: options.sourceWorkspace ?? null,
     status: 'todo',
@@ -314,8 +450,19 @@ export function applyTaskSchedule(
   task: StoredTaskRecord,
   schedule: TaskScheduleInput,
   now: string = new Date().toISOString(),
+  plannerTimeZone?: string,
 ): StoredTaskRecord {
   const normalizedSchedule = normalizeTaskSchedule(schedule)
+  const nextSchedule = buildTaskScheduleValue({
+    plannedDate: normalizedSchedule.plannedDate,
+    plannedStartTime: normalizedSchedule.plannedStartTime,
+    recurrence: task.recurrence,
+    timeKind: normalizedSchedule.plannedStartTime
+      ? 'fixed_zone_datetime'
+      : 'date_only',
+    timeZone: plannerTimeZone,
+    timeZoneInferred: Boolean(normalizedSchedule.plannedStartTime),
+  })
   const remindBeforeStart =
     normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
       ? task.remindBeforeStart
@@ -331,6 +478,7 @@ export function applyTaskSchedule(
     plannedStartTime: normalizedSchedule.plannedStartTime,
     remindBeforeStart,
     reminderOffsets: resolvedReminderOffsets,
+    schedule: nextSchedule,
     updatedAt: now,
     version: task.version + 1,
   }
@@ -340,6 +488,7 @@ export function applyTaskUpdate(
   task: StoredTaskRecord,
   input: TaskUpdateInput,
   now: string = new Date().toISOString(),
+  plannerTimeZone?: string,
 ): StoredTaskRecord {
   const normalizedInput = normalizeTaskInput({
     ...input,
@@ -369,6 +518,14 @@ export function applyTaskUpdate(
     resource: normalizedInput.resource,
     requiresConfirmation: normalizedInput.requiresConfirmation,
     routine: normalizedInput.routine,
+    schedule: buildTaskScheduleValue({
+      plannedDate: schedule.plannedDate,
+      plannedStartTime: schedule.plannedStartTime,
+      recurrence: normalizedInput.recurrence,
+      timeKind: schedule.plannedStartTime ? 'fixed_zone_datetime' : 'date_only',
+      timeZone: plannerTimeZone,
+      timeZoneInferred: Boolean(schedule.plannedStartTime),
+    }),
     sphereId: normalizedInput.sphereId,
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,
@@ -449,14 +606,40 @@ export function buildDefaultEndTime(startTime: string): string {
 export function buildTimestampFromDateAndTime(
   date: string,
   time: string,
+  timeZone: string = 'UTC',
 ): string {
-  return `${date}T${time}:00.000Z`
-}
-
-function getDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  return makeFixedZoneDateTime({
+    localDate: date,
+    localTime: time,
+    timeZone: normalizeTimeZone(timeZone),
+  }).instantUtc
 }
 
 export function extractTimeFromTimestamp(timestamp: string): string {
   return timestamp.slice(11, 16)
+}
+
+export function buildRecurrenceRule(recurrence: TaskRecurrence): string {
+  const interval = recurrence.interval ?? 1
+  const parts = [`INTERVAL=${interval}`]
+
+  if (recurrence.frequency === 'daily') {
+    parts.unshift('FREQ=DAILY')
+  } else if (recurrence.frequency === 'monthly') {
+    parts.unshift('FREQ=MONTHLY')
+  } else {
+    parts.unshift('FREQ=WEEKLY')
+    parts.push(
+      `BYDAY=${recurrence.daysOfWeek
+        .map((day) => WEEKDAY_RRULE_VALUES[day - 1])
+        .filter((day): day is string => Boolean(day))
+        .join(',')}`,
+    )
+  }
+
+  if (recurrence.endDate) {
+    parts.push(`UNTIL=${recurrence.endDate.replaceAll('-', '')}`)
+  }
+
+  return parts.join(';')
 }

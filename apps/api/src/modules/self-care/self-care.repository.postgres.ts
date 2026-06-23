@@ -1,14 +1,15 @@
-import type {
-  SelfCareAppointmentDetails,
-  SelfCareCompletion,
-  SelfCareCourseDetails,
-  SelfCareMeasurementDetails,
-  SelfCareMedicalDetails,
-  SelfCareOccurrence,
-  SelfCareProcedureDetails,
-  SelfCareRitualStep,
-  SelfCareScheduleRule,
-  SelfCareSettings,
+import {
+  getDayRangeUtc,
+  type SelfCareAppointmentDetails,
+  type SelfCareCompletion,
+  type SelfCareCourseDetails,
+  type SelfCareMeasurementDetails,
+  type SelfCareMedicalDetails,
+  type SelfCareOccurrence,
+  type SelfCareProcedureDetails,
+  type SelfCareRitualStep,
+  type SelfCareScheduleRule,
+  type SelfCareSettings,
 } from '@planner/contracts'
 import { type Kysely, sql } from 'kysely'
 
@@ -85,7 +86,6 @@ import {
   selectStepCompletions,
   shouldStoreAppointmentDetails,
   toPublicRitualStepDraft,
-  toStartOfDayTimestamp,
 } from './self-care.repository.postgres.helpers.js'
 import {
   addDays,
@@ -169,6 +169,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   async createItem(command: CreateSelfCareItemCommand) {
     const records = createSelfCareRecords(command.input, {
       actorUserId: command.context.actorUserId,
+      clientTimeZone: command.context.clientTimeZone,
       workspaceId: command.context.workspaceId,
     })
 
@@ -746,7 +747,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           ),
           command.context.actorUserId,
         )
-        const completionDate = getSelfCareCompletionDateKey(command.input)
+        const completionDate = getSelfCareCompletionDateKey(
+          command.input,
+          command.context.clientTimeZone,
+        )
         await this.deleteRitualStepDraftRow(trx, {
           date: completionDate,
           itemId: item.id,
@@ -763,11 +767,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             workspaceId: command.context.workspaceId,
           })
         }
-        await this.incrementCourse(
-          trx,
-          item.id,
-          completion.completedAt.slice(0, 10),
-        )
+        await this.incrementCourse(trx, item.id, completionDate)
         return completion
       },
       command.context.actorUserId,
@@ -790,7 +790,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .where('item_id', '=', item.id)
           .executeTakeFirst()
         const scheduleRule = ruleRow ? mapRuleRow(ruleRow) : null
-        const completionDate = getSelfCareCompletionDateKey(command.input)
+        const completionDate = getSelfCareCompletionDateKey(
+          command.input,
+          command.context.clientTimeZone,
+        )
         const existingCompletion = shouldDeduplicateSelfCareItemCompletion({
           item,
           scheduleRule,
@@ -798,6 +801,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           ? await this.loadProgressCompletionForDate(trx, {
               date: completionDate,
               itemId: item.id,
+              plannerTimeZone: command.context.clientTimeZone,
               userId: command.context.actorUserId,
             })
           : null
@@ -1419,7 +1423,13 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         'Self-care template not found.',
       )
     }
-    const input = buildItemInputFromTemplate(template, command.input.overrides)
+    const input = buildItemInputFromTemplate(
+      template,
+      command.input.overrides,
+      {
+        plannerTimeZone: command.context.clientTimeZone,
+      },
+    )
     const records = createSelfCareRecords(
       input.scheduleRule &&
         !input.scheduleRule.timezone &&
@@ -1434,6 +1444,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         : input,
       {
         actorUserId: command.context.actorUserId,
+        clientTimeZone: command.context.clientTimeZone,
         createdFromTemplateId: template.id,
         workspaceId: command.context.workspaceId,
       },
@@ -1650,16 +1661,21 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     input: {
       date: string
       itemId: string
+      plannerTimeZone?: string | undefined
       userId: string
     },
   ): Promise<StoredSelfCareCompletionRecord | null> {
+    const dayRange = getDayRangeUtc({
+      localDate: input.date,
+      timeZone: input.plannerTimeZone ?? 'UTC',
+    })
     const row = await executor
       .selectFrom('app.self_care_completions')
       .selectAll()
       .where('user_id', '=', input.userId)
       .where('item_id', '=', input.itemId)
-      .where('completed_at', '>=', toStartOfDayTimestamp(input.date))
-      .where('completed_at', '<', toStartOfDayTimestamp(addDays(input.date, 1)))
+      .where('completed_at', '>=', dayRange.startUtc)
+      .where('completed_at', '<', dayRange.endUtc)
       .where('status', 'in', ['done', 'partial', 'alternative_done'])
       .orderBy('completed_at', 'desc')
       .executeTakeFirst()

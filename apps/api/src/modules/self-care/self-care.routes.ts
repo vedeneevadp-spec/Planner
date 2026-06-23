@@ -1,4 +1,5 @@
 import {
+  getTodayDate,
   selfCareAnalyticsResponseSchema,
   selfCareCompletionInputSchema,
   selfCareCompletionSchema,
@@ -38,7 +39,6 @@ import {
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from '../session/index.js'
 import type { SelfCareService } from './self-care.service.js'
-import { getDateKey } from './self-care.shared.js'
 
 const itemParamsSchema = z.object({ itemId: z.string().min(1) })
 const occurrenceParamsSchema = z.object({ occurrenceId: z.string().min(1) })
@@ -57,6 +57,11 @@ export function registerSelfCareRoutes(
   sessionService: SessionService,
   service: SelfCareService,
 ): void {
+  const getRouteDate = (
+    date: string | undefined,
+    timeZone: string | undefined,
+  ) => date ?? getTodayDate(timeZone ?? 'UTC')
+
   app.get('/api/v1/self-care', async (request) => {
     const query = parseOrThrow(
       selfCareListQuerySchema,
@@ -77,7 +82,7 @@ export function registerSelfCareRoutes(
     const context = await resolveRouteReadContext(request, sessionService)
     const result = await service.getDashboard(
       context,
-      query.date ?? getDateKey(new Date()),
+      getRouteDate(query.date, context.clientTimeZone),
     )
     return selfCareDashboardResponseSchema.parse(result)
   })
@@ -113,7 +118,7 @@ export function registerSelfCareRoutes(
     const context = await resolveRouteReadContext(request, sessionService)
     const result = await service.getRitualStepDrafts(
       context,
-      query.date ?? getDateKey(new Date()),
+      getRouteDate(query.date, context.clientTimeZone),
     )
     return selfCareRitualStepDraftListResponseSchema.parse(result)
   })
@@ -149,7 +154,7 @@ export function registerSelfCareRoutes(
     const context = await resolveRouteReadContext(request, sessionService)
     const result = await service.getDailyState(
       context,
-      query.date ?? getDateKey(new Date()),
+      getRouteDate(query.date, context.clientTimeZone),
     )
     return result === null ? null : selfCareDailyStateSchema.parse(result)
   })
@@ -472,7 +477,7 @@ export function registerSelfCareRoutes(
     const context = await resolveRouteWriteContext(request, sessionService)
     const state = await service.upsertDailyState(
       context,
-      query.date ?? getDateKey(new Date()),
+      getRouteDate(query.date, context.clientTimeZone),
       input,
     )
     return selfCareDailyStateSchema.parse(state)
@@ -498,7 +503,7 @@ export function registerSelfCareRoutes(
     const context = await resolveRouteWriteContext(request, sessionService)
     const result = await service.enableGentleMode(
       context,
-      query.date ?? getDateKey(new Date()),
+      getRouteDate(query.date, context.clientTimeZone),
     )
     return selfCareSettingsResponseSchema.parse(result)
   })
@@ -514,7 +519,7 @@ export function registerSelfCareRoutes(
       const context = await resolveRouteWriteContext(request, sessionService)
       const result = await service.disableGentleMode(
         context,
-        query.date ?? getDateKey(new Date()),
+        getRouteDate(query.date, context.clientTimeZone),
       )
       return selfCareSettingsResponseSchema.parse(result)
     },

@@ -13,7 +13,12 @@ import type {
   SelfCareTodayItem,
 } from '@planner/contracts'
 
-import { addDays, getDateKey } from '@/shared/lib/date'
+import {
+  addDateDays,
+  addDateMonthsClamped,
+  getDateDistance,
+  getIsoWeekday as getIsoWeekdayForDateOnly,
+} from '@/shared/time/time.service'
 
 type SelfCareQueryScope =
   | 'analytics'
@@ -62,7 +67,6 @@ const SELF_CARE_RESCHEDULE_SCOPES: readonly SelfCareQueryScope[] = [
 const HIDDEN_TODAY_OCCURRENCE_STATUSES: ReadonlySet<
   NonNullable<SelfCareTodayItem['occurrence']>['status']
 > = new Set(['cancelled', 'done', 'missed', 'moved', 'partial', 'skipped'])
-const DAY_MS = 86_400_000
 
 export function shouldMoveExistingSelfCareOccurrence(
   entry: SelfCareScheduleEntry,
@@ -603,30 +607,15 @@ export function addIntervalDateKey(
 }
 
 export function shiftDateKey(dateKey: string, days: number): string {
-  return getDateKey(addDays(new Date(`${dateKey}T12:00:00`), days))
+  return addDateDays(dateKey, days)
 }
 
 function shiftMonthKey(dateKey: string, months: number): string {
-  const year = Number(dateKey.slice(0, 4))
-  const month = Number(dateKey.slice(5, 7))
-  const day = Number(dateKey.slice(8, 10))
-  const target = new Date(Date.UTC(year, month - 1 + months, 1))
-  const targetYear = target.getUTCFullYear()
-  const targetMonth = target.getUTCMonth() + 1
-  const lastTargetDay = new Date(
-    Date.UTC(targetYear, targetMonth, 0),
-  ).getUTCDate()
-
-  return [
-    String(targetYear).padStart(4, '0'),
-    String(targetMonth).padStart(2, '0'),
-    String(Math.min(day, lastTargetDay)).padStart(2, '0'),
-  ].join('-')
+  return addDateMonthsClamped(dateKey, months)
 }
 
 export function getIsoWeekdayFromDateKey(dateKey: string): number {
-  const weekday = new Date(`${dateKey}T12:00:00`).getDay()
-  return weekday === 0 ? 7 : weekday
+  return getIsoWeekdayForDateOnly(dateKey)
 }
 
 export function getDatePart(dateKey: string, part: 'day' | 'month'): number {
@@ -923,21 +912,19 @@ function getNthWeekdayOfMonthDateKey(
 }
 
 function getDateDistanceInDays(startDate: string, endDate: string): number {
-  return Math.round(
-    (dateKeyToUtcMs(endDate) - dateKeyToUtcMs(startDate)) / DAY_MS,
-  )
-}
-
-function dateKeyToUtcMs(dateKey: string): number {
-  return Date.UTC(
-    Number(dateKey.slice(0, 4)),
-    Number(dateKey.slice(5, 7)) - 1,
-    Number(dateKey.slice(8, 10)),
-  )
+  return getDateDistance(startDate, endDate)
 }
 
 function getDaysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+  if (month === 2) {
+    return isLeapYear(year) ? 29 : 28
+  }
+
+  return [4, 6, 9, 11].includes(month) ? 30 : 31
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
 }
 
 function buildDateKeyFromParts(

@@ -22,6 +22,7 @@ export {
 } from './lib/session-readiness'
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
+export { usePlannerTimeZone } from './lib/usePlannerTimeZone'
 export { useSessionAuth } from './lib/useSessionAuth'
 export {
   type SessionFeatureApiConfig,
@@ -74,5 +75,6 @@ export { AuthGate } from './ui/AuthGate'
 export { NativePushRegistration } from './ui/NativePushRegistration'
 export { ProfileAccountPanel, ProfileDialog } from './ui/ProfileDialog'
 export { SessionProvider } from './ui/SessionProvider'
+export { TimeZoneChangeBanner } from './ui/TimeZoneChangeBanner'
 export { UserAvatar } from './ui/UserAvatar'
 export { WorkspaceParticipantsDialog } from './ui/WorkspaceParticipantsDialog'

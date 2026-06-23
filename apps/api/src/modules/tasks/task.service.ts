@@ -1,3 +1,12 @@
+import {
+  addDateDays,
+  addDateMonthsClamped,
+  getDateDistance,
+  getDateKeyInTimeZone,
+  getIsoWeekday as getIsoWeekdayForDateOnly,
+  getIsoWeekStartDate,
+} from '@planner/contracts'
+
 import { HttpError } from '../../bootstrap/http-error.js'
 import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
@@ -387,8 +396,8 @@ function getRecurringReferenceDate(
   timeZone?: string,
 ): string {
   const completedDate = task.completedAt
-    ? getDateKeyInTimeZone(new Date(task.completedAt), timeZone)
-    : getDateKeyInTimeZone(new Date(), timeZone)
+    ? getDateKeyInTimeZone(task.completedAt, timeZone ?? 'UTC')
+    : getDateKeyInTimeZone(new Date(), timeZone ?? 'UTC')
 
   if (!task.plannedDate) {
     return completedDate
@@ -397,38 +406,12 @@ function getRecurringReferenceDate(
   return task.plannedDate > completedDate ? task.plannedDate : completedDate
 }
 
-function getDateKeyInTimeZone(date: Date, timeZone?: string): string {
-  if (!timeZone || Number.isNaN(date.getTime())) {
-    return date.toISOString().slice(0, 10)
-  }
-
-  try {
-    const parts = new Intl.DateTimeFormat('en-US', {
-      day: '2-digit',
-      month: '2-digit',
-      timeZone,
-      year: 'numeric',
-    }).formatToParts(date)
-    const year = parts.find((part) => part.type === 'year')?.value
-    const month = parts.find((part) => part.type === 'month')?.value
-    const day = parts.find((part) => part.type === 'day')?.value
-
-    if (year && month && day) {
-      return `${year}-${month}-${day}`
-    }
-  } catch {
-    // Keep the previous UTC behavior if a non-route caller passes bad timezone.
-  }
-
-  return date.toISOString().slice(0, 10)
-}
-
 function getNextRecurringDate(
   referenceDate: string,
   recurrence: NonNullable<StoredTaskRecord['recurrence']>,
 ): string | null {
   if (recurrence.frequency === 'daily') {
-    const dateKey = addUtcDays(referenceDate, recurrence.interval)
+    const dateKey = addDateDays(referenceDate, recurrence.interval)
 
     return isWithinRecurringEndDate(dateKey, recurrence.endDate)
       ? dateKey
@@ -440,19 +423,18 @@ function getNextRecurringDate(
   }
 
   const scheduledDays = new Set(recurrence.daysOfWeek)
-  const cursor = parseUtcDateKey(referenceDate)
-  const startWeek = getUtcWeekStart(parseUtcDateKey(recurrence.startDate))
+  const startWeek = getIsoWeekStartDate(recurrence.startDate)
   const maxLookaheadDays = Math.max(366, recurrence.interval * 371)
 
   for (let offset = 1; offset <= maxLookaheadDays; offset += 1) {
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-
-    const dateKey = toUtcDateKey(cursor)
+    const dateKey = addDateDays(referenceDate, offset)
+    const weekDistance =
+      getDateDistance(startWeek, getIsoWeekStartDate(dateKey)) / 7
 
     if (
       dateKey >= recurrence.startDate &&
-      scheduledDays.has(getIsoWeekday(cursor)) &&
-      getUtcWeekDistance(startWeek, cursor) % recurrence.interval === 0
+      scheduledDays.has(getIsoWeekdayForDateOnly(dateKey)) &&
+      weekDistance % recurrence.interval === 0
     ) {
       return isWithinRecurringEndDate(dateKey, recurrence.endDate)
         ? dateKey
@@ -467,16 +449,8 @@ function getNextMonthlyRecurringDate(
   referenceDate: string,
   recurrence: NonNullable<StoredTaskRecord['recurrence']>,
 ): string | null {
-  const startDate = parseUtcDateKey(recurrence.startDate)
-  const targetDay = startDate.getUTCDate()
-
   for (let offset = 0; offset <= 600; offset += recurrence.interval) {
-    const candidate = addUtcMonthsClamped(
-      recurrence.startDate,
-      offset,
-      targetDay,
-    )
-    const dateKey = toUtcDateKey(candidate)
+    const dateKey = addDateMonthsClamped(recurrence.startDate, offset)
 
     if (dateKey > referenceDate) {
       return isWithinRecurringEndDate(dateKey, recurrence.endDate)
@@ -493,57 +467,6 @@ function isWithinRecurringEndDate(
   endDate: string | null,
 ): boolean {
   return endDate === null || dateKey <= endDate
-}
-
-function addUtcDays(dateKey: string, days: number): string {
-  const date = parseUtcDateKey(dateKey)
-
-  date.setUTCDate(date.getUTCDate() + days)
-
-  return toUtcDateKey(date)
-}
-
-function addUtcMonthsClamped(
-  dateKey: string,
-  monthOffset: number,
-  targetDay: number,
-): Date {
-  const date = parseUtcDateKey(dateKey)
-  const year = date.getUTCFullYear()
-  const month = date.getUTCMonth() + monthOffset
-  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
-
-  return new Date(Date.UTC(year, month, Math.min(targetDay, lastDay)))
-}
-
-function parseUtcDateKey(dateKey: string): Date {
-  return new Date(`${dateKey}T00:00:00.000Z`)
-}
-
-function toUtcDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
-}
-
-function getUtcWeekStart(date: Date): Date {
-  const weekStart = new Date(date)
-
-  weekStart.setUTCDate(weekStart.getUTCDate() - (getIsoWeekday(weekStart) - 1))
-
-  return weekStart
-}
-
-function getUtcWeekDistance(startWeek: Date, date: Date): number {
-  const weekStart = getUtcWeekStart(date)
-
-  return Math.floor(
-    (weekStart.getTime() - startWeek.getTime()) / (7 * 24 * 60 * 60 * 1000),
-  )
-}
-
-function getIsoWeekday(date: Date): number {
-  const weekday = date.getUTCDay()
-
-  return weekday === 0 ? 7 : weekday
 }
 
 function assertCanWriteTasks(context: TaskWriteContext): void {

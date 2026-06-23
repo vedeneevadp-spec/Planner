@@ -24,12 +24,15 @@ import {
   type Task,
 } from '@/entities/task'
 import {
-  addDays,
   formatShortDate,
   formatTimeRange,
-  getDateKey,
   isBeforeDate,
 } from '@/shared/lib/date'
+import {
+  addDateDays,
+  getDateKeyInTimeZone,
+  getDeviceTimeZone,
+} from '@/shared/time/time.service'
 
 const PLANNER_WIDGET_SNAPSHOT_KEY = 'planner.widget.today.snapshot'
 
@@ -55,12 +58,13 @@ export function buildNativePlannerWidgetSnapshot(
   maybeNow?: Date,
 ): NativePlannerWidgetSnapshot {
   const { now, spheres } = resolveSnapshotContext(spheresOrNow, maybeNow)
-  const dateKey = getDateKey(now)
-  const tomorrowKey = getDateKey(addDays(now, 1))
+  const timeZone = getDeviceTimeZone() ?? 'UTC'
+  const dateKey = getDateKeyInTimeZone(now, timeZone)
+  const tomorrowKey = addDateDays(dateKey, 1)
   const sphereLookup = createSphereLookup(spheres)
   const todayTasks = selectTodayTasks(tasks, dateKey)
   const overdueTasks = selectOverdueTasks(tasks, dateKey)
-  const doneTodayTasks = selectDoneTodayTasks(tasks, dateKey)
+  const doneTodayTasks = selectDoneTodayTasks(tasks, dateKey, timeZone)
   const widgetTasks = selectTodoTasks(tasks)
     .sort((left, right) =>
       compareWidgetTasks(left, right, dateKey, tomorrowKey),

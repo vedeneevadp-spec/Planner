@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { describe, it } from 'node:test'
+import { afterEach, describe, it, mock } from 'node:test'
 
 import type {
   ChaosInboxItemRecord,
@@ -22,6 +22,10 @@ const OTHER_USER_ID = '99999999-9999-4999-8999-999999999999'
 const WORKSPACE_ID = '22222222-2222-4222-8222-222222222222'
 
 void describe('AiContextService', () => {
+  afterEach(() => {
+    mock.timers.reset()
+  })
+
   void it('resolves the read context through synthetic auth for MCP users', async () => {
     const resolveSessionCalls: unknown[] = []
     const service = createService([], resolveSessionCalls)
@@ -93,6 +97,45 @@ void describe('AiContextService', () => {
     assert.equal(context.calendar?.totalCount, 0)
     assert.equal(context.shopping?.totalCount, 0)
     assert.equal(context.stats?.loadLevel, 'low')
+  })
+
+  void it('uses planner timezone for default today context near a UTC boundary', async () => {
+    mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2026-06-24T20:30:00.000Z'),
+    })
+    const service = createService([
+      createTask({
+        plannedDate: '2026-06-24',
+        title: 'Amsterdam planner day',
+      }),
+      createTask({
+        plannedDate: '2026-06-25',
+        title: 'Astrakhan planner day',
+      }),
+    ])
+
+    const astrakhan = await service.getTodayContext({
+      include: ['tasks'],
+      timezone: 'Europe/Astrakhan',
+      userId: USER_ID,
+    })
+    const amsterdam = await service.getTodayContext({
+      include: ['tasks'],
+      timezone: 'Europe/Amsterdam',
+      userId: USER_ID,
+    })
+
+    assert.equal(astrakhan.date, '2026-06-25')
+    assert.deepEqual(
+      astrakhan.tasks?.today.map((task) => task.title),
+      ['Astrakhan planner day'],
+    )
+    assert.equal(amsterdam.date, '2026-06-24')
+    assert.deepEqual(
+      amsterdam.tasks?.today.map((task) => task.title),
+      ['Amsterdam planner day'],
+    )
   })
 
   void it('splits active and completed shopping without counting completed items as load', async () => {

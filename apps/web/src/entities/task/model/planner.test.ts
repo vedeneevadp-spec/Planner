@@ -120,7 +120,9 @@ describe('planner model', () => {
     ]
 
     expect(
-      selectDoneBeforeTodayTasks(tasks, '2026-04-15').map((task) => task.id),
+      selectDoneBeforeTodayTasks(tasks, '2026-04-15', 'Europe/Astrakhan').map(
+        (task) => task.id,
+      ),
     ).toEqual(['done-newer', 'done-older'])
   })
 
@@ -258,6 +260,7 @@ describe('planner model', () => {
         },
       ],
       '2026-04-15',
+      'Europe/Astrakhan',
     )
 
     expect(summary).toEqual({

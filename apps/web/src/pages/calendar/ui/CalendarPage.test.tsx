@@ -74,6 +74,7 @@ vi.mock('@/features/self-care', () => ({
 
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
+  usePlannerTimeZone: () => 'Europe/Astrakhan',
   useUpdateUserPreferences: () => ({
     mutate: mocks.mutatePreferences,
   }),

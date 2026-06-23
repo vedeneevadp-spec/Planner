@@ -391,8 +391,7 @@ export function NativePlannerWidgetSync() {
       const now = new Date()
       const nextDay = new Date(now)
 
-      nextDay.setDate(now.getDate() + 1)
-      nextDay.setHours(0, 0, 5, 0)
+      nextDay.setHours(24, 0, 5, 0)
 
       timeoutId = window.setTimeout(
         () => {

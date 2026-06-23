@@ -1,9 +1,7 @@
-export function getDateKey(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+import { addDateDays, serializeDateOnly } from '@/shared/time/time.service'
 
-  return `${year}-${month}-${day}`
+export function getDateKey(date: Date): string {
+  return serializeDateOnly(date) ?? ''
 }
 
 export function resolveClientTimeZone(): string | undefined {
@@ -38,10 +36,7 @@ function parseDateKey(value: string): Date {
 }
 
 export function addDays(date: Date, amount: number): Date {
-  const nextDate = new Date(date)
-  nextDate.setDate(nextDate.getDate() + amount)
-
-  return nextDate
+  return parseDateKey(addDateDays(getDateKey(date), amount))
 }
 
 export function formatLongDate(value: string): string {

@@ -51,6 +51,7 @@ describe('TaskEditDialog', () => {
     render(
       <TaskEditDialog
         currentActorUserId="user-1"
+        todayKey="2026-05-19"
         task={createTask()}
         spheres={[
           {
@@ -119,6 +120,7 @@ describe('TaskEditDialog', () => {
       <TaskEditDialog
         currentActorUserId="user-1"
         isSharedWorkspace
+        todayKey="2026-05-19"
         task={createTask({
           assigneeUserId: null,
           authorUserId: 'user-1',

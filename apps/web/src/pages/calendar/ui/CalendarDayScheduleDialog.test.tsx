@@ -10,6 +10,8 @@ import type {
 
 import { CalendarDayScheduleDialog } from './CalendarDayScheduleDialog'
 
+const TODAY_KEY = '2026-05-27'
+
 vi.mock('@/entities/task', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
 
@@ -52,6 +54,7 @@ describe('CalendarDayScheduleDialog', () => {
         {...mocks}
         spheres={[]}
         tasks={[createTask({ id: 'task-1' }), createTask({ id: 'task-2' })]}
+        todayKey={TODAY_KEY}
         uploadedIcons={[]}
       />,
     )
@@ -67,6 +70,7 @@ describe('CalendarDayScheduleDialog', () => {
         tasks={Array.from({ length: 5 }, (_, index) =>
           createTask({ id: `task-${index}` }),
         )}
+        todayKey={TODAY_KEY}
         uploadedIcons={[]}
       />,
     )
@@ -82,6 +86,7 @@ describe('CalendarDayScheduleDialog', () => {
         tasks={Array.from({ length: 11 }, (_, index) =>
           createTask({ id: `task-${index}` }),
         )}
+        todayKey={TODAY_KEY}
         uploadedIcons={[]}
       />,
     )
@@ -190,6 +195,7 @@ function renderDialog({
       {...mocks}
       spheres={[]}
       tasks={tasks}
+      todayKey={TODAY_KEY}
       uploadedIcons={[]}
     />,
   )

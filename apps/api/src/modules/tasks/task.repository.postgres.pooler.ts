@@ -28,6 +28,7 @@ import {
   isActiveTaskStatus,
   type normalizeTaskInput,
   type normalizeTaskSchedule,
+  type TaskTimeFields,
 } from './task.shared.js'
 
 export class PostgresTaskPoolerWriteFallback {
@@ -44,6 +45,7 @@ export class PostgresTaskPoolerWriteFallback {
       projectId: string | null
       reminderTimeZone: string | undefined
       startsAt: string | null
+      timeFields: TaskTimeFields
       taskId: string
     },
   ): Promise<StoredTaskRecord> {
@@ -79,7 +81,7 @@ export class PostgresTaskPoolerWriteFallback {
                 ${MANUAL_TIME_BLOCK_SOURCE},
                 cast(${params.startsAt} as timestamptz),
                 inserted_task.id,
-                'UTC',
+                ${params.timeFields.timeZone ?? 'UTC'},
                 ${command.context.actorUserId},
                 inserted_task.workspace_id
               from inserted_task
@@ -109,14 +111,23 @@ export class PostgresTaskPoolerWriteFallback {
               due_on,
               assignee_user_id,
               id,
+              local_date,
+              local_time,
               metadata,
               planned_on,
               priority,
               project_id,
+              recurrence_rule,
+              recurrence_start_date,
+              recurrence_time_zone,
               resource,
               sphere_id,
               sort_key,
+              starts_at_utc,
               status,
+              time_kind,
+              time_zone,
+              time_zone_inferred,
               title,
               updated_by,
               workspace_id
@@ -129,14 +140,23 @@ export class PostgresTaskPoolerWriteFallback {
               cast(${params.normalizedInput.dueDate} as date),
               cast(${params.assigneeUserId} as uuid),
               ${params.taskId},
+              cast(${params.timeFields.localDate} as date),
+              cast(${params.timeFields.localTime} as time),
               cast(${JSON.stringify(params.metadata)} as jsonb),
               cast(${params.normalizedSchedule.plannedDate} as date),
               2,
               cast(${params.projectId} as uuid),
+              ${params.timeFields.recurrenceRule},
+              cast(${params.timeFields.recurrenceStartDate} as date),
+              ${params.timeFields.recurrenceTimeZone},
               ${params.normalizedInput.resource},
               cast(${params.projectId} as uuid),
               '',
+              cast(${params.timeFields.startsAtUtc} as timestamptz),
               'todo',
+              ${params.timeFields.timeKind},
+              ${params.timeFields.timeZone},
+              ${params.timeFields.timeZoneInferred},
               ${params.normalizedInput.title},
               ${command.context.actorUserId},
               ${command.context.workspaceId}
@@ -341,6 +361,7 @@ export class PostgresTaskPoolerWriteFallback {
       projectId: string | null
       reminderTimeZone: string | undefined
       startsAt: string | null
+      timeFields: TaskTimeFields
     },
   ): Promise<StoredTaskRecord> {
     const authContext = command.context.auth
@@ -379,7 +400,7 @@ export class PostgresTaskPoolerWriteFallback {
                 ${MANUAL_TIME_BLOCK_SOURCE},
                 cast(${params.startsAt} as timestamptz),
                 updated_task.id,
-                'UTC',
+                ${params.timeFields.timeZone ?? 'UTC'},
                 ${command.context.actorUserId},
                 updated_task.workspace_id
               from updated_task
@@ -406,11 +427,20 @@ export class PostgresTaskPoolerWriteFallback {
               assignee_user_id = cast(${params.assigneeUserId} as uuid),
               description = ${params.normalizedInput.note},
               due_on = cast(${params.normalizedInput.dueDate} as date),
+              local_date = cast(${params.timeFields.localDate} as date),
+              local_time = cast(${params.timeFields.localTime} as time),
               metadata = cast(${JSON.stringify(params.metadata)} as jsonb),
               planned_on = cast(${params.normalizedSchedule.plannedDate} as date),
               project_id = cast(${params.projectId} as uuid),
+              recurrence_rule = ${params.timeFields.recurrenceRule},
+              recurrence_start_date = cast(${params.timeFields.recurrenceStartDate} as date),
+              recurrence_time_zone = ${params.timeFields.recurrenceTimeZone},
               resource = ${params.normalizedInput.resource},
               sphere_id = cast(${params.projectId} as uuid),
+              starts_at_utc = cast(${params.timeFields.startsAtUtc} as timestamptz),
+              time_kind = ${params.timeFields.timeKind},
+              time_zone = ${params.timeFields.timeZone},
+              time_zone_inferred = ${params.timeFields.timeZoneInferred},
               title = ${params.normalizedInput.title},
               updated_by = ${command.context.actorUserId}
             where id = ${command.taskId}
@@ -674,6 +704,7 @@ export class PostgresTaskPoolerWriteFallback {
       endsAt: string | null
       normalizedSchedule: ReturnType<typeof normalizeTaskSchedule>
       startsAt: string | null
+      timeFields: TaskTimeFields
     },
   ): Promise<StoredTaskRecord> {
     const authContext = command.context.auth
@@ -712,7 +743,7 @@ export class PostgresTaskPoolerWriteFallback {
                 cast(${MANUAL_TIME_BLOCK_SOURCE} as text),
                 cast(${params.startsAt} as timestamptz),
                 updated_task.id,
-                'UTC',
+                ${params.timeFields.timeZone ?? 'UTC'},
                 cast(${command.context.actorUserId} as uuid),
                 updated_task.workspace_id
               from updated_task
@@ -758,7 +789,15 @@ export class PostgresTaskPoolerWriteFallback {
                 then coalesce(task.metadata, '{}'::jsonb) - cast(${TASK_REMIND_BEFORE_START_KEY} as text)
                 else task.metadata
               end,
+              local_date = cast(${params.timeFields.localDate} as date),
+              local_time = cast(${params.timeFields.localTime} as time),
               planned_on = schedule_input.planned_date,
+              recurrence_start_date = cast(${params.timeFields.recurrenceStartDate} as date),
+              recurrence_time_zone = ${params.timeFields.recurrenceTimeZone},
+              starts_at_utc = cast(${params.timeFields.startsAtUtc} as timestamptz),
+              time_kind = ${params.timeFields.timeKind},
+              time_zone = ${params.timeFields.timeZone},
+              time_zone_inferred = ${params.timeFields.timeZoneInferred},
               updated_by = cast(${command.context.actorUserId} as uuid)
             from schedule_input
             where task.id = cast(${command.taskId} as uuid)

@@ -51,6 +51,44 @@ describe('calendar load', () => {
     })
   })
 
+  it('keeps the month grid stable when the device timezone changes', () => {
+    const originalTimeZone = process.env.TZ
+
+    try {
+      process.env.TZ = 'Europe/Astrakhan'
+      const astrakhanGrid = buildCalendarMonthLoad([], '2026-03-29').days.map(
+        (day) => ({
+          dateKey: day.dateKey,
+          dayOfMonth: day.dayOfMonth,
+          isCurrentMonth: day.isCurrentMonth,
+        }),
+      )
+
+      process.env.TZ = 'Europe/Amsterdam'
+      const amsterdamGrid = buildCalendarMonthLoad([], '2026-03-29').days.map(
+        (day) => ({
+          dateKey: day.dateKey,
+          dayOfMonth: day.dayOfMonth,
+          isCurrentMonth: day.isCurrentMonth,
+        }),
+      )
+
+      expect(amsterdamGrid).toEqual(astrakhanGrid)
+      expect(astrakhanGrid[0]).toEqual({
+        dateKey: '2026-02-23',
+        dayOfMonth: 23,
+        isCurrentMonth: false,
+      })
+      expect(astrakhanGrid[6]).toEqual({
+        dateKey: '2026-03-01',
+        dayOfMonth: 1,
+        isCurrentMonth: true,
+      })
+    } finally {
+      process.env.TZ = originalTimeZone
+    }
+  })
+
   it('counts active planned load, timed tasks and routines', () => {
     const summary = getCalendarDaySummary(
       [

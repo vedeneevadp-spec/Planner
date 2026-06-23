@@ -69,6 +69,7 @@ vi.mock('@/features/self-care', () => ({
 
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
+  usePlannerTimeZone: () => 'UTC',
   useUpdateUserPreferences: () => ({
     mutate: mocks.updateUserPreferences,
   }),

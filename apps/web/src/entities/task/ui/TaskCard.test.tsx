@@ -47,6 +47,8 @@ function renderTaskCard(
   return render(
     <TaskCard
       task={task}
+      todayKey="2026-04-23"
+      tomorrowKey="2026-04-24"
       onRemove={vi.fn()}
       onSetPlannedDate={vi.fn()}
       onSetStatus={vi.fn()}
@@ -102,6 +104,8 @@ describe('TaskCard', () => {
     rerender(
       <TaskCard
         task={createTask({ plannedDate: '2026-04-24' })}
+        todayKey="2026-04-23"
+        tomorrowKey="2026-04-24"
         onRemove={vi.fn()}
         onSetPlannedDate={vi.fn()}
         onSetStatus={vi.fn()}

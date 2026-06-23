@@ -1,7 +1,10 @@
 import {
   generateUuidV7,
+  getDateKeyInTimeZone,
+  getTodayDate,
   type HabitEntryRecord,
   type HabitRecord,
+  makeFixedZoneDateTime,
   type SelfCareAnalyticsResponse,
   type SelfCareAppointmentDetails,
   type SelfCareAppointmentDetailsInput,
@@ -41,6 +44,7 @@ import {
   type SelfCareTemplate,
   type SelfCareTimeOfDay,
   type SelfCareTodayItem,
+  serializeDateOnly,
 } from '@planner/contracts'
 
 import {
@@ -117,6 +121,7 @@ export function createSelfCareRecords(
   input: SelfCareItemInput,
   context: {
     actorUserId: string
+    clientTimeZone?: string | undefined
     createdFromTemplateId?: string | null | undefined
     workspaceId: string
   },
@@ -178,7 +183,7 @@ export function createSelfCareRecords(
       : null,
     scheduleRule: input.scheduleRule
       ? createScheduleRuleRecord(itemId, input.scheduleRule, now)
-      : inferDefaultScheduleRule(item, now),
+      : inferDefaultScheduleRule(item, now, context.clientTimeZone),
     steps: input.steps.map((step, index) =>
       createRitualStepRecord(itemId, step, index, now),
     ),
@@ -1151,7 +1156,9 @@ function template(
 export function buildItemInputFromTemplate(
   templateRecord: SelfCareTemplate,
   overrides: SelfCareItemInputOverrides = {},
+  options: { plannerTimeZone?: string | undefined } = {},
 ): SelfCareItemInput {
+  const plannerTimeZone = options.plannerTimeZone ?? 'UTC'
   const schedule = isRecord(templateRecord.defaultSchedule)
     ? templateRecord.defaultSchedule
     : {}
@@ -1162,11 +1169,20 @@ export function buildItemInputFromTemplate(
   const scheduleDate =
     typeof schedule.startDate === 'string'
       ? schedule.startDate
-      : getDateKey(new Date())
+      : getTodayDate(plannerTimeZone)
   const scheduleTime =
     typeof schedule.preferredTime === 'string'
       ? schedule.preferredTime
       : '09:00'
+  const scheduleTimeZone =
+    typeof schedule.timezone === 'string' && schedule.timezone.trim()
+      ? schedule.timezone.trim()
+      : plannerTimeZone
+  const appointmentStartsAt = makeFixedZoneDateTime({
+    localDate: scheduleDate,
+    localTime: scheduleTime,
+    timeZone: scheduleTimeZone,
+  }).instantUtc
   const base: SelfCareItemInput = {
     alternatives: [],
     category: templateRecord.category,
@@ -1196,7 +1212,7 @@ export function buildItemInputFromTemplate(
       preferredTime: null,
       reminderOffsetsMinutes: [],
       repeatKind: 'none',
-      startDate: getDateKey(new Date()),
+      startDate: getTodayDate(plannerTimeZone),
       timezone: null,
       weekOfMonth: null,
       ...schedule,
@@ -1220,7 +1236,7 @@ export function buildItemInputFromTemplate(
             resultNote: null,
             specialistContact: null,
             specialistName: null,
-            startsAt: `${scheduleDate}T${scheduleTime}:00.000Z`,
+            startsAt: appointmentStartsAt,
           },
         }
       : {}),
@@ -1234,7 +1250,7 @@ export function buildItemInputFromTemplate(
             isCompleted: false,
             isPaused: false,
             repeatAfterCompletion: false,
-            startDate: getDateKey(new Date()),
+            startDate: getTodayDate(plannerTimeZone),
             totalCount: 30,
           },
         }
@@ -1332,10 +1348,13 @@ export function mapHabitEntryToSelfCareCompletion(input: {
 function inferDefaultScheduleRule(
   item: SelfCareItem,
   now: string,
+  plannerTimeZone: string | undefined,
 ): SelfCareScheduleRule | null {
   if (item.type === 'appointment' || item.type === 'task') {
     return null
   }
+
+  const startDate = getTodayDate(plannerTimeZone ?? 'UTC')
 
   if (item.type === 'flexible_goal') {
     return createScheduleRuleRecord(
@@ -1355,7 +1374,7 @@ function inferDefaultScheduleRule(
         preferredTime: null,
         reminderOffsetsMinutes: [],
         repeatKind: 'flexible_goal',
-        startDate: getDateKey(new Date()),
+        startDate,
         timezone: null,
         weekOfMonth: null,
       },
@@ -1380,7 +1399,7 @@ function inferDefaultScheduleRule(
       preferredTime: null,
       reminderOffsetsMinutes: [],
       repeatKind: item.type === 'course' ? 'course' : 'daily',
-      startDate: getDateKey(new Date()),
+      startDate,
       timezone: null,
       weekOfMonth: null,
     },
@@ -1707,10 +1726,17 @@ export function getMissedOccurrenceCutoffDate(
 
 export function getSelfCareCompletionDateKey(
   input: Pick<SelfCareCompletionInput, 'completedAt'>,
+  plannerTimeZone = 'UTC',
 ): string {
-  return (
-    input.completedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
-  )
+  if (!input.completedAt) {
+    return getTodayDate(plannerTimeZone)
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(input.completedAt)) {
+    return input.completedAt
+  }
+
+  return getDateKeyInTimeZone(input.completedAt, plannerTimeZone)
 }
 
 export function shouldDeduplicateSelfCareItemCompletion(input: {
@@ -1887,7 +1913,14 @@ export function serializeNullableTimestamp(value: unknown): string | null {
 }
 
 export function serializeDate(value: unknown): string {
-  if (value instanceof Date) return getDateKey(value)
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    const date = serializeDateOnly(value)
+
+    if (date !== null) {
+      return date
+    }
+  }
+
   return String(value)
 }
 

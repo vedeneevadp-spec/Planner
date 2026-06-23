@@ -1,4 +1,8 @@
-import { routineTaskSchema, taskRecurrenceSchema } from '@planner/contracts'
+import {
+  routineTaskSchema,
+  serializeDateOnly,
+  taskRecurrenceSchema,
+} from '@planner/contracts'
 
 import type { JsonObject } from '../../infrastructure/db/schema.js'
 import type { StoredTaskEventRecord, StoredTaskRecord } from './task.model.js'
@@ -21,7 +25,10 @@ import {
   type TaskRow,
   type TaskTimeBlockRow,
 } from './task.repository.postgres.types.js'
-import { extractTimeFromTimestamp } from './task.shared.js'
+import {
+  buildTaskScheduleValue,
+  extractTimeFromTimestamp,
+} from './task.shared.js'
 
 export function mapTaskRecord(
   task: TaskRow,
@@ -31,6 +38,18 @@ export function mapTaskRecord(
   authorDisplayName: string | null,
 ): StoredTaskRecord {
   const reminderOffsets = readTaskReminderOffsets(task.metadata)
+  const recurrence = readTaskRecurrence(task.metadata)
+  const plannedDate =
+    serializeNullableDate(task.local_date) ??
+    serializeNullableDate(task.planned_on)
+  const plannedStartTime =
+    serializeNullableTime(task.local_time) ??
+    (timeBlock
+      ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.starts_at))
+      : null)
+  const plannedEndTime = timeBlock
+    ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.ends_at))
+    : null
 
   return {
     assigneeDisplayName,
@@ -46,16 +65,12 @@ export function mapTaskRecord(
     importance: readTaskImportance(task.metadata),
     linkedTask: readTaskLinkedTask(task.metadata),
     note: task.description,
-    plannedDate: serializeNullableDate(task.planned_on),
-    plannedEndTime: timeBlock
-      ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.ends_at))
-      : null,
-    plannedStartTime: timeBlock
-      ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.starts_at))
-      : null,
+    plannedDate,
+    plannedEndTime,
+    plannedStartTime,
     project: projectTitle ?? readLegacyProjectName(task.metadata),
     projectId: task.project_id,
-    recurrence: readTaskRecurrence(task.metadata),
+    recurrence,
     remindBeforeStart:
       reminderOffsets.length > 0
         ? true
@@ -69,6 +84,15 @@ export function mapTaskRecord(
     resource: task.resource,
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
     routine: readTaskRoutine(task.metadata),
+    schedule: buildTaskScheduleValue({
+      plannedDate,
+      plannedStartTime,
+      recurrence,
+      startsAtUtc: serializeNullableTimestamp(task.starts_at_utc),
+      timeKind: task.time_kind,
+      timeZone: task.time_zone,
+      timeZoneInferred: task.time_zone_inferred,
+    }),
     sphereId: task.project_id ?? task.sphere_id,
     sourceWorkspace: readTaskSourceWorkspace(task.metadata),
     status: task.status,
@@ -82,6 +106,18 @@ export function mapTaskRecord(
 
 export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
   const reminderOffsets = readTaskReminderOffsets(task.metadata)
+  const recurrence = readTaskRecurrence(task.metadata)
+  const plannedDate =
+    serializeNullableDate(task.local_date) ??
+    serializeNullableDate(task.planned_on)
+  const plannedStartTime =
+    serializeNullableTime(task.local_time) ??
+    (task.time_block_starts_at
+      ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_starts_at))
+      : null)
+  const plannedEndTime = task.time_block_ends_at
+    ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_ends_at))
+    : null
 
   return {
     assigneeDisplayName: task.assignee_display_name ?? null,
@@ -97,16 +133,12 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     importance: readTaskImportance(task.metadata),
     linkedTask: readTaskLinkedTask(task.metadata),
     note: task.description,
-    plannedDate: serializeNullableDate(task.planned_on),
-    plannedEndTime: task.time_block_ends_at
-      ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_ends_at))
-      : null,
-    plannedStartTime: task.time_block_starts_at
-      ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_starts_at))
-      : null,
+    plannedDate,
+    plannedEndTime,
+    plannedStartTime,
     project: task.project_title ?? readLegacyProjectName(task.metadata),
     projectId: task.project_id,
-    recurrence: readTaskRecurrence(task.metadata),
+    recurrence,
     remindBeforeStart:
       reminderOffsets.length > 0
         ? true
@@ -120,6 +152,15 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     resource: task.resource,
     requiresConfirmation: readTaskRequiresConfirmation(task.metadata),
     routine: readTaskRoutine(task.metadata),
+    schedule: buildTaskScheduleValue({
+      plannedDate,
+      plannedStartTime,
+      recurrence,
+      startsAtUtc: serializeNullableTimestamp(task.starts_at_utc),
+      timeKind: task.time_kind,
+      timeZone: task.time_zone,
+      timeZoneInferred: task.time_zone_inferred,
+    }),
     sphereId: task.project_id ?? task.sphere_id,
     sourceWorkspace: readTaskSourceWorkspace(task.metadata),
     status: task.status,
@@ -335,23 +376,23 @@ export function serializeNullableTimestamp(value: unknown): string | null {
 }
 
 export function serializeNullableDate(value: unknown): string | null {
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    return serializeDateOnly(value)
+  }
+
+  throw new TypeError(`Unexpected date value: ${typeof value}`)
+}
+
+export function serializeNullableTime(value: unknown): string | null {
   if (value === null) {
     return null
   }
 
   if (typeof value === 'string') {
-    return value
+    return value.slice(0, 5)
   }
 
-  if (value instanceof Date) {
-    const year = value.getFullYear()
-    const month = String(value.getMonth() + 1).padStart(2, '0')
-    const day = String(value.getDate()).padStart(2, '0')
-
-    return `${year}-${month}-${day}`
-  }
-
-  throw new TypeError(`Unexpected date value: ${typeof value}`)
+  throw new TypeError(`Unexpected time value: ${typeof value}`)
 }
 
 export function serializeTimestamp(value: unknown): string {

@@ -1,4 +1,12 @@
-import { type CleaningTaskWithState, generateUuidV7 } from '@planner/contracts'
+import {
+  addDateDays,
+  addDateMonthsClamped,
+  type CleaningTaskWithState,
+  generateUuidV7,
+  getDateDistance,
+  getIsoWeekday as getIsoWeekdayForDateOnly,
+  serializeDateOnly,
+} from '@planner/contracts'
 
 import type {
   StoredCleaningTaskHistoryItemRecord,
@@ -413,19 +421,24 @@ export function calculateNextCleaningZoneCycleDate(
 }
 
 export function getDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 export function getIsoWeekday(dateKey: string): number {
-  const date = new Date(`${dateKey}T12:00:00.000Z`)
-  const day = date.getUTCDay()
-
-  return day === 0 ? 7 : day
+  return getIsoWeekdayForDateOnly(dateKey)
 }
 
 export function serializeDate(value: unknown): string {
-  if (value instanceof Date) {
-    return getDateKey(value)
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    const date = serializeDateOnly(value)
+
+    if (date !== null) {
+      return date
+    }
   }
 
   return String(value)
@@ -683,28 +696,13 @@ function findNextSeasonalDate(
 }
 
 function addDaysToDateKey(dateKey: string, amount: number): string {
-  const date = new Date(`${dateKey}T12:00:00.000Z`)
-  date.setUTCDate(date.getUTCDate() + amount)
-
-  return getDateKey(date)
+  return addDateDays(dateKey, amount)
 }
 
 function addMonthsToDateKey(dateKey: string, amount: number): string {
-  const date = new Date(`${dateKey}T12:00:00.000Z`)
-  const originalDate = date.getUTCDate()
-
-  date.setUTCMonth(date.getUTCMonth() + amount)
-
-  if (date.getUTCDate() < originalDate) {
-    date.setUTCDate(0)
-  }
-
-  return getDateKey(date)
+  return addDateMonthsClamped(dateKey, amount)
 }
 
 function daysBetween(left: string, right: string): number {
-  const leftTime = new Date(`${left}T12:00:00.000Z`).getTime()
-  const rightTime = new Date(`${right}T12:00:00.000Z`).getTime()
-
-  return Math.floor((rightTime - leftTime) / 86_400_000)
+  return getDateDistance(left, right)
 }

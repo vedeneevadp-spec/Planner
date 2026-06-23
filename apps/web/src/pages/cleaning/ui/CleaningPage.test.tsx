@@ -80,6 +80,10 @@ vi.mock('@/features/cleaning', async (importOriginal) => {
   }
 })
 
+vi.mock('@/features/session', () => ({
+  usePlannerTimeZone: () => 'Europe/Astrakhan',
+}))
+
 function createZone(): CleaningZoneRecord {
   return {
     createdAt: '2026-05-12T00:00:00.000Z',

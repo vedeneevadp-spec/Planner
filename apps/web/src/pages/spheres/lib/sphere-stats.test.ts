@@ -64,7 +64,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
 
 describe('sphere stats', () => {
   it('builds Monday to Sunday week range', () => {
-    expect(getCurrentWeekRange(new Date(2026, 3, 22))).toEqual({
+    expect(getCurrentWeekRange('2026-04-22')).toEqual({
       from: '2026-04-20',
       to: '2026-04-26',
     })
@@ -85,6 +85,7 @@ describe('sphere stats', () => {
       ],
       { from: '2026-04-20', to: '2026-04-26' },
       '2026-04-22',
+      'Europe/Astrakhan',
     )[0]
 
     expect(stats?.plannedCount).toBe(2)
@@ -102,6 +103,7 @@ describe('sphere stats', () => {
       ],
       { from: '2026-04-20', to: '2026-04-26' },
       '2026-04-22',
+      'Europe/Astrakhan',
     )
     const statsBySphereId = new Map(stats.map((stat) => [stat.sphereId, stat]))
 
@@ -119,6 +121,7 @@ describe('sphere stats', () => {
       ],
       { from: '2026-04-20', to: '2026-04-26' },
       '2026-04-22',
+      'Europe/Astrakhan',
     )
     const statsBySphereId = new Map(stats.map((stat) => [stat.sphereId, stat]))
 
@@ -133,6 +136,7 @@ describe('sphere stats', () => {
       [createTask({ project: '', projectId: null })],
       { from: '2026-04-20', to: '2026-04-26' },
       '2026-04-22',
+      'Europe/Astrakhan',
     )
 
     expect(stats[0]?.sphereId).toBe(UNSPHERED_ID)

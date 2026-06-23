@@ -1,4 +1,5 @@
 import {
+  getTodayDate,
   habitEntryDeleteInputSchema,
   habitEntryRecordSchema,
   habitEntryUpsertInputSchema,
@@ -21,7 +22,6 @@ import {
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from '../session/index.js'
 import type { HabitService } from './habit.service.js'
-import { getDateKey } from './habit.shared.js'
 
 const habitParamsSchema = z.object({
   habitId: z.string().min(1),
@@ -52,7 +52,7 @@ export function registerHabitRoutes(
     const context = await resolveRouteReadContext(request, sessionService)
     const result = await service.getToday(
       context,
-      query.date ?? getDateKey(new Date()),
+      query.date ?? getTodayDate(context.clientTimeZone ?? 'UTC'),
     )
 
     return habitTodayResponseSchema.parse(result)

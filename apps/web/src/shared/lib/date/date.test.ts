@@ -10,11 +10,11 @@ import {
 
 describe('date helpers', () => {
   it('creates a stable date key', () => {
-    expect(getDateKey(new Date(2026, 3, 15))).toBe('2026-04-15')
+    expect(getDateKey(new Date(Date.UTC(2026, 3, 15)))).toBe('2026-04-15')
   })
 
   it('adds calendar days without mutating the source instance', () => {
-    const start = new Date(2026, 3, 30)
+    const start = new Date(Date.UTC(2026, 3, 30))
     const next = addDays(start, 1)
 
     expect(getDateKey(start)).toBe('2026-04-30')

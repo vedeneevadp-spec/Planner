@@ -1,6 +1,11 @@
 import type { Sphere } from '@/entities/sphere'
 import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import {
+  addDateDays,
+  getDateDistance,
+  getDateKeyInTimeZone,
+  getIsoWeekStartDate,
+} from '@/shared/time/time.service'
 import { createSvgIconValue } from '@/shared/ui/Icon'
 
 export const UNSPHERED_ID = '__unsphered__'
@@ -30,42 +35,41 @@ export interface SphereStats {
   weeklyShare: number
 }
 
-export function getCurrentWeekRange(today: Date): WeekRange {
-  const day = today.getDay()
-  const daysFromMonday = day === 0 ? 6 : day - 1
-  const monday = addDays(today, -daysFromMonday)
-  const sunday = addDays(monday, 6)
+export function getCurrentWeekRange(todayKey: string): WeekRange {
+  const monday = getIsoWeekStartDate(todayKey)
+  const sunday = addDateDays(monday, 6)
 
   return {
-    from: getDateKey(monday),
-    to: getDateKey(sunday),
+    from: monday,
+    to: sunday,
   }
 }
 
-function toLocalDate(value: string): Date {
-  const [yearRaw, monthRaw, dayRaw] = value.split('-')
-
-  return new Date(Number(yearRaw), Number(monthRaw) - 1, Number(dayRaw), 12)
-}
-
 function diffInDays(left: string, right: string): number {
-  const leftTime = toLocalDate(left).getTime()
-  const rightTime = toLocalDate(right).getTime()
-
-  return Math.floor((rightTime - leftTime) / 86_400_000)
+  return getDateDistance(left, right)
 }
 
-function getTaskCreatedDate(task: Pick<Task, 'createdAt'>): string {
-  return getDateKey(new Date(task.createdAt))
+function getTaskCreatedDate(
+  task: Pick<Task, 'createdAt'>,
+  timeZone: string,
+): string {
+  return getDateKeyInTimeZone(task.createdAt, timeZone)
 }
 
-function getTaskCompletedDate(task: Pick<Task, 'completedAt'>): string | null {
-  return task.completedAt ? getDateKey(new Date(task.completedAt)) : null
+function getTaskCompletedDate(
+  task: Pick<Task, 'completedAt'>,
+  timeZone: string,
+): string | null {
+  return task.completedAt
+    ? getDateKeyInTimeZone(task.completedAt, timeZone)
+    : null
 }
 
-function getTaskWeekAnchor(task: Task): string {
+function getTaskWeekAnchor(task: Task, timeZone: string): string {
   return (
-    task.plannedDate ?? getTaskCompletedDate(task) ?? getTaskCreatedDate(task)
+    task.plannedDate ??
+    getTaskCompletedDate(task, timeZone) ??
+    getTaskCreatedDate(task, timeZone)
   )
 }
 
@@ -73,11 +77,11 @@ function isInWeek(value: string | null, week: WeekRange): boolean {
   return value !== null && value >= week.from && value <= week.to
 }
 
-function getLatestActivityDate(task: Task): string {
+function getLatestActivityDate(task: Task, timeZone: string): string {
   return [
     task.plannedDate,
-    getTaskCompletedDate(task),
-    getTaskCreatedDate(task),
+    getTaskCompletedDate(task, timeZone),
+    getTaskCreatedDate(task, timeZone),
   ]
     .filter((value): value is string => value !== null)
     .sort()
@@ -150,6 +154,7 @@ export function buildSphereStats(
   tasks: Task[],
   week: WeekRange,
   todayKey: string,
+  timeZone: string,
 ): SphereStats[] {
   const statsBySphereId = new Map<string, SphereStats>()
 
@@ -168,9 +173,9 @@ export function buildSphereStats(
     }
 
     const stats = statsBySphereId.get(sphereId)!
-    const completedDate = getTaskCompletedDate(task)
-    const weekAnchor = getTaskWeekAnchor(task)
-    const latestActivityDate = getLatestActivityDate(task)
+    const completedDate = getTaskCompletedDate(task, timeZone)
+    const weekAnchor = getTaskWeekAnchor(task, timeZone)
+    const latestActivityDate = getLatestActivityDate(task, timeZone)
 
     if (isActiveTaskStatus(task.status) && isInWeek(task.plannedDate, week)) {
       stats.plannedCount += 1

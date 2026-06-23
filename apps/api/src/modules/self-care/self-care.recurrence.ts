@@ -1,4 +1,9 @@
 import {
+  addDateDays,
+  addDateMonthsClamped,
+  getDateDistance,
+  getIsoWeekday as getIsoWeekdayForDateOnly,
+  getIsoWeekStartDate,
   type SelfCareCompletion,
   type SelfCareCompletionStatus,
   type SelfCareFlexibleGoalProgress,
@@ -6,7 +11,6 @@ import {
   type SelfCareScheduleRule,
 } from '@planner/contracts'
 
-const DAY_MS = 86_400_000
 const ISO_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]
 
 export function generateSelfCareOccurrenceDates(input: {
@@ -107,7 +111,15 @@ export function getFlexibleGoalPeriod(
 }
 
 export function getDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  return formatUtcDateKey(date)
+}
+
+function formatUtcDateKey(date: Date): string {
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 export function normalizeDaysOfWeek(days: number[]): number[] {
@@ -118,9 +130,7 @@ export function normalizeDaysOfWeek(days: number[]): number[] {
 }
 
 export function addDays(dateKey: string, days: number): string {
-  const date = parseDateKey(dateKey)
-  date.setUTCDate(date.getUTCDate() + days)
-  return getDateKey(date)
+  return addDateDays(dateKey, days)
 }
 
 export function buildDueAt(
@@ -140,8 +150,7 @@ export function buildDueAt(
 }
 
 export function getIsoWeekday(dateKey: string): number {
-  const weekday = parseDateKey(dateKey).getUTCDay()
-  return weekday === 0 ? 7 : weekday
+  return getIsoWeekdayForDateOnly(dateKey)
 }
 
 export function isCompletionProgressStatus(
@@ -329,14 +338,7 @@ function enumerateDateKeys(from: string, to: string): string[] {
 }
 
 function addMonths(dateKey: string, months: number): string {
-  const year = yearOf(dateKey)
-  const month = monthOf(dateKey)
-  const day = dayOfMonth(dateKey)
-  const monthIndex = month - 1 + months
-  const nextYear = year + Math.floor(monthIndex / 12)
-  const nextMonth = (((monthIndex % 12) + 12) % 12) + 1
-  const nextDay = Math.min(day, daysInMonth(nextYear, nextMonth))
-  return dateFromParts(nextYear, nextMonth, nextDay)
+  return addDateMonthsClamped(dateKey, months)
 }
 
 export function addInterval(
@@ -350,10 +352,6 @@ export function addInterval(
   return addMonths(dateKey, value * 12)
 }
 
-function parseDateKey(dateKey: string): Date {
-  return new Date(`${dateKey}T00:00:00.000Z`)
-}
-
 function dateFromParts(year: number, month: number, day: number): string {
   return `${year.toString().padStart(4, '0')}-${month
     .toString()
@@ -361,7 +359,7 @@ function dateFromParts(year: number, month: number, day: number): string {
 }
 
 function getWeekStart(dateKey: string): string {
-  return addDays(dateKey, 1 - getIsoWeekday(dateKey))
+  return getIsoWeekStartDate(dateKey)
 }
 
 function getMonthEnd(dateKey: string): string {
@@ -373,9 +371,7 @@ function getMonthEnd(dateKey: string): string {
 }
 
 function daysBetween(start: string, end: string): number {
-  return Math.round(
-    (parseDateKey(end).getTime() - parseDateKey(start).getTime()) / DAY_MS,
-  )
+  return getDateDistance(start, end)
 }
 
 function isEveryNDays(start: string, dateKey: string, every: number): boolean {
@@ -414,7 +410,15 @@ function dayOfMonth(dateKey: string): number {
 }
 
 function daysInMonth(year: number, month: number): number {
-  return new Date(Date.UTC(year, month, 0)).getUTCDate()
+  if (month === 2) {
+    return isLeapYear(year) ? 29 : 28
+  }
+
+  return [4, 6, 9, 11].includes(month) ? 30 : 31
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
 }
 
 function maxDateKey(left: string, right: string): string {

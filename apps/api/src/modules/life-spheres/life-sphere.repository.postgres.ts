@@ -1,4 +1,10 @@
-import { generateUuidV7 } from '@planner/contracts'
+import {
+  generateUuidV7,
+  getDateDistance,
+  getDateKeyInTimeZone,
+  getTodayDate,
+  serializeDateOnly,
+} from '@planner/contracts'
 import { type Kysely, type Selectable } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -332,6 +338,8 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     )
     const sphereIds = new Set(spheres.map((sphere) => sphere.id))
     const statsBySphereId = new Map<string, StoredSphereStatsWeekly>()
+    const timeZone = command.context.clientTimeZone ?? 'UTC'
+    const today = getTodayDate(timeZone)
 
     for (const sphere of spheres) {
       statsBySphereId.set(sphere.id, createEmptyStats(sphere.id))
@@ -358,7 +366,8 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
 
       const weeklyLoad = updateStats(statsBySphereId.get(sphereId)!, task, {
         from: command.from,
-        today: getDateKey(new Date()),
+        timeZone,
+        today,
         to: command.to,
       })
 
@@ -374,10 +383,7 @@ export class PostgresLifeSphereRepository implements LifeSphereRepository {
     )
     const stats = [...statsBySphereId.values()].map((statsItem) => {
       const idleDays = statsItem.lastActivityAt
-        ? Math.max(
-            0,
-            diffInDays(statsItem.lastActivityAt, getDateKey(new Date())),
-          )
+        ? Math.max(0, diffInDays(statsItem.lastActivityAt, today))
         : null
 
       return {
@@ -505,11 +511,16 @@ function createEmptyStats(sphereId: string): StoredSphereStatsWeekly {
 function updateStats(
   stats: StoredSphereStatsWeekly,
   task: TaskRow,
-  dates: { from: string; today: string; to: string },
+  dates: { from: string; timeZone: string; today: string; to: string },
 ): number {
-  const completedDate =
-    serializeNullableTimestamp(task.completed_at)?.slice(0, 10) ?? null
-  const createdDate = serializeTimestamp(task.created_at).slice(0, 10)
+  const completedAt = serializeNullableTimestamp(task.completed_at)
+  const completedDate = completedAt
+    ? getDateKeyInTimeZone(completedAt, dates.timeZone)
+    : null
+  const createdDate = getDateKeyInTimeZone(
+    serializeTimestamp(task.created_at),
+    dates.timeZone,
+  )
   const plannedDate = serializeNullableDate(task.planned_on)
   const dueDate = serializeNullableDate(task.due_on)
   const weekAnchor = plannedDate ?? dueDate ?? completedDate ?? createdDate
@@ -583,32 +594,12 @@ function createUnassignedSphere(
 }
 
 function diffInDays(left: string, right: string): number {
-  return Math.floor(
-    (new Date(`${right}T12:00:00`).getTime() -
-      new Date(`${left}T12:00:00`).getTime()) /
-      86_400_000,
-  )
-}
-
-function getDateKey(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
+  return getDateDistance(left, right)
 }
 
 function serializeNullableDate(value: unknown): string | null {
-  if (value === null) {
-    return null
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10)
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    return serializeDateOnly(value)
   }
 
   throw new TypeError(`Unexpected date value: ${typeof value}`)

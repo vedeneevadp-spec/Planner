@@ -27,7 +27,10 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
     source,
     userPreferences: {
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     },
     workspace: {
@@ -38,6 +41,7 @@ function createSessionPayload(source: 'access_token' | 'default' = 'default') {
     },
     workspaceId: 'workspace-1',
     workspaceSettings: {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
       wakeWordTrainingModeEnabled: false,
     },

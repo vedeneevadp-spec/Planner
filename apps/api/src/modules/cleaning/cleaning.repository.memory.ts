@@ -1,3 +1,5 @@
+import { getTodayDate } from '@planner/contracts'
+
 import { HttpError } from '../../bootstrap/http-error.js'
 import type {
   CleaningReadContext,
@@ -373,7 +375,9 @@ export class MemoryCleaningRepository implements CleaningRepository {
         { taskId: task.id },
         { workspaceId: command.context.workspaceId },
       )
-    const date = command.input.date ?? new Date().toISOString().slice(0, 10)
+    const date =
+      command.input.date ??
+      getTodayDate(command.context.clientTimeZone ?? 'UTC')
     const now = new Date().toISOString()
     const existingHistoryItem = this.findExistingActionHistoryItem({
       action: command.action,

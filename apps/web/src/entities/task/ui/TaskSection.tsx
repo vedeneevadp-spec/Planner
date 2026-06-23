@@ -30,6 +30,8 @@ interface TaskSectionProps {
   extraItemCount?: number | undefined
   extraItems?: ReactNode | undefined
   taskCardVariant?: TaskCardVariant | undefined
+  todayKey: string
+  tomorrowKey: string
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
   onCopyToPersonal?: ((taskId: string) => void) | undefined
@@ -55,6 +57,8 @@ export function TaskSection({
   extraItemCount = 0,
   extraItems,
   taskCardVariant = 'card',
+  todayKey,
+  tomorrowKey,
   tone = 'default',
   isTaskPending,
   onCopyToPersonal,
@@ -135,6 +139,8 @@ export function TaskSection({
                   key={task.id}
                   task={task}
                   variant={taskCardVariant}
+                  todayKey={todayKey}
+                  tomorrowKey={tomorrowKey}
                   spheres={spheres}
                   sphere={spheres.find(
                     (sphere) => sphere.id === task.projectId,

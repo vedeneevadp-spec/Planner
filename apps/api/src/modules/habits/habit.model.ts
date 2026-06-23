@@ -19,6 +19,7 @@ export type StoredHabitEntryRecord = HabitEntryRecord
 export interface HabitReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
@@ -28,6 +29,7 @@ export interface HabitReadContext {
 export interface HabitWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined

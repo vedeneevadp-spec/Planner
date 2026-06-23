@@ -14,7 +14,11 @@ import {
   type TaskReminderOffsetMinutes,
   type TaskTypeValue,
 } from '@/entities/task'
-import { addDays, getDateKey, resolveClientTimeZone } from '@/shared/lib/date'
+import {
+  addDateDays,
+  getDateKeyInTimeZone,
+  getTimeInTimeZone,
+} from '@/shared/time/time.service'
 
 export interface TaskComposerDraft {
   dueDate?: string | null | undefined
@@ -46,6 +50,7 @@ export interface BuildTaskComposerTaskInputParams {
   plannedDate: string
   plannedEndTime: string
   plannedStartTime: string
+  plannerTimeZone: string
   projectId: string
   recurrenceForm: TaskRecurrenceFormState
   reminderOffsets: TaskReminderOffsetMinutes[]
@@ -69,6 +74,7 @@ export function buildTaskComposerTaskInput({
   plannedDate,
   plannedEndTime,
   plannedStartTime,
+  plannerTimeZone,
   projectId,
   recurrenceForm,
   reminderOffsets,
@@ -104,6 +110,7 @@ export function buildTaskComposerTaskInput({
     plannedStartTime,
     reminderOffsets: resolvedReminderOffsets,
     todayKey,
+    timeZone: plannerTimeZone,
   })
 
   return {
@@ -127,7 +134,7 @@ export function buildTaskComposerTaskInput({
     remindBeforeStart: resolvedReminderOffsets.length > 0,
     reminderOffsets: resolvedReminderOffsets,
     reminderTimeZone:
-      resolvedReminderOffsets.length > 0 ? resolveClientTimeZone() : undefined,
+      resolvedReminderOffsets.length > 0 ? plannerTimeZone : undefined,
     resource: getResourceFromValue(resource),
     requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
     routine:
@@ -144,17 +151,19 @@ function resolveReminderPlannedDate({
   plannedStartTime,
   reminderOffsets,
   todayKey,
+  timeZone,
 }: {
   now: Date
   plannedDate: string
   plannedStartTime: string
   reminderOffsets: TaskReminderOffsetMinutes[]
   todayKey: string
+  timeZone: string
 }): string {
   if (
     !plannedDate ||
     plannedDate !== todayKey ||
-    todayKey !== getDateKey(now) ||
+    todayKey !== getDateKeyInTimeZone(now, timeZone) ||
     !plannedStartTime ||
     reminderOffsets.length === 0
   ) {
@@ -167,9 +176,12 @@ function resolveReminderPlannedDate({
     return plannedDate
   }
 
-  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const nowTime = getTimeInTimeZone(now, timeZone)
+  const nowMinutes = parseTimeMinutes(nowTime)
 
-  return startMinutes < nowMinutes ? getDateKey(addDays(now, 1)) : plannedDate
+  return nowMinutes !== null && startMinutes < nowMinutes
+    ? addDateDays(todayKey, 1)
+    : plannedDate
 }
 
 function parseTimeMinutes(time: string): number | null {

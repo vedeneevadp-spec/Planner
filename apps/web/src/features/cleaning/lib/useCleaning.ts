@@ -10,8 +10,11 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { useSessionFeatureReadiness } from '@/features/session'
-import { getDateKey } from '@/shared/lib/date'
+import {
+  usePlannerTimeZone,
+  useSessionFeatureReadiness,
+} from '@/features/session'
+import { getTodayDate } from '@/shared/time/time.service'
 
 import {
   type CleaningApiClient,
@@ -55,24 +58,27 @@ export function useCleaningPlan(options: { enabled?: boolean } = {}) {
 }
 
 export function useCleaningToday(
-  date = getDateKey(new Date()),
+  date?: string,
   options: { enabled?: boolean } = {},
 ) {
   const { api, isEnabled, workspaceId } = useCleaningApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedDate = date ?? getTodayDate(plannerTimeZone)
   const queryKey = useMemo(
-    () => cleaningTodayQueryKey(workspaceId, date),
-    [date, workspaceId],
+    () => cleaningTodayQueryKey(workspaceId, resolvedDate),
+    [resolvedDate, workspaceId],
   )
 
   return useQuery({
     enabled: isEnabled,
-    queryFn: ({ signal }) => requireCleaningApi(api).getToday(date, signal),
+    queryFn: ({ signal }) =>
+      requireCleaningApi(api).getToday(resolvedDate, signal),
     queryKey,
     staleTime: 20_000,
   })
 }
 
-export function useCleaningSummary(date = getDateKey(new Date())) {
+export function useCleaningSummary(date?: string) {
   const query = useCleaningToday(date)
 
   return {

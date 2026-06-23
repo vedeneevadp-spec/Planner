@@ -26,6 +26,7 @@ export type StoredCleaningTaskHistoryItemRecord = CleaningTaskHistoryItemRecord
 export interface CleaningReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
@@ -35,6 +36,7 @@ export interface CleaningReadContext {
 export interface CleaningWriteContext {
   actorUserId: string
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined

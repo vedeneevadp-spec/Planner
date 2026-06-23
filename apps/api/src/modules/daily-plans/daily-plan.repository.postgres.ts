@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, serializeDateOnly } from '@planner/contracts'
 import { type Kysely, type Selectable } from 'kysely'
 
 import {
@@ -368,12 +368,12 @@ function normalizeStringArray(value: unknown): string[] {
 }
 
 function serializeDate(value: unknown): string {
-  if (typeof value === 'string') {
-    return value
-  }
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    const date = serializeDateOnly(value)
 
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10)
+    if (date !== null) {
+      return date
+    }
   }
 
   return String(value)

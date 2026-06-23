@@ -10,6 +10,7 @@ import {
 } from '@planner/contracts'
 
 import { getCleaningErrorMessage } from '@/features/cleaning'
+import { getIsoWeekday } from '@/shared/time/time.service'
 
 export type FocusMode = 'all' | CleaningPriority
 
@@ -332,10 +333,8 @@ export function getWeekdayShortLabel(value: number): string {
   return WEEKDAYS.find((day) => day.value === value)?.shortLabel ?? 'Д'
 }
 
-export function getIsoWeekdayFromDate(date = new Date()): number {
-  const day = date.getDay()
-
-  return day === 0 ? 7 : day
+export function getIsoWeekdayFromDate(dateKey: string): number {
+  return getIsoWeekday(dateKey)
 }
 
 export function formatFrequency(task: CleaningTaskRecord): string {

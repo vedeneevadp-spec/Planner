@@ -17,6 +17,7 @@ type SessionFeatureReadinessResult = ReturnType<
 >
 
 const mocks = vi.hoisted(() => ({
+  usePlannerTimeZone: vi.fn<() => string>(),
   useSessionFeatureReadiness: vi.fn<() => SessionFeatureReadinessResult>(),
 }))
 
@@ -25,6 +26,7 @@ vi.mock('@/features/session', async (importOriginal) => {
 
   return {
     ...actual,
+    usePlannerTimeZone: mocks.usePlannerTimeZone,
     useSessionFeatureReadiness: mocks.useSessionFeatureReadiness,
   }
 })
@@ -44,11 +46,13 @@ describe('useCleaning', () => {
     mocks.useSessionFeatureReadiness.mockReturnValue(
       createFeatureReadinessResult(),
     )
+    mocks.usePlannerTimeZone.mockReturnValue('Europe/Astrakhan')
   })
 
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    mocks.usePlannerTimeZone.mockReset()
     mocks.useSessionFeatureReadiness.mockReset()
   })
 
@@ -251,7 +255,10 @@ function createSessionResponse(): SessionResponse {
     source: 'access_token',
     userPreferences: {
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     },
     workspace: {
@@ -262,6 +269,7 @@ function createSessionResponse(): SessionResponse {
     },
     workspaceId: 'workspace-1',
     workspaceSettings: {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
       wakeWordTrainingModeEnabled: false,
     },

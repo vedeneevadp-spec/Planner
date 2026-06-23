@@ -17,19 +17,23 @@ import { usePlanner } from '@/features/planner'
 import { useSelfCarePlan, useSelfCareSettings } from '@/features/self-care'
 import {
   usePlannerSession,
+  usePlannerTimeZone,
   useUpdateUserPreferences,
   useWorkspaceUsers,
 } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
 import { cx } from '@/shared/lib/classnames'
 import {
-  addDays,
   formatLongDate,
   formatTimeRange,
   formatTimeZoneOffsetLabel,
-  getDateKey,
-  resolveClientTimeZone,
 } from '@/shared/lib/date'
+import {
+  addDateDays,
+  getDateDayOfMonth,
+  getIsoWeekStartDate,
+  getTodayDate,
+} from '@/shared/time/time.service'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -153,11 +157,7 @@ function formatWeekTitle(startDateKey: string, endDateKey: string): string {
 }
 
 function getWeekStartDateKey(dateKey: string): string {
-  const date = parseDateKey(dateKey)
-  const day = date.getDay()
-  const daysFromMonday = day === 0 ? 6 : day - 1
-
-  return getDateKey(addDays(date, -daysFromMonday))
+  return getIsoWeekStartDate(dateKey)
 }
 
 function parseTimeMinutes(value: string | null): number | null {
@@ -194,11 +194,8 @@ function getTaskEndMinutes(task: Task): number | null {
 
 function getWeekDateKeys(anchorDateKey: string): string[] {
   const weekStart = getWeekStartDateKey(anchorDateKey)
-  const weekStartDate = parseDateKey(weekStart)
 
-  return Array.from({ length: 7 }, (_, index) =>
-    getDateKey(addDays(weekStartDate, index)),
-  )
+  return Array.from({ length: 7 }, (_, index) => addDateDays(weekStart, index))
 }
 
 function getTaskSortKey(task: CalendarDisplayTask): string {
@@ -234,10 +231,8 @@ function getUntimedTasksForDate(
 }
 
 function getScheduleDateKeys(anchorDateKey: string): string[] {
-  const startDate = parseDateKey(anchorDateKey)
-
   return Array.from({ length: SCHEDULE_PERIOD_DAYS }, (_, index) =>
-    getDateKey(addDays(startDate, index)),
+    addDateDays(anchorDateKey, index),
   )
 }
 
@@ -251,9 +246,7 @@ function getCalendarTitle(mode: CalendarViewMode, anchorDateKey: string) {
   }
 
   if (mode === 'schedule') {
-    const endDateKey = getDateKey(
-      addDays(parseDateKey(anchorDateKey), SCHEDULE_PERIOD_DAYS - 1),
-    )
+    const endDateKey = addDateDays(anchorDateKey, SCHEDULE_PERIOD_DAYS - 1)
 
     return formatWeekTitle(anchorDateKey, endDateKey)
   }
@@ -539,9 +532,9 @@ export function CalendarPage() {
   const sessionQuery = usePlannerSession()
   const { mutate: updateUserPreferences } = useUpdateUserPreferences()
   const [currentTime, setCurrentTime] = useState(() => new Date())
-  const todayKey = getDateKey(currentTime)
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const clientTimeZoneLabel = formatTimeZoneOffsetLabel(currentTime)
-  const clientTimeZone = resolveClientTimeZone()
   const session = sessionQuery.data
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const persistedViewMode = session?.userPreferences.calendarViewMode ?? 'week'
@@ -1094,10 +1087,7 @@ export function CalendarPage() {
           aria-label="Неделя"
         >
           <div className={styles.weekHeaderGrid}>
-            <div
-              className={styles.timeZoneLabel}
-              title={clientTimeZone ?? clientTimeZoneLabel}
-            >
+            <div className={styles.timeZoneLabel} title={plannerTimeZone}>
               {clientTimeZoneLabel}
             </div>
             {weekDateKeys.map((dateKey, index) => {
@@ -1112,7 +1102,7 @@ export function CalendarPage() {
                   )}
                 >
                   <span>{WEEKDAY_LABELS[index] ?? ''}</span>
-                  <strong>{parseDateKey(dateKey).getDate()}</strong>
+                  <strong>{getDateDayOfMonth(dateKey)}</strong>
                 </div>
               )
             })}
@@ -1254,14 +1244,14 @@ export function CalendarPage() {
                     data-no-swipe
                     className={styles.monthDateButton}
                     type="button"
-                    aria-label={`Открыть день ${parseDateKey(day.dateKey).getDate()}`}
+                    aria-label={`Открыть день ${getDateDayOfMonth(day.dateKey)}`}
                     onClick={() => {
                       setAnchorDate(day.dateKey)
                       selectViewMode('day')
                     }}
                   >
                     <span className={styles.monthDate}>
-                      {parseDateKey(day.dateKey).getDate()}
+                      {getDateDayOfMonth(day.dateKey)}
                     </span>
                   </button>
                   <span className={styles.monthTaskList}>
@@ -1302,7 +1292,7 @@ export function CalendarPage() {
                   >
                     <div className={styles.scheduleDate}>
                       <span className={styles.scheduleDateNumber}>
-                        {parseDateKey(day.dateKey).getDate()}
+                        {getDateDayOfMonth(day.dateKey)}
                       </span>
                       <span className={styles.scheduleDateMeta}>
                         {formatScheduleDateMeta(day.dateKey)}
@@ -1340,6 +1330,7 @@ export function CalendarPage() {
             <CalendarDayScheduleDialog
               tasks={dayUnscheduledTasks}
               spheres={spheres}
+              todayKey={todayKey}
               isTaskPending={isTaskPending}
               uploadedIcons={uploadedIcons}
               onClose={closeDaySchedule}
@@ -1392,6 +1383,8 @@ export function CalendarPage() {
                     (sphere) => sphere.id === selectedTask.projectId,
                   )}
                   spheres={spheres}
+                  todayKey={todayKey}
+                  tomorrowKey={addDateDays(todayKey, 1)}
                   variant="detail"
                   isPending={isTaskPending(selectedTask.id)}
                   isSharedWorkspace={isSharedWorkspace}

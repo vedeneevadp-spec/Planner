@@ -4,6 +4,11 @@ export type JsonObject = Record<string, unknown>
 export type DateColumn = ColumnType<string, string, string>
 export type TimeColumn = ColumnType<string, string, string>
 export type TimestampColumn = ColumnType<string, string | Date, string | Date>
+export type AppTaskTimeKind =
+  | 'date_only'
+  | 'fixed_zone_datetime'
+  | 'floating_local_time'
+  | 'instant'
 
 export interface AppTasksTable {
   assignee_user_id: string | null
@@ -15,15 +20,24 @@ export interface AppTasksTable {
   due_at: TimestampColumn | null
   due_on: DateColumn | null
   id: Generated<string>
+  local_date: DateColumn | null
+  local_time: TimeColumn | null
   metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
   parent_task_id: string | null
   planned_on: DateColumn | null
   priority: number
   project_id: string | null
+  recurrence_rule: string | null
+  recurrence_start_date: DateColumn | null
+  recurrence_time_zone: string | null
   resource: number | null
   sphere_id: string | null
   sort_key: string
+  starts_at_utc: TimestampColumn | null
   status: 'todo' | 'in_progress' | 'ready_for_review' | 'done' | 'archived'
+  time_kind: Generated<AppTaskTimeKind>
+  time_zone: string | null
+  time_zone_inferred: Generated<boolean>
   title: string
   updated_at: Generated<TimestampColumn>
   updated_by: string | null
@@ -601,12 +615,15 @@ export interface AppUsersTable {
   avatar_url: string | null
   calendar_view_mode: Generated<'day' | 'week' | 'month' | 'schedule'>
   created_at: Generated<TimestampColumn>
+  default_time_zone: string | null
   deleted_at: TimestampColumn | null
   display_name: string
   email: string
   energy_mode: Generated<'minimum' | 'normal' | 'maximum'>
   id: Generated<string>
+  last_seen_time_zone: string | null
   locale: string
+  time_zone_mode: Generated<'device' | 'manual' | 'workspace'>
   timezone: string
   updated_at: Generated<TimestampColumn>
   version: Generated<number>
@@ -702,6 +719,7 @@ export interface AppOAuthAuthorizationCodesTable {
 
 export interface AppWorkspacesTable {
   created_at: Generated<TimestampColumn>
+  default_time_zone: string | null
   deleted_at: TimestampColumn | null
   description: string
   id: Generated<string>
@@ -846,6 +864,18 @@ export interface AppTaskRemindersTable {
   workspace_id: string
 }
 
+export interface AppTaskOccurrencesTable {
+  created_at: Generated<TimestampColumn>
+  id: Generated<string>
+  local_time: TimeColumn | null
+  occurrence_date: DateColumn
+  starts_at_utc: TimestampColumn | null
+  status: Generated<string>
+  task_id: string
+  time_zone: string | null
+  updated_at: Generated<TimestampColumn>
+}
+
 export interface AppTaskAttachmentsTable {
   content_type: string
   created_at: Generated<TimestampColumn>
@@ -950,6 +980,7 @@ export interface DatabaseSchema {
   'app.self_care_templates': AppSelfCareTemplatesTable
   'app.task_attachments': AppTaskAttachmentsTable
   'app.task_events': AppTaskEventsTable
+  'app.task_occurrences': AppTaskOccurrencesTable
   'app.task_reminders': AppTaskRemindersTable
   'app.task_templates': AppTaskTemplatesTable
   'app.task_time_blocks': AppTaskTimeBlocksTable

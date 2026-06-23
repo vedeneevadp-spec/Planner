@@ -83,6 +83,7 @@ export function insertPrimaryTimeBlock(
     endsAt: string | null
     startsAt: string | null
     taskId: string
+    timeZone?: string | null
     workspaceId: string
   },
 ): Promise<TaskTimeBlockRow | undefined> {
@@ -100,7 +101,7 @@ export function insertPrimaryTimeBlock(
       source: MANUAL_TIME_BLOCK_SOURCE,
       starts_at: params.startsAt,
       task_id: params.taskId,
-      timezone: 'UTC',
+      timezone: params.timeZone ?? 'UTC',
       updated_by: params.actorUserId,
       workspace_id: params.workspaceId,
     })

@@ -127,7 +127,10 @@ const guestSessionRepository: SessionRepository = {
       source: 'access_token',
       userPreferences: {
         calendarViewMode: 'week',
+        defaultTimeZone: null,
         energyMode: 'normal',
+        lastSeenTimeZone: null,
+        timeZoneMode: 'device',
         voiceAssistantEnabled: true,
       },
       workspace: {
@@ -138,6 +141,7 @@ const guestSessionRepository: SessionRepository = {
       },
       workspaceId: 'workspace-guest',
       workspaceSettings: {
+        defaultTimeZone: null,
         taskCompletionConfettiEnabled: true,
         wakeWordTrainingModeEnabled: false,
       },
@@ -252,7 +256,10 @@ const guestSessionRepository: SessionRepository = {
   updateUserPreferences(_session, _authContext, input) {
     return Promise.resolve({
       calendarViewMode: input.calendarViewMode ?? 'week',
+      defaultTimeZone: input.defaultTimeZone ?? null,
       energyMode: input.energyMode ?? 'normal',
+      lastSeenTimeZone: input.lastSeenTimeZone ?? null,
+      timeZoneMode: input.timeZoneMode ?? 'device',
       voiceAssistantEnabled: input.voiceAssistantEnabled ?? true,
     })
   },
@@ -480,6 +487,7 @@ void describe('buildApiApp', () => {
 
     assert.equal(response.statusCode, 200)
     assert.deepEqual(workspaceSettingsSchema.parse(response.json()), {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: false,
       wakeWordTrainingModeEnabled: true,
     })
@@ -531,7 +539,10 @@ void describe('buildApiApp', () => {
     assert.equal(response.statusCode, 200)
     assert.deepEqual(userPreferencesSchema.parse(response.json()), {
       calendarViewMode: 'schedule',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     })
 
@@ -550,7 +561,10 @@ void describe('buildApiApp', () => {
     assert.equal(energyResponse.statusCode, 200)
     assert.deepEqual(userPreferencesSchema.parse(energyResponse.json()), {
       calendarViewMode: 'schedule',
+      defaultTimeZone: null,
       energyMode: 'maximum',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     })
 
@@ -569,7 +583,10 @@ void describe('buildApiApp', () => {
     assert.equal(voiceResponse.statusCode, 200)
     assert.deepEqual(userPreferencesSchema.parse(voiceResponse.json()), {
       calendarViewMode: 'schedule',
+      defaultTimeZone: null,
       energyMode: 'maximum',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: false,
     })
 
@@ -587,7 +604,10 @@ void describe('buildApiApp', () => {
       sessionResponseSchema.parse(sessionResponse.json()).userPreferences,
       {
         calendarViewMode: 'schedule',
+        defaultTimeZone: null,
         energyMode: 'maximum',
+        lastSeenTimeZone: null,
+        timeZoneMode: 'device',
         voiceAssistantEnabled: false,
       },
     )

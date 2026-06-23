@@ -1,6 +1,7 @@
 import type { TaskScheduleInput } from '@planner/contracts'
 
-import { addDays, getDateKey, isBeforeDate } from '@/shared/lib/date'
+import { isBeforeDate } from '@/shared/lib/date'
+import { addDateDays, getDateKeyInTimeZone } from '@/shared/time/time.service'
 
 import type { NewTaskInput, Task, TaskStatus } from './task.types'
 
@@ -413,23 +414,31 @@ export function selectArchivedTasks(tasks: Task[]): Task[] {
   return tasks.filter((task) => task.status === 'archived')
 }
 
-export function selectDoneTodayTasks(tasks: Task[], todayKey: string): Task[] {
+export function selectDoneTodayTasks(
+  tasks: Task[],
+  todayKey: string,
+  timeZone: string,
+): Task[] {
   return selectDoneTasks(tasks).filter(
     (task) =>
       task.completedAt !== null &&
-      getDateKey(new Date(task.completedAt)) === todayKey,
+      getDateKeyInTimeZone(task.completedAt, timeZone) === todayKey,
   )
 }
 
 export function selectDoneBeforeTodayTasks(
   tasks: Task[],
   todayKey: string,
+  timeZone: string,
 ): Task[] {
   return selectDoneTasks(tasks)
     .filter(
       (task) =>
         task.completedAt !== null &&
-        isBeforeDate(getDateKey(new Date(task.completedAt)), todayKey),
+        isBeforeDate(
+          getDateKeyInTimeZone(task.completedAt, timeZone),
+          todayKey,
+        ),
     )
     .sort(compareTaskCompletedAtDescending)
 }
@@ -526,17 +535,15 @@ export function groupTasksByProject(tasks: Task[]): Array<[string, Task[]]> {
 export function getPlannerSummary(
   tasks: Task[],
   todayKey: string,
+  timeZone: string,
 ): PlannerSummary {
   return {
     focusCount: selectTodayTasks(tasks, todayKey).length,
     inboxCount: selectInboxTasks(tasks).length,
     overdueCount: selectOverdueTasks(tasks, todayKey).length,
-    doneTodayCount: selectDoneTodayTasks(tasks, todayKey).length,
+    doneTodayCount: selectDoneTodayTasks(tasks, todayKey, timeZone).length,
     projectCount: groupTasksByProject(tasks).length,
     timelineCount: selectTimedTasks(tasks, todayKey).length,
-    tomorrowCount: selectPlannedTasks(
-      tasks,
-      getDateKey(addDays(new Date(`${todayKey}T12:00:00`), 1)),
-    ).length,
+    tomorrowCount: selectPlannedTasks(tasks, addDateDays(todayKey, 1)).length,
   }
 }

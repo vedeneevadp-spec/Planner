@@ -48,6 +48,7 @@ export class MemoryHabitRepository implements HabitRepository {
 
     const habit = createStoredHabitRecord(command.input, {
       actorUserId: command.context.actorUserId,
+      clientTimeZone: command.context.clientTimeZone,
       sortOrder:
         command.input.sortOrder ??
         this.listWorkspaceHabits(command.context).length,

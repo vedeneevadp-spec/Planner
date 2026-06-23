@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/require-await */
-import type {
-  SelfCareAppointmentDetails,
-  SelfCareCompletion,
-  SelfCareCourseDetails,
-  SelfCareItemAlternative,
-  SelfCareMeasurementDetails,
-  SelfCareMedicalDetails,
-  SelfCareMinimumItem,
-  SelfCareProcedureDetails,
-  SelfCareRitualStep,
-  SelfCareRitualStepCompletion,
-  SelfCareScheduleRule,
-  SelfCareSettings,
+import {
+  getDateKeyInTimeZone,
+  type SelfCareAppointmentDetails,
+  type SelfCareCompletion,
+  type SelfCareCourseDetails,
+  type SelfCareItemAlternative,
+  type SelfCareMeasurementDetails,
+  type SelfCareMedicalDetails,
+  type SelfCareMinimumItem,
+  type SelfCareProcedureDetails,
+  type SelfCareRitualStep,
+  type SelfCareRitualStepCompletion,
+  type SelfCareScheduleRule,
+  type SelfCareSettings,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -138,6 +139,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   async createItem(command: CreateSelfCareItemCommand) {
     const records = createSelfCareRecords(command.input, {
       actorUserId: command.context.actorUserId,
+      clientTimeZone: command.context.clientTimeZone,
       workspaceId: command.context.workspaceId,
     })
     this.storeCreatedRecords(records)
@@ -425,7 +427,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ),
     )
     this.deleteRitualStepDraftRecord({
-      date: getSelfCareCompletionDateKey(command.input),
+      date: getSelfCareCompletionDateKey(
+        command.input,
+        command.context.clientTimeZone,
+      ),
       itemId: item.id,
       occurrenceId: occurrence.id,
       userId: command.context.actorUserId,
@@ -438,7 +443,13 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       userId: command.context.actorUserId,
       workspaceId: command.context.workspaceId,
     })
-    this.incrementCourseIfNeeded(item.id, completion.completedAt.slice(0, 10))
+    this.incrementCourseIfNeeded(
+      item.id,
+      getDateKeyInTimeZone(
+        completion.completedAt,
+        command.context.clientTimeZone ?? 'UTC',
+      ),
+    )
 
     return completion
   }
@@ -448,7 +459,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     assertMeasurementCompletionInput(item, command.input)
     assertMoodCheckCompletionInput(item, command.input)
     const scheduleRule = this.findScheduleRuleForItem(item.id)
-    const completionDate = getSelfCareCompletionDateKey(command.input)
+    const completionDate = getSelfCareCompletionDateKey(
+      command.input,
+      command.context.clientTimeZone,
+    )
     const existingCompletion = shouldDeduplicateSelfCareItemCompletion({
       item,
       scheduleRule,
@@ -456,6 +470,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ? this.findProgressCompletionForDate({
           date: completionDate,
           itemId: item.id,
+          plannerTimeZone: command.context.clientTimeZone,
           userId: command.context.actorUserId,
         })
       : null
@@ -497,7 +512,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       userId: command.context.actorUserId,
       workspaceId: command.context.workspaceId,
     })
-    this.incrementCourseIfNeeded(item.id, completion.completedAt.slice(0, 10))
+    this.incrementCourseIfNeeded(item.id, completionDate)
     return completion
   }
 
@@ -914,9 +929,16 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         'Self-care template not found.',
       )
     }
-    const input = buildItemInputFromTemplate(template, command.input.overrides)
+    const input = buildItemInputFromTemplate(
+      template,
+      command.input.overrides,
+      {
+        plannerTimeZone: command.context.clientTimeZone,
+      },
+    )
     const records = createSelfCareRecords(input, {
       actorUserId: command.context.actorUserId,
+      clientTimeZone: command.context.clientTimeZone,
       createdFromTemplateId: template.id,
       workspaceId: command.context.workspaceId,
     })
@@ -1099,15 +1121,19 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   private findProgressCompletionForDate(input: {
     date: string
     itemId: string
+    plannerTimeZone?: string | undefined
     userId: string
   }): StoredSelfCareCompletionRecord | null {
+    const plannerTimeZone = input.plannerTimeZone ?? 'UTC'
+
     return (
       [...this.completions.values()]
         .filter(
           (completion) =>
             completion.userId === input.userId &&
             completion.itemId === input.itemId &&
-            completion.completedAt.slice(0, 10) === input.date &&
+            getDateKeyInTimeZone(completion.completedAt, plannerTimeZone) ===
+              input.date &&
             isCompletionProgressStatus(completion.status),
         )
         .sort((left, right) =>

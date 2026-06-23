@@ -27,8 +27,9 @@ import {
   useUpdateCleaningTask,
   useUpdateCleaningZone,
 } from '@/features/cleaning'
+import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKey } from '@/shared/lib/date'
+import { getTodayDate } from '@/shared/time/time.service'
 import { CheckIcon, EditIcon, PlusIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
@@ -68,7 +69,8 @@ const CLEANING_GENERAL_SETTINGS_PATH = '/cleaning/settings/general'
 
 export function CleaningPage() {
   const [searchParams] = useSearchParams()
-  const todayKey = getDateKey(new Date())
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const planQuery = useCleaningPlan()
   const todayQuery = useCleaningToday(todayKey)
   const createZoneMutation = useCreateCleaningZone()
@@ -156,7 +158,9 @@ export function CleaningPage() {
         <div>
           <p className={styles.kicker}>Сегодня</p>
           <h2>
-            {getWeekdayLabel(today?.dayOfWeek ?? getIsoWeekdayFromDate())}
+            {getWeekdayLabel(
+              today?.dayOfWeek ?? getIsoWeekdayFromDate(todayKey),
+            )}
             {today?.zones.length ? (
               <span>{today.zones.map((zone) => zone.title).join(', ')}</span>
             ) : null}
@@ -363,6 +367,8 @@ export function CleaningSettingsPage() {
   const params = useParams()
   const location = useLocation()
   const navigate = useNavigate()
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const planQuery = useCleaningPlan()
   const createZoneMutation = useCreateCleaningZone()
   const updateZoneMutation = useUpdateCleaningZone()
@@ -373,7 +379,7 @@ export function CleaningSettingsPage() {
   const [zoneTitle, setZoneTitle] = useState('')
   const [zoneDescription, setZoneDescription] = useState('')
   const [zoneDayOfWeek, setZoneDayOfWeek] = useState(() =>
-    getIsoWeekdayFromDate(),
+    getIsoWeekdayFromDate(todayKey),
   )
   const [taskDraft, setTaskDraft] = useState<TaskDraft>(EMPTY_TASK_DRAFT)
   const [formError, setFormError] = useState<string | null>(null)
@@ -394,7 +400,7 @@ export function CleaningSettingsPage() {
     () => new Map((plan?.states ?? []).map((state) => [state.taskId, state])),
     [plan?.states],
   )
-  const todayWeekday = getIsoWeekdayFromDate()
+  const todayWeekday = getIsoWeekdayFromDate(todayKey)
   const isGeneralSelected = location.pathname === CLEANING_GENERAL_SETTINGS_PATH
   const todayZone =
     zones.find((zone) => zone.dayOfWeek === todayWeekday) ?? zones[0] ?? null

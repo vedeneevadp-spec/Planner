@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
-import { getDateKey, resolveClientTimeZone } from '@/shared/lib/date'
+import { resolveClientTimeZone } from '@/shared/lib/date'
 import { IconChoicePicker, type UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
@@ -45,6 +45,7 @@ interface TaskEditDialogProps {
   currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
   task: Task
+  todayKey: string
   spheres: Sphere[]
   uploadedIcons: UploadedIconAsset[]
   workspaceUsers?: WorkspaceUserRecord[] | undefined
@@ -57,6 +58,7 @@ export function TaskEditDialog({
   currentActorUserId,
   isSharedWorkspace = false,
   task,
+  todayKey,
   spheres,
   uploadedIcons,
   workspaceUsers = [],
@@ -68,7 +70,6 @@ export function TaskEditDialog({
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
   )
-  const todayKey = getDateKey(new Date())
   const [assigneeUserId, setAssigneeUserId] = useState(
     task.assigneeUserId ?? '',
   )

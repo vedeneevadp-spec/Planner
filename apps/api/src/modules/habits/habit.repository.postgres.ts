@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, getTodayDate } from '@planner/contracts'
 import { type Kysely, type Selectable, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -25,7 +25,6 @@ import type {
 import type { HabitRepository } from './habit.repository.js'
 import {
   buildHabitStats,
-  getDateKey,
   getDefaultEntryValue,
   getEntryProgressPercent,
   isHabitScheduledOnDate,
@@ -59,7 +58,9 @@ export class PostgresHabitRepository implements HabitRepository {
 
   async create(command: CreateHabitCommand): Promise<StoredHabitRecord> {
     const habitId = command.input.id ?? generateUuidV7()
-    const startDate = command.input.startDate ?? getDateKey(new Date())
+    const startDate =
+      command.input.startDate ??
+      getTodayDate(command.context.clientTimeZone ?? 'UTC')
     const sphereId = await this.resolveSphereId(
       command.context,
       command.input.sphereId,

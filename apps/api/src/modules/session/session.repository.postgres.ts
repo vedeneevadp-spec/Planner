@@ -2,9 +2,7 @@ import {
   type AdminUserRecord,
   type AppRole,
   type AssignableAppRole,
-  type CalendarViewMode,
   type CreateSharedWorkspaceInput,
-  type EnergyMode,
   generateUuidV7,
   type ReceivedWorkspaceInvitationRecord,
   type SessionWorkspaceMembership,
@@ -27,6 +25,7 @@ import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   SessionContext,
   SessionSnapshot,
+  UserPreferencesUpdateInput,
   WorkspaceInvitationCreateInput,
   WorkspaceInvitationRecord,
   WorkspaceSettings,
@@ -705,6 +704,9 @@ export class PostgresSessionRepository implements SessionRepository {
         trx
           .updateTable('app.workspaces')
           .set({
+            ...(input.defaultTimeZone !== undefined
+              ? { default_time_zone: input.defaultTimeZone }
+              : {}),
             task_completion_confetti_enabled:
               input.taskCompletionConfettiEnabled,
             wake_word_training_mode_enabled: input.wakeWordTrainingModeEnabled,
@@ -712,6 +714,7 @@ export class PostgresSessionRepository implements SessionRepository {
           .where('id', '=', session.workspaceId)
           .where('deleted_at', 'is', null)
           .returning([
+            'default_time_zone as defaultTimeZone',
             'task_completion_confetti_enabled as taskCompletionConfettiEnabled',
             'wake_word_training_mode_enabled as wakeWordTrainingModeEnabled',
           ])
@@ -727,6 +730,7 @@ export class PostgresSessionRepository implements SessionRepository {
     }
 
     return {
+      defaultTimeZone: updatedWorkspace.defaultTimeZone,
       taskCompletionConfettiEnabled:
         updatedWorkspace.taskCompletionConfettiEnabled,
       wakeWordTrainingModeEnabled: updatedWorkspace.wakeWordTrainingModeEnabled,
@@ -736,35 +740,45 @@ export class PostgresSessionRepository implements SessionRepository {
   async updateUserPreferences(
     session: SessionSnapshot,
     authContext: AuthenticatedRequestContext | null,
-    input: {
-      calendarViewMode?: CalendarViewMode
-      energyMode?: EnergyMode
-      voiceAssistantEnabled?: boolean
-    },
+    input: UserPreferencesUpdateInput,
   ) {
+    const update = {
+      ...(input.calendarViewMode
+        ? { calendar_view_mode: input.calendarViewMode }
+        : {}),
+      ...(input.defaultTimeZone !== undefined
+        ? { default_time_zone: input.defaultTimeZone }
+        : {}),
+      ...(input.energyMode ? { energy_mode: input.energyMode } : {}),
+      ...(input.lastSeenTimeZone !== undefined
+        ? { last_seen_time_zone: input.lastSeenTimeZone }
+        : {}),
+      ...(input.timeZoneMode ? { time_zone_mode: input.timeZoneMode } : {}),
+      ...(input.voiceAssistantEnabled !== undefined
+        ? { voice_assistant_enabled: input.voiceAssistantEnabled }
+        : {}),
+    }
+    const returningColumns = [
+      'calendar_view_mode as calendarViewMode',
+      'default_time_zone as defaultTimeZone',
+      'energy_mode as energyMode',
+      'last_seen_time_zone as lastSeenTimeZone',
+      'time_zone_mode as timeZoneMode',
+      'voice_assistant_enabled as voiceAssistantEnabled',
+    ] as const
+
     if (authContext) {
       const preferences = await withWriteTransaction(
         this.db,
         authContext,
-        async (trx) => {
-          const result = await sql<{
-            calendarViewMode: CalendarViewMode
-            energyMode: EnergyMode
-            voiceAssistantEnabled: boolean
-          }>`
-            select
-              calendar_view_mode as "calendarViewMode",
-              energy_mode as "energyMode",
-              voice_assistant_enabled as "voiceAssistantEnabled"
-            from app.update_current_user_preferences(
-              ${input.calendarViewMode ?? null},
-              ${input.energyMode ?? null},
-              ${input.voiceAssistantEnabled ?? null}
-            )
-          `.execute(trx)
-
-          return result.rows[0]
-        },
+        (trx) =>
+          trx
+            .updateTable('app.users')
+            .set(update)
+            .where('id', '=', session.actorUserId)
+            .where('deleted_at', 'is', null)
+            .returning(returningColumns)
+            .executeTakeFirst(),
         session.actorUserId,
       )
 
@@ -779,25 +793,12 @@ export class PostgresSessionRepository implements SessionRepository {
       return preferences
     }
 
-    const update = {
-      ...(input.calendarViewMode
-        ? { calendar_view_mode: input.calendarViewMode }
-        : {}),
-      ...(input.energyMode ? { energy_mode: input.energyMode } : {}),
-      ...(input.voiceAssistantEnabled !== undefined
-        ? { voice_assistant_enabled: input.voiceAssistantEnabled }
-        : {}),
-    }
     const updatedPreferences = await this.db
       .updateTable('app.users')
       .set(update)
       .where('id', '=', session.actorUserId)
       .where('deleted_at', 'is', null)
-      .returning([
-        'calendar_view_mode as calendarViewMode',
-        'energy_mode as energyMode',
-        'voice_assistant_enabled as voiceAssistantEnabled',
-      ])
+      .returning(returningColumns)
       .executeTakeFirst()
 
     if (!updatedPreferences) {
@@ -810,7 +811,10 @@ export class PostgresSessionRepository implements SessionRepository {
 
     return {
       calendarViewMode: updatedPreferences.calendarViewMode,
+      defaultTimeZone: updatedPreferences.defaultTimeZone,
       energyMode: updatedPreferences.energyMode,
+      lastSeenTimeZone: updatedPreferences.lastSeenTimeZone,
+      timeZoneMode: updatedPreferences.timeZoneMode,
       voiceAssistantEnabled: updatedPreferences.voiceAssistantEnabled,
     }
   }
@@ -1061,7 +1065,10 @@ export class PostgresSessionRepository implements SessionRepository {
         appRole,
         avatarUrl: null,
         calendarViewMode: 'week',
+        defaultTimeZone: null,
         energyMode: 'normal',
+        lastSeenTimeZone: null,
+        timeZoneMode: 'device',
         voiceAssistantEnabled: true,
         displayName: this.resolveAuthDisplayName(authContext),
         email: this.resolveAuthEmail(authContext),
@@ -1113,7 +1120,10 @@ export class PostgresSessionRepository implements SessionRepository {
         app_role: actor.appRole,
         avatar_url: actor.avatarUrl,
         calendar_view_mode: actor.calendarViewMode,
+        default_time_zone: actor.defaultTimeZone,
         energy_mode: actor.energyMode,
+        last_seen_time_zone: actor.lastSeenTimeZone,
+        time_zone_mode: actor.timeZoneMode,
         voice_assistant_enabled: actor.voiceAssistantEnabled,
         display_name: actor.displayName,
         email: actor.email,
@@ -1126,7 +1136,10 @@ export class PostgresSessionRepository implements SessionRepository {
         'app_role as appRole',
         'avatar_url as avatarUrl',
         'calendar_view_mode as calendarViewMode',
+        'default_time_zone as defaultTimeZone',
         'energy_mode as energyMode',
+        'last_seen_time_zone as lastSeenTimeZone',
+        'time_zone_mode as timeZoneMode',
         'voice_assistant_enabled as voiceAssistantEnabled',
         'display_name as displayName',
         'email',
@@ -1197,7 +1210,10 @@ export class PostgresSessionRepository implements SessionRepository {
           : 'default',
       userPreferences: {
         calendarViewMode: session.calendarViewMode,
+        defaultTimeZone: session.defaultTimeZone,
         energyMode: session.energyMode,
+        lastSeenTimeZone: session.lastSeenTimeZone,
+        timeZoneMode: session.timeZoneMode,
         voiceAssistantEnabled: session.voiceAssistantEnabled,
       },
       workspace: {
@@ -1208,6 +1224,7 @@ export class PostgresSessionRepository implements SessionRepository {
       },
       workspaceId: session.workspaceId,
       workspaceSettings: {
+        defaultTimeZone: session.workspaceDefaultTimeZone,
         taskCompletionConfettiEnabled: session.taskCompletionConfettiEnabled,
         wakeWordTrainingModeEnabled: session.wakeWordTrainingModeEnabled,
       },

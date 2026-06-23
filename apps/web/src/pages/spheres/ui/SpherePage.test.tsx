@@ -58,6 +58,7 @@ vi.mock('@/features/session', () => ({
       },
     },
   }),
+  usePlannerTimeZone: () => 'Europe/Astrakhan',
   useWorkspaceUsers: () => ({
     data: {
       users: [],

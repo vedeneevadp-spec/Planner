@@ -212,12 +212,16 @@ function createSessionResponse(input: {
     source,
     userPreferences: {
       calendarViewMode: 'week',
+      defaultTimeZone: null,
       energyMode: 'normal',
+      lastSeenTimeZone: null,
+      timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     },
     workspace,
     workspaceId,
     workspaceSettings: {
+      defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
       wakeWordTrainingModeEnabled: false,
     },

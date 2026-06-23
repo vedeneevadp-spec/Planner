@@ -123,6 +123,7 @@ export class MemoryTaskRepository implements TaskRepository {
     const task = createStoredTaskRecord(command.input, {
       authorDisplayName: command.context.actorDisplayName,
       authorUserId: command.context.actorUserId,
+      clientTimeZone: command.context.clientTimeZone,
       workspaceId: command.context.workspaceId,
     })
 
@@ -211,7 +212,12 @@ export class MemoryTaskRepository implements TaskRepository {
     )
     this.assertVersion(task, command.expectedVersion)
 
-    const nextTask = applyTaskUpdate(task, command.input)
+    const nextTask = applyTaskUpdate(
+      task,
+      command.input,
+      undefined,
+      command.context.clientTimeZone,
+    )
     this.tasks.set(nextTask.id, nextTask)
     this.appendTaskEvent(command, {
       eventType: 'task.updated',
@@ -256,7 +262,12 @@ export class MemoryTaskRepository implements TaskRepository {
     )
     this.assertVersion(task, command.expectedVersion)
 
-    const nextTask = applyTaskSchedule(task, command.schedule)
+    const nextTask = applyTaskSchedule(
+      task,
+      command.schedule,
+      undefined,
+      command.context.clientTimeZone,
+    )
     this.tasks.set(nextTask.id, nextTask)
     this.appendTaskEvent(command, {
       eventType: 'task.updated',

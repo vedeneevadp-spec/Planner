@@ -1,4 +1,12 @@
-import { generateUuidV7, type HabitStats } from '@planner/contracts'
+import {
+  enumerateDateRange,
+  generateUuidV7,
+  getIsoWeekday as getIsoWeekdayForDateOnly,
+  getIsoWeekStartDate,
+  getTodayDate,
+  type HabitStats,
+  serializeDateOnly,
+} from '@planner/contracts'
 
 import type {
   StoredHabitEntryRecord,
@@ -27,12 +35,14 @@ export function createStoredHabitRecord(
   },
   context: {
     actorUserId: string
+    clientTimeZone?: string | undefined
     sortOrder: number
     workspaceId: string
   },
 ): StoredHabitRecord {
   const now = new Date().toISOString()
-  const startDate = input.startDate ?? getDateKey(new Date())
+  const startDate =
+    input.startDate ?? getTodayDate(context.clientTimeZone ?? 'UTC')
 
   return {
     color: input.color,
@@ -249,12 +259,20 @@ export function getDefaultEntryValue(
 }
 
 export function getDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  const year = date.getUTCFullYear()
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(date.getUTCDate()).padStart(2, '0')
+
+  return `${year}-${month}-${day}`
 }
 
 export function serializeDate(value: unknown): string {
-  if (value instanceof Date) {
-    return getDateKey(value)
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    const date = serializeDateOnly(value)
+
+    if (date !== null) {
+      return date
+    }
   }
 
   return String(value)
@@ -384,32 +402,13 @@ function getEntryTargetValue(
 }
 
 function enumerateDates(from: string, to: string): string[] {
-  const dates: string[] = []
-  const cursor = parseDateKey(from)
-  const end = parseDateKey(to)
-
-  while (cursor <= end) {
-    dates.push(getDateKey(cursor))
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  }
-
-  return dates
+  return enumerateDateRange(from, to)
 }
 
 function getIsoWeekday(dateKey: string): number {
-  const day = parseDateKey(dateKey).getUTCDay()
-
-  return day === 0 ? 7 : day
+  return getIsoWeekdayForDateOnly(dateKey)
 }
 
 function getWeekStart(dateKey: string): string {
-  const date = parseDateKey(dateKey)
-  const isoWeekday = getIsoWeekday(dateKey)
-  date.setUTCDate(date.getUTCDate() - isoWeekday + 1)
-
-  return getDateKey(date)
-}
-
-function parseDateKey(dateKey: string): Date {
-  return new Date(`${dateKey}T00:00:00.000Z`)
+  return getIsoWeekStartDate(dateKey)
 }

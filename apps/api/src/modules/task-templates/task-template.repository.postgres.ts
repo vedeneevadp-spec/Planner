@@ -1,4 +1,4 @@
-import { generateUuidV7 } from '@planner/contracts'
+import { generateUuidV7, serializeDateOnly } from '@planner/contracts'
 import { type Kysely, type Selectable } from 'kysely'
 
 import {
@@ -345,16 +345,8 @@ function serializeTimestamp(value: unknown): string {
 }
 
 function serializeNullableDate(value: unknown): string | null {
-  if (value === null) {
-    return null
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString().slice(0, 10)
-  }
-
-  if (typeof value === 'string') {
-    return value
+  if (value === null || typeof value === 'string' || value instanceof Date) {
+    return serializeDateOnly(value)
   }
 
   throw new TypeError('Expected date to be a string or Date.')

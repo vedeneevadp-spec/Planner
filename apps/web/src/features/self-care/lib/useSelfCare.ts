@@ -22,8 +22,11 @@ import {
 } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { useSessionFeatureReadiness } from '@/features/session'
-import { addDays, getDateKey } from '@/shared/lib/date'
+import {
+  usePlannerTimeZone,
+  useSessionFeatureReadiness,
+} from '@/features/session'
+import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
 import {
   createSelfCareApiClient,
@@ -162,18 +165,21 @@ export function selfCareTemplatesQueryKey(workspaceId: string) {
 }
 
 export function useSelfCareDashboard(
-  date = getDateKey(new Date()),
+  date?: string,
   options: { enabled?: boolean } = {},
 ) {
   const { api, isEnabled, workspaceId } = useSelfCareApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedDate = date ?? getTodayDate(plannerTimeZone)
   const queryKey = useMemo(
-    () => selfCareDashboardQueryKey(workspaceId, date),
-    [date, workspaceId],
+    () => selfCareDashboardQueryKey(workspaceId, resolvedDate),
+    [resolvedDate, workspaceId],
   )
 
   return useQuery({
     enabled: isEnabled,
-    queryFn: ({ signal }) => requireSelfCareApi(api).getDashboard(date, signal),
+    queryFn: ({ signal }) =>
+      requireSelfCareApi(api).getDashboard(resolvedDate, signal),
     queryKey,
     staleTime: 20_000,
   })
@@ -195,78 +201,90 @@ export function useSelfCareItems(options: { enabled?: boolean } = {}) {
 }
 
 export function useSelfCarePlan(
-  from = getDateKey(new Date()),
-  to = getDateKey(addDays(new Date(), 45)),
+  from?: string,
+  to?: string,
   options: { enabled?: boolean } = {},
 ) {
   const { api, isEnabled, workspaceId } = useSelfCareApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedFrom = from ?? getTodayDate(plannerTimeZone)
+  const resolvedTo = to ?? addDateDays(resolvedFrom, 45)
   const queryKey = useMemo(
-    () => selfCarePlanQueryKey(workspaceId, from, to),
-    [from, to, workspaceId],
+    () => selfCarePlanQueryKey(workspaceId, resolvedFrom, resolvedTo),
+    [resolvedFrom, resolvedTo, workspaceId],
   )
 
   return useQuery({
     enabled: isEnabled,
-    queryFn: ({ signal }) => requireSelfCareApi(api).getPlan(from, to, signal),
+    queryFn: ({ signal }) =>
+      requireSelfCareApi(api).getPlan(resolvedFrom, resolvedTo, signal),
     queryKey,
     staleTime: 30_000,
   })
 }
 
 export function useSelfCareRitualStepDrafts(
-  date = getDateKey(new Date()),
+  date?: string,
   options: { enabled?: boolean } = {},
 ) {
   const { api, isEnabled, workspaceId } = useSelfCareApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedDate = date ?? getTodayDate(plannerTimeZone)
   const queryKey = useMemo(
-    () => selfCareRitualStepDraftsQueryKey(workspaceId, date),
-    [date, workspaceId],
+    () => selfCareRitualStepDraftsQueryKey(workspaceId, resolvedDate),
+    [resolvedDate, workspaceId],
   )
 
   return useQuery({
     enabled: isEnabled,
     queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getRitualStepDrafts(date, signal),
+      requireSelfCareApi(api).getRitualStepDrafts(resolvedDate, signal),
     queryKey,
     staleTime: 20_000,
   })
 }
 
 export function useSelfCareHistory(
-  from = getDateKey(addDays(new Date(), -30)),
-  to = getDateKey(new Date()),
+  from?: string,
+  to?: string,
   options: { enabled?: boolean } = {},
 ) {
   const { api, isEnabled, workspaceId } = useSelfCareApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedTo = to ?? getTodayDate(plannerTimeZone)
+  const resolvedFrom = from ?? addDateDays(resolvedTo, -30)
   const queryKey = useMemo(
-    () => selfCareHistoryQueryKey(workspaceId, from, to),
-    [from, to, workspaceId],
+    () => selfCareHistoryQueryKey(workspaceId, resolvedFrom, resolvedTo),
+    [resolvedFrom, resolvedTo, workspaceId],
   )
 
   return useQuery({
     enabled: isEnabled,
     queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getHistory(from, to, signal),
+      requireSelfCareApi(api).getHistory(resolvedFrom, resolvedTo, signal),
     queryKey,
     staleTime: 30_000,
   })
 }
 
 export function useSelfCareAnalytics(
-  from = getDateKey(addDays(new Date(), -30)),
-  to = getDateKey(new Date()),
+  from?: string,
+  to?: string,
   options: { enabled?: boolean } = {},
 ) {
   const { api, isEnabled, workspaceId } = useSelfCareApi(options)
+  const plannerTimeZone = usePlannerTimeZone()
+  const resolvedTo = to ?? getTodayDate(plannerTimeZone)
+  const resolvedFrom = from ?? addDateDays(resolvedTo, -30)
   const queryKey = useMemo(
-    () => selfCareAnalyticsQueryKey(workspaceId, from, to),
-    [from, to, workspaceId],
+    () => selfCareAnalyticsQueryKey(workspaceId, resolvedFrom, resolvedTo),
+    [resolvedFrom, resolvedTo, workspaceId],
   )
 
   return useQuery({
     enabled: isEnabled,
     queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getAnalytics(from, to, signal),
+      requireSelfCareApi(api).getAnalytics(resolvedFrom, resolvedTo, signal),
     queryKey,
     staleTime: 30_000,
   })

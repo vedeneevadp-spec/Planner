@@ -58,10 +58,22 @@ export function useUpdateWorkspaceSettings() {
             ? {
                 ...current,
                 workspaceSettings: {
-                  taskCompletionConfettiEnabled:
-                    input.taskCompletionConfettiEnabled,
-                  wakeWordTrainingModeEnabled:
-                    input.wakeWordTrainingModeEnabled,
+                  ...current.workspaceSettings,
+                  ...(input.defaultTimeZone !== undefined
+                    ? { defaultTimeZone: input.defaultTimeZone }
+                    : {}),
+                  ...(input.taskCompletionConfettiEnabled !== undefined
+                    ? {
+                        taskCompletionConfettiEnabled:
+                          input.taskCompletionConfettiEnabled,
+                      }
+                    : {}),
+                  ...(input.wakeWordTrainingModeEnabled !== undefined
+                    ? {
+                        wakeWordTrainingModeEnabled:
+                          input.wakeWordTrainingModeEnabled,
+                      }
+                    : {}),
                 },
               }
             : current,
