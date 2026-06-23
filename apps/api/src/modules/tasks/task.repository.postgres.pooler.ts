@@ -85,14 +85,15 @@ export class PostgresTaskPoolerWriteFallback {
                 ${command.context.actorUserId},
                 inserted_task.workspace_id
               from inserted_task
-              returning starts_at, ends_at
+              returning starts_at, ends_at, timezone
             ),
           `
         : sql`
             inserted_time_block as (
               select
                 null::timestamptz as starts_at,
-                null::timestamptz as ends_at
+                null::timestamptz as ends_at,
+                null::text as timezone
               from inserted_task
             ),
           `
@@ -181,7 +182,8 @@ export class PostgresTaskPoolerWriteFallback {
               author_user.display_name as author_display_name,
               project.title as project_title,
               coalesce(inserted_time_block.starts_at, time_block.starts_at) as time_block_starts_at,
-              coalesce(inserted_time_block.ends_at, time_block.ends_at) as time_block_ends_at
+              coalesce(inserted_time_block.ends_at, time_block.ends_at) as time_block_ends_at,
+              coalesce(inserted_time_block.timezone, time_block.timezone) as time_block_timezone
             from selected_task
             left join app.users as assignee_user
               on assignee_user.id = selected_task.assignee_user_id
@@ -194,7 +196,7 @@ export class PostgresTaskPoolerWriteFallback {
               and project.workspace_id = selected_task.workspace_id
               and project.deleted_at is null
             left join lateral (
-              select starts_at, ends_at
+              select starts_at, ends_at, timezone
               from app.task_time_blocks
               where workspace_id = selected_task.workspace_id
                 and task_id = selected_task.id
@@ -266,7 +268,7 @@ export class PostgresTaskPoolerWriteFallback {
                   case
                     when task_with_time_block.time_block_ends_at is null then null
                     else to_char(
-                      task_with_time_block.time_block_ends_at at time zone 'UTC',
+                      task_with_time_block.time_block_ends_at at time zone coalesce(task_with_time_block.time_block_timezone, 'UTC'),
                       'HH24:MI'
                     )
                   end,
@@ -274,7 +276,7 @@ export class PostgresTaskPoolerWriteFallback {
                   case
                     when task_with_time_block.time_block_starts_at is null then null
                     else to_char(
-                      task_with_time_block.time_block_starts_at at time zone 'UTC',
+                      task_with_time_block.time_block_starts_at at time zone coalesce(task_with_time_block.time_block_timezone, 'UTC'),
                       'HH24:MI'
                     )
                   end,
@@ -404,14 +406,15 @@ export class PostgresTaskPoolerWriteFallback {
                 ${command.context.actorUserId},
                 updated_task.workspace_id
               from updated_task
-              returning starts_at, ends_at
+              returning starts_at, ends_at, timezone
             ),
           `
         : sql`
             inserted_time_block as (
               select
                 null::timestamptz as starts_at,
-                null::timestamptz as ends_at
+                null::timestamptz as ends_at,
+                null::text as timezone
               from updated_task
             ),
           `
@@ -468,7 +471,8 @@ export class PostgresTaskPoolerWriteFallback {
               author_user.display_name as author_display_name,
               project.title as project_title,
               inserted_time_block.starts_at as time_block_starts_at,
-              inserted_time_block.ends_at as time_block_ends_at
+              inserted_time_block.ends_at as time_block_ends_at,
+              inserted_time_block.timezone as time_block_timezone
             from updated_task
             left join app.users as assignee_user
               on assignee_user.id = updated_task.assignee_user_id
@@ -594,7 +598,8 @@ export class PostgresTaskPoolerWriteFallback {
               author_user.display_name as author_display_name,
               project.title as project_title,
               time_block.starts_at as time_block_starts_at,
-              time_block.ends_at as time_block_ends_at
+              time_block.ends_at as time_block_ends_at,
+              time_block.timezone as time_block_timezone
             from updated_task
             left join app.users as assignee_user
               on assignee_user.id = updated_task.assignee_user_id
@@ -607,7 +612,7 @@ export class PostgresTaskPoolerWriteFallback {
               and project.workspace_id = updated_task.workspace_id
               and project.deleted_at is null
             left join lateral (
-              select starts_at, ends_at
+              select starts_at, ends_at, timezone
               from app.task_time_blocks
               where workspace_id = updated_task.workspace_id
                 and task_id = updated_task.id
@@ -747,14 +752,15 @@ export class PostgresTaskPoolerWriteFallback {
                 cast(${command.context.actorUserId} as uuid),
                 updated_task.workspace_id
               from updated_task
-              returning starts_at, ends_at
+              returning starts_at, ends_at, timezone
             ),
           `
         : sql`
             inserted_time_block as (
               select
                 null::timestamptz as starts_at,
-                null::timestamptz as ends_at
+                null::timestamptz as ends_at,
+                null::text as timezone
               from updated_task
             ),
           `
@@ -825,7 +831,8 @@ export class PostgresTaskPoolerWriteFallback {
               author_user.display_name as author_display_name,
               project.title as project_title,
               inserted_time_block.starts_at as time_block_starts_at,
-              inserted_time_block.ends_at as time_block_ends_at
+              inserted_time_block.ends_at as time_block_ends_at,
+              inserted_time_block.timezone as time_block_timezone
             from updated_task
             left join app.users as assignee_user
               on assignee_user.id = updated_task.assignee_user_id
