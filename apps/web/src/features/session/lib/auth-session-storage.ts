@@ -1,3 +1,5 @@
+import { recordClientEvent } from '@/shared/lib/observability'
+
 import {
   type AuthStorage,
   clearNativeSessionStorage,
@@ -73,6 +75,9 @@ export async function readStoredAuthSession(): Promise<StoredAuthSession | null>
     rawSession = await getActiveAuthStorage().getItem(AUTH_SESSION_STORAGE_KEY)
   } catch (error) {
     console.error('Failed to read auth session storage.', error)
+    recordAuthStorageFailure('read', 'active', error, {
+      fallback: 'memory',
+    })
     rawSession = inMemoryAuthStorage.get(AUTH_SESSION_STORAGE_KEY) ?? null
   }
 
@@ -88,6 +93,9 @@ export async function readStoredAuthSession(): Promise<StoredAuthSession | null>
     }
   } catch (error) {
     console.error('Failed to parse stored auth session.', error)
+    recordAuthStorageFailure('parse', 'active', error, {
+      fallback: 'none',
+    })
   }
 
   return null
@@ -108,6 +116,9 @@ export async function writeStoredAuthSession(
     writeNativeAuthSessionHint(session)
   } catch (error) {
     console.error('Failed to write auth session storage.', error)
+    recordAuthStorageFailure('write', 'active', error, {
+      fallback: 'memory',
+    })
   }
 }
 
@@ -119,6 +130,9 @@ export async function clearStoredAuthSession(
       await clearNativeSessionStorage([AUTH_SESSION_STORAGE_KEY])
     } catch (error) {
       console.error('Failed to clear auth session storage.', error)
+      recordAuthStorageFailure('clear', 'native', error, {
+        fallback: 'memory',
+      })
     }
 
     clearNativeAuthSessionHint()
@@ -140,6 +154,9 @@ export async function clearStoredAuthSession(
       storage.removeItem(AUTH_SESSION_STORAGE_KEY)
     } catch (error) {
       console.error('Failed to clear auth session storage.', error)
+      recordAuthStorageFailure('clear', storageScope, error, {
+        fallback: 'memory',
+      })
     }
   }
 
@@ -157,9 +174,8 @@ function getActiveAuthStorage(): AuthStorage {
 function createBrowserAuthStorage(): AuthStorage {
   return {
     getItem(key) {
-      const storage = getBrowserStorage(
-        getRememberSessionPreference() ? 'local' : 'session',
-      )
+      const storageScope = getRememberSessionPreference() ? 'local' : 'session'
+      const storage = getBrowserStorage(storageScope)
 
       if (!storage) {
         return inMemoryAuthStorage.get(key) ?? null
@@ -169,28 +185,32 @@ function createBrowserAuthStorage(): AuthStorage {
         return storage.getItem(key)
       } catch (error) {
         console.error('Failed to read auth session storage.', error)
+        recordAuthStorageFailure('read', storageScope, error, {
+          fallback: 'memory',
+        })
         return inMemoryAuthStorage.get(key) ?? null
       }
     },
     removeItem(key) {
-      const storage = getBrowserStorage(
-        getRememberSessionPreference() ? 'local' : 'session',
-      )
+      const storageScope = getRememberSessionPreference() ? 'local' : 'session'
+      const storage = getBrowserStorage(storageScope)
 
       if (storage) {
         try {
           storage.removeItem(key)
         } catch (error) {
           console.error('Failed to remove auth session storage.', error)
+          recordAuthStorageFailure('remove', storageScope, error, {
+            fallback: 'memory',
+          })
         }
       }
 
       inMemoryAuthStorage.delete(key)
     },
     setItem(key, value) {
-      const storage = getBrowserStorage(
-        getRememberSessionPreference() ? 'local' : 'session',
-      )
+      const storageScope = getRememberSessionPreference() ? 'local' : 'session'
+      const storage = getBrowserStorage(storageScope)
 
       if (!storage) {
         inMemoryAuthStorage.set(key, value)
@@ -202,10 +222,50 @@ function createBrowserAuthStorage(): AuthStorage {
         inMemoryAuthStorage.delete(key)
       } catch (error) {
         console.error('Failed to write auth session storage.', error)
+        recordAuthStorageFailure('write', storageScope, error, {
+          fallback: 'memory',
+        })
         inMemoryAuthStorage.set(key, value)
       }
     },
   }
+}
+
+function recordAuthStorageFailure(
+  operation: 'clear' | 'parse' | 'read' | 'remove' | 'write',
+  storage: 'active' | 'local' | 'native' | 'session',
+  error: unknown,
+  options: {
+    fallback: 'memory' | 'none'
+  },
+): void {
+  recordClientEvent(
+    'auth_storage_failed',
+    {
+      errorKind: getStorageErrorKind(error),
+      fallback: options.fallback,
+      nativeRuntime: isNativeSessionPersistenceRuntime(),
+      operation,
+      storage,
+    },
+    { level: 'warn' },
+  )
+}
+
+function getStorageErrorKind(error: unknown): string {
+  if (typeof DOMException !== 'undefined' && error instanceof DOMException) {
+    return 'dom_exception'
+  }
+
+  if (error instanceof TypeError) {
+    return 'type_error'
+  }
+
+  if (error instanceof Error) {
+    return 'error'
+  }
+
+  return typeof error
 }
 
 function getBrowserStorage(scope: 'local' | 'session'): Storage | null {

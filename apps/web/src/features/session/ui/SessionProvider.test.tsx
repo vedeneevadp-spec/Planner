@@ -8,6 +8,8 @@ import {
 } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { readClientEvents } from '@/shared/lib/observability'
+
 const authApiMocks = vi.hoisted(() => ({
   confirmPasswordReset: vi.fn(),
   isUnauthorizedAuthApiError: vi.fn(),
@@ -107,6 +109,7 @@ describe('SessionProvider', () => {
 
   beforeEach(() => {
     appStateListener = null
+    window.__CHAOTIKA_DIAGNOSTICS__?.clear()
 
     authApiMocks.confirmPasswordReset.mockReset()
     authApiMocks.isUnauthorizedAuthApiError.mockReset()
@@ -231,6 +234,13 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+    expect(
+      readClientEvents().some(
+        (event) =>
+          event.name === 'auth_refresh_failed' &&
+          event.details.category === 'retryable',
+      ),
+    ).toBe(true)
   })
 
   it('retries deferred native refresh automatically after a retryable error', async () => {
@@ -379,6 +389,15 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+    expect(
+      readClientEvents().some(
+        (event) =>
+          event.name === 'auth_restore_decision' &&
+          event.details.category === 'storage_unavailable' &&
+          event.details.command === 'keep_device_session' &&
+          event.details.reason === 'storage_empty_on_resume',
+      ),
+    ).toBe(true)
 
     warnSpy.mockRestore()
   })
@@ -417,6 +436,14 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+    expect(
+      readClientEvents().some(
+        (event) =>
+          event.name === 'auth_refresh_storage_decision' &&
+          event.details.category === 'stale_refresh_replay' &&
+          event.details.command === 'restore_latest_stored_session',
+      ),
+    ).toBe(true)
 
     await act(async () => {
       appStateListener?.(false)
@@ -457,6 +484,23 @@ describe('SessionProvider', () => {
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+    expect(
+      readClientEvents().some(
+        (event) =>
+          event.name === 'auth_refresh_failed' &&
+          event.details.category === 'revoked_or_denied' &&
+          event.details.status === 401,
+      ),
+    ).toBe(true)
+    expect(
+      readClientEvents().some(
+        (event) =>
+          event.name === 'auth_refresh_storage_decision' &&
+          event.details.category === 'revoked_or_denied' &&
+          event.details.command === 'keep_device_session' &&
+          event.details.reason === 'server_denied_refresh',
+      ),
+    ).toBe(true)
 
     await act(async () => {
       appStateListener?.(false)

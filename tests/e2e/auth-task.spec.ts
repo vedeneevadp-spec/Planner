@@ -267,40 +267,54 @@ test('creates, marks, and completes a shopping item', async ({ page }) => {
   await expect(completedPanel.getByText(itemTitle)).toBeVisible()
 })
 
-test('creates a habit and toggles it from the habits page', async ({
+test('redirects legacy habits route and manages a self-care item', async ({
   page,
 }) => {
-  const user = createE2eUser('e2e-habit')
-  const habitTitle = `E2E water ${user.suffix}`
+  const user = createE2eUser('e2e-self-care')
+  const careTitle = `E2E water ${user.suffix}`
 
   await registerUser({ ...user, page })
 
   await page.goto(
     `/habits?habitsAction=habit&habitsActionRequest=${user.suffix}`,
   )
+  await expect(page).toHaveURL(/\/self-care\?tab=rituals/)
 
-  const dialog = page.getByRole('dialog', { name: 'Новая привычка' })
+  await page.goto(
+    `/self-care?tab=rituals&selfCareAction=care&selfCareActionRequest=custom`,
+  )
+
+  const dialog = page.getByRole('dialog', { name: 'Создать свою заботу' })
 
   await expect(dialog).toBeVisible()
-  await dialog.getByRole('textbox', { name: 'Привычка' }).fill(habitTitle)
-  await dialog
-    .getByRole('button', { name: 'Добавить привычку' })
-    .first()
-    .click()
+  await dialog.getByLabel('Название').fill(careTitle)
+  await dialog.getByRole('button', { name: 'Создать заботу' }).click()
 
   await expect(
-    page.getByRole('heading', { name: habitTitle }).last(),
+    page.getByRole('heading', { name: careTitle }).last(),
   ).toBeVisible()
+
+  await expect(
+    page.getByRole('button', { name: 'Убрать из плана' }),
+  ).toBeVisible()
+
+  await page.goto('/self-care?tab=rituals')
+  await expect(
+    page.getByRole('heading', { name: careTitle }).last(),
+  ).toBeVisible()
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toBe(
+      `Удалить «${careTitle}» из заботы о себе? История останется в разделе.`,
+    )
+    await dialog.accept()
+  })
   await page
     .getByRole('button', {
-      name: `Поставить привычку ${habitTitle} на паузу`,
+      name: `Удалить заботу «${careTitle}»`,
     })
     .click()
-  await expect(
-    page.getByRole('button', {
-      name: `Возобновить привычку ${habitTitle}`,
-    }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: careTitle })).toBeHidden()
 })
 
 test('creates a cleaning zone with a task and completes it today', async ({

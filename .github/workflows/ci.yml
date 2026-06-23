@@ -41,6 +41,13 @@ jobs:
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run db:security:check
+      - run: npm run db:runtime-role:setup
+        env:
+          DB_RUNTIME_PASSWORD: planner_runtime
+      - run: npm run db:security:check
+        env:
+          DATABASE_URL: postgres://planner_runtime:planner_runtime@127.0.0.1:5432/planner_ci
+          DB_SECURITY_REQUIRE_NON_OWNER: '1'
       - run: npm run ci
       - run: npm run test:api:postgres
       - run: npm run smoke:api:prod

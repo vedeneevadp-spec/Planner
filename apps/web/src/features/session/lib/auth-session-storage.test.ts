@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { readClientEvents } from '@/shared/lib/observability'
+
 import {
   clearStoredAuthSession,
   getRememberSessionPreference,
@@ -24,6 +26,7 @@ describe('auth-session-storage', () => {
   beforeEach(() => {
     window.localStorage.clear()
     window.sessionStorage.clear()
+    window.__CHAOTIKA_DIAGNOSTICS__?.clear()
     vi.restoreAllMocks()
   })
 
@@ -77,5 +80,28 @@ describe('auth-session-storage', () => {
 
     await expect(readStoredAuthSession()).resolves.toBeNull()
     expect(errorSpy).toHaveBeenCalled()
+  })
+
+  it('records diagnostics when browser storage is unavailable', async () => {
+    const errorSpy = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Storage is disabled.', 'SecurityError')
+    })
+
+    await expect(readStoredAuthSession()).resolves.toBeNull()
+
+    expect(
+      readClientEvents().some(
+        (event) =>
+          event.name === 'auth_storage_failed' &&
+          event.details.errorKind === 'dom_exception' &&
+          event.details.fallback === 'memory' &&
+          event.details.operation === 'read',
+      ),
+    ).toBe(true)
+
+    errorSpy.mockRestore()
   })
 })

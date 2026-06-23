@@ -484,6 +484,12 @@ Release workflow уже ссылается на ADR 0002, требует `npm ru
 - оставить быстрый owner-based Postgres job для миграций и contract tests, но
   не считать его строгой RLS parity проверкой
 
+Статус 2026-06-23: GitHub Actions quality job после миграций запускает
+`db:runtime-role:setup`, затем отдельный
+`DB_SECURITY_REQUIRE_NON_OWNER=1 npm run db:security:check` под
+`planner_runtime` `DATABASE_URL`. Owner-based Postgres job сохранен для
+миграций, contract tests и production smoke.
+
 ### Нужен bundle/mobile asset budget шире initial JS
 
 Проблема: `npm run build:budget` уже защищает initial JS и forbidden preload,
@@ -501,6 +507,14 @@ artifact. На 2026-06-22 production build проходит с initial JS око
 - для Android release добавить APK/AAB size check в `mobile:release` или
   отдельный CI smoke, чтобы ONNX/TFLite/web assets не росли незаметно
 
+Статус 2026-06-23: `npm run build:budget` дополнительно проверяет route-level
+JS/CSS для `self-care`, `calendar`, `VoiceAssistant`, JS для
+`planner-contracts` и `lottie_light_canvas`, а также public asset budgets для
+`apps/web/public/self-care/**` и `apps/web/public/icons/**`. На текущем build
+проходят лимиты: initial JS `870.1 KB`, self-care assets `12311.0 KB`, icons
+`608.1 KB`. Открытым остается отдельный APK/AAB size check для Android release
+artifact после `mobile:release`.
+
 ### Нужна лучшая диагностика refresh/restore
 
 Проблема: когда мобильное приложение показывает "connected but empty", сейчас
@@ -512,6 +526,16 @@ artifact. На 2026-06-22 production build проходит с initial JS око
 - логировать категории auth restore/refresh decision без секретов
 - добавлять migration/function version в server-side auth diagnostics
 - в клиенте различать retryable, revoked, stale replay и storage unavailable
+
+Статус 2026-06-23: клиентская диагностика расширена через существующий
+`__CHAOTIKA_DIAGNOSTICS__` ring buffer. Добавлены события
+`auth_restore_decision`, `auth_recovery_decision`, `auth_refresh_failed`,
+`auth_refresh_succeeded`, `auth_refresh_storage_decision` и
+`auth_storage_failed`; details содержат только категории, status/booleans и
+тип команды без access/refresh token и email. Regression tests теперь проверяют
+`retryable`, `revoked_or_denied`, `stale_refresh_replay` и
+`storage_unavailable`. Открытым остается server-side auth diagnostics с
+версией миграций/runtime functions в `HttpError.details`.
 
 ### Нужна постепенная нормализация parsing/mapping helpers
 
