@@ -10,6 +10,7 @@ import {
   getIsoWeekday,
   getIsoWeekStartDate,
   getMonthStartDate,
+  getTimeInTimeZone,
 } from '@/shared/time/time.service'
 
 const CALENDAR_GRID_DAY_COUNT = 42
@@ -243,9 +244,20 @@ export function isSelfCareCalendarTask(
   return 'isSelfCare' in task && task.isSelfCare === true
 }
 
-function extractSelfCareTime(value: string | null | undefined): string | null {
+function extractSelfCareTime(
+  value: string | null | undefined,
+  timeZone?: string | null,
+): string | null {
   if (!value) {
     return null
+  }
+
+  if (value.includes('T') && timeZone) {
+    try {
+      return getTimeInTimeZone(value, timeZone)
+    } catch {
+      // Fall through to legacy string extraction below.
+    }
   }
 
   const isoTime = /T(\d{2}:\d{2})/.exec(value)?.[1]
@@ -254,11 +266,19 @@ function extractSelfCareTime(value: string | null | undefined): string | null {
   return isoTime ?? plainTime ?? null
 }
 
-function getSelfCareCalendarStartTime(entry: SelfCareTodayItem): string | null {
+function getSelfCareCalendarStartTime(
+  entry: SelfCareTodayItem,
+  plannerTimeZone: string,
+): string | null {
+  const timeZone =
+    entry.occurrence?.reminderTimeZone ??
+    entry.scheduleRule?.timezone ??
+    plannerTimeZone
+
   return (
-    extractSelfCareTime(entry.occurrence?.dueAt) ??
-    extractSelfCareTime(entry.appointment?.startsAt) ??
-    extractSelfCareTime(entry.scheduleRule?.preferredTime)
+    extractSelfCareTime(entry.occurrence?.dueAt, timeZone) ??
+    extractSelfCareTime(entry.appointment?.startsAt, timeZone) ??
+    extractSelfCareTime(entry.scheduleRule?.preferredTime, timeZone)
   )
 }
 
@@ -287,12 +307,18 @@ function addMinutesToTime(startTime: string, minutes: number): string | null {
 function getSelfCareCalendarEndTime(
   entry: SelfCareTodayItem,
   startTime: string | null,
+  plannerTimeZone: string,
 ): string | null {
   if (!startTime) {
     return null
   }
 
-  const appointmentEndTime = extractSelfCareTime(entry.appointment?.endsAt)
+  const appointmentEndTime = extractSelfCareTime(
+    entry.appointment?.endsAt,
+    entry.occurrence?.reminderTimeZone ??
+      entry.scheduleRule?.timezone ??
+      plannerTimeZone,
+  )
 
   if (appointmentEndTime && appointmentEndTime > startTime) {
     return appointmentEndTime
@@ -304,6 +330,7 @@ function getSelfCareCalendarEndTime(
 function shouldShowSelfCareCalendarEntry(
   entry: SelfCareTodayItem,
   settings: SelfCareSettings | null | undefined,
+  plannerTimeZone: string,
 ): boolean {
   if (!settings || entry.item.isArchived || !entry.item.isActive) {
     return false
@@ -329,7 +356,7 @@ function shouldShowSelfCareCalendarEntry(
 
   return (
     settings.showAppointmentsInCalendar &&
-    getSelfCareCalendarStartTime(entry) !== null
+    getSelfCareCalendarStartTime(entry, plannerTimeZone) !== null
   )
 }
 
@@ -343,6 +370,7 @@ function isPlanningOnlySelfCareRepeat(entry: SelfCareTodayItem): boolean {
 
 export function buildSelfCareCalendarTask(
   entry: SelfCareTodayItem,
+  plannerTimeZone = 'UTC',
 ): CalendarSelfCareTask | null {
   const occurrence = entry.occurrence
 
@@ -350,7 +378,7 @@ export function buildSelfCareCalendarTask(
     return null
   }
 
-  const plannedStartTime = getSelfCareCalendarStartTime(entry)
+  const plannedStartTime = getSelfCareCalendarStartTime(entry, plannerTimeZone)
 
   return {
     assigneeDisplayName: null,
@@ -367,7 +395,11 @@ export function buildSelfCareCalendarTask(
     linkedTask: null,
     note: entry.item.description,
     plannedDate: occurrence.scheduledFor,
-    plannedEndTime: getSelfCareCalendarEndTime(entry, plannedStartTime),
+    plannedEndTime: getSelfCareCalendarEndTime(
+      entry,
+      plannedStartTime,
+      plannerTimeZone,
+    ),
     plannedStartTime,
     project: 'Забота',
     projectId: null,
@@ -389,10 +421,13 @@ export function buildSelfCareCalendarTask(
 export function buildSelfCareCalendarTasks(
   entries: SelfCareTodayItem[],
   settings: SelfCareSettings | null | undefined,
+  plannerTimeZone = 'UTC',
 ): CalendarSelfCareTask[] {
   return entries
-    .filter((entry) => shouldShowSelfCareCalendarEntry(entry, settings))
-    .map(buildSelfCareCalendarTask)
+    .filter((entry) =>
+      shouldShowSelfCareCalendarEntry(entry, settings, plannerTimeZone),
+    )
+    .map((entry) => buildSelfCareCalendarTask(entry, plannerTimeZone))
     .filter((task): task is CalendarSelfCareTask => task !== null)
 }
 

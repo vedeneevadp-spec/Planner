@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => ({
         accessToken: string
         actorUserId: string
         apiBaseUrl: string
+        clientTimeZone: string
         workspaceId: string
       }
       session: PlannerSessionStub
@@ -388,6 +389,7 @@ function createSessionFeatureReadinessStub(session: PlannerSessionStub) {
       accessToken: 'access-token',
       actorUserId: session.actorUserId,
       apiBaseUrl: 'http://localhost:3000',
+      clientTimeZone: 'Europe/Astrakhan',
       workspaceId: session.workspaceId,
     },
     session,

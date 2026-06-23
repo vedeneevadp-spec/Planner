@@ -60,6 +60,7 @@ describe('useSessionFeatureReadiness', () => {
       accessToken: 'access-token',
       actorUserId: 'user-1',
       apiBaseUrl: 'https://api.chaotika.test',
+      clientTimeZone: 'Europe/Astrakhan',
       workspaceId: 'workspace-1',
     })
   })
@@ -149,10 +150,10 @@ function createSessionResponse(): SessionResponse {
     source: 'access_token',
     userPreferences: {
       calendarViewMode: 'week',
-      defaultTimeZone: null,
+      defaultTimeZone: 'Europe/Astrakhan',
       energyMode: 'normal',
       lastSeenTimeZone: null,
-      timeZoneMode: 'device',
+      timeZoneMode: 'manual',
       voiceAssistantEnabled: true,
     },
     workspace: {

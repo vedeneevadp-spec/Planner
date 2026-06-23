@@ -631,8 +631,13 @@ export function CalendarPage() {
       buildSelfCareCalendarTasks(
         selfCarePlanQuery.data?.occurrences ?? [],
         selfCareSettingsQuery.data?.settings,
+        plannerTimeZone,
       ),
-    [selfCarePlanQuery.data?.occurrences, selfCareSettingsQuery.data?.settings],
+    [
+      plannerTimeZone,
+      selfCarePlanQuery.data?.occurrences,
+      selfCareSettingsQuery.data?.settings,
+    ],
   )
   const calendarTasks = useMemo<CalendarDisplayTask[]>(
     () => [

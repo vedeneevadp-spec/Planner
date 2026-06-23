@@ -405,11 +405,12 @@ describe('SelfCarePage helpers', () => {
     })
     const appointmentEntry = createTodayEntry({
       appointment: createAppointmentDetails({
-        startsAt: '2026-06-23T10:30:00.000Z',
+        startsAt: '2026-06-22T14:00:00.000Z',
       }),
       item: createItem({ id: 'appointment-1', type: 'appointment' }),
       occurrence: createOccurrence({
-        dueAt: '2026-06-22T09:15:00.000Z',
+        dueAt: '2026-06-22T14:00:00.000Z',
+        reminderTimeZone: 'Europe/Astrakhan',
         scheduledFor: '2026-06-22',
       }),
     })
@@ -417,20 +418,28 @@ describe('SelfCarePage helpers', () => {
     expect(groupTodayItems([appointmentEntry]).morning).toEqual([
       appointmentEntry,
     ])
-    expect(getInitialScheduleDate(appointmentEntry, '2026-06-24')).toBe(
-      '2026-06-23',
+    expect(
+      getInitialScheduleDate(
+        appointmentEntry,
+        '2026-06-24',
+        'Europe/Astrakhan',
+      ),
+    ).toBe('2026-06-22')
+    expect(getInitialScheduleTime(appointmentEntry, 'Europe/Astrakhan')).toBe(
+      '18:00',
     )
-    expect(getInitialScheduleTime(appointmentEntry)).toBe(
-      formatExpectedLocalTime('2026-06-22T09:15:00.000Z'),
+    expect(formatTime('2026-06-22T14:00:00.000Z', 'Europe/Astrakhan')).toBe(
+      '18:00',
     )
     expect(formatDate('2026-06-22')).toContain('22')
     expect(formatShortDate('2026-06-22')).toContain('22')
     expect(formatMonthKey('2026-06')).toContain('2026')
-    expect(formatTime('2026-06-22T09:15:00.000Z')).toBe(
-      formatExpectedLocalTime('2026-06-22T09:15:00.000Z'),
+    expect(formatTime('2026-06-22T09:15:00.000Z', 'UTC')).toBe('09:15')
+    expect(buildDateTimeInput('2026-06-25', '18:00', 'Europe/Astrakhan')).toBe(
+      '2026-06-25T14:00:00.000Z',
     )
     expect(buildDateTimeInput('2026-06-22', '09:15')).toBe(
-      new Date(2026, 5, 22, 9, 15, 0, 0).toISOString(),
+      '2026-06-22T09:15:00.000Z',
     )
     expect(canRestartCourse(courseEntry)).toBe(true)
     expect(

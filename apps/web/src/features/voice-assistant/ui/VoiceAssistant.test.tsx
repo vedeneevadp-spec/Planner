@@ -36,6 +36,7 @@ interface SessionFeatureReadinessStub {
   apiConfig: {
     actorUserId: string
     apiBaseUrl: string
+    clientTimeZone: string
     workspaceId: string
   }
   session: {
@@ -184,6 +185,7 @@ describe('VoiceAssistant web push-to-talk', () => {
       apiConfig: {
         actorUserId: 'user-1',
         apiBaseUrl: 'https://chaotika.test',
+        clientTimeZone: 'Europe/Astrakhan',
         workspaceId: 'workspace-1',
       },
       session: {
@@ -437,6 +439,7 @@ describe('VoiceAssistant web push-to-talk', () => {
       apiConfig: {
         actorUserId: 'user-1',
         apiBaseUrl: 'http://127.0.0.1:3001',
+        clientTimeZone: 'Europe/Astrakhan',
         workspaceId: 'workspace-1',
       },
       session: {

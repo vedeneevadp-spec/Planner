@@ -195,6 +195,7 @@ describe('voice runtime metrics', () => {
       {
         actorUserId: 'user-1',
         apiBaseUrl: 'http://127.0.0.1:3001',
+        clientTimeZone: 'Europe/Astrakhan',
         workspaceId: 'workspace-1',
       },
       fetchFn,

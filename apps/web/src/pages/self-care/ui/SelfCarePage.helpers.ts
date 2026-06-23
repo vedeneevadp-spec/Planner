@@ -26,6 +26,8 @@ import {
   formatDateOnlyForLocale,
   getDateKeyInTimeZone,
   getDeviceTimeZone,
+  getTimeInTimeZone,
+  makeFixedZoneDateTime,
 } from '@/shared/time/time.service'
 import type { SelectPickerOption } from '@/shared/ui/SelectPicker'
 
@@ -622,6 +624,7 @@ export function firstErrorMessage(errors: unknown[]): string | null {
 export function getInitialScheduleDate(
   entry: SelfCareTodayItem,
   fallbackDate: string,
+  displayTimeZone?: string | null,
 ): string {
   if (
     entry.occurrence?.scheduledFor &&
@@ -631,17 +634,25 @@ export function getInitialScheduleDate(
   }
 
   return entry.appointment
-    ? formatLocalDateKey(entry.appointment.startsAt)
+    ? formatLocalDateKey(
+        entry.appointment.startsAt,
+        getSelfCareEntryTimeZone(entry, displayTimeZone),
+      )
     : fallbackDate
 }
 
-export function getInitialScheduleTime(entry: SelfCareTodayItem): string {
+export function getInitialScheduleTime(
+  entry: SelfCareTodayItem,
+  displayTimeZone?: string | null,
+): string {
+  const timeZone = getSelfCareEntryTimeZone(entry, displayTimeZone)
+
   if (entry.occurrence?.dueAt) {
-    return formatTime(entry.occurrence.dueAt)
+    return formatTime(entry.occurrence.dueAt, timeZone)
   }
 
   const appointmentTime = entry.appointment
-    ? formatTime(entry.appointment.startsAt)
+    ? formatTime(entry.appointment.startsAt, timeZone)
     : null
   if (appointmentTime && appointmentTime !== '00:00') {
     return appointmentTime
@@ -898,12 +909,13 @@ export function toggleWeekday(current: number[], weekday: number): number[] {
 export function buildDateTimeInput(
   dateKey: string,
   time: string | null,
+  timeZone?: string | null,
 ): string {
-  const [year = 0, month = 1, day = 1] = dateKey.split('-').map(Number)
-  const [hours = 0, minutes = 0] = (time ?? '00:00').split(':').map(Number)
-  const date = new Date(year, month - 1, day, hours, minutes, 0, 0)
-
-  return date.toISOString()
+  return makeFixedZoneDateTime({
+    localDate: dateKey,
+    localTime: time ?? '00:00',
+    timeZone: timeZone ?? 'UTC',
+  }).instantUtc
 }
 
 export function getCreatedTemplateIds(
@@ -1197,7 +1209,7 @@ export function formatMonthKey(monthKey: string): string {
   })
 }
 
-export function formatTime(value: string): string {
+export function formatTime(value: string, timeZone?: string | null): string {
   const plainTime = /^(\d{2}:\d{2})/.exec(value)?.[1]
 
   if (plainTime) {
@@ -1207,22 +1219,18 @@ export function formatTime(value: string): string {
   const date = new Date(value)
 
   if (!Number.isNaN(date.getTime())) {
-    return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`
+    return getTimeInTimeZone(value, timeZone ?? getDeviceTimeZone() ?? 'UTC')
   }
 
   return /T(\d{2}:\d{2})/.exec(value)?.[1] ?? value.slice(0, 5)
 }
 
-function formatLocalDateKey(value: string): string {
+function formatLocalDateKey(value: string, timeZone?: string | null): string {
   if (Number.isNaN(new Date(value).getTime())) {
     return value.slice(0, 10)
   }
 
-  return getDateKeyInTimeZone(value, getDeviceTimeZone() ?? 'UTC')
-}
-
-function padTimePart(value: number): string {
-  return String(value).padStart(2, '0')
+  return getDateKeyInTimeZone(value, timeZone ?? getDeviceTimeZone() ?? 'UTC')
 }
 
 export function getPercent(value: number, total: number): number {
@@ -1519,13 +1527,23 @@ export function pluralRu(
   return many
 }
 
-export function formatPlanningText(entry: SelfCareTodayItem): string {
+export function formatPlanningText(
+  entry: SelfCareTodayItem,
+  displayTimeZone?: string | null,
+): string {
   if (entry.flexibleProgress) {
     return `Осталось ${entry.flexibleProgress.remainingCount} до цели периода. Можно добавить короткую версию.`
   }
 
   if (entry.occurrence) {
-    return `${formatDate(entry.occurrence.scheduledFor)}${entry.occurrence.dueAt ? ` · ${formatTime(entry.occurrence.dueAt)}` : ''}`
+    return `${formatDate(entry.occurrence.scheduledFor)}${
+      entry.occurrence.dueAt
+        ? ` · ${formatTime(
+            entry.occurrence.dueAt,
+            getSelfCareEntryTimeZone(entry, displayTimeZone),
+          )}`
+        : ''
+    }`
   }
 
   if (entry.scheduleRule?.repeatKind === 'after_completion') {
@@ -1533,6 +1551,18 @@ export function formatPlanningText(entry: SelfCareTodayItem): string {
   }
 
   return 'Можно выбрать дату, время и детали записи.'
+}
+
+export function getSelfCareEntryTimeZone(
+  entry: SelfCareTodayItem,
+  displayTimeZone?: string | null,
+): string | null {
+  return (
+    entry.occurrence?.reminderTimeZone ??
+    entry.scheduleRule?.timezone ??
+    displayTimeZone ??
+    null
+  )
 }
 
 export function formatTomorrowPlanSummary(count: number | null): string {

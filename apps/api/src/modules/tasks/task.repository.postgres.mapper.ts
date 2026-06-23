@@ -48,7 +48,10 @@ export function mapTaskRecord(
       ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.starts_at))
       : null)
   const plannedEndTime = timeBlock
-    ? extractTimeFromTimestamp(serializeTimestamp(timeBlock.ends_at))
+    ? extractTimeFromTimestamp(
+        serializeTimestamp(timeBlock.ends_at),
+        timeBlock.timezone,
+      )
     : null
 
   return {
@@ -116,7 +119,10 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
       ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_starts_at))
       : null)
   const plannedEndTime = task.time_block_ends_at
-    ? extractTimeFromTimestamp(serializeTimestamp(task.time_block_ends_at))
+    ? extractTimeFromTimestamp(
+        serializeTimestamp(task.time_block_ends_at),
+        task.time_block_timezone,
+      )
     : null
 
   return {

@@ -2,6 +2,10 @@ import type { SessionResponse } from '@planner/contracts'
 import { useCallback, useMemo } from 'react'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
+import {
+  getDeviceTimeZone,
+  getPlannerTimeZone,
+} from '@/shared/time/time.service'
 
 import { isUnauthorizedSessionApiError } from './session-api'
 import {
@@ -17,6 +21,7 @@ export interface SessionFeatureApiConfig {
   accessToken?: string
   actorUserId: string
   apiBaseUrl: string
+  clientTimeZone: string
   workspaceId: string
 }
 
@@ -88,6 +93,12 @@ export function useSessionFeatureReadiness(
       ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
       actorUserId: session.actorUserId,
       apiBaseUrl: plannerApiConfig.apiBaseUrl,
+      clientTimeZone: getPlannerTimeZone({
+        deviceTimeZone: getDeviceTimeZone(),
+        timeZoneMode: session.userPreferences.timeZoneMode,
+        userTimeZone: session.userPreferences.defaultTimeZone,
+        workspaceTimeZone: session.workspaceSettings.defaultTimeZone,
+      }),
       workspaceId: session.workspaceId,
     }
   }, [auth.accessToken, isApiEnabled, session])

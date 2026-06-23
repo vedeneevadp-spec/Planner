@@ -57,10 +57,10 @@ import {
   addDays,
   buildAnalyticsResponse,
   buildDashboardResponse,
-  buildDueAt,
   buildHistoryResponse,
   buildItemInputFromTemplate,
   buildPlanResponse,
+  buildSelfCareDueAtInstant,
   buildSelfCareListResponse,
   buildSystemSelfCareTemplates,
   createAppointmentDetailsRecord,
@@ -605,9 +605,15 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         (candidate) => candidate.itemId === item.id,
       ) ?? null
     const scheduledTime = command.input.scheduledTime ?? null
-    const dueAt = buildDueAt(
+    const reminderTimeZone =
+      command.input.timezone ??
+      scheduleRule?.timezone ??
+      command.context.clientTimeZone ??
+      null
+    const dueAt = buildSelfCareDueAtInstant(
       command.input.scheduledFor,
       scheduledTime ?? scheduleRule?.preferredTime ?? null,
+      reminderTimeZone,
     )
     const existing = [...this.occurrences.values()].find(
       (occurrence) =>
@@ -623,7 +629,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         dueAt,
         movedTo: null,
         reminderOffsetsMinutes: command.input.reminderOffsetsMinutes,
-        reminderTimeZone: command.input.timezone,
+        reminderTimeZone,
         scheduleRuleId: scheduleRule?.id ?? null,
         status: 'scheduled' as const,
         updatedAt: new Date().toISOString(),
@@ -640,7 +646,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       scheduleRule,
     })
     occurrence.reminderOffsetsMinutes = command.input.reminderOffsetsMinutes
-    occurrence.reminderTimeZone = command.input.timezone
+    occurrence.reminderTimeZone = reminderTimeZone
     this.occurrences.set(occurrence.id, occurrence)
     this.upsertScheduledDetails(item, occurrence, command.input)
     return occurrence

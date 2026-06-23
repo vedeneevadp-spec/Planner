@@ -214,6 +214,7 @@ function createFeatureReadinessResult(
       accessToken: 'access-token',
       actorUserId: session.actorUserId,
       apiBaseUrl: 'https://api.chaotika.test',
+      clientTimeZone: 'Europe/Astrakhan',
       workspaceId: session.workspaceId,
     },
     getReadiness: () => ({

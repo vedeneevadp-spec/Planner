@@ -50,7 +50,6 @@ import {
 import {
   addDays,
   addInterval,
-  buildDueAt,
   generateSelfCareOccurrenceDates,
   getDateKey,
   getFlexibleGoalPeriod,
@@ -517,6 +516,28 @@ export function createOccurrenceRecord(input: {
   }
 }
 
+export function buildSelfCareDueAtInstant(
+  dateKey: string,
+  preferredTime: string | null,
+  timeZone: string | null | undefined,
+): string | null {
+  if (!preferredTime) {
+    return null
+  }
+
+  const match = preferredTime.match(/^(\d{2}:\d{2})(?::\d{2})?$/)
+
+  if (!match) {
+    return null
+  }
+
+  return makeFixedZoneDateTime({
+    localDate: dateKey,
+    localTime: match[1]!,
+    timeZone: timeZone ?? 'UTC',
+  }).instantUtc
+}
+
 export function updateOccurrenceStatus(
   occurrence: SelfCareOccurrence,
   status: SelfCareOccurrence['status'],
@@ -596,7 +617,11 @@ export function generateSelfCareOccurrencesForRange(input: {
 
     return [
       createOccurrenceRecord({
-        dueAt: buildDueAt(scheduledFor, scheduleRule.preferredTime),
+        dueAt: buildSelfCareDueAtInstant(
+          scheduledFor,
+          scheduleRule.preferredTime,
+          scheduleRule.timezone,
+        ),
         item,
         scheduledFor,
         scheduleRule,

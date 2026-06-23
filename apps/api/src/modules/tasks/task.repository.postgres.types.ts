@@ -19,6 +19,7 @@ export type TaskListRow = TaskRow & {
   project_title?: ProjectRow['title'] | null
   time_block_ends_at: TaskTimeBlockRow['ends_at'] | null
   time_block_starts_at: TaskTimeBlockRow['starts_at'] | null
+  time_block_timezone: TaskTimeBlockRow['timezone'] | null
 }
 
 export interface ResolvedTaskProject {

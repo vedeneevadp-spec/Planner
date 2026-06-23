@@ -301,6 +301,42 @@ export function defineTaskRepositoryContractSuite(input: {
       }
     })
 
+    void test('keeps fixed-zone task end times stable after reload', async () => {
+      const harness = await input.createHarness()
+      const context: TaskWriteContext = {
+        ...harness.personalContext,
+        clientTimeZone: 'Europe/Astrakhan',
+      }
+
+      try {
+        const task = await harness.repository.create({
+          context,
+          input: createTaskInput({
+            plannedDate: '2099-06-25',
+            plannedEndTime: '19:15',
+            plannedStartTime: '18:00',
+            title: 'Fixed zone time task',
+          }),
+        })
+
+        assert.equal(task.plannedStartTime, '18:00')
+        assert.equal(task.plannedEndTime, '19:15')
+
+        const foundTask = await harness.repository.findById(context, task.id)
+        const listedTasks = await harness.repository.listByWorkspace(context, {
+          plannedDate: '2099-06-25',
+        })
+
+        assert.equal(foundTask?.plannedStartTime, '18:00')
+        assert.equal(foundTask?.plannedEndTime, '19:15')
+        assert.equal(listedTasks[0]?.id, task.id)
+        assert.equal(listedTasks[0]?.plannedStartTime, '18:00')
+        assert.equal(listedTasks[0]?.plannedEndTime, '19:15')
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('keeps shared to personal task transfer semantics consistent', async () => {
       const harness = await input.createHarness()
 

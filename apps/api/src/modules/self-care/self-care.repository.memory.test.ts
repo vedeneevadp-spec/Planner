@@ -90,6 +90,37 @@ void test('MemorySelfCareRepository reactivates an existing occurrence when it i
   )
 })
 
+void test('MemorySelfCareRepository stores scheduled local time as a fixed-zone instant', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      scheduleRule: {
+        intervalUnit: 'week',
+        intervalValue: 5,
+        repeatKind: 'after_completion',
+        startDate: '2026-06-25',
+      },
+      title: 'Массаж',
+      type: 'procedure',
+    }),
+  })
+  const occurrence = await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-06-25',
+      scheduledTime: '18:00',
+      timezone: 'Europe/Astrakhan',
+    }),
+    itemId: item.id,
+  })
+
+  assert.equal(occurrence.dueAt, '2026-06-25T14:00:00.000Z')
+  assert.equal(occurrence.reminderTimeZone, 'Europe/Astrakhan')
+})
+
 void test('MemorySelfCareRepository marks stale daily occurrences as missed', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()

@@ -59,6 +59,7 @@ export async function loadTaskRowsWithPrimaryTimeBlock(
         : null,
       time_block_ends_at: timeBlock?.ends_at ?? null,
       time_block_starts_at: timeBlock?.starts_at ?? null,
+      time_block_timezone: timeBlock?.timezone ?? null,
     }
   })
 }
@@ -102,6 +103,7 @@ export async function loadTaskRowsPageWithPrimaryTimeBlock(
         : null,
       time_block_ends_at: timeBlock?.ends_at ?? null,
       time_block_starts_at: timeBlock?.starts_at ?? null,
+      time_block_timezone: timeBlock?.timezone ?? null,
     }
   })
 }
@@ -165,7 +167,9 @@ export async function loadPrimaryTimeBlocksForTasks(
   executor: DatabaseExecutor,
   workspaceId: string,
   taskRows: TaskRow[],
-): Promise<Map<string, Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at'>>> {
+): Promise<
+  Map<string, Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at' | 'timezone'>>
+> {
   const taskIds = taskRows.map((taskRow) => taskRow.id)
 
   if (taskIds.length === 0) {
@@ -174,7 +178,7 @@ export async function loadPrimaryTimeBlocksForTasks(
 
   const timeBlockRows = await executor
     .selectFrom('app.task_time_blocks')
-    .select(['task_id', 'starts_at', 'ends_at'])
+    .select(['task_id', 'starts_at', 'ends_at', 'timezone'])
     .where('workspace_id', '=', workspaceId)
     .where('task_id', 'in', taskIds)
     .where('deleted_at', 'is', null)
@@ -184,7 +188,7 @@ export async function loadPrimaryTimeBlocksForTasks(
     .execute()
   const primaryTimeBlocks = new Map<
     string,
-    Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at'>
+    Pick<TaskTimeBlockRow, 'ends_at' | 'starts_at' | 'timezone'>
   >()
 
   for (const timeBlockRow of timeBlockRows) {
@@ -195,6 +199,7 @@ export async function loadPrimaryTimeBlocksForTasks(
     primaryTimeBlocks.set(timeBlockRow.task_id, {
       ends_at: timeBlockRow.ends_at,
       starts_at: timeBlockRow.starts_at,
+      timezone: timeBlockRow.timezone,
     })
   }
 

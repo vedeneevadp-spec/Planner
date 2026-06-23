@@ -1,3 +1,4 @@
+import type { SelfCareSettings, SelfCareTodayItem } from '@planner/contracts'
 import { describe, expect, it } from 'vitest'
 
 import type { Task } from '@/entities/task'
@@ -5,6 +6,7 @@ import type { Task } from '@/entities/task'
 import {
   buildCalendarMonthLoad,
   buildRecurringGhostTasks,
+  buildSelfCareCalendarTasks,
   getCalendarDaySummary,
   shiftCalendarMonth,
 } from './calendar-load'
@@ -271,4 +273,134 @@ describe('calendar load', () => {
 
     expect(ghosts).toEqual([])
   })
+
+  it('keeps self-care appointment local time in the occurrence timezone', () => {
+    const tasks = buildSelfCareCalendarTasks(
+      [
+        createSelfCareCalendarEntry({
+          appointment: {
+            endsAt: '2026-06-25T15:00:00.000Z',
+            startsAt: '2026-06-25T14:00:00.000Z',
+          },
+          occurrence: {
+            dueAt: '2026-06-25T14:00:00.000Z',
+            reminderTimeZone: 'Europe/Astrakhan',
+            scheduledFor: '2026-06-25',
+          },
+        }),
+      ],
+      createSelfCareSettings(),
+      'Europe/Amsterdam',
+    )
+
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({
+      plannedDate: '2026-06-25',
+      plannedEndTime: '19:00',
+      plannedStartTime: '18:00',
+      title: 'Массаж',
+    })
+  })
 })
+
+function createSelfCareSettings(
+  overrides: Partial<SelfCareSettings> = {},
+): SelfCareSettings {
+  return {
+    createdAt: '2026-06-01T00:00:00.000Z',
+    currency: 'RUB',
+    defaultReminderTone: 'soft',
+    gentleModeDate: null,
+    gentleModeEnabledToday: false,
+    id: 'settings-1',
+    quietHoursEnd: '08:00',
+    quietHoursStart: '22:00',
+    showAppointmentsInCalendar: true,
+    showSelfCareInMainTasks: true,
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    userId: 'user-1',
+    ...overrides,
+  }
+}
+
+function createSelfCareCalendarEntry(
+  overrides: {
+    appointment?: Partial<NonNullable<SelfCareTodayItem['appointment']>>
+    occurrence?: Partial<NonNullable<SelfCareTodayItem['occurrence']>>
+  } = {},
+): SelfCareTodayItem {
+  const occurrenceId = 'occurrence-1'
+
+  return {
+    appointment: {
+      createdAt: '2026-06-01T00:00:00.000Z',
+      currency: 'RUB',
+      endsAt: null,
+      id: 'appointment-1',
+      itemId: 'item-1',
+      occurrenceId,
+      place: null,
+      preparationNote: null,
+      price: null,
+      resultNote: null,
+      specialistContact: null,
+      specialistName: null,
+      startsAt: '2026-06-25T14:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      ...overrides.appointment,
+    },
+    completion: null,
+    courseDetails: null,
+    flexibleProgress: null,
+    item: {
+      category: 'relax',
+      color: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      createdFromTemplateId: null,
+      customCategoryId: null,
+      defaultDurationMinutes: 45,
+      deletedAt: null,
+      description: '',
+      icon: null,
+      id: 'item-1',
+      importance: 'recommended',
+      isActive: true,
+      isArchived: false,
+      isPrivate: true,
+      migratedFromHabitId: null,
+      minimumVersionDescription: null,
+      minimumVersionDurationMinutes: null,
+      minimumVersionTitle: null,
+      preferredTimeOfDay: 'anytime',
+      title: 'Массаж',
+      type: 'procedure',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      userId: 'user-1',
+      version: 1,
+      workspaceId: 'workspace-1',
+    },
+    lastMeasurement: null,
+    measurement: null,
+    occurrence: {
+      completedAt: null,
+      createdAt: '2026-06-01T00:00:00.000Z',
+      dueAt: null,
+      generatedAt: null,
+      id: occurrenceId,
+      itemId: 'item-1',
+      movedTo: null,
+      reminderOffsetsMinutes: [],
+      reminderTimeZone: null,
+      scheduledFor: '2026-06-25',
+      scheduleRuleId: 'rule-1',
+      status: 'scheduled',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      userId: 'user-1',
+      ...overrides.occurrence,
+    },
+    procedure: null,
+    scheduleRule: null,
+    steps: [],
+    timeGroup: 'anytime',
+  }
+}

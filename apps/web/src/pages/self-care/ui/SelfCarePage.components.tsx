@@ -20,6 +20,7 @@ import type {
   useSelfCarePlan,
   useSelfCareSettings,
 } from '@/features/self-care'
+import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import {
   CheckIcon,
@@ -87,6 +88,7 @@ import {
   getPercent,
   getPrimaryActionLabel,
   getRitualStepDraft,
+  getSelfCareEntryTimeZone,
   getSelfCareTodayCardActionOrder,
   getTemplateTypeLabel,
   getTodayScheduleLabel,
@@ -1167,6 +1169,7 @@ function SelfCareItemCard({
   todayKey: string
   uploadedIcons: UploadedIconAsset[]
 }) {
+  const plannerTimeZone = usePlannerTimeZone()
   const isInactive = !entry.item.isActive || entry.item.isArchived
   const isDone = isEntryDoneToday(entry, todayKey)
   const primaryActionLabel = getPrimaryActionLabel(entry, isDone)
@@ -1327,7 +1330,10 @@ function SelfCareItemCard({
             <p className={styles.cardMeta}>
               {formatDate(entry.occurrence.scheduledFor)}
               {entry.occurrence.dueAt
-                ? ` · ${formatTime(entry.occurrence.dueAt)}`
+                ? ` · ${formatTime(
+                    entry.occurrence.dueAt,
+                    getSelfCareEntryTimeZone(entry, plannerTimeZone),
+                  )}`
                 : ''}
             </p>
           ) : null}
@@ -1423,7 +1429,8 @@ function PlanningHintCard({
   onEdit?: (entry: SelfCareTodayItem) => void
   onSchedule?: (entry: SelfCareTodayItem) => void
 }) {
-  const planningText = formatPlanningText(entry)
+  const plannerTimeZone = usePlannerTimeZone()
+  const planningText = formatPlanningText(entry, plannerTimeZone)
   const shouldShowPlanningText = !isTodayView || !entry.occurrence
 
   return (
@@ -1953,7 +1960,10 @@ function canUseExactTimePreference(type: SelfCareItemType): boolean {
   return type === 'course' || type === 'measurement' || type === 'task'
 }
 
-function hasStoredExactTimePreference(entry: SelfCareTodayItem): boolean {
+function hasStoredExactTimePreference(
+  entry: SelfCareTodayItem,
+  plannerTimeZone: string,
+): boolean {
   if (!canUseExactTimePreference(entry.item.type)) {
     return false
   }
@@ -1966,7 +1976,7 @@ function hasStoredExactTimePreference(entry: SelfCareTodayItem): boolean {
     return false
   }
 
-  const initialScheduleTime = getInitialScheduleTime(entry)
+  const initialScheduleTime = getInitialScheduleTime(entry, plannerTimeZone)
 
   return initialScheduleTime.length > 0 && initialScheduleTime !== '00:00'
 }
@@ -1994,12 +2004,8 @@ function shouldShowExactScheduleTimeField(
   return true
 }
 
-function getClientTimeZone(): string | null {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || null
-  } catch {
-    return null
-  }
+function getClientTimeZone(plannerTimeZone: string): string {
+  return plannerTimeZone
 }
 
 function getInitialReminderOffsets(entry: SelfCareTodayItem): number[] {
@@ -2034,6 +2040,7 @@ function SelfCareCustomCreateForm({
   todayKey: string
   uploadedIcons: UploadedIconAsset[]
 }) {
+  const plannerTimeZone = usePlannerTimeZone()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [icon, setIcon] = useState('')
@@ -2199,7 +2206,7 @@ function SelfCareCustomCreateForm({
         const normalizedExactTime = usesExactTimePreference
           ? normalizedScheduledTime
           : null
-        const reminderTimeZone = getClientTimeZone()
+        const reminderTimeZone = getClientTimeZone(plannerTimeZone)
         const reminderOffsetsForExactTime = normalizedExactTime
           ? reminderOffsetsMinutes
           : []
@@ -2228,6 +2235,7 @@ function SelfCareCustomCreateForm({
         const scheduledStartsAt = buildDateTimeInput(
           scheduledDate,
           normalizedScheduledTime,
+          reminderTimeZone,
         )
 
         onCreate({
@@ -3058,6 +3066,7 @@ function SelfCareEditForm({
   todayKey: string
   uploadedIcons: UploadedIconAsset[]
 }) {
+  const plannerTimeZone = usePlannerTimeZone()
   const [title, setTitle] = useState(entry.item.title)
   const [description, setDescription] = useState(entry.item.description)
   const [icon, setIcon] = useState(entry.item.icon ?? '')
@@ -3067,7 +3076,7 @@ function SelfCareEditForm({
   )
   const [preferredTimePreference, setPreferredTimePreference] =
     useState<SelfCareTimePreference>(
-      hasStoredExactTimePreference(entry)
+      hasStoredExactTimePreference(entry, plannerTimeZone)
         ? 'exact'
         : (entry.item.preferredTimeOfDay ?? 'anytime'),
     )
@@ -3130,10 +3139,10 @@ function SelfCareEditForm({
     entry.steps.map((step) => step.title).join('\n'),
   )
   const [scheduledDate, setScheduledDate] = useState(
-    getInitialScheduleDate(entry, todayKey),
+    getInitialScheduleDate(entry, todayKey, plannerTimeZone),
   )
   const [scheduledTime, setScheduledTime] = useState(
-    getInitialScheduleTime(entry),
+    getInitialScheduleTime(entry, plannerTimeZone),
   )
   const [reminderOffsetsMinutes, setReminderOffsetsMinutes] = useState<
     number[]
@@ -3243,7 +3252,7 @@ function SelfCareEditForm({
         const reminderOffsetsForExactTime = normalizedExactTime
           ? reminderOffsetsMinutes
           : []
-        const reminderTimeZone = getClientTimeZone()
+        const reminderTimeZone = getClientTimeZone(plannerTimeZone)
         const input: SelfCareItemUpdateInput = {
           category,
           description: description.trim(),
@@ -4016,8 +4025,9 @@ export function SelfCareScheduleDialog({
   onSubmit: (input: SelfCareItemScheduleInput) => void
   todayKey: string
 }) {
+  const plannerTimeZone = usePlannerTimeZone()
   const [scheduledTime, setScheduledTime] = useState(
-    getInitialScheduleTime(entry),
+    getInitialScheduleTime(entry, plannerTimeZone),
   )
   const [reminderOffsetsMinutes, setReminderOffsetsMinutes] = useState<
     number[]
@@ -4111,7 +4121,7 @@ export function SelfCareScheduleDialog({
               scheduledTime: normalizeOptionalText(scheduledTime),
               specialistContact: normalizeOptionalText(specialistContact),
               specialistName: normalizeOptionalText(specialistName),
-              timezone: getClientTimeZone(),
+              timezone: getClientTimeZone(plannerTimeZone),
             })
           }}
         >

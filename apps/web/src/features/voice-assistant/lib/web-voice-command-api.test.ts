@@ -9,6 +9,7 @@ import { uploadWebVoiceCommand } from './web-voice-command-api'
 const TEST_CONFIG = {
   actorUserId: 'user-1',
   apiBaseUrl: 'http://127.0.0.1:3001',
+  clientTimeZone: 'Europe/Astrakhan',
   workspaceId: 'workspace-1',
 }
 

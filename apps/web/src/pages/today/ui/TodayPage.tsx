@@ -32,7 +32,11 @@ import {
   useWorkspaceUsers,
 } from '@/features/session'
 import { TaskComposer, type TaskComposerDraft } from '@/features/task-create'
-import { addDateDays, getTodayDate } from '@/shared/time/time.service'
+import {
+  addDateDays,
+  getTimeInTimeZone,
+  getTodayDate,
+} from '@/shared/time/time.service'
 import { IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 
@@ -237,7 +241,10 @@ function getSelfCareTaskKey(entry: SelfCareTodayItem): string {
   return `self-care-${entry.occurrence?.id ?? entry.item.id}`
 }
 
-function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
+function getSelfCareTaskTime(
+  entry: SelfCareTodayItem,
+  plannerTimeZone: string,
+): string | null {
   const sourceTime =
     entry.occurrence?.dueAt ??
     entry.appointment?.startsAt ??
@@ -249,10 +256,15 @@ function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
   }
 
   if (sourceTime.includes('T')) {
-    const date = new Date(sourceTime)
-
-    if (!Number.isNaN(date.getTime())) {
-      return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`
+    try {
+      return getTimeInTimeZone(
+        sourceTime,
+        entry.occurrence?.reminderTimeZone ??
+          entry.scheduleRule?.timezone ??
+          plannerTimeZone,
+      )
+    } catch {
+      // Fall through to legacy string extraction below.
     }
   }
 
@@ -262,22 +274,23 @@ function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
   return plainTime ?? isoTime ?? null
 }
 
-function padTimePart(value: number): string {
-  return String(value).padStart(2, '0')
-}
-
-function formatSelfCareTaskMeta(entry: SelfCareTodayItem): string {
-  const time = getSelfCareTaskTime(entry)
+function formatSelfCareTaskMeta(
+  entry: SelfCareTodayItem,
+  plannerTimeZone: string,
+): string {
+  const time = getSelfCareTaskTime(entry, plannerTimeZone)
 
   return time ? `Забота · ${time}` : 'Забота'
 }
 
 function SelfCareTodayTaskCard({
   entry,
+  plannerTimeZone,
   uploadedIcons,
   variant,
 }: {
   entry: SelfCareTodayItem
+  plannerTimeZone: string
   uploadedIcons: UploadedIconAsset[]
   variant: 'card' | 'compact'
 }) {
@@ -305,7 +318,7 @@ function SelfCareTodayTaskCard({
       <span className={styles.selfCareTaskBody}>
         <span className={styles.selfCareTaskTitle}>{entry.item.title}</span>
         <span className={styles.selfCareTaskMeta}>
-          {formatSelfCareTaskMeta(entry)}
+          {formatSelfCareTaskMeta(entry, plannerTimeZone)}
         </span>
       </span>
     </Link>
@@ -453,6 +466,7 @@ function PersonalTodayPage() {
     <SelfCareTodayTaskCard
       key={getSelfCareTaskKey(entry)}
       entry={entry}
+      plannerTimeZone={plannerTimeZone}
       uploadedIcons={uploadedIcons}
       variant={taskCardVariant}
     />
@@ -461,6 +475,7 @@ function PersonalTodayPage() {
     <SelfCareTodayTaskCard
       key={`overdue-${getSelfCareTaskKey(entry)}`}
       entry={entry}
+      plannerTimeZone={plannerTimeZone}
       uploadedIcons={uploadedIcons}
       variant={taskCardVariant}
     />
@@ -469,6 +484,7 @@ function PersonalTodayPage() {
     <SelfCareTodayTaskCard
       key={`tomorrow-${getSelfCareTaskKey(entry)}`}
       entry={entry}
+      plannerTimeZone={plannerTimeZone}
       uploadedIcons={uploadedIcons}
       variant={taskCardVariant}
     />

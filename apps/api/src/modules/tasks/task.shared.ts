@@ -10,6 +10,7 @@ import type {
 } from '@planner/contracts'
 import {
   generateUuidV7,
+  getTimeInTimeZone,
   getTodayDate,
   makeFixedZoneDateTime,
   normalizeTimeZone,
@@ -615,7 +616,14 @@ export function buildTimestampFromDateAndTime(
   }).instantUtc
 }
 
-export function extractTimeFromTimestamp(timestamp: string): string {
+export function extractTimeFromTimestamp(
+  timestamp: string,
+  timeZone?: string | null,
+): string {
+  if (timeZone && timeZone !== 'UTC') {
+    return getTimeInTimeZone(timestamp, timeZone)
+  }
+
   return timestamp.slice(11, 16)
 }
 
