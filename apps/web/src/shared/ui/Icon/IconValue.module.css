@@ -57,23 +57,26 @@
 }
 
 .optionList {
+  --icon-choice-button-gap: 0.5rem;
+  --icon-choice-button-size: 2.75rem;
+
   display: flex;
   flex-wrap: wrap;
   max-height: var(
     --icon-choice-picker-max-height,
-    calc(3 * 2.35rem + 2 * 0.45rem)
+    calc(3 * var(--icon-choice-button-size) + 2 * var(--icon-choice-button-gap))
   );
   overflow-y: auto;
   padding-right: 0.2rem;
-  gap: 0.45rem;
+  gap: var(--icon-choice-button-gap);
 }
 
 .optionButton {
   display: inline-grid;
   align-items: center;
   justify-items: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: var(--icon-choice-button-size);
+  height: var(--icon-choice-button-size);
   flex: 0 0 auto;
   place-items: center;
   border-radius: 999px;
@@ -87,9 +90,9 @@
 }
 
 .optionButton .mark {
-  width: 1.55rem;
-  height: 1.55rem;
-  font-size: 1.18rem;
+  width: 2.05rem;
+  height: 2.05rem;
+  font-size: 1.5rem;
 }
 
 .optionButton:hover {
