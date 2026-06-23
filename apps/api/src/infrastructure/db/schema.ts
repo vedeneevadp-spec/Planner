@@ -229,6 +229,12 @@ export interface AppSelfCareOccurrencesTable {
   id: Generated<string>
   item_id: string
   moved_to: DateColumn | null
+  reminder_offsets_minutes: ColumnType<
+    number[],
+    number[] | string,
+    number[] | string
+  >
+  reminder_time_zone: string | null
   scheduled_for: DateColumn
   schedule_rule_id: string | null
   status:
@@ -243,6 +249,25 @@ export interface AppSelfCareOccurrencesTable {
   updated_by: string | null
   user_id: string
   version: Generated<number>
+}
+
+export interface AppSelfCareRemindersTable {
+  canceled_at: TimestampColumn | null
+  claimed_at: TimestampColumn | null
+  created_at: Generated<TimestampColumn>
+  due_at: TimestampColumn
+  id: Generated<string>
+  item_id: string
+  occurrence_id: string
+  reminder_at: TimestampColumn
+  remind_offset_minutes: number
+  schedule_rule_id: string | null
+  sent_at: TimestampColumn | null
+  time_zone: string
+  updated_at: Generated<TimestampColumn>
+  user_id: string
+  version: Generated<number>
+  workspace_id: string
 }
 
 export interface AppSelfCareCompletionsTable {
@@ -916,6 +941,7 @@ export interface DatabaseSchema {
   'app.self_care_minimum_items': AppSelfCareMinimumItemsTable
   'app.self_care_occurrences': AppSelfCareOccurrencesTable
   'app.self_care_procedure_details': AppSelfCareProcedureDetailsTable
+  'app.self_care_reminders': AppSelfCareRemindersTable
   'app.self_care_ritual_step_completions': AppSelfCareRitualStepCompletionsTable
   'app.self_care_ritual_step_drafts': AppSelfCareRitualStepDraftsTable
   'app.self_care_ritual_steps': AppSelfCareRitualStepsTable

@@ -819,6 +819,11 @@ export function createSelfCareContractSchemas(): Record<
       },
       place: nullableStringSchema(),
       price: nullableNonnegativeNumberSchema(),
+      reminderOffsetsMinutes: {
+        items: integerSchema(),
+        maxItems: 8,
+        type: 'array',
+      },
       scheduledFor: {
         minLength: 1,
         type: 'string',
@@ -826,6 +831,7 @@ export function createSelfCareContractSchemas(): Record<
       scheduledTime: nullableTimeStringSchema(),
       specialistContact: nullableStringSchema(),
       specialistName: nullableStringSchema(),
+      timezone: nullableStringSchema(),
     }),
     SelfCareItemUpdateInput: objectSchema(
       {
@@ -971,6 +977,11 @@ export function createSelfCareContractSchemas(): Record<
       id: stringSchema(),
       itemId: stringSchema(),
       movedTo: nullableStringSchema(),
+      reminderOffsetsMinutes: {
+        items: integerSchema(),
+        type: 'array',
+      },
+      reminderTimeZone: nullableStringSchema(),
       scheduledFor: stringSchema(),
       scheduleRuleId: nullableStringSchema(),
       status: enumSchema(selfCareOccurrenceStatusSchema.options),

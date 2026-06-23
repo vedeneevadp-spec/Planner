@@ -45,10 +45,12 @@ const scheduleInput: SelfCareItemScheduleInput = {
   note: 'Перед визитом не есть',
   place: 'Клиника',
   price: 4600,
+  reminderOffsetsMinutes: [],
   scheduledFor: '2026-06-26',
   scheduledTime: '18:00',
   specialistContact: null,
   specialistName: 'Федор',
+  timezone: null,
 }
 
 describe('scheduleSelfCareEntryOccurrence', () => {
@@ -729,6 +731,8 @@ function createOccurrence(
     id: 'occurrence-1',
     itemId: 'item-1',
     movedTo: null,
+    reminderOffsetsMinutes: [],
+    reminderTimeZone: null,
     scheduledFor: '2026-06-20',
     scheduleRuleId: 'rule-1',
     status: 'scheduled',

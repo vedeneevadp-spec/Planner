@@ -150,6 +150,31 @@ import {
   shiftDateKey,
   shouldShowTodayEntry,
 } from './SelfCarePage.schedule'
+
+const REMINDER_CLEAR_VALUE = 'none'
+const REMINDER_OFFSET_OPTIONS: ReadonlyArray<{
+  label: string
+  offsetMinutes: number
+  value: string
+}> = [
+  { label: 'В момент', offsetMinutes: 0, value: '0' },
+  { label: '15 мин', offsetMinutes: 15, value: '15' },
+  { label: '1 час', offsetMinutes: 60, value: '60' },
+  { label: '1 день', offsetMinutes: 1440, value: '1440' },
+  { label: '1 неделя', offsetMinutes: 10080, value: '10080' },
+  { label: '1 месяц', offsetMinutes: 43200, value: '43200' },
+]
+const REMINDER_SELECT_OPTIONS: Array<SelectPickerOption<string>> = [
+  { label: 'Без оповещения', value: REMINDER_CLEAR_VALUE },
+  ...REMINDER_OFFSET_OPTIONS.map(({ label, value }) => ({ label, value })),
+]
+const REMINDER_OFFSET_VALUE_BY_MINUTES = new Map(
+  REMINDER_OFFSET_OPTIONS.map((option) => [option.offsetMinutes, option.value]),
+)
+const REMINDER_OFFSET_MINUTES_BY_VALUE = new Map(
+  REMINDER_OFFSET_OPTIONS.map((option) => [option.value, option.offsetMinutes]),
+)
+
 const CREATE_TYPE_OPTIONS: ReadonlyArray<{
   description: string
   label: string
@@ -1879,6 +1904,115 @@ function SelfCareIconPickerDialog({
   )
 }
 
+function SelfCareReminderOffsetsField({
+  disabled,
+  value,
+  onChange,
+}: {
+  disabled?: boolean | undefined
+  value: readonly number[]
+  onChange: (value: number[]) => void
+}) {
+  const selectValue = value
+    .map((offset) => REMINDER_OFFSET_VALUE_BY_MINUTES.get(offset))
+    .filter((offset): offset is string => Boolean(offset))
+
+  function handleChange(nextValue: string[]): void {
+    onChange(
+      nextValue
+        .filter((offset) => offset !== REMINDER_CLEAR_VALUE)
+        .map((offset) => REMINDER_OFFSET_MINUTES_BY_VALUE.get(offset))
+        .filter((offset): offset is number => offset !== undefined)
+        .sort((left, right) => left - right),
+    )
+  }
+
+  return (
+    <SelectPicker
+      className={styles.selectField}
+      label="Напомнить"
+      multiple
+      clearValue={REMINDER_CLEAR_VALUE}
+      disabled={disabled}
+      value={selectValue}
+      options={REMINDER_SELECT_OPTIONS}
+      onChange={handleChange}
+    />
+  )
+}
+
+function canUseExactTimePreference(type: SelfCareItemType): boolean {
+  return type === 'course' || type === 'measurement' || type === 'task'
+}
+
+function hasStoredExactTimePreference(entry: SelfCareTodayItem): boolean {
+  if (!canUseExactTimePreference(entry.item.type)) {
+    return false
+  }
+
+  if (entry.scheduleRule?.preferredTime) {
+    return true
+  }
+
+  if (!shouldUseExactSchedule(entry.item.type)) {
+    return false
+  }
+
+  const initialScheduleTime = getInitialScheduleTime(entry)
+
+  return initialScheduleTime.length > 0 && initialScheduleTime !== '00:00'
+}
+
+function shouldShowPreferredTimePreference(type: SelfCareItemType): boolean {
+  return type !== 'appointment'
+}
+
+function getTimePreferenceOptions(
+  type: SelfCareItemType,
+): Array<SelectPickerOption<SelfCareTimePreference>> {
+  return canUseExactTimePreference(type)
+    ? TIME_PREFERENCE_SELECT_OPTIONS
+    : TIME_GROUP_SELECT_OPTIONS
+}
+
+function shouldShowExactScheduleTimeField(
+  type: SelfCareItemType,
+  usesExactTimePreference: boolean,
+): boolean {
+  if (type === 'measurement' || type === 'task') {
+    return usesExactTimePreference
+  }
+
+  return true
+}
+
+function getClientTimeZone(): string | null {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || null
+  } catch {
+    return null
+  }
+}
+
+function getInitialReminderOffsets(entry: SelfCareTodayItem): number[] {
+  if (entry.occurrence?.reminderOffsetsMinutes.length) {
+    return entry.occurrence.reminderOffsetsMinutes
+  }
+
+  return entry.scheduleRule?.reminderOffsetsMinutes ?? []
+}
+
+function areNumberArraysEqual(
+  left: readonly number[],
+  right: readonly number[],
+): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return left.every((value, index) => value === right[index])
+}
+
 function SelfCareCustomCreateForm({
   defaultCurrency,
   isBusy,
@@ -1925,6 +2059,9 @@ function SelfCareCustomCreateForm({
   const [courseBreakDays, setCourseBreakDays] = useState('7')
   const [scheduledDate, setScheduledDate] = useState(todayKey)
   const [scheduledTime, setScheduledTime] = useState('')
+  const [reminderOffsetsMinutes, setReminderOffsetsMinutes] = useState<
+    number[]
+  >([])
   const [detailsPlace, setDetailsPlace] = useState('')
   const [detailsSpecialist, setDetailsSpecialist] = useState('')
   const [detailsContact, setDetailsContact] = useState('')
@@ -1935,14 +2072,22 @@ function SelfCareCustomCreateForm({
   const selectedType = CREATE_TYPE_OPTIONS.find(
     (option) => option.value === type,
   )
+  const showPreferredTimePreference = shouldShowPreferredTimePreference(type)
+  const usesExactTimePreference =
+    canUseExactTimePreference(type) && preferredTimePreference === 'exact'
+  const showExactScheduleTimeField = shouldShowExactScheduleTimeField(
+    type,
+    usesExactTimePreference,
+  )
+  const showCourseExactTimeField = type === 'course' && usesExactTimePreference
   const intervalNumber = parsePositiveInteger(intervalValue)
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
   const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
-  const usesMeasurementExactTime =
-    type === 'measurement' && preferredTimePreference === 'exact'
   const preferredTimeOfDay =
-    preferredTimePreference === 'exact' ? null : preferredTimePreference
+    showPreferredTimePreference && preferredTimePreference !== 'exact'
+      ? preferredTimePreference
+      : null
   const usesExactSchedule = shouldUseExactSchedule(type)
   const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
   const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
@@ -1972,13 +2117,16 @@ function SelfCareCustomCreateForm({
       courseRepeatMode !== 'cycle' ||
       courseBreakDaysNumber !== null) &&
     (!usesExactSchedule || scheduledDate.length > 0) &&
-    (!usesMeasurementExactTime || scheduledTime.length > 0) &&
+    (!usesExactTimePreference || scheduledTime.length > 0) &&
+    (!(usesExactSchedule && showExactScheduleTimeField) ||
+      reminderOffsetsMinutes.length === 0 ||
+      scheduledTime.length > 0) &&
     (type !== 'measurement' || measurementUnit.trim().length > 0)
 
   function handleTypeChange(nextType: SelfCareItemType): void {
     setType(nextType)
 
-    if (nextType !== 'measurement') {
+    if (!canUseExactTimePreference(nextType)) {
       setPreferredTimePreference((value) =>
         value === 'exact' ? 'anytime' : value,
       )
@@ -2040,9 +2188,13 @@ function SelfCareCustomCreateForm({
         const detailsPriceValue = parseOptionalPrice(detailsPrice)
         const defaultDetailsCurrency = normalizeOptionalText(defaultCurrency)
         const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
-        const normalizedMeasurementTime = usesMeasurementExactTime
+        const normalizedExactTime = usesExactTimePreference
           ? normalizedScheduledTime
           : null
+        const reminderTimeZone = getClientTimeZone()
+        const reminderOffsetsForExactTime = normalizedExactTime
+          ? reminderOffsetsMinutes
+          : []
         const canStoreVisitDetails = shouldShowVisitDetails(type)
         const scheduleRule =
           type === 'task' && scheduleRepeatKind === 'none'
@@ -2059,10 +2211,11 @@ function SelfCareCustomCreateForm({
                 intervalValue: intervalNumber ?? 1,
                 monthOfYear:
                   monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-                preferredTime:
-                  type === 'measurement' ? normalizedMeasurementTime : null,
+                preferredTime: normalizedExactTime,
+                reminderOffsetsMinutes: reminderOffsetsForExactTime,
                 repeatKind: scheduleRepeatKind,
                 startDate: usesExactSchedule ? scheduledDate : todayKey,
+                timezone: reminderTimeZone,
               })
         const scheduledStartsAt = buildDateTimeInput(
           scheduledDate,
@@ -2176,17 +2329,21 @@ function SelfCareCustomCreateForm({
                   ? normalizeOptionalText(detailsPlace)
                   : null,
                 price: canStoreVisitDetails ? detailsPriceValue : null,
+                reminderOffsetsMinutes:
+                  showExactScheduleTimeField && normalizedScheduledTime
+                    ? reminderOffsetsMinutes
+                    : [],
                 scheduledFor: scheduledDate,
-                scheduledTime:
-                  type === 'measurement'
-                    ? normalizedMeasurementTime
-                    : normalizedScheduledTime,
+                scheduledTime: showExactScheduleTimeField
+                  ? normalizedScheduledTime
+                  : null,
                 specialistContact: canStoreVisitDetails
                   ? normalizeOptionalText(detailsContact)
                   : null,
                 specialistName: canStoreVisitDetails
                   ? normalizeOptionalText(detailsSpecialist)
                   : null,
+                timezone: reminderTimeZone,
               }
             : undefined,
         })
@@ -2233,18 +2390,21 @@ function SelfCareCustomCreateForm({
         onChange={setCategory}
       />
 
-      <div className={styles.createFormGrid}>
-        <SelectPicker<SelfCareTimePreference>
-          className={styles.selectField}
-          label="Когда удобнее"
-          value={preferredTimePreference}
-          options={
-            type === 'measurement'
-              ? TIME_PREFERENCE_SELECT_OPTIONS
-              : TIME_GROUP_SELECT_OPTIONS
-          }
-          onChange={setPreferredTimePreference}
-        />
+      <div
+        className={cx(
+          styles.createFormGrid,
+          !showPreferredTimePreference && styles.createFormGridSingle,
+        )}
+      >
+        {showPreferredTimePreference ? (
+          <SelectPicker<SelfCareTimePreference>
+            className={styles.selectField}
+            label="Когда удобнее"
+            value={preferredTimePreference}
+            options={getTimePreferenceOptions(type)}
+            onChange={setPreferredTimePreference}
+          />
+        ) : null}
 
         {type === 'course' ? (
           <SelectPicker<SelfCareCourseScheduleMode>
@@ -2308,30 +2468,62 @@ function SelfCareCustomCreateForm({
       />
 
       {usesExactSchedule ? (
-        <div className={styles.createFormGrid}>
-          <label className={styles.dateField}>
-            <span>{getExactScheduleDateLabel(type)}</span>
-            <input
-              type="date"
-              min={todayKey}
-              required
-              value={scheduledDate}
-              onChange={(event) => setScheduledDate(event.target.value)}
-            />
-          </label>
+        <>
+          <div className={styles.createFormGrid}>
+            <label className={styles.dateField}>
+              <span>{getExactScheduleDateLabel(type)}</span>
+              <input
+                type="date"
+                min={todayKey}
+                required
+                value={scheduledDate}
+                onChange={(event) => setScheduledDate(event.target.value)}
+              />
+            </label>
 
-          {type !== 'measurement' || usesMeasurementExactTime ? (
+            {showExactScheduleTimeField ? (
+              <label className={styles.dateField}>
+                <span>{getExactScheduleTimeLabel(type)}</span>
+                <input
+                  type="time"
+                  required={usesExactTimePreference}
+                  value={scheduledTime}
+                  onChange={(event) => setScheduledTime(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          {showExactScheduleTimeField ? (
+            <SelfCareReminderOffsetsField
+              value={reminderOffsetsMinutes}
+              onChange={setReminderOffsetsMinutes}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {showCourseExactTimeField ? (
+        <>
+          <div
+            className={cx(styles.createFormGrid, styles.createFormGridSingle)}
+          >
             <label className={styles.dateField}>
               <span>{getExactScheduleTimeLabel(type)}</span>
               <input
                 type="time"
-                required={usesMeasurementExactTime}
+                required
                 value={scheduledTime}
                 onChange={(event) => setScheduledTime(event.target.value)}
               />
             </label>
-          ) : null}
-        </div>
+          </div>
+
+          <SelfCareReminderOffsetsField
+            value={reminderOffsetsMinutes}
+            onChange={setReminderOffsetsMinutes}
+          />
+        </>
       ) : null}
 
       {type === 'course' ? (
@@ -2867,7 +3059,7 @@ function SelfCareEditForm({
   )
   const [preferredTimePreference, setPreferredTimePreference] =
     useState<SelfCareTimePreference>(
-      entry.item.type === 'measurement' && entry.scheduleRule?.preferredTime
+      hasStoredExactTimePreference(entry)
         ? 'exact'
         : (entry.item.preferredTimeOfDay ?? 'anytime'),
     )
@@ -2935,6 +3127,9 @@ function SelfCareEditForm({
   const [scheduledTime, setScheduledTime] = useState(
     getInitialScheduleTime(entry),
   )
+  const [reminderOffsetsMinutes, setReminderOffsetsMinutes] = useState<
+    number[]
+  >(() => getInitialReminderOffsets(entry))
   const [procedurePlace, setProcedurePlace] = useState(
     entry.appointment?.place ?? entry.procedure?.place ?? '',
   )
@@ -2961,10 +3156,22 @@ function SelfCareEditForm({
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
   const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
-  const usesMeasurementExactTime =
-    entry.item.type === 'measurement' && preferredTimePreference === 'exact'
+  const showPreferredTimePreference = shouldShowPreferredTimePreference(
+    entry.item.type,
+  )
+  const usesExactTimePreference =
+    canUseExactTimePreference(entry.item.type) &&
+    preferredTimePreference === 'exact'
+  const showExactScheduleTimeField = shouldShowExactScheduleTimeField(
+    entry.item.type,
+    usesExactTimePreference,
+  )
+  const showCourseExactTimeField =
+    entry.item.type === 'course' && usesExactTimePreference
   const preferredTimeOfDay =
-    preferredTimePreference === 'exact' ? null : preferredTimePreference
+    showPreferredTimePreference && preferredTimePreference !== 'exact'
+      ? preferredTimePreference
+      : null
   const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
   const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
   const selectedRepeatKind = repeatMode === 'keep' ? null : repeatMode
@@ -3002,7 +3209,10 @@ function SelfCareEditForm({
     (entry.item.type !== 'course' ||
       courseRepeatMode !== 'cycle' ||
       courseBreakDaysNumber !== null) &&
-    (!usesMeasurementExactTime || scheduledTime.length > 0) &&
+    (!usesExactTimePreference || scheduledTime.length > 0) &&
+    (!(usesExactSchedule && showExactScheduleTimeField) ||
+      reminderOffsetsMinutes.length === 0 ||
+      scheduledTime.length > 0) &&
     (entry.item.type !== 'measurement' || measurementUnit.trim().length > 0)
 
   return (
@@ -3019,9 +3229,13 @@ function SelfCareEditForm({
         const normalizedProcedureCurrency =
           normalizeOptionalText(procedureCurrency)
         const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
-        const normalizedMeasurementTime = usesMeasurementExactTime
+        const normalizedExactTime = usesExactTimePreference
           ? normalizedScheduledTime
           : null
+        const reminderOffsetsForExactTime = normalizedExactTime
+          ? reminderOffsetsMinutes
+          : []
+        const reminderTimeZone = getClientTimeZone()
         const input: SelfCareItemUpdateInput = {
           category,
           description: description.trim(),
@@ -3043,8 +3257,11 @@ function SelfCareEditForm({
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
+            preferredTime: normalizedExactTime,
+            reminderOffsetsMinutes: reminderOffsetsForExactTime,
             repeatKind: 'course',
             startDate: entry.scheduleRule?.startDate ?? todayKey,
+            timezone: reminderTimeZone,
           })
         } else if (entry.item.type === 'flexible_goal') {
           const flexibleRepeatKind =
@@ -3075,22 +3292,27 @@ function SelfCareEditForm({
             intervalUnit,
             intervalValue: intervalNumber ?? 1,
             monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-            preferredTime:
-              entry.item.type === 'measurement'
-                ? normalizedMeasurementTime
-                : null,
+            preferredTime: normalizedExactTime,
+            reminderOffsetsMinutes: reminderOffsetsForExactTime,
             repeatKind: selectedRepeatKind,
             startDate: usesExactSchedule
               ? scheduledDate
               : (entry.scheduleRule?.startDate ?? todayKey),
+            timezone: reminderTimeZone,
           })
         }
 
         if (
-          entry.item.type === 'measurement' &&
+          canUseExactTimePreference(entry.item.type) &&
           !selectedRepeatKind &&
-          (entry.scheduleRule?.preferredTime ?? null) !==
-            normalizedMeasurementTime
+          !(entry.item.type === 'course' && selectedCourseScheduleMode) &&
+          entry.scheduleRule &&
+          ((entry.scheduleRule?.preferredTime ?? null) !==
+            normalizedExactTime ||
+            !areNumberArraysEqual(
+              entry.scheduleRule?.reminderOffsetsMinutes ?? [],
+              reminderOffsetsForExactTime,
+            ))
         ) {
           input.scheduleRule = {
             allowMultiplePerDay:
@@ -3106,12 +3328,11 @@ function SelfCareEditForm({
             intervalUnit: entry.scheduleRule?.intervalUnit ?? null,
             intervalValue: entry.scheduleRule?.intervalValue ?? null,
             monthOfYear: entry.scheduleRule?.monthOfYear ?? null,
-            preferredTime: normalizedMeasurementTime,
-            reminderOffsetsMinutes:
-              entry.scheduleRule?.reminderOffsetsMinutes ?? [],
+            preferredTime: normalizedExactTime,
+            reminderOffsetsMinutes: reminderOffsetsForExactTime,
             repeatKind: entry.scheduleRule?.repeatKind ?? 'daily',
             startDate: entry.scheduleRule?.startDate ?? scheduledDate,
-            timezone: entry.scheduleRule?.timezone ?? null,
+            timezone: reminderTimeZone ?? entry.scheduleRule?.timezone ?? null,
             weekOfMonth: entry.scheduleRule?.weekOfMonth ?? null,
           }
         }
@@ -3180,17 +3401,21 @@ function SelfCareEditForm({
                   ? normalizeOptionalText(procedurePlace)
                   : null,
                 price: canStoreVisitDetails ? detailsPriceValue : null,
+                reminderOffsetsMinutes:
+                  showExactScheduleTimeField && normalizedScheduledTime
+                    ? reminderOffsetsMinutes
+                    : [],
                 scheduledFor: scheduledDate,
-                scheduledTime:
-                  entry.item.type === 'measurement'
-                    ? normalizedMeasurementTime
-                    : normalizedScheduledTime,
+                scheduledTime: showExactScheduleTimeField
+                  ? normalizedScheduledTime
+                  : null,
                 specialistContact: canStoreVisitDetails
                   ? normalizeOptionalText(procedureContact)
                   : null,
                 specialistName: canStoreVisitDetails
                   ? normalizeOptionalText(procedureSpecialist)
                   : null,
+                timezone: reminderTimeZone,
               }
             : undefined,
         })
@@ -3230,18 +3455,21 @@ function SelfCareEditForm({
         onChange={setCategory}
       />
 
-      <div className={styles.createFormGrid}>
-        <SelectPicker<SelfCareTimePreference>
-          className={styles.selectField}
-          label="Когда удобнее"
-          value={preferredTimePreference}
-          options={
-            entry.item.type === 'measurement'
-              ? TIME_PREFERENCE_SELECT_OPTIONS
-              : TIME_GROUP_SELECT_OPTIONS
-          }
-          onChange={setPreferredTimePreference}
-        />
+      <div
+        className={cx(
+          styles.createFormGrid,
+          !showPreferredTimePreference && styles.createFormGridSingle,
+        )}
+      >
+        {showPreferredTimePreference ? (
+          <SelectPicker<SelfCareTimePreference>
+            className={styles.selectField}
+            label="Когда удобнее"
+            value={preferredTimePreference}
+            options={getTimePreferenceOptions(entry.item.type)}
+            onChange={setPreferredTimePreference}
+          />
+        ) : null}
 
         {entry.item.type === 'course' ? (
           <SelectPicker<SelfCareCourseEditScheduleMode>
@@ -3361,30 +3589,62 @@ function SelfCareEditForm({
       ) : null}
 
       {usesExactSchedule ? (
-        <div className={styles.createFormGrid}>
-          <label className={styles.dateField}>
-            <span>{getExactScheduleDateLabel(entry.item.type)}</span>
-            <input
-              type="date"
-              min={todayKey}
-              required
-              value={scheduledDate}
-              onChange={(event) => setScheduledDate(event.target.value)}
-            />
-          </label>
+        <>
+          <div className={styles.createFormGrid}>
+            <label className={styles.dateField}>
+              <span>{getExactScheduleDateLabel(entry.item.type)}</span>
+              <input
+                type="date"
+                min={todayKey}
+                required
+                value={scheduledDate}
+                onChange={(event) => setScheduledDate(event.target.value)}
+              />
+            </label>
 
-          {entry.item.type !== 'measurement' || usesMeasurementExactTime ? (
+            {showExactScheduleTimeField ? (
+              <label className={styles.dateField}>
+                <span>{getExactScheduleTimeLabel(entry.item.type)}</span>
+                <input
+                  type="time"
+                  required={usesExactTimePreference}
+                  value={scheduledTime}
+                  onChange={(event) => setScheduledTime(event.target.value)}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          {showExactScheduleTimeField ? (
+            <SelfCareReminderOffsetsField
+              value={reminderOffsetsMinutes}
+              onChange={setReminderOffsetsMinutes}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      {showCourseExactTimeField ? (
+        <>
+          <div
+            className={cx(styles.createFormGrid, styles.createFormGridSingle)}
+          >
             <label className={styles.dateField}>
               <span>{getExactScheduleTimeLabel(entry.item.type)}</span>
               <input
                 type="time"
-                required={usesMeasurementExactTime}
+                required
                 value={scheduledTime}
                 onChange={(event) => setScheduledTime(event.target.value)}
               />
             </label>
-          ) : null}
-        </div>
+          </div>
+
+          <SelfCareReminderOffsetsField
+            value={reminderOffsetsMinutes}
+            onChange={setReminderOffsetsMinutes}
+          />
+        </>
       ) : null}
 
       {entry.item.type === 'course' ? (
@@ -3751,6 +4011,9 @@ export function SelfCareScheduleDialog({
   const [scheduledTime, setScheduledTime] = useState(
     getInitialScheduleTime(entry),
   )
+  const [reminderOffsetsMinutes, setReminderOffsetsMinutes] = useState<
+    number[]
+  >(() => getInitialReminderOffsets(entry))
   const [place, setPlace] = useState(
     entry.appointment?.place ?? entry.procedure?.place ?? '',
   )
@@ -3835,10 +4098,12 @@ export function SelfCareScheduleDialog({
               note,
               place: normalizeOptionalText(place),
               price: priceValue,
+              reminderOffsetsMinutes,
               scheduledFor: date,
               scheduledTime: normalizeOptionalText(scheduledTime),
               specialistContact: normalizeOptionalText(specialistContact),
               specialistName: normalizeOptionalText(specialistName),
+              timezone: getClientTimeZone(),
             })
           }}
         >
@@ -3871,6 +4136,11 @@ export function SelfCareScheduleDialog({
               />
             </label>
           </div>
+
+          <SelfCareReminderOffsetsField
+            value={reminderOffsetsMinutes}
+            onChange={setReminderOffsetsMinutes}
+          />
 
           <div
             className={styles.quickDateGrid}
@@ -3968,7 +4238,11 @@ export function SelfCareScheduleDialog({
             <button
               className={styles.doneButton}
               type="submit"
-              disabled={isBusy || !date}
+              disabled={
+                isBusy ||
+                !date ||
+                (reminderOffsetsMinutes.length > 0 && !scheduledTime)
+              }
             >
               Запланировать
             </button>

@@ -706,6 +706,8 @@ function createOccurrence(
     id: 'occurrence-1',
     itemId: 'item-1',
     movedTo: null,
+    reminderOffsetsMinutes: [],
+    reminderTimeZone: null,
     scheduledFor: '2026-06-22',
     scheduleRuleId: 'rule-1',
     status: 'scheduled',

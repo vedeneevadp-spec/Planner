@@ -661,6 +661,8 @@ describe('TodayPage', () => {
               id: 'occurrence-dentist',
               itemId: 'self-care-dentist',
               movedTo: null,
+              reminderOffsetsMinutes: [],
+              reminderTimeZone: null,
               scheduledFor: tomorrowKey,
               scheduleRuleId: null,
               status: 'scheduled',

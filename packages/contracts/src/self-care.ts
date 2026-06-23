@@ -111,8 +111,23 @@ export const selfCareReminderStrategySchema = z.enum([
   'persistent',
 ])
 
+const selfCareReminderOffsetMinuteValues = [
+  0, 15, 30, 60, 120, 180, 360, 720, 1440, 2880, 10080, 43200,
+] as const
+const selfCareReminderOffsetMinuteSet = new Set<number>(
+  selfCareReminderOffsetMinuteValues,
+)
+
 const reminderOffsetsSchema = z
-  .array(z.number().int())
+  .array(
+    z
+      .number()
+      .int()
+      .refine(
+        (value) => selfCareReminderOffsetMinuteSet.has(value),
+        'Unsupported self-care reminder offset.',
+      ),
+  )
   .max(8)
   .transform((values) =>
     [...new Set(values)].sort((left, right) => left - right),
@@ -192,6 +207,8 @@ export const selfCareOccurrenceSchema = z.object({
   id: z.string(),
   itemId: z.string(),
   movedTo: z.string().nullable(),
+  reminderOffsetsMinutes: z.array(z.number().int()),
+  reminderTimeZone: z.string().nullable(),
   scheduledFor: z.string(),
   scheduleRuleId: z.string().nullable(),
   status: selfCareOccurrenceStatusSchema,
@@ -798,6 +815,7 @@ export const selfCareItemScheduleInputSchema = z.object({
   note: z.string().trim().max(600).optional().default(''),
   place: nullableStringInput,
   price: optionalMoneySchema.nullable().optional().default(null),
+  reminderOffsetsMinutes: reminderOffsetsSchema.default([]),
   scheduledFor: z.string().min(1),
   scheduledTime: z
     .string()
@@ -807,6 +825,7 @@ export const selfCareItemScheduleInputSchema = z.object({
     .default(null),
   specialistContact: nullableStringInput,
   specialistName: nullableStringInput,
+  timezone: nullableStringInput,
 })
 
 export const selfCareOccurrenceSkipInputSchema = z.object({

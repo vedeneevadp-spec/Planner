@@ -607,6 +607,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         completedAt: null,
         dueAt,
         movedTo: null,
+        reminderOffsetsMinutes: command.input.reminderOffsetsMinutes,
+        reminderTimeZone: command.input.timezone,
         scheduleRuleId: scheduleRule?.id ?? null,
         status: 'scheduled' as const,
         updatedAt: new Date().toISOString(),
@@ -622,6 +624,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       scheduledFor: command.input.scheduledFor,
       scheduleRule,
     })
+    occurrence.reminderOffsetsMinutes = command.input.reminderOffsetsMinutes
+    occurrence.reminderTimeZone = command.input.timezone
     this.occurrences.set(occurrence.id, occurrence)
     this.upsertScheduledDetails(item, occurrence, command.input)
     return occurrence

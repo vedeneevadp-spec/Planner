@@ -166,6 +166,11 @@ export function mapOccurrenceRow(
     id: row.id,
     itemId: row.item_id,
     movedTo: serializeNullableDate(row.moved_to),
+    reminderOffsetsMinutes: parseJsonArray<number>(
+      row.reminder_offsets_minutes,
+      [],
+    ),
+    reminderTimeZone: row.reminder_time_zone,
     scheduledFor: serializeDate(row.scheduled_for),
     scheduleRuleId: row.schedule_rule_id,
     status: row.status,

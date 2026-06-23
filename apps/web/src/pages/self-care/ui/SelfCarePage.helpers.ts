@@ -787,8 +787,10 @@ export function buildCreateScheduleRule(input: {
   intervalValue: number
   monthOfYear: number
   preferredTime?: string | null | undefined
+  reminderOffsetsMinutes?: number[] | undefined
   repeatKind: SelfCareCreateRepeatKind
   startDate: string
+  timezone?: string | null | undefined
 }): SelfCareCreateScheduleRuleInput {
   const needsInterval =
     repeatKindRequiresInterval(input.repeatKind) ||
@@ -819,10 +821,10 @@ export function buildCreateScheduleRule(input: {
         ? input.monthOfYear
         : null,
     preferredTime: input.preferredTime ?? null,
-    reminderOffsetsMinutes: [],
+    reminderOffsetsMinutes: input.reminderOffsetsMinutes ?? [],
     repeatKind: input.repeatKind,
     startDate: input.startDate,
-    timezone: null,
+    timezone: input.timezone ?? null,
     weekOfMonth: null,
   }
 }

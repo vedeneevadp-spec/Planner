@@ -1396,6 +1396,8 @@ function selfCareOccurrence(
     id: 'occurrence-1',
     itemId: 'self-care-1',
     movedTo: null,
+    reminderOffsetsMinutes: [],
+    reminderTimeZone: null,
     scheduledFor: '2026-06-02',
     scheduleRuleId: 'rule-1',
     status: 'scheduled',

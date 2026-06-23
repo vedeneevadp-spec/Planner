@@ -67,7 +67,10 @@ export class SelfCareService {
     input: Parameters<SelfCareRepository['createItem']>[0]['input'],
   ) {
     assertCanWriteSelfCare(context)
-    return this.repository.createItem({ context, input })
+    return this.repository.createItem({
+      context,
+      input: withScheduleRuleClientTimeZone(context, input),
+    })
   }
 
   updateItem(
@@ -76,7 +79,11 @@ export class SelfCareService {
     input: Parameters<SelfCareRepository['updateItem']>[0]['input'],
   ) {
     assertCanWriteSelfCare(context)
-    return this.repository.updateItem({ context, input, itemId })
+    return this.repository.updateItem({
+      context,
+      input: withScheduleRuleClientTimeZone(context, input),
+      itemId,
+    })
   }
 
   archiveItem(context: SelfCareWriteContext, itemId: string) {
@@ -105,7 +112,11 @@ export class SelfCareService {
     input: Parameters<SelfCareRepository['scheduleItem']>[0]['input'],
   ) {
     assertCanWriteSelfCare(context)
-    return this.repository.scheduleItem({ context, input, itemId })
+    return this.repository.scheduleItem({
+      context,
+      input: withScheduleClientTimeZone(context, input),
+      itemId,
+    })
   }
 
   completeOccurrence(
@@ -246,6 +257,92 @@ export class SelfCareService {
       templateId,
     })
   }
+}
+
+function withScheduleRuleClientTimeZone<
+  TInput extends {
+    scheduleRule?:
+      | {
+          preferredTime?: string | null | undefined
+          reminderOffsetsMinutes?: number[] | undefined
+          timezone?: string | null | undefined
+        }
+      | undefined
+  },
+>(context: SelfCareWriteContext, input: TInput): TInput {
+  const rule = input.scheduleRule
+
+  if (!rule) {
+    return input
+  }
+
+  const timeZone = resolveSelfCareTimeZone(
+    rule.timezone,
+    context.clientTimeZone,
+  )
+
+  if (
+    rule.timezone === timeZone ||
+    (!timeZone && !rule.preferredTime && !rule.reminderOffsetsMinutes?.length)
+  ) {
+    return input
+  }
+
+  return {
+    ...input,
+    scheduleRule: {
+      ...rule,
+      timezone: timeZone,
+    },
+  }
+}
+
+function withScheduleClientTimeZone<
+  TInput extends {
+    reminderOffsetsMinutes?: number[] | undefined
+    scheduledTime?: string | null | undefined
+    timezone?: string | null | undefined
+  },
+>(context: SelfCareWriteContext, input: TInput): TInput {
+  const timeZone = resolveSelfCareTimeZone(
+    input.timezone,
+    context.clientTimeZone,
+  )
+
+  if (
+    input.timezone === timeZone ||
+    (!timeZone && !input.scheduledTime && !input.reminderOffsetsMinutes?.length)
+  ) {
+    return input
+  }
+
+  return {
+    ...input,
+    timezone: timeZone,
+  }
+}
+
+function resolveSelfCareTimeZone(
+  explicitTimeZone: string | null | undefined,
+  clientTimeZone: string | undefined,
+): string | null {
+  const timeZone = explicitTimeZone?.trim() || clientTimeZone?.trim()
+
+  if (!timeZone) {
+    return null
+  }
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date())
+  } catch {
+    throw new HttpError(
+      400,
+      'self_care_reminder_invalid_timezone',
+      'Self-care reminder timezone is invalid.',
+    )
+  }
+
+  return timeZone
 }
 
 function assertCanReadSelfCare(context: SelfCareReadContext): void {

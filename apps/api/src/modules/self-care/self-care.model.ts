@@ -45,6 +45,7 @@ export type StoredSelfCareTemplateRecord = SelfCareTemplate
 export interface SelfCareReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined

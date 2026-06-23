@@ -1,5 +1,5 @@
 [Unit]
-Description=Planner Task Reminders Worker
+Description=Planner Task and Self-Care Reminders Worker
 After=network-online.target
 Wants=network-online.target
 

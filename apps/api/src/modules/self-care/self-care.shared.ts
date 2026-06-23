@@ -502,6 +502,8 @@ export function createOccurrenceRecord(input: {
     id: generateUuidV7(),
     itemId: input.item.id,
     movedTo: null,
+    reminderOffsetsMinutes: [],
+    reminderTimeZone: null,
     scheduledFor: input.scheduledFor,
     scheduleRuleId: input.scheduleRule?.id ?? null,
     status: 'scheduled',

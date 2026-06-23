@@ -70,6 +70,11 @@ import {
   SelfCareService,
 } from './modules/self-care/index.js'
 import {
+  PostgresSelfCareReminderRepository,
+  SelfCareRemindersPoller,
+  SelfCareRemindersService,
+} from './modules/self-care-reminders/index.js'
+import {
   LocalProfileAvatarStorage,
   MemorySessionRepository,
   PostgresSessionRepository,
@@ -253,9 +258,19 @@ export function createApiKernel(
       taskRemindersService,
       app.log,
     )
+    const selfCareRemindersService = new SelfCareRemindersService(
+      new PostgresSelfCareReminderRepository(database.db),
+      pushNotificationsService,
+    )
+    const selfCareRemindersPoller = new SelfCareRemindersPoller(
+      selfCareRemindersService,
+      app.log,
+    )
 
     taskRemindersPoller.start()
+    selfCareRemindersPoller.start()
     backgroundJobs.push(taskRemindersPoller)
+    backgroundJobs.push(selfCareRemindersPoller)
   }
 
   return {

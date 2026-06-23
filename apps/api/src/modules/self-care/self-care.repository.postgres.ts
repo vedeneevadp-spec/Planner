@@ -91,7 +91,6 @@ import {
   addDays,
   buildAnalyticsResponse,
   buildDashboardResponse,
-  buildDueAt,
   buildHistoryResponse,
   buildItemInputFromTemplate,
   buildPlanResponse,
@@ -117,6 +116,7 @@ import {
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   type SelfCareStateSnapshot,
+  serializeTimestamp,
   shouldDeactivateCompletedFlexibleGoal,
   shouldDeduplicateSelfCareItemCompletion,
   updateOccurrenceStatus,
@@ -575,11 +575,36 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       return []
     }
 
+    const ruleById = new Map(state.scheduleRules.map((rule) => [rule.id, rule]))
+
     return withWriteTransaction(
       this.db,
       command.context.auth,
-      (trx) =>
-        this.insertOccurrences(trx, generated, command.context.actorUserId),
+      async (trx) => {
+        const occurrences: StoredSelfCareOccurrenceRecord[] = []
+
+        for (const occurrence of generated) {
+          const rule = occurrence.scheduleRuleId
+            ? (ruleById.get(occurrence.scheduleRuleId) ?? null)
+            : null
+
+          occurrences.push({
+            ...occurrence,
+            dueAt: await this.buildSelfCareDueAt(
+              trx,
+              occurrence.scheduledFor,
+              rule?.preferredTime ?? null,
+              rule?.timezone ?? command.context.clientTimeZone ?? null,
+            ),
+          })
+        }
+
+        return this.insertOccurrences(
+          trx,
+          occurrences,
+          command.context.actorUserId,
+        )
+      },
       command.context.actorUserId,
     )
   }
@@ -954,9 +979,16 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .orderBy(sql`case when schedule_rule_id is null then 1 else 0 end`)
           .executeTakeFirst()
         const scheduledTime = command.input.scheduledTime ?? null
-        const dueAt = buildDueAt(
+        const reminderTimeZone = resolveSelfCareReminderTimeZone(
+          command.input.timezone ?? scheduleRule?.timezone ?? null,
+          command.context.clientTimeZone,
+        )
+        const reminderOffsetsMinutes = command.input.reminderOffsetsMinutes
+        const dueAt = await this.buildSelfCareDueAt(
+          trx,
           command.input.scheduledFor,
           scheduledTime ?? scheduleRule?.preferredTime ?? null,
+          reminderTimeZone,
         )
 
         if (existingRow) {
@@ -965,6 +997,8 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             completedAt: null,
             dueAt,
             movedTo: null,
+            reminderOffsetsMinutes,
+            reminderTimeZone,
             scheduleRuleId: scheduleRule?.id ?? null,
             status: 'scheduled' as const,
             updatedAt: new Date().toISOString(),
@@ -990,6 +1024,8 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           scheduledFor: command.input.scheduledFor,
           scheduleRule,
         })
+        occurrence.reminderOffsetsMinutes = reminderOffsetsMinutes
+        occurrence.reminderTimeZone = reminderTimeZone
         const inserted = await this.insertOccurrence(
           trx,
           occurrence,
@@ -1383,8 +1419,19 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         'Self-care template not found.',
       )
     }
+    const input = buildItemInputFromTemplate(template, command.input.overrides)
     const records = createSelfCareRecords(
-      buildItemInputFromTemplate(template, command.input.overrides),
+      input.scheduleRule &&
+        !input.scheduleRule.timezone &&
+        command.context.clientTimeZone
+        ? {
+            ...input,
+            scheduleRule: {
+              ...input.scheduleRule,
+              timezone: command.context.clientTimeZone,
+            },
+          }
+        : input,
       {
         actorUserId: command.context.actorUserId,
         createdFromTemplateId: template.id,
@@ -1671,6 +1718,32 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         `.execute(trx),
       actorUserId,
     )
+  }
+
+  private async buildSelfCareDueAt(
+    executor: DatabaseExecutor,
+    dateKey: string,
+    preferredTime: string | null,
+    timeZone: string | null,
+  ): Promise<string | null> {
+    if (!preferredTime) {
+      return null
+    }
+
+    const result = await sql<{ due_at: unknown }>`
+      select make_timestamptz(
+        extract(year from cast(${dateKey} as date))::int,
+        extract(month from cast(${dateKey} as date))::int,
+        extract(day from cast(${dateKey} as date))::int,
+        extract(hour from cast(${preferredTime} as time))::int,
+        extract(minute from cast(${preferredTime} as time))::int,
+        0,
+        ${resolveSelfCareReminderTimeZone(timeZone)}
+      ) as due_at
+    `.execute(executor)
+
+    const row = result.rows[0]
+    return row ? serializeTimestamp(row.due_at) : null
   }
 
   private async loadState(
@@ -2266,6 +2339,8 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           id: occurrence.id,
           item_id: occurrence.itemId,
           moved_to: occurrence.movedTo,
+          reminder_offsets_minutes: occurrence.reminderOffsetsMinutes,
+          reminder_time_zone: occurrence.reminderTimeZone,
           scheduled_for: occurrence.scheduledFor,
           schedule_rule_id: occurrence.scheduleRuleId,
           status: occurrence.status,
@@ -2304,6 +2379,8 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           id: occurrence.id,
           item_id: occurrence.itemId,
           moved_to: occurrence.movedTo,
+          reminder_offsets_minutes: occurrence.reminderOffsetsMinutes,
+          reminder_time_zone: occurrence.reminderTimeZone,
           scheduled_for: occurrence.scheduledFor,
           schedule_rule_id: occurrence.scheduleRuleId,
           status: occurrence.status,
@@ -2359,6 +2436,8 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         completed_at: occurrence.completedAt,
         due_at: occurrence.dueAt,
         moved_to: occurrence.movedTo,
+        reminder_offsets_minutes: occurrence.reminderOffsetsMinutes,
+        reminder_time_zone: occurrence.reminderTimeZone,
         status: occurrence.status,
         updated_by: actorUserId,
       })
@@ -2611,5 +2690,19 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return input.occurrenceId
       ? query.where('occurrence_id', '=', input.occurrenceId).execute()
       : query.where('occurrence_id', 'is', null).execute()
+  }
+}
+
+function resolveSelfCareReminderTimeZone(
+  explicitTimeZone: string | null | undefined,
+  fallbackTimeZone?: string | null,
+): string {
+  const timeZone = explicitTimeZone?.trim() || fallbackTimeZone?.trim() || 'UTC'
+
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date())
+    return timeZone
+  } catch {
+    return 'UTC'
   }
 }

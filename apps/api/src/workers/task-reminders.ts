@@ -11,6 +11,11 @@ import {
   PushNotificationsService,
 } from '../modules/push-notifications/index.js'
 import {
+  PostgresSelfCareReminderRepository,
+  SelfCareRemindersPoller,
+  SelfCareRemindersService,
+} from '../modules/self-care-reminders/index.js'
+import {
   PostgresTaskReminderRepository,
   TaskRemindersPoller,
   TaskRemindersService,
@@ -47,6 +52,10 @@ const taskRemindersService = new TaskRemindersService(
   new PostgresTaskReminderRepository(database.db),
   pushNotificationsService,
 )
+const selfCareRemindersService = new SelfCareRemindersService(
+  new PostgresSelfCareReminderRepository(database.db),
+  pushNotificationsService,
+)
 const logger = {
   error: (payload: unknown, message: string) => {
     console.error(message, payload)
@@ -60,8 +69,21 @@ const poller = new TaskRemindersPoller(taskRemindersService, logger, {
   intervalMs: readPositiveInteger('TASK_REMINDERS_INTERVAL_MS', 60_000),
   unrefTimer: false,
 })
+const selfCarePoller = new SelfCareRemindersPoller(
+  selfCareRemindersService,
+  logger,
+  {
+    batchSize: readPositiveInteger('SELF_CARE_REMINDERS_BATCH_SIZE', 25),
+    intervalMs: readPositiveInteger(
+      'SELF_CARE_REMINDERS_INTERVAL_MS',
+      readPositiveInteger('TASK_REMINDERS_INTERVAL_MS', 60_000),
+    ),
+    unrefTimer: false,
+  },
+)
 
 poller.start()
+selfCarePoller.start()
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
@@ -72,6 +94,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`Stopping task reminders worker after ${signal}.`)
   await poller.stop()
+  await selfCarePoller.stop()
   await destroyDatabaseConnection(database)
   process.exit(0)
 }
