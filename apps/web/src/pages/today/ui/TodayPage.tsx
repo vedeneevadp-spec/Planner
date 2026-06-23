@@ -211,9 +211,15 @@ function isVisibleSelfCareMainTask(entry: SelfCareTodayItem): boolean {
 }
 
 function isSelfCareDailyFlexibleGoal(entry: SelfCareTodayItem): boolean {
+  const rule = entry.scheduleRule
+
+  if (!rule) {
+    return false
+  }
+
   return (
-    entry.scheduleRule?.repeatKind === 'flexible_goal' &&
-    entry.scheduleRule.flexiblePeriod === 'day'
+    rule.flexiblePeriod === 'day' &&
+    (entry.item.type === 'flexible_goal' || rule.repeatKind === 'flexible_goal')
   )
 }
 

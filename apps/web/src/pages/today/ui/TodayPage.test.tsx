@@ -507,6 +507,62 @@ describe('TodayPage', () => {
     ).toBeVisible()
   })
 
+  it('renders daily flexible self-care goals with a daily repeat rule in routine', () => {
+    setSelfCareDashboard(
+      createSelfCareDashboard([], {
+        flexibleGoals: [
+          createSelfCareTodayItem({
+            flexibleProgress: {
+              completedCount: 0,
+              periodEnd: getDateKey(new Date()),
+              periodStart: getDateKey(new Date()),
+              remainingCount: 3,
+              targetCount: 3,
+            },
+            item: {
+              id: 'self-care-pushups',
+              title: 'Отжимания',
+              type: 'flexible_goal',
+            },
+            scheduleRule: {
+              allowMultiplePerDay: false,
+              createdAt: '2026-06-20T08:00:00.000Z',
+              dayOfMonth: null,
+              daysOfWeek: [],
+              endDate: null,
+              flexiblePeriod: 'day',
+              flexibleTargetCount: 3,
+              generateInCalendar: false,
+              generateInTaskList: true,
+              id: 'self-care-pushups-rule',
+              intervalUnit: null,
+              intervalValue: null,
+              itemId: 'self-care-pushups',
+              monthOfYear: null,
+              preferredTime: null,
+              reminderOffsetsMinutes: [],
+              repeatKind: 'daily',
+              startDate: '2026-06-20',
+              timezone: null,
+              updatedAt: '2026-06-20T08:00:00.000Z',
+              weekOfMonth: null,
+            },
+          }),
+        ],
+      }),
+    )
+
+    renderTodayPage({
+      tasks: [],
+    })
+
+    expect(
+      screen.getByRole('link', {
+        name: 'Открыть заботу: Отжимания',
+      }),
+    ).toBeVisible()
+  })
+
   it('keeps self-care dashboard items hidden when main tasks integration is disabled', () => {
     setSelfCareDashboard({
       ...createSelfCareDashboard([createSelfCareTodayItem()]),
