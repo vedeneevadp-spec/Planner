@@ -13,6 +13,7 @@ import {
   applyRitualStepDraftOverrides,
   buildCompletionInput,
   buildCreateScheduleRule,
+  buildDateTimeInput,
   buildRestartCourseScheduleRule,
   buildRitualStepCompletionInput,
   buildRitualStepDraftInput,
@@ -419,11 +420,18 @@ describe('SelfCarePage helpers', () => {
     expect(getInitialScheduleDate(appointmentEntry, '2026-06-24')).toBe(
       '2026-06-23',
     )
-    expect(getInitialScheduleTime(appointmentEntry)).toBe('09:15')
+    expect(getInitialScheduleTime(appointmentEntry)).toBe(
+      formatExpectedLocalTime('2026-06-22T09:15:00.000Z'),
+    )
     expect(formatDate('2026-06-22')).toContain('22')
     expect(formatShortDate('2026-06-22')).toContain('22')
     expect(formatMonthKey('2026-06')).toContain('2026')
-    expect(formatTime('2026-06-22T09:15:00.000Z')).toBe('09:15')
+    expect(formatTime('2026-06-22T09:15:00.000Z')).toBe(
+      formatExpectedLocalTime('2026-06-22T09:15:00.000Z'),
+    )
+    expect(buildDateTimeInput('2026-06-22', '09:15')).toBe(
+      new Date(2026, 5, 22, 9, 15, 0, 0).toISOString(),
+    )
     expect(canRestartCourse(courseEntry)).toBe(true)
     expect(
       buildRestartCourseScheduleRule(courseEntry, '2026-06-22'),
@@ -561,7 +569,9 @@ describe('SelfCarePage helpers', () => {
       ),
     ).toBe('Курс завершён')
     expect(formatPlanningText(flexibleEntry)).toContain('Осталось 2')
-    expect(formatPlanningText(plannedEntry)).toContain('12:30')
+    expect(formatPlanningText(plannedEntry)).toContain(
+      formatExpectedLocalTime('2026-06-22T12:30:00.000Z'),
+    )
     expect(
       formatPlanningText(
         createTodayEntry({
@@ -638,6 +648,14 @@ function createItem(overrides: Partial<SelfCareItem> = {}): SelfCareItem {
     workspaceId: 'workspace-1',
     ...overrides,
   }
+}
+
+function formatExpectedLocalTime(value: string): string {
+  const date = new Date(value)
+
+  return `${String(date.getHours()).padStart(2, '0')}:${String(
+    date.getMinutes(),
+  ).padStart(2, '0')}`
 }
 
 function createScheduleRule(

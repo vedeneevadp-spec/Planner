@@ -247,10 +247,22 @@ function getSelfCareTaskTime(entry: SelfCareTodayItem): string | null {
     return null
   }
 
-  const isoTime = /T(\d{2}:\d{2})/.exec(sourceTime)?.[1]
-  const plainTime = /^(\d{2}:\d{2})/.exec(sourceTime)?.[1]
+  if (sourceTime.includes('T')) {
+    const date = new Date(sourceTime)
 
-  return isoTime ?? plainTime ?? null
+    if (!Number.isNaN(date.getTime())) {
+      return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`
+    }
+  }
+
+  const plainTime = /^(\d{2}:\d{2})/.exec(sourceTime)?.[1]
+  const isoTime = /T(\d{2}:\d{2})/.exec(sourceTime)?.[1]
+
+  return plainTime ?? isoTime ?? null
+}
+
+function padTimePart(value: number): string {
+  return String(value).padStart(2, '0')
 }
 
 function formatSelfCareTaskMeta(entry: SelfCareTodayItem): string {

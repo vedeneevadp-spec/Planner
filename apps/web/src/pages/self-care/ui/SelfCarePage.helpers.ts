@@ -625,15 +625,19 @@ export function getInitialScheduleDate(
     return entry.occurrence.scheduledFor
   }
 
-  return entry.appointment?.startsAt.slice(0, 10) ?? fallbackDate
+  return entry.appointment
+    ? formatLocalDateKey(entry.appointment.startsAt)
+    : fallbackDate
 }
 
 export function getInitialScheduleTime(entry: SelfCareTodayItem): string {
   if (entry.occurrence?.dueAt) {
-    return entry.occurrence.dueAt.slice(11, 16)
+    return formatTime(entry.occurrence.dueAt)
   }
 
-  const appointmentTime = entry.appointment?.startsAt.slice(11, 16)
+  const appointmentTime = entry.appointment
+    ? formatTime(entry.appointment.startsAt)
+    : null
   if (appointmentTime && appointmentTime !== '00:00') {
     return appointmentTime
   }
@@ -890,7 +894,11 @@ export function buildDateTimeInput(
   dateKey: string,
   time: string | null,
 ): string {
-  return `${dateKey}T${time ?? '00:00'}:00.000Z`
+  const [year = 0, month = 1, day = 1] = dateKey.split('-').map(Number)
+  const [hours = 0, minutes = 0] = (time ?? '00:00').split(':').map(Number)
+  const date = new Date(year, month - 1, day, hours, minutes, 0, 0)
+
+  return date.toISOString()
 }
 
 export function getCreatedTemplateIds(
@@ -1173,7 +1181,37 @@ export function formatMonthKey(monthKey: string): string {
 }
 
 export function formatTime(value: string): string {
-  return value.slice(11, 16)
+  const plainTime = /^(\d{2}:\d{2})/.exec(value)?.[1]
+
+  if (plainTime) {
+    return plainTime
+  }
+
+  const date = new Date(value)
+
+  if (!Number.isNaN(date.getTime())) {
+    return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`
+  }
+
+  return /T(\d{2}:\d{2})/.exec(value)?.[1] ?? value.slice(0, 5)
+}
+
+function formatLocalDateKey(value: string): string {
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return value.slice(0, 10)
+  }
+
+  return [
+    date.getFullYear(),
+    padTimePart(date.getMonth() + 1),
+    padTimePart(date.getDate()),
+  ].join('-')
+}
+
+function padTimePart(value: number): string {
+  return String(value).padStart(2, '0')
 }
 
 export function getPercent(value: number, total: number): number {
