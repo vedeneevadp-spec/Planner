@@ -521,8 +521,15 @@ JS/CSS для `self-care`, `calendar`, `VoiceAssistant`, JS для
 `planner-contracts` и `lottie_light_canvas`, а также public asset budgets для
 `apps/web/public/self-care/**` и `apps/web/public/icons/**`. На текущем build
 проходят лимиты: initial JS `870.1 KB`, self-care assets `12311.0 KB`, icons
-`608.1 KB`. Открытым остается отдельный APK/AAB size check для Android release
-artifact после `mobile:release`.
+`608.1 KB`.
+
+Статус 2026-06-24: добавлен Android artifact budget. `mobile:release` проверяет
+размер реально собранных release APK/AAB после Gradle build, а
+`npm run mobile:android:ci` после debug assemble запускает
+`npm run mobile:android:budget`. Лимиты задаются через
+`ANDROID_DEBUG_APK_MAX_MB`, `ANDROID_RELEASE_APK_MAX_MB` и
+`ANDROID_RELEASE_AAB_MAX_MB`; текущие локальные артефакты проходят с debug APK
+`153.1 MB`, release APK `55.2 MB`, release AAB `71.4 MB`.
 
 ### Нужна лучшая диагностика refresh/restore
 

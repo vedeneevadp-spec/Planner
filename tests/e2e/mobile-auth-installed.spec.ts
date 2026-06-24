@@ -62,6 +62,31 @@ function createMobileE2eUser() {
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
+    const createVoiceAssistantStatus = () => ({
+      audioFeedbackEnabled: false,
+      backgroundWakeWordEnabled: false,
+      confirmationMode: 'confirmation_first',
+      foregroundServiceStatus: 'stopped',
+      isAndroid: true,
+      microphonePermission: 'granted',
+      notificationPermission: 'granted',
+      platform: 'android',
+      pushToTalkFallbackStatus: 'available',
+      recognitionLanguage: 'ru-RU',
+      runtimeDurationMs: 0,
+      runtimeLastError: null,
+      runtimeMetrics: {},
+      runtimeStatus: 'stopped',
+      state: 'idle',
+      voiceCuesEnabled: true,
+      wakePhrase: 'Хаотика',
+      wakeWordEnabled: false,
+      wakeWordModelStatus: 'ready',
+      wakeWordModelVersion: 'test',
+      wakeWordProvider: 'mock',
+      wakeWordSensitivity: 0.99,
+    })
+
     window.Capacitor = {
       nativeCallback: () => Promise.resolve(`callback-${crypto.randomUUID()}`),
       nativePromise: (pluginName, methodName) => {
@@ -77,6 +102,117 @@ test.beforeEach(async ({ page }) => {
             case 'ackPendingCompletedTasks':
             case 'refresh':
               return Promise.resolve({})
+          }
+        }
+
+        if (pluginName === 'PlannerVoiceAssistant') {
+          switch (methodName) {
+            case 'captureCommand':
+            case 'start':
+              return Promise.resolve({ state: 'idle', wakeWord: 'Хаотика' })
+
+            case 'consumePendingCommand':
+              return Promise.resolve({ command: null })
+
+            case 'getStatus':
+              return Promise.resolve(createVoiceAssistantStatus())
+
+            case 'getWakeWordDiagnostics':
+            case 'openWakeWordDebug':
+              return Promise.resolve({
+                currentScore: 0,
+                detectionCount: 0,
+                lastDetectionScore: 0,
+                lastError: '',
+                lastMetric: '',
+                modelVersion: 'test',
+                phrase: 'Хаотика',
+                provider: 'mock',
+                threshold: 0.99,
+              })
+
+            case 'getWakeWordTrainingCollectionStatus':
+            case 'openWakeWordFalseRejectRecorder':
+              return Promise.resolve({
+                falseAcceptCount: 0,
+                falseRejectCount: 0,
+                hasPendingExample: false,
+                isEnabled: false,
+                storagePath: '',
+                trueAcceptCount: 0,
+              })
+
+            case 'notifyActionResult':
+              return Promise.resolve({
+                doneCuePlayed: false,
+                successSignalPlayed: false,
+              })
+
+            case 'requestMicrophonePermission':
+            case 'requestNotificationPermission':
+              return Promise.resolve({ status: 'granted' })
+
+            case 'reportWakeWordFalseAccept':
+            case 'reportWakeWordTrueAccept':
+              return Promise.resolve({
+                collectionEnabled: false,
+                currentScore: 0,
+                detectionCount: 0,
+                hadPendingExample: false,
+                hasPendingExample: false,
+                lastDetectionScore: 0,
+                lastError: '',
+                lastMetric: '',
+                modelVersion: 'test',
+                phrase: 'Хаотика',
+                provider: 'mock',
+                sampleLabel: 'skipped',
+                sampleSaved: false,
+                threshold: 0.99,
+              })
+
+            case 'reportWakeWordFalseReject':
+              return Promise.resolve({
+                currentScore: 0,
+                detectionCount: 0,
+                lastDetectionScore: 0,
+                lastError: '',
+                lastMetric: '',
+                modelVersion: 'test',
+                phrase: 'Хаотика',
+                provider: 'mock',
+                threshold: 0.99,
+              })
+
+            case 'skipWakeWordFeedback':
+              return Promise.resolve({
+                collectionEnabled: false,
+                currentScore: 0,
+                detectionCount: 0,
+                hadPendingExample: false,
+                hasPendingExample: false,
+                lastDetectionScore: 0,
+                lastError: '',
+                lastMetric: '',
+                modelVersion: 'test',
+                phrase: 'Хаотика',
+                provider: 'mock',
+                sampleLabel: 'skipped',
+                sampleSaved: false,
+                threshold: 0.99,
+              })
+
+            case 'openBatteryOptimizationSettings':
+            case 'openSystemAppSettings':
+            case 'setBackgroundWakeWordEnabled':
+            case 'setVoiceCuesEnabled':
+            case 'setWakeWordEnabled':
+            case 'setWakeWordSensitivity':
+            case 'setWakeWordTrainingCollectionEnabled':
+              return Promise.resolve({})
+
+            case 'stop':
+              return Promise.resolve({ state: 'idle' })
           }
         }
 
@@ -105,6 +241,34 @@ test.beforeEach(async ({ page }) => {
             { name: 'refresh', rtype: 'promise' },
           ],
           name: 'PlannerWidget',
+        },
+        {
+          methods: [
+            { name: 'captureCommand', rtype: 'promise' },
+            { name: 'consumePendingCommand', rtype: 'promise' },
+            { name: 'getStatus', rtype: 'promise' },
+            { name: 'getWakeWordDiagnostics', rtype: 'promise' },
+            { name: 'getWakeWordTrainingCollectionStatus', rtype: 'promise' },
+            { name: 'notifyActionResult', rtype: 'promise' },
+            { name: 'openBatteryOptimizationSettings', rtype: 'promise' },
+            { name: 'openSystemAppSettings', rtype: 'promise' },
+            { name: 'openWakeWordDebug', rtype: 'promise' },
+            { name: 'openWakeWordFalseRejectRecorder', rtype: 'promise' },
+            { name: 'reportWakeWordFalseAccept', rtype: 'promise' },
+            { name: 'reportWakeWordFalseReject', rtype: 'promise' },
+            { name: 'reportWakeWordTrueAccept', rtype: 'promise' },
+            { name: 'requestMicrophonePermission', rtype: 'promise' },
+            { name: 'requestNotificationPermission', rtype: 'promise' },
+            { name: 'setBackgroundWakeWordEnabled', rtype: 'promise' },
+            { name: 'setVoiceCuesEnabled', rtype: 'promise' },
+            { name: 'setWakeWordEnabled', rtype: 'promise' },
+            { name: 'setWakeWordSensitivity', rtype: 'promise' },
+            { name: 'setWakeWordTrainingCollectionEnabled', rtype: 'promise' },
+            { name: 'skipWakeWordFeedback', rtype: 'promise' },
+            { name: 'start', rtype: 'promise' },
+            { name: 'stop', rtype: 'promise' },
+          ],
+          name: 'PlannerVoiceAssistant',
         },
         {
           methods: [

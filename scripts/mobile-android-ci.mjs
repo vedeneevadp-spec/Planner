@@ -16,3 +16,4 @@ await runCommand(npmCommand(), ['run', 'mobile:android:test'], { env: ciEnv })
 await runCommand(npmCommand(), ['run', 'mobile:android:assemble'], {
   env: ciEnv,
 })
+await runCommand(npmCommand(), ['run', 'mobile:android:budget'], { env: ciEnv })

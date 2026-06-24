@@ -56,6 +56,7 @@
     "mobile:ci-check": "node ./scripts/mobile-ci-check.mjs",
     "mobile:android:test": "cd android && ./gradlew --no-daemon :app:testDebugUnitTest",
     "mobile:android:assemble": "cd android && ./gradlew --no-daemon :app:assembleDebug",
+    "mobile:android:budget": "node ./scripts/check-android-artifact-budget.mjs",
     "mobile:android:ci": "node ./scripts/mobile-android-ci.mjs",
     "mobile:auth-smoke": "node ./scripts/mobile-auth-smoke.mjs",
     "time:guard": "node ./scripts/time-system-guard.mjs",

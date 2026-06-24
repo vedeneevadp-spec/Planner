@@ -1,6 +1,13 @@
 import { spawn } from 'node:child_process'
 import { constants as fsConstants } from 'node:fs'
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import {
+  access,
+  mkdir,
+  readFile,
+  readdir,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -10,6 +17,18 @@ import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
 const repoRoot = process.cwd()
 const androidBuildGradlePath = path.join(repoRoot, 'android/app/build.gradle')
 const androidDirectoryPath = path.join(repoRoot, 'android')
+const androidReleaseApkDirectoryPath = path.join(
+  repoRoot,
+  'android/app/build/outputs/apk/release',
+)
+const androidReleaseApkPath = path.join(
+  androidReleaseApkDirectoryPath,
+  'app-release.apk',
+)
+const androidReleaseBundlePath = path.join(
+  repoRoot,
+  'android/app/build/outputs/bundle/release/app-release.aab',
+)
 const androidKeystorePropertiesExamplePath = path.join(
   repoRoot,
   'android/keystore.properties.example',
@@ -266,18 +285,37 @@ async function buildAndroidArtifacts({
   const outputs = []
 
   if (androidFormat === 'bundle' || androidFormat === 'both') {
-    outputs.push('android/app/build/outputs/bundle/release/app-release.aab')
+    outputs.push({
+      label: 'Android release AAB',
+      maxBytes: readMegabyteBudget('ANDROID_RELEASE_AAB_MAX_MB', 95),
+      path: androidReleaseBundlePath,
+    })
   }
 
   if (androidFormat === 'apk' || androidFormat === 'both') {
     outputs.push(
       requireAndroidSigning
-        ? 'android/app/build/outputs/apk/release/app-release.apk'
-        : 'android/app/build/outputs/apk/release/',
+        ? {
+            label: 'Android release APK',
+            maxBytes: readMegabyteBudget('ANDROID_RELEASE_APK_MAX_MB', 80),
+            path: androidReleaseApkPath,
+          }
+        : {
+            extension: '.apk',
+            label: 'Android release APK',
+            maxBytes: readMegabyteBudget('ANDROID_RELEASE_APK_MAX_MB', 80),
+            path: androidReleaseApkDirectoryPath,
+          },
     )
   }
 
-  console.log(`[mobile-release] Android artifacts: ${outputs.join(', ')}`)
+  await assertAndroidArtifactBudgets(outputs)
+
+  console.log(
+    `[mobile-release] Android artifacts: ${outputs
+      .map((output) => path.relative(repoRoot, output.path))
+      .join(', ')}`,
+  )
 }
 
 async function buildIosArtifacts({
@@ -938,6 +976,101 @@ async function readSimplePropertiesFile(filePath) {
 
 function readFirstDefined(...values) {
   return values.find((value) => value != null && value !== '')
+}
+
+async function assertAndroidArtifactBudgets(outputs) {
+  for (const output of outputs) {
+    const artifactPaths = await resolveAndroidArtifactPaths(output)
+
+    if (artifactPaths.length === 0) {
+      throw new Error(
+        `Android artifact was not found for budget check: ${path.relative(repoRoot, output.path)}`,
+      )
+    }
+
+    for (const artifactPath of artifactPaths) {
+      const artifactStats = await stat(artifactPath)
+
+      if (artifactStats.size > output.maxBytes) {
+        throw new Error(
+          [
+            `${output.label} is ${formatMegabytes(artifactStats.size)}.`,
+            `Budget is ${formatMegabytes(output.maxBytes)}.`,
+            `Artifact: ${path.relative(repoRoot, artifactPath)}.`,
+          ].join(' '),
+        )
+      }
+
+      console.log(
+        `[mobile-release] ${output.label} size: ${formatMegabytes(
+          artifactStats.size,
+        )} (budget ${formatMegabytes(output.maxBytes)})`,
+      )
+    }
+  }
+}
+
+async function resolveAndroidArtifactPaths(output) {
+  const outputStats = await readOptionalStats(output.path)
+
+  if (!outputStats) {
+    return []
+  }
+
+  if (outputStats.isFile()) {
+    return [output.path]
+  }
+
+  if (!outputStats.isDirectory()) {
+    return []
+  }
+
+  const entries = await readdir(output.path, { withFileTypes: true })
+  const extension = output.extension ?? ''
+
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(extension))
+    .map((entry) => path.join(output.path, entry.name))
+    .sort()
+}
+
+async function readOptionalStats(filePath) {
+  try {
+    return await stat(filePath)
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return null
+    }
+
+    throw error
+  }
+}
+
+function readMegabyteBudget(variableName, defaultMegabytes) {
+  const rawValue = process.env[variableName]?.trim()
+
+  if (!rawValue) {
+    return defaultMegabytes * 1024 * 1024
+  }
+
+  const megabytes = Number(rawValue)
+
+  if (!Number.isFinite(megabytes) || megabytes <= 0) {
+    throw new Error(
+      `${variableName} must be a positive number of megabytes: ${rawValue}`,
+    )
+  }
+
+  return megabytes * 1024 * 1024
+}
+
+function formatMegabytes(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 async function resolveIosDeveloperDir(preferredPath) {
