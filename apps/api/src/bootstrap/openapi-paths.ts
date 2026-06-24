@@ -990,6 +990,94 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    '/api/v1/tasks/{taskId}/next-stage': {
+      post: {
+        operationId: 'createNextTaskStage',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskNextStageInput'),
+        responses: {
+          200: jsonResponse('TaskNextStageResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Create the next task stage in a task chain',
+        tags: ['tasks'],
+      },
+    },
+    '/api/v1/tasks/{taskId}/next-stage/undo': {
+      post: {
+        operationId: 'undoCreateNextTaskStage',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskNextStageUndoInput'),
+        responses: {
+          200: jsonResponse('TaskNextStageUndoResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Undo creation of the next task stage',
+        tags: ['tasks'],
+      },
+    },
+    '/api/v1/tasks/{taskId}/chain/detach': {
+      post: {
+        operationId: 'detachTaskFromChain',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskChainDetachInput'),
+        responses: {
+          200: jsonResponse('TaskRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Detach a task from its task chain',
+        tags: ['tasks'],
+      },
+    },
+    '/api/v1/tasks/{taskId}/chain/close': {
+      post: {
+        operationId: 'closeTaskChain',
+        parameters: [
+          taskIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        requestBody: jsonRequestBody('TaskChainCloseInput'),
+        responses: {
+          200: jsonResponse('TaskRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+          409: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Mark a task chain as completed',
+        tags: ['tasks'],
+      },
+    },
     '/api/v1/tasks/{taskId}/schedule': {
       patch: {
         operationId: 'updateTaskSchedule',

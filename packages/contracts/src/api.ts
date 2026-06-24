@@ -20,6 +20,7 @@ import {
   weeklySphereStatsResponseSchema,
 } from './life-sphere.js'
 import {
+  taskNextStageUndoInputSchema,
   taskScheduleInputSchema,
   taskSchema,
   taskStatusSchema,
@@ -121,6 +122,17 @@ export const taskTemplateRecordSchema = taskTemplateSchema.extend({
   updatedAt: z.string(),
   deletedAt: z.string().nullable(),
   version: z.number().int().positive(),
+})
+
+export const taskNextStageResponseSchema = z.object({
+  currentTask: taskRecordSchema,
+  nextTask: taskRecordSchema,
+  undo: taskNextStageUndoInputSchema,
+})
+
+export const taskNextStageUndoResponseSchema = z.object({
+  currentTask: taskRecordSchema,
+  removedTaskId: z.string(),
 })
 
 export const emojiAssetRecordSchema = emojiAssetSchema.extend({
@@ -546,7 +558,20 @@ export const taskScheduleUpdateInputSchema = z.object({
   schedule: taskScheduleInputSchema,
 })
 
+export const taskChainDetachInputSchema = z.object({
+  expectedVersion: z.number().int().positive().optional(),
+})
+
+export const taskChainCloseInputSchema = z.object({
+  expectedVersion: z.number().int().positive().optional(),
+})
+
 export const taskDetailsUpdateInputSchema = taskUpdateInputSchema
+
+export {
+  taskNextStageInputSchema,
+  taskNextStageUndoInputSchema,
+} from './task.js'
 
 export type ApiError = z.infer<typeof apiErrorSchema>
 export type AdminUserRecord = z.infer<typeof adminUserRecordSchema>
@@ -687,6 +712,12 @@ export type TaskListFilters = z.infer<typeof taskListFiltersSchema>
 export type TaskListPageResponse = z.infer<typeof taskListPageResponseSchema>
 export type TaskPersonalTransferInput = z.infer<
   typeof taskPersonalTransferInputSchema
+>
+export type TaskChainDetachInput = z.infer<typeof taskChainDetachInputSchema>
+export type TaskChainCloseInput = z.infer<typeof taskChainCloseInputSchema>
+export type TaskNextStageResponse = z.infer<typeof taskNextStageResponseSchema>
+export type TaskNextStageUndoResponse = z.infer<
+  typeof taskNextStageUndoResponseSchema
 >
 export type TaskRecord = z.infer<typeof taskRecordSchema>
 export type TaskTemplateRecord = z.infer<typeof taskTemplateRecordSchema>

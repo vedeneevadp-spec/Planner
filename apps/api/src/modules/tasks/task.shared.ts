@@ -391,6 +391,8 @@ export function createStoredTaskRecord(
     assigneeUserId: normalizedInput.assigneeUserId,
     authorDisplayName: options.authorDisplayName,
     authorUserId: options.authorUserId,
+    chainId: null,
+    completionType: null,
     completedAt: null,
     createdAt: now,
     deletedAt: null,
@@ -403,6 +405,7 @@ export function createStoredTaskRecord(
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
     plannedStartTime: schedule.plannedStartTime,
+    previousTaskId: null,
     project: normalizedInput.project,
     projectId: normalizedInput.projectId,
     recurrence: normalizedInput.recurrence,
@@ -424,6 +427,8 @@ export function createStoredTaskRecord(
     }),
     sphereId: normalizedInput.sphereId,
     sourceWorkspace: options.sourceWorkspace ?? null,
+    stageIndex: null,
+    stageType: null,
     status: 'todo',
     title: normalizedInput.title,
     urgency: normalizedInput.urgency,
@@ -440,6 +445,7 @@ export function applyTaskStatus(
 ): StoredTaskRecord {
   return {
     ...task,
+    completionType: status === 'done' ? 'completed' : null,
     completedAt: status === 'done' ? now : null,
     status,
     updatedAt: now,

@@ -337,6 +337,189 @@ export function defineTaskRepositoryContractSuite(input: {
       }
     })
 
+    void test('keeps task chain stage creation, undo, and detach consistent', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const task = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({
+            dueDate: '2026-05-30',
+            icon: 'car',
+            importance: 'important',
+            note: 'Bring documents',
+            plannedDate: '2026-05-23',
+            plannedEndTime: '11:00',
+            plannedStartTime: '10:00',
+            project: 'Contract Project',
+            projectId: harness.projectId,
+            remindBeforeStart: true,
+            reminderOffsets: [15],
+            resource: 2,
+            title: 'Book car service',
+            urgency: 'urgent',
+          }),
+        })
+
+        const firstStage = await harness.repository.createNextStage({
+          context: harness.personalContext,
+          input: {
+            completeCurrent: true,
+            expectedVersion: task.version,
+            note: 'Take the car to the service',
+            plannedDate: '2026-05-31',
+            title: 'Arrive at service',
+          },
+          taskId: task.id,
+        })
+
+        assert.notEqual(firstStage.nextTask.id, task.id)
+        assert.equal(firstStage.currentTask.id, task.id)
+        assert.equal(firstStage.currentTask.status, 'done')
+        assert.ok(firstStage.currentTask.completedAt)
+        assert.equal(firstStage.currentTask.completionType, 'advanced')
+        assert.equal(
+          firstStage.currentTask.chainId,
+          firstStage.nextTask.chainId,
+        )
+        assert.ok(firstStage.currentTask.chainId)
+        assert.equal(firstStage.currentTask.previousTaskId, null)
+        assert.equal(firstStage.currentTask.stageIndex, 1)
+        assert.equal(firstStage.currentTask.stageType, 'task')
+
+        assert.equal(firstStage.nextTask.previousTaskId, task.id)
+        assert.equal(firstStage.nextTask.stageIndex, 2)
+        assert.equal(firstStage.nextTask.stageType, 'task')
+        assert.equal(firstStage.nextTask.status, 'todo')
+        assert.equal(firstStage.nextTask.completedAt, null)
+        assert.equal(firstStage.nextTask.completionType, null)
+        assert.equal(firstStage.nextTask.plannedDate, '2026-05-31')
+        assert.equal(firstStage.nextTask.plannedStartTime, null)
+        assert.equal(firstStage.nextTask.plannedEndTime, null)
+        assert.equal(firstStage.nextTask.dueDate, null)
+        assert.equal(firstStage.nextTask.remindBeforeStart, undefined)
+        assert.equal(firstStage.nextTask.title, 'Arrive at service')
+        assert.equal(firstStage.nextTask.note, 'Take the car to the service')
+        assert.equal(firstStage.nextTask.icon, 'car')
+        assert.equal(firstStage.nextTask.importance, 'important')
+        assert.equal(firstStage.nextTask.urgency, 'urgent')
+        assert.equal(firstStage.nextTask.project, 'Contract Project')
+        assert.equal(firstStage.nextTask.projectId, harness.projectId)
+        assert.equal(firstStage.nextTask.resource, 2)
+
+        await assertTaskIds(
+          harness.repository.listByWorkspace(harness.personalContext, {
+            status: 'done',
+          }),
+          [task.id],
+        )
+
+        const undoResult = await harness.repository.undoCreateNextStage({
+          context: harness.personalContext,
+          input: firstStage.undo,
+          taskId: task.id,
+        })
+
+        assert.equal(undoResult.removedTaskId, firstStage.nextTask.id)
+        assert.equal(undoResult.currentTask.status, 'todo')
+        assert.equal(undoResult.currentTask.completedAt, null)
+        assert.equal(undoResult.currentTask.completionType, null)
+        assert.equal(undoResult.currentTask.chainId, null)
+        assert.equal(undoResult.currentTask.previousTaskId, null)
+        assert.equal(undoResult.currentTask.stageIndex, null)
+        assert.equal(undoResult.currentTask.stageType, null)
+        assert.equal(
+          await harness.repository.findById(
+            harness.personalContext,
+            firstStage.nextTask.id,
+          ),
+          null,
+        )
+
+        const secondStage = await harness.repository.createNextStage({
+          context: harness.personalContext,
+          input: {
+            completeCurrent: false,
+            expectedVersion: undoResult.currentTask.version,
+            plannedDate: null,
+            stageType: 'waiting',
+            title: 'Bring parts',
+          },
+          taskId: task.id,
+        })
+
+        assert.equal(secondStage.nextTask.stageType, 'waiting')
+
+        const detachedTask = await harness.repository.detachFromChain({
+          context: harness.personalContext,
+          expectedVersion: secondStage.nextTask.version,
+          taskId: secondStage.nextTask.id,
+        })
+
+        assert.equal(detachedTask.status, 'todo')
+        assert.equal(detachedTask.completionType, null)
+        assert.equal(detachedTask.chainId, null)
+        assert.equal(detachedTask.previousTaskId, null)
+        assert.equal(detachedTask.stageIndex, null)
+        assert.equal(detachedTask.stageType, null)
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('removes task chain stages consistently', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const task = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({
+            plannedDate: '2026-05-23',
+            project: 'Chain cleanup',
+            title: 'Start cleanup chain',
+          }),
+        })
+        const stage = await harness.repository.createNextStage({
+          context: harness.personalContext,
+          input: {
+            completeCurrent: false,
+            expectedVersion: task.version,
+            plannedDate: null,
+            title: 'Cleanup next stage',
+          },
+          taskId: task.id,
+        })
+
+        await harness.repository.remove({
+          context: harness.personalContext,
+          expectedVersion: stage.nextTask.version,
+          taskId: stage.nextTask.id,
+        })
+        assert.equal(
+          await harness.repository.findById(
+            harness.personalContext,
+            stage.nextTask.id,
+          ),
+          null,
+        )
+
+        await harness.repository.remove({
+          context: harness.personalContext,
+          expectedVersion: stage.currentTask.version,
+          taskId: stage.currentTask.id,
+        })
+        assert.equal(
+          await harness.repository.findById(
+            harness.personalContext,
+            stage.currentTask.id,
+          ),
+          null,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('keeps shared to personal task transfer semantics consistent', async () => {
       const harness = await input.createHarness()
 

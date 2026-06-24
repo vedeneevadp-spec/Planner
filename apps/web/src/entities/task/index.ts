@@ -39,6 +39,8 @@ export type {
   RoutineTask,
   RoutineTaskInput,
   Task,
+  TaskChain,
+  TaskCompletionType,
   TaskImportance,
   TaskLinkedTask,
   TaskRecurrence,
@@ -47,6 +49,7 @@ export type {
   TaskReminderOffsetMinutes,
   TaskResource,
   TaskSourceWorkspace,
+  TaskStageType,
   TaskStatus,
   TaskUpdateInput,
   TaskUrgency,
@@ -79,5 +82,6 @@ export {
   TaskResourceMeter,
   TaskTypePicker,
 } from './ui/TaskMetaPickers'
+export { TaskNextStageDialog } from './ui/TaskNextStageDialog'
 export { TaskRecurrenceFields } from './ui/TaskRecurrenceFields'
 export { TaskSection } from './ui/TaskSection'

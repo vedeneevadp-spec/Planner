@@ -718,4 +718,58 @@ describe('plannerApi', () => {
       expectedVersion: 3,
     })
   })
+
+  it('sends expectedVersion when closing a task chain', async () => {
+    const taskResponse = {
+      assigneeDisplayName: null,
+      assigneeUserId: null,
+      authorDisplayName: null,
+      authorUserId: null,
+      chainId: 'chain-1',
+      completedAt: '2026-04-16T03:00:00.000Z',
+      completionType: 'completed',
+      createdAt: '2026-04-16T02:00:00.000Z',
+      deletedAt: null,
+      dueDate: null,
+      icon: '',
+      id: 'task-1',
+      importance: 'not_important',
+      note: '',
+      plannedDate: null,
+      plannedEndTime: null,
+      plannedStartTime: null,
+      previousTaskId: null,
+      project: '',
+      projectId: null,
+      resource: null,
+      requiresConfirmation: false,
+      sphereId: null,
+      stageIndex: 1,
+      stageType: 'task',
+      status: 'done',
+      title: 'Task title',
+      updatedAt: '2026-04-16T03:00:00.000Z',
+      urgency: 'not_urgent',
+      version: 4,
+      workspaceId: 'workspace-1',
+    }
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        new Response(JSON.stringify(taskResponse), { status: 200 }),
+      )
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    await api.closeTaskChain('task-1', { expectedVersion: 4 })
+
+    const [url, requestInit] = fetchMock.mock.calls[0]!
+    const requestUrl = url instanceof URL ? url.href : url
+
+    expect(requestUrl).toBe(
+      'http://127.0.0.1:3001/api/v1/tasks/task-1/chain/close',
+    )
+    expect(parseJsonRequestBody(requestInit)).toEqual({
+      expectedVersion: 4,
+    })
+  })
 })

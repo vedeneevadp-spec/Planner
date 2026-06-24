@@ -341,7 +341,9 @@ function PersonalTodayPage() {
   const updateUserPreferencesMutation = useUpdateUserPreferences()
   const {
     tasks,
+    createNextTaskStage,
     copyTaskToPersonal,
+    detachTaskFromChain,
     spheres,
     isTaskPending,
     moveTaskToPersonal,
@@ -512,6 +514,7 @@ function PersonalTodayPage() {
         key={key}
         title={title}
         tasks={sectionTasks}
+        allTasks={tasks}
         spheres={spheres}
         uploadedIcons={uploadedIcons}
         emptyMessage={emptyMessage}
@@ -526,8 +529,14 @@ function PersonalTodayPage() {
         onRemove={(taskId) => {
           void removeTask(taskId)
         }}
+        onCreateNextStage={(taskId, input) =>
+          createNextTaskStage(taskId, input)
+        }
         onCopyToPersonal={(taskId) => {
           void copyTaskToPersonal(taskId)
+        }}
+        onDetachFromChain={(taskId) => {
+          void detachTaskFromChain(taskId)
         }}
         onMoveToPersonal={(taskId) => {
           void moveTaskToPersonal(taskId)
@@ -661,7 +670,9 @@ function SharedTodayPage() {
   const [searchParams] = useSearchParams()
   const {
     tasks,
+    createNextTaskStage,
     copyTaskToPersonal,
+    detachTaskFromChain,
     spheres,
     isTaskPending,
     moveTaskToPersonal,
@@ -756,6 +767,7 @@ function SharedTodayPage() {
         key={key}
         title={title}
         tasks={sectionTasks}
+        allTasks={tasks}
         currentActorUserId={session?.actorUserId}
         isSharedWorkspace
         sharedWorkspaceGroupRole={session?.groupRole}
@@ -775,8 +787,14 @@ function SharedTodayPage() {
         onRemove={(taskId) => {
           void removeTask(taskId)
         }}
+        onCreateNextStage={(taskId, input) =>
+          createNextTaskStage(taskId, input)
+        }
         onCopyToPersonal={(taskId) => {
           void copyTaskToPersonal(taskId)
+        }}
+        onDetachFromChain={(taskId) => {
+          void detachTaskFromChain(taskId)
         }}
         onMoveToPersonal={(taskId) => {
           void moveTaskToPersonal(taskId)

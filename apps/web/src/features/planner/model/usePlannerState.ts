@@ -1,4 +1,10 @@
-import { generateUuidV7, type TaskRecord } from '@planner/contracts'
+import {
+  generateUuidV7,
+  type TaskNextStageResponse,
+  type TaskNextStageUndoInput,
+  type TaskRecord,
+  type TaskStageType,
+} from '@planner/contracts'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -67,6 +73,8 @@ export function usePlannerState(): PlannerState {
   const [mutationErrorMessage, setMutationErrorMessage] = useState<
     string | null
   >(null)
+  const [taskActionSnackbar, setTaskActionSnackbar] =
+    useState<PlannerState['taskActionSnackbar']>(null)
   const [pendingTaskIds, setPendingTaskIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -120,16 +128,20 @@ export function usePlannerState(): PlannerState {
     workspaceId,
   })
   const {
+    closeTaskChainMutation,
     createLifeSphereMutation,
+    createNextTaskStageMutation,
     copyTaskToPersonalMutation,
     createTaskMutation,
     createTaskTemplateMutation,
+    detachTaskChainMutation,
     moveTaskToPersonalMutation,
     removeLifeSphereMutation,
     removeTaskMutation,
     removeTaskTemplateMutation,
     setTaskScheduleMutation,
     setTaskStatusMutation,
+    undoNextTaskStageMutation,
     updateLifeSphereMutation,
     updateTaskMutation,
   } = usePlannerMutations({
@@ -147,15 +159,19 @@ export function usePlannerState(): PlannerState {
     taskTemplatesQuery.error ??
     tasksQuery.error ??
     createLifeSphereMutation.error ??
+    createNextTaskStageMutation.error ??
+    closeTaskChainMutation.error ??
     copyTaskToPersonalMutation.error ??
     createTaskTemplateMutation.error ??
     moveTaskToPersonalMutation.error ??
     updateLifeSphereMutation.error ??
     removeLifeSphereMutation.error ??
+    detachTaskChainMutation.error ??
     createTaskMutation.error ??
     updateTaskMutation.error ??
     removeTaskTemplateMutation.error ??
     setTaskStatusMutation.error ??
+    undoNextTaskStageMutation.error ??
     setTaskScheduleMutation.error ??
     removeTaskMutation.error
   const hasUnauthorizedAuthError =
@@ -213,6 +229,10 @@ export function usePlannerState(): PlannerState {
 
   function isTaskPending(taskId: string): boolean {
     return pendingTaskIds.has(taskId)
+  }
+
+  function clearTaskActionSnackbar(): void {
+    setTaskActionSnackbar(null)
   }
 
   function getCachedTaskRecord(taskId: string): TaskRecord | undefined {
@@ -416,6 +436,160 @@ export function usePlannerState(): PlannerState {
     )
   }
 
+  async function createNextTaskStage(
+    taskId: string,
+    input: {
+      completeCurrent?: boolean
+      note?: string | undefined
+      plannedDate?: string | null | undefined
+      stageType?: TaskStageType | undefined
+      title?: string | undefined
+    } = {},
+  ): Promise<TaskNextStageResponse | null> {
+    const task = getCachedTaskRecord(taskId)
+
+    if (!task) {
+      setMutationErrorMessage(`Task "${taskId}" was not found.`)
+
+      return null
+    }
+
+    if (pendingTaskIdsRef.current.has(taskId)) {
+      setMutationErrorMessage(
+        'Дождитесь завершения текущего изменения задачи и повторите действие.',
+      )
+
+      return null
+    }
+
+    setTaskPending(taskId, true)
+
+    try {
+      let result: TaskNextStageResponse | null = null
+      const didUpdate = await runMutation(async () => {
+        const nextResult = await createNextTaskStageMutation.mutateAsync({
+          completeCurrent: input.completeCurrent === true,
+          expectedVersion: task.version,
+          ...(input.note !== undefined ? { note: input.note } : {}),
+          ...(input.plannedDate !== undefined
+            ? { plannedDate: input.plannedDate }
+            : {}),
+          ...(input.stageType !== undefined
+            ? { stageType: input.stageType }
+            : {}),
+          taskId,
+          ...(input.title !== undefined ? { title: input.title } : {}),
+        })
+        result = nextResult
+        setTaskActionSnackbar({
+          id: generateUuidV7(),
+          message:
+            input.completeCurrent === true
+              ? 'Выполнено, следующий этап создан'
+              : 'Следующий этап создан',
+          undo: {
+            input: nextResult.undo,
+            taskId,
+          },
+        })
+      })
+
+      if (
+        didUpdate &&
+        input.completeCurrent === true &&
+        isTaskCompletionConfettiEnabled
+      ) {
+        fireTaskCompletionConfetti()
+      }
+
+      return didUpdate ? result : null
+    } finally {
+      setTaskPending(taskId, false)
+    }
+  }
+
+  async function undoNextTaskStage(
+    taskId: string,
+    input: TaskNextStageUndoInput,
+  ): Promise<boolean> {
+    if (pendingTaskIdsRef.current.has(taskId)) {
+      setMutationErrorMessage(
+        'Дождитесь завершения текущего изменения задачи и повторите действие.',
+      )
+
+      return false
+    }
+
+    setTaskPending(taskId, true)
+
+    try {
+      const didUndo = await runMutation(() =>
+        undoNextTaskStageMutation.mutateAsync({
+          input,
+          taskId,
+        }),
+      )
+
+      if (didUndo) {
+        setTaskActionSnackbar({
+          id: generateUuidV7(),
+          message: 'Действие отменено',
+        })
+      }
+
+      return didUndo
+    } finally {
+      setTaskPending(taskId, false)
+    }
+  }
+
+  async function detachTaskFromChain(taskId: string): Promise<boolean> {
+    const task = getCachedTaskRecord(taskId)
+
+    if (!task) {
+      setMutationErrorMessage(`Task "${taskId}" was not found.`)
+
+      return false
+    }
+
+    return runTaskMutation(taskId, () =>
+      runMutation(() =>
+        detachTaskChainMutation.mutateAsync({
+          expectedVersion: task.version,
+          taskId,
+        }),
+      ),
+    )
+  }
+
+  async function closeTaskChain(taskId: string): Promise<boolean> {
+    const task = getCachedTaskRecord(taskId)
+
+    if (!task) {
+      setMutationErrorMessage(`Task "${taskId}" was not found.`)
+
+      return false
+    }
+
+    const didClose = await runTaskMutation(taskId, () =>
+      runMutation(() =>
+        closeTaskChainMutation.mutateAsync({
+          expectedVersion: task.version,
+          taskId,
+        }),
+      ),
+    )
+
+    if (didClose) {
+      setTaskActionSnackbar({
+        id: generateUuidV7(),
+        message: 'Цепочка завершена',
+      })
+    }
+
+    return didClose
+  }
+
   async function addTaskTemplate(
     input: NewTaskTemplateInput,
   ): Promise<boolean> {
@@ -493,6 +667,14 @@ export function usePlannerState(): PlannerState {
 
       if (didUpdate && didCompleteTask && isTaskCompletionConfettiEnabled) {
         fireTaskCompletionConfetti()
+      }
+
+      if (didUpdate && didCompleteTask && task.chainId) {
+        setTaskActionSnackbar({
+          chainCompletionTaskId: taskId,
+          id: generateUuidV7(),
+          message: 'Этап выполнен',
+        })
       }
 
       return didUpdate
@@ -650,6 +832,10 @@ export function usePlannerState(): PlannerState {
         createLifeSphereMutation.error,
       ),
       getErrorDebugDetails(
+        'createNextTaskStageMutation.error',
+        createNextTaskStageMutation.error,
+      ),
+      getErrorDebugDetails(
         'copyTaskToPersonalMutation.error',
         copyTaskToPersonalMutation.error,
       ),
@@ -670,6 +856,10 @@ export function usePlannerState(): PlannerState {
         removeLifeSphereMutation.error,
       ),
       getErrorDebugDetails(
+        'detachTaskChainMutation.error',
+        detachTaskChainMutation.error,
+      ),
+      getErrorDebugDetails(
         'createTaskMutation.error',
         createTaskMutation.error,
       ),
@@ -684,6 +874,10 @@ export function usePlannerState(): PlannerState {
       getErrorDebugDetails(
         'setTaskStatusMutation.error',
         setTaskStatusMutation.error,
+      ),
+      getErrorDebugDetails(
+        'undoNextTaskStageMutation.error',
+        undoNextTaskStageMutation.error,
       ),
       getErrorDebugDetails(
         'setTaskScheduleMutation.error',
@@ -704,8 +898,12 @@ export function usePlannerState(): PlannerState {
     addSphere,
     addTask,
     addTaskTemplate,
+    clearTaskActionSnackbar,
+    closeTaskChain,
     conflictedMutationCount,
+    createNextTaskStage,
     copyTaskToPersonal,
+    detachTaskFromChain,
     debugErrorDetails,
     errorMessage:
       mutationErrorMessage ??
@@ -738,15 +936,19 @@ export function usePlannerState(): PlannerState {
       isDrainingOfflineQueue ||
       queuedMutationCount > 0 ||
       createLifeSphereMutation.isPending ||
+      closeTaskChainMutation.isPending ||
+      createNextTaskStageMutation.isPending ||
       copyTaskToPersonalMutation.isPending ||
       updateLifeSphereMutation.isPending ||
       removeLifeSphereMutation.isPending ||
+      detachTaskChainMutation.isPending ||
       createTaskMutation.isPending ||
       updateTaskMutation.isPending ||
       moveTaskToPersonalMutation.isPending ||
       createTaskTemplateMutation.isPending ||
       removeTaskTemplateMutation.isPending ||
       setTaskStatusMutation.isPending ||
+      undoNextTaskStageMutation.isPending ||
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
     isTaskPending,
@@ -762,7 +964,9 @@ export function usePlannerState(): PlannerState {
     setTaskSchedule,
     setTaskStatus,
     tasks,
+    taskActionSnackbar,
     taskTemplates,
+    undoNextTaskStage,
     updateSphere,
     updateTask,
   }

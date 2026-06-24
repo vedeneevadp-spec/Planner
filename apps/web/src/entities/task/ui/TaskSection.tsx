@@ -18,6 +18,7 @@ type TaskCardVariant = 'card' | 'compact'
 interface TaskSectionProps {
   title: string
   tasks: Task[]
+  allTasks?: Task[] | undefined
   currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
   sharedWorkspaceGroupRole?: WorkspaceGroupRole | null | undefined
@@ -34,7 +35,18 @@ interface TaskSectionProps {
   tomorrowKey: string
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
+  onCreateNextStage?:
+    | ((
+        taskId: string,
+        input: {
+          completeCurrent: boolean
+          plannedDate?: string | null | undefined
+          title: string
+        },
+      ) => Promise<unknown> | undefined)
+    | undefined
   onCopyToPersonal?: ((taskId: string) => void) | undefined
+  onDetachFromChain?: ((taskId: string) => void) | undefined
   onMoveToPersonal?: ((taskId: string) => void) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
@@ -45,6 +57,7 @@ interface TaskSectionProps {
 export function TaskSection({
   title,
   tasks,
+  allTasks = tasks,
   currentActorUserId,
   isSharedWorkspace = false,
   sharedWorkspaceGroupRole,
@@ -61,7 +74,9 @@ export function TaskSection({
   tomorrowKey,
   tone = 'default',
   isTaskPending,
+  onCreateNextStage,
   onCopyToPersonal,
+  onDetachFromChain,
   onMoveToPersonal,
   onSetStatus,
   onSetPlannedDate,
@@ -137,6 +152,7 @@ export function TaskSection({
               {tasks.map((task) => (
                 <TaskCard
                   key={task.id}
+                  allTasks={allTasks}
                   task={task}
                   variant={taskCardVariant}
                   todayKey={todayKey}
@@ -153,7 +169,9 @@ export function TaskSection({
                   uploadedIcons={uploadedIcons}
                   workspaceUsers={workspaceUsers}
                   tone={tone}
+                  onCreateNextStage={onCreateNextStage}
                   onCopyToPersonal={onCopyToPersonal}
+                  onDetachFromChain={onDetachFromChain}
                   onMoveToPersonal={onMoveToPersonal}
                   onRemove={onRemove}
                   onSetPlannedDate={onSetPlannedDate}

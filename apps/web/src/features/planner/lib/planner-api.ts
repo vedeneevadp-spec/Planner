@@ -21,6 +21,10 @@ import {
   newTaskInputSchema,
   type NewTaskTemplateInput,
   newTaskTemplateInputSchema,
+  type TaskChainCloseInput,
+  taskChainCloseInputSchema,
+  type TaskChainDetachInput,
+  taskChainDetachInputSchema,
   type TaskDetailsUpdateInput,
   taskDetailsUpdateInputSchema,
   type TaskEventListFilters,
@@ -32,6 +36,14 @@ import {
   type TaskListPageResponse,
   taskListPageResponseSchema,
   taskListResponseSchema,
+  type TaskNextStageInput,
+  taskNextStageInputSchema,
+  type TaskNextStageResponse,
+  taskNextStageResponseSchema,
+  type TaskNextStageUndoInput,
+  taskNextStageUndoInputSchema,
+  type TaskNextStageUndoResponse,
+  taskNextStageUndoResponseSchema,
   type TaskPersonalTransferInput,
   taskPersonalTransferInputSchema,
   type TaskRecord,
@@ -97,9 +109,21 @@ export interface PlannerApiClient {
   ) => Promise<DailyPlanRecord>
   createLifeSphere: (input: NewLifeSphereInput) => Promise<LifeSphereRecord>
   createTask: (input: NewTaskInput) => Promise<TaskRecord>
+  closeTaskChain: (
+    taskId: string,
+    input?: TaskChainCloseInput,
+  ) => Promise<TaskRecord>
+  createNextTaskStage: (
+    taskId: string,
+    input?: Partial<TaskNextStageInput>,
+  ) => Promise<TaskNextStageResponse>
   copyTaskToPersonal: (
     taskId: string,
     input?: TaskPersonalTransferInput,
+  ) => Promise<TaskRecord>
+  detachTaskFromChain: (
+    taskId: string,
+    input?: TaskChainDetachInput,
   ) => Promise<TaskRecord>
   createTaskTemplate: (
     input: NewTaskTemplateInput,
@@ -150,6 +174,10 @@ export interface PlannerApiClient {
     taskId: string,
     input: TaskDetailsUpdateInput,
   ) => Promise<TaskRecord>
+  undoCreateNextTaskStage: (
+    taskId: string,
+    input: TaskNextStageUndoInput,
+  ) => Promise<TaskNextStageUndoResponse>
   updateLifeSphere: (
     sphereId: string,
     input: LifeSphereUpdateInput,
@@ -298,6 +326,50 @@ export function createPlannerApiClient(
         body: validatedInput,
         method: 'POST',
         path: '/api/v1/tasks',
+        responseSchema: taskRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async createNextTaskStage(taskId, input = {}) {
+      const validatedInput = taskNextStageInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}/next-stage`,
+        responseSchema: taskNextStageResponseSchema,
+        writeAccess: true,
+      })
+    },
+    async closeTaskChain(taskId, input = {}) {
+      const validatedInput = taskChainCloseInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}/chain/close`,
+        responseSchema: taskRecordSchema,
+        writeAccess: true,
+      })
+    },
+    async undoCreateNextTaskStage(taskId, input) {
+      const validatedInput = taskNextStageUndoInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}/next-stage/undo`,
+        responseSchema: taskNextStageUndoResponseSchema,
+        writeAccess: true,
+      })
+    },
+    async detachTaskFromChain(taskId, input = {}) {
+      const validatedInput = taskChainDetachInputSchema.parse(input)
+
+      return request({
+        body: validatedInput,
+        method: 'POST',
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}/chain/detach`,
         responseSchema: taskRecordSchema,
         writeAccess: true,
       })

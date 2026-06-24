@@ -47,6 +47,13 @@ export const taskStatusSchema = z.enum([
 ])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
+export const taskStageTypeSchema = z.enum([
+  'task',
+  'waiting',
+  'parallel',
+  'template',
+])
+export const taskCompletionTypeSchema = z.enum(['completed', 'advanced'])
 export const taskRecurrenceFrequencySchema = z.enum([
   'daily',
   'weekly',
@@ -103,6 +110,18 @@ export const taskLinkedTaskSchema = z.object({
 export const taskSourceWorkspaceSchema = z.object({
   id: z.string(),
   name: z.string(),
+})
+
+export const taskChainSchema = z.object({
+  createdAt: z.string(),
+  deletedAt: z.string().nullable(),
+  id: z.string(),
+  rootTaskId: z.string().nullable(),
+  status: z.enum(['active', 'completed', 'archived']),
+  title: z.string(),
+  updatedAt: z.string(),
+  version: z.number().int().positive(),
+  workspaceId: z.string(),
 })
 
 const routineDaysOfWeekSchema = z
@@ -208,6 +227,11 @@ export const taskSchema = z.object({
   dueDate: nullableStringWithDefault,
   createdAt: z.string(),
   completedAt: z.string().nullable(),
+  chainId: z.string().nullable().optional(),
+  previousTaskId: z.string().nullable().optional(),
+  stageIndex: z.number().int().positive().nullable().optional(),
+  stageType: taskStageTypeSchema.nullable().optional(),
+  completionType: taskCompletionTypeSchema.nullable().optional(),
   linkedTask: taskLinkedTaskSchema.nullable().optional(),
   sourceWorkspace: taskSourceWorkspaceSchema.nullable().optional(),
 })
@@ -267,8 +291,33 @@ export const taskDeleteSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
 })
 
+export const taskNextStageInputSchema = z.object({
+  completeCurrent: z.boolean().optional().default(false),
+  expectedVersion: z.number().int().positive().optional(),
+  note: z.string().max(2000).optional(),
+  plannedDate: nullableStringWithDefault,
+  stageType: taskStageTypeSchema.optional(),
+  title: z.string().trim().min(1).max(240).optional(),
+})
+
+export const taskNextStageUndoInputSchema = z.object({
+  createdTaskExpectedVersion: z.number().int().positive().optional(),
+  createdTaskId: z.string().min(1),
+  previousChainId: z.string().nullable(),
+  previousCompletionType: taskCompletionTypeSchema.nullable().optional(),
+  previousCompletedAt: z.string().nullable(),
+  previousPreviousTaskId: z.string().nullable(),
+  previousStageIndex: z.number().int().positive().nullable(),
+  previousStageType: taskStageTypeSchema.nullable(),
+  previousStatus: taskStatusSchema,
+  previousTaskExpectedVersion: z.number().int().positive().optional(),
+})
+
 export type TaskStatus = z.infer<typeof taskStatusSchema>
 export type TaskImportance = z.infer<typeof taskImportanceSchema>
+export type TaskStageType = z.infer<typeof taskStageTypeSchema>
+export type TaskCompletionType = z.infer<typeof taskCompletionTypeSchema>
+export type TaskChain = z.infer<typeof taskChainSchema>
 export type RoutineTask = z.infer<typeof routineTaskSchema>
 export type RoutineTaskInput = z.input<typeof routineTaskInputSchema>
 export type TaskRecurrence = z.infer<typeof taskRecurrenceSchema>
@@ -299,3 +348,7 @@ export type TaskUpdateInput = z.infer<typeof taskUpdateInputSchema>
 export type TaskStatusChange = z.infer<typeof taskStatusChangeSchema>
 export type TaskScheduleChange = z.infer<typeof taskScheduleChangeSchema>
 export type TaskDelete = z.infer<typeof taskDeleteSchema>
+export type TaskNextStageInput = z.infer<typeof taskNextStageInputSchema>
+export type TaskNextStageUndoInput = z.infer<
+  typeof taskNextStageUndoInputSchema
+>

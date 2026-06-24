@@ -1,4 +1,10 @@
 import type {
+  TaskNextStageResponse,
+  TaskNextStageUndoInput,
+  TaskStageType,
+} from '@planner/contracts'
+
+import type {
   LifeSphereUpdateInput,
   NewLifeSphereInput,
   Sphere,
@@ -27,13 +33,31 @@ export interface PlannerState {
   queuedMutationCount: number
   errorMessage: string | null
   debugErrorDetails: string | null
+  taskActionSnackbar: PlannerTaskActionSnackbar | null
+  clearTaskActionSnackbar: () => void
   isTaskPending: (taskId: string) => boolean
   refresh: () => Promise<void>
   addSphere: (input: NewLifeSphereInput) => Promise<boolean>
   addTask: (input: NewTaskInput) => Promise<boolean>
   addTaskTemplate: (input: NewTaskTemplateInput) => Promise<boolean>
+  createNextTaskStage: (
+    taskId: string,
+    input?: {
+      completeCurrent?: boolean
+      note?: string | undefined
+      plannedDate?: string | null | undefined
+      stageType?: TaskStageType | undefined
+      title?: string | undefined
+    },
+  ) => Promise<TaskNextStageResponse | null>
+  closeTaskChain: (taskId: string) => Promise<boolean>
   copyTaskToPersonal: (taskId: string) => Promise<boolean>
+  detachTaskFromChain: (taskId: string) => Promise<boolean>
   moveTaskToPersonal: (taskId: string) => Promise<boolean>
+  undoNextTaskStage: (
+    taskId: string,
+    input: TaskNextStageUndoInput,
+  ) => Promise<boolean>
   updateTask: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   updateSphere: (
     sphereId: string,
@@ -51,4 +75,16 @@ export interface PlannerState {
   ) => Promise<boolean>
   removeTask: (taskId: string) => Promise<boolean>
   removeTaskTemplate: (templateId: string) => Promise<boolean>
+}
+
+export interface PlannerTaskActionSnackbar {
+  chainCompletionTaskId?: string | undefined
+  id: string
+  message: string
+  undo?:
+    | {
+        input: TaskNextStageUndoInput
+        taskId: string
+      }
+    | undefined
 }

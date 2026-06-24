@@ -20,6 +20,7 @@ import { getTaskRecurrenceLabel } from '../model/task-recurrence'
 import styles from './TaskCard.module.css'
 import { TaskEditDialog } from './TaskEditDialog'
 import { TaskResourceMeter } from './TaskMetaPickers'
+import { TaskNextStageDialog } from './TaskNextStageDialog'
 
 const LEGACY_EMPTY_PROJECT_TITLES = new Set([
   'Без сферы',
@@ -70,7 +71,50 @@ function formatReminderOffset(offset: number): string {
   return offset === 60 ? '1 час' : `${offset} мин`
 }
 
+function sortChainTasks(tasks: Task[]): Task[] {
+  return [...tasks].sort((left, right) => {
+    const leftIndex = left.stageIndex ?? Number.MAX_SAFE_INTEGER
+    const rightIndex = right.stageIndex ?? Number.MAX_SAFE_INTEGER
+
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex
+    }
+
+    if (left.createdAt === right.createdAt) {
+      return left.id.localeCompare(right.id)
+    }
+
+    return left.createdAt < right.createdAt ? -1 : 1
+  })
+}
+
+function getTaskStageLabel(task: Task, chainTasks: Task[]): string | null {
+  if (!task.chainId || !task.stageIndex) {
+    return null
+  }
+
+  return chainTasks.length > 1
+    ? `${task.stageIndex}/${chainTasks.length}`
+    : `Этап ${task.stageIndex}`
+}
+
+function getTaskStatusLabel(status: TaskStatus): string {
+  switch (status) {
+    case 'archived':
+      return 'Архив'
+    case 'done':
+      return 'Выполнено'
+    case 'in_progress':
+      return 'В работе'
+    case 'ready_for_review':
+      return 'На проверке'
+    case 'todo':
+      return 'Запланировано'
+  }
+}
+
 interface TaskCardProps {
+  allTasks?: Task[] | undefined
   currentActorUserId?: string | undefined
   isSharedWorkspace?: boolean | undefined
   sharedWorkspaceGroupRole?: WorkspaceGroupRole | null | undefined
@@ -85,7 +129,18 @@ interface TaskCardProps {
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
+  onCreateNextStage?:
+    | ((
+        taskId: string,
+        input: {
+          completeCurrent: boolean
+          plannedDate?: string | null | undefined
+          title: string
+        },
+      ) => Promise<unknown> | undefined)
+    | undefined
   onCopyToPersonal?: ((taskId: string) => void) | undefined
+  onDetachFromChain?: ((taskId: string) => void) | undefined
   onMoveToPersonal?: ((taskId: string) => void) | undefined
   onSetStatus: (taskId: string, status: TaskStatus) => void
   onSetPlannedDate: (taskId: string, plannedDate: string | null) => void
@@ -97,6 +152,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({
+  allTasks = [],
   currentActorUserId,
   isSharedWorkspace = false,
   sharedWorkspaceGroupRole,
@@ -111,7 +167,9 @@ export function TaskCard({
   tone = 'default',
   isPending = false,
   uploadedIcons = [],
+  onCreateNextStage,
   onCopyToPersonal,
+  onDetachFromChain,
   onMoveToPersonal,
   onSetStatus,
   onSetPlannedDate,
@@ -122,6 +180,9 @@ export function TaskCard({
   const [isEditing, setIsEditing] = useState(false)
   const [isViewing, setIsViewing] = useState(false)
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false)
+  const [nextStageRequest, setNextStageRequest] = useState<{
+    completeCurrent: boolean
+  } | null>(null)
   const actionMenuRef = useRef<HTMLDivElement | null>(null)
   const isCompactView = variant === 'compact'
   const isDetailView = variant === 'detail'
@@ -135,6 +196,12 @@ export function TaskCard({
   const taskType = getTaskTypeValue(task)
   const taskResource = getTaskResource(task)
   const reminderLabel = getTaskReminderLabel(task, isSharedWorkspace)
+  const chainTasks = task.chainId
+    ? sortChainTasks(
+        allTasks.filter((candidate) => candidate.chainId === task.chainId),
+      )
+    : []
+  const stageLabel = getTaskStageLabel(task, chainTasks)
   const actionPolicy = resolveTaskCardActionPolicy({
     currentActorUserId,
     isSharedWorkspace,
@@ -164,6 +231,12 @@ export function TaskCard({
     isLimitedSharedAssignee,
     isReadyForReview,
   } = actionPolicy
+  const hasNextStageAction = Boolean(onCreateNextStage && canEditTask)
+  const hasCompleteAndNextStageAction = Boolean(
+    onCreateNextStage && isActiveTask && canCompleteTask,
+  )
+  const hasVisibleActionMenu =
+    hasActionMenu || hasNextStageAction || hasCompleteAndNextStageAction
   const scheduleDetails = [
     task.plannedStartTime
       ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
@@ -310,7 +383,7 @@ export function TaskCard({
               <div className={styles.quickActions}>
                 {completeTaskButton}
 
-                {hasActionMenu ? (
+                {hasVisibleActionMenu ? (
                   <div ref={actionMenuRef} className={styles.actionMenuWrap}>
                     <button
                       className={cx(styles.button, styles.iconButton)}
@@ -448,6 +521,40 @@ export function TaskCard({
                             }
                           >
                             В архив
+                          </button>
+                        ) : null}
+
+                        {onCreateNextStage && canEditTask ? (
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            disabled={isPending}
+                            onClick={() =>
+                              runMenuAction(() =>
+                                setNextStageRequest({ completeCurrent: false }),
+                              )
+                            }
+                          >
+                            Создать следующий этап
+                          </button>
+                        ) : null}
+
+                        {onCreateNextStage &&
+                        isActiveTask &&
+                        canCompleteTask ? (
+                          <button
+                            className={styles.menuItem}
+                            type="button"
+                            role="menuitem"
+                            disabled={isPending}
+                            onClick={() =>
+                              runMenuAction(() =>
+                                setNextStageRequest({ completeCurrent: true }),
+                              )
+                            }
+                          >
+                            Завершить и создать следующий этап
                           </button>
                         ) : null}
 
@@ -618,7 +725,44 @@ export function TaskCard({
                   Готово к проверке
                 </span>
               ) : null}
+              {stageLabel ? (
+                <span className={cx(styles.metaChip, styles.chainChip)}>
+                  {stageLabel}
+                </span>
+              ) : null}
             </div>
+
+            {isDetailView && chainTasks.length > 0 ? (
+              <section className={styles.chainSection}>
+                <div className={styles.chainSectionHeader}>
+                  <h5>Этапы</h5>
+                  <span>{chainTasks.length}</span>
+                </div>
+                <ol className={styles.chainList}>
+                  {chainTasks.map((chainTask) => (
+                    <li
+                      key={chainTask.id}
+                      className={cx(
+                        styles.chainItem,
+                        chainTask.id === task.id && styles.chainItemCurrent,
+                      )}
+                    >
+                      <span className={styles.chainIndex}>
+                        {chainTask.stageIndex ?? '•'}
+                      </span>
+                      <span className={styles.chainBody}>
+                        <span className={styles.chainTitle}>
+                          {chainTask.title}
+                        </span>
+                        <span className={styles.chainMeta}>
+                          {getTaskStatusLabel(chainTask.status)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            ) : null}
           </>
         )}
       </div>
@@ -635,6 +779,24 @@ export function TaskCard({
           onClose={() => setIsEditing(false)}
           onUpdate={onUpdate}
           workspaceUsers={workspaceUsers}
+        />
+      ) : null}
+
+      {nextStageRequest ? (
+        <TaskNextStageDialog
+          completeCurrent={nextStageRequest.completeCurrent}
+          defaultTitle={task.title}
+          isPending={isPending}
+          onClose={() => setNextStageRequest(null)}
+          todayKey={todayKey}
+          tomorrowKey={tomorrowKey}
+          onSubmit={(input) =>
+            onCreateNextStage?.(task.id, {
+              completeCurrent: nextStageRequest.completeCurrent,
+              plannedDate: input.plannedDate,
+              title: input.title,
+            })
+          }
         />
       ) : null}
 
@@ -664,6 +826,7 @@ export function TaskCard({
                   </button>
                 </div>
                 <TaskCard
+                  allTasks={allTasks}
                   currentActorUserId={currentActorUserId}
                   isSharedWorkspace={isSharedWorkspace}
                   sharedWorkspaceGroupRole={sharedWorkspaceGroupRole}
@@ -678,7 +841,9 @@ export function TaskCard({
                   tone={tone}
                   isPending={isPending}
                   uploadedIcons={uploadedIcons}
+                  onCreateNextStage={onCreateNextStage}
                   onCopyToPersonal={onCopyToPersonal}
+                  onDetachFromChain={onDetachFromChain}
                   onMoveToPersonal={onMoveToPersonal}
                   onSetStatus={onSetStatus}
                   onSetPlannedDate={onSetPlannedDate}

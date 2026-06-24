@@ -182,6 +182,63 @@ describe('TaskCard', () => {
     expect(onSetStatus).toHaveBeenCalledWith('task-1', 'archived')
   })
 
+  it('creates the next stage through an in-app dialog', () => {
+    const onCreateNextStage = vi.fn(() => Promise.resolve({}))
+
+    renderTaskCard(createTask(), {
+      onCreateNextStage,
+    })
+
+    fireEvent.click(
+      within(openTaskActionMenu()).getByRole('menuitem', {
+        name: 'Создать следующий этап',
+      }),
+    )
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Создать следующий этап',
+    })
+
+    fireEvent.change(within(dialog).getByLabelText('Название'), {
+      target: { value: 'Новый этап' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Завтра' }))
+
+    expect(
+      within(dialog).getByRole('button', { name: 'Завтра' }),
+    ).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Создать' }))
+
+    expect(onCreateNextStage).toHaveBeenCalledWith('task-1', {
+      completeCurrent: false,
+      plannedDate: '2026-04-24',
+      title: 'Новый этап',
+    })
+  })
+
+  it('does not show chain view or detach actions in the task menu', () => {
+    renderTaskCard(
+      createTask({
+        chainId: 'chain-1',
+        stageIndex: 1,
+        stageType: 'task',
+      }),
+      {
+        onDetachFromChain: vi.fn(),
+      },
+    )
+
+    const menu = openTaskActionMenu()
+
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Посмотреть цепочку' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Разорвать связь' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('reopens archived tasks from the action menu', () => {
     const onSetStatus = vi.fn()
 

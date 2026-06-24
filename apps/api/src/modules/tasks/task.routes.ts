@@ -1,11 +1,17 @@
 import {
   newTaskInputSchema,
+  taskChainCloseInputSchema,
+  taskChainDetachInputSchema,
   taskDetailsUpdateInputSchema,
   taskEventListFiltersSchema,
   taskEventListResponseSchema,
   taskListFiltersSchema,
   taskListPageResponseSchema,
   taskListResponseSchema,
+  taskNextStageInputSchema,
+  taskNextStageResponseSchema,
+  taskNextStageUndoInputSchema,
+  taskNextStageUndoResponseSchema,
   taskPersonalTransferInputSchema,
   taskRecordSchema,
   taskScheduleUpdateInputSchema,
@@ -112,6 +118,90 @@ export function registerTaskRoutes(
     )
     const context = await resolveRouteWriteContext(request, sessionService)
     const task = await service.moveTaskToPersonal(
+      context,
+      params.taskId,
+      body.expectedVersion,
+    )
+
+    return taskRecordSchema.parse(task)
+  })
+
+  app.post('/api/v1/tasks/:taskId/next-stage', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const body = parseOrThrow(
+      taskNextStageInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const result = await service.createNextTaskStage(
+      context,
+      params.taskId,
+      body,
+    )
+
+    return taskNextStageResponseSchema.parse(result)
+  })
+
+  app.post('/api/v1/tasks/:taskId/next-stage/undo', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const body = parseOrThrow(
+      taskNextStageUndoInputSchema,
+      request.body,
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const result = await service.undoCreateNextTaskStage(
+      context,
+      params.taskId,
+      body,
+    )
+
+    return taskNextStageUndoResponseSchema.parse(result)
+  })
+
+  app.post('/api/v1/tasks/:taskId/chain/detach', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const body = parseOrThrow(
+      taskChainDetachInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const task = await service.detachTaskFromChain(
+      context,
+      params.taskId,
+      body.expectedVersion,
+    )
+
+    return taskRecordSchema.parse(task)
+  })
+
+  app.post('/api/v1/tasks/:taskId/chain/close', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const body = parseOrThrow(
+      taskChainCloseInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const task = await service.closeTaskChain(
       context,
       params.taskId,
       body.expectedVersion,

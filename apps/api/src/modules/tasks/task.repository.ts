@@ -1,14 +1,20 @@
 import type {
+  CloseTaskChainCommand,
   CopyTaskToPersonalCommand,
   CreateTaskCommand,
+  CreateTaskNextStageCommand,
   DeleteTaskCommand,
+  DetachTaskChainCommand,
   MoveTaskToPersonalCommand,
   StoredTaskRecord,
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
   TaskListPageResult,
+  TaskNextStageResult,
   TaskReadContext,
+  UndoTaskNextStageCommand,
+  UndoTaskNextStageResult,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
@@ -31,9 +37,17 @@ export interface TaskRepository {
     context: TaskReadContext,
     filters?: TaskEventFilters,
   ): Promise<TaskEventListResult>
+  closeChain(command: CloseTaskChainCommand): Promise<StoredTaskRecord>
   copyToPersonal(command: CopyTaskToPersonalCommand): Promise<StoredTaskRecord>
   create(command: CreateTaskCommand): Promise<StoredTaskRecord>
+  createNextStage(
+    command: CreateTaskNextStageCommand,
+  ): Promise<TaskNextStageResult>
+  detachFromChain(command: DetachTaskChainCommand): Promise<StoredTaskRecord>
   moveToPersonal(command: MoveTaskToPersonalCommand): Promise<StoredTaskRecord>
+  undoCreateNextStage(
+    command: UndoTaskNextStageCommand,
+  ): Promise<UndoTaskNextStageResult>
   update(command: UpdateTaskCommand): Promise<StoredTaskRecord>
   updateStatus(command: UpdateTaskStatusCommand): Promise<StoredTaskRecord>
   updateSchedule(command: UpdateTaskScheduleCommand): Promise<StoredTaskRecord>

@@ -1,23 +1,32 @@
 import { generateUuidV7 } from '@planner/contracts'
-import type { Kysely, Transaction } from 'kysely'
+import { type Kysely, sql, type Transaction } from 'kysely'
 
 import {
   withOptionalRls,
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
-import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
+import type {
+  AppTaskCompletionType,
+  DatabaseSchema,
+} from '../../infrastructure/db/schema.js'
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
+  CloseTaskChainCommand,
   CopyTaskToPersonalCommand,
   CreateTaskCommand,
+  CreateTaskNextStageCommand,
   DeleteTaskCommand,
+  DetachTaskChainCommand,
   MoveTaskToPersonalCommand,
   StoredTaskRecord,
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
   TaskListPageResult,
+  TaskNextStageResult,
   TaskReadContext,
+  UndoTaskNextStageCommand,
+  UndoTaskNextStageResult,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
@@ -376,6 +385,273 @@ export class PostgresTaskRepository implements TaskRepository {
     )
   }
 
+  async createNextStage(
+    command: CreateTaskNextStageCommand,
+  ): Promise<TaskNextStageResult> {
+    const now = new Date().toISOString()
+    const nextTaskId = generateUuidV7()
+
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        const sourceTaskRow = await trx
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        if (!sourceTaskRow) {
+          throw new TaskNotFoundError(command.taskId)
+        }
+
+        if (
+          command.input.expectedVersion !== undefined &&
+          Number(sourceTaskRow.version) !== command.input.expectedVersion
+        ) {
+          throw new TaskVersionConflictError(
+            command.taskId,
+            command.input.expectedVersion,
+            Number(sourceTaskRow.version),
+          )
+        }
+
+        const [sourceTimeBlock, sourceProjectTitle, assigneeDisplayName] =
+          await Promise.all([
+            loadPrimaryTimeBlock(
+              trx,
+              command.context.workspaceId,
+              sourceTaskRow.id,
+            ),
+            loadProjectTitle(
+              trx,
+              command.context.workspaceId,
+              sourceTaskRow.project_id,
+            ),
+            loadAssigneeDisplayName(trx, sourceTaskRow.assignee_user_id),
+          ])
+        const sourceRecord = mapTaskRecord(
+          sourceTaskRow,
+          sourceTimeBlock,
+          sourceProjectTitle,
+          assigneeDisplayName,
+          await loadUserDisplayName(trx, sourceTaskRow.created_by),
+        )
+        const chainId = sourceTaskRow.chain_id ?? generateUuidV7()
+        const currentStageIndex = sourceTaskRow.stage_index ?? 1
+        const currentStageType = sourceTaskRow.stage_type ?? 'task'
+
+        if (!sourceTaskRow.chain_id) {
+          await trx
+            .insertInto('app.task_chains')
+            .values({
+              created_by: command.context.actorUserId,
+              deleted_at: null,
+              id: chainId,
+              metadata: {},
+              root_task_id: sourceTaskRow.id,
+              status: 'active',
+              title: sourceRecord.title,
+              updated_by: command.context.actorUserId,
+              workspace_id: command.context.workspaceId,
+            })
+            .executeTakeFirst()
+        }
+
+        const currentUpdate = command.input.completeCurrent
+          ? {
+              chain_id: chainId,
+              completed_at: now,
+              completion_type: 'advanced' as const,
+              previous_task_id: sourceTaskRow.previous_task_id,
+              stage_index: currentStageIndex,
+              stage_type: currentStageType,
+              status: 'done' as const,
+              updated_by: command.context.actorUserId,
+            }
+          : {
+              chain_id: chainId,
+              previous_task_id: sourceTaskRow.previous_task_id,
+              stage_index: currentStageIndex,
+              stage_type: currentStageType,
+              updated_by: command.context.actorUserId,
+            }
+        let updateCurrentQuery = trx
+          .updateTable('app.tasks')
+          .set(currentUpdate)
+          .where('id', '=', sourceTaskRow.id)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+
+        if (command.input.expectedVersion !== undefined) {
+          updateCurrentQuery = updateCurrentQuery.where(
+            'version',
+            '=',
+            command.input.expectedVersion,
+          )
+        }
+
+        const updatedCurrentTask = await updateCurrentQuery
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!updatedCurrentTask) {
+          const currentTask = await loadCurrentTask(trx, command)
+
+          if (!currentTask) {
+            throw new TaskNotFoundError(command.taskId)
+          }
+
+          if (
+            command.input.expectedVersion !== undefined &&
+            Number(currentTask.version) !== command.input.expectedVersion
+          ) {
+            throw new TaskVersionConflictError(
+              command.taskId,
+              command.input.expectedVersion,
+              Number(currentTask.version),
+            )
+          }
+
+          throw new Error(`Task "${command.taskId}" was not advanced.`)
+        }
+
+        const nextTaskMetadata = buildTaskMetadata(
+          sourceProjectTitle ? '' : sourceRecord.project,
+          {
+            icon: sourceRecord.icon,
+            importance: sourceRecord.importance,
+            linkedTask: sourceRecord.linkedTask ?? null,
+            recurrence: null,
+            remindBeforeStart: undefined,
+            reminderOffsets: undefined,
+            requiresConfirmation: sourceRecord.requiresConfirmation,
+            routine: null,
+            sourceWorkspace: sourceRecord.sourceWorkspace ?? null,
+            urgency: sourceRecord.urgency,
+          },
+        )
+        const insertedNextTask = await trx
+          .insertInto('app.tasks')
+          .values({
+            assignee_user_id: sourceTaskRow.assignee_user_id,
+            chain_id: chainId,
+            completed_at: null,
+            completion_type: null,
+            created_by: command.context.actorUserId,
+            deleted_at: null,
+            description:
+              command.input.note !== undefined
+                ? command.input.note.trim()
+                : sourceRecord.note,
+            due_at: null,
+            due_on: null,
+            id: nextTaskId,
+            local_date: command.input.plannedDate ?? null,
+            local_time: null,
+            metadata: nextTaskMetadata,
+            planned_on: command.input.plannedDate ?? null,
+            previous_task_id: sourceTaskRow.id,
+            priority: sourceTaskRow.priority,
+            project_id: sourceTaskRow.project_id,
+            recurrence_rule: null,
+            recurrence_start_date: null,
+            recurrence_time_zone: null,
+            resource: sourceTaskRow.resource,
+            sphere_id: sourceTaskRow.sphere_id,
+            sort_key: '',
+            starts_at_utc: null,
+            stage_index: currentStageIndex + 1,
+            stage_type: command.input.stageType ?? 'task',
+            status: 'todo',
+            time_kind: 'date_only',
+            time_zone: null,
+            time_zone_inferred: false,
+            title: command.input.title?.trim() || sourceRecord.title,
+            updated_by: command.context.actorUserId,
+            workspace_id: command.context.workspaceId,
+          })
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!insertedNextTask) {
+          throw new Error('Failed to create next task stage.')
+        }
+
+        const currentTask = mapTaskRecord(
+          updatedCurrentTask,
+          sourceTimeBlock,
+          sourceProjectTitle,
+          assigneeDisplayName,
+          sourceRecord.authorDisplayName,
+        )
+        const nextTask = mapTaskRecord(
+          insertedNextTask,
+          undefined,
+          sourceProjectTitle,
+          assigneeDisplayName,
+          command.context.actorDisplayName,
+        )
+
+        await syncTaskReminder(trx, {
+          isActive: isActiveTaskStatus(currentTask.status),
+          plannedDate: currentTask.plannedDate,
+          plannedStartTime: currentTask.plannedStartTime,
+          remindBeforeStart: currentTask.remindBeforeStart === true,
+          reminderOffsets: currentTask.reminderOffsets ?? [],
+          reminderTimeZone: undefined,
+          taskId: currentTask.id,
+          userId: updatedCurrentTask.created_by ?? command.context.actorUserId,
+          workspaceId: command.context.workspaceId,
+        })
+        await writeTaskMutationArtifacts(trx, {
+          actorUserId: command.context.actorUserId,
+          eventType: command.input.completeCurrent
+            ? 'task.status_changed'
+            : 'task.updated',
+          payload: {
+            chainId,
+            completionType: currentTask.completionType,
+            stageIndex: currentTask.stageIndex,
+            status: currentTask.status,
+            version: currentTask.version,
+          },
+          taskId: currentTask.id,
+          workspaceId: command.context.workspaceId,
+        })
+        await writeTaskMutationArtifacts(trx, {
+          actorUserId: command.context.actorUserId,
+          eventType: 'task.created',
+          payload: {
+            task: nextTask,
+          },
+          taskId: nextTask.id,
+          workspaceId: command.context.workspaceId,
+        })
+
+        return {
+          currentTask,
+          nextTask,
+          undo: {
+            createdTaskExpectedVersion: nextTask.version,
+            createdTaskId: nextTask.id,
+            previousChainId: sourceRecord.chainId ?? null,
+            previousCompletionType: sourceRecord.completionType ?? null,
+            previousCompletedAt: sourceRecord.completedAt,
+            previousPreviousTaskId: sourceRecord.previousTaskId ?? null,
+            previousStageIndex: sourceRecord.stageIndex ?? null,
+            previousStageType: sourceRecord.stageType ?? null,
+            previousStatus: sourceRecord.status,
+            previousTaskExpectedVersion: currentTask.version,
+          },
+        }
+      },
+      command.context.actorUserId,
+    )
+  }
+
   async copyToPersonal(
     command: CopyTaskToPersonalCommand,
   ): Promise<StoredTaskRecord> {
@@ -399,6 +675,78 @@ export class PostgresTaskRepository implements TaskRepository {
         })
 
         return record
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async closeChain(command: CloseTaskChainCommand): Promise<StoredTaskRecord> {
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        const taskRow = await trx
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        if (!taskRow) {
+          throw new TaskNotFoundError(command.taskId)
+        }
+
+        if (
+          command.expectedVersion !== undefined &&
+          Number(taskRow.version) !== command.expectedVersion
+        ) {
+          throw new TaskVersionConflictError(
+            command.taskId,
+            command.expectedVersion,
+            Number(taskRow.version),
+          )
+        }
+
+        if (taskRow.chain_id) {
+          await trx
+            .updateTable('app.task_chains')
+            .set({
+              status: 'completed',
+              updated_by: command.context.actorUserId,
+            })
+            .where('id', '=', taskRow.chain_id)
+            .where('workspace_id', '=', command.context.workspaceId)
+            .where('deleted_at', 'is', null)
+            .execute()
+        }
+
+        const timeBlock = await loadPrimaryTimeBlock(
+          trx,
+          command.context.workspaceId,
+          taskRow.id,
+        )
+        const projectTitle = await loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          taskRow.project_id,
+        )
+        const assigneeDisplayName = await loadAssigneeDisplayName(
+          trx,
+          taskRow.assignee_user_id,
+        )
+        const authorDisplayName = await loadUserDisplayName(
+          trx,
+          taskRow.created_by,
+        )
+
+        return mapTaskRecord(
+          taskRow,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+          authorDisplayName,
+        )
       },
       command.context.actorUserId,
     )
@@ -451,6 +799,297 @@ export class PostgresTaskRepository implements TaskRepository {
             version: Number(deletedTask.version),
           },
           taskId: command.task.id,
+          workspaceId: command.context.workspaceId,
+        })
+
+        return record
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async undoCreateNextStage(
+    command: UndoTaskNextStageCommand,
+  ): Promise<UndoTaskNextStageResult> {
+    const now = new Date().toISOString()
+
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        const currentTaskRow = await trx
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+        const createdTaskRow = await trx
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('id', '=', command.input.createdTaskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        if (!currentTaskRow) {
+          throw new TaskNotFoundError(command.taskId)
+        }
+
+        if (
+          !createdTaskRow ||
+          createdTaskRow.previous_task_id !== command.taskId
+        ) {
+          throw new TaskNotFoundError(command.input.createdTaskId)
+        }
+
+        if (
+          command.input.previousTaskExpectedVersion !== undefined &&
+          Number(currentTaskRow.version) !==
+            command.input.previousTaskExpectedVersion
+        ) {
+          throw new TaskVersionConflictError(
+            command.taskId,
+            command.input.previousTaskExpectedVersion,
+            Number(currentTaskRow.version),
+          )
+        }
+
+        if (
+          command.input.createdTaskExpectedVersion !== undefined &&
+          Number(createdTaskRow.version) !==
+            command.input.createdTaskExpectedVersion
+        ) {
+          throw new TaskVersionConflictError(
+            command.input.createdTaskId,
+            command.input.createdTaskExpectedVersion,
+            Number(createdTaskRow.version),
+          )
+        }
+
+        const restoredTask = await trx
+          .updateTable('app.tasks')
+          .set({
+            chain_id: command.input.previousChainId,
+            completed_at: command.input.previousCompletedAt,
+            completion_type:
+              command.input.previousStatus === 'done'
+                ? (command.input.previousCompletionType ?? 'completed')
+                : null,
+            previous_task_id: command.input.previousPreviousTaskId,
+            stage_index: command.input.previousStageIndex,
+            stage_type: command.input.previousStageType,
+            status: command.input.previousStatus,
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!restoredTask) {
+          throw new Error(`Task "${command.taskId}" was not restored.`)
+        }
+
+        const removedTask = await trx
+          .updateTable('app.tasks')
+          .set({
+            deleted_at: now,
+            updated_by: command.context.actorUserId,
+          })
+          .where('id', '=', command.input.createdTaskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .returningAll()
+          .executeTakeFirst()
+
+        if (!removedTask) {
+          throw new Error(
+            `Task "${command.input.createdTaskId}" was not removed.`,
+          )
+        }
+
+        if (!command.input.previousChainId && currentTaskRow.chain_id) {
+          await trx
+            .updateTable('app.task_chains')
+            .set({
+              deleted_at: now,
+              updated_by: command.context.actorUserId,
+            })
+            .where('id', '=', currentTaskRow.chain_id)
+            .where('workspace_id', '=', command.context.workspaceId)
+            .where('deleted_at', 'is', null)
+            .where((expressionBuilder) =>
+              expressionBuilder.not(
+                expressionBuilder.exists(
+                  expressionBuilder
+                    .selectFrom('app.tasks')
+                    .select('id')
+                    .whereRef('app.tasks.chain_id', '=', 'app.task_chains.id')
+                    .where('app.tasks.deleted_at', 'is', null),
+                ),
+              ),
+            )
+            .execute()
+        }
+
+        const timeBlock = await loadPrimaryTimeBlock(
+          trx,
+          command.context.workspaceId,
+          restoredTask.id,
+        )
+        const projectTitle = await loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          restoredTask.project_id,
+        )
+        const assigneeDisplayName = await loadAssigneeDisplayName(
+          trx,
+          restoredTask.assignee_user_id,
+        )
+        const authorDisplayName = await loadUserDisplayName(
+          trx,
+          restoredTask.created_by,
+        )
+        const record = mapTaskRecord(
+          restoredTask,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+          authorDisplayName,
+        )
+
+        await syncTaskReminder(trx, {
+          isActive: isActiveTaskStatus(record.status),
+          plannedDate: record.plannedDate,
+          plannedStartTime: record.plannedStartTime,
+          remindBeforeStart: record.remindBeforeStart === true,
+          reminderOffsets: record.reminderOffsets ?? [],
+          reminderTimeZone: undefined,
+          taskId: record.id,
+          userId: restoredTask.created_by ?? command.context.actorUserId,
+          workspaceId: command.context.workspaceId,
+        })
+        await writeTaskMutationArtifacts(trx, {
+          actorUserId: command.context.actorUserId,
+          eventType: 'task.updated',
+          payload: {
+            chainId: record.chainId,
+            status: record.status,
+            version: record.version,
+          },
+          taskId: record.id,
+          workspaceId: command.context.workspaceId,
+        })
+        await writeTaskMutationArtifacts(trx, {
+          actorUserId: command.context.actorUserId,
+          eventType: 'task.deleted',
+          payload: {
+            deletedAt: now,
+            version: Number(removedTask.version),
+          },
+          taskId: command.input.createdTaskId,
+          workspaceId: command.context.workspaceId,
+        })
+
+        return {
+          currentTask: record,
+          removedTaskId: command.input.createdTaskId,
+        }
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async detachFromChain(
+    command: DetachTaskChainCommand,
+  ): Promise<StoredTaskRecord> {
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        let updateQuery = trx
+          .updateTable('app.tasks')
+          .set(({ eb }) => ({
+            chain_id: null,
+            completion_type: sql<AppTaskCompletionType | null>`
+              case when ${eb.ref('status')} = 'done' then 'completed' else null end
+            `,
+            previous_task_id: null,
+            stage_index: null,
+            stage_type: null,
+            updated_by: command.context.actorUserId,
+          }))
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+
+        if (command.expectedVersion !== undefined) {
+          updateQuery = updateQuery.where(
+            'version',
+            '=',
+            command.expectedVersion,
+          )
+        }
+
+        const updatedTask = await updateQuery.returningAll().executeTakeFirst()
+
+        if (!updatedTask) {
+          const currentTask = await loadCurrentTask(trx, command)
+
+          if (!currentTask) {
+            throw new TaskNotFoundError(command.taskId)
+          }
+
+          if (
+            command.expectedVersion !== undefined &&
+            Number(currentTask.version) !== command.expectedVersion
+          ) {
+            throw new TaskVersionConflictError(
+              command.taskId,
+              command.expectedVersion,
+              Number(currentTask.version),
+            )
+          }
+
+          throw new Error(`Task "${command.taskId}" was not detached.`)
+        }
+
+        const timeBlock = await loadPrimaryTimeBlock(
+          trx,
+          command.context.workspaceId,
+          updatedTask.id,
+        )
+        const projectTitle = await loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          updatedTask.project_id,
+        )
+        const assigneeDisplayName = await loadAssigneeDisplayName(
+          trx,
+          updatedTask.assignee_user_id,
+        )
+        const authorDisplayName = await loadUserDisplayName(
+          trx,
+          updatedTask.created_by,
+        )
+        const record = mapTaskRecord(
+          updatedTask,
+          timeBlock,
+          projectTitle,
+          assigneeDisplayName,
+          authorDisplayName,
+        )
+
+        await writeTaskMutationArtifacts(trx, {
+          actorUserId: command.context.actorUserId,
+          eventType: 'task.updated',
+          payload: {
+            chainId: null,
+            version: record.version,
+          },
+          taskId: record.id,
           workspaceId: command.context.workspaceId,
         })
 
@@ -668,6 +1307,7 @@ export class PostgresTaskRepository implements TaskRepository {
         let updateQuery = trx
           .updateTable('app.tasks')
           .set({
+            completion_type: command.status === 'done' ? 'completed' : null,
             completed_at: completedAt,
             status: command.status,
             updated_by: command.context.actorUserId,
@@ -1248,6 +1888,7 @@ export class PostgresTaskRepository implements TaskRepository {
       const nextRelatedTask = await trx
         .updateTable('app.tasks')
         .set({
+          completion_type: command.status === 'done' ? 'completed' : null,
           completed_at: completedAt,
           status: command.status,
           updated_by: command.context.actorUserId,

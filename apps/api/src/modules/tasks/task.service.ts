@@ -10,13 +10,17 @@ import {
 import { HttpError } from '../../bootstrap/http-error.js'
 import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
+  CloseTaskChainCommand,
   CreateTaskCommand,
+  CreateTaskNextStageCommand,
   DeleteTaskCommand,
+  DetachTaskChainCommand,
   StoredTaskRecord,
   TaskEventFilters,
   TaskListFilters,
   TaskReadContext,
   TaskWriteContext,
+  UndoTaskNextStageCommand,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
@@ -226,6 +230,129 @@ export class TaskService {
 
           return updatedTask
         })
+    })
+  }
+
+  createNextTaskStage(
+    context: TaskWriteContext,
+    taskId: string,
+    input: CreateTaskNextStageCommand['input'],
+  ) {
+    assertCanWriteTasks(context)
+
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
+      }
+
+      assertCanManageSharedTask(context, task)
+
+      if (input.completeCurrent) {
+        assertCanManageSharedTaskStatus(context, task, 'done')
+        assertCanCompleteConfirmedSharedTask(context, task, 'done')
+      }
+
+      const command: CreateTaskNextStageCommand = {
+        context,
+        input,
+        taskId,
+      }
+
+      return this.repository.createNextStage(command)
+    })
+  }
+
+  undoCreateNextTaskStage(
+    context: TaskWriteContext,
+    taskId: string,
+    input: UndoTaskNextStageCommand['input'],
+  ) {
+    assertCanWriteTasks(context)
+
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
+      }
+
+      assertCanManageSharedTask(context, task)
+
+      const command: UndoTaskNextStageCommand = {
+        context,
+        input,
+        taskId,
+      }
+
+      return this.repository.undoCreateNextStage(command)
+    })
+  }
+
+  detachTaskFromChain(
+    context: TaskWriteContext,
+    taskId: string,
+    expectedVersion?: number,
+  ) {
+    assertCanWriteTasks(context)
+
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
+      }
+
+      assertCanManageSharedTask(context, task)
+
+      const command: DetachTaskChainCommand = {
+        context,
+        taskId,
+      }
+
+      if (expectedVersion !== undefined) {
+        command.expectedVersion = expectedVersion
+      }
+
+      return this.repository.detachFromChain(command)
+    })
+  }
+
+  closeTaskChain(
+    context: TaskWriteContext,
+    taskId: string,
+    expectedVersion?: number,
+  ) {
+    assertCanWriteTasks(context)
+
+    return this.repository.findById(context, taskId).then((task) => {
+      if (!task) {
+        throw new HttpError(
+          404,
+          'task_not_found',
+          `Task "${taskId}" was not found.`,
+        )
+      }
+
+      assertCanManageSharedTask(context, task)
+
+      const command: CloseTaskChainCommand = {
+        context,
+        taskId,
+      }
+
+      if (expectedVersion !== undefined) {
+        command.expectedVersion = expectedVersion
+      }
+
+      return this.repository.closeChain(command)
     })
   }
 

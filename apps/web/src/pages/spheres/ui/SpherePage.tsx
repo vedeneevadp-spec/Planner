@@ -22,6 +22,8 @@ export function SpherePage() {
   const navigate = useNavigate()
   const {
     copyTaskToPersonal,
+    createNextTaskStage,
+    detachTaskFromChain,
     isLoading,
     isTaskPending,
     moveTaskToPersonal,
@@ -161,6 +163,7 @@ export function SpherePage() {
       <TaskSection
         title="Задачи сферы"
         tasks={sphereTasks}
+        allTasks={tasks}
         currentActorUserId={session?.actorUserId}
         isSharedWorkspace={isSharedWorkspace}
         sharedWorkspaceGroupRole={session?.groupRole}
@@ -175,8 +178,14 @@ export function SpherePage() {
         onRemove={(taskId) => {
           void removeTask(taskId)
         }}
+        onCreateNextStage={(taskId, input) =>
+          createNextTaskStage(taskId, input)
+        }
         onCopyToPersonal={(taskId) => {
           void copyTaskToPersonal(taskId)
+        }}
+        onDetachFromChain={(taskId) => {
+          void detachTaskFromChain(taskId)
         }}
         onMoveToPersonal={(taskId) => {
           void moveTaskToPersonal(taskId)

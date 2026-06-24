@@ -566,6 +566,9 @@ export class PostgresTaskPoolerWriteFallback {
           with updated_task as (
             update app.tasks
             set
+              completion_type = ${
+                command.status === 'done' ? 'completed' : null
+              },
               completed_at = cast(${completedAt} as timestamptz),
               status = ${command.status},
               updated_by = ${command.context.actorUserId}
@@ -578,6 +581,9 @@ export class PostgresTaskPoolerWriteFallback {
           related_tasks as (
             update app.tasks as related_task
             set
+              completion_type = ${
+                command.status === 'done' ? 'completed' : null
+              },
               completed_at = cast(${completedAt} as timestamptz),
               status = ${command.status},
               updated_by = ${command.context.actorUserId}

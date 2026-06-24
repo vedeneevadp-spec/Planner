@@ -1462,6 +1462,12 @@ export function createComponentSchemas(): Record<
         authorDisplayName: nullableStringSchema(),
         authorUserId: nullableStringSchema(),
         completedAt: nullableStringSchema(),
+        chainId: nullableStringSchema(),
+        completionType: {
+          enum: ['advanced', 'completed'],
+          nullable: true,
+          type: 'string',
+        },
         createdAt: {
           format: 'date-time',
           type: 'string',
@@ -1482,6 +1488,7 @@ export function createComponentSchemas(): Record<
         plannedDate: nullableStringSchema(),
         plannedEndTime: nullableStringSchema(),
         plannedStartTime: nullableStringSchema(),
+        previousTaskId: nullableStringSchema(),
         project: {
           type: 'string',
         },
@@ -1515,6 +1522,16 @@ export function createComponentSchemas(): Record<
           },
           required: ['id', 'name'],
           type: 'object',
+        },
+        stageIndex: {
+          minimum: 1,
+          nullable: true,
+          type: 'integer',
+        },
+        stageType: {
+          enum: ['parallel', 'task', 'template', 'waiting'],
+          nullable: true,
+          type: 'string',
         },
         status: {
           $ref: '#/components/schemas/TaskStatus',
@@ -1592,6 +1609,116 @@ export function createComponentSchemas(): Record<
       properties: {
         expectedVersion: positiveIntegerSchema(),
       },
+      type: 'object',
+    },
+    TaskChainDetachInput: {
+      additionalProperties: false,
+      properties: {
+        expectedVersion: positiveIntegerSchema(),
+      },
+      type: 'object',
+    },
+    TaskChainCloseInput: {
+      additionalProperties: false,
+      properties: {
+        expectedVersion: positiveIntegerSchema(),
+      },
+      type: 'object',
+    },
+    TaskNextStageInput: {
+      additionalProperties: false,
+      properties: {
+        completeCurrent: {
+          default: false,
+          type: 'boolean',
+        },
+        expectedVersion: positiveIntegerSchema(),
+        note: {
+          maxLength: 2000,
+          type: 'string',
+        },
+        plannedDate: nullableStringSchema(),
+        stageType: {
+          enum: ['task', 'waiting', 'parallel', 'template'],
+          type: 'string',
+        },
+        title: {
+          maxLength: 240,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      type: 'object',
+    },
+    TaskNextStageUndoInput: {
+      additionalProperties: false,
+      properties: {
+        createdTaskExpectedVersion: positiveIntegerSchema(),
+        createdTaskId: {
+          minLength: 1,
+          type: 'string',
+        },
+        previousChainId: nullableStringSchema(),
+        previousCompletedAt: nullableStringSchema(),
+        previousCompletionType: {
+          enum: ['advanced', 'completed'],
+          nullable: true,
+          type: 'string',
+        },
+        previousPreviousTaskId: nullableStringSchema(),
+        previousStageIndex: {
+          minimum: 1,
+          nullable: true,
+          type: 'integer',
+        },
+        previousStageType: {
+          enum: ['parallel', 'task', 'template', 'waiting'],
+          nullable: true,
+          type: 'string',
+        },
+        previousStatus: {
+          $ref: '#/components/schemas/TaskStatus',
+        },
+        previousTaskExpectedVersion: positiveIntegerSchema(),
+      },
+      required: [
+        'createdTaskId',
+        'previousChainId',
+        'previousCompletedAt',
+        'previousPreviousTaskId',
+        'previousStageIndex',
+        'previousStageType',
+        'previousStatus',
+      ],
+      type: 'object',
+    },
+    TaskNextStageResponse: {
+      additionalProperties: false,
+      properties: {
+        currentTask: {
+          $ref: '#/components/schemas/TaskRecord',
+        },
+        nextTask: {
+          $ref: '#/components/schemas/TaskRecord',
+        },
+        undo: {
+          $ref: '#/components/schemas/TaskNextStageUndoInput',
+        },
+      },
+      required: ['currentTask', 'nextTask', 'undo'],
+      type: 'object',
+    },
+    TaskNextStageUndoResponse: {
+      additionalProperties: false,
+      properties: {
+        currentTask: {
+          $ref: '#/components/schemas/TaskRecord',
+        },
+        removedTaskId: {
+          type: 'string',
+        },
+      },
+      required: ['currentTask', 'removedTaskId'],
       type: 'object',
     },
     TaskScheduleUpdateInput: {

@@ -9,9 +9,14 @@ export type AppTaskTimeKind =
   | 'fixed_zone_datetime'
   | 'floating_local_time'
   | 'instant'
+export type AppTaskStageType = 'parallel' | 'task' | 'template' | 'waiting'
+export type AppTaskCompletionType = 'advanced' | 'completed'
+export type AppTaskChainStatus = 'active' | 'archived' | 'completed'
 
 export interface AppTasksTable {
   assignee_user_id: string | null
+  chain_id: string | null
+  completion_type: AppTaskCompletionType | null
   completed_at: TimestampColumn | null
   created_at: Generated<TimestampColumn>
   created_by: string | null
@@ -25,6 +30,7 @@ export interface AppTasksTable {
   metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
   parent_task_id: string | null
   planned_on: DateColumn | null
+  previous_task_id: string | null
   priority: number
   project_id: string | null
   recurrence_rule: string | null
@@ -34,10 +40,27 @@ export interface AppTasksTable {
   sphere_id: string | null
   sort_key: string
   starts_at_utc: TimestampColumn | null
+  stage_index: number | null
+  stage_type: AppTaskStageType | null
   status: 'todo' | 'in_progress' | 'ready_for_review' | 'done' | 'archived'
   time_kind: Generated<AppTaskTimeKind>
   time_zone: string | null
   time_zone_inferred: Generated<boolean>
+  title: string
+  updated_at: Generated<TimestampColumn>
+  updated_by: string | null
+  version: Generated<number>
+  workspace_id: string
+}
+
+export interface AppTaskChainsTable {
+  created_at: Generated<TimestampColumn>
+  created_by: string | null
+  deleted_at: TimestampColumn | null
+  id: Generated<string>
+  metadata: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  root_task_id: string | null
+  status: Generated<AppTaskChainStatus>
   title: string
   updated_at: Generated<TimestampColumn>
   updated_by: string | null
@@ -979,6 +1002,7 @@ export interface DatabaseSchema {
   'app.self_care_settings': AppSelfCareSettingsTable
   'app.self_care_templates': AppSelfCareTemplatesTable
   'app.task_attachments': AppTaskAttachmentsTable
+  'app.task_chains': AppTaskChainsTable
   'app.task_events': AppTaskEventsTable
   'app.task_occurrences': AppTaskOccurrencesTable
   'app.task_reminders': AppTaskRemindersTable

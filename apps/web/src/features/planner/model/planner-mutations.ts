@@ -1,6 +1,8 @@
 import {
   type LifeSphereRecord,
+  type TaskNextStageUndoInput,
   type TaskRecord,
+  type TaskStageType,
   type TaskTemplateRecord,
 } from '@planner/contracts'
 import { type QueryClient, useMutation } from '@tanstack/react-query'
@@ -93,6 +95,31 @@ export interface RemoveTaskMutationVariables {
 }
 
 export interface TransferTaskToPersonalMutationVariables {
+  expectedVersion: number
+  taskId: string
+}
+
+export interface CreateNextTaskStageMutationVariables {
+  completeCurrent: boolean
+  expectedVersion: number
+  note?: string | undefined
+  plannedDate?: string | null | undefined
+  stageType?: TaskStageType | undefined
+  taskId: string
+  title?: string | undefined
+}
+
+export interface UndoNextTaskStageMutationVariables {
+  input: TaskNextStageUndoInput
+  taskId: string
+}
+
+export interface DetachTaskChainMutationVariables {
+  expectedVersion: number
+  taskId: string
+}
+
+export interface CloseTaskChainMutationVariables {
   expectedVersion: number
   taskId: string
 }
@@ -403,6 +430,89 @@ export function usePlannerMutations({
     },
   })
 
+  const createNextTaskStageMutation = useMutation({
+    mutationFn: ({
+      completeCurrent,
+      expectedVersion,
+      note,
+      plannedDate,
+      stageType,
+      taskId,
+      title,
+    }: CreateNextTaskStageMutationVariables) =>
+      requirePlannerApi(plannerApi).createNextTaskStage(taskId, {
+        completeCurrent,
+        expectedVersion,
+        ...(note !== undefined ? { note } : {}),
+        ...(plannedDate !== undefined ? { plannedDate } : {}),
+        ...(stageType !== undefined ? { stageType } : {}),
+        ...(title !== undefined ? { title } : {}),
+      }),
+    onSuccess: (result) => {
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        replaceTaskRecord(
+          replaceTaskRecord(current, result.currentTask),
+          result.nextTask,
+        ),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
+  const undoNextTaskStageMutation = useMutation({
+    mutationFn: ({ input, taskId }: UndoNextTaskStageMutationVariables) =>
+      requirePlannerApi(plannerApi).undoCreateNextTaskStage(taskId, input),
+    onSuccess: (result) => {
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        replaceTaskRecord(
+          removeTaskRecord(current, result.removedTaskId),
+          result.currentTask,
+        ),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
+  const detachTaskChainMutation = useMutation({
+    mutationFn: ({
+      expectedVersion,
+      taskId,
+    }: DetachTaskChainMutationVariables) =>
+      requirePlannerApi(plannerApi).detachTaskFromChain(taskId, {
+        expectedVersion,
+      }),
+    onSuccess: (task) => {
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        replaceTaskRecord(current, task),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
+  const closeTaskChainMutation = useMutation({
+    mutationFn: ({
+      expectedVersion,
+      taskId,
+    }: CloseTaskChainMutationVariables) =>
+      requirePlannerApi(plannerApi).closeTaskChain(taskId, {
+        expectedVersion,
+      }),
+    onSuccess: (task) => {
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        replaceTaskRecord(current, task),
+      )
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: taskQueryKey })
+    },
+  })
+
   const createTaskTemplateMutation = useMutation({
     mutationFn: (input: NewTaskTemplateInput) =>
       requirePlannerApi(plannerApi).createTaskTemplate(input),
@@ -688,16 +798,20 @@ export function usePlannerMutations({
   })
 
   return {
+    closeTaskChainMutation,
     createLifeSphereMutation,
+    createNextTaskStageMutation,
     copyTaskToPersonalMutation,
     createTaskMutation,
     createTaskTemplateMutation,
+    detachTaskChainMutation,
     removeLifeSphereMutation,
     removeTaskMutation,
     removeTaskTemplateMutation,
     moveTaskToPersonalMutation,
     setTaskScheduleMutation,
     setTaskStatusMutation,
+    undoNextTaskStageMutation,
     updateLifeSphereMutation,
     updateTaskMutation,
   }

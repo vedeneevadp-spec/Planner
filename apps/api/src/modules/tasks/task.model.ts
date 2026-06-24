@@ -1,9 +1,13 @@
 import type {
   NewTaskInput,
   Task,
+  TaskCompletionType,
   TaskEventListFilters,
   TaskEventRecord,
+  TaskNextStageInput,
+  TaskNextStageUndoInput,
   TaskScheduleInput,
+  TaskStageType,
   TaskStatus,
   TaskUpdateInput,
   WorkspaceGroupRole,
@@ -106,6 +110,44 @@ export interface DeleteTaskCommand {
   taskId: string
   expectedVersion?: number
 }
+
+export interface CreateTaskNextStageCommand {
+  context: TaskWriteContext
+  input: TaskNextStageInput
+  taskId: string
+}
+
+export interface TaskNextStageResult {
+  currentTask: StoredTaskRecord
+  nextTask: StoredTaskRecord
+  undo: TaskNextStageUndoInput
+}
+
+export interface UndoTaskNextStageCommand {
+  context: TaskWriteContext
+  input: TaskNextStageUndoInput
+  taskId: string
+}
+
+export interface UndoTaskNextStageResult {
+  currentTask: StoredTaskRecord
+  removedTaskId: string
+}
+
+export interface DetachTaskChainCommand {
+  context: TaskWriteContext
+  expectedVersion?: number
+  taskId: string
+}
+
+export interface CloseTaskChainCommand {
+  context: TaskWriteContext
+  expectedVersion?: number
+  taskId: string
+}
+
+export type StoredTaskStageType = TaskStageType
+export type StoredTaskCompletionType = TaskCompletionType
 
 export interface CopyTaskToPersonalCommand {
   context: TaskWriteContext

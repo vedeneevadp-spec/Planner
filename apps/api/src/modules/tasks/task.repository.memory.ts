@@ -2,9 +2,12 @@ import { generateUuidV7 } from '@planner/contracts'
 
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
+  CloseTaskChainCommand,
   CopyTaskToPersonalCommand,
   CreateTaskCommand,
+  CreateTaskNextStageCommand,
   DeleteTaskCommand,
+  DetachTaskChainCommand,
   MoveTaskToPersonalCommand,
   StoredTaskEventRecord,
   StoredTaskRecord,
@@ -12,7 +15,10 @@ import type {
   TaskEventListResult,
   TaskListFilters,
   TaskListPageResult,
+  TaskNextStageResult,
   TaskReadContext,
+  UndoTaskNextStageCommand,
+  UndoTaskNextStageResult,
   UpdateTaskCommand,
   UpdateTaskScheduleCommand,
   UpdateTaskStatusCommand,
@@ -139,6 +145,113 @@ export class MemoryTaskRepository implements TaskRepository {
     return Promise.resolve(task)
   }
 
+  createNextStage(
+    command: CreateTaskNextStageCommand,
+  ): Promise<TaskNextStageResult> {
+    const task = this.getTaskOrThrow(
+      command.taskId,
+      command.context.workspaceId,
+    )
+    this.assertVersion(task, command.input.expectedVersion)
+
+    const now = new Date().toISOString()
+    const chainId = task.chainId ?? generateUuidV7()
+    const currentStageIndex = task.stageIndex ?? 1
+    const currentStageType = task.stageType ?? 'task'
+    const currentTask: StoredTaskRecord = {
+      ...task,
+      chainId,
+      completionType: command.input.completeCurrent
+        ? 'advanced'
+        : task.completionType,
+      completedAt: command.input.completeCurrent ? now : task.completedAt,
+      previousTaskId: task.previousTaskId ?? null,
+      stageIndex: currentStageIndex,
+      stageType: currentStageType,
+      status: command.input.completeCurrent ? 'done' : task.status,
+      updatedAt: now,
+      version: task.version + 1,
+    }
+    const nextTask: StoredTaskRecord = {
+      ...task,
+      chainId,
+      completionType: null,
+      completedAt: null,
+      createdAt: now,
+      deletedAt: null,
+      dueDate: null,
+      id: generateUuidV7(),
+      note:
+        command.input.note !== undefined
+          ? command.input.note.trim()
+          : task.note,
+      plannedDate: command.input.plannedDate ?? null,
+      plannedEndTime: null,
+      plannedStartTime: null,
+      previousTaskId: task.id,
+      remindBeforeStart: undefined,
+      reminderOffsets: undefined,
+      schedule: null,
+      stageIndex: currentStageIndex + 1,
+      stageType: command.input.stageType ?? 'task',
+      status: 'todo',
+      title: command.input.title?.trim() || task.title,
+      updatedAt: now,
+      version: 1,
+    }
+
+    this.tasks.set(currentTask.id, currentTask)
+    this.tasks.set(nextTask.id, nextTask)
+    this.appendTaskEvent(command, {
+      eventType: command.input.completeCurrent
+        ? 'task.status_changed'
+        : 'task.updated',
+      payload: {
+        chainId,
+        completionType: currentTask.completionType,
+        stageIndex: currentTask.stageIndex,
+        status: currentTask.status,
+        version: currentTask.version,
+      },
+      taskId: currentTask.id,
+    })
+    this.appendTaskEvent(command, {
+      eventType: 'task.created',
+      payload: {
+        task: nextTask,
+      },
+      taskId: nextTask.id,
+    })
+
+    return Promise.resolve({
+      currentTask,
+      nextTask,
+      undo: {
+        createdTaskExpectedVersion: nextTask.version,
+        createdTaskId: nextTask.id,
+        previousChainId: task.chainId ?? null,
+        previousCompletionType: task.completionType ?? null,
+        previousCompletedAt: task.completedAt,
+        previousPreviousTaskId: task.previousTaskId ?? null,
+        previousStageIndex: task.stageIndex ?? null,
+        previousStageType: task.stageType ?? null,
+        previousStatus: task.status,
+        previousTaskExpectedVersion: currentTask.version,
+      },
+    })
+  }
+
+  closeChain(command: CloseTaskChainCommand): Promise<StoredTaskRecord> {
+    const task = this.getTaskOrThrow(
+      command.taskId,
+      command.context.workspaceId,
+    )
+
+    this.assertVersion(task, command.expectedVersion)
+
+    return Promise.resolve(task)
+  }
+
   copyToPersonal(
     command: CopyTaskToPersonalCommand,
   ): Promise<StoredTaskRecord> {
@@ -203,6 +316,100 @@ export class MemoryTaskRepository implements TaskRepository {
     })
 
     return Promise.resolve(task)
+  }
+
+  undoCreateNextStage(
+    command: UndoTaskNextStageCommand,
+  ): Promise<UndoTaskNextStageResult> {
+    const task = this.getTaskOrThrow(
+      command.taskId,
+      command.context.workspaceId,
+    )
+    const createdTask = this.getTaskOrThrow(
+      command.input.createdTaskId,
+      command.context.workspaceId,
+    )
+    this.assertVersion(task, command.input.previousTaskExpectedVersion)
+    this.assertVersion(createdTask, command.input.createdTaskExpectedVersion)
+
+    if (createdTask.previousTaskId !== task.id) {
+      throw new TaskNotFoundError(command.input.createdTaskId)
+    }
+
+    const now = new Date().toISOString()
+    const currentTask: StoredTaskRecord = {
+      ...task,
+      chainId: command.input.previousChainId,
+      completionType:
+        command.input.previousStatus === 'done'
+          ? (command.input.previousCompletionType ?? 'completed')
+          : null,
+      completedAt: command.input.previousCompletedAt,
+      previousTaskId: command.input.previousPreviousTaskId,
+      stageIndex: command.input.previousStageIndex,
+      stageType: command.input.previousStageType,
+      status: command.input.previousStatus,
+      updatedAt: now,
+      version: task.version + 1,
+    }
+    const removedTask = markTaskDeleted(createdTask, now)
+
+    this.tasks.set(currentTask.id, currentTask)
+    this.tasks.set(removedTask.id, removedTask)
+    this.appendTaskEvent(command, {
+      eventType: 'task.updated',
+      payload: {
+        chainId: currentTask.chainId,
+        status: currentTask.status,
+        version: currentTask.version,
+      },
+      taskId: currentTask.id,
+    })
+    this.appendTaskEvent(command, {
+      eventType: 'task.deleted',
+      payload: {
+        deletedAt: removedTask.deletedAt,
+        version: removedTask.version,
+      },
+      taskId: removedTask.id,
+    })
+
+    return Promise.resolve({
+      currentTask,
+      removedTaskId: removedTask.id,
+    })
+  }
+
+  detachFromChain(command: DetachTaskChainCommand): Promise<StoredTaskRecord> {
+    const task = this.getTaskOrThrow(
+      command.taskId,
+      command.context.workspaceId,
+    )
+    this.assertVersion(task, command.expectedVersion)
+
+    const now = new Date().toISOString()
+    const nextTask: StoredTaskRecord = {
+      ...task,
+      chainId: null,
+      completionType: task.status === 'done' ? 'completed' : null,
+      previousTaskId: null,
+      stageIndex: null,
+      stageType: null,
+      updatedAt: now,
+      version: task.version + 1,
+    }
+
+    this.tasks.set(nextTask.id, nextTask)
+    this.appendTaskEvent(command, {
+      eventType: 'task.updated',
+      payload: {
+        chainId: null,
+        version: nextTask.version,
+      },
+      taskId: nextTask.id,
+    })
+
+    return Promise.resolve(nextTask)
   }
 
   update(command: UpdateTaskCommand): Promise<StoredTaskRecord> {
@@ -334,9 +541,13 @@ export class MemoryTaskRepository implements TaskRepository {
     command:
       | CreateTaskCommand
       | { context: CreateTaskCommand['context'] }
+      | CloseTaskChainCommand
       | CopyTaskToPersonalCommand
+      | CreateTaskNextStageCommand
       | DeleteTaskCommand
+      | DetachTaskChainCommand
       | MoveTaskToPersonalCommand
+      | UndoTaskNextStageCommand
       | UpdateTaskCommand
       | UpdateTaskScheduleCommand
       | UpdateTaskStatusCommand,

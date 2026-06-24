@@ -518,6 +518,8 @@ export function CalendarPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const {
     copyTaskToPersonal,
+    createNextTaskStage,
+    detachTaskFromChain,
     isTaskPending,
     moveTaskToPersonal,
     removeTask,
@@ -1383,6 +1385,7 @@ export function CalendarPage() {
                   </button>
                 </div>
                 <TaskCard
+                  allTasks={tasks}
                   task={selectedTask}
                   sphere={spheres.find(
                     (sphere) => sphere.id === selectedTask.projectId,
@@ -1398,8 +1401,14 @@ export function CalendarPage() {
                   sharedWorkspaceRole={session?.role}
                   uploadedIcons={uploadedIcons}
                   workspaceUsers={workspaceUsers}
+                  onCreateNextStage={(taskId, input) =>
+                    createNextTaskStage(taskId, input)
+                  }
                   onCopyToPersonal={(taskId) => {
                     void copyTaskToPersonal(taskId)
+                  }}
+                  onDetachFromChain={(taskId) => {
+                    void detachTaskFromChain(taskId)
                   }}
                   onMoveToPersonal={(taskId) => {
                     void moveTaskToPersonal(taskId)
