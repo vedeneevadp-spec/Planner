@@ -1,6 +1,6 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-06-22.
+Дата анализа: 2026-05-21. Обновлено: 2026-06-24.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
@@ -256,21 +256,21 @@ token и сохранение device session без возврата на фор
 
 Где видно:
 
-- `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 3948 строк
-- `apps/api/src/bootstrap/build-app.test.ts` - 3671 строк
-- `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 2534
+- `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 4561 строка
+- `apps/api/src/bootstrap/build-app.test.ts` - 3691 строка
+- `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 2724
   строки
 - `packages/contracts/src/voice-test-corpus/corpus.ts` - 2133 строки
 - `apps/api/src/bootstrap/openapi-paths.ts` - 2123 строки
-- `apps/api/src/modules/ai-context/ai-context.service.ts` - 2011 строк
-- `apps/web/src/pages/self-care/ui/SelfCarePage.module.css` - 1878 строк
-- `apps/api/src/modules/self-care/self-care.shared.ts` - 1806 строк
+- `apps/api/src/modules/self-care/self-care.shared.ts` - 2073 строки
+- `apps/api/src/modules/ai-context/ai-context.service.ts` - 2034 строки
+- `apps/web/src/pages/self-care/ui/SelfCarePage.module.css` - 1882 строки
 - `packages/contracts/src/planner-intent.ts` - 1783 строки
 - `apps/api/src/bootstrap/openapi-components.ts` - 1628 строк
-- `apps/web/src/pages/calendar/ui/CalendarPage.tsx` - 1578 строк
-- `apps/api/src/modules/session/session.repository.postgres.ts` - 1342 строки
-- `apps/api/src/modules/tasks/task.repository.postgres.ts` - 1215 строк
-- `apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts` - 869
+- `apps/web/src/pages/calendar/ui/CalendarPage.tsx` - 1425 строк
+- `apps/api/src/modules/session/session.repository.postgres.ts` - 1359 строк
+- `apps/api/src/modules/tasks/task.repository.postgres.ts` - 1295 строк
+- `apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts` - 866
   строк
 - `apps/web/src/features/voice-assistant/model/voice-action-reschedule-handler.ts` -
   623 строки
@@ -324,6 +324,15 @@ self-care UI/backend, AI context aggregation и ручной OpenAPI слой:
   DTO
 - для `build-app.test.ts` разделять route groups и shared fixtures без изменения
   runtime поведения
+
+Статус 2026-06-24: начат self-care page split. URL/search-param состояние,
+правила lazy-загрузки вкладок и active-tab loading decision вынесены из
+`SelfCarePage.tsx` в `SelfCarePage.model.ts` с focused tests. Query/data
+controller вынесен в `SelfCarePage.data.ts`, mutation controller - в
+`SelfCarePage.mutations.ts`, tabs/nav shell - в `SelfCarePage.tabs.tsx`.
+Размер `SelfCarePage.tsx` уменьшен с 896 до 752 строк без изменения UI/HTTP
+поведения. Следующие стабильные границы для малых PR: action handlers,
+dialog/form state и затем большие формы из `SelfCarePage.components.tsx`.
 
 Статус 2026-06-04: voice split доведен до orchestration/intent границ.
 Вынесены `useVoiceMetrics`, `useAndroidVoiceRuntime`, `useWebVoiceInput` и

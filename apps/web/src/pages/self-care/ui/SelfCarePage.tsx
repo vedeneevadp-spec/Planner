@@ -3,38 +3,10 @@ import type {
   SelfCareItemScheduleInput,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-import { useUploadedIconAssets } from '@/features/emoji-library'
-import {
-  getSelfCareErrorMessage,
-  useArchiveSelfCareItem,
-  useCancelSelfCareOccurrence,
-  useCompleteSelfCareCourseSession,
-  useCompleteSelfCareFlexibleGoal,
-  useCompleteSelfCareItemNow,
-  useCompleteSelfCareOccurrence,
-  useCreateSelfCareItem,
-  useCreateSelfCareItemFromTemplate,
-  useMoveSelfCareOccurrence,
-  useScheduleSelfCareItem,
-  useSelfCareAnalytics,
-  useSelfCareDashboard,
-  useSelfCareHistory,
-  useSelfCareItems,
-  useSelfCarePlan,
-  useSelfCareRitualStepDrafts,
-  useSelfCareSettings,
-  useSelfCareTemplates,
-  useSkipSelfCareOccurrence,
-  useUpdateSelfCareItem,
-  useUpdateSelfCareSettings,
-  useUpsertSelfCareRitualStepDraft,
-} from '@/features/self-care'
-import { usePlannerTimeZone } from '@/features/session'
-import { cx } from '@/shared/lib/classnames'
-import { addDateDays, getTodayDate } from '@/shared/time/time.service'
+import { getSelfCareErrorMessage } from '@/features/self-care'
 import pageStyles from '@/shared/ui/Page'
 
 import {
@@ -50,28 +22,20 @@ import {
   SelfCareSettingsTab,
   SelfCareTodayTab,
 } from './SelfCarePage.components'
+import { useSelfCarePageData } from './SelfCarePage.data'
 import {
   applyRitualStepDraftOverrides,
   buildCompletionInput,
   buildRitualStepCompletionInput,
   buildRitualStepDraftInput,
-  buildRitualStepDraftMap,
   canRestartCourse,
   firstErrorMessage,
   formatDate,
-  getCreatedTemplateIds,
   getInitialRitualStepDraft,
   getInitialScheduleDate,
   getRitualStepDraft,
   getRitualStepDraftKey,
-  getSelfCareCreateDialogMode,
-  getSelfCareTab,
-  isVisibleSelfCareTemplate,
   type RitualStepDraftOverrides,
-  SELF_CARE_ACTION_REQUEST_SEARCH_PARAM,
-  SELF_CARE_ACTION_SEARCH_PARAM,
-  SELF_CARE_PLAN_LOOKAHEAD_DAYS,
-  SELF_CARE_TABS,
   type SelfCareCourseRestartPayload,
   type SelfCareCreateDialogMode,
   type SelfCareCustomCreatePayload,
@@ -79,72 +43,66 @@ import {
   type SelfCareSettingsPatch,
   type SelfCareTab,
 } from './SelfCarePage.helpers'
+import {
+  getSelfCareCloseCreateDialogAndTabSearchParams,
+  getSelfCareCloseCreateDialogSearchParams,
+  getSelfCareCreateDialogSearchParams,
+  getSelfCarePageRouteState,
+  getSelfCareTabSearchParams,
+} from './SelfCarePage.model'
 import styles from './SelfCarePage.module.css'
+import { useSelfCarePageMutations } from './SelfCarePage.mutations'
 import {
   isEntryDoneToday,
   scheduleSelfCareEntryOccurrence,
 } from './SelfCarePage.schedule'
+import { SelfCarePageTabs } from './SelfCarePage.tabs'
+
 export function SelfCarePage() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const plannerTimeZone = usePlannerTimeZone()
-  const todayKey = getTodayDate(plannerTimeZone)
-  const rangeFrom = addDateDays(todayKey, -30)
-  const planTo = addDateDays(todayKey, SELF_CARE_PLAN_LOOKAHEAD_DAYS)
-  const activeTab = getSelfCareTab(searchParams)
-  const createDialogMode = getSelfCareCreateDialogMode(searchParams)
-  const tabsRef = useRef<HTMLElement | null>(null)
-  const { uploadedIcons } = useUploadedIconAssets()
-  const shouldLoadDashboard = activeTab === 'today' || activeTab === 'rituals'
-  const shouldLoadItems =
-    activeTab === 'today' ||
-    activeTab === 'rituals' ||
-    activeTab === 'settings' ||
-    Boolean(createDialogMode)
-  const shouldLoadPlan =
-    activeTab === 'today' || activeTab === 'plan' || activeTab === 'rituals'
-  const shouldLoadHistory =
-    activeTab === 'today' ||
-    activeTab === 'plan' ||
-    activeTab === 'rituals' ||
-    activeTab === 'history'
-  const shouldLoadRitualStepDrafts =
-    activeTab === 'today' || activeTab === 'rituals'
-  const shouldLoadSettings =
-    activeTab === 'settings' || Boolean(createDialogMode)
-  const shouldLoadTemplates =
-    activeTab === 'settings' || Boolean(createDialogMode)
-  const dashboardQuery = useSelfCareDashboard(todayKey, {
-    enabled: shouldLoadDashboard,
-  })
-  const itemsQuery = useSelfCareItems({ enabled: shouldLoadItems })
-  const planQuery = useSelfCarePlan(todayKey, planTo, {
-    enabled: shouldLoadPlan,
-  })
-  const stepDraftsQuery = useSelfCareRitualStepDrafts(todayKey, {
-    enabled: shouldLoadRitualStepDrafts,
-  })
-  const historyQuery = useSelfCareHistory(rangeFrom, todayKey, {
-    enabled: shouldLoadHistory,
-  })
-  const analyticsQuery = useSelfCareAnalytics(rangeFrom, todayKey, {
-    enabled: activeTab === 'analytics',
-  })
-  const settingsQuery = useSelfCareSettings({ enabled: shouldLoadSettings })
-  const templatesQuery = useSelfCareTemplates({ enabled: shouldLoadTemplates })
-  const completeOccurrenceMutation = useCompleteSelfCareOccurrence()
-  const completeItemNowMutation = useCompleteSelfCareItemNow()
-  const completeFlexibleGoalMutation = useCompleteSelfCareFlexibleGoal()
-  const completeCourseMutation = useCompleteSelfCareCourseSession()
-  const cancelOccurrenceMutation = useCancelSelfCareOccurrence()
-  const skipOccurrenceMutation = useSkipSelfCareOccurrence()
-  const archiveItemMutation = useArchiveSelfCareItem()
-  const scheduleItemMutation = useScheduleSelfCareItem()
-  const moveOccurrenceMutation = useMoveSelfCareOccurrence()
-  const createItemMutation = useCreateSelfCareItem()
-  const createFromTemplateMutation = useCreateSelfCareItemFromTemplate()
-  const updateItemMutation = useUpdateSelfCareItem()
-  const updateSettingsMutation = useUpdateSelfCareSettings()
-  const upsertRitualStepDraftMutation = useUpsertSelfCareRitualStepDraft()
+  const routeState = getSelfCarePageRouteState(searchParams)
+  const { activeTab, createDialogMode } = routeState
+  const {
+    analytics,
+    analyticsQuery,
+    createdTemplateIds,
+    dashboard,
+    dashboardQuery,
+    defaultCurrency,
+    history,
+    historyQuery,
+    isActiveTabLoading,
+    itemsQuery,
+    list,
+    plan,
+    planQuery,
+    serverRitualStepDrafts,
+    settingsQuery,
+    settingsResponse,
+    stepDraftsQuery,
+    templates,
+    templatesQuery,
+    todayKey,
+    uploadedIcons,
+  } = useSelfCarePageData(routeState)
+  const {
+    archiveItemMutation,
+    cancelOccurrenceMutation,
+    completeCourseMutation,
+    completeFlexibleGoalMutation,
+    completeItemNowMutation,
+    completeOccurrenceMutation,
+    createFromTemplateMutation,
+    createItemMutation,
+    isActionBusy,
+    moveOccurrenceMutation,
+    mutationErrors,
+    scheduleItemMutation,
+    skipOccurrenceMutation,
+    updateItemMutation,
+    updateSettingsMutation,
+    upsertRitualStepDraftMutation,
+  } = useSelfCarePageMutations()
   const [formError, setFormError] = useState<string | null>(null)
   const [scheduleDialogEntry, setScheduleDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
@@ -163,31 +121,6 @@ export function SelfCarePage() {
   >(() => new Set())
   const [ritualStepDraftOverrides, setRitualStepDraftOverrides] =
     useState<RitualStepDraftOverrides>({})
-  const dashboard = dashboardQuery.data
-  const list = itemsQuery.data
-  const plan = planQuery.data
-  const history = historyQuery.data
-  const analytics = analyticsQuery.data
-  const settingsResponse =
-    settingsQuery.data ??
-    (dashboard ? { minimumItems: [], settings: dashboard.settings } : undefined)
-  const defaultCurrency = settingsResponse?.settings.currency ?? 'RUB'
-  const templates = useMemo(
-    () => (templatesQuery.data ?? []).filter(isVisibleSelfCareTemplate),
-    [templatesQuery.data],
-  )
-  const isActiveTabLoading =
-    (activeTab === 'today' && dashboardQuery.isLoading && !dashboard) ||
-    (activeTab === 'plan' && planQuery.isLoading && !plan) ||
-    (activeTab === 'rituals' && itemsQuery.isLoading && !list) ||
-    (activeTab === 'history' && historyQuery.isLoading && !history) ||
-    (activeTab === 'analytics' && analyticsQuery.isLoading && !analytics) ||
-    (activeTab === 'settings' && settingsQuery.isLoading && !settingsResponse)
-  const serverRitualStepDrafts = useMemo(
-    () =>
-      stepDraftsQuery.data ? buildRitualStepDraftMap(stepDraftsQuery.data) : {},
-    [stepDraftsQuery.data],
-  )
   const ritualStepDrafts = useMemo(
     () =>
       applyRitualStepDraftOverrides(
@@ -196,25 +129,10 @@ export function SelfCarePage() {
       ),
     [ritualStepDraftOverrides, serverRitualStepDrafts],
   )
-  const createdTemplateIds = useMemo(() => getCreatedTemplateIds(list), [list])
   const disabledTemplateIds = useMemo(
     () => new Set([...createdTemplateIds, ...creatingTemplateIds]),
     [createdTemplateIds, creatingTemplateIds],
   )
-  const isActionBusy =
-    completeOccurrenceMutation.isPending ||
-    completeItemNowMutation.isPending ||
-    completeFlexibleGoalMutation.isPending ||
-    completeCourseMutation.isPending ||
-    cancelOccurrenceMutation.isPending ||
-    skipOccurrenceMutation.isPending ||
-    archiveItemMutation.isPending ||
-    scheduleItemMutation.isPending ||
-    moveOccurrenceMutation.isPending ||
-    createItemMutation.isPending ||
-    createFromTemplateMutation.isPending ||
-    updateItemMutation.isPending ||
-    updateSettingsMutation.isPending
   const errorMessage =
     formError ||
     firstErrorMessage([
@@ -226,65 +144,34 @@ export function SelfCarePage() {
       analyticsQuery.error,
       settingsQuery.error,
       templatesQuery.error,
-      completeOccurrenceMutation.error,
-      completeItemNowMutation.error,
-      completeFlexibleGoalMutation.error,
-      completeCourseMutation.error,
-      cancelOccurrenceMutation.error,
-      skipOccurrenceMutation.error,
-      archiveItemMutation.error,
-      scheduleItemMutation.error,
-      moveOccurrenceMutation.error,
-      createItemMutation.error,
-      createFromTemplateMutation.error,
-      updateItemMutation.error,
-      updateSettingsMutation.error,
-      upsertRitualStepDraftMutation.error,
+      ...mutationErrors,
     ])
 
   function setActiveTab(tab: SelfCareTab) {
-    const next = new URLSearchParams(searchParams)
-    if (tab === 'today') {
-      next.delete('tab')
-    } else {
-      next.set('tab', tab)
-    }
-    setSearchParams(next, { replace: true })
+    setSearchParams(getSelfCareTabSearchParams(searchParams, tab), {
+      replace: true,
+    })
   }
 
   function closeCreateDialog(): void {
-    const next = new URLSearchParams(searchParams)
-    next.delete(SELF_CARE_ACTION_SEARCH_PARAM)
-    next.delete(SELF_CARE_ACTION_REQUEST_SEARCH_PARAM)
-    setSearchParams(next, { replace: true })
+    setSearchParams(getSelfCareCloseCreateDialogSearchParams(searchParams), {
+      replace: true,
+    })
   }
 
   function closeCreateDialogAndShowTab(tab: SelfCareTab): void {
-    const next = new URLSearchParams(searchParams)
-    next.delete(SELF_CARE_ACTION_SEARCH_PARAM)
-    next.delete(SELF_CARE_ACTION_REQUEST_SEARCH_PARAM)
-
-    if (tab === 'today') {
-      next.delete('tab')
-    } else {
-      next.set('tab', tab)
-    }
-
-    setSearchParams(next, { replace: true })
+    setSearchParams(
+      getSelfCareCloseCreateDialogAndTabSearchParams(searchParams, tab),
+      { replace: true },
+    )
   }
 
   function openCreateDialog(): void {
-    const next = new URLSearchParams(searchParams)
-    next.set(SELF_CARE_ACTION_SEARCH_PARAM, 'care')
-    next.set(SELF_CARE_ACTION_REQUEST_SEARCH_PARAM, 'choice')
-    setSearchParams(next)
+    setSearchParams(getSelfCareCreateDialogSearchParams(searchParams, 'choice'))
   }
 
   function setCreateDialogMode(mode: SelfCareCreateDialogMode): void {
-    const next = new URLSearchParams(searchParams)
-    next.set(SELF_CARE_ACTION_SEARCH_PARAM, 'care')
-    next.set(SELF_CARE_ACTION_REQUEST_SEARCH_PARAM, mode)
-    setSearchParams(next)
+    setSearchParams(getSelfCareCreateDialogSearchParams(searchParams, mode))
   }
 
   function handleCreateCustomCare(payload: SelfCareCustomCreatePayload): void {
@@ -687,42 +574,11 @@ export function SelfCarePage() {
     })
   }
 
-  useEffect(() => {
-    const activeTabButton = tabsRef.current?.querySelector<HTMLElement>(
-      '[aria-current="page"]',
-    )
-
-    activeTabButton?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest',
-    })
-  }, [activeTab])
-
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
       {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
 
-      <nav
-        ref={tabsRef}
-        className={styles.tabs}
-        aria-label="Разделы заботы о себе"
-      >
-        {SELF_CARE_TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={cx(
-              styles.tabButton,
-              activeTab === tab.id && styles.tabButtonActive,
-            )}
-            type="button"
-            aria-current={activeTab === tab.id ? 'page' : undefined}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
+      <SelfCarePageTabs activeTab={activeTab} onSelectTab={setActiveTab} />
 
       {isActiveTabLoading ? (
         <section className={styles.emptyPanel}>
