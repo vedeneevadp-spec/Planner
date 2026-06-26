@@ -10,15 +10,13 @@ import type {
   SelfCareTemplate,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type {
-  useSelfCareAnalytics,
   useSelfCareDashboard,
   useSelfCareHistory,
   useSelfCarePlan,
-  useSelfCareSettings,
 } from '@/features/self-care'
 import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
@@ -42,7 +40,6 @@ import {
   buildCreateScheduleRule,
   buildDateTimeInput,
   buildRestartCourseScheduleRule,
-  buildVisibleCategoryDistribution,
   canRestartCourse,
   CATEGORY_LABELS,
   CATEGORY_SELECT_OPTIONS,
@@ -55,16 +52,12 @@ import {
   formatCourseCompletionState,
   formatDate,
   formatEntryDetails,
-  formatMeasurementDelta,
   formatMeasurementSummary,
   formatMeasurementTarget,
   formatMeasurementValue,
-  formatMoney,
-  formatMonthKey,
   formatOptionalNumber,
   formatPlanningText,
   formatSchedule,
-  formatShortDate,
   formatStateCompletionSummary,
   formatStateSummary,
   formatTime,
@@ -85,7 +78,6 @@ import {
   getInitialMeasurementValue,
   getInitialScheduleDate,
   getInitialScheduleTime,
-  getPercent,
   getPrimaryActionLabel,
   getRitualStepDraft,
   getSelfCareEntryTimeZone,
@@ -116,7 +108,6 @@ import {
   type SelfCareCustomCreatePayload,
   type SelfCareEditRepeatMode,
   type SelfCareEditSubmitPayload,
-  type SelfCareSettingsPatch,
   type SelfCareStandardRepeatKind,
   type SelfCareTimePreference,
   shouldShowSelfCareSkipAction,
@@ -151,6 +142,10 @@ import {
   shiftDateKey,
   shouldShowTodayEntry,
 } from './SelfCarePage.schedule'
+import { SelfCareSection } from './SelfCarePage.sections'
+
+export { SelfCareAnalyticsTab } from './SelfCarePage.analytics'
+export { SelfCareSettingsTab } from './SelfCarePage.settings'
 
 const REMINDER_CLEAR_VALUE = 'none'
 const REMINDER_OFFSET_OPTIONS: ReadonlyArray<{
@@ -814,8 +809,11 @@ export function SelfCareHistoryTab({
   const itemById = new Map(
     (history?.items ?? []).map((item) => [item.id, item]),
   )
+  const completions = [...(history?.completions ?? [])].sort((left, right) =>
+    right.completedAt.localeCompare(left.completedAt),
+  )
 
-  if (!history?.completions.length) {
+  if (!completions.length) {
     return (
       <section className={styles.emptyPanel}>
         История появится после первых выполнений.
@@ -825,7 +823,7 @@ export function SelfCareHistoryTab({
 
   return (
     <div className={styles.timeline}>
-      {history.completions.map((completion) => {
+      {completions.map((completion) => {
         const item = itemById.get(completion.itemId)
         return (
           <article key={completion.id} className={styles.historyCard}>
@@ -854,255 +852,6 @@ export function SelfCareHistoryTab({
         )
       })}
     </div>
-  )
-}
-
-type SelfCareAnalyticsData = NonNullable<
-  ReturnType<typeof useSelfCareAnalytics>['data']
->
-
-export function SelfCareAnalyticsTab({
-  analytics,
-  defaultCurrency,
-}: {
-  analytics: ReturnType<typeof useSelfCareAnalytics>['data'] | undefined
-  defaultCurrency: string
-}) {
-  const categoryDistribution = buildVisibleCategoryDistribution(
-    analytics?.balanceByCategory ?? {},
-  )
-  const categoryTotal = categoryDistribution.reduce(
-    (total, [, count]) => total + count,
-    0,
-  )
-  const procedureCostsByMonth = Object.entries(
-    analytics?.procedureCostsByMonth ?? {},
-  )
-    .filter(([, value]) => value > 0)
-    .sort((left, right) => right[0].localeCompare(left[0]))
-    .slice(0, 6)
-  const measurementTrends = analytics?.measurementTrends ?? []
-
-  return (
-    <div className={styles.tabPanel}>
-      <section className={styles.analyticsHero}>
-        <div>
-          <p>За выбранный период</p>
-          <span>Отметок заботы</span>
-        </div>
-        <strong>{analytics?.selectedSelfCareCount ?? 0}</strong>
-      </section>
-
-      <div className={cx(styles.gridTwo, styles.analyticsGrid)}>
-        <section className={cx(styles.panel, styles.analyticsPanel)}>
-          <h3>Баланс категорий</h3>
-          {categoryDistribution.length ? (
-            <div className={styles.categoryDistributionList}>
-              {categoryDistribution.map(([category, count]) => (
-                <CategoryDistributionRow
-                  key={category}
-                  count={count}
-                  label={VISIBLE_CATEGORY_LABELS[category]}
-                  percent={getPercent(count, categoryTotal)}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className={styles.mutedText}>
-              Данные появятся после выполнений.
-            </p>
-          )}
-        </section>
-
-        <section className={cx(styles.panel, styles.analyticsPanel)}>
-          <h3>Записи и здоровье</h3>
-          <div className={styles.metricList}>
-            <MetricRow
-              label="Расходы на записи"
-              value={formatMoney(
-                analytics?.procedureCosts ?? 0,
-                defaultCurrency,
-              )}
-            />
-            <MetricRow
-              label="Важные записи скоро"
-              value={String(analytics?.medicalUpcoming.length ?? 0)}
-            />
-          </div>
-          {procedureCostsByMonth.length ? (
-            <>
-              <span className={styles.analyticsSubheading}>По месяцам</span>
-              <div className={styles.metricList}>
-                {procedureCostsByMonth.map(([monthKey, value]) => (
-                  <MetricRow
-                    key={monthKey}
-                    label={formatMonthKey(monthKey)}
-                    value={formatMoney(value, defaultCurrency)}
-                  />
-                ))}
-              </div>
-            </>
-          ) : null}
-        </section>
-
-        <section
-          className={cx(
-            styles.panel,
-            styles.analyticsPanel,
-            styles.analyticsWidePanel,
-          )}
-        >
-          <h3>Динамика измерений</h3>
-          {measurementTrends.length ? (
-            <div className={styles.measurementTrendList}>
-              {measurementTrends.map((trend) => (
-                <MeasurementTrendRow key={trend.itemId} trend={trend} />
-              ))}
-            </div>
-          ) : (
-            <p className={styles.mutedText}>
-              Динамика появится после первых записей измерений.
-            </p>
-          )}
-        </section>
-      </div>
-    </div>
-  )
-}
-
-export function SelfCareSettingsTab({
-  disabledTemplateIds,
-  isBusy,
-  onCreateFromTemplate,
-  onUpdateSettings,
-  settings,
-  templates,
-}: {
-  disabledTemplateIds: ReadonlySet<string>
-  isBusy: boolean
-  onCreateFromTemplate: (templateId: string) => void
-  onUpdateSettings: (input: SelfCareSettingsPatch) => Promise<void>
-  settings: ReturnType<typeof useSelfCareSettings>['data'] | undefined
-  templates: SelfCareTemplate[]
-}) {
-  const currentSettings = settings?.settings
-
-  return (
-    <div className={styles.tabPanel}>
-      <section className={styles.panel}>
-        <h3>Настройки раздела</h3>
-        {currentSettings ? (
-          <SelfCareSettingsForm
-            key={currentSettings.id}
-            isBusy={isBusy}
-            settings={currentSettings}
-            onUpdateSettings={onUpdateSettings}
-          />
-        ) : (
-          <p className={styles.mutedText}>
-            Настройки загружаются. Форма станет доступна после ответа API.
-          </p>
-        )}
-      </section>
-
-      <TemplatesPicker
-        templates={templates}
-        isBusy={isBusy}
-        disabledTemplateIds={disabledTemplateIds}
-        onCreateFromTemplate={onCreateFromTemplate}
-      />
-    </div>
-  )
-}
-
-function SelfCareSettingsForm({
-  isBusy,
-  onUpdateSettings,
-  settings,
-}: {
-  isBusy: boolean
-  onUpdateSettings: (input: SelfCareSettingsPatch) => Promise<void>
-  settings: NonNullable<
-    ReturnType<typeof useSelfCareSettings>['data']
-  >['settings']
-}) {
-  const [currency, setCurrency] = useState(settings.currency ?? '')
-  const [showSelfCareInMainTasks, setShowSelfCareInMainTasks] = useState(
-    settings.showSelfCareInMainTasks,
-  )
-  const [showAppointmentsInCalendar, setShowAppointmentsInCalendar] = useState(
-    settings.showAppointmentsInCalendar,
-  )
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle')
-
-  return (
-    <form
-      className={styles.settingsForm}
-      onSubmit={(event) => {
-        event.preventDefault()
-        setSaveStatus('idle')
-        void onUpdateSettings({
-          currency: normalizeOptionalText(currency),
-          showAppointmentsInCalendar,
-          showSelfCareInMainTasks,
-        })
-          .then(() => {
-            setSaveStatus('saved')
-          })
-          .catch(() => undefined)
-      }}
-    >
-      <div className={styles.createFormGrid}>
-        <label className={styles.dateField}>
-          <span>Валюта процедур</span>
-          <input
-            type="text"
-            autoComplete="off"
-            maxLength={8}
-            placeholder="RUB"
-            value={currency}
-            disabled={isBusy}
-            onChange={(event) => {
-              setSaveStatus('idle')
-              setCurrency(event.target.value)
-            }}
-          />
-        </label>
-      </div>
-      <label className={styles.toggleField}>
-        <input
-          type="checkbox"
-          checked={showSelfCareInMainTasks}
-          disabled={isBusy}
-          onChange={(event) => {
-            setSaveStatus('idle')
-            setShowSelfCareInMainTasks(event.target.checked)
-          }}
-        />
-        <span>Показывать заботу в общем списке задач</span>
-      </label>
-      <label className={styles.toggleField}>
-        <input
-          type="checkbox"
-          checked={showAppointmentsInCalendar}
-          disabled={isBusy}
-          onChange={(event) => {
-            setSaveStatus('idle')
-            setShowAppointmentsInCalendar(event.target.checked)
-          }}
-        />
-        <span>Показывать записи в календаре</span>
-      </label>
-
-      <div className={styles.modalActions}>
-        <span className={styles.settingsSaveStatus} role="status">
-          {saveStatus === 'saved' ? 'Сохранено' : ''}
-        </span>
-        <button className={styles.doneButton} type="submit" disabled={isBusy}>
-          Сохранить настройки
-        </button>
-      </div>
-    </form>
   )
 }
 
@@ -1482,52 +1231,6 @@ function PlanningHintCard({
         ) : null}
       </div>
     </article>
-  )
-}
-
-function TemplatesPicker({
-  disabledTemplateIds,
-  isBusy,
-  onCreateFromTemplate,
-  templates,
-}: {
-  disabledTemplateIds: ReadonlySet<string>
-  isBusy: boolean
-  onCreateFromTemplate: (templateId: string) => void
-  templates: SelfCareTemplate[]
-}) {
-  if (!templates.length) {
-    return null
-  }
-
-  return (
-    <SelfCareSection title="Шаблоны">
-      <div className={styles.templateGrid}>
-        {templates.slice(0, 12).map((template) => {
-          const isTemplateDisabled = disabledTemplateIds.has(template.id)
-
-          return (
-            <button
-              key={template.id}
-              className={styles.templateCard}
-              type="button"
-              disabled={isBusy || isTemplateDisabled}
-              onClick={() => onCreateFromTemplate(template.id)}
-            >
-              <strong>{template.title}</strong>
-              <span>
-                {CATEGORY_LABELS[template.category]} ·{' '}
-                {getTemplateTypeLabel(template)}
-                {isTemplateDisabled ? ' · уже добавлено' : ''}
-              </span>
-              <p>
-                {template.description || 'Можно добавить и настроить под себя.'}
-              </p>
-            </button>
-          )
-        })}
-      </div>
-    </SelfCareSection>
   )
 }
 
@@ -4416,99 +4119,6 @@ export function SelfCareMeasurementDialog({
       </section>
     </div>,
     document.body,
-  )
-}
-
-function SelfCareSection({
-  children,
-  title,
-}: {
-  children: ReactNode
-  title: string
-}) {
-  return (
-    <section className={styles.sectionBlock}>
-      <h2>{title}</h2>
-      <div className={styles.cardList}>{children}</div>
-    </section>
-  )
-}
-
-function MetricRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={styles.metricRow}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  )
-}
-
-function CategoryDistributionRow({
-  count,
-  label,
-  percent,
-}: {
-  count: number
-  label: string
-  percent: number
-}) {
-  return (
-    <div className={styles.categoryDistributionRow}>
-      <div className={styles.categoryDistributionHeader}>
-        <span>{label}</span>
-        <strong>
-          {count} · {percent}%
-        </strong>
-      </div>
-      <div className={styles.analyticsBar} aria-hidden="true">
-        <span style={{ inlineSize: `${percent}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function MeasurementTrendRow({
-  trend,
-}: {
-  trend: SelfCareAnalyticsData['measurementTrends'][number]
-}) {
-  const latest = trend.points[trend.points.length - 1]
-  const previous = trend.points[trend.points.length - 2]
-  const delta =
-    latest && previous
-      ? Number((latest.value - previous.value).toFixed(2))
-      : null
-  const recentPoints = trend.points.slice(-4)
-
-  return (
-    <article className={styles.measurementTrendItem}>
-      <div className={styles.measurementTrendHeader}>
-        <div>
-          <strong>{trend.title}</strong>
-          <span>{trend.valueLabel}</span>
-        </div>
-        {latest ? (
-          <strong className={styles.measurementTrendValue}>
-            {formatMeasurementValue(latest.value, trend.unit)}
-          </strong>
-        ) : null}
-      </div>
-
-      {delta !== null ? (
-        <p className={styles.measurementTrendDelta}>
-          {formatMeasurementDelta(delta, trend.unit)} с прошлого измерения
-        </p>
-      ) : null}
-
-      <div className={styles.measurementTrendPoints}>
-        {recentPoints.map((point) => (
-          <span key={`${trend.itemId}-${point.completedAt}`}>
-            <small>{formatShortDate(point.date)}</small>
-            <strong>{formatMeasurementValue(point.value, trend.unit)}</strong>
-          </span>
-        ))}
-      </div>
-    </article>
   )
 }
 

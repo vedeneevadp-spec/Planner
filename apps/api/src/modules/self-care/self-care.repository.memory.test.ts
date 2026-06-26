@@ -121,7 +121,7 @@ void test('MemorySelfCareRepository stores scheduled local time as a fixed-zone 
   assert.equal(occurrence.reminderTimeZone, 'Europe/Astrakhan')
 })
 
-void test('MemorySelfCareRepository marks stale daily occurrences as missed', async () => {
+void test('MemorySelfCareRepository keeps stale daily occurrences overdue', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()
   await repository.createItem({
@@ -152,8 +152,11 @@ void test('MemorySelfCareRepository marks stale daily occurrences as missed', as
     to: '2026-06-08',
   })
 
-  assert.equal(occurrences[0]?.status, 'missed')
-  assert.deepEqual(dashboard.overdueItems, [])
+  assert.equal(occurrences[0]?.status, 'scheduled')
+  assert.deepEqual(
+    dashboard.overdueItems.map((entry) => entry.occurrence?.id),
+    [occurrences[0]?.id],
+  )
 })
 
 void test('MemorySelfCareRepository does not mark today or future occurrences missed from a future dashboard read', async () => {

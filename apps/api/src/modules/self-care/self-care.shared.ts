@@ -51,7 +51,6 @@ import {
   addDays,
   addInterval,
   generateSelfCareOccurrenceDates,
-  getDateKey,
   getFlexibleGoalPeriod,
   getFlexibleGoalProgress,
   isCompletionProgressStatus,
@@ -1602,7 +1601,7 @@ function buildOverdueItems(
     .flatMap((occurrence) => {
       const item = itemById.get(occurrence.itemId)
 
-      if (!item || !shouldCarryOverOverdueItem(item, occurrence, state)) {
+      if (!item || !shouldCarryOverOverdueItem(item)) {
         return []
       }
 
@@ -1701,52 +1700,8 @@ function isAfterCompletionPlanningItem(
   )
 }
 
-function shouldCarryOverOverdueItem(
-  item: SelfCareItem,
-  occurrence: SelfCareOccurrence,
-  state: SelfCareStateSnapshot,
-): boolean {
-  if (!isVisibleSelfCareItem(item)) {
-    return false
-  }
-
-  if (
-    item.type === 'appointment' ||
-    item.type === 'medical' ||
-    item.type === 'procedure' ||
-    item.type === 'rest_action' ||
-    item.type === 'task'
-  ) {
-    return true
-  }
-
-  const rule = state.scheduleRules.find(
-    (candidate) => candidate.id === occurrence.scheduleRuleId,
-  )
-
-  return !rule || rule.repeatKind === 'after_completion'
-}
-
-export function shouldMarkSelfCareOccurrenceMissed(input: {
-  date: string
-  item: SelfCareItem
-  occurrence: SelfCareOccurrence
-  state: SelfCareStateSnapshot
-}): boolean {
-  return (
-    isVisibleSelfCareItem(input.item) &&
-    input.occurrence.status === 'scheduled' &&
-    input.occurrence.scheduledFor < input.date &&
-    !shouldCarryOverOverdueItem(input.item, input.occurrence, input.state)
-  )
-}
-
-export function getMissedOccurrenceCutoffDate(
-  requestedDate: string,
-  now: Date = new Date(),
-): string {
-  const today = getDateKey(now)
-  return requestedDate < today ? requestedDate : today
+function shouldCarryOverOverdueItem(item: SelfCareItem): boolean {
+  return isVisibleSelfCareItem(item)
 }
 
 export function getSelfCareCompletionDateKey(

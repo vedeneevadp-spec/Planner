@@ -19,6 +19,7 @@ import {
   buildAnalyticsResponse,
   buildDashboardResponse,
   buildDueAt,
+  buildHistoryResponse,
   buildItemInputFromTemplate,
   buildPlanResponse,
   buildSelfCareListResponse,
@@ -530,6 +531,45 @@ void test('buildAnalyticsResponse returns measurement trends by item', () => {
   ])
 })
 
+void test('buildHistoryResponse and buildAnalyticsResponse ignore missed occurrences', () => {
+  const item = selfCareItem({
+    id: 'self-care-1',
+    title: 'Утренний уход',
+    type: 'ritual',
+  })
+  const missed = selfCareOccurrence({
+    id: 'missed-1',
+    itemId: item.id,
+    scheduledFor: '2026-06-04',
+    status: 'missed',
+  })
+  const outsideRange = selfCareOccurrence({
+    id: 'missed-outside',
+    itemId: item.id,
+    scheduledFor: '2026-05-30',
+    status: 'missed',
+  })
+  const state = selfCareState({
+    items: [item],
+    occurrences: [outsideRange, missed],
+  })
+  const history = buildHistoryResponse({
+    from: '2026-06-01',
+    state,
+    to: '2026-06-07',
+  })
+  const analytics = buildAnalyticsResponse({
+    from: '2026-06-01',
+    state,
+    to: '2026-06-07',
+  })
+
+  assert.deepEqual(history.completions, [])
+  assert.deepEqual(history.stepCompletions, [])
+  assert.equal(analytics.selectedSelfCareCount, 0)
+  assert.deepEqual(analytics.completionsByDay, {})
+})
+
 void test('buildDashboardResponse removes planning hints after item is scheduled', () => {
   const date = '2026-06-06'
   const item = selfCareItem({
@@ -809,7 +849,7 @@ void test('buildDashboardResponse omits invisible scheduled item leftovers', () 
   assert.deepEqual(response.upcomingImportant, [])
 })
 
-void test('buildDashboardResponse does not carry daily routine leftovers as overdue plan', () => {
+void test('buildDashboardResponse carries daily routine leftovers as overdue plan', () => {
   const date = '2026-06-09'
   const item = selfCareItem({
     id: 'daily-care',
@@ -850,7 +890,10 @@ void test('buildDashboardResponse does not carry daily routine leftovers as over
     },
   })
 
-  assert.deepEqual(response.overdueItems, [])
+  assert.deepEqual(
+    response.overdueItems.map((entry) => entry.occurrence?.id),
+    ['yesterday-water'],
+  )
 })
 
 void test('buildTodayItem prefers details of the scheduled occurrence', () => {

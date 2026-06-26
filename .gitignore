@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+.npmrc
 apps/api/.env
 apps/api/.env.local
 tmp

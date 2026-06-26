@@ -79,13 +79,11 @@ import {
   createScheduleRuleRecord,
   createSelfCareRecords,
   generateSelfCareOccurrencesForRange,
-  getMissedOccurrenceCutoffDate,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   isCompletionProgressStatus,
   shouldDeactivateCompletedFlexibleGoal,
   shouldDeduplicateSelfCareItemCompletion,
-  shouldMarkSelfCareOccurrenceMissed,
   updateOccurrenceStatus,
 } from './self-care.shared.js'
 
@@ -358,7 +356,6 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async getDashboard(command: GetSelfCareDashboardCommand) {
     this.generateReadOccurrences(command.context, command.date, command.date)
-    this.markMissedOccurrences(command.context, command.date)
     return buildDashboardResponse({
       date: command.date,
       state: this.loadState(command.context),
@@ -367,7 +364,6 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async getPlan(command: GetSelfCarePlanCommand) {
     this.generateReadOccurrences(command.context, command.from, command.to)
-    this.markMissedOccurrences(command.context, command.from)
     return buildPlanResponse({
       from: command.from,
       state: this.loadState(command.context),
@@ -377,7 +373,6 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async getOccurrences(command: GetSelfCareOccurrencesCommand) {
     this.generateReadOccurrences(command.context, command.from, command.to)
-    this.markMissedOccurrences(command.context, command.from)
     return this.loadState(command.context).occurrences.filter(
       (occurrence) =>
         occurrence.scheduledFor >= command.from &&
@@ -912,10 +907,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   }
 
   async getHistory(context: SelfCareReadContext, from: string, to: string) {
+    this.generateReadOccurrences(context, from, to)
     return buildHistoryResponse({ from, state: this.loadState(context), to })
   }
 
   async getAnalytics(context: SelfCareReadContext, from: string, to: string) {
+    this.generateReadOccurrences(context, from, to)
     return buildAnalyticsResponse({ from, state: this.loadState(context), to })
   }
 
@@ -1071,31 +1068,6 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       from,
       to,
     })
-  }
-
-  private markMissedOccurrences(context: SelfCareReadContext, date: string) {
-    const cutoffDate = getMissedOccurrenceCutoffDate(date)
-    const state = this.loadState(context)
-    const itemById = new Map(state.items.map((item) => [item.id, item]))
-
-    for (const occurrence of state.occurrences) {
-      const item = itemById.get(occurrence.itemId)
-
-      if (
-        item &&
-        shouldMarkSelfCareOccurrenceMissed({
-          date: cutoffDate,
-          item,
-          occurrence,
-          state,
-        })
-      ) {
-        this.occurrences.set(
-          occurrence.id,
-          updateOccurrenceStatus(occurrence, 'missed'),
-        )
-      }
-    }
   }
 
   private findScheduleRuleForItem(itemId: string): SelfCareScheduleRule | null {

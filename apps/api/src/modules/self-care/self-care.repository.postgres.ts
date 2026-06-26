@@ -112,7 +112,6 @@ import {
   createScheduleRuleRecord,
   createSelfCareRecords,
   generateSelfCareOccurrencesForRange,
-  getMissedOccurrenceCutoffDate,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
   type SelfCareStateSnapshot,
@@ -616,7 +615,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.date,
       command.date,
     )
-    await this.markMissedOccurrences(command.context, command.date)
     return buildDashboardResponse({
       date: command.date,
       state: await this.loadState(command.context, {
@@ -638,7 +636,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.from,
       command.to,
     )
-    await this.markMissedOccurrences(command.context, command.from)
     return buildPlanResponse({
       from: command.from,
       state: await this.loadState(command.context, {
@@ -659,7 +656,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.from,
       command.to,
     )
-    await this.markMissedOccurrences(command.context, command.from)
     const state = await this.loadState(command.context, {
       includeAlternatives: false,
       includeAppointmentDetails: false,
@@ -1362,6 +1358,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async getHistory(context: SelfCareReadContext, from: string, to: string) {
+    await this.generateReadOccurrences(context, from, to)
     return buildHistoryResponse({
       from,
       state: await this.loadState(context, {
@@ -1373,7 +1370,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         includeMedicalDetails: false,
         includeMeasurementDetails: false,
         includeMinimumItems: false,
-        includeOccurrences: false,
+        occurrenceRange: { from, to },
         includeProcedureDetails: false,
         includeScheduleRules: false,
         includeSettings: false,
@@ -1385,6 +1382,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async getAnalytics(context: SelfCareReadContext, from: string, to: string) {
+    await this.generateReadOccurrences(context, from, to)
     return buildAnalyticsResponse({
       from,
       state: await this.loadState(context, {
@@ -1393,7 +1391,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         includeMinimumItems: false,
         includeSettings: false,
         includeTemplates: false,
-        occurrenceRange: { from: to, to: addDays(to, 45) },
+        occurrenceRange: { from, to: addDays(to, 45) },
       }),
       to,
     })
@@ -1681,59 +1679,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .executeTakeFirst()
 
     return row ? mapCompletionRow(row) : null
-  }
-
-  private async markMissedOccurrences(
-    context: SelfCareReadContext,
-    date: string,
-  ) {
-    if (!context.actorUserId) {
-      return
-    }
-
-    const actorUserId = context.actorUserId
-    const cutoffDate = getMissedOccurrenceCutoffDate(date)
-
-    await withWriteTransaction(
-      this.db,
-      context.auth,
-      (trx) =>
-        sql`
-          update app.self_care_occurrences as occurrence
-          set status = 'missed',
-              updated_by = ${actorUserId}
-          from app.self_care_items as item
-          left join app.self_care_schedule_rules as rule
-            on rule.item_id = item.id
-          where occurrence.item_id = item.id
-            and occurrence.user_id = ${actorUserId}
-            and item.user_id = ${actorUserId}
-            and item.workspace_id = ${context.workspaceId}
-            and occurrence.status = 'scheduled'
-            and occurrence.scheduled_for < ${cutoffDate}
-            and item.deleted_at is null
-            and item.is_active = true
-            and item.is_archived = false
-            and (
-              occurrence.schedule_rule_id = rule.id
-              or occurrence.schedule_rule_id is null
-              or rule.id is null
-            )
-            and not (
-              item.type in (
-                'appointment',
-                'medical',
-                'procedure',
-                'rest_action',
-                'task'
-              )
-              or occurrence.schedule_rule_id is null
-              or rule.id is null
-              or rule.repeat_kind = 'after_completion'
-            )
-        `.execute(trx),
-      actorUserId,
-    )
   }
 
   private async buildSelfCareDueAt(

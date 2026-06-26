@@ -1,5 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import readline from 'node:readline'
 import { promisify } from 'node:util'
 
@@ -17,6 +18,7 @@ const devPorts = [
 const devUserId = '11111111-1111-4111-8111-111111111111'
 const devWorkspaceId = '22222222-2222-4222-8222-222222222222'
 const repoRoot = process.cwd()
+const projectNpmShell = resolve(repoRoot, 'scripts/project-npm-shell.zsh')
 let shuttingDown = false
 
 async function main() {
@@ -209,6 +211,8 @@ function startLongRunningCommand(label, args, env = {}) {
   const child = spawn(npm, args, {
     env: {
       ...process.env,
+      NPM_CONFIG_SCRIPT_SHELL: projectNpmShell,
+      npm_config_script_shell: projectNpmShell,
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
