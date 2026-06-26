@@ -69,6 +69,8 @@ export interface AppTaskChainsTable {
 }
 
 export interface AppChaosInboxItemsTable {
+  activated_at: TimestampColumn | null
+  completed_at: TimestampColumn | null
   converted_note_id: string | null
   converted_task_id: string | null
   created_at: Generated<TimestampColumn>

@@ -135,6 +135,8 @@ function createShoppingItem(
   const { id, text, ...overrides } = item
 
   return {
+    activatedAt: '2026-05-01T10:00:00.000Z',
+    completedAt: null,
     convertedNoteId: null,
     convertedTaskId: null,
     createdAt: '2026-05-01T10:00:00.000Z',

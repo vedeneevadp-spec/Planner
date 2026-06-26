@@ -183,6 +183,8 @@ function createShoppingListItemRecord(
   text: string,
 ): ChaosInboxItemRecord {
   return {
+    activatedAt: '2026-05-04T10:00:00.000Z',
+    completedAt: null,
     convertedNoteId: null,
     convertedTaskId: null,
     createdAt: '2026-05-04T10:00:00.000Z',

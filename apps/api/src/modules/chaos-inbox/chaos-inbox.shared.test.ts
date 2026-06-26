@@ -23,6 +23,8 @@ void describe('createStoredChaosInboxItemRecord', () => {
     )
 
     assert.equal(item.kind, 'shopping')
+    assert.equal(item.activatedAt, '2026-05-04T10:00:00.000Z')
+    assert.equal(item.completedAt, null)
     assert.equal(item.isFavorite, true)
     assert.equal(item.priority, 'high')
     assert.equal(item.shoppingCategory, 'groceries')

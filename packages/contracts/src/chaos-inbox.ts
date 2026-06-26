@@ -53,6 +53,8 @@ export const chaosInboxItemSchema = z.object({
   convertedTaskId: nullableStringWithDefault,
   convertedNoteId: nullableStringWithDefault,
   linkedTaskDeleted: z.boolean().default(false),
+  activatedAt: z.string().nullable().optional().default(null),
+  completedAt: z.string().nullable().optional().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 })

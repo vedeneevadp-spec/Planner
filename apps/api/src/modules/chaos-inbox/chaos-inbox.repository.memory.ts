@@ -99,12 +99,14 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
     command: MarkChaosInboxItemConvertedCommand,
   ): Promise<StoredChaosInboxItemRecord> {
     const item = this.getItemOrThrow(command.context, command.id)
+    const now = new Date().toISOString()
     const nextItem: StoredChaosInboxItemRecord = {
       ...item,
+      completedAt: now,
       convertedTaskId: command.convertedTaskId,
       kind: 'task',
       status: 'converted',
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
       version: item.version + 1,
     }
 
@@ -179,8 +181,12 @@ function applyUpdate(
   item: StoredChaosInboxItemRecord,
   patch: UpdateChaosInboxItemCommand['input'],
 ): StoredChaosInboxItemRecord {
+  const now = new Date().toISOString()
+  const statusDates = buildStatusDates(patch.status, now)
+
   return {
     ...item,
+    ...statusDates,
     ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
     ...(patch.isFavorite !== undefined ? { isFavorite: patch.isFavorite } : {}),
@@ -190,7 +196,27 @@ function applyUpdate(
     ...(patch.sphereId !== undefined ? { sphereId: patch.sphereId } : {}),
     ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
     ...(patch.status !== undefined ? { status: patch.status } : {}),
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
     version: item.version + 1,
+  }
+}
+
+function buildStatusDates(
+  status: UpdateChaosInboxItemCommand['input']['status'],
+  now: string,
+): Partial<StoredChaosInboxItemRecord> {
+  if (status === undefined) {
+    return {}
+  }
+
+  if (status === 'archived' || status === 'converted') {
+    return {
+      completedAt: now,
+    }
+  }
+
+  return {
+    activatedAt: now,
+    completedAt: null,
   }
 }

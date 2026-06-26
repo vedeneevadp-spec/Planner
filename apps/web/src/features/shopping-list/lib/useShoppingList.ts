@@ -562,6 +562,8 @@ function createOptimisticShoppingListItem(
   const now = new Date().toISOString()
 
   return {
+    activatedAt: now,
+    completedAt: null,
     convertedNoteId: null,
     convertedTaskId: null,
     createdAt: now,

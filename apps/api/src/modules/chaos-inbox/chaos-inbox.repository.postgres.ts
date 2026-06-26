@@ -112,6 +112,8 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
           .insertInto('app.chaos_inbox_items')
           .values(
             command.input.items.map((item) => ({
+              activated_at: new Date().toISOString(),
+              completed_at: null,
               created_by: command.context.actorUserId,
               deleted_at: null,
               id: item.id ?? generateUuidV7(),
@@ -195,9 +197,11 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
       this.db,
       command.context.auth,
       async (trx) => {
+        const now = new Date().toISOString()
         const updated = trx
           .updateTable('app.chaos_inbox_items')
           .set({
+            completed_at: now,
             converted_task_id: command.convertedTaskId,
             kind: 'task',
             status: 'converted',
@@ -321,9 +325,11 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
     ids: string[],
     patch: UpdateChaosInboxItemCommand['input'],
   ) {
+    const statusTimestamps = buildStatusTimestampPatch(patch.status)
     let query = executor
       .updateTable('app.chaos_inbox_items')
       .set({
+        ...statusTimestamps,
         ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
         ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
         ...(patch.isFavorite !== undefined
@@ -426,6 +432,8 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
     return {
       convertedNoteId: row.converted_note_id,
       convertedTaskId: row.converted_task_id,
+      activatedAt: serializeNullableTimestamp(row.activated_at),
+      completedAt: serializeNullableTimestamp(row.completed_at),
       createdAt: serializeTimestamp(row.created_at),
       deletedAt: serializeNullableTimestamp(row.deleted_at),
       dueDate: serializeNullableDate(row.due_on),
@@ -467,6 +475,27 @@ function serializeNullableDate(value: unknown): string | null {
 
 function serializeNullableTimestamp(value: unknown): string | null {
   return value === null ? null : serializeTimestamp(value)
+}
+
+function buildStatusTimestampPatch(
+  status: UpdateChaosInboxItemCommand['input']['status'],
+) {
+  if (status === undefined) {
+    return {}
+  }
+
+  const now = new Date().toISOString()
+
+  if (status === 'archived' || status === 'converted') {
+    return {
+      completed_at: now,
+    }
+  }
+
+  return {
+    activated_at: now,
+    completed_at: null,
+  }
 }
 
 function serializeTimestamp(value: unknown): string {

@@ -7,6 +7,8 @@ import {
 } from './shopping-list-sort'
 
 const BASE_ITEM = {
+  activatedAt: null,
+  completedAt: null,
   convertedNoteId: null,
   convertedTaskId: null,
   deletedAt: null,

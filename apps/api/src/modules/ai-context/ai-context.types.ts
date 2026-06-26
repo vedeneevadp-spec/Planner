@@ -39,7 +39,10 @@ export interface AiCalendarEvent {
 }
 
 export interface AiShoppingItem {
+  activatedAt?: string | null
+  addedAt?: string | null
   category?: string | null
+  completedAt?: string | null
   dueDate?: string | null
   source: 'shopping'
   status: 'done' | 'overdue' | 'todo' | (string & {})

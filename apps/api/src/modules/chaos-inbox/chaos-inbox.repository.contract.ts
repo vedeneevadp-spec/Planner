@@ -66,6 +66,8 @@ export function defineChaosInboxRepositoryContractSuite(input: {
         })
 
         assert.ok(shoppingItem)
+        assert.equal(shoppingItem.activatedAt !== null, true)
+        assert.equal(shoppingItem.completedAt, null)
         assert.equal(shoppingItem.id, shoppingItemId)
         assert.equal(shoppingItem.isFavorite, true)
         assert.equal(shoppingItem.kind, 'shopping')
@@ -152,6 +154,8 @@ export function defineChaosInboxRepositoryContractSuite(input: {
         assert.equal(updatedShoppingItem.priority, 'high')
         assert.equal(updatedShoppingItem.shoppingCategory, 'household')
         assert.equal(updatedShoppingItem.status, 'in_review')
+        assert.equal(updatedShoppingItem.activatedAt !== null, true)
+        assert.equal(updatedShoppingItem.completedAt, null)
         assert.equal(updatedShoppingItem.version, shoppingItem.version + 1)
 
         const [bulkUpdatedIdea] = await harness.repository.bulkUpdate({
@@ -167,6 +171,7 @@ export function defineChaosInboxRepositoryContractSuite(input: {
 
         assert.equal(bulkUpdatedIdea?.kind, 'note')
         assert.equal(bulkUpdatedIdea?.status, 'archived')
+        assert.equal(bulkUpdatedIdea?.completedAt !== null, true)
 
         const converted = await harness.repository.markConverted({
           context: harness.context,
@@ -176,6 +181,7 @@ export function defineChaosInboxRepositoryContractSuite(input: {
 
         assert.equal(converted.kind, 'task')
         assert.equal(converted.status, 'converted')
+        assert.equal(converted.completedAt !== null, true)
         assert.equal(converted.convertedTaskId !== null, true)
 
         await harness.repository.remove({

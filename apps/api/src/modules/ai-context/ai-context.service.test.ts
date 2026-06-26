@@ -153,6 +153,7 @@ void describe('AiContextService', () => {
           text: 'Fresh bread',
         }),
         createShoppingItem({
+          completedAt: '2026-06-20T12:00:00.000Z',
           status: 'archived',
           text: 'Already bought cheese',
         }),
@@ -175,6 +176,18 @@ void describe('AiContextService', () => {
     assert.deepEqual(
       context.shopping?.completed.map((item) => item.title),
       ['Already bought cheese'],
+    )
+    assert.equal(
+      context.shopping?.completed[0]?.addedAt,
+      '2026-06-19T10:00:00.000Z',
+    )
+    assert.equal(
+      context.shopping?.completed[0]?.activatedAt,
+      '2026-06-19T10:00:00.000Z',
+    )
+    assert.equal(
+      context.shopping?.completed[0]?.completedAt,
+      '2026-06-20T12:00:00.000Z',
     )
     assert.equal(context.stats?.activeCounts.shopping, 2)
     assert.equal(context.stats?.overdueByDomain.shopping, 1)
@@ -579,6 +592,67 @@ void describe('AiContextService', () => {
     assert.equal(context.summary.shoppingUrgentActive, 1)
   })
 
+  void it('does not mark future tasks in the current week as overdue', async () => {
+    const today = getTodayDate('Europe/Astrakhan')
+    const yesterday = addDateDays(today, -1)
+    const tomorrow = addDateDays(today, 1)
+    const weekEnd = addDateDays(today, 2)
+    const service = createService(
+      [
+        createTask({
+          plannedDate: yesterday,
+          title: 'Past open task',
+        }),
+        createTask({
+          plannedDate: tomorrow,
+          title: 'Future open task',
+        }),
+      ],
+      [],
+      {
+        shoppingItems: [
+          createShoppingItem({
+            dueDate: yesterday,
+            text: 'Past shopping item',
+          }),
+          createShoppingItem({
+            dueDate: tomorrow,
+            text: 'Future shopping item',
+          }),
+        ],
+      },
+    )
+
+    const context = await service.getWeekContext({
+      from: yesterday,
+      timezone: 'Europe/Astrakhan',
+      to: weekEnd,
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(
+      context.highlights.overdue.map((item) => item.title),
+      ['Past open task'],
+    )
+    assert.equal(context.summary.overdueTasks, 1)
+    assert.equal(
+      context.highlights.overdue.some(
+        (item) => item.title === 'Future open task',
+      ),
+      false,
+    )
+    assert.deepEqual(
+      context.remaining.shoppingActive.map((item) => ({
+        status: item.status,
+        title: item.title,
+      })),
+      [
+        { status: 'overdue', title: 'Past shopping item' },
+        { status: 'todo', title: 'Future shopping item' },
+      ],
+    )
+  })
+
   void it('groups repeated weekly routines for analytics counts', async () => {
     const service = createService(
       Array.from({ length: 7 }, (_, index) =>
@@ -708,7 +782,8 @@ void describe('AiContextService', () => {
       context.remaining.some((item) => item.title === 'Skipped routine'),
       false,
     )
-    assert.equal(context.missed[0]?.category, 'sleep')
+    assert.equal(context.missed[0]?.category, 'beauty')
+    assert.equal(context.missed[0]?.status, 'missed')
     assert.equal(context.overdue[0]?.category, 'sleep')
     assert.equal(context.overdue[0]?.status, 'overdue')
     assert.equal(
@@ -730,7 +805,14 @@ void describe('AiContextService', () => {
           }),
           createSelfCareTodayItem({
             date: '2026-06-20',
-            occurrenceId: 'care-missed',
+            occurrenceId: 'care-skipped',
+            occurrenceStatus: 'skipped',
+            title: 'Skipped care',
+            type: 'ritual',
+          }),
+          createSelfCareTodayItem({
+            date: '2026-06-20',
+            occurrenceId: 'care-overdue',
             title: 'Overdue care',
             type: 'ritual',
           }),
@@ -812,7 +894,7 @@ void describe('AiContextService', () => {
     )
     assert.deepEqual(
       context.selfCare?.missed.map((item) => item.title),
-      ['Overdue care'],
+      ['Skipped care'],
     )
     assert.deepEqual(
       context.selfCare?.overdue.map((item) => item.title),
@@ -1100,6 +1182,8 @@ function createShoppingItem(
   overrides: Partial<ChaosInboxItemRecord>,
 ): ChaosInboxItemRecord {
   return {
+    activatedAt: '2026-06-19T10:00:00.000Z',
+    completedAt: null,
     convertedNoteId: null,
     convertedTaskId: null,
     createdAt: '2026-06-19T10:00:00.000Z',

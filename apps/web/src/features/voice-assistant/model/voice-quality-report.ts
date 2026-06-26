@@ -1208,6 +1208,8 @@ function createShoppingRecord(
   const { id, text, ...rest } = overrides
 
   return {
+    activatedAt: '2026-05-28T09:00:00.000Z',
+    completedAt: null,
     convertedNoteId: null,
     convertedTaskId: null,
     createdAt: '2026-05-28T09:00:00.000Z',
