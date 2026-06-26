@@ -990,8 +990,7 @@ export class AiContextService {
     )
     const remaining = normalizeSelfCareItemsForAi(
       todayItems
-        .filter((item) => !isSelfCareTodayItemCompleted(item))
-        .filter((item) => item.occurrence?.status !== 'missed')
+        .filter((item) => isSelfCareTodayItemRemaining(item, date))
         .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const suggestedFocusItem = [
@@ -1050,8 +1049,7 @@ export class AiContextService {
     )
     const remaining = filterSelfCareItemsForAi(
       plan.occurrences
-        .filter((item) => !isSelfCareTodayItemCompleted(item))
-        .filter((item) => !isSelfCareTodayItemOverdue(item, overdueAsOfDate))
+        .filter((item) => isSelfCareTodayItemRemaining(item, overdueAsOfDate))
         .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const itemsById = new Map(history.items.map((item) => [item.id, item]))
@@ -1351,6 +1349,28 @@ function isSelfCareTodayItemOverdue(
     item.occurrence?.status === 'scheduled' &&
     item.occurrence.scheduledFor < asOfDate,
   )
+}
+
+function isSelfCareTodayItemRemaining(
+  item: SelfCareTodayItem,
+  asOfDate: string,
+): boolean {
+  if (isSelfCareTodayItemCompleted(item)) {
+    return false
+  }
+
+  const status = item.occurrence?.status ?? item.completion?.status ?? null
+
+  if (
+    status === 'cancelled' ||
+    status === 'missed' ||
+    status === 'moved' ||
+    status === 'skipped'
+  ) {
+    return false
+  }
+
+  return !isSelfCareTodayItemOverdue(item, asOfDate)
 }
 
 function buildTaskSnippet(task: Task): string | null {

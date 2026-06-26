@@ -674,6 +674,14 @@ void describe('AiContextService', () => {
             title: 'Sleep routine',
             type: 'ritual',
           }),
+          createSelfCareTodayItem({
+            category: 'beauty',
+            date: yesterday,
+            occurrenceId: 'skipped-1',
+            occurrenceStatus: 'skipped',
+            title: 'Skipped routine',
+            type: 'ritual',
+          }),
         ],
         planningHints: [],
         to: today,
@@ -686,7 +694,7 @@ void describe('AiContextService', () => {
       userId: USER_ID,
     })
 
-    assert.equal(context.summary.scheduledCount, 3)
+    assert.equal(context.summary.scheduledCount, 4)
     assert.equal(context.summary.remainingCount, 2)
     assert.equal(context.summary.completedCount, 1)
     assert.equal(context.summary.missedCount, 1)
@@ -696,9 +704,17 @@ void describe('AiContextService', () => {
     assert.equal(context.potentialDuplicates[0]?.count, 2)
     assert.equal(context.completed[0]?.category, 'movement')
     assert.equal(context.remaining[0]?.category, 'nutrition')
+    assert.equal(
+      context.remaining.some((item) => item.title === 'Skipped routine'),
+      false,
+    )
     assert.equal(context.missed[0]?.category, 'sleep')
     assert.equal(context.overdue[0]?.category, 'sleep')
     assert.equal(context.overdue[0]?.status, 'overdue')
+    assert.equal(
+      context.overdue.some((item) => item.title === 'Skipped routine'),
+      false,
+    )
   })
 
   void it('filters legacy habit artifacts from today self-care context', async () => {
