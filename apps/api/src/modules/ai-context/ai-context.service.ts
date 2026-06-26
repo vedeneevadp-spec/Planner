@@ -171,6 +171,7 @@ interface LoadedContext {
     completed: AiSelfCareItem[]
     flexibleGoals: AiFlexibleGoalContext[]
     missed: AiSelfCareItem[]
+    overdue: AiSelfCareItem[]
     planned: AiSelfCareItem[]
     remaining: AiSelfCareItem[]
     scheduled: AiSelfCareItem[]
@@ -215,7 +216,7 @@ export class AiContextService {
     const overdueByDomain = {
       cleaning: loaded.cleaning.overdue.length,
       habits: loaded.habits.missed.length,
-      selfCare: loaded.selfCare.missed.length,
+      selfCare: loaded.selfCare.overdue.length,
       shopping: overdueShopping.length,
       tasks: loaded.tasks.overdue.length,
     }
@@ -227,7 +228,7 @@ export class AiContextService {
     result.overdueItemsByDomain = buildOverdueItemsByDomain({
       cleaning: loaded.cleaning.overdue,
       habits: loaded.habits.missed,
-      selfCare: loaded.selfCare.missed,
+      selfCare: loaded.selfCare.overdue,
       shopping: overdueShopping,
       tasks: loaded.tasks.overdue,
     })
@@ -290,6 +291,7 @@ export class AiContextService {
         completed: limitItems(loaded.selfCare.completed),
         flexibleGoals: limitItems(loaded.selfCare.flexibleGoals),
         missed: limitItems(loaded.selfCare.missed),
+        overdue: limitItems(loaded.selfCare.overdue),
         planned: limitItems(loaded.selfCare.planned),
         remaining: limitItems(loaded.selfCare.remaining),
         scheduled: limitItems(loaded.selfCare.scheduled),
@@ -344,7 +346,12 @@ export class AiContextService {
     const cleaningCompleted = cleaning.tasks.filter(
       (item) => item.status === 'done',
     )
-    const selfCare = await this.getSelfCareRange(context, from, to)
+    const selfCare = await this.getSelfCareRange(
+      context,
+      from,
+      to,
+      resolveSelfCareOverdueAsOfDate(to, timezone),
+    )
     const taskItems = weekTasks.map((task) => mapTaskItem(task, from))
     const completedTaskItems = completedRangeTasks.map((task) =>
       mapTaskItem(task, to),
@@ -367,7 +374,7 @@ export class AiContextService {
       overdueByDomain: {
         cleaning: cleaning.overdue.length,
         habits: 0,
-        selfCare: selfCare.missed.length,
+        selfCare: selfCare.overdue.length,
         shopping: overdueShopping.length,
         tasks: overdueItems.length,
       },
@@ -433,7 +440,8 @@ export class AiContextService {
           selfCareFlexibleGoals: buildFlexibleGoalSummary(
             selfCare.flexibleGoals,
           ),
-          selfCareMissed: selfCare.missed.length,
+          selfCareMissed: selfCare.overdue.length,
+          selfCareOverdue: selfCare.overdue.length,
           selfCareRemaining: selfCare.remaining.length,
           selfCareScheduled: selfCare.scheduled.length,
           shoppingActive: activeShopping.length,
@@ -527,15 +535,22 @@ export class AiContextService {
 
     if (types.includes('selfcare')) {
       const [rangeFrom, rangeTo] = resolveRange(from, to, timezone)
-      const selfCare = await this.getSelfCareRange(context, rangeFrom, rangeTo)
+      const selfCare = await this.getSelfCareRange(
+        context,
+        rangeFrom,
+        rangeTo,
+        resolveSelfCareOverdueAsOfDate(rangeTo, timezone),
+      )
 
       results.push(
         ...dedupeAiItems([
           ...selfCare.scheduled,
           ...selfCare.remaining,
           ...selfCare.completed,
-          ...selfCare.missed,
-        ]).filter((item) => matchesSearch(item, normalizedQuery)),
+          ...selfCare.overdue,
+        ])
+          .filter((item) => matchesSearch(item, normalizedQuery))
+          .filter((item) => matchesSearchStatus(item.status, params.status)),
       )
     }
 
@@ -583,7 +598,12 @@ export class AiContextService {
     )
     const cleaning = await this.getCleaningRange(context, from, to)
     const cleaningActive = countActiveCleaningTasks(cleaning)
-    const selfCare = await this.getSelfCareRange(context, from, to)
+    const selfCare = await this.getSelfCareRange(
+      context,
+      from,
+      to,
+      resolveSelfCareOverdueAsOfDate(to, timezone),
+    )
     const calendarEvents = rangeTasks.filter((task) => task.plannedStartTime)
     const tasksHighPriorityActive = rangeTasks.filter(isHighPriorityTask).length
     const completedHighPriorityTasks =
@@ -591,7 +611,7 @@ export class AiContextService {
     const overdueByDomain = {
       cleaning: cleaning.overdue.length,
       habits: 0,
-      selfCare: selfCare.missed.length,
+      selfCare: selfCare.overdue.length,
       shopping: overdueShopping.length,
       tasks: overdueTasks.length,
     }
@@ -611,7 +631,8 @@ export class AiContextService {
       calendarEvents: calendarEvents.length,
       cleaningOverdue: cleaning.overdue.length,
       habitsMissed: 0,
-      selfcareMissed: selfCare.missed.length,
+      selfcareMissed: selfCare.overdue.length,
+      selfcareOverdue: selfCare.overdue.length,
       shoppingActive: activeShopping.length,
       tasksActive: activeTaskGroups.length,
       tasksHighPriorityActive,
@@ -619,7 +640,7 @@ export class AiContextService {
     const overdueItemsByDomain = buildOverdueItemsByDomain({
       cleaning: cleaning.overdue,
       habits: [],
-      selfCare: selfCare.missed,
+      selfCare: selfCare.overdue,
       shopping: overdueShopping,
       tasks: overdueTasks.map((task) => mapTaskItem(task, to)),
     })
@@ -629,7 +650,7 @@ export class AiContextService {
         bottlenecks: buildOverloadBottlenecks({
           cleaningCount: cleaningActive,
           overdueCount: sumDomainCounts(overdueByDomain),
-          selfCareMissed: selfCare.missed.length,
+          selfCareOverdue: selfCare.overdue.length,
           shoppingCount: activeShopping.length,
           tasksHighPriority: tasksHighPriorityActive,
         }),
@@ -643,7 +664,8 @@ export class AiContextService {
           habitsMissed: 0,
           overdueItemsTotal: stats.overdueByDomain.total,
           selfCareRemaining: selfCare.remaining.length,
-          selfCareMissed: selfCare.missed.length,
+          selfCareMissed: selfCare.overdue.length,
+          selfCareOverdue: selfCare.overdue.length,
           shoppingActive: activeShopping.length,
           shoppingCompleted: completedShopping.length,
           shoppingItems: activeShopping.length,
@@ -660,7 +682,8 @@ export class AiContextService {
           activeCounts: {
             calendarEvents: calendarEvents.length,
             cleaningOverdue: cleaning.overdue.length,
-            selfcareMissed: selfCare.missed.length,
+            selfcareMissed: selfCare.overdue.length,
+            selfcareOverdue: selfCare.overdue.length,
             shoppingActive: activeShopping.length,
             tasksActive: activeTaskGroups.length,
             tasksHighPriorityActive,
@@ -697,8 +720,13 @@ export class AiContextService {
       params.userId,
       timezone,
     )
-    const selfCare = await this.getSelfCareRange(context, from, to)
-    const weakSpots = buildSelfCareWeakSpots(selfCare.missed)
+    const selfCare = await this.getSelfCareRange(
+      context,
+      from,
+      to,
+      resolveSelfCareOverdueAsOfDate(to, timezone),
+    )
+    const weakSpots = buildSelfCareWeakSpots(selfCare.overdue)
     const potentialDuplicates = buildSelfCarePotentialDuplicates(
       selfCare.remaining,
     )
@@ -710,6 +738,7 @@ export class AiContextService {
         from,
         generatedAt: new Date().toISOString(),
         missed: limitItems(selfCare.missed),
+        overdue: limitItems(selfCare.overdue),
         planned: limitItems(selfCare.planned),
         potentialDuplicates: limitItems(potentialDuplicates),
         remaining: limitItems(selfCare.remaining),
@@ -717,7 +746,8 @@ export class AiContextService {
         summary: {
           completedCount: selfCare.completed.length,
           flexibleGoals: buildFlexibleGoalSummary(selfCare.flexibleGoals),
-          missedCount: selfCare.missed.length,
+          missedCount: selfCare.overdue.length,
+          overdueCount: selfCare.overdue.length,
           potentialDuplicateCount: potentialDuplicates.length,
           plannedCount: selfCare.planned.length,
           remainingCount: selfCare.remaining.length,
@@ -928,6 +958,7 @@ export class AiContextService {
         completed: [],
         flexibleGoals: [],
         missed: [],
+        overdue: [],
         planned: [],
         remaining: [],
         scheduled: [],
@@ -954,8 +985,8 @@ export class AiContextService {
         .filter(isSelfCareTodayItemCompleted)
         .map((item) => mapSelfCareTodayItem(item, 'done')),
     )
-    const missed = normalizeSelfCareItemsForAi(
-      overdueItems.map((item) => mapSelfCareTodayItem(item, 'missed')),
+    const overdue = normalizeSelfCareItemsForAi(
+      overdueItems.map((item) => mapSelfCareTodayItem(item, 'overdue')),
     )
     const remaining = normalizeSelfCareItemsForAi(
       todayItems
@@ -971,7 +1002,8 @@ export class AiContextService {
     return {
       completed,
       flexibleGoals,
-      missed,
+      missed: overdue,
+      overdue,
       planned,
       remaining,
       scheduled: planned,
@@ -983,12 +1015,14 @@ export class AiContextService {
     context: AiServiceReadContext,
     from: string,
     to: string,
+    overdueAsOfDate: string,
   ): Promise<Omit<LoadedContext['selfCare'], 'suggestedFocus'>> {
     if (!this.dependencies.selfCareService) {
       return {
         completed: [],
         flexibleGoals: [],
         missed: [],
+        overdue: [],
         planned: [],
         remaining: [],
         scheduled: [],
@@ -1009,15 +1043,15 @@ export class AiContextService {
     const planned = filterSelfCareItemsForAi(
       plan.occurrences.map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
-    const missed = filterSelfCareItemsForAi(
+    const overdue = filterSelfCareItemsForAi(
       plan.occurrences
-        .filter((item) => item.occurrence?.status === 'missed')
-        .map((item) => mapSelfCareTodayItem(item, 'missed')),
+        .filter((item) => isSelfCareTodayItemOverdue(item, overdueAsOfDate))
+        .map((item) => mapSelfCareTodayItem(item, 'overdue')),
     )
     const remaining = filterSelfCareItemsForAi(
       plan.occurrences
         .filter((item) => !isSelfCareTodayItemCompleted(item))
-        .filter((item) => item.occurrence?.status !== 'missed')
+        .filter((item) => !isSelfCareTodayItemOverdue(item, overdueAsOfDate))
         .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const itemsById = new Map(history.items.map((item) => [item.id, item]))
@@ -1042,7 +1076,8 @@ export class AiContextService {
     return {
       completed,
       flexibleGoals,
-      missed,
+      missed: overdue,
+      overdue,
       planned,
       remaining,
       scheduled: planned,
@@ -1297,6 +1332,24 @@ function isSelfCareTodayItemCompleted(item: SelfCareTodayItem): boolean {
     item.completion?.status === 'done' ||
     item.occurrence?.status === 'done' ||
     Boolean(item.occurrence?.completedAt)
+  )
+}
+
+function isSelfCareTodayItemOverdue(
+  item: SelfCareTodayItem,
+  asOfDate: string,
+): boolean {
+  if (isSelfCareTodayItemCompleted(item)) {
+    return false
+  }
+
+  if (item.occurrence?.status === 'missed') {
+    return true
+  }
+
+  return Boolean(
+    item.occurrence?.status === 'scheduled' &&
+    item.occurrence.scheduledFor < asOfDate,
   )
 }
 
@@ -1642,7 +1695,7 @@ function buildStats(input: {
   }
 
   if (overdueByDomain.selfCare > 0 || overdueByDomain.habits > 0) {
-    reasons.push('Self-care or habits were missed')
+    reasons.push('Self-care or habits have overdue items')
   }
 
   const score =
@@ -1697,6 +1750,7 @@ function buildStructuredLoadReasons(input: {
   cleaningOverdue: number
   habitsMissed: number
   selfcareMissed: number
+  selfcareOverdue: number
   shoppingActive: number
   tasksActive: number
   tasksHighPriorityActive: number
@@ -1726,12 +1780,12 @@ function buildStructuredLoadReasons(input: {
     })
   }
 
-  if (input.selfcareMissed > 0) {
+  if (input.selfcareOverdue > 0) {
     reasons.push({
-      code: 'selfcare_missed',
-      count: input.selfcareMissed,
+      code: 'selfcare_overdue',
+      count: input.selfcareOverdue,
       domain: 'selfcare',
-      severity: input.selfcareMissed >= 3 ? 'high' : 'medium',
+      severity: input.selfcareOverdue >= 3 ? 'high' : 'medium',
     })
   }
 
@@ -1802,7 +1856,7 @@ function buildSimplifications(
 function buildOverloadBottlenecks(input: {
   cleaningCount: number
   overdueCount: number
-  selfCareMissed: number
+  selfCareOverdue: number
   shoppingCount: number
   tasksHighPriority: number
 }): OverloadContext['bottlenecks'] {
@@ -1823,9 +1877,9 @@ function buildOverloadBottlenecks(input: {
       title: 'Household load',
     },
     {
-      reason: 'Missed self-care is an overload signal.',
-      relatedItemsCount: input.selfCareMissed,
-      title: 'Self-care misses',
+      reason: 'Overdue self-care is an overload signal.',
+      relatedItemsCount: input.selfCareOverdue,
+      title: 'Self-care overdue',
     },
   ].filter((item) => item.relatedItemsCount > 0)
 }
@@ -1844,17 +1898,17 @@ function buildSuggestedFocus(
   return ['Normal planning']
 }
 
-function buildSelfCareWeakSpots(missed: AiSelfCareItem[]): string[] {
+function buildSelfCareWeakSpots(overdue: AiSelfCareItem[]): string[] {
   const grouped = new Map<string, number>()
 
-  for (const item of missed) {
+  for (const item of overdue) {
     const key = item.type ?? 'selfcare'
     grouped.set(key, (grouped.get(key) ?? 0) + 1)
   }
 
   return [...grouped.entries()]
     .sort((left, right) => right[1] - left[1])
-    .map(([type, count]) => `${type}: ${count} missed`)
+    .map(([type, count]) => `${type}: ${count} overdue`)
     .slice(0, 5)
 }
 
@@ -1966,6 +2020,13 @@ function resolveRange(
   }
 
   return getWeekRange(today)
+}
+
+function resolveSelfCareOverdueAsOfDate(to: string, timezone: string): string {
+  const today = getTodayDate(timezone)
+  const periodEndExclusive = addDateDays(to, 1)
+
+  return periodEndExclusive < today ? periodEndExclusive : today
 }
 
 function getWeekRange(date: string): [string, string] {

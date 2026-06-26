@@ -2,14 +2,16 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { afterEach, describe, it, mock } from 'node:test'
 
-import type {
-  ChaosInboxItemRecord,
-  CleaningTodayResponse,
-  SelfCareAnalyticsResponse,
-  SelfCareHistoryResponse,
-  SelfCarePlanResponse,
-  SelfCareTodayItem,
-  Task,
+import {
+  addDateDays,
+  type ChaosInboxItemRecord,
+  type CleaningTodayResponse,
+  getTodayDate,
+  type SelfCareAnalyticsResponse,
+  type SelfCareHistoryResponse,
+  type SelfCarePlanResponse,
+  type SelfCareTodayItem,
+  type Task,
 } from '@planner/contracts'
 
 import {
@@ -320,8 +322,7 @@ void describe('AiContextService', () => {
             createSelfCareTodayItem({
               date: '2026-06-20',
               occurrenceId: 'selfcare-overdue',
-              occurrenceStatus: 'missed',
-              title: 'Missed self care',
+              title: 'Overdue self care',
               type: 'ritual',
             }),
           ],
@@ -367,7 +368,11 @@ void describe('AiContextService', () => {
     )
     assert.deepEqual(
       context.overdueItemsByDomain?.selfcare.map((item) => item.title),
-      ['Missed self care'],
+      ['Overdue self care'],
+    )
+    assert.deepEqual(
+      context.overdueItemsByDomain?.selfcare.map((item) => item.status),
+      ['overdue'],
     )
   })
 
@@ -619,14 +624,17 @@ void describe('AiContextService', () => {
     ])
   })
 
-  void it('returns self-care scheduled, remaining, completed, missed and duplicate signals', async () => {
+  void it('returns self-care scheduled, remaining, completed, overdue and duplicate signals', async () => {
+    const today = getTodayDate('Europe/Astrakhan')
+    const yesterday = addDateDays(today, -1)
+    const from = addDateDays(today, -6)
     const service = createService([], [], {
       selfCareHistory: {
         completions: [
           createSelfCareCompletion({
-            completedAt: '2026-06-20T09:00:00.000Z',
+            completedAt: `${yesterday}T09:00:00.000Z`,
             itemId: 'walk-item',
-            scheduledFor: '2026-06-20',
+            scheduledFor: yesterday,
             status: 'done',
           }),
         ],
@@ -642,40 +650,39 @@ void describe('AiContextService', () => {
       } as SelfCareHistoryResponse,
       selfCarePlan: {
         courses: [],
-        from: '2026-06-15',
+        from,
         medical: [],
         occurrences: [
           createSelfCareTodayItem({
             category: 'nutrition',
-            date: '2026-06-21',
+            date: today,
             occurrenceId: 'water-1',
             title: 'Drink water',
             type: 'ritual',
           }),
           createSelfCareTodayItem({
             category: 'nutrition',
-            date: '2026-06-21',
+            date: today,
             occurrenceId: 'water-2',
             title: 'Drink water',
             type: 'ritual',
           }),
           createSelfCareTodayItem({
             category: 'sleep',
-            date: '2026-06-19',
+            date: yesterday,
             occurrenceId: 'sleep-1',
-            occurrenceStatus: 'missed',
             title: 'Sleep routine',
             type: 'ritual',
           }),
         ],
         planningHints: [],
-        to: '2026-06-21',
+        to: today,
       } as SelfCarePlanResponse,
     })
 
     const context = await service.getSelfCareContext({
-      from: '2026-06-15',
-      to: '2026-06-21',
+      from,
+      to: today,
       userId: USER_ID,
     })
 
@@ -683,12 +690,15 @@ void describe('AiContextService', () => {
     assert.equal(context.summary.remainingCount, 2)
     assert.equal(context.summary.completedCount, 1)
     assert.equal(context.summary.missedCount, 1)
+    assert.equal(context.summary.overdueCount, 1)
     assert.equal(context.summary.potentialDuplicateCount, 1)
     assert.equal(context.potentialDuplicates[0]?.title, 'Drink water')
     assert.equal(context.potentialDuplicates[0]?.count, 2)
     assert.equal(context.completed[0]?.category, 'movement')
     assert.equal(context.remaining[0]?.category, 'nutrition')
     assert.equal(context.missed[0]?.category, 'sleep')
+    assert.equal(context.overdue[0]?.category, 'sleep')
+    assert.equal(context.overdue[0]?.status, 'overdue')
   })
 
   void it('filters legacy habit artifacts from today self-care context', async () => {
@@ -699,15 +709,13 @@ void describe('AiContextService', () => {
           createSelfCareTodayItem({
             date: '2026-06-20',
             occurrenceId: 'legacy-habit-missed',
-            occurrenceStatus: 'missed',
             title: 'Legacy missed habit',
             type: 'habit',
           }),
           createSelfCareTodayItem({
             date: '2026-06-20',
             occurrenceId: 'care-missed',
-            occurrenceStatus: 'missed',
-            title: 'Missed care',
+            title: 'Overdue care',
             type: 'ritual',
           }),
         ],
@@ -788,7 +796,15 @@ void describe('AiContextService', () => {
     )
     assert.deepEqual(
       context.selfCare?.missed.map((item) => item.title),
-      ['Missed care'],
+      ['Overdue care'],
+    )
+    assert.deepEqual(
+      context.selfCare?.overdue.map((item) => item.title),
+      ['Overdue care'],
+    )
+    assert.deepEqual(
+      context.selfCare?.overdue.map((item) => item.status),
+      ['overdue'],
     )
     assert.equal(context.selfCare?.suggestedFocus, 'Утренний уход')
     assert.equal(context.habits, undefined)

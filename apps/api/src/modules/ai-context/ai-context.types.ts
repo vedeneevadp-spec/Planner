@@ -65,7 +65,7 @@ export interface AiSelfCareItem {
   category?: string | null
   date?: string | null
   source: 'selfcare'
-  status: 'done' | 'missed' | 'planned' | (string & {})
+  status: 'done' | 'missed' | 'overdue' | 'planned' | (string & {})
   title: string
   type?: string | null
 }
@@ -155,6 +155,7 @@ export interface TodayContext {
     completed: AiSelfCareItem[]
     flexibleGoals: AiFlexibleGoalContext[]
     missed: AiSelfCareItem[]
+    overdue: AiSelfCareItem[]
     planned: AiSelfCareItem[]
     remaining: AiSelfCareItem[]
     scheduled: AiSelfCareItem[]
@@ -275,6 +276,7 @@ export interface WeekContext {
     selfCareCompleted: number
     selfCareFlexibleGoals: AiFlexibleGoalSummary
     selfCareMissed: number
+    selfCareOverdue: number
     shoppingActive: number
     shoppingCompleted: number
     shoppingItems: number
@@ -336,6 +338,7 @@ export interface OverloadContext {
     overdueItemsTotal: number
     selfCareRemaining: number
     selfCareMissed: number
+    selfCareOverdue: number
     shoppingActive: number
     shoppingCompleted: number
     shoppingItems: number
@@ -352,6 +355,7 @@ export interface OverloadContext {
     activeCounts: {
       calendarEvents: number
       cleaningOverdue: number
+      selfcareOverdue: number
       selfcareMissed: number
       shoppingActive: number
       tasksActive: number
@@ -390,6 +394,7 @@ export interface SelfCareContext {
   from: string
   generatedAt: string
   missed: AiSelfCareItem[]
+  overdue: AiSelfCareItem[]
   planned: AiSelfCareItem[]
   potentialDuplicates: AiSelfCareDuplicate[]
   remaining: AiSelfCareItem[]
@@ -398,6 +403,7 @@ export interface SelfCareContext {
     completedCount: number
     flexibleGoals: AiFlexibleGoalSummary
     missedCount: number
+    overdueCount: number
     potentialDuplicateCount: number
     plannedCount: number
     remainingCount: number
