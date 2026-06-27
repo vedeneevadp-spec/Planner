@@ -750,7 +750,7 @@
       rgba(8, 21, 18, 0.08) 58%,
       var(--care-bg) 100%
     ),
-    url('/self-care/add-care/hero-wellness-dark.png') center top / cover
+    url('/self-care/add-care/hero-wellness-dark.webp') center top / cover
       no-repeat;
   pointer-events: none;
 }
@@ -837,7 +837,7 @@
       rgba(8, 21, 18, 0.36) 100%
     ),
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
-    url('/self-care/add-care/create-card-bg-dark.png') center right / cover
+    url('/self-care/add-care/create-card-bg-dark.webp') center right / cover
       no-repeat;
 }
 
@@ -850,7 +850,7 @@
       rgba(8, 21, 18, 0.42) 100%
     ),
     linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 34%),
-    url('/self-care/add-care/create-card-bg-light.png') center right / cover
+    url('/self-care/add-care/create-card-bg-light.webp') center right / cover
       no-repeat;
 }
 
@@ -1032,49 +1032,49 @@
 .addCareCategoryBeauty {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
-    url('/self-care/add-care/template-tile-beauty-dark.png');
+    url('/self-care/add-care/template-tile-beauty-dark.webp');
 }
 
 .addCareCategoryHealth {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
-    url('/self-care/add-care/template-tile-health-dark.png');
+    url('/self-care/add-care/template-tile-health-dark.webp');
 }
 
 .addCareCategoryMovement {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
-    url('/self-care/add-care/template-tile-movement-dark.png');
+    url('/self-care/add-care/template-tile-movement-dark.webp');
 }
 
 .addCareCategoryRest {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.04), rgba(8, 21, 18, 0.78)),
-    url('/self-care/add-care/template-tile-rest-dark.png');
+    url('/self-care/add-care/template-tile-rest-dark.webp');
 }
 
 :global(:root[data-theme='light']) .addCareCategoryBeauty {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
-    url('/self-care/add-care/template-tile-beauty-light.png');
+    url('/self-care/add-care/template-tile-beauty-light.webp');
 }
 
 :global(:root[data-theme='light']) .addCareCategoryHealth {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
-    url('/self-care/add-care/template-tile-health-light.png');
+    url('/self-care/add-care/template-tile-health-light.webp');
 }
 
 :global(:root[data-theme='light']) .addCareCategoryMovement {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
-    url('/self-care/add-care/template-tile-movement-light.png');
+    url('/self-care/add-care/template-tile-movement-light.webp');
 }
 
 :global(:root[data-theme='light']) .addCareCategoryRest {
   background-image:
     linear-gradient(180deg, rgba(8, 21, 18, 0.02), rgba(8, 21, 18, 0.7)),
-    url('/self-care/add-care/template-tile-rest-light.png');
+    url('/self-care/add-care/template-tile-rest-light.webp');
 }
 
 .modalOverlay {

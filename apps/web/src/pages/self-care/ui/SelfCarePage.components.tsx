@@ -35,6 +35,20 @@ import {
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
 
 import {
+  areNumberArraysEqual,
+  canUseExactTimePreference,
+  getClientTimeZone,
+  getInitialReminderOffsets,
+  getReminderOffsetsFromSelectValue,
+  getReminderSelectValue,
+  getTimePreferenceOptions,
+  hasStoredExactTimePreference,
+  SELF_CARE_REMINDER_CLEAR_VALUE,
+  SELF_CARE_REMINDER_SELECT_OPTIONS,
+  shouldShowExactScheduleTimeField,
+  shouldShowPreferredTimePreference,
+} from './SelfCarePage.form-model'
+import {
   ADD_CARE_TEMPLATE_FILTERS,
   type AddCareTemplateFilter,
   buildCreateScheduleRule,
@@ -116,8 +130,6 @@ import {
   STANDARD_REPEAT_SELECT_OPTIONS,
   STATUS_LABELS,
   TIME_GROUP_LABELS,
-  TIME_GROUP_SELECT_OPTIONS,
-  TIME_PREFERENCE_SELECT_OPTIONS,
   toggleWeekday,
   VISIBLE_CATEGORY_LABELS,
   type VisibleSelfCareCategory,
@@ -146,30 +158,6 @@ import { SelfCareSection } from './SelfCarePage.sections'
 
 export { SelfCareAnalyticsTab } from './SelfCarePage.analytics'
 export { SelfCareSettingsTab } from './SelfCarePage.settings'
-
-const REMINDER_CLEAR_VALUE = 'none'
-const REMINDER_OFFSET_OPTIONS: ReadonlyArray<{
-  label: string
-  offsetMinutes: number
-  value: string
-}> = [
-  { label: 'В момент', offsetMinutes: 0, value: '0' },
-  { label: '15 мин', offsetMinutes: 15, value: '15' },
-  { label: '1 час', offsetMinutes: 60, value: '60' },
-  { label: '1 день', offsetMinutes: 1440, value: '1440' },
-  { label: '1 неделя', offsetMinutes: 10080, value: '10080' },
-  { label: '1 месяц', offsetMinutes: 43200, value: '43200' },
-]
-const REMINDER_SELECT_OPTIONS: Array<SelectPickerOption<string>> = [
-  { label: 'Без оповещения', value: REMINDER_CLEAR_VALUE },
-  ...REMINDER_OFFSET_OPTIONS.map(({ label, value }) => ({ label, value })),
-]
-const REMINDER_OFFSET_VALUE_BY_MINUTES = new Map(
-  REMINDER_OFFSET_OPTIONS.map((option) => [option.offsetMinutes, option.value]),
-)
-const REMINDER_OFFSET_MINUTES_BY_VALUE = new Map(
-  REMINDER_OFFSET_OPTIONS.map((option) => [option.value, option.offsetMinutes]),
-)
 
 const CREATE_TYPE_OPTIONS: ReadonlyArray<{
   description: string
@@ -555,14 +543,14 @@ function SelfCareTodayClearState({
         <div className={styles.clearStateArtwork} aria-hidden="true">
           <img
             className={cx(styles.clearStateImage, styles.clearStateImageLight)}
-            src="/self-care/today-clear-light.png"
+            src="/self-care/today-clear-light.webp"
             alt=""
             loading="lazy"
             decoding="async"
           />
           <img
             className={cx(styles.clearStateImage, styles.clearStateImageDark)}
-            src="/self-care/today-clear-dark.png"
+            src="/self-care/today-clear-dark.webp"
             alt=""
             loading="lazy"
             decoding="async"
@@ -1631,18 +1619,10 @@ function SelfCareReminderOffsetsField({
   value: readonly number[]
   onChange: (value: number[]) => void
 }) {
-  const selectValue = value
-    .map((offset) => REMINDER_OFFSET_VALUE_BY_MINUTES.get(offset))
-    .filter((offset): offset is string => Boolean(offset))
+  const selectValue = getReminderSelectValue(value)
 
   function handleChange(nextValue: string[]): void {
-    onChange(
-      nextValue
-        .filter((offset) => offset !== REMINDER_CLEAR_VALUE)
-        .map((offset) => REMINDER_OFFSET_MINUTES_BY_VALUE.get(offset))
-        .filter((offset): offset is number => offset !== undefined)
-        .sort((left, right) => left - right),
-    )
+    onChange(getReminderOffsetsFromSelectValue(nextValue))
   }
 
   return (
@@ -1650,84 +1630,13 @@ function SelfCareReminderOffsetsField({
       className={styles.selectField}
       label="Напомнить"
       multiple
-      clearValue={REMINDER_CLEAR_VALUE}
+      clearValue={SELF_CARE_REMINDER_CLEAR_VALUE}
       disabled={disabled}
       value={selectValue}
-      options={REMINDER_SELECT_OPTIONS}
+      options={SELF_CARE_REMINDER_SELECT_OPTIONS}
       onChange={handleChange}
     />
   )
-}
-
-function canUseExactTimePreference(type: SelfCareItemType): boolean {
-  return type === 'course' || type === 'measurement' || type === 'task'
-}
-
-function hasStoredExactTimePreference(
-  entry: SelfCareTodayItem,
-  plannerTimeZone: string,
-): boolean {
-  if (!canUseExactTimePreference(entry.item.type)) {
-    return false
-  }
-
-  if (entry.scheduleRule?.preferredTime) {
-    return true
-  }
-
-  if (!shouldUseExactSchedule(entry.item.type)) {
-    return false
-  }
-
-  const initialScheduleTime = getInitialScheduleTime(entry, plannerTimeZone)
-
-  return initialScheduleTime.length > 0 && initialScheduleTime !== '00:00'
-}
-
-function shouldShowPreferredTimePreference(type: SelfCareItemType): boolean {
-  return type !== 'appointment'
-}
-
-function getTimePreferenceOptions(
-  type: SelfCareItemType,
-): Array<SelectPickerOption<SelfCareTimePreference>> {
-  return canUseExactTimePreference(type)
-    ? TIME_PREFERENCE_SELECT_OPTIONS
-    : TIME_GROUP_SELECT_OPTIONS
-}
-
-function shouldShowExactScheduleTimeField(
-  type: SelfCareItemType,
-  usesExactTimePreference: boolean,
-): boolean {
-  if (type === 'measurement' || type === 'task') {
-    return usesExactTimePreference
-  }
-
-  return true
-}
-
-function getClientTimeZone(plannerTimeZone: string): string {
-  return plannerTimeZone
-}
-
-function getInitialReminderOffsets(entry: SelfCareTodayItem): number[] {
-  if (entry.occurrence?.reminderOffsetsMinutes.length) {
-    return entry.occurrence.reminderOffsetsMinutes
-  }
-
-  return entry.scheduleRule?.reminderOffsetsMinutes ?? []
-}
-
-function areNumberArraysEqual(
-  left: readonly number[],
-  right: readonly number[],
-): boolean {
-  if (left.length !== right.length) {
-    return false
-  }
-
-  return left.every((value, index) => value === right[index])
 }
 
 function SelfCareCustomCreateForm({

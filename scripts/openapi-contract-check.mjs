@@ -1,5 +1,20 @@
 import assert from 'node:assert/strict'
 
+import {
+  cleaningFrequencyTypeSchema,
+  cleaningTaskScopeSchema,
+  habitFrequencySchema,
+  habitTargetTypeSchema,
+  selfCareCategorySchema,
+  selfCareFlexiblePeriodSchema,
+  selfCareImportanceSchema,
+  selfCareIntervalUnitSchema,
+  selfCareItemTypeSchema,
+  selfCareReminderToneSchema,
+  selfCareRepeatKindSchema,
+  selfCareTimeOfDaySchema,
+} from '@planner/contracts'
+
 import { getRegisteredApiRoutes } from '../apps/api/src/bootstrap/route-registry.ts'
 import { createApiKernel, destroyApiKernel } from '../apps/api/src/main.ts'
 
@@ -188,6 +203,102 @@ try {
     'minimumItems',
     'settings',
   ])
+  assertSchemaPropertyEnumMatches(
+    document,
+    'CleaningTaskRecord',
+    'frequencyType',
+    cleaningFrequencyTypeSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'CleaningTaskRecord',
+    'scope',
+    cleaningTaskScopeSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'HabitRecord',
+    'frequency',
+    habitFrequencySchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'HabitRecord',
+    'targetType',
+    habitTargetTypeSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareItem',
+    'category',
+    selfCareCategorySchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareItem',
+    'importance',
+    selfCareImportanceSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareItem',
+    'preferredTimeOfDay',
+    selfCareTimeOfDaySchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareItem',
+    'type',
+    selfCareItemTypeSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareItemInput',
+    'category',
+    selfCareCategorySchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareItemInput',
+    'type',
+    selfCareItemTypeSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareScheduleRule',
+    'flexiblePeriod',
+    selfCareFlexiblePeriodSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareScheduleRule',
+    'intervalUnit',
+    selfCareIntervalUnitSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareScheduleRule',
+    'repeatKind',
+    selfCareRepeatKindSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareScheduleRuleInput',
+    'repeatKind',
+    selfCareRepeatKindSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareSettings',
+    'defaultReminderTone',
+    selfCareReminderToneSchema.options,
+  )
+  assertSchemaPropertyEnumMatches(
+    document,
+    'SelfCareTodayItem',
+    'timeGroup',
+    selfCareTimeOfDaySchema.options,
+  )
 
   const missingOpenApiRoutes = registeredRoutes
     .map((route) => routeKey(route.method, route.path))
@@ -270,6 +381,29 @@ function assertSchemaProperties(document, schemaName, properties) {
       `OpenAPI schema ${schemaName} is missing property: ${property}`,
     )
   }
+}
+
+function assertSchemaPropertyEnumMatches(
+  document,
+  schemaName,
+  property,
+  expectedValues,
+) {
+  const schema = document.components?.schemas?.[schemaName]
+
+  assert.ok(schema, `OpenAPI schema is missing: ${schemaName}`)
+
+  const propertySchema = schema.properties?.[property]
+
+  assert.ok(
+    isRecord(propertySchema),
+    `OpenAPI schema ${schemaName}.${property} is missing an object schema.`,
+  )
+  assert.deepEqual(
+    propertySchema.enum,
+    [...expectedValues],
+    `OpenAPI enum ${schemaName}.${property} must match @planner/contracts.`,
+  )
 }
 
 function isRecord(value) {

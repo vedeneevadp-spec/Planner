@@ -94,6 +94,7 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run build:budget`                                  | проверить initial web bundle budget после `build`        |
 | `npm run check`                                         | lint + typecheck + tests                                 |
 | `npm run ci`                                            | audit + check + OpenAPI + mobile config + build          |
+| `npm run release:check`                                 | `ci` + Android sync/tests/debug assemble/budget          |
 | `npm run deploy:prod`                                   | production deploy на текущий VPS                         |
 
 `npm run test:e2e` по умолчанию поднимает отдельные API и web-серверы на
@@ -433,9 +434,12 @@ Workspace`: роли, права, жизненный цикл и правила 
   `npm run smoke:api:prod` и `npm run test:e2e`
 - отдельный CI job `android` запускает `npm run mobile:android:ci`, включая
   Capacitor sync, Gradle unit-тесты и debug assemble smoke
+- локальный pre-release gate: `npm run release:check` запускает `npm run ci` и
+  затем тот же Android gate
 - shared contracts валидируются через `zod`
 - web unit-тесты запускаются через Vitest
-- web coverage имеет минимальные thresholds в `apps/web/vite.config.ts`
+- web coverage имеет общие thresholds в `apps/web/vite.config.ts` и hotspot
+  guard в `scripts/check-web-coverage-hotspots.mjs`
 - `npm run build:budget` запрещает preload тяжелых lazy chunks и контролирует
   размер initial JS после production build
 - API coverage запускается через встроенный Node test runner
