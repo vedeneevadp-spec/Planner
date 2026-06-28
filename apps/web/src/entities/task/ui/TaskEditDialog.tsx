@@ -66,9 +66,7 @@ export function TaskEditDialog({
   onClose,
   onUpdate,
 }: TaskEditDialogProps) {
-  const titleId = useId()
   const confirmationFieldId = useId()
-  const titleInputRef = useRef<HTMLInputElement>(null)
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
   )
@@ -86,9 +84,6 @@ export function TaskEditDialog({
   )
   const [plannedEndTime, setPlannedEndTime] = useState(
     task.plannedEndTime ?? '',
-  )
-  const [isMobileLayout, setIsMobileLayout] = useState(() =>
-    getIsTaskEditorMobileLayout(),
   )
   const [reminderOffsets, setReminderOffsets] = useState<
     TaskReminderOffsetMinutes[]
@@ -121,66 +116,11 @@ export function TaskEditDialog({
     !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
   const isRoutineTask = Boolean(task.routine)
   const canEditRecurrence = !isRoutineTask
-  const showDesktopFinish = Boolean(plannedStartTime) && !isMobileLayout
-  const showMobileFinish = Boolean(plannedStartTime) && isMobileLayout
-
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') {
-      return
-    }
-
-    const mediaQuery = window.matchMedia('(max-width: 560px)')
-
-    function syncMobileLayout() {
-      setIsMobileLayout(mediaQuery.matches)
-    }
-
-    syncMobileLayout()
-    mediaQuery.addEventListener('change', syncMobileLayout)
-
-    return () => {
-      mediaQuery.removeEventListener('change', syncMobileLayout)
-    }
-  }, [])
+  const hasPlannedStartTime = Boolean(plannedStartTime)
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
-    const rootStyle = document.documentElement.style
-    const previousViewportHeight = rootStyle.getPropertyValue(
-      '--task-editor-viewport-height',
-    )
-    const previousViewportOffsetTop = rootStyle.getPropertyValue(
-      '--task-editor-viewport-offset-top',
-    )
     document.body.style.overflow = 'hidden'
-
-    function syncVisualViewport() {
-      const visualViewport = window.visualViewport
-      const viewportHeight = visualViewport?.height ?? window.innerHeight
-      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
-
-      rootStyle.setProperty(
-        '--task-editor-viewport-height',
-        `${viewportHeight}px`,
-      )
-      rootStyle.setProperty(
-        '--task-editor-viewport-offset-top',
-        `${viewportOffsetTop}px`,
-      )
-    }
-
-    syncVisualViewport()
-
-    const visualViewport = window.visualViewport
-    visualViewport?.addEventListener('resize', syncVisualViewport)
-    visualViewport?.addEventListener('scroll', syncVisualViewport)
-    window.addEventListener('resize', syncVisualViewport)
-
-    const focusFrame = window.requestAnimationFrame(() => {
-      if (!getIsTaskEditorMobileLayout()) {
-        titleInputRef.current?.focus({ preventScroll: true })
-      }
-    })
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
@@ -192,20 +132,6 @@ export function TaskEditDialog({
 
     return () => {
       document.body.style.overflow = previousOverflow
-      window.cancelAnimationFrame(focusFrame)
-      visualViewport?.removeEventListener('resize', syncVisualViewport)
-      visualViewport?.removeEventListener('scroll', syncVisualViewport)
-      window.removeEventListener('resize', syncVisualViewport)
-      restoreCssVariable(
-        rootStyle,
-        '--task-editor-viewport-height',
-        previousViewportHeight,
-      )
-      restoreCssVariable(
-        rootStyle,
-        '--task-editor-viewport-offset-top',
-        previousViewportOffsetTop,
-      )
       window.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose])
@@ -320,7 +246,7 @@ export function TaskEditDialog({
       className={styles.editorOverlay}
       role="dialog"
       aria-modal="true"
-      aria-labelledby={titleId}
+      aria-label="Редактировать задачу"
     >
       <button
         className={styles.editorBackdrop}
@@ -336,7 +262,7 @@ export function TaskEditDialog({
         }}
       >
         <div className={styles.editorHeader}>
-          <h3 id={titleId}>Редактировать задачу</h3>
+          <h3>Редактировать задачу</h3>
           <button
             className={styles.closeButton}
             type="button"
@@ -345,16 +271,14 @@ export function TaskEditDialog({
           >
             <span aria-hidden="true">×</span>
           </button>
-          {isMobileLayout ? (
-            <button
-              className={styles.mobileHeaderSubmit}
-              type="submit"
-              aria-label="Сохранить"
-              disabled={isPending || !title.trim()}
-            >
-              <CheckIcon size={16} />
-            </button>
-          ) : null}
+          <button
+            className={styles.mobileHeaderSubmit}
+            type="submit"
+            aria-label="Сохранить"
+            disabled={isPending || !title.trim()}
+          >
+            <CheckIcon size={16} />
+          </button>
         </div>
 
         <div className={styles.editorFormScroller}>
@@ -367,10 +291,9 @@ export function TaskEditDialog({
                   <label className={cx(styles.field, styles.titleField)}>
                     <span>Задача</span>
                     <input
-                      ref={titleInputRef}
                       required
                       value={title}
-                      placeholder="Например: собрать референсы для недельного плана"
+                      placeholder="Например: собрать референсы"
                       onChange={(event) => setTitle(event.target.value)}
                     />
                   </label>
@@ -389,8 +312,8 @@ export function TaskEditDialog({
                 <div
                   className={cx(
                     styles.editorGrid,
-                    plannedStartTime && styles.editorGridTimeline,
-                    !plannedStartTime && styles.editorGridPair,
+                    hasPlannedStartTime && styles.editorGridTimeline,
+                    !hasPlannedStartTime && styles.editorGridPair,
                   )}
                 >
                   <label className={styles.field}>
@@ -416,7 +339,7 @@ export function TaskEditDialog({
                     />
                   </label>
 
-                  {showDesktopFinish ? (
+                  {hasPlannedStartTime ? (
                     <label className={cx(styles.field, styles.finishField)}>
                       <span>Финиш</span>
                       <input
@@ -438,7 +361,7 @@ export function TaskEditDialog({
                   <textarea
                     rows={3}
                     value={note}
-                    placeholder="Контекст, next step, ссылка на материал"
+                    placeholder="Контекст"
                     onChange={(event) => setNote(event.target.value)}
                   />
                 </label>
@@ -452,8 +375,8 @@ export function TaskEditDialog({
                 <div className={styles.projectIconRow}>
                   <SpherePicker
                     className={styles.fieldProject}
-                    emptyLabel={getEmptyProjectLabel()}
-                    label={getSpherePickerLabel()}
+                    emptyLabel="Без сферы"
+                    label="Сфера"
                     spheres={spheres}
                     uploadedIcons={uploadedIcons}
                     value={projectId}
@@ -469,7 +392,7 @@ export function TaskEditDialog({
                 </div>
               </section>
 
-              {showMobileFinish ? (
+              {hasPlannedStartTime ? (
                 <section
                   className={cx(
                     styles.editorSection,
@@ -495,7 +418,7 @@ export function TaskEditDialog({
                   className={cx(
                     styles.editorSection,
                     styles.reminderSection,
-                    showMobileFinish && styles.reminderWithFinish,
+                    hasPlannedStartTime && styles.reminderWithFinish,
                   )}
                 >
                   <TaskReminderPicker
@@ -629,33 +552,4 @@ export function TaskEditDialog({
     </div>,
     document.body,
   )
-}
-
-function restoreCssVariable(
-  style: CSSStyleDeclaration,
-  propertyName: string,
-  previousValue: string,
-): void {
-  if (previousValue) {
-    style.setProperty(propertyName, previousValue)
-    return
-  }
-
-  style.removeProperty(propertyName)
-}
-
-function getIsTaskEditorMobileLayout(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(max-width: 560px)').matches
-  )
-}
-
-function getEmptyProjectLabel(): string {
-  return 'Без сферы'
-}
-
-function getSpherePickerLabel(): string {
-  return 'Сфера'
 }

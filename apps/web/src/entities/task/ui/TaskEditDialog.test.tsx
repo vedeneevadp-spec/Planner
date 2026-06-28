@@ -87,7 +87,7 @@ describe('TaskEditDialog', () => {
     fireEvent.change(screen.getByLabelText('Старт'), {
       target: { value: '10:30' },
     })
-    fireEvent.change(screen.getByLabelText('Финиш'), {
+    fireEvent.change(screen.getAllByLabelText('Финиш')[0]!, {
       target: { value: '11:00' },
     })
     fireEvent.change(screen.getByLabelText('Заметка'), {
@@ -95,7 +95,8 @@ describe('TaskEditDialog', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'Пометить как важное' }))
     fireEvent.click(screen.getByRole('button', { name: 'Обязательно' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    const saveButtons = screen.getAllByRole('button', { name: 'Сохранить' })
+    fireEvent.click(saveButtons[saveButtons.length - 1]!)
 
     await waitFor(() => {
       expect(onUpdate).toHaveBeenCalledWith(
@@ -153,7 +154,8 @@ describe('TaskEditDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Исполнитель' }))
     fireEvent.click(screen.getByRole('option', { name: 'Alex' }))
     fireEvent.click(screen.getByLabelText('Требуется подтверждение'))
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    const saveButtons = screen.getAllByRole('button', { name: 'Сохранить' })
+    fireEvent.click(saveButtons[saveButtons.length - 1]!)
 
     await waitFor(() => {
       expect(onUpdate).toHaveBeenCalledWith(

@@ -53,7 +53,7 @@ export function TaskComposerPrimaryFields({
               ref={titleInputRef}
               required
               value={title}
-              placeholder="Например: собрать референсы для недельного плана"
+              placeholder="Например: собрать референсы"
               onChange={(event) => {
                 onTitleChange(event.target.value)
               }}
@@ -87,7 +87,7 @@ export function TaskComposerPrimaryFields({
           <textarea
             rows={3}
             value={note}
-            placeholder="Контекст, next step, ссылка на материал"
+            placeholder="Контекст"
             onChange={(event) => {
               onNoteChange(event.target.value)
             }}
