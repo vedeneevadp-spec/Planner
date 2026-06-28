@@ -195,6 +195,15 @@ export function BellIcon(props: IconProps) {
   )
 }
 
+export function MailIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <rect x="4.25" y="6.25" width="15.5" height="11.5" rx="2.25" />
+      <path d="M5.25 7.5L12 12.75L18.75 7.5" />
+    </SvgIcon>
+  )
+}
+
 export function MicIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>
@@ -355,6 +364,17 @@ export function ChatIcon(props: IconProps) {
       <path d="M7 18L4.75 20V7C4.75 5.76 5.76 4.75 7 4.75H17C18.24 4.75 19.25 5.76 19.25 7V15C19.25 16.24 18.24 17.25 17 17.25H8.25" />
       <path d="M8 9.5H16" />
       <path d="M8 13H13.5" />
+    </SvgIcon>
+  )
+}
+
+export function GlobeIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <circle cx="12" cy="12" r="7.75" />
+      <path d="M4.75 12H19.25" />
+      <path d="M12 4.25C14.1 6.38 15.25 8.95 15.25 12C15.25 15.05 14.1 17.62 12 19.75" />
+      <path d="M12 4.25C9.9 6.38 8.75 8.95 8.75 12C8.75 15.05 9.9 17.62 12 19.75" />
     </SvgIcon>
   )
 }

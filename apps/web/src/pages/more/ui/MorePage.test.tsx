@@ -269,4 +269,14 @@ describe('MorePage', () => {
       'Голосовой помощник',
     ])
   })
+
+  it('shows contacts as a section link', () => {
+    renderMorePage()
+
+    const sections = screen.getByRole('region', { name: 'Разделы' })
+
+    expect(
+      within(sections).getByRole('link', { name: 'Контакты' }),
+    ).toHaveAttribute('href', '/contacts')
+  })
 })

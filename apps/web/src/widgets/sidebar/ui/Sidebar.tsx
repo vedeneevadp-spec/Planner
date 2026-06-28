@@ -20,6 +20,7 @@ import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import { getTodayDate } from '@/shared/time/time.service'
 import {
+  ChatIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CloseIcon,
@@ -156,6 +157,7 @@ export function Sidebar({
   const isMoreActive =
     isMoreOpen ||
     matchesRoute(location.pathname, '/more') ||
+    matchesRoute(location.pathname, '/contacts') ||
     (isProfileNavigationVisible &&
       matchesRoute(location.pathname, '/profile')) ||
     mobileSheetNavigation.some((item) =>
@@ -164,6 +166,7 @@ export function Sidebar({
   const isPlannerMoreActive =
     isMoreOpen ||
     matchesRoute(location.pathname, '/more') ||
+    matchesRoute(location.pathname, '/contacts') ||
     (isProfileNavigationVisible &&
       matchesRoute(location.pathname, '/profile')) ||
     visibleNavigation
@@ -447,35 +450,15 @@ export function Sidebar({
                   </section>
                 ) : null}
 
-                {mobileSheetNavigation.length > 0 ||
-                isProfileNavigationVisible ? (
-                  <section className={styles.mobileSheetSection}>
-                    <p className={styles.mobileSectionLabel}>Разделы</p>
+                <section className={styles.mobileSheetSection}>
+                  <p className={styles.mobileSectionLabel}>Разделы</p>
 
-                    {mobileSheetNavigation
-                      .filter((item) => item.to !== '/admin')
-                      .map((item) => (
-                        <NavLink
-                          key={item.to}
-                          to={item.to}
-                          className={({ isActive }) =>
-                            cx(
-                              styles.mobileSheetLink,
-                              isActive && styles.mobileSheetLinkActive,
-                            )
-                          }
-                          onClick={() => {
-                            closeMobileMoreSheet()
-                          }}
-                        >
-                          <SidebarNavIcon route={item.to} />
-                          <span>{item.label}</span>
-                        </NavLink>
-                      ))}
-
-                    {isProfileNavigationVisible ? (
+                  {mobileSheetNavigation
+                    .filter((item) => item.to !== '/admin')
+                    .map((item) => (
                       <NavLink
-                        to="/profile"
+                        key={item.to}
+                        to={item.to}
                         className={({ isActive }) =>
                           cx(
                             styles.mobileSheetLink,
@@ -486,33 +469,66 @@ export function Sidebar({
                           closeMobileMoreSheet()
                         }}
                       >
-                        <EditIcon size={18} strokeWidth={2.1} />
-                        <span>Профиль</span>
+                        <SidebarNavIcon route={item.to} />
+                        <span>{item.label}</span>
                       </NavLink>
-                    ) : null}
+                    ))}
 
-                    {mobileSheetNavigation
-                      .filter((item) => item.to === '/admin')
-                      .map((item) => (
-                        <NavLink
-                          key={item.to}
-                          to={item.to}
-                          className={({ isActive }) =>
-                            cx(
-                              styles.mobileSheetLink,
-                              isActive && styles.mobileSheetLinkActive,
-                            )
-                          }
-                          onClick={() => {
-                            closeMobileMoreSheet()
-                          }}
-                        >
-                          <GearIcon size={18} strokeWidth={2.1} />
-                          <span>{item.label}</span>
-                        </NavLink>
-                      ))}
-                  </section>
-                ) : null}
+                  {isProfileNavigationVisible ? (
+                    <NavLink
+                      to="/profile"
+                      className={({ isActive }) =>
+                        cx(
+                          styles.mobileSheetLink,
+                          isActive && styles.mobileSheetLinkActive,
+                        )
+                      }
+                      onClick={() => {
+                        closeMobileMoreSheet()
+                      }}
+                    >
+                      <EditIcon size={18} strokeWidth={2.1} />
+                      <span>Профиль</span>
+                    </NavLink>
+                  ) : null}
+
+                  <NavLink
+                    to="/contacts"
+                    className={({ isActive }) =>
+                      cx(
+                        styles.mobileSheetLink,
+                        isActive && styles.mobileSheetLinkActive,
+                      )
+                    }
+                    onClick={() => {
+                      closeMobileMoreSheet()
+                    }}
+                  >
+                    <ChatIcon size={18} strokeWidth={2.1} />
+                    <span>Контакты</span>
+                  </NavLink>
+
+                  {mobileSheetNavigation
+                    .filter((item) => item.to === '/admin')
+                    .map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        className={({ isActive }) =>
+                          cx(
+                            styles.mobileSheetLink,
+                            isActive && styles.mobileSheetLinkActive,
+                          )
+                        }
+                        onClick={() => {
+                          closeMobileMoreSheet()
+                        }}
+                      >
+                        <GearIcon size={18} strokeWidth={2.1} />
+                        <span>{item.label}</span>
+                      </NavLink>
+                    ))}
+                </section>
 
                 {connectionIssueMessage ? (
                   <section className={styles.mobileSheetSection}>

@@ -30,6 +30,10 @@ vi.mock('@/pages/calendar', () => ({
   CalendarPage: () => <div>Calendar page</div>,
 }))
 
+vi.mock('@/pages/contacts', () => ({
+  ContactsPage: () => <div>Contacts page</div>,
+}))
+
 vi.mock('@/pages/more', () => ({
   MorePage: () => <div>More page</div>,
 }))
@@ -199,6 +203,24 @@ describe('AppRouter', () => {
     expect(
       await screen.findByText('Voice assistant settings page'),
     ).toBeVisible()
+  })
+
+  it('keeps contacts available in shared workspaces', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'shared',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/contacts']}>
+        <AppRouter />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Contacts page')).toBeVisible()
   })
 
   it('redirects shared workspaces away from profile', async () => {

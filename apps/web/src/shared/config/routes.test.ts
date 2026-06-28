@@ -16,6 +16,7 @@ describe('route config', () => {
     expect(routeIds).toContain('shopping')
     expect(routeIds).toContain('spheres')
     expect(routeIds).toContain('more')
+    expect(routeIds).toContain('contacts')
     expect(routeIds).toContain('voiceAssistantSettings')
     expect(routeIds).not.toContain('admin')
     expect(routeIds).not.toContain('selfCare')
@@ -51,6 +52,7 @@ describe('route config', () => {
     )
 
     expect(routeIds).toContain('admin')
+    expect(routeIds).toContain('contacts')
     expect(routeIds).toContain('more')
     expect(routeIds).toContain('profile')
     expect(routeIds).toContain('selfCare')

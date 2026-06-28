@@ -14,6 +14,7 @@ import {
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import {
+  ChatIcon,
   EditIcon,
   GearIcon,
   MicIcon,
@@ -47,7 +48,6 @@ export function MorePage() {
   const isAdminVisible =
     isPersonalWorkspace &&
     (session?.appRole === 'admin' || session?.appRole === 'owner')
-  const hasSectionLinks = isProfileVisible || isAdminVisible
   const connectionView = getSessionReadinessConnectionView(planner.readiness, {
     featureErrorMessage: planner.errorMessage,
     isFeatureLoading: planner.isLoading,
@@ -324,27 +324,28 @@ export function MorePage() {
         ) : null}
       </section>
 
-      {hasSectionLinks ? (
-        <>
-          <p className={styles.sectionLabel}>Разделы</p>
-          <section className={styles.controlList} aria-label="Разделы">
-            {isProfileVisible ? (
-              <MoreActionLink
-                icon={<EditIcon size={19} strokeWidth={2} />}
-                label="Профиль"
-                to="/profile"
-              />
-            ) : null}
-            {isAdminVisible ? (
-              <MoreActionLink
-                icon={<GearIcon size={19} strokeWidth={2} />}
-                label="Admin"
-                to="/admin"
-              />
-            ) : null}
-          </section>
-        </>
-      ) : null}
+      <p className={styles.sectionLabel}>Разделы</p>
+      <section className={styles.controlList} aria-label="Разделы">
+        {isProfileVisible ? (
+          <MoreActionLink
+            icon={<EditIcon size={19} strokeWidth={2} />}
+            label="Профиль"
+            to="/profile"
+          />
+        ) : null}
+        <MoreActionLink
+          icon={<ChatIcon size={19} strokeWidth={2} />}
+          label="Контакты"
+          to="/contacts"
+        />
+        {isAdminVisible ? (
+          <MoreActionLink
+            icon={<GearIcon size={19} strokeWidth={2} />}
+            label="Admin"
+            to="/admin"
+          />
+        ) : null}
+      </section>
     </section>
   )
 }
@@ -361,7 +362,7 @@ function MoreActionLink({ icon, label, to }: MoreActionLinkProps) {
       <span className={styles.listIcon} aria-hidden="true">
         {icon}
       </span>
-      <span>{label}</span>
+      <span className={styles.listText}>{label}</span>
     </Link>
   )
 }

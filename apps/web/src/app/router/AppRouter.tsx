@@ -32,6 +32,11 @@ const CleaningSettingsPage = lazy(() =>
     default: module.CleaningSettingsPage,
   })),
 )
+const ContactsPage = lazy(() =>
+  import('@/pages/contacts').then((module) => ({
+    default: module.ContactsPage,
+  })),
+)
 const MorePage = lazy(() =>
   import('@/pages/more').then((module) => ({ default: module.MorePage })),
 )
@@ -116,6 +121,7 @@ const routeElements = {
   cleaningSettingsGeneral: <CleaningSettingsPage />,
   cleaningSettingsZone: <CleaningSettingsPage />,
   cleaningZoneRedirect: <CleaningZoneRedirect />,
+  contacts: <ContactsPage />,
   habitRedirect: <HabitsRedirect />,
   habitsRedirect: <HabitsRedirect />,
   more: <MorePage />,

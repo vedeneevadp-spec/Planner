@@ -416,6 +416,17 @@ describe('Sidebar', () => {
     confirmSpy.mockRestore()
   })
 
+  it('shows contacts as a section link inside the mobile more sheet', () => {
+    renderSidebar(createSession('personal'))
+
+    const moreSheet = within(openMobileMoreSheet())
+
+    expect(moreSheet.getByRole('link', { name: 'Контакты' })).toHaveAttribute(
+      'href',
+      '/contacts',
+    )
+  })
+
   it('requires confirmation before desktop account sign out', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false)
 

@@ -8,6 +8,7 @@ export type AppRouteId =
   | 'cleaningSettings'
   | 'cleaningSettingsZone'
   | 'cleaningZoneRedirect'
+  | 'contacts'
   | 'habitRedirect'
   | 'habitsRedirect'
   | 'more'
@@ -132,6 +133,11 @@ export const appRouteDefinitions = [
   {
     id: 'voiceAssistantSettings',
     path: '/voice-assistant/settings',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
+    id: 'contacts',
+    path: '/contacts',
     workspaceKinds: allWorkspaceKinds,
   },
   {

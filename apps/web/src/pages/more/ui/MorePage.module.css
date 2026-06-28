@@ -332,6 +332,11 @@
   color: var(--text-soft);
 }
 
+.listText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .workspaceSettingsButton:focus-visible,
 .createWorkspaceButton:focus-visible,
 .formPrimaryButton:focus-visible,

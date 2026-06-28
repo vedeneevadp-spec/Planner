@@ -885,6 +885,11 @@
     color: var(--accent);
   }
 
+  .mobileSheetLink span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   .mobileSheetLinkActive svg {
     color: currentColor;
   }
