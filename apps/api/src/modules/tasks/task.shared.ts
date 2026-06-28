@@ -26,6 +26,7 @@ const WEEKDAY_RRULE_VALUES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
 export interface NormalizedTaskInput extends NewTaskInput {
   icon: string
   importance: NonNullable<NewTaskInput['importance']>
+  necessity: NonNullable<NewTaskInput['necessity']>
   note: string
   project: string
   projectId: string | null
@@ -97,6 +98,7 @@ export function normalizeTaskInput(input: NewTaskInput): NormalizedTaskInput {
     ...input,
     icon: (input.icon ?? '').trim(),
     importance: input.importance ?? 'not_important',
+    necessity: input.necessity ?? 'desired',
     note: input.note.trim(),
     project: input.project.trim(),
     projectId: input.projectId,
@@ -330,6 +332,20 @@ function getTaskStatusWeight(status: TaskStatus): number {
   return 4
 }
 
+function getTaskNecessityWeight(
+  necessity: StoredTaskRecord['necessity'],
+): number {
+  if (necessity === 'required') {
+    return 0
+  }
+
+  if (necessity === 'desired') {
+    return 1
+  }
+
+  return 2
+}
+
 export function isActiveTaskStatus(status: TaskStatus): boolean {
   return status !== 'done' && status !== 'archived'
 }
@@ -356,6 +372,14 @@ export function compareStoredTasks(
 
   if (timeComparison !== 0) {
     return timeComparison
+  }
+
+  const necessityComparison =
+    getTaskNecessityWeight(left.necessity) -
+    getTaskNecessityWeight(right.necessity)
+
+  if (necessityComparison !== 0) {
+    return necessityComparison
   }
 
   if (left.createdAt === right.createdAt) {
@@ -401,6 +425,7 @@ export function createStoredTaskRecord(
     id: normalizedInput.id ?? options.id ?? generateUuidV7(),
     importance: normalizedInput.importance,
     linkedTask: options.linkedTask ?? null,
+    necessity: normalizedInput.necessity,
     note: normalizedInput.note,
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,
@@ -510,6 +535,7 @@ export function applyTaskUpdate(
     dueDate: normalizedInput.dueDate,
     icon: normalizedInput.icon,
     importance: normalizedInput.importance,
+    necessity: normalizedInput.necessity,
     note: normalizedInput.note,
     plannedDate: schedule.plannedDate,
     plannedEndTime: schedule.plannedEndTime,

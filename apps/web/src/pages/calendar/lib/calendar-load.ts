@@ -391,6 +391,7 @@ export function buildSelfCareCalendarTask(
     icon: entry.item.icon ?? '',
     id: `self-care:${occurrence.id}`,
     importance: 'not_important',
+    necessity: 'desired',
     isSelfCare: true,
     linkedTask: null,
     note: entry.item.description,

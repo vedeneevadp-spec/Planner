@@ -49,6 +49,7 @@ describe('offline planner storage migrations', () => {
         icon: '',
         id: 'task-1',
         importance: 'not_important',
+        necessity: 'desired',
         note: '',
         plannedDate: null,
         plannedEndTime: null,

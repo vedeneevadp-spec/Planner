@@ -23,6 +23,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     icon: '✅',
     id: 'task-1',
     importance: 'not_important',
+    necessity: 'desired',
     note: 'Old note',
     plannedDate: '2026-05-19',
     plannedEndTime: null,
@@ -92,6 +93,8 @@ describe('TaskEditDialog', () => {
     fireEvent.change(screen.getByLabelText('Заметка'), {
       target: { value: 'Updated note' },
     })
+    fireEvent.click(screen.getByRole('button', { name: 'Пометить как важное' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Обязательно' }))
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
 
     await waitFor(() => {
@@ -99,6 +102,8 @@ describe('TaskEditDialog', () => {
         'task-1',
         expect.objectContaining({
           assigneeUserId: null,
+          importance: 'important',
+          necessity: 'required',
           note: 'Updated note',
           plannedDate: '2026-05-20',
           plannedEndTime: '11:00',

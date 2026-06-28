@@ -7,6 +7,7 @@ export type {
   TaskCompletionType,
   TaskImportance,
   TaskLinkedTask,
+  TaskNecessity,
   TaskRecurrence,
   TaskRecurrenceFrequency,
   TaskRecurrenceInput,

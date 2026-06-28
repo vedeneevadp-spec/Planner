@@ -56,6 +56,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     icon: '',
     id: 'task-1',
     importance: 'not_important',
+    necessity: 'desired',
     note: '',
     plannedDate: null,
     plannedEndTime: null,

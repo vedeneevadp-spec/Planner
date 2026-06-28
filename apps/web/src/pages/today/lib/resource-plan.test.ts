@@ -20,6 +20,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     icon: '',
     id: overrides.id ?? crypto.randomUUID(),
     importance: 'not_important',
+    necessity: 'desired',
     note: '',
     plannedDate: '2026-04-22',
     plannedEndTime: null,

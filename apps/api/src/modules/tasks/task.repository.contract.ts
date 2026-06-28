@@ -35,6 +35,7 @@ export function defineTaskRepositoryContractSuite(input: {
             icon: '  spark  ',
             id: randomUUID(),
             importance: 'important',
+            necessity: 'required',
             note: '  contract note  ',
             plannedDate: '2026-05-23',
             plannedEndTime: '10:00',
@@ -75,6 +76,7 @@ export function defineTaskRepositoryContractSuite(input: {
         assert.equal(duplicateLegacyTask.title, 'Legacy task')
         assert.equal(legacyTask.icon, 'spark')
         assert.equal(legacyTask.importance, 'important')
+        assert.equal(legacyTask.necessity, 'required')
         assert.equal(legacyTask.note, 'contract note')
         assert.equal(legacyTask.plannedEndTime, '10:00')
         assert.equal(legacyTask.plannedStartTime, '09:00')
@@ -347,6 +349,7 @@ export function defineTaskRepositoryContractSuite(input: {
             dueDate: '2026-05-30',
             icon: 'car',
             importance: 'important',
+            necessity: 'optional',
             note: 'Bring documents',
             plannedDate: '2026-05-23',
             plannedEndTime: '11:00',
@@ -402,6 +405,7 @@ export function defineTaskRepositoryContractSuite(input: {
         assert.equal(firstStage.nextTask.note, 'Take the car to the service')
         assert.equal(firstStage.nextTask.icon, 'car')
         assert.equal(firstStage.nextTask.importance, 'important')
+        assert.equal(firstStage.nextTask.necessity, 'optional')
         assert.equal(firstStage.nextTask.urgency, 'urgent')
         assert.equal(firstStage.nextTask.project, 'Contract Project')
         assert.equal(firstStage.nextTask.projectId, harness.projectId)
@@ -615,6 +619,7 @@ export function createTaskInput(
     dueDate: null,
     icon: '',
     importance: 'not_important',
+    necessity: 'desired',
     note: '',
     plannedDate: null,
     plannedEndTime: null,

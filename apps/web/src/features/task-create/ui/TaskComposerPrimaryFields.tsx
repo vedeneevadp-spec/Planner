@@ -1,13 +1,13 @@
 import type { RefObject } from 'react'
 
+import { TaskImportanceToggle } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
-import { IconChoicePicker, type UploadedIconAsset } from '@/shared/ui/Icon'
 
 import styles from './TaskComposer.module.css'
 import { TaskComposerScheduleFields } from './TaskComposerScheduleFields'
 
 interface TaskComposerPrimaryFieldsProps {
-  icon: string
+  isImportant: boolean
   isHabitTaskType: boolean
   note: string
   plannedDate: string
@@ -17,8 +17,7 @@ interface TaskComposerPrimaryFieldsProps {
   title: string
   titleFieldLabel: string
   titleInputRef: RefObject<HTMLInputElement | null>
-  uploadedIcons: UploadedIconAsset[]
-  onIconChange: (icon: string) => void
+  onImportantChange: (isImportant: boolean) => void
   onNoteChange: (note: string) => void
   onPlannedDateChange: (plannedDate: string) => void
   onPlannedEndTimeChange: (plannedEndTime: string) => void
@@ -27,7 +26,7 @@ interface TaskComposerPrimaryFieldsProps {
 }
 
 export function TaskComposerPrimaryFields({
-  icon,
+  isImportant,
   isHabitTaskType,
   note,
   plannedDate,
@@ -37,8 +36,7 @@ export function TaskComposerPrimaryFields({
   title,
   titleFieldLabel,
   titleInputRef,
-  uploadedIcons,
-  onIconChange,
+  onImportantChange,
   onNoteChange,
   onPlannedDateChange,
   onPlannedEndTimeChange,
@@ -48,18 +46,28 @@ export function TaskComposerPrimaryFields({
   return (
     <div className={styles.columnPanel}>
       <section className={cx(styles.columnSection, styles.titleSection)}>
-        <label className={cx(styles.field, styles.titleField)}>
-          <span>{titleFieldLabel}</span>
-          <input
-            ref={titleInputRef}
-            required
-            value={title}
-            placeholder="Например: собрать референсы для недельного плана"
-            onChange={(event) => {
-              onTitleChange(event.target.value)
-            }}
-          />
-        </label>
+        <div className={styles.titleInputRow}>
+          <label className={cx(styles.field, styles.titleField)}>
+            <span>{titleFieldLabel}</span>
+            <input
+              ref={titleInputRef}
+              required
+              value={title}
+              placeholder="Например: собрать референсы для недельного плана"
+              onChange={(event) => {
+                onTitleChange(event.target.value)
+              }}
+            />
+          </label>
+
+          {!isHabitTaskType ? (
+            <TaskImportanceToggle
+              className={styles.titleImportanceToggle}
+              isImportant={isImportant}
+              onChange={onImportantChange}
+            />
+          ) : null}
+        </div>
       </section>
 
       <TaskComposerScheduleFields
@@ -85,19 +93,6 @@ export function TaskComposerPrimaryFields({
             }}
           />
         </label>
-      </section>
-
-      <section className={cx(styles.columnSection, styles.visualSection)}>
-        <div className={styles.visualPanel}>
-          <IconChoicePicker
-            allowEmpty={false}
-            label="Иконка"
-            showEmojiChoices={false}
-            value={icon}
-            uploadedIcons={uploadedIcons}
-            onChange={onIconChange}
-          />
-        </div>
       </section>
     </div>
   )

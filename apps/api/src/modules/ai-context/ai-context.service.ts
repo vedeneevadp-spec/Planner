@@ -1128,6 +1128,7 @@ function mapTaskItem(
     area: task.project || task.sphereId || null,
     dueDate: task.dueDate ?? task.plannedDate,
     importance: task.importance,
+    obligation: task.necessity,
     priority:
       task.importance === 'important' || task.urgency === 'urgent'
         ? 'high'
@@ -1511,6 +1512,7 @@ function mapTaskGroupToTaskItem(group: AiTaskGroup): AiTaskItem {
     area: null,
     dueDate: group.dates[0] ?? null,
     importance: 'not_important',
+    obligation: 'desired',
     priority: 'normal',
     resource: null,
     resourceImpact: 'unknown',

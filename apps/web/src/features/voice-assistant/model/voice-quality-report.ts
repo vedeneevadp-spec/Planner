@@ -1178,6 +1178,7 @@ function createTaskRecord(overrides: Partial<TaskRecord> = {}): TaskRecord {
     icon: '',
     id: 'task-1',
     importance: 'not_important',
+    necessity: 'desired',
     linkedTask: null,
     note: '',
     plannedDate: '2026-05-29',

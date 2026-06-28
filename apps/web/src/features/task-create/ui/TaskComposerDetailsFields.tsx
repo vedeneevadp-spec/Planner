@@ -1,3 +1,5 @@
+import { useState } from 'react'
+
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import {
@@ -5,12 +7,14 @@ import {
   type ResourceValue,
   RoutineTaskFields,
   type RoutineTaskFormState,
+  TaskIconPickerDialog,
+  TaskIconSelectButton,
+  type TaskNecessity,
+  TaskNecessityPicker,
   TaskRecurrenceFields,
   type TaskRecurrenceFormState,
   type TaskReminderOffsetMinutes,
   TaskReminderPicker,
-  TaskTypePicker,
-  type TaskTypeValue,
 } from '@/entities/task'
 import { cx } from '@/shared/lib/classnames'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
@@ -29,9 +33,9 @@ interface WorkspaceUserOption {
 
 interface TaskComposerDetailsFieldsProps {
   assigneeUserId: string
-  allowHabitTaskType: boolean
   canUseRecurrence: boolean
   confirmationFieldId: string
+  icon: string
   isHabitTaskType: boolean
   isReminderAvailable: boolean
   isRoutineLikeTaskType: boolean
@@ -40,6 +44,7 @@ interface TaskComposerDetailsFieldsProps {
   plannedEndTime: string
   plannedStartTime: string
   projectId: string
+  necessity: TaskNecessity
   recurrenceForm: TaskRecurrenceFormState
   reminderOffsets: TaskReminderOffsetMinutes[]
   requiresConfirmation: boolean
@@ -47,12 +52,13 @@ interface TaskComposerDetailsFieldsProps {
   routineForm: RoutineTaskFormState
   showTimeFields: boolean
   spheres: Sphere[]
-  taskType: TaskTypeValue
   uploadedIcons: UploadedIconAsset[]
   workspaceUsers: WorkspaceUserOption[]
   onAssigneeUserIdChange: (assigneeUserId: string) => void
+  onIconChange: (icon: string) => void
   onPlannedEndTimeChange: (plannedEndTime: string) => void
   onProjectIdChange: (projectId: string) => void
+  onNecessityChange: (necessity: TaskNecessity) => void
   onRecurrenceChange: (recurrenceForm: TaskRecurrenceFormState) => void
   onReminderOffsetsChange: (
     reminderOffsets: TaskReminderOffsetMinutes[],
@@ -60,14 +66,13 @@ interface TaskComposerDetailsFieldsProps {
   onRequiresConfirmationChange: (requiresConfirmation: boolean) => void
   onResourceChange: (resource: ResourceValue) => void
   onRoutineFormChange: (routineForm: RoutineTaskFormState) => void
-  onTaskTypeChange: (taskType: TaskTypeValue) => void
 }
 
 export function TaskComposerDetailsFields({
   assigneeUserId,
-  allowHabitTaskType,
   canUseRecurrence,
   confirmationFieldId,
+  icon,
   isHabitTaskType,
   isReminderAvailable,
   isRoutineLikeTaskType,
@@ -76,6 +81,7 @@ export function TaskComposerDetailsFields({
   plannedEndTime,
   plannedStartTime,
   projectId,
+  necessity,
   recurrenceForm,
   reminderOffsets,
   requiresConfirmation,
@@ -83,34 +89,44 @@ export function TaskComposerDetailsFields({
   routineForm,
   showTimeFields,
   spheres,
-  taskType,
   uploadedIcons,
   workspaceUsers,
   onAssigneeUserIdChange,
+  onIconChange,
   onPlannedEndTimeChange,
   onProjectIdChange,
+  onNecessityChange,
   onRecurrenceChange,
   onReminderOffsetsChange,
   onRequiresConfirmationChange,
   onResourceChange,
   onRoutineFormChange,
-  onTaskTypeChange,
 }: TaskComposerDetailsFieldsProps) {
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const showMobileFinish =
     showTimeFields && !isHabitTaskType && Boolean(plannedStartTime)
 
   return (
     <div className={styles.columnPanel}>
       <section className={cx(styles.columnSection, styles.projectSection)}>
-        <SpherePicker
-          className={styles.fieldProject}
-          emptyLabel={getEmptyProjectLabel()}
-          label={getSpherePickerLabel()}
-          spheres={spheres}
-          uploadedIcons={uploadedIcons}
-          value={projectId}
-          onChange={onProjectIdChange}
-        />
+        <div className={styles.projectIconRow}>
+          <SpherePicker
+            className={styles.fieldProject}
+            emptyLabel={getEmptyProjectLabel()}
+            label={getSpherePickerLabel()}
+            spheres={spheres}
+            uploadedIcons={uploadedIcons}
+            value={projectId}
+            onChange={onProjectIdChange}
+          />
+
+          <TaskIconSelectButton
+            className={styles.projectIconButton}
+            uploadedIcons={uploadedIcons}
+            value={icon}
+            onClick={() => setIsIconPickerOpen(true)}
+          />
+        </div>
       </section>
 
       {showMobileFinish ? (
@@ -193,14 +209,15 @@ export function TaskComposerDetailsFields({
         </section>
       ) : null}
 
-      <section className={cx(styles.columnSection, styles.typeSection)}>
-        <TaskTypePicker
-          className={styles.fieldType}
-          includeHabit={allowHabitTaskType}
-          value={taskType}
-          onChange={onTaskTypeChange}
-        />
-      </section>
+      {!isHabitTaskType ? (
+        <section className={cx(styles.columnSection, styles.necessitySection)}>
+          <TaskNecessityPicker
+            className={styles.fieldNecessity}
+            value={necessity}
+            onChange={onNecessityChange}
+          />
+        </section>
+      ) : null}
 
       {isRoutineLikeTaskType ? (
         <section className={cx(styles.columnSection, styles.routineSection)}>
@@ -229,6 +246,15 @@ export function TaskComposerDetailsFields({
             onChange={onResourceChange}
           />
         </section>
+      ) : null}
+
+      {isIconPickerOpen ? (
+        <TaskIconPickerDialog
+          uploadedIcons={uploadedIcons}
+          value={icon}
+          onChange={onIconChange}
+          onClose={() => setIsIconPickerOpen(false)}
+        />
       ) : null}
     </div>
   )

@@ -22,6 +22,7 @@ const baseTask: Task = {
   id: 'task-1',
   icon: '',
   importance: 'not_important',
+  necessity: 'desired',
   title: 'Write docs',
   note: 'Architecture outline',
   project: 'Planner',
@@ -47,6 +48,7 @@ describe('planner model', () => {
         assigneeUserId: null,
         title: '  Review CI  ',
         note: '  tighten checks  ',
+        necessity: 'required',
         project: '  Ops  ',
         projectId: 'project-2',
         resource: null,
@@ -67,6 +69,7 @@ describe('planner model', () => {
       id: 'task-2',
       title: 'Review CI',
       note: 'tighten checks',
+      necessity: 'required',
       project: 'Ops',
       projectId: 'project-2',
     })

@@ -524,6 +524,7 @@ export class PostgresTaskRepository implements TaskRepository {
             icon: sourceRecord.icon,
             importance: sourceRecord.importance,
             linkedTask: sourceRecord.linkedTask ?? null,
+            necessity: sourceRecord.necessity,
             recurrence: null,
             remindBeforeStart: undefined,
             reminderOffsets: undefined,
@@ -1729,6 +1730,7 @@ export class PostgresTaskRepository implements TaskRepository {
             workspaceId: sourceTask.workspaceId,
           }
         : null,
+      necessity: sourceTask.necessity,
       recurrence: sourceTask.recurrence ?? null,
       remindBeforeStart: undefined,
       reminderOffsets: undefined,

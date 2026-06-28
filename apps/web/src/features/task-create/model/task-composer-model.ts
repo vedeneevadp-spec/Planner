@@ -5,11 +5,11 @@ import {
   buildRoutineTaskFromForm,
   buildTaskRecurrenceFromForm,
   getResourceFromValue,
-  getTaskImportanceFromType,
   getTaskUrgencyFromType,
   type NewTaskInput,
   type ResourceValue,
   type RoutineTaskFormState,
+  type TaskNecessity,
   type TaskRecurrenceFormState,
   type TaskReminderOffsetMinutes,
   type TaskTypeValue,
@@ -23,9 +23,11 @@ import {
 export interface TaskComposerDraft {
   dueDate?: string | null | undefined
   icon?: string | undefined
+  isImportant?: boolean | undefined
   note?: string | undefined
   plannedDate?: string | null | undefined
   projectId?: string | null | undefined
+  necessity?: TaskNecessity | undefined
   requestId: string
   resource?: ResourceValue | undefined
   taskType?: TaskTypeValue | undefined
@@ -45,8 +47,10 @@ export interface BuildTaskComposerTaskInputParams {
   canUseRecurrence: boolean
   icon: string
   initialPlannedDate: string | null
+  isImportant: boolean
   isSharedWorkspace: boolean
   note: string
+  necessity: TaskNecessity
   plannedDate: string
   plannedEndTime: string
   plannedStartTime: string
@@ -69,8 +73,10 @@ export function buildTaskComposerTaskInput({
   canUseRecurrence,
   icon,
   initialPlannedDate,
+  isImportant,
   isSharedWorkspace,
   note,
+  necessity,
   plannedDate,
   plannedEndTime,
   plannedStartTime,
@@ -117,7 +123,8 @@ export function buildTaskComposerTaskInput({
     assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
     dueDate: null,
     icon,
-    importance: getTaskImportanceFromType(taskType),
+    importance: isImportant ? 'important' : 'not_important',
+    necessity,
     note,
     plannedDate: reminderPlannedDate || null,
     plannedEndTime:

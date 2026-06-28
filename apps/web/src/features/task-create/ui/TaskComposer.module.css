@@ -172,6 +172,17 @@
   --control-height: var(--hero-control-height);
 }
 
+.titleInputRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.62rem;
+}
+
+.titleImportanceToggle {
+  --task-importance-toggle-size: var(--hero-control-height);
+}
+
 .formColumns {
   display: grid;
   grid-template-columns: minmax(0, 1.58fr) minmax(20rem, 0.92fr);
@@ -215,6 +226,17 @@
   display: block;
   padding: 0;
   background: transparent;
+}
+
+.projectIconRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.62rem;
+}
+
+.projectIconButton {
+  --task-icon-select-size: var(--hero-control-height);
 }
 
 .field {
@@ -265,6 +287,7 @@
 }
 
 .fieldProject,
+.fieldNecessity,
 .fieldResource,
 .fieldType {
   min-width: 0;
@@ -586,7 +609,7 @@
     order: 4;
   }
 
-  .typeSection {
+  .necessitySection {
     order: 6;
   }
 
@@ -606,25 +629,33 @@
   }
 
   .assigneeSection {
-    order: 9;
-  }
-
-  .confirmationSection {
     order: 10;
   }
 
-  .noteSection {
+  .confirmationSection {
     order: 11;
   }
 
-  .visualSection {
+  .noteSection {
     order: 12;
+  }
+
+  .visualSection {
+    order: 13;
   }
 
   .field {
     gap: 0.28rem;
     --select-picker-padding: 0.62rem 0.72rem;
     --select-picker-radius: 14px;
+  }
+
+  .titleInputRow {
+    gap: 0.5rem;
+  }
+
+  .projectIconRow {
+    gap: 0.5rem;
   }
 
   .field > span {

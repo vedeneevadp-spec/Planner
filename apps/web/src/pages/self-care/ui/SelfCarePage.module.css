@@ -255,7 +255,8 @@
 }
 
 .cardIconPlaceholder {
-  line-height: 1;
+  width: 1.34rem;
+  height: 1.34rem;
 }
 
 .cardTitleRow {
@@ -1409,8 +1410,8 @@
 }
 
 .iconSelectButtonPlaceholder {
-  font-size: 1.12rem;
-  line-height: 1;
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .selectField {

@@ -8,6 +8,7 @@ import {
   type NewTaskInput,
   type ResourceValue,
   type RoutineTaskFormState,
+  type TaskNecessity,
   type TaskRecurrenceFormState,
   type TaskReminderOffsetMinutes,
   type TaskTypeValue,
@@ -84,11 +85,13 @@ export function TaskComposer({
     defaultTaskType,
     allowHabitTaskType,
   )
+  const defaultIsImportant = normalizedDefaultTaskType === 'important'
+  const defaultTaskKind = defaultIsImportant ? '' : normalizedDefaultTaskType
   const [title, setTitle] = useState('')
   const [icon, setIcon] = useState('')
-  const [taskType, setTaskType] = useState<TaskTypeValue>(
-    normalizedDefaultTaskType,
-  )
+  const [taskType, setTaskType] = useState<TaskTypeValue>(defaultTaskKind)
+  const [isImportant, setIsImportant] = useState(defaultIsImportant)
+  const [necessity, setNecessity] = useState<TaskNecessity>('desired')
   const [resource, setResource] = useState<ResourceValue>('')
   const [routineForm, setRoutineForm] = useState<RoutineTaskFormState>(() =>
     createDefaultRoutineTaskForm(),
@@ -188,12 +191,13 @@ export function TaskComposer({
     openDraftRequestIdRef.current = openDraft.requestId
     setTitle(openDraft.title ?? '')
     setIcon(openDraft.icon ?? '')
-    setTaskType(
-      normalizeTaskComposerTaskType(
-        openDraft.taskType ?? defaultTaskType,
-        allowHabitTaskType,
-      ),
+    const nextTaskType = normalizeTaskComposerTaskType(
+      openDraft.taskType ?? defaultTaskType,
+      allowHabitTaskType,
     )
+    setTaskType(nextTaskType === 'important' ? '' : nextTaskType)
+    setIsImportant(openDraft.isImportant ?? nextTaskType === 'important')
+    setNecessity(openDraft.necessity ?? 'desired')
     setResource(openDraft.resource ?? '')
     setRoutineForm(createDefaultRoutineTaskForm())
     setRecurrenceForm(createDefaultTaskRecurrenceForm())
@@ -265,21 +269,6 @@ export function TaskComposer({
     }
   }
 
-  function handleTaskTypeChange(nextTaskType: TaskTypeValue) {
-    setTaskType(nextTaskType)
-
-    if (
-      (nextTaskType === 'routine' || nextTaskType === 'habit') &&
-      !plannedDate
-    ) {
-      setPlannedDate(initialPlannedDate ?? todayKey)
-    }
-
-    if (nextTaskType === 'routine' || nextTaskType === 'habit') {
-      setRecurrenceForm(createDefaultTaskRecurrenceForm())
-    }
-  }
-
   function handleRecurrenceChange(nextForm: TaskRecurrenceFormState) {
     setRecurrenceForm(nextForm)
 
@@ -294,8 +283,10 @@ export function TaskComposer({
       canUseRecurrence,
       icon,
       initialPlannedDate,
+      isImportant,
       isSharedWorkspace: Boolean(isSharedWorkspace),
       note,
+      necessity,
       plannedDate,
       plannedEndTime,
       plannedStartTime,
@@ -330,7 +321,9 @@ export function TaskComposer({
   function resetForm() {
     setTitle('')
     setIcon('')
-    setTaskType(normalizedDefaultTaskType)
+    setTaskType(defaultTaskKind)
+    setIsImportant(defaultIsImportant)
+    setNecessity('desired')
     setResource('')
     setRoutineForm(createDefaultRoutineTaskForm())
     setRecurrenceForm(createDefaultTaskRecurrenceForm())
@@ -436,7 +429,7 @@ export function TaskComposer({
                 <div className={styles.formScroller}>
                   <div className={styles.formColumns}>
                     <TaskComposerPrimaryFields
-                      icon={icon}
+                      isImportant={isImportant}
                       isHabitTaskType={isHabitTaskType}
                       note={note}
                       plannedDate={plannedDate}
@@ -446,8 +439,7 @@ export function TaskComposer({
                       title={title}
                       titleFieldLabel={titleFieldLabel}
                       titleInputRef={titleInputRef}
-                      uploadedIcons={uploadedIcons}
-                      onIconChange={setIcon}
+                      onImportantChange={setIsImportant}
                       onNoteChange={setNote}
                       onPlannedDateChange={handlePlannedDateChange}
                       onPlannedEndTimeChange={setPlannedEndTime}
@@ -457,9 +449,9 @@ export function TaskComposer({
 
                     <TaskComposerDetailsFields
                       assigneeUserId={assigneeUserId}
-                      allowHabitTaskType={allowHabitTaskType}
                       canUseRecurrence={canUseRecurrence}
                       confirmationFieldId={confirmationFieldId}
+                      icon={icon}
                       isHabitTaskType={isHabitTaskType}
                       isReminderAvailable={isReminderAvailable}
                       isRoutineLikeTaskType={isRoutineLikeTaskType}
@@ -468,6 +460,7 @@ export function TaskComposer({
                       plannedEndTime={plannedEndTime}
                       plannedStartTime={plannedStartTime}
                       projectId={projectId}
+                      necessity={necessity}
                       recurrenceForm={recurrenceForm}
                       reminderOffsets={reminderOffsets}
                       requiresConfirmation={requiresConfirmation}
@@ -475,18 +468,18 @@ export function TaskComposer({
                       routineForm={routineForm}
                       showTimeFields={showTimeFields}
                       spheres={spheres}
-                      taskType={taskType}
                       uploadedIcons={uploadedIcons}
                       workspaceUsers={workspaceUsers}
                       onAssigneeUserIdChange={setAssigneeUserId}
+                      onIconChange={setIcon}
                       onPlannedEndTimeChange={setPlannedEndTime}
                       onProjectIdChange={setProjectId}
+                      onNecessityChange={setNecessity}
                       onRecurrenceChange={handleRecurrenceChange}
                       onReminderOffsetsChange={setReminderOffsets}
                       onRequiresConfirmationChange={setRequiresConfirmation}
                       onResourceChange={setResource}
                       onRoutineFormChange={setRoutineForm}
-                      onTaskTypeChange={handleTaskTypeChange}
                     />
                   </div>
 

@@ -1,7 +1,15 @@
-import { useId } from 'react'
+import { useEffect, useId } from 'react'
+import { createPortal } from 'react-dom'
 
 import { cx } from '@/shared/lib/classnames'
-import { LightningIcon } from '@/shared/ui/Icon'
+import {
+  getIconLabel,
+  IconChoicePicker,
+  IconMark,
+  ImageStackIcon,
+  LightningIcon,
+  type UploadedIconAsset,
+} from '@/shared/ui/Icon'
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
 
 import {
@@ -9,8 +17,15 @@ import {
   TASK_RESOURCE_STEPS,
   type TaskResourceLevel,
 } from '../model/resource'
-import type { TaskReminderOffsetMinutes } from '../model/task.types'
-import type { ResourceValue, TaskTypeValue } from '../model/task-meta'
+import type {
+  TaskNecessity,
+  TaskReminderOffsetMinutes,
+} from '../model/task.types'
+import {
+  type ResourceValue,
+  TASK_NECESSITY_LABELS,
+  type TaskTypeValue,
+} from '../model/task-meta'
 import styles from './TaskMetaPickers.module.css'
 
 const IMPORTANT_ICON_SRC =
@@ -77,6 +92,12 @@ const TASK_TYPE_OPTIONS: TaskTypeOption[] = [
     label: 'Регулярная забота',
     value: 'habit',
   },
+]
+
+const TASK_NECESSITY_OPTIONS: TaskNecessity[] = [
+  'required',
+  'desired',
+  'optional',
 ]
 
 interface ResourceOption {
@@ -264,6 +285,195 @@ export function ResourcePicker({
         </div>
       </div>
     </div>
+  )
+}
+
+export function TaskNecessityPicker({
+  className,
+  label = 'Обязательность',
+  value,
+  onChange,
+}: Omit<PickerProps<TaskNecessity>, 'label'> & { label?: string }) {
+  const labelId = useId()
+
+  return (
+    <div className={cx(styles.picker, className)}>
+      <span id={labelId} className={styles.label}>
+        {label}
+      </span>
+
+      <div
+        className={cx(styles.segmentedSurface, styles.necessitySurface)}
+        role="group"
+        aria-labelledby={labelId}
+      >
+        {TASK_NECESSITY_OPTIONS.map((option) => {
+          const isActive = option === value
+
+          return (
+            <button
+              key={option}
+              className={cx(
+                styles.segmentButton,
+                styles.necessityButton,
+                isActive && styles.segmentButtonActive,
+              )}
+              type="button"
+              aria-pressed={isActive}
+              onClick={() => onChange(option)}
+            >
+              {TASK_NECESSITY_LABELS[option]}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export function TaskImportanceToggle({
+  className,
+  isImportant,
+  onChange,
+}: {
+  className?: string | undefined
+  isImportant: boolean
+  onChange: (isImportant: boolean) => void
+}) {
+  const label = isImportant ? 'Убрать важность' : 'Пометить как важное'
+
+  return (
+    <button
+      className={cx(
+        styles.importanceToggle,
+        isImportant && styles.importanceToggleActive,
+        className,
+      )}
+      type="button"
+      aria-label={label}
+      aria-pressed={isImportant}
+      title={label}
+      onClick={() => onChange(!isImportant)}
+    >
+      <span className={styles.importanceToggleIcon} aria-hidden="true">
+        <img src={IMPORTANT_ICON_SRC} alt="" />
+      </span>
+    </button>
+  )
+}
+
+export function TaskIconSelectButton({
+  className,
+  uploadedIcons,
+  value,
+  onClick,
+}: {
+  className?: string | undefined
+  uploadedIcons: UploadedIconAsset[]
+  value: string
+  onClick: () => void
+}) {
+  const normalizedIcon = value.trim()
+  const iconLabel = getIconLabel(normalizedIcon, uploadedIcons)
+
+  return (
+    <button
+      className={cx(styles.iconSelectButton, className)}
+      type="button"
+      aria-label={`Выбрать иконку. Сейчас: ${iconLabel}`}
+      title={`Иконка: ${iconLabel}`}
+      onClick={onClick}
+    >
+      <span className={styles.iconSelectButtonMark} aria-hidden="true">
+        {normalizedIcon ? (
+          <IconMark
+            className={styles.iconSelectButtonIcon}
+            uploadedIcons={uploadedIcons}
+            value={normalizedIcon}
+          />
+        ) : (
+          <ImageStackIcon className={styles.iconSelectButtonPlaceholder} />
+        )}
+      </span>
+    </button>
+  )
+}
+
+export function TaskIconPickerDialog({
+  uploadedIcons,
+  value,
+  onChange,
+  onClose,
+}: {
+  uploadedIcons: UploadedIconAsset[]
+  value: string
+  onChange: (value: string) => void
+  onClose: () => void
+}) {
+  const titleId = useId()
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+    }
+  }, [onClose])
+
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className={styles.iconPickerOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
+      <button
+        className={styles.iconPickerBackdrop}
+        type="button"
+        tabIndex={-1}
+        aria-label="Закрыть выбор иконки"
+        onClick={onClose}
+      />
+
+      <section className={styles.iconPickerPanel}>
+        <div className={styles.iconPickerHeader}>
+          <h2 id={titleId}>Иконка</h2>
+          <button
+            className={styles.iconPickerCloseButton}
+            type="button"
+            aria-label="Закрыть выбор иконки"
+            onClick={onClose}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+
+        <IconChoicePicker
+          className={styles.iconPickerChoice}
+          hideLabel
+          label="Иконка"
+          uploadedIcons={uploadedIcons}
+          value={value}
+          onChange={(nextValue) => {
+            onChange(nextValue)
+            onClose()
+          }}
+        />
+      </section>
+    </div>,
+    document.body,
   )
 }
 

@@ -253,6 +253,7 @@ function createTaskRecord(taskId: string): TaskRecord {
     id: taskId,
     icon: '',
     importance: 'not_important',
+    necessity: 'desired',
     note: '',
     plannedDate: null,
     plannedEndTime: null,

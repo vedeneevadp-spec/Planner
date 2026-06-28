@@ -262,6 +262,7 @@ void describe('AiContextService', () => {
     const service = createService([
       createTask({
         importance: 'important',
+        necessity: 'required',
         plannedDate: '2026-06-21',
         resource: -3,
         title: 'Hard urgent task',
@@ -297,6 +298,7 @@ void describe('AiContextService', () => {
     assert.deepEqual(
       {
         importance: hardTask?.importance,
+        obligation: hardTask?.obligation,
         priority: hardTask?.priority,
         resource: hardTask?.resource,
         resourceImpact: hardTask?.resourceImpact,
@@ -305,6 +307,7 @@ void describe('AiContextService', () => {
       },
       {
         importance: 'important',
+        obligation: 'required',
         priority: 'high',
         resource: -3,
         resourceImpact: 'drain',
@@ -1157,6 +1160,7 @@ function createTask(overrides: Partial<Task>): Task {
     id: randomUUID(),
     importance: 'not_important',
     linkedTask: null,
+    necessity: 'desired',
     note: '',
     plannedDate: null,
     plannedEndTime: null,

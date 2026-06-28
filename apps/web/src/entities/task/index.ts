@@ -43,6 +43,7 @@ export type {
   TaskCompletionType,
   TaskImportance,
   TaskLinkedTask,
+  TaskNecessity,
   TaskRecurrence,
   TaskRecurrenceFrequency,
   TaskRecurrenceInput,
@@ -59,8 +60,10 @@ export {
   getResourceFromValue,
   getResourceValueFromTaskResource,
   getTaskImportanceFromType,
+  getTaskNecessityLabel,
   getTaskTypeValue,
   getTaskUrgencyFromType,
+  TASK_NECESSITY_LABELS,
 } from './model/task-meta'
 export {
   buildTaskRecurrenceFromForm,
@@ -78,6 +81,10 @@ export { TaskCard } from './ui/TaskCard'
 export { TaskEditDialog } from './ui/TaskEditDialog'
 export {
   ResourcePicker,
+  TaskIconPickerDialog,
+  TaskIconSelectButton,
+  TaskImportanceToggle,
+  TaskNecessityPicker,
   TaskReminderPicker,
   TaskResourceMeter,
   TaskTypePicker,

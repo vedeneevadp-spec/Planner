@@ -24,6 +24,7 @@ function createTask(overrides: Partial<Task> = {}): Task {
     icon: '',
     id: 'task-1',
     importance: 'not_important',
+    necessity: 'desired',
     note: '',
     plannedDate: '2026-04-23',
     plannedEndTime: null,
@@ -145,6 +146,12 @@ describe('TaskCard', () => {
         (_, element) => element?.textContent === longNote,
       ),
     ).toBeInTheDocument()
+  })
+
+  it('shows task necessity on full cards', () => {
+    renderTaskCard(createTask({ necessity: 'required' }))
+
+    expect(screen.getByText('Обязательно')).toBeVisible()
   })
 
   it('keeps quick actions from opening the task preview', () => {

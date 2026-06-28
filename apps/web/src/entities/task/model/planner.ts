@@ -130,6 +130,18 @@ function getTaskStatusWeight(status: TaskStatus): number {
   return 4
 }
 
+function getTaskNecessityWeight(necessity: Task['necessity']): number {
+  if (necessity === 'required') {
+    return 0
+  }
+
+  if (necessity === 'desired') {
+    return 1
+  }
+
+  return 2
+}
+
 export function isActiveTaskStatus(status: TaskStatus): boolean {
   return status !== 'done' && status !== 'archived'
 }
@@ -221,6 +233,14 @@ export function sortTasks(tasks: Task[]): Task[] {
       return timeComparison
     }
 
+    const necessityComparison =
+      getTaskNecessityWeight(left.necessity) -
+      getTaskNecessityWeight(right.necessity)
+
+    if (necessityComparison !== 0) {
+      return necessityComparison
+    }
+
     const matrixComparison =
       getTaskMatrixWeight(left) - getTaskMatrixWeight(right)
 
@@ -256,6 +276,7 @@ export function addTask(
     id: createId(),
     icon: (input.icon ?? '').trim(),
     importance: input.importance ?? 'not_important',
+    necessity: input.necessity ?? 'desired',
     title: input.title.trim(),
     note: input.note.trim(),
     project: input.project.trim(),

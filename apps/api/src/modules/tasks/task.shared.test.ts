@@ -38,6 +38,7 @@ void test('applyTaskSchedule clears reminder flag when planned start is removed'
       icon: '',
       id: 'task-1',
       importance: 'not_important',
+      necessity: 'desired',
       note: '',
       plannedDate: '2026-05-05',
       plannedEndTime: '10:00',

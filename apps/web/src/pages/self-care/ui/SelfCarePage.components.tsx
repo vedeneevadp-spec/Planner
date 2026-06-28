@@ -29,6 +29,7 @@ import {
   getIconLabel,
   IconChoicePicker,
   IconMark,
+  ImageStackIcon,
   TrashIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
@@ -861,7 +862,7 @@ function SelfCareCardIcon({
           value={iconValue}
         />
       ) : (
-        <span className={styles.cardIconPlaceholder}>♡</span>
+        <ImageStackIcon className={styles.cardIconPlaceholder} />
       )}
     </div>
   )
@@ -1514,7 +1515,7 @@ function SelfCareTitleIconField({
               value={normalizedIcon}
             />
           ) : (
-            <span className={styles.iconSelectButtonPlaceholder}>♡</span>
+            <ImageStackIcon className={styles.iconSelectButtonPlaceholder} />
           )}
         </span>
       </button>

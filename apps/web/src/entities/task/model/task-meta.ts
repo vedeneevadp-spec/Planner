@@ -13,6 +13,12 @@ export type ResourceValue =
   | '3'
   | '4'
 
+export const TASK_NECESSITY_LABELS: Record<Task['necessity'], string> = {
+  desired: 'Желательно',
+  optional: 'По возможности',
+  required: 'Обязательно',
+}
+
 export function getTaskTypeValue(
   value:
     | Pick<Task, 'importance' | 'routine' | 'urgency'>
@@ -39,6 +45,10 @@ export function getTaskUrgencyFromType(
   taskType: TaskTypeValue,
 ): Task['urgency'] {
   return taskType === 'routine' ? 'urgent' : 'not_urgent'
+}
+
+export function getTaskNecessityLabel(necessity: Task['necessity']): string {
+  return TASK_NECESSITY_LABELS[necessity]
 }
 
 export function getResourceFromValue(value: ResourceValue): Task['resource'] {

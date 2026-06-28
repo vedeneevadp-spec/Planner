@@ -260,6 +260,11 @@ export class PostgresTaskPoolerWriteFallback {
                     task_with_time_block.metadata ->> 'taskImportance',
                     'not_important'
                   ),
+                  'necessity',
+                  coalesce(
+                    task_with_time_block.metadata ->> 'taskNecessity',
+                    'desired'
+                  ),
                   'note',
                   task_with_time_block.description,
                   'plannedDate',

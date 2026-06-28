@@ -1,12 +1,12 @@
 import type { WorkspaceUserRecord } from '@planner/contracts'
-import { type FormEvent, useId, useRef, useState } from 'react'
+import { type FormEvent, useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import { cx } from '@/shared/lib/classnames'
 import { resolveClientTimeZone } from '@/shared/lib/date'
-import { IconChoicePicker, type UploadedIconAsset } from '@/shared/ui/Icon'
+import { CheckIcon, type UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
@@ -16,16 +16,13 @@ import {
 } from '../model/routine-task'
 import type {
   Task,
+  TaskNecessity,
   TaskReminderOffsetMinutes,
   TaskUpdateInput,
 } from '../model/task.types'
 import {
   getResourceFromValue,
   getResourceValueFromTaskResource,
-  getTaskImportanceFromType,
-  getTaskTypeValue,
-  getTaskUrgencyFromType,
-  type TaskTypeValue,
 } from '../model/task-meta'
 import {
   buildTaskRecurrenceFromForm,
@@ -36,8 +33,11 @@ import { RoutineTaskFields } from './RoutineTaskFields'
 import styles from './TaskCard.module.css'
 import {
   ResourcePicker,
+  TaskIconPickerDialog,
+  TaskIconSelectButton,
+  TaskImportanceToggle,
+  TaskNecessityPicker,
   TaskReminderPicker,
-  TaskTypePicker,
 } from './TaskMetaPickers'
 import { TaskRecurrenceFields } from './TaskRecurrenceFields'
 
@@ -66,7 +66,9 @@ export function TaskEditDialog({
   onClose,
   onUpdate,
 }: TaskEditDialogProps) {
+  const titleId = useId()
   const confirmationFieldId = useId()
+  const titleInputRef = useRef<HTMLInputElement>(null)
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
   )
@@ -85,6 +87,9 @@ export function TaskEditDialog({
   const [plannedEndTime, setPlannedEndTime] = useState(
     task.plannedEndTime ?? '',
   )
+  const [isMobileLayout, setIsMobileLayout] = useState(() =>
+    getIsTaskEditorMobileLayout(),
+  )
   const [reminderOffsets, setReminderOffsets] = useState<
     TaskReminderOffsetMinutes[]
   >(
@@ -95,12 +100,14 @@ export function TaskEditDialog({
         : [],
   )
   const [icon, setIcon] = useState(task.icon)
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false)
   const [resource, setResource] = useState(
     getResourceValueFromTaskResource(task.resource),
   )
-  const [taskType, setTaskType] = useState<TaskTypeValue>(
-    getTaskTypeValue(task),
+  const [isImportant, setIsImportant] = useState(
+    task.importance === 'important',
   )
+  const [necessity, setNecessity] = useState<TaskNecessity>(task.necessity)
   const [routineForm, setRoutineForm] = useState<RoutineTaskFormState>(() =>
     createRoutineTaskFormFromRoutine(task.routine),
   )
@@ -112,7 +119,96 @@ export function TaskEditDialog({
     task.authorUserId !== null && task.authorUserId === currentActorUserId
   const isReminderAvailable =
     !isSharedWorkspace && Boolean(plannedDate && plannedStartTime)
-  const canEditRecurrence = taskType !== 'routine' && taskType !== 'habit'
+  const isRoutineTask = Boolean(task.routine)
+  const canEditRecurrence = !isRoutineTask
+  const showDesktopFinish = Boolean(plannedStartTime) && !isMobileLayout
+  const showMobileFinish = Boolean(plannedStartTime) && isMobileLayout
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') {
+      return
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 560px)')
+
+    function syncMobileLayout() {
+      setIsMobileLayout(mediaQuery.matches)
+    }
+
+    syncMobileLayout()
+    mediaQuery.addEventListener('change', syncMobileLayout)
+
+    return () => {
+      mediaQuery.removeEventListener('change', syncMobileLayout)
+    }
+  }, [])
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow
+    const rootStyle = document.documentElement.style
+    const previousViewportHeight = rootStyle.getPropertyValue(
+      '--task-editor-viewport-height',
+    )
+    const previousViewportOffsetTop = rootStyle.getPropertyValue(
+      '--task-editor-viewport-offset-top',
+    )
+    document.body.style.overflow = 'hidden'
+
+    function syncVisualViewport() {
+      const visualViewport = window.visualViewport
+      const viewportHeight = visualViewport?.height ?? window.innerHeight
+      const viewportOffsetTop = visualViewport?.offsetTop ?? 0
+
+      rootStyle.setProperty(
+        '--task-editor-viewport-height',
+        `${viewportHeight}px`,
+      )
+      rootStyle.setProperty(
+        '--task-editor-viewport-offset-top',
+        `${viewportOffsetTop}px`,
+      )
+    }
+
+    syncVisualViewport()
+
+    const visualViewport = window.visualViewport
+    visualViewport?.addEventListener('resize', syncVisualViewport)
+    visualViewport?.addEventListener('scroll', syncVisualViewport)
+    window.addEventListener('resize', syncVisualViewport)
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (!getIsTaskEditorMobileLayout()) {
+        titleInputRef.current?.focus({ preventScroll: true })
+      }
+    })
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.cancelAnimationFrame(focusFrame)
+      visualViewport?.removeEventListener('resize', syncVisualViewport)
+      visualViewport?.removeEventListener('scroll', syncVisualViewport)
+      window.removeEventListener('resize', syncVisualViewport)
+      restoreCssVariable(
+        rootStyle,
+        '--task-editor-viewport-height',
+        previousViewportHeight,
+      )
+      restoreCssVariable(
+        rootStyle,
+        '--task-editor-viewport-offset-top',
+        previousViewportOffsetTop,
+      )
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [onClose])
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -133,23 +229,12 @@ export function TaskEditDialog({
     setPlannedStartTime(nextStartTime)
 
     if (!nextAvailable) {
+      setPlannedEndTime('')
       setReminderOffsets([])
       reminderAvailabilityRef.current = false
     } else if (!wasAvailable) {
       setReminderOffsets([15])
       reminderAvailabilityRef.current = true
-    }
-  }
-
-  function handleTaskTypeChange(nextTaskType: TaskTypeValue) {
-    setTaskType(nextTaskType)
-
-    if (nextTaskType === 'routine' && !plannedDate) {
-      setPlannedDate(todayKey)
-    }
-
-    if (nextTaskType === 'routine' || nextTaskType === 'habit') {
-      setRecurrenceForm(createTaskRecurrenceFormFromRecurrence(null))
     }
   }
 
@@ -189,7 +274,8 @@ export function TaskEditDialog({
       assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
       dueDate: task.dueDate ?? null,
       icon,
-      importance: getTaskImportanceFromType(taskType),
+      importance: isImportant ? 'important' : 'not_important',
+      necessity,
       note,
       plannedDate: resolvedPlannedDate || null,
       plannedEndTime:
@@ -212,13 +298,12 @@ export function TaskEditDialog({
           : undefined,
       resource: getResourceFromValue(resource),
       requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
-      routine:
-        taskType === 'routine'
-          ? buildRoutineTaskFromForm(routineForm, task.routine?.seriesId)
-          : null,
+      routine: isRoutineTask
+        ? buildRoutineTaskFromForm(routineForm, task.routine?.seriesId)
+        : null,
       sphereId: task.sphereId,
       title: normalizedTitle,
-      urgency: getTaskUrgencyFromType(taskType),
+      urgency: isRoutineTask ? 'urgent' : 'not_urgent',
     })
 
     if (isUpdated) {
@@ -231,7 +316,12 @@ export function TaskEditDialog({
   }
 
   return createPortal(
-    <div className={styles.editorOverlay} role="dialog" aria-modal="true">
+    <div
+      className={styles.editorOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+    >
       <button
         className={styles.editorBackdrop}
         type="button"
@@ -246,7 +336,7 @@ export function TaskEditDialog({
         }}
       >
         <div className={styles.editorHeader}>
-          <h3>Редактировать задачу</h3>
+          <h3 id={titleId}>Редактировать задачу</h3>
           <button
             className={styles.closeButton}
             type="button"
@@ -255,202 +345,310 @@ export function TaskEditDialog({
           >
             <span aria-hidden="true">×</span>
           </button>
+          {isMobileLayout ? (
+            <button
+              className={styles.mobileHeaderSubmit}
+              type="submit"
+              aria-label="Сохранить"
+              disabled={isPending || !title.trim()}
+            >
+              <CheckIcon size={16} />
+            </button>
+          ) : null}
         </div>
 
-        <label className={cx(styles.field, styles.titleField)}>
-          <span>Задача</span>
-          <input
-            required
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
+        <div className={styles.editorFormScroller}>
+          <div className={styles.editorColumns}>
+            <div className={styles.editorColumnPanel}>
+              <section
+                className={cx(styles.editorSection, styles.titleSection)}
+              >
+                <div className={styles.titleInputRow}>
+                  <label className={cx(styles.field, styles.titleField)}>
+                    <span>Задача</span>
+                    <input
+                      ref={titleInputRef}
+                      required
+                      value={title}
+                      placeholder="Например: собрать референсы для недельного плана"
+                      onChange={(event) => setTitle(event.target.value)}
+                    />
+                  </label>
 
-        <div className={styles.editorColumns}>
-          <div className={styles.editorColumnPanel}>
-            <section className={styles.editorSection}>
-              <div className={styles.editorGrid}>
-                <label className={styles.field}>
-                  <span>План</span>
-                  <input
-                    type="date"
-                    value={plannedDate}
-                    onChange={(event) =>
-                      handlePlannedDateChange(event.target.value)
-                    }
+                  <TaskImportanceToggle
+                    className={styles.titleImportanceToggle}
+                    isImportant={isImportant}
+                    onChange={setIsImportant}
                   />
-                </label>
-
-                <label className={styles.field}>
-                  <span>Старт</span>
-                  <input
-                    type="time"
-                    value={plannedStartTime}
-                    disabled={!plannedDate}
-                    onChange={(event) =>
-                      handlePlannedStartTimeChange(event.target.value)
-                    }
-                  />
-                </label>
-
-                <label className={styles.field}>
-                  <span>Финиш</span>
-                  <input
-                    type="time"
-                    value={plannedEndTime}
-                    disabled={!plannedDate || !plannedStartTime}
-                    onChange={(event) => setPlannedEndTime(event.target.value)}
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section className={styles.editorSection}>
-              <label className={cx(styles.field, styles.notePanel)}>
-                <span>Заметка</span>
-                <textarea
-                  rows={3}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                />
-              </label>
-            </section>
-
-            <section className={styles.editorSection}>
-              <div className={styles.editorVisual}>
-                <IconChoicePicker
-                  allowEmpty={false}
-                  label="Иконка"
-                  showEmojiChoices={false}
-                  value={icon}
-                  uploadedIcons={uploadedIcons}
-                  onChange={setIcon}
-                />
-              </div>
-            </section>
-          </div>
-
-          <div className={styles.editorColumnPanel}>
-            <section className={styles.editorSection}>
-              <SpherePicker
-                className={styles.fieldProject}
-                emptyLabel={getEmptyProjectLabel()}
-                label={getSpherePickerLabel()}
-                spheres={spheres}
-                uploadedIcons={uploadedIcons}
-                value={projectId}
-                onChange={setProjectId}
-              />
-            </section>
-
-            {isReminderAvailable ? (
-              <section className={styles.editorSection}>
-                <TaskReminderPicker
-                  className={styles.field}
-                  value={reminderOffsets}
-                  onChange={setReminderOffsets}
-                />
-              </section>
-            ) : null}
-
-            {isSharedWorkspace ? (
-              <section className={styles.editorSection}>
-                <SelectPicker
-                  className={styles.field}
-                  label="Исполнитель"
-                  value={assigneeUserId}
-                  options={[
-                    { label: 'Без исполнителя', value: '' },
-                    ...workspaceUsers.map((user) => ({
-                      label: user.displayName,
-                      value: user.id,
-                    })),
-                  ]}
-                  onChange={setAssigneeUserId}
-                />
-              </section>
-            ) : null}
-
-            {isSharedWorkspace ? (
-              <section className={styles.editorSection}>
-                <div className={styles.checkboxField}>
-                  <input
-                    id={confirmationFieldId}
-                    type="checkbox"
-                    checked={requiresConfirmation}
-                    disabled={!canManageConfirmation}
-                    onChange={(event) =>
-                      setRequiresConfirmation(event.target.checked)
-                    }
-                  />
-                  <span className={styles.checkboxCopy}>
-                    <label
-                      className={styles.checkboxLabel}
-                      htmlFor={confirmationFieldId}
-                    >
-                      Требуется подтверждение
-                    </label>
-                    <small id={`${confirmationFieldId}-hint`}>
-                      Завершить такую задачу сможет только её автор.
-                    </small>
-                  </span>
                 </div>
               </section>
-            ) : null}
 
-            <section className={styles.editorSection}>
-              <TaskTypePicker
-                className={styles.fieldType}
-                includeHabit={false}
-                value={taskType}
-                onChange={handleTaskTypeChange}
-              />
-            </section>
+              <section
+                className={cx(styles.editorSection, styles.scheduleSection)}
+              >
+                <div
+                  className={cx(
+                    styles.editorGrid,
+                    plannedStartTime && styles.editorGridTimeline,
+                    !plannedStartTime && styles.editorGridPair,
+                  )}
+                >
+                  <label className={styles.field}>
+                    <span>План</span>
+                    <input
+                      type="date"
+                      value={plannedDate}
+                      onChange={(event) =>
+                        handlePlannedDateChange(event.target.value)
+                      }
+                    />
+                  </label>
 
-            {taskType === 'routine' ? (
-              <section className={styles.editorSection}>
-                <RoutineTaskFields
-                  showTargetFields={false}
-                  value={routineForm}
-                  onChange={setRoutineForm}
+                  <label className={styles.field}>
+                    <span>Старт</span>
+                    <input
+                      type="time"
+                      value={plannedStartTime}
+                      disabled={!plannedDate}
+                      onChange={(event) =>
+                        handlePlannedStartTimeChange(event.target.value)
+                      }
+                    />
+                  </label>
+
+                  {showDesktopFinish ? (
+                    <label className={cx(styles.field, styles.finishField)}>
+                      <span>Финиш</span>
+                      <input
+                        type="time"
+                        value={plannedEndTime}
+                        disabled={!plannedDate || !plannedStartTime}
+                        onChange={(event) =>
+                          setPlannedEndTime(event.target.value)
+                        }
+                      />
+                    </label>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className={cx(styles.editorSection, styles.noteSection)}>
+                <label className={cx(styles.field, styles.notePanel)}>
+                  <span>Заметка</span>
+                  <textarea
+                    rows={3}
+                    value={note}
+                    placeholder="Контекст, next step, ссылка на материал"
+                    onChange={(event) => setNote(event.target.value)}
+                  />
+                </label>
+              </section>
+            </div>
+
+            <div className={styles.editorColumnPanel}>
+              <section
+                className={cx(styles.editorSection, styles.projectSection)}
+              >
+                <div className={styles.projectIconRow}>
+                  <SpherePicker
+                    className={styles.fieldProject}
+                    emptyLabel={getEmptyProjectLabel()}
+                    label={getSpherePickerLabel()}
+                    spheres={spheres}
+                    uploadedIcons={uploadedIcons}
+                    value={projectId}
+                    onChange={setProjectId}
+                  />
+
+                  <TaskIconSelectButton
+                    className={styles.projectIconButton}
+                    uploadedIcons={uploadedIcons}
+                    value={icon}
+                    onClick={() => setIsIconPickerOpen(true)}
+                  />
+                </div>
+              </section>
+
+              {showMobileFinish ? (
+                <section
+                  className={cx(
+                    styles.editorSection,
+                    styles.mobileFinishSection,
+                  )}
+                >
+                  <label className={styles.field}>
+                    <span>Финиш</span>
+                    <input
+                      type="time"
+                      value={plannedEndTime}
+                      disabled={!plannedDate || !plannedStartTime}
+                      onChange={(event) =>
+                        setPlannedEndTime(event.target.value)
+                      }
+                    />
+                  </label>
+                </section>
+              ) : null}
+
+              {isReminderAvailable ? (
+                <section
+                  className={cx(
+                    styles.editorSection,
+                    styles.reminderSection,
+                    showMobileFinish && styles.reminderWithFinish,
+                  )}
+                >
+                  <TaskReminderPicker
+                    className={styles.field}
+                    value={reminderOffsets}
+                    onChange={setReminderOffsets}
+                  />
+                </section>
+              ) : null}
+
+              {isSharedWorkspace ? (
+                <section
+                  className={cx(styles.editorSection, styles.assigneeSection)}
+                >
+                  <SelectPicker
+                    className={styles.field}
+                    label="Исполнитель"
+                    value={assigneeUserId}
+                    options={[
+                      { label: 'Без исполнителя', value: '' },
+                      ...workspaceUsers.map((user) => ({
+                        label: user.displayName,
+                        value: user.id,
+                      })),
+                    ]}
+                    onChange={setAssigneeUserId}
+                  />
+                </section>
+              ) : null}
+
+              {isSharedWorkspace ? (
+                <section
+                  className={cx(
+                    styles.editorSection,
+                    styles.confirmationSection,
+                  )}
+                >
+                  <div className={styles.checkboxField}>
+                    <input
+                      id={confirmationFieldId}
+                      type="checkbox"
+                      checked={requiresConfirmation}
+                      disabled={!canManageConfirmation}
+                      onChange={(event) =>
+                        setRequiresConfirmation(event.target.checked)
+                      }
+                    />
+                    <span className={styles.checkboxCopy}>
+                      <label
+                        className={styles.checkboxLabel}
+                        htmlFor={confirmationFieldId}
+                      >
+                        Требуется подтверждение
+                      </label>
+                      <small id={`${confirmationFieldId}-hint`}>
+                        Завершить такую задачу сможет только её автор.
+                      </small>
+                    </span>
+                  </div>
+                </section>
+              ) : null}
+
+              <section
+                className={cx(styles.editorSection, styles.necessitySection)}
+              >
+                <TaskNecessityPicker
+                  className={styles.fieldNecessity}
+                  value={necessity}
+                  onChange={setNecessity}
                 />
               </section>
-            ) : null}
 
-            {canEditRecurrence ? (
-              <section className={styles.editorSection}>
-                <TaskRecurrenceFields
-                  value={recurrenceForm}
-                  onChange={handleRecurrenceChange}
+              {isRoutineTask ? (
+                <section
+                  className={cx(styles.editorSection, styles.routineSection)}
+                >
+                  <RoutineTaskFields
+                    showTargetFields={false}
+                    value={routineForm}
+                    onChange={setRoutineForm}
+                  />
+                </section>
+              ) : null}
+
+              {canEditRecurrence ? (
+                <section
+                  className={cx(styles.editorSection, styles.recurrenceSection)}
+                >
+                  <TaskRecurrenceFields
+                    value={recurrenceForm}
+                    onChange={handleRecurrenceChange}
+                  />
+                </section>
+              ) : null}
+
+              <section
+                className={cx(styles.editorSection, styles.resourceSection)}
+              >
+                <ResourcePicker
+                  className={styles.fieldResource}
+                  value={resource}
+                  onChange={setResource}
                 />
               </section>
-            ) : null}
-
-            <section className={styles.editorSection}>
-              <ResourcePicker
-                className={styles.fieldResource}
-                value={resource}
-                onChange={setResource}
-              />
-            </section>
+            </div>
           </div>
-        </div>
 
-        <div className={styles.editorActions}>
-          <button className={styles.button} type="button" onClick={onClose}>
-            Отмена
-          </button>
-          <button
-            className={styles.primaryButton}
-            type="submit"
-            disabled={isPending || !title.trim()}
-          >
-            Сохранить
-          </button>
+          {isIconPickerOpen ? (
+            <TaskIconPickerDialog
+              uploadedIcons={uploadedIcons}
+              value={icon}
+              onChange={setIcon}
+              onClose={() => setIsIconPickerOpen(false)}
+            />
+          ) : null}
+
+          <div className={styles.editorActions}>
+            <button
+              className={cx(styles.primaryButton, styles.footerPrimaryButton)}
+              type="submit"
+              disabled={isPending || !title.trim()}
+            >
+              <span className={styles.buttonIconStrong} aria-hidden="true">
+                <CheckIcon size={16} />
+              </span>
+              Сохранить
+            </button>
+          </div>
         </div>
       </form>
     </div>,
     document.body,
+  )
+}
+
+function restoreCssVariable(
+  style: CSSStyleDeclaration,
+  propertyName: string,
+  previousValue: string,
+): void {
+  if (previousValue) {
+    style.setProperty(propertyName, previousValue)
+    return
+  }
+
+  style.removeProperty(propertyName)
+}
+
+function getIsTaskEditorMobileLayout(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(max-width: 560px)').matches
   )
 }
 

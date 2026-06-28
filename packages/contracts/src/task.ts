@@ -46,6 +46,7 @@ export const taskStatusSchema = z.enum([
   'archived',
 ])
 export const taskImportanceSchema = z.enum(['important', 'not_important'])
+export const taskNecessitySchema = z.enum(['required', 'desired', 'optional'])
 export const taskUrgencySchema = z.enum(['urgent', 'not_urgent'])
 export const taskStageTypeSchema = z.enum([
   'task',
@@ -209,6 +210,7 @@ export const taskSchema = z.object({
   note: z.string(),
   icon: taskIconSchema,
   importance: taskImportanceSchema.optional().default('not_important'),
+  necessity: taskNecessitySchema.optional().default('desired'),
   urgency: taskUrgencySchema.optional().default('not_urgent'),
   remindBeforeStart: optionalBoolean,
   reminderOffsets: taskReminderOffsetsSchema,
@@ -251,6 +253,7 @@ export const newTaskInputSchema = z.object({
   note: z.string(),
   icon: z.string().optional(),
   importance: taskImportanceSchema.optional(),
+  necessity: taskNecessitySchema.optional(),
   urgency: taskUrgencySchema.optional(),
   remindBeforeStart: optionalBoolean,
   reminderOffsets: taskReminderOffsetsSchema,
@@ -315,6 +318,7 @@ export const taskNextStageUndoInputSchema = z.object({
 
 export type TaskStatus = z.infer<typeof taskStatusSchema>
 export type TaskImportance = z.infer<typeof taskImportanceSchema>
+export type TaskNecessity = z.infer<typeof taskNecessitySchema>
 export type TaskStageType = z.infer<typeof taskStageTypeSchema>
 export type TaskCompletionType = z.infer<typeof taskCompletionTypeSchema>
 export type TaskChain = z.infer<typeof taskChainSchema>

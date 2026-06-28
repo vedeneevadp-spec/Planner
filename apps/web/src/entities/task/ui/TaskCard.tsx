@@ -15,7 +15,7 @@ import { CheckIcon, IconMark, type UploadedIconAsset } from '@/shared/ui/Icon'
 import { getTaskResource } from '../model/resource'
 import { getRoutineTaskFrequencyLabel } from '../model/routine-task'
 import { resolveTaskCardActionPolicy } from '../model/task-card-policy'
-import { getTaskTypeValue } from '../model/task-meta'
+import { getTaskNecessityLabel, getTaskTypeValue } from '../model/task-meta'
 import { getTaskRecurrenceLabel } from '../model/task-recurrence'
 import styles from './TaskCard.module.css'
 import { TaskEditDialog } from './TaskEditDialog'
@@ -669,7 +669,17 @@ export function TaskCard({
             </div>
 
             <div className={styles.meta}>
-              {taskType === 'important' ? (
+              <span
+                className={cx(
+                  styles.metaChip,
+                  styles.necessityChip,
+                  task.necessity === 'required' && styles.necessityChipRequired,
+                  task.necessity === 'optional' && styles.necessityChipOptional,
+                )}
+              >
+                {getTaskNecessityLabel(task.necessity)}
+              </span>
+              {task.importance === 'important' ? (
                 <span className={cx(styles.metaChip, styles.markerChipStrong)}>
                   Важное
                 </span>

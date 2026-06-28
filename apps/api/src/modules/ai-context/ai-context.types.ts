@@ -11,6 +11,7 @@ export interface AiTaskItem {
   area?: string | null
   dueDate?: string | null
   importance?: 'important' | 'not_important' | (string & {}) | null
+  obligation?: 'desired' | 'optional' | 'required' | (string & {}) | null
   priority?: 'high' | 'low' | 'normal' | (string & {}) | null
   resource?: number | null
   resourceImpact?: 'drain' | 'neutral' | 'restore' | 'unknown'

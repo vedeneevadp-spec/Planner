@@ -8,11 +8,13 @@ import type { JsonObject } from '../../infrastructure/db/schema.js'
 import type { StoredTaskEventRecord, StoredTaskRecord } from './task.model.js'
 import {
   DEFAULT_TASK_IMPORTANCE,
+  DEFAULT_TASK_NECESSITY,
   DEFAULT_TASK_URGENCY,
   LEGACY_PROJECT_NAME_KEY,
   TASK_ICON_KEY,
   TASK_IMPORTANCE_KEY,
   TASK_LINKED_TASK_KEY,
+  TASK_NECESSITY_KEY,
   TASK_RECURRENCE_KEY,
   TASK_REMIND_BEFORE_START_KEY,
   TASK_REMINDER_OFFSETS_KEY,
@@ -69,6 +71,7 @@ export function mapTaskRecord(
     icon: readTaskIcon(task.metadata),
     importance: readTaskImportance(task.metadata),
     linkedTask: readTaskLinkedTask(task.metadata),
+    necessity: readTaskNecessity(task.metadata),
     note: task.description,
     plannedDate,
     plannedEndTime,
@@ -145,6 +148,7 @@ export function mapTaskRecordFromListRow(task: TaskListRow): StoredTaskRecord {
     icon: readTaskIcon(task.metadata),
     importance: readTaskImportance(task.metadata),
     linkedTask: readTaskLinkedTask(task.metadata),
+    necessity: readTaskNecessity(task.metadata),
     note: task.description,
     plannedDate,
     plannedEndTime,
@@ -195,6 +199,7 @@ export function buildTaskMetadata(
     | 'icon'
     | 'importance'
     | 'linkedTask'
+    | 'necessity'
     | 'recurrence'
     | 'remindBeforeStart'
     | 'reminderOffsets'
@@ -220,6 +225,10 @@ export function buildTaskMetadata(
 
   if (input.linkedTask) {
     metadata[TASK_LINKED_TASK_KEY] = input.linkedTask
+  }
+
+  if (input.necessity !== DEFAULT_TASK_NECESSITY) {
+    metadata[TASK_NECESSITY_KEY] = input.necessity
   }
 
   if (input.remindBeforeStart) {
@@ -286,6 +295,16 @@ function readTaskImportance(
   return value === 'important' || value === 'not_important'
     ? value
     : DEFAULT_TASK_IMPORTANCE
+}
+
+function readTaskNecessity(
+  metadata: JsonObject,
+): StoredTaskRecord['necessity'] {
+  const value = metadata[TASK_NECESSITY_KEY]
+
+  return value === 'required' || value === 'desired' || value === 'optional'
+    ? value
+    : DEFAULT_TASK_NECESSITY
 }
 
 function readTaskLinkedTask(
