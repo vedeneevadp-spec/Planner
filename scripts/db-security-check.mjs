@@ -115,6 +115,7 @@ async function verifyAuthenticatedTableRls(client) {
         'RLS is not enabled for app tables accessible by authenticated:',
         missingRlsTables.join(', '),
         'Enable RLS before granting authenticated table privileges.',
+        'For internal table grant drift, run npm run db:security:repair with MIGRATE_DATABASE_URL, then rerun this check.',
       ].join(' '),
     )
   }

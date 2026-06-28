@@ -63,6 +63,7 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run db:migrations:check`                           | проверить порядок и имена SQL-миграций                   |
 | `npm run db:migrate` / `npm run db:seed`                | применить миграции и dev seed локально                   |
 | `npm run db:security:check`                             | проверить RLS/security-инварианты PostgreSQL             |
+| `npm run db:security:repair`                            | снять drift grants с внутренних app-таблиц               |
 | `npm run db:setup`                                      | `db:up` + migrations + seed                              |
 | `npm run outbox:run`                                    | обработать одну пачку outbox-сообщений                   |
 | `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний задач и заботы |

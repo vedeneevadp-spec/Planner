@@ -553,6 +553,40 @@ JS/CSS для `self-care`, `calendar`, `VoiceAssistant`, JS для
 `storage_unavailable`. Открытым остается server-side auth diagnostics с
 версией миграций/runtime functions в `HttpError.details`.
 
+### Закрыто 2026-06-28: production DB grant drift получил штатный repair path
+
+Где было видно:
+
+- production deploy мог упасть на `db:security:check`, если у роли
+  `authenticated` остались прямые grants на внутренние таблицы без RLS:
+  `app.device_sessions`, `app.outbox`, `app.schema_migrations`,
+  `app.sync_cursors`
+- repair до этого выполнялся ручным SQL после диагностики production grants
+
+Статус: добавлен `npm run db:security:repair`. Скрипт подключается через
+`MIGRATE_DATABASE_URL` или `DATABASE_URL`, снимает прямые privileges с
+`authenticated` и `public` только для известных internal tables, чистит default
+privileges для владельцев этих таблиц и печатает безопасный summary без
+секретов. `db:security:check` теперь явно подсказывает эту команду для
+internal table grant drift.
+
+### Закрыто 2026-06-28: часть low-coverage web hotspots закреплена guard-ом
+
+Где было видно:
+
+- `useWorkspaceParticipants.ts` имел нулевое покрытие и содержал nullable error
+  crash path
+- `TimeZoneChangeBanner.tsx` имел нулевое покрытие
+- `native-push-notifications.ts` был покрыт только примерно на `6%`
+- `useSelfCare.ts` был покрыт примерно на `8%`
+
+Статус: добавлены focused tests для workspace participant hooks, timezone
+change banner, Android native push registration/unregister и self-care query /
+mutation invalidation. Web coverage после изменений: общий lines `69.08%`,
+`native-push-notifications.ts` `68.65%`, `TimeZoneChangeBanner.tsx` `83.78%`,
+`useSelfCare.ts` `17.31%`, `useWorkspaceParticipants.ts` `37.61%`.
+`scripts/check-web-coverage-hotspots.mjs` закрепляет эти минимумы.
+
 ### Нужна постепенная нормализация parsing/mapping helpers
 
 Проблема: в проекте много boundary-кода с JSON/unknown/mapping логикой. Это

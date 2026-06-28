@@ -9,7 +9,7 @@ const SUMMARY_PATH = new URL(
 const HOTSPOTS = [
   {
     metric: 'lines',
-    min: 7,
+    min: 17,
     path: 'apps/web/src/features/self-care/lib/useSelfCare.ts',
   },
   {
@@ -19,18 +19,28 @@ const HOTSPOTS = [
   },
   {
     metric: 'lines',
-    min: 70,
+    min: 72,
     path: 'apps/web/src/features/session/lib/useSessionAuthController.ts',
   },
   {
     metric: 'lines',
-    min: 5,
+    min: 65,
     path: 'apps/web/src/features/session/lib/native-push-notifications.ts',
+  },
+  {
+    metric: 'lines',
+    min: 35,
+    path: 'apps/web/src/features/session/lib/useWorkspaceParticipants.ts',
   },
   {
     metric: 'lines',
     min: 60,
     path: 'apps/web/src/features/session/lib/workspace-participants-api.ts',
+  },
+  {
+    metric: 'lines',
+    min: 80,
+    path: 'apps/web/src/features/session/ui/TimeZoneChangeBanner.tsx',
   },
 ]
 

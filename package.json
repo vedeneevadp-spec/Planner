@@ -31,6 +31,7 @@
     "db:time:verify": "node ./scripts/time-migration-verify.mjs",
     "db:runtime-role:setup": "node ./scripts/db-runtime-role-setup.mjs",
     "db:security:check": "node ./scripts/db-security-check.mjs",
+    "db:security:repair": "node ./scripts/db-security-repair.mjs",
     "db:seed": "node ./scripts/db-seed.mjs",
     "db:setup": "npm run db:up && npm run db:migrate && npm run db:seed",
     "prod:env": "node ./scripts/run-production-env.mjs",

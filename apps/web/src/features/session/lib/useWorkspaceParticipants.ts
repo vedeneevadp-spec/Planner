@@ -338,41 +338,44 @@ export function useDeclineWorkspaceInvitation() {
 }
 
 export function getWorkspaceParticipantsErrorMessage(error: unknown): string {
-  const apiError = error as Partial<WorkspaceParticipantsApiError>
+  const apiError =
+    error && typeof error === 'object'
+      ? (error as Partial<WorkspaceParticipantsApiError>)
+      : null
 
-  if (apiError.code === 'shared_workspace_required') {
+  if (apiError?.code === 'shared_workspace_required') {
     return 'Участниками можно управлять только в общем workspace.'
   }
 
-  if (apiError.code === 'workspace_participants_manage_forbidden') {
+  if (apiError?.code === 'workspace_participants_manage_forbidden') {
     return 'Только owner и group admin могут управлять участниками.'
   }
 
-  if (apiError.code === 'workspace_user_already_exists') {
+  if (apiError?.code === 'workspace_user_already_exists') {
     return 'Этот пользователь уже состоит в workspace.'
   }
 
-  if (apiError.code === 'workspace_self_removal_forbidden') {
+  if (apiError?.code === 'workspace_self_removal_forbidden') {
     return 'Нельзя удалить собственный доступ из этого окна.'
   }
 
-  if (apiError.code === 'workspace_self_group_role_change_forbidden') {
+  if (apiError?.code === 'workspace_self_group_role_change_forbidden') {
     return 'Нельзя менять свою групповую роль из этого окна.'
   }
 
-  if (apiError.code === 'workspace_owner_group_role_immutable') {
+  if (apiError?.code === 'workspace_owner_group_role_immutable') {
     return 'Права владельца меняются только отдельной передачей владения.'
   }
 
-  if (apiError.code === 'workspace_owner_removal_forbidden') {
+  if (apiError?.code === 'workspace_owner_removal_forbidden') {
     return 'Owner нельзя удалить из workspace.'
   }
 
-  if (apiError.code === 'workspace_invitation_not_found') {
+  if (apiError?.code === 'workspace_invitation_not_found') {
     return 'Приглашение уже недоступно.'
   }
 
-  if (apiError.code === 'workspace_user_not_found') {
+  if (apiError?.code === 'workspace_user_not_found') {
     return 'Участник уже недоступен.'
   }
 
