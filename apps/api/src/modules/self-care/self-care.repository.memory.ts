@@ -4,6 +4,7 @@ import {
   type SelfCareAppointmentDetails,
   type SelfCareCompletion,
   type SelfCareCourseDetails,
+  type SelfCareExerciseDetails,
   type SelfCareItemAlternative,
   type SelfCareMeasurementDetails,
   type SelfCareMedicalDetails,
@@ -69,6 +70,7 @@ import {
   createDailyStateRecord,
   createDefaultMinimumItems,
   createDefaultSelfCareSettings,
+  createExerciseDetailsRecord,
   createMeasurementDetailsRecord,
   createMedicalDetailsRecord,
   createMinimumItemRecord,
@@ -100,6 +102,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     StoredSelfCareDailyStateRecord
   >()
   private readonly items = new Map<string, StoredSelfCareItemRecord>()
+  private readonly exerciseDetails = new Map<string, SelfCareExerciseDetails>()
   private readonly medicalDetails = new Map<string, SelfCareMedicalDetails>()
   private readonly measurementDetails = new Map<
     string,
@@ -291,6 +294,16 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       this.measurementDetails.set(record.id, record)
     }
 
+    if (command.input.exerciseDetails) {
+      this.deleteForItem(this.exerciseDetails, nextItem.id)
+      const record = createExerciseDetailsRecord(
+        nextItem.id,
+        command.input.exerciseDetails,
+        now,
+      )
+      this.exerciseDetails.set(record.id, record)
+    }
+
     if (command.input.courseDetails) {
       this.deleteForItem(this.courseDetails, nextItem.id)
       const record = createCourseDetailsRecord(
@@ -383,6 +396,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   async completeOccurrence(command: CompleteSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
     const item = this.getWritableItem(command.context, occurrence.itemId)
+    assertExerciseCompletionInput(item, command.input)
     assertMeasurementCompletionInput(item, command.input)
     assertMoodCheckCompletionInput(item, command.input)
     const stepCompletions = createRitualStepCompletions(
@@ -451,6 +465,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async completeItemNow(command: CompleteSelfCareItemNowCommand) {
     const item = this.getWritableItem(command.context, command.itemId)
+    assertExerciseCompletionInput(item, command.input)
     assertMeasurementCompletionInput(item, command.input)
     assertMoodCheckCompletionInput(item, command.input)
     const scheduleRule = this.findScheduleRuleForItem(item.id)
@@ -544,6 +559,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
+        exerciseSets: [],
         measurementUnit: null,
         measurementValue: null,
         moodAfter: null,
@@ -572,6 +588,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
+        exerciseSets: [],
         measurementUnit: null,
         measurementValue: null,
         moodAfter: null,
@@ -731,6 +748,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
+        exerciseSets: [],
         measurementUnit: null,
         measurementValue: null,
         moodAfter: null,
@@ -995,6 +1013,11 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         records.measurementDetails.id,
         records.measurementDetails,
       )
+    if (records.exerciseDetails)
+      this.exerciseDetails.set(
+        records.exerciseDetails.id,
+        records.exerciseDetails,
+      )
     if (records.courseDetails)
       this.courseDetails.set(records.courseDetails.id, records.courseDetails)
   }
@@ -1020,6 +1043,9 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ),
       dailyStates: [...this.dailyStates.values()].filter(
         (item) => item.userId === userId,
+      ),
+      exerciseDetails: [...this.exerciseDetails.values()].filter((item) =>
+        this.itemBelongsToUser(item.itemId, userId),
       ),
       items: [...this.items.values()].filter(
         (item) =>
@@ -1398,6 +1424,23 @@ function assertMeasurementCompletionInput(
       400,
       'self_care_measurement_value_required',
       'Measurement value is required.',
+    )
+  }
+}
+
+function assertExerciseCompletionInput(
+  item: StoredSelfCareItemRecord,
+  input: CompleteSelfCareItemNowCommand['input'],
+): void {
+  if (item.type !== 'exercise') {
+    return
+  }
+
+  if (input.measurementValue === null || input.measurementValue === undefined) {
+    throw new HttpError(
+      400,
+      'self_care_exercise_value_required',
+      'Exercise value is required.',
     )
   }
 }

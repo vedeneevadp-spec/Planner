@@ -17,6 +17,9 @@ import {
   type SelfCareDailyState,
   type SelfCareDailyStateInput,
   type SelfCareDashboardResponse,
+  type SelfCareExerciseDetails,
+  type SelfCareExerciseDetailsInput,
+  type SelfCareExerciseTrend,
   type SelfCareFlexibleGoalProgress,
   type SelfCareHistoryResponse,
   type SelfCareItem,
@@ -90,6 +93,7 @@ export interface SelfCareStateSnapshot {
   completions: SelfCareCompletion[]
   courseDetails: SelfCareCourseDetails[]
   dailyStates: SelfCareDailyState[]
+  exerciseDetails?: SelfCareExerciseDetails[] | undefined
   items: SelfCareItem[]
   medicalDetails: SelfCareMedicalDetails[]
   measurementDetails?: SelfCareMeasurementDetails[] | undefined
@@ -107,6 +111,7 @@ export interface CreateSelfCareRecordsResult {
   alternatives: SelfCareItemAlternative[]
   appointmentDetails: SelfCareAppointmentDetails | null
   courseDetails: SelfCareCourseDetails | null
+  exerciseDetails: SelfCareExerciseDetails | null
   item: SelfCareItem
   medicalDetails: SelfCareMedicalDetails | null
   measurementDetails: SelfCareMeasurementDetails | null
@@ -168,6 +173,9 @@ export function createSelfCareRecords(
       : null,
     courseDetails: input.courseDetails
       ? createCourseDetailsRecord(itemId, input.courseDetails, now)
+      : null,
+    exerciseDetails: input.exerciseDetails
+      ? createExerciseDetailsRecord(itemId, input.exerciseDetails, now)
       : null,
     item,
     medicalDetails: input.medicalDetails
@@ -339,6 +347,24 @@ export function createMeasurementDetailsRecord(
   }
 }
 
+export function createExerciseDetailsRecord(
+  itemId: string,
+  input: SelfCareExerciseDetailsInput,
+  now = new Date().toISOString(),
+): SelfCareExerciseDetails {
+  return {
+    createdAt: now,
+    id: generateUuidV7(),
+    itemId,
+    metricType: input.metricType,
+    plannedSets: input.plannedSets,
+    plannedValue: input.plannedValue,
+    unit: input.unit,
+    updatedAt: now,
+    useSets: input.useSets,
+  }
+}
+
 export function createDefaultSelfCareSettings(input: {
   date?: string | undefined
   userId: string
@@ -437,6 +463,7 @@ export function createCompletionRecord(
     durationMinutes: input.durationMinutes,
     energyAfter: input.energyAfter,
     energyBefore: input.energyBefore,
+    exerciseSets: input.exerciseSets,
     id: generateUuidV7(),
     itemId: context.itemId,
     measurementUnit: input.measurementUnit ?? null,
@@ -781,6 +808,12 @@ export function buildAnalyticsResponse(input: {
       details,
     ]),
   )
+  const exerciseDetailsByItemId = new Map(
+    (input.state.exerciseDetails ?? []).map((details) => [
+      details.itemId,
+      details,
+    ]),
+  )
   const appointmentDetailsByItemId = new Map(
     input.state.appointmentDetails.map((details) => [details.itemId, details]),
   )
@@ -790,6 +823,7 @@ export function buildAnalyticsResponse(input: {
   const balanceByCategory = createEmptyCategoryCounts()
   const completionsByDay: Record<string, number> = {}
   const flexibleGoalItemIds = new Set<string>()
+  const exerciseTrendByItemId = new Map<string, SelfCareExerciseTrend>()
   const measurementTrendByItemId = new Map<string, SelfCareMeasurementTrend>()
   let procedureCosts = 0
   const procedureCostsByMonth: Record<string, number> = {}
@@ -839,7 +873,41 @@ export function buildAnalyticsResponse(input: {
       })
       measurementTrendByItemId.set(item.id, trend)
     }
+
+    if (item?.type === 'exercise' && completion.measurementValue !== null) {
+      const details = exerciseDetailsByItemId.get(item.id)
+      const trend = exerciseTrendByItemId.get(item.id) ?? {
+        itemId: item.id,
+        metricType: details?.metricType ?? 'count',
+        points: [],
+        title: item.title,
+        unit: details?.unit ?? 'reps',
+      }
+
+      trend.points.push({
+        completedAt: completion.completedAt,
+        date: dateKey,
+        sets: completion.exerciseSets,
+        value: completion.measurementValue,
+      })
+      exerciseTrendByItemId.set(item.id, trend)
+    }
   }
+
+  const exerciseTrends = [...exerciseTrendByItemId.values()]
+    .map((trend) => ({
+      ...trend,
+      points: [...trend.points].sort((left, right) =>
+        left.completedAt.localeCompare(right.completedAt),
+      ),
+    }))
+    .sort((left, right) => {
+      const leftLatest = left.points[left.points.length - 1]?.completedAt ?? ''
+      const rightLatest =
+        right.points[right.points.length - 1]?.completedAt ?? ''
+
+      return rightLatest.localeCompare(leftLatest)
+    })
 
   const measurementTrends = [...measurementTrendByItemId.values()]
     .map((trend) => ({
@@ -872,6 +940,7 @@ export function buildAnalyticsResponse(input: {
           ]
         : []
     }),
+    exerciseTrends,
     flexibleGoals: input.state.scheduleRules
       .filter((rule) => rule.flexibleTargetCount && rule.flexiblePeriod)
       .flatMap((rule) => {
@@ -958,12 +1027,20 @@ export function buildTodayItem(input: {
       input.state.courseDetails.find(
         (details) => details.itemId === input.item.id,
       ) ?? null,
+    exercise:
+      input.state.exerciseDetails?.find(
+        (details) => details.itemId === input.item.id,
+      ) ?? null,
     flexibleProgress,
     item: input.item,
-    lastMeasurement: findLastMeasurementCompletion(
-      input.state.completions,
-      input.item.id,
-    ),
+    lastExercise:
+      input.item.type === 'exercise'
+        ? findLastExerciseCompletion(input.state.completions, input.item.id)
+        : null,
+    lastMeasurement:
+      input.item.type === 'measurement'
+        ? findLastMeasurementCompletion(input.state.completions, input.item.id)
+        : null,
     measurement:
       input.state.measurementDetails?.find(
         (details) => details.itemId === input.item.id,
@@ -1013,6 +1090,7 @@ export function buildSelfCareListResponse(
     alternatives: state.alternatives,
     appointmentDetails: state.appointmentDetails,
     courseDetails: state.courseDetails,
+    exerciseDetails: state.exerciseDetails ?? [],
     items: sortSelfCareItems(items),
     medicalDetails: state.medicalDetails,
     measurementDetails: state.measurementDetails ?? [],
@@ -1355,6 +1433,7 @@ export function mapHabitEntryToSelfCareCompletion(input: {
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
+    exerciseSets: [],
     id: generateUuidV7(),
     itemId: input.item.id,
     measurementUnit: null,
@@ -1728,6 +1807,7 @@ export function shouldDeduplicateSelfCareItemCompletion(input: {
 }): boolean {
   return (
     input.item.type !== 'course' &&
+    input.item.type !== 'exercise' &&
     input.item.type !== 'flexible_goal' &&
     input.scheduleRule?.repeatKind !== 'flexible_goal' &&
     input.scheduleRule?.allowMultiplePerDay !== true
@@ -1963,6 +2043,24 @@ function findLastCompletion(
 }
 
 function findLastMeasurementCompletion(
+  completions: SelfCareCompletion[],
+  itemId: string,
+): SelfCareCompletion | null {
+  return (
+    completions
+      .filter(
+        (completion) =>
+          completion.itemId === itemId &&
+          completion.measurementValue !== null &&
+          isCompletionProgressStatus(completion.status),
+      )
+      .sort((left, right) =>
+        right.completedAt.localeCompare(left.completedAt),
+      )[0] ?? null
+  )
+}
+
+function findLastExerciseCompletion(
   completions: SelfCareCompletion[],
   itemId: string,
 ): SelfCareCompletion | null {

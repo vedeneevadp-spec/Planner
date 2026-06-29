@@ -184,6 +184,8 @@ function createSelfCareTodayItem(
       workspaceId: 'personal-workspace',
       ...itemOverrides,
     } as SelfCareTodayItem['item'],
+    exercise: null,
+    lastExercise: null,
     lastMeasurement: null,
     measurement: null,
     occurrence: null,

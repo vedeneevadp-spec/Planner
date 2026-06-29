@@ -3,6 +3,7 @@ import {
   type SelfCareAppointmentDetails,
   type SelfCareCompletion,
   type SelfCareCourseDetails,
+  type SelfCareExerciseDetails,
   type SelfCareMeasurementDetails,
   type SelfCareMedicalDetails,
   type SelfCareOccurrence,
@@ -56,6 +57,7 @@ import type {
 } from './self-care.model.js'
 import type { SelfCareRepository } from './self-care.repository.js'
 import {
+  assertExerciseCompletionInput,
   assertMeasurementCompletionInput,
   assertMoodCheckCompletionInput,
   buildScheduleDetailsStartsAt,
@@ -67,6 +69,7 @@ import {
   mapCompletionStatusToOccurrenceStatus,
   mapCourseRow,
   mapDailyStateRow,
+  mapExerciseRow,
   mapItemRow,
   mapMeasurementRow,
   mapMedicalRow,
@@ -102,6 +105,7 @@ import {
   createDailyStateRecord,
   createDefaultMinimumItems,
   createDefaultSelfCareSettings,
+  createExerciseDetailsRecord,
   createMeasurementDetailsRecord,
   createMedicalDetailsRecord,
   createMinimumItemRecord,
@@ -129,6 +133,7 @@ interface LoadStateOptions {
   includeCompletions?: boolean | undefined
   includeCourseDetails?: boolean | undefined
   includeDailyStates?: boolean | undefined
+  includeExerciseDetails?: boolean | undefined
   includeMedicalDetails?: boolean | undefined
   includeMeasurementDetails?: boolean | undefined
   includeMinimumItems?: boolean | undefined
@@ -373,6 +378,20 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             createMeasurementDetailsRecord(
               command.itemId,
               command.input.measurementDetails,
+            ),
+          )
+        }
+
+        if (command.input.exerciseDetails) {
+          await trx
+            .deleteFrom('app.self_care_exercise_details')
+            .where('item_id', '=', command.itemId)
+            .execute()
+          await this.insertExerciseDetails(
+            trx,
+            createExerciseDetailsRecord(
+              command.itemId,
+              command.input.exerciseDetails,
             ),
           )
         }
@@ -697,6 +716,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           occurrence.itemId,
         )
         const item = mapItemRow(itemRow)
+        assertExerciseCompletionInput(item, command.input)
         assertMeasurementCompletionInput(item, command.input)
         assertMoodCheckCompletionInput(item, command.input)
         const stepRows = await trx
@@ -778,6 +798,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         const item = mapItemRow(
           await this.loadActiveItemRow(trx, command.context, command.itemId),
         )
+        assertExerciseCompletionInput(item, command.input)
         assertMeasurementCompletionInput(item, command.input)
         assertMoodCheckCompletionInput(item, command.input)
         const ruleRow = await trx
@@ -909,6 +930,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             durationMinutes: null,
             energyAfter: null,
             energyBefore: null,
+            exerciseSets: [],
             measurementUnit: null,
             measurementValue: null,
             moodAfter: null,
@@ -1552,6 +1574,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             durationMinutes: null,
             energyAfter: null,
             energyBefore: null,
+            exerciseSets: [],
             measurementUnit: null,
             measurementValue: null,
             moodAfter: null,
@@ -1718,6 +1741,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     const includeCompletions = options.includeCompletions !== false
     const includeCourseDetails = options.includeCourseDetails !== false
     const includeDailyStates = options.includeDailyStates !== false
+    const includeExerciseDetails = options.includeExerciseDetails !== false
     const includeMedicalDetails = options.includeMedicalDetails !== false
     const includeMeasurementDetails =
       options.includeMeasurementDetails !== false
@@ -1740,6 +1764,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       appointmentRows,
       medicalRows,
       measurementRows,
+      exerciseRows,
       courseRows,
       dailyStateRows,
       settingsRows,
@@ -1829,6 +1854,13 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
                 itemIds,
               )
             : [],
+          includeExerciseDetails
+            ? await selectChildren(
+                executor,
+                'app.self_care_exercise_details',
+                itemIds,
+              )
+            : [],
           includeCourseDetails
             ? await selectChildren(
                 executor,
@@ -1896,6 +1928,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       completions: completionRows.map((row) => mapCompletionRow(row)),
       courseDetails: courseRows.map((row) => mapCourseRow(row)),
       dailyStates: dailyStateRows.map((row) => mapDailyStateRow(row)),
+      exerciseDetails: exerciseRows.map((row) => mapExerciseRow(row)),
       items: itemRows.map((row) => mapItemRow(row)),
       medicalDetails: medicalRows.map((row) => mapMedicalRow(row)),
       measurementDetails: measurementRows.map((row) => mapMeasurementRow(row)),
@@ -1970,6 +2003,8 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       await this.insertMedicalDetails(executor, records.medicalDetails)
     if (records.measurementDetails)
       await this.insertMeasurementDetails(executor, records.measurementDetails)
+    if (records.exerciseDetails)
+      await this.insertExerciseDetails(executor, records.exerciseDetails)
     if (records.courseDetails)
       await this.insertCourseDetails(executor, records.courseDetails)
   }
@@ -2262,6 +2297,24 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .execute()
   }
 
+  private insertExerciseDetails(
+    executor: DatabaseExecutor,
+    details: SelfCareExerciseDetails,
+  ) {
+    return executor
+      .insertInto('app.self_care_exercise_details')
+      .values({
+        id: details.id,
+        item_id: details.itemId,
+        metric_type: details.metricType,
+        planned_sets: details.plannedSets,
+        planned_value: details.plannedValue,
+        unit: details.unit,
+        use_sets: details.useSets,
+      })
+      .execute()
+  }
+
   private insertCourseDetails(
     executor: DatabaseExecutor,
     details: SelfCareCourseDetails,
@@ -2371,6 +2424,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         duration_minutes: completion.durationMinutes,
         energy_after: completion.energyAfter,
         energy_before: completion.energyBefore,
+        exercise_sets: JSON.stringify(completion.exerciseSets),
         id: completion.id,
         item_id: completion.itemId,
         measurement_unit: completion.measurementUnit,

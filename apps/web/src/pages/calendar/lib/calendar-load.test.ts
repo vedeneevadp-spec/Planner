@@ -380,6 +380,8 @@ function createSelfCareCalendarEntry(
       version: 1,
       workspaceId: 'workspace-1',
     },
+    exercise: null,
+    lastExercise: null,
     lastMeasurement: null,
     measurement: null,
     occurrence: {

@@ -3,6 +3,8 @@ import type {
   SelfCareCompletion,
   SelfCareCompletionInput,
   SelfCareCourseDetails,
+  SelfCareExerciseMetricType,
+  SelfCareExerciseUnit,
   SelfCareFlexiblePeriod,
   SelfCareIntervalUnit,
   SelfCareItem,
@@ -91,6 +93,7 @@ export type SelfCareSkipActionSection = 'overdue' | 'today'
 export const TYPES_WITH_EXACT_SCHEDULE: ReadonlySet<SelfCareItemType> = new Set(
   [
     'appointment',
+    'exercise',
     'medical',
     'measurement',
     'mood_check',
@@ -315,6 +318,47 @@ export const COURSE_TYPE_SELECT_OPTIONS: Array<
   SelectPickerOption<SelfCareCourseType>
 > = COURSE_TYPE_OPTIONS.map(({ label, value }) => ({ label, value }))
 
+export const EXERCISE_METRIC_OPTIONS: ReadonlyArray<{
+  label: string
+  metricType: SelfCareExerciseMetricType
+  unit: SelfCareExerciseUnit
+  value: string
+}> = [
+  {
+    label: 'Вес, кг',
+    metricType: 'weight',
+    unit: 'kg',
+    value: 'weight:kg',
+  },
+  {
+    label: 'Время, минуты',
+    metricType: 'time',
+    unit: 'min',
+    value: 'time:min',
+  },
+  {
+    label: 'Количество, разы',
+    metricType: 'count',
+    unit: 'reps',
+    value: 'count:reps',
+  },
+  {
+    label: 'Расстояние, метры',
+    metricType: 'distance',
+    unit: 'm',
+    value: 'distance:m',
+  },
+  {
+    label: 'Расстояние, километры',
+    metricType: 'distance',
+    unit: 'km',
+    value: 'distance:km',
+  },
+]
+
+export const EXERCISE_METRIC_SELECT_OPTIONS: Array<SelectPickerOption<string>> =
+  EXERCISE_METRIC_OPTIONS.map(({ label, value }) => ({ label, value }))
+
 export const WEEKDAY_OPTIONS: ReadonlyArray<{ label: string; value: number }> =
   [
     { label: 'Пн', value: 1 },
@@ -368,6 +412,7 @@ export function buildCompletionInput(
     durationMinutes: entry.item.defaultDurationMinutes,
     energyAfter: null,
     energyBefore: null,
+    exerciseSets: [],
     measurementUnit: null,
     measurementValue: null,
     moodAfter: null,
@@ -674,6 +719,10 @@ export function getExactScheduleDateLabel(type: SelfCareItemType): string {
     return 'Дата записи'
   }
 
+  if (type === 'exercise') {
+    return 'Дата начала'
+  }
+
   if (type === 'measurement') {
     return 'Дата измерения'
   }
@@ -688,6 +737,10 @@ export function getExactScheduleDateLabel(type: SelfCareItemType): string {
 export function getExactScheduleTimeLabel(type: SelfCareItemType): string {
   if (type === 'appointment' || type === 'procedure' || type === 'medical') {
     return 'Время записи'
+  }
+
+  if (type === 'exercise') {
+    return 'Время'
   }
 
   if (type === 'measurement') {
@@ -705,6 +758,12 @@ export function getInitialMeasurementValue(entry: SelfCareTodayItem): string {
   return formatOptionalNumber(
     entry.lastMeasurement?.measurementValue ??
       entry.completion?.measurementValue,
+  )
+}
+
+export function getInitialExerciseValue(entry: SelfCareTodayItem): string {
+  return formatOptionalNumber(
+    entry.lastExercise?.measurementValue ?? entry.completion?.measurementValue,
   )
 }
 
@@ -1154,6 +1213,7 @@ export function getTypeLabel(item: SelfCareItem): string {
   if (item.type === 'course') return 'курс'
   if (item.type === 'ritual') return 'ритуал'
   if (item.type === 'measurement') return 'измерение'
+  if (item.type === 'exercise') return 'упражнение'
   return 'задача'
 }
 
@@ -1172,6 +1232,7 @@ export function getTemplateTypeLabel(template: SelfCareTemplate): string {
   if (template.type === 'course') return 'курс'
   if (template.type === 'ritual') return 'ритуал'
   if (template.type === 'measurement') return 'измерение'
+  if (template.type === 'exercise') return 'упражнение'
   return 'задача'
 }
 
@@ -1272,6 +1333,135 @@ export function formatMeasurementDelta(
 
   const formatted = formatMeasurementValue(value, unit)
   return value > 0 ? `+${formatted}` : formatted
+}
+
+export function getExerciseMetricOption(
+  value: string,
+): (typeof EXERCISE_METRIC_OPTIONS)[number] {
+  return (
+    EXERCISE_METRIC_OPTIONS.find((option) => option.value === value) ??
+    EXERCISE_METRIC_OPTIONS[2]!
+  )
+}
+
+export function getExerciseMetricValue(
+  metricType: SelfCareExerciseMetricType,
+  unit: SelfCareExerciseUnit,
+): string {
+  return `${metricType}:${unit}`
+}
+
+export function getExerciseMetricLabel(
+  metricType: SelfCareExerciseMetricType,
+): string {
+  if (metricType === 'weight') return 'Вес'
+  if (metricType === 'time') return 'Время'
+  if (metricType === 'distance') return 'Расстояние'
+  return 'Количество'
+}
+
+export function getExerciseUnitLabel(
+  unit: string | null | undefined,
+): string | null {
+  if (!unit) return null
+  if (unit === 'kg') return 'кг'
+  if (unit === 'min') return 'мин'
+  if (unit === 'reps') return 'раз'
+  if (unit === 'm') return 'м'
+  if (unit === 'km') return 'км'
+  return unit
+}
+
+export function formatExerciseValue(
+  value: number,
+  unit: string | null | undefined,
+): string {
+  return formatMeasurementValue(value, getExerciseUnitLabel(unit))
+}
+
+export function formatExerciseDelta(
+  value: number,
+  unit: string | null | undefined,
+): string {
+  return formatMeasurementDelta(value, getExerciseUnitLabel(unit))
+}
+
+export function calculateExerciseTotal(
+  metricType: SelfCareExerciseMetricType,
+  sets: ReadonlyArray<{ value: number }>,
+): number | null {
+  if (!sets.length) {
+    return null
+  }
+
+  if (metricType === 'weight') {
+    return Math.max(...sets.map((set) => set.value))
+  }
+
+  return Number(sets.reduce((total, set) => total + set.value, 0).toFixed(2))
+}
+
+export function formatExerciseSetsSummary(
+  completion: SelfCareCompletion,
+): string | null {
+  if (!completion.exerciseSets.length) {
+    return null
+  }
+
+  const count = completion.exerciseSets.length
+  return `${count} ${pluralizeRu(count, 'подход', 'подхода', 'подходов')}`
+}
+
+export function formatExerciseSummary(entry: SelfCareTodayItem): string | null {
+  const completion = entry.lastExercise ?? entry.completion
+
+  if (
+    !completion ||
+    completion.measurementValue === null ||
+    !isProgressCompletionStatus(completion.status)
+  ) {
+    return entry.exercise
+      ? `${getExerciseMetricLabel(entry.exercise.metricType)}: еще нет отметок`
+      : null
+  }
+
+  const date = completion.completedAt.slice(0, 10)
+  const sets = formatExerciseSetsSummary(completion)
+  const value = formatExerciseValue(
+    completion.measurementValue,
+    completion.measurementUnit ?? entry.exercise?.unit ?? null,
+  )
+
+  return [
+    `${getExerciseMetricLabel(entry.exercise?.metricType ?? 'count')}: ${value}`,
+    sets,
+    formatDate(date),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+}
+
+export function formatExercisePlan(entry: SelfCareTodayItem): string | null {
+  const details = entry.exercise
+  if (!details) {
+    return null
+  }
+
+  const parts = [
+    details.plannedValue !== null
+      ? `План: ${formatExerciseValue(details.plannedValue, details.unit)}`
+      : null,
+    details.useSets && details.plannedSets !== null
+      ? `${details.plannedSets} ${pluralizeRu(
+          details.plannedSets,
+          'подход',
+          'подхода',
+          'подходов',
+        )}`
+      : null,
+  ].filter(Boolean)
+
+  return parts.length ? parts.join(' · ') : null
 }
 
 export function formatMeasurementSummary(
@@ -1435,6 +1625,10 @@ export function getPrimaryActionLabel(
   isDone: boolean,
 ): string {
   if (entry.item.type === 'measurement') {
+    return isDone ? 'Записано' : 'Записать'
+  }
+
+  if (entry.item.type === 'exercise') {
     return isDone ? 'Записано' : 'Записать'
   }
 

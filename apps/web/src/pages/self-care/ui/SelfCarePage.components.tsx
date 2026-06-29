@@ -55,18 +55,24 @@ import {
   buildCreateScheduleRule,
   buildDateTimeInput,
   buildRestartCourseScheduleRule,
+  calculateExerciseTotal,
   canRestartCourse,
   CATEGORY_LABELS,
   CATEGORY_SELECT_OPTIONS,
   COURSE_REPEAT_SELECT_OPTIONS,
   COURSE_SCHEDULE_SELECT_OPTIONS,
   COURSE_TYPE_SELECT_OPTIONS,
+  EXERCISE_METRIC_SELECT_OPTIONS,
   FLEXIBLE_GOAL_REPEAT_SELECT_OPTIONS,
   FLEXIBLE_PERIOD_SELECT_OPTIONS,
   formatCompletionState,
   formatCourseCompletionState,
   formatDate,
   formatEntryDetails,
+  formatExercisePlan,
+  formatExerciseSetsSummary,
+  formatExerciseSummary,
+  formatExerciseValue,
   formatMeasurementSummary,
   formatMeasurementTarget,
   formatMeasurementValue,
@@ -88,7 +94,12 @@ import {
   getEffectiveRitualStepIds,
   getExactScheduleDateLabel,
   getExactScheduleTimeLabel,
+  getExerciseMetricLabel,
+  getExerciseMetricOption,
+  getExerciseMetricValue,
+  getExerciseUnitLabel,
   getInitialEditRepeatMode,
+  getInitialExerciseValue,
   getInitialFlexibleGoalRepeatMode,
   getInitialMeasurementValue,
   getInitialScheduleDate,
@@ -108,6 +119,7 @@ import {
   parseBoundedInteger,
   parseMultilineTitles,
   parseNonnegativeInteger,
+  parseOptionalMeasurementNumber,
   parseOptionalPrice,
   parsePositiveInteger,
   parseRequiredMeasurementNumber,
@@ -196,6 +208,11 @@ const CREATE_TYPE_OPTIONS: ReadonlyArray<{
     description: 'Числовой показатель: вес, пульс, температура, объем.',
     label: 'Измерение',
     value: 'measurement',
+  },
+  {
+    description: 'Фиксировать выполнение, подходы и динамику результата.',
+    label: 'Упражнение',
+    value: 'exercise',
   },
 ]
 
@@ -826,6 +843,9 @@ export function SelfCareHistoryTab({
                     completion.measurementValue,
                     completion.measurementUnit,
                   )}
+                  {formatExerciseSetsSummary(completion)
+                    ? `, ${formatExerciseSetsSummary(completion)}`
+                    : ''}
                 </p>
               ) : null}
               {formatStateCompletionSummary(completion) ? (
@@ -928,6 +948,8 @@ function SelfCareItemCard({
   const detailsLabel = formatEntryDetails(entry)
   const measurementLabel = formatMeasurementSummary(entry)
   const measurementTargetLabel = formatMeasurementTarget(entry)
+  const exerciseLabel = formatExerciseSummary(entry)
+  const exercisePlanLabel = formatExercisePlan(entry)
   const stateLabel = formatStateSummary(entry)
   const completionLabel =
     entry.item.type === 'course'
@@ -1083,6 +1105,12 @@ function SelfCareItemCard({
           ) : null}
           {measurementTargetLabel ? (
             <p className={styles.cardMeta}>{measurementTargetLabel}</p>
+          ) : null}
+          {exerciseLabel ? (
+            <p className={styles.measurementValue}>{exerciseLabel}</p>
+          ) : null}
+          {exercisePlanLabel ? (
+            <p className={styles.cardMeta}>{exercisePlanLabel}</p>
           ) : null}
           {stateLabel ? (
             <p className={styles.stateValue}>{stateLabel}</p>
@@ -1696,6 +1724,10 @@ function SelfCareCustomCreateForm({
   const [detailsPrice, setDetailsPrice] = useState('')
   const [measurementValueLabel, setMeasurementValueLabel] = useState('Значение')
   const [measurementUnit, setMeasurementUnit] = useState('')
+  const [exerciseMetricValue, setExerciseMetricValue] = useState('count:reps')
+  const [exerciseUseSets, setExerciseUseSets] = useState(false)
+  const [exercisePlannedValue, setExercisePlannedValue] = useState('')
+  const [exercisePlannedSets, setExercisePlannedSets] = useState('3')
   const [stepsText, setStepsText] = useState('')
   const selectedType = CREATE_TYPE_OPTIONS.find(
     (option) => option.value === type,
@@ -1712,6 +1744,10 @@ function SelfCareCustomCreateForm({
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
   const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
+  const exercisePlannedNumber =
+    parseOptionalMeasurementNumber(exercisePlannedValue)
+  const exercisePlannedSetsNumber = parsePositiveInteger(exercisePlannedSets)
+  const exerciseMetric = getExerciseMetricOption(exerciseMetricValue)
   const preferredTimeOfDay =
     showPreferredTimePreference && preferredTimePreference !== 'exact'
       ? preferredTimePreference
@@ -1744,6 +1780,9 @@ function SelfCareCustomCreateForm({
     (type !== 'course' ||
       courseRepeatMode !== 'cycle' ||
       courseBreakDaysNumber !== null) &&
+    (type !== 'exercise' ||
+      !exerciseUseSets ||
+      Boolean(exercisePlannedSetsNumber)) &&
     (!usesExactSchedule || scheduledDate.length > 0) &&
     (!usesExactTimePreference || scheduledTime.length > 0) &&
     (!(usesExactSchedule && showExactScheduleTimeField) ||
@@ -1800,6 +1839,14 @@ function SelfCareCustomCreateForm({
       setRepeatKind('daily')
       setScheduledTime('')
       setMeasurementValueLabel((value) => value || 'Значение')
+    }
+
+    if (nextType === 'exercise') {
+      setCategory('movement')
+      setRepeatKind('daily')
+      setScheduledTime('')
+      setExerciseMetricValue('count:reps')
+      setExercisePlannedSets('3')
     }
   }
 
@@ -1898,6 +1945,19 @@ function SelfCareCustomCreateForm({
             isActive: true,
             isArchived: false,
             isPrivate: true,
+            exerciseDetails:
+              type === 'exercise'
+                ? {
+                    metricType: exerciseMetric.metricType,
+                    plannedSets:
+                      exerciseUseSets && exercisePlannedSetsNumber
+                        ? exercisePlannedSetsNumber
+                        : null,
+                    plannedValue: exercisePlannedNumber,
+                    unit: exerciseMetric.unit,
+                    useSets: exerciseUseSets,
+                  }
+                : undefined,
             medicalDetails:
               type === 'medical'
                 ? {
@@ -2234,6 +2294,60 @@ function SelfCareCustomCreateForm({
               onChange={(event) => setMeasurementUnit(event.target.value)}
             />
           </label>
+        </div>
+      ) : null}
+
+      {type === 'exercise' ? (
+        <div className={styles.exerciseFields}>
+          <SelectPicker<string>
+            className={styles.selectField}
+            label="Что отслеживаем"
+            value={exerciseMetricValue}
+            options={EXERCISE_METRIC_SELECT_OPTIONS}
+            onChange={setExerciseMetricValue}
+          />
+
+          <label className={styles.toggleField}>
+            <input
+              type="checkbox"
+              checked={exerciseUseSets}
+              onChange={(event) => setExerciseUseSets(event.target.checked)}
+            />
+            <span>Использовать подходы</span>
+          </label>
+
+          <div className={styles.createFormGrid}>
+            <label className={styles.dateField}>
+              <span>Плановое значение</span>
+              <input
+                type="number"
+                step="any"
+                inputMode="decimal"
+                placeholder="20"
+                value={exercisePlannedValue}
+                onChange={(event) =>
+                  setExercisePlannedValue(event.target.value)
+                }
+              />
+            </label>
+
+            {exerciseUseSets ? (
+              <label className={styles.dateField}>
+                <span>Плановое количество подходов</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  required
+                  value={exercisePlannedSets}
+                  onChange={(event) =>
+                    setExercisePlannedSets(event.target.value)
+                  }
+                />
+              </label>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -2782,10 +2896,29 @@ function SelfCareEditForm({
   const [measurementUnit, setMeasurementUnit] = useState(
     entry.measurement?.unit ?? '',
   )
+  const [exerciseMetricValue, setExerciseMetricValue] = useState(
+    getExerciseMetricValue(
+      entry.exercise?.metricType ?? 'count',
+      entry.exercise?.unit ?? 'reps',
+    ),
+  )
+  const [exerciseUseSets, setExerciseUseSets] = useState(
+    entry.exercise?.useSets ?? false,
+  )
+  const [exercisePlannedValue, setExercisePlannedValue] = useState(
+    formatOptionalNumber(entry.exercise?.plannedValue),
+  )
+  const [exercisePlannedSets, setExercisePlannedSets] = useState(
+    formatOptionalNumber(entry.exercise?.plannedSets ?? 3),
+  )
   const intervalNumber = parsePositiveInteger(intervalValue)
   const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
   const courseTotalNumber = parsePositiveInteger(courseTotalCount)
   const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
+  const exercisePlannedNumber =
+    parseOptionalMeasurementNumber(exercisePlannedValue)
+  const exercisePlannedSetsNumber = parsePositiveInteger(exercisePlannedSets)
+  const exerciseMetric = getExerciseMetricOption(exerciseMetricValue)
   const showPreferredTimePreference = shouldShowPreferredTimePreference(
     entry.item.type,
   )
@@ -2839,6 +2972,9 @@ function SelfCareEditForm({
     (entry.item.type !== 'course' ||
       courseRepeatMode !== 'cycle' ||
       courseBreakDaysNumber !== null) &&
+    (entry.item.type !== 'exercise' ||
+      !exerciseUseSets ||
+      Boolean(exercisePlannedSetsNumber)) &&
     (!usesExactTimePreference || scheduledTime.length > 0) &&
     (!(usesExactSchedule && showExactScheduleTimeField) ||
       reminderOffsetsMinutes.length === 0 ||
@@ -3013,6 +3149,19 @@ function SelfCareEditForm({
             targetMin: null,
             unit: measurementUnit.trim(),
             valueLabel: measurementValueLabel.trim() || 'Значение',
+          }
+        }
+
+        if (entry.item.type === 'exercise') {
+          input.exerciseDetails = {
+            metricType: exerciseMetric.metricType,
+            plannedSets:
+              exerciseUseSets && exercisePlannedSetsNumber
+                ? exercisePlannedSetsNumber
+                : null,
+            plannedValue: exercisePlannedNumber,
+            unit: exerciseMetric.unit,
+            useSets: exerciseUseSets,
           }
         }
 
@@ -3380,6 +3529,59 @@ function SelfCareEditForm({
               onChange={(event) => setMeasurementUnit(event.target.value)}
             />
           </label>
+        </div>
+      ) : null}
+
+      {entry.item.type === 'exercise' ? (
+        <div className={styles.exerciseFields}>
+          <SelectPicker<string>
+            className={styles.selectField}
+            label="Что отслеживаем"
+            value={exerciseMetricValue}
+            options={EXERCISE_METRIC_SELECT_OPTIONS}
+            onChange={setExerciseMetricValue}
+          />
+
+          <label className={styles.toggleField}>
+            <input
+              type="checkbox"
+              checked={exerciseUseSets}
+              onChange={(event) => setExerciseUseSets(event.target.checked)}
+            />
+            <span>Использовать подходы</span>
+          </label>
+
+          <div className={styles.createFormGrid}>
+            <label className={styles.dateField}>
+              <span>Плановое значение</span>
+              <input
+                type="number"
+                step="any"
+                inputMode="decimal"
+                value={exercisePlannedValue}
+                onChange={(event) =>
+                  setExercisePlannedValue(event.target.value)
+                }
+              />
+            </label>
+
+            {exerciseUseSets ? (
+              <label className={styles.dateField}>
+                <span>Плановое количество подходов</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  required
+                  value={exercisePlannedSets}
+                  onChange={(event) =>
+                    setExercisePlannedSets(event.target.value)
+                  }
+                />
+              </label>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
@@ -3966,6 +4168,7 @@ export function SelfCareMeasurementDialog({
               durationMinutes: null,
               energyAfter: null,
               energyBefore: null,
+              exerciseSets: [],
               measurementUnit: unit || null,
               measurementValue: numericValue,
               moodAfter: null,
@@ -4030,6 +4233,284 @@ export function SelfCareMeasurementDialog({
     </div>,
     document.body,
   )
+}
+
+type ExerciseSetDraft = {
+  index: number
+  value: string
+}
+
+export function SelfCareExerciseDialog({
+  entry,
+  errorMessage,
+  isBusy,
+  onClose,
+  onSubmit,
+}: {
+  entry: SelfCareTodayItem
+  errorMessage: string | null
+  isBusy: boolean
+  onClose: () => void
+  onSubmit: (input: SelfCareCompletionInput) => void
+}) {
+  const exercise = entry.exercise
+  const unit = exercise?.unit ?? 'reps'
+  const metricType = exercise?.metricType ?? 'count'
+  const useSets = exercise?.useSets ?? false
+  const [value, setValue] = useState(() => getInitialExerciseValue(entry))
+  const [sets, setSets] = useState<ExerciseSetDraft[]>(() =>
+    getInitialExerciseSetDrafts(entry),
+  )
+  const [note, setNote] = useState('')
+  const numericValue = parseRequiredMeasurementNumber(value)
+  const parsedSets = sets
+    .map((set) => ({
+      index: set.index,
+      value: parseRequiredMeasurementNumber(set.value),
+    }))
+    .filter(
+      (set): set is { index: number; value: number } => set.value !== null,
+    )
+  const totalValue = useSets
+    ? calculateExerciseTotal(metricType, parsedSets)
+    : numericValue
+  const canSaveProgress = useSets && parsedSets.length > 0
+  const canFinish = totalValue !== null
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  function updateSetValue(index: number, nextValue: string): void {
+    setSets((current) =>
+      current.map((set) =>
+        set.index === index ? { ...set, value: nextValue } : set,
+      ),
+    )
+  }
+
+  function addSet(): void {
+    setSets((current) => [
+      ...current,
+      { index: (current.at(-1)?.index ?? 0) + 1, value: '' },
+    ])
+  }
+
+  function removeSet(index: number): void {
+    setSets((current) =>
+      current.length <= 1
+        ? current
+        : current.filter((set) => set.index !== index),
+    )
+  }
+
+  function submitExercise(status: 'done' | 'partial'): void {
+    if (totalValue === null) {
+      return
+    }
+
+    onSubmit({
+      alternativeTitle: null,
+      completedVariant: status === 'done' ? 'full' : null,
+      durationMinutes: null,
+      energyAfter: null,
+      energyBefore: null,
+      exerciseSets: useSets ? parsedSets : [],
+      measurementUnit: unit,
+      measurementValue: totalValue,
+      moodAfter: null,
+      moodBefore: null,
+      note,
+      status,
+    })
+  }
+
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className={styles.modalOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="self-care-exercise-title"
+    >
+      <button
+        className={styles.backdropButton}
+        type="button"
+        tabIndex={-1}
+        aria-label="Закрыть ввод упражнения"
+        onClick={onClose}
+      />
+
+      <section className={styles.modalPanel}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 id="self-care-exercise-title">Записать упражнение</h2>
+            <p>{entry.item.title}</p>
+          </div>
+          <button
+            className={styles.closeButton}
+            type="button"
+            aria-label="Закрыть ввод упражнения"
+            onClick={onClose}
+          >
+            <CloseIcon size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <form
+          className={styles.scheduleForm}
+          onSubmit={(event) => {
+            event.preventDefault()
+
+            if (!canFinish) {
+              return
+            }
+
+            submitExercise('done')
+          }}
+        >
+          <div className={styles.scheduleTarget}>
+            <strong>{getExerciseMetricLabel(metricType)}</strong>
+            <span>{formatExercisePlan(entry) ?? 'Без заданного плана'}</span>
+          </div>
+
+          {useSets ? (
+            <div className={styles.exerciseSetList}>
+              {sets.map((set, index) => (
+                <div key={set.index} className={styles.exerciseSetRow}>
+                  <label className={styles.dateField}>
+                    <span>Подход {index + 1}</span>
+                    <input
+                      type="number"
+                      step="any"
+                      inputMode="decimal"
+                      autoFocus={index === 0}
+                      value={set.value}
+                      onChange={(event) =>
+                        updateSetValue(set.index, event.target.value)
+                      }
+                    />
+                  </label>
+                  <button
+                    className={styles.softButton}
+                    type="button"
+                    disabled={isBusy || sets.length <= 1}
+                    onClick={() => removeSet(set.index)}
+                  >
+                    Убрать
+                  </button>
+                </div>
+              ))}
+              <button
+                className={styles.softButton}
+                type="button"
+                disabled={isBusy}
+                onClick={addSet}
+              >
+                Добавить подход
+              </button>
+            </div>
+          ) : (
+            <label className={styles.dateField}>
+              <span>
+                {`${getExerciseMetricLabel(metricType)}, ${getExerciseUnitLabel(
+                  unit,
+                )}`}
+              </span>
+              <input
+                type="number"
+                step="any"
+                inputMode="decimal"
+                autoFocus
+                required
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+              />
+            </label>
+          )}
+
+          {totalValue !== null ? (
+            <div className={styles.scheduleTarget}>
+              <strong>Итог</strong>
+              <span>{formatExerciseValue(totalValue, unit)}</span>
+            </div>
+          ) : null}
+
+          <label className={styles.dateField}>
+            <span>Комментарий</span>
+            <textarea
+              rows={3}
+              maxLength={1200}
+              placeholder="Можно оставить пустым"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+
+          {errorMessage ? (
+            <p className={styles.errorText}>{errorMessage}</p>
+          ) : null}
+
+          <div className={styles.modalActions}>
+            <button
+              className={styles.softButton}
+              type="button"
+              disabled={isBusy}
+              onClick={onClose}
+            >
+              Отмена
+            </button>
+            {useSets ? (
+              <button
+                className={styles.softButton}
+                type="button"
+                disabled={isBusy || !canSaveProgress}
+                onClick={() => submitExercise('partial')}
+              >
+                Сохранить прогресс
+              </button>
+            ) : null}
+            <button
+              className={styles.doneButton}
+              type="submit"
+              disabled={isBusy || !canFinish}
+            >
+              {useSets ? 'Завершить' : 'Сохранить'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function getInitialExerciseSetDrafts(
+  entry: SelfCareTodayItem,
+): ExerciseSetDraft[] {
+  const completion = entry.lastExercise ?? entry.completion
+  if (completion?.exerciseSets.length) {
+    return completion.exerciseSets.map((set) => ({
+      index: set.index,
+      value: formatOptionalNumber(set.value),
+    }))
+  }
+
+  const count = entry.exercise?.plannedSets ?? 3
+  return Array.from({ length: Math.max(1, count) }, (_, index) => ({
+    index: index + 1,
+    value: '',
+  }))
 }
 
 function ChecklistPreview({

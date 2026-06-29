@@ -318,8 +318,9 @@ describe('self-care schedule projection helpers', () => {
     const latestByItemId = getLatestProgressCompletionByItemId(
       createHistory({ completions: [skipped, older, latest] }),
     )
+    const measurementItem = createItem({ type: 'measurement' })
     const merged = mergeLatestProgressCompletion(
-      createTodayEntry(),
+      createTodayEntry({ item: measurementItem }),
       latestByItemId.get('item-1') ?? null,
     )
 
@@ -329,6 +330,7 @@ describe('self-care schedule projection helpers', () => {
     expect(
       mergeLatestProgressCompletion(
         createTodayEntry({
+          item: measurementItem,
           lastMeasurement: older,
         }),
         createCompletion({ measurementValue: null }),
@@ -467,6 +469,42 @@ describe('self-care schedule projection helpers', () => {
     expect(
       isEntryDoneToday(
         createTodayEntry({ completion: doneCompletion }),
+        '2026-06-20',
+      ),
+    ).toBe(true)
+    expect(
+      isEntryDoneToday(
+        createTodayEntry({
+          completion: createCompletion({
+            measurementValue: 10,
+            status: 'partial',
+          }),
+          item: createItem({ type: 'exercise' }),
+        }),
+        '2026-06-20',
+      ),
+    ).toBe(false)
+    expect(
+      shouldShowTodayEntry(
+        createTodayEntry({
+          completion: createCompletion({
+            measurementValue: 10,
+            status: 'partial',
+          }),
+          item: createItem({ type: 'exercise' }),
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      shouldShowAvailableTodayEntry(
+        createTodayEntry({
+          completion: createCompletion({
+            measurementValue: 10,
+            status: 'partial',
+          }),
+          item: createItem({ type: 'exercise' }),
+          scheduleRule: null,
+        }),
         '2026-06-20',
       ),
     ).toBe(true)
@@ -705,6 +743,7 @@ function createCompletion(
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
+    exerciseSets: [],
     id: 'completion-1',
     itemId: 'item-1',
     measurementUnit: null,
@@ -843,8 +882,10 @@ function createTodayEntry(
     appointment: null,
     completion: null,
     courseDetails: null,
+    exercise: null,
     flexibleProgress: null,
     item,
+    lastExercise: null,
     lastMeasurement: null,
     measurement: null,
     occurrence: null,
@@ -863,6 +904,7 @@ function createList(
     alternatives: [],
     appointmentDetails: [],
     courseDetails: [],
+    exerciseDetails: [],
     items: [],
     medicalDetails: [],
     measurementDetails: [],

@@ -2,6 +2,7 @@ import type {
   SelfCareAppointmentDetails,
   SelfCareCourseDetails,
   SelfCareDailyState,
+  SelfCareExerciseDetails,
   SelfCareItemAlternative,
   SelfCareMeasurementDetails,
   SelfCareMedicalDetails,
@@ -47,6 +48,9 @@ export type OccurrenceRow = Selectable<
 >
 export type CompletionRow = Selectable<
   DatabaseSchema['app.self_care_completions']
+>
+export type ExerciseRow = Selectable<
+  DatabaseSchema['app.self_care_exercise_details']
 >
 export type StepRow = Selectable<DatabaseSchema['app.self_care_ritual_steps']>
 export type StepCompletionRow = Selectable<
@@ -190,6 +194,10 @@ export function mapCompletionRow(
     durationMinutes: row.duration_minutes,
     energyAfter: row.energy_after,
     energyBefore: row.energy_before,
+    exerciseSets: parseJsonArray<{ index: number; value: number }>(
+      row.exercise_sets,
+      [],
+    ),
     id: row.id,
     itemId: row.item_id,
     measurementUnit: row.measurement_unit,
@@ -308,6 +316,20 @@ export function mapMeasurementRow(
     unit: row.unit,
     updatedAt: serializeTimestamp(row.updated_at),
     valueLabel: row.value_label,
+  }
+}
+
+export function mapExerciseRow(row: ExerciseRow): SelfCareExerciseDetails {
+  return {
+    createdAt: serializeTimestamp(row.created_at),
+    id: row.id,
+    itemId: row.item_id,
+    metricType: row.metric_type,
+    plannedSets: row.planned_sets,
+    plannedValue: row.planned_value === null ? null : Number(row.planned_value),
+    unit: row.unit,
+    updatedAt: serializeTimestamp(row.updated_at),
+    useSets: row.use_sets,
   }
 }
 
@@ -559,6 +581,23 @@ export function assertMeasurementCompletionInput(
       400,
       'self_care_measurement_value_required',
       'Measurement value is required.',
+    )
+  }
+}
+
+export function assertExerciseCompletionInput(
+  item: StoredSelfCareItemRecord,
+  input: CompleteSelfCareItemNowCommand['input'],
+): void {
+  if (item.type !== 'exercise') {
+    return
+  }
+
+  if (input.measurementValue === null || input.measurementValue === undefined) {
+    throw new HttpError(
+      400,
+      'self_care_exercise_value_required',
+      'Exercise value is required.',
     )
   }
 }

@@ -1243,6 +1243,24 @@
   padding: 0 0.72rem 0.72rem;
 }
 
+.exerciseFields,
+.exerciseSetList {
+  display: grid;
+  gap: 0.56rem;
+}
+
+.exerciseSetRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.48rem;
+  align-items: end;
+}
+
+.exerciseSetRow .softButton {
+  min-height: 2.55rem;
+  white-space: nowrap;
+}
+
 .scheduleTarget {
   display: grid;
   gap: 0.22rem;
@@ -1868,6 +1886,10 @@ button:disabled {
   }
 
   .quickDateGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .exerciseSetRow {
     grid-template-columns: 1fr;
   }
 

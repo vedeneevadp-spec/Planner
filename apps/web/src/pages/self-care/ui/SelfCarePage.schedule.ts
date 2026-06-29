@@ -123,8 +123,12 @@ export function buildItemEntry(
     completion: null,
     courseDetails:
       list.courseDetails.find((details) => details.itemId === item.id) ?? null,
+    exercise:
+      list.exerciseDetails.find((details) => details.itemId === item.id) ??
+      null,
     flexibleProgress: null,
     item,
+    lastExercise: null,
     lastMeasurement: null,
     measurement:
       list.measurementDetails.find((details) => details.itemId === item.id) ??
@@ -249,6 +253,10 @@ export function shouldShowAvailableTodayEntry(
     return false
   }
 
+  if (isExercisePartialToday(entry, todayKey)) {
+    return true
+  }
+
   return isScheduleRuleAvailableToday(
     entry.scheduleRule,
     entry.completion,
@@ -339,8 +347,14 @@ export function mergeLatestProgressCompletion(
   return {
     ...entry,
     completion: entry.completion ?? latestCompletion,
+    lastExercise:
+      latestCompletion.measurementValue === null ||
+      entry.item.type !== 'exercise'
+        ? entry.lastExercise
+        : latestCompletion,
     lastMeasurement:
-      latestCompletion.measurementValue === null
+      latestCompletion.measurementValue === null ||
+      entry.item.type !== 'measurement'
         ? entry.lastMeasurement
         : latestCompletion,
   }
@@ -427,7 +441,7 @@ export function shouldShowTodayEntry(entry: SelfCareTodayItem): boolean {
     return false
   }
 
-  if (entry.completion) {
+  if (entry.completion && !isExercisePartialToday(entry)) {
     return false
   }
 
@@ -532,11 +546,37 @@ export function isEntryDoneToday(
     )
   }
 
+  if (entry.item.type === 'exercise') {
+    if (
+      entry.completion?.status !== 'partial' &&
+      isCompletionDoneToday(entry.completion, todayKey)
+    ) {
+      return true
+    }
+
+    return Boolean(
+      entry.occurrence?.status === 'done' &&
+      (entry.occurrence.completedAt?.slice(0, 10) ??
+        entry.occurrence.scheduledFor) === todayKey,
+    )
+  }
+
   if (isCompletionDoneToday(entry.completion, todayKey)) {
     return true
   }
 
   return isOccurrenceDoneToday(entry.occurrence, todayKey)
+}
+
+function isExercisePartialToday(
+  entry: SelfCareTodayItem,
+  todayKey = entry.completion?.completedAt.slice(0, 10),
+): boolean {
+  return Boolean(
+    entry.item.type === 'exercise' &&
+    entry.completion?.status === 'partial' &&
+    entry.completion.completedAt.slice(0, 10) === todayKey,
+  )
 }
 
 export function isCompletionDoneToday(

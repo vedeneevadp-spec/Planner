@@ -14,6 +14,7 @@ import {
   SelfCareCourseRestartDialog,
   SelfCareCreateDialog,
   SelfCareEditDialog,
+  SelfCareExerciseDialog,
   SelfCareHistoryTab,
   SelfCareMeasurementDialog,
   SelfCarePlanTab,
@@ -111,6 +112,8 @@ export function SelfCarePage() {
   const [restartCourseDialogEntry, setRestartCourseDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
   const [measurementDialogEntry, setMeasurementDialogEntry] =
+    useState<SelfCareTodayItem | null>(null)
+  const [exerciseDialogEntry, setExerciseDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
   const [scheduleDate, setScheduleDate] = useState(todayKey)
   const [hiddenScheduledItemIds, setHiddenScheduledItemIds] = useState<
@@ -368,6 +371,11 @@ export function SelfCarePage() {
     setMeasurementDialogEntry(null)
   }
 
+  function closeExerciseDialog(): void {
+    setFormError(null)
+    setExerciseDialogEntry(null)
+  }
+
   function handleScheduleSubmit(input: SelfCareItemScheduleInput): void {
     if (!scheduleDialogEntry) {
       return
@@ -474,6 +482,36 @@ export function SelfCarePage() {
       })
   }
 
+  function handleExerciseSubmit(input: SelfCareCompletionInput): void {
+    if (!exerciseDialogEntry) {
+      return
+    }
+
+    const entry = exerciseDialogEntry
+    setFormError(null)
+
+    void (async () => {
+      if (entry.occurrence && input.status !== 'partial') {
+        await completeOccurrenceMutation.mutateAsync({
+          input: { ...input, steps: [] },
+          occurrenceId: entry.occurrence.id,
+        })
+        return
+      }
+
+      await completeItemNowMutation.mutateAsync({
+        input: { ...input, steps: [] },
+        itemId: entry.item.id,
+      })
+    })()
+      .then(() => {
+        closeExerciseDialog()
+      })
+      .catch((error: unknown) => {
+        setFormError(getSelfCareErrorMessage(error))
+      })
+  }
+
   function handleToggleRitualStep(
     entry: SelfCareTodayItem,
     stepId: string,
@@ -526,6 +564,11 @@ export function SelfCarePage() {
 
     if (entry.item.type === 'measurement') {
       setMeasurementDialogEntry(entry)
+      return
+    }
+
+    if (entry.item.type === 'exercise') {
+      setExerciseDialogEntry(entry)
       return
     }
 
@@ -717,6 +760,19 @@ export function SelfCarePage() {
           }
           onClose={closeMeasurementDialog}
           onSubmit={handleMeasurementSubmit}
+        />
+      ) : null}
+
+      {exerciseDialogEntry ? (
+        <SelfCareExerciseDialog
+          entry={exerciseDialogEntry}
+          errorMessage={formError}
+          isBusy={
+            completeOccurrenceMutation.isPending ||
+            completeItemNowMutation.isPending
+          }
+          onClose={closeExerciseDialog}
+          onSubmit={handleExerciseSubmit}
         />
       ) : null}
 

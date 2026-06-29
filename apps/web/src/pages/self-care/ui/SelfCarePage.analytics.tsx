@@ -3,11 +3,14 @@ import { cx } from '@/shared/lib/classnames'
 
 import {
   buildVisibleCategoryDistribution,
+  formatExerciseDelta,
+  formatExerciseValue,
   formatMeasurementDelta,
   formatMeasurementValue,
   formatMoney,
   formatMonthKey,
   formatShortDate,
+  getExerciseMetricLabel,
   getPercent,
   VISIBLE_CATEGORY_LABELS,
 } from './SelfCarePage.helpers'
@@ -38,6 +41,7 @@ export function SelfCareAnalyticsTab({
     .sort((left, right) => right[0].localeCompare(left[0]))
     .slice(0, 6)
   const measurementTrends = analytics?.measurementTrends ?? []
+  const exerciseTrends = analytics?.exerciseTrends ?? []
 
   return (
     <div className={styles.tabPanel}>
@@ -121,6 +125,27 @@ export function SelfCareAnalyticsTab({
             </p>
           )}
         </section>
+
+        <section
+          className={cx(
+            styles.panel,
+            styles.analyticsPanel,
+            styles.analyticsWidePanel,
+          )}
+        >
+          <h3>Динамика упражнений</h3>
+          {exerciseTrends.length ? (
+            <div className={styles.measurementTrendList}>
+              {exerciseTrends.map((trend) => (
+                <ExerciseTrendRow key={trend.itemId} trend={trend} />
+              ))}
+            </div>
+          ) : (
+            <p className={styles.mutedText}>
+              Динамика появится после первых отметок упражнений.
+            </p>
+          )}
+        </section>
       </div>
     </div>
   )
@@ -197,6 +222,51 @@ function MeasurementTrendRow({
           <span key={`${trend.itemId}-${point.completedAt}`}>
             <small>{formatShortDate(point.date)}</small>
             <strong>{formatMeasurementValue(point.value, trend.unit)}</strong>
+          </span>
+        ))}
+      </div>
+    </article>
+  )
+}
+
+function ExerciseTrendRow({
+  trend,
+}: {
+  trend: SelfCareAnalyticsData['exerciseTrends'][number]
+}) {
+  const latest = trend.points[trend.points.length - 1]
+  const previous = trend.points[trend.points.length - 2]
+  const delta =
+    latest && previous
+      ? Number((latest.value - previous.value).toFixed(2))
+      : null
+  const recentPoints = trend.points.slice(-4)
+
+  return (
+    <article className={styles.measurementTrendItem}>
+      <div className={styles.measurementTrendHeader}>
+        <div>
+          <strong>{trend.title}</strong>
+          <span>{getExerciseMetricLabel(trend.metricType)}</span>
+        </div>
+        {latest ? (
+          <strong className={styles.measurementTrendValue}>
+            {formatExerciseValue(latest.value, trend.unit)}
+          </strong>
+        ) : null}
+      </div>
+
+      {delta !== null ? (
+        <p className={styles.measurementTrendDelta}>
+          {formatExerciseDelta(delta, trend.unit)} с прошлого выполнения
+        </p>
+      ) : null}
+
+      <div className={styles.measurementTrendPoints}>
+        {recentPoints.map((point) => (
+          <span key={`${trend.itemId}-${point.completedAt}`}>
+            <small>{formatShortDate(point.date)}</small>
+            <strong>{formatExerciseValue(point.value, trend.unit)}</strong>
           </span>
         ))}
       </div>

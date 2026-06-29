@@ -7,6 +7,7 @@ import type {
   SelfCareAppointmentDetails,
   SelfCareCompletion,
   SelfCareCourseDetails,
+  SelfCareExerciseDetails,
   SelfCareItem,
   SelfCareMeasurementDetails,
   SelfCareOccurrence,
@@ -527,6 +528,87 @@ void test('buildAnalyticsResponse returns measurement trends by item', () => {
       title: 'Вес',
       unit: 'кг',
       valueLabel: 'Вес',
+    },
+  ])
+})
+
+void test('buildAnalyticsResponse returns exercise trends with sets', () => {
+  const exercise = selfCareItem({
+    category: 'movement',
+    id: 'exercise-1',
+    title: 'Приседания',
+    type: 'exercise',
+  })
+
+  const response = buildAnalyticsResponse({
+    from: '2026-06-01',
+    to: '2026-06-30',
+    state: selfCareState({
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-06-29T08:00:00.000Z',
+          exerciseSets: [
+            { index: 1, value: 10 },
+            { index: 2, value: 10 },
+            { index: 3, value: 8 },
+          ],
+          id: 'squat-completion-2',
+          itemId: exercise.id,
+          measurementUnit: 'reps',
+          measurementValue: 28,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-27T08:00:00.000Z',
+          exerciseSets: [
+            { index: 1, value: 8 },
+            { index: 2, value: 8 },
+            { index: 3, value: 8 },
+          ],
+          id: 'squat-completion-1',
+          itemId: exercise.id,
+          measurementUnit: 'reps',
+          measurementValue: 24,
+        }),
+      ],
+      exerciseDetails: [
+        exerciseDetails({
+          itemId: exercise.id,
+          metricType: 'count',
+          unit: 'reps',
+        }),
+      ],
+      items: [exercise],
+    }),
+  })
+
+  assert.deepEqual(response.exerciseTrends, [
+    {
+      itemId: exercise.id,
+      metricType: 'count',
+      points: [
+        {
+          completedAt: '2026-06-27T08:00:00.000Z',
+          date: '2026-06-27',
+          sets: [
+            { index: 1, value: 8 },
+            { index: 2, value: 8 },
+            { index: 3, value: 8 },
+          ],
+          value: 24,
+        },
+        {
+          completedAt: '2026-06-29T08:00:00.000Z',
+          date: '2026-06-29',
+          sets: [
+            { index: 1, value: 10 },
+            { index: 2, value: 10 },
+            { index: 3, value: 8 },
+          ],
+          value: 28,
+        },
+      ],
+      title: 'Приседания',
+      unit: 'reps',
     },
   ])
 })
@@ -1329,6 +1411,13 @@ void test('shouldDeduplicateSelfCareItemCompletion allows repeated flexible-goal
     }),
     true,
   )
+  assert.equal(
+    shouldDeduplicateSelfCareItemCompletion({
+      item: selfCareItem({ type: 'exercise' }),
+      scheduleRule: rule({ repeatKind: 'daily' }),
+    }),
+    false,
+  )
 })
 
 function dates(
@@ -1360,6 +1449,7 @@ function selfCareState(
     completions: [],
     courseDetails: [],
     dailyStates: [],
+    exerciseDetails: [],
     items: [],
     medicalDetails: [],
     measurementDetails: [],
@@ -1413,6 +1503,7 @@ function selfCareCompletion(
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
+    exerciseSets: [],
     id: 'completion-1',
     itemId: 'self-care-1',
     measurementUnit: null,
@@ -1522,6 +1613,23 @@ function measurementDetails(
     unit: '',
     updatedAt: NOW,
     valueLabel: 'Значение',
+    ...overrides,
+  }
+}
+
+function exerciseDetails(
+  overrides: Partial<SelfCareExerciseDetails> = {},
+): SelfCareExerciseDetails {
+  return {
+    createdAt: NOW,
+    id: 'exercise-details-1',
+    itemId: 'self-care-1',
+    metricType: 'count',
+    plannedSets: null,
+    plannedValue: null,
+    unit: 'reps',
+    updatedAt: NOW,
+    useSets: false,
     ...overrides,
   }
 }

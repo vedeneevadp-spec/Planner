@@ -36,7 +36,21 @@ export const selfCareItemTypeSchema = z.enum([
   'course',
   'mood_check',
   'measurement',
+  'exercise',
   'rest_action',
+])
+export const selfCareExerciseMetricTypeSchema = z.enum([
+  'weight',
+  'time',
+  'count',
+  'distance',
+])
+export const selfCareExerciseUnitSchema = z.enum([
+  'kg',
+  'min',
+  'reps',
+  'm',
+  'km',
 ])
 export const selfCareCategorySchema = z.enum([
   'health',
@@ -224,6 +238,15 @@ export const selfCareCompletionSchema = z.object({
   durationMinutes: z.number().int().positive().nullable(),
   energyAfter: optionalRatingSchema.nullable().optional().default(null),
   energyBefore: optionalRatingSchema.nullable().optional().default(null),
+  exerciseSets: z
+    .array(
+      z.object({
+        index: z.number().int().positive(),
+        value: z.number().finite(),
+      }),
+    )
+    .optional()
+    .default([]),
   id: z.string(),
   itemId: z.string(),
   measurementUnit: z.string().nullable(),
@@ -344,6 +367,18 @@ export const selfCareMeasurementDetailsSchema = z.object({
   valueLabel: z.string(),
 })
 
+export const selfCareExerciseDetailsSchema = z.object({
+  createdAt: z.string(),
+  id: z.string(),
+  itemId: z.string(),
+  metricType: selfCareExerciseMetricTypeSchema,
+  plannedSets: z.number().int().positive().nullable(),
+  plannedValue: z.number().nullable(),
+  unit: selfCareExerciseUnitSchema,
+  updatedAt: z.string(),
+  useSets: z.boolean(),
+})
+
 export const selfCareDailyStateSchema = z.object({
   createdAt: z.string(),
   date: z.string(),
@@ -412,6 +447,7 @@ export const selfCareListResponseSchema = z.object({
   alternatives: z.array(selfCareItemAlternativeSchema),
   appointmentDetails: z.array(selfCareAppointmentDetailsSchema),
   courseDetails: z.array(selfCareCourseDetailsSchema),
+  exerciseDetails: z.array(selfCareExerciseDetailsSchema),
   items: z.array(selfCareItemSchema),
   medicalDetails: z.array(selfCareMedicalDetailsSchema),
   measurementDetails: z.array(selfCareMeasurementDetailsSchema),
@@ -432,8 +468,10 @@ export const selfCareTodayItemSchema = z.object({
   appointment: selfCareAppointmentDetailsSchema.nullable(),
   completion: selfCareCompletionSchema.nullable(),
   courseDetails: selfCareCourseDetailsSchema.nullable(),
+  exercise: selfCareExerciseDetailsSchema.nullable(),
   flexibleProgress: selfCareFlexibleGoalProgressSchema.nullable(),
   item: selfCareItemSchema,
+  lastExercise: selfCareCompletionSchema.nullable(),
   lastMeasurement: selfCareCompletionSchema.nullable(),
   measurement: selfCareMeasurementDetailsSchema.nullable(),
   occurrence: selfCareOccurrenceSchema.nullable(),
@@ -485,6 +523,26 @@ export const selfCareMeasurementTrendSchema = z.object({
   valueLabel: z.string(),
 })
 
+export const selfCareExerciseTrendPointSchema = z.object({
+  completedAt: z.string(),
+  date: z.string(),
+  sets: z.array(
+    z.object({
+      index: z.number().int().positive(),
+      value: z.number().finite(),
+    }),
+  ),
+  value: z.number(),
+})
+
+export const selfCareExerciseTrendSchema = z.object({
+  itemId: z.string(),
+  metricType: selfCareExerciseMetricTypeSchema,
+  points: z.array(selfCareExerciseTrendPointSchema),
+  title: z.string(),
+  unit: selfCareExerciseUnitSchema,
+})
+
 export const selfCareAnalyticsResponseSchema = z.object({
   balanceByCategory: z.record(
     selfCareCategorySchema,
@@ -492,6 +550,7 @@ export const selfCareAnalyticsResponseSchema = z.object({
   ),
   completionsByDay: z.record(z.string(), z.number().int().nonnegative()),
   courses: z.array(selfCareTodayItemSchema),
+  exerciseTrends: z.array(selfCareExerciseTrendSchema),
   flexibleGoals: z.array(selfCareTodayItemSchema),
   measurementTrends: z.array(selfCareMeasurementTrendSchema),
   medicalUpcoming: z.array(selfCareTodayItemSchema),
@@ -677,6 +736,14 @@ export const selfCareMeasurementDetailsInputSchema = z
     }
   })
 
+export const selfCareExerciseDetailsInputSchema = z.object({
+  metricType: selfCareExerciseMetricTypeSchema,
+  plannedSets: positiveNullableIntegerInput,
+  plannedValue: nullableNumberInput,
+  unit: selfCareExerciseUnitSchema,
+  useSets: z.boolean().optional().default(false),
+})
+
 export const selfCareItemInputObjectSchema = z.object({
   alternatives: z.array(selfCareAlternativeInputSchema).optional().default([]),
   appointmentDetails: selfCareAppointmentDetailsInputSchema.optional(),
@@ -692,6 +759,7 @@ export const selfCareItemInputObjectSchema = z.object({
   isActive: z.boolean().optional().default(true),
   isArchived: z.boolean().optional().default(false),
   isPrivate: z.boolean().optional().default(true),
+  exerciseDetails: selfCareExerciseDetailsInputSchema.optional(),
   medicalDetails: selfCareMedicalDetailsInputSchema.optional(),
   measurementDetails: selfCareMeasurementDetailsInputSchema.optional(),
   migratedFromHabitId: z.string().nullable().optional().default(null),
@@ -766,6 +834,14 @@ export const selfCareItemInputSchema =
         path: ['measurementDetails'],
       })
     }
+
+    if (value.type === 'exercise' && !value.exerciseDetails) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Exercise details are required for exercise items.',
+        path: ['exerciseDetails'],
+      })
+    }
   })
 
 export const selfCareItemUpdateInputSchema = selfCareItemInputObjectSchema
@@ -789,6 +865,15 @@ export const selfCareCompletionInputSchema = z.object({
   durationMinutes: positiveNullableIntegerInput,
   energyAfter: optionalRatingSchema.nullable().optional().default(null),
   energyBefore: optionalRatingSchema.nullable().optional().default(null),
+  exerciseSets: z
+    .array(
+      z.object({
+        index: z.number().int().positive(),
+        value: z.number().finite(),
+      }),
+    )
+    .optional()
+    .default([]),
   measurementUnit: nullableStringInput,
   measurementValue: nullableNumberInput,
   moodAfter: optionalRatingSchema.nullable().optional().default(null),
@@ -909,6 +994,20 @@ export type SelfCareDailyState = z.infer<typeof selfCareDailyStateSchema>
 export type SelfCareDailyStateInput = z.infer<
   typeof selfCareDailyStateInputSchema
 >
+export type SelfCareExerciseDetails = z.infer<
+  typeof selfCareExerciseDetailsSchema
+>
+export type SelfCareExerciseDetailsInput = z.infer<
+  typeof selfCareExerciseDetailsInputSchema
+>
+export type SelfCareExerciseMetricType = z.infer<
+  typeof selfCareExerciseMetricTypeSchema
+>
+export type SelfCareExerciseTrend = z.infer<typeof selfCareExerciseTrendSchema>
+export type SelfCareExerciseTrendPoint = z.infer<
+  typeof selfCareExerciseTrendPointSchema
+>
+export type SelfCareExerciseUnit = z.infer<typeof selfCareExerciseUnitSchema>
 export type SelfCareFlexibleGoalProgress = z.infer<
   typeof selfCareFlexibleGoalProgressSchema
 >

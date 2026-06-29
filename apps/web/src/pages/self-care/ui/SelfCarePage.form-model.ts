@@ -66,7 +66,12 @@ export function getReminderOffsetsFromSelectValue(
 }
 
 export function canUseExactTimePreference(type: SelfCareItemType): boolean {
-  return type === 'course' || type === 'measurement' || type === 'task'
+  return (
+    type === 'course' ||
+    type === 'exercise' ||
+    type === 'measurement' ||
+    type === 'task'
+  )
 }
 
 export function hasStoredExactTimePreference(
@@ -108,7 +113,7 @@ export function shouldShowExactScheduleTimeField(
   type: SelfCareItemType,
   usesExactTimePreference: boolean,
 ): boolean {
-  if (type === 'measurement' || type === 'task') {
+  if (type === 'exercise' || type === 'measurement' || type === 'task') {
     return usesExactTimePreference
   }
 

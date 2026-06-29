@@ -200,6 +200,7 @@ export interface AppSelfCareItemsTable {
     | 'course'
     | 'flexible_goal'
     | 'habit'
+    | 'exercise'
     | 'measurement'
     | 'medical'
     | 'mood_check'
@@ -318,6 +319,11 @@ export interface AppSelfCareCompletionsTable {
   duration_minutes: number | null
   energy_after: number | null
   energy_before: number | null
+  exercise_sets: ColumnType<
+    Array<{ index: number; value: number }>,
+    Array<{ index: number; value: number }> | string,
+    Array<{ index: number; value: number }> | string
+  >
   id: Generated<string>
   item_id: string
   measurement_unit: string | null
@@ -458,6 +464,22 @@ export interface AppSelfCareMeasurementDetailsTable {
   unit: string
   updated_at: Generated<TimestampColumn>
   value_label: string
+}
+
+export interface AppSelfCareExerciseDetailsTable {
+  created_at: Generated<TimestampColumn>
+  id: Generated<string>
+  item_id: string
+  metric_type: 'count' | 'distance' | 'time' | 'weight'
+  planned_sets: number | null
+  planned_value: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
+  unit: 'kg' | 'km' | 'm' | 'min' | 'reps'
+  updated_at: Generated<TimestampColumn>
+  use_sets: boolean
 }
 
 export interface AppSelfCareDailyStatesTable {
@@ -989,6 +1011,7 @@ export interface DatabaseSchema {
   'app.self_care_completions': AppSelfCareCompletionsTable
   'app.self_care_course_details': AppSelfCareCourseDetailsTable
   'app.self_care_daily_states': AppSelfCareDailyStatesTable
+  'app.self_care_exercise_details': AppSelfCareExerciseDetailsTable
   'app.self_care_item_alternatives': AppSelfCareItemAlternativesTable
   'app.self_care_items': AppSelfCareItemsTable
   'app.self_care_medical_details': AppSelfCareMedicalDetailsTable

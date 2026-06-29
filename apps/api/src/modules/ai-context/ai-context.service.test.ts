@@ -1329,6 +1329,7 @@ function createSelfCareAnalyticsResponse(
     },
     completionsByDay: {},
     courses: [],
+    exerciseTrends: [],
     flexibleGoals: [],
     measurementTrends: [],
     medicalUpcoming: [],

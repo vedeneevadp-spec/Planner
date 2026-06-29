@@ -25,6 +25,9 @@ import {
   formatCourseCompletionState,
   formatDate,
   formatEntryDetails,
+  formatExercisePlan,
+  formatExerciseSetsSummary,
+  formatExerciseValue,
   formatMeasurementDelta,
   formatMeasurementSummary,
   formatMeasurementTarget,
@@ -375,6 +378,39 @@ describe('SelfCarePage helpers', () => {
     expect(formatMeasurementDelta(1.5, 'кг')).toBe('+1,5 кг')
     expect(formatMeasurementDelta(0, 'кг')).toBe('без изменений')
     expect(formatMeasurementValue(1000.5, null)).toBe('1 000,5')
+    expect(formatExerciseValue(28, 'reps')).toBe('28 раз')
+    expect(formatExerciseValue(5, 'min')).toBe('5 мин')
+    expect(
+      formatExerciseSetsSummary(
+        createCompletion({ exerciseSets: [{ index: 1, value: 10 }] }),
+      ),
+    ).toBe('1 подход')
+    expect(
+      formatExerciseSetsSummary(
+        createCompletion({
+          exerciseSets: [
+            { index: 1, value: 10 },
+            { index: 2, value: 10 },
+            { index: 3, value: 8 },
+            { index: 4, value: 8 },
+            { index: 5, value: 6 },
+          ],
+        }),
+      ),
+    ).toBe('5 подходов')
+    expect(
+      formatExercisePlan(
+        createTodayEntry({
+          exercise: createExerciseDetails({
+            plannedSets: 3,
+            plannedValue: 20,
+            unit: 'reps',
+            useSets: true,
+          }),
+          item: createItem({ type: 'exercise' }),
+        }),
+      ),
+    ).toBe('План: 20 раз · 3 подхода')
     expect(formatMoney(1200, 'RUB')).toContain('1 200')
     expect(formatCourseCompletionState(courseEntry, '2026-06-22')).toBe(
       'Сессия засчитана сегодня',
@@ -707,6 +743,7 @@ function createCompletion(
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
+    exerciseSets: [],
     id: 'completion-1',
     itemId: 'item-1',
     measurementUnit: null,
@@ -797,6 +834,23 @@ function createMeasurementDetails(
   }
 }
 
+function createExerciseDetails(
+  overrides: Partial<NonNullable<SelfCareTodayItem['exercise']>> = {},
+): NonNullable<SelfCareTodayItem['exercise']> {
+  return {
+    createdAt: '2026-06-01T00:00:00.000Z',
+    id: 'exercise-1',
+    itemId: 'item-1',
+    metricType: 'count',
+    plannedSets: null,
+    plannedValue: null,
+    unit: 'reps',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+    useSets: false,
+    ...overrides,
+  }
+}
+
 function createAppointmentDetails(
   overrides: Partial<NonNullable<SelfCareTodayItem['appointment']>> = {},
 ): NonNullable<SelfCareTodayItem['appointment']> {
@@ -845,8 +899,10 @@ function createTodayEntry(
     appointment: null,
     completion: null,
     courseDetails: null,
+    exercise: null,
     flexibleProgress: null,
     item,
+    lastExercise: null,
     lastMeasurement: null,
     measurement: null,
     occurrence: null,
@@ -865,6 +921,7 @@ function createList(
     alternatives: [],
     appointmentDetails: [],
     courseDetails: [],
+    exerciseDetails: [],
     items: [],
     medicalDetails: [],
     measurementDetails: [],
