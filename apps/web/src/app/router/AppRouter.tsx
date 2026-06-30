@@ -8,12 +8,14 @@ import {
 } from 'react-router-dom'
 
 import { usePlannerSession } from '@/features/session'
-import { TodayPage } from '@/pages/today'
 import {
   type AppRouteId,
   getVisibleAppRouteDefinitions,
 } from '@/shared/config/routes'
 
+const TodayPage = lazy(() =>
+  import('@/pages/today').then((module) => ({ default: module.TodayPage })),
+)
 const AdminPage = lazy(() =>
   import('@/pages/admin').then((module) => ({ default: module.AdminPage })),
 )

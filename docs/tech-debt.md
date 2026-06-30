@@ -531,6 +531,13 @@ JS/CSS для `self-care`, `calendar`, `VoiceAssistant`, JS для
 `ANDROID_RELEASE_AAB_MAX_MB`; текущие локальные артефакты проходят с debug APK
 `153.1 MB`, release APK `55.2 MB`, release AAB `71.4 MB`.
 
+Статус 2026-06-30: initial JS budget получил рабочий запас. `/today` переведен
+на lazy route, `entities/task` разделен на model-only public API и отдельный
+`@/entities/task/ui`, а `TaskNextStageDialog` в `PlannerProvider` загружается
+лениво. Production build теперь проходит с entry JS `241.4 KB` и initial JS
+`811.6 KB`; budget tightened до `WEB_BUNDLE_ENTRY_JS_MAX_KB=250` и
+`WEB_BUNDLE_INITIAL_JS_MAX_KB=835`.
+
 ### Нужна лучшая диагностика refresh/restore
 
 Проблема: когда мобильное приложение показывает "connected but empty", сейчас

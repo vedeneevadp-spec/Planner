@@ -25,9 +25,9 @@ const publicIconsDirectory = path.join(
 
 const initialJsMaxBytes = readBudgetKilobytes(
   'WEB_BUNDLE_INITIAL_JS_MAX_KB',
-  902,
+  835,
 )
-const entryJsMaxBytes = readBudgetKilobytes('WEB_BUNDLE_ENTRY_JS_MAX_KB', 260)
+const entryJsMaxBytes = readBudgetKilobytes('WEB_BUNDLE_ENTRY_JS_MAX_KB', 250)
 const routeAssetBudgets = [
   {
     defaultMaxKb: 125,

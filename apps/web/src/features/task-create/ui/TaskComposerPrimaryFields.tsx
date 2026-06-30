@@ -1,6 +1,6 @@
 import type { RefObject } from 'react'
 
-import { TaskImportanceToggle } from '@/entities/task'
+import { TaskImportanceToggle } from '@/entities/task/ui'
 import { cx } from '@/shared/lib/classnames'
 
 import styles from './TaskComposer.module.css'

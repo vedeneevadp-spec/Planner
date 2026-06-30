@@ -43,6 +43,7 @@ const publicApiModules = [
   'entities/habit',
   'entities/sphere',
   'entities/task',
+  'entities/task/ui',
   'entities/task-template',
   'shared/lib/api-client',
   'shared/lib/classnames',
@@ -70,16 +71,37 @@ const publicSliceModules = publicApiModules.filter((modulePath) => {
 })
 
 function createPublicApiPatterns() {
-  const publicApiPatterns = publicApiModules.flatMap((modulePath) => [
-    {
-      group: [`@/${modulePath}/*`],
-      message: `Import from the public API "@/` + `${modulePath}" instead.`,
-    },
-    {
-      regex: `^(?:\\.\\.?/)+(?:${modulePath})(?:/.+)$`,
-      message: `Import from the public API "@/` + `${modulePath}" instead.`,
-    },
-  ])
+  const publicApiPatterns = publicApiModules.flatMap((modulePath) => {
+    const childPublicApiSegments = getChildPublicApiSegments(modulePath)
+
+    if (childPublicApiSegments.length === 0) {
+      return [
+        {
+          group: [`@/${modulePath}/*`],
+          message: `Import from the public API "@/` + `${modulePath}" instead.`,
+        },
+        {
+          regex: `^(?:\\.\\.?/)+(?:${modulePath})(?:/.+)$`,
+          message: `Import from the public API "@/` + `${modulePath}" instead.`,
+        },
+      ]
+    }
+
+    const allowedChildrenPattern = childPublicApiSegments
+      .map(escapeRegExp)
+      .join('|')
+
+    return [
+      {
+        regex: `^@/${modulePath}/(?!(?:${allowedChildrenPattern})(?:$|/)).+`,
+        message: `Import from the public API "@/` + `${modulePath}" instead.`,
+      },
+      {
+        regex: `^(?:\\.\\.?/)+(?:${modulePath})/(?!(?:${allowedChildrenPattern})(?:$|/)).+`,
+        message: `Import from the public API "@/` + `${modulePath}" instead.`,
+      },
+    ]
+  })
 
   const siblingSlicePatterns = publicSliceModules.map((modulePath) => {
     const sliceName = modulePath.split('/')[1]
@@ -91,6 +113,19 @@ function createPublicApiPatterns() {
   })
 
   return [...publicApiPatterns, ...siblingSlicePatterns]
+}
+
+function getChildPublicApiSegments(modulePath) {
+  const prefix = `${modulePath}/`
+
+  return [
+    ...new Set(
+      publicApiModules
+        .filter((candidate) => candidate.startsWith(prefix))
+        .map((candidate) => candidate.slice(prefix.length).split('/')[0])
+        .filter(Boolean),
+    ),
+  ]
 }
 
 function escapeRegExp(value) {

@@ -20,9 +20,9 @@ import {
 import { SpherePicker } from '@/entities/sphere'
 import {
   buildRoutineTaskFromForm,
-  RoutineTaskFields,
   type RoutineTaskFormState,
 } from '@/entities/task'
+import { RoutineTaskFields } from '@/entities/task/ui'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import {
   getHabitErrorMessage,

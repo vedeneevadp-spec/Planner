@@ -413,6 +413,8 @@ Workspace`: роли, права, жизненный цикл и правила 
   состояния
 - [docs/release-workflow.md](docs/release-workflow.md) - пошаговый workflow от
   разработки до production web/PWA/store release
+- [docs/codex-release-instruction.md](docs/codex-release-instruction.md) -
+  готовая инструкция для Codex: commit, push, deploy, APK и Telegram-отчет
 - [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
   сценарии уточнения и production roadmap голосового помощника
 - [docs/voice/wake-word-provider.md](docs/voice/wake-word-provider.md) -

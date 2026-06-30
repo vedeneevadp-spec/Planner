@@ -12,7 +12,7 @@ import { CalendarDayScheduleDialog } from './CalendarDayScheduleDialog'
 
 const TODAY_KEY = '2026-05-27'
 
-vi.mock('@/entities/task', async (importOriginal) => {
+vi.mock('@/entities/task/ui', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
 
   return {

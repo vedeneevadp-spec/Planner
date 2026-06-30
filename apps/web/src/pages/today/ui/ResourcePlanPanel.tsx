@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
-import { getTaskResource, type Task, TaskResourceMeter } from '@/entities/task'
+import { getTaskResource, type Task } from '@/entities/task'
+import { TaskResourceMeter } from '@/entities/task/ui'
 import { cx } from '@/shared/lib/classnames'
 
 import {

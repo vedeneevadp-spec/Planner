@@ -3,19 +3,21 @@ import { useState } from 'react'
 import type { Sphere } from '@/entities/sphere'
 import { SpherePicker } from '@/entities/sphere'
 import {
-  ResourcePicker,
   type ResourceValue,
-  RoutineTaskFields,
   type RoutineTaskFormState,
-  TaskIconPickerDialog,
-  TaskIconSelectButton,
   type TaskNecessity,
-  TaskNecessityPicker,
-  TaskRecurrenceFields,
   type TaskRecurrenceFormState,
   type TaskReminderOffsetMinutes,
-  TaskReminderPicker,
 } from '@/entities/task'
+import {
+  ResourcePicker,
+  RoutineTaskFields,
+  TaskIconPickerDialog,
+  TaskIconSelectButton,
+  TaskNecessityPicker,
+  TaskRecurrenceFields,
+  TaskReminderPicker,
+} from '@/entities/task/ui'
 import { cx } from '@/shared/lib/classnames'
 import type { UploadedIconAsset } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'

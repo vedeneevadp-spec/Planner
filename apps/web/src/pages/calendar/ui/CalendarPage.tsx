@@ -9,9 +9,9 @@ import {
   isActiveTaskStatus,
   selectPlannedTasks,
   type Task,
-  TaskCard,
   type TimelineTaskLayout,
 } from '@/entities/task'
+import { TaskCard } from '@/entities/task/ui'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
 import { useSelfCarePlan, useSelfCareSettings } from '@/features/self-care'

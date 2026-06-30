@@ -3,11 +3,11 @@ import { type FormEvent, useEffect, useRef, useState } from 'react'
 import type { Sphere } from '@/entities/sphere'
 import {
   type Task,
-  TaskEditDialog,
   type TaskScheduleInput,
   type TaskStatus,
   type TaskUpdateInput,
 } from '@/entities/task'
+import { TaskEditDialog } from '@/entities/task/ui'
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate, formatTimeRange } from '@/shared/lib/date'
 import {

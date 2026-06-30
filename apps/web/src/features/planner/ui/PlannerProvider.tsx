@@ -1,12 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  lazy,
   type PointerEvent,
   type PropsWithChildren,
+  Suspense,
   useRef,
   useState,
 } from 'react'
 
-import { TaskNextStageDialog } from '@/entities/task'
 import { usePlannerTimeZone } from '@/features/session'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
@@ -16,6 +17,11 @@ import { usePlannerState } from '../model/usePlannerState'
 import styles from './PlannerProvider.module.css'
 
 const SNACKBAR_SWIPE_DISMISS_THRESHOLD = 80
+const TaskNextStageDialog = lazy(() =>
+  import('@/entities/task/ui').then((module) => ({
+    default: module.TaskNextStageDialog,
+  })),
+)
 
 export function PlannerQueryProvider({ children }: PropsWithChildren) {
   const [queryClient] = useState(
@@ -219,19 +225,21 @@ function PlannerTaskActionSnackbarContent({
       </div>
 
       {nextStageTask ? (
-        <TaskNextStageDialog
-          defaultTitle={nextStageTask.title}
-          isPending={planner.isTaskPending(nextStageTask.id)}
-          onClose={() => setNextStageTaskId(null)}
-          todayKey={todayKey}
-          tomorrowKey={tomorrowKey}
-          onSubmit={(input) =>
-            planner.createNextTaskStage(nextStageTask.id, {
-              plannedDate: input.plannedDate,
-              title: input.title,
-            })
-          }
-        />
+        <Suspense fallback={null}>
+          <TaskNextStageDialog
+            defaultTitle={nextStageTask.title}
+            isPending={planner.isTaskPending(nextStageTask.id)}
+            onClose={() => setNextStageTaskId(null)}
+            todayKey={todayKey}
+            tomorrowKey={tomorrowKey}
+            onSubmit={(input) =>
+              planner.createNextTaskStage(nextStageTask.id, {
+                plannedDate: input.plannedDate,
+                title: input.title,
+              })
+            }
+          />
+        </Suspense>
       ) : null}
     </>
   )

@@ -20,8 +20,8 @@ import {
   selectTodoTasks,
   selectTomorrowTasks,
   type Task,
-  TaskSection,
 } from '@/entities/task'
+import { TaskSection } from '@/entities/task/ui'
 import { useUploadedIconAssets } from '@/features/emoji-library'
 import { usePlanner } from '@/features/planner'
 import { useSelfCareDashboard } from '@/features/self-care'
