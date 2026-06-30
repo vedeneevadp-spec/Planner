@@ -10,16 +10,18 @@ import { getSelfCareErrorMessage } from '@/features/self-care'
 import pageStyles from '@/shared/ui/Page'
 
 import {
-  SelfCareAnalyticsTab,
   SelfCareCourseRestartDialog,
+  SelfCareExerciseDialog,
+  SelfCareMeasurementDialog,
+  SelfCareScheduleDialog,
+} from './SelfCarePage.action-dialogs'
+import {
+  SelfCareAnalyticsTab,
   SelfCareCreateDialog,
   SelfCareEditDialog,
-  SelfCareExerciseDialog,
   SelfCareHistoryTab,
-  SelfCareMeasurementDialog,
   SelfCarePlanTab,
   SelfCareRitualsTab,
-  SelfCareScheduleDialog,
   SelfCareSettingsTab,
   SelfCareTodayTab,
 } from './SelfCarePage.components'

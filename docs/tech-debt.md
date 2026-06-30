@@ -256,9 +256,9 @@ token и сохранение device session без возврата на фор
 
 Где видно:
 
-- `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 4561 строка
+- `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 3197 строк
 - `apps/api/src/bootstrap/build-app.test.ts` - 3691 строка
-- `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 2724
+- `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 2745
   строки
 - `packages/contracts/src/voice-test-corpus/corpus.ts` - 2133 строки
 - `apps/api/src/bootstrap/openapi-paths.ts` - 2123 строки
@@ -333,6 +333,27 @@ controller вынесен в `SelfCarePage.data.ts`, mutation controller - в
 Размер `SelfCarePage.tsx` уменьшен с 896 до 752 строк без изменения UI/HTTP
 поведения. Следующие стабильные границы для малых PR: action handlers,
 dialog/form state и затем большие формы из `SelfCarePage.components.tsx`.
+
+Статус 2026-06-30: продолжен self-care split по form model/read profile
+границам. Сборка draft, derived state, validation и submit payload для custom
+create/edit форм вынесены из `SelfCarePage.components.tsx` в
+`SelfCarePage.form-model.ts` и покрыты focused tests. Course restart,
+schedule, measurement и exercise action dialogs вынесены в
+`SelfCarePage.action-dialogs.tsx`, общий reminder offsets control - в
+`SelfCarePage.form-controls.tsx`; размер `SelfCarePage.components.tsx` снижен
+с 4559 до 3197 строк без изменения UI/HTTP контрактов. На backend добавлены
+именованные `loadState` read profiles для
+list/dashboard/plan/occurrences/history/analytics/generation call sites, чтобы
+следующий шаг мог выделять реальные projections без повторного разбора
+include-флагов.
+
+Остаток по этому пункту: create/edit dialog shell и сами create/edit form
+components все еще живут в `SelfCarePage.components.tsx`; их нужно вынести в
+отдельные form/dialog модули или hooks. Backend пока получил profiles, но не
+получил отдельные SQL/read-model projections: `loadState` все еще строит
+широкий snapshot, а `self-care.shared.ts` остается крупным слоем
+projection/domain mapping. CSS self-care страницы также остается отдельным
+hotspot.
 
 Статус 2026-06-04: voice split доведен до orchestration/intent границ.
 Вынесены `useVoiceMetrics`, `useAndroidVoiceRuntime`, `useWebVoiceInput` и

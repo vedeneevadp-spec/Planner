@@ -3,12 +3,17 @@ import { describe, expect, it } from 'vitest'
 
 import {
   areNumberArraysEqual,
+  buildSelfCareCustomCreatePayload,
+  buildSelfCareEditPayload,
   canUseExactTimePreference,
   getInitialReminderOffsets,
   getReminderOffsetsFromSelectValue,
   getReminderSelectValue,
+  getSelfCareCustomCreateFormModel,
   getTimePreferenceOptions,
   hasStoredExactTimePreference,
+  type SelfCareCustomCreateFormDraft,
+  type SelfCareEditFormDraft,
   shouldShowExactScheduleTimeField,
   shouldShowPreferredTimePreference,
 } from './SelfCarePage.form-model'
@@ -83,6 +88,86 @@ describe('SelfCarePage form model', () => {
     expect(areNumberArraysEqual([15, 60], [15, 60])).toBe(true)
     expect(areNumberArraysEqual([60, 15], [15, 60])).toBe(false)
   })
+
+  it('builds custom create payloads outside the UI component', () => {
+    const payload = buildSelfCareCustomCreatePayload(
+      createCustomCreateDraft({
+        detailsPlace: 'Клиника',
+        detailsPrice: '1500',
+        detailsSpecialist: 'Доктор',
+        preferredTimePreference: 'exact',
+        reminderOffsetsMinutes: [60],
+        scheduledDate: '2026-07-01',
+        scheduledTime: '10:30',
+        title: ' Стоматолог ',
+        type: 'appointment',
+      }),
+    )
+
+    expect(payload?.input.title).toBe('Стоматолог')
+    expect(payload?.input.type).toBe('appointment')
+    expect(payload?.input.appointmentDetails).toMatchObject({
+      place: 'Клиника',
+      price: 1500,
+      specialistName: 'Доктор',
+    })
+    expect(payload?.input.scheduleRule).toMatchObject({
+      preferredTime: null,
+      reminderOffsetsMinutes: [],
+      startDate: '2026-07-01',
+      timezone: 'Europe/Samara',
+    })
+    expect(payload?.scheduleInput).toMatchObject({
+      place: 'Клиника',
+      price: 1500,
+      reminderOffsetsMinutes: [60],
+      scheduledFor: '2026-07-01',
+      scheduledTime: '10:30',
+    })
+  })
+
+  it('keeps create validation in the form model', () => {
+    const draft = createCustomCreateDraft({
+      measurementUnit: '',
+      title: 'Вес',
+      type: 'measurement',
+    })
+
+    expect(getSelfCareCustomCreateFormModel(draft).canSubmit).toBe(false)
+    expect(buildSelfCareCustomCreatePayload(draft)).toBeNull()
+  })
+
+  it('builds edit payloads outside the UI component', () => {
+    const payload = buildSelfCareEditPayload(
+      createEditDraft({
+        entry: createEditEntry('task', {
+          preferredTime: null,
+          reminderOffsets: [],
+        }),
+        preferredTimePreference: 'exact',
+        reminderOffsetsMinutes: [15],
+        scheduledDate: '2026-07-02',
+        scheduledTime: '08:15',
+        title: ' Витамины ',
+      }),
+    )
+
+    expect(payload?.input).toMatchObject({
+      expectedVersion: 7,
+      title: 'Витамины',
+    })
+    expect(payload?.input.scheduleRule).toMatchObject({
+      preferredTime: '08:15',
+      reminderOffsetsMinutes: [15],
+      repeatKind: 'daily',
+      startDate: '2026-06-30',
+    })
+    expect(payload?.scheduleInput).toMatchObject({
+      reminderOffsetsMinutes: [15],
+      scheduledFor: '2026-07-02',
+      scheduledTime: '08:15',
+    })
+  })
 })
 
 function createTodayEntry(
@@ -107,5 +192,141 @@ function createTodayEntry(
       preferredTime: options.preferredTime ?? null,
       reminderOffsetsMinutes: options.reminderOffsets ?? [],
     },
-  } as SelfCareTodayItem
+  } as unknown as SelfCareTodayItem
+}
+
+function createCustomCreateDraft(
+  overrides: Partial<SelfCareCustomCreateFormDraft> = {},
+): SelfCareCustomCreateFormDraft {
+  return {
+    category: 'custom',
+    courseBreakDays: '7',
+    courseRepeatMode: 'once',
+    courseScheduleMode: 'daily',
+    courseTotalCount: '30',
+    courseType: 'days',
+    dayOfMonth: '30',
+    daysOfWeek: [2],
+    defaultCurrency: 'RUB',
+    description: '',
+    detailsContact: '',
+    detailsPlace: '',
+    detailsPrice: '',
+    detailsSpecialist: '',
+    exerciseMetricValue: 'count:reps',
+    exercisePlannedSets: '3',
+    exercisePlannedValue: '',
+    exerciseUseSets: false,
+    flexiblePeriod: 'week',
+    flexibleTargetCount: '3',
+    icon: '',
+    intervalUnit: 'week',
+    intervalValue: '4',
+    measurementUnit: 'кг',
+    measurementValueLabel: 'Значение',
+    monthOfYear: '6',
+    plannerTimeZone: 'Europe/Samara',
+    preferredTimePreference: 'anytime',
+    reminderOffsetsMinutes: [],
+    repeatKind: 'none',
+    scheduledDate: '2026-06-30',
+    scheduledTime: '',
+    stepsText: '',
+    title: 'Забота',
+    todayKey: '2026-06-30',
+    type: 'task',
+    ...overrides,
+  }
+}
+
+function createEditDraft(
+  overrides: Partial<SelfCareEditFormDraft> = {},
+): SelfCareEditFormDraft {
+  const entry = overrides.entry ?? createEditEntry('task')
+
+  return {
+    category: entry.item.category,
+    courseBreakDays: '7',
+    courseRepeatMode: 'once',
+    courseScheduleMode: 'keep',
+    courseTotalCount: '30',
+    courseType: 'days',
+    dayOfMonth: '30',
+    daysOfWeek: [2],
+    description: entry.item.description,
+    entry,
+    exerciseMetricValue: 'count:reps',
+    exercisePlannedSets: '3',
+    exercisePlannedValue: '',
+    exerciseUseSets: false,
+    flexiblePeriod: 'week',
+    flexibleTargetCount: '3',
+    icon: '',
+    intervalUnit: 'week',
+    intervalValue: '4',
+    measurementUnit: 'кг',
+    measurementValueLabel: 'Значение',
+    monthOfYear: '6',
+    plannerTimeZone: 'Europe/Samara',
+    preferredTimePreference: 'anytime',
+    procedureContact: '',
+    procedureCurrency: 'RUB',
+    procedurePlace: '',
+    procedurePrice: '',
+    procedureSpecialist: '',
+    reminderOffsetsMinutes: [],
+    repeatMode: 'keep',
+    scheduledDate: '2026-06-30',
+    scheduledTime: '',
+    stepsText: '',
+    title: entry.item.title,
+    todayKey: '2026-06-30',
+    ...overrides,
+  }
+}
+
+function createEditEntry(
+  type: SelfCareItemType,
+  options: {
+    preferredTime?: string | null | undefined
+    reminderOffsets?: number[] | undefined
+  } = {},
+): SelfCareTodayItem {
+  return {
+    appointment: null,
+    courseDetails: null,
+    exercise: null,
+    item: {
+      category: 'custom',
+      description: '',
+      icon: null,
+      preferredTimeOfDay: 'anytime',
+      title: 'Забота',
+      type,
+      version: 7,
+    },
+    measurement: null,
+    occurrence: null,
+    procedure: null,
+    scheduleRule: {
+      allowMultiplePerDay: false,
+      dayOfMonth: null,
+      daysOfWeek: [],
+      endDate: null,
+      flexiblePeriod: null,
+      flexibleTargetCount: null,
+      generateInCalendar: false,
+      generateInTaskList: true,
+      intervalUnit: null,
+      intervalValue: null,
+      monthOfYear: null,
+      preferredTime: options.preferredTime ?? null,
+      reminderOffsetsMinutes: options.reminderOffsets ?? [],
+      repeatKind: 'daily',
+      startDate: '2026-06-30',
+      timezone: 'Europe/Samara',
+      weekOfMonth: null,
+    },
+    steps: [],
+  } as unknown as SelfCareTodayItem
 }

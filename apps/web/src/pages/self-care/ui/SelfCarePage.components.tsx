@@ -1,11 +1,8 @@
 import type {
   SelfCareCategory,
-  SelfCareCompletionInput,
   SelfCareFlexiblePeriod,
   SelfCareIntervalUnit,
-  SelfCareItemScheduleInput,
   SelfCareItemType,
-  SelfCareItemUpdateInput,
   SelfCareListResponse,
   SelfCareTemplate,
   SelfCareTodayItem,
@@ -35,27 +32,20 @@ import {
 } from '@/shared/ui/Icon'
 import { SelectPicker, type SelectPickerOption } from '@/shared/ui/SelectPicker'
 
+import { SelfCareReminderOffsetsField } from './SelfCarePage.form-controls'
 import {
-  areNumberArraysEqual,
+  buildSelfCareCustomCreatePayload,
+  buildSelfCareEditPayload,
   canUseExactTimePreference,
-  getClientTimeZone,
   getInitialReminderOffsets,
-  getReminderOffsetsFromSelectValue,
-  getReminderSelectValue,
+  getSelfCareCustomCreateFormModel,
+  getSelfCareEditFormModel,
   getTimePreferenceOptions,
   hasStoredExactTimePreference,
-  SELF_CARE_REMINDER_CLEAR_VALUE,
-  SELF_CARE_REMINDER_SELECT_OPTIONS,
-  shouldShowExactScheduleTimeField,
-  shouldShowPreferredTimePreference,
 } from './SelfCarePage.form-model'
 import {
   ADD_CARE_TEMPLATE_FILTERS,
   type AddCareTemplateFilter,
-  buildCreateScheduleRule,
-  buildDateTimeInput,
-  buildRestartCourseScheduleRule,
-  calculateExerciseTotal,
   canRestartCourse,
   CATEGORY_LABELS,
   CATEGORY_SELECT_OPTIONS,
@@ -72,7 +62,6 @@ import {
   formatEntryDetails,
   formatExercisePlan,
   formatExerciseSummary,
-  formatExerciseValue,
   formatMeasurementSummary,
   formatMeasurementTarget,
   formatOptionalNumber,
@@ -85,22 +74,15 @@ import {
   getAddCareFilterCategories,
   getAddCareFilterLabel,
   getCourseProgress,
-  getCourseUnitLabel,
   getCourseVisibleRepeatKind,
-  getCreateScheduleRepeatKind,
   getDefaultFlexibleGoalIntervalUnit,
   getDefaultFlexibleGoalRepeatKind,
   getEffectiveRitualStepIds,
   getExactScheduleDateLabel,
   getExactScheduleTimeLabel,
-  getExerciseMetricLabel,
-  getExerciseMetricOption,
   getExerciseMetricValue,
-  getExerciseUnitLabel,
   getInitialEditRepeatMode,
-  getInitialExerciseValue,
   getInitialFlexibleGoalRepeatMode,
-  getInitialMeasurementValue,
   getInitialScheduleDate,
   getInitialScheduleTime,
   getPrimaryActionLabel,
@@ -110,23 +92,13 @@ import {
   getTemplateTypeLabel,
   getTodayScheduleLabel,
   getTypeLabel,
-  getVisibleRepeatKind,
   groupItemsByCategory,
   groupTodayItems,
   INTERVAL_UNIT_SELECT_OPTIONS,
-  normalizeOptionalText,
-  parseBoundedInteger,
-  parseMultilineTitles,
-  parseNonnegativeInteger,
-  parseOptionalMeasurementNumber,
-  parseOptionalPrice,
-  parsePositiveInteger,
-  parseRequiredMeasurementNumber,
   repeatKindRequiresInterval,
   type RitualStepDrafts,
   type SelfCareCourseEditScheduleMode,
   type SelfCareCourseRepeatMode,
-  type SelfCareCourseRestartPayload,
   type SelfCareCourseScheduleMode,
   type SelfCareCourseType,
   type SelfCareCreateDialogMode,
@@ -138,7 +110,6 @@ import {
   type SelfCareTimePreference,
   shouldShowSelfCareSkipAction,
   shouldShowVisitDetails,
-  shouldUseExactSchedule,
   STANDARD_REPEAT_SELECT_OPTIONS,
   STATUS_LABELS,
   TIME_GROUP_LABELS,
@@ -149,7 +120,6 @@ import {
 } from './SelfCarePage.helpers'
 import styles from './SelfCarePage.module.css'
 import {
-  addIntervalDateKey,
   buildAvailableTodayEntries,
   buildItemEntry,
   buildTodayCourseEntries,
@@ -1636,35 +1606,6 @@ function SelfCareIconPickerDialog({
   )
 }
 
-function SelfCareReminderOffsetsField({
-  disabled,
-  value,
-  onChange,
-}: {
-  disabled?: boolean | undefined
-  value: readonly number[]
-  onChange: (value: number[]) => void
-}) {
-  const selectValue = getReminderSelectValue(value)
-
-  function handleChange(nextValue: string[]): void {
-    onChange(getReminderOffsetsFromSelectValue(nextValue))
-  }
-
-  return (
-    <SelectPicker
-      className={styles.selectField}
-      label="Напомнить"
-      multiple
-      clearValue={SELF_CARE_REMINDER_CLEAR_VALUE}
-      disabled={disabled}
-      value={selectValue}
-      options={SELF_CARE_REMINDER_SELECT_OPTIONS}
-      onChange={handleChange}
-    />
-  )
-}
-
 function SelfCareCustomCreateForm({
   defaultCurrency,
   isBusy,
@@ -1729,63 +1670,53 @@ function SelfCareCustomCreateForm({
   const selectedType = CREATE_TYPE_OPTIONS.find(
     (option) => option.value === type,
   )
-  const showPreferredTimePreference = shouldShowPreferredTimePreference(type)
-  const usesExactTimePreference =
-    canUseExactTimePreference(type) && preferredTimePreference === 'exact'
-  const showExactScheduleTimeField = shouldShowExactScheduleTimeField(
-    type,
-    usesExactTimePreference,
-  )
-  const showCourseExactTimeField = type === 'course' && usesExactTimePreference
-  const intervalNumber = parsePositiveInteger(intervalValue)
-  const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
-  const courseTotalNumber = parsePositiveInteger(courseTotalCount)
-  const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
-  const exercisePlannedNumber =
-    parseOptionalMeasurementNumber(exercisePlannedValue)
-  const exercisePlannedSetsNumber = parsePositiveInteger(exercisePlannedSets)
-  const exerciseMetric = getExerciseMetricOption(exerciseMetricValue)
-  const preferredTimeOfDay =
-    showPreferredTimePreference && preferredTimePreference !== 'exact'
-      ? preferredTimePreference
-      : null
-  const usesExactSchedule = shouldUseExactSchedule(type)
-  const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
-  const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
-  const scheduleRepeatKind = getCreateScheduleRepeatKind(type, repeatKind)
-  const visibleRepeatKind = getVisibleRepeatKind(type, repeatKind, {
+  const formDraft = {
+    category,
+    courseBreakDays,
+    courseRepeatMode,
     courseScheduleMode,
-  })
-  const needsInterval =
-    repeatKindRequiresInterval(scheduleRepeatKind) ||
-    (type === 'course' && courseScheduleMode === 'interval')
-  const usesFlexibleGoalRepeat = type === 'flexible_goal'
-  const canSubmit =
-    title.trim().length > 0 &&
-    (!needsInterval || Boolean(intervalNumber)) &&
-    (usesFlexibleGoalRepeat ||
-      visibleRepeatKind !== 'weekly' ||
-      daysOfWeek.length > 0) &&
-    (usesFlexibleGoalRepeat ||
-      visibleRepeatKind !== 'monthly' ||
-      Boolean(dayOfMonthNumber)) &&
-    (usesFlexibleGoalRepeat ||
-      visibleRepeatKind !== 'yearly' ||
-      (Boolean(dayOfMonthNumber) && Boolean(monthOfYearNumber))) &&
-    (type !== 'flexible_goal' || Boolean(flexibleTargetNumber)) &&
-    (type !== 'course' || Boolean(courseTotalNumber)) &&
-    (type !== 'course' ||
-      courseRepeatMode !== 'cycle' ||
-      courseBreakDaysNumber !== null) &&
-    (type !== 'exercise' ||
-      !exerciseUseSets ||
-      Boolean(exercisePlannedSetsNumber)) &&
-    (!usesExactSchedule || scheduledDate.length > 0) &&
-    (!usesExactTimePreference || scheduledTime.length > 0) &&
-    (!(usesExactSchedule && showExactScheduleTimeField) ||
-      reminderOffsetsMinutes.length === 0 ||
-      scheduledTime.length > 0) &&
-    (type !== 'measurement' || measurementUnit.trim().length > 0)
+    courseTotalCount,
+    courseType,
+    dayOfMonth,
+    daysOfWeek,
+    defaultCurrency,
+    description,
+    detailsContact,
+    detailsPlace,
+    detailsPrice,
+    detailsSpecialist,
+    exerciseMetricValue,
+    exercisePlannedSets,
+    exercisePlannedValue,
+    exerciseUseSets,
+    flexiblePeriod,
+    flexibleTargetCount,
+    icon,
+    intervalUnit,
+    intervalValue,
+    measurementUnit,
+    measurementValueLabel,
+    monthOfYear,
+    plannerTimeZone,
+    preferredTimePreference,
+    reminderOffsetsMinutes,
+    repeatKind,
+    scheduledDate,
+    scheduledTime,
+    stepsText,
+    title,
+    todayKey,
+    type,
+  }
+  const {
+    canSubmit,
+    showCourseExactTimeField,
+    showExactScheduleTimeField,
+    showPreferredTimePreference,
+    usesExactSchedule,
+    usesExactTimePreference,
+    visibleRepeatKind,
+  } = getSelfCareCustomCreateFormModel(formDraft)
 
   function handleTypeChange(nextType: SelfCareItemType): void {
     setType(nextType)
@@ -1853,186 +1784,13 @@ function SelfCareCustomCreateForm({
       onSubmit={(event) => {
         event.preventDefault()
 
-        if (!canSubmit) {
+        const payload = buildSelfCareCustomCreatePayload(formDraft)
+
+        if (!payload) {
           return
         }
 
-        const detailsPriceValue = parseOptionalPrice(detailsPrice)
-        const defaultDetailsCurrency = normalizeOptionalText(defaultCurrency)
-        const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
-        const normalizedExactTime = usesExactTimePreference
-          ? normalizedScheduledTime
-          : null
-        const reminderTimeZone = getClientTimeZone(plannerTimeZone)
-        const reminderOffsetsForExactTime = normalizedExactTime
-          ? reminderOffsetsMinutes
-          : []
-        const canStoreVisitDetails = shouldShowVisitDetails(type)
-        const scheduleRule =
-          type === 'task' && scheduleRepeatKind === 'none'
-            ? undefined
-            : buildCreateScheduleRule({
-                courseScheduleMode:
-                  type === 'course' ? courseScheduleMode : undefined,
-                dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
-                daysOfWeek,
-                flexiblePeriod,
-                flexibleTargetCount: flexibleTargetNumber ?? 1,
-                hasFlexibleGoal: type === 'flexible_goal',
-                intervalUnit,
-                intervalValue: intervalNumber ?? 1,
-                monthOfYear:
-                  monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-                preferredTime: normalizedExactTime,
-                reminderOffsetsMinutes: reminderOffsetsForExactTime,
-                repeatKind: scheduleRepeatKind,
-                startDate: usesExactSchedule ? scheduledDate : todayKey,
-                timezone: reminderTimeZone,
-              })
-        const scheduledStartsAt = buildDateTimeInput(
-          scheduledDate,
-          normalizedScheduledTime,
-          reminderTimeZone,
-        )
-
-        onCreate({
-          input: {
-            alternatives: [],
-            appointmentDetails:
-              type === 'appointment'
-                ? {
-                    currency:
-                      detailsPriceValue === null
-                        ? null
-                        : defaultDetailsCurrency,
-                    endsAt: null,
-                    place: normalizeOptionalText(detailsPlace),
-                    preparationNote: null,
-                    price: detailsPriceValue,
-                    resultNote: null,
-                    specialistContact: normalizeOptionalText(detailsContact),
-                    specialistName: normalizeOptionalText(detailsSpecialist),
-                    startsAt: scheduledStartsAt,
-                  }
-                : undefined,
-            category,
-            color: null,
-            courseDetails:
-              type === 'course'
-                ? {
-                    breakDays:
-                      courseRepeatMode === 'cycle'
-                        ? (courseBreakDaysNumber ?? 0)
-                        : 0,
-                    completedCount: 0,
-                    courseType,
-                    endDate: null,
-                    isCompleted: false,
-                    isPaused: false,
-                    repeatAfterCompletion: courseRepeatMode === 'cycle',
-                    startDate: todayKey,
-                    totalCount: courseTotalNumber ?? 1,
-                  }
-                : undefined,
-            customCategoryId: null,
-            defaultDurationMinutes: null,
-            description: description.trim(),
-            icon: normalizeOptionalText(icon),
-            importance: 'recommended',
-            isActive: true,
-            isArchived: false,
-            isPrivate: true,
-            exerciseDetails:
-              type === 'exercise'
-                ? {
-                    metricType: exerciseMetric.metricType,
-                    plannedSets:
-                      exerciseUseSets && exercisePlannedSetsNumber
-                        ? exercisePlannedSetsNumber
-                        : null,
-                    plannedValue: exercisePlannedNumber,
-                    unit: exerciseMetric.unit,
-                    useSets: exerciseUseSets,
-                  }
-                : undefined,
-            medicalDetails:
-              type === 'medical'
-                ? {
-                    analysisList: [],
-                    clinicAddress: normalizeOptionalText(detailsPlace),
-                    clinicName: null,
-                    documentUrls: [],
-                    doctorName: normalizeOptionalText(detailsSpecialist),
-                    nextControlDate: scheduledDate || null,
-                    phone: normalizeOptionalText(detailsContact),
-                    reminderStrategy: 'soft',
-                    resultNote: null,
-                    website: null,
-                  }
-                : undefined,
-            measurementDetails:
-              type === 'measurement'
-                ? {
-                    targetMax: null,
-                    targetMin: null,
-                    unit: measurementUnit.trim(),
-                    valueLabel: measurementValueLabel.trim() || 'Значение',
-                  }
-                : undefined,
-            migratedFromHabitId: null,
-            preferredTimeOfDay,
-            procedureDetails:
-              type === 'procedure'
-                ? {
-                    contact: normalizeOptionalText(detailsContact),
-                    currency: defaultDetailsCurrency,
-                    defaultPrice: detailsPriceValue,
-                    place: normalizeOptionalText(detailsPlace),
-                    specialistName: normalizeOptionalText(detailsSpecialist),
-                  }
-                : undefined,
-            scheduleRule,
-            steps:
-              type === 'ritual'
-                ? parseMultilineTitles(stepsText).map((stepTitle, index) => ({
-                    defaultChecked: false,
-                    isOptional: false,
-                    order: index,
-                    title: stepTitle,
-                  }))
-                : [],
-            title: title.trim(),
-            type,
-          },
-          scheduleInput: usesExactSchedule
-            ? {
-                currency:
-                  !canStoreVisitDetails || detailsPriceValue === null
-                    ? null
-                    : defaultDetailsCurrency,
-                note: '',
-                place: canStoreVisitDetails
-                  ? normalizeOptionalText(detailsPlace)
-                  : null,
-                price: canStoreVisitDetails ? detailsPriceValue : null,
-                reminderOffsetsMinutes:
-                  showExactScheduleTimeField && normalizedScheduledTime
-                    ? reminderOffsetsMinutes
-                    : [],
-                scheduledFor: scheduledDate,
-                scheduledTime: showExactScheduleTimeField
-                  ? normalizedScheduledTime
-                  : null,
-                specialistContact: canStoreVisitDetails
-                  ? normalizeOptionalText(detailsContact)
-                  : null,
-                specialistName: canStoreVisitDetails
-                  ? normalizeOptionalText(detailsSpecialist)
-                  : null,
-                timezone: reminderTimeZone,
-              }
-            : undefined,
-        })
+        onCreate(payload)
       }}
     >
       <SelfCareTitleIconField
@@ -2908,75 +2666,55 @@ function SelfCareEditForm({
   const [exercisePlannedSets, setExercisePlannedSets] = useState(
     formatOptionalNumber(entry.exercise?.plannedSets ?? 3),
   )
-  const intervalNumber = parsePositiveInteger(intervalValue)
-  const flexibleTargetNumber = parsePositiveInteger(flexibleTargetCount)
-  const courseTotalNumber = parsePositiveInteger(courseTotalCount)
-  const courseBreakDaysNumber = parseNonnegativeInteger(courseBreakDays)
-  const exercisePlannedNumber =
-    parseOptionalMeasurementNumber(exercisePlannedValue)
-  const exercisePlannedSetsNumber = parsePositiveInteger(exercisePlannedSets)
-  const exerciseMetric = getExerciseMetricOption(exerciseMetricValue)
-  const showPreferredTimePreference = shouldShowPreferredTimePreference(
-    entry.item.type,
-  )
-  const usesExactTimePreference =
-    canUseExactTimePreference(entry.item.type) &&
-    preferredTimePreference === 'exact'
-  const showExactScheduleTimeField = shouldShowExactScheduleTimeField(
-    entry.item.type,
+  const formDraft = {
+    category,
+    courseBreakDays,
+    courseRepeatMode,
+    courseScheduleMode,
+    courseTotalCount,
+    courseType,
+    dayOfMonth,
+    daysOfWeek,
+    description,
+    entry,
+    exerciseMetricValue,
+    exercisePlannedSets,
+    exercisePlannedValue,
+    exerciseUseSets,
+    flexiblePeriod,
+    flexibleTargetCount,
+    icon,
+    intervalUnit,
+    intervalValue,
+    measurementUnit,
+    measurementValueLabel,
+    monthOfYear,
+    plannerTimeZone,
+    preferredTimePreference,
+    procedureContact,
+    procedureCurrency,
+    procedurePlace,
+    procedurePrice,
+    procedureSpecialist,
+    reminderOffsetsMinutes,
+    repeatMode,
+    scheduledDate,
+    scheduledTime,
+    stepsText,
+    title,
+    todayKey,
+  }
+  const {
+    canStoreVisitDetails,
+    canSubmit,
+    selectedCourseScheduleMode,
+    selectedRepeatKind,
+    showCourseExactTimeField,
+    showExactScheduleTimeField,
+    showPreferredTimePreference,
+    usesExactSchedule,
     usesExactTimePreference,
-  )
-  const showCourseExactTimeField =
-    entry.item.type === 'course' && usesExactTimePreference
-  const preferredTimeOfDay =
-    showPreferredTimePreference && preferredTimePreference !== 'exact'
-      ? preferredTimePreference
-      : null
-  const dayOfMonthNumber = parseBoundedInteger(dayOfMonth, 1, 31)
-  const monthOfYearNumber = parseBoundedInteger(monthOfYear, 1, 12)
-  const selectedRepeatKind = repeatMode === 'keep' ? null : repeatMode
-  const selectedCourseScheduleMode =
-    courseScheduleMode === 'keep' ? null : courseScheduleMode
-  const isFlexibleGoal = entry.item.type === 'flexible_goal'
-  const usesFlexibleGoalRepeat = entry.item.type === 'flexible_goal'
-  const editVisibleRepeatKind = selectedCourseScheduleMode
-    ? getCourseVisibleRepeatKind(selectedCourseScheduleMode)
-    : selectedRepeatKind
-  const usesExactSchedule = shouldUseExactSchedule(entry.item.type)
-  const canStoreVisitDetails = shouldShowVisitDetails(entry.item.type)
-  const canSubmit =
-    title.trim().length > 0 &&
-    (!usesExactSchedule || scheduledDate.length > 0) &&
-    (!editVisibleRepeatKind ||
-      ((!(
-        repeatKindRequiresInterval(editVisibleRepeatKind) ||
-        selectedCourseScheduleMode === 'interval'
-      ) ||
-        Boolean(intervalNumber)) &&
-        (usesFlexibleGoalRepeat ||
-          editVisibleRepeatKind !== 'weekly' ||
-          daysOfWeek.length > 0) &&
-        (usesFlexibleGoalRepeat ||
-          editVisibleRepeatKind !== 'monthly' ||
-          Boolean(dayOfMonthNumber)) &&
-        (usesFlexibleGoalRepeat ||
-          editVisibleRepeatKind !== 'yearly' ||
-          (Boolean(dayOfMonthNumber) && Boolean(monthOfYearNumber))) &&
-        (entry.item.type !== 'flexible_goal' ||
-          Boolean(flexibleTargetNumber)))) &&
-    (!isFlexibleGoal || Boolean(flexibleTargetNumber)) &&
-    (entry.item.type !== 'course' || Boolean(courseTotalNumber)) &&
-    (entry.item.type !== 'course' ||
-      courseRepeatMode !== 'cycle' ||
-      courseBreakDaysNumber !== null) &&
-    (entry.item.type !== 'exercise' ||
-      !exerciseUseSets ||
-      Boolean(exercisePlannedSetsNumber)) &&
-    (!usesExactTimePreference || scheduledTime.length > 0) &&
-    (!(usesExactSchedule && showExactScheduleTimeField) ||
-      reminderOffsetsMinutes.length === 0 ||
-      scheduledTime.length > 0) &&
-    (entry.item.type !== 'measurement' || measurementUnit.trim().length > 0)
+  } = getSelfCareEditFormModel(formDraft)
 
   return (
     <form
@@ -2984,217 +2722,13 @@ function SelfCareEditForm({
       onSubmit={(event) => {
         event.preventDefault()
 
-        if (!canSubmit) {
+        const payload = buildSelfCareEditPayload(formDraft)
+
+        if (!payload) {
           return
         }
 
-        const detailsPriceValue = parseOptionalPrice(procedurePrice)
-        const normalizedProcedureCurrency =
-          normalizeOptionalText(procedureCurrency)
-        const normalizedScheduledTime = normalizeOptionalText(scheduledTime)
-        const normalizedExactTime = usesExactTimePreference
-          ? normalizedScheduledTime
-          : null
-        const reminderOffsetsForExactTime = normalizedExactTime
-          ? reminderOffsetsMinutes
-          : []
-        const reminderTimeZone = getClientTimeZone(plannerTimeZone)
-        const input: SelfCareItemUpdateInput = {
-          category,
-          description: description.trim(),
-          expectedVersion: entry.item.version,
-          icon: normalizeOptionalText(icon),
-          minimumVersion: null,
-          preferredTimeOfDay,
-          title: title.trim(),
-        }
-
-        if (entry.item.type === 'course' && selectedCourseScheduleMode) {
-          input.scheduleRule = buildCreateScheduleRule({
-            courseScheduleMode: selectedCourseScheduleMode,
-            dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
-            daysOfWeek,
-            flexiblePeriod,
-            flexibleTargetCount: flexibleTargetNumber ?? 1,
-            hasFlexibleGoal: false,
-            intervalUnit,
-            intervalValue: intervalNumber ?? 1,
-            monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-            preferredTime: normalizedExactTime,
-            reminderOffsetsMinutes: reminderOffsetsForExactTime,
-            repeatKind: 'course',
-            startDate: entry.scheduleRule?.startDate ?? todayKey,
-            timezone: reminderTimeZone,
-          })
-        } else if (entry.item.type === 'flexible_goal') {
-          const flexibleRepeatKind =
-            selectedRepeatKind ??
-            (entry.scheduleRule?.repeatKind === 'flexible_goal'
-              ? 'flexible_goal'
-              : getInitialFlexibleGoalRepeatMode(entry.scheduleRule))
-          input.isActive = true
-          input.scheduleRule = buildCreateScheduleRule({
-            dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
-            daysOfWeek,
-            flexiblePeriod,
-            flexibleTargetCount: flexibleTargetNumber ?? 1,
-            hasFlexibleGoal: true,
-            intervalUnit,
-            intervalValue: intervalNumber ?? 1,
-            monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-            repeatKind: flexibleRepeatKind,
-            startDate: entry.scheduleRule?.startDate ?? todayKey,
-          })
-        } else if (selectedRepeatKind) {
-          input.scheduleRule = buildCreateScheduleRule({
-            dayOfMonth: dayOfMonthNumber ?? getDatePart(todayKey, 'day'),
-            daysOfWeek,
-            flexiblePeriod,
-            flexibleTargetCount: flexibleTargetNumber ?? 1,
-            hasFlexibleGoal: false,
-            intervalUnit,
-            intervalValue: intervalNumber ?? 1,
-            monthOfYear: monthOfYearNumber ?? getDatePart(todayKey, 'month'),
-            preferredTime: normalizedExactTime,
-            reminderOffsetsMinutes: reminderOffsetsForExactTime,
-            repeatKind: selectedRepeatKind,
-            startDate: usesExactSchedule
-              ? scheduledDate
-              : (entry.scheduleRule?.startDate ?? todayKey),
-            timezone: reminderTimeZone,
-          })
-        }
-
-        if (
-          canUseExactTimePreference(entry.item.type) &&
-          !selectedRepeatKind &&
-          !(entry.item.type === 'course' && selectedCourseScheduleMode) &&
-          entry.scheduleRule &&
-          ((entry.scheduleRule?.preferredTime ?? null) !==
-            normalizedExactTime ||
-            !areNumberArraysEqual(
-              entry.scheduleRule?.reminderOffsetsMinutes ?? [],
-              reminderOffsetsForExactTime,
-            ))
-        ) {
-          input.scheduleRule = {
-            allowMultiplePerDay:
-              entry.scheduleRule?.allowMultiplePerDay ?? false,
-            dayOfMonth: entry.scheduleRule?.dayOfMonth ?? null,
-            daysOfWeek: entry.scheduleRule?.daysOfWeek ?? [],
-            endDate: entry.scheduleRule?.endDate ?? null,
-            flexiblePeriod: entry.scheduleRule?.flexiblePeriod ?? null,
-            flexibleTargetCount:
-              entry.scheduleRule?.flexibleTargetCount ?? null,
-            generateInCalendar: entry.scheduleRule?.generateInCalendar ?? false,
-            generateInTaskList: entry.scheduleRule?.generateInTaskList ?? true,
-            intervalUnit: entry.scheduleRule?.intervalUnit ?? null,
-            intervalValue: entry.scheduleRule?.intervalValue ?? null,
-            monthOfYear: entry.scheduleRule?.monthOfYear ?? null,
-            preferredTime: normalizedExactTime,
-            reminderOffsetsMinutes: reminderOffsetsForExactTime,
-            repeatKind: entry.scheduleRule?.repeatKind ?? 'daily',
-            startDate: entry.scheduleRule?.startDate ?? scheduledDate,
-            timezone: reminderTimeZone ?? entry.scheduleRule?.timezone ?? null,
-            weekOfMonth: entry.scheduleRule?.weekOfMonth ?? null,
-          }
-        }
-
-        if (entry.item.type === 'ritual') {
-          input.steps = parseMultilineTitles(stepsText).map(
-            (stepTitle, index) => ({
-              defaultChecked: false,
-              isOptional: false,
-              order: index,
-              title: stepTitle,
-            }),
-          )
-        }
-
-        if (entry.item.type === 'course') {
-          input.courseDetails = {
-            breakDays:
-              courseRepeatMode === 'cycle' ? (courseBreakDaysNumber ?? 0) : 0,
-            completedCount: entry.courseDetails?.completedCount ?? 0,
-            courseType,
-            endDate: entry.courseDetails?.endDate ?? null,
-            isCompleted: entry.courseDetails?.isCompleted ?? false,
-            isPaused: entry.courseDetails?.isPaused ?? false,
-            repeatAfterCompletion: courseRepeatMode === 'cycle',
-            startDate:
-              entry.courseDetails?.startDate ??
-              entry.scheduleRule?.startDate ??
-              todayKey,
-            totalCount:
-              courseTotalNumber ?? entry.courseDetails?.totalCount ?? 1,
-          }
-        }
-
-        if (entry.item.type === 'procedure') {
-          input.procedureDetails = {
-            contact: normalizeOptionalText(procedureContact),
-            currency: normalizedProcedureCurrency,
-            defaultPrice: detailsPriceValue,
-            place: normalizeOptionalText(procedurePlace),
-            specialistName: normalizeOptionalText(procedureSpecialist),
-          }
-        }
-
-        if (entry.item.type === 'measurement') {
-          input.measurementDetails = {
-            targetMax: null,
-            targetMin: null,
-            unit: measurementUnit.trim(),
-            valueLabel: measurementValueLabel.trim() || 'Значение',
-          }
-        }
-
-        if (entry.item.type === 'exercise') {
-          input.exerciseDetails = {
-            metricType: exerciseMetric.metricType,
-            plannedSets:
-              exerciseUseSets && exercisePlannedSetsNumber
-                ? exercisePlannedSetsNumber
-                : null,
-            plannedValue: exercisePlannedNumber,
-            unit: exerciseMetric.unit,
-            useSets: exerciseUseSets,
-          }
-        }
-
-        onSubmit({
-          input,
-          scheduleInput: usesExactSchedule
-            ? {
-                currency:
-                  !canStoreVisitDetails || detailsPriceValue === null
-                    ? null
-                    : normalizedProcedureCurrency,
-                note: canStoreVisitDetails
-                  ? (entry.appointment?.preparationNote ?? '')
-                  : '',
-                place: canStoreVisitDetails
-                  ? normalizeOptionalText(procedurePlace)
-                  : null,
-                price: canStoreVisitDetails ? detailsPriceValue : null,
-                reminderOffsetsMinutes:
-                  showExactScheduleTimeField && normalizedScheduledTime
-                    ? reminderOffsetsMinutes
-                    : [],
-                scheduledFor: scheduledDate,
-                scheduledTime: showExactScheduleTimeField
-                  ? normalizedScheduledTime
-                  : null,
-                specialistContact: canStoreVisitDetails
-                  ? normalizeOptionalText(procedureContact)
-                  : null,
-                specialistName: canStoreVisitDetails
-                  ? normalizeOptionalText(procedureSpecialist)
-                  : null,
-                timezone: reminderTimeZone,
-              }
-            : undefined,
-        })
+        onSubmit(payload)
       }}
     >
       <div className={styles.scheduleTarget}>
@@ -3612,902 +3146,6 @@ function SelfCareEditForm({
       </div>
     </form>
   )
-}
-
-export function SelfCareCourseRestartDialog({
-  entry,
-  errorMessage,
-  isBusy,
-  onClose,
-  onSubmit,
-  todayKey,
-}: {
-  entry: SelfCareTodayItem
-  errorMessage: string | null
-  isBusy: boolean
-  onClose: () => void
-  onSubmit: (payload: SelfCareCourseRestartPayload) => void
-  todayKey: string
-}) {
-  const [restartMode, setRestartMode] = useState<'now' | 'delay'>('now')
-  const [intervalValue, setIntervalValue] = useState('1')
-  const [intervalUnit, setIntervalUnit] =
-    useState<SelfCareIntervalUnit>('month')
-  const intervalNumber = parsePositiveInteger(intervalValue)
-  const restartDate =
-    restartMode === 'now'
-      ? todayKey
-      : intervalNumber
-        ? addIntervalDateKey(todayKey, intervalNumber, intervalUnit)
-        : ''
-  const course = entry.courseDetails
-  const canSubmit = Boolean(course && restartDate)
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  if (typeof document === 'undefined' || !course) {
-    return null
-  }
-
-  return createPortal(
-    <div
-      className={styles.modalOverlay}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="self-care-course-restart-title"
-    >
-      <button
-        className={styles.backdropButton}
-        type="button"
-        tabIndex={-1}
-        aria-label="Закрыть повтор курса"
-        onClick={onClose}
-      />
-
-      <section className={styles.modalPanel}>
-        <div className={styles.modalHeader}>
-          <div>
-            <h2 id="self-care-course-restart-title">Повторить курс</h2>
-          </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            aria-label="Закрыть повтор курса"
-            onClick={onClose}
-          >
-            <CloseIcon size={18} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <form
-          className={styles.scheduleForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-
-            if (!canSubmit) {
-              return
-            }
-
-            onSubmit({
-              input: {
-                courseDetails: {
-                  breakDays: course.breakDays,
-                  completedCount: 0,
-                  courseType: course.courseType,
-                  endDate: null,
-                  isCompleted: false,
-                  isPaused: false,
-                  repeatAfterCompletion: course.repeatAfterCompletion,
-                  startDate: restartDate,
-                  totalCount: course.totalCount,
-                },
-                expectedVersion: entry.item.version,
-                scheduleRule: buildRestartCourseScheduleRule(
-                  entry,
-                  restartDate,
-                ),
-              },
-              restartDate,
-            })
-          }}
-        >
-          <div className={styles.scheduleTarget}>
-            <strong>{entry.item.title}</strong>
-            <span>
-              {course.totalCount}{' '}
-              {getCourseUnitLabel(course.courseType, course.totalCount)}
-            </span>
-          </div>
-
-          <div
-            className={styles.quickDateGrid}
-            role="group"
-            aria-label="Когда повторить курс"
-          >
-            <button
-              className={cx(
-                styles.quickDateButton,
-                restartMode === 'now' && styles.quickDateButtonActive,
-              )}
-              type="button"
-              disabled={isBusy}
-              aria-pressed={restartMode === 'now'}
-              onClick={() => setRestartMode('now')}
-            >
-              Активировать сейчас
-            </button>
-            <button
-              className={cx(
-                styles.quickDateButton,
-                restartMode === 'delay' && styles.quickDateButtonActive,
-              )}
-              type="button"
-              disabled={isBusy}
-              aria-pressed={restartMode === 'delay'}
-              onClick={() => setRestartMode('delay')}
-            >
-              Повторить через период
-            </button>
-          </div>
-
-          {restartMode === 'delay' ? (
-            <div className={styles.createFormGrid}>
-              <label className={styles.dateField}>
-                <span>Повторить через</span>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  inputMode="numeric"
-                  required
-                  value={intervalValue}
-                  onChange={(event) => setIntervalValue(event.target.value)}
-                />
-              </label>
-
-              <SelectPicker<SelfCareIntervalUnit>
-                className={styles.selectField}
-                label="Период"
-                value={intervalUnit}
-                options={INTERVAL_UNIT_SELECT_OPTIONS}
-                onChange={setIntervalUnit}
-              />
-            </div>
-          ) : null}
-
-          <p className={styles.mutedText}>
-            Новый старт: {restartDate ? formatDate(restartDate) : 'выбери срок'}
-          </p>
-
-          {errorMessage ? (
-            <p className={styles.errorText}>{errorMessage}</p>
-          ) : null}
-
-          <div className={styles.modalActions}>
-            <button
-              className={styles.softButton}
-              type="button"
-              disabled={isBusy}
-              onClick={onClose}
-            >
-              Отмена
-            </button>
-            <button
-              className={styles.doneButton}
-              type="submit"
-              disabled={isBusy || !canSubmit}
-            >
-              Повторить
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
-export function SelfCareScheduleDialog({
-  date,
-  defaultCurrency,
-  entry,
-  errorMessage,
-  isBusy,
-  onChangeDate,
-  onClose,
-  onSubmit,
-  todayKey,
-}: {
-  date: string
-  defaultCurrency: string
-  entry: SelfCareTodayItem
-  errorMessage: string | null
-  isBusy: boolean
-  onChangeDate: (date: string) => void
-  onClose: () => void
-  onSubmit: (input: SelfCareItemScheduleInput) => void
-  todayKey: string
-}) {
-  const plannerTimeZone = usePlannerTimeZone()
-  const [scheduledTime, setScheduledTime] = useState(
-    getInitialScheduleTime(entry, plannerTimeZone),
-  )
-  const [reminderOffsetsMinutes, setReminderOffsetsMinutes] = useState<
-    number[]
-  >(() => getInitialReminderOffsets(entry))
-  const [place, setPlace] = useState(
-    entry.appointment?.place ?? entry.procedure?.place ?? '',
-  )
-  const [specialistName, setSpecialistName] = useState(
-    entry.appointment?.specialistName ?? entry.procedure?.specialistName ?? '',
-  )
-  const [specialistContact, setSpecialistContact] = useState(
-    entry.appointment?.specialistContact ?? entry.procedure?.contact ?? '',
-  )
-  const [price, setPrice] = useState(
-    formatOptionalNumber(
-      entry.appointment?.price ?? entry.procedure?.defaultPrice,
-    ),
-  )
-  const [note, setNote] = useState(entry.appointment?.preparationNote ?? '')
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  if (typeof document === 'undefined') {
-    return null
-  }
-
-  const quickOptions = [
-    { label: 'Сегодня', value: todayKey },
-    { label: 'Завтра', value: shiftDateKey(todayKey, 1) },
-    { label: 'Через неделю', value: shiftDateKey(todayKey, 7) },
-    { label: 'Через месяц', value: shiftDateKey(todayKey, 30) },
-  ]
-
-  return createPortal(
-    <div
-      className={styles.modalOverlay}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="self-care-schedule-title"
-    >
-      <button
-        className={styles.backdropButton}
-        type="button"
-        tabIndex={-1}
-        aria-label="Закрыть планирование заботы"
-        onClick={onClose}
-      />
-
-      <section className={styles.modalPanel}>
-        <div className={styles.modalHeader}>
-          <div>
-            <h2 id="self-care-schedule-title">Запланировать</h2>
-            <p>Выбери дату, время и детали записи.</p>
-          </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            aria-label="Закрыть планирование заботы"
-            onClick={onClose}
-          >
-            <CloseIcon size={18} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <form
-          className={styles.scheduleForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-            const priceValue = parseOptionalPrice(price)
-            onSubmit({
-              currency:
-                priceValue === null
-                  ? null
-                  : (entry.appointment?.currency ??
-                    entry.procedure?.currency ??
-                    defaultCurrency),
-              note,
-              place: normalizeOptionalText(place),
-              price: priceValue,
-              reminderOffsetsMinutes,
-              scheduledFor: date,
-              scheduledTime: normalizeOptionalText(scheduledTime),
-              specialistContact: normalizeOptionalText(specialistContact),
-              specialistName: normalizeOptionalText(specialistName),
-              timezone: getClientTimeZone(plannerTimeZone),
-            })
-          }}
-        >
-          <div className={styles.scheduleTarget}>
-            <strong>{entry.item.title}</strong>
-            <span>
-              {CATEGORY_LABELS[entry.item.category]} ·{' '}
-              {getTypeLabel(entry.item)}
-            </span>
-          </div>
-
-          <div className={styles.scheduleDetailsGrid}>
-            <label className={styles.dateField}>
-              <span>Дата</span>
-              <input
-                type="date"
-                min={todayKey}
-                required
-                value={date}
-                onChange={(event) => onChangeDate(event.target.value)}
-              />
-            </label>
-
-            <label className={styles.dateField}>
-              <span>Время</span>
-              <input
-                type="time"
-                value={scheduledTime}
-                onChange={(event) => setScheduledTime(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <SelfCareReminderOffsetsField
-            value={reminderOffsetsMinutes}
-            onChange={setReminderOffsetsMinutes}
-          />
-
-          <div
-            className={styles.quickDateGrid}
-            role="group"
-            aria-label="Быстрый выбор даты"
-          >
-            {quickOptions.map((option) => (
-              <button
-                key={option.value}
-                className={cx(
-                  styles.quickDateButton,
-                  option.value === date && styles.quickDateButtonActive,
-                )}
-                type="button"
-                disabled={isBusy}
-                onClick={() => onChangeDate(option.value)}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          <div className={styles.scheduleDetailsGrid}>
-            <label className={styles.dateField}>
-              <span>Место</span>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="Салон, клиника, адрес"
-                value={place}
-                onChange={(event) => setPlace(event.target.value)}
-              />
-            </label>
-
-            <label className={styles.dateField}>
-              <span>Мастер / специалист</span>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="Имя мастера или врача"
-                value={specialistName}
-                onChange={(event) => setSpecialistName(event.target.value)}
-              />
-            </label>
-
-            <label className={styles.dateField}>
-              <span>Контакт</span>
-              <input
-                type="text"
-                autoComplete="off"
-                placeholder="Телефон, ссылка, мессенджер"
-                value={specialistContact}
-                onChange={(event) => setSpecialistContact(event.target.value)}
-              />
-            </label>
-
-            <label className={styles.dateField}>
-              <span>Стоимость</span>
-              <input
-                type="number"
-                min="0"
-                step="1"
-                inputMode="decimal"
-                placeholder="0 ₽"
-                value={price}
-                onChange={(event) => setPrice(event.target.value)}
-              />
-            </label>
-          </div>
-
-          <label className={styles.dateField}>
-            <span>Комментарий</span>
-            <textarea
-              rows={3}
-              maxLength={600}
-              placeholder="Что важно помнить перед записью"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
-
-          {errorMessage ? (
-            <p className={styles.errorText}>{errorMessage}</p>
-          ) : null}
-
-          <div className={styles.modalActions}>
-            <button
-              className={styles.softButton}
-              type="button"
-              disabled={isBusy}
-              onClick={onClose}
-            >
-              Отмена
-            </button>
-            <button
-              className={styles.doneButton}
-              type="submit"
-              disabled={
-                isBusy ||
-                !date ||
-                (reminderOffsetsMinutes.length > 0 && !scheduledTime)
-              }
-            >
-              Запланировать
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
-export function SelfCareMeasurementDialog({
-  entry,
-  errorMessage,
-  isBusy,
-  onClose,
-  onSubmit,
-}: {
-  entry: SelfCareTodayItem
-  errorMessage: string | null
-  isBusy: boolean
-  onClose: () => void
-  onSubmit: (input: SelfCareCompletionInput) => void
-}) {
-  const [value, setValue] = useState(() => getInitialMeasurementValue(entry))
-  const [note, setNote] = useState('')
-  const numericValue = parseRequiredMeasurementNumber(value)
-  const targetLabel = formatMeasurementTarget(entry)
-  const unit = entry.measurement?.unit ?? ''
-  const label = entry.measurement?.valueLabel ?? 'Значение'
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  if (typeof document === 'undefined') {
-    return null
-  }
-
-  return createPortal(
-    <div
-      className={styles.modalOverlay}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="self-care-measurement-title"
-    >
-      <button
-        className={styles.backdropButton}
-        type="button"
-        tabIndex={-1}
-        aria-label="Закрыть ввод измерения"
-        onClick={onClose}
-      />
-
-      <section className={styles.modalPanel}>
-        <div className={styles.modalHeader}>
-          <div>
-            <h2 id="self-care-measurement-title">Записать измерение</h2>
-            <p>{entry.item.title}</p>
-          </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            aria-label="Закрыть ввод измерения"
-            onClick={onClose}
-          >
-            <CloseIcon size={18} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <form
-          className={styles.scheduleForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-
-            if (numericValue === null) {
-              return
-            }
-
-            onSubmit({
-              alternativeTitle: null,
-              completedVariant: 'full',
-              durationMinutes: null,
-              energyAfter: null,
-              energyBefore: null,
-              exerciseSets: [],
-              measurementUnit: unit || null,
-              measurementValue: numericValue,
-              moodAfter: null,
-              moodBefore: null,
-              note,
-              status: 'done',
-            })
-          }}
-        >
-          <div className={styles.scheduleTarget}>
-            <strong>{label}</strong>
-            <span>{targetLabel ?? 'Без заданной нормы'}</span>
-          </div>
-
-          <label className={styles.dateField}>
-            <span>{unit ? `${label}, ${unit}` : label}</span>
-            <input
-              type="number"
-              step="any"
-              inputMode="decimal"
-              autoFocus
-              required
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-            />
-          </label>
-
-          <label className={styles.dateField}>
-            <span>Комментарий</span>
-            <textarea
-              rows={3}
-              maxLength={1200}
-              placeholder="Можно оставить пустым"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
-
-          {errorMessage ? (
-            <p className={styles.errorText}>{errorMessage}</p>
-          ) : null}
-
-          <div className={styles.modalActions}>
-            <button
-              className={styles.softButton}
-              type="button"
-              disabled={isBusy}
-              onClick={onClose}
-            >
-              Отмена
-            </button>
-            <button
-              className={styles.doneButton}
-              type="submit"
-              disabled={isBusy || numericValue === null}
-            >
-              Сохранить
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
-type ExerciseSetDraft = {
-  index: number
-  value: string
-}
-
-export function SelfCareExerciseDialog({
-  entry,
-  errorMessage,
-  isBusy,
-  onClose,
-  onSubmit,
-}: {
-  entry: SelfCareTodayItem
-  errorMessage: string | null
-  isBusy: boolean
-  onClose: () => void
-  onSubmit: (input: SelfCareCompletionInput) => void
-}) {
-  const exercise = entry.exercise
-  const unit = exercise?.unit ?? 'reps'
-  const metricType = exercise?.metricType ?? 'count'
-  const useSets = exercise?.useSets ?? false
-  const [value, setValue] = useState(() => getInitialExerciseValue(entry))
-  const [sets, setSets] = useState<ExerciseSetDraft[]>(() =>
-    getInitialExerciseSetDrafts(entry),
-  )
-  const [note, setNote] = useState('')
-  const numericValue = parseRequiredMeasurementNumber(value)
-  const parsedSets = sets
-    .map((set) => ({
-      index: set.index,
-      value: parseRequiredMeasurementNumber(set.value),
-    }))
-    .filter(
-      (set): set is { index: number; value: number } => set.value !== null,
-    )
-  const totalValue = useSets
-    ? calculateExerciseTotal(metricType, parsedSets)
-    : numericValue
-  const canSaveProgress = useSets && parsedSets.length > 0
-  const canFinish = totalValue !== null
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
-        onClose()
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
-
-  function updateSetValue(index: number, nextValue: string): void {
-    setSets((current) =>
-      current.map((set) =>
-        set.index === index ? { ...set, value: nextValue } : set,
-      ),
-    )
-  }
-
-  function addSet(): void {
-    setSets((current) => [
-      ...current,
-      { index: (current.at(-1)?.index ?? 0) + 1, value: '' },
-    ])
-  }
-
-  function removeSet(index: number): void {
-    setSets((current) =>
-      current.length <= 1
-        ? current
-        : current.filter((set) => set.index !== index),
-    )
-  }
-
-  function submitExercise(status: 'done' | 'partial'): void {
-    if (totalValue === null) {
-      return
-    }
-
-    onSubmit({
-      alternativeTitle: null,
-      completedVariant: status === 'done' ? 'full' : null,
-      durationMinutes: null,
-      energyAfter: null,
-      energyBefore: null,
-      exerciseSets: useSets ? parsedSets : [],
-      measurementUnit: unit,
-      measurementValue: totalValue,
-      moodAfter: null,
-      moodBefore: null,
-      note,
-      status,
-    })
-  }
-
-  if (typeof document === 'undefined') {
-    return null
-  }
-
-  return createPortal(
-    <div
-      className={styles.modalOverlay}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="self-care-exercise-title"
-    >
-      <button
-        className={styles.backdropButton}
-        type="button"
-        tabIndex={-1}
-        aria-label="Закрыть ввод упражнения"
-        onClick={onClose}
-      />
-
-      <section className={styles.modalPanel}>
-        <div className={styles.modalHeader}>
-          <div>
-            <h2 id="self-care-exercise-title">Записать упражнение</h2>
-            <p>{entry.item.title}</p>
-          </div>
-          <button
-            className={styles.closeButton}
-            type="button"
-            aria-label="Закрыть ввод упражнения"
-            onClick={onClose}
-          >
-            <CloseIcon size={18} strokeWidth={2.2} />
-          </button>
-        </div>
-
-        <form
-          className={styles.scheduleForm}
-          onSubmit={(event) => {
-            event.preventDefault()
-
-            if (!canFinish) {
-              return
-            }
-
-            submitExercise('done')
-          }}
-        >
-          <div className={styles.scheduleTarget}>
-            <strong>{getExerciseMetricLabel(metricType)}</strong>
-            <span>{formatExercisePlan(entry) ?? 'Без заданного плана'}</span>
-          </div>
-
-          {useSets ? (
-            <div className={styles.exerciseSetList}>
-              {sets.map((set, index) => (
-                <div key={set.index} className={styles.exerciseSetRow}>
-                  <label className={styles.dateField}>
-                    <span>Подход {index + 1}</span>
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      autoFocus={index === 0}
-                      value={set.value}
-                      onChange={(event) =>
-                        updateSetValue(set.index, event.target.value)
-                      }
-                    />
-                  </label>
-                  <button
-                    className={styles.softButton}
-                    type="button"
-                    disabled={isBusy || sets.length <= 1}
-                    onClick={() => removeSet(set.index)}
-                  >
-                    Убрать
-                  </button>
-                </div>
-              ))}
-              <button
-                className={styles.softButton}
-                type="button"
-                disabled={isBusy}
-                onClick={addSet}
-              >
-                Добавить подход
-              </button>
-            </div>
-          ) : (
-            <label className={styles.dateField}>
-              <span>
-                {`${getExerciseMetricLabel(metricType)}, ${getExerciseUnitLabel(
-                  unit,
-                )}`}
-              </span>
-              <input
-                type="number"
-                step="any"
-                inputMode="decimal"
-                autoFocus
-                required
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-              />
-            </label>
-          )}
-
-          {totalValue !== null ? (
-            <div className={styles.scheduleTarget}>
-              <strong>Итог</strong>
-              <span>{formatExerciseValue(totalValue, unit)}</span>
-            </div>
-          ) : null}
-
-          <label className={styles.dateField}>
-            <span>Комментарий</span>
-            <textarea
-              rows={3}
-              maxLength={1200}
-              placeholder="Можно оставить пустым"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
-
-          {errorMessage ? (
-            <p className={styles.errorText}>{errorMessage}</p>
-          ) : null}
-
-          <div className={styles.modalActions}>
-            <button
-              className={styles.softButton}
-              type="button"
-              disabled={isBusy}
-              onClick={onClose}
-            >
-              Отмена
-            </button>
-            {useSets ? (
-              <button
-                className={styles.softButton}
-                type="button"
-                disabled={isBusy || !canSaveProgress}
-                onClick={() => submitExercise('partial')}
-              >
-                Сохранить прогресс
-              </button>
-            ) : null}
-            <button
-              className={styles.doneButton}
-              type="submit"
-              disabled={isBusy || !canFinish}
-            >
-              {useSets ? 'Завершить' : 'Сохранить'}
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
-function getInitialExerciseSetDrafts(
-  entry: SelfCareTodayItem,
-): ExerciseSetDraft[] {
-  const completion = entry.lastExercise ?? entry.completion
-  if (completion?.exerciseSets.length) {
-    return completion.exerciseSets.map((set) => ({
-      index: set.index,
-      value: formatOptionalNumber(set.value),
-    }))
-  }
-
-  const count = entry.exercise?.plannedSets ?? 3
-  return Array.from({ length: Math.max(1, count) }, (_, index) => ({
-    index: index + 1,
-    value: '',
-  }))
 }
 
 function ChecklistPreview({

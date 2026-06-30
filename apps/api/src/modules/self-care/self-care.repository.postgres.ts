@@ -149,6 +149,77 @@ interface LoadStateOptions {
   scheduledOccurrencesBefore?: string | undefined
 }
 
+const SELF_CARE_STATE_READ_PROFILES = {
+  analytics: {
+    includeMinimumItems: false,
+    includeSettings: false,
+    includeTemplates: false,
+  },
+  dashboard: {
+    includeAllScheduledOccurrences: true,
+    includeTemplates: false,
+  },
+  generateOccurrences: {
+    includeAlternatives: false,
+    includeAppointmentDetails: false,
+    includeDailyStates: false,
+    includeMedicalDetails: false,
+    includeMeasurementDetails: false,
+    includeMinimumItems: false,
+    includeProcedureDetails: false,
+    includeSettings: false,
+    includeStepCompletions: false,
+    includeSteps: false,
+    includeTemplates: false,
+  },
+  history: {
+    includeAlternatives: false,
+    includeAppointmentDetails: false,
+    includeCourseDetails: false,
+    includeDailyStates: false,
+    includeMedicalDetails: false,
+    includeMeasurementDetails: false,
+    includeMinimumItems: false,
+    includeProcedureDetails: false,
+    includeScheduleRules: false,
+    includeSettings: false,
+    includeSteps: false,
+    includeTemplates: false,
+  },
+  listItems: {
+    includeCompletions: false,
+    includeDailyStates: false,
+    includeMinimumItems: false,
+    includeOccurrences: false,
+    includeSettings: false,
+    includeStepCompletions: false,
+    includeTemplates: false,
+  },
+  occurrences: {
+    includeAlternatives: false,
+    includeAppointmentDetails: false,
+    includeCompletions: false,
+    includeCourseDetails: false,
+    includeDailyStates: false,
+    includeMedicalDetails: false,
+    includeMeasurementDetails: false,
+    includeMinimumItems: false,
+    includeProcedureDetails: false,
+    includeScheduleRules: false,
+    includeSettings: false,
+    includeStepCompletions: false,
+    includeSteps: false,
+    includeTemplates: false,
+  },
+  plan: {
+    includeAllScheduledOccurrences: true,
+    includeDailyStates: false,
+    includeMinimumItems: false,
+    includeSettings: false,
+    includeTemplates: false,
+  },
+} satisfies Record<string, LoadStateOptions>
+
 export class PostgresSelfCareRepository implements SelfCareRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
@@ -157,15 +228,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     filters: SelfCareListFilters = {},
   ) {
     return buildSelfCareListResponse(
-      await this.loadState(context, {
-        includeCompletions: false,
-        includeDailyStates: false,
-        includeMinimumItems: false,
-        includeOccurrences: false,
-        includeSettings: false,
-        includeStepCompletions: false,
-        includeTemplates: false,
-      }),
+      await this.loadState(context, SELF_CARE_STATE_READ_PROFILES.listItems),
       filters,
     )
   }
@@ -555,17 +618,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
   async generateOccurrences(command: GenerateSelfCareOccurrencesCommand) {
     const state = await this.loadState(command.context, {
-      includeAlternatives: false,
-      includeAppointmentDetails: false,
-      includeDailyStates: false,
-      includeMedicalDetails: false,
-      includeMeasurementDetails: false,
-      includeMinimumItems: false,
-      includeProcedureDetails: false,
-      includeSettings: false,
-      includeStepCompletions: false,
-      includeSteps: false,
-      includeTemplates: false,
+      ...SELF_CARE_STATE_READ_PROFILES.generateOccurrences,
       occurrenceRange: { from: command.from, to: command.to },
     })
     const generated: StoredSelfCareOccurrenceRecord[] = []
@@ -637,13 +690,12 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return buildDashboardResponse({
       date: command.date,
       state: await this.loadState(command.context, {
+        ...SELF_CARE_STATE_READ_PROFILES.dashboard,
         dailyStateRange: { from: command.date, to: command.date },
-        includeTemplates: false,
         occurrenceRange: {
           from: command.date,
           to: addDays(command.date, 45),
         },
-        includeAllScheduledOccurrences: true,
         scheduledOccurrencesBefore: command.date,
       }),
     })
@@ -658,11 +710,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return buildPlanResponse({
       from: command.from,
       state: await this.loadState(command.context, {
-        includeDailyStates: false,
-        includeMinimumItems: false,
-        includeSettings: false,
-        includeTemplates: false,
-        includeAllScheduledOccurrences: true,
+        ...SELF_CARE_STATE_READ_PROFILES.plan,
         occurrenceRange: { from: command.from, to: command.to },
       }),
       to: command.to,
@@ -676,20 +724,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.to,
     )
     const state = await this.loadState(command.context, {
-      includeAlternatives: false,
-      includeAppointmentDetails: false,
-      includeCompletions: false,
-      includeCourseDetails: false,
-      includeDailyStates: false,
-      includeMedicalDetails: false,
-      includeMeasurementDetails: false,
-      includeMinimumItems: false,
-      includeProcedureDetails: false,
-      includeScheduleRules: false,
-      includeSettings: false,
-      includeStepCompletions: false,
-      includeSteps: false,
-      includeTemplates: false,
+      ...SELF_CARE_STATE_READ_PROFILES.occurrences,
       occurrenceRange: { from: command.from, to: command.to },
     })
     return state.occurrences.filter(
@@ -1384,20 +1419,9 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return buildHistoryResponse({
       from,
       state: await this.loadState(context, {
+        ...SELF_CARE_STATE_READ_PROFILES.history,
         completionRange: { from, to },
-        includeAlternatives: false,
-        includeAppointmentDetails: false,
-        includeCourseDetails: false,
-        includeDailyStates: false,
-        includeMedicalDetails: false,
-        includeMeasurementDetails: false,
-        includeMinimumItems: false,
         occurrenceRange: { from, to },
-        includeProcedureDetails: false,
-        includeScheduleRules: false,
-        includeSettings: false,
-        includeSteps: false,
-        includeTemplates: false,
       }),
       to,
     })
@@ -1408,11 +1432,9 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return buildAnalyticsResponse({
       from,
       state: await this.loadState(context, {
+        ...SELF_CARE_STATE_READ_PROFILES.analytics,
         completionRange: { from, to },
         dailyStateRange: { from, to },
-        includeMinimumItems: false,
-        includeSettings: false,
-        includeTemplates: false,
         occurrenceRange: { from, to: addDays(to, 45) },
       }),
       to,
