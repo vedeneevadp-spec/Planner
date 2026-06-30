@@ -482,6 +482,11 @@ if [ -n "$DB_MIGRATE_MODE_VALUE" ]; then
 fi
 
 runuser -u planner -- env "\${MIGRATE_ENV[@]}" npm run db:migrate
+runuser -u planner -- env \\
+  HUSKY=0 \\
+  MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" \\
+  npm run db:security:repair
+
 SECURITY_ENV=(HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" NODE_ENV="$node_env_value" API_DB_RLS_MODE="$api_db_rls_mode_value")
 if [ "$api_db_rls_mode_value" = "transaction_local" ]; then
   SECURITY_ENV+=(DB_SECURITY_REQUIRE_NON_OWNER=1)
