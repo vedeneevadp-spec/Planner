@@ -133,7 +133,9 @@ import {
   isClosedTodayEntry,
   isEntryDoneToday,
   mergeLatestProgressCompletion,
+  mergeRitualProgressCompletion,
   shiftDateKey,
+  shouldShowOverdueEntry,
   shouldShowTodayEntry,
 } from './SelfCarePage.schedule'
 import { SelfCareSection } from './SelfCarePage.sections'
@@ -263,7 +265,7 @@ export function SelfCareTodayTab({
 
   const dashboardTodayItems = dashboard.todayItems
   const dashboardFlexibleGoals = dashboard.flexibleGoals
-  const overdueItems = dashboard.overdueItems.filter(shouldShowTodayEntry)
+  const overdueItems = dashboard.overdueItems.filter(shouldShowOverdueEntry)
   const todayItems = dashboardTodayItems
     .filter(shouldShowTodayEntry)
     .filter((entry) => entry.item.type !== 'course')
@@ -735,7 +737,7 @@ export function SelfCareRitualsTab({
                 todayByItemId.get(item.id) ?? buildItemEntry(item, list)
               const latestCompletion =
                 latestCompletionByItemId.get(item.id) ?? null
-              const entry = mergeLatestProgressCompletion(
+              const entry = mergeRitualProgressCompletion(
                 baseEntry,
                 latestCompletion,
               )

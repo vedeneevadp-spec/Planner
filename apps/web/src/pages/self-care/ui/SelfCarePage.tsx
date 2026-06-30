@@ -56,6 +56,7 @@ import {
 import styles from './SelfCarePage.module.css'
 import { useSelfCarePageMutations } from './SelfCarePage.mutations'
 import {
+  buildRitualDashboardItems,
   isEntryDoneToday,
   scheduleSelfCareEntryOccurrence,
 } from './SelfCarePage.schedule'
@@ -677,10 +678,7 @@ export function SelfCarePage() {
           list={list}
           history={history}
           plan={plan}
-          dashboardItems={[
-            ...(dashboard?.todayItems ?? []),
-            ...(dashboard?.flexibleGoals ?? []),
-          ]}
+          dashboardItems={buildRitualDashboardItems(dashboard)}
           isBusy={isActionBusy}
           ritualStepDrafts={ritualStepDrafts}
           todayKey={todayKey}

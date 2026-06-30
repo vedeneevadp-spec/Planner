@@ -215,6 +215,26 @@ export function buildAvailableTodayEntries(input: {
     .sort(compareTodayEntries)
 }
 
+export function buildRitualDashboardItems(
+  dashboard: SelfCareDashboardResponse | undefined,
+): SelfCareTodayItem[] {
+  if (!dashboard) {
+    return []
+  }
+
+  const byItemId = new Map<string, SelfCareTodayItem>()
+
+  for (const entry of [
+    ...dashboard.todayItems,
+    ...dashboard.flexibleGoals,
+    ...dashboard.overdueItems,
+  ]) {
+    byItemId.set(entry.item.id, entry)
+  }
+
+  return [...byItemId.values()]
+}
+
 export function compareTodayEntries(
   left: SelfCareTodayItem,
   right: SelfCareTodayItem,
@@ -360,6 +380,26 @@ export function mergeLatestProgressCompletion(
   }
 }
 
+export function mergeRitualProgressCompletion(
+  entry: SelfCareTodayItem,
+  latestCompletion: SelfCareCompletion | null,
+): SelfCareTodayItem {
+  const merged = mergeLatestProgressCompletion(entry, latestCompletion)
+
+  if (
+    entry.occurrence &&
+    entry.occurrence.status === 'scheduled' &&
+    !entry.completion
+  ) {
+    return {
+      ...merged,
+      completion: null,
+    }
+  }
+
+  return merged
+}
+
 export function getNextPlannedDateByItemId(
   plan: SelfCarePlanResponse | undefined,
   todayKey: string,
@@ -438,6 +478,43 @@ export function shouldShowTodayEntry(entry: SelfCareTodayItem): boolean {
   }
 
   if (entry.item.type === 'course') {
+    return false
+  }
+
+  if (entry.completion && !isExercisePartialToday(entry)) {
+    return false
+  }
+
+  if (
+    entry.occurrence &&
+    HIDDEN_TODAY_OCCURRENCE_STATUSES.has(entry.occurrence.status)
+  ) {
+    return false
+  }
+
+  if (
+    entry.flexibleProgress &&
+    entry.flexibleProgress.completedCount >= entry.flexibleProgress.targetCount
+  ) {
+    return false
+  }
+
+  return true
+}
+
+export function shouldShowOverdueEntry(entry: SelfCareTodayItem): boolean {
+  if (entry.item.isArchived || !entry.item.isActive) {
+    return false
+  }
+
+  if (
+    entry.item.type === 'course' &&
+    (entry.courseDetails?.isCompleted || entry.courseDetails?.isPaused)
+  ) {
+    return false
+  }
+
+  if (isStaleCourseOccurrence(entry)) {
     return false
   }
 

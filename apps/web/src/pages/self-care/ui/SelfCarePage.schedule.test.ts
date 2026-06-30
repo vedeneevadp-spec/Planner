@@ -17,6 +17,7 @@ import {
   addRepeatInterval,
   buildAvailableTodayEntries,
   buildItemEntry,
+  buildRitualDashboardItems,
   buildTodayCourseEntries,
   compareTodayEntries,
   getDatePart,
@@ -32,10 +33,12 @@ import {
   isProgressCompletionStatus,
   isScheduleRuleAvailableToday,
   mergeLatestProgressCompletion,
+  mergeRitualProgressCompletion,
   scheduleSelfCareEntryOccurrence,
   shiftDateKey,
   shouldMoveExistingSelfCareOccurrence,
   shouldShowAvailableTodayEntry,
+  shouldShowOverdueEntry,
   shouldShowPlannedEntry,
   shouldShowTodayEntry,
 } from './SelfCarePage.schedule'
@@ -269,6 +272,76 @@ describe('self-care schedule availability helpers', () => {
         todayKey: '2026-06-20',
       }).map((entry) => entry.item.id),
     ).toEqual(['available'])
+  })
+
+  it('keeps overdue occurrences available for the rituals tab', () => {
+    const overdueItem = createItem({
+      id: 'vitamin-c',
+      title: 'Витамин C',
+    })
+    const dailyGoal = createItem({
+      id: 'water',
+      title: 'Вода',
+      type: 'flexible_goal',
+    })
+    const todayEntry = createTodayEntry({
+      item: overdueItem,
+      occurrence: createOccurrence({
+        id: 'today-occurrence',
+        itemId: overdueItem.id,
+        scheduledFor: '2026-06-20',
+      }),
+    })
+    const overdueEntry = createTodayEntry({
+      item: overdueItem,
+      occurrence: createOccurrence({
+        id: 'overdue-occurrence',
+        itemId: overdueItem.id,
+        scheduledFor: '2026-06-19',
+      }),
+    })
+    const flexibleEntry = createTodayEntry({ item: dailyGoal })
+
+    const dashboardItems = buildRitualDashboardItems(
+      createDashboard({
+        flexibleGoals: [flexibleEntry],
+        overdueItems: [overdueEntry],
+        todayItems: [todayEntry],
+      }),
+    )
+
+    expect(dashboardItems.map((entry) => entry.item.id)).toEqual([
+      overdueItem.id,
+      dailyGoal.id,
+    ])
+    expect(dashboardItems[0]?.occurrence?.id).toBe('overdue-occurrence')
+  })
+
+  it('does not close open ritual occurrences with unrelated latest progress', () => {
+    const overdueEntry = createTodayEntry({
+      item: createItem({
+        id: 'vitamin-c',
+        title: 'Витамин C',
+        type: 'course',
+      }),
+      occurrence: createOccurrence({
+        id: 'overdue-occurrence',
+        itemId: 'vitamin-c',
+        scheduledFor: '2026-06-19',
+      }),
+    })
+    const todayCompletion = createCompletion({
+      completedAt: '2026-06-20T10:00:00.000Z',
+      itemId: 'vitamin-c',
+    })
+
+    expect(
+      mergeLatestProgressCompletion(overdueEntry, todayCompletion).completion
+        ?.id,
+    ).toBe(todayCompletion.id)
+    expect(
+      mergeRitualProgressCompletion(overdueEntry, todayCompletion).completion,
+    ).toBeNull()
   })
 })
 
@@ -515,6 +588,38 @@ describe('self-care schedule projection helpers', () => {
     expect(shouldShowPlannedEntry(cancelled)).toBe(false)
     expect(isClosedTodayEntry(flexibleDone)).toBe(true)
     expect(isClosedTodayEntry(cancelled)).toBe(true)
+  })
+
+  it('shows open overdue courses without returning them to regular today items', () => {
+    const overdueCourse = createTodayEntry({
+      courseDetails: createCourseDetails({ itemId: 'course-1' }),
+      item: createItem({
+        id: 'course-1',
+        title: 'Витамин C',
+        type: 'course',
+      }),
+      occurrence: createOccurrence({
+        id: 'overdue-course',
+        itemId: 'course-1',
+        scheduledFor: '2026-06-19',
+      }),
+      scheduleRule: createScheduleRule({
+        itemId: 'course-1',
+        repeatKind: 'course',
+        startDate: '2026-06-01',
+      }),
+    })
+    const completedCourse = createTodayEntry({
+      ...overdueCourse,
+      courseDetails: createCourseDetails({
+        isCompleted: true,
+        itemId: 'course-1',
+      }),
+    })
+
+    expect(shouldShowTodayEntry(overdueCourse)).toBe(false)
+    expect(shouldShowOverdueEntry(overdueCourse)).toBe(true)
+    expect(shouldShowOverdueEntry(completedCourse)).toBe(false)
   })
 
   it('covers available-today branches for appointment, course, no-rule and hidden items', () => {
