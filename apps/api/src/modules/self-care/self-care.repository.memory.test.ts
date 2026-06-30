@@ -749,6 +749,93 @@ void test('MemorySelfCareRepository stores exercise details, sets, and trend', a
   assert.equal(analytics.exerciseTrends[0]?.points[0]?.value, 28)
 })
 
+void test('MemorySelfCareRepository updates exercise progress instead of appending same-day points', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'movement',
+      exerciseDetails: {
+        metricType: 'count',
+        plannedSets: 3,
+        unit: 'reps',
+        useSets: true,
+      },
+      scheduleRule: {
+        repeatKind: 'daily',
+        startDate: '2026-06-30',
+      },
+      title: 'Отжимания',
+      type: 'exercise',
+    }),
+  })
+
+  const first = await repository.completeItemNow({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-30T08:00:00.000Z',
+      exerciseSets: [{ index: 1, value: 8 }],
+      measurementUnit: 'reps',
+      measurementValue: 8,
+      status: 'partial',
+    }),
+    itemId: item.id,
+  })
+  const second = await repository.completeItemNow({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-30T08:10:00.000Z',
+      exerciseSets: [
+        { index: 1, value: 8 },
+        { index: 2, value: 10 },
+      ],
+      measurementUnit: 'reps',
+      measurementValue: 18,
+      status: 'partial',
+    }),
+    itemId: item.id,
+  })
+  const final = await repository.completeItemNow({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-30T08:20:00.000Z',
+      exerciseSets: [
+        { index: 1, value: 8 },
+        { index: 2, value: 10 },
+        { index: 3, value: 10 },
+      ],
+      measurementUnit: 'reps',
+      measurementValue: 28,
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+  const history = await repository.getHistory(
+    context,
+    '2026-06-30',
+    '2026-06-30',
+  )
+  const analytics = await repository.getAnalytics(
+    context,
+    '2026-06-30',
+    '2026-06-30',
+  )
+
+  assert.equal(second.id, first.id)
+  assert.equal(final.id, first.id)
+  assert.equal(history.completions.length, 1)
+  assert.equal(history.completions[0]?.status, 'done')
+  assert.equal(history.completions[0]?.measurementValue, 28)
+  assert.deepEqual(history.completions[0]?.exerciseSets, [
+    { index: 1, value: 8 },
+    { index: 2, value: 10 },
+    { index: 3, value: 10 },
+  ])
+  assert.equal(analytics.exerciseTrends[0]?.points.length, 1)
+  assert.equal(analytics.exerciseTrends[0]?.points[0]?.value, 28)
+})
+
 void test('MemorySelfCareRepository stores mood check state values', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()

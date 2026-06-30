@@ -5,6 +5,7 @@ import { after, before, test } from 'node:test'
 import {
   selfCareItemInputSchema,
   selfCareItemUpdateInputSchema,
+  selfCareRitualCompletionInputSchema,
 } from '@planner/contracts'
 
 import {
@@ -228,6 +229,147 @@ void test('PostgresSelfCareRepository does not duplicate occurrences after sched
     assert.equal(
       occurrences[0]?.occurrence?.scheduleRuleId,
       initialOccurrence.scheduleRuleId,
+    )
+  } finally {
+    await cleanupRepositoryContractUsers(connection, [actorUserId])
+  }
+})
+
+void test('PostgresSelfCareRepository updates open exercise progress when completing an occurrence', async () => {
+  const actorUserId = randomUUID()
+
+  await cleanupRepositoryContractUsers(connection, [actorUserId])
+
+  const workspace = await seedRepositoryContractWorkspace(connection, {
+    displayName: 'Self Care Exercise User',
+    email: `self-care-exercise-${actorUserId}@example.test`,
+    kind: 'personal',
+    role: 'owner',
+    userId: actorUserId,
+    workspaceName: 'Self Care Exercise',
+  })
+  const context = {
+    actorUserId,
+    auth: createRepositoryContractAuthContext({
+      email: workspace.email,
+      userId: actorUserId,
+    }),
+    clientTimeZone: 'Europe/Samara',
+    groupRole: null,
+    role: 'owner' as const,
+    workspaceId: workspace.workspaceId,
+    workspaceKind: 'personal' as const,
+  }
+  const repository = new PostgresSelfCareRepository(connection.db)
+
+  try {
+    const item = await repository.createItem({
+      context,
+      input: selfCareItemInputSchema.parse({
+        category: 'movement',
+        exerciseDetails: {
+          metricType: 'count',
+          plannedSets: 3,
+          unit: 'reps',
+          useSets: true,
+        },
+        scheduleRule: {
+          repeatKind: 'daily',
+          startDate: '2026-06-30',
+        },
+        title: 'Отжимания',
+        type: 'exercise',
+      }),
+    })
+
+    await repository.generateOccurrences({
+      context,
+      from: '2026-06-30',
+      to: '2026-06-30',
+    })
+    const plan = await repository.getPlan({
+      context,
+      from: '2026-06-30',
+      to: '2026-06-30',
+    })
+    const occurrence = plan.occurrences.find(
+      (entry) => entry.item.id === item.id,
+    )?.occurrence
+
+    assert.ok(occurrence)
+
+    const first = await repository.completeItemNow({
+      context,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-06-30T08:00:00.000Z',
+        exerciseSets: [{ index: 1, value: 8 }],
+        measurementUnit: 'reps',
+        measurementValue: 8,
+        status: 'partial',
+      }),
+      itemId: item.id,
+    })
+    const second = await repository.completeItemNow({
+      context,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-06-30T08:10:00.000Z',
+        exerciseSets: [
+          { index: 1, value: 8 },
+          { index: 2, value: 10 },
+        ],
+        measurementUnit: 'reps',
+        measurementValue: 18,
+        status: 'partial',
+      }),
+      itemId: item.id,
+    })
+    const final = await repository.completeOccurrence({
+      context,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-06-30T08:20:00.000Z',
+        exerciseSets: [
+          { index: 1, value: 8 },
+          { index: 2, value: 10 },
+          { index: 3, value: 10 },
+        ],
+        measurementUnit: 'reps',
+        measurementValue: 28,
+        status: 'done',
+      }),
+      occurrenceId: occurrence.id,
+    })
+    const history = await repository.getHistory(
+      context,
+      '2026-06-30',
+      '2026-06-30',
+    )
+    const analytics = await repository.getAnalytics(
+      context,
+      '2026-06-30',
+      '2026-06-30',
+    )
+    const occurrences = await repository.getOccurrences({
+      context,
+      from: '2026-06-30',
+      to: '2026-06-30',
+    })
+
+    assert.equal(second.id, first.id)
+    assert.equal(final.id, first.id)
+    assert.equal(final.occurrenceId, occurrence.id)
+    assert.equal(final.status, 'done')
+    assert.equal(final.measurementValue, 28)
+    assert.equal(history.completions.length, 1)
+    assert.deepEqual(history.completions[0]?.exerciseSets, [
+      { index: 1, value: 8 },
+      { index: 2, value: 10 },
+      { index: 3, value: 10 },
+    ])
+    assert.equal(analytics.exerciseTrends[0]?.points.length, 1)
+    assert.equal(analytics.exerciseTrends[0]?.points[0]?.value, 28)
+    assert.equal(
+      occurrences.find((entry) => entry.id === occurrence.id)?.status,
+      'done',
     )
   } finally {
     await cleanupRepositoryContractUsers(connection, [actorUserId])

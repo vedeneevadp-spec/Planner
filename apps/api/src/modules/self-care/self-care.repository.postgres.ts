@@ -773,34 +773,48 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           { ...command.input, status },
           { itemId: item.id, occurrence, userId: command.context.actorUserId },
         )
-        await this.insertCompletion(
-          trx,
-          completion,
-          command.context.actorUserId,
+        const completionDate = getSelfCareCompletionDateKey(
+          command.input,
+          command.context.clientTimeZone,
         )
-        for (const step of pendingStepCompletions) {
-          await trx
-            .insertInto('app.self_care_ritual_step_completions')
-            .values({
-              completion_id: completion.id,
-              id: step.id,
-              is_done: step.isDone,
-              step_id: step.stepId,
-            })
-            .execute()
+        const exerciseProgressCompletion =
+          item.type === 'exercise'
+            ? await this.updateOpenExerciseProgressCompletion(trx, {
+                completion,
+                date: completionDate,
+                itemId: item.id,
+                plannerTimeZone: command.context.clientTimeZone,
+                userId: command.context.actorUserId,
+              })
+            : null
+        const storedCompletion = exerciseProgressCompletion ?? completion
+
+        if (!exerciseProgressCompletion) {
+          await this.insertCompletion(
+            trx,
+            completion,
+            command.context.actorUserId,
+          )
+          for (const step of pendingStepCompletions) {
+            await trx
+              .insertInto('app.self_care_ritual_step_completions')
+              .values({
+                completion_id: completion.id,
+                id: step.id,
+                is_done: step.isDone,
+                step_id: step.stepId,
+              })
+              .execute()
+          }
         }
         await this.updateOccurrence(
           trx,
           updateOccurrenceStatus(
             occurrence,
             mapCompletionStatusToOccurrenceStatus(status),
-            { completedAt: completion.completedAt },
+            { completedAt: storedCompletion.completedAt },
           ),
           command.context.actorUserId,
-        )
-        const completionDate = getSelfCareCompletionDateKey(
-          command.input,
-          command.context.clientTimeZone,
         )
         await this.deleteRitualStepDraftRow(trx, {
           date: completionDate,
@@ -819,7 +833,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           })
         }
         await this.incrementCourse(trx, item.id, completionDate)
-        return completion
+        return storedCompletion
       },
       command.context.actorUserId,
     )
@@ -885,21 +899,35 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             userId: command.context.actorUserId,
           },
         )
-        await this.insertCompletion(
-          trx,
-          completion,
-          command.context.actorUserId,
-        )
-        for (const step of pendingStepCompletions) {
-          await trx
-            .insertInto('app.self_care_ritual_step_completions')
-            .values({
-              completion_id: completion.id,
-              id: step.id,
-              is_done: step.isDone,
-              step_id: step.stepId,
-            })
-            .execute()
+        const exerciseProgressCompletion =
+          item.type === 'exercise'
+            ? await this.updateOpenExerciseProgressCompletion(trx, {
+                completion,
+                date: completionDate,
+                itemId: item.id,
+                plannerTimeZone: command.context.clientTimeZone,
+                userId: command.context.actorUserId,
+              })
+            : null
+        const storedCompletion = exerciseProgressCompletion ?? completion
+
+        if (!exerciseProgressCompletion) {
+          await this.insertCompletion(
+            trx,
+            completion,
+            command.context.actorUserId,
+          )
+          for (const step of pendingStepCompletions) {
+            await trx
+              .insertInto('app.self_care_ritual_step_completions')
+              .values({
+                completion_id: completion.id,
+                id: step.id,
+                is_done: step.isDone,
+                step_id: step.stepId,
+              })
+              .execute()
+          }
         }
         await this.deleteRitualStepDraftRow(trx, {
           date: completionDate,
@@ -910,12 +938,12 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         })
         await this.deactivateFlexibleGoalIfCompleted(trx, {
           actorUserId: command.context.actorUserId,
-          completion,
+          completion: storedCompletion,
           item,
           scheduleRule,
         })
         await this.incrementCourse(trx, item.id, completionDate)
-        return completion
+        return storedCompletion
       },
       command.context.actorUserId,
     )
@@ -2460,6 +2488,57 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         user_id: completion.userId,
       })
       .execute()
+  }
+
+  private async updateOpenExerciseProgressCompletion(
+    executor: DatabaseExecutor,
+    input: {
+      completion: SelfCareCompletion
+      date: string
+      itemId: string
+      plannerTimeZone?: string | undefined
+      userId: string
+    },
+  ): Promise<StoredSelfCareCompletionRecord | null> {
+    const existingCompletion = await this.loadProgressCompletionForDate(
+      executor,
+      {
+        date: input.date,
+        itemId: input.itemId,
+        plannerTimeZone: input.plannerTimeZone,
+        userId: input.userId,
+      },
+    )
+
+    if (!existingCompletion || existingCompletion.status !== 'partial') {
+      return null
+    }
+
+    const row = await executor
+      .updateTable('app.self_care_completions')
+      .set({
+        alternative_title: input.completion.alternativeTitle,
+        completed_at: input.completion.completedAt,
+        completed_variant: input.completion.completedVariant,
+        duration_minutes: input.completion.durationMinutes,
+        energy_after: input.completion.energyAfter,
+        energy_before: input.completion.energyBefore,
+        exercise_sets: JSON.stringify(input.completion.exerciseSets),
+        measurement_unit: input.completion.measurementUnit,
+        measurement_value: input.completion.measurementValue,
+        mood_after: input.completion.moodAfter,
+        mood_before: input.completion.moodBefore,
+        note: input.completion.note,
+        occurrence_id: input.completion.occurrenceId,
+        scheduled_for: input.completion.scheduledFor,
+        status: input.completion.status,
+      })
+      .where('id', '=', existingCompletion.id)
+      .where('user_id', '=', input.userId)
+      .returningAll()
+      .executeTakeFirst()
+
+    return row ? mapCompletionRow(row) : null
   }
 
   private updateOccurrence(

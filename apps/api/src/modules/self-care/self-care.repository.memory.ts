@@ -416,22 +416,39 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         userId: command.context.actorUserId,
       },
     )
+    const exerciseProgressCompletion =
+      item.type === 'exercise'
+        ? this.updateOpenExerciseProgressCompletion({
+            completion,
+            date: getSelfCareCompletionDateKey(
+              command.input,
+              command.context.clientTimeZone,
+            ),
+            itemId: item.id,
+            plannerTimeZone: command.context.clientTimeZone,
+            userId: command.context.actorUserId,
+          })
+        : null
     const finalStepCompletions = stepCompletions.map((step) => ({
       ...step,
       completionId: completion.id,
     }))
 
-    this.completions.set(completion.id, completion)
-    finalStepCompletions.forEach((step) =>
-      this.stepCompletions.set(step.id, step),
-    )
+    const storedCompletion = exerciseProgressCompletion ?? completion
+
+    if (!exerciseProgressCompletion) {
+      this.completions.set(completion.id, completion)
+      finalStepCompletions.forEach((step) =>
+        this.stepCompletions.set(step.id, step),
+      )
+    }
     this.occurrences.set(
       occurrence.id,
       updateOccurrenceStatus(
         occurrence,
         mapCompletionStatusToOccurrenceStatus(status),
         {
-          completedAt: completion.completedAt,
+          completedAt: storedCompletion.completedAt,
         },
       ),
     )
@@ -460,7 +477,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ),
     )
 
-    return completion
+    return storedCompletion
   }
 
   async completeItemNow(command: CompleteSelfCareItemNowCommand) {
@@ -506,15 +523,29 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         userId: command.context.actorUserId,
       },
     )
+    const exerciseProgressCompletion =
+      item.type === 'exercise'
+        ? this.updateOpenExerciseProgressCompletion({
+            completion,
+            date: completionDate,
+            itemId: item.id,
+            plannerTimeZone: command.context.clientTimeZone,
+            userId: command.context.actorUserId,
+          })
+        : null
     const finalStepCompletions = pendingStepCompletions.map((step) => ({
       ...step,
       completionId: completion.id,
     }))
 
-    this.completions.set(completion.id, completion)
-    finalStepCompletions.forEach((step) =>
-      this.stepCompletions.set(step.id, step),
-    )
+    const storedCompletion = exerciseProgressCompletion ?? completion
+
+    if (!exerciseProgressCompletion) {
+      this.completions.set(completion.id, completion)
+      finalStepCompletions.forEach((step) =>
+        this.stepCompletions.set(step.id, step),
+      )
+    }
     this.deleteRitualStepDraftRecord({
       date: completionDate,
       itemId: item.id,
@@ -523,7 +554,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       workspaceId: command.context.workspaceId,
     })
     this.incrementCourseIfNeeded(item.id, completionDate)
-    return completion
+    return storedCompletion
   }
 
   async completeFlexibleGoal(command: CompleteFlexibleGoalCommand) {
@@ -1144,6 +1175,34 @@ export class MemorySelfCareRepository implements SelfCareRepository {
           right.completedAt.localeCompare(left.completedAt),
         )[0] ?? null
     )
+  }
+
+  private updateOpenExerciseProgressCompletion(input: {
+    completion: StoredSelfCareCompletionRecord
+    date: string
+    itemId: string
+    plannerTimeZone?: string | undefined
+    userId: string
+  }): StoredSelfCareCompletionRecord | null {
+    const existingCompletion = this.findProgressCompletionForDate({
+      date: input.date,
+      itemId: input.itemId,
+      plannerTimeZone: input.plannerTimeZone,
+      userId: input.userId,
+    })
+
+    if (!existingCompletion || existingCompletion.status !== 'partial') {
+      return null
+    }
+
+    const completion = {
+      ...input.completion,
+      createdAt: existingCompletion.createdAt,
+      id: existingCompletion.id,
+    }
+
+    this.completions.set(existingCompletion.id, completion)
+    return completion
   }
 
   private getWritableItem(
