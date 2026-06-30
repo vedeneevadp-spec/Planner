@@ -1464,6 +1464,29 @@ export function formatExercisePlan(entry: SelfCareTodayItem): string | null {
   return parts.length ? parts.join(' · ') : null
 }
 
+export function formatCompletionMeasurementHistoryValue(
+  completion: SelfCareCompletion,
+  item: Pick<SelfCareItem, 'type'> | null | undefined,
+): string | null {
+  if (completion.measurementValue === null) {
+    return null
+  }
+
+  const value =
+    item?.type === 'exercise'
+      ? formatExerciseValue(
+          completion.measurementValue,
+          completion.measurementUnit,
+        )
+      : formatMeasurementValue(
+          completion.measurementValue,
+          completion.measurementUnit,
+        )
+  const sets = formatExerciseSetsSummary(completion)
+
+  return sets ? `${value}, ${sets}` : value
+}
+
 export function formatMeasurementSummary(
   entry: SelfCareTodayItem,
 ): string | null {

@@ -21,6 +21,7 @@ import {
   buildVisibleCategoryDistribution,
   canRestartCourse,
   firstErrorMessage,
+  formatCompletionMeasurementHistoryValue,
   formatCompletionState,
   formatCourseCompletionState,
   formatDate,
@@ -411,6 +412,29 @@ describe('SelfCarePage helpers', () => {
         }),
       ),
     ).toBe('План: 20 раз · 3 подхода')
+    expect(
+      formatCompletionMeasurementHistoryValue(
+        createCompletion({
+          exerciseSets: [
+            { index: 1, value: 7 },
+            { index: 2, value: 6 },
+            { index: 3, value: 6 },
+          ],
+          measurementUnit: 'reps',
+          measurementValue: 19,
+        }),
+        createItem({ type: 'exercise' }),
+      ),
+    ).toBe('19 раз, 3 подхода')
+    expect(
+      formatCompletionMeasurementHistoryValue(
+        createCompletion({
+          measurementUnit: 'кг',
+          measurementValue: 64.4,
+        }),
+        createItem({ type: 'measurement' }),
+      ),
+    ).toBe('64,4 кг')
     expect(formatMoney(1200, 'RUB')).toContain('1 200')
     expect(formatCourseCompletionState(courseEntry, '2026-06-22')).toBe(
       'Сессия засчитана сегодня',

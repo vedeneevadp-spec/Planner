@@ -65,17 +65,16 @@ import {
   EXERCISE_METRIC_SELECT_OPTIONS,
   FLEXIBLE_GOAL_REPEAT_SELECT_OPTIONS,
   FLEXIBLE_PERIOD_SELECT_OPTIONS,
+  formatCompletionMeasurementHistoryValue,
   formatCompletionState,
   formatCourseCompletionState,
   formatDate,
   formatEntryDetails,
   formatExercisePlan,
-  formatExerciseSetsSummary,
   formatExerciseSummary,
   formatExerciseValue,
   formatMeasurementSummary,
   formatMeasurementTarget,
-  formatMeasurementValue,
   formatOptionalNumber,
   formatPlanningText,
   formatSchedule,
@@ -831,21 +830,19 @@ export function SelfCareHistoryTab({
     <div className={styles.timeline}>
       {completions.map((completion) => {
         const item = itemById.get(completion.itemId)
+        const measurementHistoryValue = formatCompletionMeasurementHistoryValue(
+          completion,
+          item,
+        )
         return (
           <article key={completion.id} className={styles.historyCard}>
             <time>{formatDate(completion.completedAt.slice(0, 10))}</time>
             <div>
               <h3>{item?.title ?? 'Забота о себе'}</h3>
               <p>{STATUS_LABELS[completion.status]}</p>
-              {completion.measurementValue !== null ? (
+              {measurementHistoryValue ? (
                 <p className={styles.measurementHistoryValue}>
-                  {formatMeasurementValue(
-                    completion.measurementValue,
-                    completion.measurementUnit,
-                  )}
-                  {formatExerciseSetsSummary(completion)
-                    ? `, ${formatExerciseSetsSummary(completion)}`
-                    : ''}
+                  {measurementHistoryValue}
                 </p>
               ) : null}
               {formatStateCompletionSummary(completion) ? (
