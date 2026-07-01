@@ -403,6 +403,15 @@ describe('self-care schedule projection helpers', () => {
     expect(
       mergeLatestProgressCompletion(
         createTodayEntry({
+          completion: older,
+          item: measurementItem,
+        }),
+        latest,
+      ).completion?.id,
+    ).toBe('older')
+    expect(
+      mergeLatestProgressCompletion(
+        createTodayEntry({
           item: measurementItem,
           lastMeasurement: older,
         }),

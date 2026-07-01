@@ -1,14 +1,19 @@
 import {
+  getSelfCareAnalyticsDetailSelection,
   getSelfCareCreateDialogMode,
   getSelfCareTab,
   SELF_CARE_ACTION_REQUEST_SEARCH_PARAM,
   SELF_CARE_ACTION_SEARCH_PARAM,
+  SELF_CARE_ANALYTICS_ITEM_SEARCH_PARAM,
+  SELF_CARE_ANALYTICS_TYPE_SEARCH_PARAM,
+  type SelfCareAnalyticsDetailSelection,
   type SelfCareCreateDialogMode,
   type SelfCareTab,
 } from './SelfCarePage.helpers'
 
 export interface SelfCarePageRouteState {
   activeTab: SelfCareTab
+  analyticsDetailSelection: SelfCareAnalyticsDetailSelection | null
   createDialogMode: SelfCareCreateDialogMode | null
 }
 
@@ -44,6 +49,7 @@ export function getSelfCarePageRouteState(
 ): SelfCarePageRouteState {
   return {
     activeTab: getSelfCareTab(searchParams),
+    analyticsDetailSelection: getSelfCareAnalyticsDetailSelection(searchParams),
     createDialogMode: getSelfCareCreateDialogMode(searchParams),
   }
 }
@@ -109,6 +115,34 @@ export function getSelfCareTabSearchParams(
   } else {
     next.set('tab', tab)
   }
+
+  if (tab !== 'analytics') {
+    next.delete(SELF_CARE_ANALYTICS_ITEM_SEARCH_PARAM)
+    next.delete(SELF_CARE_ANALYTICS_TYPE_SEARCH_PARAM)
+  }
+
+  return next
+}
+
+export function getSelfCareAnalyticsDetailSearchParams(
+  searchParams: URLSearchParams,
+  selection: SelfCareAnalyticsDetailSelection,
+): URLSearchParams {
+  const next = getSelfCareTabSearchParams(searchParams, 'analytics')
+
+  next.set(SELF_CARE_ANALYTICS_TYPE_SEARCH_PARAM, selection.kind)
+  next.set(SELF_CARE_ANALYTICS_ITEM_SEARCH_PARAM, selection.itemId)
+
+  return next
+}
+
+export function getSelfCareAnalyticsOverviewSearchParams(
+  searchParams: URLSearchParams,
+): URLSearchParams {
+  const next = getSelfCareTabSearchParams(searchParams, 'analytics')
+
+  next.delete(SELF_CARE_ANALYTICS_ITEM_SEARCH_PARAM)
+  next.delete(SELF_CARE_ANALYTICS_TYPE_SEARCH_PARAM)
 
   return next
 }

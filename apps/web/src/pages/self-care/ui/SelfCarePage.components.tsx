@@ -140,7 +140,6 @@ import {
 } from './SelfCarePage.schedule'
 import { SelfCareSection } from './SelfCarePage.sections'
 
-export { SelfCareAnalyticsTab } from './SelfCarePage.analytics'
 export { SelfCareSettingsTab } from './SelfCarePage.settings'
 
 const CREATE_TYPE_OPTIONS: ReadonlyArray<{

@@ -867,8 +867,7 @@ export function buildAnalyticsResponse(input: {
       }
 
       trend.points.push({
-        completedAt: completion.completedAt,
-        date: dateKey,
+        ...buildAnalyticsTrendPointBase(completion, dateKey),
         value: completion.measurementValue,
       })
       measurementTrendByItemId.set(item.id, trend)
@@ -885,8 +884,7 @@ export function buildAnalyticsResponse(input: {
       }
 
       trend.points.push({
-        completedAt: completion.completedAt,
-        date: dateKey,
+        ...buildAnalyticsTrendPointBase(completion, dateKey),
         sets: completion.exerciseSets,
         value: completion.measurementValue,
       })
@@ -980,6 +978,27 @@ export function buildAnalyticsResponse(input: {
     selectedSelfCareCount: history.completions.filter((completion) =>
       isCompletionProgressStatus(completion.status),
     ).length,
+  }
+}
+
+function buildAnalyticsTrendPointBase(
+  completion: SelfCareCompletion,
+  dateKey: string,
+) {
+  return {
+    alternativeTitle: completion.alternativeTitle,
+    completedAt: completion.completedAt,
+    completedVariant: completion.completedVariant,
+    completionId: completion.id,
+    date: dateKey,
+    durationMinutes: completion.durationMinutes,
+    energyAfter: completion.energyAfter,
+    energyBefore: completion.energyBefore,
+    moodAfter: completion.moodAfter,
+    moodBefore: completion.moodBefore,
+    note: completion.note,
+    scheduledFor: completion.scheduledFor,
+    status: completion.status,
   }
 }
 

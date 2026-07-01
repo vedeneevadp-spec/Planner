@@ -52,6 +52,7 @@ import {
   getExactScheduleDateLabel,
   getExactScheduleTimeLabel,
   getInitialEditRepeatMode,
+  getInitialExerciseValue,
   getInitialMeasurementValue,
   getInitialRitualStepDraft,
   getInitialScheduleDate,
@@ -672,6 +673,46 @@ describe('SelfCarePage helpers', () => {
         }),
       ),
     ).toBe('36.6')
+    expect(
+      getInitialExerciseValue(
+        createTodayEntry({
+          completion: createCompletion({
+            completedAt: '2026-06-20T09:00:00.000Z',
+            measurementValue: 12,
+          }),
+          item: createItem({ type: 'exercise' }),
+          lastExercise: createCompletion({ measurementValue: 12 }),
+        }),
+        '2026-06-21',
+      ),
+    ).toBe('')
+    expect(
+      getInitialExerciseValue(
+        createTodayEntry({
+          completion: createCompletion({
+            completedAt: '2026-06-21T09:00:00.000Z',
+            measurementValue: 8,
+          }),
+          item: createItem({ type: 'exercise' }),
+          lastExercise: createCompletion({ measurementValue: 12 }),
+        }),
+        '2026-06-21',
+      ),
+    ).toBe('8')
+    expect(
+      getInitialExerciseValue(
+        createTodayEntry({
+          completion: null,
+          item: createItem({ type: 'exercise' }),
+          lastExercise: createCompletion({
+            completedAt: '2026-06-20T21:30:00.000Z',
+            measurementValue: 12,
+          }),
+        }),
+        '2026-06-21',
+        'Europe/Samara',
+      ),
+    ).toBe('12')
     expect(
       getTodayScheduleLabel(
         createTodayEntry({

@@ -1,8 +1,13 @@
+import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+
 import type { useSelfCareAnalytics } from '@/features/self-care'
 import { cx } from '@/shared/lib/classnames'
+import { CloseIcon } from '@/shared/ui/Icon'
 
 import {
   buildVisibleCategoryDistribution,
+  formatDate,
   formatExerciseDelta,
   formatExerciseValue,
   formatMeasurementDelta,
@@ -10,8 +15,11 @@ import {
   formatMoney,
   formatMonthKey,
   formatShortDate,
+  formatTime,
   getExerciseMetricLabel,
   getPercent,
+  type SelfCareAnalyticsDetailSelection,
+  STATUS_LABELS,
   VISIBLE_CATEGORY_LABELS,
 } from './SelfCarePage.helpers'
 import styles from './SelfCarePage.module.css'
@@ -19,14 +27,53 @@ import styles from './SelfCarePage.module.css'
 type SelfCareAnalyticsData = NonNullable<
   ReturnType<typeof useSelfCareAnalytics>['data']
 >
+type MeasurementTrend = SelfCareAnalyticsData['measurementTrends'][number]
+type MeasurementTrendPoint = MeasurementTrend['points'][number]
+type ExerciseTrend = SelfCareAnalyticsData['exerciseTrends'][number]
+type ExerciseTrendPoint = ExerciseTrend['points'][number]
+type AnalyticsRecord =
+  | {
+      kind: 'exercise'
+      point: ExerciseTrendPoint
+      trend: ExerciseTrend
+    }
+  | {
+      kind: 'measurement'
+      point: MeasurementTrendPoint
+      trend: MeasurementTrend
+    }
+type AnalyticsDetail =
+  | {
+      kind: 'exercise'
+      trend: ExerciseTrend
+    }
+  | {
+      kind: 'measurement'
+      trend: MeasurementTrend
+    }
+
+const COMPLETION_VARIANT_LABELS = {
+  alternative: 'альтернатива',
+  full: 'полное',
+  minimum: 'минимум',
+} as const
 
 export function SelfCareAnalyticsTab({
   analytics,
+  detailSelection,
   defaultCurrency,
+  onBackToOverview,
+  onShowAll,
 }: {
   analytics: ReturnType<typeof useSelfCareAnalytics>['data'] | undefined
+  detailSelection: SelfCareAnalyticsDetailSelection | null
   defaultCurrency: string
+  onBackToOverview: () => void
+  onShowAll: (selection: SelfCareAnalyticsDetailSelection) => void
 }) {
+  const [selectedRecord, setSelectedRecord] = useState<AnalyticsRecord | null>(
+    null,
+  )
   const categoryDistribution = buildVisibleCategoryDistribution(
     analytics?.balanceByCategory ?? {},
   )
@@ -42,6 +89,30 @@ export function SelfCareAnalyticsTab({
     .slice(0, 6)
   const measurementTrends = analytics?.measurementTrends ?? []
   const exerciseTrends = analytics?.exerciseTrends ?? []
+  const detail = useMemo(
+    () =>
+      detailSelection ? getAnalyticsDetail(analytics, detailSelection) : null,
+    [analytics, detailSelection],
+  )
+
+  if (detailSelection) {
+    return (
+      <div className={styles.tabPanel}>
+        <AnalyticsDetailView
+          detail={detail}
+          selection={detailSelection}
+          onBack={onBackToOverview}
+          onSelectRecord={setSelectedRecord}
+        />
+        {selectedRecord ? (
+          <AnalyticsRecordDialog
+            record={selectedRecord}
+            onClose={() => setSelectedRecord(null)}
+          />
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <div className={styles.tabPanel}>
@@ -116,7 +187,16 @@ export function SelfCareAnalyticsTab({
           {measurementTrends.length ? (
             <div className={styles.measurementTrendList}>
               {measurementTrends.map((trend) => (
-                <MeasurementTrendRow key={trend.itemId} trend={trend} />
+                <MeasurementTrendRow
+                  key={trend.itemId}
+                  trend={trend}
+                  onSelectRecord={(point) =>
+                    setSelectedRecord({ kind: 'measurement', point, trend })
+                  }
+                  onShowAll={() =>
+                    onShowAll({ itemId: trend.itemId, kind: 'measurement' })
+                  }
+                />
               ))}
             </div>
           ) : (
@@ -137,7 +217,16 @@ export function SelfCareAnalyticsTab({
           {exerciseTrends.length ? (
             <div className={styles.measurementTrendList}>
               {exerciseTrends.map((trend) => (
-                <ExerciseTrendRow key={trend.itemId} trend={trend} />
+                <ExerciseTrendRow
+                  key={trend.itemId}
+                  trend={trend}
+                  onSelectRecord={(point) =>
+                    setSelectedRecord({ kind: 'exercise', point, trend })
+                  }
+                  onShowAll={() =>
+                    onShowAll({ itemId: trend.itemId, kind: 'exercise' })
+                  }
+                />
               ))}
             </div>
           ) : (
@@ -147,6 +236,13 @@ export function SelfCareAnalyticsTab({
           )}
         </section>
       </div>
+
+      {selectedRecord ? (
+        <AnalyticsRecordDialog
+          record={selectedRecord}
+          onClose={() => setSelectedRecord(null)}
+        />
+      ) : null}
     </div>
   )
 }
@@ -185,9 +281,13 @@ function CategoryDistributionRow({
 }
 
 function MeasurementTrendRow({
+  onSelectRecord,
+  onShowAll,
   trend,
 }: {
-  trend: SelfCareAnalyticsData['measurementTrends'][number]
+  onSelectRecord: (point: MeasurementTrendPoint) => void
+  onShowAll: () => void
+  trend: MeasurementTrend
 }) {
   const latest = trend.points[trend.points.length - 1]
   const previous = trend.points[trend.points.length - 2]
@@ -204,11 +304,20 @@ function MeasurementTrendRow({
           <strong>{trend.title}</strong>
           <span>{trend.valueLabel}</span>
         </div>
-        {latest ? (
-          <strong className={styles.measurementTrendValue}>
-            {formatMeasurementValue(latest.value, trend.unit)}
-          </strong>
-        ) : null}
+        <div className={styles.measurementTrendActions}>
+          {latest ? (
+            <strong className={styles.measurementTrendValue}>
+              {formatMeasurementValue(latest.value, trend.unit)}
+            </strong>
+          ) : null}
+          <button
+            className={styles.analyticsShowAllButton}
+            type="button"
+            onClick={onShowAll}
+          >
+            Показать все
+          </button>
+        </div>
       </div>
 
       {delta !== null ? (
@@ -219,10 +328,15 @@ function MeasurementTrendRow({
 
       <div className={styles.measurementTrendPoints}>
         {recentPoints.map((point) => (
-          <span key={`${trend.itemId}-${point.completedAt}`}>
+          <button
+            key={`${trend.itemId}-${point.completionId}`}
+            className={styles.measurementTrendPointButton}
+            type="button"
+            onClick={() => onSelectRecord(point)}
+          >
             <small>{formatShortDate(point.date)}</small>
             <strong>{formatMeasurementValue(point.value, trend.unit)}</strong>
-          </span>
+          </button>
         ))}
       </div>
     </article>
@@ -230,9 +344,13 @@ function MeasurementTrendRow({
 }
 
 function ExerciseTrendRow({
+  onSelectRecord,
+  onShowAll,
   trend,
 }: {
-  trend: SelfCareAnalyticsData['exerciseTrends'][number]
+  onSelectRecord: (point: ExerciseTrendPoint) => void
+  onShowAll: () => void
+  trend: ExerciseTrend
 }) {
   const latest = trend.points[trend.points.length - 1]
   const previous = trend.points[trend.points.length - 2]
@@ -249,11 +367,20 @@ function ExerciseTrendRow({
           <strong>{trend.title}</strong>
           <span>{getExerciseMetricLabel(trend.metricType)}</span>
         </div>
-        {latest ? (
-          <strong className={styles.measurementTrendValue}>
-            {formatExerciseValue(latest.value, trend.unit)}
-          </strong>
-        ) : null}
+        <div className={styles.measurementTrendActions}>
+          {latest ? (
+            <strong className={styles.measurementTrendValue}>
+              {formatExerciseValue(latest.value, trend.unit)}
+            </strong>
+          ) : null}
+          <button
+            className={styles.analyticsShowAllButton}
+            type="button"
+            onClick={onShowAll}
+          >
+            Показать все
+          </button>
+        </div>
       </div>
 
       {delta !== null ? (
@@ -264,12 +391,299 @@ function ExerciseTrendRow({
 
       <div className={styles.measurementTrendPoints}>
         {recentPoints.map((point) => (
-          <span key={`${trend.itemId}-${point.completedAt}`}>
+          <button
+            key={`${trend.itemId}-${point.completionId}`}
+            className={styles.measurementTrendPointButton}
+            type="button"
+            onClick={() => onSelectRecord(point)}
+          >
             <small>{formatShortDate(point.date)}</small>
             <strong>{formatExerciseValue(point.value, trend.unit)}</strong>
-          </span>
+          </button>
         ))}
       </div>
     </article>
   )
+}
+
+function AnalyticsDetailView({
+  detail,
+  onBack,
+  onSelectRecord,
+  selection,
+}: {
+  detail: AnalyticsDetail | null
+  onBack: () => void
+  onSelectRecord: (record: AnalyticsRecord) => void
+  selection: SelfCareAnalyticsDetailSelection
+}) {
+  const points = detail ? [...detail.trend.points].reverse() : []
+  const title = detail?.trend.title ?? 'Аналитика'
+  const subtitle =
+    detail?.kind === 'exercise'
+      ? getExerciseMetricLabel(detail.trend.metricType)
+      : detail?.trend.valueLabel
+
+  return (
+    <section className={cx(styles.panel, styles.analyticsDetailPanel)}>
+      <div className={styles.analyticsDetailHeader}>
+        <button className={styles.softButton} type="button" onClick={onBack}>
+          Назад
+        </button>
+        <div>
+          <h3>{title}</h3>
+          <p>
+            {subtitle
+              ? `${subtitle} · ${points.length} записей`
+              : `${points.length} записей`}
+          </p>
+        </div>
+      </div>
+
+      {detail && points.length ? (
+        <div className={styles.analyticsRecordList}>
+          {detail.kind === 'exercise'
+            ? (points as ExerciseTrendPoint[]).map((point) => (
+                <AnalyticsRecordListButton
+                  key={`${selection.kind}-${point.completionId}`}
+                  record={{ kind: 'exercise', point, trend: detail.trend }}
+                  onSelectRecord={onSelectRecord}
+                />
+              ))
+            : (points as MeasurementTrendPoint[]).map((point) => (
+                <AnalyticsRecordListButton
+                  key={`${selection.kind}-${point.completionId}`}
+                  record={{ kind: 'measurement', point, trend: detail.trend }}
+                  onSelectRecord={onSelectRecord}
+                />
+              ))}
+        </div>
+      ) : (
+        <p className={styles.mutedText}>
+          Записи для выбранной аналитики не найдены.
+        </p>
+      )}
+    </section>
+  )
+}
+
+function AnalyticsRecordListButton({
+  onSelectRecord,
+  record,
+}: {
+  onSelectRecord: (record: AnalyticsRecord) => void
+  record: AnalyticsRecord
+}) {
+  const { point } = record
+  const value =
+    record.kind === 'exercise'
+      ? formatExerciseValue(point.value, record.trend.unit)
+      : formatMeasurementValue(point.value, record.trend.unit)
+  const note = point.note.trim()
+
+  return (
+    <button
+      className={styles.analyticsRecordListItem}
+      type="button"
+      onClick={() => onSelectRecord(record)}
+    >
+      <span>
+        <strong>{formatDate(point.date)}</strong>
+        <small>{formatTime(point.completedAt)}</small>
+      </span>
+      <strong>{value}</strong>
+      {note ? <small>{note}</small> : null}
+    </button>
+  )
+}
+
+function AnalyticsRecordDialog({
+  onClose,
+  record,
+}: {
+  onClose: () => void
+  record: AnalyticsRecord
+}) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  const point = record.point
+  const note = point.note.trim()
+  const value =
+    record.kind === 'exercise'
+      ? formatExerciseValue(point.value, record.trend.unit)
+      : formatMeasurementValue(point.value, record.trend.unit)
+  const valueLabel =
+    record.kind === 'exercise'
+      ? getExerciseMetricLabel(record.trend.metricType)
+      : record.trend.valueLabel
+  const rows = getAnalyticsRecordRows(record)
+
+  return createPortal(
+    <div
+      className={styles.modalOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="self-care-analytics-record-title"
+    >
+      <button
+        className={styles.backdropButton}
+        type="button"
+        tabIndex={-1}
+        aria-label="Закрыть детали записи"
+        onClick={onClose}
+      />
+
+      <section className={cx(styles.modalPanel, styles.analyticsRecordDialog)}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 id="self-care-analytics-record-title">Детали записи</h2>
+            <p>
+              {record.trend.title} · {formatDate(point.date)}
+            </p>
+          </div>
+          <button
+            className={styles.closeButton}
+            type="button"
+            aria-label="Закрыть детали записи"
+            onClick={onClose}
+          >
+            <CloseIcon size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <div className={styles.analyticsRecordSummary}>
+          <div className={styles.analyticsRecordValue}>
+            <span>{valueLabel}</span>
+            <strong>{value}</strong>
+          </div>
+
+          {record.kind === 'exercise' && record.point.sets.length ? (
+            <div className={styles.analyticsRecordBlock}>
+              <strong>Подходы</strong>
+              <div className={styles.analyticsRecordSetList}>
+                {record.point.sets.map((set) => (
+                  <div key={set.index}>
+                    <span>Подход {set.index}</span>
+                    <strong>
+                      {formatExerciseValue(set.value, record.trend.unit)}
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {rows.length ? (
+            <div className={styles.analyticsRecordDetails}>
+              {rows.map(([label, rowValue]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{rowValue}</strong>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {note ? (
+            <div className={styles.analyticsRecordBlock}>
+              <strong>Комментарий</strong>
+              <p>{note}</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className={styles.modalActions}>
+          <button className={styles.softButton} type="button" onClick={onClose}>
+            Закрыть
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
+function getAnalyticsDetail(
+  analytics: SelfCareAnalyticsData | undefined,
+  selection: SelfCareAnalyticsDetailSelection,
+): AnalyticsDetail | null {
+  if (selection.kind === 'exercise') {
+    const trend = analytics?.exerciseTrends.find(
+      (candidate) => candidate.itemId === selection.itemId,
+    )
+
+    return trend ? { kind: 'exercise', trend } : null
+  }
+
+  const trend = analytics?.measurementTrends.find(
+    (candidate) => candidate.itemId === selection.itemId,
+  )
+
+  return trend ? { kind: 'measurement', trend } : null
+}
+
+function getAnalyticsRecordRows(
+  record: AnalyticsRecord,
+): Array<[string, string]> {
+  const point = record.point
+  const rows: Array<[string, string]> = [
+    ['Время', formatTime(point.completedAt)],
+    ['Статус', STATUS_LABELS[point.status]],
+  ]
+
+  if (point.completedVariant) {
+    rows.push(['Вариант', COMPLETION_VARIANT_LABELS[point.completedVariant]])
+  }
+
+  if (point.scheduledFor) {
+    rows.push(['Плановая дата', formatDate(point.scheduledFor)])
+  }
+
+  if (point.durationMinutes !== null) {
+    rows.push(['Длительность', `${point.durationMinutes} мин`])
+  }
+
+  const mood = formatBeforeAfterRating(point.moodBefore, point.moodAfter)
+  if (mood) {
+    rows.push(['Настроение', mood])
+  }
+
+  const energy = formatBeforeAfterRating(point.energyBefore, point.energyAfter)
+  if (energy) {
+    rows.push(['Энергия', energy])
+  }
+
+  if (point.alternativeTitle) {
+    rows.push(['Альтернатива', point.alternativeTitle])
+  }
+
+  return rows
+}
+
+function formatBeforeAfterRating(
+  before: number | null,
+  after: number | null,
+): string | null {
+  if (before === null && after === null) {
+    return null
+  }
+
+  if (before !== null && after !== null) {
+    return `${before}/5 -> ${after}/5`
+  }
+
+  return `${before ?? after}/5`
 }

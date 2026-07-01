@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom'
 
 import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
-import { CloseIcon } from '@/shared/ui/Icon'
+import { CloseIcon, EditIcon, MinusIcon, PlusIcon } from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import { SelfCareReminderOffsetsField } from './SelfCarePage.form-controls'
@@ -27,6 +27,7 @@ import {
   formatMeasurementTarget,
   formatOptionalNumber,
   getCourseUnitLabel,
+  getCurrentExerciseCompletion,
   getExerciseMetricLabel,
   getExerciseUnitLabel,
   getInitialExerciseValue,
@@ -663,6 +664,8 @@ export function SelfCareMeasurementDialog({
 
 type ExerciseSetDraft = {
   index: number
+  isEditing: boolean
+  isSaved: boolean
   value: string
 }
 
@@ -670,22 +673,27 @@ export function SelfCareExerciseDialog({
   entry,
   errorMessage,
   isBusy,
+  todayKey,
   onClose,
   onSubmit,
 }: {
   entry: SelfCareTodayItem
   errorMessage: string | null
   isBusy: boolean
+  todayKey: string
   onClose: () => void
   onSubmit: (input: SelfCareCompletionInput) => void
 }) {
+  const plannerTimeZone = usePlannerTimeZone()
   const exercise = entry.exercise
   const unit = exercise?.unit ?? 'reps'
   const metricType = exercise?.metricType ?? 'count'
   const useSets = exercise?.useSets ?? false
-  const [value, setValue] = useState(() => getInitialExerciseValue(entry))
+  const [value, setValue] = useState(() =>
+    getInitialExerciseValue(entry, todayKey, plannerTimeZone),
+  )
   const [sets, setSets] = useState<ExerciseSetDraft[]>(() =>
-    getInitialExerciseSetDrafts(entry),
+    getInitialExerciseSetDrafts(entry, todayKey, plannerTimeZone),
   )
   const [note, setNote] = useState('')
   const numericValue = parseRequiredMeasurementNumber(value)
@@ -702,6 +710,7 @@ export function SelfCareExerciseDialog({
     : numericValue
   const canSaveProgress = useSets && parsedSets.length > 0
   const canFinish = totalValue !== null
+  const lastSetIndex = sets.at(-1)?.index ?? null
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -725,15 +734,28 @@ export function SelfCareExerciseDialog({
   function addSet(): void {
     setSets((current) => [
       ...current,
-      { index: (current.at(-1)?.index ?? 0) + 1, value: '' },
+      {
+        index: (current.at(-1)?.index ?? 0) + 1,
+        isEditing: true,
+        isSaved: false,
+        value: '',
+      },
     ])
+  }
+
+  function editSet(index: number): void {
+    setSets((current) =>
+      current.map((set) =>
+        set.index === index ? { ...set, isEditing: true } : set,
+      ),
+    )
   }
 
   function removeSet(index: number): void {
     setSets((current) =>
       current.length <= 1
         ? current
-        : current.filter((set) => set.index !== index),
+        : current.filter((set) => set.isSaved || set.index !== index),
     )
   }
 
@@ -805,46 +827,101 @@ export function SelfCareExerciseDialog({
             submitExercise('done')
           }}
         >
-          <div className={styles.scheduleTarget}>
-            <strong>{getExerciseMetricLabel(metricType)}</strong>
+          <div className={cx(styles.scheduleTarget, styles.exercisePlanTarget)}>
             <span>{formatExercisePlan(entry) ?? 'Без заданного плана'}</span>
           </div>
 
           {useSets ? (
             <div className={styles.exerciseSetList}>
-              {sets.map((set, index) => (
-                <div key={set.index} className={styles.exerciseSetRow}>
-                  <label className={styles.dateField}>
-                    <span>Подход {index + 1}</span>
-                    <input
-                      type="number"
-                      step="any"
-                      inputMode="decimal"
-                      autoFocus={index === 0}
-                      value={set.value}
-                      onChange={(event) =>
-                        updateSetValue(set.index, event.target.value)
-                      }
-                    />
-                  </label>
+              {sets.map((set, index) => {
+                const isLastSet = set.index === lastSetIndex
+                const canRemoveSet = !set.isSaved && sets.length > 1
+                const editButton =
+                  set.isSaved && !set.isEditing ? (
+                    <button
+                      className={cx(
+                        styles.softButton,
+                        styles.exerciseSetIconButton,
+                      )}
+                      type="button"
+                      disabled={isBusy}
+                      title={`Изменить подход ${index + 1}`}
+                      aria-label={`Изменить подход ${index + 1}`}
+                      onClick={() => editSet(set.index)}
+                    >
+                      <EditIcon size={17} strokeWidth={2.1} />
+                    </button>
+                  ) : null
+                const removeButton = !set.isSaved ? (
                   <button
-                    className={styles.softButton}
+                    className={cx(
+                      styles.softButton,
+                      styles.exerciseSetIconButton,
+                    )}
                     type="button"
-                    disabled={isBusy || sets.length <= 1}
+                    disabled={isBusy || !canRemoveSet}
+                    title={`Убрать подход ${index + 1}`}
+                    aria-label={`Убрать подход ${index + 1}`}
                     onClick={() => removeSet(set.index)}
                   >
-                    Убрать
+                    <MinusIcon size={18} strokeWidth={2.2} />
                   </button>
-                </div>
-              ))}
-              <button
-                className={styles.softButton}
-                type="button"
-                disabled={isBusy}
-                onClick={addSet}
-              >
-                Добавить подход
-              </button>
+                ) : null
+                const addButton = isLastSet ? (
+                  <button
+                    className={cx(
+                      styles.softButton,
+                      styles.exerciseSetIconButton,
+                    )}
+                    type="button"
+                    disabled={isBusy}
+                    title="Добавить подход"
+                    aria-label="Добавить подход"
+                    onClick={addSet}
+                  >
+                    <PlusIcon size={18} strokeWidth={2.2} />
+                  </button>
+                ) : null
+                const hasActions = Boolean(
+                  editButton || removeButton || addButton,
+                )
+                const inputId = `self-care-exercise-set-${set.index}`
+
+                return (
+                  <div key={set.index} className={styles.exerciseSetRow}>
+                    <label
+                      className={styles.exerciseSetLabel}
+                      htmlFor={inputId}
+                    >
+                      Подход {index + 1}
+                    </label>
+
+                    <div className={styles.exerciseSetControlRow}>
+                      <input
+                        id={inputId}
+                        className={styles.exerciseSetInput}
+                        type="number"
+                        step="any"
+                        inputMode="decimal"
+                        autoFocus={index === 0}
+                        readOnly={!set.isEditing}
+                        value={set.value}
+                        onChange={(event) =>
+                          updateSetValue(set.index, event.target.value)
+                        }
+                      />
+
+                      {hasActions ? (
+                        <div className={styles.exerciseSetActions}>
+                          {editButton}
+                          {removeButton}
+                          {addButton}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <label className={styles.dateField}>
@@ -866,7 +943,7 @@ export function SelfCareExerciseDialog({
           )}
 
           {totalValue !== null ? (
-            <div className={styles.scheduleTarget}>
+            <div className={cx(styles.scheduleTarget, styles.exerciseTotal)}>
               <strong>Итог</strong>
               <span>{formatExerciseValue(totalValue, unit)}</span>
             </div>
@@ -903,7 +980,7 @@ export function SelfCareExerciseDialog({
                 disabled={isBusy || !canSaveProgress}
                 onClick={() => submitExercise('partial')}
               >
-                Сохранить прогресс
+                Сохранить
               </button>
             ) : null}
             <button
@@ -923,11 +1000,15 @@ export function SelfCareExerciseDialog({
 
 function getInitialExerciseSetDrafts(
   entry: SelfCareTodayItem,
+  todayKey: string,
+  timeZone: string,
 ): ExerciseSetDraft[] {
-  const completion = entry.lastExercise ?? entry.completion
+  const completion = getCurrentExerciseCompletion(entry, todayKey, timeZone)
   if (completion?.exerciseSets.length) {
     return completion.exerciseSets.map((set) => ({
       index: set.index,
+      isEditing: false,
+      isSaved: true,
       value: formatOptionalNumber(set.value),
     }))
   }
@@ -935,6 +1016,8 @@ function getInitialExerciseSetDrafts(
   const count = entry.exercise?.plannedSets ?? 3
   return Array.from({ length: Math.max(1, count) }, (_, index) => ({
     index: index + 1,
+    isEditing: true,
+    isSaved: false,
     value: '',
   }))
 }

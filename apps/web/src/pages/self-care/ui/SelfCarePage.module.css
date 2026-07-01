@@ -1251,14 +1251,42 @@
 
 .exerciseSetRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.48rem;
-  align-items: end;
+  gap: 0.35rem;
 }
 
 .exerciseSetRow .softButton {
   min-height: 2.55rem;
   white-space: nowrap;
+}
+
+.exerciseSetLabel {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 500;
+}
+
+.exerciseSetControlRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.48rem;
+  align-items: stretch;
+}
+
+.exerciseSetActions {
+  display: grid;
+  grid-auto-columns: 2.55rem;
+  grid-auto-flow: column;
+  gap: 0.48rem;
+}
+
+.exerciseSetIconButton {
+  width: 2.55rem;
+  min-width: 0;
+  padding-inline: 0;
+}
+
+.exerciseSetIconButton svg {
+  flex: 0 0 auto;
 }
 
 .scheduleTarget {
@@ -1279,6 +1307,18 @@
 .scheduleTarget span {
   color: var(--text-soft);
   font-size: 0.86rem;
+}
+
+.exercisePlanTarget {
+  gap: 0;
+}
+
+.exerciseTotal {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.26rem 0.68rem;
 }
 
 .ratingField {
@@ -1344,8 +1384,10 @@
 }
 
 .dateField input,
-.dateField textarea {
+.dateField textarea,
+.exerciseSetInput {
   width: 100%;
+  min-width: 0;
   min-height: 2.55rem;
   box-sizing: border-box;
   border: 1px solid var(--line);
@@ -1365,7 +1407,8 @@
 }
 
 .dateField input:focus,
-.dateField textarea:focus {
+.dateField textarea:focus,
+.exerciseSetInput:focus {
   outline: none;
   border-color: var(--accent-border-strong);
   background: var(--field-bg-strong);
@@ -1673,6 +1716,23 @@
   white-space: nowrap;
 }
 
+.measurementTrendActions {
+  display: grid;
+  justify-items: end;
+  gap: 0.18rem;
+  min-width: max-content;
+}
+
+.analyticsShowAllButton {
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
 .measurementTrendDelta {
   margin: 0;
 }
@@ -1683,23 +1743,172 @@
   gap: 0.32rem;
 }
 
-.measurementTrendPoints span {
+.measurementTrendPointButton {
   display: grid;
   gap: 0.08rem;
   min-width: 4.1rem;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 0.28rem 0.38rem;
+  color: var(--text);
   background: var(--surface-muted);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
 }
 
-.measurementTrendPoints small {
+.measurementTrendPointButton:hover {
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+  transform: translateY(-1px);
+}
+
+.measurementTrendPointButton small {
   color: var(--text-soft);
   font-size: 0.72rem;
 }
 
-.measurementTrendPoints strong {
+.measurementTrendPointButton strong {
   font-size: 0.82rem;
+}
+
+.analyticsDetailPanel {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.analyticsDetailHeader {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.62rem;
+}
+
+.analyticsDetailHeader p {
+  margin-top: 0.2rem;
+}
+
+.analyticsRecordList {
+  display: grid;
+  gap: 0.44rem;
+}
+
+.analyticsRecordListItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.24rem 0.72rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.62rem;
+  color: var(--text);
+  background: var(--surface-muted);
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.analyticsRecordListItem:hover {
+  border-color: var(--accent-border-strong);
+  background: var(--field-bg-strong);
+  transform: translateY(-1px);
+}
+
+.analyticsRecordListItem span {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.analyticsRecordListItem small {
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.analyticsRecordListItem > small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
+.analyticsRecordDialog {
+  width: min(32rem, 100%);
+}
+
+.analyticsRecordSummary {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.analyticsRecordValue {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: var(--surface-muted);
+}
+
+.analyticsRecordValue span {
+  color: var(--text-soft);
+  font-size: 0.86rem;
+}
+
+.analyticsRecordValue strong {
+  font-size: 1rem;
+}
+
+.analyticsRecordBlock,
+.analyticsRecordDetails {
+  display: grid;
+  gap: 0.36rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.72rem;
+  background: var(--surface-muted);
+}
+
+.analyticsRecordBlock > strong {
+  font-weight: 600;
+}
+
+.analyticsRecordBlock p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.analyticsRecordSetList,
+.analyticsRecordDetails {
+  gap: 0.24rem;
+}
+
+.analyticsRecordSetList div,
+.analyticsRecordDetails div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.68rem;
+}
+
+.analyticsRecordSetList span,
+.analyticsRecordDetails span {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.analyticsRecordSetList strong,
+.analyticsRecordDetails strong {
+  text-align: right;
+  font-size: 0.9rem;
 }
 
 .metricList {

@@ -26,10 +26,15 @@ import {
   type SelfCarePageRouteState,
 } from './SelfCarePage.model'
 
+const SELF_CARE_ANALYTICS_FULL_RANGE_FROM = '1970-01-01'
+
 export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const rangeFrom = addDateDays(todayKey, -30)
+  const analyticsRangeFrom = routeState.analyticsDetailSelection
+    ? SELF_CARE_ANALYTICS_FULL_RANGE_FROM
+    : rangeFrom
   const planTo = addDateDays(todayKey, SELF_CARE_PLAN_LOOKAHEAD_DAYS)
   const loadFlags = getSelfCarePageLoadFlags(routeState)
   const { uploadedIcons } = useUploadedIconAssets()
@@ -46,7 +51,7 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   const historyQuery = useSelfCareHistory(rangeFrom, todayKey, {
     enabled: loadFlags.history,
   })
-  const analyticsQuery = useSelfCareAnalytics(rangeFrom, todayKey, {
+  const analyticsQuery = useSelfCareAnalytics(analyticsRangeFrom, todayKey, {
     enabled: loadFlags.analytics,
   })
   const settingsQuery = useSelfCareSettings({ enabled: loadFlags.settings })

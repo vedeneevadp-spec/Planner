@@ -509,11 +509,26 @@ export const selfCareHistoryResponseSchema = z.object({
   stepCompletions: z.array(selfCareRitualStepCompletionSchema),
 })
 
-export const selfCareMeasurementTrendPointSchema = z.object({
+const selfCareAnalyticsTrendPointBaseSchema = z.object({
+  alternativeTitle: z.string().nullable(),
   completedAt: z.string(),
+  completedVariant: selfCareCompletedVariantSchema.nullable(),
+  completionId: z.string(),
   date: z.string(),
-  value: z.number(),
+  durationMinutes: z.number().int().positive().nullable(),
+  energyAfter: optionalRatingSchema.nullable().optional().default(null),
+  energyBefore: optionalRatingSchema.nullable().optional().default(null),
+  moodAfter: optionalRatingSchema.nullable().optional().default(null),
+  moodBefore: optionalRatingSchema.nullable().optional().default(null),
+  note: z.string(),
+  scheduledFor: z.string().nullable(),
+  status: selfCareCompletionStatusSchema,
 })
+
+export const selfCareMeasurementTrendPointSchema =
+  selfCareAnalyticsTrendPointBaseSchema.extend({
+    value: z.number(),
+  })
 
 export const selfCareMeasurementTrendSchema = z.object({
   itemId: z.string(),
@@ -523,17 +538,16 @@ export const selfCareMeasurementTrendSchema = z.object({
   valueLabel: z.string(),
 })
 
-export const selfCareExerciseTrendPointSchema = z.object({
-  completedAt: z.string(),
-  date: z.string(),
-  sets: z.array(
-    z.object({
-      index: z.number().int().positive(),
-      value: z.number().finite(),
-    }),
-  ),
-  value: z.number(),
-})
+export const selfCareExerciseTrendPointSchema =
+  selfCareAnalyticsTrendPointBaseSchema.extend({
+    sets: z.array(
+      z.object({
+        index: z.number().int().positive(),
+        value: z.number().finite(),
+      }),
+    ),
+    value: z.number(),
+  })
 
 export const selfCareExerciseTrendSchema = z.object({
   itemId: z.string(),

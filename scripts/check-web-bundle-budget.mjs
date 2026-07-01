@@ -40,7 +40,7 @@ const routeAssetBudgets = [
     defaultMaxKb: 40,
     extension: '.css',
     label: 'self-care route CSS',
-    prefix: 'self-care-',
+    prefix: ['self-care-', 'SelfCarePage-'],
     variable: 'WEB_BUNDLE_SELF_CARE_CSS_MAX_KB',
   },
   {
@@ -216,14 +216,17 @@ async function readDistFileSize(fileName) {
 }
 
 async function sumDistAssetFilesByPrefix(prefix, extension) {
+  const prefixes = Array.isArray(prefix) ? prefix : [prefix]
   const fileNames = await readdir(distAssetsDirectory)
   const matchedFileNames = fileNames.filter(
-    (fileName) => fileName.startsWith(prefix) && fileName.endsWith(extension),
+    (fileName) =>
+      prefixes.some((candidate) => fileName.startsWith(candidate)) &&
+      fileName.endsWith(extension),
   )
 
   assert.ok(
     matchedFileNames.length > 0,
-    `Could not find dist asset matching ${prefix}*${extension}.`,
+    `Could not find dist asset matching ${prefixes.join(' or ')}*${extension}.`,
   )
 
   const sizes = await Promise.all(

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getSelfCareAnalyticsDetailSearchParams,
+  getSelfCareAnalyticsOverviewSearchParams,
   getSelfCareCloseCreateDialogAndTabSearchParams,
   getSelfCareCloseCreateDialogSearchParams,
   getSelfCareCreateDialogSearchParams,
@@ -19,6 +21,7 @@ describe('SelfCarePage model', () => {
       ),
     ).toEqual({
       activeTab: 'plan',
+      analyticsDetailSelection: null,
       createDialogMode: 'choice',
     })
 
@@ -30,7 +33,23 @@ describe('SelfCarePage model', () => {
       ),
     ).toEqual({
       activeTab: 'today',
+      analyticsDetailSelection: null,
       createDialogMode: 'template',
+    })
+
+    expect(
+      getSelfCarePageRouteState(
+        new URLSearchParams(
+          'tab=analytics&analyticsType=exercise&analyticsItemId=exercise-1',
+        ),
+      ),
+    ).toEqual({
+      activeTab: 'analytics',
+      analyticsDetailSelection: {
+        itemId: 'exercise-1',
+        kind: 'exercise',
+      },
+      createDialogMode: null,
     })
   })
 
@@ -38,6 +57,7 @@ describe('SelfCarePage model', () => {
     expect(
       getSelfCarePageLoadFlags({
         activeTab: 'today',
+        analyticsDetailSelection: null,
         createDialogMode: null,
       }),
     ).toEqual({
@@ -54,6 +74,10 @@ describe('SelfCarePage model', () => {
     expect(
       getSelfCarePageLoadFlags({
         activeTab: 'analytics',
+        analyticsDetailSelection: {
+          itemId: 'measurement-1',
+          kind: 'measurement',
+        },
         createDialogMode: null,
       }),
     ).toEqual({
@@ -72,6 +96,7 @@ describe('SelfCarePage model', () => {
     expect(
       getSelfCarePageLoadFlags({
         activeTab: 'history',
+        analyticsDetailSelection: null,
         createDialogMode: 'custom',
       }),
     ).toEqual({
@@ -137,6 +162,30 @@ describe('SelfCarePage model', () => {
     const todayParams = getSelfCareTabSearchParams(planParams, 'today')
 
     expect(todayParams.toString()).toBe('foo=bar')
+
+    const cleanParams = getSelfCareTabSearchParams(
+      new URLSearchParams(
+        'tab=analytics&analyticsType=exercise&analyticsItemId=exercise-1&foo=bar',
+      ),
+      'today',
+    )
+
+    expect(cleanParams.toString()).toBe('foo=bar')
+  })
+
+  it('sets and clears analytics detail search params', () => {
+    const detailParams = getSelfCareAnalyticsDetailSearchParams(
+      new URLSearchParams('foo=bar'),
+      { itemId: 'weight-1', kind: 'measurement' },
+    )
+
+    expect(detailParams.toString()).toBe(
+      'foo=bar&tab=analytics&analyticsType=measurement&analyticsItemId=weight-1',
+    )
+
+    expect(
+      getSelfCareAnalyticsOverviewSearchParams(detailParams).toString(),
+    ).toBe('foo=bar&tab=analytics')
   })
 
   it('sets and clears create dialog search params', () => {

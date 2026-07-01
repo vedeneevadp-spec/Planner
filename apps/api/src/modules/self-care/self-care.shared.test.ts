@@ -478,17 +478,24 @@ void test('buildAnalyticsResponse returns measurement trends by item', () => {
       completions: [
         selfCareCompletion({
           completedAt: '2026-06-10T08:00:00.000Z',
+          durationMinutes: 6,
           id: 'weight-completion-2',
           itemId: measurement.id,
           measurementUnit: 'кг',
           measurementValue: 79.4,
+          note: 'После тренировки',
         }),
         selfCareCompletion({
           completedAt: '2026-06-02T08:00:00.000Z',
+          completedVariant: 'minimum',
           id: 'weight-completion-1',
           itemId: measurement.id,
           measurementUnit: 'кг',
           measurementValue: 80.1,
+          moodAfter: 4,
+          moodBefore: 3,
+          note: 'Утреннее измерение',
+          scheduledFor: '2026-06-02',
         }),
         selfCareCompletion({
           completedAt: '2026-06-12T08:00:00.000Z',
@@ -515,13 +522,26 @@ void test('buildAnalyticsResponse returns measurement trends by item', () => {
       itemId: measurement.id,
       points: [
         {
-          completedAt: '2026-06-02T08:00:00.000Z',
-          date: '2026-06-02',
+          ...analyticsTrendPointBase({
+            completedAt: '2026-06-02T08:00:00.000Z',
+            completedVariant: 'minimum',
+            completionId: 'weight-completion-1',
+            date: '2026-06-02',
+            moodAfter: 4,
+            moodBefore: 3,
+            note: 'Утреннее измерение',
+            scheduledFor: '2026-06-02',
+          }),
           value: 80.1,
         },
         {
-          completedAt: '2026-06-10T08:00:00.000Z',
-          date: '2026-06-10',
+          ...analyticsTrendPointBase({
+            completedAt: '2026-06-10T08:00:00.000Z',
+            completionId: 'weight-completion-2',
+            date: '2026-06-10',
+            durationMinutes: 6,
+            note: 'После тренировки',
+          }),
           value: 79.4,
         },
       ],
@@ -547,6 +567,9 @@ void test('buildAnalyticsResponse returns exercise trends with sets', () => {
       completions: [
         selfCareCompletion({
           completedAt: '2026-06-29T08:00:00.000Z',
+          durationMinutes: 12,
+          energyAfter: 4,
+          energyBefore: 2,
           exerciseSets: [
             { index: 1, value: 10 },
             { index: 2, value: 10 },
@@ -556,6 +579,7 @@ void test('buildAnalyticsResponse returns exercise trends with sets', () => {
           itemId: exercise.id,
           measurementUnit: 'reps',
           measurementValue: 28,
+          note: 'Третий подход был тяжелым',
         }),
         selfCareCompletion({
           completedAt: '2026-06-27T08:00:00.000Z',
@@ -568,6 +592,7 @@ void test('buildAnalyticsResponse returns exercise trends with sets', () => {
           itemId: exercise.id,
           measurementUnit: 'reps',
           measurementValue: 24,
+          note: 'Разминка',
         }),
       ],
       exerciseDetails: [
@@ -587,8 +612,12 @@ void test('buildAnalyticsResponse returns exercise trends with sets', () => {
       metricType: 'count',
       points: [
         {
-          completedAt: '2026-06-27T08:00:00.000Z',
-          date: '2026-06-27',
+          ...analyticsTrendPointBase({
+            completedAt: '2026-06-27T08:00:00.000Z',
+            completionId: 'squat-completion-1',
+            date: '2026-06-27',
+            note: 'Разминка',
+          }),
           sets: [
             { index: 1, value: 8 },
             { index: 2, value: 8 },
@@ -597,8 +626,15 @@ void test('buildAnalyticsResponse returns exercise trends with sets', () => {
           value: 24,
         },
         {
-          completedAt: '2026-06-29T08:00:00.000Z',
-          date: '2026-06-29',
+          ...analyticsTrendPointBase({
+            completedAt: '2026-06-29T08:00:00.000Z',
+            completionId: 'squat-completion-2',
+            date: '2026-06-29',
+            durationMinutes: 12,
+            energyAfter: 4,
+            energyBefore: 2,
+            note: 'Третий подход был тяжелым',
+          }),
           sets: [
             { index: 1, value: 10 },
             { index: 2, value: 10 },
@@ -1489,6 +1525,38 @@ function rule(overrides: Partial<SelfCareScheduleRule>): SelfCareScheduleRule {
     updatedAt: NOW,
     weekOfMonth: null,
     ...overrides,
+  }
+}
+
+function analyticsTrendPointBase(overrides: {
+  alternativeTitle?: string | null
+  completedAt: string
+  completedVariant?: SelfCareCompletion['completedVariant']
+  completionId: string
+  date: string
+  durationMinutes?: number | null
+  energyAfter?: number | null
+  energyBefore?: number | null
+  moodAfter?: number | null
+  moodBefore?: number | null
+  note?: string
+  scheduledFor?: string | null
+  status?: SelfCareCompletion['status']
+}) {
+  return {
+    alternativeTitle: null,
+    completedAt: overrides.completedAt,
+    completedVariant: overrides.completedVariant ?? 'full',
+    completionId: overrides.completionId,
+    date: overrides.date,
+    durationMinutes: overrides.durationMinutes ?? null,
+    energyAfter: overrides.energyAfter ?? null,
+    energyBefore: overrides.energyBefore ?? null,
+    moodAfter: overrides.moodAfter ?? null,
+    moodBefore: overrides.moodBefore ?? null,
+    note: overrides.note ?? '',
+    scheduledFor: overrides.scheduledFor ?? null,
+    status: overrides.status ?? 'done',
   }
 }
 

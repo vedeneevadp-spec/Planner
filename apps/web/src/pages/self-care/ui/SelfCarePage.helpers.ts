@@ -47,6 +47,11 @@ export type SelfCareTab =
   | 'settings'
 
 export type SelfCareCreateDialogMode = 'choice' | 'custom' | 'template'
+export type SelfCareAnalyticsDetailKind = 'exercise' | 'measurement'
+export type SelfCareAnalyticsDetailSelection = {
+  itemId: string
+  kind: SelfCareAnalyticsDetailKind
+}
 export type SelfCareCreateRepeatKind = SelfCareRepeatKind
 export type SelfCareStandardRepeatKind = Exclude<
   SelfCareCreateRepeatKind,
@@ -402,6 +407,8 @@ export const ADD_CARE_TEMPLATE_FILTERS: ReadonlyArray<{
 
 export const SELF_CARE_ACTION_SEARCH_PARAM = 'selfCareAction'
 export const SELF_CARE_ACTION_REQUEST_SEARCH_PARAM = 'selfCareActionRequest'
+export const SELF_CARE_ANALYTICS_ITEM_SEARCH_PARAM = 'analyticsItemId'
+export const SELF_CARE_ANALYTICS_TYPE_SEARCH_PARAM = 'analyticsType'
 
 export function buildCompletionInput(
   entry: SelfCareTodayItem,
@@ -630,6 +637,20 @@ export function getSelfCareTab(searchParams: URLSearchParams): SelfCareTab {
     : 'today'
 }
 
+export function getSelfCareAnalyticsDetailSelection(
+  searchParams: URLSearchParams,
+): SelfCareAnalyticsDetailSelection | null {
+  const kind = searchParams.get(SELF_CARE_ANALYTICS_TYPE_SEARCH_PARAM)
+  const itemId =
+    searchParams.get(SELF_CARE_ANALYTICS_ITEM_SEARCH_PARAM)?.trim() ?? ''
+
+  if ((kind === 'exercise' || kind === 'measurement') && itemId) {
+    return { itemId, kind }
+  }
+
+  return null
+}
+
 export function getAddCareFilterCategories(
   value: AddCareTemplateFilter,
 ): SelfCareCategory[] {
@@ -761,9 +782,47 @@ export function getInitialMeasurementValue(entry: SelfCareTodayItem): string {
   )
 }
 
-export function getInitialExerciseValue(entry: SelfCareTodayItem): string {
+export function getInitialExerciseValue(
+  entry: SelfCareTodayItem,
+  todayKey?: string,
+  timeZone?: string,
+): string {
   return formatOptionalNumber(
-    entry.lastExercise?.measurementValue ?? entry.completion?.measurementValue,
+    getCurrentExerciseCompletion(entry, todayKey, timeZone)?.measurementValue,
+  )
+}
+
+export function getCurrentExerciseCompletion(
+  entry: SelfCareTodayItem,
+  todayKey?: string,
+  timeZone?: string,
+): SelfCareCompletion | null {
+  const completions = [entry.completion, entry.lastExercise].filter(
+    (completion): completion is SelfCareCompletion => Boolean(completion),
+  )
+
+  if (!todayKey) {
+    return completions[0] ?? null
+  }
+
+  return (
+    completions.find(
+      (completion) =>
+        getExerciseCompletionDateKey(completion, timeZone) === todayKey,
+    ) ?? null
+  )
+}
+
+function getExerciseCompletionDateKey(
+  completion: SelfCareCompletion,
+  timeZone?: string,
+): string {
+  return (
+    completion.scheduledFor ??
+    getDateKeyInTimeZone(
+      completion.completedAt,
+      timeZone ?? getDeviceTimeZone() ?? 'UTC',
+    )
   )
 }
 

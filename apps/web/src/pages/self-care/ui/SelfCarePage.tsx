@@ -3,7 +3,7 @@ import type {
   SelfCareItemScheduleInput,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import { getSelfCareErrorMessage } from '@/features/self-care'
@@ -16,7 +16,6 @@ import {
   SelfCareScheduleDialog,
 } from './SelfCarePage.action-dialogs'
 import {
-  SelfCareAnalyticsTab,
   SelfCareCreateDialog,
   SelfCareEditDialog,
   SelfCareHistoryTab,
@@ -39,6 +38,7 @@ import {
   getRitualStepDraft,
   getRitualStepDraftKey,
   type RitualStepDraftOverrides,
+  type SelfCareAnalyticsDetailSelection,
   type SelfCareCourseRestartPayload,
   type SelfCareCreateDialogMode,
   type SelfCareCustomCreatePayload,
@@ -47,6 +47,8 @@ import {
   type SelfCareTab,
 } from './SelfCarePage.helpers'
 import {
+  getSelfCareAnalyticsDetailSearchParams,
+  getSelfCareAnalyticsOverviewSearchParams,
   getSelfCareCloseCreateDialogAndTabSearchParams,
   getSelfCareCloseCreateDialogSearchParams,
   getSelfCareCreateDialogSearchParams,
@@ -61,6 +63,12 @@ import {
   scheduleSelfCareEntryOccurrence,
 } from './SelfCarePage.schedule'
 import { SelfCarePageTabs } from './SelfCarePage.tabs'
+
+const SelfCareAnalyticsTab = lazy(() =>
+  import('./SelfCarePage.analytics').then((module) => ({
+    default: module.SelfCareAnalyticsTab,
+  })),
+)
 
 export function SelfCarePage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -178,6 +186,18 @@ export function SelfCarePage() {
 
   function setCreateDialogMode(mode: SelfCareCreateDialogMode): void {
     setSearchParams(getSelfCareCreateDialogSearchParams(searchParams, mode))
+  }
+
+  function showAnalyticsDetail(
+    selection: SelfCareAnalyticsDetailSelection,
+  ): void {
+    setSearchParams(
+      getSelfCareAnalyticsDetailSearchParams(searchParams, selection),
+    )
+  }
+
+  function showAnalyticsOverview(): void {
+    setSearchParams(getSelfCareAnalyticsOverviewSearchParams(searchParams))
   }
 
   function handleCreateCustomCare(payload: SelfCareCustomCreatePayload): void {
@@ -696,10 +716,21 @@ export function SelfCarePage() {
       ) : null}
 
       {activeTab === 'analytics' ? (
-        <SelfCareAnalyticsTab
-          analytics={analytics}
-          defaultCurrency={defaultCurrency}
-        />
+        <Suspense
+          fallback={
+            <section className={styles.emptyPanel}>
+              Загружаем аналитику.
+            </section>
+          }
+        >
+          <SelfCareAnalyticsTab
+            analytics={analytics}
+            detailSelection={routeState.analyticsDetailSelection}
+            defaultCurrency={defaultCurrency}
+            onBackToOverview={showAnalyticsOverview}
+            onShowAll={showAnalyticsDetail}
+          />
+        </Suspense>
       ) : null}
 
       {activeTab === 'settings' ? (
@@ -771,6 +802,7 @@ export function SelfCarePage() {
             completeOccurrenceMutation.isPending ||
             completeItemNowMutation.isPending
           }
+          todayKey={todayKey}
           onClose={closeExerciseDialog}
           onSubmit={handleExerciseSubmit}
         />
