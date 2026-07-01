@@ -6,7 +6,10 @@ export {
 } from './lib/self-care-api'
 export {
   getSelfCareErrorMessage,
+  isSelfCareApiUnavailableError,
+  SELF_CARE_API_UNAVAILABLE_MESSAGE,
   selfCareAnalyticsQueryKey,
+  SelfCareApiUnavailableError,
   selfCareDashboardQueryKey,
   selfCareHistoryQueryKey,
   selfCareItemsQueryKey,

@@ -117,6 +117,26 @@ const SELF_CARE_SETTINGS_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
   'settings',
 ]
 
+export const SELF_CARE_API_UNAVAILABLE_MESSAGE =
+  'Сессия еще не готова. Подожди пару секунд и попробуй снова.'
+
+export class SelfCareApiUnavailableError extends Error {
+  constructor() {
+    super(SELF_CARE_API_UNAVAILABLE_MESSAGE)
+    this.name = 'SelfCareApiUnavailableError'
+  }
+}
+
+export function isSelfCareApiUnavailableError(
+  error: unknown,
+): error is SelfCareApiUnavailableError {
+  return (
+    error instanceof SelfCareApiUnavailableError ||
+    (error instanceof Error &&
+      error.message === SELF_CARE_API_UNAVAILABLE_MESSAGE)
+  )
+}
+
 export function selfCareDashboardQueryKey(workspaceId: string, date: string) {
   return ['self-care', workspaceId, 'dashboard', date] as const
 }
@@ -754,17 +774,15 @@ function useSelfCareApi(options: { enabled?: boolean } = {}) {
 
 function requireSelfCareApi(api: SelfCareApiClient | null): SelfCareApiClient {
   if (!api) {
-    throw new Error(
-      'Сессия еще не готова. Подожди пару секунд и попробуй снова.',
-    )
+    throw new SelfCareApiUnavailableError()
   }
 
   return api
 }
 
-function assertSession(session: unknown, action: string): void {
+function assertSession(session: unknown, _action: string): void {
   if (!session) {
-    throw new Error(`Planner session is required to ${action}.`)
+    throw new SelfCareApiUnavailableError()
   }
 }
 

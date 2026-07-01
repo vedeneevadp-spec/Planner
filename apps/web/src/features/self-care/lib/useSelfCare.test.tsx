@@ -43,6 +43,9 @@ vi.mock('./self-care-api', async (importOriginal) => {
 })
 
 import {
+  isSelfCareApiUnavailableError,
+  SELF_CARE_API_UNAVAILABLE_MESSAGE,
+  SelfCareApiUnavailableError,
   selfCareDashboardQueryKey,
   selfCareSettingsQueryKey,
   useCreateSelfCareItem,
@@ -195,6 +198,39 @@ describe('useSelfCareDashboard', () => {
     })
 
     expect(invalidateSpy).not.toHaveBeenCalled()
+  })
+
+  it('reports a typed transient error when a write starts before the session is ready', async () => {
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createReadinessStub({
+        apiConfig: null,
+        isApiEnabled: false,
+        session: undefined,
+        workspaceId: 'pending',
+      }),
+    )
+
+    const { result } = renderHook(() => useCreateSelfCareItem(), {
+      wrapper: createQueryWrapper(queryClient),
+    })
+
+    let caughtError: unknown
+    await act(async () => {
+      try {
+        await result.current.mutateAsync({
+          title: 'Water',
+        } as never)
+      } catch (error) {
+        caughtError = error
+      }
+    })
+
+    expect(caughtError).toBeInstanceOf(SelfCareApiUnavailableError)
+    expect(caughtError).toMatchObject({
+      message: SELF_CARE_API_UNAVAILABLE_MESSAGE,
+    })
+    expect(isSelfCareApiUnavailableError(caughtError)).toBe(true)
+    expect(selfCareApi.createItem).not.toHaveBeenCalled()
   })
 })
 

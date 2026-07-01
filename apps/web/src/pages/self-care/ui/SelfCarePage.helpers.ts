@@ -682,8 +682,15 @@ export function getSelfCareCreateDialogMode(
   return 'choice'
 }
 
-export function firstErrorMessage(errors: unknown[]): string | null {
-  const error = errors.find(Boolean)
+export function firstErrorMessage(
+  errors: unknown[],
+  options: {
+    shouldIgnore?: ((error: unknown) => boolean) | undefined
+  } = {},
+): string | null {
+  const error = errors.find(
+    (candidate) => candidate && !options.shouldIgnore?.(candidate),
+  )
   return error ? getSelfCareErrorMessage(error) : null
 }
 

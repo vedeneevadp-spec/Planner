@@ -557,6 +557,12 @@ describe('SelfCarePage helpers', () => {
     expect(getSelfCareCreateDialogMode(new URLSearchParams())).toBeNull()
     expect(firstErrorMessage([])).toBeNull()
     expect(firstErrorMessage([new Error('Boom')])).toContain('Boom')
+    expect(
+      firstErrorMessage([new Error('Skip me'), new Error('Keep me')], {
+        shouldIgnore: (error) =>
+          error instanceof Error && error.message === 'Skip me',
+      }),
+    ).toContain('Keep me')
   })
 
   it('formats state, completion, entry details, action labels, and planning text', () => {

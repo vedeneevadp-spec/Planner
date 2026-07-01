@@ -6,7 +6,12 @@ import type {
 import { lazy, Suspense, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
-import { getSelfCareErrorMessage } from '@/features/self-care'
+import {
+  getSelfCareErrorMessage,
+  isSelfCareApiUnavailableError,
+  SELF_CARE_API_UNAVAILABLE_MESSAGE,
+} from '@/features/self-care'
+import { useSessionFeatureReadiness } from '@/features/session'
 import pageStyles from '@/shared/ui/Page'
 
 import {
@@ -115,6 +120,7 @@ export function SelfCarePage() {
     updateSettingsMutation,
     upsertRitualStepDraftMutation,
   } = useSelfCarePageMutations()
+  const { readiness: selfCareReadiness } = useSessionFeatureReadiness()
   const [formError, setFormError] = useState<string | null>(null)
   const [scheduleDialogEntry, setScheduleDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
@@ -147,19 +153,28 @@ export function SelfCarePage() {
     () => new Set([...createdTemplateIds, ...creatingTemplateIds]),
     [createdTemplateIds, creatingTemplateIds],
   )
+  const canUseSelfCareActions = selfCareReadiness.canWriteProtectedData
+  const isSelfCareActionBusy = isActionBusy || !canUseSelfCareActions
+  const visibleFormError =
+    formError === SELF_CARE_API_UNAVAILABLE_MESSAGE ? null : formError
   const errorMessage =
-    formError ||
-    firstErrorMessage([
-      dashboardQuery.error,
-      itemsQuery.error,
-      planQuery.error,
-      stepDraftsQuery.error,
-      historyQuery.error,
-      analyticsQuery.error,
-      settingsQuery.error,
-      templatesQuery.error,
-      ...mutationErrors,
-    ])
+    visibleFormError ||
+    firstErrorMessage(
+      [
+        dashboardQuery.error,
+        itemsQuery.error,
+        planQuery.error,
+        stepDraftsQuery.error,
+        historyQuery.error,
+        analyticsQuery.error,
+        settingsQuery.error,
+        templatesQuery.error,
+        ...mutationErrors,
+      ],
+      {
+        shouldIgnore: isSelfCareApiUnavailableError,
+      },
+    )
 
   function setActiveTab(tab: SelfCareTab) {
     setSearchParams(getSelfCareTabSearchParams(searchParams, tab), {
@@ -657,7 +672,7 @@ export function SelfCarePage() {
           dashboard={dashboard}
           history={history}
           hiddenScheduledItemIds={hiddenScheduledItemIds}
-          isBusy={isActionBusy}
+          isBusy={isSelfCareActionBusy}
           list={list}
           plan={plan}
           ritualStepDrafts={ritualStepDrafts}
@@ -680,7 +695,7 @@ export function SelfCarePage() {
         <SelfCarePlanTab
           hiddenScheduledItemIds={hiddenScheduledItemIds}
           history={history}
-          isBusy={isActionBusy}
+          isBusy={isSelfCareActionBusy}
           plan={plan}
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
@@ -699,7 +714,7 @@ export function SelfCarePage() {
           history={history}
           plan={plan}
           dashboardItems={buildRitualDashboardItems(dashboard)}
-          isBusy={isActionBusy}
+          isBusy={isSelfCareActionBusy}
           ritualStepDrafts={ritualStepDrafts}
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
@@ -735,7 +750,7 @@ export function SelfCarePage() {
 
       {activeTab === 'settings' ? (
         <SelfCareSettingsTab
-          isBusy={isActionBusy}
+          isBusy={isSelfCareActionBusy}
           disabledTemplateIds={disabledTemplateIds}
           settings={settingsResponse}
           templates={templates}
@@ -750,7 +765,7 @@ export function SelfCarePage() {
           defaultCurrency={defaultCurrency}
           errorMessage={errorMessage}
           disabledTemplateIds={disabledTemplateIds}
-          isBusy={isActionBusy || !list}
+          isBusy={isSelfCareActionBusy || !list}
           todayKey={todayKey}
           templates={templates}
           uploadedIcons={uploadedIcons}
@@ -770,9 +785,11 @@ export function SelfCarePage() {
           date={scheduleDate}
           defaultCurrency={defaultCurrency}
           entry={scheduleDialogEntry}
-          errorMessage={formError}
+          errorMessage={visibleFormError}
           isBusy={
-            scheduleItemMutation.isPending || moveOccurrenceMutation.isPending
+            scheduleItemMutation.isPending ||
+            moveOccurrenceMutation.isPending ||
+            !canUseSelfCareActions
           }
           todayKey={todayKey}
           onChangeDate={setScheduleDate}
@@ -784,10 +801,11 @@ export function SelfCarePage() {
       {measurementDialogEntry ? (
         <SelfCareMeasurementDialog
           entry={measurementDialogEntry}
-          errorMessage={formError}
+          errorMessage={visibleFormError}
           isBusy={
             completeOccurrenceMutation.isPending ||
-            completeItemNowMutation.isPending
+            completeItemNowMutation.isPending ||
+            !canUseSelfCareActions
           }
           onClose={closeMeasurementDialog}
           onSubmit={handleMeasurementSubmit}
@@ -797,10 +815,11 @@ export function SelfCarePage() {
       {exerciseDialogEntry ? (
         <SelfCareExerciseDialog
           entry={exerciseDialogEntry}
-          errorMessage={formError}
+          errorMessage={visibleFormError}
           isBusy={
             completeOccurrenceMutation.isPending ||
-            completeItemNowMutation.isPending
+            completeItemNowMutation.isPending ||
+            !canUseSelfCareActions
           }
           todayKey={todayKey}
           onClose={closeExerciseDialog}
@@ -812,11 +831,12 @@ export function SelfCarePage() {
         <SelfCareEditDialog
           defaultCurrency={defaultCurrency}
           entry={editDialogEntry}
-          errorMessage={formError}
+          errorMessage={visibleFormError}
           isBusy={
             updateItemMutation.isPending ||
             scheduleItemMutation.isPending ||
-            moveOccurrenceMutation.isPending
+            moveOccurrenceMutation.isPending ||
+            !canUseSelfCareActions
           }
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
@@ -828,8 +848,8 @@ export function SelfCarePage() {
       {restartCourseDialogEntry ? (
         <SelfCareCourseRestartDialog
           entry={restartCourseDialogEntry}
-          errorMessage={formError}
-          isBusy={updateItemMutation.isPending}
+          errorMessage={visibleFormError}
+          isBusy={updateItemMutation.isPending || !canUseSelfCareActions}
           todayKey={todayKey}
           onClose={closeRestartCourseDialog}
           onSubmit={handleRestartCourseSubmit}
