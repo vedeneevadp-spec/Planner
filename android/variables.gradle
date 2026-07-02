@@ -14,6 +14,6 @@ ext {
     androidxJunitVersion = '1.3.0'
     androidxEspressoCoreVersion = '3.7.0'
     liteRtVersion = '2.1.5'
-    onnxRuntimeAndroidVersion = '1.26.0'
+    onnxRuntimeAndroidVersion = '1.27.0'
     cordovaAndroidVersion = '14.0.1'
 }
