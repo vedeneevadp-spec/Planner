@@ -272,12 +272,12 @@ const guestSessionRepository: SessionRepository = {
   },
 }
 
-function createTestConfig(env: NodeJS.ProcessEnv = {} as NodeJS.ProcessEnv) {
+function createTestConfig(env: NodeJS.ProcessEnv = {}) {
   return createApiConfig({
     API_STORAGE_DRIVER: 'memory',
     NODE_ENV: 'test',
     ...env,
-  } as NodeJS.ProcessEnv)
+  })
 }
 
 function createCookieAuthService() {

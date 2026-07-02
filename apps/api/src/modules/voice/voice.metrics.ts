@@ -17,7 +17,7 @@ export class ApiVoiceMetricsSink implements VoiceMetricsSink {
 
     this.recorder.record(
       safeEvent.eventName,
-      redactVoiceMetricDetails(safeEvent as unknown as Record<string, unknown>),
+      redactVoiceMetricDetails(safeEvent),
     )
   }
 }

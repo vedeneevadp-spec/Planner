@@ -39,8 +39,7 @@ interface MultiSelectPickerProps<
 }
 
 type SelectPickerProps<Value extends string = string> =
-  | SingleSelectPickerProps<Value>
-  | MultiSelectPickerProps<Value>
+  SingleSelectPickerProps<Value> | MultiSelectPickerProps<Value>
 
 export function SelectPicker<Value extends string = string>(
   props: SelectPickerProps<Value>,

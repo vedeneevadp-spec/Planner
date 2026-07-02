@@ -21,10 +21,7 @@ import type { AuthRequestMetadata } from './auth.model.js'
 import type { AuthService } from './auth.service.js'
 
 type AuthRateLimitedAction =
-  | 'password-reset-confirm'
-  | 'password-reset-request'
-  | 'sign-in'
-  | 'sign-up'
+  'password-reset-confirm' | 'password-reset-request' | 'sign-in' | 'sign-up'
 
 interface AuthRouteOptions {
   isSecureCookie: boolean

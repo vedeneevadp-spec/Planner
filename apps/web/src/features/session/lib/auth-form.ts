@@ -3,10 +3,7 @@ import { SessionApiError } from './session-api'
 export type AuthMode = 'login' | 'register'
 export type AuthScreenMode = AuthMode | 'recover'
 export type AuthFieldName =
-  | 'displayName'
-  | 'email'
-  | 'password'
-  | 'passwordConfirmation'
+  'displayName' | 'email' | 'password' | 'passwordConfirmation'
 export type AuthFieldErrors = Partial<Record<AuthFieldName, string>>
 
 const MIN_PASSWORD_LENGTH = 6

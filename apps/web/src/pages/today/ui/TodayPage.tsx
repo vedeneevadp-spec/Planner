@@ -2,13 +2,7 @@ import type {
   SelfCareDashboardResponse,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import {
-  type ReactElement,
-  type ReactNode,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { type ReactElement, type ReactNode, useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import {
@@ -355,7 +349,7 @@ function PersonalTodayPage() {
   const { uploadedIcons } = useUploadedIconAssets()
   const persistedEnergyMode =
     sessionQuery.data?.userPreferences.energyMode ?? 'normal'
-  const [energyMode, setEnergyMode] = useState<EnergyMode>(persistedEnergyMode)
+  const energyMode = persistedEnergyMode
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
@@ -371,13 +365,7 @@ function PersonalTodayPage() {
   const taskView = getTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
 
-  useEffect(() => {
-    setEnergyMode(persistedEnergyMode)
-  }, [persistedEnergyMode])
-
   function selectEnergyMode(nextEnergyMode: EnergyMode) {
-    setEnergyMode(nextEnergyMode)
-
     if (
       sessionQuery.data &&
       nextEnergyMode !== sessionQuery.data.userPreferences.energyMode

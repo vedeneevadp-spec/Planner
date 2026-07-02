@@ -4,15 +4,9 @@ export const VOICE_ASSISTANT_CONFIRMATION_MODE = 'confirmation_first' as const
 
 export type VoiceAssistantPermissionStatus = 'denied' | 'granted' | 'unknown'
 export type VoiceAssistantForegroundServiceStatus =
-  | 'blocked'
-  | 'missing_permission'
-  | 'running'
-  | 'stopped'
+  'blocked' | 'missing_permission' | 'running' | 'stopped'
 export type VoiceAssistantWakeWordModelStatus =
-  | 'error'
-  | 'loading'
-  | 'missing'
-  | 'ready'
+  'error' | 'loading' | 'missing' | 'ready'
 export type AndroidVoiceRuntimeStatus =
   | 'disabled'
   | 'starting'
@@ -66,8 +60,7 @@ export type AndroidVoiceRuntimeMetric =
   | 'service_killed_or_restarted'
   | 'graceful_degradation_used'
 export type AndroidVoicePushToTalkFallbackStatus =
-  | 'available'
-  | 'blocked_missing_microphone_permission'
+  'available' | 'blocked_missing_microphone_permission'
 
 export interface VoiceAssistantDeviceSettings {
   androidWakeWordEnabled: boolean

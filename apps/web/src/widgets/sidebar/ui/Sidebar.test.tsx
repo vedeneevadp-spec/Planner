@@ -76,11 +76,7 @@ interface SessionAuthStub {
   isAuthEnabled: boolean
   isLoading: boolean
   lifecycleStatus:
-    | 'authenticated'
-    | 'deferred'
-    | 'disabled'
-    | 'restoring'
-    | 'signed_out'
+    'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
   signOut: () => Promise<void>
   userId: string
 }

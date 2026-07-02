@@ -518,6 +518,6 @@ function hasHttpErrorCode(error: unknown, code: string): boolean {
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
-    (error as { code: unknown }).code === code
+    error.code === code
   )
 }

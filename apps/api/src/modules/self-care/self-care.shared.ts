@@ -1398,7 +1398,7 @@ export function buildItemInputFromTemplate(
       timezone: null,
       weekOfMonth: null,
       ...schedule,
-    } as SelfCareScheduleRuleInput,
+    },
     steps: templateRecord.defaultSteps.map((title, index) => ({
       defaultChecked: false,
       isOptional: false,
@@ -2214,5 +2214,5 @@ function compactOverrides(
     }
   }
 
-  return result as SelfCareItemInputOverrides
+  return result
 }

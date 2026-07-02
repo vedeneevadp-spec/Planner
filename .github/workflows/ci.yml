@@ -57,6 +57,13 @@ jobs:
           AUTH_JWT_SECRET: planner-ci-jwt-secret-with-at-least-32-chars
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+      - run: npm run build:analyze
+      - uses: actions/upload-artifact@v4
+        with:
+          if-no-files-found: error
+          name: web-bundle-stats
+          path: tmp/web-bundle-stats.html
+          retention-days: 14
 
   android:
     runs-on: ubuntu-latest

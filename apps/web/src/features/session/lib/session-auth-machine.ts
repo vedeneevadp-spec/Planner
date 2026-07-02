@@ -311,7 +311,7 @@ export function isRetryableAuthError(error: unknown): boolean {
   }
 
   if (typeof error === 'object' && error !== null && 'status' in error) {
-    const status = (error as { status: unknown }).status
+    const status = error.status
     return (
       typeof status === 'number' &&
       (status === 0 || status === 408 || status === 429 || status >= 500)
@@ -335,7 +335,7 @@ export function getAuthErrorKind(error: unknown): string {
   }
 
   if (typeof error === 'object' && error !== null && 'status' in error) {
-    const status = (error as { status: unknown }).status
+    const status = error.status
 
     if (typeof status === 'number') {
       return `http_${status}`

@@ -4,14 +4,10 @@ import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.j
 import type { DatabaseSchema } from './schema.js'
 
 export type DatabaseExecutor =
-  | Kysely<DatabaseSchema>
-  | Transaction<DatabaseSchema>
+  Kysely<DatabaseSchema> | Transaction<DatabaseSchema>
 
 export type RlsStrategy =
-  | 'claims_only'
-  | 'disabled'
-  | 'session_connection'
-  | 'transaction_local'
+  'claims_only' | 'disabled' | 'session_connection' | 'transaction_local'
 
 let hasLoggedSessionConnectionRlsMode = false
 

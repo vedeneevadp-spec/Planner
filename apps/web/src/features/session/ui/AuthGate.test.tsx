@@ -21,11 +21,7 @@ interface SessionAuthStub {
   isLoading: boolean
   isPasswordRecovery: boolean
   lifecycleStatus:
-    | 'authenticated'
-    | 'deferred'
-    | 'disabled'
-    | 'restoring'
-    | 'signed_out'
+    'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
   recoverSession: () => Promise<'deferred' | 'recovered' | 'signed_out'>
   requestPasswordReset: (email: string) => Promise<void>
   signOut: () => Promise<void>

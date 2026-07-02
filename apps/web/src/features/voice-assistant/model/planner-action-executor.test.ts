@@ -953,7 +953,7 @@ function createIntent(overrides: Partial<PlannerIntent>): PlannerIntent {
     rawText: 'тестовая команда',
     title: 'проверить оплату',
     ...overrides,
-  } as PlannerIntent
+  }
 }
 
 function createDependencies(

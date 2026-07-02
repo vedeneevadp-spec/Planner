@@ -1,0 +1,60 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":dependencyDashboard"],
+  "timezone": "Europe/Samara",
+  "labels": ["dependencies"],
+  "rangeStrategy": "bump",
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 6,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "npm patch updates",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "npm minor updates"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "GitHub Actions updates",
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "matchPackageNames": [
+        "/^@capacitor\\//",
+        "/^@fastify\\//",
+        "/^@vitejs\\//",
+        "/^@vitest\\//",
+        "/^eslint/",
+        "/^react/",
+        "/^typescript/",
+        "@playwright/test",
+        "fastify",
+        "jsdom",
+        "kysely",
+        "pg",
+        "vite",
+        "vitest",
+        "zod"
+      ],
+      "matchUpdateTypes": ["major", "minor"],
+      "dependencyDashboardApproval": true,
+      "groupName": "manual quality-gate dependencies"
+    },
+    {
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}

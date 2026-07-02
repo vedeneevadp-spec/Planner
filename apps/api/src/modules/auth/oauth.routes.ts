@@ -364,9 +364,7 @@ function readClientCredentials(
   input: TokenRequest,
 ): { clientId: string | undefined; clientSecret: string | undefined } {
   const rawAuthorization = request.headers.authorization as
-    | string
-    | string[]
-    | undefined
+    string | string[] | undefined
   const authorization = Array.isArray(rawAuthorization)
     ? rawAuthorization[0]
     : rawAuthorization

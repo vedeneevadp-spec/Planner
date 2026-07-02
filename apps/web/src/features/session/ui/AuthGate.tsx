@@ -110,7 +110,7 @@ export function AuthGate({ children }: PropsWithChildren) {
   const plannerSessionQuery = usePlannerSession()
   const handledUnauthorizedTokenRef = useRef<string | null>(null)
   const [mode, setMode] = useState<AuthMode>('login')
-  const [formEmail, setFormEmail] = useState(email ?? '')
+  const [formEmail, setFormEmail] = useState<string | null>(null)
   const [displayName, setDisplayName] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirmation, setPasswordConfirmation] = useState('')
@@ -185,13 +185,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     refetchPlannerSession,
   ])
 
-  useEffect(() => {
-    if (!email) {
-      return
-    }
-
-    setFormEmail((currentEmail) => currentEmail || email)
-  }, [email])
+  const effectiveFormEmail = formEmail ?? email ?? ''
 
   if (authGateView.type === 'children') {
     return children
@@ -330,7 +324,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     event.preventDefault()
     clearAuthNotice()
 
-    const normalizedEmail = formEmail.trim().toLowerCase()
+    const normalizedEmail = effectiveFormEmail.trim().toLowerCase()
     const validationErrors = validateAuthForm({
       email: normalizedEmail,
       password,
@@ -400,7 +394,7 @@ export function AuthGate({ children }: PropsWithChildren) {
   async function handlePasswordResetRequest() {
     clearAuthNotice()
 
-    const normalizedEmail = formEmail.trim().toLowerCase()
+    const normalizedEmail = effectiveFormEmail.trim().toLowerCase()
     const nextFieldErrors: AuthFieldErrors = {}
 
     if (!normalizedEmail) {
@@ -545,7 +539,7 @@ export function AuthGate({ children }: PropsWithChildren) {
             name="email"
             placeholder="name@example.com"
             type="email"
-            value={formEmail}
+            value={effectiveFormEmail}
             onChange={handleFieldChange}
           />
         ) : (
@@ -780,13 +774,7 @@ function FormField({
   autoComplete?: string | undefined
   error: string | undefined
   inputMode?:
-    | 'email'
-    | 'numeric'
-    | 'search'
-    | 'tel'
-    | 'text'
-    | 'url'
-    | undefined
+    'email' | 'numeric' | 'search' | 'tel' | 'text' | 'url' | undefined
   label: string
   name: AuthFieldName
   placeholder: string

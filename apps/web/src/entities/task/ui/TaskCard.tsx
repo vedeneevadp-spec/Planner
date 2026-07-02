@@ -147,8 +147,7 @@ interface TaskCardProps {
   onUpdate: (taskId: string, input: TaskUpdateInput) => Promise<boolean>
   onRemove: (taskId: string) => void
   onActionMenuOpenChange?:
-    | ((taskId: string, isOpen: boolean) => void)
-    | undefined
+    ((taskId: string, isOpen: boolean) => void) | undefined
 }
 
 export function TaskCard({

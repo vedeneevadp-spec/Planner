@@ -1438,7 +1438,7 @@ Undo и full clarification loop были вынесены из пункта 5 и
     `source = web_push_to_talk`.
 
 12. Собрать корпус тестовых фраз.
-    Статус: реализовано.
+Статус: реализовано.
 
     Добавлен shared machine-readable corpus `voice-command-corpus.v1` в
     `packages/contracts/src/voice-test-corpus`: 201 cases на русском для
@@ -1465,7 +1465,7 @@ Undo и full clarification loop были вынесены из пункта 5 и
     `llmFallbackAllowed`.
 
 13. Добавить метрики качества.
-    Статус: реализовано как два слоя.
+Статус: реализовано как два слоя.
 
     Offline report `npm run voice-quality-report` прогоняет
     `voice-command-corpus.v1` на 201 cases через `PlannerIntentParser`,
@@ -1487,10 +1487,10 @@ Undo и full clarification loop были вынесены из пункта 5 и
     [docs/voice/quality-metrics.md](voice/quality-metrics.md).
 
 14. Подключить production LLM fallback provider для `PlannerIntentParser`.
-    Использовать существующий `BackendPlannerIntentFallback` только на backend.
-    Provider получает только текстовый transcript, parser context, rule-parser
-    result и v1 contract/schema. Audio в LLM не передается, client не хранит LLM
-    keys и не вызывает LLM напрямую.
+Использовать существующий `BackendPlannerIntentFallback` только на backend.
+Provider получает только текстовый transcript, parser context, rule-parser
+result и v1 contract/schema. Audio в LLM не передается, client не хранит LLM
+keys и не вызывает LLM напрямую.
 
     LLM fallback включается только через feature flag для `appRole = owner` и
     `appRole = test`, после готовности action layer, confirmation UI, корпуса
@@ -1520,16 +1520,16 @@ Undo и full clarification loop были вынесены из пункта 5 и
     Добавить timeout 2-3 секунды, rate limit и prompt/versioning.
 
 15. Провести закрытое тестирование.
-    Выпустить Android build для внутренней группы, собрать обратную связь по
-    ложным срабатываниям, скорости, батарее, качеству команд и UX
-    подтверждения. Отдельно проверить, не раздражают ли короткие сигналы, не
-    попадает ли start signal в STT и как signals ведут себя в silent/vibration mode.
-    Прогнать Android end-to-end action execution на реальном устройстве:
-    `create_task`, `add_shopping_item`, `get_shopping_list`, `get_agenda`,
-    `reschedule_task`, locked-screen blocks и offline fallback. Отдельно сравнить режимы
-    rule-parser only и rule-parser + LLM fallback, если пункт 14 включен для
-    `owner/test`. По результатам обновить provider settings, parser rules, LLM
-    fallback policy и тексты карточки.
+Выпустить Android build для внутренней группы, собрать обратную связь по
+ложным срабатываниям, скорости, батарее, качеству команд и UX
+подтверждения. Отдельно проверить, не раздражают ли короткие сигналы, не
+попадает ли start signal в STT и как signals ведут себя в silent/vibration mode.
+Прогнать Android end-to-end action execution на реальном устройстве:
+`create_task`, `add_shopping_item`, `get_shopping_list`, `get_agenda`,
+`reschedule_task`, locked-screen blocks и offline fallback. Отдельно сравнить режимы
+rule-parser only и rule-parser + LLM fallback, если пункт 14 включен для
+`owner/test`. По результатам обновить provider settings, parser rules, LLM
+fallback policy и тексты карточки.
 
 16. Подготовить production release gate.
     Перед публичным релизом должны проходить lint, typecheck, web tests,

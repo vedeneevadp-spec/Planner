@@ -5,10 +5,7 @@ export type DateColumn = ColumnType<string, string, string>
 export type TimeColumn = ColumnType<string, string, string>
 export type TimestampColumn = ColumnType<string, string | Date, string | Date>
 export type AppTaskTimeKind =
-  | 'date_only'
-  | 'fixed_zone_datetime'
-  | 'floating_local_time'
-  | 'instant'
+  'date_only' | 'fixed_zone_datetime' | 'floating_local_time' | 'instant'
 export type AppTaskStageType = 'parallel' | 'task' | 'template' | 'waiting'
 export type AppTaskCompletionType = 'advanced' | 'completed'
 export type AppTaskChainStatus = 'active' | 'archived' | 'completed'
@@ -188,12 +185,7 @@ export interface AppSelfCareItemsTable {
   minimum_version_duration_minutes: number | null
   minimum_version_title: string | null
   preferred_time_of_day:
-    | 'afternoon'
-    | 'anytime'
-    | 'evening'
-    | 'morning'
-    | 'night'
-    | null
+    'afternoon' | 'anytime' | 'evening' | 'morning' | 'night' | null
   title: string
   type:
     | 'appointment'
@@ -338,12 +330,7 @@ export interface AppSelfCareCompletionsTable {
   occurrence_id: string | null
   scheduled_for: DateColumn | null
   status:
-    | 'alternative_done'
-    | 'cancelled'
-    | 'done'
-    | 'moved'
-    | 'partial'
-    | 'skipped'
+    'alternative_done' | 'cancelled' | 'done' | 'moved' | 'partial' | 'skipped'
   user_id: string
 }
 

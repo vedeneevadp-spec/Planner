@@ -6,15 +6,16 @@ SQL-first схема PostgreSQL.
 ## Стек
 
 - npm workspaces monorepo: `apps/web`, `apps/api`, `packages/contracts`
-- Web: React 19.2, React Router DOM 7.16, Vite 8, TanStack Query 5, Dexie 4
+- Web: React 19.2, React Router DOM 7.18, Vite 8, TanStack Query 5, Dexie 4
 - TypeScript 6 в strict mode; shared contracts на Zod 4
-- API: Fastify 5.8, Kysely 0.28, PostgreSQL через `pg`, OpenAPI/Swagger UI
+- API: Fastify 5.9, Kysely 0.29, PostgreSQL через `pg`, OpenAPI/Swagger UI
 - Timeweb Managed PostgreSQL как production data store; Docker PostgreSQL локально
 - Chaotika Auth: email/password, JWT, refresh tokens и password reset
 - Mobile: installable PWA и Capacitor 8 native shell для iOS/Android
-- Тесты: Vitest 4 для web, Node test runner для API, Playwright 1.59 для e2e
-- Tooling: ESLint 9, Prettier 3, Husky, lint-staged
-- GitHub Actions CI
+- Тесты: Vitest 4 для web, Node test runner для API, Playwright 1.61 для e2e
+- Tooling: ESLint 9, Prettier 3, Husky, lint-staged, Knip, axe, bundle
+  visualizer
+- GitHub Actions CI, Dependency Review, CodeQL, OpenSSF Scorecard, Renovate
 
 ## Требования
 
@@ -69,17 +70,22 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний задач и заботы |
 | `npm run toolchain:check`                               | проверить pinned Node/npm перед quality gates            |
 | `npm run lint` / `npm run lint:fix`                     | ESLint                                                   |
+| `npm run deadcode`                                      | диагностический Knip-отчет без падения процесса          |
+| `npm run deadcode:strict`                               | строгий Knip-прогон, включен в CI                        |
 | `npm run format:check` / `npm run format`               | Prettier                                                 |
 | `npm run typecheck`                                     | typecheck web, contracts и API                           |
 | `npm run test:web:run` / `npm run test:api`             | web/API тесты                                            |
 | `npm run test:api:postgres`                             | Postgres/RLS integration-тесты API                       |
 | `npm run test:e2e`                                      | Playwright smoke web + API auth/tasks                    |
+| `npm run test:e2e:a11y`                                 | Playwright + axe smoke для blocking a11y regressions     |
 | `npm run test:run`                                      | web + API тесты                                          |
-| `npm run coverage`                                      | web + API coverage                                       |
+| `npm run coverage`                                      | web + API + Postgres hotspot coverage                    |
 | `npm run openapi:check`                                 | контрактная проверка `/api/openapi.json`                 |
 | `npm run audit:prod`                                    | audit runtime-зависимостей без dev tooling               |
 | `npm run audit:dev-tooling`                             | контроль известных dev-only audit исключений             |
 | `npm run build`                                         | production-сборка web                                    |
+| `npm run build:analyze`                                 | production-сборка web + `tmp/web-bundle-stats.html`      |
+| `npm run wakeword:audit`                                | standalone-аудит wake-word training артефактов           |
 | `npm run mobile:sync`                                   | production build web + sync в `ios/` и `android/`        |
 | `npm run mobile:release -- --api-url=...`               | подготовить и при флагах собрать native release          |
 | `npm run mobile:release:rustore -- --api-url=...`       | собрать signed APK для RuStore                           |
@@ -94,13 +100,35 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run mobile:android:ci`                             | sync web в Android + unit-тесты + debug assemble         |
 | `npm run build:budget`                                  | проверить initial web bundle budget после `build`        |
 | `npm run check`                                         | lint + typecheck + tests                                 |
-| `npm run ci`                                            | audit + check + OpenAPI + mobile config + build          |
+| `npm run ci`                                            | audit + check + Knip + coverage + OpenAPI + build        |
 | `npm run release:check`                                 | `ci` + Android sync/tests/debug assemble/budget          |
 | `npm run deploy:prod`                                   | production deploy на текущий VPS                         |
 
 `npm run test:e2e` по умолчанию поднимает отдельные API и web-серверы на
 `E2E_API_PORT`/`E2E_WEB_PORT` и падает, если порт уже занят. Переиспользование
 запущенных серверов включается явно через `E2E_REUSE_EXISTING_SERVER=1`.
+
+### Quality guardrails
+
+- `npm run deadcode` использует Knip как диагностический non-blocking отчет по
+  unused files, dependencies, unlisted и unresolved imports.
+- `npm run deadcode:strict` запускает тот же guard в blocking mode и включен в
+  `npm run ci`.
+- `npm run coverage` проверяет web coverage hotspots и backend hotspots для
+  обычного API и Postgres repository paths. API-отчеты пишутся в
+  `coverage/api-coverage.txt` и `coverage/api-postgres-coverage.txt`.
+- `npm run build:analyze` включает `rollup-plugin-visualizer` через
+  `ANALYZE_BUNDLE=1` и пишет отчет в `tmp/web-bundle-stats.html`. CI сохраняет
+  этот HTML как artifact `web-bundle-stats`.
+- `npm run test:e2e:a11y` запускает Playwright smoke с axe и блокирует только
+  `serious`/`critical` violations на auth shell и основных authenticated
+  маршрутах.
+- Renovate настроен в `renovate.json`; `.github/dependabot.yml` удален, чтобы
+  после подключения Renovate app не было дублирующихся dependency PRs. Сам app
+  подключается в настройках GitHub репозитория.
+- `.github/workflows/security.yml` добавляет Dependency Review для PR, CodeQL и
+  OpenSSF Scorecard. Для private repo CodeQL/Scorecard не блокируют workflow,
+  если code scanning недоступен.
 
 ### Android arm64-only APK
 

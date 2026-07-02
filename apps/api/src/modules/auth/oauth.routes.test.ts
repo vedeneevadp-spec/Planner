@@ -314,7 +314,7 @@ async function createOAuthTestApp(): Promise<{
     API_STORAGE_DRIVER: 'memory',
     AUTH_JWT_SECRET: JWT_SECRET,
     NODE_ENV: 'test',
-  } as NodeJS.ProcessEnv)
+  })
   const repository = new TestAuthRepository()
   const service = new AuthService(
     repository,

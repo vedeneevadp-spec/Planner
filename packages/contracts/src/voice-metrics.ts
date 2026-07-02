@@ -173,8 +173,7 @@ export class ConsoleVoiceMetricsSink implements VoiceMetricsSink {
 export class VoiceMetricPayloadError extends Error {
   constructor(
     public readonly code:
-      | 'invalid_voice_metric_payload'
-      | 'private_voice_metric_payload',
+      'invalid_voice_metric_payload' | 'private_voice_metric_payload',
     message: string,
     public readonly details: unknown,
   ) {

@@ -58,8 +58,7 @@ type VoiceTranscriptHandler = (
 
 export interface UseAndroidVoiceRuntimeInput {
   androidVoiceStatusRef:
-    | MutableRefObject<AndroidWakeWordMetricStatus | null>
-    | undefined
+    MutableRefObject<AndroidWakeWordMetricStatus | null> | undefined
   apiConfig: SessionFeatureApiConfig | null | undefined
   dispatch: Dispatch<VoiceAssistantEvent>
   handleTranscript: VoiceTranscriptHandler
@@ -104,6 +103,9 @@ export function useAndroidVoiceRuntime({
   const androidCommandPollTimerRef = useRef<number | null>(null)
   const androidCommandTranscribingTimerRef = useRef<number | null>(null)
   const androidCommandTimeoutTimerRef = useRef<number | null>(null)
+  const pollPendingAndroidCommandRef = useRef<(operationId: number) => void>(
+    () => undefined,
+  )
   const [androidSettingsRevision, setAndroidSettingsRevision] = useState(0)
   const [androidVoiceStatus, setAndroidVoiceStatus] =
     useState<VoiceAssistantNativeStatus | null>(null)
@@ -332,7 +334,7 @@ export function useAndroidVoiceRuntime({
       }
 
       androidCommandPollTimerRef.current = window.setTimeout(() => {
-        void pollPendingAndroidCommand(operationId)
+        pollPendingAndroidCommandRef.current(operationId)
       }, ANDROID_COMMAND_POLL_INTERVAL_MS)
     },
     [
@@ -342,6 +344,12 @@ export function useAndroidVoiceRuntime({
       refreshAndroidCommandStatus,
     ],
   )
+
+  useEffect(() => {
+    pollPendingAndroidCommandRef.current = (operationId: number) => {
+      void pollPendingAndroidCommand(operationId)
+    }
+  }, [pollPendingAndroidCommand])
 
   const scheduleAndroidCommandPolling = useCallback(
     (operationId: number) => {
@@ -523,7 +531,6 @@ export function useAndroidVoiceRuntime({
 
   useEffect(() => {
     if (!isAndroidRuntime) {
-      updateAndroidVoiceStatus(null)
       return undefined
     }
 

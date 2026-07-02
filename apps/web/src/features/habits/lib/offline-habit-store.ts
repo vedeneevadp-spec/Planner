@@ -19,10 +19,7 @@ import {
 } from './habit-projection-model'
 
 export type HabitOfflineMutationStatus =
-  | 'conflicted'
-  | 'failed'
-  | 'pending'
-  | 'syncing'
+  'conflicted' | 'failed' | 'pending' | 'syncing'
 
 interface HabitCachedHabitRow {
   habit: HabitRecord
@@ -196,15 +193,13 @@ export async function replaceCachedHabitRecords(
   }
 
   const updatedAt = new Date().toISOString()
-  const rows = habits.map(
-    (habit): HabitCachedHabitRow => ({
-      habit,
-      habitId: habit.id,
-      key: createCachedHabitKey(workspaceId, habit.id),
-      updatedAt,
-      workspaceId,
-    }),
-  )
+  const rows = habits.map((habit): HabitCachedHabitRow => ({
+    habit,
+    habitId: habit.id,
+    key: createCachedHabitKey(workspaceId, habit.id),
+    updatedAt,
+    workspaceId,
+  }))
 
   await db.transaction('rw', db.cachedHabits, async () => {
     await db.cachedHabits.where('workspaceId').equals(workspaceId).delete()

@@ -1099,8 +1099,7 @@ function ChecklistPreview({
   isBusy: boolean
   isDone: boolean
   onToggleStep?:
-    | ((entry: SelfCareTodayItem, stepId: string) => void)
-    | undefined
+    ((entry: SelfCareTodayItem, stepId: string) => void) | undefined
   selectedStepIds: readonly string[]
 }) {
   const selectedStepIdSet = new Set(selectedStepIds)

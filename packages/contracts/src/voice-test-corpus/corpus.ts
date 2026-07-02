@@ -40,7 +40,7 @@ function expectedIntent(
     confidence: input.confidence ?? defaultConfidence(input.intent),
     rawText: phrase,
     ...input,
-  }) as VoiceTestExpectedIntent
+  })
 }
 
 function taskIntent(

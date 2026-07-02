@@ -8,10 +8,7 @@ import {
 import Dexie, { type Table } from 'dexie'
 
 export type ShoppingListOfflineMutationStatus =
-  | 'conflicted'
-  | 'failed'
-  | 'pending'
-  | 'syncing'
+  'conflicted' | 'failed' | 'pending' | 'syncing'
 
 interface ShoppingListCachedItemRow {
   item: ChaosInboxItemRecord
@@ -137,15 +134,13 @@ export async function replaceCachedShoppingListItems(
   }
 
   const updatedAt = new Date().toISOString()
-  const rows = items.map(
-    (item): ShoppingListCachedItemRow => ({
-      item,
-      itemId: item.id,
-      key: createCachedShoppingListItemKey(workspaceId, item.id),
-      updatedAt,
-      workspaceId,
-    }),
-  )
+  const rows = items.map((item): ShoppingListCachedItemRow => ({
+    item,
+    itemId: item.id,
+    key: createCachedShoppingListItemKey(workspaceId, item.id),
+    updatedAt,
+    workspaceId,
+  }))
 
   await db.transaction('rw', db.cachedItems, async () => {
     await db.cachedItems.where('workspaceId').equals(workspaceId).delete()

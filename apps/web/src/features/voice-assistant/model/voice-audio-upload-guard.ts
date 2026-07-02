@@ -4,9 +4,7 @@ import {
 } from '@planner/contracts'
 
 export type VoiceAudioUploadSource =
-  | 'android_push_to_talk'
-  | 'android_wake_word'
-  | 'web_push_to_talk'
+  'android_push_to_talk' | 'android_wake_word' | 'web_push_to_talk'
 
 export type VoicePrivacyBlockReason =
   | 'explicit_user_action_required'
@@ -30,8 +28,7 @@ export interface VoiceAudioUploadGuardInput {
 }
 
 export type VoiceAudioUploadDecision =
-  | { allowed: true }
-  | { allowed: false; reason: VoicePrivacyBlockReason }
+  { allowed: true } | { allowed: false; reason: VoicePrivacyBlockReason }
 
 export const VOICE_AUDIO_UPLOAD_MIN_DURATION_MS =
   VOICE_COMMAND_AUDIO_MIN_DURATION_MS

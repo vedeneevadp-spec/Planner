@@ -36,13 +36,7 @@ export type NavigationRouteId =
   | 'today'
 
 export type PlannerTabColor =
-  | 'blue'
-  | 'gray'
-  | 'green'
-  | 'lavender'
-  | 'mint'
-  | 'peach'
-  | 'pink'
+  'blue' | 'gray' | 'green' | 'lavender' | 'mint' | 'peach' | 'pink'
 
 export interface NavigationRouteDefinition extends AppRouteDefinition {
   id: NavigationRouteId

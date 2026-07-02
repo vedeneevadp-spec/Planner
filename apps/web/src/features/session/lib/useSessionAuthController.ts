@@ -494,7 +494,9 @@ export function useSessionAuthController(): SessionAuthState {
       snapshot.refreshToken,
     ])
 
-  recoverSessionRef.current = recoverSession
+  useEffect(() => {
+    recoverSessionRef.current = recoverSession
+  }, [recoverSession])
 
   const restoreSession =
     useCallback(async (): Promise<SessionRecoveryResult> => {

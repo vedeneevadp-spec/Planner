@@ -344,10 +344,13 @@ export function usePlannerOfflineSync({
         )
       },
     )
-    void refreshQueuedMutationCount()
+    const refreshQueuedMutationTimer = window.setTimeout(() => {
+      void refreshQueuedMutationCount()
+    }, 0)
 
     return () => {
       isActive = false
+      window.clearTimeout(refreshQueuedMutationTimer)
     }
   }, [
     queryClient,

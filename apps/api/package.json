@@ -9,7 +9,7 @@
     "test:postgres": "node --import tsx --test \"src/**/*.postgres-spec.ts\"",
     "test:postgres:pooler-contracts": "API_DB_WRITE_FALLBACK=pooler node --import tsx --test \"src/modules/tasks/task.repository.contract.postgres-spec.ts\" \"src/modules/emoji-sets/emoji-set.repository.contract.postgres-spec.ts\"",
     "coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/**/*.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" --test-coverage-exclude=\"src/modules/**/*.repository.postgres.ts\" --test-coverage-exclude=\"src/modules/**/*.repository.postgres.*.ts\" \"src/**/*.test.ts\"",
-    "coverage:postgres-contracts": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/modules/**/*.repository.postgres.ts\" --test-coverage-include=\"src/modules/**/*.repository.postgres.*.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.contract.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" \"src/**/*.contract.postgres-spec.ts\"",
+    "coverage:postgres-contracts": "node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/modules/**/*.repository.postgres.ts\" --test-coverage-include=\"src/modules/**/*.repository.postgres.*.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.contract.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" \"src/**/*.contract.postgres-spec.ts\" \"src/modules/self-care/self-care.repository.postgres-spec.ts\"",
     "coverage:postgres-pooler-contracts": "API_DB_WRITE_FALLBACK=pooler node --import tsx --test --experimental-test-coverage --test-coverage-include=\"src/modules/tasks/task.repository.postgres.pooler.ts\" --test-coverage-include=\"src/modules/tasks/task.repository.postgres.mutations.ts\" --test-coverage-include=\"src/modules/emoji-sets/emoji-set.repository.postgres.ts\" --test-coverage-exclude=\"src/**/*.test.ts\" --test-coverage-exclude=\"src/**/*.contract.ts\" --test-coverage-exclude=\"src/**/*.postgres-spec.ts\" \"src/modules/tasks/task.repository.contract.postgres-spec.ts\" \"src/modules/emoji-sets/emoji-set.repository.contract.postgres-spec.ts\"",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "outbox:run": "tsx src/workers/outbox.ts",
@@ -18,17 +18,17 @@
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/swagger": "^9.7.0",
-    "@fastify/swagger-ui": "^5.2.5",
+    "@fastify/swagger-ui": "^5.2.6",
     "@planner/contracts": "file:../../packages/contracts",
-    "fastify": "^5.8.5",
-    "jose": "^6.2.2",
-    "kysely": "^0.28.17",
-    "nodemailer": "^9.0.1",
-    "pg": "^8.20.0",
-    "zod": "^4.1.12"
+    "fastify": "^5.9.0",
+    "jose": "^6.2.3",
+    "kysely": "^0.29.2",
+    "nodemailer": "^9.0.3",
+    "pg": "^8.22.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/nodemailer": "^8.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.20.0",
     "openapi-types": "^12.1.3",
     "tsx": "^4.21.0"

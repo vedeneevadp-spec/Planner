@@ -968,9 +968,7 @@ class ConfidenceScorer {
 }
 
 export type VoiceAssistantSource =
-  | 'android_microphone'
-  | 'android_wake_word'
-  | 'web_microphone'
+  'android_microphone' | 'android_wake_word' | 'web_microphone'
 
 export type VoiceAssistantStatus =
   | 'idle'
@@ -1194,7 +1192,7 @@ function splitKnownShoppingWords(text: string): string[] {
 
   const parts: string[] = []
 
-  for (let index = 0; index < words.length; ) {
+  for (let index = 0; index < words.length;) {
     const phraseMatch = findKnownShoppingPhrase(words, index)
 
     if (phraseMatch) {

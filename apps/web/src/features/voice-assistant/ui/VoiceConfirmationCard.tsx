@@ -25,9 +25,7 @@ export const MAX_CLARIFICATION_ATTEMPTS = 2
 export const VOICE_UNDO_TTL_MS = 30_000
 
 export type VoiceConfirmationStatus =
-  | VoiceActionPreviewStatus
-  | 'error'
-  | 'success'
+  VoiceActionPreviewStatus | 'error' | 'success'
 
 export interface VoiceConfirmationCardProps {
   canAppendVoice?: boolean | undefined

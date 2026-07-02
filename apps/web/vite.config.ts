@@ -2,6 +2,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import react from '@vitejs/plugin-react'
+import { visualizer } from 'rollup-plugin-visualizer'
+import type { PluginOption } from 'vite'
 import { defineConfig } from 'vitest/config'
 
 const appRoot = fileURLToPath(new URL('.', import.meta.url))
@@ -9,10 +11,23 @@ const srcPath = fileURLToPath(new URL('./src', import.meta.url))
 const contractsPath = fileURLToPath(
   new URL('../../packages/contracts/src', import.meta.url),
 )
+const shouldAnalyzeBundle = process.env.ANALYZE_BUNDLE === '1'
 
 export default defineConfig({
   root: appRoot,
-  plugins: [react()],
+  plugins: [
+    react(),
+    ...(shouldAnalyzeBundle
+      ? [
+          visualizer({
+            brotliSize: true,
+            filename: path.resolve(appRoot, '../../tmp/web-bundle-stats.html'),
+            gzipSize: true,
+            template: 'treemap',
+          }) as PluginOption,
+        ]
+      : []),
+  ],
   build: {
     rollupOptions: {
       output: {

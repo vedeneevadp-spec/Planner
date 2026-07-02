@@ -21,11 +21,7 @@ import {
 } from '@/shared/time/time.service'
 
 type SelfCareQueryScope =
-  | 'analytics'
-  | 'dashboard'
-  | 'history'
-  | 'items'
-  | 'plan'
+  'analytics' | 'dashboard' | 'history' | 'items' | 'plan'
 
 type ScheduleMutationVariables = {
   input: SelfCareItemScheduleInput

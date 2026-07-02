@@ -12,11 +12,7 @@ export interface PasswordSignUpResult {
 
 export type SessionRecoveryResult = 'deferred' | 'recovered' | 'signed_out'
 export type SessionAuthLifecycleStatus =
-  | 'authenticated'
-  | 'deferred'
-  | 'disabled'
-  | 'restoring'
-  | 'signed_out'
+  'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
 
 export interface SessionAuthState {
   accessToken: string | null

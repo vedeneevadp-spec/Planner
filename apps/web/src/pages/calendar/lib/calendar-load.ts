@@ -35,9 +35,7 @@ export interface CalendarSelfCareTask extends Task {
 }
 
 export type CalendarDisplayTask =
-  | CalendarGhostTask
-  | CalendarSelfCareTask
-  | Task
+  CalendarGhostTask | CalendarSelfCareTask | Task
 
 export interface CalendarDaySummary {
   dateKey: string

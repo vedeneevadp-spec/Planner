@@ -39,12 +39,7 @@ import {
 } from './SelfCarePage.schedule'
 
 export type SelfCareTab =
-  | 'today'
-  | 'plan'
-  | 'rituals'
-  | 'history'
-  | 'analytics'
-  | 'settings'
+  'today' | 'plan' | 'rituals' | 'history' | 'analytics' | 'settings'
 
 export type SelfCareCreateDialogMode = 'choice' | 'custom' | 'template'
 export type SelfCareAnalyticsDetailKind = 'exercise' | 'measurement'
@@ -87,12 +82,7 @@ export type VisibleSelfCareCategory = Extract<
   'beauty' | 'body' | 'custom' | 'health' | 'movement' | 'relax'
 >
 export type SelfCareTodayCardActionKind =
-  | 'archive'
-  | 'complete'
-  | 'edit'
-  | 'restart'
-  | 'schedule'
-  | 'skip'
+  'archive' | 'complete' | 'edit' | 'restart' | 'schedule' | 'skip'
 export type SelfCareSkipActionSection = 'overdue' | 'today'
 
 export const TYPES_WITH_EXACT_SCHEDULE: ReadonlySet<SelfCareItemType> = new Set(

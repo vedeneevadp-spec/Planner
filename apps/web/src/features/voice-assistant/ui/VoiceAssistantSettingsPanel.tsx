@@ -78,12 +78,36 @@ export function VoiceAssistantSettingsPanel() {
   }, [])
 
   useEffect(() => {
-    void refreshStatus()
+    let isDisposed = false
 
-    return addVoiceAssistantSettingsChangedListener(() => {
-      void refreshStatus()
-    })
-  }, [refreshStatus])
+    async function refreshNativeStatus() {
+      try {
+        const nextStatus = await getVoiceAssistantNativeStatus()
+
+        if (!isDisposed) {
+          setNativeStatus(nextStatus)
+        }
+      } catch (error) {
+        console.warn('Failed to load voice assistant native status.', error)
+
+        if (!isDisposed) {
+          setMessage('Не удалось прочитать статус голосового помощника.')
+        }
+      }
+    }
+
+    void Promise.resolve().then(refreshNativeStatus)
+
+    const removeSettingsChangedListener =
+      addVoiceAssistantSettingsChangedListener(() => {
+        void refreshNativeStatus()
+      })
+
+    return () => {
+      isDisposed = true
+      removeSettingsChangedListener()
+    }
+  }, [])
 
   const permissionRows = useMemo(
     () => [

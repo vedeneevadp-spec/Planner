@@ -1,10 +1,7 @@
 export type IanaTimeZone = string
 
 export type PlannerTimeKind =
-  | 'instant'
-  | 'date_only'
-  | 'fixed_zone_datetime'
-  | 'floating_local_time'
+  'instant' | 'date_only' | 'fixed_zone_datetime' | 'floating_local_time'
 
 export type TimeZoneMode = 'device' | 'manual' | 'workspace'
 
@@ -33,9 +30,7 @@ export interface InstantValue {
 }
 
 export type PlannerScheduleValue =
-  | DateOnlyValue
-  | FixedZoneDateTimeValue
-  | FloatingLocalTimeValue
+  DateOnlyValue | FixedZoneDateTimeValue | FloatingLocalTimeValue
 
 export interface TimeService {
   getDeviceTimeZone(): IanaTimeZone | null

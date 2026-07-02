@@ -342,7 +342,7 @@ function createTestConfig() {
     API_STORAGE_DRIVER: 'memory',
     AUTH_JWT_SECRET: JWT_SECRET,
     NODE_ENV: 'test',
-  } as NodeJS.ProcessEnv)
+  })
 }
 
 async function createAccessToken(

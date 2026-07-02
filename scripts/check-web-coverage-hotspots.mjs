@@ -9,7 +9,7 @@ const SUMMARY_PATH = new URL(
 const HOTSPOTS = [
   {
     metric: 'lines',
-    min: 17,
+    min: 30,
     path: 'apps/web/src/features/self-care/lib/useSelfCare.ts',
   },
   {
@@ -41,6 +41,41 @@ const HOTSPOTS = [
     metric: 'lines',
     min: 80,
     path: 'apps/web/src/features/session/ui/TimeZoneChangeBanner.tsx',
+  },
+  {
+    metric: 'lines',
+    min: 30,
+    path: 'apps/web/src/features/session/lib/user-preferences-api.ts',
+  },
+  {
+    metric: 'lines',
+    min: 45,
+    path: 'apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts',
+  },
+  {
+    metric: 'lines',
+    min: 8,
+    path: 'apps/web/src/pages/spheres/ui/SphereForm.tsx',
+  },
+  {
+    metric: 'lines',
+    min: 55,
+    path: 'apps/web/src/pages/spheres/ui/SpherePage.tsx',
+  },
+  {
+    metric: 'lines',
+    min: 20,
+    path: 'apps/web/src/widgets/sidebar/ui/SidebarWorkspaceActionControls.tsx',
+  },
+  {
+    metric: 'lines',
+    min: 30,
+    path: 'apps/web/src/widgets/sidebar/ui/SidebarWorkspaceActions.tsx',
+  },
+  {
+    metric: 'lines',
+    min: 20,
+    path: 'apps/web/src/widgets/sidebar/ui/useSidebarWorkspaceActionsModel.ts',
   },
 ]
 

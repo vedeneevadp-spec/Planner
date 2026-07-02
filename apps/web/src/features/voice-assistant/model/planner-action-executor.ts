@@ -68,8 +68,7 @@ export interface PlannerActionExecutorDependencies {
   getCachedTasks?: (() => VoiceActionCachedTask[]) | undefined
   isOnline?: (() => boolean) | undefined
   listShoppingItems?:
-    | (() => Promise<ChaosInboxItemRecord[]> | ChaosInboxItemRecord[])
-    | undefined
+    (() => Promise<ChaosInboxItemRecord[]> | ChaosInboxItemRecord[]) | undefined
   refreshPlanner?: (() => Promise<void>) | undefined
   removeShoppingItem?: ((itemId: string) => Promise<unknown>) | undefined
   removeTask?: ((taskId: string) => Promise<unknown>) | undefined

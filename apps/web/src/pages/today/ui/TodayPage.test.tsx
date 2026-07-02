@@ -28,20 +28,24 @@ interface PlannerSessionStub {
   }
 }
 
-const mocks = vi.hoisted(() => ({
-  copyTaskToPersonal: vi.fn(),
-  moveTaskToPersonal: vi.fn(),
-  removeTask: vi.fn(),
-  selfCareDashboards: {} as Record<
+const mocks = vi.hoisted(() => {
+  const selfCareDashboards: Record<
     string,
     SelfCareDashboardResponse | undefined
-  >,
-  setTaskPlannedDate: vi.fn(),
-  setTaskStatus: vi.fn(),
-  updateTask: vi.fn(),
-  updateUserPreferences: vi.fn(),
-  usePlannerSession: vi.fn<() => { data: PlannerSessionStub }>(),
-}))
+  > = {}
+
+  return {
+    copyTaskToPersonal: vi.fn(),
+    moveTaskToPersonal: vi.fn(),
+    removeTask: vi.fn(),
+    selfCareDashboards,
+    setTaskPlannedDate: vi.fn(),
+    setTaskStatus: vi.fn(),
+    updateTask: vi.fn(),
+    updateUserPreferences: vi.fn(),
+    usePlannerSession: vi.fn<() => { data: PlannerSessionStub }>(),
+  }
+})
 
 vi.mock('@/features/emoji-library', () => ({
   useUploadedIconAssets: () => ({ uploadedIcons: [] }),
@@ -218,7 +222,7 @@ function createSelfCareDashboard(
     } as SelfCareDashboardResponse['settings'],
     todayItems,
     upcomingImportant: [],
-  } as SelfCareDashboardResponse
+  }
 }
 
 function setSelfCareDashboard(

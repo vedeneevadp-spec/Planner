@@ -538,7 +538,7 @@ void describe('AiContextService', () => {
             }),
           ],
           stepCompletions: [],
-        } as SelfCareHistoryResponse,
+        },
         selfCarePlan: {
           courses: [],
           from: '2026-06-15',
@@ -553,7 +553,7 @@ void describe('AiContextService', () => {
           ],
           planningHints: [],
           to: '2026-06-21',
-        } as SelfCarePlanResponse,
+        },
         shoppingItems: [
           createShoppingItem({
             status: 'archived',
@@ -724,7 +724,7 @@ void describe('AiContextService', () => {
           }),
         ],
         stepCompletions: [],
-      } as SelfCareHistoryResponse,
+      },
       selfCarePlan: {
         courses: [],
         from,
@@ -762,7 +762,7 @@ void describe('AiContextService', () => {
         ],
         planningHints: [],
         to: today,
-      } as SelfCarePlanResponse,
+      },
     })
 
     const context = await service.getSelfCareContext({
@@ -1122,24 +1122,22 @@ function createService(
         ),
       getHistory: () =>
         Promise.resolve(
-          options.selfCareHistory ??
-            ({
-              completions: [],
-              items: [],
-              stepCompletions: [],
-            } as SelfCareHistoryResponse),
+          options.selfCareHistory ?? {
+            completions: [],
+            items: [],
+            stepCompletions: [],
+          },
         ),
       getPlan: () =>
         Promise.resolve(
-          options.selfCarePlan ??
-            ({
-              courses: [],
-              from: '2026-06-15',
-              medical: [],
-              occurrences: [],
-              planningHints: [],
-              to: '2026-06-21',
-            } as SelfCarePlanResponse),
+          options.selfCarePlan ?? {
+            courses: [],
+            from: '2026-06-15',
+            medical: [],
+            occurrences: [],
+            planningHints: [],
+            to: '2026-06-21',
+          },
         ),
     }
   }

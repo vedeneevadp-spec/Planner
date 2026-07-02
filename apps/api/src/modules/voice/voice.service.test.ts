@@ -549,8 +549,7 @@ class FakeSttProvider implements BackendSttProvider {
 class FakePlannerIntentFallback implements BackendPlannerIntentFallback {
   callCount = 0
   lastInput:
-    | Parameters<BackendPlannerIntentFallback['parseText']>[0]
-    | undefined
+    Parameters<BackendPlannerIntentFallback['parseText']>[0] | undefined
 
   constructor(private readonly output: unknown) {}
 

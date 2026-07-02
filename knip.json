@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "include": ["files", "dependencies", "unlisted", "unresolved"],
+  "ignoreDependencies": [
+    "@capacitor/app",
+    "@capacitor/preferences",
+    "@capacitor/push-notifications",
+    "lint-staged"
+  ],
+  "ignoreFiles": [
+    ".wakeword-venv/**",
+    "android/**",
+    "apps/*/coverage/**",
+    "apps/*/dist/**",
+    "apps/web/public/sw.js",
+    "coverage/**",
+    "datasets/**",
+    "dist/**",
+    "ios/**",
+    "playwright-report/**",
+    "store-screenshots/**",
+    "temp/**",
+    "test-results/**",
+    "tmp/**",
+    "tools/wakeword-training/output/**"
+  ]
+}

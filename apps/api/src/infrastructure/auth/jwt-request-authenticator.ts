@@ -85,7 +85,7 @@ function normalizeVerifiedClaims(
 
   return {
     email: parsedClaims.data.email,
-    payload: payload as Record<string, unknown>,
+    payload: payload,
     role: 'authenticated',
     sessionId: parsedClaims.data.session_id,
     sub: parsedClaims.data.sub,

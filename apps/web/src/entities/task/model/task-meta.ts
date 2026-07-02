@@ -3,15 +3,7 @@ import type { NewTaskInput, Task } from './task.types'
 
 export type TaskTypeValue = '' | 'important' | 'routine' | 'habit'
 export type ResourceValue =
-  | ''
-  | '-1'
-  | '-2'
-  | '-3'
-  | '-4'
-  | '1'
-  | '2'
-  | '3'
-  | '4'
+  '' | '-1' | '-2' | '-3' | '-4' | '1' | '2' | '3' | '4'
 
 export const TASK_NECESSITY_LABELS: Record<Task['necessity'], string> = {
   desired: 'Желательно',

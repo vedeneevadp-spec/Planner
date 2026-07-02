@@ -7,7 +7,7 @@ void describe('resolveRlsStrategyForEnvironment', () => {
   void it('uses transaction-local RLS by default', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
-    } as NodeJS.ProcessEnv)
+    })
 
     assert.equal(strategy, 'transaction_local')
   })
@@ -16,7 +16,7 @@ void describe('resolveRlsStrategyForEnvironment', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       API_DB_RLS_MODE: 'disabled',
       DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
-    } as NodeJS.ProcessEnv)
+    })
 
     assert.equal(strategy, 'disabled')
   })
@@ -25,7 +25,7 @@ void describe('resolveRlsStrategyForEnvironment', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       API_DB_RLS_MODE: 'enabled',
       DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
-    } as NodeJS.ProcessEnv)
+    })
 
     assert.equal(strategy, 'transaction_local')
   })
@@ -34,7 +34,7 @@ void describe('resolveRlsStrategyForEnvironment', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       API_DB_RLS_MODE: 'claims_only',
       DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
-    } as NodeJS.ProcessEnv)
+    })
 
     assert.equal(strategy, 'claims_only')
   })
@@ -43,7 +43,7 @@ void describe('resolveRlsStrategyForEnvironment', () => {
     const strategy = resolveRlsStrategyForEnvironment({
       API_DB_RLS_MODE: 'session_connection',
       DATABASE_URL: 'postgres://user:password@localhost:5432/planner',
-    } as NodeJS.ProcessEnv)
+    })
 
     assert.equal(strategy, 'session_connection')
   })

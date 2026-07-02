@@ -13,10 +13,7 @@ import {
 import Dexie, { type Table } from 'dexie'
 
 export type PlannerOfflineMutationStatus =
-  | 'conflicted'
-  | 'failed'
-  | 'pending'
-  | 'syncing'
+  'conflicted' | 'failed' | 'pending' | 'syncing'
 
 interface PlannerCachedTaskRow {
   key: string
@@ -272,15 +269,13 @@ export async function replaceCachedTaskRecords(
   }
 
   const updatedAt = new Date().toISOString()
-  const rows = tasks.map(
-    (task): PlannerCachedTaskRow => ({
-      key: createCachedTaskKey(workspaceId, task.id),
-      task,
-      taskId: task.id,
-      updatedAt,
-      workspaceId,
-    }),
-  )
+  const rows = tasks.map((task): PlannerCachedTaskRow => ({
+    key: createCachedTaskKey(workspaceId, task.id),
+    task,
+    taskId: task.id,
+    updatedAt,
+    workspaceId,
+  }))
 
   await db.transaction('rw', db.cachedTasks, async () => {
     await db.cachedTasks.where('workspaceId').equals(workspaceId).delete()
@@ -302,15 +297,13 @@ export async function replaceCachedLifeSphereRecords(
   }
 
   const updatedAt = new Date().toISOString()
-  const rows = spheres.map(
-    (sphere): PlannerCachedLifeSphereRow => ({
-      key: createCachedLifeSphereKey(workspaceId, sphere.id),
-      sphere,
-      sphereId: sphere.id,
-      updatedAt,
-      workspaceId,
-    }),
-  )
+  const rows = spheres.map((sphere): PlannerCachedLifeSphereRow => ({
+    key: createCachedLifeSphereKey(workspaceId, sphere.id),
+    sphere,
+    sphereId: sphere.id,
+    updatedAt,
+    workspaceId,
+  }))
 
   await db.transaction('rw', db.cachedLifeSpheres, async () => {
     await db.cachedLifeSpheres.where('workspaceId').equals(workspaceId).delete()
@@ -332,15 +325,13 @@ export async function replaceCachedTaskTemplateRecords(
   }
 
   const updatedAt = new Date().toISOString()
-  const rows = templates.map(
-    (template): PlannerCachedTaskTemplateRow => ({
-      key: createCachedTaskTemplateKey(workspaceId, template.id),
-      template,
-      templateId: template.id,
-      updatedAt,
-      workspaceId,
-    }),
-  )
+  const rows = templates.map((template): PlannerCachedTaskTemplateRow => ({
+    key: createCachedTaskTemplateKey(workspaceId, template.id),
+    template,
+    templateId: template.id,
+    updatedAt,
+    workspaceId,
+  }))
 
   await db.transaction('rw', db.cachedTaskTemplates, async () => {
     await db.cachedTaskTemplates

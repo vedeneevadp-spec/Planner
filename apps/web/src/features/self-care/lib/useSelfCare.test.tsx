@@ -431,7 +431,7 @@ function createSelfCarePlan(
     occurrences,
     planningHints: [],
     to: '2026-07-03',
-  } as unknown as SelfCarePlanResponse
+  }
 }
 
 function createSelfCareApi(): SelfCareApiClient {
@@ -469,5 +469,5 @@ function createSelfCareApi(): SelfCareApiClient {
     updateSettings: vi.fn(),
     upsertDailyState: vi.fn(),
     upsertRitualStepDraft: vi.fn(),
-  } as SelfCareApiClient
+  }
 }

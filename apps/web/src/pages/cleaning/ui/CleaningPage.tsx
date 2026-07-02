@@ -2,7 +2,7 @@ import {
   type CleaningPriority,
   type CleaningZoneUpdateInput,
 } from '@planner/contracts'
-import { type FormEvent, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, useMemo, useState } from 'react'
 import {
   Link,
   useLocation,
@@ -453,33 +453,18 @@ export function CleaningSettingsPage() {
       removeTaskMutation.error,
     ])
 
-  useEffect(() => {
-    if (freeWeekdays.length === 0) {
-      setIsZoneCreateOpen(false)
-      return
-    }
-
-    const selectedDayIsFree = freeWeekdays.some(
-      (day) => day.value === zoneDayOfWeek,
-    )
-
-    if (!selectedDayIsFree) {
-      setZoneDayOfWeek(freeWeekdays[0]?.value ?? zoneDayOfWeek)
-    }
-  }, [freeWeekdays, zoneDayOfWeek])
-
-  useEffect(() => {
-    setIsZoneEditOpen(false)
-    setIsTaskCreateOpen(false)
-    setFormError(null)
-  }, [selectedZone?.id])
+  const selectedZoneDayOfWeek = freeWeekdays.some(
+    (day) => day.value === zoneDayOfWeek,
+  )
+    ? zoneDayOfWeek
+    : (freeWeekdays[0]?.value ?? zoneDayOfWeek)
 
   async function handleCreateZone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const title = zoneTitle.trim()
     const selectedFreeWeekday = freeWeekdays.find(
-      (day) => day.value === zoneDayOfWeek,
+      (day) => day.value === selectedZoneDayOfWeek,
     )
 
     if (!title) {
@@ -685,9 +670,15 @@ export function CleaningSettingsPage() {
               selectedZone={selectedZone}
               zones={zones}
               onSelect={(zoneId) => {
+                setIsZoneEditOpen(false)
+                setIsTaskCreateOpen(false)
+                setFormError(null)
                 void navigate(`/cleaning/settings/zones/${zoneId}`)
               }}
               onSelectGeneral={() => {
+                setIsZoneEditOpen(false)
+                setIsTaskCreateOpen(false)
+                setFormError(null)
                 void navigate(CLEANING_GENERAL_SETTINGS_PATH)
               }}
             />
@@ -715,11 +706,7 @@ export function CleaningSettingsPage() {
               />
               <SelectPicker
                 ariaLabel="День новой зоны"
-                value={String(
-                  freeWeekdays.some((day) => day.value === zoneDayOfWeek)
-                    ? zoneDayOfWeek
-                    : (freeWeekdays[0]?.value ?? zoneDayOfWeek),
-                )}
+                value={String(selectedZoneDayOfWeek)}
                 disabled={isBusy}
                 options={freeWeekdays.map((day) => ({
                   label: day.label,

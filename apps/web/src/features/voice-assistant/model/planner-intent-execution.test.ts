@@ -175,5 +175,5 @@ function createIntent(overrides: Partial<PlannerIntent>): PlannerIntent {
     needsConfirmation: true,
     rawText: 'тестовая команда',
     ...overrides,
-  } as PlannerIntent
+  }
 }

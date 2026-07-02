@@ -20,7 +20,6 @@ const publicApiModules = [
   'pages/admin',
   'pages/calendar',
   'pages/cleaning',
-  'pages/habits',
   'pages/more',
   'pages/profile',
   'pages/self-care',

@@ -623,7 +623,7 @@ function createPreview(
     title: 'Создать задачу',
     type: intent.intent,
     ...overrides,
-  } as VoiceActionPreview
+  }
 }
 
 function createIntent(overrides: Partial<PlannerIntent> = {}): PlannerIntent {
@@ -634,7 +634,7 @@ function createIntent(overrides: Partial<PlannerIntent> = {}): PlannerIntent {
     rawText: 'создай задачу проверить оплату',
     title: 'проверить оплату',
     ...overrides,
-  } as PlannerIntent
+  }
 }
 
 function createCandidate(

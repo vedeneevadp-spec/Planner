@@ -35,13 +35,11 @@ export function useUploadedIconAssets(): {
   const uploadedIcons = useMemo(
     () =>
       (iconSetsQuery.data ?? []).flatMap((iconSet) =>
-        iconSet.items.map(
-          (item): UploadedIconAsset => ({
-            id: item.id,
-            label: item.label,
-            value: item.value,
-          }),
-        ),
+        iconSet.items.map((item): UploadedIconAsset => ({
+          id: item.id,
+          label: item.label,
+          value: item.value,
+        })),
       ),
     [iconSetsQuery.data],
   )

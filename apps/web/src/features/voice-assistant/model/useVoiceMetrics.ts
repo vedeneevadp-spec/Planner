@@ -69,8 +69,7 @@ export type CreateConfirmationTimingPayload = (
 export interface UseVoiceMetricsInput {
   androidVoiceStatus?: AndroidWakeWordMetricStatus | null | undefined
   androidVoiceStatusRef?:
-    | MutableRefObject<AndroidWakeWordMetricStatus | null>
-    | undefined
+    MutableRefObject<AndroidWakeWordMetricStatus | null> | undefined
   apiConfig: SessionFeatureApiConfig | null | undefined
   appRole: string | null | undefined
 }
@@ -263,5 +262,5 @@ function createDefinedMetricPayload(
 ): VoiceMetricPayload {
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== undefined),
-  ) as VoiceMetricPayload
+  )
 }

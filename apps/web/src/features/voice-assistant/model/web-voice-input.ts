@@ -71,8 +71,7 @@ export interface WebVoiceRecording {
 }
 
 export type WebVoiceValidationFailureReason =
-  | VoicePrivacyBlockReason
-  | 'empty_audio'
+  VoicePrivacyBlockReason | 'empty_audio'
 
 export type WebVoiceValidationResult =
   | { ok: true }

@@ -291,7 +291,7 @@ function createRegressionApp() {
     config: createApiConfig({
       API_STORAGE_DRIVER: 'memory',
       NODE_ENV: 'test',
-    } as NodeJS.ProcessEnv),
+    }),
     database: null,
     habitService: new HabitService(new MemoryHabitRepository()),
     selfCareService: new SelfCareService(new MemorySelfCareRepository()),

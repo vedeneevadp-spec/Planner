@@ -56,7 +56,7 @@ function createTestConfig() {
   return createApiConfig({
     API_STORAGE_DRIVER: 'memory',
     NODE_ENV: 'test',
-  } as NodeJS.ProcessEnv)
+  })
 }
 
 void describe('push notifications routes', () => {
