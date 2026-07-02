@@ -37,7 +37,10 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      - run: npm install -g npm@11.9.0
+      - name: Install pinned npm
+        run: |
+          npm_version="$(node -e 'const { readFileSync } = require("node:fs"); const { packageManager } = JSON.parse(readFileSync("package.json", "utf8")); const match = /^npm@(\d+\.\d+\.\d+)$/.exec(packageManager); if (!match) throw new Error(`Unsupported packageManager: ${packageManager}`); process.stdout.write(match[1]);')"
+          npm install -g "npm@${npm_version}"
       - run: npm ci
       - run: npm run db:migrate
       - run: npm run db:security:check
@@ -79,7 +82,10 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'npm'
 
-      - run: npm install -g npm@11.9.0
+      - name: Install pinned npm
+        run: |
+          npm_version="$(node -e 'const { readFileSync } = require("node:fs"); const { packageManager } = JSON.parse(readFileSync("package.json", "utf8")); const match = /^npm@(\d+\.\d+\.\d+)$/.exec(packageManager); if (!match) throw new Error(`Unsupported packageManager: ${packageManager}`); process.stdout.write(match[1]);')"
+          npm install -g "npm@${npm_version}"
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
