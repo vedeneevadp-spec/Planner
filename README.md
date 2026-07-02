@@ -69,6 +69,7 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 | `npm run outbox:run`                                    | обработать одну пачку outbox-сообщений                   |
 | `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний задач и заботы |
 | `npm run toolchain:check`                               | проверить pinned Node/npm перед quality gates            |
+| `npm run actionlint`                                    | проверить GitHub Actions workflow через actionlint       |
 | `npm run lint` / `npm run lint:fix`                     | ESLint                                                   |
 | `npm run deadcode`                                      | диагностический Knip-отчет без падения процесса          |
 | `npm run deadcode:strict`                               | строгий Knip-прогон, включен в CI                        |
@@ -112,6 +113,8 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 
 - `npm run deadcode` использует Knip как диагностический non-blocking отчет по
   unused files, dependencies, unlisted и unresolved imports.
+- `npm run actionlint` скачивает pinned `rhysd/actionlint` binary, проверяет
+  checksum и lint-ит `.github/workflows` без добавления runtime dependency.
 - `npm run deadcode:strict` запускает тот же guard в blocking mode и включен в
   `npm run ci`.
 - `npm run coverage` проверяет web coverage hotspots и backend hotspots для

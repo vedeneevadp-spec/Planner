@@ -1,6 +1,6 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-07-02.
+Дата анализа: 2026-05-21. Обновлено: 2026-07-03.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
@@ -16,6 +16,18 @@ web/API coverage, web/mobile budgets). Главный P1 сдвинулся: bac
 добавить coverage guard для `useSelfCare`, `useVoiceActionFlow`,
 `mcp-haotika.server.ts` и self-care Postgres read-model loaders. P2-кандидаты:
 dependency batch и изоляция локальных Postgres coverage jobs.
+
+Свежий срез 2026-07-03: dependency drift закрыт через Renovate batch, `main`
+зеленый, открытых Renovate PR нет. Следующий инфраструктурный слой:
+
+- включить branch protection/ruleset для `main` с обязательными PR checks
+  `workflow-lint`, `quality`, `android`, `dependency-review`, `codeql` и
+  `CodeQL`
+- привести repo merge hygiene к одному способу merge и включить automatic branch
+  deletion after merge
+- добавить `actionlint` в локальный и CI quality gate для `.github/workflows`
+- после этого продолжать кодовые P1: Time System v1, generic OpenAPI schemas,
+  coverage guard tightening и server-side auth diagnostics
 
 ## Закрыто 2026-05-23: production DB RLS переведен в строгий режим
 
