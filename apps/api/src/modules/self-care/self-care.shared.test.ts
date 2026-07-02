@@ -199,7 +199,7 @@ void test('buildDashboardResponse keeps only base flexible goals in gentle mode'
 
   const response = buildDashboardResponse({
     date,
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [],
@@ -234,7 +234,7 @@ void test('buildDashboardResponse keeps only base flexible goals in gentle mode'
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.deepEqual(
@@ -362,7 +362,7 @@ void test('buildAnalyticsResponse keeps only visible unique flexible goals', () 
   const response = buildAnalyticsResponse({
     from: '2026-06-01',
     to: '2026-06-07',
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [],
@@ -407,7 +407,7 @@ void test('buildAnalyticsResponse keeps only visible unique flexible goals', () 
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.deepEqual(
@@ -873,7 +873,7 @@ void test('buildDashboardResponse carries overdue planned care without planning 
 
   const response = buildDashboardResponse({
     date,
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [],
@@ -896,7 +896,7 @@ void test('buildDashboardResponse carries overdue planned care without planning 
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.deepEqual(
@@ -982,7 +982,7 @@ void test('buildDashboardResponse carries daily routine leftovers as overdue pla
 
   const response = buildDashboardResponse({
     date,
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [],
@@ -1005,7 +1005,7 @@ void test('buildDashboardResponse carries daily routine leftovers as overdue pla
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.deepEqual(
@@ -1032,7 +1032,7 @@ void test('buildTodayItem prefers details of the scheduled occurrence', () => {
     date: '2026-06-12',
     item,
     occurrence,
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [
         appointmentDetails({
@@ -1067,7 +1067,7 @@ void test('buildTodayItem prefers details of the scheduled occurrence', () => {
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.equal(entry.appointment?.occurrenceId, occurrence.id)
@@ -1086,7 +1086,7 @@ void test('buildTodayItem ignores stale completion after occurrence is scheduled
     date: occurrence.scheduledFor,
     item: selfCareItem(),
     occurrence,
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [
@@ -1107,7 +1107,7 @@ void test('buildTodayItem ignores stale completion after occurrence is scheduled
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.equal(entry.occurrence?.status, 'scheduled')
@@ -1130,7 +1130,7 @@ void test('buildTodayItem includes course details for course progress', () => {
     date: '2026-06-10',
     item,
     occurrence: null,
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [],
@@ -1146,7 +1146,7 @@ void test('buildTodayItem includes course details for course progress', () => {
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
   })
 
   assert.equal(entry.courseDetails?.completedCount, 7)
@@ -1210,7 +1210,7 @@ void test('buildPlanResponse omits archived courses', () => {
 
   const response = buildPlanResponse({
     from: '2026-06-01',
-    state: {
+    state: selfCareState({
       alternatives: [],
       appointmentDetails: [],
       completions: [],
@@ -1235,7 +1235,7 @@ void test('buildPlanResponse omits archived courses', () => {
       stepCompletions: [],
       steps: [],
       templates: [],
-    },
+    }),
     to: '2026-06-30',
   })
 

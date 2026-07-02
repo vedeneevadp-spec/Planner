@@ -257,12 +257,12 @@ token и сохранение device session без возврата на фор
 Где видно:
 
 - `apps/api/src/bootstrap/build-app.test.ts` - 3691 строка
-- `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 2822
+- `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 3056
   строки
 - `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 2843 строки
 - `apps/api/src/bootstrap/openapi-paths.ts` - 2211 строк
 - `apps/api/src/modules/ai-context/ai-context.service.ts` - 2165 строк
-- `apps/api/src/modules/self-care/self-care.shared.ts` - 2145 строк
+- `apps/api/src/modules/self-care/self-care.shared.ts` - 2218 строк
 - `packages/contracts/src/voice-test-corpus/corpus.ts` - 2133 строки
 - `apps/web/src/pages/self-care/ui/SelfCarePage.module.css` - 2114 строк
 - `apps/api/src/modules/tasks/task.repository.postgres.ts` - 1938 строк
@@ -291,9 +291,10 @@ self-care UI/backend, AI context aggregation и ручной OpenAPI слой:
 - `SelfCarePage.tsx` и `SelfCarePage.components.tsx` держат query/mutation
   orchestration, URL-state, tabs, dialogs, forms, keyboard handling и
   presentation в одном page surface
-- `self-care.repository.postgres.ts` и `self-care.shared.ts` смешивают loading
-  strategy, persistence mapping, occurrence generation, dashboard/plan/history/
-  analytics projections и migration compatibility
+- `self-care.repository.postgres.ts` и `self-care.shared.ts` остаются крупными:
+  repository держит SQL mapping, write flows и endpoint read-model loaders, а
+  shared слой - occurrence generation, dashboard/plan/history/analytics
+  projections и migration compatibility
 - `ai-context.service.ts` агрегирует tasks, shopping, cleaning, habits,
   self-care и calendar context для MCP/AI surfaces
 - `openapi-paths.ts` и `openapi-components.ts` остаются ручным описанием API
@@ -314,8 +315,8 @@ self-care UI/backend, AI context aggregation и ручной OpenAPI слой:
   плана
 - для self-care сначала вынести tabs/dialogs/forms и page controller, сохранив
   текущие tests как behavioral baseline
-- для backend self-care выделять read models/projections и repository loading
-  profiles без изменения HTTP contracts
+- для backend self-care дальше выносить read-model loaders/projections из
+  крупного repository/shared слоя без изменения HTTP contracts
 - для voice продолжать дробить `useVoiceActionFlow` по устойчивым границам:
   action session reducer, parser/executor adapter, confirmation card adapter и
   Android notification side effects
@@ -358,10 +359,15 @@ include-флагов.
 
 Остаток по этому пункту: сами create/edit form components все еще живут в
 `SelfCarePage.components.tsx`; их нужно вынести в отдельный form module или
-hooks. Backend пока получил profiles, но не получил отдельные SQL/read-model
-projections: `loadState` все еще строит широкий snapshot, а
-`self-care.shared.ts` остается крупным слоем projection/domain mapping. CSS
-self-care страницы также остается отдельным hotspot.
+hooks. Backend self-care read-model debt по Postgres `loadState` закрыт:
+`SELF_CARE_STATE_READ_PROFILES` и include-based `loadState` удалены, а
+list/dashboard/plan/occurrences/history/analytics/generation call sites
+получили отдельные SQL-backed loaders с более узкими shared read-model типами.
+Остаток backend debt теперь не в широком snapshot loader, а в размере
+`self-care.repository.postgres.ts` и `self-care.shared.ts`: loaders,
+persistence mapping, projection algorithms и migration compatibility все еще
+живут в двух крупных файлах. CSS self-care страницы также остается отдельным
+hotspot.
 
 Статус 2026-06-04: voice split доведен до orchestration/intent границ.
 Вынесены `useVoiceMetrics`, `useAndroidVoiceRuntime`, `useWebVoiceInput` и

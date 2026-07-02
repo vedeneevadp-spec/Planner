@@ -107,6 +107,59 @@ export interface SelfCareStateSnapshot {
   templates: SelfCareTemplate[]
 }
 
+export type SelfCareTodayItemReadModel = Pick<
+  SelfCareStateSnapshot,
+  | 'appointmentDetails'
+  | 'completions'
+  | 'courseDetails'
+  | 'exerciseDetails'
+  | 'measurementDetails'
+  | 'procedureDetails'
+  | 'scheduleRules'
+  | 'steps'
+>
+
+export type SelfCareListReadModel = Pick<
+  SelfCareStateSnapshot,
+  | 'alternatives'
+  | 'appointmentDetails'
+  | 'courseDetails'
+  | 'exerciseDetails'
+  | 'items'
+  | 'medicalDetails'
+  | 'measurementDetails'
+  | 'procedureDetails'
+  | 'scheduleRules'
+  | 'steps'
+>
+
+export type SelfCareDashboardReadModel = SelfCareTodayItemReadModel &
+  Pick<
+    SelfCareStateSnapshot,
+    'dailyStates' | 'items' | 'minimumItems' | 'occurrences' | 'settings'
+  >
+
+export type SelfCarePlanReadModel = SelfCareTodayItemReadModel &
+  Pick<SelfCareStateSnapshot, 'items' | 'occurrences'>
+
+export type SelfCareOccurrencesReadModel = Pick<
+  SelfCareStateSnapshot,
+  'occurrences'
+>
+
+export type SelfCareHistoryReadModel = Pick<
+  SelfCareStateSnapshot,
+  'completions' | 'items' | 'stepCompletions'
+>
+
+export type SelfCareAnalyticsReadModel = SelfCareTodayItemReadModel &
+  Pick<SelfCareStateSnapshot, 'dailyStates' | 'items' | 'occurrences'>
+
+export type SelfCareOccurrenceGenerationReadModel = Pick<
+  SelfCareStateSnapshot,
+  'completions' | 'courseDetails' | 'items' | 'occurrences' | 'scheduleRules'
+>
+
 export interface CreateSelfCareRecordsResult {
   alternatives: SelfCareItemAlternative[]
   appointmentDetails: SelfCareAppointmentDetails | null
@@ -658,7 +711,7 @@ export function generateSelfCareOccurrencesForRange(input: {
 
 export function buildDashboardResponse(input: {
   date: string
-  state: SelfCareStateSnapshot
+  state: SelfCareDashboardReadModel
 }): SelfCareDashboardResponse {
   const { date, state } = input
   const itemById = new Map(state.items.map((item) => [item.id, item]))
@@ -724,7 +777,7 @@ function isFlexibleGoalBlockedByTodayOccurrence(
 
 export function buildPlanResponse(input: {
   from: string
-  state: SelfCareStateSnapshot
+  state: SelfCarePlanReadModel
   to: string
 }): SelfCarePlanResponse {
   const { from, state, to } = input
@@ -774,16 +827,10 @@ export function buildPlanResponse(input: {
 
 export function buildHistoryResponse(input: {
   from: string
-  state: SelfCareStateSnapshot
+  state: SelfCareHistoryReadModel
   to: string
 }): SelfCareHistoryResponse {
-  const completions = input.state.completions
-    .filter(
-      (completion) =>
-        completion.completedAt.slice(0, 10) >= input.from &&
-        completion.completedAt.slice(0, 10) <= input.to,
-    )
-    .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+  const completions = selectHistoryCompletions(input)
   const completionIds = new Set(completions.map((completion) => completion.id))
 
   return {
@@ -797,10 +844,10 @@ export function buildHistoryResponse(input: {
 
 export function buildAnalyticsResponse(input: {
   from: string
-  state: SelfCareStateSnapshot
+  state: SelfCareAnalyticsReadModel
   to: string
 }): SelfCareAnalyticsResponse {
-  const history = buildHistoryResponse(input)
+  const completions = selectHistoryCompletions(input)
   const itemById = new Map(input.state.items.map((item) => [item.id, item]))
   const measurementDetailsByItemId = new Map(
     (input.state.measurementDetails ?? []).map((details) => [
@@ -828,7 +875,7 @@ export function buildAnalyticsResponse(input: {
   let procedureCosts = 0
   const procedureCostsByMonth: Record<string, number> = {}
 
-  for (const completion of history.completions) {
+  for (const completion of completions) {
     if (!isCompletionProgressStatus(completion.status)) {
       continue
     }
@@ -966,7 +1013,7 @@ export function buildAnalyticsResponse(input: {
       (entry) => entry.item.type === 'medical',
     ),
     measurementTrends,
-    minimumCompletionCount: history.completions.filter((completion) =>
+    minimumCompletionCount: completions.filter((completion) =>
       completion.note.toLowerCase().includes('миним'),
     ).length,
     moodEnergyTrend: input.state.dailyStates.filter(
@@ -975,10 +1022,24 @@ export function buildAnalyticsResponse(input: {
     ),
     procedureCosts,
     procedureCostsByMonth,
-    selectedSelfCareCount: history.completions.filter((completion) =>
+    selectedSelfCareCount: completions.filter((completion) =>
       isCompletionProgressStatus(completion.status),
     ).length,
   }
+}
+
+function selectHistoryCompletions(input: {
+  from: string
+  state: Pick<SelfCareStateSnapshot, 'completions'>
+  to: string
+}): SelfCareCompletion[] {
+  return input.state.completions
+    .filter(
+      (completion) =>
+        completion.completedAt.slice(0, 10) >= input.from &&
+        completion.completedAt.slice(0, 10) <= input.to,
+    )
+    .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
 }
 
 function buildAnalyticsTrendPointBase(
@@ -1006,7 +1067,7 @@ export function buildTodayItem(input: {
   date: string
   item: SelfCareItem
   occurrence: SelfCareOccurrence | null
-  state: SelfCareStateSnapshot
+  state: SelfCareTodayItemReadModel
 }): SelfCareTodayItem {
   const scheduleRule =
     input.state.scheduleRules.find((rule) => rule.itemId === input.item.id) ??
@@ -1078,7 +1139,7 @@ export function buildTodayItem(input: {
 }
 
 export function buildSelfCareListResponse(
-  state: SelfCareStateSnapshot,
+  state: SelfCareListReadModel,
   filters: {
     category?: SelfCareCategory | undefined
     includeArchived?: boolean | undefined
@@ -1646,7 +1707,11 @@ function isRepeatingFlexiblePeriodActive(input: {
   return cursor <= input.periodEnd
 }
 
-function buildPlanningHints(date: string, state: SelfCareStateSnapshot) {
+function buildPlanningHints(
+  date: string,
+  state: SelfCareTodayItemReadModel &
+    Pick<SelfCareStateSnapshot, 'items' | 'occurrences'>,
+) {
   return state.items
     .filter(
       (item) =>
@@ -1688,7 +1753,7 @@ function buildPlanningHints(date: string, state: SelfCareStateSnapshot) {
 
 function buildOverdueItems(
   date: string,
-  state: SelfCareStateSnapshot,
+  state: SelfCareDashboardReadModel,
   itemById: Map<string, SelfCareItem>,
 ) {
   return state.occurrences
@@ -1715,7 +1780,11 @@ function buildOverdueItems(
     .sort(sortTodayItems)
 }
 
-function buildUpcomingImportant(date: string, state: SelfCareStateSnapshot) {
+function buildUpcomingImportant(
+  date: string,
+  state: SelfCareTodayItemReadModel &
+    Pick<SelfCareStateSnapshot, 'items' | 'occurrences'>,
+) {
   const itemById = new Map(state.items.map((item) => [item.id, item]))
 
   return state.occurrences
@@ -1744,7 +1813,8 @@ function buildUpcomingImportant(date: string, state: SelfCareStateSnapshot) {
 }
 
 function hasOpenScheduledOccurrence(
-  state: SelfCareStateSnapshot,
+  state: SelfCareTodayItemReadModel &
+    Pick<SelfCareStateSnapshot, 'occurrences'>,
   item: SelfCareItem,
   rule: SelfCareScheduleRule,
   date: string,
@@ -1767,7 +1837,10 @@ function isPlanningOnlyAfterCompletionOccurrence(input: {
   item: SelfCareItem
   occurrence: SelfCareOccurrence
   rule?: SelfCareScheduleRule | null | undefined
-  state: SelfCareStateSnapshot
+  state: Pick<
+    SelfCareTodayItemReadModel,
+    'appointmentDetails' | 'scheduleRules'
+  >
 }): boolean {
   const rule =
     input.rule ??

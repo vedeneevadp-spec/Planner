@@ -83,7 +83,7 @@ export type MinimumRow = Selectable<
   DatabaseSchema['app.self_care_minimum_items']
 >
 
-export interface LoadStateDateRange {
+export interface SelfCareDateRange {
   from: string
   to: string
 }
@@ -438,7 +438,8 @@ export function selectOccurrences(
   input: {
     actorUserId: string | null
     includeAllScheduledOccurrences?: boolean | undefined
-    occurrenceRange?: LoadStateDateRange | undefined
+    itemIds?: string[] | undefined
+    occurrenceRange?: SelfCareDateRange | undefined
     scheduledOccurrencesBefore?: string | undefined
   },
 ) {
@@ -446,6 +447,14 @@ export function selectOccurrences(
 
   if (input.actorUserId) {
     query = query.where('user_id', '=', input.actorUserId)
+  }
+
+  if (input.itemIds) {
+    if (input.itemIds.length === 0) {
+      return Promise.resolve([] as OccurrenceRow[])
+    }
+
+    query = query.where('item_id', 'in', input.itemIds)
   }
 
   if (input.occurrenceRange && input.includeAllScheduledOccurrences) {
@@ -482,13 +491,22 @@ export function selectCompletions(
   executor: DatabaseExecutor,
   input: {
     actorUserId: string | null
-    completionRange?: LoadStateDateRange | undefined
+    completionRange?: SelfCareDateRange | undefined
+    itemIds?: string[] | undefined
   },
 ) {
   let query = executor.selectFrom('app.self_care_completions').selectAll()
 
   if (input.actorUserId) {
     query = query.where('user_id', '=', input.actorUserId)
+  }
+
+  if (input.itemIds) {
+    if (input.itemIds.length === 0) {
+      return Promise.resolve([] as CompletionRow[])
+    }
+
+    query = query.where('item_id', 'in', input.itemIds)
   }
 
   if (input.completionRange) {
@@ -511,7 +529,7 @@ export function selectCompletions(
 export function selectDailyStates(
   executor: DatabaseExecutor,
   input: {
-    dailyStateRange?: LoadStateDateRange | undefined
+    dailyStateRange?: SelfCareDateRange | undefined
     userId: string
   },
 ) {
