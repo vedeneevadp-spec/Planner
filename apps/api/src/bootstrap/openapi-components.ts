@@ -3,6 +3,7 @@ import type { OpenAPIV3 } from 'openapi-types'
 import {
   createCleaningContractSchemas,
   createHabitContractSchemas,
+  createPlannerPeripheralContractSchemas,
   createSelfCareContractSchemas,
 } from './openapi-contract-schemas.js'
 import {
@@ -99,22 +100,11 @@ export function createComponentSchemas(): Record<
         },
       ],
     },
-    ChaosInboxBulkUpdateInput: genericJsonObjectSchema(),
-    ChaosInboxConvertToTaskRecordResponse: genericJsonObjectSchema(),
+    ...createPlannerPeripheralContractSchemas(),
     ChaosInboxConvertToTaskRecordResponseList: genericJsonArraySchema(
       'ChaosInboxConvertToTaskRecordResponse',
     ),
-    ChaosInboxCreatedRecordResponse: genericJsonObjectSchema(),
-    ChaosInboxItemRecord: genericJsonObjectSchema(),
-    ChaosInboxItemUpdateInput: genericJsonObjectSchema(),
-    ChaosInboxListRecordResponse: genericJsonObjectSchema(),
     ...createCleaningContractSchemas(),
-    CreateChaosInboxItemsInput: genericJsonObjectSchema(),
-    DailyPlanAutoBuildInput: genericJsonObjectSchema(),
-    DailyPlanRecord: genericJsonObjectSchema(),
-    DailyPlanUnloadInput: genericJsonObjectSchema(),
-    DailyPlanUnloadResponse: genericJsonObjectSchema(),
-    DailyPlanUpsertInput: genericJsonObjectSchema(),
     ...createHabitContractSchemas(),
     IdListInput: {
       additionalProperties: false,
@@ -137,10 +127,6 @@ export function createComponentSchemas(): Record<
     LifeSphereRecord: genericJsonObjectSchema(),
     LifeSphereUpdateInput: genericJsonObjectSchema(),
     NewLifeSphereInput: genericJsonObjectSchema(),
-    PushDeviceRecord: genericJsonObjectSchema(),
-    PushDeviceUpsertInput: genericJsonObjectSchema(),
-    PushTestNotificationInput: genericJsonObjectSchema(),
-    PushTestNotificationResponse: genericJsonObjectSchema(),
     UpdateSharedWorkspaceInput: {
       additionalProperties: false,
       properties: {

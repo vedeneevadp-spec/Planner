@@ -1,4 +1,9 @@
 import {
+  chaosInboxKindSchema,
+  chaosInboxPrioritySchema,
+  chaosInboxShoppingCategorySchema,
+  chaosInboxSourceSchema,
+  chaosInboxStatusSchema,
   cleaningAssigneeSchema,
   cleaningDepthSchema,
   cleaningEnergySchema,
@@ -7,9 +12,11 @@ import {
   cleaningPrioritySchema,
   cleaningTaskHistoryActionSchema,
   cleaningTaskScopeSchema,
+  energyModeSchema,
   habitEntryStatusSchema,
   habitFrequencySchema,
   habitTargetTypeSchema,
+  pushPlatformSchema,
   selfCareCategorySchema,
   selfCareCompletionStatusSchema,
   selfCareExerciseMetricTypeSchema,
@@ -309,6 +316,251 @@ export function createCleaningContractSchemas(): Record<
       },
       ['dayOfWeek', 'title'],
     ),
+  }
+}
+
+export function createPlannerPeripheralContractSchemas(): Record<
+  string,
+  OpenAPIV3.SchemaObject
+> {
+  return {
+    ChaosInboxBulkUpdateInput: objectSchema({
+      ids: {
+        items: {
+          minLength: 1,
+          type: 'string',
+        },
+        maxItems: 200,
+        minItems: 1,
+        type: 'array',
+      },
+      patch: ref('ChaosInboxItemUpdateInput'),
+    }),
+    ChaosInboxConvertToTaskRecordResponse: objectSchema({
+      inboxItem: ref('ChaosInboxItemRecord'),
+      taskId: stringSchema(),
+    }),
+    ChaosInboxCreatedRecordResponse: objectSchema({
+      items: arrayOfRef('ChaosInboxItemRecord'),
+    }),
+    ChaosInboxItemRecord: objectSchema({
+      activatedAt: nullableStringSchema(),
+      completedAt: nullableStringSchema(),
+      convertedNoteId: nullableStringSchema(),
+      convertedTaskId: nullableStringSchema(),
+      createdAt: stringSchema(),
+      deletedAt: nullableStringSchema(),
+      dueDate: nullableStringSchema(),
+      id: stringSchema(),
+      isFavorite: booleanSchema(),
+      kind: enumSchema(chaosInboxKindSchema.options),
+      linkedTaskDeleted: booleanSchema(),
+      priority: nullableEnumSchema(chaosInboxPrioritySchema.options),
+      shoppingCategory: nullableEnumSchema(
+        chaosInboxShoppingCategorySchema.options,
+      ),
+      source: enumSchema(chaosInboxSourceSchema.options),
+      sphereId: nullableStringSchema(),
+      status: enumSchema(chaosInboxStatusSchema.options),
+      text: {
+        maxLength: 5000,
+        minLength: 1,
+        type: 'string',
+      },
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+      version: positiveIntegerSchema(),
+      workspaceId: stringSchema(),
+    }),
+    ChaosInboxItemUpdateInput: objectSchema(
+      {
+        dueDate: nullableStringSchema(),
+        isFavorite: booleanSchema(),
+        kind: enumSchema(chaosInboxKindSchema.options),
+        priority: nullableEnumSchema(chaosInboxPrioritySchema.options),
+        shoppingCategory: nullableEnumSchema(
+          chaosInboxShoppingCategorySchema.options,
+        ),
+        sphereId: nullableStringSchema(),
+        status: enumSchema(chaosInboxStatusSchema.options),
+      },
+      [],
+    ),
+    ChaosInboxListRecordResponse: objectSchema({
+      items: arrayOfRef('ChaosInboxItemRecord'),
+      limit: positiveIntegerSchema(),
+      page: positiveIntegerSchema(),
+      total: nonnegativeIntegerSchema(),
+    }),
+    CreateChaosInboxItemsInput: objectSchema({
+      items: {
+        items: ref('NewChaosInboxItemInput'),
+        maxItems: 100,
+        minItems: 1,
+        type: 'array',
+      },
+    }),
+    DailyPlanAutoBuildInput: objectSchema(
+      {
+        date: stringSchema(),
+        energyMode: {
+          ...enumSchema(energyModeSchema.options),
+          default: 'normal',
+        },
+      },
+      ['date'],
+    ),
+    DailyPlanRecord: objectSchema({
+      createdAt: stringSchema(),
+      date: stringSchema(),
+      deletedAt: nullableStringSchema(),
+      energyMode: enumSchema(energyModeSchema.options),
+      focusTaskIds: stringArraySchema(),
+      id: stringSchema(),
+      overloadScore: nonnegativeIntegerSchema(),
+      routineTaskIds: stringArraySchema(),
+      supportTaskIds: stringArraySchema(),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+      version: positiveIntegerSchema(),
+      workspaceId: stringSchema(),
+    }),
+    DailyPlanUnloadInput: objectSchema({
+      date: stringSchema(),
+    }),
+    DailyPlanUnloadResponse: objectSchema({
+      suggestions: arrayOfRef('DailyPlanUnloadSuggestion'),
+    }),
+    DailyPlanUnloadSuggestion: objectSchema({
+      action: enumSchema([
+        'move_tomorrow',
+        'remove_from_today',
+        'move_to_week',
+      ]),
+      resource: integerRangeSchema(1, 5),
+      taskId: stringSchema(),
+      title: stringSchema(),
+    }),
+    DailyPlanUpsertInput: objectSchema(
+      {
+        energyMode: enumSchema(energyModeSchema.options),
+        focusTaskIds: {
+          default: [],
+          items: stringSchema(),
+          type: 'array',
+        },
+        routineTaskIds: {
+          default: [],
+          items: stringSchema(),
+          type: 'array',
+        },
+        supportTaskIds: {
+          default: [],
+          items: stringSchema(),
+          type: 'array',
+        },
+      },
+      ['energyMode'],
+    ),
+    NewChaosInboxItemInput: objectSchema(
+      {
+        id: stringSchema(),
+        isFavorite: {
+          default: false,
+          type: 'boolean',
+        },
+        kind: {
+          ...enumSchema(chaosInboxKindSchema.options),
+          default: 'unknown',
+        },
+        priority: {
+          ...nullableEnumSchema(chaosInboxPrioritySchema.options),
+          default: null,
+        },
+        shoppingCategory: {
+          ...nullableEnumSchema(chaosInboxShoppingCategorySchema.options),
+          default: null,
+        },
+        source: {
+          ...enumSchema(chaosInboxSourceSchema.options),
+          default: 'manual',
+        },
+        text: {
+          maxLength: 5000,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['text'],
+    ),
+    PushDeviceRecord: objectSchema({
+      appVersion: nullableStringSchema(),
+      createdAt: stringSchema(),
+      deletedAt: nullableStringSchema(),
+      deviceName: nullableStringSchema(),
+      id: stringSchema(),
+      installationId: stringSchema(),
+      lastRegisteredAt: stringSchema(),
+      locale: nullableStringSchema(),
+      platform: enumSchema(pushPlatformSchema.options),
+      token: stringSchema(),
+      updatedAt: stringSchema(),
+      userId: stringSchema(),
+      version: positiveIntegerSchema(),
+      workspaceId: stringSchema(),
+    }),
+    PushDeviceUpsertInput: objectSchema(
+      {
+        appVersion: {
+          maxLength: 32,
+          minLength: 1,
+          type: 'string',
+        },
+        deviceName: {
+          maxLength: 120,
+          minLength: 1,
+          type: 'string',
+        },
+        installationId: {
+          maxLength: 120,
+          minLength: 1,
+          type: 'string',
+        },
+        locale: {
+          maxLength: 35,
+          minLength: 1,
+          type: 'string',
+        },
+        platform: enumSchema(pushPlatformSchema.options),
+        token: {
+          maxLength: 4096,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['installationId', 'platform', 'token'],
+    ),
+    PushTestNotificationInput: objectSchema(
+      {
+        body: {
+          maxLength: 500,
+          minLength: 1,
+          type: 'string',
+        },
+        data: recordOf(stringSchema()),
+        title: {
+          maxLength: 120,
+          minLength: 1,
+          type: 'string',
+        },
+      },
+      ['body', 'title'],
+    ),
+    PushTestNotificationResponse: objectSchema({
+      deliveredCount: nonnegativeIntegerSchema(),
+      failedCount: nonnegativeIntegerSchema(),
+      invalidTokenCount: nonnegativeIntegerSchema(),
+    }),
   }
 }
 

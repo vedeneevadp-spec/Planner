@@ -21,8 +21,6 @@ import {
   SelfCareScheduleDialog,
 } from './SelfCarePage.action-dialogs'
 import {
-  SelfCareCreateDialog,
-  SelfCareEditDialog,
   SelfCareHistoryTab,
   SelfCarePlanTab,
   SelfCareRitualsTab,
@@ -30,6 +28,10 @@ import {
   SelfCareTodayTab,
 } from './SelfCarePage.components'
 import { useSelfCarePageData } from './SelfCarePage.data'
+import {
+  SelfCareCreateDialog,
+  SelfCareEditDialog,
+} from './SelfCarePage.dialogs'
 import {
   applyRitualStepDraftOverrides,
   buildCompletionInput,
