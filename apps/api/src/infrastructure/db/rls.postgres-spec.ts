@@ -9,7 +9,9 @@ const connectionString =
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 
 interface RlsFixture {
+  ownerUserId: string
   prefix: string
+  seededOwnerUserId: string | null
   taskAId: string
   taskBId: string
   userAId: string
@@ -205,9 +207,8 @@ void describe('Postgres RLS policies', () => {
   })
 
   void test('allows global owner to list and update application users under RLS', async () => {
-    const ownerUserId = await resolveExistingOwnerUserId()
     const ownerVisibleUserIds = await withAuthenticatedTransaction(
-      ownerUserId,
+      fixture.ownerUserId,
       async () => listFixtureUserIds(),
     )
     const memberVisibleUserIds = await withAuthenticatedTransaction(
@@ -221,7 +222,7 @@ void describe('Postgres RLS policies', () => {
     )
     assert.deepEqual(memberVisibleUserIds, [fixture.userBId])
 
-    await withAuthenticatedTransaction(ownerUserId, async () => {
+    await withAuthenticatedTransaction(fixture.ownerUserId, async () => {
       await client.query(
         `
           update app.users
@@ -233,7 +234,7 @@ void describe('Postgres RLS policies', () => {
     })
 
     const updatedRole = await withAuthenticatedTransaction(
-      ownerUserId,
+      fixture.ownerUserId,
       async () => resolveFixtureUserRole(fixture.userBId),
     )
 
@@ -283,7 +284,9 @@ function createFixture(): RlsFixture {
   const suffix = randomUUID()
 
   return {
+    ownerUserId: randomUUID(),
     prefix: `rls-${suffix}`,
+    seededOwnerUserId: null,
     taskAId: randomUUID(),
     taskBId: randomUUID(),
     userAId: randomUUID(),
@@ -293,24 +296,9 @@ function createFixture(): RlsFixture {
   }
 }
 
-async function seedFixture({
-  prefix,
-  taskAId,
-  taskBId,
-  userAId,
-  userBId,
-  workspaceAId,
-  workspaceBId,
-}: RlsFixture): Promise<void> {
-  await cleanupFixture({
-    prefix,
-    taskAId,
-    taskBId,
-    userAId,
-    userBId,
-    workspaceAId,
-    workspaceBId,
-  })
+async function seedFixture(value: RlsFixture): Promise<void> {
+  await cleanupFixture(value)
+  value.ownerUserId = await resolveOrSeedOwnerUserId(value)
 
   await client.query(
     `
@@ -320,12 +308,12 @@ async function seedFixture({
         ($4, $5, $6)
     `,
     [
-      userAId,
-      `${prefix}-a@example.test`,
-      `${prefix} A`,
-      userBId,
-      `${prefix}-b@example.test`,
-      `${prefix} B`,
+      value.userAId,
+      `${value.prefix}-a@example.test`,
+      `${value.prefix} A`,
+      value.userBId,
+      `${value.prefix}-b@example.test`,
+      `${value.prefix} B`,
     ],
   )
   await client.query(
@@ -336,14 +324,14 @@ async function seedFixture({
         ($5, $6, $7, $8)
     `,
     [
-      workspaceAId,
-      userAId,
-      `${prefix} A`,
-      `${prefix}-a`,
-      workspaceBId,
-      userBId,
-      `${prefix} B`,
-      `${prefix}-b`,
+      value.workspaceAId,
+      value.userAId,
+      `${value.prefix} A`,
+      `${value.prefix}-a`,
+      value.workspaceBId,
+      value.userBId,
+      `${value.prefix} B`,
+      `${value.prefix}-b`,
     ],
   )
   await client.query(
@@ -353,19 +341,19 @@ async function seedFixture({
         ($1, $2, 'owner'),
         ($3, $4, 'owner')
     `,
-    [workspaceAId, userAId, workspaceBId, userBId],
+    [value.workspaceAId, value.userAId, value.workspaceBId, value.userBId],
   )
   await insertTask({
-    id: taskAId,
-    title: `${prefix}-a`,
-    userId: userAId,
-    workspaceId: workspaceAId,
+    id: value.taskAId,
+    title: `${value.prefix}-a`,
+    userId: value.userAId,
+    workspaceId: value.workspaceAId,
   })
   await insertTask({
-    id: taskBId,
-    title: `${prefix}-b`,
-    userId: userBId,
-    workspaceId: workspaceBId,
+    id: value.taskBId,
+    title: `${value.prefix}-b`,
+    userId: value.userBId,
+    workspaceId: value.workspaceBId,
   })
 }
 
@@ -409,6 +397,16 @@ async function cleanupFixture(value: RlsFixture): Promise<void> {
     `,
     [value.userAId, value.userBId],
   )
+
+  if (value.seededOwnerUserId) {
+    await client.query(
+      `
+        delete from app.users
+        where id = $1
+      `,
+      [value.seededOwnerUserId],
+    )
+  }
 }
 
 async function withAuthenticatedTransaction<T>(
@@ -482,21 +480,36 @@ async function resolveFixtureUserRole(userId: string): Promise<string | null> {
   return result.rows[0]?.app_role ?? null
 }
 
-async function resolveExistingOwnerUserId(): Promise<string> {
+async function resolveOrSeedOwnerUserId(value: RlsFixture): Promise<string> {
   const result = await client.query<{ id: string }>(
     `
       select id
       from app.users
       where app_role = 'owner'
         and deleted_at is null
+      order by created_at asc
       limit 1
     `,
   )
-  const ownerUserId = result.rows[0]?.id
 
-  assert.ok(ownerUserId, 'Expected an existing global owner fixture.')
+  if (result.rows[0]?.id) {
+    return result.rows[0].id
+  }
 
-  return ownerUserId
+  await client.query(
+    `
+      insert into app.users (id, email, display_name, app_role)
+      values ($1, $2, $3, 'owner')
+    `,
+    [
+      value.ownerUserId,
+      `rls-owner-${value.ownerUserId}@example.test`,
+      'RLS Owner',
+    ],
+  )
+  value.seededOwnerUserId = value.ownerUserId
+
+  return value.ownerUserId
 }
 
 async function insertTask({
