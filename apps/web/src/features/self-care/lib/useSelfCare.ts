@@ -1,18 +1,25 @@
 import {
   type HabitTodayResponse,
+  type SelfCareCompletion,
   type SelfCareCompletionInput,
   type SelfCareDailyStateInput,
+  type SelfCareDashboardResponse,
+  type SelfCareHistoryResponse,
   type SelfCareItemInput,
   type SelfCareItemScheduleInput,
   type SelfCareItemUpdateInput,
   type SelfCareMinimumItemsUpdateInput,
+  type SelfCareOccurrence,
   type SelfCareOccurrenceMoveInput,
   type SelfCareOccurrenceSkipInput,
+  type SelfCareOccurrenceStatus,
+  type SelfCarePlanResponse,
   type SelfCareRitualCompletionInput,
   type SelfCareRitualStepDraftInput,
   type SelfCareRitualStepDraftListResponse,
   type SelfCareSettingsUpdateInput,
   type SelfCareTemplateCreateInput,
+  type SelfCareTodayItem,
 } from '@planner/contracts'
 import {
   type QueryClient,
@@ -91,6 +98,13 @@ type SelfCareQueryScope =
   | 'settings'
   | 'templates'
 
+type SelfCareRefetchType = 'active' | 'all' | 'inactive' | 'none'
+
+interface SelfCareInvalidationOptions {
+  refetchType?: SelfCareRefetchType | undefined
+  skipInvalidation?: boolean | undefined
+}
+
 const SELF_CARE_ITEM_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
   'dashboard',
   'items',
@@ -116,6 +130,9 @@ const SELF_CARE_SETTINGS_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
   'dashboard',
   'settings',
 ]
+const SELF_CARE_STALE_ONLY_INVALIDATION = {
+  refetchType: 'none',
+} satisfies SelfCareInvalidationOptions
 
 export const SELF_CARE_API_UNAVAILABLE_MESSAGE =
   'Сессия еще не готова. Подожди пару секунд и попробуй снова.'
@@ -437,10 +454,12 @@ export function useCancelSelfCareOccurrence() {
       assertSession(session, 'убрать заботу из плана')
       const occurrence =
         await requireSelfCareApi(api).cancelOccurrence(occurrenceId)
+      applySelfCareOccurrenceToCache(queryClient, workspaceId, occurrence)
       queueSelfCareInvalidation(
         queryClient,
         workspaceId,
         SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+        SELF_CARE_STALE_ONLY_INVALIDATION,
       )
       return occurrence
     },
@@ -461,10 +480,12 @@ export function useCompleteSelfCareOccurrence() {
         occurrenceId,
         input,
       )
+      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
       queueSelfCareInvalidation(
         queryClient,
         workspaceId,
         SELF_CARE_COMPLETION_CHANGE_SCOPES,
+        SELF_CARE_STALE_ONLY_INVALIDATION,
       )
       return completion
     },
@@ -513,10 +534,12 @@ export function useCompleteSelfCareItemNow() {
         itemId,
         input,
       )
+      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
       queueSelfCareInvalidation(
         queryClient,
         workspaceId,
         SELF_CARE_COMPLETION_CHANGE_SCOPES,
+        SELF_CARE_STALE_ONLY_INVALIDATION,
       )
       return completion
     },
@@ -537,10 +560,12 @@ export function useCompleteSelfCareFlexibleGoal() {
         itemId,
         input,
       )
+      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
       queueSelfCareInvalidation(
         queryClient,
         workspaceId,
         SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+        SELF_CARE_STALE_ONLY_INVALIDATION,
       )
       return completion
     },
@@ -561,10 +586,12 @@ export function useCompleteSelfCareCourseSession() {
         itemId,
         input,
       )
+      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
       queueSelfCareInvalidation(
         queryClient,
         workspaceId,
         SELF_CARE_COMPLETION_CHANGE_SCOPES,
+        SELF_CARE_STALE_ONLY_INVALIDATION,
       )
       return completion
     },
@@ -585,10 +612,12 @@ export function useSkipSelfCareOccurrence() {
         occurrenceId,
         input,
       )
+      applySelfCareOccurrenceToCache(queryClient, workspaceId, occurrence)
       queueSelfCareInvalidation(
         queryClient,
         workspaceId,
         SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+        SELF_CARE_STALE_ONLY_INVALIDATION,
       )
       return occurrence
     },
@@ -804,30 +833,372 @@ function queueSelfCareInvalidationUnlessSkipped(
   queryClient: QueryClient,
   workspaceId: string,
   scopes: readonly SelfCareQueryScope[],
-  options: { skipInvalidation?: boolean | undefined } = {},
+  options: SelfCareInvalidationOptions = {},
 ): void {
   if (options.skipInvalidation) {
     return
   }
 
-  queueSelfCareInvalidation(queryClient, workspaceId, scopes)
+  queueSelfCareInvalidation(queryClient, workspaceId, scopes, options)
 }
 
 function queueSelfCareInvalidation(
   queryClient: QueryClient,
   workspaceId: string,
   scopes: readonly SelfCareQueryScope[],
+  options: SelfCareInvalidationOptions = {},
 ): void {
   const scopeSet = new Set<SelfCareQueryScope>(scopes)
+  const predicate = (query: { queryKey: readonly unknown[] }) =>
+    Array.isArray(query.queryKey) &&
+    query.queryKey[0] === 'self-care' &&
+    query.queryKey[1] === workspaceId &&
+    typeof query.queryKey[2] === 'string' &&
+    scopeSet.has(query.queryKey[2] as SelfCareQueryScope)
 
-  void queryClient.invalidateQueries({
-    predicate: (query) =>
-      Array.isArray(query.queryKey) &&
-      query.queryKey[0] === 'self-care' &&
-      query.queryKey[1] === workspaceId &&
-      typeof query.queryKey[2] === 'string' &&
-      scopeSet.has(query.queryKey[2] as SelfCareQueryScope),
+  void queryClient.invalidateQueries(
+    options.refetchType
+      ? { predicate, refetchType: options.refetchType }
+      : { predicate },
+  )
+}
+
+function applySelfCareCompletionToCache(
+  queryClient: QueryClient,
+  workspaceId: string,
+  completion: SelfCareCompletion,
+): void {
+  setSelfCareQueriesData<SelfCareDashboardResponse>(
+    queryClient,
+    workspaceId,
+    'dashboard',
+    (current) => ({
+      ...current,
+      flexibleGoals: updateSelfCareEntriesWithCompletion(
+        current.flexibleGoals,
+        completion,
+      ),
+      overdueItems: updateSelfCareEntriesWithCompletion(
+        current.overdueItems,
+        completion,
+      ),
+      planningHints: updateSelfCareEntriesWithCompletion(
+        current.planningHints,
+        completion,
+      ),
+      todayItems: updateSelfCareEntriesWithCompletion(
+        current.todayItems,
+        completion,
+      ),
+      upcomingImportant: updateSelfCareEntriesWithCompletion(
+        current.upcomingImportant,
+        completion,
+      ),
+    }),
+  )
+
+  setSelfCareQueriesData<SelfCarePlanResponse>(
+    queryClient,
+    workspaceId,
+    'plan',
+    (current) => ({
+      ...current,
+      courses: updateSelfCareEntriesWithCompletion(current.courses, completion),
+      medical: updateSelfCareEntriesWithCompletion(current.medical, completion),
+      occurrences: updateSelfCareEntriesWithCompletion(
+        current.occurrences,
+        completion,
+      ),
+      planningHints: updateSelfCareEntriesWithCompletion(
+        current.planningHints,
+        completion,
+      ),
+    }),
+  )
+
+  updateSelfCareHistoryQueries(queryClient, workspaceId, completion)
+}
+
+function applySelfCareOccurrenceToCache(
+  queryClient: QueryClient,
+  workspaceId: string,
+  occurrence: SelfCareOccurrence,
+): void {
+  setSelfCareQueriesData<SelfCareDashboardResponse>(
+    queryClient,
+    workspaceId,
+    'dashboard',
+    (current) => ({
+      ...current,
+      flexibleGoals: replaceSelfCareOccurrence(
+        current.flexibleGoals,
+        occurrence,
+      ),
+      overdueItems: replaceSelfCareOccurrence(current.overdueItems, occurrence),
+      planningHints: replaceSelfCareOccurrence(
+        current.planningHints,
+        occurrence,
+      ),
+      todayItems: replaceSelfCareOccurrence(current.todayItems, occurrence),
+      upcomingImportant: replaceSelfCareOccurrence(
+        current.upcomingImportant,
+        occurrence,
+      ),
+    }),
+  )
+
+  setSelfCareQueriesData<SelfCarePlanResponse>(
+    queryClient,
+    workspaceId,
+    'plan',
+    (current) => ({
+      ...current,
+      courses: replaceSelfCareOccurrence(current.courses, occurrence),
+      medical: replaceSelfCareOccurrence(current.medical, occurrence),
+      occurrences: replaceSelfCareOccurrence(current.occurrences, occurrence),
+      planningHints: replaceSelfCareOccurrence(
+        current.planningHints,
+        occurrence,
+      ),
+    }),
+  )
+}
+
+function setSelfCareQueriesData<TData>(
+  queryClient: QueryClient,
+  workspaceId: string,
+  scope: SelfCareQueryScope,
+  updater: (current: TData) => TData,
+): void {
+  queryClient.setQueriesData<TData>(
+    {
+      predicate: (query) =>
+        isSelfCareQueryForScope(query.queryKey, workspaceId, scope),
+    },
+    (current) => (current ? updater(current) : current),
+  )
+}
+
+function updateSelfCareHistoryQueries(
+  queryClient: QueryClient,
+  workspaceId: string,
+  completion: SelfCareCompletion,
+): void {
+  const completionDate = completion.completedAt.slice(0, 10)
+  const queries = queryClient.getQueryCache().findAll({
+    predicate: (query) => {
+      const key = query.queryKey
+      return (
+        isSelfCareQueryForScope(key, workspaceId, 'history') &&
+        typeof key[3] === 'string' &&
+        typeof key[4] === 'string' &&
+        completionDate >= key[3] &&
+        completionDate <= key[4]
+      )
+    },
   })
+
+  for (const query of queries) {
+    queryClient.setQueryData<SelfCareHistoryResponse>(
+      query.queryKey,
+      (current) =>
+        current
+          ? {
+              ...current,
+              completions: upsertSelfCareCompletion(
+                current.completions,
+                completion,
+              ),
+            }
+          : current,
+    )
+  }
+}
+
+function updateSelfCareEntriesWithCompletion(
+  entries: SelfCareTodayItem[],
+  completion: SelfCareCompletion,
+): SelfCareTodayItem[] {
+  return entries.map((entry) =>
+    updateSelfCareEntryWithCompletion(entry, completion),
+  )
+}
+
+function updateSelfCareEntryWithCompletion(
+  entry: SelfCareTodayItem,
+  completion: SelfCareCompletion,
+): SelfCareTodayItem {
+  if (completion.occurrenceId) {
+    if (entry.occurrence?.id !== completion.occurrenceId) {
+      return entry
+    }
+
+    return withSelfCareEntryCompletion(
+      {
+        ...entry,
+        occurrence: {
+          ...entry.occurrence,
+          completedAt: isProgressSelfCareCompletion(completion)
+            ? completion.completedAt
+            : entry.occurrence.completedAt,
+          status: mapCompletionStatusToOccurrenceStatus(completion.status),
+        },
+      },
+      completion,
+    )
+  }
+
+  if (entry.item.id !== completion.itemId || entry.occurrence) {
+    return entry
+  }
+
+  if (isFlexibleGoalEntry(entry)) {
+    return updateSelfCareFlexibleProgress(entry, completion)
+  }
+
+  return withSelfCareEntryCompletion(entry, completion)
+}
+
+function withSelfCareEntryCompletion(
+  entry: SelfCareTodayItem,
+  completion: SelfCareCompletion,
+): SelfCareTodayItem {
+  return updateSelfCareCourseProgress(
+    {
+      ...entry,
+      completion,
+      lastExercise:
+        entry.item.type === 'exercise' && completion.measurementValue !== null
+          ? completion
+          : entry.lastExercise,
+      lastMeasurement:
+        entry.item.type === 'measurement' &&
+        completion.measurementValue !== null
+          ? completion
+          : entry.lastMeasurement,
+    },
+    completion,
+  )
+}
+
+function updateSelfCareFlexibleProgress(
+  entry: SelfCareTodayItem,
+  completion: SelfCareCompletion,
+): SelfCareTodayItem {
+  if (
+    !entry.flexibleProgress ||
+    !isProgressSelfCareCompletion(completion) ||
+    !isCompletionInFlexibleProgressPeriod(completion, entry.flexibleProgress)
+  ) {
+    return entry
+  }
+
+  const completedCount = Math.min(
+    entry.flexibleProgress.targetCount,
+    entry.flexibleProgress.completedCount + 1,
+  )
+
+  return {
+    ...entry,
+    flexibleProgress: {
+      ...entry.flexibleProgress,
+      completedCount,
+      remainingCount: Math.max(
+        0,
+        entry.flexibleProgress.targetCount - completedCount,
+      ),
+    },
+  }
+}
+
+function updateSelfCareCourseProgress(
+  entry: SelfCareTodayItem,
+  completion: SelfCareCompletion,
+): SelfCareTodayItem {
+  if (
+    entry.item.type !== 'course' ||
+    !entry.courseDetails ||
+    !isProgressSelfCareCompletion(completion)
+  ) {
+    return entry
+  }
+
+  const completedCount = Math.min(
+    entry.courseDetails.totalCount,
+    entry.courseDetails.completedCount + 1,
+  )
+
+  return {
+    ...entry,
+    courseDetails: {
+      ...entry.courseDetails,
+      completedCount,
+      isCompleted: completedCount >= entry.courseDetails.totalCount,
+    },
+  }
+}
+
+function replaceSelfCareOccurrence(
+  entries: SelfCareTodayItem[],
+  occurrence: SelfCareOccurrence,
+): SelfCareTodayItem[] {
+  return entries.map((entry) =>
+    entry.occurrence?.id === occurrence.id ? { ...entry, occurrence } : entry,
+  )
+}
+
+function upsertSelfCareCompletion(
+  completions: SelfCareCompletion[],
+  completion: SelfCareCompletion,
+): SelfCareCompletion[] {
+  const withoutCurrent = completions.filter(
+    (candidate) => candidate.id !== completion.id,
+  )
+  return [...withoutCurrent, completion].sort((left, right) =>
+    right.completedAt.localeCompare(left.completedAt),
+  )
+}
+
+function isSelfCareQueryForScope(
+  queryKey: readonly unknown[],
+  workspaceId: string,
+  scope: SelfCareQueryScope,
+): boolean {
+  return (
+    Array.isArray(queryKey) &&
+    queryKey[0] === 'self-care' &&
+    queryKey[1] === workspaceId &&
+    queryKey[2] === scope
+  )
+}
+
+function mapCompletionStatusToOccurrenceStatus(
+  status: SelfCareCompletion['status'],
+): SelfCareOccurrenceStatus {
+  return status === 'alternative_done' ? 'partial' : status
+}
+
+function isProgressSelfCareCompletion(completion: SelfCareCompletion): boolean {
+  return (
+    completion.status === 'done' ||
+    completion.status === 'partial' ||
+    completion.status === 'alternative_done'
+  )
+}
+
+function isFlexibleGoalEntry(entry: SelfCareTodayItem): boolean {
+  return (
+    entry.item.type === 'flexible_goal' ||
+    entry.scheduleRule?.repeatKind === 'flexible_goal'
+  )
+}
+
+function isCompletionInFlexibleProgressPeriod(
+  completion: SelfCareCompletion,
+  progress: NonNullable<SelfCareTodayItem['flexibleProgress']>,
+): boolean {
+  const date = completion.completedAt.slice(0, 10)
+  return date >= progress.periodStart && date <= progress.periodEnd
 }
 
 function setRitualStepDraftQueryData(

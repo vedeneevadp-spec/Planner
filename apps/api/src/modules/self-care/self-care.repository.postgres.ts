@@ -156,7 +156,6 @@ const SELF_CARE_STATE_READ_PROFILES = {
     includeTemplates: false,
   },
   dashboard: {
-    includeAllScheduledOccurrences: true,
     includeTemplates: false,
   },
   generateOccurrences: {
@@ -212,7 +211,6 @@ const SELF_CARE_STATE_READ_PROFILES = {
     includeTemplates: false,
   },
   plan: {
-    includeAllScheduledOccurrences: true,
     includeDailyStates: false,
     includeMinimumItems: false,
     includeSettings: false,
