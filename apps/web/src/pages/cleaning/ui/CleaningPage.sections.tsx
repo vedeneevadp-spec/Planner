@@ -19,7 +19,7 @@ import { SelectPicker } from '@/shared/ui/SelectPicker'
 import {
   formatFrequency,
   formatPostponeCount,
-  FREQUENCY_LABELS,
+  getFrequencyUnitOptions,
   getHistoryActionLabel,
   getWeekdayLabel,
   getWeekdayShortLabel,
@@ -558,6 +558,7 @@ function ZoneTaskEditor(props: {
   const [zoneId, setZoneId] = useState(
     () => props.task.zoneId ?? props.zones[0]?.id ?? '',
   )
+  const frequencyUnitOptions = getFrequencyUnitOptions(frequencyInterval)
   const canSaveTask =
     title.trim().length > 0 && (scope === 'general' || zoneId.length > 0)
 
@@ -607,34 +608,32 @@ function ZoneTaskEditor(props: {
           }}
         />
       </label>
-      <label className={styles.taskFormField}>
-        <span className={styles.fieldLabel}>Интервал</span>
-        <input
-          type="number"
-          min={1}
-          value={frequencyInterval}
-          disabled={props.disabled}
-          aria-label="Интервал уборки"
-          onChange={(event) => {
-            setFrequencyInterval(event.target.value)
-          }}
-        />
-      </label>
-      <div className={styles.taskFormField}>
-        <span className={styles.fieldLabel}>Частота</span>
-        <SelectPicker
-          value={frequencyType}
-          disabled={props.disabled}
-          ariaLabel="Частота уборки"
-          options={Object.entries(FREQUENCY_LABELS).map(([value, label]) => ({
-            label,
-            value,
-          }))}
-          onChange={(nextValue) => {
-            setFrequencyType(nextValue as CleaningFrequencyType)
-          }}
-        />
-      </div>
+      <fieldset className={cx(styles.taskFormField, styles.repeatField)}>
+        <legend className={styles.fieldLabel}>Повторять</legend>
+        <div className={styles.repeatControl}>
+          <span className={styles.repeatPrefix}>раз в</span>
+          <input
+            type="number"
+            min={1}
+            value={frequencyInterval}
+            disabled={props.disabled}
+            aria-label="Интервал повторения уборки"
+            onChange={(event) => {
+              setFrequencyInterval(event.target.value)
+            }}
+          />
+          <SelectPicker
+            className={styles.repeatUnitPicker}
+            value={frequencyType}
+            disabled={props.disabled}
+            ariaLabel="Единица повторения уборки"
+            options={frequencyUnitOptions}
+            onChange={(nextValue) => {
+              setFrequencyType(nextValue)
+            }}
+          />
+        </div>
+      </fieldset>
       <div className={styles.taskFormField}>
         <span className={styles.fieldLabel}>Размещение</span>
         <SelectPicker

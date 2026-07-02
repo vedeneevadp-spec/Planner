@@ -1,5 +1,4 @@
 import {
-  type CleaningFrequencyType,
   type CleaningPriority,
   type CleaningZoneUpdateInput,
 } from '@planner/contracts'
@@ -41,8 +40,8 @@ import {
   DEFAULT_CLEANING_TEMPLATES,
   EMPTY_TASK_DRAFT,
   filterItemsByFocusMode,
-  FREQUENCY_LABELS,
   getFirstErrorMessage,
+  getFrequencyUnitOptions,
   getHeroHint,
   getIsoWeekdayFromDate,
   getWeekdayLabel,
@@ -414,6 +413,13 @@ export function CleaningSettingsPage() {
           (task) => task.scope === 'zone' && task.zoneId === selectedZone.id,
         )
       : []
+  const taskDraftRepeatInterval =
+    taskDraft.frequencyType === 'custom'
+      ? taskDraft.customIntervalDays
+      : taskDraft.frequencyInterval
+  const taskDraftFrequencyUnitOptions = getFrequencyUnitOptions(
+    taskDraftRepeatInterval,
+  )
   const zoneSettingsWeekdays = useMemo(() => {
     if (!selectedZone) {
       return freeWeekdays
@@ -518,6 +524,12 @@ export function CleaningSettingsPage() {
       return
     }
 
+    const repeatInterval =
+      taskDraft.frequencyType === 'custom'
+        ? taskDraft.customIntervalDays
+        : taskDraft.frequencyInterval
+    const normalizedRepeatInterval = Math.max(1, Number(repeatInterval) || 1)
+
     setFormError(null)
 
     try {
@@ -525,16 +537,13 @@ export function CleaningSettingsPage() {
         assignee: 'anyone',
         customIntervalDays:
           taskDraft.frequencyType === 'custom'
-            ? Number(taskDraft.customIntervalDays) || 1
+            ? normalizedRepeatInterval
             : null,
         depth: 'regular',
         description: taskDraft.description.trim(),
         energy: 'normal',
         estimatedMinutes: Number(taskDraft.estimatedMinutes) || null,
-        frequencyInterval: Math.max(
-          1,
-          Number(taskDraft.frequencyInterval) || 1,
-        ),
+        frequencyInterval: normalizedRepeatInterval,
         frequencyType: taskDraft.frequencyType,
         impactScore: clamp(Number(taskDraft.impactScore) || 3, 1, 5),
         isActive: true,
@@ -909,48 +918,51 @@ export function CleaningSettingsPage() {
                       }}
                     />
                   </div>
-                  <label className={styles.taskFormField}>
-                    <span className={styles.fieldLabel}>Интервал</span>
-                    <input
-                      type="number"
-                      min={1}
-                      value={
-                        taskDraft.frequencyType === 'custom'
-                          ? taskDraft.customIntervalDays
-                          : taskDraft.frequencyInterval
-                      }
-                      disabled={isBusy}
-                      onChange={(event) => {
-                        const value = event.target.value
-                        setTaskDraft((current) => ({
-                          ...current,
-                          ...(current.frequencyType === 'custom'
-                            ? { customIntervalDays: value }
-                            : { frequencyInterval: value }),
-                        }))
-                      }}
-                    />
-                  </label>
-                  <div className={styles.taskFormField}>
-                    <span className={styles.fieldLabel}>Частота</span>
-                    <SelectPicker
-                      value={taskDraft.frequencyType}
-                      disabled={isBusy}
-                      ariaLabel="Частота"
-                      options={Object.entries(FREQUENCY_LABELS).map(
-                        ([value, label]) => ({
-                          label,
-                          value,
-                        }),
-                      )}
-                      onChange={(nextValue) => {
-                        setTaskDraft((current) => ({
-                          ...current,
-                          frequencyType: nextValue as CleaningFrequencyType,
-                        }))
-                      }}
-                    />
-                  </div>
+                  <fieldset
+                    className={cx(styles.taskFormField, styles.repeatField)}
+                  >
+                    <legend className={styles.fieldLabel}>Повторять</legend>
+                    <div className={styles.repeatControl}>
+                      <span className={styles.repeatPrefix}>раз в</span>
+                      <input
+                        type="number"
+                        min={1}
+                        value={taskDraftRepeatInterval}
+                        disabled={isBusy}
+                        aria-label="Интервал повторения уборки"
+                        onChange={(event) => {
+                          const { value } = event.target
+                          setTaskDraft((current) => ({
+                            ...current,
+                            customIntervalDays: value,
+                            frequencyInterval: value,
+                          }))
+                        }}
+                      />
+                      <SelectPicker
+                        className={styles.repeatUnitPicker}
+                        value={taskDraft.frequencyType}
+                        disabled={isBusy}
+                        ariaLabel="Единица повторения уборки"
+                        options={taskDraftFrequencyUnitOptions}
+                        onChange={(nextValue) => {
+                          setTaskDraft((current) => {
+                            const currentInterval =
+                              current.frequencyType === 'custom'
+                                ? current.customIntervalDays
+                                : current.frequencyInterval
+
+                            return {
+                              ...current,
+                              customIntervalDays: currentInterval,
+                              frequencyInterval: currentInterval,
+                              frequencyType: nextValue,
+                            }
+                          })
+                        }}
+                      />
+                    </div>
+                  </fieldset>
                   <label className={styles.seasonToggle}>
                     <input
                       className={styles.seasonCheckboxInput}

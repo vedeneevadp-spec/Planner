@@ -415,11 +415,13 @@ describe('CleaningSettingsPage', () => {
     fireEvent.change(screen.getByLabelText('Название задачи'), {
       target: { value: 'Помыть пол' },
     })
-    fireEvent.change(screen.getByLabelText('Интервал уборки'), {
+    fireEvent.change(screen.getByLabelText('Интервал повторения уборки'), {
       target: { value: '9' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Частота уборки' }))
-    fireEvent.click(screen.getByRole('option', { name: 'раз в N дней' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Единица повторения уборки' }),
+    )
+    fireEvent.click(screen.getByRole('option', { name: 'дней' }))
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить задачу' }))
 
     await waitFor(() => {

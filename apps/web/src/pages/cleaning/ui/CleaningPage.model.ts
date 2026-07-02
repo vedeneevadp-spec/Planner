@@ -68,10 +68,21 @@ export const PRIORITY_LABELS: Record<CleaningPriority, string> = {
   normal: 'обычно',
 }
 
-export const FREQUENCY_LABELS: Record<CleaningFrequencyType, string> = {
-  custom: 'раз в N дней',
-  monthly: 'раз в N месяцев',
-  weekly: 'раз в N недель',
+export function getFrequencyUnitOptions(intervalValue: number | string) {
+  return [
+    {
+      label: getFrequencyUnitLabel('weekly', intervalValue),
+      value: 'weekly',
+    },
+    {
+      label: getFrequencyUnitLabel('monthly', intervalValue),
+      value: 'monthly',
+    },
+    {
+      label: getFrequencyUnitLabel('custom', intervalValue),
+      value: 'custom',
+    },
+  ] satisfies Array<{ label: string; value: CleaningFrequencyType }>
 }
 
 export const EMPTY_TASK_DRAFT: TaskDraft = {
@@ -388,4 +399,40 @@ export function toggleNumber(values: number[], value: number): number[] {
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+function getFrequencyUnitLabel(
+  frequencyType: CleaningFrequencyType,
+  intervalValue: number | string,
+): string {
+  const interval = Math.max(1, Number(intervalValue) || 1)
+
+  if (frequencyType === 'monthly') {
+    return getPluralForm(interval, ['месяц', 'месяца', 'месяцев'])
+  }
+
+  if (frequencyType === 'custom') {
+    return getPluralForm(interval, ['день', 'дня', 'дней'])
+  }
+
+  return getPluralForm(interval, ['неделю', 'недели', 'недель'])
+}
+
+function getPluralForm(
+  value: number,
+  forms: [one: string, few: string, many: string],
+): string {
+  const absoluteValue = Math.abs(value)
+  const mod10 = absoluteValue % 10
+  const mod100 = absoluteValue % 100
+
+  if (mod10 === 1 && mod100 !== 11) {
+    return forms[0]
+  }
+
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return forms[1]
+  }
+
+  return forms[2]
 }

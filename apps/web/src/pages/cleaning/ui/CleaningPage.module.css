@@ -775,8 +775,8 @@
 .taskForm {
   grid-template-columns:
     minmax(18rem, 1fr) minmax(4.75rem, 0.24fr)
-    minmax(8.5rem, 0.34fr) minmax(6rem, 0.26fr)
-    minmax(9.75rem, 0.4fr) auto minmax(9rem, 0.34fr);
+    minmax(8.5rem, 0.34fr) minmax(13rem, 0.52fr)
+    auto minmax(9rem, 0.34fr);
   align-items: end;
   padding-top: 0.65rem;
   border-top: 1px solid var(--line);
@@ -798,6 +798,42 @@
 
 .taskTitleField {
   grid-column: auto;
+}
+
+.repeatField {
+  min-inline-size: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.repeatField legend {
+  padding: 0;
+}
+
+.repeatControl {
+  display: grid;
+  grid-template-columns: auto minmax(3.25rem, 0.38fr) minmax(5.75rem, 1fr);
+  gap: 0.32rem;
+  align-items: center;
+}
+
+.repeatPrefix {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+.repeatControl input {
+  height: var(--select-picker-height);
+  min-height: var(--select-picker-height);
+  padding-block: 0;
+  text-align: center;
+}
+
+.repeatUnitPicker {
+  --select-picker-padding: 0 0.5rem;
+  --select-picker-font-size: 0.9rem;
 }
 
 .taskSubmitButton {
@@ -978,8 +1014,8 @@
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns:
-    minmax(12rem, 1fr) minmax(5rem, 0.22fr)
-    minmax(9rem, 0.34fr) auto;
+    minmax(12rem, 1fr) minmax(13rem, 0.5fr)
+    minmax(8.5rem, 0.34fr) minmax(8.5rem, 0.34fr) auto;
   gap: 0.4rem;
   align-items: end;
   border-top: 1px solid var(--line);
@@ -1039,8 +1075,8 @@
 
   .zoneTaskEditor {
     grid-template-columns:
-      minmax(10rem, 1fr) minmax(5rem, 0.28fr)
-      minmax(9rem, 0.42fr) auto;
+      minmax(10rem, 1fr) minmax(13rem, 0.56fr)
+      minmax(8rem, 0.42fr) auto;
   }
 }
 
