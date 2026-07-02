@@ -10,6 +10,15 @@ const baseUrl = normalizeBaseUrl(
 )
 const shouldStartApi = process.env.SMOKE_API_BASE_URL === undefined
 const startupTimeoutMs = Number(process.env.SMOKE_API_TIMEOUT_MS ?? '30000')
+const requestTimeoutMs = Number(
+  process.env.SMOKE_API_REQUEST_TIMEOUT_MS ?? '15000',
+)
+
+if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+  throw new Error(
+    `SMOKE_API_REQUEST_TIMEOUT_MS must be a positive number, got ${process.env.SMOKE_API_REQUEST_TIMEOUT_MS}.`,
+  )
+}
 
 let apiProcessState = null
 
@@ -20,7 +29,10 @@ try {
     apiProcessState = startLocalProductionApi(defaultPort)
   }
 
+  console.log(`Production API smoke: waiting for health at ${baseUrl}`)
   const health = await waitForProductionHealth(baseUrl, apiProcessState)
+  console.log('Production API smoke: health check passed')
+
   const result = await runSmoke(baseUrl, health)
 
   console.log(
@@ -128,6 +140,7 @@ async function runSmoke(targetBaseUrl, health) {
   const email = `prod-smoke-${smokeId}@example.test`
   const password = 'prod-smoke-password'
 
+  console.log('Production API smoke: signing up')
   const auth = await requestJson(targetBaseUrl, '/api/v1/auth/sign-up', {
     method: 'POST',
     body: {
@@ -142,6 +155,8 @@ async function runSmoke(targetBaseUrl, health) {
   const authHeaders = {
     authorization: `Bearer ${auth.accessToken}`,
   }
+
+  console.log('Production API smoke: resolving session')
   const session = await requestJson(targetBaseUrl, '/api/v1/session', {
     headers: authHeaders,
   })
@@ -158,6 +173,7 @@ async function runSmoke(targetBaseUrl, health) {
     'x-workspace-id': session.workspaceId,
   }
 
+  console.log('Production API smoke: listing tasks')
   const tasks = await requestJson(targetBaseUrl, '/api/v1/tasks', {
     headers: workspaceHeaders,
   })
@@ -165,6 +181,7 @@ async function runSmoke(targetBaseUrl, health) {
     throw new Error('Expected /api/v1/tasks to return an array.')
   }
 
+  console.log('Production API smoke: creating task')
   const createdTask = await requestJson(targetBaseUrl, '/api/v1/tasks', {
     method: 'POST',
     headers: workspaceHeaders,
@@ -191,6 +208,7 @@ async function runSmoke(targetBaseUrl, health) {
     )
   }
 
+  console.log('Production API smoke: completing task')
   const doneTask = await requestJson(
     targetBaseUrl,
     `/api/v1/tasks/${encodeURIComponent(createdTask.id)}/status`,
@@ -208,6 +226,7 @@ async function runSmoke(targetBaseUrl, health) {
     throw new Error(`Expected task status done, got ${doneTask.status}`)
   }
 
+  console.log('Production API smoke: deleting task')
   await requestJson(
     targetBaseUrl,
     `/api/v1/tasks/${encodeURIComponent(createdTask.id)}?expectedVersion=${doneTask.version}`,
@@ -298,23 +317,48 @@ async function cleanupSmokeDatabase({ email, userId, workspaceId }) {
 }
 
 async function requestJson(targetBaseUrl, path, options = {}) {
-  const response = await fetch(`${targetBaseUrl}${path}`, {
-    method: options.method ?? 'GET',
-    headers: {
-      accept: 'application/json',
-      ...(options.body === undefined
-        ? {}
-        : { 'content-type': 'application/json' }),
-      ...(options.headers ?? {}),
-    },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  })
+  const method = options.method ?? 'GET'
+  const controller = new AbortController()
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, requestTimeoutMs)
+
+  let response
+
+  try {
+    response = await fetch(`${targetBaseUrl}${path}`, {
+      method,
+      headers: {
+        accept: 'application/json',
+        ...(options.body === undefined
+          ? {}
+          : { 'content-type': 'application/json' }),
+        ...(options.headers ?? {}),
+      },
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: controller.signal,
+    })
+  } catch (error) {
+    if (timedOut) {
+      throw new Error(
+        `${method} ${path} timed out after ${requestTimeoutMs}ms.`,
+      )
+    }
+
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+
   const text = await response.text()
   const body = text ? JSON.parse(text) : null
 
   if (!response.ok) {
     throw new Error(
-      `${options.method ?? 'GET'} ${path} failed with ${response.status}: ${JSON.stringify(body)}`,
+      `${method} ${path} failed with ${response.status}: ${JSON.stringify(body)}`,
     )
   }
 
@@ -323,7 +367,7 @@ async function requestJson(targetBaseUrl, path, options = {}) {
   }
 
   if (body === null) {
-    throw new Error(`${options.method ?? 'GET'} ${path} returned empty body.`)
+    throw new Error(`${method} ${path} returned empty body.`)
   }
 
   return body
