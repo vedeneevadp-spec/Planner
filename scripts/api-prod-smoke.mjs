@@ -66,6 +66,7 @@ function startLocalProductionApi(port) {
   const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
   const child = spawn(npmBin, ['run', '-w', 'apps/api', 'start'], {
     cwd: process.cwd(),
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       API_AUTH_MODE: process.env.API_AUTH_MODE ?? 'jwt',
@@ -90,6 +91,7 @@ function startLocalProductionApi(port) {
     exited: false,
     exitCode: null,
     logs: [],
+    processGroupId: process.platform !== 'win32' ? child.pid : null,
     signal: null,
   }
 
@@ -411,14 +413,33 @@ async function stopProcess(processState) {
     return
   }
 
-  processState.child.kill('SIGTERM')
+  signalProcess(processState, 'SIGTERM')
   const deadline = Date.now() + 5000
   while (!processState.exited && Date.now() < deadline) {
     await wait(100)
   }
 
   if (!processState.exited) {
-    processState.child.kill('SIGKILL')
+    signalProcess(processState, 'SIGKILL')
+  }
+}
+
+function signalProcess(processState, signal) {
+  if (processState.processGroupId === null) {
+    processState.child.kill(signal)
+    return
+  }
+
+  try {
+    process.kill(-processState.processGroupId, signal)
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !('code' in error) ||
+      error.code !== 'ESRCH'
+    ) {
+      throw error
+    }
   }
 }
 
