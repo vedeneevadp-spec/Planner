@@ -10,8 +10,8 @@
 web/API coverage, web/mobile budgets). Главный P1 сдвинулся: backend self-care
 больше не держит общий `loadState`, но `self-care.repository.postgres.ts` и
 `self-care.shared.ts` остаются крупными файлами с loaders/projections/mapping.
-Следующие P1-кандидаты: вынести create/edit form components из self-care UI,
-выделить self-care read-model loaders/projections в отдельные backend modules,
+Следующие P1-кандидаты: выделить self-care read-model loaders/projections в
+отдельные backend modules, дробить self-care CSS/forms по устойчивым секциям,
 закрыть оставшиеся generic OpenAPI schemas для Alice/profile/life spheres и
 добавить coverage guard для `useSelfCare`, `useVoiceActionFlow`,
 `mcp-haotika.server.ts` и self-care Postgres read-model loaders. P2-кандидаты:
@@ -271,7 +271,6 @@ token и сохранение device session без возврата на фор
 - `apps/api/src/bootstrap/build-app.test.ts` - 3691 строка
 - `apps/api/src/modules/self-care/self-care.repository.postgres.ts` - 3056
   строки
-- `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 2843 строки
 - `apps/api/src/modules/ai-context/ai-context.service.ts` - 2165 строк
 - `apps/api/src/modules/self-care/self-care.shared.ts` - 2218 строк
 - `apps/api/src/bootstrap/openapi-paths.ts` - 2211 строк
@@ -283,11 +282,13 @@ token и сохранение device session без возврата на фор
 - `apps/api/src/modules/self-care/self-care.shared.test.ts` - 1800 строк
 - `packages/contracts/src/planner-intent.ts` - 1783 строки
 - `apps/api/src/bootstrap/openapi-components.ts` - 1741 строка
+- `apps/web/src/pages/self-care/ui/SelfCarePage.forms.tsx` - 1724 строки
 - `apps/web/src/pages/calendar/ui/CalendarPage.module.css` - 1611 строк
 - `apps/api/src/modules/self-care/self-care.repository.memory.ts` - 1553 строки
 - `apps/web/src/pages/calendar/ui/CalendarPage.tsx` - 1434 строки
 - `apps/api/src/modules/ai-context/ai-context.service.test.ts` - 1377 строк
 - `apps/api/src/modules/session/session.repository.postgres.ts` - 1359 строк
+- `apps/web/src/pages/self-care/ui/SelfCarePage.components.tsx` - 1137 строк
 - `apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts` - 866
   строк
 - `apps/web/src/features/voice-assistant/model/voice-action-reschedule-handler.ts` -
@@ -374,17 +375,17 @@ include-флагов.
 механическим и не смешивался с shell/portal изменением; размер
 `SelfCarePage.components.tsx` снижен до 2843 строк.
 
-Остаток по этому пункту: сами create/edit form components все еще живут в
-`SelfCarePage.components.tsx`; их нужно вынести в отдельный form module или
-hooks. Backend self-care read-model debt по Postgres `loadState` закрыт:
-`SELF_CARE_STATE_READ_PROFILES` и include-based `loadState` удалены, а
-list/dashboard/plan/occurrences/history/analytics/generation call sites
-получили отдельные SQL-backed loaders с более узкими shared read-model типами.
-Остаток backend debt теперь не в широком snapshot loader, а в размере
-`self-care.repository.postgres.ts` и `self-care.shared.ts`: loaders,
-persistence mapping, projection algorithms и migration compatibility все еще
-живут в двух крупных файлах. CSS self-care страницы также остается отдельным
-hotspot.
+Остаток по этому пункту: create/edit form components вынесены из
+`SelfCarePage.components.tsx` в `SelfCarePage.forms.tsx`; `components` теперь
+содержит вкладки, карточки и shared display helpers. Backend self-care
+read-model debt по Postgres `loadState` закрыт: `SELF_CARE_STATE_READ_PROFILES`
+и include-based `loadState` удалены, а list/dashboard/plan/occurrences/history/
+analytics/generation call sites получили отдельные SQL-backed loaders с более
+узкими shared read-model типами. Остаток backend debt теперь не в широком
+snapshot loader, а в размере `self-care.repository.postgres.ts` и
+`self-care.shared.ts`: loaders, persistence mapping, projection algorithms и
+migration compatibility все еще живут в двух крупных файлах. CSS self-care
+страницы и новый крупный `SelfCarePage.forms.tsx` остаются отдельными hotspots.
 
 Статус 2026-07-02 после свежего среза: `rg` больше не находит `loadState`,
 `LoadStateOptions` или `SELF_CARE_STATE_READ_PROFILES` в self-care backend code.

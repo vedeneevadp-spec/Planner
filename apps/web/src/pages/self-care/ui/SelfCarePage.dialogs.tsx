@@ -13,7 +13,7 @@ import {
 import {
   SelfCareCustomCreateForm,
   SelfCareEditForm,
-} from './SelfCarePage.components'
+} from './SelfCarePage.forms'
 import {
   ADD_CARE_TEMPLATE_FILTERS,
   type AddCareTemplateFilter,
