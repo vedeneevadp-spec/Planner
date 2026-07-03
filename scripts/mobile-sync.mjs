@@ -1,11 +1,13 @@
 import path from 'node:path'
 import process from 'node:process'
 import { readFile, writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 import { npmCommand, npxCommand, runCommand } from './command-utils.mjs'
 import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
 
 const [targetPlatform] = process.argv.slice(2)
+const androidGradlePluginVersion = '9.2.1'
 
 if (targetPlatform && !['android', 'ios'].includes(targetPlatform)) {
   console.error(
@@ -44,10 +46,45 @@ async function normalizeAndroidGeneratedGradle(platform) {
     return
   }
 
-  const cordovaPluginGradleFile = new URL(
+  const generatedGradleFiles = [
     '../android/capacitor-cordova-android-plugins/build.gradle',
-    import.meta.url,
+    '../node_modules/@capacitor/android/capacitor/build.gradle',
+    '../node_modules/@capacitor/app/android/build.gradle',
+    '../node_modules/@capacitor/preferences/android/build.gradle',
+    '../node_modules/@capacitor/push-notifications/android/build.gradle',
+  ].map((gradleFilePath) => new URL(gradleFilePath, import.meta.url))
+
+  for (const gradleFile of generatedGradleFiles) {
+    await normalizeAndroidGradleFile(gradleFile)
+  }
+}
+
+async function normalizeAndroidGradleFile(gradleFile) {
+  let source
+
+  try {
+    source = await readFile(gradleFile, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      return
+    }
+
+    throw error
+  }
+
+  const updatedSource = normalizeAndroidGradleSource(source)
+
+  if (updatedSource === source) {
+    return
+  }
+
+  await writeFile(gradleFile, updatedSource)
+  console.log(
+    `[mobile-sync] Normalized ${path.relative(process.cwd(), fileURLToPath(gradleFile))}.`,
   )
+}
+
+function normalizeAndroidGradleSource(source) {
   const flatDirRepositoriesBlock = `
 repositories {
     google()
@@ -64,27 +101,11 @@ repositories {
 }
 `
 
-  let source
-
-  try {
-    source = await readFile(cordovaPluginGradleFile, 'utf8')
-  } catch (error) {
-    if (error?.code === 'ENOENT') {
-      return
-    }
-
-    throw error
-  }
-
-  const updatedSource = source.replace(
-    flatDirRepositoriesBlock,
-    mavenRepositoriesBlock,
-  )
-
-  if (updatedSource === source) {
-    return
-  }
-
-  await writeFile(cordovaPluginGradleFile, updatedSource)
-  console.log('[mobile-sync] Removed generated Android flatDir repository.')
+  return source
+    .replace(flatDirRepositoriesBlock, mavenRepositoriesBlock)
+    .replace(
+      /classpath 'com\.android\.tools\.build:gradle:[^']+'/g,
+      `classpath 'com.android.tools.build:gradle:${androidGradlePluginVersion}'`,
+    )
+    .replace(/^(\s*)lintOptions\s*\{/gm, '$1lint {')
 }
