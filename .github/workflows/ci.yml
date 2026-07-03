@@ -98,7 +98,7 @@ jobs:
         run: |
           npm_version="$(node ./scripts/print-pinned-npm-version.mjs)"
           npm install -g "npm@${npm_version}"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
