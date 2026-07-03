@@ -356,10 +356,13 @@ describe('SessionProvider', () => {
     const warnSpy = vi
       .spyOn(console, 'warn')
       .mockImplementation(() => undefined)
+    let storageEmptyOnResume = false
 
-    authStorageMocks.readStoredAuthSession
-      .mockResolvedValueOnce(createUsableNativeStoredSession())
-      .mockResolvedValue(null)
+    authStorageMocks.readStoredAuthSession.mockImplementation(() =>
+      Promise.resolve(
+        storageEmptyOnResume ? null : createUsableNativeStoredSession(),
+      ),
+    )
 
     render(
       <SessionProvider>
@@ -372,6 +375,9 @@ describe('SessionProvider', () => {
         'newer-access-token',
       )
     })
+    await flushAsyncWork()
+
+    storageEmptyOnResume = true
 
     await act(async () => {
       appStateListener?.(false)
