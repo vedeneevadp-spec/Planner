@@ -233,7 +233,13 @@ describe('useSelfCareDashboard', () => {
     )
     queryClient.setQueryData(
       selfCareHistoryQueryKey('workspace-1', '2026-06-01', '2026-06-30'),
-      { completions: [], items: [entry.item], stepCompletions: [] },
+      {
+        appointmentDetails: [],
+        completions: [],
+        items: [entry.item],
+        procedureDetails: [],
+        stepCompletions: [],
+      },
     )
 
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
@@ -463,6 +469,7 @@ function createSelfCareApi(): SelfCareApiClient {
     restoreItem: vi.fn(),
     scheduleItem: vi.fn(),
     skipOccurrence: vi.fn(),
+    updateCompletion: vi.fn(),
     updateItem: vi.fn(),
     updateMinimumItems: vi.fn(),
     updateRitualSteps: vi.fn(),

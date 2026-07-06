@@ -235,6 +235,7 @@ export const selfCareCompletionSchema = z.object({
   completedAt: z.string(),
   completedVariant: selfCareCompletedVariantSchema.nullable(),
   createdAt: z.string(),
+  currency: z.string().nullable().optional().default(null),
   durationMinutes: z.number().int().positive().nullable(),
   energyAfter: optionalRatingSchema.nullable().optional().default(null),
   energyBefore: optionalRatingSchema.nullable().optional().default(null),
@@ -255,6 +256,7 @@ export const selfCareCompletionSchema = z.object({
   moodBefore: optionalRatingSchema.nullable().optional().default(null),
   note: z.string(),
   occurrenceId: z.string().nullable(),
+  price: z.number().nonnegative().nullable().optional().default(null),
   scheduledFor: z.string().nullable(),
   status: selfCareCompletionStatusSchema,
   userId: z.string(),
@@ -504,8 +506,10 @@ export const selfCarePlanResponseSchema = z.object({
 })
 
 export const selfCareHistoryResponseSchema = z.object({
+  appointmentDetails: z.array(selfCareAppointmentDetailsSchema),
   completions: z.array(selfCareCompletionSchema),
   items: z.array(selfCareItemSchema),
+  procedureDetails: z.array(selfCareProcedureDetailsSchema),
   stepCompletions: z.array(selfCareRitualStepCompletionSchema),
 })
 
@@ -876,6 +880,7 @@ export const selfCareCompletionInputSchema = z.object({
     .nullable()
     .optional()
     .default(null),
+  currency: nullableStringInput,
   durationMinutes: positiveNullableIntegerInput,
   energyAfter: optionalRatingSchema.nullable().optional().default(null),
   energyBefore: optionalRatingSchema.nullable().optional().default(null),
@@ -893,8 +898,45 @@ export const selfCareCompletionInputSchema = z.object({
   moodAfter: optionalRatingSchema.nullable().optional().default(null),
   moodBefore: optionalRatingSchema.nullable().optional().default(null),
   note: z.string().trim().max(1200).optional().default(''),
+  price: optionalMoneySchema.nullable().optional().default(null),
   status: selfCareCompletionStatusSchema.optional().default('done'),
 })
+
+const optionalNullableStringPatch = z.string().trim().nullable().optional()
+const optionalNullableNumberPatch = z.number().finite().nullable().optional()
+const optionalNullableMoneyPatch = z
+  .number()
+  .nonnegative()
+  .nullable()
+  .optional()
+
+export const selfCareCompletionUpdateInputSchema = z
+  .object({
+    alternativeTitle: optionalNullableStringPatch,
+    completedVariant: selfCareCompletedVariantSchema.nullable().optional(),
+    currency: optionalNullableStringPatch,
+    durationMinutes: z.number().int().positive().nullable().optional(),
+    energyAfter: optionalRatingSchema.nullable().optional(),
+    energyBefore: optionalRatingSchema.nullable().optional(),
+    exerciseSets: z
+      .array(
+        z.object({
+          index: z.number().int().positive(),
+          value: z.number().finite(),
+        }),
+      )
+      .optional(),
+    measurementUnit: optionalNullableStringPatch,
+    measurementValue: optionalNullableNumberPatch,
+    moodAfter: optionalRatingSchema.nullable().optional(),
+    moodBefore: optionalRatingSchema.nullable().optional(),
+    note: z.string().trim().max(1200).optional(),
+    price: optionalNullableMoneyPatch,
+  })
+  .refine(
+    (value) => Object.keys(value).length > 0,
+    'At least one self-care completion field must be provided.',
+  )
 
 export const selfCareRitualCompletionInputSchema =
   selfCareCompletionInputSchema.extend({
@@ -993,6 +1035,9 @@ export type SelfCareCategory = z.infer<typeof selfCareCategorySchema>
 export type SelfCareCompletion = z.infer<typeof selfCareCompletionSchema>
 export type SelfCareCompletionInput = z.infer<
   typeof selfCareCompletionInputSchema
+>
+export type SelfCareCompletionUpdateInput = z.infer<
+  typeof selfCareCompletionUpdateInputSchema
 >
 export type SelfCareCompletionStatus = z.infer<
   typeof selfCareCompletionStatusSchema

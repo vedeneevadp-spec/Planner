@@ -155,6 +155,15 @@ export class SelfCareService {
     return this.repository.completeCourseSession({ context, input, itemId })
   }
 
+  updateCompletion(
+    context: SelfCareWriteContext,
+    completionId: string,
+    input: Parameters<SelfCareRepository['updateCompletion']>[0]['input'],
+  ) {
+    assertCanWriteSelfCare(context)
+    return this.repository.updateCompletion({ completionId, context, input })
+  }
+
   skipOccurrence(
     context: SelfCareWriteContext,
     occurrenceId: string,

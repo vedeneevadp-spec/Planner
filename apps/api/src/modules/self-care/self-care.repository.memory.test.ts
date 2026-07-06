@@ -4,6 +4,7 @@ import test from 'node:test'
 
 import {
   selfCareCompletionInputSchema,
+  selfCareCompletionUpdateInputSchema,
   selfCareItemInputSchema,
   selfCareItemScheduleInputSchema,
   selfCareItemUpdateInputSchema,
@@ -677,6 +678,58 @@ void test('MemorySelfCareRepository stores measurement details and reading', asy
   assert.equal(list.measurementDetails[0]?.itemId, item.id)
   assert.equal(list.measurementDetails[0]?.targetMin, 78)
   assert.equal(history.completions[0]?.measurementValue, 80.4)
+})
+
+void test('MemorySelfCareRepository updates completed procedure cost for history and analytics', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'beauty',
+      procedureDetails: {
+        currency: 'RUB',
+        defaultPrice: 2500,
+      },
+      title: 'Кератин',
+      type: 'procedure',
+    }),
+  })
+  const completion = await repository.completeItemNow({
+    context,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-06-10T12:00:00.000Z',
+      status: 'done',
+    }),
+    itemId: item.id,
+  })
+
+  const updated = await repository.updateCompletion({
+    completionId: completion.id,
+    context,
+    input: selfCareCompletionUpdateInputSchema.parse({
+      currency: 'RUB',
+      note: 'Фактическая стоимость',
+      price: 3200,
+    }),
+  })
+  const history = await repository.getHistory(
+    context,
+    '2026-06-10',
+    '2026-06-10',
+  )
+  const analytics = await repository.getAnalytics(
+    context,
+    '2026-06-01',
+    '2026-06-30',
+  )
+
+  assert.equal(updated.price, 3200)
+  assert.equal(updated.currency, 'RUB')
+  assert.equal(history.completions[0]?.price, 3200)
+  assert.equal(history.completions[0]?.note, 'Фактическая стоимость')
+  assert.equal(analytics.procedureCosts, 3200)
+  assert.deepEqual(analytics.procedureCostsByMonth, { '2026-06': 3200 })
 })
 
 void test('MemorySelfCareRepository stores exercise details, sets, and trend', async () => {

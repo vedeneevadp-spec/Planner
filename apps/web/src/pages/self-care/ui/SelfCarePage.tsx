@@ -1,5 +1,7 @@
 import type {
+  SelfCareCompletion,
   SelfCareCompletionInput,
+  SelfCareCompletionUpdateInput,
   SelfCareItemScheduleInput,
   SelfCareTodayItem,
 } from '@planner/contracts'
@@ -15,6 +17,7 @@ import { useSessionFeatureReadiness } from '@/features/session'
 import pageStyles from '@/shared/ui/Page'
 
 import {
+  SelfCareCompletionEditDialog,
   SelfCareCourseRestartDialog,
   SelfCareExerciseDialog,
   SelfCareMeasurementDialog,
@@ -40,6 +43,7 @@ import {
   canRestartCourse,
   firstErrorMessage,
   formatDate,
+  getCompletionCost,
   getInitialRitualStepDraft,
   getInitialScheduleDate,
   getRitualStepDraft,
@@ -119,6 +123,7 @@ export function SelfCarePage() {
     scheduleItemMutation,
     skipOccurrenceMutation,
     updateItemMutation,
+    updateCompletionMutation,
     updateSettingsMutation,
     upsertRitualStepDraftMutation,
   } = useSelfCarePageMutations()
@@ -134,6 +139,8 @@ export function SelfCarePage() {
     useState<SelfCareTodayItem | null>(null)
   const [exerciseDialogEntry, setExerciseDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
+  const [completionEditDialogEntry, setCompletionEditDialogEntry] =
+    useState<SelfCareCompletion | null>(null)
   const [scheduleDate, setScheduleDate] = useState(todayKey)
   const [hiddenScheduledItemIds, setHiddenScheduledItemIds] = useState<
     ReadonlySet<string>
@@ -323,6 +330,11 @@ export function SelfCarePage() {
   function closeEditDialog(): void {
     setFormError(null)
     setEditDialogEntry(null)
+  }
+
+  function closeCompletionEditDialog(): void {
+    setFormError(null)
+    setCompletionEditDialogEntry(null)
   }
 
   function handleRestartCourse(entry: SelfCareTodayItem): void {
@@ -552,6 +564,27 @@ export function SelfCarePage() {
       })
   }
 
+  function handleCompletionEditSubmit(
+    input: SelfCareCompletionUpdateInput,
+  ): void {
+    if (!completionEditDialogEntry) {
+      return
+    }
+
+    setFormError(null)
+    void updateCompletionMutation
+      .mutateAsync({
+        completionId: completionEditDialogEntry.id,
+        input,
+      })
+      .then(() => {
+        closeCompletionEditDialog()
+      })
+      .catch((error: unknown) => {
+        setFormError(getSelfCareErrorMessage(error))
+      })
+  }
+
   function handleToggleRitualStep(
     entry: SelfCareTodayItem,
     stepId: string,
@@ -729,7 +762,12 @@ export function SelfCarePage() {
       ) : null}
 
       {activeTab === 'history' ? (
-        <SelfCareHistoryTab history={history} />
+        <SelfCareHistoryTab
+          defaultCurrency={defaultCurrency}
+          history={history}
+          isBusy={updateCompletionMutation.isPending || !canUseSelfCareActions}
+          onEditCompletion={setCompletionEditDialogEntry}
+        />
       ) : null}
 
       {activeTab === 'analytics' ? (
@@ -844,6 +882,32 @@ export function SelfCarePage() {
           uploadedIcons={uploadedIcons}
           onClose={closeEditDialog}
           onSubmit={handleUpdateItem}
+        />
+      ) : null}
+
+      {completionEditDialogEntry ? (
+        <SelfCareCompletionEditDialog
+          completion={completionEditDialogEntry}
+          defaultCurrency={defaultCurrency}
+          errorMessage={visibleFormError}
+          initialCost={getCompletionCost(
+            completionEditDialogEntry,
+            history?.items.find(
+              (item) => item.id === completionEditDialogEntry.itemId,
+            ) ?? null,
+            {
+              appointmentDetails: history?.appointmentDetails ?? [],
+              procedureDetails: history?.procedureDetails ?? [],
+            },
+          )}
+          isBusy={updateCompletionMutation.isPending || !canUseSelfCareActions}
+          item={
+            history?.items.find(
+              (item) => item.id === completionEditDialogEntry.itemId,
+            ) ?? null
+          }
+          onClose={closeCompletionEditDialog}
+          onSubmit={handleCompletionEditSubmit}
         />
       ) : null}
 

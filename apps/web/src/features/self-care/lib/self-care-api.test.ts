@@ -119,6 +119,7 @@ describe('createSelfCareApiClient', () => {
     await client.completeOccurrence('occurrence-1', {
       alternativeTitle: null,
       completedVariant: 'full',
+      currency: null,
       durationMinutes: 15,
       energyAfter: null,
       energyBefore: null,
@@ -128,6 +129,7 @@ describe('createSelfCareApiClient', () => {
       moodAfter: null,
       moodBefore: null,
       note: 'Готово',
+      price: null,
       status: 'done',
       steps: [{ isDone: true, stepId: 'step-1' }],
     })
@@ -168,6 +170,30 @@ describe('createSelfCareApiClient', () => {
       '/api/v1/self-care/ritual-step-drafts',
     )
     expect(requests[6]?.url.searchParams.get('occurrenceId')).toBeNull()
+  })
+
+  it('updates an existing self-care completion with cost details', async () => {
+    const { fetchFn, requests } = createQueuedFetch([
+      createCompletion({ currency: 'RUB', price: 3200 }),
+    ])
+    const client = createSelfCareApiClient(apiConfig, fetchFn)
+
+    await client.updateCompletion('completion/1', {
+      currency: 'RUB',
+      note: 'Фактическая стоимость',
+      price: 3200,
+    })
+
+    expect(requests[0]?.init.method).toBe('PATCH')
+    expect(requests[0]?.url.pathname).toBe(
+      '/api/v1/self-care/completions/completion%2F1',
+    )
+    expect(requests[0]?.headers.get('x-actor-user-id')).toBe('user-1')
+    expect(readJsonBody(requests[0])).toEqual({
+      currency: 'RUB',
+      note: 'Фактическая стоимость',
+      price: 3200,
+    })
   })
 
   it('maps API error payloads to SelfCareApiError', async () => {
@@ -341,6 +367,7 @@ function createCompletion(
     completedAt: '2026-06-22T08:00:00.000Z',
     completedVariant: 'full',
     createdAt: '2026-06-22T08:00:00.000Z',
+    currency: null,
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
@@ -353,6 +380,7 @@ function createCompletion(
     moodBefore: null,
     note: '',
     occurrenceId: null,
+    price: null,
     scheduledFor: null,
     status: 'done',
     userId: 'user-1',

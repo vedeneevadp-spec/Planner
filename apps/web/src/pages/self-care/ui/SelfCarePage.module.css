@@ -1548,7 +1548,8 @@
 
 .historyCard {
   display: grid;
-  grid-template-columns: minmax(6.8rem, 0.24fr) minmax(0, 1fr);
+  grid-template-columns: minmax(6.8rem, 0.24fr) minmax(0, 1fr) auto;
+  align-items: start;
   gap: 0.58rem;
   padding: 0.56rem 0.62rem;
 }
@@ -1574,6 +1575,11 @@
 .historyCard p {
   font-size: 0.84rem;
   line-height: 1.25;
+}
+
+.historyCardActions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .analyticsHero {

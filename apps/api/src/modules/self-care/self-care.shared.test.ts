@@ -416,12 +416,124 @@ void test('buildAnalyticsResponse keeps only visible unique flexible goals', () 
   )
 })
 
+void test('buildAnalyticsResponse omits invisible item completion leftovers', () => {
+  const activeExercise = selfCareItem({
+    category: 'movement',
+    id: 'active-exercise',
+    title: 'Приседания',
+    type: 'exercise',
+  })
+  const archivedExercise = selfCareItem({
+    category: 'movement',
+    id: 'archived-exercise',
+    isActive: false,
+    isArchived: true,
+    title: 'Калории',
+    type: 'exercise',
+  })
+  const deletedMeasurement = selfCareItem({
+    deletedAt: NOW,
+    id: 'deleted-measurement',
+    isActive: false,
+    isArchived: true,
+    title: 'Вес',
+    type: 'measurement',
+  })
+  const inactiveProcedure = selfCareItem({
+    category: 'beauty',
+    id: 'inactive-procedure',
+    isActive: false,
+    title: 'Массаж',
+    type: 'procedure',
+  })
+
+  const response = buildAnalyticsResponse({
+    from: '2026-06-01',
+    to: '2026-06-30',
+    state: selfCareState({
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-06-10T08:00:00.000Z',
+          id: 'active-completion',
+          itemId: activeExercise.id,
+          measurementUnit: 'reps',
+          measurementValue: 28,
+          note: 'минимум сделан',
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-10T09:00:00.000Z',
+          id: 'archived-completion',
+          itemId: archivedExercise.id,
+          measurementUnit: 'раз',
+          measurementValue: 470,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-11T08:00:00.000Z',
+          id: 'deleted-completion',
+          itemId: deletedMeasurement.id,
+          measurementUnit: 'кг',
+          measurementValue: 79,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-12T08:00:00.000Z',
+          id: 'inactive-completion',
+          itemId: inactiveProcedure.id,
+        }),
+      ],
+      exerciseDetails: [
+        exerciseDetails({
+          itemId: activeExercise.id,
+          unit: 'reps',
+        }),
+        exerciseDetails({
+          itemId: archivedExercise.id,
+          unit: 'reps',
+        }),
+      ],
+      items: [
+        activeExercise,
+        archivedExercise,
+        deletedMeasurement,
+        inactiveProcedure,
+      ],
+      measurementDetails: [
+        measurementDetails({
+          itemId: deletedMeasurement.id,
+          unit: 'кг',
+        }),
+      ],
+      procedureDetails: [
+        procedureDetails({
+          defaultPrice: 2500,
+          itemId: inactiveProcedure.id,
+        }),
+      ],
+    }),
+  })
+
+  assert.equal(response.selectedSelfCareCount, 1)
+  assert.equal(response.minimumCompletionCount, 1)
+  assert.deepEqual(response.completionsByDay, { '2026-06-10': 1 })
+  assert.deepEqual(
+    response.exerciseTrends.map((trend) => trend.itemId),
+    [activeExercise.id],
+  )
+  assert.deepEqual(response.measurementTrends, [])
+  assert.equal(response.procedureCosts, 0)
+})
+
 void test('buildAnalyticsResponse groups procedure costs by completion month', () => {
   const procedure = selfCareItem({
     category: 'beauty',
     id: 'procedure-1',
     title: 'Массаж',
     type: 'procedure',
+  })
+  const medical = selfCareItem({
+    category: 'medical',
+    id: 'medical-1',
+    title: 'Стоматолог',
+    type: 'medical',
   })
 
   const response = buildAnalyticsResponse({
@@ -438,6 +550,7 @@ void test('buildAnalyticsResponse groups procedure costs by completion month', (
           completedAt: '2026-06-10T12:00:00.000Z',
           id: 'procedure-completion-2',
           itemId: procedure.id,
+          price: 3200,
         }),
         selfCareCompletion({
           completedAt: '2026-06-12T12:00:00.000Z',
@@ -445,8 +558,14 @@ void test('buildAnalyticsResponse groups procedure costs by completion month', (
           itemId: procedure.id,
           status: 'skipped',
         }),
+        selfCareCompletion({
+          completedAt: '2026-06-18T12:00:00.000Z',
+          id: 'medical-completion-1',
+          itemId: medical.id,
+          price: 1200,
+        }),
       ],
-      items: [procedure],
+      items: [procedure, medical],
       procedureDetails: [
         procedureDetails({
           defaultPrice: 2500,
@@ -456,10 +575,10 @@ void test('buildAnalyticsResponse groups procedure costs by completion month', (
     }),
   })
 
-  assert.equal(response.procedureCosts, 5000)
+  assert.equal(response.procedureCosts, 6900)
   assert.deepEqual(response.procedureCostsByMonth, {
     '2026-05': 2500,
-    '2026-06': 2500,
+    '2026-06': 4400,
   })
 })
 
@@ -686,6 +805,80 @@ void test('buildHistoryResponse and buildAnalyticsResponse ignore missed occurre
   assert.deepEqual(history.stepCompletions, [])
   assert.equal(analytics.selectedSelfCareCount, 0)
   assert.deepEqual(analytics.completionsByDay, {})
+})
+
+void test('buildHistoryResponse includes visit cost details for completed records', () => {
+  const procedure = selfCareItem({
+    id: 'procedure-1',
+    title: 'Маникюр',
+    type: 'procedure',
+  })
+  const appointment = selfCareItem({
+    id: 'appointment-1',
+    title: 'Стоматолог',
+    type: 'appointment',
+  })
+  const appointmentOccurrence = selfCareOccurrence({
+    id: 'appointment-occurrence-1',
+    itemId: appointment.id,
+    scheduledFor: '2026-06-05',
+  })
+  const history = buildHistoryResponse({
+    from: '2026-06-01',
+    state: selfCareState({
+      appointmentDetails: [
+        appointmentDetails({
+          itemId: appointment.id,
+          occurrenceId: appointmentOccurrence.id,
+          price: 4200,
+        }),
+      ],
+      completions: [
+        selfCareCompletion({
+          completedAt: '2026-06-04T12:00:00.000Z',
+          id: 'procedure-completion-1',
+          itemId: procedure.id,
+        }),
+        selfCareCompletion({
+          completedAt: '2026-06-05T12:00:00.000Z',
+          id: 'appointment-completion-1',
+          itemId: appointment.id,
+          occurrenceId: appointmentOccurrence.id,
+        }),
+      ],
+      items: [procedure, appointment],
+      occurrences: [appointmentOccurrence],
+      procedureDetails: [
+        procedureDetails({
+          defaultPrice: 2300,
+          itemId: procedure.id,
+        }),
+      ],
+    }),
+    to: '2026-06-07',
+  })
+
+  assert.deepEqual(
+    history.procedureDetails.map((details) => ({
+      defaultPrice: details.defaultPrice,
+      itemId: details.itemId,
+    })),
+    [{ defaultPrice: 2300, itemId: procedure.id }],
+  )
+  assert.deepEqual(
+    history.appointmentDetails.map((details) => ({
+      itemId: details.itemId,
+      occurrenceId: details.occurrenceId,
+      price: details.price,
+    })),
+    [
+      {
+        itemId: appointment.id,
+        occurrenceId: appointmentOccurrence.id,
+        price: 4200,
+      },
+    ],
+  )
 })
 
 void test('buildDashboardResponse removes planning hints after item is scheduled', () => {
@@ -1568,6 +1761,7 @@ function selfCareCompletion(
     completedAt: '2026-06-02T12:00:00.000Z',
     completedVariant: 'full',
     createdAt: NOW,
+    currency: null,
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
@@ -1580,6 +1774,7 @@ function selfCareCompletion(
     moodBefore: null,
     note: '',
     occurrenceId: null,
+    price: null,
     scheduledFor: null,
     status: 'done',
     userId: 'user-1',

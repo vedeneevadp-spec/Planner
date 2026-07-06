@@ -149,7 +149,11 @@ export type SelfCareOccurrencesReadModel = Pick<
 
 export type SelfCareHistoryReadModel = Pick<
   SelfCareStateSnapshot,
-  'completions' | 'items' | 'stepCompletions'
+  | 'appointmentDetails'
+  | 'completions'
+  | 'items'
+  | 'procedureDetails'
+  | 'stepCompletions'
 >
 
 export type SelfCareAnalyticsReadModel = SelfCareTodayItemReadModel &
@@ -513,6 +517,7 @@ export function createCompletionRecord(
     completedAt,
     completedVariant: input.completedVariant,
     createdAt: completedAt,
+    currency: input.currency,
     durationMinutes: input.durationMinutes,
     energyAfter: input.energyAfter,
     energyBefore: input.energyBefore,
@@ -525,6 +530,7 @@ export function createCompletionRecord(
     moodBefore: input.moodBefore,
     note: input.note,
     occurrenceId: context.occurrence?.id ?? null,
+    price: input.price,
     scheduledFor:
       context.scheduledFor ?? context.occurrence?.scheduledFor ?? null,
     status: input.status,
@@ -834,8 +840,10 @@ export function buildHistoryResponse(input: {
   const completionIds = new Set(completions.map((completion) => completion.id))
 
   return {
+    appointmentDetails: input.state.appointmentDetails,
     completions,
     items: input.state.items,
+    procedureDetails: input.state.procedureDetails,
     stepCompletions: input.state.stepCompletions.filter((step) =>
       completionIds.has(step.completionId),
     ),
@@ -848,7 +856,11 @@ export function buildAnalyticsResponse(input: {
   to: string
 }): SelfCareAnalyticsResponse {
   const completions = selectHistoryCompletions(input)
-  const itemById = new Map(input.state.items.map((item) => [item.id, item]))
+  const itemById = new Map(
+    input.state.items
+      .filter(isVisibleSelfCareItem)
+      .map((item) => [item.id, item]),
+  )
   const measurementDetailsByItemId = new Map(
     (input.state.measurementDetails ?? []).map((details) => [
       details.itemId,
@@ -874,6 +886,8 @@ export function buildAnalyticsResponse(input: {
   const measurementTrendByItemId = new Map<string, SelfCareMeasurementTrend>()
   let procedureCosts = 0
   const procedureCostsByMonth: Record<string, number> = {}
+  let minimumCompletionCount = 0
+  let selectedSelfCareCount = 0
 
   for (const completion of completions) {
     if (!isCompletionProgressStatus(completion.status)) {
@@ -882,28 +896,36 @@ export function buildAnalyticsResponse(input: {
 
     const item = itemById.get(completion.itemId)
 
-    if (item) {
-      balanceByCategory[item.category] += 1
+    if (!item) {
+      continue
+    }
+
+    selectedSelfCareCount += 1
+    balanceByCategory[item.category] += 1
+
+    if (completion.note.toLowerCase().includes('миним')) {
+      minimumCompletionCount += 1
     }
 
     const dateKey = completion.completedAt.slice(0, 10)
     completionsByDay[dateKey] = (completionsByDay[dateKey] ?? 0) + 1
 
-    if (item?.type === 'appointment' || item?.type === 'procedure') {
-      const price =
-        item.type === 'appointment'
-          ? (appointmentDetailsByItemId.get(item.id)?.price ?? 0)
-          : (procedureDetailsByItemId.get(item.id)?.defaultPrice ?? 0)
+    const price =
+      completion.price ??
+      (item.type === 'appointment'
+        ? (appointmentDetailsByItemId.get(item.id)?.price ?? 0)
+        : item.type === 'procedure'
+          ? (procedureDetailsByItemId.get(item.id)?.defaultPrice ?? 0)
+          : 0)
 
-      if (price > 0) {
-        const monthKey = dateKey.slice(0, 7)
-        procedureCosts += price
-        procedureCostsByMonth[monthKey] =
-          (procedureCostsByMonth[monthKey] ?? 0) + price
-      }
+    if (price > 0) {
+      const monthKey = dateKey.slice(0, 7)
+      procedureCosts += price
+      procedureCostsByMonth[monthKey] =
+        (procedureCostsByMonth[monthKey] ?? 0) + price
     }
 
-    if (item?.type === 'measurement' && completion.measurementValue !== null) {
+    if (item.type === 'measurement' && completion.measurementValue !== null) {
       const details = measurementDetailsByItemId.get(item.id)
       const trend = measurementTrendByItemId.get(item.id) ?? {
         itemId: item.id,
@@ -920,7 +942,7 @@ export function buildAnalyticsResponse(input: {
       measurementTrendByItemId.set(item.id, trend)
     }
 
-    if (item?.type === 'exercise' && completion.measurementValue !== null) {
+    if (item.type === 'exercise' && completion.measurementValue !== null) {
       const details = exerciseDetailsByItemId.get(item.id)
       const trend = exerciseTrendByItemId.get(item.id) ?? {
         itemId: item.id,
@@ -1013,18 +1035,14 @@ export function buildAnalyticsResponse(input: {
       (entry) => entry.item.type === 'medical',
     ),
     measurementTrends,
-    minimumCompletionCount: completions.filter((completion) =>
-      completion.note.toLowerCase().includes('миним'),
-    ).length,
+    minimumCompletionCount,
     moodEnergyTrend: input.state.dailyStates.filter(
       (dailyState) =>
         dailyState.date >= input.from && dailyState.date <= input.to,
     ),
     procedureCosts,
     procedureCostsByMonth,
-    selectedSelfCareCount: completions.filter((completion) =>
-      isCompletionProgressStatus(completion.status),
-    ).length,
+    selectedSelfCareCount,
   }
 }
 
@@ -1510,6 +1528,7 @@ export function mapHabitEntryToSelfCareCompletion(input: {
     completedAt: `${input.entry.date}T12:00:00.000Z`,
     completedVariant: 'full',
     createdAt: input.entry.createdAt,
+    currency: null,
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
@@ -1522,6 +1541,7 @@ export function mapHabitEntryToSelfCareCompletion(input: {
     moodBefore: null,
     note: input.entry.note,
     occurrenceId: null,
+    price: null,
     scheduledFor: input.entry.date,
     status: input.entry.status === 'skipped' ? 'skipped' : 'done',
     userId: input.entry.userId,

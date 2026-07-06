@@ -46,6 +46,7 @@ import type {
   StoredSelfCareOccurrenceRecord,
   StoredSelfCareRitualStepDraftRecord,
   ToggleSelfCareGentleModeCommand,
+  UpdateSelfCareCompletionCommand,
   UpdateSelfCareItemCommand,
   UpdateSelfCareMinimumItemsCommand,
   UpdateSelfCareRitualStepsCommand,
@@ -581,12 +582,75 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     })
   }
 
+  async updateCompletion(command: UpdateSelfCareCompletionCommand) {
+    const current = this.completions.get(command.completionId)
+    if (!current || current.userId !== command.context.actorUserId) {
+      throw new HttpError(
+        404,
+        'self_care_completion_not_found',
+        'Self-care completion not found.',
+      )
+    }
+
+    const item = this.getWritableItem(command.context, current.itemId, {
+      allowArchived: true,
+    })
+    const next: StoredSelfCareCompletionRecord = {
+      ...current,
+      ...(command.input.alternativeTitle !== undefined
+        ? { alternativeTitle: command.input.alternativeTitle }
+        : {}),
+      ...(command.input.completedVariant !== undefined
+        ? { completedVariant: command.input.completedVariant }
+        : {}),
+      ...(command.input.currency !== undefined
+        ? { currency: command.input.currency }
+        : {}),
+      ...(command.input.durationMinutes !== undefined
+        ? { durationMinutes: command.input.durationMinutes }
+        : {}),
+      ...(command.input.energyAfter !== undefined
+        ? { energyAfter: command.input.energyAfter }
+        : {}),
+      ...(command.input.energyBefore !== undefined
+        ? { energyBefore: command.input.energyBefore }
+        : {}),
+      ...(command.input.exerciseSets !== undefined
+        ? { exerciseSets: command.input.exerciseSets }
+        : {}),
+      ...(command.input.measurementUnit !== undefined
+        ? { measurementUnit: command.input.measurementUnit }
+        : {}),
+      ...(command.input.measurementValue !== undefined
+        ? { measurementValue: command.input.measurementValue }
+        : {}),
+      ...(command.input.moodAfter !== undefined
+        ? { moodAfter: command.input.moodAfter }
+        : {}),
+      ...(command.input.moodBefore !== undefined
+        ? { moodBefore: command.input.moodBefore }
+        : {}),
+      ...(command.input.note !== undefined ? { note: command.input.note } : {}),
+      ...(command.input.price !== undefined
+        ? { price: command.input.price }
+        : {}),
+    }
+
+    assertExerciseCompletionInput(item, { ...next, steps: [] })
+    assertMeasurementCompletionInput(item, { ...next, steps: [] })
+    assertMoodCheckCompletionInput(item, { ...next, steps: [] })
+
+    this.completions.set(next.id, next)
+    return next
+  }
+
   async skipOccurrence(command: SkipSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
     const completion = createCompletionRecord(
       {
         alternativeTitle: null,
         completedVariant: null,
+        currency: null,
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
@@ -596,6 +660,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         moodAfter: null,
         moodBefore: null,
         note: command.input.reason,
+        price: null,
         status: 'skipped',
       },
       {
@@ -616,6 +681,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       {
         alternativeTitle: null,
         completedVariant: null,
+        currency: null,
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
@@ -625,6 +691,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         moodAfter: null,
         moodBefore: null,
         note: command.input.note,
+        price: null,
         status: 'moved',
       },
       {
@@ -776,6 +843,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       {
         alternativeTitle: null,
         completedVariant: null,
+        currency: null,
         durationMinutes: null,
         energyAfter: null,
         energyBefore: null,
@@ -785,6 +853,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         moodAfter: null,
         moodBefore: null,
         note: '',
+        price: null,
         status: 'cancelled',
       },
       {

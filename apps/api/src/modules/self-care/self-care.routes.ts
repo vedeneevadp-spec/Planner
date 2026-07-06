@@ -3,6 +3,7 @@ import {
   selfCareAnalyticsResponseSchema,
   selfCareCompletionInputSchema,
   selfCareCompletionSchema,
+  selfCareCompletionUpdateInputSchema,
   selfCareDailyStateInputSchema,
   selfCareDailyStateSchema,
   selfCareDashboardResponseSchema,
@@ -41,6 +42,7 @@ import type { SessionService } from '../session/index.js'
 import type { SelfCareService } from './self-care.service.js'
 
 const itemParamsSchema = z.object({ itemId: z.string().min(1) })
+const completionParamsSchema = z.object({ completionId: z.string().min(1) })
 const occurrenceParamsSchema = z.object({ occurrenceId: z.string().min(1) })
 const templateParamsSchema = z.object({ templateId: z.string().min(1) })
 const stepsInputSchema = z.object({
@@ -352,6 +354,26 @@ export function registerSelfCareRoutes(
       return selfCareCompletionSchema.parse(completion)
     },
   )
+
+  app.patch('/api/v1/self-care/completions/:completionId', async (request) => {
+    const params = parseOrThrow(
+      completionParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const input = parseOrThrow(
+      selfCareCompletionUpdateInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const completion = await service.updateCompletion(
+      context,
+      params.completionId,
+      input,
+    )
+    return selfCareCompletionSchema.parse(completion)
+  })
 
   app.post(
     '/api/v1/self-care/occurrences/:occurrenceId/skip',

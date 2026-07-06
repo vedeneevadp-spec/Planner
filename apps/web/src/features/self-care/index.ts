@@ -39,6 +39,7 @@ export {
   useSelfCareSettings,
   useSelfCareTemplates,
   useSkipSelfCareOccurrence,
+  useUpdateSelfCareCompletion,
   useUpdateSelfCareItem,
   useUpdateSelfCareMinimumItems,
   useUpdateSelfCareSettings,

@@ -48,6 +48,7 @@ import type {
   StoredSelfCareItemRecord,
   StoredSelfCareOccurrenceRecord,
   ToggleSelfCareGentleModeCommand,
+  UpdateSelfCareCompletionCommand,
   UpdateSelfCareItemCommand,
   UpdateSelfCareMinimumItemsCommand,
   UpdateSelfCareRitualStepsCommand,
@@ -872,6 +873,167 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     })
   }
 
+  async updateCompletion(command: UpdateSelfCareCompletionCommand) {
+    const row = await withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        const current = await trx
+          .selectFrom('app.self_care_completions as completion')
+          .innerJoin(
+            'app.self_care_items as item',
+            'item.id',
+            'completion.item_id',
+          )
+          .select([
+            'completion.alternative_title',
+            'completion.completed_at',
+            'completion.completed_variant',
+            'completion.created_at',
+            'completion.created_by',
+            'completion.currency',
+            'completion.duration_minutes',
+            'completion.energy_after',
+            'completion.energy_before',
+            'completion.exercise_sets',
+            'completion.id',
+            'completion.item_id',
+            'completion.measurement_unit',
+            'completion.measurement_value',
+            'completion.mood_after',
+            'completion.mood_before',
+            'completion.note',
+            'completion.occurrence_id',
+            'completion.price',
+            'completion.scheduled_for',
+            'completion.status',
+            'completion.user_id',
+            'item.type as item_type',
+          ])
+          .where('completion.id', '=', command.completionId)
+          .where('completion.user_id', '=', command.context.actorUserId)
+          .where('item.workspace_id', '=', command.context.workspaceId)
+          .where('item.user_id', '=', command.context.actorUserId)
+          .where('item.deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        if (!current) {
+          return null
+        }
+
+        const merged = {
+          measurementValue:
+            command.input.measurementValue === undefined
+              ? current.measurement_value === null
+                ? null
+                : Number(current.measurement_value)
+              : command.input.measurementValue,
+          moodAfter:
+            command.input.moodAfter === undefined
+              ? current.mood_after
+              : command.input.moodAfter,
+          energyAfter:
+            command.input.energyAfter === undefined
+              ? current.energy_after
+              : command.input.energyAfter,
+        }
+
+        if (
+          current.item_type === 'measurement' &&
+          merged.measurementValue === null
+        ) {
+          throw new HttpError(
+            400,
+            'self_care_measurement_value_required',
+            'Measurement value is required.',
+          )
+        }
+
+        if (
+          current.item_type === 'exercise' &&
+          merged.measurementValue === null
+        ) {
+          throw new HttpError(
+            400,
+            'self_care_exercise_value_required',
+            'Exercise value is required.',
+          )
+        }
+
+        if (
+          current.item_type === 'mood_check' &&
+          merged.moodAfter === null &&
+          merged.energyAfter === null
+        ) {
+          throw new HttpError(
+            400,
+            'self_care_state_value_required',
+            'Mood or energy value is required.',
+          )
+        }
+
+        return trx
+          .updateTable('app.self_care_completions')
+          .set({
+            ...(command.input.alternativeTitle !== undefined
+              ? { alternative_title: command.input.alternativeTitle }
+              : {}),
+            ...(command.input.completedVariant !== undefined
+              ? { completed_variant: command.input.completedVariant }
+              : {}),
+            ...(command.input.currency !== undefined
+              ? { currency: command.input.currency }
+              : {}),
+            ...(command.input.durationMinutes !== undefined
+              ? { duration_minutes: command.input.durationMinutes }
+              : {}),
+            ...(command.input.energyAfter !== undefined
+              ? { energy_after: command.input.energyAfter }
+              : {}),
+            ...(command.input.energyBefore !== undefined
+              ? { energy_before: command.input.energyBefore }
+              : {}),
+            ...(command.input.exerciseSets !== undefined
+              ? { exercise_sets: JSON.stringify(command.input.exerciseSets) }
+              : {}),
+            ...(command.input.measurementUnit !== undefined
+              ? { measurement_unit: command.input.measurementUnit }
+              : {}),
+            ...(command.input.measurementValue !== undefined
+              ? { measurement_value: command.input.measurementValue }
+              : {}),
+            ...(command.input.moodAfter !== undefined
+              ? { mood_after: command.input.moodAfter }
+              : {}),
+            ...(command.input.moodBefore !== undefined
+              ? { mood_before: command.input.moodBefore }
+              : {}),
+            ...(command.input.note !== undefined
+              ? { note: command.input.note }
+              : {}),
+            ...(command.input.price !== undefined
+              ? { price: command.input.price }
+              : {}),
+          })
+          .where('id', '=', command.completionId)
+          .where('user_id', '=', command.context.actorUserId)
+          .returningAll()
+          .executeTakeFirst()
+      },
+      command.context.actorUserId,
+    )
+
+    if (!row) {
+      throw new HttpError(
+        404,
+        'self_care_completion_not_found',
+        'Self-care completion not found.',
+      )
+    }
+
+    return mapCompletionRow(row)
+  }
+
   skipOccurrence(command: SkipSelfCareOccurrenceCommand) {
     return this.recordOccurrenceStatus(
       command.context,
@@ -897,6 +1059,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           {
             alternativeTitle: null,
             completedVariant: null,
+            currency: null,
             durationMinutes: null,
             energyAfter: null,
             energyBefore: null,
@@ -906,6 +1069,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             moodAfter: null,
             moodBefore: null,
             note: command.input.note,
+            price: null,
             status: 'moved',
           },
           {
@@ -1519,6 +1683,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           {
             alternativeTitle: null,
             completedVariant: null,
+            currency: null,
             durationMinutes: null,
             energyAfter: null,
             energyBefore: null,
@@ -1528,6 +1693,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             moodAfter: null,
             moodBefore: null,
             note,
+            price: null,
             status,
           },
           {
@@ -2077,24 +2243,47 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       context.auth,
       async (executor) => {
         const root = await this.selectReadModelRootRows(executor, context)
-        const completionRows = await selectCompletions(executor, {
-          actorUserId: context.actorUserId ?? null,
-          completionRange: { from, to },
-          itemIds: root.itemIds,
-        })
+        const [completionRows, procedureRows, appointmentRows] =
+          await Promise.all([
+            selectCompletions(executor, {
+              actorUserId: context.actorUserId ?? null,
+              completionRange: { from, to },
+              itemIds: root.itemIds,
+            }),
+            selectChildren(
+              executor,
+              'app.self_care_procedure_details',
+              root.itemIds,
+            ),
+            selectChildren(
+              executor,
+              'app.self_care_appointment_details',
+              root.itemIds,
+            ),
+          ])
         const stepCompletionRows = await selectStepCompletions(
           executor,
           completionRows.map((row) => row.id),
         )
 
-        return { ...root, completionRows, stepCompletionRows }
+        return {
+          ...root,
+          appointmentRows,
+          completionRows,
+          procedureRows,
+          stepCompletionRows,
+        }
       },
       context.actorUserId,
     )
 
     return {
+      appointmentDetails: rows.appointmentRows.map((row) =>
+        mapAppointmentRow(row),
+      ),
       completions: rows.completionRows.map((row) => mapCompletionRow(row)),
       items: rows.itemRows.map((row) => mapItemRow(row)),
+      procedureDetails: rows.procedureRows.map((row) => mapProcedureRow(row)),
       stepCompletions: rows.stepCompletionRows.map((row) =>
         mapStepCompletionRow(row),
       ),
@@ -2703,6 +2892,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         completed_at: completion.completedAt,
         completed_variant: completion.completedVariant,
         created_by: actorUserId,
+        currency: completion.currency,
         duration_minutes: completion.durationMinutes,
         energy_after: completion.energyAfter,
         energy_before: completion.energyBefore,
@@ -2715,6 +2905,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         mood_before: completion.moodBefore,
         note: completion.note,
         occurrence_id: completion.occurrenceId,
+        price: completion.price,
         scheduled_for: completion.scheduledFor,
         status: completion.status,
         user_id: completion.userId,
@@ -2752,6 +2943,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         alternative_title: input.completion.alternativeTitle,
         completed_at: input.completion.completedAt,
         completed_variant: input.completion.completedVariant,
+        currency: input.completion.currency,
         duration_minutes: input.completion.durationMinutes,
         energy_after: input.completion.energyAfter,
         energy_before: input.completion.energyBefore,
@@ -2762,6 +2954,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         mood_before: input.completion.moodBefore,
         note: input.completion.note,
         occurrence_id: input.completion.occurrenceId,
+        price: input.completion.price,
         scheduled_for: input.completion.scheduledFor,
         status: input.completion.status,
       })
