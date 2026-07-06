@@ -308,6 +308,7 @@ export interface AppSelfCareCompletionsTable {
   completed_variant: 'alternative' | 'full' | 'minimum' | null
   created_at: Generated<TimestampColumn>
   created_by: string | null
+  currency: string | null
   duration_minutes: number | null
   energy_after: number | null
   energy_before: number | null
@@ -328,6 +329,11 @@ export interface AppSelfCareCompletionsTable {
   mood_before: number | null
   note: string
   occurrence_id: string | null
+  price: ColumnType<
+    number | null,
+    number | string | null,
+    number | string | null
+  >
   scheduled_for: DateColumn | null
   status:
     'alternative_done' | 'cancelled' | 'done' | 'moved' | 'partial' | 'skipped'

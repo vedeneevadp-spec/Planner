@@ -854,6 +854,7 @@ function createCompletion(
     completedAt: '2026-06-20T10:00:00.000Z',
     completedVariant: 'full',
     createdAt: '2026-06-20T10:00:00.000Z',
+    currency: null,
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
@@ -866,6 +867,7 @@ function createCompletion(
     moodBefore: null,
     note: '',
     occurrenceId: null,
+    price: null,
     scheduledFor: null,
     status: 'done',
     userId: 'user-1',
@@ -1033,8 +1035,10 @@ function createHistory(
   overrides: Partial<SelfCareHistoryResponse> = {},
 ): SelfCareHistoryResponse {
   return {
+    appointmentDetails: [],
     completions: [],
     items: [],
+    procedureDetails: [],
     stepCompletions: [],
     ...overrides,
   }

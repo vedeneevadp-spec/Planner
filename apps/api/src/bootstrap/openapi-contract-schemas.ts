@@ -864,6 +864,7 @@ export function createSelfCareContractSchemas(): Record<
       completedAt: stringSchema(),
       completedVariant: nullableEnumSchema(['full', 'minimum', 'alternative']),
       createdAt: stringSchema(),
+      currency: nullableStringSchema(),
       durationMinutes: nullablePositiveIntegerSchema(),
       energyAfter: nullableIntegerRangeSchema(1, 5),
       energyBefore: nullableIntegerRangeSchema(1, 5),
@@ -876,12 +877,38 @@ export function createSelfCareContractSchemas(): Record<
       moodBefore: nullableIntegerRangeSchema(1, 5),
       note: stringSchema(),
       occurrenceId: nullableStringSchema(),
+      price: nullableNonnegativeNumberSchema(),
       scheduledFor: nullableStringSchema(),
       status: enumSchema(selfCareCompletionStatusSchema.options),
       userId: stringSchema(),
     }),
     SelfCareCompletionInput: objectSchema(
       selfCareCompletionInputProperties(),
+      [],
+    ),
+    SelfCareCompletionUpdateInput: objectSchema(
+      {
+        alternativeTitle: nullableStringSchema(),
+        completedVariant: nullableEnumSchema([
+          'full',
+          'minimum',
+          'alternative',
+        ]),
+        currency: nullableStringSchema(),
+        durationMinutes: nullablePositiveIntegerSchema(),
+        energyAfter: nullableIntegerRangeSchema(1, 5),
+        energyBefore: nullableIntegerRangeSchema(1, 5),
+        exerciseSets: arrayOfRef('SelfCareExerciseSet'),
+        measurementUnit: nullableStringSchema(),
+        measurementValue: nullableNumberSchema(),
+        moodAfter: nullableIntegerRangeSchema(1, 5),
+        moodBefore: nullableIntegerRangeSchema(1, 5),
+        note: {
+          maxLength: 1200,
+          type: 'string',
+        },
+        price: nullableNonnegativeNumberSchema(),
+      },
       [],
     ),
     SelfCareCourseDetails: objectSchema({
@@ -973,8 +1000,10 @@ export function createSelfCareContractSchemas(): Record<
       targetCount: nonnegativeIntegerSchema(),
     }),
     SelfCareHistoryResponse: objectSchema({
+      appointmentDetails: arrayOfRef('SelfCareAppointmentDetails'),
       completions: arrayOfRef('SelfCareCompletion'),
       items: arrayOfRef('SelfCareItem'),
+      procedureDetails: arrayOfRef('SelfCareProcedureDetails'),
       stepCompletions: arrayOfRef('SelfCareRitualStepCompletion'),
     }),
     SelfCareItem: objectSchema({
@@ -1771,6 +1800,7 @@ function selfCareCompletionInputProperties(): SchemaProperties {
     alternativeTitle: nullableStringSchema(),
     completedAt: stringSchema(),
     completedVariant: nullableEnumSchema(['full', 'minimum', 'alternative']),
+    currency: nullableStringSchema(),
     durationMinutes: nullablePositiveIntegerSchema(),
     energyAfter: nullableIntegerRangeSchema(1, 5),
     energyBefore: nullableIntegerRangeSchema(1, 5),
@@ -1784,6 +1814,7 @@ function selfCareCompletionInputProperties(): SchemaProperties {
       maxLength: 1200,
       type: 'string',
     },
+    price: nullableNonnegativeNumberSchema(),
     status: {
       ...enumSchema(selfCareCompletionStatusSchema.options),
       default: 'done',

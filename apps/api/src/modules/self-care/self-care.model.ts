@@ -2,6 +2,7 @@ import type {
   SelfCareAnalyticsResponse,
   SelfCareCompletion,
   SelfCareCompletionInput,
+  SelfCareCompletionUpdateInput,
   SelfCareDailyState,
   SelfCareDailyStateInput,
   SelfCareDashboardResponse,
@@ -139,6 +140,12 @@ export interface CompleteCourseSessionCommand {
   context: SelfCareWriteContext
   input: SelfCareCompletionInput
   itemId: string
+}
+
+export interface UpdateSelfCareCompletionCommand {
+  completionId: string
+  context: SelfCareWriteContext
+  input: SelfCareCompletionUpdateInput
 }
 
 export interface MoveSelfCareOccurrenceCommand {

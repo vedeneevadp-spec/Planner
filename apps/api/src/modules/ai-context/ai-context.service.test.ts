@@ -522,6 +522,7 @@ void describe('AiContextService', () => {
       [],
       {
         selfCareHistory: {
+          appointmentDetails: [],
           completions: [
             createSelfCareCompletion({
               completedAt: '2026-06-17T09:00:00.000Z',
@@ -537,6 +538,7 @@ void describe('AiContextService', () => {
               type: 'ritual',
             }),
           ],
+          procedureDetails: [],
           stepCompletions: [],
         },
         selfCarePlan: {
@@ -707,6 +709,7 @@ void describe('AiContextService', () => {
     const from = addDateDays(today, -6)
     const service = createService([], [], {
       selfCareHistory: {
+        appointmentDetails: [],
         completions: [
           createSelfCareCompletion({
             completedAt: `${yesterday}T09:00:00.000Z`,
@@ -723,6 +726,7 @@ void describe('AiContextService', () => {
             type: 'ritual',
           }),
         ],
+        procedureDetails: [],
         stepCompletions: [],
       },
       selfCarePlan: {
@@ -1123,8 +1127,10 @@ function createService(
       getHistory: () =>
         Promise.resolve(
           options.selfCareHistory ?? {
+            appointmentDetails: [],
             completions: [],
             items: [],
+            procedureDetails: [],
             stepCompletions: [],
           },
         ),

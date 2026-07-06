@@ -1803,6 +1803,20 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['selfCare'],
       }),
     },
+    '/api/v1/self-care/completions/{completionId}': {
+      patch: createJsonOperation({
+        operationId: 'updateSelfCareCompletion',
+        parameters: [
+          idPathParameter('completionId'),
+          ...workspaceWriteParameters(),
+        ],
+        requestSchema: 'SelfCareCompletionUpdateInput',
+        responseSchema: 'SelfCareCompletion',
+        security: authenticatedSecurity(),
+        summary: 'Update a self-care completion record',
+        tags: ['selfCare'],
+      }),
+    },
     '/api/v1/self-care/occurrences/{occurrenceId}/skip': {
       post: createJsonOperation({
         operationId: 'skipSelfCareOccurrence',

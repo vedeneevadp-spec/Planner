@@ -10,6 +10,7 @@ import {
   useMoveSelfCareOccurrence,
   useScheduleSelfCareItem,
   useSkipSelfCareOccurrence,
+  useUpdateSelfCareCompletion,
   useUpdateSelfCareItem,
   useUpdateSelfCareSettings,
   useUpsertSelfCareRitualStepDraft,
@@ -28,6 +29,7 @@ export function useSelfCarePageMutations() {
   const createItemMutation = useCreateSelfCareItem()
   const createFromTemplateMutation = useCreateSelfCareItemFromTemplate()
   const updateItemMutation = useUpdateSelfCareItem()
+  const updateCompletionMutation = useUpdateSelfCareCompletion()
   const updateSettingsMutation = useUpdateSelfCareSettings()
   const upsertRitualStepDraftMutation = useUpsertSelfCareRitualStepDraft()
   const isActionBusy =
@@ -43,6 +45,7 @@ export function useSelfCarePageMutations() {
     createItemMutation.isPending ||
     createFromTemplateMutation.isPending ||
     updateItemMutation.isPending ||
+    updateCompletionMutation.isPending ||
     updateSettingsMutation.isPending
   const mutationErrors = [
     completeOccurrenceMutation.error,
@@ -57,6 +60,7 @@ export function useSelfCarePageMutations() {
     createItemMutation.error,
     createFromTemplateMutation.error,
     updateItemMutation.error,
+    updateCompletionMutation.error,
     updateSettingsMutation.error,
     upsertRitualStepDraftMutation.error,
   ] as const
@@ -76,6 +80,7 @@ export function useSelfCarePageMutations() {
     scheduleItemMutation,
     skipOccurrenceMutation,
     updateItemMutation,
+    updateCompletionMutation,
     updateSettingsMutation,
     upsertRitualStepDraftMutation,
   }

@@ -5,6 +5,8 @@ import {
   type SelfCareCompletionInput,
   selfCareCompletionInputSchema,
   selfCareCompletionSchema,
+  type SelfCareCompletionUpdateInput,
+  selfCareCompletionUpdateInputSchema,
   type SelfCareDailyState,
   type SelfCareDailyStateInput,
   selfCareDailyStateInputSchema,
@@ -186,6 +188,10 @@ export interface SelfCareApiClient {
     itemId: string,
     input: SelfCareItemUpdateInput,
   ) => Promise<SelfCareItem>
+  updateCompletion: (
+    completionId: string,
+    input: SelfCareCompletionUpdateInput,
+  ) => Promise<SelfCareCompletion>
   updateMinimumItems: (
     input: SelfCareMinimumItemsUpdateInput,
   ) => Promise<SelfCareSettingsResponse>
@@ -275,6 +281,15 @@ export function createSelfCareApiClient(
         body: selfCareRitualCompletionInputSchema.parse(input ?? {}),
         method: 'POST',
         path: `/api/v1/self-care/occurrences/${encodeURIComponent(occurrenceId)}/complete`,
+        responseSchema: selfCareCompletionSchema,
+        writeAccess: true,
+      })
+    },
+    updateCompletion(completionId, input) {
+      return request({
+        body: selfCareCompletionUpdateInputSchema.parse(input),
+        method: 'PATCH',
+        path: `/api/v1/self-care/completions/${encodeURIComponent(completionId)}`,
         responseSchema: selfCareCompletionSchema,
         writeAccess: true,
       })

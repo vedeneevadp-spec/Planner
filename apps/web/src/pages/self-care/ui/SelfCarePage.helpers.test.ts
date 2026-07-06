@@ -45,6 +45,7 @@ import {
   formatTomorrowPlanSummary,
   getAddCareFilterCategories,
   getAddCareFilterLabel,
+  getCompletionCost,
   getCourseProgress,
   getCourseUnitLabel,
   getCreatedTemplateIds,
@@ -658,6 +659,65 @@ describe('SelfCarePage helpers', () => {
     expect(getCourseUnitLabel('days', 5)).toBe('дней')
   })
 
+  it('resolves completion cost from completion and history details', () => {
+    const procedureCompletion = createCompletion({
+      itemId: 'procedure-1',
+      price: null,
+    })
+    const appointmentCompletion = createCompletion({
+      itemId: 'appointment-1',
+      occurrenceId: 'occurrence-1',
+      price: null,
+    })
+
+    expect(
+      getCompletionCost(
+        createCompletion({
+          currency: 'USD',
+          price: 99,
+        }),
+        createItem({ type: 'procedure' }),
+        {
+          appointmentDetails: [],
+          procedureDetails: [
+            createProcedureDetails({ defaultPrice: 1500, itemId: 'item-1' }),
+          ],
+        },
+      ),
+    ).toEqual({ currency: 'USD', price: 99 })
+    expect(
+      getCompletionCost(
+        procedureCompletion,
+        createItem({ id: 'procedure-1', type: 'procedure' }),
+        {
+          appointmentDetails: [],
+          procedureDetails: [
+            createProcedureDetails({
+              defaultPrice: 2300,
+              itemId: 'procedure-1',
+            }),
+          ],
+        },
+      ),
+    ).toEqual({ currency: 'RUB', price: 2300 })
+    expect(
+      getCompletionCost(
+        appointmentCompletion,
+        createItem({ id: 'appointment-1', type: 'appointment' }),
+        {
+          appointmentDetails: [
+            createAppointmentDetails({
+              itemId: 'appointment-1',
+              occurrenceId: 'occurrence-1',
+              price: 4200,
+            }),
+          ],
+          procedureDetails: [],
+        },
+      ),
+    ).toEqual({ currency: 'RUB', price: 4200 })
+  })
+
   it('derives labels and exact schedule affordances by item type', () => {
     expect(shouldUseExactSchedule('appointment')).toBe(true)
     expect(shouldUseExactSchedule('habit')).toBe(false)
@@ -811,6 +871,7 @@ function createCompletion(
     completedAt: '2026-06-22T08:00:00.000Z',
     completedVariant: 'full',
     createdAt: '2026-06-22T08:00:00.000Z',
+    currency: null,
     durationMinutes: null,
     energyAfter: null,
     energyBefore: null,
@@ -823,6 +884,7 @@ function createCompletion(
     moodBefore: null,
     note: '',
     occurrenceId: null,
+    price: null,
     scheduledFor: null,
     status: 'done',
     userId: 'user-1',

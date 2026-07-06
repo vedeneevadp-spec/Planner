@@ -2,6 +2,7 @@ import {
   type HabitTodayResponse,
   type SelfCareCompletion,
   type SelfCareCompletionInput,
+  type SelfCareCompletionUpdateInput,
   type SelfCareDailyStateInput,
   type SelfCareDashboardResponse,
   type SelfCareHistoryResponse,
@@ -57,6 +58,11 @@ interface RequiredOccurrenceMutationVariables<TInput> {
 interface ItemCompletionVariables<TInput> {
   input?: TInput | undefined
   itemId: string
+}
+
+interface CompletionUpdateVariables {
+  completionId: string
+  input: SelfCareCompletionUpdateInput
 }
 
 interface ItemScheduleVariables {
@@ -540,6 +546,27 @@ export function useCompleteSelfCareItemNow() {
         workspaceId,
         SELF_CARE_COMPLETION_CHANGE_SCOPES,
         SELF_CARE_STALE_ONLY_INVALIDATION,
+      )
+      return completion
+    },
+  })
+}
+
+export function useUpdateSelfCareCompletion() {
+  const queryClient = useQueryClient()
+  const { api, session, workspaceId } = useSelfCareApi()
+
+  return useMutation({
+    mutationFn: async ({ completionId, input }: CompletionUpdateVariables) => {
+      assertSession(session, 'обновить запись заботы')
+      const completion = await requireSelfCareApi(api).updateCompletion(
+        completionId,
+        input,
+      )
+      queueSelfCareInvalidation(
+        queryClient,
+        workspaceId,
+        SELF_CARE_COMPLETION_CHANGE_SCOPES,
       )
       return completion
     },

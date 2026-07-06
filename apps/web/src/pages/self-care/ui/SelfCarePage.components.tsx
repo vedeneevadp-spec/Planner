@@ -1,4 +1,5 @@
 import type {
+  SelfCareCompletion,
   SelfCareListResponse,
   SelfCareTodayItem,
 } from '@planner/contracts'
@@ -13,6 +14,7 @@ import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import {
   CheckIcon,
+  EditIcon,
   GearIcon,
   IconMark,
   ImageStackIcon,
@@ -23,6 +25,7 @@ import {
 import {
   canRestartCourse,
   CATEGORY_LABELS,
+  formatCompletionCost,
   formatCompletionMeasurementHistoryValue,
   formatCompletionState,
   formatCourseCompletionState,
@@ -38,6 +41,7 @@ import {
   formatStateSummary,
   formatTime,
   formatTomorrowPlanSummary,
+  getCompletionCost,
   getCourseProgress,
   getEffectiveRitualStepIds,
   getPrimaryActionLabel,
@@ -647,9 +651,15 @@ export function SelfCareRitualsTab({
 }
 
 export function SelfCareHistoryTab({
+  defaultCurrency,
   history,
+  isBusy,
+  onEditCompletion,
 }: {
+  defaultCurrency: string
   history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
+  isBusy: boolean
+  onEditCompletion: (completion: SelfCareCompletion) => void
 }) {
   const itemById = new Map(
     (history?.items ?? []).map((item) => [item.id, item]),
@@ -674,12 +684,25 @@ export function SelfCareHistoryTab({
           completion,
           item,
         )
+        const completionCost = getCompletionCost(completion, item, {
+          appointmentDetails: history?.appointmentDetails ?? [],
+          procedureDetails: history?.procedureDetails ?? [],
+        })
+        const costHistoryValue = formatCompletionCost(
+          completionCost,
+          defaultCurrency,
+        )
         return (
           <article key={completion.id} className={styles.historyCard}>
             <time>{formatDate(completion.completedAt.slice(0, 10))}</time>
             <div>
               <h3>{item?.title ?? 'Забота о себе'}</h3>
               <p>{STATUS_LABELS[completion.status]}</p>
+              {costHistoryValue ? (
+                <p className={styles.measurementHistoryValue}>
+                  {costHistoryValue}
+                </p>
+              ) : null}
               {measurementHistoryValue ? (
                 <p className={styles.measurementHistoryValue}>
                   {measurementHistoryValue}
@@ -693,6 +716,21 @@ export function SelfCareHistoryTab({
               {completion.note ? (
                 <p className={styles.noteText}>{completion.note}</p>
               ) : null}
+            </div>
+            <div className={styles.historyCardActions}>
+              <button
+                className={cx(
+                  styles.cardActionButton,
+                  styles.cardActionButtonSoft,
+                )}
+                type="button"
+                disabled={isBusy}
+                title="Редактировать"
+                aria-label={`Редактировать запись «${item?.title ?? 'Забота о себе'}»`}
+                onClick={() => onEditCompletion(completion)}
+              >
+                <EditIcon size={17} strokeWidth={2.1} />
+              </button>
             </div>
           </article>
         )

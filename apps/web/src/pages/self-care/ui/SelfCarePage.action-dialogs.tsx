@@ -1,6 +1,9 @@
 import type {
+  SelfCareCompletion,
   SelfCareCompletionInput,
+  SelfCareCompletionUpdateInput,
   SelfCareIntervalUnit,
+  SelfCareItem,
   SelfCareItemScheduleInput,
   SelfCareTodayItem,
 } from '@planner/contracts'
@@ -25,6 +28,7 @@ import {
   formatExercisePlan,
   formatExerciseValue,
   formatMeasurementTarget,
+  formatMoney,
   formatOptionalNumber,
   getCourseUnitLabel,
   getCurrentExerciseCompletion,
@@ -36,6 +40,7 @@ import {
   getTypeLabel,
   INTERVAL_UNIT_SELECT_OPTIONS,
   normalizeOptionalText,
+  parseBoundedInteger,
   parseOptionalPrice,
   parsePositiveInteger,
   parseRequiredMeasurementNumber,
@@ -514,6 +519,312 @@ export function SelfCareScheduleDialog({
   )
 }
 
+const COMPLETION_COST_ITEM_TYPES = new Set<SelfCareItem['type']>([
+  'appointment',
+  'medical',
+  'procedure',
+])
+
+export function SelfCareCompletionEditDialog({
+  completion,
+  defaultCurrency,
+  errorMessage,
+  initialCost,
+  isBusy,
+  item,
+  onClose,
+  onSubmit,
+}: {
+  completion: SelfCareCompletion
+  defaultCurrency: string
+  errorMessage: string | null
+  initialCost: Pick<SelfCareCompletion, 'currency' | 'price'>
+  isBusy: boolean
+  item: SelfCareItem | null
+  onClose: () => void
+  onSubmit: (input: SelfCareCompletionUpdateInput) => void
+}) {
+  const [durationMinutes, setDurationMinutes] = useState(
+    formatOptionalNumber(completion.durationMinutes),
+  )
+  const [price, setPrice] = useState(formatOptionalNumber(initialCost.price))
+  const [currency, setCurrency] = useState(
+    initialCost.currency ?? defaultCurrency,
+  )
+  const [measurementValue, setMeasurementValue] = useState(
+    formatOptionalNumber(completion.measurementValue),
+  )
+  const [measurementUnit, setMeasurementUnit] = useState(
+    completion.measurementUnit ?? '',
+  )
+  const [moodAfter, setMoodAfter] = useState(
+    formatOptionalNumber(completion.moodAfter),
+  )
+  const [energyAfter, setEnergyAfter] = useState(
+    formatOptionalNumber(completion.energyAfter),
+  )
+  const [note, setNote] = useState(completion.note)
+  const showCost =
+    initialCost.price !== null ||
+    (item ? COMPLETION_COST_ITEM_TYPES.has(item.type) : false)
+  const showMeasurement =
+    completion.measurementValue !== null ||
+    item?.type === 'measurement' ||
+    item?.type === 'exercise'
+  const showState =
+    completion.moodAfter !== null ||
+    completion.energyAfter !== null ||
+    item?.type === 'mood_check'
+  const durationValue = durationMinutes.trim()
+    ? parsePositiveInteger(durationMinutes)
+    : null
+  const priceValue = parseOptionalPrice(price)
+  const measurementNumber = showMeasurement
+    ? parseRequiredMeasurementNumber(measurementValue)
+    : null
+  const moodAfterValue = moodAfter.trim()
+    ? parseBoundedInteger(moodAfter, 1, 5)
+    : null
+  const energyAfterValue = energyAfter.trim()
+    ? parseBoundedInteger(energyAfter, 1, 5)
+    : null
+  const isDurationValid = !durationMinutes.trim() || durationValue !== null
+  const isPriceValid = !price.trim() || priceValue !== null
+  const isMeasurementValid =
+    !showMeasurement ||
+    measurementNumber !== null ||
+    (item?.type !== 'measurement' && item?.type !== 'exercise')
+  const isMoodValid = !moodAfter.trim() || moodAfterValue !== null
+  const isEnergyValid = !energyAfter.trim() || energyAfterValue !== null
+  const canSubmit =
+    isDurationValid &&
+    isPriceValid &&
+    isMeasurementValid &&
+    isMoodValid &&
+    isEnergyValid
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  return createPortal(
+    <div
+      className={styles.modalOverlay}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="self-care-completion-edit-title"
+    >
+      <button
+        className={styles.backdropButton}
+        type="button"
+        tabIndex={-1}
+        aria-label="Закрыть редактирование записи"
+        onClick={onClose}
+      />
+
+      <section className={styles.modalPanel}>
+        <div className={styles.modalHeader}>
+          <div>
+            <h2 id="self-care-completion-edit-title">Редактировать запись</h2>
+            <p>
+              {item?.title ?? 'Забота о себе'} ·{' '}
+              {formatDate(completion.completedAt.slice(0, 10))}
+            </p>
+          </div>
+          <button
+            className={styles.closeButton}
+            type="button"
+            aria-label="Закрыть редактирование записи"
+            onClick={onClose}
+          >
+            <CloseIcon size={18} strokeWidth={2.2} />
+          </button>
+        </div>
+
+        <form
+          className={styles.scheduleForm}
+          onSubmit={(event) => {
+            event.preventDefault()
+
+            if (!canSubmit) {
+              return
+            }
+
+            onSubmit({
+              durationMinutes: durationValue,
+              note,
+              ...(showCost
+                ? {
+                    currency:
+                      priceValue === null
+                        ? null
+                        : (normalizeOptionalText(currency) ?? defaultCurrency),
+                    price: priceValue,
+                  }
+                : {}),
+              ...(showMeasurement
+                ? {
+                    measurementUnit: normalizeOptionalText(measurementUnit),
+                    measurementValue: measurementNumber,
+                  }
+                : {}),
+              ...(showState
+                ? {
+                    energyAfter: energyAfterValue,
+                    moodAfter: moodAfterValue,
+                  }
+                : {}),
+            })
+          }}
+        >
+          <label className={styles.dateField}>
+            <span>Длительность, мин</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              inputMode="numeric"
+              value={durationMinutes}
+              onChange={(event) => setDurationMinutes(event.target.value)}
+            />
+          </label>
+
+          {showCost ? (
+            <div className={styles.scheduleDetailsGrid}>
+              <label className={styles.dateField}>
+                <span>Стоимость</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="decimal"
+                  placeholder={formatMoney(0, currency || defaultCurrency)}
+                  value={price}
+                  onChange={(event) => setPrice(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.dateField}>
+                <span>Валюта</span>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {showMeasurement ? (
+            <div className={styles.scheduleDetailsGrid}>
+              <label className={styles.dateField}>
+                <span>
+                  {item?.type === 'exercise' ? 'Итог упражнения' : 'Значение'}
+                </span>
+                <input
+                  type="number"
+                  step="any"
+                  inputMode="decimal"
+                  required={
+                    item?.type === 'measurement' || item?.type === 'exercise'
+                  }
+                  value={measurementValue}
+                  onChange={(event) => setMeasurementValue(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.dateField}>
+                <span>Единица</span>
+                <input
+                  type="text"
+                  autoComplete="off"
+                  value={measurementUnit}
+                  onChange={(event) => setMeasurementUnit(event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {showState ? (
+            <div className={styles.scheduleDetailsGrid}>
+              <label className={styles.dateField}>
+                <span>Настроение после</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  step="1"
+                  inputMode="numeric"
+                  value={moodAfter}
+                  onChange={(event) => setMoodAfter(event.target.value)}
+                />
+              </label>
+
+              <label className={styles.dateField}>
+                <span>Энергия после</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="5"
+                  step="1"
+                  inputMode="numeric"
+                  value={energyAfter}
+                  onChange={(event) => setEnergyAfter(event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <label className={styles.dateField}>
+            <span>Комментарий</span>
+            <textarea
+              rows={3}
+              maxLength={1200}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+
+          {errorMessage ? (
+            <p className={styles.errorText}>{errorMessage}</p>
+          ) : null}
+
+          <div className={styles.modalActions}>
+            <button
+              className={styles.softButton}
+              type="button"
+              disabled={isBusy}
+              onClick={onClose}
+            >
+              Отмена
+            </button>
+            <button
+              className={styles.doneButton}
+              type="submit"
+              disabled={isBusy || !canSubmit}
+            >
+              Сохранить
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
+  )
+}
+
 export function SelfCareMeasurementDialog({
   entry,
   errorMessage,
@@ -592,6 +903,7 @@ export function SelfCareMeasurementDialog({
             onSubmit({
               alternativeTitle: null,
               completedVariant: 'full',
+              currency: null,
               durationMinutes: null,
               energyAfter: null,
               energyBefore: null,
@@ -601,6 +913,7 @@ export function SelfCareMeasurementDialog({
               moodAfter: null,
               moodBefore: null,
               note,
+              price: null,
               status: 'done',
             })
           }}
@@ -767,6 +1080,7 @@ export function SelfCareExerciseDialog({
     onSubmit({
       alternativeTitle: null,
       completedVariant: status === 'done' ? 'full' : null,
+      currency: null,
       durationMinutes: null,
       energyAfter: null,
       energyBefore: null,
@@ -776,6 +1090,7 @@ export function SelfCareExerciseDialog({
       moodAfter: null,
       moodBefore: null,
       note,
+      price: null,
       status,
     })
   }

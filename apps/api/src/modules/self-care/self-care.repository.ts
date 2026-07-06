@@ -33,6 +33,7 @@ import type {
   StoredSelfCareOccurrenceRecord,
   StoredSelfCareTemplateRecord,
   ToggleSelfCareGentleModeCommand,
+  UpdateSelfCareCompletionCommand,
   UpdateSelfCareItemCommand,
   UpdateSelfCareMinimumItemsCommand,
   UpdateSelfCareRitualStepsCommand,
@@ -123,6 +124,9 @@ export interface SelfCareRepository {
   updateItem: (
     command: UpdateSelfCareItemCommand,
   ) => Promise<StoredSelfCareItemRecord>
+  updateCompletion: (
+    command: UpdateSelfCareCompletionCommand,
+  ) => Promise<StoredSelfCareCompletionRecord>
   updateMinimumItems: (
     command: UpdateSelfCareMinimumItemsCommand,
   ) => Promise<SelfCareSettingsResult>

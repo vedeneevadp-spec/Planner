@@ -1,4 +1,5 @@
 import type {
+  SelfCareAppointmentDetails,
   SelfCareCategory,
   SelfCareCompletion,
   SelfCareCompletionInput,
@@ -13,6 +14,7 @@ import type {
   SelfCareItemType,
   SelfCareItemUpdateInput,
   SelfCareListResponse,
+  SelfCareProcedureDetails,
   SelfCareRepeatKind,
   SelfCareRitualStepDraftInput,
   SelfCareRitualStepDraftListResponse,
@@ -406,6 +408,7 @@ export function buildCompletionInput(
   return {
     alternativeTitle: null,
     completedVariant: 'full' as const,
+    currency: null,
     durationMinutes: entry.item.defaultDurationMinutes,
     energyAfter: null,
     energyBefore: null,
@@ -415,6 +418,7 @@ export function buildCompletionInput(
     moodAfter: null,
     moodBefore: null,
     note: '',
+    price: null,
     status: 'done' as const,
   }
 }
@@ -1541,6 +1545,72 @@ export function formatCompletionMeasurementHistoryValue(
   const sets = formatExerciseSetsSummary(completion)
 
   return sets ? `${value}, ${sets}` : value
+}
+
+export function formatCompletionCost(
+  completion: Pick<SelfCareCompletion, 'currency' | 'price'>,
+  fallbackCurrency = 'RUB',
+): string | null {
+  return completion.price === null || completion.price === undefined
+    ? null
+    : formatMoney(completion.price, completion.currency ?? fallbackCurrency)
+}
+
+export function getCompletionCost(
+  completion: Pick<
+    SelfCareCompletion,
+    'currency' | 'itemId' | 'occurrenceId' | 'price'
+  >,
+  item: Pick<SelfCareItem, 'type'> | null | undefined,
+  details: {
+    appointmentDetails: SelfCareAppointmentDetails[]
+    procedureDetails: SelfCareProcedureDetails[]
+  },
+): Pick<SelfCareCompletion, 'currency' | 'price'> {
+  if (completion.price !== null && completion.price !== undefined) {
+    return {
+      currency: completion.currency,
+      price: completion.price,
+    }
+  }
+
+  if (item?.type === 'appointment') {
+    const appointment =
+      details.appointmentDetails.find(
+        (candidate) =>
+          completion.occurrenceId !== null &&
+          candidate.occurrenceId === completion.occurrenceId,
+      ) ??
+      details.appointmentDetails.find(
+        (candidate) =>
+          candidate.itemId === completion.itemId &&
+          candidate.occurrenceId === null,
+      ) ??
+      details.appointmentDetails.find(
+        (candidate) => candidate.itemId === completion.itemId,
+      )
+
+    return {
+      currency: appointment?.currency ?? completion.currency,
+      price: appointment?.price ?? null,
+    }
+  }
+
+  if (item?.type === 'procedure') {
+    const procedure = details.procedureDetails.find(
+      (candidate) => candidate.itemId === completion.itemId,
+    )
+
+    return {
+      currency: procedure?.currency ?? completion.currency,
+      price: procedure?.defaultPrice ?? null,
+    }
+  }
+
+  return {
+    currency: completion.currency,
+    price: null,
+  }
 }
 
 export function formatMeasurementSummary(
