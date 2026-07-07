@@ -23,6 +23,13 @@ export {
 export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { usePlannerTimeZone } from './lib/usePlannerTimeZone'
+export {
+  downloadUserBackup,
+  getUserBackupErrorMessage,
+  parseUserBackupArchiveText,
+  previewUserBackupImport,
+  UserBackupApiError,
+} from './lib/user-backup-api'
 export { useSessionAuth } from './lib/useSessionAuth'
 export {
   type SessionFeatureApiConfig,
