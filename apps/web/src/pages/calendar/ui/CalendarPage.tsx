@@ -1004,6 +1004,7 @@ export function CalendarPage() {
             periodTransitionClass,
           )}
           aria-label="День"
+          tabIndex={0}
         >
           <div
             className={cx(styles.weekTimeGrid, styles.dayTimeGrid)}
@@ -1092,6 +1093,7 @@ export function CalendarPage() {
             periodTransitionClass,
           )}
           aria-label="Неделя"
+          tabIndex={0}
         >
           <div className={styles.weekHeaderGrid}>
             <div className={styles.timeZoneLabel} title={plannerTimeZone}>
@@ -1223,6 +1225,7 @@ export function CalendarPage() {
             periodTransitionClass,
           )}
           aria-label="Месяц"
+          tabIndex={0}
         >
           <div className={styles.monthWeekdays}>
             {WEEKDAY_LABELS.map((weekday) => (
@@ -1282,7 +1285,11 @@ export function CalendarPage() {
           </div>
         </section>
       ) : (
-        <section className={styles.scheduleSurface} aria-label="Расписание">
+        <section
+          className={styles.scheduleSurface}
+          aria-label="Расписание"
+          tabIndex={0}
+        >
           {scheduleDays.length > 0 ? (
             <div className={styles.scheduleList}>
               {scheduleDays.map((day) => {
