@@ -63,34 +63,19 @@ import {
   assertMoodCheckCompletionInput,
   buildScheduleDetailsStartsAt,
   hasScheduleDetails,
-  mapAlternativeRow,
-  mapAppointmentRow,
   mapCompletionRow,
   mapCompletionStatusToOccurrenceStatus,
-  mapCourseRow,
   mapDailyStateRow,
-  mapExerciseRow,
   mapItemRow,
-  mapMeasurementRow,
-  mapMedicalRow,
-  mapMinimumRow,
   mapOccurrenceRow,
-  mapProcedureRow,
   mapRuleRow,
-  mapSettingsRow,
-  mapStepCompletionRow,
   mapStepDraftRow,
   mapStepRow,
   mapTemplateRow,
-  selectChildren,
-  selectCompletions,
-  selectDailyStates,
-  selectOccurrences,
-  selectStepCompletions,
-  type SelfCareDateRange,
   shouldStoreAppointmentDetails,
   toPublicRitualStepDraft,
 } from './self-care.repository.postgres.helpers.js'
+import { PostgresSelfCareReadModelLoader } from './self-care.repository.postgres.read-model.js'
 import {
   addDays,
   buildAnalyticsResponse,
@@ -104,7 +89,6 @@ import {
   createCompletionRecord,
   createCourseDetailsRecord,
   createDailyStateRecord,
-  createDefaultMinimumItems,
   createDefaultSelfCareSettings,
   createExerciseDetailsRecord,
   createMeasurementDetailsRecord,
@@ -119,30 +103,25 @@ import {
   generateSelfCareOccurrencesForRange,
   getSelfCareCompletionDateKey,
   inferRitualCompletionStatus,
-  type SelfCareAnalyticsReadModel,
-  type SelfCareDashboardReadModel,
-  type SelfCareHistoryReadModel,
-  type SelfCareListReadModel,
-  type SelfCareOccurrenceGenerationReadModel,
-  type SelfCareOccurrencesReadModel,
-  type SelfCarePlanReadModel,
   serializeTimestamp,
   shouldDeactivateCompletedFlexibleGoal,
   shouldDeduplicateSelfCareItemCompletion,
   updateOccurrenceStatus,
 } from './self-care.shared.js'
 
-const EMPTY_SELF_CARE_USER_ID = '00000000-0000-0000-0000-000000000000'
-
 export class PostgresSelfCareRepository implements SelfCareRepository {
-  constructor(private readonly db: Kysely<DatabaseSchema>) {}
+  private readonly readModels: PostgresSelfCareReadModelLoader
+
+  constructor(private readonly db: Kysely<DatabaseSchema>) {
+    this.readModels = new PostgresSelfCareReadModelLoader(db)
+  }
 
   async listItems(
     context: SelfCareReadContext,
     filters: SelfCareListFilters = {},
   ) {
     return buildSelfCareListResponse(
-      await this.loadListItemsReadModel(context),
+      await this.readModels.loadListItemsReadModel(context),
       filters,
     )
   }
@@ -531,7 +510,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async generateOccurrences(command: GenerateSelfCareOccurrencesCommand) {
-    const state = await this.loadOccurrenceGenerationReadModel(
+    const state = await this.readModels.loadOccurrenceGenerationReadModel(
       command.context,
       { from: command.from, to: command.to },
     )
@@ -603,7 +582,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     )
     return buildDashboardResponse({
       date: command.date,
-      state: await this.loadDashboardReadModel(command.context, command.date),
+      state: await this.readModels.loadDashboardReadModel(
+        command.context,
+        command.date,
+      ),
     })
   }
 
@@ -615,7 +597,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     )
     return buildPlanResponse({
       from: command.from,
-      state: await this.loadPlanReadModel(
+      state: await this.readModels.loadPlanReadModel(
         command.context,
         command.from,
         command.to,
@@ -630,7 +612,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       command.from,
       command.to,
     )
-    const state = await this.loadOccurrencesReadModel(
+    const state = await this.readModels.loadOccurrencesReadModel(
       command.context,
       command.from,
       command.to,
@@ -1254,7 +1236,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   async getDailyState(context: SelfCareReadContext, date: string) {
     const actorUserId =
       context.actorUserId ??
-      (await this.findUserIdForWorkspace(context.workspaceId, context.auth))
+      (await this.readModels.findUserIdForWorkspace(
+        context.workspaceId,
+        context.auth,
+      ))
 
     if (!actorUserId) {
       return null
@@ -1315,7 +1300,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async getSettings(context: SelfCareReadContext) {
-    return this.loadSettingsState(context)
+    return this.readModels.loadSettingsState(context)
   }
 
   async updateSettings(command: UpdateSelfCareSettingsCommand) {
@@ -1402,7 +1387,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   async getRitualStepDrafts(command: GetSelfCareRitualStepDraftsCommand) {
     const actorUserId =
       command.context.actorUserId ??
-      (await this.findUserIdForWorkspace(
+      (await this.readModels.findUserIdForWorkspace(
         command.context.workspaceId,
         command.context.auth,
       ))
@@ -1517,7 +1502,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await this.generateReadOccurrences(context, from, to)
     return buildHistoryResponse({
       from,
-      state: await this.loadHistoryReadModel(context, from, to),
+      state: await this.readModels.loadHistoryReadModel(context, from, to),
       to,
     })
   }
@@ -1526,7 +1511,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await this.generateReadOccurrences(context, from, to)
     return buildAnalyticsResponse({
       from,
-      state: await this.loadAnalyticsReadModel(context, from, to),
+      state: await this.readModels.loadAnalyticsReadModel(context, from, to),
       to,
     })
   }
@@ -1718,7 +1703,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   ) {
     const actorUserId =
       context.actorUserId ??
-      (await this.findUserIdForWorkspace(context.workspaceId, context.auth))
+      (await this.readModels.findUserIdForWorkspace(
+        context.workspaceId,
+        context.auth,
+      ))
 
     if (!actorUserId) {
       return
@@ -1729,66 +1717,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       from,
       to,
     })
-  }
-
-  private async findUserIdForWorkspace(
-    workspaceId: string,
-    auth: SelfCareReadContext['auth'],
-  ): Promise<string | null> {
-    return withOptionalRls(this.db, auth, async (executor) => {
-      const row = await executor
-        .selectFrom('app.self_care_items')
-        .select('user_id')
-        .where('workspace_id', '=', workspaceId)
-        .where('deleted_at', 'is', null)
-        .orderBy('created_at asc')
-        .executeTakeFirst()
-
-      return row?.user_id ?? null
-    })
-  }
-
-  private async loadSettingsState(context: SelfCareReadContext) {
-    const actorUserId =
-      context.actorUserId ??
-      (await this.findUserIdForWorkspace(context.workspaceId, context.auth))
-    const userId = actorUserId ?? '00000000-0000-0000-0000-000000000000'
-
-    if (!actorUserId) {
-      return {
-        minimumItems: createDefaultMinimumItems(userId),
-        settings: createDefaultSelfCareSettings({ userId }),
-      }
-    }
-
-    const [settingsRows, minimumRows] = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) =>
-        [
-          await executor
-            .selectFrom('app.self_care_settings')
-            .selectAll()
-            .where('user_id', '=', actorUserId)
-            .execute(),
-          await executor
-            .selectFrom('app.self_care_minimum_items')
-            .selectAll()
-            .where('user_id', '=', actorUserId)
-            .execute(),
-        ] as const,
-      actorUserId,
-    )
-
-    return {
-      minimumItems:
-        minimumRows.length > 0
-          ? minimumRows.map((row) => mapMinimumRow(row))
-          : createDefaultMinimumItems(userId),
-      settings: settingsRows[0]
-        ? mapSettingsRow(settingsRows[0])
-        : createDefaultSelfCareSettings({ userId }),
-    }
   }
 
   private async loadProgressCompletionForDate(
@@ -1842,578 +1770,6 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
     const row = result.rows[0]
     return row ? serializeTimestamp(row.due_at) : null
-  }
-
-  private async loadListItemsReadModel(
-    context: SelfCareReadContext,
-  ): Promise<SelfCareListReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const [
-          alternativeRows,
-          ruleRows,
-          stepRows,
-          procedureRows,
-          appointmentRows,
-          medicalRows,
-          measurementRows,
-          exerciseRows,
-          courseRows,
-        ] = await Promise.all([
-          selectChildren(
-            executor,
-            'app.self_care_item_alternatives',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_schedule_rules',
-            root.itemIds,
-          ),
-          selectChildren(executor, 'app.self_care_ritual_steps', root.itemIds),
-          selectChildren(
-            executor,
-            'app.self_care_procedure_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_appointment_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_medical_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_measurement_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_exercise_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_course_details',
-            root.itemIds,
-          ),
-        ])
-
-        return {
-          ...root,
-          alternativeRows,
-          appointmentRows,
-          courseRows,
-          exerciseRows,
-          measurementRows,
-          medicalRows,
-          procedureRows,
-          ruleRows,
-          stepRows,
-        }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      alternatives: rows.alternativeRows.map((row) => mapAlternativeRow(row)),
-      appointmentDetails: rows.appointmentRows.map((row) =>
-        mapAppointmentRow(row),
-      ),
-      courseDetails: rows.courseRows.map((row) => mapCourseRow(row)),
-      exerciseDetails: rows.exerciseRows.map((row) => mapExerciseRow(row)),
-      items: rows.itemRows.map((row) => mapItemRow(row)),
-      medicalDetails: rows.medicalRows.map((row) => mapMedicalRow(row)),
-      measurementDetails: rows.measurementRows.map((row) =>
-        mapMeasurementRow(row),
-      ),
-      procedureDetails: rows.procedureRows.map((row) => mapProcedureRow(row)),
-      scheduleRules: rows.ruleRows.map((row) => mapRuleRow(row)),
-      steps: rows.stepRows.map((row) => mapStepRow(row)),
-    }
-  }
-
-  private async loadOccurrenceGenerationReadModel(
-    context: SelfCareReadContext,
-    occurrenceRange: SelfCareDateRange,
-  ): Promise<SelfCareOccurrenceGenerationReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const [ruleRows, occurrenceRows, completionRows, courseRows] =
-          await Promise.all([
-            selectChildren(
-              executor,
-              'app.self_care_schedule_rules',
-              root.itemIds,
-            ),
-            selectOccurrences(executor, {
-              actorUserId: context.actorUserId ?? null,
-              itemIds: root.itemIds,
-              occurrenceRange,
-            }),
-            selectCompletions(executor, {
-              actorUserId: context.actorUserId ?? null,
-              itemIds: root.itemIds,
-            }),
-            selectChildren(
-              executor,
-              'app.self_care_course_details',
-              root.itemIds,
-            ),
-          ])
-
-        return { ...root, completionRows, courseRows, occurrenceRows, ruleRows }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      completions: rows.completionRows.map((row) => mapCompletionRow(row)),
-      courseDetails: rows.courseRows.map((row) => mapCourseRow(row)),
-      items: rows.itemRows.map((row) => mapItemRow(row)),
-      occurrences: rows.occurrenceRows.map((row) => mapOccurrenceRow(row)),
-      scheduleRules: rows.ruleRows.map((row) => mapRuleRow(row)),
-    }
-  }
-
-  private async loadDashboardReadModel(
-    context: SelfCareReadContext,
-    date: string,
-  ): Promise<SelfCareDashboardReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const [
-          ruleRows,
-          occurrenceRows,
-          completionRows,
-          stepRows,
-          procedureRows,
-          appointmentRows,
-          measurementRows,
-          exerciseRows,
-          courseRows,
-          dailyStateRows,
-          settingsRows,
-          minimumRows,
-        ] = await Promise.all([
-          selectChildren(
-            executor,
-            'app.self_care_schedule_rules',
-            root.itemIds,
-          ),
-          selectOccurrences(executor, {
-            actorUserId: context.actorUserId ?? null,
-            itemIds: root.itemIds,
-            occurrenceRange: { from: date, to: addDays(date, 45) },
-            scheduledOccurrencesBefore: date,
-          }),
-          selectCompletions(executor, {
-            actorUserId: context.actorUserId ?? null,
-            itemIds: root.itemIds,
-          }),
-          selectChildren(executor, 'app.self_care_ritual_steps', root.itemIds),
-          selectChildren(
-            executor,
-            'app.self_care_procedure_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_appointment_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_measurement_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_exercise_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_course_details',
-            root.itemIds,
-          ),
-          selectDailyStates(executor, {
-            dailyStateRange: { from: date, to: date },
-            userId: root.userId,
-          }),
-          executor
-            .selectFrom('app.self_care_settings')
-            .selectAll()
-            .where('user_id', '=', root.userId)
-            .execute(),
-          executor
-            .selectFrom('app.self_care_minimum_items')
-            .selectAll()
-            .where('user_id', '=', root.userId)
-            .execute(),
-        ])
-
-        return {
-          ...root,
-          appointmentRows,
-          completionRows,
-          courseRows,
-          dailyStateRows,
-          exerciseRows,
-          measurementRows,
-          minimumRows,
-          occurrenceRows,
-          procedureRows,
-          ruleRows,
-          settingsRows,
-          stepRows,
-        }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      appointmentDetails: rows.appointmentRows.map((row) =>
-        mapAppointmentRow(row),
-      ),
-      completions: rows.completionRows.map((row) => mapCompletionRow(row)),
-      courseDetails: rows.courseRows.map((row) => mapCourseRow(row)),
-      dailyStates: rows.dailyStateRows.map((row) => mapDailyStateRow(row)),
-      exerciseDetails: rows.exerciseRows.map((row) => mapExerciseRow(row)),
-      items: rows.itemRows.map((row) => mapItemRow(row)),
-      measurementDetails: rows.measurementRows.map((row) =>
-        mapMeasurementRow(row),
-      ),
-      minimumItems: rows.minimumRows.length
-        ? rows.minimumRows.map((row) => mapMinimumRow(row))
-        : createDefaultMinimumItems(rows.userId),
-      occurrences: rows.occurrenceRows.map((row) => mapOccurrenceRow(row)),
-      procedureDetails: rows.procedureRows.map((row) => mapProcedureRow(row)),
-      scheduleRules: rows.ruleRows.map((row) => mapRuleRow(row)),
-      settings: rows.settingsRows[0]
-        ? mapSettingsRow(rows.settingsRows[0])
-        : createDefaultSelfCareSettings({ userId: rows.userId }),
-      steps: rows.stepRows.map((row) => mapStepRow(row)),
-    }
-  }
-
-  private async loadPlanReadModel(
-    context: SelfCareReadContext,
-    from: string,
-    to: string,
-  ): Promise<SelfCarePlanReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const [
-          ruleRows,
-          occurrenceRows,
-          completionRows,
-          stepRows,
-          procedureRows,
-          appointmentRows,
-          measurementRows,
-          exerciseRows,
-          courseRows,
-        ] = await Promise.all([
-          selectChildren(
-            executor,
-            'app.self_care_schedule_rules',
-            root.itemIds,
-          ),
-          selectOccurrences(executor, {
-            actorUserId: context.actorUserId ?? null,
-            itemIds: root.itemIds,
-            occurrenceRange: { from, to },
-          }),
-          selectCompletions(executor, {
-            actorUserId: context.actorUserId ?? null,
-            itemIds: root.itemIds,
-          }),
-          selectChildren(executor, 'app.self_care_ritual_steps', root.itemIds),
-          selectChildren(
-            executor,
-            'app.self_care_procedure_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_appointment_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_measurement_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_exercise_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_course_details',
-            root.itemIds,
-          ),
-        ])
-
-        return {
-          ...root,
-          appointmentRows,
-          completionRows,
-          courseRows,
-          exerciseRows,
-          measurementRows,
-          occurrenceRows,
-          procedureRows,
-          ruleRows,
-          stepRows,
-        }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      appointmentDetails: rows.appointmentRows.map((row) =>
-        mapAppointmentRow(row),
-      ),
-      completions: rows.completionRows.map((row) => mapCompletionRow(row)),
-      courseDetails: rows.courseRows.map((row) => mapCourseRow(row)),
-      exerciseDetails: rows.exerciseRows.map((row) => mapExerciseRow(row)),
-      items: rows.itemRows.map((row) => mapItemRow(row)),
-      measurementDetails: rows.measurementRows.map((row) =>
-        mapMeasurementRow(row),
-      ),
-      occurrences: rows.occurrenceRows.map((row) => mapOccurrenceRow(row)),
-      procedureDetails: rows.procedureRows.map((row) => mapProcedureRow(row)),
-      scheduleRules: rows.ruleRows.map((row) => mapRuleRow(row)),
-      steps: rows.stepRows.map((row) => mapStepRow(row)),
-    }
-  }
-
-  private async loadOccurrencesReadModel(
-    context: SelfCareReadContext,
-    from: string,
-    to: string,
-  ): Promise<SelfCareOccurrencesReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const occurrenceRows = await selectOccurrences(executor, {
-          actorUserId: context.actorUserId ?? null,
-          itemIds: root.itemIds,
-          occurrenceRange: { from, to },
-        })
-
-        return { occurrenceRows }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      occurrences: rows.occurrenceRows.map((row) => mapOccurrenceRow(row)),
-    }
-  }
-
-  private async loadHistoryReadModel(
-    context: SelfCareReadContext,
-    from: string,
-    to: string,
-  ): Promise<SelfCareHistoryReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const [completionRows, procedureRows, appointmentRows] =
-          await Promise.all([
-            selectCompletions(executor, {
-              actorUserId: context.actorUserId ?? null,
-              completionRange: { from, to },
-              itemIds: root.itemIds,
-            }),
-            selectChildren(
-              executor,
-              'app.self_care_procedure_details',
-              root.itemIds,
-            ),
-            selectChildren(
-              executor,
-              'app.self_care_appointment_details',
-              root.itemIds,
-            ),
-          ])
-        const stepCompletionRows = await selectStepCompletions(
-          executor,
-          completionRows.map((row) => row.id),
-        )
-
-        return {
-          ...root,
-          appointmentRows,
-          completionRows,
-          procedureRows,
-          stepCompletionRows,
-        }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      appointmentDetails: rows.appointmentRows.map((row) =>
-        mapAppointmentRow(row),
-      ),
-      completions: rows.completionRows.map((row) => mapCompletionRow(row)),
-      items: rows.itemRows.map((row) => mapItemRow(row)),
-      procedureDetails: rows.procedureRows.map((row) => mapProcedureRow(row)),
-      stepCompletions: rows.stepCompletionRows.map((row) =>
-        mapStepCompletionRow(row),
-      ),
-    }
-  }
-
-  private async loadAnalyticsReadModel(
-    context: SelfCareReadContext,
-    from: string,
-    to: string,
-  ): Promise<SelfCareAnalyticsReadModel> {
-    const rows = await withOptionalRls(
-      this.db,
-      context.auth,
-      async (executor) => {
-        const root = await this.selectReadModelRootRows(executor, context)
-        const [
-          ruleRows,
-          occurrenceRows,
-          completionRows,
-          stepRows,
-          procedureRows,
-          appointmentRows,
-          measurementRows,
-          exerciseRows,
-          courseRows,
-          dailyStateRows,
-        ] = await Promise.all([
-          selectChildren(
-            executor,
-            'app.self_care_schedule_rules',
-            root.itemIds,
-          ),
-          selectOccurrences(executor, {
-            actorUserId: context.actorUserId ?? null,
-            itemIds: root.itemIds,
-            occurrenceRange: { from, to: addDays(to, 45) },
-          }),
-          selectCompletions(executor, {
-            actorUserId: context.actorUserId ?? null,
-            completionRange: { from, to },
-            itemIds: root.itemIds,
-          }),
-          selectChildren(executor, 'app.self_care_ritual_steps', root.itemIds),
-          selectChildren(
-            executor,
-            'app.self_care_procedure_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_appointment_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_measurement_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_exercise_details',
-            root.itemIds,
-          ),
-          selectChildren(
-            executor,
-            'app.self_care_course_details',
-            root.itemIds,
-          ),
-          selectDailyStates(executor, {
-            dailyStateRange: { from, to },
-            userId: root.userId,
-          }),
-        ])
-
-        return {
-          ...root,
-          appointmentRows,
-          completionRows,
-          courseRows,
-          dailyStateRows,
-          exerciseRows,
-          measurementRows,
-          occurrenceRows,
-          procedureRows,
-          ruleRows,
-          stepRows,
-        }
-      },
-      context.actorUserId,
-    )
-
-    return {
-      appointmentDetails: rows.appointmentRows.map((row) =>
-        mapAppointmentRow(row),
-      ),
-      completions: rows.completionRows.map((row) => mapCompletionRow(row)),
-      courseDetails: rows.courseRows.map((row) => mapCourseRow(row)),
-      dailyStates: rows.dailyStateRows.map((row) => mapDailyStateRow(row)),
-      exerciseDetails: rows.exerciseRows.map((row) => mapExerciseRow(row)),
-      items: rows.itemRows.map((row) => mapItemRow(row)),
-      measurementDetails: rows.measurementRows.map((row) =>
-        mapMeasurementRow(row),
-      ),
-      occurrences: rows.occurrenceRows.map((row) => mapOccurrenceRow(row)),
-      procedureDetails: rows.procedureRows.map((row) => mapProcedureRow(row)),
-      scheduleRules: rows.ruleRows.map((row) => mapRuleRow(row)),
-      steps: rows.stepRows.map((row) => mapStepRow(row)),
-    }
-  }
-
-  private async selectReadModelRootRows(
-    executor: DatabaseExecutor,
-    context: SelfCareReadContext,
-  ) {
-    const itemQuery = executor
-      .selectFrom('app.self_care_items')
-      .selectAll()
-      .where('workspace_id', '=', context.workspaceId)
-      .where('deleted_at', 'is', null)
-    const itemRows = context.actorUserId
-      ? await itemQuery.where('user_id', '=', context.actorUserId).execute()
-      : await itemQuery.execute()
-
-    return {
-      itemIds: itemRows.map((item) => item.id),
-      itemRows,
-      userId:
-        context.actorUserId ?? itemRows[0]?.user_id ?? EMPTY_SELF_CARE_USER_ID,
-    }
   }
 
   private async insertCreatedRecords(
