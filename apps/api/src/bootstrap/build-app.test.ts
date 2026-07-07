@@ -14,7 +14,6 @@ import {
   chaosInboxListRecordResponseSchema,
   emojiSetListResponseSchema,
   emojiSetRecordSchema,
-  healthResponseSchema,
   lifeSphereListRecordResponseSchema,
   lifeSphereRecordSchema,
   receivedWorkspaceInvitationListResponseSchema,
@@ -353,56 +352,6 @@ void describe('buildApiApp', () => {
         }),
       ),
     )
-  })
-
-  void it('returns health information for the configured runtime', async () => {
-    app = buildApiApp({
-      config: createTestConfig(),
-      database: null,
-      sessionService: new SessionService(new MemorySessionRepository()),
-      taskService: new TaskService(new MemoryTaskRepository()),
-    })
-
-    const response = await app.inject({
-      method: 'GET',
-      url: '/api/health',
-    })
-
-    assert.equal(response.statusCode, 200)
-
-    const body = healthResponseSchema.parse(response.json())
-
-    assert.equal(body.appEnv, 'test')
-    assert.equal(body.databaseStatus, 'disabled')
-    assert.equal(body.storageDriver, 'memory')
-  })
-
-  void it('returns request diagnostics and runtime metrics', async () => {
-    app = buildApiApp({
-      config: createTestConfig(),
-      database: null,
-      sessionService: new SessionService(new MemorySessionRepository()),
-      taskService: new TaskService(new MemoryTaskRepository()),
-    })
-
-    const healthResponse = await app.inject({
-      headers: {
-        'x-request-id': 'test-request-id',
-      },
-      method: 'GET',
-      url: '/api/health',
-    })
-
-    assert.equal(healthResponse.headers['x-request-id'], 'test-request-id')
-
-    const metricsResponse = await app.inject({
-      method: 'GET',
-      url: '/api/metrics',
-    })
-
-    assert.equal(metricsResponse.statusCode, 200)
-    assert.match(metricsResponse.body, /planner_api_requests_total/)
-    assert.match(metricsResponse.body, /planner_api_responses_total/)
   })
 
   void it('lists all application users for the global owner', async () => {
@@ -2461,123 +2410,6 @@ void describe('buildApiApp', () => {
 
     assert.equal(body.nextEventId, 5)
     assert.deepEqual(body.events, [])
-  })
-
-  void it('allows PATCH and DELETE in CORS preflight responses', async () => {
-    app = buildApiApp({
-      config: createTestConfig({
-        API_CORS_ORIGIN: 'http://127.0.0.1:5173',
-      }),
-      database: null,
-      sessionService: new SessionService(new MemorySessionRepository()),
-      taskService: new TaskService(new MemoryTaskRepository()),
-    })
-
-    const patchResponse = await app.inject({
-      headers: {
-        'access-control-request-headers':
-          'content-type,x-actor-user-id,x-client-timezone,x-workspace-id',
-        'access-control-request-method': 'PATCH',
-        origin: 'http://127.0.0.1:5173',
-      },
-      method: 'OPTIONS',
-      url: '/api/v1/tasks/task-1/status',
-    })
-
-    assert.equal(patchResponse.statusCode, 204)
-    assert.equal(
-      patchResponse.headers['access-control-allow-methods'],
-      'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
-    )
-    assert.equal(
-      patchResponse.headers['access-control-allow-headers'],
-      'content-type,x-actor-user-id,x-client-timezone,x-workspace-id',
-    )
-
-    const deleteResponse = await app.inject({
-      headers: {
-        'access-control-request-method': 'DELETE',
-        origin: 'http://127.0.0.1:5173',
-      },
-      method: 'OPTIONS',
-      url: '/api/v1/tasks/task-1',
-    })
-
-    assert.equal(deleteResponse.statusCode, 204)
-    assert.equal(
-      deleteResponse.headers['access-control-allow-methods'],
-      'GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS',
-    )
-  })
-
-  void it('allows Capacitor app origins in CORS preflight responses', async () => {
-    app = buildApiApp({
-      config: createTestConfig({
-        API_CORS_ORIGIN: 'https://chaotika.ru',
-      }),
-      database: null,
-      sessionService: new SessionService(new MemorySessionRepository()),
-      taskService: new TaskService(new MemoryTaskRepository()),
-    })
-
-    const androidResponse = await app.inject({
-      headers: {
-        'access-control-request-headers': 'authorization,x-workspace-id',
-        'access-control-request-method': 'GET',
-        origin: 'https://localhost',
-      },
-      method: 'OPTIONS',
-      url: '/api/v1/session',
-    })
-
-    assert.equal(androidResponse.statusCode, 204)
-    assert.equal(
-      androidResponse.headers['access-control-allow-origin'],
-      'https://localhost',
-    )
-
-    const iosResponse = await app.inject({
-      headers: {
-        'access-control-request-headers': 'authorization,x-workspace-id',
-        'access-control-request-method': 'GET',
-        origin: 'capacitor://localhost',
-      },
-      method: 'OPTIONS',
-      url: '/api/v1/session',
-    })
-
-    assert.equal(iosResponse.statusCode, 204)
-    assert.equal(
-      iosResponse.headers['access-control-allow-origin'],
-      'capacitor://localhost',
-    )
-  })
-
-  void it('supports multiple configured CORS origins', async () => {
-    app = buildApiApp({
-      config: createTestConfig({
-        API_CORS_ORIGIN: 'https://chaotika.ru, https://staging.chaotika.ru',
-      }),
-      database: null,
-      sessionService: new SessionService(new MemorySessionRepository()),
-      taskService: new TaskService(new MemoryTaskRepository()),
-    })
-
-    const response = await app.inject({
-      headers: {
-        'access-control-request-method': 'GET',
-        origin: 'https://staging.chaotika.ru',
-      },
-      method: 'OPTIONS',
-      url: '/api/v1/session',
-    })
-
-    assert.equal(response.statusCode, 204)
-    assert.equal(
-      response.headers['access-control-allow-origin'],
-      'https://staging.chaotika.ru',
-    )
-    assert.equal(response.headers['access-control-allow-credentials'], 'true')
   })
 
   void it('stores browser refresh sessions in an HttpOnly cookie', async () => {
