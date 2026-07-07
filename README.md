@@ -45,6 +45,15 @@ dev seed и запускает API на `http://127.0.0.1:3001` вместе с 
 `apps/web/.env.example`; без `.env` клиент использует локальный API по
 умолчанию. Production runtime использует Timeweb PostgreSQL и Chaotika Auth.
 
+Локальный Docker Compose использует официальный образ PostgreSQL 18. У него
+`PGDATA` находится в version-specific директории `/var/lib/postgresql/18/docker`,
+поэтому volume монтируется в `/var/lib/postgresql`. Если локальный volume был
+создан на PostgreSQL 16, после смены образа PostgreSQL 18 увидит пустую
+version-specific директорию и поднимет fresh dev-базу. Для disposable локальных
+данных проще выполнить `docker compose down --volumes`, затем `npm run db:setup`.
+Если локальные данные нужно сохранить, сначала сделайте `npm run db:backup`, а
+после пересоздания volume восстановите `.dump` через `pg_restore`.
+
 ## Основные скрипты
 
 Полный список находится в `package.json`.
