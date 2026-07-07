@@ -15,7 +15,7 @@ services:
     ports:
       - '54329:5432'
     volumes:
-      - planner-postgres-data:/var/lib/postgresql/data
+      - planner-postgres-data:/var/lib/postgresql
 
 volumes:
   planner-postgres-data:
