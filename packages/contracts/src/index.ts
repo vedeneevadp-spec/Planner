@@ -188,6 +188,26 @@ export {
   workspaceUserRecordSchema,
 } from './api.js'
 export type {
+  UserBackupArchive,
+  UserBackupAsset,
+  UserBackupAssetKind,
+  UserBackupPreviewResponse,
+  UserBackupPreviewTable,
+  UserBackupRow,
+  UserBackupTableName,
+} from './backup.js'
+export {
+  USER_BACKUP_FORMAT,
+  USER_BACKUP_FORMAT_VERSION,
+  userBackupArchiveSchema,
+  userBackupAssetKindSchema,
+  userBackupAssetSchema,
+  userBackupPreviewResponseSchema,
+  userBackupPreviewTableSchema,
+  userBackupRowSchema,
+  userBackupTableNameSchema,
+} from './backup.js'
+export type {
   ChaosInboxBulkUpdateInput,
   ChaosInboxConvertToTaskResponse,
   ChaosInboxCreatedResponse,

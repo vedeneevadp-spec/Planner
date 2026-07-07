@@ -20,6 +20,10 @@ import {
   SmtpAuthEmailSender,
 } from './modules/auth/index.js'
 import {
+  PostgresUserBackupRepository,
+  UserBackupService,
+} from './modules/backups/index.js'
+import {
   ChaosInboxService,
   MemoryChaosInboxRepository,
   PostgresChaosInboxRepository,
@@ -159,6 +163,15 @@ export function createApiKernel(
           config.plannerAuth,
         )
       : undefined
+  const userBackupService = database
+    ? new UserBackupService(
+        new PostgresUserBackupRepository(
+          database.db,
+          config.iconAssetDirectory,
+        ),
+        env.npm_package_version ?? '1.0.0',
+      )
+    : undefined
   const iconAssetStorage = new LocalIconAssetStorage(config.iconAssetDirectory)
   const profileAvatarStorage = new LocalProfileAvatarStorage(
     path.join(config.iconAssetDirectory, 'profiles'),
@@ -241,6 +254,7 @@ export function createApiKernel(
     sessionService,
     taskTemplateService,
     taskService,
+    ...(userBackupService ? { userBackupService } : {}),
     voiceCommandService,
   })
 

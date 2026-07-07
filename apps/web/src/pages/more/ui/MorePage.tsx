@@ -1,10 +1,21 @@
-import { type FormEvent, type ReactNode, useState } from 'react'
+import type { UserBackupPreviewResponse } from '@planner/contracts'
+import {
+  type ChangeEvent,
+  type FormEvent,
+  type ReactNode,
+  useRef,
+  useState,
+} from 'react'
 import { Link } from 'react-router-dom'
 
 import { usePlanner } from '@/features/planner'
 import {
+  downloadUserBackup,
   getCreateSharedWorkspaceErrorMessage,
   getSessionReadinessConnectionView,
+  getUserBackupErrorMessage,
+  parseUserBackupArchiveText,
+  previewUserBackupImport,
   useCreateSharedWorkspace,
   usePlannerSession,
   UserAvatar,
@@ -15,12 +26,14 @@ import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import {
   ChatIcon,
+  DownloadIcon,
   EditIcon,
   GearIcon,
   MicIcon,
   MoonIcon,
   PlusIcon,
   SunIcon,
+  UploadIcon,
   UserIcon,
 } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
@@ -33,6 +46,7 @@ export function MorePage() {
   const planner = usePlanner()
   const { isDark, toggleTheme } = useColorTheme()
   const createSharedWorkspace = useCreateSharedWorkspace()
+  const backupFileInputRef = useRef<HTMLInputElement>(null)
   const [isWorkspaceActionsOpen, setIsWorkspaceActionsOpen] = useState(false)
   const [isCreateWorkspaceFormOpen, setIsCreateWorkspaceFormOpen] =
     useState(false)
@@ -42,9 +56,15 @@ export function MorePage() {
   >(null)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
+  const [isBackupBusy, setIsBackupBusy] = useState(false)
+  const [backupStatus, setBackupStatus] = useState<string | null>(null)
+  const [backupError, setBackupError] = useState<string | null>(null)
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const isPersonalWorkspace = session?.workspace.kind === 'personal'
   const isProfileVisible = Boolean(session && isPersonalWorkspace)
+  const isBackupsVisible = Boolean(
+    session && auth.accessToken && isPersonalWorkspace,
+  )
   const isAdminVisible =
     isPersonalWorkspace &&
     (session?.appRole === 'admin' || session?.appRole === 'owner')
@@ -133,6 +153,65 @@ export function MorePage() {
     }
 
     void auth.signOut()
+  }
+
+  async function handleDownloadBackup() {
+    if (!session || !auth.accessToken) {
+      return
+    }
+
+    setIsBackupBusy(true)
+    setBackupStatus(null)
+    setBackupError(null)
+
+    try {
+      const backup = await downloadUserBackup({
+        accessToken: auth.accessToken,
+        actorUserId: session.actorUserId,
+        workspaceId: session.workspaceId,
+      })
+
+      saveTextFile(backup)
+      setBackupStatus('Резервная копия скачана.')
+    } catch (error) {
+      setBackupError(getUserBackupErrorMessage(error))
+    } finally {
+      setIsBackupBusy(false)
+    }
+  }
+
+  async function handlePreviewBackupFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null
+    event.target.value = ''
+
+    if (!file || !session || !auth.accessToken) {
+      return
+    }
+
+    setIsBackupBusy(true)
+    setBackupStatus(null)
+    setBackupError(null)
+
+    try {
+      const archive = parseUserBackupArchiveText(await file.text())
+      const preview = await previewUserBackupImport({
+        accessToken: auth.accessToken,
+        actorUserId: session.actorUserId,
+        archive,
+        workspaceId: session.workspaceId,
+      })
+
+      setBackupStatus(getBackupPreviewMessage(preview))
+      setBackupError(
+        preview.warnings.length > 0
+          ? preview.warnings.map(getBackupWarningText).join(' ')
+          : null,
+      )
+    } catch (error) {
+      setBackupError(getUserBackupErrorMessage(error))
+    } finally {
+      setIsBackupBusy(false)
+    }
   }
 
   return (
@@ -290,6 +369,51 @@ export function MorePage() {
         </button>
       ) : null}
 
+      {isBackupsVisible ? (
+        <>
+          <p className={styles.sectionLabel}>Резервные копии</p>
+          <section className={styles.controlList} aria-label="Резервные копии">
+            <button
+              className={styles.listAction}
+              type="button"
+              disabled={isBackupBusy}
+              onClick={() => void handleDownloadBackup()}
+            >
+              <span className={styles.listIcon} aria-hidden="true">
+                <DownloadIcon size={19} strokeWidth={2} />
+              </span>
+              <span className={styles.listText}>Скачать копию</span>
+            </button>
+            <button
+              className={styles.listAction}
+              type="button"
+              disabled={isBackupBusy}
+              onClick={() => backupFileInputRef.current?.click()}
+            >
+              <span className={styles.listIcon} aria-hidden="true">
+                <UploadIcon size={19} strokeWidth={2} />
+              </span>
+              <span className={styles.listText}>Проверить файл</span>
+            </button>
+            <input
+              ref={backupFileInputRef}
+              className={styles.fileInput}
+              type="file"
+              aria-label="Файл резервной копии"
+              accept="application/json,.json"
+              disabled={isBackupBusy}
+              onChange={(event) => void handlePreviewBackupFile(event)}
+            />
+            {backupStatus ? (
+              <p className={styles.backupStatus}>{backupStatus}</p>
+            ) : null}
+            {backupError ? (
+              <p className={styles.backupError}>{backupError}</p>
+            ) : null}
+          </section>
+        </>
+      ) : null}
+
       {isWorkspaceParticipantsOpen && isSharedWorkspace ? (
         <WorkspaceParticipantsDialog
           isOpen={isWorkspaceParticipantsOpen}
@@ -432,4 +556,43 @@ function getConnectionIssueDebugDetails({
   }
 
   return details.join('\n')
+}
+
+function saveTextFile(file: { fileName: string; text: string }) {
+  const blob = new Blob([file.text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = file.fileName
+  link.rel = 'noopener'
+  document.body.append(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function getBackupPreviewMessage(preview: UserBackupPreviewResponse): string {
+  const rowCount = preview.tables.reduce(
+    (total, table) => total + table.count,
+    0,
+  )
+
+  return `Архив проверен: ${rowCount} записей, ${preview.assets.count} файлов.`
+}
+
+function getBackupWarningText(warning: string): string {
+  if (warning === 'Archive belongs to a different user.') {
+    return 'Архив создан для другого пользователя.'
+  }
+
+  if (warning === 'Archive belongs to a different workspace.') {
+    return 'Архив создан для другого пространства.'
+  }
+
+  if (warning === 'Only personal workspace archives can be restored.') {
+    return 'Можно восстанавливать только архивы личного пространства.'
+  }
+
+  return warning
 }

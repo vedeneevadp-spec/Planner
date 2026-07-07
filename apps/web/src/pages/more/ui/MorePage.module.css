@@ -142,7 +142,8 @@
 
 .createWorkspaceButton:disabled,
 .formPrimaryButton:disabled,
-.formGhostButton:disabled {
+.formGhostButton:disabled,
+.listAction:disabled {
   cursor: not-allowed;
   opacity: 0.58;
 }
@@ -308,6 +309,32 @@
 
 .controlList {
   gap: 0.58rem;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.backupStatus,
+.backupError {
+  margin: 0;
+  padding: 0 0.18rem;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.backupStatus {
+  color: var(--success);
+}
+
+.backupError {
+  color: var(--danger);
 }
 
 .listAction {

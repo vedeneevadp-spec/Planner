@@ -21,6 +21,8 @@ import {
   registerAuthRoutes,
   registerOAuthRoutes,
 } from '../modules/auth/index.js'
+import type { UserBackupService } from '../modules/backups/index.js'
+import { registerUserBackupRoutes } from '../modules/backups/index.js'
 import type { ChaosInboxService } from '../modules/chaos-inbox/index.js'
 import { registerChaosInboxRoutes } from '../modules/chaos-inbox/index.js'
 import type { CleaningService } from '../modules/cleaning/index.js'
@@ -90,6 +92,7 @@ export interface BuildApiAppOptions {
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
   taskService: TaskService
+  userBackupService?: UserBackupService
   voiceCommandService?: VoiceCommandService
 }
 
@@ -112,6 +115,7 @@ export function buildApiApp({
   sessionService,
   taskTemplateService,
   taskService,
+  userBackupService,
   voiceCommandService,
 }: BuildApiAppOptions) {
   const app = Fastify({
@@ -189,6 +193,9 @@ export function buildApiApp({
       })
     }
     registerSessionRoutes(instance, sessionService)
+    if (userBackupService) {
+      registerUserBackupRoutes(instance, sessionService, userBackupService)
+    }
     if (emojiSetService) {
       registerEmojiSetRoutes(instance, sessionService, emojiSetService)
     }
