@@ -246,105 +246,81 @@ const TABLE_EXPORT_QUERIES: TableExportQuery[] = [
   {
     name: 'projects',
     load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.projects', input),
+      selectActiveWorkspaceRows(executor, 'app.projects', input),
   },
   {
     name: 'tasks',
-    load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.tasks', input),
+    load: (executor, input) => selectTaskRows(executor, input),
   },
   {
     name: 'task_chains',
-    load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.task_chains', input),
+    load: (executor, input) => selectTaskChainRows(executor, input),
   },
   {
     name: 'task_time_blocks',
     load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.task_time_blocks', input),
+      selectTaskChildRows(executor, 'app.task_time_blocks', input, {
+        hasDeletedAt: true,
+      }),
   },
   {
     name: 'task_occurrences',
     load: (executor, input) =>
-      selectRows(
-        executor,
-        sql`
-          select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
-          from (
-            select occurrence.*
-            from app.task_occurrences as occurrence
-            inner join app.tasks as task
-              on task.id = occurrence.task_id
-            where task.workspace_id = ${input.workspaceId}
-          ) as row
-        `,
-      ),
+      selectTaskChildRows(executor, 'app.task_occurrences', input),
   },
   {
     name: 'task_attachments',
     load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.task_attachments', input),
+      selectTaskChildRows(executor, 'app.task_attachments', input, {
+        hasDeletedAt: true,
+      }),
   },
   {
     name: 'task_templates',
     load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.task_templates', input),
+      selectActiveWorkspaceRows(executor, 'app.task_templates', input),
   },
   {
     name: 'daily_plans',
     load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.daily_plans', input),
+      selectActiveWorkspaceUserRows(executor, 'app.daily_plans', input),
   },
   {
     name: 'chaos_inbox_items',
     load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.chaos_inbox_items', input),
+      selectActiveWorkspaceUserRows(executor, 'app.chaos_inbox_items', input),
   },
   {
     name: 'cleaning_zones',
     load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.cleaning_zones', input),
+      selectActiveWorkspaceUserRows(executor, 'app.cleaning_zones', input),
   },
   {
     name: 'cleaning_tasks',
     load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.cleaning_tasks', input),
+      selectActiveWorkspaceUserRows(executor, 'app.cleaning_tasks', input),
   },
   {
     name: 'cleaning_task_states',
-    load: (executor, input) =>
-      selectRows(
-        executor,
-        sql`
-          select coalesce(jsonb_agg(to_jsonb(row) order by row.task_id), '[]'::jsonb) as rows
-          from (
-            select *
-            from app.cleaning_task_states
-            where workspace_id = ${input.workspaceId}
-              and user_id = ${input.actorUserId}
-          ) as row
-        `,
-      ),
+    load: (executor, input) => selectCleaningTaskStateRows(executor, input),
   },
   {
     name: 'cleaning_task_history',
-    load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.cleaning_task_history', input),
+    load: (executor, input) => selectCleaningTaskHistoryRows(executor, input),
   },
   {
     name: 'habits',
     load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.habits', input),
+      selectActiveWorkspaceUserRows(executor, 'app.habits', input),
   },
   {
     name: 'habit_entries',
-    load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.habit_entries', input),
+    load: (executor, input) => selectHabitEntryRows(executor, input),
   },
   {
     name: 'self_care_items',
     load: (executor, input) =>
-      selectWorkspaceUserRows(executor, 'app.self_care_items', input),
+      selectActiveWorkspaceUserRows(executor, 'app.self_care_items', input),
   },
   {
     name: 'self_care_item_alternatives',
@@ -438,10 +414,22 @@ const TABLE_EXPORT_QUERIES: TableExportQuery[] = [
   {
     name: 'self_care_ritual_step_drafts',
     load: (executor, input) =>
-      selectWorkspaceUserRows(
+      selectRows(
         executor,
-        'app.self_care_ritual_step_drafts',
-        input,
+        sql`
+          select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+          from (
+            select draft.*
+            from app.self_care_ritual_step_drafts as draft
+            inner join app.self_care_items as item
+              on item.id = draft.item_id
+            where draft.workspace_id = ${input.workspaceId}
+              and draft.user_id = ${input.actorUserId}
+              and item.workspace_id = ${input.workspaceId}
+              and item.user_id = ${input.actorUserId}
+              and item.deleted_at is null
+          ) as row
+        `,
       ),
   },
   {
@@ -522,16 +510,140 @@ const TABLE_EXPORT_QUERIES: TableExportQuery[] = [
   {
     name: 'emoji_sets',
     load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.emoji_sets', input),
+      selectActiveWorkspaceRows(executor, 'app.emoji_sets', input),
   },
   {
     name: 'emoji_assets',
-    load: (executor, input) =>
-      selectWorkspaceRows(executor, 'app.emoji_assets', input),
+    load: (executor, input) => selectEmojiAssetRows(executor, input),
   },
 ]
 
-async function selectWorkspaceRows(
+async function selectTaskRows(
+  executor: DatabaseExecutor,
+  input: TableQueryInput,
+): Promise<UserBackupRow[]> {
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+      from (
+        select task.*
+        from app.tasks as task
+        where ${exportableTaskPredicate(input, 'task')}
+          and (
+            task.project_id is null
+            or exists (
+              select 1
+              from app.projects as project
+              where project.id = task.project_id
+                and project.workspace_id = task.workspace_id
+                and project.deleted_at is null
+            )
+          )
+          and (
+            task.previous_task_id is null
+            or exists (
+              select 1
+              from app.tasks as previous_task
+              where previous_task.id = task.previous_task_id
+                and ${exportableTaskPredicate(input, 'previous_task')}
+            )
+          )
+          and (
+            task.parent_task_id is null
+            or exists (
+              select 1
+              from app.tasks as parent_task
+              where parent_task.id = task.parent_task_id
+                and ${exportableTaskPredicate(input, 'parent_task')}
+            )
+          )
+          and (
+            task.chain_id is null
+            or exists (
+              select 1
+              from app.task_chains as chain
+              where chain.id = task.chain_id
+                and chain.workspace_id = task.workspace_id
+                and chain.deleted_at is null
+                and (
+                  chain.root_task_id is null
+                  or exists (
+                    select 1
+                    from app.tasks as root_task
+                    where root_task.id = chain.root_task_id
+                      and ${exportableTaskPredicate(input, 'root_task')}
+                  )
+                )
+            )
+          )
+      ) as row
+    `,
+  )
+}
+
+async function selectTaskChainRows(
+  executor: DatabaseExecutor,
+  input: TableQueryInput,
+): Promise<UserBackupRow[]> {
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+      from (
+        select chain.*
+        from app.task_chains as chain
+        where chain.workspace_id = ${input.workspaceId}
+          and chain.deleted_at is null
+          and exists (
+            select 1
+            from app.tasks as task
+            where task.chain_id = chain.id
+              and ${exportableTaskPredicate(input, 'task')}
+          )
+          and (
+            chain.root_task_id is null
+            or exists (
+              select 1
+              from app.tasks as root_task
+              where root_task.id = chain.root_task_id
+                and ${exportableTaskPredicate(input, 'root_task')}
+            )
+          )
+      ) as row
+    `,
+  )
+}
+
+async function selectTaskChildRows(
+  executor: DatabaseExecutor,
+  tableName: string,
+  input: TableQueryInput,
+  options: {
+    hasDeletedAt?: boolean
+  } = {},
+): Promise<UserBackupRow[]> {
+  const deletedAtPredicate = options.hasDeletedAt
+    ? sql`and child.deleted_at is null`
+    : sql``
+
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+      from (
+        select child.*
+        from ${sql.table(tableName)} as child
+        inner join app.tasks as task
+          on task.id = child.task_id
+        where ${exportableTaskPredicate(input, 'task')}
+          ${deletedAtPredicate}
+      ) as row
+    `,
+  )
+}
+
+async function selectActiveWorkspaceRows(
   executor: DatabaseExecutor,
   tableName: string,
   input: TableQueryInput,
@@ -544,12 +656,13 @@ async function selectWorkspaceRows(
         select *
         from ${sql.table(tableName)}
         where workspace_id = ${input.workspaceId}
+          and deleted_at is null
       ) as row
     `,
   )
 }
 
-async function selectWorkspaceUserRows(
+async function selectActiveWorkspaceUserRows(
   executor: DatabaseExecutor,
   tableName: string,
   input: TableQueryInput,
@@ -563,6 +676,99 @@ async function selectWorkspaceUserRows(
         from ${sql.table(tableName)}
         where workspace_id = ${input.workspaceId}
           and user_id = ${input.actorUserId}
+          and deleted_at is null
+      ) as row
+    `,
+  )
+}
+
+async function selectCleaningTaskStateRows(
+  executor: DatabaseExecutor,
+  input: TableQueryInput,
+): Promise<UserBackupRow[]> {
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.task_id), '[]'::jsonb) as rows
+      from (
+        select state.*
+        from app.cleaning_task_states as state
+        inner join app.cleaning_tasks as task
+          on task.id = state.task_id
+        where state.workspace_id = ${input.workspaceId}
+          and state.user_id = ${input.actorUserId}
+          and task.workspace_id = ${input.workspaceId}
+          and task.user_id = ${input.actorUserId}
+          and task.deleted_at is null
+      ) as row
+    `,
+  )
+}
+
+async function selectCleaningTaskHistoryRows(
+  executor: DatabaseExecutor,
+  input: TableQueryInput,
+): Promise<UserBackupRow[]> {
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+      from (
+        select history.*
+        from app.cleaning_task_history as history
+        inner join app.cleaning_tasks as task
+          on task.id = history.task_id
+        where history.workspace_id = ${input.workspaceId}
+          and history.user_id = ${input.actorUserId}
+          and task.workspace_id = ${input.workspaceId}
+          and task.user_id = ${input.actorUserId}
+          and task.deleted_at is null
+      ) as row
+    `,
+  )
+}
+
+async function selectHabitEntryRows(
+  executor: DatabaseExecutor,
+  input: TableQueryInput,
+): Promise<UserBackupRow[]> {
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+      from (
+        select entry.*
+        from app.habit_entries as entry
+        inner join app.habits as habit
+          on habit.id = entry.habit_id
+        where entry.workspace_id = ${input.workspaceId}
+          and entry.user_id = ${input.actorUserId}
+          and entry.deleted_at is null
+          and habit.workspace_id = ${input.workspaceId}
+          and habit.user_id = ${input.actorUserId}
+          and habit.deleted_at is null
+      ) as row
+    `,
+  )
+}
+
+async function selectEmojiAssetRows(
+  executor: DatabaseExecutor,
+  input: TableQueryInput,
+): Promise<UserBackupRow[]> {
+  return selectRows(
+    executor,
+    sql`
+      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
+      from (
+        select asset.*
+        from app.emoji_assets as asset
+        inner join app.emoji_sets as emoji_set
+          on emoji_set.id = asset.emoji_set_id
+        where asset.workspace_id = ${input.workspaceId}
+          and asset.deleted_at is null
+          and emoji_set.workspace_id = ${input.workspaceId}
+          and emoji_set.deleted_at is null
       ) as row
     `,
   )
@@ -603,9 +809,21 @@ async function selectSelfCareChildRows(
           on item.id = ${sql.ref(`child.${itemIdColumn}`)}
         where item.workspace_id = ${input.workspaceId}
           and item.user_id = ${input.actorUserId}
+          and item.deleted_at is null
       ) as row
     `,
   )
+}
+
+function exportableTaskPredicate(input: TableQueryInput, alias: string) {
+  return sql`
+    ${sql.ref(`${alias}.workspace_id`)} = ${input.workspaceId}
+    and ${sql.ref(`${alias}.deleted_at`)} is null
+    and (
+      ${sql.ref(`${alias}.status`)} <> 'done'
+      or ${sql.ref(`${alias}.completed_at`)} >= now() - interval '14 days'
+    )
+  `
 }
 
 async function selectRows(
