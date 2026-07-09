@@ -39,13 +39,22 @@ export interface UserBackupApiOptions {
   workspaceId: string
 }
 
+export interface UserBackupTransferProgress {
+  loadedBytes: number
+  totalBytes?: number | undefined
+}
+
+export interface DownloadUserBackupOptions extends UserBackupApiOptions {
+  onProgress?: (progress: UserBackupTransferProgress) => void
+}
+
 export interface DownloadUserBackupResult {
   fileName: string
   text: string
 }
 
 export async function downloadUserBackup(
-  options: UserBackupApiOptions,
+  options: DownloadUserBackupOptions,
   fetchFn: typeof fetch = fetch,
 ): Promise<DownloadUserBackupResult> {
   const { send } = createUserBackupRequester(options, fetchFn)
@@ -70,7 +79,7 @@ export async function downloadUserBackup(
 
   return {
     fileName: getBackupFileName(response.headers),
-    text: await response.text(),
+    text: await readResponseText(response, options.onProgress),
   }
 }
 
@@ -138,4 +147,64 @@ function getBackupFileName(headers: Headers): string {
   const match = /filename="([^"]+)"/i.exec(disposition)
 
   return match?.[1] ?? 'planner-backup.json'
+}
+
+async function readResponseText(
+  response: Response,
+  onProgress?: (progress: UserBackupTransferProgress) => void,
+): Promise<string> {
+  const totalBytes = parseContentLength(response.headers)
+
+  if (!response.body || !onProgress) {
+    const text = await response.text()
+
+    onProgress?.({
+      loadedBytes: new TextEncoder().encode(text).byteLength,
+      totalBytes,
+    })
+
+    return text
+  }
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let loadedBytes = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    chunks.push(value)
+    loadedBytes += value.byteLength
+    onProgress({ loadedBytes, totalBytes })
+  }
+
+  return new TextDecoder().decode(concatChunks(chunks, loadedBytes))
+}
+
+function parseContentLength(headers: Headers): number | undefined {
+  const rawValue = headers.get('content-length')
+
+  if (!rawValue) {
+    return undefined
+  }
+
+  const value = Number(rawValue)
+
+  return Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function concatChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  const bytes = new Uint8Array(totalBytes)
+  let offset = 0
+
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  return bytes
 }

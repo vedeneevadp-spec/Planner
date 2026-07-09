@@ -22,7 +22,6 @@ import type {
 } from './backup.model.js'
 import type { UserBackupRepository } from './backup.repository.js'
 
-const ICON_ASSET_PATH_PREFIX = '/api/v1/icon-assets/'
 const PROFILE_ASSET_PATH_PREFIX = '/api/v1/profile-assets/'
 
 const CONTENT_TYPES_BY_EXTENSION = new Map<string, string>([
@@ -107,7 +106,6 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
   ): Promise<UserBackupAsset[]> {
     const assetsByPath = new Map<string, UserBackupAsset>()
     const users = tables.users ?? []
-    const emojiAssets = tables.emoji_assets ?? []
 
     for (const user of users) {
       const avatarUrl = readStringField(user, 'avatar_url')
@@ -116,20 +114,6 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
         avatarUrl,
         PROFILE_ASSET_PATH_PREFIX,
         path.join(this.assetDirectory, 'profiles'),
-      )
-
-      if (asset) {
-        assetsByPath.set(asset.path, asset)
-      }
-    }
-
-    for (const emojiAsset of emojiAssets) {
-      const value = readStringField(emojiAsset, 'value')
-      const asset = await this.readAsset(
-        'emoji_asset',
-        value,
-        ICON_ASSET_PATH_PREFIX,
-        this.assetDirectory,
       )
 
       if (asset) {
@@ -507,16 +491,11 @@ const TABLE_EXPORT_QUERIES: TableExportQuery[] = [
     load: (executor, input) =>
       selectUserRows(executor, 'app.self_care_minimum_items', input),
   },
-  {
-    name: 'emoji_sets',
-    load: (executor, input) =>
-      selectActiveWorkspaceRows(executor, 'app.emoji_sets', input),
-  },
-  {
-    name: 'emoji_assets',
-    load: (executor, input) => selectEmojiAssetRows(executor, input),
-  },
 ]
+
+export const USER_BACKUP_EXPORTED_TABLE_NAMES = TABLE_EXPORT_QUERIES.map(
+  (table) => table.name,
+)
 
 async function selectTaskRows(
   executor: DatabaseExecutor,
@@ -747,28 +726,6 @@ async function selectHabitEntryRows(
           and habit.workspace_id = ${input.workspaceId}
           and habit.user_id = ${input.actorUserId}
           and habit.deleted_at is null
-      ) as row
-    `,
-  )
-}
-
-async function selectEmojiAssetRows(
-  executor: DatabaseExecutor,
-  input: TableQueryInput,
-): Promise<UserBackupRow[]> {
-  return selectRows(
-    executor,
-    sql`
-      select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb) as rows
-      from (
-        select asset.*
-        from app.emoji_assets as asset
-        inner join app.emoji_sets as emoji_set
-          on emoji_set.id = asset.emoji_set_id
-        where asset.workspace_id = ${input.workspaceId}
-          and asset.deleted_at is null
-          and emoji_set.workspace_id = ${input.workspaceId}
-          and emoji_set.deleted_at is null
       ) as row
     `,
   )

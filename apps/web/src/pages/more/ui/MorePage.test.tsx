@@ -3,6 +3,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
@@ -55,15 +56,27 @@ interface PlannerStub {
   refresh: () => void
 }
 
+interface SessionAuthStub {
+  accessToken: string | null
+  canUseProtectedApi: boolean
+  email: string | null
+  isAuthEnabled: boolean
+  signOut: () => Promise<void>
+}
+
 const mocks = vi.hoisted(() => ({
   createSharedWorkspace: {
     isPending: false,
     mutateAsync: vi.fn(() => Promise.resolve(undefined)),
     reset: vi.fn(),
   },
+  downloadUserBackup: vi.fn(),
+  previewUserBackupImport: vi.fn(),
+  saveUserBackupFile: vi.fn(),
   signOut: vi.fn<() => Promise<void>>(),
   usePlanner: vi.fn<() => PlannerStub>(),
   usePlannerSession: vi.fn<() => { data: MoreSessionStub }>(),
+  useSessionAuth: vi.fn<() => SessionAuthStub>(),
 }))
 
 vi.mock('@/features/planner', () => ({
@@ -71,6 +84,7 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/session', () => ({
+  downloadUserBackup: mocks.downloadUserBackup,
   getCreateSharedWorkspaceErrorMessage: () =>
     'Не удалось создать пространство.',
   getSessionReadinessConnectionView: (
@@ -114,23 +128,23 @@ vi.mock('@/features/session', () => ({
       label: 'Connected',
     }
   },
+  getUserBackupErrorMessage: () => 'Не удалось обработать резервную копию.',
+  parseUserBackupArchiveText: (text: string) =>
+    JSON.parse(text) as Record<string, unknown>,
+  previewUserBackupImport: mocks.previewUserBackupImport,
+  saveUserBackupFile: mocks.saveUserBackupFile,
   useCreateSharedWorkspace: () => mocks.createSharedWorkspace,
   usePlannerSession: () => mocks.usePlannerSession(),
   UserAvatar: ({ displayName }: { displayName: string }) => (
     <span>{displayName.slice(0, 2)}</span>
   ),
-  useSessionAuth: () => ({
-    accessToken: null,
-    canUseProtectedApi: false,
-    email: 'vedeneeva.d.p@gmail.com',
-    isAuthEnabled: true,
-    signOut: mocks.signOut,
-  }),
+  useSessionAuth: () => mocks.useSessionAuth(),
 }))
 
 function renderMorePage(
   options: {
     appRole?: AppRole
+    auth?: Partial<SessionAuthStub>
     planner?: Partial<PlannerStub>
   } = {},
 ) {
@@ -178,6 +192,14 @@ function renderMorePage(
     refresh: vi.fn(),
     ...options.planner,
   })
+  mocks.useSessionAuth.mockReturnValue({
+    accessToken: null,
+    canUseProtectedApi: false,
+    email: 'vedeneeva.d.p@gmail.com',
+    isAuthEnabled: true,
+    signOut: mocks.signOut,
+    ...options.auth,
+  })
 
   return render(
     <ThemeProvider>
@@ -191,6 +213,33 @@ function renderMorePage(
 describe('MorePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.downloadUserBackup.mockResolvedValue({
+      fileName: 'planner-backup.json',
+      text: '{"format":"planner.user-backup"}',
+    })
+    mocks.previewUserBackupImport.mockResolvedValue({
+      archive: {
+        exportedAt: '2026-07-09T09:50:22.414Z',
+        format: 'planner.user-backup',
+        sourceAppVersion: '1.0.0',
+        version: 1,
+        workspaceId: 'personal-workspace',
+        workspaceKind: 'personal',
+        workspaceName: 'Personal Workspace',
+      },
+      assets: {
+        count: 0,
+        totalBytes: 0,
+      },
+      canRestore: true,
+      tables: [],
+      warnings: [],
+    })
+    mocks.saveUserBackupFile.mockResolvedValue({
+      destination: 'android-downloads',
+      displayPath: 'Загрузки/Chaotika/planner-backup.json',
+      fileName: 'planner-backup.json',
+    })
   })
 
   afterEach(() => {
@@ -278,5 +327,73 @@ describe('MorePage', () => {
     expect(
       within(sections).getByRole('link', { name: 'Контакты' }),
     ).toHaveAttribute('href', '/contacts')
+  })
+
+  it('shows backup progress and saves the archive through the platform helper', async () => {
+    let resolveDownload!: (value: { fileName: string; text: string }) => void
+
+    mocks.downloadUserBackup.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveDownload = resolve
+        }),
+    )
+
+    renderMorePage({
+      auth: {
+        accessToken: 'access-token',
+        canUseProtectedApi: true,
+      },
+      planner: {
+        readiness: {
+          canReadCachedData: true,
+          canRenderAppContent: true,
+          canUseProtectedApi: true,
+          canWriteProtectedData: true,
+          reason: 'ready',
+          status: 'ready',
+        },
+      },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Скачать копию' }))
+
+    expect(screen.getByText('Готовим архив...')).toBeVisible()
+    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+
+    resolveDownload?.({
+      fileName: 'planner-backup.json',
+      text: '{"format":"planner.user-backup"}',
+    })
+
+    await waitFor(() => {
+      expect(mocks.saveUserBackupFile).toHaveBeenCalledWith({
+        fileName: 'planner-backup.json',
+        text: '{"format":"planner.user-backup"}',
+      })
+    })
+    expect(
+      await screen.findByText(
+        'Резервная копия сохранена: Загрузки/Chaotika/planner-backup.json.',
+      ),
+    ).toBeVisible()
+  })
+
+  it('uses a broad file picker filter for mobile backup archive selection', () => {
+    renderMorePage({
+      auth: {
+        accessToken: 'access-token',
+        canUseProtectedApi: true,
+      },
+    })
+
+    expect(screen.getByLabelText('Файл резервной копии')).toHaveAttribute(
+      'accept',
+      expect.stringContaining('*/*'),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить файл' }))
+
+    expect(screen.getByText(/Открылся выбор файла/)).toBeVisible()
   })
 })

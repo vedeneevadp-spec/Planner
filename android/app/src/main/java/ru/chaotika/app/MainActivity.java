@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(PlannerBackupFilesPlugin.class);
         registerPlugin(PlannerWidgetPlugin.class);
         registerPlugin(PlannerVoiceAssistantPlugin.class);
         super.onCreate(savedInstanceState);
