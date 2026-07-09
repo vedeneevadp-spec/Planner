@@ -89,6 +89,44 @@ void test('UserBackupService previews archive warnings', () => {
   ])
 })
 
+void test('UserBackupService previews archive integrity warnings', () => {
+  const service = new UserBackupService(new FakeUserBackupRepository(), '1.2.3')
+  const archive = createArchive({
+    assets: [
+      {
+        base64: Buffer.from('asset').toString('base64'),
+        byteLength: 100,
+        contentType: 'image/png',
+        kind: 'emoji_asset',
+        path: '/api/v1/icon-assets/asset.png',
+      },
+    ],
+    tables: {
+      tasks: [
+        {
+          id: 'task-1',
+          project_id: 'missing-project',
+          title: 'Task',
+        },
+      ],
+      users: [
+        {
+          avatar_url: '/api/v1/profile-assets/missing-avatar.webp',
+          id: 'user-1',
+        },
+      ],
+    },
+  })
+  const preview = service.previewImport(PERSONAL_CONTEXT, archive)
+
+  assert.equal(preview.canRestore, false)
+  assert.deepEqual(preview.warnings, [
+    'Archive has 1 row(s) with missing parent references: tasks.project_id -> projects.id.',
+    'Archive references 1 local asset file(s) without payload.',
+    'Archive contains 1 asset payload(s) with invalid byte length.',
+  ])
+})
+
 class FakeUserBackupRepository implements UserBackupRepository {
   exportCount = 0
 
@@ -101,12 +139,14 @@ class FakeUserBackupRepository implements UserBackupRepository {
 
 function createArchive(
   overrides: {
+    assets?: UserBackupArchive['assets']
+    tables?: UserBackupArchive['tables']
     userId?: string
     workspaceId?: string
   } = {},
 ): UserBackupArchive {
   return {
-    assets: [],
+    assets: overrides.assets ?? [],
     exportedAt: '2026-07-07T00:00:00.000Z',
     format: 'planner.user-backup',
     scope: {
@@ -118,7 +158,7 @@ function createArchive(
     source: {
       appVersion: '1.2.3',
     },
-    tables: {
+    tables: overrides.tables ?? {
       tasks: [
         {
           id: 'task-1',
