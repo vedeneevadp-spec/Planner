@@ -16,9 +16,12 @@ import {
   getUserBackupErrorMessage,
   parseUserBackupArchiveText,
   previewUserBackupImport,
+  saveUserBackupFile,
+  type SaveUserBackupFileResult,
   useCreateSharedWorkspace,
   usePlannerSession,
   UserAvatar,
+  type UserBackupTransferProgress,
   useSessionAuth,
   WorkspaceParticipantsDialog,
 } from '@/features/session'
@@ -56,9 +59,12 @@ export function MorePage() {
   >(null)
   const [isWorkspaceParticipantsOpen, setIsWorkspaceParticipantsOpen] =
     useState(false)
-  const [isBackupBusy, setIsBackupBusy] = useState(false)
+  const [backupOperation, setBackupOperation] = useState<BackupOperation>(null)
+  const [backupProgress, setBackupProgress] =
+    useState<BackupProgressState | null>(null)
   const [backupStatus, setBackupStatus] = useState<string | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
+  const isBackupBusy = backupOperation !== null
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const isPersonalWorkspace = session?.workspace.kind === 'personal'
   const isProfileVisible = Boolean(session && isPersonalWorkspace)
@@ -100,6 +106,10 @@ export function MorePage() {
       .length ?? 0
   const isCreateWorkspaceDisabled =
     createSharedWorkspace.isPending || sharedWorkspaceCount >= 3
+  const downloadBackupLabel =
+    backupOperation === 'download' ? 'Готовим копию...' : 'Скачать копию'
+  const previewBackupLabel =
+    backupOperation === 'preview' ? 'Проверяем файл...' : 'Проверить файл'
 
   function closeCreateWorkspaceForm() {
     setIsCreateWorkspaceFormOpen(false)
@@ -160,7 +170,8 @@ export function MorePage() {
       return
     }
 
-    setIsBackupBusy(true)
+    setBackupOperation('download')
+    setBackupProgress({ label: 'Готовим архив...', loadedBytes: 0 })
     setBackupStatus(null)
     setBackupError(null)
 
@@ -168,16 +179,38 @@ export function MorePage() {
       const backup = await downloadUserBackup({
         accessToken: auth.accessToken,
         actorUserId: session.actorUserId,
+        onProgress: (progress) => {
+          setBackupProgress({
+            ...progress,
+            label: 'Скачиваем архив...',
+          })
+        },
         workspaceId: session.workspaceId,
       })
 
-      saveTextFile(backup)
-      setBackupStatus('Резервная копия скачана.')
+      setBackupProgress({ label: 'Сохраняем файл...', loadedBytes: 0 })
+      const result = await saveUserBackupFile(backup)
+
+      setBackupProgress(null)
+      setBackupStatus(getBackupSaveMessage(result))
     } catch (error) {
+      setBackupProgress(null)
       setBackupError(getUserBackupErrorMessage(error))
     } finally {
-      setIsBackupBusy(false)
+      setBackupOperation(null)
     }
+  }
+
+  function handleOpenBackupFilePicker() {
+    if (isBackupBusy) {
+      return
+    }
+
+    setBackupStatus(
+      'Открылся выбор файла. На телефоне архив обычно лежит в «Мои файлы» или «Загрузки».',
+    )
+    setBackupError(null)
+    backupFileInputRef.current?.click()
   }
 
   async function handlePreviewBackupFile(event: ChangeEvent<HTMLInputElement>) {
@@ -188,12 +221,25 @@ export function MorePage() {
       return
     }
 
-    setIsBackupBusy(true)
+    setBackupOperation('preview')
+    setBackupProgress({
+      label: `Читаем файл ${file.name}...`,
+      loadedBytes: 0,
+      totalBytes: file.size,
+    })
     setBackupStatus(null)
     setBackupError(null)
 
     try {
-      const archive = parseUserBackupArchiveText(await file.text())
+      const archiveText = await readFileTextWithProgress(file, (progress) => {
+        setBackupProgress({
+          ...progress,
+          label: `Читаем файл ${file.name}...`,
+        })
+      })
+      const archive = parseUserBackupArchiveText(archiveText)
+
+      setBackupProgress({ label: 'Проверяем архив...', loadedBytes: 0 })
       const preview = await previewUserBackupImport({
         accessToken: auth.accessToken,
         actorUserId: session.actorUserId,
@@ -201,6 +247,7 @@ export function MorePage() {
         workspaceId: session.workspaceId,
       })
 
+      setBackupProgress(null)
       setBackupStatus(getBackupPreviewMessage(preview))
       setBackupError(
         preview.warnings.length > 0
@@ -208,9 +255,10 @@ export function MorePage() {
           : null,
       )
     } catch (error) {
+      setBackupProgress(null)
       setBackupError(getUserBackupErrorMessage(error))
     } finally {
-      setIsBackupBusy(false)
+      setBackupOperation(null)
     }
   }
 
@@ -382,34 +430,39 @@ export function MorePage() {
               <span className={styles.listIcon} aria-hidden="true">
                 <DownloadIcon size={19} strokeWidth={2} />
               </span>
-              <span className={styles.listText}>Скачать копию</span>
+              <span className={styles.listText}>{downloadBackupLabel}</span>
             </button>
             <button
               className={styles.listAction}
               type="button"
               disabled={isBackupBusy}
-              onClick={() => backupFileInputRef.current?.click()}
+              onClick={handleOpenBackupFilePicker}
             >
               <span className={styles.listIcon} aria-hidden="true">
                 <UploadIcon size={19} strokeWidth={2} />
               </span>
-              <span className={styles.listText}>Проверить файл</span>
+              <span className={styles.listText}>{previewBackupLabel}</span>
             </button>
             <input
               ref={backupFileInputRef}
               className={styles.fileInput}
               type="file"
               aria-label="Файл резервной копии"
-              accept="application/json,.json"
+              accept=".json,application/json,text/json,text/plain,application/octet-stream,*/*"
               disabled={isBackupBusy}
               onChange={(event) => void handlePreviewBackupFile(event)}
             />
-            {backupStatus ? (
-              <p className={styles.backupStatus}>{backupStatus}</p>
+            {backupProgress ? (
+              <BackupProgressView progress={backupProgress} />
             ) : null}
-            {backupError ? (
-              <p className={styles.backupError}>{backupError}</p>
-            ) : null}
+            <div className={styles.backupMessages} aria-live="polite">
+              {backupStatus ? (
+                <p className={styles.backupStatus}>{backupStatus}</p>
+              ) : null}
+              {backupError ? (
+                <p className={styles.backupError}>{backupError}</p>
+              ) : null}
+            </div>
           </section>
         </>
       ) : null}
@@ -472,6 +525,12 @@ export function MorePage() {
       </section>
     </section>
   )
+}
+
+type BackupOperation = 'download' | 'preview' | null
+
+interface BackupProgressState extends UserBackupTransferProgress {
+  label: string
 }
 
 interface MoreActionLinkProps {
@@ -558,18 +617,42 @@ function getConnectionIssueDebugDetails({
   return details.join('\n')
 }
 
-function saveTextFile(file: { fileName: string; text: string }) {
-  const blob = new Blob([file.text], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
+function BackupProgressView({ progress }: { progress: BackupProgressState }) {
+  const percent =
+    progress.totalBytes && progress.totalBytes > 0
+      ? Math.min(
+          100,
+          Math.round((progress.loadedBytes / progress.totalBytes) * 100),
+        )
+      : null
 
-  link.href = url
-  link.download = file.fileName
-  link.rel = 'noopener'
-  document.body.append(link)
-  link.click()
-  link.remove()
-  URL.revokeObjectURL(url)
+  return (
+    <div className={styles.backupProgress} role="status" aria-live="polite">
+      <div className={styles.backupProgressHeader}>
+        <span>{progress.label}</span>
+        {percent !== null ? <span>{percent}%</span> : null}
+      </div>
+      {percent !== null && progress.totalBytes ? (
+        <progress
+          className={styles.backupProgressBar}
+          aria-label={progress.label}
+          max={progress.totalBytes}
+          value={Math.min(progress.loadedBytes, progress.totalBytes)}
+        />
+      ) : (
+        <progress
+          className={styles.backupProgressBar}
+          aria-label={progress.label}
+        />
+      )}
+      {progress.loadedBytes > 0 ? (
+        <span className={styles.backupProgressBytes}>
+          {formatBytes(progress.loadedBytes)}
+          {progress.totalBytes ? ` из ${formatBytes(progress.totalBytes)}` : ''}
+        </span>
+      ) : null}
+    </div>
+  )
 }
 
 function getBackupPreviewMessage(preview: UserBackupPreviewResponse): string {
@@ -579,6 +662,18 @@ function getBackupPreviewMessage(preview: UserBackupPreviewResponse): string {
   )
 
   return `Архив проверен: ${rowCount} записей, ${preview.assets.count} файлов.`
+}
+
+function getBackupSaveMessage(result: SaveUserBackupFileResult): string {
+  if (result.destination === 'android-downloads') {
+    return `Резервная копия сохранена: ${result.displayPath ?? result.fileName}.`
+  }
+
+  if (result.destination === 'share-sheet') {
+    return `Файл ${result.fileName} передан в системное меню сохранения.`
+  }
+
+  return `Файл ${result.fileName} передан браузеру для сохранения.`
 }
 
 function getBackupWarningText(warning: string): string {
@@ -595,4 +690,62 @@ function getBackupWarningText(warning: string): string {
   }
 
   return warning
+}
+
+async function readFileTextWithProgress(
+  file: File,
+  onProgress: (progress: UserBackupTransferProgress) => void,
+): Promise<string> {
+  if (!file.stream) {
+    const text = await file.text()
+
+    onProgress({
+      loadedBytes: new TextEncoder().encode(text).byteLength,
+      totalBytes: file.size,
+    })
+
+    return text
+  }
+
+  const reader = file.stream().getReader()
+  const chunks: Uint8Array[] = []
+  let loadedBytes = 0
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+
+    chunks.push(value)
+    loadedBytes += value.byteLength
+    onProgress({ loadedBytes, totalBytes: file.size })
+  }
+
+  return new TextDecoder().decode(concatChunks(chunks, loadedBytes))
+}
+
+function concatChunks(chunks: Uint8Array[], totalBytes: number): Uint8Array {
+  const bytes = new Uint8Array(totalBytes)
+  let offset = 0
+
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
+  return bytes
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+  }
+
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} КБ`
+  }
+
+  return `${bytes} Б`
 }

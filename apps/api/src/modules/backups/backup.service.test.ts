@@ -7,6 +7,7 @@ import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import type { UserBackupContext } from './backup.model.js'
 import type { UserBackupRepository } from './backup.repository.js'
+import { USER_BACKUP_EXPORTED_TABLE_NAMES } from './backup.repository.postgres.js'
 import { UserBackupService } from './backup.service.js'
 
 const AUTH_CONTEXT: AuthenticatedRequestContext = {
@@ -125,6 +126,11 @@ void test('UserBackupService previews archive integrity warnings', () => {
     'Archive references 1 local asset file(s) without payload.',
     'Archive contains 1 asset payload(s) with invalid byte length.',
   ])
+})
+
+void test('user backup export excludes the global emoji library', () => {
+  assert.equal(USER_BACKUP_EXPORTED_TABLE_NAMES.includes('emoji_sets'), false)
+  assert.equal(USER_BACKUP_EXPORTED_TABLE_NAMES.includes('emoji_assets'), false)
 })
 
 class FakeUserBackupRepository implements UserBackupRepository {
