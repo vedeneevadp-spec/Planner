@@ -24,7 +24,10 @@ import type { UserBackupRepository } from './backup.repository.js'
 
 const PROFILE_ASSET_PATH_PREFIX = '/api/v1/profile-assets/'
 
-const CONTENT_TYPES_BY_EXTENSION = new Map<string, string>([
+const CONTENT_TYPES_BY_EXTENSION = new Map<
+  string,
+  UserBackupAsset['contentType']
+>([
   ['gif', 'image/gif'],
   ['jpg', 'image/jpeg'],
   ['jpeg', 'image/jpeg'],
@@ -65,7 +68,7 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
       throw new Error('User backup export requires an actor user id.')
     }
 
-    const tables = await withOptionalRls(
+    const { assets, tables } = await withOptionalRls(
       this.db,
       context.auth,
       async (executor) => {
@@ -76,11 +79,17 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
           exportedTables[table.name] = await table.load(executor, input)
         }
 
-        return exportedTables
+        const normalizedTables =
+          normalizeUserBackupTableReferences(exportedTables)
+
+        return {
+          assets: await this.collectAssets(normalizedTables),
+          tables: normalizedTables,
+        }
       },
       actorUserId,
+      { readOnlySnapshot: true },
     )
-    const assets = await this.collectAssets(tables)
     const archive: UserBackupArchive = {
       assets,
       exportedAt: new Date().toISOString(),
@@ -497,6 +506,39 @@ export const USER_BACKUP_EXPORTED_TABLE_NAMES = TABLE_EXPORT_QUERIES.map(
   (table) => table.name,
 )
 
+export function normalizeUserBackupTableReferences(
+  tables: Record<string, UserBackupRow[]>,
+): Record<string, UserBackupRow[]> {
+  const taskIds = new Set(
+    (tables.tasks ?? [])
+      .map((row) => readStringField(row, 'id'))
+      .filter((value): value is string => Boolean(value)),
+  )
+
+  return {
+    ...tables,
+    daily_plans: (tables.daily_plans ?? []).map((plan) => {
+      const normalizedPlan = { ...plan }
+
+      for (const column of [
+        'focus_task_ids',
+        'routine_task_ids',
+        'support_task_ids',
+      ]) {
+        const values = plan[column]
+
+        if (Array.isArray(values)) {
+          normalizedPlan[column] = values.filter(
+            (value) => typeof value === 'string' && taskIds.has(value),
+          )
+        }
+      }
+
+      return normalizedPlan
+    }),
+  }
+}
+
 async function selectTaskRows(
   executor: DatabaseExecutor,
   input: TableQueryInput,
@@ -823,7 +865,9 @@ function extractPublicAssetFileName(
   return fileName
 }
 
-function inferContentType(fileName: string): string | null {
+function inferContentType(
+  fileName: string,
+): UserBackupAsset['contentType'] | null {
   const extension = fileName.split('.').pop()?.toLowerCase()
 
   return extension ? (CONTENT_TYPES_BY_EXTENSION.get(extension) ?? null) : null

@@ -312,8 +312,11 @@ export function useCreateShoppingListItem() {
             return optimisticItem
           }
 
-          await restoreShoppingListItems({
-            items: previousItems,
+          await restoreShoppingListItem({
+            index: previousItems.findIndex(
+              (item) => item.id === existingItem.id,
+            ),
+            item: existingItem,
             queryClient,
             queryKey,
             workspaceId: session.workspaceId,
@@ -361,8 +364,8 @@ export function useCreateShoppingListItem() {
           return optimisticItem
         }
 
-        await restoreShoppingListItems({
-          items: previousItems,
+        await removeOptimisticShoppingListItem({
+          itemId,
           queryClient,
           queryKey,
           workspaceId: session.workspaceId,
@@ -442,8 +445,9 @@ export function useUpdateShoppingListItem() {
           return optimisticItem
         }
 
-        await restoreShoppingListItems({
-          items: previousItems,
+        await restoreShoppingListItem({
+          index: previousItems.findIndex((item) => item.id === currentItem.id),
+          item: currentItem,
           queryClient,
           queryKey,
           workspaceId: session.workspaceId,
@@ -474,6 +478,11 @@ export function useRemoveShoppingListItem() {
       const previousItems =
         queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
         (await loadCachedShoppingListItems(session.workspaceId))
+      const previousItemIndex = previousItems.findIndex(
+        (item) => item.id === itemId,
+      )
+      const previousItem =
+        previousItemIndex >= 0 ? previousItems[previousItemIndex] : undefined
 
       queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
         removeShoppingListItemRecord(current ?? previousItems, itemId),
@@ -499,12 +508,15 @@ export function useRemoveShoppingListItem() {
           return
         }
 
-        await restoreShoppingListItems({
-          items: previousItems,
-          queryClient,
-          queryKey,
-          workspaceId: session.workspaceId,
-        })
+        if (previousItem) {
+          await restoreShoppingListItem({
+            index: previousItemIndex,
+            item: previousItem,
+            queryClient,
+            queryKey,
+            workspaceId: session.workspaceId,
+          })
+        }
 
         throw error
       }
@@ -640,17 +652,47 @@ function removeShoppingListItemRecord(
   return items.filter((item) => item.id !== itemId)
 }
 
-async function restoreShoppingListItems(input: {
-  items: ShoppingListItem[]
+export function restoreShoppingListItemRecordAtIndex(
+  items: ShoppingListItem[],
+  item: ShoppingListItem,
+  index: number,
+): ShoppingListItem[] {
+  const withoutItem = removeShoppingListItemRecord(items, item.id)
+  const insertionIndex = Math.min(Math.max(index, 0), withoutItem.length)
+
+  return [
+    ...withoutItem.slice(0, insertionIndex),
+    item,
+    ...withoutItem.slice(insertionIndex),
+  ]
+}
+
+async function restoreShoppingListItem(input: {
+  index: number
+  item: ShoppingListItem
   queryClient: QueryClient
   queryKey: ReturnType<typeof shoppingListQueryKey>
   workspaceId: string
 }): Promise<void> {
   input.queryClient.setQueryData<ShoppingListItem[]>(
     input.queryKey,
-    input.items,
+    (current = []) =>
+      restoreShoppingListItemRecordAtIndex(current, input.item, input.index),
   )
-  await replaceCachedShoppingListItems(input.workspaceId, input.items)
+  await upsertCachedShoppingListItem(input.workspaceId, input.item)
+}
+
+async function removeOptimisticShoppingListItem(input: {
+  itemId: string
+  queryClient: QueryClient
+  queryKey: ReturnType<typeof shoppingListQueryKey>
+  workspaceId: string
+}): Promise<void> {
+  input.queryClient.setQueryData<ShoppingListItem[]>(
+    input.queryKey,
+    (current = []) => removeShoppingListItemRecord(current, input.itemId),
+  )
+  await removeCachedShoppingListItem(input.workspaceId, input.itemId)
 }
 
 function requireShoppingListApi(

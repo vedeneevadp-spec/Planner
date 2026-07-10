@@ -55,6 +55,10 @@ export default defineConfig({
             return 'vendor-zod'
           }
 
+          if (id === path.join(contractsPath, 'backup.ts')) {
+            return 'backup-contracts'
+          }
+
           if (id.startsWith(contractsPath)) {
             return 'planner-contracts'
           }

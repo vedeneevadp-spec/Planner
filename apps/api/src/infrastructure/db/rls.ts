@@ -11,24 +11,52 @@ export type RlsStrategy =
 
 let hasLoggedSessionConnectionRlsMode = false
 
+interface OptionalRlsOptions {
+  readOnlySnapshot?: boolean
+}
+
 export async function withOptionalRls<T>(
   db: Kysely<DatabaseSchema>,
   authContext: AuthenticatedRequestContext | null | undefined,
   callback: (executor: DatabaseExecutor) => Promise<T>,
   actorUserIdOverride?: string,
+  options: OptionalRlsOptions = {},
 ): Promise<T> {
   if (!authContext) {
+    if (options.readOnlySnapshot) {
+      return db
+        .transaction()
+        .setIsolationLevel('repeatable read')
+        .setAccessMode('read only')
+        .execute(callback)
+    }
+
     return callback(db)
   }
 
   const strategy = resolveRlsStrategy()
 
   if (strategy === 'disabled') {
+    if (options.readOnlySnapshot) {
+      return db
+        .transaction()
+        .setIsolationLevel('repeatable read')
+        .setAccessMode('read only')
+        .execute(callback)
+    }
+
     return callback(db)
   }
 
   if (strategy === 'claims_only') {
-    return db.transaction().execute(async (trx) => {
+    const transaction = db.transaction()
+    const snapshot = options.readOnlySnapshot
+      ? transaction
+          .setIsolationLevel('repeatable read')
+          .setAccessMode('read only')
+      : transaction
+
+    return snapshot.execute(async (trx) => {
       await applyTransactionLocalClaimsContext(
         trx,
         authContext,
@@ -45,6 +73,14 @@ export async function withOptionalRls<T>(
       await applySessionRlsContext(connection, authContext, actorUserIdOverride)
 
       try {
+        if (options.readOnlySnapshot) {
+          return await connection
+            .transaction()
+            .setIsolationLevel('repeatable read')
+            .setAccessMode('read only')
+            .execute(callback)
+        }
+
         return await callback(connection)
       } finally {
         await clearSessionRlsContext(connection)
@@ -52,7 +88,14 @@ export async function withOptionalRls<T>(
     })
   }
 
-  return db.transaction().execute(async (trx) => {
+  const transaction = db.transaction()
+  const snapshot = options.readOnlySnapshot
+    ? transaction
+        .setIsolationLevel('repeatable read')
+        .setAccessMode('read only')
+    : transaction
+
+  return snapshot.execute(async (trx) => {
     await applyTransactionLocalRlsContext(trx, authContext, actorUserIdOverride)
 
     return callback(trx)

@@ -44,6 +44,7 @@ import {
   replaceOptimisticTaskRecord,
   replaceOptimisticTaskTemplateRecord,
   replaceTaskRecord,
+  restoreTaskRecordAtIndex,
   sortSpheres,
   sortTaskTemplates,
   updateTaskLifeSphereRecords,
@@ -53,17 +54,20 @@ import {
 
 interface PlannerMutationContext {
   optimisticTaskId: string | undefined
-  previousTaskRecords: TaskRecord[] | undefined
+  previousTaskIndex: number
+  previousTaskRecord: TaskRecord | undefined
 }
 
 interface SphereMutationContext {
   optimisticSphereId: string | undefined
-  previousSphereRecords: LifeSphereRecord[] | undefined
+  previousSphereIndex: number
+  previousSphereRecord: LifeSphereRecord | undefined
 }
 
 interface TaskTemplateMutationContext {
   optimisticTemplateId: string | undefined
-  previousTemplateRecords: TaskTemplateRecord[] | undefined
+  previousTemplateIndex: number
+  previousTemplateRecord: TaskTemplateRecord | undefined
 }
 
 interface UpdateSphereMutationVariables {
@@ -158,8 +162,6 @@ export function usePlannerMutations({
       setMutationErrorMessage(null)
       await queryClient.cancelQueries({ queryKey: sphereQueryKey })
 
-      const previousSphereRecords =
-        queryClient.getQueryData<LifeSphereRecord[]>(sphereQueryKey)
       const optimisticSphere = createOptimisticLifeSphereRecord(input, {
         actorUserId: session?.actorUserId ?? 'pending',
         workspaceId: session?.workspaceId ?? 'pending',
@@ -172,7 +174,8 @@ export function usePlannerMutations({
 
       return {
         optimisticSphereId: optimisticSphere.id,
-        previousSphereRecords,
+        previousSphereIndex: -1,
+        previousSphereRecord: undefined,
       }
     },
     onError: (error, _input, context) => {
@@ -180,9 +183,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousSphereRecords) {
-        queryClient.setQueryData(sphereQueryKey, context.previousSphereRecords)
-      }
+      rollbackSphereMutation(queryClient, sphereQueryKey, context)
     },
     onSuccess: (sphere, _input, context) => {
       queryClient.setQueryData<LifeSphereRecord[]>(
@@ -208,7 +209,7 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: sphereQueryKey })
 
       const previousSphereRecords =
-        queryClient.getQueryData<LifeSphereRecord[]>(sphereQueryKey)
+        queryClient.getQueryData<LifeSphereRecord[]>(sphereQueryKey) ?? []
       const now = new Date().toISOString()
 
       queryClient.setQueryData<LifeSphereRecord[]>(
@@ -247,7 +248,7 @@ export function usePlannerMutations({
 
       return {
         optimisticSphereId: undefined,
-        previousSphereRecords,
+        ...captureSphereMutationContext(previousSphereRecords, sphereId),
       }
     },
     onError: (error, _variables, context) => {
@@ -255,9 +256,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousSphereRecords) {
-        queryClient.setQueryData(sphereQueryKey, context.previousSphereRecords)
-      }
+      rollbackSphereMutation(queryClient, sphereQueryKey, context)
     },
     onSuccess: (sphere) => {
       queryClient.setQueryData<LifeSphereRecord[]>(
@@ -310,8 +309,6 @@ export function usePlannerMutations({
       setMutationErrorMessage(null)
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
-      const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
       const optimisticTask = createOptimisticTaskRecord(input, {
         authorDisplayName: session?.actor.displayName ?? null,
         authorUserId: session?.actorUserId ?? null,
@@ -325,7 +322,8 @@ export function usePlannerMutations({
 
       return {
         optimisticTaskId: optimisticTask.id,
-        previousTaskRecords,
+        previousTaskIndex: -1,
+        previousTaskRecord: undefined,
       }
     },
     onError: (error, _input, context) => {
@@ -333,9 +331,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
+      rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task, _input, context) => {
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
@@ -365,7 +361,7 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
       const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
       const normalizedSchedule = normalizeSchedule({
         plannedDate: input.plannedDate,
         plannedEndTime: input.plannedEndTime,
@@ -408,7 +404,7 @@ export function usePlannerMutations({
 
       return {
         optimisticTaskId: undefined,
-        previousTaskRecords,
+        ...captureTaskMutationContext(previousTaskRecords, taskId),
       }
     },
     onError: (error, _variables, context) => {
@@ -416,9 +412,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
+      rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task) => {
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
@@ -520,8 +514,6 @@ export function usePlannerMutations({
       setMutationErrorMessage(null)
       await queryClient.cancelQueries({ queryKey: taskTemplateQueryKey })
 
-      const previousTemplateRecords =
-        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
       const optimisticTemplate = createOptimisticTaskTemplateRecord(
         input,
         session?.workspaceId ?? 'pending',
@@ -534,16 +526,12 @@ export function usePlannerMutations({
 
       return {
         optimisticTemplateId: optimisticTemplate.id,
-        previousTemplateRecords,
+        previousTemplateIndex: -1,
+        previousTemplateRecord: undefined,
       }
     },
     onError: (_error, _input, context) => {
-      if (context?.previousTemplateRecords) {
-        queryClient.setQueryData(
-          taskTemplateQueryKey,
-          context.previousTemplateRecords,
-        )
-      }
+      rollbackTemplateMutation(queryClient, taskTemplateQueryKey, context)
     },
     onSuccess: (template, _input, context) => {
       queryClient.setQueryData<TaskTemplateRecord[]>(
@@ -576,7 +564,7 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
       const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
       const now = new Date().toISOString()
 
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
@@ -591,7 +579,7 @@ export function usePlannerMutations({
 
       return {
         optimisticTaskId: undefined,
-        previousTaskRecords,
+        ...captureTaskMutationContext(previousTaskRecords, taskId),
       }
     },
     onError: (error, _variables, context) => {
@@ -599,9 +587,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
+      rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task) => {
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
@@ -628,7 +614,7 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
       const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
       const normalizedSchedule = normalizeSchedule(schedule)
       const now = new Date().toISOString()
 
@@ -656,7 +642,7 @@ export function usePlannerMutations({
 
       return {
         optimisticTaskId: undefined,
-        previousTaskRecords,
+        ...captureTaskMutationContext(previousTaskRecords, taskId),
       }
     },
     onError: (error, _variables, context) => {
@@ -664,9 +650,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
+      rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task) => {
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
@@ -688,7 +672,7 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
       const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
 
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
         removeTaskRecord(current, taskId),
@@ -696,7 +680,7 @@ export function usePlannerMutations({
 
       return {
         optimisticTaskId: undefined,
-        previousTaskRecords,
+        ...captureTaskMutationContext(previousTaskRecords, taskId),
       }
     },
     onError: (error, _taskId, context) => {
@@ -704,9 +688,7 @@ export function usePlannerMutations({
         return
       }
 
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
+      rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: taskQueryKey })
@@ -741,7 +723,7 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: taskQueryKey })
 
       const previousTaskRecords =
-        queryClient.getQueryData<TaskRecord[]>(taskQueryKey)
+        queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
 
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
         removeTaskRecord(current, taskId),
@@ -749,13 +731,11 @@ export function usePlannerMutations({
 
       return {
         optimisticTaskId: undefined,
-        previousTaskRecords,
+        ...captureTaskMutationContext(previousTaskRecords, taskId),
       }
     },
     onError: (_error, _variables, context) => {
-      if (context?.previousTaskRecords) {
-        queryClient.setQueryData(taskQueryKey, context.previousTaskRecords)
-      }
+      rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: taskQueryKey })
@@ -772,7 +752,8 @@ export function usePlannerMutations({
       await queryClient.cancelQueries({ queryKey: taskTemplateQueryKey })
 
       const previousTemplateRecords =
-        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey)
+        queryClient.getQueryData<TaskTemplateRecord[]>(taskTemplateQueryKey) ??
+        []
 
       queryClient.setQueryData<TaskTemplateRecord[]>(
         taskTemplateQueryKey,
@@ -781,16 +762,11 @@ export function usePlannerMutations({
 
       return {
         optimisticTemplateId: undefined,
-        previousTemplateRecords,
+        ...captureTemplateMutationContext(previousTemplateRecords, templateId),
       }
     },
     onError: (_error, _templateId, context) => {
-      if (context?.previousTemplateRecords) {
-        queryClient.setQueryData(
-          taskTemplateQueryKey,
-          context.previousTemplateRecords,
-        )
-      }
+      rollbackTemplateMutation(queryClient, taskTemplateQueryKey, context)
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: taskTemplateQueryKey })
@@ -815,4 +791,145 @@ export function usePlannerMutations({
     updateLifeSphereMutation,
     updateTaskMutation,
   }
+}
+
+function captureTaskMutationContext(
+  records: TaskRecord[],
+  taskId: string,
+): Pick<PlannerMutationContext, 'previousTaskIndex' | 'previousTaskRecord'> {
+  const previousTaskIndex = records.findIndex((task) => task.id === taskId)
+
+  return {
+    previousTaskIndex,
+    previousTaskRecord:
+      previousTaskIndex >= 0 ? records[previousTaskIndex] : undefined,
+  }
+}
+
+function captureSphereMutationContext(
+  records: LifeSphereRecord[],
+  sphereId: string,
+): Pick<SphereMutationContext, 'previousSphereIndex' | 'previousSphereRecord'> {
+  const previousSphereIndex = records.findIndex(
+    (sphere) => sphere.id === sphereId,
+  )
+
+  return {
+    previousSphereIndex,
+    previousSphereRecord:
+      previousSphereIndex >= 0 ? records[previousSphereIndex] : undefined,
+  }
+}
+
+function captureTemplateMutationContext(
+  records: TaskTemplateRecord[],
+  templateId: string,
+): Pick<
+  TaskTemplateMutationContext,
+  'previousTemplateIndex' | 'previousTemplateRecord'
+> {
+  const previousTemplateIndex = records.findIndex(
+    (template) => template.id === templateId,
+  )
+
+  return {
+    previousTemplateIndex,
+    previousTemplateRecord:
+      previousTemplateIndex >= 0 ? records[previousTemplateIndex] : undefined,
+  }
+}
+
+function rollbackSphereMutation(
+  queryClient: QueryClient,
+  sphereQueryKey: PlannerSphereQueryKey,
+  context: SphereMutationContext | undefined,
+): void {
+  if (!context) {
+    return
+  }
+
+  queryClient.setQueryData<LifeSphereRecord[]>(
+    sphereQueryKey,
+    (current = []) => {
+      if (!context.previousSphereRecord) {
+        return context.optimisticSphereId
+          ? removeLifeSphereRecord(current, context.optimisticSphereId)
+          : current
+      }
+
+      return restoreEntityAtIndex(
+        current,
+        context.previousSphereRecord,
+        context.previousSphereIndex,
+      )
+    },
+  )
+}
+
+function rollbackTemplateMutation(
+  queryClient: QueryClient,
+  templateQueryKey: PlannerTaskTemplateQueryKey,
+  context: TaskTemplateMutationContext | undefined,
+): void {
+  if (!context) {
+    return
+  }
+
+  queryClient.setQueryData<TaskTemplateRecord[]>(
+    templateQueryKey,
+    (current = []) => {
+      if (!context.previousTemplateRecord) {
+        return context.optimisticTemplateId
+          ? removeTaskTemplateRecord(current, context.optimisticTemplateId)
+          : current
+      }
+
+      return restoreEntityAtIndex(
+        current,
+        context.previousTemplateRecord,
+        context.previousTemplateIndex,
+      )
+    },
+  )
+}
+
+function restoreEntityAtIndex<T extends { id: string }>(
+  records: T[],
+  record: T,
+  index: number,
+): T[] {
+  const withoutRecord = records.filter(
+    (candidate) => candidate.id !== record.id,
+  )
+  const insertionIndex = Math.min(Math.max(index, 0), withoutRecord.length)
+
+  return [
+    ...withoutRecord.slice(0, insertionIndex),
+    record,
+    ...withoutRecord.slice(insertionIndex),
+  ]
+}
+
+function rollbackTaskMutation(
+  queryClient: QueryClient,
+  taskQueryKey: PlannerTaskQueryKey,
+  context: PlannerMutationContext | undefined,
+): void {
+  if (!context) {
+    return
+  }
+
+  queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => {
+    if (!context.previousTaskRecord) {
+      return context.optimisticTaskId
+        ? removeTaskRecord(current, context.optimisticTaskId)
+        : current
+    }
+
+    return restoreTaskRecordAtIndex(
+      current,
+      context.previousTaskRecord,
+      context.previousTaskIndex,
+    )
+  })
 }

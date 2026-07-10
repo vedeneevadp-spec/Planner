@@ -83,8 +83,16 @@ vi.mock('@/features/planner', () => ({
   usePlanner: () => mocks.usePlanner(),
 }))
 
-vi.mock('@/features/session', () => ({
+vi.mock('@/features/user-backup', () => ({
   downloadUserBackup: mocks.downloadUserBackup,
+  getUserBackupErrorMessage: () => 'Не удалось обработать резервную копию.',
+  parseUserBackupArchiveText: (text: string) =>
+    JSON.parse(text) as Record<string, unknown>,
+  previewUserBackupImport: mocks.previewUserBackupImport,
+  saveUserBackupFile: mocks.saveUserBackupFile,
+}))
+
+vi.mock('@/features/session', () => ({
   getCreateSharedWorkspaceErrorMessage: () =>
     'Не удалось создать пространство.',
   getSessionReadinessConnectionView: (
@@ -128,11 +136,6 @@ vi.mock('@/features/session', () => ({
       label: 'Connected',
     }
   },
-  getUserBackupErrorMessage: () => 'Не удалось обработать резервную копию.',
-  parseUserBackupArchiveText: (text: string) =>
-    JSON.parse(text) as Record<string, unknown>,
-  previewUserBackupImport: mocks.previewUserBackupImport,
-  saveUserBackupFile: mocks.saveUserBackupFile,
   useCreateSharedWorkspace: () => mocks.createSharedWorkspace,
   usePlannerSession: () => mocks.usePlannerSession(),
   UserAvatar: ({ displayName }: { displayName: string }) => (
