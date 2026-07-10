@@ -425,6 +425,7 @@ export async function enqueuePlannerOfflineMutation(
 
 export async function listRetryablePlannerOfflineMutations(
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<PlannerOfflineMutationRecord[]> {
   const db = getPlannerOfflineDatabase()
 
@@ -435,7 +436,11 @@ export async function listRetryablePlannerOfflineMutations(
   const rows = await db.mutationQueue
     .where('workspaceId')
     .equals(workspaceId)
-    .filter((mutation) => RETRYABLE_QUEUE_STATUSES.includes(mutation.status))
+    .filter(
+      (mutation) =>
+        (!actorUserId || mutation.actorUserId === actorUserId) &&
+        RETRYABLE_QUEUE_STATUSES.includes(mutation.status),
+    )
     .toArray()
 
   return rows.sort(compareOfflineMutations)
@@ -443,14 +448,19 @@ export async function listRetryablePlannerOfflineMutations(
 
 export async function countRetryablePlannerOfflineMutations(
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<number> {
-  const mutations = await listRetryablePlannerOfflineMutations(workspaceId)
+  const mutations = await listRetryablePlannerOfflineMutations(
+    workspaceId,
+    actorUserId,
+  )
 
   return mutations.length
 }
 
 export async function countConflictedPlannerOfflineMutations(
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<number> {
   const db = getPlannerOfflineDatabase()
 
@@ -461,7 +471,11 @@ export async function countConflictedPlannerOfflineMutations(
   return db.mutationQueue
     .where('workspaceId')
     .equals(workspaceId)
-    .filter((mutation) => mutation.status === 'conflicted')
+    .filter(
+      (mutation) =>
+        (!actorUserId || mutation.actorUserId === actorUserId) &&
+        mutation.status === 'conflicted',
+    )
     .count()
 }
 

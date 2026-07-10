@@ -113,6 +113,7 @@ export function usePlannerState(): PlannerState {
     queuedMutationCount,
     refreshQueuedMutationCount,
   } = usePlannerOfflineSync({
+    actorUserId,
     invalidatePlannerQueries,
     plannerApi,
     sphereQueryKey,

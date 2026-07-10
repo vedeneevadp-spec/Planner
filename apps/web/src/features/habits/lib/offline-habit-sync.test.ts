@@ -60,6 +60,7 @@ describe('offline habit sync', () => {
     })
 
     const result = await drainHabitOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -73,6 +74,42 @@ describe('offline habit sync', () => {
     expect(api.createHabit).toHaveBeenCalledWith(createInput)
     expect(await countRetryableHabitOfflineMutations(WORKSPACE_ID)).toBe(0)
     expect(await loadCachedHabitRecords(WORKSPACE_ID)).toEqual([habitRecord])
+  })
+
+  it('never folds or replays another actor mutation from the same workspace', async () => {
+    const otherActorUserId = 'user-2'
+    const otherHabitId = 'habit-other'
+    const habitRecord = createHabitRecord(HABIT_ID)
+    const api = createHabitsApiClientMock({
+      createHabit: vi.fn().mockResolvedValue(habitRecord),
+    })
+
+    await enqueueHabitOfflineMutation({
+      actorUserId: otherActorUserId,
+      habitId: otherHabitId,
+      input: { ...createInput, title: 'Other actor habit' },
+      type: 'habit.create',
+      workspaceId: WORKSPACE_ID,
+    })
+    await enqueueHabitOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      habitId: HABIT_ID,
+      input: createInput,
+      type: 'habit.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainHabitOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result.processed).toBe(1)
+    expect(api.createHabit).toHaveBeenCalledTimes(1)
+    expect(
+      await countRetryableHabitOfflineMutations(WORKSPACE_ID, otherActorUserId),
+    ).toBe(1)
   })
 
   it('marks stale entry changes as conflicted and leaves later mutations retryable', async () => {
@@ -105,6 +142,7 @@ describe('offline habit sync', () => {
     })
 
     const result = await drainHabitOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })

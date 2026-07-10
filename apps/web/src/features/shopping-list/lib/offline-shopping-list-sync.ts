@@ -31,6 +31,7 @@ export interface ShoppingListOfflineDrainResult {
 }
 
 export interface DrainShoppingListOfflineQueueOptions {
+  actorUserId: string
   api: ShoppingListApiClient
   onItemDeleted?: (itemId: string) => void
   onItemSynced?: (item: ChaosInboxItemRecord) => void
@@ -43,6 +44,7 @@ interface OfflineMutationCallbacks {
 }
 
 export async function drainShoppingListOfflineQueue({
+  actorUserId,
   api,
   onItemDeleted,
   onItemSynced,
@@ -66,7 +68,7 @@ export async function drainShoppingListOfflineQueue({
       completeMutation: completeShoppingListOfflineMutation,
       getMutationId: (mutation) => mutation.id,
       listRetryableMutations: () =>
-        listRetryableShoppingListOfflineMutations(workspaceId),
+        listRetryableShoppingListOfflineMutations(workspaceId, actorUserId),
       markMutationSyncing: markShoppingListOfflineMutationSyncing,
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),

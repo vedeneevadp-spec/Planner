@@ -30,6 +30,7 @@ export interface PlannerOfflineDrainResult {
 }
 
 export interface DrainPlannerOfflineQueueOptions {
+  actorUserId: string
   api: PlannerApiClient
   onLifeSphereSynced?: (sphere: LifeSphereRecord) => void
   onTaskDeleted?: (taskId: string) => void
@@ -44,6 +45,7 @@ interface OfflineMutationCallbacks {
 }
 
 export async function drainPlannerOfflineQueue({
+  actorUserId,
   api,
   onLifeSphereSynced,
   onTaskDeleted,
@@ -72,7 +74,7 @@ export async function drainPlannerOfflineQueue({
       completeMutation: completePlannerOfflineMutation,
       getMutationId: (mutation) => mutation.id,
       listRetryableMutations: () =>
-        listRetryablePlannerOfflineMutations(workspaceId),
+        listRetryablePlannerOfflineMutations(workspaceId, actorUserId),
       markMutationSyncing: markPlannerOfflineMutationSyncing,
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),

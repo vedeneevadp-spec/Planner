@@ -105,8 +105,9 @@ export class PostgresSessionRepository implements SessionRepository {
   async createSharedWorkspace(
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<SessionWorkspaceMembership> {
-    return this.db.transaction().execute(async (trx) => {
+    return withWriteTransaction(this.db, authContext, async (trx) => {
       const existingSharedWorkspaces = await countSharedWorkspaces(
         trx,
         session.actorUserId,
@@ -128,7 +129,7 @@ export class PostgresSessionRepository implements SessionRepository {
         workspaceId,
       )
 
-      const workspace = await trx
+      await trx
         .insertInto('app.workspaces')
         .values({
           description: '',
@@ -139,7 +140,6 @@ export class PostgresSessionRepository implements SessionRepository {
           slug: workspaceSlug,
           task_completion_confetti_enabled: true,
         })
-        .returning(['id', 'kind', 'name', 'slug'])
         .executeTakeFirstOrThrow()
 
       await trx
@@ -149,17 +149,17 @@ export class PostgresSessionRepository implements SessionRepository {
           id: generateUuidV7(),
           role: 'owner',
           user_id: session.actorUserId,
-          workspace_id: workspace.id,
+          workspace_id: workspaceId,
         })
         .execute()
 
       return {
         groupRole: 'group_admin',
-        id: workspace.id,
-        kind: workspace.kind,
-        name: workspace.name,
+        id: workspaceId,
+        kind: 'shared',
+        name: workspaceName,
         role: 'owner',
-        slug: workspace.slug,
+        slug: workspaceSlug,
       }
     })
   }
@@ -167,8 +167,9 @@ export class PostgresSessionRepository implements SessionRepository {
   async updateSharedWorkspace(
     session: SessionSnapshot,
     input: UpdateSharedWorkspaceInput,
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<SessionWorkspaceMembership> {
-    return this.db.transaction().execute(async (trx) => {
+    return withWriteTransaction(this.db, authContext, async (trx) => {
       const workspace = await trx
         .updateTable('app.workspaces')
         .set({
@@ -200,15 +201,24 @@ export class PostgresSessionRepository implements SessionRepository {
     })
   }
 
-  async deleteSharedWorkspace(session: SessionSnapshot): Promise<void> {
-    const deletedWorkspace = await this.db
-      .deleteFrom('app.workspaces')
-      .where('id', '=', session.workspaceId)
-      .where('kind', '=', 'shared')
-      .where('owner_user_id', '=', session.actorUserId)
-      .where('deleted_at', 'is', null)
-      .returning('id')
-      .executeTakeFirst()
+  async deleteSharedWorkspace(
+    session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null = null,
+  ): Promise<void> {
+    const deletedWorkspace = await withWriteTransaction(
+      this.db,
+      authContext,
+      (trx) =>
+        trx
+          .deleteFrom('app.workspaces')
+          .where('id', '=', session.workspaceId)
+          .where('kind', '=', 'shared')
+          .where('owner_user_id', '=', session.actorUserId)
+          .where('deleted_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst(),
+      session.actorUserId,
+    )
 
     if (!deletedWorkspace) {
       throw new HttpError(
@@ -219,16 +229,38 @@ export class PostgresSessionRepository implements SessionRepository {
     }
   }
 
-  async leaveSharedWorkspace(session: SessionSnapshot): Promise<void> {
-    const deletedMembership = await this.db
-      .updateTable('app.workspace_members')
-      .set({ deleted_at: new Date() })
-      .where('workspace_id', '=', session.workspaceId)
-      .where('user_id', '=', session.actorUserId)
-      .where('role', '<>', 'owner')
-      .where('deleted_at', 'is', null)
-      .returning('id')
-      .executeTakeFirst()
+  async leaveSharedWorkspace(
+    session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null = null,
+  ): Promise<void> {
+    const deletedMembership = await withWriteTransaction(
+      this.db,
+      authContext,
+      async (trx) => {
+        if (authContext) {
+          const result = await sql<{ leftWorkspace: boolean }>`
+            select app.leave_shared_workspace(
+              ${session.workspaceId}::uuid
+            ) as "leftWorkspace"
+          `.execute(trx)
+
+          return result.rows[0]?.leftWorkspace
+            ? { id: session.workspaceId }
+            : undefined
+        }
+
+        return trx
+          .updateTable('app.workspace_members')
+          .set({ deleted_at: new Date() })
+          .where('workspace_id', '=', session.workspaceId)
+          .where('user_id', '=', session.actorUserId)
+          .where('role', '<>', 'owner')
+          .where('deleted_at', 'is', null)
+          .returning('id')
+          .executeTakeFirst()
+      },
+      session.actorUserId,
+    )
 
     if (!deletedMembership) {
       throw new HttpError(
@@ -570,17 +602,33 @@ export class PostgresSessionRepository implements SessionRepository {
             .executeTakeFirst()
         }
 
-        await trx
-          .updateTable('app.workspace_invitations')
-          .set({
-            accepted_at: new Date(),
-            accepted_by: session.actorUserId,
-          })
-          .where('id', '=', invitationId)
-          .where('accepted_at', 'is', null)
-          .where('declined_at', 'is', null)
-          .where('deleted_at', 'is', null)
-          .executeTakeFirst()
+        if (authContext) {
+          const result = await sql<{ accepted: boolean }>`
+            select app.accept_workspace_invitation(
+              ${invitationId}::uuid
+            ) as accepted
+          `.execute(trx)
+
+          if (!result.rows[0]?.accepted) {
+            throw new HttpError(
+              404,
+              'workspace_invitation_not_found',
+              'Workspace invitation was not found.',
+            )
+          }
+        } else {
+          await trx
+            .updateTable('app.workspace_invitations')
+            .set({
+              accepted_at: new Date(),
+              accepted_by: session.actorUserId,
+            })
+            .where('id', '=', invitationId)
+            .where('accepted_at', 'is', null)
+            .where('declined_at', 'is', null)
+            .where('deleted_at', 'is', null)
+            .executeTakeFirst()
+        }
       },
       session.actorUserId,
     )
@@ -594,8 +642,18 @@ export class PostgresSessionRepository implements SessionRepository {
     const declinedInvitation = await withWriteTransaction(
       this.db,
       authContext,
-      (trx) =>
-        trx
+      async (trx) => {
+        if (authContext) {
+          const result = await sql<{ declined: boolean }>`
+            select app.decline_workspace_invitation(
+              ${invitationId}::uuid
+            ) as declined
+          `.execute(trx)
+
+          return result.rows[0]?.declined ? { id: invitationId } : undefined
+        }
+
+        return trx
           .updateTable('app.workspace_invitations')
           .set({
             declined_at: new Date(),
@@ -607,7 +665,8 @@ export class PostgresSessionRepository implements SessionRepository {
           .where('declined_at', 'is', null)
           .where('deleted_at', 'is', null)
           .returning('id')
-          .executeTakeFirst(),
+          .executeTakeFirst()
+      },
       session.actorUserId,
     )
 
@@ -671,12 +730,29 @@ export class PostgresSessionRepository implements SessionRepository {
           )
         }
 
-        await trx
-          .updateTable('app.users')
-          .set({ app_role: role })
-          .where('id', '=', userId)
-          .where('deleted_at', 'is', null)
-          .executeTakeFirst()
+        if (authContext) {
+          const updateResult = await sql<{ updated: boolean }>`
+            select app.set_user_app_role(
+              ${userId}::uuid,
+              ${role}::app.app_role
+            ) as updated
+          `.execute(trx)
+
+          if (!updateResult.rows[0]?.updated) {
+            throw new HttpError(
+              403,
+              'admin_user_role_update_forbidden',
+              'Only the global owner can update application roles.',
+            )
+          }
+        } else {
+          await trx
+            .updateTable('app.users')
+            .set({ app_role: role })
+            .where('id', '=', userId)
+            .where('deleted_at', 'is', null)
+            .executeTakeFirst()
+        }
 
         const updatedUser = await createAdminUserQuery(trx)
           .where('actor.id', '=', userId)
@@ -824,23 +900,31 @@ export class PostgresSessionRepository implements SessionRepository {
     input: UpdateUserProfileInput & {
       avatarUrl: string | null
     },
+    authContext: AuthenticatedRequestContext | null = null,
   ): Promise<UserProfile> {
-    const updatedProfile = await this.db
-      .updateTable('app.users')
-      .set({
-        avatar_url: input.avatarUrl,
-        display_name: input.displayName?.trim() ?? session.actor.displayName,
-      })
-      .where('id', '=', session.actorUserId)
-      .where('deleted_at', 'is', null)
-      .returning([
-        'avatar_url as avatarUrl',
-        'display_name as displayName',
-        'email',
-        'id',
-        'updated_at as updatedAt',
-      ])
-      .executeTakeFirst()
+    const updatedProfile = await withWriteTransaction(
+      this.db,
+      authContext,
+      (trx) =>
+        trx
+          .updateTable('app.users')
+          .set({
+            avatar_url: input.avatarUrl,
+            display_name:
+              input.displayName?.trim() ?? session.actor.displayName,
+          })
+          .where('id', '=', session.actorUserId)
+          .where('deleted_at', 'is', null)
+          .returning([
+            'avatar_url as avatarUrl',
+            'display_name as displayName',
+            'email',
+            'id',
+            'updated_at as updatedAt',
+          ])
+          .executeTakeFirst(),
+      session.actorUserId,
+    )
 
     if (!updatedProfile) {
       throw new HttpError(404, 'user_profile_not_found', 'User was not found.')

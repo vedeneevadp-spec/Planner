@@ -28,13 +28,21 @@ export interface SessionRepository {
   createSharedWorkspace(
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<SessionWorkspaceMembership>
   updateSharedWorkspace(
     session: SessionSnapshot,
     input: UpdateSharedWorkspaceInput,
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<SessionWorkspaceMembership>
-  deleteSharedWorkspace(session: SessionSnapshot): Promise<void>
-  leaveSharedWorkspace(session: SessionSnapshot): Promise<void>
+  deleteSharedWorkspace(
+    session: SessionSnapshot,
+    authContext?: AuthenticatedRequestContext | null,
+  ): Promise<void>
+  leaveSharedWorkspace(
+    session: SessionSnapshot,
+    authContext?: AuthenticatedRequestContext | null,
+  ): Promise<void>
   listWorkspaceUsers(
     session: SessionSnapshot,
     authContext?: AuthenticatedRequestContext | null,
@@ -103,5 +111,6 @@ export interface SessionRepository {
     input: UpdateUserProfileInput & {
       avatarUrl: string | null
     },
+    authContext?: AuthenticatedRequestContext | null,
   ): Promise<UserProfile>
 }

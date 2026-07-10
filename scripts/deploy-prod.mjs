@@ -7,7 +7,7 @@ import process from 'node:process'
 
 const DEFAULTS = {
   domain: 'chaotika.ru',
-  healthPath: '/api/health',
+  healthPath: '/api/ready',
   iconLocalDirectory: 'apps/api/tmp/icon-assets',
   iconRemoteDirectory: '/var/lib/planner/icon-assets',
   remoteHost: 'root@147.45.158.186',

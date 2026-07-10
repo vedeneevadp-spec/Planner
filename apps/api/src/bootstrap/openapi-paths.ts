@@ -38,6 +38,17 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['health'],
       },
     },
+    '/api/ready': {
+      get: {
+        operationId: 'getReadiness',
+        responses: {
+          200: jsonResponse('HealthResponse'),
+          503: jsonResponse('HealthResponse'),
+        },
+        summary: 'Get API dependency readiness',
+        tags: ['health'],
+      },
+    },
     '/api/metrics': {
       get: {
         operationId: 'getMetrics',

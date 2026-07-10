@@ -51,8 +51,15 @@ function shoppingListQueryKey(workspaceId: string) {
   return ['shopping-list', workspaceId] as const
 }
 
-function shoppingListOfflineStatusQueryKey(workspaceId: string) {
-  return ['shopping-list-offline-status', workspaceId] as const
+function shoppingListOfflineStatusQueryKey(
+  workspaceId: string,
+  actorUserId?: string,
+) {
+  return [
+    'shopping-list-offline-status',
+    workspaceId,
+    actorUserId ?? 'pending',
+  ] as const
 }
 
 export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
@@ -99,6 +106,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
     }
 
     await drainQueuedShoppingListMutations({
+      actorUserId: session.actorUserId,
       api,
       queryClient,
       workspaceId: session.workspaceId,
@@ -176,12 +184,13 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
   const { api, session, workspaceId } = useShoppingListApi(options)
   const isEnabled = options.enabled !== false && Boolean(session)
   const queryKey = useMemo(
-    () => shoppingListOfflineStatusQueryKey(workspaceId),
-    [workspaceId],
+    () => shoppingListOfflineStatusQueryKey(workspaceId, session?.actorUserId),
+    [session?.actorUserId, workspaceId],
   )
   const statusQuery = useQuery({
     enabled: isEnabled,
-    queryFn: () => loadShoppingListOfflineStatus(workspaceId),
+    queryFn: () =>
+      loadShoppingListOfflineStatus(workspaceId, session?.actorUserId),
     queryKey,
     refetchInterval: 10_000,
     staleTime: 5_000,
@@ -190,13 +199,14 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
     mutationFn: async () => {
       if (api && session) {
         await drainQueuedShoppingListMutations({
+          actorUserId: session.actorUserId,
           api,
           queryClient,
           workspaceId: session.workspaceId,
         })
       }
 
-      return loadShoppingListOfflineStatus(workspaceId)
+      return loadShoppingListOfflineStatus(workspaceId, session?.actorUserId)
     },
     onSuccess: (status) => {
       queryClient.setQueryData(queryKey, status)
@@ -296,6 +306,7 @@ export function useCreateShoppingListItem() {
             await refreshShoppingListOfflineStatus(
               queryClient,
               session.workspaceId,
+              session.actorUserId,
             )
 
             return optimisticItem
@@ -344,6 +355,7 @@ export function useCreateShoppingListItem() {
           await refreshShoppingListOfflineStatus(
             queryClient,
             session.workspaceId,
+            session.actorUserId,
           )
 
           return optimisticItem
@@ -424,6 +436,7 @@ export function useUpdateShoppingListItem() {
           await refreshShoppingListOfflineStatus(
             queryClient,
             session.workspaceId,
+            session.actorUserId,
           )
 
           return optimisticItem
@@ -480,6 +493,7 @@ export function useRemoveShoppingListItem() {
           await refreshShoppingListOfflineStatus(
             queryClient,
             session.workspaceId,
+            session.actorUserId,
           )
 
           return
@@ -658,56 +672,71 @@ function shouldKeepOptimisticShoppingListMutation(error: unknown): boolean {
 }
 
 async function drainQueuedShoppingListMutations(input: {
+  actorUserId: string
   api: ShoppingListApiClient
   queryClient: QueryClient
   workspaceId: string
 }): Promise<ShoppingListOfflineDrainResult> {
-  return shoppingListDrainCoordinator.drain(input.workspaceId, async () => {
-    const queryKey = shoppingListQueryKey(input.workspaceId)
-    const result = await drainShoppingListOfflineQueue({
-      api: input.api,
-      onItemDeleted: (itemId) => {
-        input.queryClient.setQueryData<ShoppingListItem[]>(
-          queryKey,
-          (current = []) => removeShoppingListItemRecord(current, itemId),
-        )
-      },
-      onItemSynced: (item) => {
-        input.queryClient.setQueryData<ShoppingListItem[]>(
-          queryKey,
-          (current = []) => replaceShoppingListItemRecord(current, item),
-        )
-      },
-      workspaceId: input.workspaceId,
-    })
+  return shoppingListDrainCoordinator.drain(
+    `${input.actorUserId}:${input.workspaceId}`,
+    async () => {
+      const queryKey = shoppingListQueryKey(input.workspaceId)
+      const result = await drainShoppingListOfflineQueue({
+        actorUserId: input.actorUserId,
+        api: input.api,
+        onItemDeleted: (itemId) => {
+          input.queryClient.setQueryData<ShoppingListItem[]>(
+            queryKey,
+            (current = []) => removeShoppingListItemRecord(current, itemId),
+          )
+        },
+        onItemSynced: (item) => {
+          input.queryClient.setQueryData<ShoppingListItem[]>(
+            queryKey,
+            (current = []) => replaceShoppingListItemRecord(current, item),
+          )
+        },
+        workspaceId: input.workspaceId,
+      })
 
-    if (result.synced > 0 || result.conflicted > 0) {
-      await input.queryClient.invalidateQueries({ queryKey })
-    }
+      if (result.synced > 0 || result.conflicted > 0) {
+        await input.queryClient.invalidateQueries({ queryKey })
+      }
 
-    await refreshShoppingListOfflineStatus(input.queryClient, input.workspaceId)
+      await refreshShoppingListOfflineStatus(
+        input.queryClient,
+        input.workspaceId,
+        input.actorUserId,
+      )
 
-    return result
-  })
+      return result
+    },
+  )
 }
 
 async function refreshShoppingListOfflineStatus(
   queryClient: QueryClient,
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<void> {
   queryClient.setQueryData(
-    shoppingListOfflineStatusQueryKey(workspaceId),
-    await loadShoppingListOfflineStatus(workspaceId),
+    shoppingListOfflineStatusQueryKey(workspaceId, actorUserId),
+    await loadShoppingListOfflineStatus(workspaceId, actorUserId),
   )
 }
 
 async function loadShoppingListOfflineStatus(
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<ShoppingListOfflineStatus> {
   return {
-    conflictedMutationCount:
-      await countConflictedShoppingListOfflineMutations(workspaceId),
-    queuedMutationCount:
-      await countRetryableShoppingListOfflineMutations(workspaceId),
+    conflictedMutationCount: await countConflictedShoppingListOfflineMutations(
+      workspaceId,
+      actorUserId,
+    ),
+    queuedMutationCount: await countRetryableShoppingListOfflineMutations(
+      workspaceId,
+      actorUserId,
+    ),
   }
 }

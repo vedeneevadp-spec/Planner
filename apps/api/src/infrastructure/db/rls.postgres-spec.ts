@@ -112,11 +112,14 @@ const EXPECTED_POLICY_NAMES = [
   'workspace_invitations_insert_manage',
   'workspace_invitations_select_manage_or_recipient',
   'workspace_invitations_update_manage_or_recipient',
-  'workspace_members_insert_invited_self',
+  'workspace_members_insert_self',
   'workspace_members_select_self_or_managed',
   'workspace_members_update_manage_or_invited_self',
+  'workspaces_delete_shared_owner',
+  'workspaces_insert_shared_owner',
   'workspaces_select_invited_email',
   'workspaces_select_member',
+  'workspaces_update_shared_owner',
   'workspaces_update_settings_admin',
 ]
 
@@ -206,7 +209,7 @@ void describe('Postgres RLS policies', () => {
     assert.deepEqual(visibleWithoutClaims, [])
   })
 
-  void test('allows global owner to list and update application users under RLS', async () => {
+  void test('allows only the global owner role function to update application roles', async () => {
     const ownerVisibleUserIds = await withAuthenticatedTransaction(
       fixture.ownerUserId,
       async () => listFixtureUserIds(),
@@ -222,16 +225,55 @@ void describe('Postgres RLS policies', () => {
     )
     assert.deepEqual(memberVisibleUserIds, [fixture.userBId])
 
-    await withAuthenticatedTransaction(fixture.ownerUserId, async () => {
-      await client.query(
-        `
+    await assert.rejects(
+      withAuthenticatedTransaction(fixture.userBId, async () => {
+        await client.query(
+          `
+            update app.users
+            set app_role = 'admin'
+            where id = $1
+          `,
+          [fixture.userBId],
+        )
+      }),
+      /permission denied/,
+    )
+
+    const memberUpdateResult = await withAuthenticatedTransaction(
+      fixture.userBId,
+      async () =>
+        client.query<{ updated: boolean }>(
+          `select app.set_user_app_role($1, 'admin') as updated`,
+          [fixture.userBId],
+        ),
+    )
+
+    assert.equal(memberUpdateResult.rows[0]?.updated, false)
+
+    const ownerUpdateResult = await withAuthenticatedTransaction(
+      fixture.ownerUserId,
+      async () =>
+        client.query<{ updated: boolean }>(
+          `select app.set_user_app_role($1, 'admin') as updated`,
+          [fixture.userBId],
+        ),
+    )
+
+    assert.equal(ownerUpdateResult.rows[0]?.updated, true)
+
+    await assert.rejects(
+      withAuthenticatedTransaction(fixture.ownerUserId, async () => {
+        await client.query(
+          `
           update app.users
-          set app_role = 'admin'
+          set app_role = 'test'
           where id = $1
         `,
-        [fixture.userBId],
-      )
-    })
+          [fixture.userBId],
+        )
+      }),
+      /permission denied/,
+    )
 
     const updatedRole = await withAuthenticatedTransaction(
       fixture.ownerUserId,

@@ -432,7 +432,7 @@ export function createComponentSchemas(): Record<
           type: 'string',
         },
         status: {
-          enum: ['ok'],
+          enum: ['ok', 'unavailable'],
           type: 'string',
         },
         storageDriver: {

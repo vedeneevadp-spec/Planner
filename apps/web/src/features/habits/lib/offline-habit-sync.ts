@@ -33,6 +33,7 @@ export interface HabitOfflineDrainResult {
 }
 
 export interface DrainHabitOfflineQueueOptions {
+  actorUserId: string
   api: HabitsApiClient
   onEntryDeleted?: (input: { date: string; habitId: string }) => void
   onEntrySynced?: (entry: HabitEntryRecord) => void
@@ -49,6 +50,7 @@ interface OfflineMutationCallbacks {
 }
 
 export async function drainHabitOfflineQueue({
+  actorUserId,
   api,
   onEntryDeleted,
   onEntrySynced,
@@ -82,7 +84,7 @@ export async function drainHabitOfflineQueue({
       completeMutation: completeHabitOfflineMutation,
       getMutationId: (mutation) => mutation.id,
       listRetryableMutations: () =>
-        listRetryableHabitOfflineMutations(workspaceId),
+        listRetryableHabitOfflineMutations(workspaceId, actorUserId),
       markMutationSyncing: markHabitOfflineMutationSyncing,
     },
     apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
