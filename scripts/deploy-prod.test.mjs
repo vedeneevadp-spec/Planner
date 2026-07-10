@@ -109,6 +109,7 @@ test('limits rsync to tracked files inside the inactive release', () => {
   const filter = createProjectSyncFilter([
     'apps/api/src/index.ts',
     'docs/file[1].md',
+    'docs\\literal?.md',
     'package.json',
   ])
 
@@ -117,9 +118,14 @@ test('limits rsync to tracked files inside the inactive release', () => {
   assert.match(filter, /^\+ \/apps\/$/m)
   assert.match(filter, /^\+ \/apps\/api\/src\/index\.ts$/m)
   assert.match(filter, /^\+ \/docs\/file\\\[1\\\]\.md$/m)
+  assert.ok(filter.split('\n').includes(String.raw`+ /docs\\literal\?.md`))
   assert.match(filter, /- \/\*\*\*\n$/)
   assert.throws(
     () => createProjectSyncFilter(['../planner.env']),
+    /Unexpected tracked file path/,
+  )
+  assert.throws(
+    () => createProjectSyncFilter(['docs/report\n+ /.env']),
     /Unexpected tracked file path/,
   )
 })

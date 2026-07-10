@@ -1,4 +1,5 @@
 const FULL_COMMIT_PATTERN = /^[0-9a-f]{40}$/
+const RSYNC_FILTER_PATTERN_METACHARACTERS = new Set(['\\', '*', '?', '[', ']'])
 
 export function createReleaseLayout(remoteRoot, commit) {
   const normalizedRoot = normalizeRemoteRoot(remoteRoot)
@@ -84,6 +85,7 @@ function normalizeGitPath(file) {
   if (
     file.length === 0 ||
     file.startsWith('/') ||
+    /[\r\n]/u.test(file) ||
     file.split('/').includes('..')
   ) {
     throw new Error(`Unexpected tracked file path: ${file}`)
@@ -93,5 +95,13 @@ function normalizeGitPath(file) {
 }
 
 function escapeRsyncFilterPath(value) {
-  return value.replaceAll('\\', '\\\\').replace(/([*?[\]])/g, '\\$1')
+  let escapedValue = ''
+
+  for (const character of value) {
+    escapedValue += RSYNC_FILTER_PATTERN_METACHARACTERS.has(character)
+      ? `\\${character}`
+      : character
+  }
+
+  return escapedValue
 }
