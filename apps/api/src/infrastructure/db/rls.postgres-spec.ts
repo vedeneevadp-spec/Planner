@@ -9,9 +9,16 @@ const connectionString =
   'postgres://planner:planner@127.0.0.1:54329/planner_development'
 
 interface RlsFixture {
+  groupAdminUserId: string
+  invitationId: string
+  memberUserId: string
   ownerUserId: string
   prefix: string
+  recipientUserId: string
+  rejoinInvitationId: string
+  rejoiningUserId: string
   seededOwnerUserId: string | null
+  sharedWorkspaceId: string
   taskAId: string
   taskBId: string
   userAId: string
@@ -209,7 +216,7 @@ void describe('Postgres RLS policies', () => {
     assert.deepEqual(visibleWithoutClaims, [])
   })
 
-  void test('allows only the global owner role function to update application roles', async () => {
+  void test('keeps legacy and function application-role updates owner-only', async () => {
     const ownerVisibleUserIds = await withAuthenticatedTransaction(
       fixture.ownerUserId,
       async () => listFixtureUserIds(),
@@ -221,7 +228,14 @@ void describe('Postgres RLS policies', () => {
 
     assert.deepEqual(
       ownerVisibleUserIds.sort(),
-      [fixture.userAId, fixture.userBId].sort(),
+      [
+        fixture.groupAdminUserId,
+        fixture.memberUserId,
+        fixture.recipientUserId,
+        fixture.rejoiningUserId,
+        fixture.userAId,
+        fixture.userBId,
+      ].sort(),
     )
     assert.deepEqual(memberVisibleUserIds, [fixture.userBId])
 
@@ -236,7 +250,7 @@ void describe('Postgres RLS policies', () => {
           [fixture.userBId],
         )
       }),
-      /permission denied/,
+      /Application role update is not allowed/,
     )
 
     const memberUpdateResult = await withAuthenticatedTransaction(
@@ -261,26 +275,338 @@ void describe('Postgres RLS policies', () => {
 
     assert.equal(ownerUpdateResult.rows[0]?.updated, true)
 
-    await assert.rejects(
-      withAuthenticatedTransaction(fixture.ownerUserId, async () => {
-        await client.query(
-          `
+    await withAuthenticatedTransaction(fixture.ownerUserId, async () => {
+      await client.query(
+        `
           update app.users
           set app_role = 'test'
           where id = $1
         `,
-          [fixture.userBId],
-        )
-      }),
-      /permission denied/,
-    )
+        [fixture.userBId],
+      )
+    })
 
     const updatedRole = await withAuthenticatedTransaction(
       fixture.ownerUserId,
       async () => resolveFixtureUserRole(fixture.userBId),
     )
 
-    assert.equal(updatedRole, 'admin')
+    assert.equal(updatedRole, 'test')
+
+    await assert.rejects(
+      withAuthenticatedTransaction(fixture.ownerUserId, async () => {
+        await client.query(
+          `
+            update app.users
+            set app_role = 'admin'
+            where id = $1
+          `,
+          [fixture.ownerUserId],
+        )
+      }),
+      /Application role update is not allowed/,
+    )
+  })
+
+  void test('allows legacy invitation transitions without exposing invitation scope', async () => {
+    const accepted = await withAuthenticatedRollback(
+      fixture.recipientUserId,
+      async () =>
+        client.query<{ accepted_by: string }>(
+          `
+            update app.workspace_invitations
+            set accepted_at = now(), accepted_by = $1
+            where id = $2
+              and accepted_at is null
+              and declined_at is null
+              and deleted_at is null
+            returning accepted_by
+          `,
+          [fixture.recipientUserId, fixture.invitationId],
+        ),
+    )
+
+    assert.equal(accepted.rows[0]?.accepted_by, fixture.recipientUserId)
+
+    const declined = await withAuthenticatedRollback(
+      fixture.recipientUserId,
+      async () =>
+        client.query<{ declined_by: string }>(
+          `
+            update app.workspace_invitations
+            set declined_at = now(), declined_by = $1
+            where id = $2
+              and email = $3
+              and accepted_at is null
+              and declined_at is null
+              and deleted_at is null
+            returning declined_by
+          `,
+          [
+            fixture.recipientUserId,
+            fixture.invitationId,
+            `${fixture.prefix}-recipient@example.test`,
+          ],
+        ),
+    )
+
+    assert.equal(declined.rows[0]?.declined_by, fixture.recipientUserId)
+
+    for (const functionName of [
+      'accept_workspace_invitation',
+      'decline_workspace_invitation',
+    ]) {
+      const functionResult = await withAuthenticatedRollback(
+        fixture.recipientUserId,
+        async () =>
+          client.query<{ updated: boolean }>(
+            `select app.${functionName}($1) as updated`,
+            [fixture.invitationId],
+          ),
+      )
+
+      assert.equal(functionResult.rows[0]?.updated, true)
+    }
+
+    const reinvited = await withAuthenticatedRollback(
+      fixture.groupAdminUserId,
+      async () =>
+        client.query<{ group_role: string; invited_by: string }>(
+          `
+            insert into app.workspace_invitations (
+              id,
+              workspace_id,
+              email,
+              group_role,
+              invited_by
+            )
+            values ($1, $2, $3, 'senior_member', $4)
+            on conflict (workspace_id, email) do update
+            set
+              accepted_at = null,
+              accepted_by = null,
+              deleted_at = null,
+              declined_at = null,
+              declined_by = null,
+              group_role = excluded.group_role,
+              invited_by = excluded.invited_by
+            returning group_role::text, invited_by
+          `,
+          [
+            randomUUID(),
+            fixture.sharedWorkspaceId,
+            `${fixture.prefix}-recipient@example.test`,
+            fixture.groupAdminUserId,
+          ],
+        ),
+    )
+
+    assert.deepEqual(reinvited.rows[0], {
+      group_role: 'senior_member',
+      invited_by: fixture.groupAdminUserId,
+    })
+
+    const revoked = await withAuthenticatedRollback(
+      fixture.groupAdminUserId,
+      async () =>
+        client.query<{ id: string }>(
+          `
+            update app.workspace_invitations
+            set deleted_at = now()
+            where id = $1
+              and accepted_at is null
+              and deleted_at is null
+            returning id
+          `,
+          [fixture.invitationId],
+        ),
+    )
+
+    assert.equal(revoked.rows[0]?.id, fixture.invitationId)
+
+    await assert.rejects(
+      withAuthenticatedRollback(fixture.recipientUserId, async () => {
+        await client.query(
+          `
+            update app.workspace_invitations
+            set group_role = 'group_admin'
+            where id = $1
+          `,
+          [fixture.invitationId],
+        )
+      }),
+      isInsufficientPrivilege,
+    )
+    await assert.rejects(
+      withAuthenticatedRollback(fixture.recipientUserId, async () => {
+        await client.query(
+          `
+            update app.workspace_invitations
+            set workspace_id = $1
+            where id = $2
+          `,
+          [fixture.workspaceAId, fixture.invitationId],
+        )
+      }),
+      isInsufficientPrivilege,
+    )
+    await assert.rejects(
+      withAuthenticatedRollback(fixture.recipientUserId, async () => {
+        await client.query(
+          `
+            update app.workspace_invitations
+            set accepted_at = now(), accepted_by = $1, deleted_at = now()
+            where id = $2
+          `,
+          [fixture.recipientUserId, fixture.invitationId],
+        )
+      }),
+      isInsufficientPrivilege,
+    )
+  })
+
+  void test('allows legacy membership lifecycle updates without role or identity escalation', async () => {
+    const leftMembership = await withAuthenticatedRollback(
+      fixture.memberUserId,
+      async () =>
+        client.query<{ user_id: string }>(
+          `
+            update app.workspace_members
+            set deleted_at = now()
+            where workspace_id = $1
+              and user_id = $2
+              and role <> 'owner'
+              and deleted_at is null
+            returning user_id
+          `,
+          [fixture.sharedWorkspaceId, fixture.memberUserId],
+        ),
+    )
+
+    assert.equal(leftMembership.rows[0]?.user_id, fixture.memberUserId)
+
+    const functionLeave = await withAuthenticatedRollback(
+      fixture.memberUserId,
+      async () =>
+        client.query<{ updated: boolean }>(
+          `select app.leave_shared_workspace($1) as updated`,
+          [fixture.sharedWorkspaceId],
+        ),
+    )
+
+    assert.equal(functionLeave.rows[0]?.updated, true)
+
+    const updatedGroupRole = await withAuthenticatedRollback(
+      fixture.groupAdminUserId,
+      async () =>
+        client.query<{ group_role: string }>(
+          `
+            update app.workspace_members
+            set group_role = 'senior_member'
+            where workspace_id = $1
+              and user_id = $2
+              and deleted_at is null
+            returning group_role::text
+          `,
+          [fixture.sharedWorkspaceId, fixture.memberUserId],
+        ),
+    )
+
+    assert.equal(updatedGroupRole.rows[0]?.group_role, 'senior_member')
+
+    const removedMember = await withAuthenticatedRollback(
+      fixture.groupAdminUserId,
+      async () =>
+        client.query<{ user_id: string }>(
+          `
+            update app.workspace_members
+            set deleted_at = now()
+            where workspace_id = $1
+              and user_id = $2
+              and deleted_at is null
+            returning user_id
+          `,
+          [fixture.sharedWorkspaceId, fixture.memberUserId],
+        ),
+    )
+
+    assert.equal(removedMember.rows[0]?.user_id, fixture.memberUserId)
+
+    const rejoinedMember = await withAuthenticatedRollback(
+      fixture.rejoiningUserId,
+      async () =>
+        client.query<{ user_id: string }>(
+          `
+            update app.workspace_members
+            set
+              deleted_at = null,
+              group_role = 'member',
+              invited_by = $1,
+              role = 'user'
+            where workspace_id = $2
+              and user_id = $3
+            returning user_id
+          `,
+          [
+            fixture.ownerUserId,
+            fixture.sharedWorkspaceId,
+            fixture.rejoiningUserId,
+          ],
+        ),
+    )
+
+    assert.equal(rejoinedMember.rows[0]?.user_id, fixture.rejoiningUserId)
+
+    await assert.rejects(
+      withAuthenticatedRollback(fixture.groupAdminUserId, async () => {
+        await client.query(
+          `
+            update app.workspace_members
+            set role = 'owner'
+            where workspace_id = $1
+              and user_id = $2
+          `,
+          [fixture.sharedWorkspaceId, fixture.memberUserId],
+        )
+      }),
+      isInsufficientPrivilege,
+    )
+    await assert.rejects(
+      withAuthenticatedRollback(fixture.groupAdminUserId, async () => {
+        await client.query(
+          `
+            update app.workspace_members
+            set user_id = $1
+            where workspace_id = $2
+              and user_id = $3
+          `,
+          [
+            fixture.groupAdminUserId,
+            fixture.sharedWorkspaceId,
+            fixture.memberUserId,
+          ],
+        )
+      }),
+      isInsufficientPrivilege,
+    )
+    await assert.rejects(
+      withAuthenticatedRollback(fixture.groupAdminUserId, async () => {
+        await client.query(
+          `
+            update app.workspace_members
+            set invited_by = $1
+            where workspace_id = $2
+              and user_id = $3
+          `,
+          [
+            fixture.groupAdminUserId,
+            fixture.sharedWorkspaceId,
+            fixture.memberUserId,
+          ],
+        )
+      }),
+      isInsufficientPrivilege,
+    )
   })
 
   void test('keeps RLS enabled on all protected tables', async () => {
@@ -326,9 +652,16 @@ function createFixture(): RlsFixture {
   const suffix = randomUUID()
 
   return {
+    groupAdminUserId: randomUUID(),
+    invitationId: randomUUID(),
+    memberUserId: randomUUID(),
     ownerUserId: randomUUID(),
     prefix: `rls-${suffix}`,
+    recipientUserId: randomUUID(),
+    rejoinInvitationId: randomUUID(),
+    rejoiningUserId: randomUUID(),
     seededOwnerUserId: null,
+    sharedWorkspaceId: randomUUID(),
     taskAId: randomUUID(),
     taskBId: randomUUID(),
     userAId: randomUUID(),
@@ -360,6 +693,30 @@ async function seedFixture(value: RlsFixture): Promise<void> {
   )
   await client.query(
     `
+      insert into app.users (id, email, display_name)
+      values
+        ($1, $2, $3),
+        ($4, $5, $6),
+        ($7, $8, $9),
+        ($10, $11, $12)
+    `,
+    [
+      value.groupAdminUserId,
+      `${value.prefix}-group-admin@example.test`,
+      `${value.prefix} Group Admin`,
+      value.memberUserId,
+      `${value.prefix}-member@example.test`,
+      `${value.prefix} Member`,
+      value.recipientUserId,
+      `${value.prefix}-recipient@example.test`,
+      `${value.prefix} Recipient`,
+      value.rejoiningUserId,
+      `${value.prefix}-rejoining@example.test`,
+      `${value.prefix} Rejoining`,
+    ],
+  )
+  await client.query(
+    `
       insert into app.workspaces (id, owner_user_id, name, slug)
       values
         ($1, $2, $3, $4),
@@ -385,6 +742,70 @@ async function seedFixture(value: RlsFixture): Promise<void> {
     `,
     [value.workspaceAId, value.userAId, value.workspaceBId, value.userBId],
   )
+  await client.query(
+    `
+      insert into app.workspaces (
+        id,
+        owner_user_id,
+        name,
+        slug,
+        kind
+      )
+      values ($1, $2, $3, $4, 'shared')
+    `,
+    [
+      value.sharedWorkspaceId,
+      value.ownerUserId,
+      `${value.prefix} Shared`,
+      `${value.prefix}-shared`,
+    ],
+  )
+  await client.query(
+    `
+      insert into app.workspace_members (
+        workspace_id,
+        user_id,
+        role,
+        group_role,
+        invited_by,
+        deleted_at
+      )
+      values
+        ($1, $2, 'owner', 'group_admin', null, null),
+        ($1, $3, 'user', 'group_admin', $2, null),
+        ($1, $4, 'user', 'member', $2, null),
+        ($1, $5, 'user', 'member', $2, now())
+    `,
+    [
+      value.sharedWorkspaceId,
+      value.ownerUserId,
+      value.groupAdminUserId,
+      value.memberUserId,
+      value.rejoiningUserId,
+    ],
+  )
+  await client.query(
+    `
+      insert into app.workspace_invitations (
+        id,
+        workspace_id,
+        email,
+        group_role,
+        invited_by
+      )
+      values
+        ($1, $2, $3, 'member', $4),
+        ($5, $2, $6, 'member', $4)
+    `,
+    [
+      value.invitationId,
+      value.sharedWorkspaceId,
+      `${value.prefix}-recipient@example.test`,
+      value.ownerUserId,
+      value.rejoinInvitationId,
+      `${value.prefix}-rejoining@example.test`,
+    ],
+  )
   await insertTask({
     id: value.taskAId,
     title: `${value.prefix}-a`,
@@ -404,6 +825,14 @@ async function cleanupFixture(value: RlsFixture): Promise<void> {
   await client.query("select set_config('request.jwt.claims', '{}', false)")
   await client.query(
     `
+      delete from app.workspace_invitations
+      where workspace_id = $1
+        or id in ($2, $3)
+    `,
+    [value.sharedWorkspaceId, value.invitationId, value.rejoinInvitationId],
+  )
+  await client.query(
+    `
       delete from app.task_events
       where workspace_id in ($1, $2)
     `,
@@ -420,24 +849,41 @@ async function cleanupFixture(value: RlsFixture): Promise<void> {
   await client.query(
     `
       delete from app.workspace_members
-      where workspace_id in ($1, $2)
-        or user_id in ($3, $4)
+      where workspace_id in ($1, $2, $3)
+        or user_id in ($4, $5, $6, $7, $8, $9)
     `,
-    [value.workspaceAId, value.workspaceBId, value.userAId, value.userBId],
+    [
+      value.workspaceAId,
+      value.workspaceBId,
+      value.sharedWorkspaceId,
+      value.userAId,
+      value.userBId,
+      value.groupAdminUserId,
+      value.memberUserId,
+      value.recipientUserId,
+      value.rejoiningUserId,
+    ],
   )
   await client.query(
     `
       delete from app.workspaces
-      where id in ($1, $2)
+      where id in ($1, $2, $3)
     `,
-    [value.workspaceAId, value.workspaceBId],
+    [value.workspaceAId, value.workspaceBId, value.sharedWorkspaceId],
   )
   await client.query(
     `
       delete from app.users
-      where id in ($1, $2)
+      where id in ($1, $2, $3, $4, $5, $6)
     `,
-    [value.userAId, value.userBId],
+    [
+      value.userAId,
+      value.userBId,
+      value.groupAdminUserId,
+      value.memberUserId,
+      value.recipientUserId,
+      value.rejoiningUserId,
+    ],
   )
 
   if (value.seededOwnerUserId) {
@@ -463,6 +909,24 @@ async function withAuthenticatedTransaction<T>(
 
     return callback()
   })
+}
+
+async function withAuthenticatedRollback<T>(
+  userId: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  await client.query('begin')
+
+  try {
+    await client.query("select set_config('request.jwt.claims', $1, true)", [
+      JSON.stringify({ role: 'authenticated', sub: userId }),
+    ])
+    await client.query('set local role authenticated')
+
+    return await callback()
+  } finally {
+    await client.query('rollback').catch(() => undefined)
+  }
 }
 
 async function withTransaction<T>(callback: () => Promise<T>): Promise<T> {
@@ -583,4 +1047,8 @@ async function insertTask({
 
 function isDatabaseError(error: unknown): error is Error & { code: string } {
   return error instanceof Error && 'code' in error
+}
+
+function isInsufficientPrivilege(error: unknown): boolean {
+  return isDatabaseError(error) && error.code === '42501'
 }

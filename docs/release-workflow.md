@@ -106,7 +106,7 @@ VPS, чтобы использовать тот же сетевой контур
 
 ```bash
 ssh root@147.45.158.186
-cd /opt/planner
+cd /opt/planner/current
 npm run prod:env -- npm run db:backup
 npm run prod:env -- npm run db:migrate
 DB_SECURITY_REQUIRE_NON_OWNER=1 npm run prod:env -- npm run db:security:check
@@ -266,21 +266,33 @@ npm run deploy:prod
 Что делает скрипт:
 
 1. предупреждает о dirty worktree
-2. запускает `npm run ci`, если не указан `--skip-checks`
-3. синхронизирует проект на VPS
-4. валидирует production env на сервере
-5. снимает `pg_dump` backup, если не указан `--skip-db-backup`
-6. запускает `npm run db:migrate` и `npm run db:security:check`
-7. собирает production web с `VITE_API_BASE_URL=https://chaotika.ru`
-8. перезапускает API
-9. запускает `npm run smoke:api:prod` против уже поднятого API на
-   `http://127.0.0.1:3001`, чтобы проверить authenticated запросы, а не только
-   `/api/health`
-10. включает и перезапускает `planner-task-reminders`, если
+2. берет неблокирующий remote `flock` до локального `npm run ci` и удерживает
+   его во время `rsync`, build, migrations, activation, healthchecks и
+   retention; параллельный deploy сразу завершается, не ожидая освобождения lock
+3. запускает `npm run ci`, если не указан `--skip-checks`
+4. синхронизирует проект в неизменяемый каталог
+   `/opt/planner/releases/<commit>`, не затрагивая текущий release
+5. валидирует production env на сервере
+6. снимает `pg_dump` backup в `/opt/planner/shared/backups`, если не указан
+   `--skip-db-backup`
+7. запускает `npm run db:migrate` и `npm run db:security:check`
+8. собирает production web с `VITE_API_BASE_URL=https://chaotika.ru`
+9. атомарно переключает `/opt/planner/current` и перезапускает API
+10. запускает `npm run smoke:api:prod` против уже поднятого API на
+    `http://127.0.0.1:3001`, чтобы проверить authenticated запросы, а не только
+    `/api/health`
+11. включает и перезапускает `planner-task-reminders`, если
     `API_TASK_REMINDERS_RUNTIME=worker`; иначе останавливает отдельный worker
-11. reload-ит Caddy
-12. проверяет `http://127.0.0.1:3001/api/ready`
-13. проверяет `https://chaotika.ru/api/ready`
+12. reload-ит Caddy; при ошибке после переключения возвращает previous symlink,
+    unit-файлы и Caddyfile, затем перезапускает сервисы
+13. проверяет `http://127.0.0.1:3001/api/ready`
+14. проверяет `https://chaotika.ru/api/ready`
+15. сохраняет текущий и предыдущий release и удаляет самые старые каталоги
+    сверх `DEPLOY_RELEASE_RETENTION` (по умолчанию 5)
+
+Автоматический rollback возвращает код и runtime-конфигурацию, но не откатывает
+уже примененные DB migrations. Production migrations должны оставаться
+backward-compatible с предыдущим release.
 
 После deploy проверить вручную:
 

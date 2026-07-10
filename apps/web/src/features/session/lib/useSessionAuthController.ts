@@ -33,6 +33,7 @@ import {
   type StoredAuthSession,
   writeStoredAuthSession,
 } from './auth-session-storage'
+import { getBrowserAuthDeviceId } from './browser-auth-device-id'
 import { unregisterStoredNativePushDevice } from './native-push-notifications'
 import {
   addNativeAppStateChangeListener,
@@ -74,7 +75,7 @@ export function useSessionAuthController(): SessionAuthState {
   const pendingSignOutNoticeRef = useRef<string | false | null>(null)
   const blockedNativeRefreshTokenRef = useRef<string | null>(null)
   const deferredRefreshRetryCountRef = useRef(0)
-  const nativeAuthDeviceIdRef = useRef<Promise<string | null> | null>(null)
+  const authDeviceIdRef = useRef<Promise<string | null> | null>(null)
   const recoverSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
     Promise.resolve('signed_out'),
   )
@@ -121,35 +122,31 @@ export function useSessionAuthController(): SessionAuthState {
     }, delayMs)
   }, [clearRefreshTimer])
 
-  const resolveNativeAuthDeviceId = useCallback(async (): Promise<
-    string | null
-  > => {
-    if (!isNativeSessionRuntime) {
-      return null
-    }
+  const resolveAuthDeviceId = useCallback(async (): Promise<string | null> => {
+    authDeviceIdRef.current ??= Promise.resolve()
+      .then(() =>
+        isNativeSessionRuntime
+          ? getNativeAuthDeviceId()
+          : getBrowserAuthDeviceId(),
+      )
+      .catch((error) => {
+        authDeviceIdRef.current = null
+        console.warn('Failed to resolve auth device id.', error)
 
-    nativeAuthDeviceIdRef.current ??= getNativeAuthDeviceId().catch((error) => {
-      nativeAuthDeviceIdRef.current = null
-      console.warn('Failed to resolve native auth device id.', error)
+        return null
+      })
 
-      return null
-    })
-
-    return nativeAuthDeviceIdRef.current
+    return authDeviceIdRef.current
   }, [isNativeSessionRuntime])
 
   const createAuthRequestOptions = useCallback(
     async (options?: {
-      requireNativeDeviceId?: boolean | undefined
+      requireDeviceId?: boolean | undefined
     }): Promise<AuthRequestOptions> => {
-      const deviceId = await resolveNativeAuthDeviceId()
+      const deviceId = await resolveAuthDeviceId()
 
-      if (
-        isNativeSessionRuntime &&
-        options?.requireNativeDeviceId !== false &&
-        !deviceId
-      ) {
-        throw new TypeError('Native auth device id is unavailable.')
+      if (options?.requireDeviceId !== false && !deviceId) {
+        throw new TypeError('Auth device id is unavailable.')
       }
 
       return {
@@ -158,7 +155,7 @@ export function useSessionAuthController(): SessionAuthState {
         tokenTransport: isNativeSessionRuntime ? 'body' : 'cookie',
       }
     },
-    [isNativeSessionRuntime, resolveNativeAuthDeviceId],
+    [isNativeSessionRuntime, resolveAuthDeviceId],
   )
 
   const persistAuthSession = useCallback(
@@ -231,7 +228,7 @@ export function useSessionAuthController(): SessionAuthState {
         await signOutAuthSession(
           refreshToken ? { refreshToken } : {},
           await createAuthRequestOptions({
-            requireNativeDeviceId: false,
+            requireDeviceId: false,
           }),
         ).catch((error) => {
           if (!isUnauthorizedAuthApiError(error)) {
@@ -676,10 +673,13 @@ export function useSessionAuthController(): SessionAuthState {
     snapshot.refreshToken,
   ])
 
-  const requestPasswordReset = useCallback(async (email: string) => {
-    setAuthNotice(null)
-    await requestPasswordResetApi({ email })
-  }, [])
+  const requestPasswordReset = useCallback(
+    async (email: string) => {
+      setAuthNotice(null)
+      await requestPasswordResetApi({ email }, await createAuthRequestOptions())
+    },
+    [createAuthRequestOptions],
+  )
 
   const signInWithPassword = useCallback(
     async (email: string, password: string) => {

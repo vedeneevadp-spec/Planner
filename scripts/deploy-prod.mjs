@@ -4,22 +4,28 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import { fileURLToPath } from 'node:url'
+
+import {
+  createProjectSyncFilter,
+  createReleaseLayout,
+  parseReleaseRetention,
+} from './deploy-prod-helpers.mjs'
 
 const DEFAULTS = {
   domain: 'chaotika.ru',
   healthPath: '/api/ready',
   iconLocalDirectory: 'apps/api/tmp/icon-assets',
   iconRemoteDirectory: '/var/lib/planner/icon-assets',
+  releaseRetention: 5,
   remoteHost: 'root@147.45.158.186',
   remoteRoot: '/opt/planner',
 }
 
 const args = new Set(process.argv.slice(2))
-
-if (args.has('--help') || args.has('-h')) {
-  printHelp()
-  process.exit(0)
-}
+const isMain =
+  process.argv[1] !== undefined &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 
 const config = {
   domain: readEnv('DEPLOY_DOMAIN', DEFAULTS.domain),
@@ -34,6 +40,9 @@ const config = {
   ),
   remoteHost: readEnv('DEPLOY_HOST', DEFAULTS.remoteHost),
   remoteRoot: readEnv('DEPLOY_REMOTE_ROOT', DEFAULTS.remoteRoot),
+  releaseRetention: parseReleaseRetention(
+    readEnv('DEPLOY_RELEASE_RETENTION', DEFAULTS.releaseRetention),
+  ),
 }
 
 const dryRun = args.has('--dry-run')
@@ -43,6 +52,8 @@ const skipDbBackup =
   args.has('--skip-db-backup') || process.env.DEPLOY_SKIP_DB_BACKUP === '1'
 const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
+const REMOTE_DEPLOY_LOCK_MARKER = '__PLANNER_DEPLOY_LOCK_ACQUIRED__'
+const REMOTE_DEPLOY_LOCK_TIMEOUT_MS = 15_000
 const LOCAL_CHECK_ENV_OVERRIDES_TO_CLEAR = [
   'API_AUTH_MODE',
   'VITE_API_ACCESS_TOKEN',
@@ -53,36 +64,55 @@ const LOCAL_CHECK_ENV_OVERRIDES_TO_CLEAR = [
   'WEB_AUTH_PROVIDER',
 ]
 
-await main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error)
-  process.exit(1)
-})
+if (isMain) {
+  if (args.has('--help') || args.has('-h')) {
+    printHelp()
+  } else {
+    await main().catch((error) => {
+      console.error(error instanceof Error ? error.message : error)
+      process.exitCode = 1
+    })
+  }
+}
 
 async function main() {
   printHeader()
-  await assertDeploySourceReady()
+  const source = await assertDeploySourceReady()
+  const layout = createReleaseLayout(config.remoteRoot, source.head)
 
-  if (skipChecks) {
-    console.log('[deploy] Skipping local checks.')
-  } else {
-    await run('npm', ['run', 'ci'], { env: createLocalCheckEnv() })
+  console.log(`[deploy] Release directory: ${layout.releaseDirectory}`)
+  const remoteLock = await acquireRemoteDeployLock(layout)
+
+  try {
+    if (skipChecks) {
+      console.log('[deploy] Skipping local checks.')
+    } else {
+      await run('npm', ['run', 'ci'], {
+        env: createLocalCheckEnv(),
+        signal: remoteLock.signal,
+      })
+    }
+
+    if (dryRun) {
+      console.log('[deploy] Dry run: remote directory preparation skipped.')
+    }
+
+    if (!dryRun) {
+      await ensureRemoteDirectories(layout, remoteLock.signal)
+    }
+    await syncProject(layout, remoteLock.signal)
+    await syncIconAssets(remoteLock.signal)
+
+    if (dryRun) {
+      console.log('[deploy] Dry run complete. Remote build/restart skipped.')
+      return
+    }
+
+    await runRemoteRelease(layout, remoteLock.signal)
+    console.log(`[deploy] Production is healthy: https://${config.domain}`)
+  } finally {
+    await remoteLock.release()
   }
-
-  if (dryRun) {
-    console.log('[deploy] Dry run: remote directory preparation skipped.')
-  } else {
-    await ensureRemoteDirectories()
-  }
-  await syncProject()
-  await syncIconAssets()
-
-  if (dryRun) {
-    console.log('[deploy] Dry run complete. Remote build/restart skipped.')
-    return
-  }
-
-  await runRemoteRelease()
-  console.log(`[deploy] Production is healthy: https://${config.domain}`)
 }
 
 function printHeader() {
@@ -93,6 +123,7 @@ function printHeader() {
       `  host:   ${config.remoteHost}`,
       `  root:   ${config.remoteRoot}`,
       `  icons:  ${config.iconRemoteDirectory}`,
+      `  keep:   ${config.releaseRetention} releases`,
     ].join('\n'),
   )
 }
@@ -104,6 +135,11 @@ Usage:
 
 Source guard:
   The deploy runs only from a clean tracked branch whose HEAD matches upstream.
+
+Concurrency:
+  A non-blocking remote flock covers preparation, rsync, build, migrations,
+  activation, healthchecks, and release retention. A concurrent deploy exits
+  immediately instead of waiting for the active deploy.
 
 Options:
   --skip-checks  Do not run npm run ci before deploy.
@@ -117,6 +153,7 @@ Environment overrides:
   DEPLOY_DOMAIN=chaotika.ru
   DEPLOY_REMOTE_ROOT=/opt/planner
   DEPLOY_ICON_REMOTE_DIR=/var/lib/planner/icon-assets
+  DEPLOY_RELEASE_RETENTION=5
 `)
 }
 
@@ -209,6 +246,8 @@ async function assertDeploySourceReady() {
       `  commit:   ${head.slice(0, 12)}`,
     ].join('\n'),
   )
+
+  return { branch, head, upstream }
 }
 
 async function collectUpstream(branch) {
@@ -254,21 +293,64 @@ async function collectAheadBehind() {
   }
 }
 
-async function ensureRemoteDirectories() {
-  const remoteScript = `
+export function createRemotePreparationScript(layout) {
+  return `
 set -euo pipefail
-mkdir -p ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
-chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
-chmod 711 ${shellQuote(config.remoteRoot)}
-`
 
-  await runWithInput('ssh', [config.remoteHost, 'bash', '-se'], remoteScript)
+remote_root=${shellQuote(layout.remoteRoot)}
+release_dir=${shellQuote(layout.releaseDirectory)}
+current_link=${shellQuote(layout.currentLink)}
+
+mkdir -p \
+  ${shellQuote(layout.releasesRoot)} \
+  ${shellQuote(layout.backupsDirectory)} \
+  ${shellQuote(layout.stateDirectory)} \
+  ${shellQuote(config.iconRemoteDirectory)}
+
+if [ ! -e "$current_link" ] && [ ! -L "$current_link" ] && [ -f "$remote_root/package.json" ]; then
+  ln -s "$remote_root" "$current_link"
+fi
+
+current_target="$(readlink -f "$current_link" 2>/dev/null || true)"
+if [ "$current_target" = "$release_dir" ]; then
+  echo "Refusing to overwrite the active release: $release_dir" >&2
+  exit 1
+fi
+
+if [ -d "$release_dir" ]; then
+  if [ -f "$release_dir/.deploy-complete" ]; then
+    echo "Refusing to overwrite an immutable completed release: $release_dir" >&2
+    exit 1
+  fi
+
+  rm -rf "$release_dir"
+fi
+
+mkdir -p "$release_dir"
+chown -R planner:planner \
+  "$release_dir" \
+  ${shellQuote(layout.sharedRoot)} \
+  ${shellQuote(config.iconRemoteDirectory)}
+chmod 711 "$remote_root" ${shellQuote(layout.sharedRoot)}
+`
 }
 
-async function syncProject() {
+async function ensureRemoteDirectories(layout, signal) {
+  await runWithInput(
+    'ssh',
+    [config.remoteHost, 'bash', '-se'],
+    createRemotePreparationScript(layout),
+    { signal },
+  )
+}
+
+async function syncProject(layout, signal) {
   const trackedFiles = await collectTrackedProjectFiles()
   const filterDirectory = await mkdtemp(path.join(tmpdir(), 'planner-deploy-'))
   const filterPath = path.join(filterDirectory, 'rsync-filter')
+  const remoteDirectory = dryRun
+    ? `${layout.remoteRoot}/.deploy-dry-run-${layout.releaseId}`
+    : layout.releaseDirectory
 
   try {
     await writeFile(filterPath, createProjectSyncFilter(trackedFiles), 'utf8')
@@ -280,20 +362,20 @@ async function syncProject() {
       '--filter',
       `merge ${filterPath}`,
       './',
-      `${config.remoteHost}:${config.remoteRoot}/`,
+      `${config.remoteHost}:${remoteDirectory}/`,
     ]
 
     if (dryRun) {
       rsyncArgs.unshift('--dry-run')
     }
 
-    await run('rsync', rsyncArgs)
+    await run('rsync', rsyncArgs, { signal })
   } finally {
     await rm(filterDirectory, { force: true, recursive: true })
   }
 }
 
-async function syncIconAssets() {
+async function syncIconAssets(signal) {
   if (skipIcons) {
     console.log('[deploy] Skipping icon asset sync.')
     return
@@ -316,12 +398,168 @@ async function syncIconAssets() {
     rsyncArgs.unshift('--dry-run')
   }
 
-  await run('rsync', rsyncArgs)
+  await run('rsync', rsyncArgs, { signal })
 }
 
-async function runRemoteRelease() {
-  const remoteScript = `
+export function createRemoteDeployLockScript(layout) {
+  return `
 set -euo pipefail
+
+lock_file=${shellQuote(layout.lockFile)}
+
+if ! command -v flock >/dev/null 2>&1; then
+  echo "Production deploy requires flock on the remote host." >&2
+  exit 69
+fi
+
+exec 9>"$lock_file"
+if ! flock -n 9; then
+  echo "Another production deploy is already in progress (lock: $lock_file)." >&2
+  exit 75
+fi
+
+printf '%s\\n' ${shellQuote(REMOTE_DEPLOY_LOCK_MARKER)}
+IFS= read -r _release_lock_signal || true
+`
+}
+
+async function acquireRemoteDeployLock(layout) {
+  const remoteCommand = `bash -c ${shellQuote(
+    createRemoteDeployLockScript(layout),
+  )}`
+  const child = spawn(
+    resolveCommand('ssh'),
+    [
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'ConnectTimeout=10',
+      '-o',
+      'ServerAliveInterval=15',
+      '-o',
+      'ServerAliveCountMax=2',
+      config.remoteHost,
+      remoteCommand,
+    ],
+    { stdio: ['pipe', 'pipe', 'inherit'] },
+  )
+  const abortController = new AbortController()
+  let acquired = false
+  let releasing = false
+  let stdout = ''
+  let acquisitionTimeout
+
+  console.log(`[deploy] Acquiring remote deploy lock: ${layout.lockFile}`)
+
+  let resolveExit
+  const exitPromise = new Promise((resolve) => {
+    resolveExit = resolve
+  })
+
+  const acquiredPromise = new Promise((resolve, reject) => {
+    acquisitionTimeout = setTimeout(() => {
+      child.kill('SIGTERM')
+      reject(
+        new Error(
+          '[deploy] Timed out after 15 seconds while acquiring the remote deploy lock.',
+        ),
+      )
+    }, REMOTE_DEPLOY_LOCK_TIMEOUT_MS)
+
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+
+      while (stdout.includes('\n')) {
+        const newlineIndex = stdout.indexOf('\n')
+        const line = stdout.slice(0, newlineIndex)
+        stdout = stdout.slice(newlineIndex + 1)
+
+        if (!acquired && line === REMOTE_DEPLOY_LOCK_MARKER) {
+          acquired = true
+          console.log('[deploy] Remote deploy lock acquired.')
+          resolve()
+        } else if (line.length > 0) {
+          console.log(line)
+        }
+      }
+    })
+    child.once('error', (error) => {
+      if (!acquired) {
+        reject(error)
+      }
+    })
+    child.once('exit', (code, signal) => {
+      const result = { code, signal }
+      resolveExit(result)
+
+      if (!acquired) {
+        reject(
+          new Error(
+            code === 75
+              ? '[deploy] Another production deploy is already in progress. Try again after it finishes.'
+              : `[deploy] Failed to acquire the remote deploy lock (exit ${code ?? signal ?? 'unknown'}).`,
+          ),
+        )
+        return
+      }
+
+      if (!releasing) {
+        abortController.abort(
+          new Error(
+            `[deploy] Remote deploy lock connection ended unexpectedly (exit ${code ?? signal ?? 'unknown'}).`,
+          ),
+        )
+      }
+    })
+  })
+
+  try {
+    await acquiredPromise
+  } finally {
+    clearTimeout(acquisitionTimeout)
+  }
+
+  return {
+    signal: abortController.signal,
+    async release() {
+      if (releasing) {
+        return
+      }
+
+      releasing = true
+
+      if (child.exitCode === null && child.signalCode === null) {
+        child.stdin.end('release\n')
+      }
+
+      const { code, signal } = await exitPromise
+
+      if (code !== 0) {
+        throw new Error(
+          `[deploy] Remote deploy lock cleanup failed (exit ${code ?? signal ?? 'unknown'}).`,
+        )
+      }
+
+      console.log('[deploy] Remote deploy lock released.')
+    },
+  }
+}
+
+export function createRemoteReleaseScript(layout) {
+  return `
+set -Eeuo pipefail
+
+remote_root=${shellQuote(layout.remoteRoot)}
+release_dir=${shellQuote(layout.releaseDirectory)}
+releases_root=${shellQuote(layout.releasesRoot)}
+current_link=${shellQuote(layout.currentLink)}
+shared_state_dir=${shellQuote(layout.stateDirectory)}
+backups_dir=${shellQuote(layout.backupsDirectory)}
+release_retention=${config.releaseRetention}
+env_file="/etc/planner/planner.env"
+previous_release=""
+switched=0
 
 wait_for_url() {
   url="$1"
@@ -339,8 +577,6 @@ wait_for_url() {
   curl -v "$url" || true
   return 1
 }
-
-env_file="/etc/planner/planner.env"
 
 read_env_value() {
   key="$1"
@@ -455,15 +691,141 @@ validate_production_env() {
   fi
 }
 
-cd ${shellQuote(config.remoteRoot)}
+atomic_switch() {
+  target="$1"
+  next_link="$remote_root/.current.next.$$"
+
+  rm -f "$next_link"
+  ln -s "$target" "$next_link"
+  mv -Tf "$next_link" "$current_link"
+}
+
+install_runtime_configs() {
+  source_release="$1"
+
+  test -f "$source_release/deploy/systemd/planner-api.service"
+  test -f "$source_release/deploy/systemd/planner-task-reminders.service"
+  test -f "$source_release/deploy/caddy/Caddyfile"
+
+  install -o root -g root -m 0644 \
+    "$source_release/deploy/systemd/planner-api.service" \
+    /etc/systemd/system/planner-api.service.next
+  install -o root -g root -m 0644 \
+    "$source_release/deploy/systemd/planner-task-reminders.service" \
+    /etc/systemd/system/planner-task-reminders.service.next
+  install -o root -g root -m 0644 \
+    "$source_release/deploy/caddy/Caddyfile" \
+    /etc/caddy/Caddyfile.next
+
+  mv -f /etc/systemd/system/planner-api.service.next /etc/systemd/system/planner-api.service
+  mv -f /etc/systemd/system/planner-task-reminders.service.next /etc/systemd/system/planner-task-reminders.service
+  mv -f /etc/caddy/Caddyfile.next /etc/caddy/Caddyfile
+}
+
+apply_worker_state() {
+  if [ "$TASK_REMINDERS_RUNTIME_VALUE" = "worker" ]; then
+    systemctl enable planner-task-reminders
+    systemctl restart planner-task-reminders
+    systemctl is-active --quiet planner-task-reminders
+  else
+    systemctl stop planner-task-reminders || true
+    systemctl disable planner-task-reminders || true
+    systemctl reset-failed planner-task-reminders || true
+  fi
+}
+
+reload_caddy() {
+  caddy fmt --overwrite /etc/caddy/Caddyfile &&
+    caddy validate --config /etc/caddy/Caddyfile &&
+    systemctl reload caddy
+}
+
+rollback_release() {
+  exit_code="$1"
+  trap - ERR
+  set +e
+
+  if [ "$switched" = "1" ]; then
+    echo "Release failed after activation; rolling back to $previous_release." >&2
+    rm -f "$release_dir/.deploy-complete"
+
+    if [ -n "$previous_release" ] && [ -d "$previous_release" ]; then
+      rollback_failed=0
+      atomic_switch "$previous_release" || rollback_failed=1
+      install_runtime_configs "$previous_release" || rollback_failed=1
+      systemctl daemon-reload || rollback_failed=1
+      systemctl restart planner-api || rollback_failed=1
+      apply_worker_state || rollback_failed=1
+      reload_caddy || rollback_failed=1
+      wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)} || rollback_failed=1
+
+      if [ "$rollback_failed" = "0" ]; then
+        echo "Application release rolled back to $previous_release." >&2
+      else
+        echo "Automatic rollback was attempted but did not restore every runtime component." >&2
+      fi
+    else
+      echo "No valid previous release is available for automatic rollback." >&2
+    fi
+  fi
+
+  exit "$exit_code"
+}
+
+prune_releases() {
+  current_release="$(readlink -f "$current_link")"
+  kept=0
+
+  while IFS= read -r candidate; do
+    [ -n "$candidate" ] || continue
+
+    if [ "$candidate" = "$current_release" ] || [ "$candidate" = "$previous_release" ]; then
+      kept=$((kept + 1))
+      continue
+    fi
+
+    if [ "$kept" -lt "$release_retention" ]; then
+      kept=$((kept + 1))
+      continue
+    fi
+
+    rm -rf -- "$candidate"
+  done < <(
+    find "$releases_root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' \
+      | sort -nr \
+      | cut -d' ' -f2-
+  )
+}
+
+trap 'rollback_release $?' ERR
+
+cd "$release_dir"
 
 validate_production_env
 
-chown -R planner:planner ${shellQuote(config.remoteRoot)} ${shellQuote(config.iconRemoteDirectory)}
-chmod 711 ${shellQuote(config.remoteRoot)}
+mkdir -p "$shared_state_dir/tmp"
+rm -rf "$release_dir/tmp"
+ln -s "$shared_state_dir/tmp" "$release_dir/tmp"
+chown -R planner:planner "$release_dir" "$shared_state_dir" ${shellQuote(config.iconRemoteDirectory)}
+chmod 711 "$remote_root" ${shellQuote(layout.sharedRoot)}
 
 runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
 runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
+
+WEB_AUTH_PROVIDER="$(read_env_value WEB_AUTH_PROVIDER)"
+if [ -z "$WEB_AUTH_PROVIDER" ]; then
+  if [ "$api_auth_mode_value" = "jwt" ]; then
+    WEB_AUTH_PROVIDER="planner"
+  else
+    WEB_AUTH_PROVIDER="disabled"
+  fi
+fi
+
+runuser -u planner -- env \
+  VITE_API_BASE_URL=${shellQuote(`https://${config.domain}`)} \
+  VITE_AUTH_PROVIDER="$WEB_AUTH_PROVIDER" \
+  npm run build
+caddy validate --config "$release_dir/deploy/caddy/Caddyfile"
 
 DATABASE_URL_VALUE="$(require_env_value DATABASE_URL)"
 MIGRATE_DATABASE_URL_VALUE="$(read_env_value MIGRATE_DATABASE_URL)"
@@ -472,7 +834,7 @@ if [ -z "$MIGRATE_DATABASE_URL_VALUE" ]; then
 fi
 
 if [ "${skipDbBackup ? '1' : '0'}" != "1" ]; then
-  runuser -u planner -- env HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" DB_BACKUP_DIR=${shellQuote(`${config.remoteRoot}/backups`)} npm run db:backup
+  runuser -u planner -- env HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" DB_BACKUP_DIR="$backups_dir" npm run db:backup
 fi
 
 DB_MIGRATE_MODE_VALUE="$(read_env_value DB_MIGRATE_MODE)"
@@ -496,25 +858,20 @@ runuser -u planner -- env \\
   "\${SECURITY_ENV[@]}" \\
   npm run db:security:check
 
-WEB_AUTH_PROVIDER="$(grep '^WEB_AUTH_PROVIDER=' /etc/planner/planner.env | cut -d= -f2- || true)"
-if [ -z "$WEB_AUTH_PROVIDER" ]; then
-  API_AUTH_MODE_VALUE="$(grep '^API_AUTH_MODE=' /etc/planner/planner.env | cut -d= -f2- || true)"
-  if [ "$API_AUTH_MODE_VALUE" = "jwt" ]; then
-    WEB_AUTH_PROVIDER="planner"
-  else
-    WEB_AUTH_PROVIDER="disabled"
-  fi
+previous_release="$(readlink -f "$current_link" 2>/dev/null || true)"
+if [ -n "$previous_release" ] && [ ! -d "$previous_release" ]; then
+  echo "Current release target is not a directory: $previous_release" >&2
+  exit 1
 fi
 
-runuser -u planner -- env \\
-  VITE_API_BASE_URL=${shellQuote(`https://${config.domain}`)} \\
-  VITE_AUTH_PROVIDER="$WEB_AUTH_PROVIDER" \\
-  npm run build
+TASK_REMINDERS_RUNTIME_VALUE="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
+if [ -z "$TASK_REMINDERS_RUNTIME_VALUE" ]; then
+  TASK_REMINDERS_RUNTIME_VALUE="api"
+fi
 
-cp ${shellQuote(`${config.remoteRoot}/deploy/systemd/planner-api.service`)} /etc/systemd/system/planner-api.service
-cp ${shellQuote(`${config.remoteRoot}/deploy/systemd/planner-task-reminders.service`)} /etc/systemd/system/planner-task-reminders.service
-cp ${shellQuote(`${config.remoteRoot}/deploy/caddy/Caddyfile`)} /etc/caddy/Caddyfile
-
+atomic_switch "$release_dir"
+switched=1
+install_runtime_configs "$release_dir"
 systemctl daemon-reload
 systemctl restart planner-api
 wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
@@ -525,29 +882,26 @@ runuser -u planner -- env \\
   SMOKE_CLEANUP_DATABASE=1 \\
   npm run smoke:api:prod
 
-TASK_REMINDERS_RUNTIME_VALUE="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
-if [ -z "$TASK_REMINDERS_RUNTIME_VALUE" ]; then
-  TASK_REMINDERS_RUNTIME_VALUE="api"
-fi
-
-if [ "$TASK_REMINDERS_RUNTIME_VALUE" = "worker" ]; then
-  systemctl enable planner-task-reminders
-  systemctl restart planner-task-reminders
-  systemctl is-active --quiet planner-task-reminders
-else
-  systemctl stop planner-task-reminders || true
-  systemctl disable planner-task-reminders || true
-  systemctl reset-failed planner-task-reminders || true
-fi
-
-caddy fmt --overwrite /etc/caddy/Caddyfile
-caddy validate --config /etc/caddy/Caddyfile
-systemctl reload caddy
+apply_worker_state
+reload_caddy
 wait_for_url ${shellQuote(`https://${config.domain}${config.healthPath}`)}
 wait_for_url ${shellQuote(`https://${config.domain}/`)}
-`
 
-  await runWithInput('ssh', [config.remoteHost, 'bash', '-se'], remoteScript)
+touch "$release_dir/.deploy-complete"
+chown planner:planner "$release_dir/.deploy-complete"
+switched=0
+trap - ERR
+prune_releases || echo "Release retention cleanup failed; continuing with the healthy release." >&2
+`
+}
+
+async function runRemoteRelease(layout, signal) {
+  await runWithInput(
+    'ssh',
+    [config.remoteHost, 'bash', '-se'],
+    createRemoteReleaseScript(layout),
+    { signal },
+  )
 }
 
 function readEnv(name, fallback) {
@@ -595,53 +949,6 @@ async function collectTrackedProjectFiles() {
   return files
 }
 
-function createProjectSyncFilter(files) {
-  const rules = new Set([
-    'P /.git/***',
-    'P /backups/***',
-    'P /.env',
-    'P /.env.local',
-    'P /.env.*.local',
-    'P /apps/api/.env',
-    'P /apps/api/.env.local',
-    'P /node_modules/***',
-    'P /apps/api/node_modules/***',
-    'P /apps/web/node_modules/***',
-    'P /packages/contracts/node_modules/***',
-  ])
-
-  for (const file of files) {
-    const normalizedFile = normalizeGitPath(file)
-    const segments = normalizedFile.split('/')
-    let directory = ''
-
-    for (const segment of segments.slice(0, -1)) {
-      directory += `${segment}/`
-      rules.add(`+ /${escapeRsyncFilterPath(directory)}`)
-    }
-
-    rules.add(`+ /${escapeRsyncFilterPath(normalizedFile)}`)
-  }
-
-  return [...rules].sort().concat('- /***', '').join('\n')
-}
-
-function normalizeGitPath(file) {
-  if (
-    file.length === 0 ||
-    file.startsWith('/') ||
-    file.split('/').includes('..')
-  ) {
-    throw new Error(`Unexpected tracked file path: ${file}`)
-  }
-
-  return file
-}
-
-function escapeRsyncFilterPath(value) {
-  return value.replaceAll('\\', '\\\\').replace(/([*?[\]])/g, '\\$1')
-}
-
 function resolveCommand(command) {
   return process.platform === 'win32' ? `${command}.cmd` : command
 }
@@ -687,6 +994,7 @@ async function run(command, args, options = {}) {
   await new Promise((resolve, reject) => {
     const child = spawn(resolvedCommand, args, {
       env: options.env ?? process.env,
+      signal: options.signal,
       stdio: 'inherit',
     })
 
@@ -706,12 +1014,13 @@ async function run(command, args, options = {}) {
   })
 }
 
-async function runWithInput(command, args, input) {
+async function runWithInput(command, args, input, options = {}) {
   const resolvedCommand = resolveCommand(command)
   console.log(`[deploy] ${command} ${args.join(' ')}`)
 
   await new Promise((resolve, reject) => {
     const child = spawn(resolvedCommand, args, {
+      signal: options.signal,
       stdio: ['pipe', 'inherit', 'inherit'],
     })
 

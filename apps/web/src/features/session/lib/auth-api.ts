@@ -109,10 +109,12 @@ export async function signOutAuthSession(
 
 export async function requestPasswordReset(
   input: AuthPasswordResetRequestInput,
+  options: AuthRequestOptions = {},
 ): Promise<void> {
   await postAuthNoContent(
     '/api/v1/auth/password-reset/request',
     authPasswordResetRequestInputSchema.parse(input),
+    options,
   )
 }
 

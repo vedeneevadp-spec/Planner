@@ -8,6 +8,9 @@ VPS: 147.45.158.186
 Database: Timeweb Managed PostgreSQL `Brainy Amalthea`
 Локальный проект: /Users/daryavedeneeva/ Projects  /Planner
 Production root: /opt/planner
+Active release: /opt/planner/current
+Versioned releases: /opt/planner/releases/<commit>
+Shared backups/state: /opt/planner/shared
 Production env: /etc/planner/planner.env
 Icon assets: /var/lib/planner/icon-assets
 ```
@@ -72,7 +75,7 @@ ssh root@147.45.158.186
 ```bash
 apt update
 apt upgrade -y
-apt install -y curl git ufw caddy rsync postgresql-client
+apt install -y curl git ufw caddy rsync postgresql-client util-linux
 ```
 
 Установить Node.js 24:
@@ -224,29 +227,42 @@ npm run deploy:prod
 ```text
 1. Проверяет deploy source guard: чистое рабочее дерево, наличие upstream,
    текущий commit запушен и совпадает с upstream.
-2. Запускает npm run ci.
-3. Создает/проверяет production-директории на сервере.
-4. Копирует проект через rsync.
-5. Копирует apps/api/tmp/icon-assets, если папка есть.
-6. На сервере запускает npm ci --include=dev --ignore-scripts и затем
+2. Берет неблокирующий `flock` на
+   `/opt/planner/.deploy.lock` и удерживает его до healthcheck и очистки старых
+   releases. Параллельный deploy сразу завершается с понятной ошибкой.
+3. Запускает npm run ci, пока remote lock уже удерживается.
+4. Создает `releases`, `shared/backups` и `shared/state`; при первом переходе
+   сохраняет legacy `/opt/planner` как target symlink `current`.
+5. Копирует проект через rsync в `/opt/planner/releases/<commit>`, не изменяя
+   active release.
+6. Копирует apps/api/tmp/icon-assets, если папка есть.
+7. На сервере запускает npm ci --include=dev --ignore-scripts и затем
    точечно rebuild для install-скриптов, нужных сборке/runtime.
-7. Валидирует production env: `NODE_ENV=production`, `API_AUTH_MODE=jwt`,
+8. Валидирует production env: `NODE_ENV=production`, `API_AUTH_MODE=jwt`,
    включенный RLS mode, явный CORS, неплейсхолдерный JWT secret и
    `DATABASE_URL`.
-8. Перед миграциями снимает `pg_dump` backup в `/opt/planner/backups`.
-9. Запускает production DB migrations через `npm run db:migrate`; runner
+9. Перед миграциями снимает `pg_dump` backup в
+   `/opt/planner/shared/backups`.
+10. Запускает production DB migrations через `npm run db:migrate`; runner
    проверяет checksum уже примененных файлов и берет PostgreSQL advisory lock.
-10. Проверяет RLS/security-инварианты через `npm run db:security:check`.
-11. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
-12. Копирует deploy/systemd/planner-api.service и
-    deploy/systemd/planner-task-reminders.service.
-13. Копирует deploy/caddy/Caddyfile.
-14. Перезапускает planner-api.
-15. Если `API_TASK_REMINDERS_RUNTIME=worker`, включает и перезапускает
+11. Проверяет RLS/security-инварианты через `npm run db:security:check`.
+12. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
+13. Валидирует runtime-конфигурации и атомарно переключает
+    `/opt/planner/current` на подготовленный release.
+14. Устанавливает systemd unit-файлы и Caddyfile из active release.
+15. Перезапускает planner-api; при последующей ошибке возвращает previous
+    symlink/configs и перезапускает сервисы.
+16. Если `API_TASK_REMINDERS_RUNTIME=worker`, включает и перезапускает
     planner-task-reminders; иначе останавливает отдельный worker.
-16. Валидирует и перезагружает Caddy.
-17. Проверяет http://127.0.0.1:3001/api/health и https://chaotika.ru/api/health.
+17. Валидирует и перезагружает Caddy.
+18. Проверяет http://127.0.0.1:3001/api/ready и
+    https://chaotika.ru/api/ready, затем ограничивает число сохраненных
+    release-каталогов.
 ```
+
+Rollback возвращает application release и runtime-конфигурации, но не отменяет
+примененные DB migrations. Миграции должны быть backward-compatible с
+предыдущим release.
 
 Если guard останавливает deploy, выполните нужную команду:
 
@@ -419,14 +435,14 @@ curl https://chaotika.ru/api/health
 
 ```bash
 grep -E '^(NODE_ENV|API_|WEB_AUTH_PROVIDER)' /etc/planner/planner.env
-cd /opt/planner
+cd /opt/planner/current
 node -e "const fs=require('fs');const text=fs.readFileSync('/etc/planner/planner.env','utf8');const get=(k)=>text.match(new RegExp('^'+k+'=(.*)$','m'))?.[1]?.replace(/^['\\\"]|['\\\"]$/g,'');for (const k of ['DATABASE_URL','MIGRATE_DATABASE_URL','TASK_REMINDERS_DATABASE_URL']) { const v=get(k); if (v) console.log(k+' user='+new URL(v).username) }"
 ```
 
 Проверить файлы web build:
 
 ```bash
-ls -la /opt/planner/apps/web/dist
+ls -la /opt/planner/current/apps/web/dist
 ```
 
 Проверить локальные icon assets на сервере:
