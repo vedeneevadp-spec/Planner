@@ -469,6 +469,21 @@ export function removeTaskRecord(
   return taskRecords.filter((task) => task.id !== taskId)
 }
 
+export function restoreTaskRecordAtIndex(
+  taskRecords: TaskRecord[],
+  task: TaskRecord,
+  index: number,
+): TaskRecord[] {
+  const withoutTask = removeTaskRecord(taskRecords, task.id)
+  const insertionIndex = Math.min(Math.max(index, 0), withoutTask.length)
+
+  return [
+    ...withoutTask.slice(0, insertionIndex),
+    task,
+    ...withoutTask.slice(insertionIndex),
+  ]
+}
+
 export function removeTaskTemplateRecord(
   templateRecords: TaskTemplateRecord[],
   templateId: string,

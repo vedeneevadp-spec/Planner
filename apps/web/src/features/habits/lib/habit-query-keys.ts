@@ -14,6 +14,14 @@ export function habitStatsQueryKey(
   return ['habits', workspaceId, 'stats', from, to] as const
 }
 
-export function habitOfflineStatusQueryKey(workspaceId: string) {
-  return ['habits', workspaceId, 'offline-status'] as const
+export function habitOfflineStatusQueryKey(
+  workspaceId: string,
+  actorUserId?: string,
+) {
+  return [
+    'habits',
+    workspaceId,
+    'offline-status',
+    actorUserId ?? 'pending',
+  ] as const
 }

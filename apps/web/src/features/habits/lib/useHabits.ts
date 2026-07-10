@@ -105,7 +105,7 @@ const habitDrainCoordinator = createOfflineDrainCoordinator<
 
 export function useHabits(options: { enabled?: boolean } = {}) {
   const queryClient = useQueryClient()
-  const { api, isEnabled, workspaceId } = useHabitsApi(options)
+  const { actorUserId, api, isEnabled, workspaceId } = useHabitsApi(options)
   const queryKey = useMemo(() => habitsQueryKey(workspaceId), [workspaceId])
 
   useEffect(() => {
@@ -137,13 +137,15 @@ export function useHabits(options: { enabled?: boolean } = {}) {
     }
 
     void drainQueuedHabitMutations({
+      actorUserId,
       api,
       queryClient,
       workspaceId,
     })
-  }, [api, isEnabled, queryClient, workspaceId])
+  }, [actorUserId, api, isEnabled, queryClient, workspaceId])
 
   useOnlineHabitSync({
+    actorUserId,
     api,
     enabled: isEnabled,
     queryClient,
@@ -157,6 +159,7 @@ export function useHabits(options: { enabled?: boolean } = {}) {
 
       try {
         await drainQueuedHabitMutations({
+          actorUserId,
           api: habitsApi,
           queryClient,
           workspaceId,
@@ -187,7 +190,7 @@ export function useHabitsToday(
   options: { enabled?: boolean } = {},
 ) {
   const queryClient = useQueryClient()
-  const { api, isEnabled, workspaceId } = useHabitsApi(options)
+  const { actorUserId, api, isEnabled, workspaceId } = useHabitsApi(options)
   const plannerTimeZone = usePlannerTimeZone()
   const resolvedDate = date ?? getTodayDate(plannerTimeZone)
   const queryKey = useMemo(
@@ -226,13 +229,15 @@ export function useHabitsToday(
     }
 
     void drainQueuedHabitMutations({
+      actorUserId,
       api,
       queryClient,
       workspaceId,
     })
-  }, [api, isEnabled, queryClient, workspaceId])
+  }, [actorUserId, api, isEnabled, queryClient, workspaceId])
 
   useOnlineHabitSync({
+    actorUserId,
     api,
     enabled: isEnabled,
     queryClient,
@@ -246,6 +251,7 @@ export function useHabitsToday(
 
       try {
         await drainQueuedHabitMutations({
+          actorUserId,
           api: habitsApi,
           queryClient,
           workspaceId,
@@ -281,7 +287,7 @@ export function useHabitStats(
   options: { enabled?: boolean } = {},
 ) {
   const queryClient = useQueryClient()
-  const { api, isEnabled, workspaceId } = useHabitsApi(options)
+  const { actorUserId, api, isEnabled, workspaceId } = useHabitsApi(options)
   const queryKey = useMemo(
     () => habitStatsQueryKey(workspaceId, from, to),
     [from, to, workspaceId],
@@ -318,13 +324,15 @@ export function useHabitStats(
     }
 
     void drainQueuedHabitMutations({
+      actorUserId,
       api,
       queryClient,
       workspaceId,
     })
-  }, [api, isEnabled, queryClient, workspaceId])
+  }, [actorUserId, api, isEnabled, queryClient, workspaceId])
 
   useOnlineHabitSync({
+    actorUserId,
     api,
     enabled: isEnabled,
     queryClient,
@@ -338,6 +346,7 @@ export function useHabitStats(
 
       try {
         await drainQueuedHabitMutations({
+          actorUserId,
           api: habitsApi,
           queryClient,
           workspaceId,
@@ -365,14 +374,14 @@ export function useHabitStats(
 
 export function useHabitSyncStatus() {
   const queryClient = useQueryClient()
-  const { api, isEnabled, workspaceId } = useHabitsApi()
+  const { actorUserId, api, isEnabled, workspaceId } = useHabitsApi()
   const queryKey = useMemo(
-    () => habitOfflineStatusQueryKey(workspaceId),
-    [workspaceId],
+    () => habitOfflineStatusQueryKey(workspaceId, actorUserId),
+    [actorUserId, workspaceId],
   )
   const statusQuery = useQuery({
     enabled: isEnabled,
-    queryFn: () => loadHabitOfflineStatus(workspaceId),
+    queryFn: () => loadHabitOfflineStatus(workspaceId, actorUserId),
     queryKey,
     refetchInterval: 10_000,
     staleTime: 5_000,
@@ -380,12 +389,13 @@ export function useHabitSyncStatus() {
   const retryMutation = useMutation({
     mutationFn: async () => {
       await drainQueuedHabitMutations({
+        actorUserId,
         api: requireHabitsApi(api),
         queryClient,
         workspaceId,
       })
 
-      return loadHabitOfflineStatus(workspaceId)
+      return loadHabitOfflineStatus(workspaceId, actorUserId)
     },
     onSuccess: (status) => {
       queryClient.setQueryData(queryKey, status)
@@ -394,6 +404,7 @@ export function useHabitSyncStatus() {
   const retry = useCallback(() => retryMutation.mutateAsync(), [retryMutation])
 
   useOnlineHabitSync({
+    actorUserId,
     api,
     enabled: isEnabled,
     queryClient,
@@ -471,7 +482,11 @@ export function useCreateHabit() {
             type: 'habit.create',
             workspaceId,
           })
-          await refreshHabitOfflineStatus(queryClient, workspaceId)
+          await refreshHabitOfflineStatus(
+            queryClient,
+            workspaceId,
+            session.actorUserId,
+          )
 
           return optimisticHabit
         }
@@ -547,7 +562,11 @@ export function useUpdateHabit() {
             type: 'habit.update',
             workspaceId,
           })
-          await refreshHabitOfflineStatus(queryClient, workspaceId)
+          await refreshHabitOfflineStatus(
+            queryClient,
+            workspaceId,
+            session.actorUserId,
+          )
 
           return optimisticHabit
         }
@@ -607,7 +626,11 @@ export function useRemoveHabit() {
             type: 'habit.delete',
             workspaceId,
           })
-          await refreshHabitOfflineStatus(queryClient, workspaceId)
+          await refreshHabitOfflineStatus(
+            queryClient,
+            workspaceId,
+            session.actorUserId,
+          )
 
           return
         }
@@ -704,7 +727,11 @@ export function useUpsertHabitEntry() {
             type: 'habit.entry.upsert',
             workspaceId,
           })
-          await refreshHabitOfflineStatus(queryClient, workspaceId)
+          await refreshHabitOfflineStatus(
+            queryClient,
+            workspaceId,
+            session.actorUserId,
+          )
 
           return optimisticEntry
         }
@@ -761,7 +788,11 @@ export function useRemoveHabitEntry() {
             type: 'habit.entry.delete',
             workspaceId,
           })
-          await refreshHabitOfflineStatus(queryClient, workspaceId)
+          await refreshHabitOfflineStatus(
+            queryClient,
+            workspaceId,
+            session.actorUserId,
+          )
 
           return
         }
@@ -806,6 +837,7 @@ function useHabitsApi(options: { enabled?: boolean } = {}) {
   )
 
   return {
+    actorUserId: session?.actorUserId ?? 'pending',
     api,
     isEnabled: isApiEnabled,
     session,
@@ -814,13 +846,14 @@ function useHabitsApi(options: { enabled?: boolean } = {}) {
 }
 
 function useOnlineHabitSync(input: {
+  actorUserId: string
   api: HabitsApiClient | null
   enabled: boolean
   queryClient: QueryClient
   retry?: (() => Promise<unknown>) | undefined
   workspaceId: string
 }) {
-  const { api, enabled, queryClient, retry, workspaceId } = input
+  const { actorUserId, api, enabled, queryClient, retry, workspaceId } = input
   const handleOnline = useCallback(() => {
     if (!api) {
       return
@@ -831,11 +864,12 @@ function useOnlineHabitSync(input: {
     }
 
     return drainQueuedHabitMutations({
+      actorUserId,
       api,
       queryClient,
       workspaceId,
     })
-  }, [api, queryClient, retry, workspaceId])
+  }, [actorUserId, api, queryClient, retry, workspaceId])
 
   useOfflineQueueDrain({
     drain: handleOnline,
@@ -853,59 +887,68 @@ function requireHabitsApi(api: HabitsApiClient | null): HabitsApiClient {
 }
 
 async function drainQueuedHabitMutations(input: {
+  actorUserId: string
   api: HabitsApiClient
   queryClient: QueryClient
   workspaceId: string
 }): Promise<HabitOfflineDrainResult> {
-  return habitDrainCoordinator.drain(input.workspaceId, async () => {
-    const result = await drainHabitOfflineQueue({
-      api: input.api,
-      onEntryDeleted: ({ date, habitId }) => {
-        input.queryClient.setQueryData<HabitTodayResponse>(
-          habitsTodayQueryKey(input.workspaceId, date),
-          (current) =>
-            current ? removeEntryInTodayResponse(current, habitId) : current,
-        )
-      },
-      onEntrySynced: (entry) => {
-        input.queryClient.setQueryData<HabitTodayResponse>(
-          habitsTodayQueryKey(input.workspaceId, entry.date),
-          (current) =>
-            current
-              ? upsertEntryInTodayResponse(current, entry.habitId, entry)
-              : current,
-        )
-      },
-      onHabitDeleted: (habitId) => {
-        input.queryClient.setQueryData<HabitRecord[]>(
-          habitsQueryKey(input.workspaceId),
-          (current = []) => removeHabitRecord(current, habitId),
-        )
-        removeHabitFromTodayQueries(
-          input.queryClient,
-          input.workspaceId,
-          habitId,
-        )
-      },
-      onHabitSynced: (habit) => {
-        input.queryClient.setQueryData<HabitRecord[]>(
-          habitsQueryKey(input.workspaceId),
-          (current = []) =>
-            sortHabitRecords(replaceHabitRecord(current, habit)),
-        )
-        upsertHabitInTodayQueries(input.queryClient, input.workspaceId, habit)
-      },
-      workspaceId: input.workspaceId,
-    })
+  return habitDrainCoordinator.drain(
+    `${input.actorUserId}:${input.workspaceId}`,
+    async () => {
+      const result = await drainHabitOfflineQueue({
+        actorUserId: input.actorUserId,
+        api: input.api,
+        onEntryDeleted: ({ date, habitId }) => {
+          input.queryClient.setQueryData<HabitTodayResponse>(
+            habitsTodayQueryKey(input.workspaceId, date),
+            (current) =>
+              current ? removeEntryInTodayResponse(current, habitId) : current,
+          )
+        },
+        onEntrySynced: (entry) => {
+          input.queryClient.setQueryData<HabitTodayResponse>(
+            habitsTodayQueryKey(input.workspaceId, entry.date),
+            (current) =>
+              current
+                ? upsertEntryInTodayResponse(current, entry.habitId, entry)
+                : current,
+          )
+        },
+        onHabitDeleted: (habitId) => {
+          input.queryClient.setQueryData<HabitRecord[]>(
+            habitsQueryKey(input.workspaceId),
+            (current = []) => removeHabitRecord(current, habitId),
+          )
+          removeHabitFromTodayQueries(
+            input.queryClient,
+            input.workspaceId,
+            habitId,
+          )
+        },
+        onHabitSynced: (habit) => {
+          input.queryClient.setQueryData<HabitRecord[]>(
+            habitsQueryKey(input.workspaceId),
+            (current = []) =>
+              sortHabitRecords(replaceHabitRecord(current, habit)),
+          )
+          upsertHabitInTodayQueries(input.queryClient, input.workspaceId, habit)
+        },
+        workspaceId: input.workspaceId,
+      })
 
-    if (result.synced > 0 || result.conflicted > 0) {
-      await invalidateHabits(input.queryClient, input.workspaceId)
-    }
+      if (result.synced > 0 || result.conflicted > 0) {
+        await invalidateHabits(input.queryClient, input.workspaceId)
+      }
 
-    await refreshHabitOfflineStatus(input.queryClient, input.workspaceId)
+      await refreshHabitOfflineStatus(
+        input.queryClient,
+        input.workspaceId,
+        input.actorUserId,
+      )
 
-    return result
-  })
+      return result
+    },
+  )
 }
 
 async function invalidateHabits(queryClient: QueryClient, workspaceId: string) {
@@ -916,20 +959,27 @@ async function invalidateHabits(queryClient: QueryClient, workspaceId: string) {
 async function refreshHabitOfflineStatus(
   queryClient: QueryClient,
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<void> {
   queryClient.setQueryData(
-    habitOfflineStatusQueryKey(workspaceId),
-    await loadHabitOfflineStatus(workspaceId),
+    habitOfflineStatusQueryKey(workspaceId, actorUserId),
+    await loadHabitOfflineStatus(workspaceId, actorUserId),
   )
 }
 
 async function loadHabitOfflineStatus(
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<HabitOfflineStatus> {
   return {
-    conflictedMutationCount:
-      await countConflictedHabitOfflineMutations(workspaceId),
-    queuedMutationCount: await countRetryableHabitOfflineMutations(workspaceId),
+    conflictedMutationCount: await countConflictedHabitOfflineMutations(
+      workspaceId,
+      actorUserId,
+    ),
+    queuedMutationCount: await countRetryableHabitOfflineMutations(
+      workspaceId,
+      actorUserId,
+    ),
   }
 }
 

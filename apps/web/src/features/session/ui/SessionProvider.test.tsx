@@ -27,6 +27,10 @@ const authStorageMocks = vi.hoisted(() => ({
   writeStoredAuthSession: vi.fn(),
 }))
 
+const browserDeviceMocks = vi.hoisted(() => ({
+  getBrowserAuthDeviceId: vi.fn(),
+}))
+
 const nativeSessionMocks = vi.hoisted(() => ({
   addNativeAppStateChangeListener: vi.fn(),
   getNativeAuthDeviceId: vi.fn(),
@@ -62,6 +66,10 @@ vi.mock('../lib/auth-session-storage', () => ({
   readStoredAuthSession: authStorageMocks.readStoredAuthSession,
   setRememberSessionPreference: vi.fn(),
   writeStoredAuthSession: authStorageMocks.writeStoredAuthSession,
+}))
+
+vi.mock('../lib/browser-auth-device-id', () => ({
+  getBrowserAuthDeviceId: browserDeviceMocks.getBrowserAuthDeviceId,
 }))
 
 vi.mock('../lib/native-push-notifications', () => ({
@@ -124,6 +132,7 @@ describe('SessionProvider', () => {
     authStorageMocks.readStoredAuthSession.mockReset()
     authStorageMocks.writeStoredAuthSession.mockReset()
 
+    browserDeviceMocks.getBrowserAuthDeviceId.mockReset()
     nativePushMocks.unregisterStoredNativePushDevice.mockReset()
     nativeSessionMocks.addNativeAppStateChangeListener.mockReset()
     nativeSessionMocks.getNativeAuthDeviceId.mockReset()
@@ -139,6 +148,9 @@ describe('SessionProvider', () => {
     )
     authStorageMocks.clearStoredAuthSession.mockResolvedValue(undefined)
     authStorageMocks.writeStoredAuthSession.mockResolvedValue(undefined)
+    browserDeviceMocks.getBrowserAuthDeviceId.mockReturnValue(
+      'browser-device-1',
+    )
     nativePushMocks.unregisterStoredNativePushDevice.mockResolvedValue(
       undefined,
     )
@@ -542,6 +554,7 @@ describe('SessionProvider', () => {
           password: 'password',
         },
         {
+          deviceId: 'browser-device-1',
           rememberSession: true,
           tokenTransport: 'cookie',
         },
@@ -554,6 +567,33 @@ describe('SessionProvider', () => {
       expiresAt: tokenResponse.expiresAt,
       userId: 'user-1',
     })
+  })
+
+  it('binds browser cookie refresh to the stable browser device id', async () => {
+    nativeSessionMocks.isNativeSessionPersistenceRuntime.mockReturnValue(false)
+    authStorageMocks.readStoredAuthSession.mockResolvedValue({
+      ...createExpiredStoredSession(),
+      refreshToken: undefined,
+    })
+    authApiMocks.refreshAuthSession.mockResolvedValue(createTokenResponse())
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledWith(
+        {},
+        {
+          deviceId: 'browser-device-1',
+          rememberSession: true,
+          tokenTransport: 'cookie',
+        },
+      )
+    })
+    expect(browserDeviceMocks.getBrowserAuthDeviceId).toHaveBeenCalledTimes(1)
   })
 
   it('persists the fresh session returned after a password update', async () => {
@@ -586,6 +626,7 @@ describe('SessionProvider', () => {
         },
         'old-access-token',
         {
+          deviceId: 'browser-device-1',
           rememberSession: true,
           tokenTransport: 'cookie',
         },

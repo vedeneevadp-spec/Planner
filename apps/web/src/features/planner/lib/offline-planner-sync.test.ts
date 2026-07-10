@@ -66,6 +66,7 @@ describe('offline planner sync', () => {
     })
 
     const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -79,6 +80,45 @@ describe('offline planner sync', () => {
     expect(api.createTask).toHaveBeenCalledWith(createInput)
     expect(await countRetryablePlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([taskRecord])
+  })
+
+  it('never replays another actor mutation from the same workspace', async () => {
+    const otherActorUserId = 'user-2'
+    const taskRecord = createTaskRecord(createInput.id!)
+    const api = createPlannerApiClientMock({
+      createTask: vi.fn().mockResolvedValue(taskRecord),
+    })
+
+    await enqueuePlannerOfflineMutation({
+      actorUserId: otherActorUserId,
+      input: { ...createInput, title: 'Other actor task' },
+      taskId: createInput.id!,
+      type: 'task.create',
+      workspaceId: WORKSPACE_ID,
+    })
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      input: createInput,
+      taskId: createInput.id!,
+      type: 'task.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result.processed).toBe(1)
+    expect(api.createTask).toHaveBeenCalledTimes(1)
+    expect(api.createTask).toHaveBeenCalledWith(createInput)
+    expect(
+      await countRetryablePlannerOfflineMutations(
+        WORKSPACE_ID,
+        otherActorUserId,
+      ),
+    ).toBe(1)
   })
 
   it('marks stale queued mutations as conflicted', async () => {
@@ -105,6 +145,7 @@ describe('offline planner sync', () => {
     })
 
     const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -158,6 +199,7 @@ describe('offline planner sync', () => {
     })
 
     const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -193,6 +235,7 @@ describe('offline planner sync', () => {
     })
 
     const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })

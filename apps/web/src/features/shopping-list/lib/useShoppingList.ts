@@ -51,8 +51,15 @@ function shoppingListQueryKey(workspaceId: string) {
   return ['shopping-list', workspaceId] as const
 }
 
-function shoppingListOfflineStatusQueryKey(workspaceId: string) {
-  return ['shopping-list-offline-status', workspaceId] as const
+function shoppingListOfflineStatusQueryKey(
+  workspaceId: string,
+  actorUserId?: string,
+) {
+  return [
+    'shopping-list-offline-status',
+    workspaceId,
+    actorUserId ?? 'pending',
+  ] as const
 }
 
 export type ShoppingListItemDraft = Omit<ShoppingListItemCreateInput, 'id'>
@@ -99,6 +106,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
     }
 
     await drainQueuedShoppingListMutations({
+      actorUserId: session.actorUserId,
       api,
       queryClient,
       workspaceId: session.workspaceId,
@@ -176,12 +184,13 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
   const { api, session, workspaceId } = useShoppingListApi(options)
   const isEnabled = options.enabled !== false && Boolean(session)
   const queryKey = useMemo(
-    () => shoppingListOfflineStatusQueryKey(workspaceId),
-    [workspaceId],
+    () => shoppingListOfflineStatusQueryKey(workspaceId, session?.actorUserId),
+    [session?.actorUserId, workspaceId],
   )
   const statusQuery = useQuery({
     enabled: isEnabled,
-    queryFn: () => loadShoppingListOfflineStatus(workspaceId),
+    queryFn: () =>
+      loadShoppingListOfflineStatus(workspaceId, session?.actorUserId),
     queryKey,
     refetchInterval: 10_000,
     staleTime: 5_000,
@@ -190,13 +199,14 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
     mutationFn: async () => {
       if (api && session) {
         await drainQueuedShoppingListMutations({
+          actorUserId: session.actorUserId,
           api,
           queryClient,
           workspaceId: session.workspaceId,
         })
       }
 
-      return loadShoppingListOfflineStatus(workspaceId)
+      return loadShoppingListOfflineStatus(workspaceId, session?.actorUserId)
     },
     onSuccess: (status) => {
       queryClient.setQueryData(queryKey, status)
@@ -296,13 +306,17 @@ export function useCreateShoppingListItem() {
             await refreshShoppingListOfflineStatus(
               queryClient,
               session.workspaceId,
+              session.actorUserId,
             )
 
             return optimisticItem
           }
 
-          await restoreShoppingListItems({
-            items: previousItems,
+          await restoreShoppingListItem({
+            index: previousItems.findIndex(
+              (item) => item.id === existingItem.id,
+            ),
+            item: existingItem,
             queryClient,
             queryKey,
             workspaceId: session.workspaceId,
@@ -344,13 +358,14 @@ export function useCreateShoppingListItem() {
           await refreshShoppingListOfflineStatus(
             queryClient,
             session.workspaceId,
+            session.actorUserId,
           )
 
           return optimisticItem
         }
 
-        await restoreShoppingListItems({
-          items: previousItems,
+        await removeOptimisticShoppingListItem({
+          itemId,
           queryClient,
           queryKey,
           workspaceId: session.workspaceId,
@@ -424,13 +439,15 @@ export function useUpdateShoppingListItem() {
           await refreshShoppingListOfflineStatus(
             queryClient,
             session.workspaceId,
+            session.actorUserId,
           )
 
           return optimisticItem
         }
 
-        await restoreShoppingListItems({
-          items: previousItems,
+        await restoreShoppingListItem({
+          index: previousItems.findIndex((item) => item.id === currentItem.id),
+          item: currentItem,
           queryClient,
           queryKey,
           workspaceId: session.workspaceId,
@@ -461,6 +478,11 @@ export function useRemoveShoppingListItem() {
       const previousItems =
         queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
         (await loadCachedShoppingListItems(session.workspaceId))
+      const previousItemIndex = previousItems.findIndex(
+        (item) => item.id === itemId,
+      )
+      const previousItem =
+        previousItemIndex >= 0 ? previousItems[previousItemIndex] : undefined
 
       queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
         removeShoppingListItemRecord(current ?? previousItems, itemId),
@@ -480,17 +502,21 @@ export function useRemoveShoppingListItem() {
           await refreshShoppingListOfflineStatus(
             queryClient,
             session.workspaceId,
+            session.actorUserId,
           )
 
           return
         }
 
-        await restoreShoppingListItems({
-          items: previousItems,
-          queryClient,
-          queryKey,
-          workspaceId: session.workspaceId,
-        })
+        if (previousItem) {
+          await restoreShoppingListItem({
+            index: previousItemIndex,
+            item: previousItem,
+            queryClient,
+            queryKey,
+            workspaceId: session.workspaceId,
+          })
+        }
 
         throw error
       }
@@ -626,17 +652,47 @@ function removeShoppingListItemRecord(
   return items.filter((item) => item.id !== itemId)
 }
 
-async function restoreShoppingListItems(input: {
-  items: ShoppingListItem[]
+export function restoreShoppingListItemRecordAtIndex(
+  items: ShoppingListItem[],
+  item: ShoppingListItem,
+  index: number,
+): ShoppingListItem[] {
+  const withoutItem = removeShoppingListItemRecord(items, item.id)
+  const insertionIndex = Math.min(Math.max(index, 0), withoutItem.length)
+
+  return [
+    ...withoutItem.slice(0, insertionIndex),
+    item,
+    ...withoutItem.slice(insertionIndex),
+  ]
+}
+
+async function restoreShoppingListItem(input: {
+  index: number
+  item: ShoppingListItem
   queryClient: QueryClient
   queryKey: ReturnType<typeof shoppingListQueryKey>
   workspaceId: string
 }): Promise<void> {
   input.queryClient.setQueryData<ShoppingListItem[]>(
     input.queryKey,
-    input.items,
+    (current = []) =>
+      restoreShoppingListItemRecordAtIndex(current, input.item, input.index),
   )
-  await replaceCachedShoppingListItems(input.workspaceId, input.items)
+  await upsertCachedShoppingListItem(input.workspaceId, input.item)
+}
+
+async function removeOptimisticShoppingListItem(input: {
+  itemId: string
+  queryClient: QueryClient
+  queryKey: ReturnType<typeof shoppingListQueryKey>
+  workspaceId: string
+}): Promise<void> {
+  input.queryClient.setQueryData<ShoppingListItem[]>(
+    input.queryKey,
+    (current = []) => removeShoppingListItemRecord(current, input.itemId),
+  )
+  await removeCachedShoppingListItem(input.workspaceId, input.itemId)
 }
 
 function requireShoppingListApi(
@@ -658,56 +714,71 @@ function shouldKeepOptimisticShoppingListMutation(error: unknown): boolean {
 }
 
 async function drainQueuedShoppingListMutations(input: {
+  actorUserId: string
   api: ShoppingListApiClient
   queryClient: QueryClient
   workspaceId: string
 }): Promise<ShoppingListOfflineDrainResult> {
-  return shoppingListDrainCoordinator.drain(input.workspaceId, async () => {
-    const queryKey = shoppingListQueryKey(input.workspaceId)
-    const result = await drainShoppingListOfflineQueue({
-      api: input.api,
-      onItemDeleted: (itemId) => {
-        input.queryClient.setQueryData<ShoppingListItem[]>(
-          queryKey,
-          (current = []) => removeShoppingListItemRecord(current, itemId),
-        )
-      },
-      onItemSynced: (item) => {
-        input.queryClient.setQueryData<ShoppingListItem[]>(
-          queryKey,
-          (current = []) => replaceShoppingListItemRecord(current, item),
-        )
-      },
-      workspaceId: input.workspaceId,
-    })
+  return shoppingListDrainCoordinator.drain(
+    `${input.actorUserId}:${input.workspaceId}`,
+    async () => {
+      const queryKey = shoppingListQueryKey(input.workspaceId)
+      const result = await drainShoppingListOfflineQueue({
+        actorUserId: input.actorUserId,
+        api: input.api,
+        onItemDeleted: (itemId) => {
+          input.queryClient.setQueryData<ShoppingListItem[]>(
+            queryKey,
+            (current = []) => removeShoppingListItemRecord(current, itemId),
+          )
+        },
+        onItemSynced: (item) => {
+          input.queryClient.setQueryData<ShoppingListItem[]>(
+            queryKey,
+            (current = []) => replaceShoppingListItemRecord(current, item),
+          )
+        },
+        workspaceId: input.workspaceId,
+      })
 
-    if (result.synced > 0 || result.conflicted > 0) {
-      await input.queryClient.invalidateQueries({ queryKey })
-    }
+      if (result.synced > 0 || result.conflicted > 0) {
+        await input.queryClient.invalidateQueries({ queryKey })
+      }
 
-    await refreshShoppingListOfflineStatus(input.queryClient, input.workspaceId)
+      await refreshShoppingListOfflineStatus(
+        input.queryClient,
+        input.workspaceId,
+        input.actorUserId,
+      )
 
-    return result
-  })
+      return result
+    },
+  )
 }
 
 async function refreshShoppingListOfflineStatus(
   queryClient: QueryClient,
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<void> {
   queryClient.setQueryData(
-    shoppingListOfflineStatusQueryKey(workspaceId),
-    await loadShoppingListOfflineStatus(workspaceId),
+    shoppingListOfflineStatusQueryKey(workspaceId, actorUserId),
+    await loadShoppingListOfflineStatus(workspaceId, actorUserId),
   )
 }
 
 async function loadShoppingListOfflineStatus(
   workspaceId: string,
+  actorUserId?: string,
 ): Promise<ShoppingListOfflineStatus> {
   return {
-    conflictedMutationCount:
-      await countConflictedShoppingListOfflineMutations(workspaceId),
-    queuedMutationCount:
-      await countRetryableShoppingListOfflineMutations(workspaceId),
+    conflictedMutationCount: await countConflictedShoppingListOfflineMutations(
+      workspaceId,
+      actorUserId,
+    ),
+    queuedMutationCount: await countRetryableShoppingListOfflineMutations(
+      workspaceId,
+      actorUserId,
+    ),
   }
 }

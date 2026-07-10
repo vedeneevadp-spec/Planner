@@ -76,6 +76,9 @@ import { registerApiRouteRegistry } from './route-registry.js'
 export interface BuildApiAppOptions {
   config: ApiConfig
   database: DatabaseConnection | null
+  databaseStatusResolver?: (
+    database: DatabaseConnection | null,
+  ) => Promise<HealthDatabaseStatus>
   requestAuthenticator?: RequestAuthenticator
   authService?: AuthService
   aiContextService?: AiContextService
@@ -99,6 +102,7 @@ export interface BuildApiAppOptions {
 export function buildApiApp({
   config,
   database,
+  databaseStatusResolver = getDatabaseStatus,
   requestAuthenticator = new NoopRequestAuthenticator(),
   authService,
   aiContextService,
@@ -152,7 +156,7 @@ export function buildApiApp({
   )
 
   app.get('/api/health', async (): Promise<HealthResponse> => {
-    const databaseStatus = await getDatabaseStatus(database)
+    const databaseStatus = await databaseStatusResolver(database)
 
     return healthResponseSchema.parse({
       appEnv: config.appEnv,
@@ -161,6 +165,23 @@ export function buildApiApp({
       storageDriver: config.storageDriver,
       timestamp: new Date().toISOString(),
     })
+  })
+  app.get('/api/ready', async (_request, reply): Promise<HealthResponse> => {
+    const databaseStatus = await databaseStatusResolver(database)
+    const isReady = databaseStatus !== 'down'
+    const response = healthResponseSchema.parse({
+      appEnv: config.appEnv,
+      databaseStatus,
+      status: isReady ? 'ok' : 'unavailable',
+      storageDriver: config.storageDriver,
+      timestamp: new Date().toISOString(),
+    })
+
+    if (!isReady) {
+      reply.code(503)
+    }
+
+    return response
   })
   registerAliceRoutes(app, {
     ...(chaosInboxService ? { chaosInboxService } : {}),
@@ -304,6 +325,7 @@ function isPublicRequest(method: string, url: string): boolean {
 
   return (
     path === '/api/health' ||
+    path === '/api/ready' ||
     path === '/api/metrics' ||
     path === '/api/v1/auth/sign-in' ||
     path === '/api/v1/auth/sign-out' ||

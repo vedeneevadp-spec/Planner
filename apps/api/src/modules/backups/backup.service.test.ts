@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import type { UserBackupArchive } from '@planner/contracts'
+import {
+  type UserBackupArchive,
+  userBackupArchiveSchema,
+} from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import type { UserBackupContext } from './backup.model.js'
 import type { UserBackupRepository } from './backup.repository.js'
-import { USER_BACKUP_EXPORTED_TABLE_NAMES } from './backup.repository.postgres.js'
+import {
+  normalizeUserBackupTableReferences,
+  USER_BACKUP_EXPORTED_TABLE_NAMES,
+} from './backup.repository.postgres.js'
 import { UserBackupService } from './backup.service.js'
 
 const AUTH_CONTEXT: AuthenticatedRequestContext = {
@@ -87,6 +93,14 @@ void test('UserBackupService previews archive warnings', () => {
       count: 1,
       name: 'tasks',
     },
+    {
+      count: 1,
+      name: 'users',
+    },
+    {
+      count: 1,
+      name: 'workspaces',
+    },
   ])
 })
 
@@ -125,12 +139,97 @@ void test('UserBackupService previews archive integrity warnings', () => {
     'Archive has 1 row(s) with missing parent references: tasks.project_id -> projects.id.',
     'Archive references 1 local asset file(s) without payload.',
     'Archive contains 1 asset payload(s) with invalid byte length.',
+    'Archive contains 1 asset payload(s) whose bytes do not match content type.',
+  ])
+})
+
+void test('user backup v1 schema rejects unknown columns and malformed payloads', () => {
+  const result = userBackupArchiveSchema.safeParse({
+    ...createArchive({
+      userId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      workspaceId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    }),
+    assets: [
+      {
+        base64: '!!!!',
+        byteLength: 3,
+        contentType: 'image/png',
+        kind: 'profile_avatar',
+        path: '/api/v1/profile-assets/avatar.png',
+      },
+    ],
+    tables: {
+      tasks: [
+        {
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          title: { malformed: true },
+          unknown_future_column: 'must not drift into v1',
+        },
+      ],
+    },
+  })
+
+  assert.equal(result.success, false)
+  assert.match(
+    result.error?.issues.map((issue) => issue.message).join('\n') ?? '',
+    /Unrecognized key|Invalid string/,
+  )
+})
+
+void test('UserBackupService rejects duplicate and cross-scope rows in preview', () => {
+  const service = new UserBackupService(new FakeUserBackupRepository(), '1.2.3')
+  const archive = createArchive({
+    tables: {
+      tasks: [
+        {
+          id: 'task-1',
+          title: 'First',
+          created_by: 'user-2',
+          workspace_id: 'workspace-2',
+        },
+        {
+          id: 'task-1',
+          title: 'Duplicate',
+        },
+      ],
+    },
+  })
+  const preview = service.previewImport(PERSONAL_CONTEXT, archive)
+
+  assert.equal(preview.canRestore, false)
+  assert.deepEqual(preview.warnings, [
+    'Archive table tasks contains 1 duplicate identifier(s).',
+    'Archive contains 1 row(s) outside its user scope.',
+    'Archive contains 1 row(s) outside its workspace scope.',
   ])
 })
 
 void test('user backup export excludes the global emoji library', () => {
   assert.equal(USER_BACKUP_EXPORTED_TABLE_NAMES.includes('emoji_sets'), false)
   assert.equal(USER_BACKUP_EXPORTED_TABLE_NAMES.includes('emoji_assets'), false)
+})
+
+void test('user backup export removes daily plan references to excluded tasks', () => {
+  const tables = normalizeUserBackupTableReferences({
+    daily_plans: [
+      {
+        focus_task_ids: ['task-exported', 'task-excluded'],
+        id: 'plan-1',
+        routine_task_ids: [],
+        support_task_ids: ['task-excluded'],
+      },
+    ],
+    tasks: [{ id: 'task-exported' }],
+  })
+
+  assert.deepEqual(tables.daily_plans, [
+    {
+      focus_task_ids: ['task-exported'],
+      id: 'plan-1',
+      routine_task_ids: [],
+      support_task_ids: [],
+    },
+  ])
 })
 
 class FakeUserBackupRepository implements UserBackupRepository {
@@ -164,13 +263,16 @@ function createArchive(
     source: {
       appVersion: '1.2.3',
     },
-    tables: overrides.tables ?? {
-      tasks: [
+    tables: {
+      tasks: overrides.tables?.tasks ?? [{ id: 'task-1', title: 'Task' }],
+      users: overrides.tables?.users ?? [{ id: overrides.userId ?? 'user-1' }],
+      workspaces: overrides.tables?.workspaces ?? [
         {
-          id: 'task-1',
-          title: 'Task',
+          id: overrides.workspaceId ?? 'workspace-1',
+          owner_user_id: overrides.userId ?? 'user-1',
         },
       ],
+      ...overrides.tables,
     },
     version: 1,
   }

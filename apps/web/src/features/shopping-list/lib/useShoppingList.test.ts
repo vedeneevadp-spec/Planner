@@ -5,6 +5,7 @@ import {
   sortActiveShoppingListItems,
   sortCompletedShoppingListItems,
 } from './shopping-list-sort'
+import { restoreShoppingListItemRecordAtIndex } from './useShoppingList'
 
 const BASE_ITEM = {
   activatedAt: null,
@@ -30,6 +31,30 @@ const BASE_ITEM = {
 >
 
 describe('shopping list sorting', () => {
+  it('restores one failed item without overwriting another successful mutation', () => {
+    const previousItem = createShoppingItem({
+      createdAt: '2026-05-01T10:00:00.000Z',
+      id: 'item-1',
+      text: 'Before',
+      updatedAt: '2026-05-01T10:00:00.000Z',
+    })
+    const successfulItem = createShoppingItem({
+      createdAt: '2026-05-01T10:00:00.000Z',
+      id: 'item-2',
+      text: 'Saved concurrently',
+      updatedAt: '2026-05-01T10:01:00.000Z',
+      version: 2,
+    })
+
+    expect(
+      restoreShoppingListItemRecordAtIndex(
+        [{ ...previousItem, text: 'Optimistic', version: 2 }, successfulItem],
+        previousItem,
+        0,
+      ),
+    ).toEqual([previousItem, successfulItem])
+  })
+
   it('orders active items by creation date and text', () => {
     const earliestItem = createShoppingItem({
       createdAt: '2026-04-30T10:00:00.000Z',

@@ -56,7 +56,7 @@ export const apiErrorSchema = z.object({
 export const healthDatabaseStatusSchema = z.enum(['disabled', 'up', 'down'])
 
 export const healthResponseSchema = z.object({
-  status: z.literal('ok'),
+  status: z.enum(['ok', 'unavailable']),
   appEnv: z.string(),
   storageDriver: storageDriverSchema,
   databaseStatus: healthDatabaseStatusSchema,

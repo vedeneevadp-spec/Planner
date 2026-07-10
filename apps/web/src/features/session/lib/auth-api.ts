@@ -26,6 +26,8 @@ export type AuthTokenTransport = 'body' | 'cookie'
 const AUTH_NETWORK_RETRY_DELAY_MS = 750
 const AUTH_NETWORK_REQUEST_ATTEMPTS = 2
 
+type AuthNetworkRetryPolicy = 'never' | 'safe_once'
+
 export interface AuthRequestOptions {
   deviceId?: string | undefined
   rememberSession?: boolean | undefined
@@ -89,6 +91,7 @@ export function refreshAuthSession(
     '/api/v1/auth/refresh',
     authRefreshInputSchema.parse(input),
     options,
+    'safe_once',
   )
 }
 
@@ -100,15 +103,18 @@ export async function signOutAuthSession(
     '/api/v1/auth/sign-out',
     authSignOutInputSchema.parse(input),
     options,
+    'safe_once',
   )
 }
 
 export async function requestPasswordReset(
   input: AuthPasswordResetRequestInput,
+  options: AuthRequestOptions = {},
 ): Promise<void> {
   await postAuthNoContent(
     '/api/v1/auth/password-reset/request',
     authPasswordResetRequestInputSchema.parse(input),
+    options,
   )
 }
 
@@ -155,6 +161,7 @@ async function postAuthJson<TInput>(
   path: string,
   input: TInput,
   options: AuthRequestOptions = {},
+  retryPolicy: AuthNetworkRetryPolicy = 'never',
 ): Promise<AuthTokenResponse> {
   const response = await fetchAuth(
     new URL(path, plannerApiConfig.apiBaseUrl),
@@ -164,7 +171,7 @@ async function postAuthJson<TInput>(
       headers: createAuthHeaders(options),
       method: 'POST',
     },
-    { path },
+    { path, retryPolicy },
   )
   const payload = await readResponsePayload(response)
 
@@ -179,6 +186,7 @@ async function postAuthNoContent<TInput>(
   path: string,
   input: TInput,
   options: AuthRequestOptions = {},
+  retryPolicy: AuthNetworkRetryPolicy = 'never',
 ): Promise<void> {
   const response = await fetchAuth(
     new URL(path, plannerApiConfig.apiBaseUrl),
@@ -188,7 +196,7 @@ async function postAuthNoContent<TInput>(
       headers: createAuthHeaders(options),
       method: 'POST',
     },
-    { path },
+    { path, retryPolicy },
   )
   const payload = await readResponsePayload(response)
 
@@ -222,6 +230,7 @@ async function fetchAuth(
   init: RequestInit,
   context: {
     path: string
+    retryPolicy?: AuthNetworkRetryPolicy
   },
 ): Promise<Response> {
   let attempt = 1
@@ -231,6 +240,7 @@ async function fetchAuth(
       return await fetch(url, init)
     } catch (error) {
       if (
+        context.retryPolicy !== 'safe_once' ||
         attempt >= AUTH_NETWORK_REQUEST_ATTEMPTS ||
         !isRetryableAuthNetworkError(error)
       ) {

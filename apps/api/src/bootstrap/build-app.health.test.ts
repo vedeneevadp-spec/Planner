@@ -78,4 +78,28 @@ void describe('buildApiApp health routes', () => {
     assert.match(metricsResponse.body, /planner_api_requests_total/)
     assert.match(metricsResponse.body, /planner_api_responses_total/)
   })
+
+  void it('returns 503 readiness when the database is unavailable', async () => {
+    app = buildApiApp({
+      config: createTestConfig({ API_STORAGE_DRIVER: 'postgres' }),
+      database: null,
+      databaseStatusResolver: () => Promise.resolve('down'),
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/ready',
+    })
+
+    assert.equal(response.statusCode, 503)
+    assert.deepEqual(healthResponseSchema.parse(response.json()), {
+      appEnv: 'test',
+      databaseStatus: 'down',
+      status: 'unavailable',
+      storageDriver: 'postgres',
+      timestamp: response.json<{ timestamp: string }>().timestamp,
+    })
+  })
 })

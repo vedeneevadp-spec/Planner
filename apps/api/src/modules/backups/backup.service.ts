@@ -113,7 +113,11 @@ function getPreviewWarnings(
     warnings.push('Only personal workspace archives can be restored.')
   }
 
+  warnings.push(...getDuplicateIdentifierWarnings(archive))
+  warnings.push(...getScopeAnchorWarnings(archive))
+  warnings.push(...getScopeWarnings(archive))
   warnings.push(...getReferenceWarnings(archive))
+  warnings.push(...getArrayReferenceWarnings(archive))
   warnings.push(...getAssetWarnings(archive))
 
   return warnings
@@ -313,7 +317,7 @@ const REFERENCE_RULES: ReferenceRule[] = [
     targetTable: 'self_care_items',
   },
   {
-    sourceColumn: 'item_id',
+    sourceColumn: 'linked_item_id',
     sourceTable: 'self_care_minimum_items',
     targetTable: 'self_care_items',
   },
@@ -326,6 +330,124 @@ const REFERENCE_RULES: ReferenceRule[] = [
 
 const PUBLIC_ASSET_PATH_PATTERN =
   /\/api\/v1\/(?:icon-assets|profile-assets)\/[A-Za-z0-9][A-Za-z0-9._-]*/g
+
+function getDuplicateIdentifierWarnings(archive: UserBackupArchive): string[] {
+  const warnings: string[] = []
+
+  for (const [tableName, rows] of Object.entries(archive.tables)) {
+    const identifierColumn =
+      tableName === 'cleaning_task_states' ? 'task_id' : 'id'
+    const identifiers = new Set<string>()
+    let duplicateCount = 0
+
+    for (const row of rows ?? []) {
+      const identifier = readStringField(row, identifierColumn)
+
+      if (identifier && identifiers.has(identifier)) {
+        duplicateCount += 1
+      }
+
+      if (identifier) {
+        identifiers.add(identifier)
+      }
+    }
+
+    if (duplicateCount > 0) {
+      warnings.push(
+        `Archive table ${tableName} contains ${duplicateCount} duplicate identifier(s).`,
+      )
+    }
+  }
+
+  return warnings
+}
+
+function getScopeAnchorWarnings(archive: UserBackupArchive): string[] {
+  const warnings: string[] = []
+  const hasUser = (archive.tables.users ?? []).some(
+    (row) => readStringField(row, 'id') === archive.scope.userId,
+  )
+  const hasWorkspace = (archive.tables.workspaces ?? []).some(
+    (row) => readStringField(row, 'id') === archive.scope.workspaceId,
+  )
+
+  if (!hasUser) {
+    warnings.push('Archive is missing its scoped user row.')
+  }
+
+  if (!hasWorkspace) {
+    warnings.push('Archive is missing its scoped workspace row.')
+  }
+
+  return warnings
+}
+
+function getScopeWarnings(archive: UserBackupArchive): string[] {
+  const warnings: string[] = []
+  let foreignUserRowCount = 0
+  let foreignWorkspaceRowCount = 0
+
+  for (const [tableName, rows] of Object.entries(archive.tables)) {
+    for (const row of rows ?? []) {
+      if (
+        hasForeignScopeValue(row, USER_SCOPE_COLUMNS, archive.scope.userId) ||
+        (tableName === 'users' &&
+          readStringField(row, 'id') !== archive.scope.userId)
+      ) {
+        foreignUserRowCount += 1
+      }
+
+      if (
+        hasForeignScopeValue(
+          row,
+          WORKSPACE_SCOPE_COLUMNS,
+          archive.scope.workspaceId,
+        ) ||
+        (tableName === 'workspaces' &&
+          readStringField(row, 'id') !== archive.scope.workspaceId)
+      ) {
+        foreignWorkspaceRowCount += 1
+      }
+    }
+  }
+
+  if (foreignUserRowCount > 0) {
+    warnings.push(
+      `Archive contains ${foreignUserRowCount} row(s) outside its user scope.`,
+    )
+  }
+
+  if (foreignWorkspaceRowCount > 0) {
+    warnings.push(
+      `Archive contains ${foreignWorkspaceRowCount} row(s) outside its workspace scope.`,
+    )
+  }
+
+  return warnings
+}
+
+const USER_SCOPE_COLUMNS = [
+  'user_id',
+  'owner_user_id',
+  'created_by',
+  'updated_by',
+  'assignee_user_id',
+  'invited_by',
+] as const
+
+const WORKSPACE_SCOPE_COLUMNS = ['workspace_id'] as const
+
+function hasForeignScopeValue(
+  row: UserBackupRow,
+  columns: readonly string[],
+  expectedValue: string,
+): boolean {
+  return columns.some((column) => {
+    const value = row[column]
+
+    return typeof value === 'string' && value !== expectedValue
+  })
+}
 
 function getReferenceWarnings(archive: UserBackupArchive): string[] {
   const warnings: string[] = []
@@ -371,6 +493,8 @@ function getAssetWarnings(archive: UserBackupArchive): string[] {
   const assetPaths = new Set<string>()
   let duplicateAssetPathCount = 0
   let byteLengthMismatchCount = 0
+  let invalidBase64Count = 0
+  let contentMismatchCount = 0
 
   for (const asset of archive.assets) {
     if (assetPaths.has(asset.path)) {
@@ -379,8 +503,18 @@ function getAssetWarnings(archive: UserBackupArchive): string[] {
 
     assetPaths.add(asset.path)
 
-    if (Buffer.byteLength(asset.base64, 'base64') !== asset.byteLength) {
+    const buffer = Buffer.from(asset.base64, 'base64')
+
+    if (buffer.toString('base64') !== asset.base64) {
+      invalidBase64Count += 1
+    }
+
+    if (buffer.byteLength !== asset.byteLength) {
       byteLengthMismatchCount += 1
+    }
+
+    if (!matchesContentType(buffer, asset.contentType)) {
+      contentMismatchCount += 1
     }
   }
 
@@ -407,7 +541,80 @@ function getAssetWarnings(archive: UserBackupArchive): string[] {
     )
   }
 
+  if (invalidBase64Count > 0) {
+    warnings.push(
+      `Archive contains ${invalidBase64Count} asset payload(s) with non-canonical base64.`,
+    )
+  }
+
+  if (contentMismatchCount > 0) {
+    warnings.push(
+      `Archive contains ${contentMismatchCount} asset payload(s) whose bytes do not match content type.`,
+    )
+  }
+
   return warnings
+}
+
+function getArrayReferenceWarnings(archive: UserBackupArchive): string[] {
+  const taskIds = new Set(
+    (archive.tables.tasks ?? [])
+      .map((row) => readStringField(row, 'id'))
+      .filter((value): value is string => Boolean(value)),
+  )
+  let missingTaskReferenceCount = 0
+
+  for (const plan of archive.tables.daily_plans ?? []) {
+    for (const column of [
+      'focus_task_ids',
+      'routine_task_ids',
+      'support_task_ids',
+    ]) {
+      const values = plan[column]
+
+      if (!Array.isArray(values)) {
+        continue
+      }
+
+      missingTaskReferenceCount += values.filter(
+        (value) => typeof value === 'string' && !taskIds.has(value),
+      ).length
+    }
+  }
+
+  return missingTaskReferenceCount > 0
+    ? [
+        `Archive has ${missingTaskReferenceCount} missing task reference(s) in daily plan arrays.`,
+      ]
+    : []
+}
+
+function matchesContentType(buffer: Buffer, contentType: string): boolean {
+  if (contentType === 'image/png') {
+    return buffer.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'))
+  }
+
+  if (contentType === 'image/jpeg') {
+    return (
+      buffer.length >= 3 &&
+      buffer.subarray(0, 3).equals(Buffer.from('ffd8ff', 'hex'))
+    )
+  }
+
+  if (contentType === 'image/gif') {
+    const signature = buffer.subarray(0, 6).toString('ascii')
+
+    return signature === 'GIF87a' || signature === 'GIF89a'
+  }
+
+  if (contentType === 'image/webp') {
+    return (
+      buffer.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      buffer.subarray(8, 12).toString('ascii') === 'WEBP'
+    )
+  }
+
+  return false
 }
 
 function collectReferencedAssetPaths(archive: UserBackupArchive): Set<string> {

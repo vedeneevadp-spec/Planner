@@ -10,21 +10,23 @@ import { Link } from 'react-router-dom'
 
 import { usePlanner } from '@/features/planner'
 import {
-  downloadUserBackup,
   getCreateSharedWorkspaceErrorMessage,
   getSessionReadinessConnectionView,
+  useCreateSharedWorkspace,
+  usePlannerSession,
+  UserAvatar,
+  useSessionAuth,
+  WorkspaceParticipantsDialog,
+} from '@/features/session'
+import {
+  downloadUserBackup,
   getUserBackupErrorMessage,
   parseUserBackupArchiveText,
   previewUserBackupImport,
   saveUserBackupFile,
   type SaveUserBackupFileResult,
-  useCreateSharedWorkspace,
-  usePlannerSession,
-  UserAvatar,
   type UserBackupTransferProgress,
-  useSessionAuth,
-  WorkspaceParticipantsDialog,
-} from '@/features/session'
+} from '@/features/user-backup'
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import {

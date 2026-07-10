@@ -43,6 +43,7 @@ describe('offline shopping list sync', () => {
     })
 
     const result = await drainShoppingListOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -61,6 +62,44 @@ describe('offline shopping list sync', () => {
       text: item.text,
     })
     expect(await loadCachedShoppingListItems(WORKSPACE_ID)).toEqual([item])
+  })
+
+  it('never replays another actor mutation from the same workspace', async () => {
+    const otherActorUserId = 'user-2'
+    const item = createShoppingListItemRecord('item-current', 'Milk')
+    const api = createShoppingListApiClientMock({
+      createItem: vi.fn().mockResolvedValue(item),
+    })
+
+    await enqueueShoppingListOfflineMutation({
+      actorUserId: otherActorUserId,
+      itemId: 'item-other',
+      text: 'Other actor item',
+      type: 'shopping.create',
+      workspaceId: WORKSPACE_ID,
+    })
+    await enqueueShoppingListOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      itemId: item.id,
+      text: item.text,
+      type: 'shopping.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainShoppingListOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result.processed).toBe(1)
+    expect(api.createItem).toHaveBeenCalledTimes(1)
+    expect(
+      await countRetryableShoppingListOfflineMutations(
+        WORKSPACE_ID,
+        otherActorUserId,
+      ),
+    ).toBe(1)
   })
 
   it('replays queued status updates and caches the updated item', async () => {
@@ -87,6 +126,7 @@ describe('offline shopping list sync', () => {
     })
 
     const result = await drainShoppingListOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -115,6 +155,7 @@ describe('offline shopping list sync', () => {
     })
 
     const result = await drainShoppingListOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })
@@ -147,6 +188,7 @@ describe('offline shopping list sync', () => {
     })
 
     const result = await drainShoppingListOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
       api,
       workspaceId: WORKSPACE_ID,
     })

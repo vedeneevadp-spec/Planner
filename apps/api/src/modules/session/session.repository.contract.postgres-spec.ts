@@ -172,6 +172,101 @@ void test('PostgresSessionRepository exposes admin user metrics under runtime RL
   }
 })
 
+void test('PostgresSessionRepository keeps session lifecycle working under runtime RLS', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const ownerUserId = randomUUID()
+  const inviteeUserId = randomUUID()
+  const ownerEmail = `contract-runtime-owner-${ownerUserId}@example.test`
+  const inviteeEmail = `contract-runtime-invitee-${inviteeUserId}@example.test`
+  const ownerAuth = createSessionAuthContext({
+    email: ownerEmail,
+    userId: ownerUserId,
+  })
+  const inviteeAuth = createSessionAuthContext({
+    email: inviteeEmail,
+    userId: inviteeUserId,
+  })
+
+  try {
+    await seedUserSession({
+      appRole: 'user',
+      email: ownerEmail,
+      userId: ownerUserId,
+    })
+    await seedUserSession({
+      appRole: 'user',
+      email: inviteeEmail,
+      userId: inviteeUserId,
+    })
+
+    const ownerSession = await repository.resolve({
+      actorUserId: undefined,
+      auth: ownerAuth,
+      workspaceId: undefined,
+    })
+    const sharedWorkspace = await repository.createSharedWorkspace(
+      ownerSession,
+      { name: 'Runtime RLS Workspace' },
+      ownerAuth,
+    )
+    const ownerSharedSession = await repository.resolve({
+      actorUserId: undefined,
+      auth: ownerAuth,
+      workspaceId: sharedWorkspace.id,
+    })
+
+    await repository.updateSharedWorkspace(
+      ownerSharedSession,
+      { name: 'Runtime RLS Renamed' },
+      ownerAuth,
+    )
+    const invitation = await repository.createWorkspaceInvitation(
+      ownerSharedSession,
+      { email: inviteeEmail, groupRole: 'member' },
+      ownerAuth,
+    )
+    const inviteeSession = await repository.resolve({
+      actorUserId: undefined,
+      auth: inviteeAuth,
+      workspaceId: undefined,
+    })
+
+    assert.deepEqual(
+      (
+        await repository.listReceivedWorkspaceInvitations(
+          inviteeSession,
+          inviteeAuth,
+        )
+      ).map((candidate) => candidate.id),
+      [invitation.id],
+    )
+
+    await repository.acceptWorkspaceInvitation(
+      inviteeSession,
+      invitation.id,
+      inviteeAuth,
+    )
+
+    const inviteeSharedSession = await repository.resolve({
+      actorUserId: undefined,
+      auth: inviteeAuth,
+      workspaceId: sharedWorkspace.id,
+    })
+    const profile = await repository.updateUserProfile(
+      inviteeSharedSession,
+      { avatarUrl: null, displayName: 'Runtime Invitee' },
+      inviteeAuth,
+    )
+
+    assert.equal(profile.displayName, 'Runtime Invitee')
+
+    await repository.leaveSharedWorkspace(inviteeSharedSession, inviteeAuth)
+    await repository.deleteSharedWorkspace(ownerSharedSession, ownerAuth)
+  } finally {
+    await cleanupUsers([ownerUserId, inviteeUserId])
+  }
+})
+
 void test('PostgresSessionRepository updates user preferences under runtime RLS', async () => {
   const repository = new PostgresSessionRepository(connection.db)
   const userId = randomUUID()

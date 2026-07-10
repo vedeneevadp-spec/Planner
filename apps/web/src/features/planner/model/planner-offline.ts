@@ -49,6 +49,7 @@ import {
 } from './planner-records'
 
 interface PlannerOfflineSyncParams {
+  actorUserId: string | undefined
   invalidatePlannerQueries: () => Promise<void>
   plannerApi: PlannerApiClient | null
   queryClient: QueryClient
@@ -77,6 +78,7 @@ interface PlannerOfflineSync {
 const plannerDrainCoordinator = createOfflineDrainCoordinator<string, void>()
 
 export function usePlannerOfflineSync({
+  actorUserId,
   invalidatePlannerQueries,
   plannerApi,
   queryClient,
@@ -97,7 +99,7 @@ export function usePlannerOfflineSync({
   const [conflictedMutationCount, setConflictedMutationCount] = useState(0)
 
   const refreshQueuedMutationCount = useCallback(async () => {
-    if (!workspaceId) {
+    if (!actorUserId || !workspaceId) {
       setQueuedMutationCount(0)
       setConflictedMutationCount(0)
 
@@ -105,12 +107,12 @@ export function usePlannerOfflineSync({
     }
 
     setQueuedMutationCount(
-      await countRetryablePlannerOfflineMutations(workspaceId),
+      await countRetryablePlannerOfflineMutations(workspaceId, actorUserId),
     )
     setConflictedMutationCount(
-      await countConflictedPlannerOfflineMutations(workspaceId),
+      await countConflictedPlannerOfflineMutations(workspaceId, actorUserId),
     )
-  }, [workspaceId])
+  }, [actorUserId, workspaceId])
 
   const persistCurrentTaskRecords = useCallback(async () => {
     if (!workspaceId) {
@@ -168,7 +170,12 @@ export function usePlannerOfflineSync({
       return
     }
 
-    if (!plannerApi || !workspaceId || !readiness.canWriteProtectedData) {
+    if (
+      !actorUserId ||
+      !plannerApi ||
+      !workspaceId ||
+      !readiness.canWriteProtectedData
+    ) {
       return
     }
 
@@ -205,6 +212,7 @@ export function usePlannerOfflineSync({
       taskEventCursorSyncRef.current = null
     }
   }, [
+    actorUserId,
     invalidatePlannerQueries,
     plannerApi,
     queryClient,
@@ -216,14 +224,22 @@ export function usePlannerOfflineSync({
   ])
 
   const drainQueuedMutations = useCallback(async () => {
-    if (!plannerApi || !workspaceId || !readiness.canWriteProtectedData) {
+    const currentActorUserId = actorUserId
+
+    if (
+      !currentActorUserId ||
+      !plannerApi ||
+      !workspaceId ||
+      !readiness.canWriteProtectedData
+    ) {
       return
     }
 
     await plannerDrainCoordinator
-      .drain(workspaceId, async () => {
+      .drain(`${currentActorUserId}:${workspaceId}`, async () => {
         setIsDrainingOfflineQueue(true)
         const result = await drainPlannerOfflineQueue({
+          actorUserId: currentActorUserId,
           api: plannerApi,
           onLifeSphereSynced: (sphere) => {
             queryClient.setQueryData<LifeSphereRecord[]>(
@@ -289,6 +305,7 @@ export function usePlannerOfflineSync({
         setIsDrainingOfflineQueue(false)
       })
   }, [
+    actorUserId,
     plannerApi,
     queryClient,
     readiness.canWriteProtectedData,

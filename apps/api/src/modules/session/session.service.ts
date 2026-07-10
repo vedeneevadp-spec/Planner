@@ -83,7 +83,7 @@ export class SessionService {
   ) {
     const session = await this.resolveSession(context)
     const workspace = await withRepositoryErrorMapping(() =>
-      this.repository.createSharedWorkspace(session, input),
+      this.repository.createSharedWorkspace(session, input, context.auth),
     )
 
     this.authSessionCache.clear()
@@ -100,7 +100,7 @@ export class SessionService {
     assertCanManageSharedWorkspace(session)
 
     const workspace = await withRepositoryErrorMapping(() =>
-      this.repository.updateSharedWorkspace(session, input),
+      this.repository.updateSharedWorkspace(session, input, context.auth),
     )
 
     this.authSessionCache.clear()
@@ -114,7 +114,7 @@ export class SessionService {
     assertCanManageSharedWorkspace(session)
 
     await withRepositoryErrorMapping(() =>
-      this.repository.deleteSharedWorkspace(session),
+      this.repository.deleteSharedWorkspace(session, context.auth),
     )
 
     this.authSessionCache.clear()
@@ -126,7 +126,7 @@ export class SessionService {
     assertCanLeaveSharedWorkspace(session)
 
     await withRepositoryErrorMapping(() =>
-      this.repository.leaveSharedWorkspace(session),
+      this.repository.leaveSharedWorkspace(session, context.auth),
     )
 
     this.authSessionCache.clear()
@@ -340,10 +340,14 @@ export class SessionService {
 
     try {
       const profile = await withRepositoryErrorMapping(() =>
-        this.repository.updateUserProfile(session, {
-          ...input,
-          avatarUrl: nextAvatarUrl,
-        }),
+        this.repository.updateUserProfile(
+          session,
+          {
+            ...input,
+            avatarUrl: nextAvatarUrl,
+          },
+          context.auth,
+        ),
       )
 
       this.authSessionCache.clear()

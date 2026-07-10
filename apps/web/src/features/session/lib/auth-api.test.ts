@@ -166,7 +166,7 @@ describe('auth-api', () => {
     )
   })
 
-  it('retries auth requests once after a retryable network failure', async () => {
+  it('retries refresh once after a retryable network failure', async () => {
     vi.useFakeTimers()
 
     const fetchMock = vi
@@ -184,10 +184,10 @@ describe('auth-api', () => {
       )
     vi.stubGlobal('fetch', fetchMock)
 
-    const responsePromise = signInWithPassword({
-      email: 'web@example.test',
-      password: 'password',
-    })
+    const responsePromise = refreshAuthSession(
+      {},
+      { deviceId: 'browser-device-1' },
+    )
 
     await vi.advanceTimersByTimeAsync(750)
 
@@ -195,25 +195,42 @@ describe('auth-api', () => {
       accessToken: 'access-token',
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.any(URL),
+      expect.objectContaining({
+        headers: {
+          'content-type': 'application/json',
+          'x-auth-device-id': 'browser-device-1',
+        },
+      }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.any(URL),
+      expect.objectContaining({
+        headers: {
+          'content-type': 'application/json',
+          'x-auth-device-id': 'browser-device-1',
+        },
+      }),
+    )
   })
 
-  it('records diagnostics when auth network requests keep failing', async () => {
-    vi.useFakeTimers()
-
+  it('does not retry non-idempotent auth requests after an ambiguous failure', async () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValue(new TypeError('Failed to fetch'))
     vi.stubGlobal('fetch', fetchMock)
 
-    const responsePromise = signInWithPassword({
-      email: 'web@example.test',
-      password: 'password',
-    }).catch((error: unknown) => error)
+    await expect(
+      signInWithPassword({
+        email: 'web@example.test',
+        password: 'password',
+      }),
+    ).rejects.toEqual(new TypeError('Failed to fetch'))
 
-    await vi.advanceTimersByTimeAsync(750)
-    expect(await responsePromise).toEqual(new TypeError('Failed to fetch'))
-
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     const event = readClientEvents().find(
       (event) => event.name === 'auth_request_failed',
     )
@@ -224,7 +241,7 @@ describe('auth-api', () => {
     })
     expect(event?.details).toMatchObject({
       apiHost: new URL(plannerApiConfig.apiBaseUrl).host,
-      attempts: 2,
+      attempts: 1,
       errorMessage: 'Failed to fetch',
       errorName: 'TypeError',
       path: '/api/v1/auth/sign-in',

@@ -15,6 +15,7 @@ import {
   replaceOptimisticLifeSphereRecord,
   replaceOptimisticTaskRecord,
   replaceOptimisticTaskTemplateRecord,
+  restoreTaskRecordAtIndex,
   sortSpheres,
   sortTaskTemplates,
   toggleTaskId,
@@ -23,6 +24,24 @@ import {
 } from './planner-records'
 
 describe('planner record projections', () => {
+  it('restores one failed task without overwriting another successful mutation', () => {
+    const previousTask = createTaskRecord({ id: 'task-1', title: 'Before' })
+    const successfulTask = createTaskRecord({
+      id: 'task-2',
+      title: 'Saved concurrently',
+      version: 2,
+    })
+    const current = [
+      createTaskRecord({ id: 'task-1', title: 'Optimistic', version: 2 }),
+      successfulTask,
+    ]
+
+    expect(restoreTaskRecordAtIndex(current, previousTask, 0)).toEqual([
+      previousTask,
+      successfulTask,
+    ])
+  })
+
   it('normalizes schedules before optimistic writes', () => {
     expect(
       normalizeSchedule({

@@ -64,8 +64,8 @@ android {
         applicationId "ru.chaotika.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 14
-        versionName "1.1.6"
+        versionCode 15
+        versionName "1.1.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         if (!androidAbiFilters.isEmpty()) {
             ndk {

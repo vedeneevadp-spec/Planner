@@ -70,6 +70,7 @@ try {
   const documentedRouteKeys = collectDocumentedRouteKeys(document)
   const requiredPaths = [
     '/api/health',
+    '/api/ready',
     '/api/metrics',
     '/api/v1/auth/sign-in',
     '/api/v1/auth/sign-up',
