@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@capacitor/app": "^8.1.0",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.4.2",
     "@capacitor/preferences": "^8.0.1",
-    "@capacitor/push-notifications": "^8.1.1",
+    "@capacitor/push-notifications": "^8.1.2",
     "@planner/contracts": "file:../../packages/contracts",
     "@tanstack/react-query": "^5.101.2",
     "canvas-confetti": "^1.9.4",
