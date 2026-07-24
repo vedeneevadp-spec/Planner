@@ -8,12 +8,12 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.2",
     "@planner/contracts": "file:../../packages/contracts",
-    "@tanstack/react-query": "^5.101.2",
+    "@tanstack/react-query": "^5.101.4",
     "canvas-confetti": "^1.9.4",
     "dexie": "^4.4.4",
     "lottie-web": "^5.13.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.1",
     "zod": "^4.4.3"
   }
