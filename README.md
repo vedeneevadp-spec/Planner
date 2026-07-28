@@ -19,8 +19,8 @@ SQL-first схема PostgreSQL.
 
 ## Требования
 
-- Node `>=24.14.0 <25`
-- npm `11.9.0`
+- Node `24.18.0`
+- npm `12.0.1`
 - Docker для локального Postgres
 
 Версии Node зафиксированы в `.nvmrc` и `.node-version`.
