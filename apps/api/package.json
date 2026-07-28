@@ -21,8 +21,8 @@
     "@fastify/swagger-ui": "^5.2.6",
     "@planner/contracts": "file:../../packages/contracts",
     "fastify": "^5.9.0",
-    "jose": "^6.2.3",
-    "kysely": "^0.29.3",
+    "jose": "^6.2.4",
+    "kysely": "^0.29.4",
     "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "zod": "^4.4.3"
