@@ -144,6 +144,7 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
 
   assertBashSyntax(script)
   assert.match(script, /^set -Eeuo pipefail$/m)
+  assertOrder(script, 'npm run toolchain:check', 'npm ci')
   assertOrder(script, 'npm ci', 'npm run build')
   assertOrder(script, 'npm run build', 'npm run db:migrate')
   assertOrder(script, 'npm run db:migrate', 'atomic_switch "$release_dir"')

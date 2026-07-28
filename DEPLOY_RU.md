@@ -78,11 +78,12 @@ apt upgrade -y
 apt install -y curl git ufw caddy rsync postgresql-client util-linux
 ```
 
-Установить Node.js 24:
+Установить закрепленные Node.js и npm:
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-apt install -y nodejs
+apt install -y nodejs=24.18.0-1nodesource1
+npm install -g npm@12.0.1
 node -v
 npm -v
 ```
@@ -236,26 +237,28 @@ npm run deploy:prod
 5. Копирует проект через rsync в `/opt/planner/releases/<commit>`, не изменяя
    active release.
 6. Копирует apps/api/tmp/icon-assets, если папка есть.
-7. На сервере запускает npm ci --include=dev --ignore-scripts и затем
+7. На сервере проверяет, что Node/npm совпадают с `.node-version`,
+   `.nvmrc` и `packageManager`.
+8. Запускает npm ci --include=dev --ignore-scripts и затем
    точечно rebuild для install-скриптов, нужных сборке/runtime.
-8. Валидирует production env: `NODE_ENV=production`, `API_AUTH_MODE=jwt`,
+9. Валидирует production env: `NODE_ENV=production`, `API_AUTH_MODE=jwt`,
    включенный RLS mode, явный CORS, неплейсхолдерный JWT secret и
    `DATABASE_URL`.
-9. Перед миграциями снимает `pg_dump` backup в
+10. Перед миграциями снимает `pg_dump` backup в
    `/opt/planner/shared/backups`.
-10. Запускает production DB migrations через `npm run db:migrate`; runner
-   проверяет checksum уже примененных файлов и берет PostgreSQL advisory lock.
-11. Проверяет RLS/security-инварианты через `npm run db:security:check`.
-12. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
-13. Валидирует runtime-конфигурации и атомарно переключает
+11. Запускает production DB migrations через `npm run db:migrate`; runner
+    проверяет checksum уже примененных файлов и берет PostgreSQL advisory lock.
+12. Проверяет RLS/security-инварианты через `npm run db:security:check`.
+13. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
+14. Валидирует runtime-конфигурации и атомарно переключает
     `/opt/planner/current` на подготовленный release.
-14. Устанавливает systemd unit-файлы и Caddyfile из active release.
-15. Перезапускает planner-api; при последующей ошибке возвращает previous
+15. Устанавливает systemd unit-файлы и Caddyfile из active release.
+16. Перезапускает planner-api; при последующей ошибке возвращает previous
     symlink/configs и перезапускает сервисы.
-16. Если `API_TASK_REMINDERS_RUNTIME=worker`, включает и перезапускает
+17. Если `API_TASK_REMINDERS_RUNTIME=worker`, включает и перезапускает
     planner-task-reminders; иначе останавливает отдельный worker.
-17. Валидирует и перезагружает Caddy.
-18. Проверяет http://127.0.0.1:3001/api/ready и
+18. Валидирует и перезагружает Caddy.
+19. Проверяет http://127.0.0.1:3001/api/ready и
     https://chaotika.ru/api/ready, затем ограничивает число сохраненных
     release-каталогов.
 ```

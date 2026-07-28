@@ -272,22 +272,23 @@ npm run deploy:prod
 3. запускает `npm run ci`, если не указан `--skip-checks`
 4. синхронизирует проект в неизменяемый каталог
    `/opt/planner/releases/<commit>`, не затрагивая текущий release
-5. валидирует production env на сервере
-6. снимает `pg_dump` backup в `/opt/planner/shared/backups`, если не указан
+5. проверяет на сервере, что Node/npm совпадают с закрепленными версиями проекта
+6. валидирует production env на сервере
+7. снимает `pg_dump` backup в `/opt/planner/shared/backups`, если не указан
    `--skip-db-backup`
-7. запускает `npm run db:migrate` и `npm run db:security:check`
-8. собирает production web с `VITE_API_BASE_URL=https://chaotika.ru`
-9. атомарно переключает `/opt/planner/current` и перезапускает API
-10. запускает `npm run smoke:api:prod` против уже поднятого API на
+8. запускает `npm run db:migrate` и `npm run db:security:check`
+9. собирает production web с `VITE_API_BASE_URL=https://chaotika.ru`
+10. атомарно переключает `/opt/planner/current` и перезапускает API
+11. запускает `npm run smoke:api:prod` против уже поднятого API на
     `http://127.0.0.1:3001`, чтобы проверить authenticated запросы, а не только
     `/api/health`
-11. включает и перезапускает `planner-task-reminders`, если
+12. включает и перезапускает `planner-task-reminders`, если
     `API_TASK_REMINDERS_RUNTIME=worker`; иначе останавливает отдельный worker
-12. reload-ит Caddy; при ошибке после переключения возвращает previous symlink,
+13. reload-ит Caddy; при ошибке после переключения возвращает previous symlink,
     unit-файлы и Caddyfile, затем перезапускает сервисы
-13. проверяет `http://127.0.0.1:3001/api/ready`
-14. проверяет `https://chaotika.ru/api/ready`
-15. сохраняет текущий и предыдущий release и удаляет самые старые каталоги
+14. проверяет `http://127.0.0.1:3001/api/ready`
+15. проверяет `https://chaotika.ru/api/ready`
+16. сохраняет текущий и предыдущий release и удаляет самые старые каталоги
     сверх `DEPLOY_RELEASE_RETENTION` (по умолчанию 5)
 
 Автоматический rollback возвращает код и runtime-конфигурацию, но не откатывает

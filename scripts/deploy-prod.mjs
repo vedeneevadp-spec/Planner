@@ -809,6 +809,7 @@ ln -s "$shared_state_dir/tmp" "$release_dir/tmp"
 chown -R planner:planner "$release_dir" "$shared_state_dir" ${shellQuote(config.iconRemoteDirectory)}
 chmod 711 "$remote_root" ${shellQuote(layout.sharedRoot)}
 
+runuser -u planner -- env HUSKY=0 npm run toolchain:check
 runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
 runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
 
