@@ -3406,6 +3406,32 @@ void describe('buildApiApp', () => {
     assert.ok(body.paths?.['/api/v1/workspaces/shared'])
   })
 
+  void it('serves the Swagger UI with its static security policy', async () => {
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
+      }),
+      database: null,
+      requestAuthenticator: authRequestAuthenticator,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/docs/',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.match(response.headers['content-type'] ?? '', /^text\/html/)
+    assert.match(
+      response.headers['content-security-policy'] ?? '',
+      /script-src/,
+    )
+    assert.match(response.payload, /Swagger UI/)
+  })
+
   void it('requires a bearer token when request authentication is enabled', async () => {
     app = buildApiApp({
       config: createTestConfig({

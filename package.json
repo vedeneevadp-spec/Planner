@@ -71,8 +71,8 @@
     "deadcode:strict": "knip --no-config-hints",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "audit:prod": "npm audit --omit=dev",
-    "audit:dev-tooling": "node ./scripts/audit-dev-tooling.mjs",
+    "audit:prod": "node --test ./scripts/audit-prod.test.mjs && node ./scripts/audit-prod.mjs",
+    "audit:dev-tooling": "node --test ./scripts/audit-dev-tooling.test.mjs && node ./scripts/audit-dev-tooling.mjs",
     "test": "npm run test:web",
     "test:web": "vitest --config apps/web/vite.config.ts",
     "test:web:run": "vitest run --config apps/web/vite.config.ts",
@@ -112,6 +112,11 @@
   },
   "dependencies": {
     "pg": "^8.22.0"
+  },
+  "overrides": {
+    "@fastify/swagger-ui": {
+      "@fastify/static": "10.1.2"
+    }
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

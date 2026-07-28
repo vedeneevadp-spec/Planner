@@ -2,6 +2,12 @@ import { spawn } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import process from 'node:process'
 
+import {
+  getDevToolingAuditExceptionSummary,
+  isAllowedEslintToolingVulnerability,
+} from './audit-dev-tooling-policy.mjs'
+import { evaluateProductionAudit } from './audit-prod-policy.mjs'
+
 const allowedVulnerabilityNames = new Set([
   '@capacitor/assets',
   '@capacitor/cli',
@@ -15,9 +21,16 @@ const allowedNodePrefixes = [
 const packageJson = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
 )
+const webPackage = JSON.parse(
+  await readFile(new URL('../apps/web/package.json', import.meta.url), 'utf8'),
+)
 
 const audit = await runNpmAudit()
 const vulnerabilities = Object.values(audit.vulnerabilities ?? {})
+const productionAudit = evaluateProductionAudit(audit, webPackage)
+const allowedProductionNames = new Set(
+  productionAudit.allowed.map((vulnerability) => vulnerability.name),
+)
 
 if (vulnerabilities.length === 0) {
   console.log('Full npm audit is clean.')
@@ -25,7 +38,10 @@ if (vulnerabilities.length === 0) {
 }
 
 const unexpected = vulnerabilities.filter(
-  (vulnerability) => !isAllowedDevToolingVulnerability(vulnerability),
+  (vulnerability) =>
+    !allowedProductionNames.has(vulnerability.name) &&
+    !isAllowedDevToolingVulnerability(vulnerability) &&
+    !isAllowedEslintToolingVulnerability(vulnerability, packageJson),
 )
 
 if (unexpected.length > 0) {
@@ -52,10 +68,14 @@ if (critical.length > 0) {
 
 assertCapacitorAssetsIsDevOnly()
 
+const eslintException = getDevToolingAuditExceptionSummary()
+
 console.log(
   [
-    'Only the known dev-only @capacitor/assets audit chain remains.',
-    'Runtime dependencies are covered by npm run audit:prod.',
+    'Only scoped production exceptions and the known dev-only',
+    '@capacitor/assets and ESLint audit chains remain.',
+    'Runtime exceptions are enforced by npm run audit:prod.',
+    `ESLint exception expires at ${eslintException.expiresAt}.`,
   ].join(' '),
 )
 
