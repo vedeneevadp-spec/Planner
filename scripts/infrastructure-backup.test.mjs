@@ -30,9 +30,12 @@ import {
   verifyInfrastructureBackupSet,
   writeJsonAtomic,
 } from './infrastructure-backup-helpers.mjs'
-import { buildBackupAlertRequest } from './infrastructure-backup-alert.mjs'
+import {
+  buildBackupAlertEmail,
+  buildBackupAlertRequest,
+} from './infrastructure-backup-alert.mjs'
 
-test('builds webhook and Telegram backup failure alerts', () => {
+test('builds webhook, Telegram, and email backup failure alerts', () => {
   const common = {
     failedUnit: 'planner-backup.service',
     hostname: 'planner.test',
@@ -59,6 +62,23 @@ test('builds webhook and Telegram backup failure alerts', () => {
     'https://api.telegram.org/botsecret-token/sendMessage',
   )
   assert.equal(telegram.payload.chat_id, '-100123')
+  const email = buildBackupAlertEmail({
+    ...common,
+    env: {
+      AUTH_EMAIL_FROM: 'Chaotika <support@example.test>',
+      AUTH_SMTP_HOST: 'smtp.example.test',
+      AUTH_SMTP_PASSWORD: 'smtp-secret',
+      AUTH_SMTP_PORT: '465',
+      AUTH_SMTP_SECURE: 'true',
+      AUTH_SMTP_USER: 'support@example.test',
+      BACKUP_ALERT_EMAIL_TO: 'operations@example.test',
+    },
+  })
+
+  assert.equal(email.message.to, 'operations@example.test')
+  assert.equal(email.transport.host, 'smtp.example.test')
+  assert.equal(email.transport.port, 465)
+  assert.equal(email.transport.secure, true)
   assert.throws(
     () =>
       buildBackupAlertRequest({
@@ -68,6 +88,16 @@ test('builds webhook and Telegram backup failure alerts', () => {
         },
       }),
     /Telegram backup alert credentials/,
+  )
+  assert.throws(
+    () =>
+      buildBackupAlertEmail({
+        ...common,
+        env: {
+          BACKUP_ALERT_EMAIL_TO: 'operations@example.test',
+        },
+      }),
+    /complete AUTH_SMTP/,
   )
 })
 

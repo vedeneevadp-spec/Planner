@@ -102,6 +102,7 @@ assert.match(backupEnvironmentExample, /^RESTIC_PASSWORD_FILE=/m)
 assert.match(backupEnvironmentExample, /^BACKUP_ALERT_WEBHOOK_URL=/m)
 assert.match(backupEnvironmentExample, /^BACKUP_ALERT_TELEGRAM_BOT_TOKEN=/m)
 assert.match(backupEnvironmentExample, /^BACKUP_ALERT_TELEGRAM_CHAT_ID=/m)
+assert.match(backupEnvironmentExample, /^BACKUP_ALERT_EMAIL_TO=/m)
 assert.match(backupEnvironmentExample, /^RESTORE_DRILL_ADMIN_DATABASE_URL=/m)
 assert.match(
   productionEnvironmentExample,
