@@ -188,7 +188,8 @@ async function validateRestoredDatabase(connectionString, assetDirectory) {
       union all
       select value, 'icon' as kind
       from app.emoji_assets
-      where value like '%/api/v1/icon-assets/%'
+      where deleted_at is null
+        and value like '%/api/v1/icon-assets/%'
     `)
 
     for (const reference of references.rows) {
