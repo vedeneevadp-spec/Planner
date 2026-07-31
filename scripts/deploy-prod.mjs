@@ -828,6 +828,7 @@ atomic_switch() {
 
 install_runtime_configs() {
   source_release="$1"
+  release_commit="\${source_release##*/}"
   backup_units=(
     planner-backup-alert@.service
     planner-backup.service
@@ -842,6 +843,15 @@ install_runtime_configs() {
   test -f "$source_release/deploy/systemd/planner-task-reminders.service"
   test -f "$source_release/deploy/caddy/Caddyfile"
 
+  if [ "\${#release_commit}" -ne 40 ] || printf '%s' "$release_commit" | grep -Eq '[^0-9a-f]'; then
+    echo "Cannot derive a Git commit from release path: $source_release" >&2
+    return 1
+  fi
+
+  printf 'PLANNER_APP_COMMIT=%s\n' "$release_commit" > /etc/planner/release.env.next
+  chown root:root /etc/planner/release.env.next
+  chmod 0644 /etc/planner/release.env.next
+
   install -o root -g root -m 0644 \
     "$source_release/deploy/systemd/planner-api.service" \
     /etc/systemd/system/planner-api.service.next
@@ -855,6 +865,7 @@ install_runtime_configs() {
   mv -f /etc/systemd/system/planner-api.service.next /etc/systemd/system/planner-api.service
   mv -f /etc/systemd/system/planner-task-reminders.service.next /etc/systemd/system/planner-task-reminders.service
   mv -f /etc/caddy/Caddyfile.next /etc/caddy/Caddyfile
+  mv -f /etc/planner/release.env.next /etc/planner/release.env
 
   backup_units_available=1
   for unit in "\${backup_units[@]}"; do
