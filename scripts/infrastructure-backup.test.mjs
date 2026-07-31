@@ -71,6 +71,18 @@ test('builds webhook and Telegram backup failure alerts', () => {
   )
 })
 
+test('restore drill validates only active icon asset references', async () => {
+  const source = await readFile(
+    new URL('./infrastructure-restore-drill.mjs', import.meta.url),
+    'utf8',
+  )
+
+  assert.match(
+    source,
+    /from app\.emoji_assets\s+where deleted_at is null\s+and value like/,
+  )
+})
+
 test('creates stable infrastructure backup identifiers and drill database names', () => {
   const date = new Date('2026-07-29T01:02:03.456Z')
 
