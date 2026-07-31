@@ -304,7 +304,9 @@ current_link=${shellQuote(layout.currentLink)}
 mkdir -p \
   ${shellQuote(layout.releasesRoot)} \
   ${shellQuote(layout.backupsDirectory)} \
+  ${shellQuote(`${layout.backupsDirectory}/infrastructure`)} \
   ${shellQuote(layout.stateDirectory)} \
+  ${shellQuote(`${layout.stateDirectory}/restic-cache`)} \
   ${shellQuote(config.iconRemoteDirectory)}
 
 if [ ! -e "$current_link" ] && [ ! -L "$current_link" ] && [ -f "$remote_root/package.json" ]; then
@@ -558,8 +560,10 @@ shared_state_dir=${shellQuote(layout.stateDirectory)}
 backups_dir=${shellQuote(layout.backupsDirectory)}
 release_retention=${config.releaseRetention}
 env_file="/etc/planner/planner.env"
+  backup_env_file="/etc/planner/backup.env"
 previous_release=""
 switched=0
+backup_units_available=0
 
 wait_for_url() {
   url="$1"
@@ -581,6 +585,25 @@ wait_for_url() {
 read_env_value() {
   key="$1"
   value="$(grep -E "^\${key}=" "$env_file" | tail -n 1 | cut -d= -f2- || true)"
+
+  case "$value" in
+    \\"*\\")
+      value="\${value#\\"}"
+      value="\${value%\\"}"
+      ;;
+    \\'*\\')
+      value="\${value#\\'}"
+      value="\${value%\\'}"
+      ;;
+  esac
+
+  printf '%s' "$value"
+}
+
+read_env_file_value() {
+  source_file="$1"
+  key="$2"
+  value="$(grep -E "^\${key}=" "$source_file" | tail -n 1 | cut -d= -f2- || true)"
 
   case "$value" in
     \\"*\\")
@@ -622,8 +645,12 @@ validate_production_env() {
   auth_jwt_secret_value="$(require_env_value AUTH_JWT_SECRET)"
   database_url_value="$(require_env_value DATABASE_URL)"
   migrate_database_url_value="$(read_env_value MIGRATE_DATABASE_URL)"
+  user_backup_restore_database_url_value="$(read_env_value USER_BACKUP_RESTORE_DATABASE_URL)"
   task_reminders_database_url_value="$(read_env_value TASK_REMINDERS_DATABASE_URL)"
   worker_database_url_value="$(read_env_value WORKER_DATABASE_URL)"
+  api_icon_asset_dir_value="$(read_env_value API_ICON_ASSET_DIR)"
+  backup_automation_enabled_value="$(read_env_value BACKUP_AUTOMATION_ENABLED)"
+  restore_drill_automation_enabled_value="$(read_env_value RESTORE_DRILL_AUTOMATION_ENABLED)"
   effective_task_reminders_runtime_value="\${api_task_reminders_runtime_value:-api}"
 
   if [ "$node_env_value" != "production" ]; then
@@ -658,6 +685,77 @@ validate_production_env() {
       ;;
   esac
 
+  case "$backup_automation_enabled_value" in
+    ""|0|1)
+      ;;
+    *)
+      echo "BACKUP_AUTOMATION_ENABLED must be 0 or 1." >&2
+      return 1
+      ;;
+  esac
+
+  case "$restore_drill_automation_enabled_value" in
+    ""|0|1)
+      ;;
+    *)
+      echo "RESTORE_DRILL_AUTOMATION_ENABLED must be 0 or 1." >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$restore_drill_automation_enabled_value" = "1" ] && [ "$backup_automation_enabled_value" != "1" ]; then
+    echo "RESTORE_DRILL_AUTOMATION_ENABLED=1 requires BACKUP_AUTOMATION_ENABLED=1." >&2
+    return 1
+  fi
+
+  if [ "$backup_automation_enabled_value" = "1" ]; then
+    if [ "$api_icon_asset_dir_value" != ${shellQuote(config.iconRemoteDirectory)} ]; then
+      echo "API_ICON_ASSET_DIR must match the persistent production asset directory when backup automation is enabled." >&2
+      return 1
+    fi
+
+    if [ ! -f "$backup_env_file" ]; then
+      echo "Missing backup environment file: $backup_env_file" >&2
+      return 1
+    fi
+
+    restic_repository_value="$(read_env_file_value "$backup_env_file" RESTIC_REPOSITORY)"
+    restic_password_value="$(read_env_file_value "$backup_env_file" RESTIC_PASSWORD)"
+    restic_password_file_value="$(read_env_file_value "$backup_env_file" RESTIC_PASSWORD_FILE)"
+    backup_alert_webhook_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_WEBHOOK_URL)"
+    backup_alert_telegram_bot_token_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_TELEGRAM_BOT_TOKEN)"
+    backup_alert_telegram_chat_id_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_TELEGRAM_CHAT_ID)"
+
+    if [ -z "$restic_repository_value" ]; then
+      echo "RESTIC_REPOSITORY is required in $backup_env_file." >&2
+      return 1
+    fi
+
+    if [ -z "$restic_password_value" ] && [ -z "$restic_password_file_value" ]; then
+      echo "RESTIC_PASSWORD or RESTIC_PASSWORD_FILE is required in $backup_env_file." >&2
+      return 1
+    fi
+
+    if [ -n "$restic_password_file_value" ] && [ ! -f "$restic_password_file_value" ]; then
+      echo "RESTIC_PASSWORD_FILE does not exist." >&2
+      return 1
+    fi
+
+    if [ -z "$backup_alert_webhook_value" ] && { [ -z "$backup_alert_telegram_bot_token_value" ] || [ -z "$backup_alert_telegram_chat_id_value" ]; }; then
+      echo "Configure BACKUP_ALERT_WEBHOOK_URL or both Telegram backup alert values in $backup_env_file." >&2
+      return 1
+    fi
+  fi
+
+  if [ "$restore_drill_automation_enabled_value" = "1" ]; then
+    restore_drill_admin_database_url_value="$(read_env_file_value "$backup_env_file" RESTORE_DRILL_ADMIN_DATABASE_URL)"
+
+    if [ -z "$restore_drill_admin_database_url_value" ]; then
+      echo "RESTORE_DRILL_ADMIN_DATABASE_URL is required in $backup_env_file." >&2
+      return 1
+    fi
+  fi
+
   case "$auth_jwt_secret_value" in
     changeme|change-me|your-secret|replace-me|__AUTH_JWT_SECRET__)
       echo "AUTH_JWT_SECRET still looks like a placeholder." >&2
@@ -677,6 +775,16 @@ validate_production_env() {
 
   if [ "$api_db_rls_mode_value" = "transaction_local" ] && [ -z "$migrate_database_url_value" ]; then
     echo "MIGRATE_DATABASE_URL must be configured when production uses API_DB_RLS_MODE=transaction_local." >&2
+    return 1
+  fi
+
+  if [ -z "$user_backup_restore_database_url_value" ]; then
+    echo "USER_BACKUP_RESTORE_DATABASE_URL must be configured for same-scope user restore." >&2
+    return 1
+  fi
+
+  if [ "$user_backup_restore_database_url_value" = "$database_url_value" ]; then
+    echo "USER_BACKUP_RESTORE_DATABASE_URL must not reuse the runtime DATABASE_URL." >&2
     return 1
   fi
 
@@ -702,6 +810,15 @@ atomic_switch() {
 
 install_runtime_configs() {
   source_release="$1"
+  backup_units=(
+    planner-backup-alert@.service
+    planner-backup.service
+    planner-backup.timer
+    planner-backup-prune.service
+    planner-backup-prune.timer
+    planner-restore-drill.service
+    planner-restore-drill.timer
+  )
 
   test -f "$source_release/deploy/systemd/planner-api.service"
   test -f "$source_release/deploy/systemd/planner-task-reminders.service"
@@ -720,6 +837,31 @@ install_runtime_configs() {
   mv -f /etc/systemd/system/planner-api.service.next /etc/systemd/system/planner-api.service
   mv -f /etc/systemd/system/planner-task-reminders.service.next /etc/systemd/system/planner-task-reminders.service
   mv -f /etc/caddy/Caddyfile.next /etc/caddy/Caddyfile
+
+  backup_units_available=1
+  for unit in "\${backup_units[@]}"; do
+    if [ ! -f "$source_release/deploy/systemd/$unit" ]; then
+      backup_units_available=0
+      break
+    fi
+  done
+
+  if [ "$backup_units_available" = "1" ]; then
+    for unit in "\${backup_units[@]}"; do
+      install -o root -g root -m 0644 \
+        "$source_release/deploy/systemd/$unit" \
+        "/etc/systemd/system/$unit.next"
+      mv -f "/etc/systemd/system/$unit.next" "/etc/systemd/system/$unit"
+    done
+  else
+    systemctl disable --now \
+      planner-backup.timer \
+      planner-backup-prune.timer \
+      planner-restore-drill.timer || true
+    for unit in "\${backup_units[@]}"; do
+      rm -f "/etc/systemd/system/$unit" "/etc/systemd/system/$unit.next"
+    done
+  fi
 }
 
 apply_worker_state() {
@@ -731,6 +873,28 @@ apply_worker_state() {
     systemctl stop planner-task-reminders || true
     systemctl disable planner-task-reminders || true
     systemctl reset-failed planner-task-reminders || true
+  fi
+}
+
+apply_backup_state() {
+  if [ "$backup_units_available" != "1" ]; then
+    systemctl disable --now \
+      planner-backup.timer \
+      planner-backup-prune.timer \
+      planner-restore-drill.timer || true
+    return
+  fi
+
+  if [ "$BACKUP_AUTOMATION_ENABLED_VALUE" = "1" ]; then
+    systemctl enable --now planner-backup.timer planner-backup-prune.timer
+  else
+    systemctl disable --now planner-backup.timer planner-backup-prune.timer || true
+  fi
+
+  if [ "$RESTORE_DRILL_AUTOMATION_ENABLED_VALUE" = "1" ]; then
+    systemctl enable --now planner-restore-drill.timer
+  else
+    systemctl disable --now planner-restore-drill.timer || true
   fi
 }
 
@@ -756,6 +920,7 @@ rollback_release() {
       systemctl daemon-reload || rollback_failed=1
       systemctl restart planner-api || rollback_failed=1
       apply_worker_state || rollback_failed=1
+      apply_backup_state || rollback_failed=1
       reload_caddy || rollback_failed=1
       wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)} || rollback_failed=1
 
@@ -803,7 +968,10 @@ cd "$release_dir"
 
 validate_production_env
 
-mkdir -p "$shared_state_dir/tmp"
+mkdir -p \
+  "$shared_state_dir/tmp" \
+  "$shared_state_dir/restic-cache" \
+  "$backups_dir/infrastructure"
 rm -rf "$release_dir/tmp"
 ln -s "$shared_state_dir/tmp" "$release_dir/tmp"
 chown -R planner:planner "$release_dir" "$shared_state_dir" ${shellQuote(config.iconRemoteDirectory)}
@@ -830,12 +998,15 @@ caddy validate --config "$release_dir/deploy/caddy/Caddyfile"
 
 DATABASE_URL_VALUE="$(require_env_value DATABASE_URL)"
 MIGRATE_DATABASE_URL_VALUE="$(read_env_value MIGRATE_DATABASE_URL)"
+USER_BACKUP_RESTORE_DATABASE_URL_VALUE="$(require_env_value USER_BACKUP_RESTORE_DATABASE_URL)"
 if [ -z "$MIGRATE_DATABASE_URL_VALUE" ]; then
   MIGRATE_DATABASE_URL_VALUE="$DATABASE_URL_VALUE"
 fi
 
 if [ "${skipDbBackup ? '1' : '0'}" != "1" ]; then
-  runuser -u planner -- env HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" DB_BACKUP_DIR="$backups_dir" npm run db:backup
+  runuser -u planner -- \
+    flock -w 300 "$shared_state_dir/backup.lock" \
+    env HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" DB_BACKUP_DIR="$backups_dir" npm run db:backup
 fi
 
 DB_MIGRATE_MODE_VALUE="$(read_env_value DB_MIGRATE_MODE)"
@@ -858,6 +1029,10 @@ fi
 runuser -u planner -- env \\
   "\${SECURITY_ENV[@]}" \\
   npm run db:security:check
+runuser -u planner -- env \\
+  HUSKY=0 \\
+  USER_BACKUP_RESTORE_DATABASE_URL="$USER_BACKUP_RESTORE_DATABASE_URL_VALUE" \\
+  npm run backup:restore-db:check
 
 previous_release="$(readlink -f "$current_link" 2>/dev/null || true)"
 if [ -n "$previous_release" ] && [ ! -d "$previous_release" ]; then
@@ -869,6 +1044,8 @@ TASK_REMINDERS_RUNTIME_VALUE="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
 if [ -z "$TASK_REMINDERS_RUNTIME_VALUE" ]; then
   TASK_REMINDERS_RUNTIME_VALUE="api"
 fi
+BACKUP_AUTOMATION_ENABLED_VALUE="$(read_env_value BACKUP_AUTOMATION_ENABLED)"
+RESTORE_DRILL_AUTOMATION_ENABLED_VALUE="$(read_env_value RESTORE_DRILL_AUTOMATION_ENABLED)"
 
 atomic_switch "$release_dir"
 switched=1
@@ -884,6 +1061,7 @@ runuser -u planner -- env \\
   npm run smoke:api:prod
 
 apply_worker_state
+apply_backup_state
 reload_caddy
 wait_for_url ${shellQuote(`https://${config.domain}${config.healthPath}`)}
 wait_for_url ${shellQuote(`https://${config.domain}/`)}

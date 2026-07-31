@@ -29,6 +29,9 @@ import {
   selfCareReminderToneSchema,
   selfCareRepeatKindSchema,
   selfCareTimeOfDaySchema,
+  USER_BACKUP_MAX_ASSET_BYTES,
+  USER_BACKUP_MAX_ASSET_COUNT,
+  userBackupTableNameSchema,
 } from '@planner/contracts'
 import type { OpenAPIV3 } from 'openapi-types'
 
@@ -38,6 +41,125 @@ import {
 } from './openapi-helpers.js'
 
 type SchemaProperties = NonNullable<OpenAPIV3.SchemaObject['properties']>
+
+export function createUserBackupContractSchemas(): Record<
+  string,
+  OpenAPIV3.SchemaObject
+> {
+  const restoreTotals = objectSchema({
+    inserted: nonnegativeIntegerSchema(),
+    kept: nonnegativeIntegerSchema(),
+    resurrected: nonnegativeIntegerSchema(),
+    skipped: nonnegativeIntegerSchema(),
+    updated: nonnegativeIntegerSchema(),
+  })
+
+  return {
+    UserBackupArchive: objectSchema({
+      assets: {
+        items: ref('UserBackupAsset'),
+        maxItems: USER_BACKUP_MAX_ASSET_COUNT,
+        type: 'array',
+      },
+      exportedAt: {
+        format: 'date-time',
+        type: 'string',
+      },
+      format: enumSchema(['planner.user-backup']),
+      scope: objectSchema({
+        userId: uuidSchema(),
+        workspaceId: uuidSchema(),
+        workspaceKind: enumSchema(['personal']),
+        workspaceName: stringSchema(),
+      }),
+      source: objectSchema({
+        appVersion: stringSchema(),
+      }),
+      tables: recordOf({
+        items: genericJsonSchema(),
+        type: 'array',
+      }),
+      version: {
+        enum: [1],
+        type: 'integer',
+      },
+    }),
+    UserBackupAsset: objectSchema({
+      base64: stringSchema(),
+      byteLength: {
+        maximum: USER_BACKUP_MAX_ASSET_BYTES,
+        minimum: 0,
+        type: 'integer',
+      },
+      contentType: enumSchema([
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+      ]),
+      kind: enumSchema(['emoji_asset', 'profile_avatar']),
+      path: stringSchema(),
+    }),
+    UserBackupPreviewResponse: objectSchema({
+      archive: objectSchema({
+        exportedAt: stringSchema(),
+        format: enumSchema(['planner.user-backup']),
+        sourceAppVersion: stringSchema(),
+        version: {
+          enum: [1],
+          type: 'integer',
+        },
+        workspaceId: uuidSchema(),
+        workspaceKind: enumSchema(['personal']),
+        workspaceName: stringSchema(),
+      }),
+      assets: objectSchema({
+        count: nonnegativeIntegerSchema(),
+        totalBytes: nonnegativeIntegerSchema(),
+      }),
+      canRestore: booleanSchema(),
+      tables: {
+        items: objectSchema({
+          count: nonnegativeIntegerSchema(),
+          name: enumSchema(userBackupTableNameSchema.options),
+        }),
+        type: 'array',
+      },
+      warnings: stringArraySchema(),
+    }),
+    UserBackupRestoreRequest: objectSchema({
+      archive: ref('UserBackupArchive'),
+      confirmation: enumSchema(['RESTORE_PERSONAL_BACKUP']),
+      restoreProfile: booleanSchema(),
+      restoreWorkspaceSettings: booleanSchema(),
+    }),
+    UserBackupRestoreResponse: objectSchema({
+      archiveDigest: {
+        pattern: '^[a-f0-9]{64}$',
+        type: 'string',
+      },
+      assets: objectSchema({
+        restored: nonnegativeIntegerSchema(),
+        reused: nonnegativeIntegerSchema(),
+      }),
+      operationId: uuidSchema(),
+      status: enumSchema(['completed']),
+      tables: {
+        items: ref('UserBackupRestoreTableResult'),
+        type: 'array',
+      },
+      totals: restoreTotals,
+    }),
+    UserBackupRestoreTableResult: objectSchema({
+      inserted: nonnegativeIntegerSchema(),
+      kept: nonnegativeIntegerSchema(),
+      name: enumSchema(userBackupTableNameSchema.options),
+      resurrected: nonnegativeIntegerSchema(),
+      skipped: nonnegativeIntegerSchema(),
+      updated: nonnegativeIntegerSchema(),
+    }),
+  }
+}
 
 export function createCleaningContractSchemas(): Record<
   string,
@@ -1776,6 +1898,13 @@ function stringArraySchema(): OpenAPIV3.SchemaObject {
 
 function stringSchema(): OpenAPIV3.SchemaObject {
   return {
+    type: 'string',
+  }
+}
+
+function uuidSchema(): OpenAPIV3.SchemaObject {
+  return {
+    format: 'uuid',
     type: 'string',
   }
 }

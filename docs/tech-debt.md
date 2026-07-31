@@ -1,6 +1,6 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-07-03.
+Дата анализа: 2026-05-21. Обновлено: 2026-07-29.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
@@ -16,6 +16,33 @@ web/API coverage, web/mobile budgets). Главный P1 сдвинулся: bac
 добавить coverage guard для `useSelfCare`, `useVoiceActionFlow`,
 `mcp-haotika.server.ts` и self-care Postgres read-model loaders. P2-кандидаты:
 dependency batch и изоляция локальных Postgres coverage jobs.
+
+## Закрыто в коде 2026-07-29: backup не имел полноценного restore-контура
+
+Исходный риск:
+
+- deploy-time `pg_dump` не имел расписания и offsite copy;
+- `API_ICON_ASSET_DIR` не входил в backup;
+- не было retention, failure alert и автоматического `pg_restore` drill;
+- пользователь мог только экспортировать и проверить JSON, но не применить его.
+
+Реализовано:
+
+- атомарный DB + asset backup set с manifest и SHA-256;
+- encrypted Restic offsite copy, local/offsite retention и systemd timers;
+- failure webhook и status reports;
+- ежемесячный restore drill в отдельном DB environment с проверкой constraints
+  и asset references;
+- same-user/same-workspace merge restore с транзакцией, advisory lock,
+  idempotency, safe anchor allowlists и очисткой IndexedDB после успеха;
+- отдельный `USER_BACKUP_RESTORE_DATABASE_URL`, потому что strict runtime role
+  намеренно не имеет прямых table privileges;
+- runbook в `docs/disaster-recovery.md`.
+
+Операционная активация не считается подтвержденной репозиторием: на production
+нужно настроить offsite repository, alert endpoint, isolated drill cluster,
+включить automation flags и выполнить первый backup/drill. Наличие внешних
+Timeweb snapshots по-прежнему не подтверждено.
 
 Свежий срез 2026-07-03: dependency drift закрыт через Renovate batch, `main`
 зеленый, открытых Renovate PR нет. Следующий инфраструктурный слой:

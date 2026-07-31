@@ -1,6 +1,13 @@
 import { spawn } from 'node:child_process'
-import { mkdir } from 'node:fs/promises'
+import { chmod, mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
+
+import {
+  hashFile,
+  pruneDeployDatabaseBackups,
+  readPositiveInteger,
+  writeJsonAtomic,
+} from './infrastructure-backup-helpers.mjs'
 
 const connectionString =
   process.env.BACKUP_DATABASE_URL ??
@@ -21,20 +28,52 @@ await run('pg_dump', [
   outputPath,
   pgDumpConnectionString,
 ])
+await chmod(outputPath, 0o600)
+await run('pg_restore', ['--list', outputPath], { stdio: 'ignore' })
 
-console.log(`Database backup written to ${outputPath}`)
+const digest = await hashFile(outputPath)
+const metadata = await stat(outputPath)
+const pgDumpVersion = await collect('pg_dump', ['--version'])
 
-async function run(command, args) {
+await writeFile(
+  `${outputPath}.sha256`,
+  `${digest}  ${path.basename(outputPath)}\n`,
+  {
+    mode: 0o600,
+  },
+)
+await writeJsonAtomic(`${outputPath}.manifest.json`, {
+  completedAt: new Date().toISOString(),
+  dumpByteLength: metadata.size,
+  dumpFile: path.basename(outputPath),
+  dumpSha256: digest,
+  format: 'planner.deploy-database-backup',
+  pgDumpVersion,
+  version: 1,
+})
+
+const keepCount = readPositiveInteger(
+  process.env.DB_DEPLOY_BACKUP_KEEP,
+  'DB_DEPLOY_BACKUP_KEEP',
+  10,
+)
+const removed = await pruneDeployDatabaseBackups(backupDirectory, keepCount)
+
+console.log(
+  `Database backup written and verified: ${outputPath} (removed ${removed.length} expired backup(s))`,
+)
+
+async function run(command, args, options = {}) {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
-      stdio: 'inherit',
+      stdio: options.stdio ?? 'inherit',
     })
 
     child.once('error', (error) => {
       if (error.code === 'ENOENT') {
         reject(
           new Error(
-            'pg_dump was not found. Install PostgreSQL client tools or set DEPLOY_SKIP_DB_BACKUP=1 for deploys that use provider snapshots.',
+            `${command} was not found. Install PostgreSQL client tools matching the server version; do not skip a production backup without a verified restore point.`,
           ),
         )
         return
@@ -51,6 +90,38 @@ async function run(command, args) {
       reject(
         new Error(
           `${formatCommand(command, args)} failed with exit code ${code ?? 'unknown'}`,
+        ),
+      )
+    })
+  })
+}
+
+async function collect(command, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk
+    })
+    child.once('error', reject)
+    child.once('exit', (code) => {
+      if (code === 0) {
+        resolve(stdout.trim())
+        return
+      }
+
+      reject(
+        new Error(
+          `${command} failed with exit code ${code ?? 'unknown'}${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
         ),
       )
     })

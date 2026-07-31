@@ -1,4 +1,9 @@
-import type { UserBackupPreviewResponse } from '@planner/contracts'
+import {
+  USER_BACKUP_MAX_REQUEST_BYTES,
+  type UserBackupArchive,
+  type UserBackupPreviewResponse,
+  type UserBackupRestoreResponse,
+} from '@planner/contracts'
 import {
   type ChangeEvent,
   type FormEvent,
@@ -19,12 +24,16 @@ import {
   WorkspaceParticipantsDialog,
 } from '@/features/session'
 import {
+  clearRestoredWorkspaceLocalData,
   downloadUserBackup,
   getUserBackupErrorMessage,
   parseUserBackupArchiveText,
   previewUserBackupImport,
+  reloadAfterUserBackupRestore,
+  restoreUserBackupImport,
   saveUserBackupFile,
   type SaveUserBackupFileResult,
+  takeUserBackupRestoreMessage,
   type UserBackupTransferProgress,
 } from '@/features/user-backup'
 import { cx } from '@/shared/lib/classnames'
@@ -64,8 +73,12 @@ export function MorePage() {
   const [backupOperation, setBackupOperation] = useState<BackupOperation>(null)
   const [backupProgress, setBackupProgress] =
     useState<BackupProgressState | null>(null)
-  const [backupStatus, setBackupStatus] = useState<string | null>(null)
+  const [backupStatus, setBackupStatus] = useState<string | null>(
+    takeUserBackupRestoreMessage,
+  )
   const [backupError, setBackupError] = useState<string | null>(null)
+  const [backupRestoreCandidate, setBackupRestoreCandidate] =
+    useState<BackupRestoreCandidate | null>(null)
   const isBackupBusy = backupOperation !== null
   const isSharedWorkspace = session?.workspace.kind === 'shared'
   const isPersonalWorkspace = session?.workspace.kind === 'personal'
@@ -112,6 +125,8 @@ export function MorePage() {
     backupOperation === 'download' ? 'Готовим копию...' : 'Скачать копию'
   const previewBackupLabel =
     backupOperation === 'preview' ? 'Проверяем файл...' : 'Проверить файл'
+  const restoreBackupLabel =
+    backupOperation === 'restore' ? 'Восстанавливаем...' : 'Восстановить данные'
 
   function closeCreateWorkspaceForm() {
     setIsCreateWorkspaceFormOpen(false)
@@ -212,6 +227,7 @@ export function MorePage() {
       'Открылся выбор файла. На телефоне архив обычно лежит в «Мои файлы» или «Загрузки».',
     )
     setBackupError(null)
+    setBackupRestoreCandidate(null)
     backupFileInputRef.current?.click()
   }
 
@@ -220,6 +236,15 @@ export function MorePage() {
     event.target.value = ''
 
     if (!file || !session || !auth.accessToken) {
+      return
+    }
+
+    if (file.size > USER_BACKUP_MAX_REQUEST_BYTES) {
+      setBackupStatus(null)
+      setBackupRestoreCandidate(null)
+      setBackupError(
+        `Файл больше допустимых ${formatBytes(USER_BACKUP_MAX_REQUEST_BYTES)}.`,
+      )
       return
     }
 
@@ -251,11 +276,76 @@ export function MorePage() {
 
       setBackupProgress(null)
       setBackupStatus(getBackupPreviewMessage(preview))
+      setBackupRestoreCandidate(
+        preview.canRestore
+          ? {
+              archive,
+              idempotencyKey: createBackupRestoreIdempotencyKey(),
+            }
+          : null,
+      )
       setBackupError(
         preview.warnings.length > 0
           ? preview.warnings.map(getBackupWarningText).join(' ')
           : null,
       )
+    } catch (error) {
+      setBackupProgress(null)
+      setBackupRestoreCandidate(null)
+      setBackupError(getUserBackupErrorMessage(error))
+    } finally {
+      setBackupOperation(null)
+    }
+  }
+
+  async function handleRestoreBackup() {
+    if (
+      !backupRestoreCandidate ||
+      !session ||
+      !auth.accessToken ||
+      isBackupBusy
+    ) {
+      return
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setBackupError('Для восстановления требуется подключение к интернету.')
+      return
+    }
+
+    const isConfirmed =
+      typeof window === 'undefined' ||
+      window.confirm(
+        'Восстановить данные из проверенного архива? Существующие активные записи останутся без изменений, отсутствующие и удаленные записи будут возвращены. Несинхронизированные локальные изменения этого пространства будут удалены.',
+      )
+
+    if (!isConfirmed) {
+      return
+    }
+
+    setBackupOperation('restore')
+    setBackupProgress({
+      label: 'Восстанавливаем данные...',
+      loadedBytes: 0,
+    })
+    setBackupStatus(null)
+    setBackupError(null)
+
+    try {
+      const result = await restoreUserBackupImport({
+        accessToken: auth.accessToken,
+        actorUserId: session.actorUserId,
+        archive: backupRestoreCandidate.archive,
+        idempotencyKey: backupRestoreCandidate.idempotencyKey,
+        workspaceId: session.workspaceId,
+      })
+
+      setBackupProgress({
+        label: 'Обновляем локальные данные...',
+        loadedBytes: 0,
+      })
+      await clearRestoredWorkspaceLocalData(session.workspaceId)
+      reloadAfterUserBackupRestore(getBackupRestoreMessage(result))
     } catch (error) {
       setBackupProgress(null)
       setBackupError(getUserBackupErrorMessage(error))
@@ -454,6 +544,19 @@ export function MorePage() {
               disabled={isBackupBusy}
               onChange={(event) => void handlePreviewBackupFile(event)}
             />
+            {backupRestoreCandidate ? (
+              <button
+                className={styles.listAction}
+                type="button"
+                disabled={isBackupBusy}
+                onClick={() => void handleRestoreBackup()}
+              >
+                <span className={styles.listIcon} aria-hidden="true">
+                  <UploadIcon size={19} strokeWidth={2} />
+                </span>
+                <span className={styles.listText}>{restoreBackupLabel}</span>
+              </button>
+            ) : null}
             {backupProgress ? (
               <BackupProgressView progress={backupProgress} />
             ) : null}
@@ -529,7 +632,12 @@ export function MorePage() {
   )
 }
 
-type BackupOperation = 'download' | 'preview' | null
+type BackupOperation = 'download' | 'preview' | 'restore' | null
+
+interface BackupRestoreCandidate {
+  archive: UserBackupArchive
+  idempotencyKey: string
+}
 
 interface BackupProgressState extends UserBackupTransferProgress {
   label: string
@@ -676,6 +784,21 @@ function getBackupSaveMessage(result: SaveUserBackupFileResult): string {
   }
 
   return `Файл ${result.fileName} передан браузеру для сохранения.`
+}
+
+function getBackupRestoreMessage(result: UserBackupRestoreResponse): string {
+  const changed =
+    result.totals.inserted + result.totals.resurrected + result.totals.updated
+
+  return `Восстановление завершено: изменено ${changed}, сохранено без изменений ${result.totals.kept}, пропущено ${result.totals.skipped}.`
+}
+
+function createBackupRestoreIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `backup-restore-${crypto.randomUUID()}`
+  }
+
+  return `backup-restore-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function getBackupWarningText(warning: string): string {

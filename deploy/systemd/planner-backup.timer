@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Planner infrastructure backup every day
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=30m
+Unit=planner-backup.service
+
+[Install]
+WantedBy=timers.target

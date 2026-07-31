@@ -1,6 +1,7 @@
 import type {
   UserBackupArchive,
   UserBackupPreviewResponse,
+  UserBackupRestoreResponse,
 } from '@planner/contracts'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
@@ -23,5 +24,18 @@ export interface UserBackupPreviewInput {
   context: UserBackupContext
 }
 
+export interface UserBackupRestoreInput {
+  archive: UserBackupArchive
+  archiveDigest: string
+  context: UserBackupContext & {
+    actorUserId: string
+    workspaceKind: 'personal'
+  }
+  idempotencyKey: string
+  restoreProfile: boolean
+  restoreWorkspaceSettings: boolean
+}
+
 export type UserBackupExportResult = UserBackupArchive
 export type UserBackupPreviewResult = UserBackupPreviewResponse
+export type UserBackupRestoreResult = UserBackupRestoreResponse

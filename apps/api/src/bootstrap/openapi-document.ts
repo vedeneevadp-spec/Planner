@@ -75,6 +75,11 @@ export function createOpenApiDocument(config: ApiConfig): OpenAPIV3.Document {
         name: 'session',
       },
       {
+        description:
+          'Personal workspace export, validation and same-scope merge restore.',
+        name: 'backups',
+      },
+      {
         description: 'Global icon sets and reusable uploaded icons.',
         name: 'emojiSets',
       },

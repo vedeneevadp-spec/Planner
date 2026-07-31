@@ -1,6 +1,9 @@
 import {
+  USER_BACKUP_MAX_REQUEST_BYTES,
   userBackupArchiveSchema,
   userBackupPreviewResponseSchema,
+  userBackupRestoreRequestSchema,
+  userBackupRestoreResponseSchema,
 } from '@planner/contracts'
 import type { FastifyInstance } from 'fastify'
 
@@ -28,17 +31,49 @@ export function registerUserBackupRoutes(
     return body
   })
 
-  app.post('/api/v1/backups/import/preview', async (request) => {
-    const context = await resolveRouteReadContext(request, sessionService)
-    const archive = parseOrThrow(
-      userBackupArchiveSchema,
-      request.body,
-      'invalid_backup_archive',
-    )
-    const result = service.previewImport(context, archive)
+  app.post(
+    '/api/v1/backups/import/preview',
+    {
+      bodyLimit: USER_BACKUP_MAX_REQUEST_BYTES,
+    },
+    async (request) => {
+      const context = await resolveRouteReadContext(request, sessionService)
+      const archive = parseOrThrow(
+        userBackupArchiveSchema,
+        request.body,
+        'invalid_backup_archive',
+      )
+      const result = service.previewImport(context, archive)
 
-    return userBackupPreviewResponseSchema.parse(result)
-  })
+      return userBackupPreviewResponseSchema.parse(result)
+    },
+  )
+
+  app.post(
+    '/api/v1/backups/import/restore',
+    {
+      bodyLimit: USER_BACKUP_MAX_REQUEST_BYTES + 1024,
+    },
+    async (request) => {
+      const context = await resolveRouteReadContext(request, sessionService)
+      const restoreRequest = parseOrThrow(
+        userBackupRestoreRequestSchema,
+        request.body,
+        'invalid_backup_restore_request',
+      )
+      const rawIdempotencyKey = request.headers['idempotency-key']
+      const idempotencyKey = Array.isArray(rawIdempotencyKey)
+        ? rawIdempotencyKey[0]
+        : rawIdempotencyKey
+      const result = await service.restoreImport(
+        context,
+        restoreRequest,
+        idempotencyKey ?? '',
+      )
+
+      return userBackupRestoreResponseSchema.parse(result)
+    },
+  )
 }
 
 function buildBackupFileName(exportedAt: string): string {

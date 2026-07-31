@@ -299,6 +299,73 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/backups/export': {
+      get: {
+        operationId: 'exportUserBackup',
+        parameters: workspaceWriteParameters(),
+        responses: {
+          200: jsonResponse('UserBackupArchive'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          503: errorResponse(),
+        },
+        security: authenticatedSecurity(),
+        summary: 'Export the current personal workspace',
+        tags: ['backups'],
+      },
+    },
+    '/api/v1/backups/import/preview': {
+      post: {
+        operationId: 'previewUserBackupImport',
+        parameters: workspaceWriteParameters(),
+        requestBody: jsonRequestBody('UserBackupArchive'),
+        responses: {
+          200: jsonResponse('UserBackupPreviewResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          413: errorResponse(),
+        },
+        security: authenticatedSecurity(),
+        summary: 'Validate a personal workspace backup before restore',
+        tags: ['backups'],
+      },
+    },
+    '/api/v1/backups/import/restore': {
+      post: {
+        operationId: 'restoreUserBackupImport',
+        parameters: [
+          ...workspaceWriteParameters(),
+          {
+            description:
+              'Stable key used to return the same completed restore result on retry.',
+            in: 'header',
+            name: 'Idempotency-Key',
+            required: true,
+            schema: {
+              maxLength: 128,
+              minLength: 16,
+              type: 'string',
+            },
+          },
+        ],
+        requestBody: jsonRequestBody('UserBackupRestoreRequest'),
+        responses: {
+          200: jsonResponse('UserBackupRestoreResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          409: errorResponse(),
+          413: errorResponse(),
+          422: errorResponse(),
+          503: errorResponse(),
+        },
+        security: authenticatedSecurity(),
+        summary: 'Merge a validated backup into the current personal workspace',
+        tags: ['backups'],
+      },
+    },
     '/api/v1/workspaces/shared': {
       delete: createJsonOperation({
         noContentDescription: 'Shared workspace deleted.',

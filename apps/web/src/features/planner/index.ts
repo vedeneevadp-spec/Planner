@@ -1,4 +1,5 @@
 export { isAndroidPlannerWidgetRuntime } from './lib/native-planner-widget'
+export { clearPlannerOfflineWorkspaceData } from './lib/offline-planner-store'
 export { usePlanner } from './lib/usePlanner'
 export { usePlannerApiClient } from './lib/usePlannerApiClient'
 export { LazyNativePlannerWidgetSync as NativePlannerWidgetSync } from './ui/LazyNativePlannerWidgetSync'

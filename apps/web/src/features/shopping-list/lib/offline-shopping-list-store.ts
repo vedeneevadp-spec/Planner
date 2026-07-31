@@ -106,6 +106,23 @@ export async function resetShoppingListOfflineDatabaseForTests(): Promise<void> 
   }
 }
 
+export async function clearShoppingListOfflineWorkspaceData(
+  workspaceId: string,
+): Promise<void> {
+  const db = getShoppingListOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  await db.transaction('rw', [db.cachedItems, db.mutationQueue], async () => {
+    await Promise.all([
+      db.cachedItems.where('workspaceId').equals(workspaceId).delete(),
+      db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
+    ])
+  })
+}
+
 export async function loadCachedShoppingListItems(
   workspaceId: string,
 ): Promise<ChaosInboxItemRecord[]> {
