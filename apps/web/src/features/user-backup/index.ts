@@ -3,6 +3,7 @@ export {
   getUserBackupErrorMessage,
   parseUserBackupArchiveText,
   previewUserBackupImport,
+  restoreUserBackupImport,
   UserBackupApiError,
   type UserBackupTransferProgress,
 } from './lib/user-backup-api'
@@ -12,3 +13,8 @@ export {
   saveUserBackupFileInBrowser,
   type SaveUserBackupFileResult,
 } from './lib/user-backup-file'
+export {
+  clearRestoredWorkspaceLocalData,
+  reloadAfterUserBackupRestore,
+  takeUserBackupRestoreMessage,
+} from './lib/user-backup-local-state'

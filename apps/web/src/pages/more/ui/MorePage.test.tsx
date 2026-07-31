@@ -70,8 +70,11 @@ const mocks = vi.hoisted(() => ({
     mutateAsync: vi.fn(() => Promise.resolve(undefined)),
     reset: vi.fn(),
   },
+  clearRestoredWorkspaceLocalData: vi.fn(() => Promise.resolve()),
   downloadUserBackup: vi.fn(),
   previewUserBackupImport: vi.fn(),
+  reloadAfterUserBackupRestore: vi.fn(),
+  restoreUserBackupImport: vi.fn(),
   saveUserBackupFile: vi.fn(),
   signOut: vi.fn<() => Promise<void>>(),
   usePlanner: vi.fn<() => PlannerStub>(),
@@ -84,12 +87,16 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/user-backup', () => ({
+  clearRestoredWorkspaceLocalData: mocks.clearRestoredWorkspaceLocalData,
   downloadUserBackup: mocks.downloadUserBackup,
   getUserBackupErrorMessage: () => 'Не удалось обработать резервную копию.',
   parseUserBackupArchiveText: (text: string) =>
     JSON.parse(text) as Record<string, unknown>,
   previewUserBackupImport: mocks.previewUserBackupImport,
+  reloadAfterUserBackupRestore: mocks.reloadAfterUserBackupRestore,
+  restoreUserBackupImport: mocks.restoreUserBackupImport,
   saveUserBackupFile: mocks.saveUserBackupFile,
+  takeUserBackupRestoreMessage: () => null,
 }))
 
 vi.mock('@/features/session', () => ({
@@ -242,6 +249,23 @@ describe('MorePage', () => {
       destination: 'android-downloads',
       displayPath: 'Загрузки/Chaotika/planner-backup.json',
       fileName: 'planner-backup.json',
+    })
+    mocks.restoreUserBackupImport.mockResolvedValue({
+      archiveDigest: 'a'.repeat(64),
+      assets: {
+        restored: 0,
+        reused: 0,
+      },
+      operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      status: 'completed',
+      tables: [],
+      totals: {
+        inserted: 2,
+        kept: 3,
+        resurrected: 1,
+        skipped: 0,
+        updated: 2,
+      },
     })
   })
 
@@ -398,5 +422,57 @@ describe('MorePage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Проверить файл' }))
 
     expect(screen.getByText(/Открылся выбор файла/)).toBeVisible()
+  })
+
+  it('restores a checked archive and clears workspace-local state', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const file = {
+      name: 'backup.json',
+      size: 32,
+      stream: undefined,
+      text: vi.fn(() => Promise.resolve('{"format":"planner.user-backup"}')),
+    } as unknown as File
+
+    renderMorePage({
+      auth: {
+        accessToken: 'access-token',
+        canUseProtectedApi: true,
+      },
+      planner: {
+        readiness: {
+          canReadCachedData: true,
+          canRenderAppContent: true,
+          canUseProtectedApi: true,
+          canWriteProtectedData: true,
+          reason: 'ready',
+          status: 'ready',
+        },
+      },
+    })
+
+    fireEvent.change(screen.getByLabelText('Файл резервной копии'), {
+      target: { files: [file] },
+    })
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Восстановить данные' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.restoreUserBackupImport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          accessToken: 'access-token',
+          workspaceId: 'personal-workspace',
+        }),
+      )
+    })
+    expect(mocks.clearRestoredWorkspaceLocalData).toHaveBeenCalledWith(
+      'personal-workspace',
+    )
+    expect(mocks.reloadAfterUserBackupRestore).toHaveBeenCalledWith(
+      'Восстановление завершено: изменено 5, сохранено без изменений 3, пропущено 0.',
+    )
+
+    confirm.mockRestore()
   })
 })

@@ -165,6 +165,40 @@ export async function resetHabitOfflineDatabaseForTests(): Promise<void> {
   }
 }
 
+export async function clearHabitOfflineWorkspaceData(
+  workspaceId: string,
+): Promise<void> {
+  const db = getHabitOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  await db.transaction(
+    'rw',
+    [
+      db.cachedHabits,
+      db.cachedStatsResponses,
+      db.cachedTodayResponses,
+      db.mutationQueue,
+    ],
+    async () => {
+      await Promise.all([
+        db.cachedHabits.where('workspaceId').equals(workspaceId).delete(),
+        db.cachedStatsResponses
+          .where('workspaceId')
+          .equals(workspaceId)
+          .delete(),
+        db.cachedTodayResponses
+          .where('workspaceId')
+          .equals(workspaceId)
+          .delete(),
+        db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
+      ])
+    },
+  )
+}
+
 export async function loadCachedHabitRecords(
   workspaceId: string,
 ): Promise<HabitRecord[]> {

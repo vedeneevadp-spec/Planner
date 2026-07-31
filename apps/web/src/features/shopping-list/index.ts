@@ -1,3 +1,4 @@
+export { clearShoppingListOfflineWorkspaceData } from './lib/offline-shopping-list-store'
 export {
   DEFAULT_SHOPPING_FILTERS,
   getShoppingFiltersFromSearchParams,

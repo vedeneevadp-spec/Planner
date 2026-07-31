@@ -123,6 +123,10 @@ DB_SECURITY_REQUIRE_NON_OWNER=1 npm run prod:env -- npm run db:security:check
 `TASK_REMINDERS_DATABASE_URL` или `WORKER_DATABASE_URL`, потому что он выполняет
 maintenance-запросы без JWT subject.
 
+Same-scope пользовательский restore использует отдельный
+`USER_BACKUP_RESTORE_DATABASE_URL`. Deploy требует этот URL и запрещает
+совпадение с runtime `DATABASE_URL`.
+
 Migration runner хранит checksum примененных файлов и берет PostgreSQL advisory
 lock; уже примененные SQL-файлы нужно менять новой migration, а не правкой
 старой.
@@ -275,7 +279,8 @@ npm run deploy:prod
 5. проверяет на сервере, что Node/npm совпадают с закрепленными версиями проекта
 6. валидирует production env на сервере
 7. снимает `pg_dump` backup в `/opt/planner/shared/backups`, если не указан
-   `--skip-db-backup`
+   `--skip-db-backup`; dump проверяется через `pg_restore --list`, получает
+   SHA-256 sidecar и участвует в ограниченной ротации
 8. запускает `npm run db:migrate` и `npm run db:security:check`
 9. собирает production web с `VITE_API_BASE_URL=https://chaotika.ru`
 10. атомарно переключает `/opt/planner/current` и перезапускает API
@@ -290,6 +295,13 @@ npm run deploy:prod
 15. проверяет `https://chaotika.ru/api/ready`
 16. сохраняет текущий и предыдущий release и удаляет самые старые каталоги
     сверх `DEPLOY_RELEASE_RETENTION` (по умолчанию 5)
+
+Если в production env включены `BACKUP_AUTOMATION_ENABLED=1` и
+`RESTORE_DRILL_AUTOMATION_ENABLED=1`, deploy также проверяет
+`/etc/planner/backup.env`, persistent asset directory, Restic credentials,
+alert webhook и isolated drill DB URL, затем устанавливает и включает backup,
+retention и restore-drill timers. Полная первичная настройка и аварийный runbook
+описаны в [disaster-recovery.md](./disaster-recovery.md).
 
 Автоматический rollback возвращает код и runtime-конфигурацию, но не откатывает
 уже примененные DB migrations. Production migrations должны оставаться

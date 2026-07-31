@@ -8,9 +8,10 @@ import {
   type UserBackupRow,
   userBackupRowSchema,
   type UserBackupTableName,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 import { type Kysely, sql } from 'kysely'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import {
   type DatabaseExecutor,
   withOptionalRls,
@@ -19,8 +20,10 @@ import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
   UserBackupExportInput,
   UserBackupExportResult,
+  UserBackupRestoreInput,
 } from './backup.model.js'
 import type { UserBackupRepository } from './backup.repository.js'
+import { restorePostgresPersonalWorkspace } from './backup.repository.postgres.restore.js'
 
 const PROFILE_ASSET_PATH_PREFIX = '/api/v1/profile-assets/'
 
@@ -54,6 +57,7 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
   constructor(
     private readonly db: Kysely<DatabaseSchema>,
     assetDirectory: string,
+    private readonly restoreDb: Kysely<DatabaseSchema> | null = db,
   ) {
     this.assetDirectory = path.resolve(assetDirectory)
   }
@@ -108,6 +112,22 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
     }
 
     return userBackupArchiveSchema.parse(archive)
+  }
+
+  restorePersonalWorkspace(input: UserBackupRestoreInput) {
+    if (!this.restoreDb) {
+      throw new HttpError(
+        503,
+        'backup_restore_unavailable',
+        'Backup restore is not configured on this server.',
+      )
+    }
+
+    return restorePostgresPersonalWorkspace(
+      this.restoreDb,
+      this.assetDirectory,
+      input,
+    )
   }
 
   private async collectAssets(

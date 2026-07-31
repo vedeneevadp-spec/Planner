@@ -3,7 +3,10 @@ import {
   userBackupArchiveSchema,
   type UserBackupPreviewResponse,
   userBackupPreviewResponseSchema,
-} from '@planner/contracts'
+  userBackupRestoreRequestSchema,
+  type UserBackupRestoreResponse,
+  userBackupRestoreResponseSchema,
+} from '@planner/contracts/backup'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 import {
@@ -99,6 +102,34 @@ export async function previewUserBackupImport(
   })
 }
 
+export async function restoreUserBackupImport(
+  options: UserBackupApiOptions & {
+    archive: UserBackupArchive
+    idempotencyKey: string
+  },
+  fetchFn: typeof fetch = fetch,
+): Promise<UserBackupRestoreResponse> {
+  const { request } = createUserBackupRequester(options, fetchFn)
+
+  return request({
+    actorHeader: 'always',
+    body: userBackupRestoreRequestSchema.parse({
+      archive: options.archive,
+      confirmation: 'RESTORE_PERSONAL_BACKUP',
+      restoreProfile: true,
+      restoreWorkspaceSettings: true,
+    }),
+    fallbackErrorMessage: 'Failed to restore backup.',
+    headers: {
+      'Idempotency-Key': options.idempotencyKey,
+    },
+    method: 'POST',
+    path: '/api/v1/backups/import/restore',
+    responseSchema: userBackupRestoreResponseSchema,
+    writeAccess: true,
+  })
+}
+
 export function parseUserBackupArchiveText(text: string): UserBackupArchive {
   return userBackupArchiveSchema.parse(JSON.parse(text) as unknown)
 }
@@ -107,6 +138,18 @@ export function getUserBackupErrorMessage(error: unknown): string {
   if (error instanceof UserBackupApiError) {
     if (error.code === 'backup_personal_workspace_required') {
       return 'Резервные копии пока доступны только для личного пространства.'
+    }
+
+    if (error.code === 'backup_restore_unavailable') {
+      return 'Восстановление временно не настроено на сервере.'
+    }
+
+    if (error.code === 'backup_archive_not_restorable') {
+      return 'Архив не прошел проверку и не может быть восстановлен.'
+    }
+
+    if (error.code === 'backup_restore_idempotency_mismatch') {
+      return 'Этот запрос восстановления уже использован для другого архива.'
     }
 
     if (error.status === 401) {

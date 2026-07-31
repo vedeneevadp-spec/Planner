@@ -1,3 +1,4 @@
+export { clearHabitOfflineWorkspaceData } from './lib/offline-habit-store'
 export {
   getHabitErrorMessage,
   useCreateHabit,

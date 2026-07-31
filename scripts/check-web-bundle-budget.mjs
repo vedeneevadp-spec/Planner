@@ -25,7 +25,7 @@ const publicIconsDirectory = path.join(
 
 const initialJsMaxBytes = readBudgetKilobytes(
   'WEB_BUNDLE_INITIAL_JS_MAX_KB',
-  835,
+  837,
 )
 const entryJsMaxBytes = readBudgetKilobytes('WEB_BUNDLE_ENTRY_JS_MAX_KB', 250)
 const routeAssetBudgets = [
@@ -77,6 +77,13 @@ const routeAssetBudgets = [
     label: 'planner contracts JS',
     prefix: 'planner-contracts-',
     variable: 'WEB_BUNDLE_PLANNER_CONTRACTS_JS_MAX_KB',
+  },
+  {
+    defaultMaxKb: 100,
+    extension: '.js',
+    label: 'backup contracts JS',
+    prefix: 'backup-contracts-',
+    variable: 'WEB_BUNDLE_BACKUP_CONTRACTS_JS_MAX_KB',
   },
   {
     defaultMaxKb: 230,

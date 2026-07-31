@@ -147,6 +147,11 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   assertOrder(script, 'npm run toolchain:check', 'npm ci')
   assertOrder(script, 'npm ci', 'npm run build')
   assertOrder(script, 'npm run build', 'npm run db:migrate')
+  assertOrder(
+    script,
+    'npm run backup:restore-db:check',
+    'atomic_switch "$release_dir"',
+  )
   assertOrder(script, 'npm run db:migrate', 'atomic_switch "$release_dir"')
   assertOrder(
     script,
@@ -159,6 +164,17 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
     'touch "$release_dir/.deploy-complete"',
   )
   assert.match(script, /DB_BACKUP_DIR="\$backups_dir"/)
+  assert.match(script, /flock -w 300 "\$shared_state_dir\/backup\.lock"/)
+  assert.match(script, /BACKUP_AUTOMATION_ENABLED_VALUE/)
+  assert.match(script, /USER_BACKUP_RESTORE_DATABASE_URL/)
+  assert.match(script, /npm run backup:restore-db:check/)
+  assert.match(
+    script,
+    /USER_BACKUP_RESTORE_DATABASE_URL must not reuse the runtime DATABASE_URL/,
+  )
+  assert.match(script, /apply_backup_state/)
+  assert.match(script, /planner-backup\.timer/)
+  assert.match(script, /planner-restore-drill\.timer/)
   assert.match(script, /atomic_switch "\$previous_release"/)
   assert.match(script, /install_runtime_configs "\$previous_release"/)
   assert.match(script, /rm -f "\$release_dir\/\.deploy-complete"/)
@@ -167,26 +183,67 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
 })
 
 test('runtime services and Caddy resolve the current release symlink', async () => {
-  const [apiUnit, workerUnit, caddyfile, deploySource, backupSource] =
-    await Promise.all([
-      readFile(
-        resolve(repositoryRoot, 'deploy/systemd/planner-api.service'),
-        'utf8',
-      ),
-      readFile(
-        resolve(
-          repositoryRoot,
-          'deploy/systemd/planner-task-reminders.service',
-        ),
-        'utf8',
-      ),
-      readFile(resolve(repositoryRoot, 'deploy/caddy/Caddyfile'), 'utf8'),
-      readFile(resolve(repositoryRoot, 'scripts/deploy-prod.mjs'), 'utf8'),
-      readFile(resolve(repositoryRoot, 'scripts/db-backup.mjs'), 'utf8'),
-    ])
+  const [
+    apiUnit,
+    workerUnit,
+    backupUnit,
+    backupTimer,
+    backupPruneUnit,
+    backupPruneTimer,
+    restoreDrillUnit,
+    restoreDrillTimer,
+    caddyfile,
+    deploySource,
+    backupSource,
+  ] = await Promise.all([
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-api.service'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-task-reminders.service'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-backup.service'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-backup.timer'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-backup-prune.service'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-backup-prune.timer'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-restore-drill.service'),
+      'utf8',
+    ),
+    readFile(
+      resolve(repositoryRoot, 'deploy/systemd/planner-restore-drill.timer'),
+      'utf8',
+    ),
+    readFile(resolve(repositoryRoot, 'deploy/caddy/Caddyfile'), 'utf8'),
+    readFile(resolve(repositoryRoot, 'scripts/deploy-prod.mjs'), 'utf8'),
+    readFile(resolve(repositoryRoot, 'scripts/db-backup.mjs'), 'utf8'),
+  ])
 
   assert.match(apiUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
   assert.match(workerUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
+  assert.match(backupUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
+  assert.match(backupUnit, /^EnvironmentFile=-\/etc\/planner\/backup\.env$/m)
+  assert.match(backupUnit, /BACKUP_REQUIRE_OFFSITE=1/)
+  assert.match(backupTimer, /^Persistent=true$/m)
+  assert.match(backupTimer, /^RandomizedDelaySec=30m$/m)
+  assert.match(backupPruneUnit, /npm run backup:prune/)
+  assert.match(backupPruneTimer, /^OnCalendar=Sun /m)
+  assert.match(restoreDrillUnit, /npm run backup:restore-drill/)
+  assert.match(restoreDrillTimer, /^OnCalendar=\*-\*-01 /m)
   assert.match(
     caddyfile,
     /^\s*root \* \/opt\/planner\/current\/apps\/web\/dist$/m,
@@ -197,6 +254,8 @@ test('runtime services and Caddy resolve the current release symlink', async () 
     /`\$\{config\.remoteHost\}:\$\{config\.remoteRoot\}\/`,/,
   )
   assert.match(backupSource, /process\.env\.DB_BACKUP_DIR/)
+  assert.match(deploySource, /BACKUP_AUTOMATION_ENABLED/)
+  assert.match(deploySource, /planner-backup\.service/)
 })
 
 function assertBashSyntax(script) {

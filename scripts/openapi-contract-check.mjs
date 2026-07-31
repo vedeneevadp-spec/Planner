@@ -23,6 +23,9 @@ const DOCUMENTATION_ROUTES = new Set([routeKey('get', '/api/openapi.json')])
 const DOCUMENTATION_ROUTE_PREFIXES = ['get /api/docs']
 
 const OPTIONAL_DOCUMENTED_ROUTES = new Set([
+  routeKey('get', '/api/v1/backups/export'),
+  routeKey('post', '/api/v1/backups/import/preview'),
+  routeKey('post', '/api/v1/backups/import/restore'),
   routeKey('patch', '/api/v1/auth/password'),
   routeKey('post', '/api/v1/auth/password-reset/confirm'),
   routeKey('post', '/api/v1/auth/password-reset/request'),
@@ -75,6 +78,9 @@ try {
     '/api/v1/auth/sign-in',
     '/api/v1/auth/sign-up',
     '/api/v1/session',
+    '/api/v1/backups/export',
+    '/api/v1/backups/import/preview',
+    '/api/v1/backups/import/restore',
     '/api/v1/emoji-sets',
     '/api/v1/life-spheres',
     '/api/v1/tasks',
@@ -89,6 +95,10 @@ try {
     'ApiError',
     'HealthResponse',
     'SessionResponse',
+    'UserBackupArchive',
+    'UserBackupPreviewResponse',
+    'UserBackupRestoreRequest',
+    'UserBackupRestoreResponse',
     'TaskRecord',
     'TaskListPageResponse',
     'TaskTemplateRecord',
@@ -114,6 +124,16 @@ try {
   }
 
   assertSchemaProperties(document, 'NewTaskInput', ['resource', 'sphereId'])
+  assertSchemaProperties(document, 'UserBackupArchive', [
+    'assets',
+    'scope',
+    'tables',
+  ])
+  assertSchemaProperties(document, 'UserBackupRestoreResponse', [
+    'operationId',
+    'tables',
+    'totals',
+  ])
   assertSchemaProperties(document, 'Task', ['resource', 'sphereId'])
   assertSchemaProperties(document, 'CleaningTaskRecord', [
     'frequencyType',

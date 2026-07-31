@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Planner restore drill every month
+
+[Timer]
+OnCalendar=*-*-01 05:30:00
+Persistent=true
+RandomizedDelaySec=2h
+Unit=planner-restore-drill.service
+
+[Install]
+WantedBy=timers.target

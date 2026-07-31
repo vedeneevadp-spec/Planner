@@ -1,10 +1,14 @@
+import { createHash } from 'node:crypto'
+
 import {
   type UserBackupArchive,
   type UserBackupPreviewResponse,
+  type UserBackupRestoreRequest,
+  type UserBackupRestoreResponse,
   type UserBackupRow,
   type UserBackupTableName,
   userBackupTableNameSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type {
@@ -67,6 +71,42 @@ export class UserBackupService {
 
     return response
   }
+
+  restoreImport(
+    context: UserBackupContext,
+    request: UserBackupRestoreRequest,
+    idempotencyKey: string,
+  ): Promise<UserBackupRestoreResponse> {
+    assertAuthenticatedPersonalWorkspace(context)
+
+    if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
+      throw new HttpError(
+        400,
+        'invalid_idempotency_key',
+        'Backup restore requires a valid Idempotency-Key header.',
+      )
+    }
+
+    const warnings = getPreviewWarnings(context, request.archive)
+
+    if (warnings.length > 0) {
+      throw new HttpError(
+        422,
+        'backup_archive_not_restorable',
+        'Backup archive failed restore validation.',
+        { warnings },
+      )
+    }
+
+    return this.repository.restorePersonalWorkspace({
+      archive: request.archive,
+      archiveDigest: createArchiveDigest(request.archive),
+      context,
+      idempotencyKey,
+      restoreProfile: request.restoreProfile,
+      restoreWorkspaceSettings: request.restoreWorkspaceSettings,
+    })
+  }
 }
 
 function assertAuthenticatedPersonalWorkspace(
@@ -119,6 +159,30 @@ function getPreviewWarnings(
   warnings.push(...getReferenceWarnings(archive))
   warnings.push(...getArrayReferenceWarnings(archive))
   warnings.push(...getAssetWarnings(archive))
+  warnings.push(...getUnsupportedRestoreContentWarnings(archive))
+
+  return warnings
+}
+
+function getUnsupportedRestoreContentWarnings(
+  archive: UserBackupArchive,
+): string[] {
+  const warnings: string[] = []
+  const globalEmojiRowCount =
+    (archive.tables.emoji_sets?.length ?? 0) +
+    (archive.tables.emoji_assets?.length ?? 0)
+
+  if (globalEmojiRowCount > 0) {
+    warnings.push(
+      'Global emoji library rows cannot be restored from a user backup.',
+    )
+  }
+
+  if (archive.assets.some((asset) => asset.kind === 'emoji_asset')) {
+    warnings.push(
+      'Global emoji asset payloads cannot be restored from a user backup.',
+    )
+  }
 
   return warnings
 }
@@ -495,6 +559,7 @@ function getAssetWarnings(archive: UserBackupArchive): string[] {
   let byteLengthMismatchCount = 0
   let invalidBase64Count = 0
   let contentMismatchCount = 0
+  let invalidAssetPathCount = 0
 
   for (const asset of archive.assets) {
     if (assetPaths.has(asset.path)) {
@@ -502,6 +567,10 @@ function getAssetWarnings(archive: UserBackupArchive): string[] {
     }
 
     assetPaths.add(asset.path)
+
+    if (!isValidAssetPath(asset.kind, asset.path)) {
+      invalidAssetPathCount += 1
+    }
 
     const buffer = Buffer.from(asset.base64, 'base64')
 
@@ -553,7 +622,27 @@ function getAssetWarnings(archive: UserBackupArchive): string[] {
     )
   }
 
+  if (invalidAssetPathCount > 0) {
+    warnings.push(
+      `Archive contains ${invalidAssetPathCount} asset payload(s) with an invalid public path.`,
+    )
+  }
+
   return warnings
+}
+
+function isValidAssetPath(
+  kind: UserBackupArchive['assets'][number]['kind'],
+  assetPath: string,
+): boolean {
+  const prefix =
+    kind === 'profile_avatar'
+      ? '/api/v1/profile-assets/'
+      : '/api/v1/icon-assets/'
+
+  return new RegExp(
+    `^${prefix.replaceAll('/', '\\/')}[A-Za-z0-9][A-Za-z0-9._-]*$`,
+  ).test(assetPath)
 }
 
 function getArrayReferenceWarnings(archive: UserBackupArchive): string[] {
@@ -660,4 +749,23 @@ function readStringField(row: UserBackupRow, fieldName: string): string | null {
   const value = row[fieldName]
 
   return typeof value === 'string' && value.trim() ? value : null
+}
+
+function createArchiveDigest(archive: UserBackupArchive): string {
+  return createHash('sha256').update(canonicalJson(archive)).digest('hex')
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'null'
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(',')}]`
+  }
+
+  return `{${Object.entries(value)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`)
+    .join(',')}}`
 }

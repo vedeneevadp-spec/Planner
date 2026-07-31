@@ -2,6 +2,12 @@ import { z } from 'zod'
 
 export const USER_BACKUP_FORMAT = 'planner.user-backup'
 export const USER_BACKUP_FORMAT_VERSION = 1
+export const USER_BACKUP_MAX_ASSET_BYTES = 2 * 1024 * 1024
+export const USER_BACKUP_MAX_ASSET_COUNT = 32
+export const USER_BACKUP_MAX_REQUEST_BYTES = 20 * 1024 * 1024
+export const USER_BACKUP_MAX_TOTAL_ASSET_BYTES = 10 * 1024 * 1024
+export const USER_BACKUP_MAX_ROWS_PER_TABLE = 50_000
+export const USER_BACKUP_MAX_TOTAL_ROWS = 100_000
 
 export const userBackupTableNameSchema = z.enum([
   'chaos_inbox_items',
@@ -233,15 +239,32 @@ export const userBackupAssetSchema = z.object({
   base64: z
     .string()
     .min(1)
+    .max(Math.ceil((USER_BACKUP_MAX_ASSET_BYTES * 4) / 3) + 4)
     .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
-  byteLength: z.number().int().nonnegative(),
+  byteLength: z.number().int().nonnegative().max(USER_BACKUP_MAX_ASSET_BYTES),
   contentType: z.enum(['image/gif', 'image/jpeg', 'image/png', 'image/webp']),
   kind: userBackupAssetKindSchema,
   path: z.string().min(1),
 })
 
 export const userBackupArchiveSchema = z.object({
-  assets: z.array(userBackupAssetSchema).default([]),
+  assets: z
+    .array(userBackupAssetSchema)
+    .max(USER_BACKUP_MAX_ASSET_COUNT)
+    .superRefine((assets, ctx) => {
+      const totalBytes = assets.reduce(
+        (total, asset) => total + asset.byteLength,
+        0,
+      )
+
+      if (totalBytes > USER_BACKUP_MAX_TOTAL_ASSET_BYTES) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Backup assets exceed ${USER_BACKUP_MAX_TOTAL_ASSET_BYTES} bytes.`,
+        })
+      }
+    })
+    .default([]),
   exportedAt: z.string().datetime({ offset: true }),
   format: z.literal(USER_BACKUP_FORMAT),
   source: z.object({
@@ -254,8 +277,13 @@ export const userBackupArchiveSchema = z.object({
     workspaceName: z.string().min(1),
   }),
   tables: z
-    .partialRecord(userBackupTableNameSchema, z.array(userBackupRowSchema))
+    .partialRecord(
+      userBackupTableNameSchema,
+      z.array(userBackupRowSchema).max(USER_BACKUP_MAX_ROWS_PER_TABLE),
+    )
     .superRefine((tables, ctx) => {
+      let totalRows = 0
+
       for (const [tableName, rows] of Object.entries(tables)) {
         const parsedTableName = userBackupTableNameSchema.safeParse(tableName)
 
@@ -263,6 +291,7 @@ export const userBackupArchiveSchema = z.object({
           continue
         }
 
+        totalRows += rows.length
         const rowSchema = userBackupV1RowSchemas[parsedTableName.data]
 
         for (const [index, row] of rows.entries()) {
@@ -278,6 +307,13 @@ export const userBackupArchiveSchema = z.object({
             }
           }
         }
+      }
+
+      if (totalRows > USER_BACKUP_MAX_TOTAL_ROWS) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Backup archive exceeds ${USER_BACKUP_MAX_TOTAL_ROWS} rows.`,
+        })
       }
     }),
   version: z.literal(USER_BACKUP_FORMAT_VERSION),
@@ -307,6 +343,42 @@ export const userBackupPreviewResponseSchema = z.object({
   warnings: z.array(z.string()),
 })
 
+export const userBackupRestoreRequestSchema = z.object({
+  archive: userBackupArchiveSchema,
+  confirmation: z.literal('RESTORE_PERSONAL_BACKUP'),
+  restoreProfile: z.boolean().default(true),
+  restoreWorkspaceSettings: z.boolean().default(true),
+})
+
+export const userBackupRestoreTableResultSchema = z.object({
+  inserted: z.number().int().nonnegative(),
+  kept: z.number().int().nonnegative(),
+  name: userBackupTableNameSchema,
+  resurrected: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+})
+
+const userBackupRestoreTotalsSchema = z.object({
+  inserted: z.number().int().nonnegative(),
+  kept: z.number().int().nonnegative(),
+  resurrected: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+})
+
+export const userBackupRestoreResponseSchema = z.object({
+  archiveDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  assets: z.object({
+    restored: z.number().int().nonnegative(),
+    reused: z.number().int().nonnegative(),
+  }),
+  operationId: z.string().uuid(),
+  status: z.literal('completed'),
+  tables: z.array(userBackupRestoreTableResultSchema),
+  totals: userBackupRestoreTotalsSchema,
+})
+
 export type UserBackupArchive = z.infer<typeof userBackupArchiveSchema>
 export type UserBackupAsset = z.infer<typeof userBackupAssetSchema>
 export type UserBackupAssetKind = z.infer<typeof userBackupAssetKindSchema>
@@ -317,4 +389,13 @@ export type UserBackupPreviewTable = z.infer<
   typeof userBackupPreviewTableSchema
 >
 export type UserBackupRow = z.infer<typeof userBackupRowSchema>
+export type UserBackupRestoreRequest = z.infer<
+  typeof userBackupRestoreRequestSchema
+>
+export type UserBackupRestoreResponse = z.infer<
+  typeof userBackupRestoreResponseSchema
+>
+export type UserBackupRestoreTableResult = z.infer<
+  typeof userBackupRestoreTableResultSchema
+>
 export type UserBackupTableName = z.infer<typeof userBackupTableNameSchema>

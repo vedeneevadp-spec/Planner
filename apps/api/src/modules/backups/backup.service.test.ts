@@ -4,11 +4,12 @@ import test from 'node:test'
 import {
   type UserBackupArchive,
   userBackupArchiveSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import type { UserBackupContext } from './backup.model.js'
+import type { UserBackupRestoreInput } from './backup.model.js'
 import type { UserBackupRepository } from './backup.repository.js'
 import {
   normalizeUserBackupTableReferences,
@@ -140,6 +141,7 @@ void test('UserBackupService previews archive integrity warnings', () => {
     'Archive references 1 local asset file(s) without payload.',
     'Archive contains 1 asset payload(s) with invalid byte length.',
     'Archive contains 1 asset payload(s) whose bytes do not match content type.',
+    'Global emoji asset payloads cannot be restored from a user backup.',
   ])
 })
 
@@ -204,6 +206,89 @@ void test('UserBackupService rejects duplicate and cross-scope rows in preview',
   ])
 })
 
+void test('UserBackupService restores a validated archive with a stable digest', async () => {
+  const repository = new FakeUserBackupRepository()
+  const service = new UserBackupService(repository, '1.2.3')
+  const archive = createArchive()
+  const response = await service.restoreImport(
+    PERSONAL_CONTEXT,
+    {
+      archive,
+      confirmation: 'RESTORE_PERSONAL_BACKUP',
+      restoreProfile: true,
+      restoreWorkspaceSettings: true,
+    },
+    'backup-restore-00000001',
+  )
+
+  assert.equal(response.status, 'completed')
+  assert.match(response.archiveDigest, /^[a-f0-9]{64}$/)
+  assert.equal(
+    repository.lastRestoreInput?.archiveDigest,
+    response.archiveDigest,
+  )
+  assert.equal(
+    repository.lastRestoreInput?.idempotencyKey,
+    'backup-restore-00000001',
+  )
+})
+
+void test('UserBackupService rejects invalid restore idempotency and scope', () => {
+  const service = new UserBackupService(new FakeUserBackupRepository(), '1.2.3')
+
+  assert.throws(
+    () =>
+      service.restoreImport(
+        PERSONAL_CONTEXT,
+        {
+          archive: createArchive(),
+          confirmation: 'RESTORE_PERSONAL_BACKUP',
+          restoreProfile: true,
+          restoreWorkspaceSettings: true,
+        },
+        'short',
+      ),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === 'invalid_idempotency_key',
+  )
+
+  assert.throws(
+    () =>
+      service.restoreImport(
+        PERSONAL_CONTEXT,
+        {
+          archive: createArchive({
+            workspaceId: 'workspace-2',
+          }),
+          confirmation: 'RESTORE_PERSONAL_BACKUP',
+          restoreProfile: true,
+          restoreWorkspaceSettings: true,
+        },
+        'backup-restore-00000002',
+      ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.code === 'backup_archive_not_restorable',
+  )
+})
+
+void test('UserBackupService blocks global emoji content during restore preview', () => {
+  const service = new UserBackupService(new FakeUserBackupRepository(), '1.2.3')
+  const preview = service.previewImport(
+    PERSONAL_CONTEXT,
+    createArchive({
+      tables: {
+        emoji_sets: [{ id: 'emoji-set-1' }],
+      },
+    }),
+  )
+
+  assert.equal(preview.canRestore, false)
+  assert.deepEqual(preview.warnings, [
+    'Global emoji library rows cannot be restored from a user backup.',
+  ])
+})
+
 void test('user backup export excludes the global emoji library', () => {
   assert.equal(USER_BACKUP_EXPORTED_TABLE_NAMES.includes('emoji_sets'), false)
   assert.equal(USER_BACKUP_EXPORTED_TABLE_NAMES.includes('emoji_assets'), false)
@@ -234,11 +319,40 @@ void test('user backup export removes daily plan references to excluded tasks', 
 
 class FakeUserBackupRepository implements UserBackupRepository {
   exportCount = 0
+  lastRestoreInput: UserBackupRestoreInput | null = null
 
   exportPersonalWorkspace(): Promise<UserBackupArchive> {
     this.exportCount += 1
 
     return Promise.resolve(createArchive())
+  }
+
+  restorePersonalWorkspace(
+    input: UserBackupRestoreInput,
+  ): Promise<
+    ReturnType<UserBackupService['restoreImport']> extends Promise<infer T>
+      ? T
+      : never
+  > {
+    this.lastRestoreInput = input
+
+    return Promise.resolve({
+      archiveDigest: input.archiveDigest,
+      assets: {
+        restored: 0,
+        reused: 0,
+      },
+      operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      status: 'completed',
+      tables: [],
+      totals: {
+        inserted: 0,
+        kept: 0,
+        resurrected: 0,
+        skipped: 0,
+        updated: 0,
+      },
+    })
   }
 }
 

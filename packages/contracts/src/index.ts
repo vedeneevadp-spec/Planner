@@ -193,19 +193,11 @@ export type {
   UserBackupAssetKind,
   UserBackupPreviewResponse,
   UserBackupPreviewTable,
+  UserBackupRestoreRequest,
+  UserBackupRestoreResponse,
+  UserBackupRestoreTableResult,
   UserBackupRow,
   UserBackupTableName,
-} from './backup.js'
-export {
-  USER_BACKUP_FORMAT,
-  USER_BACKUP_FORMAT_VERSION,
-  userBackupArchiveSchema,
-  userBackupAssetKindSchema,
-  userBackupAssetSchema,
-  userBackupPreviewResponseSchema,
-  userBackupPreviewTableSchema,
-  userBackupRowSchema,
-  userBackupTableNameSchema,
 } from './backup.js'
 export type {
   ChaosInboxBulkUpdateInput,

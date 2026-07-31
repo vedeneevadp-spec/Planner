@@ -70,6 +70,11 @@ version-specific директорию и поднимет fresh dev-базу. Д
 | `npm run smoke:mcp`                                     | smoke ChatGPT MCP/OAuth connector flow                   |
 | `npm run db:up` / `npm run db:down`                     | поднять/остановить локальный Postgres                    |
 | `npm run db:backup`                                     | снять `pg_dump` backup в `backups/` или `DB_BACKUP_DIR`  |
+| `npm run backup:create`                                 | создать DB + asset backup set и отправить его в Restic   |
+| `npm run backup:verify`                                 | проверить manifest, checksums и структуру dump           |
+| `npm run backup:prune`                                  | применить local/offsite retention                        |
+| `npm run backup:restore-drill`                          | восстановить backup в изолированной одноразовой базе     |
+| `npm run backup:restore-db:check`                       | проверить production role для пользовательского restore  |
 | `npm run db:migrations:check`                           | проверить порядок и имена SQL-миграций                   |
 | `npm run db:migrate` / `npm run db:seed`                | применить миграции и dev seed локально                   |
 | `npm run db:security:check`                             | проверить RLS/security-инварианты PostgreSQL             |
@@ -183,6 +188,10 @@ scripts/       локальные DB, mobile и deploy workflows
 - [docs/architecture.md](docs/architecture.md) - архитектурные границы проекта
 - [docs/release-workflow.md](docs/release-workflow.md) - цикл разработки и
   релиза
+- [docs/disaster-recovery.md](docs/disaster-recovery.md) - production backup,
+  offsite retention, restore drill и аварийный runbook
+- [docs/user-backups.md](docs/user-backups.md) - пользовательский export,
+  preview и same-scope merge restore
 - [docs/release-notes.md](docs/release-notes.md) - пользовательские заметки к
   релизам
 - [docs/voice-assistant.md](docs/voice-assistant.md) - функциональность,
@@ -211,6 +220,8 @@ API строится как modular monolith поверх Fastify. Основн�
 - emoji/icon library: `/api/v1/emoji-sets`
 - profile assets: `/api/v1/profile-assets/:fileName`
 - push notifications: `/api/v1/push/devices`, `/api/v1/push/test`
+- backups: `/api/v1/backups/export`, `/api/v1/backups/import/preview`,
+  `/api/v1/backups/import/restore`
 
 ### Alice skill webhook
 
@@ -286,6 +297,9 @@ fallback hook; production LLM provider для него пока не подкл�
 - `DATABASE_URL` в production должен быть runtime connection string для
   non-owner DB role. `MIGRATE_DATABASE_URL` используется deploy-скриптом для
   backup/migrations/smoke cleanup под owner/admin role.
+- `USER_BACKUP_RESTORE_DATABASE_URL` задает отдельное привилегированное
+  подключение, используемое только same-scope merge restore; оно не должно
+  совпадать с runtime `DATABASE_URL`
 - `API_DB_RLS_MODE` переопределяет RLS strategy:
   `disabled`, `claims_only`, `enabled`, `transaction_local`,
   `session_connection`. `transaction_local` требует, чтобы runtime DB user мог
@@ -404,7 +418,12 @@ Production-данные приложения живут в Timeweb Managed Postg
   allowlist, чтобы не переименовывать уже примененный SQL-файл
 - runner миграций хранит checksum и количество statements, берет advisory lock и
   падает при изменении уже примененной migration
-- production deploy перед миграциями делает `pg_dump` backup в `/opt/planner/backups`
+- production deploy перед миграциями делает проверенный `pg_dump` backup с
+  checksum sidecar и ограниченной ротацией
+- infrastructure backup включает PostgreSQL и `API_ICON_ASSET_DIR`, отправляет
+  зашифрованную копию в Restic и ежемесячно проверяется изолированным restore
+  drill; runbook находится в
+  [docs/disaster-recovery.md](docs/disaster-recovery.md)
 - `npm run db:security:check` проверяет, что protected tables остаются под RLS
 - Auth полностью обслуживается backend: email/password, JWT, refresh tokens и
   password reset

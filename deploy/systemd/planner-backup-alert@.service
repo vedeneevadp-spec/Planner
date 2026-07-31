@@ -1,0 +1,17 @@
+[Unit]
+Description=Send Planner backup failure alert for %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=planner
+Group=planner
+WorkingDirectory=/opt/planner/current
+EnvironmentFile=/etc/planner/planner.env
+EnvironmentFile=-/etc/planner/backup.env
+ExecStart=/usr/bin/npm run backup:alert -- %i
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+TimeoutStartSec=30

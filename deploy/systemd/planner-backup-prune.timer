@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Planner backup retention every week
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=1h
+Unit=planner-backup-prune.service
+
+[Install]
+WantedBy=timers.target

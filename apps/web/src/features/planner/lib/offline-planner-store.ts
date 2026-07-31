@@ -207,6 +207,39 @@ export async function resetPlannerOfflineDatabaseForTests(): Promise<void> {
   }
 }
 
+export async function clearPlannerOfflineWorkspaceData(
+  workspaceId: string,
+): Promise<void> {
+  const db = getPlannerOfflineDatabase()
+
+  if (!db) {
+    return
+  }
+
+  await db.transaction(
+    'rw',
+    [
+      db.cachedLifeSpheres,
+      db.cachedTaskTemplates,
+      db.cachedTasks,
+      db.mutationQueue,
+      db.syncMetadata,
+    ],
+    async () => {
+      await Promise.all([
+        db.cachedLifeSpheres.where('workspaceId').equals(workspaceId).delete(),
+        db.cachedTaskTemplates
+          .where('workspaceId')
+          .equals(workspaceId)
+          .delete(),
+        db.cachedTasks.where('workspaceId').equals(workspaceId).delete(),
+        db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
+        db.syncMetadata.where('workspaceId').equals(workspaceId).delete(),
+      ])
+    },
+  )
+}
+
 export async function loadCachedTaskRecords(
   workspaceId: string,
 ): Promise<TaskRecord[]> {

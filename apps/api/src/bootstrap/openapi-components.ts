@@ -5,6 +5,7 @@ import {
   createHabitContractSchemas,
   createPlannerPeripheralContractSchemas,
   createSelfCareContractSchemas,
+  createUserBackupContractSchemas,
 } from './openapi-contract-schemas.js'
 import {
   genericJsonArraySchema,
@@ -123,6 +124,7 @@ export function createComponentSchemas(): Record<
       type: 'object',
     },
     ...createSelfCareContractSchemas(),
+    ...createUserBackupContractSchemas(),
     LifeSphereListResponse: genericJsonArraySchema('LifeSphereRecord'),
     LifeSphereRecord: genericJsonObjectSchema(),
     LifeSphereUpdateInput: genericJsonObjectSchema(),
