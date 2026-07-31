@@ -642,7 +642,12 @@ validate_production_env() {
   api_db_rls_mode_value="$(require_env_value API_DB_RLS_MODE)"
   api_task_reminders_runtime_value="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
   api_cors_origin_value="$(require_env_value API_CORS_ORIGIN)"
+  auth_email_from_value="$(read_env_value AUTH_EMAIL_FROM)"
   auth_jwt_secret_value="$(require_env_value AUTH_JWT_SECRET)"
+  auth_smtp_host_value="$(read_env_value AUTH_SMTP_HOST)"
+  auth_smtp_password_value="$(read_env_value AUTH_SMTP_PASSWORD)"
+  auth_smtp_port_value="$(read_env_value AUTH_SMTP_PORT)"
+  auth_smtp_user_value="$(read_env_value AUTH_SMTP_USER)"
   database_url_value="$(require_env_value DATABASE_URL)"
   migrate_database_url_value="$(read_env_value MIGRATE_DATABASE_URL)"
   user_backup_restore_database_url_value="$(read_env_value USER_BACKUP_RESTORE_DATABASE_URL)"
@@ -725,6 +730,7 @@ validate_production_env() {
     backup_alert_webhook_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_WEBHOOK_URL)"
     backup_alert_telegram_bot_token_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_TELEGRAM_BOT_TOKEN)"
     backup_alert_telegram_chat_id_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_TELEGRAM_CHAT_ID)"
+    backup_alert_email_to_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_EMAIL_TO)"
 
     if [ -z "$restic_repository_value" ]; then
       echo "RESTIC_REPOSITORY is required in $backup_env_file." >&2
@@ -741,9 +747,21 @@ validate_production_env() {
       return 1
     fi
 
-    if [ -z "$backup_alert_webhook_value" ] && { [ -z "$backup_alert_telegram_bot_token_value" ] || [ -z "$backup_alert_telegram_chat_id_value" ]; }; then
-      echo "Configure BACKUP_ALERT_WEBHOOK_URL or both Telegram backup alert values in $backup_env_file." >&2
+    if [ -z "$backup_alert_webhook_value" ] && [ -z "$backup_alert_email_to_value" ] && { [ -z "$backup_alert_telegram_bot_token_value" ] || [ -z "$backup_alert_telegram_chat_id_value" ]; }; then
+      echo "Configure BACKUP_ALERT_WEBHOOK_URL, BACKUP_ALERT_EMAIL_TO, or both Telegram backup alert values in $backup_env_file." >&2
       return 1
+    fi
+
+    if [ -n "$backup_alert_email_to_value" ]; then
+      if [ -z "$auth_email_from_value" ] || [ -z "$auth_smtp_host_value" ] || [ -z "$auth_smtp_port_value" ]; then
+        echo "BACKUP_ALERT_EMAIL_TO requires AUTH_EMAIL_FROM, AUTH_SMTP_HOST, and AUTH_SMTP_PORT in $env_file." >&2
+        return 1
+      fi
+
+      if { [ -n "$auth_smtp_user_value" ] && [ -z "$auth_smtp_password_value" ]; } || { [ -z "$auth_smtp_user_value" ] && [ -n "$auth_smtp_password_value" ]; }; then
+        echo "AUTH_SMTP_USER and AUTH_SMTP_PASSWORD must be configured together." >&2
+        return 1
+      fi
     fi
   fi
 

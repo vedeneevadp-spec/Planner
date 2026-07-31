@@ -43,7 +43,8 @@ Production systemd units:
 - `planner-backup.timer`: ежедневно в 02:30, randomized delay до 30 минут;
 - `planner-backup-prune.timer`: еженедельно в воскресенье в 04:30;
 - `planner-restore-drill.timer`: первого числа месяца в 05:30;
-- `planner-backup-alert@.service`: POST failure event в alert webhook.
+- `planner-backup-alert@.service`: доставляет failure event в webhook/Telegram
+  и использует SMTP fallback при сетевой ошибке.
 
 Backup, prune, drill и deploy-time dump используют общий `flock`, поэтому не
 работают параллельно.
@@ -77,12 +78,14 @@ Prerequisites на VPS:
 - PostgreSQL client tools версии не старее production server;
 - Restic;
 - offsite object storage вне failure domain production VPS;
-- alert endpoint, принимающий JSON POST, либо Telegram bot token и chat ID;
+- alert endpoint, принимающий JSON POST, Telegram bot token и chat ID либо
+  SMTP с `BACKUP_ALERT_EMAIL_TO`;
 - изолированный PostgreSQL cluster/environment для drill.
 
 1. Создать `/etc/planner/backup.env` по
    `deploy/backup.env.example`, выставить owner `root:root` и mode `0600`.
-2. Создать `/etc/planner/restic-password` с mode `0600`.
+2. Создать `/etc/planner/restic-password` с owner `root:planner` и mode `0640`,
+   чтобы systemd jobs от пользователя `planner` могли прочитать пароль.
 3. Инициализировать repository один раз: `restic init`.
 4. В `/etc/planner/planner.env` настроить persistent
    `API_ICON_ASSET_DIR=/var/lib/planner/icon-assets`,
@@ -157,9 +160,9 @@ Drill никогда не должен указывать на production databa
 6. Подтвердить новый offsite snapshot и успешный drill.
 7. Если фактический RPO превышен, зарегистрировать incident.
 
-Failure webhook является сигналом доставки, но не доказательством работы
-alerting. После настройки нужно провести отдельный тестовый failure и проверить
-получение события дежурным каналом.
+Failure webhook или email является сигналом доставки, но не доказательством
+работы alerting. После настройки нужно провести отдельный тестовый failure и
+проверить получение события дежурным каналом.
 
 ## Аварийное восстановление
 
