@@ -237,6 +237,15 @@ test('runtime services and Caddy resolve the current release symlink', async () 
   assert.match(workerUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
   assert.match(backupUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
   assert.match(backupUnit, /^EnvironmentFile=-\/etc\/planner\/backup\.env$/m)
+  assert.match(backupUnit, /^EnvironmentFile=\/etc\/planner\/release\.env$/m)
+  assert.match(
+    backupPruneUnit,
+    /^EnvironmentFile=\/etc\/planner\/release\.env$/m,
+  )
+  assert.match(
+    restoreDrillUnit,
+    /^EnvironmentFile=\/etc\/planner\/release\.env$/m,
+  )
   assert.match(backupUnit, /BACKUP_REQUIRE_OFFSITE=1/)
   assert.match(backupTimer, /^Persistent=true$/m)
   assert.match(backupTimer, /^RandomizedDelaySec=30m$/m)
@@ -256,6 +265,11 @@ test('runtime services and Caddy resolve the current release symlink', async () 
   assert.match(backupSource, /process\.env\.DB_BACKUP_DIR/)
   assert.match(deploySource, /BACKUP_AUTOMATION_ENABLED/)
   assert.match(deploySource, /planner-backup\.service/)
+  assert.match(deploySource, /printf 'PLANNER_APP_COMMIT=%s\\n'/)
+  assert.match(
+    deploySource,
+    /mv -f \/etc\/planner\/release\.env\.next \/etc\/planner\/release\.env/,
+  )
 })
 
 function assertBashSyntax(script) {

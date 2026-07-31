@@ -46,6 +46,11 @@ Production systemd units:
 - `planner-backup-alert@.service`: доставляет failure event в webhook/Telegram
   и использует SMTP fallback при сетевой ошибке.
 
+Production deploy атомарно поддерживает `/etc/planner/release.env` со значением
+`PLANNER_APP_COMMIT` активированного immutable release. Backup, prune и drill
+units загружают этот файл, поэтому manifest можно связать с точным commit;
+rollback возвращает значение commit предыдущего release.
+
 Backup, prune, drill и deploy-time dump используют общий `flock`, поэтому не
 работают параллельно.
 

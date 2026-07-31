@@ -10,6 +10,7 @@ User=planner
 Group=planner
 WorkingDirectory=/opt/planner/current
 EnvironmentFile=/etc/planner/planner.env
+EnvironmentFile=/etc/planner/release.env
 EnvironmentFile=-/etc/planner/backup.env
 Environment=INFRASTRUCTURE_BACKUP_DIR=/opt/planner/shared/backups/infrastructure
 Environment=RESTORE_DRILL_STATUS_PATH=/opt/planner/shared/state/restore-drill-status.json
