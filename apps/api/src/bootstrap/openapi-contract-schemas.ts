@@ -29,10 +29,12 @@ import {
   selfCareReminderToneSchema,
   selfCareRepeatKindSchema,
   selfCareTimeOfDaySchema,
+} from '@planner/contracts'
+import {
   USER_BACKUP_MAX_ASSET_BYTES,
   USER_BACKUP_MAX_ASSET_COUNT,
   userBackupTableNameSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 import type { OpenAPIV3 } from 'openapi-types'
 
 import {

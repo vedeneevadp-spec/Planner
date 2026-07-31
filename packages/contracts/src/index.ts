@@ -199,26 +199,6 @@ export type {
   UserBackupRow,
   UserBackupTableName,
 } from './backup.js'
-export {
-  USER_BACKUP_FORMAT,
-  USER_BACKUP_FORMAT_VERSION,
-  USER_BACKUP_MAX_ASSET_BYTES,
-  USER_BACKUP_MAX_ASSET_COUNT,
-  USER_BACKUP_MAX_REQUEST_BYTES,
-  USER_BACKUP_MAX_ROWS_PER_TABLE,
-  USER_BACKUP_MAX_TOTAL_ASSET_BYTES,
-  USER_BACKUP_MAX_TOTAL_ROWS,
-  userBackupArchiveSchema,
-  userBackupAssetKindSchema,
-  userBackupAssetSchema,
-  userBackupPreviewResponseSchema,
-  userBackupPreviewTableSchema,
-  userBackupRestoreRequestSchema,
-  userBackupRestoreResponseSchema,
-  userBackupRestoreTableResultSchema,
-  userBackupRowSchema,
-  userBackupTableNameSchema,
-} from './backup.js'
 export type {
   ChaosInboxBulkUpdateInput,
   ChaosInboxConvertToTaskResponse,

@@ -4,7 +4,7 @@ import {
   userBackupPreviewResponseSchema,
   userBackupRestoreRequestSchema,
   userBackupRestoreResponseSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 import type { FastifyInstance } from 'fastify'
 
 import { resolveRouteReadContext } from '../../bootstrap/route-context.js'

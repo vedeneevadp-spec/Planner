@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, test } from 'node:test'
 
-import { userBackupArchiveSchema } from '@planner/contracts'
+import { userBackupArchiveSchema } from '@planner/contracts/backup'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import {

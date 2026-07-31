@@ -6,7 +6,7 @@ import {
   userBackupRestoreRequestSchema,
   type UserBackupRestoreResponse,
   userBackupRestoreResponseSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 
 import { plannerApiConfig } from '@/shared/config/planner-api'
 import {

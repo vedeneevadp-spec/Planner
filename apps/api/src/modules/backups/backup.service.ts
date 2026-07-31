@@ -8,7 +8,7 @@ import {
   type UserBackupRow,
   type UserBackupTableName,
   userBackupTableNameSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/backup'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type {

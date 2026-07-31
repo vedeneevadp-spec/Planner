@@ -1,9 +1,9 @@
 import {
-  USER_BACKUP_MAX_REQUEST_BYTES,
   type UserBackupArchive,
   type UserBackupPreviewResponse,
   type UserBackupRestoreResponse,
 } from '@planner/contracts'
+import { USER_BACKUP_MAX_REQUEST_BYTES } from '@planner/contracts/backup'
 import {
   type ChangeEvent,
   type FormEvent,
