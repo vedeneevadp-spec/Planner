@@ -2,7 +2,7 @@ import './index.css'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter } from 'react-router'
 
 import App from '@/app'
 import { registerPwaServiceWorker } from '@/shared/lib/pwa/register-service-worker'

@@ -1,7 +1,7 @@
 import type { CalendarViewMode } from '@planner/contracts'
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 
 import {
   buildTimelineLayout,

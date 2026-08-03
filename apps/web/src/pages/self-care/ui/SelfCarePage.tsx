@@ -6,7 +6,7 @@ import type {
   SelfCareTodayItem,
 } from '@planner/contracts'
 import { lazy, Suspense, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router'
 
 import {
   getSelfCareErrorMessage,

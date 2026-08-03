@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router'
 
 import { TaskSection } from '@/entities/task/ui'
 import { useUploadedIconAssets } from '@/features/emoji-library'

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import { ProfileAccountPanel } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
