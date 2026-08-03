@@ -22,6 +22,20 @@
       "groupName": "npm minor updates"
     },
     {
+      "description": "Keep npm CLI updates isolated because production enforces an exact npm version.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["npm"],
+      "groupName": "npm toolchain updates",
+      "automerge": false
+    },
+    {
+      "description": "Keep React Router updates isolated for security review and major-version migration testing.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["react-router", "react-router-dom"],
+      "groupName": "React Router updates",
+      "automerge": false
+    },
+    {
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["patch", "minor"],
       "groupName": "GitHub Actions updates",
