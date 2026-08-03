@@ -8,6 +8,7 @@ const VALID_PRODUCTION_ENV = {
   API_CORS_ORIGIN: 'https://chaotika.ru',
   API_DB_RLS_MODE: 'transaction_local',
   AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
+  DATABASE_URL: 'postgres://planner:planner@127.0.0.1:54329/planner',
   NODE_ENV: 'production',
 } satisfies NodeJS.ProcessEnv
 
@@ -223,6 +224,40 @@ void describe('createApiConfig', () => {
           API_DB_RLS_MODE: 'maybe',
         }),
       /Invalid API_DB_RLS_MODE/,
+    )
+  })
+
+  void it('requires TLS for remote production PostgreSQL connections', () => {
+    for (const databaseUrl of [
+      'postgres://planner:secret@db.example.test:5432/planner',
+      'postgres://planner:secret@127.example.test:5432/planner',
+      'postgresql://planner:secret@db.example.test:5432/planner?sslmode=disable',
+      'postgresql://planner:secret@db.example.test:5432/planner?sslmode=prefer',
+    ]) {
+      assert.throws(
+        () =>
+          createApiConfig({
+            ...VALID_PRODUCTION_ENV,
+            DATABASE_URL: databaseUrl,
+          }),
+        /DATABASE_URL must require TLS/,
+      )
+    }
+
+    for (const sslMode of ['require', 'verify-ca', 'verify-full']) {
+      assert.doesNotThrow(() =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          DATABASE_URL: `postgresql://planner:secret@db.example.test:5432/planner?sslmode=${sslMode}`,
+        }),
+      )
+    }
+
+    assert.doesNotThrow(() =>
+      createApiConfig({
+        ...VALID_PRODUCTION_ENV,
+        DATABASE_URL: 'postgres://planner:secret@localhost:5432/planner',
+      }),
     )
   })
 

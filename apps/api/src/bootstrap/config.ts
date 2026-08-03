@@ -19,6 +19,12 @@ export type ApiDatabaseRlsMode =
 export type ApiTrustedProxyHops = false | number
 export type TaskRemindersRuntimeMode = 'api' | 'disabled' | 'worker'
 
+const SECURE_POSTGRES_SSL_MODES = new Set([
+  'require',
+  'verify-ca',
+  'verify-full',
+])
+
 export interface FirebasePushConfig {
   clientEmail: string
   privateKey: string
@@ -651,6 +657,8 @@ function validateProductionConfig({
     )
   }
 
+  validateProductionDatabaseTransport(env.DATABASE_URL)
+
   const jwtSecret = env.AUTH_JWT_SECRET?.trim()
 
   if (
@@ -662,6 +670,52 @@ function validateProductionConfig({
       'AUTH_JWT_SECRET must be a non-placeholder production secret.',
     )
   }
+}
+
+function validateProductionDatabaseTransport(value: string | undefined): void {
+  const databaseUrl = value?.trim()
+
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL must be configured when NODE_ENV=production.')
+  }
+
+  let parsed: URL
+
+  try {
+    parsed = new URL(databaseUrl)
+  } catch {
+    throw new Error('DATABASE_URL must be a valid PostgreSQL URL.')
+  }
+
+  if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+    throw new Error('DATABASE_URL must use the postgres or postgresql scheme.')
+  }
+
+  if (isLoopbackDatabaseHost(parsed.hostname)) {
+    return
+  }
+
+  const sslMode = parsed.searchParams.get('sslmode')?.trim().toLowerCase()
+
+  if (!sslMode || !SECURE_POSTGRES_SSL_MODES.has(sslMode)) {
+    throw new Error(
+      'DATABASE_URL must require TLS for remote PostgreSQL when NODE_ENV=production (sslmode=require, verify-ca, or verify-full).',
+    )
+  }
+}
+
+function isLoopbackDatabaseHost(hostname: string): boolean {
+  const normalized = hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+
+  return (
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    /^127(?:\.\d{1,3}){3}$/.test(normalized)
+  )
 }
 
 function isUnsafeProductionCorsOrigin(value: string): boolean {
