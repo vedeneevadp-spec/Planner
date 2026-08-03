@@ -64,8 +64,8 @@ android {
         applicationId "ru.chaotika.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 16
-        versionName "1.1.8"
+        versionCode 17
+        versionName "1.1.9"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         if (!androidAbiFilters.isEmpty()) {
             ndk {
@@ -111,13 +111,20 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text && wakewordParityApplicationIdSuffix == null) {
-        apply plugin: 'com.google.gms.google-services'
-    } else if (wakewordParityApplicationIdSuffix != null) {
-        logger.info("google-services plugin not applied for wakeword parity applicationId suffix")
-    }
-} catch(Exception e) {
+def servicesJSON = file('google-services.json')
+def hasGoogleServicesJSON = servicesJSON.exists() && !servicesJSON.text.trim().isEmpty()
+def releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains('release')
+}
+
+if (hasGoogleServicesJSON && wakewordParityApplicationIdSuffix == null) {
+    apply plugin: 'com.google.gms.google-services'
+} else if (wakewordParityApplicationIdSuffix != null) {
+    logger.info("google-services plugin not applied for wakeword parity applicationId suffix")
+} else if (releaseBuildRequested) {
+    throw new GradleException(
+        "android/app/google-services.json is required for release builds because the app registers Firebase push notifications."
+    )
+} else {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }

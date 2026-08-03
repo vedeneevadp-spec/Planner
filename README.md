@@ -397,7 +397,9 @@ Web-клиент работает через backend HTTP API и не пишет
 - production API CORS должен разрешать origin нативной оболочки Capacitor:
   минимум `https://localhost` для Android и `capacitor://localhost` для iOS
 - для Android push нужно добавить Firebase Android app config в
-  `android/app/google-services.json`, затем выполнить `npm run mobile:sync:android`
+  `android/app/google-services.json`, затем выполнить `npm run mobile:sync:android`;
+  release-сборка APK/AAB без корректного конфига для `ru.chaotika.app`
+  намеренно завершается ошибкой
 - Android-клиент сам регистрирует FCM token после входа в приложение и может
   принимать тестовый push через `POST /api/v1/push/test`
 

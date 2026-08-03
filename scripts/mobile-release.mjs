@@ -12,6 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 
+import { assertAndroidFirebaseConfig } from './mobile-release-android-config.mjs'
 import { resolveMobileWebBuildEnv } from './mobile-web-build-env.mjs'
 
 const repoRoot = process.cwd()
@@ -37,6 +38,11 @@ const androidKeystorePropertiesPath = path.join(
   repoRoot,
   'android/keystore.properties',
 )
+const androidFirebaseConfigPath = path.join(
+  repoRoot,
+  'android/app/google-services.json',
+)
+const androidApplicationId = 'ru.chaotika.app'
 const androidLocalPropertiesPath = path.join(
   repoRoot,
   'android/local.properties',
@@ -70,6 +76,14 @@ async function main() {
     DEFAULT_API_URL
 
   ensureUrl(apiUrl)
+
+  if (!options.dryRun && ['android', 'all'].includes(options.buildArtifacts)) {
+    await assertAndroidFirebaseConfig({
+      applicationId: androidApplicationId,
+      filePath: androidFirebaseConfigPath,
+    })
+    console.log('[mobile-release] Android Firebase config is valid.')
+  }
 
   await assertReleaseApiHealth(apiUrl, {
     dryRun: options.dryRun,
