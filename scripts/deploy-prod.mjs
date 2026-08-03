@@ -337,6 +337,49 @@ chmod 711 "$remote_root" ${shellQuote(layout.sharedRoot)}
 `
 }
 
+export function createRemoteDatabaseTransportValidatorScript() {
+  return String.raw`validate_database_transport() {
+  database_url="$1"
+
+  DATABASE_URL="$database_url" node --input-type=module <<'NODE'
+const secureSslModes = new Set(['require', 'verify-ca', 'verify-full'])
+const databaseUrl = process.env.DATABASE_URL?.trim()
+
+let parsed
+
+try {
+  parsed = new URL(databaseUrl)
+} catch {
+  console.error('DATABASE_URL must be a valid PostgreSQL URL.')
+  process.exit(1)
+}
+
+if (parsed.protocol !== 'postgres:' && parsed.protocol !== 'postgresql:') {
+  console.error('DATABASE_URL must use the postgres or postgresql scheme.')
+  process.exit(1)
+}
+
+const hostname = parsed.hostname
+  .trim()
+  .toLowerCase()
+  .replace(/^\[/, '')
+  .replace(/\]$/, '')
+const isLoopback =
+  hostname === 'localhost' ||
+  hostname === '::1' ||
+  /^127(?:\.\d{1,3}){3}$/.test(hostname)
+const sslMode = parsed.searchParams.get('sslmode')?.trim().toLowerCase()
+
+if (!isLoopback && (!sslMode || !secureSslModes.has(sslMode))) {
+  console.error(
+    'DATABASE_URL must require TLS for remote PostgreSQL (sslmode=require, verify-ca, or verify-full).',
+  )
+  process.exit(1)
+}
+NODE
+}`
+}
+
 async function ensureRemoteDirectories(layout, signal) {
   await runWithInput(
     'ssh',
@@ -631,6 +674,8 @@ require_env_value() {
   printf '%s' "$value"
 }
 
+${createRemoteDatabaseTransportValidatorScript()}
+
 validate_production_env() {
   if [ ! -f "$env_file" ]; then
     echo "Missing production env file: $env_file" >&2
@@ -788,6 +833,10 @@ validate_production_env() {
 
   if [ -z "$database_url_value" ]; then
     echo "DATABASE_URL must be configured." >&2
+    return 1
+  fi
+
+  if ! validate_database_transport "$database_url_value"; then
     return 1
   fi
 

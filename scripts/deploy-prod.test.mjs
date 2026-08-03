@@ -11,6 +11,7 @@ import {
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
 import {
+  createRemoteDatabaseTransportValidatorScript,
   createRemoteDeployLockScript,
   createRemotePreparationScript,
   createRemoteReleaseScript,
@@ -103,6 +104,36 @@ test('holds the remote lock around preparation, rsync, and release', async () =>
   assert.match(deploySource, /ServerAliveInterval=15/)
   assert.match(deploySource, /Timed out after 15 seconds/)
   assert.match(deploySource, /signal: options\.signal/)
+})
+
+test('requires TLS for remote production PostgreSQL before deploy', () => {
+  const validator = createRemoteDatabaseTransportValidatorScript()
+  const acceptedUrls = [
+    'postgres://planner:secret@127.0.0.1:5432/planner',
+    'postgres://planner:secret@localhost:5432/planner',
+    'postgresql://planner:secret@db.example.test:5432/planner?sslmode=require',
+    'postgresql://planner:secret@db.example.test:5432/planner?sslmode=verify-full',
+  ]
+  const rejectedUrls = [
+    'postgresql://planner:secret@db.example.test:5432/planner',
+    'postgresql://planner:secret@127.example.test:5432/planner',
+    'postgresql://planner:secret@db.example.test:5432/planner?sslmode=disable',
+    'postgresql://planner:secret@db.example.test:5432/planner?sslmode=prefer',
+  ]
+
+  for (const databaseUrl of acceptedUrls) {
+    const result = runDatabaseTransportValidator(validator, databaseUrl)
+
+    assert.equal(result.status, 0, result.stderr)
+  }
+
+  for (const databaseUrl of rejectedUrls) {
+    const result = runDatabaseTransportValidator(validator, databaseUrl)
+
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /DATABASE_URL must require TLS/)
+    assert.doesNotMatch(result.stderr, /secret/)
+  }
 })
 
 test('limits rsync to tracked files inside the inactive release', () => {
@@ -279,6 +310,17 @@ function assertBashSyntax(script) {
   })
 
   assert.equal(result.status, 0, result.stderr)
+}
+
+function runDatabaseTransportValidator(script, databaseUrl) {
+  return spawnSync(
+    '/bin/bash',
+    ['-c', `${script}\nvalidate_database_transport "$DATABASE_URL"`],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, DATABASE_URL: databaseUrl },
+    },
+  )
 }
 
 function assertOrder(source, before, after) {

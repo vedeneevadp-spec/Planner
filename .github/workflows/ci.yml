@@ -80,6 +80,71 @@ jobs:
           path: tmp/web-bundle-stats.html
           retention-days: 14
 
+  postgres-17-compat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_DB_RLS_MODE: transaction_local
+      DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/planner_ci
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: planner_ci
+          POSTGRES_PASSWORD: planner
+          POSTGRES_USER: planner
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U planner -d planner_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install pinned npm
+        run: |
+          npm_version="$(node ./scripts/print-pinned-npm-version.mjs)"
+          npm install -g "npm@${npm_version}"
+      - run: npm ci
+      - name: Verify PostgreSQL 17 service
+        run: |
+          server_version="$(
+            docker exec "${{ job.services.postgres.id }}" \
+              psql --username planner --dbname planner_ci \
+              --tuples-only --no-align --command 'show server_version'
+          )"
+          case "$server_version" in
+            17.*) ;;
+            *)
+              echo "Expected PostgreSQL 17, received $server_version." >&2
+              exit 1
+              ;;
+          esac
+      - run: npm run db:migrate
+      - run: npm run db:security:check
+      - run: npm run db:runtime-role:setup
+        env:
+          DB_RUNTIME_PASSWORD: planner_runtime
+      - run: npm run db:security:check
+        env:
+          DATABASE_URL: postgres://planner_runtime:planner_runtime@127.0.0.1:5432/planner_ci
+          DB_SECURITY_REQUIRE_NON_OWNER: '1'
+      - run: npm run test:api:postgres
+      - run: npm run smoke:api:prod
+        env:
+          API_AUTH_MODE: jwt
+          API_CORS_ORIGIN: http://127.0.0.1:5173
+          AUTH_JWT_SECRET: planner-ci-jwt-secret-with-at-least-32-chars
+
   android:
     runs-on: ubuntu-latest
     env:

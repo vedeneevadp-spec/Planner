@@ -491,9 +491,12 @@ Workspace`: роли, права, жизненный цикл и правила 
 - `npm run check` начинается с `npm run toolchain:check` и
   `npm run db:migrations:check`, чтобы Node/npm и SQL-миграции не расходились
   до запуска тяжелых проверок
-- CI дополнительно поднимает PostgreSQL, применяет миграции, запускает
+- основной CI job поднимает PostgreSQL 18, применяет миграции, запускает
   `npm run db:security:check`, `npm run test:api:postgres`,
   `npm run smoke:api:prod` и `npm run test:e2e`
+- отдельный CI job `postgres-17-compat` применяет те же миграции и проверяет
+  security invariants, PostgreSQL contract tests и production API smoke на
+  production-compatible PostgreSQL 17
 - отдельный CI job `android` запускает `npm run mobile:android:ci`, включая
   Capacitor sync, Gradle unit-тесты и debug assemble smoke
 - локальный pre-release gate: `npm run release:check` запускает `npm run ci` и

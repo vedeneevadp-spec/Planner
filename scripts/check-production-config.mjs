@@ -110,6 +110,11 @@ assert.match(
   'Production config must document the isolated user backup restore connection.',
 )
 assert.match(
+  productionEnvironmentExample,
+  /^DATABASE_URL=.*[?&]sslmode=require(?:&|$)/m,
+  'Production config must require TLS for PostgreSQL.',
+)
+assert.match(
   deploySource,
   /USER_BACKUP_RESTORE_DATABASE_URL must be configured/,
   'Production deploy must require the user backup restore connection.',
@@ -123,6 +128,11 @@ assert.match(
   deploySource,
   /npm run backup:restore-db:check/,
   'Production deploy must probe the privileged restore database before switch.',
+)
+assert.match(
+  deploySource,
+  /DATABASE_URL must require TLS for remote PostgreSQL/,
+  'Production deploy must reject insecure remote PostgreSQL connections.',
 )
 
 console.log('Production configuration check passed.')
