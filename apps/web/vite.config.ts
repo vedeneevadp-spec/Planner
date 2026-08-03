@@ -36,10 +36,7 @@ export default defineConfig({
             return 'vendor-query'
           }
 
-          if (
-            id.includes('/node_modules/react-router/') ||
-            id.includes('/node_modules/react-router-dom/')
-          ) {
+          if (id.includes('/node_modules/react-router/')) {
             return 'vendor-router'
           }
 

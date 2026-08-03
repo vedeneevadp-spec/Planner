@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router'
 
 import type { NavigationRouteDefinition } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'

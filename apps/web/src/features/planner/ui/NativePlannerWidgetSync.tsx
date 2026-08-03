@@ -1,7 +1,7 @@
 import type { TaskRecord } from '@planner/contracts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 
 import type { Sphere } from '@/entities/sphere'
 import {

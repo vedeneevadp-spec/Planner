@@ -1,9 +1,4 @@
-import {
-  Link,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router'
 
 import {
   CLEANING_FOCUS_QUERY_KEY,

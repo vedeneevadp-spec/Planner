@@ -3,7 +3,7 @@ import type {
   SelfCareTodayItem,
 } from '@planner/contracts'
 import { type ReactElement, type ReactNode, useEffect, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router'
 
 import {
   selectArchivedTasks,

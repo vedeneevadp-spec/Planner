@@ -1,17 +1,10 @@
 import { spawn } from 'node:child_process'
-import { readFile } from 'node:fs/promises'
 import process from 'node:process'
 
-import {
-  evaluateProductionAudit,
-  getProductionAuditExceptionSummary,
-} from './audit-prod-policy.mjs'
+import { evaluateProductionAudit } from './audit-prod-policy.mjs'
 
-const webPackage = JSON.parse(
-  await readFile(new URL('../apps/web/package.json', import.meta.url), 'utf8'),
-)
 const audit = await runNpmAudit()
-const { allowed, unexpected } = evaluateProductionAudit(audit, webPackage)
+const { unexpected } = evaluateProductionAudit(audit)
 
 if (unexpected.length > 0) {
   console.error('Unexpected production npm audit vulnerabilities:')
@@ -23,21 +16,7 @@ if (unexpected.length > 0) {
   process.exit(1)
 }
 
-if (allowed.length === 0) {
-  console.log('Production npm audit is clean.')
-  process.exit(0)
-}
-
-const exception = getProductionAuditExceptionSummary()
-
-console.log(
-  [
-    'Production npm audit passed with one scoped exception:',
-    `${exception.advisory} affects only unstable React Router RSC APIs,`,
-    'which this SPA does not install.',
-    `Exception expires at ${exception.expiresAt}.`,
-  ].join(' '),
-)
+console.log('Production npm audit is clean.')
 
 async function runNpmAudit() {
   const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
