@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const capacitorMocks = vi.hoisted(() => ({
   addListener: vi.fn(),
+  durableRemove: vi.fn(),
+  durableSet: vi.fn(),
   get: vi.fn(),
+  getPlatform: vi.fn(),
   getState: vi.fn(),
   isNativePlatform: vi.fn(),
   remove: vi.fn(),
@@ -18,8 +21,13 @@ vi.mock('@capacitor/app', () => ({
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
+    getPlatform: capacitorMocks.getPlatform,
     isNativePlatform: capacitorMocks.isNativePlatform,
   },
+  registerPlugin: () => ({
+    remove: capacitorMocks.durableRemove,
+    set: capacitorMocks.durableSet,
+  }),
 }))
 
 vi.mock('@capacitor/preferences', () => ({
@@ -42,9 +50,16 @@ import {
 describe('native session storage', () => {
   beforeEach(() => {
     capacitorMocks.addListener.mockReset()
+    capacitorMocks.durableRemove.mockReset()
+    capacitorMocks.durableRemove.mockResolvedValue(undefined)
+    capacitorMocks.durableSet.mockReset()
+    capacitorMocks.durableSet.mockResolvedValue(undefined)
     capacitorMocks.get.mockReset()
+    capacitorMocks.getPlatform.mockReset()
+    capacitorMocks.getPlatform.mockReturnValue('android')
     capacitorMocks.getState.mockReset()
     capacitorMocks.isNativePlatform.mockReset()
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
     capacitorMocks.remove.mockReset()
     capacitorMocks.set.mockReset()
   })
@@ -70,7 +85,7 @@ describe('native session storage', () => {
     expect(capacitorMocks.get).toHaveBeenCalledWith({
       key: 'planner.auth.deviceId',
     })
-    expect(capacitorMocks.set).not.toHaveBeenCalled()
+    expect(capacitorMocks.durableSet).not.toHaveBeenCalled()
   })
 
   it('creates and stores a native auth device id when none exists', async () => {
@@ -80,13 +95,13 @@ describe('native session storage', () => {
     const deviceId = await getNativeAuthDeviceId()
 
     expect(deviceId).toMatch(/^native-/)
-    expect(capacitorMocks.set).toHaveBeenCalledWith({
+    expect(capacitorMocks.durableSet).toHaveBeenCalledWith({
       key: 'planner.auth.deviceId',
       value: deviceId,
     })
   })
 
-  it('reads and writes auth values through Capacitor Preferences', async () => {
+  it('reads through Preferences and commits auth writes through the Android bridge', async () => {
     const storage = createNativeSessionStorage()
     capacitorMocks.get.mockResolvedValue({ value: 'stored-session' })
 
@@ -99,11 +114,11 @@ describe('native session storage', () => {
     expect(capacitorMocks.get).toHaveBeenCalledWith({
       key: 'planner.auth.sb-test-auth-token',
     })
-    expect(capacitorMocks.set).toHaveBeenCalledWith({
+    expect(capacitorMocks.durableSet).toHaveBeenCalledWith({
       key: 'planner.auth.sb-test-auth-token',
       value: 'fresh-session',
     })
-    expect(capacitorMocks.remove).toHaveBeenCalledWith({
+    expect(capacitorMocks.durableRemove).toHaveBeenCalledWith({
       key: 'planner.auth.sb-test-auth-token',
     })
   })
@@ -111,10 +126,10 @@ describe('native session storage', () => {
   it('clears multiple stored auth keys', async () => {
     await clearNativeSessionStorage(['sb-token', 'sb-token-user'])
 
-    expect(capacitorMocks.remove).toHaveBeenNthCalledWith(1, {
+    expect(capacitorMocks.durableRemove).toHaveBeenNthCalledWith(1, {
       key: 'planner.auth.sb-token',
     })
-    expect(capacitorMocks.remove).toHaveBeenNthCalledWith(2, {
+    expect(capacitorMocks.durableRemove).toHaveBeenNthCalledWith(2, {
       key: 'planner.auth.sb-token-user',
     })
   })

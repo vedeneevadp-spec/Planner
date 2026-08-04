@@ -1,3 +1,4 @@
+import { generateUuidV7 } from '@planner/contracts'
 import {
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import { recordClientEvent } from '@/shared/lib/observability'
 import {
   type PasswordSignUpInput,
   type SessionAuthState,
+  type SessionRecoveryOptions,
   type SessionRecoveryResult,
 } from '../model/session-auth-context'
 import {
@@ -29,6 +31,7 @@ import {
 import {
   clearStoredAuthSession,
   getRememberSessionPreference,
+  prepareStoredAuthSessionRefresh,
   readStoredAuthSession,
   type StoredAuthSession,
   writeStoredAuthSession,
@@ -76,9 +79,9 @@ export function useSessionAuthController(): SessionAuthState {
   const blockedNativeRefreshTokenRef = useRef<string | null>(null)
   const deferredRefreshRetryCountRef = useRef(0)
   const authDeviceIdRef = useRef<Promise<string | null> | null>(null)
-  const recoverSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
-    Promise.resolve('signed_out'),
-  )
+  const recoverSessionRef = useRef<
+    (options?: SessionRecoveryOptions) => Promise<SessionRecoveryResult>
+  >(() => Promise.resolve('signed_out'))
   const sessionRecoveryRef = useRef<Promise<SessionRecoveryResult> | null>(null)
   const refreshTimerRef = useRef<number | null>(null)
   const restoreSessionRef = useRef<() => Promise<SessionRecoveryResult>>(() =>
@@ -303,8 +306,10 @@ export function useSessionAuthController(): SessionAuthState {
     [isNativeSessionRuntime, scheduleDeferredRefreshRetry],
   )
 
-  const recoverSession =
-    useCallback(async (): Promise<SessionRecoveryResult> => {
+  const recoverSession = useCallback(
+    async (
+      options: SessionRecoveryOptions = {},
+    ): Promise<SessionRecoveryResult> => {
       if (sessionRecoveryRef.current) {
         return sessionRecoveryRef.current
       }
@@ -314,7 +319,9 @@ export function useSessionAuthController(): SessionAuthState {
 
         const storedSession = await readStoredAuthSession()
         const recoveryCommand = transitionSessionAuthMachine({
-          blockedRefreshToken: blockedNativeRefreshTokenRef.current,
+          blockedRefreshToken: options.retryDeniedRefresh
+            ? null
+            : blockedNativeRefreshTokenRef.current,
           currentRefreshToken: snapshot.refreshToken,
           isAuthEnabled,
           nativeRuntime: isNativeSessionRuntime,
@@ -342,10 +349,25 @@ export function useSessionAuthController(): SessionAuthState {
             return keepDeviceSession(recoveryCommand)
 
           case 'request_refresh':
+            let refreshStoredSession = storedSession
+
             try {
+              if (isNativeSessionRuntime && refreshStoredSession) {
+                refreshStoredSession =
+                  await prepareStoredAuthSessionRefresh(refreshStoredSession)
+              }
+
               const refreshedSession = await refreshAuthSession(
                 recoveryCommand.refreshToken
-                  ? { refreshToken: recoveryCommand.refreshToken }
+                  ? {
+                      refreshToken: recoveryCommand.refreshToken,
+                      ...(refreshStoredSession?.refreshRotationRequestId
+                        ? {
+                            rotationRequestId:
+                              refreshStoredSession.refreshRotationRequestId,
+                          }
+                        : {}),
+                    }
                   : {},
                 await createAuthRequestOptions(),
               )
@@ -377,7 +399,7 @@ export function useSessionAuthController(): SessionAuthState {
                 error,
                 nativeRuntime: isNativeSessionRuntime,
                 refreshToken: recoveryCommand.refreshToken,
-                storedSession,
+                storedSession: refreshStoredSession,
                 type: 'auth.refresh_failed',
               })
 
@@ -481,7 +503,8 @@ export function useSessionAuthController(): SessionAuthState {
       sessionRecoveryRef.current = recovery
 
       return recovery
-    }, [
+    },
+    [
       clearAuthSession,
       createAuthRequestOptions,
       isAuthEnabled,
@@ -489,7 +512,8 @@ export function useSessionAuthController(): SessionAuthState {
       keepDeviceSession,
       persistAuthSession,
       snapshot.refreshToken,
-    ])
+    ],
+  )
 
   useEffect(() => {
     recoverSessionRef.current = recoverSession
@@ -822,7 +846,10 @@ function toStoredAuthSession(
     email: session.user.email,
     expiresAt: session.expiresAt,
     ...(options.includeRefreshToken && session.refreshToken
-      ? { refreshToken: session.refreshToken }
+      ? {
+          refreshRotationRequestId: generateUuidV7(),
+          refreshToken: session.refreshToken,
+        }
       : {}),
     userId: session.user.id,
   }

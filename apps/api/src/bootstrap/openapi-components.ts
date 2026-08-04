@@ -95,11 +95,16 @@ export function createComponentSchemas(): Record<
       type: 'object',
     },
     AuthSignOutInput: {
-      allOf: [
-        {
-          $ref: '#/components/schemas/AuthRefreshInput',
+      additionalProperties: false,
+      properties: {
+        refreshToken: {
+          description:
+            'Optional for browser clients that use the HttpOnly refresh cookie.',
+          minLength: 1,
+          type: 'string',
         },
-      ],
+      },
+      type: 'object',
     },
     ...createPlannerPeripheralContractSchemas(),
     ChaosInboxConvertToTaskRecordResponseList: genericJsonArraySchema(
@@ -346,6 +351,12 @@ export function createComponentSchemas(): Record<
           description:
             'Optional for browser clients that use the HttpOnly refresh cookie.',
           minLength: 1,
+          type: 'string',
+        },
+        rotationRequestId: {
+          description:
+            'A client-persisted UUIDv7 that makes native refresh rotation crash-safe.',
+          format: 'uuid',
           type: 'string',
         },
       },

@@ -281,6 +281,10 @@ function createTestConfig(env: NodeJS.ProcessEnv = {}) {
 
 function createCookieAuthService() {
   let issuedTokenCounter = 0
+  const refreshRequests: Array<{
+    refreshToken: string
+    rotationRequestId: string | undefined
+  }> = []
   const refreshTokens: string[] = []
   const revokedRefreshTokens: string[] = []
   const signInMetadata: AuthRequestMetadata[] = []
@@ -300,12 +304,18 @@ function createCookieAuthService() {
   }
 
   return {
+    refreshRequests,
     refreshTokens,
     revokedRefreshTokens,
     confirmPasswordReset() {
       return Promise.resolve(createResponse())
     },
-    refresh(refreshToken: string) {
+    refresh(
+      refreshToken: string,
+      _metadata: AuthRequestMetadata,
+      rotationRequestId?: string,
+    ) {
+      refreshRequests.push({ refreshToken, rotationRequestId })
       refreshTokens.push(refreshToken)
       return Promise.resolve(createResponse())
     },
@@ -328,6 +338,10 @@ function createCookieAuthService() {
       return Promise.resolve(createResponse())
     },
   } as unknown as AuthService & {
+    refreshRequests: Array<{
+      refreshToken: string
+      rotationRequestId: string | undefined
+    }>
     refreshTokens: string[]
     revokedRefreshTokens: string[]
     signInMetadata: AuthRequestMetadata[]
@@ -2524,6 +2538,39 @@ void describe('buildApiApp', () => {
     )
     assert.equal(authService.signInMetadata[0]?.deviceId, 'native-device-1')
     assert.equal(response.headers['set-cookie'], undefined)
+  })
+
+  void it('passes a native rotation request id to the auth service', async () => {
+    const authService = createCookieAuthService()
+
+    app = buildApiApp({
+      authService,
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-auth-device-id': 'native-device-1',
+        'x-auth-token-transport': 'body',
+      },
+      method: 'POST',
+      payload: {
+        refreshToken: 'persisted-refresh-token',
+        rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+      },
+      url: '/api/v1/auth/refresh',
+    })
+
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(authService.refreshRequests, [
+      {
+        refreshToken: 'persisted-refresh-token',
+        rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+      },
+    ])
   })
 
   void it('issues a fresh browser session after password updates', async () => {

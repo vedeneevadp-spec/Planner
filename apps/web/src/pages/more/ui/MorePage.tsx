@@ -182,6 +182,15 @@ export function MorePage() {
     void auth.signOut()
   }
 
+  function handleConnectionRetry() {
+    if (auth.isAuthEnabled && !auth.canUseProtectedApi) {
+      void auth.recoverSession({ retryDeniedRefresh: true })
+      return
+    }
+
+    void planner.refresh()
+  }
+
   async function handleDownloadBackup() {
     if (!session || !auth.accessToken) {
       return
@@ -468,9 +477,7 @@ export function MorePage() {
           <ConnectionIssuePanel
             debugDetails={connectionIssueDebugDetails}
             message={connectionIssueMessage}
-            onRetry={() => {
-              void planner.refresh()
-            }}
+            onRetry={handleConnectionRetry}
           />
         ) : null}
       </section>

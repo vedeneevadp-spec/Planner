@@ -5,6 +5,7 @@ interface StoredAuthSession {
   accessToken: string
   email: string
   expiresAt: string
+  refreshRotationRequestId?: string
   refreshToken?: string
   userId: string
 }
@@ -39,6 +40,8 @@ const authApiMocks = vi.hoisted(() => ({
 
 const authStorageMocks = vi.hoisted(() => ({
   clearStoredAuthSession: vi.fn(),
+  prepareStoredAuthSessionRefresh:
+    vi.fn<(session: StoredAuthSession) => Promise<StoredAuthSession>>(),
   readStoredAuthSession: vi.fn<() => Promise<StoredAuthSession | null>>(),
   writeStoredAuthSession:
     vi.fn<(session: StoredAuthSession) => Promise<void>>(),
@@ -80,6 +83,8 @@ vi.mock('../lib/auth-api', () => ({
 vi.mock('../lib/auth-session-storage', () => ({
   clearStoredAuthSession: authStorageMocks.clearStoredAuthSession,
   getRememberSessionPreference: () => true,
+  prepareStoredAuthSessionRefresh:
+    authStorageMocks.prepareStoredAuthSessionRefresh,
   readStoredAuthSession: authStorageMocks.readStoredAuthSession,
   setRememberSessionPreference: vi.fn(),
   writeStoredAuthSession: authStorageMocks.writeStoredAuthSession,
@@ -126,6 +131,7 @@ describe('mobile auth regression gate', () => {
     authApiMocks.updatePassword.mockReset()
 
     authStorageMocks.clearStoredAuthSession.mockReset()
+    authStorageMocks.prepareStoredAuthSessionRefresh.mockReset()
     authStorageMocks.readStoredAuthSession.mockReset()
     authStorageMocks.writeStoredAuthSession.mockReset()
 
@@ -144,6 +150,9 @@ describe('mobile auth regression gate', () => {
         error.status === 401,
     )
     authStorageMocks.clearStoredAuthSession.mockResolvedValue(undefined)
+    authStorageMocks.prepareStoredAuthSessionRefresh.mockImplementation(
+      (storedSession) => Promise.resolve(storedSession),
+    )
     authStorageMocks.writeStoredAuthSession.mockResolvedValue(undefined)
     nativePushMocks.unregisterStoredNativePushDevice.mockResolvedValue(
       undefined,
@@ -307,6 +316,9 @@ describe('mobile auth regression gate', () => {
       userId: 'user-1',
     })
     expect(typeof storedSession?.expiresAt).toBe('string')
+    expect(storedSession?.refreshRotationRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
   })
 })

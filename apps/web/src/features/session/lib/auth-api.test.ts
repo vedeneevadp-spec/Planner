@@ -185,8 +185,11 @@ describe('auth-api', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const responsePromise = refreshAuthSession(
-      {},
-      { deviceId: 'browser-device-1' },
+      {
+        refreshToken: 'persisted-refresh-token',
+        rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+      },
+      { deviceId: 'native-device-1' },
     )
 
     await vi.advanceTimersByTimeAsync(750)
@@ -199,9 +202,13 @@ describe('auth-api', () => {
       1,
       expect.any(URL),
       expect.objectContaining({
+        body: JSON.stringify({
+          refreshToken: 'persisted-refresh-token',
+          rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+        }),
         headers: {
           'content-type': 'application/json',
-          'x-auth-device-id': 'browser-device-1',
+          'x-auth-device-id': 'native-device-1',
         },
       }),
     )
@@ -209,9 +216,13 @@ describe('auth-api', () => {
       2,
       expect.any(URL),
       expect.objectContaining({
+        body: JSON.stringify({
+          refreshToken: 'persisted-refresh-token',
+          rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+        }),
         headers: {
           'content-type': 'application/json',
-          'x-auth-device-id': 'browser-device-1',
+          'x-auth-device-id': 'native-device-1',
         },
       }),
     )

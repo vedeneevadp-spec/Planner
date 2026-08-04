@@ -1,3 +1,5 @@
+import { generateUuidV7, isUuidV7 } from '@planner/contracts'
+
 import { recordClientEvent } from '@/shared/lib/observability'
 
 import {
@@ -17,8 +19,16 @@ export interface StoredAuthSession {
   accessToken: string
   email: string
   expiresAt: string
+  refreshRotationRequestId?: string | undefined
   refreshToken?: string | undefined
   userId: string
+}
+
+export class AuthSessionStorageError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options)
+    this.name = 'AuthSessionStorageError'
+  }
 }
 
 interface NativeAuthSessionHint {
@@ -105,21 +115,55 @@ export async function writeStoredAuthSession(
   session: StoredAuthSession,
 ): Promise<void> {
   const serializedSession = JSON.stringify(session)
+  const requiresDurableWrite = isNativeSessionPersistenceRuntime()
 
-  inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
+  if (!requiresDurableWrite) {
+    inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
+  }
 
   try {
     await getActiveAuthStorage().setItem(
       AUTH_SESSION_STORAGE_KEY,
       serializedSession,
     )
+    inMemoryAuthStorage.set(AUTH_SESSION_STORAGE_KEY, serializedSession)
     writeNativeAuthSessionHint(session)
   } catch (error) {
     console.error('Failed to write auth session storage.', error)
     recordAuthStorageFailure('write', 'active', error, {
-      fallback: 'memory',
+      fallback: requiresDurableWrite ? 'none' : 'memory',
     })
+
+    if (requiresDurableWrite) {
+      throw new AuthSessionStorageError(
+        'Native auth session could not be persisted durably.',
+        { cause: error },
+      )
+    }
   }
+}
+
+export async function prepareStoredAuthSessionRefresh(
+  session: StoredAuthSession,
+): Promise<StoredAuthSession> {
+  if (
+    !isNativeSessionPersistenceRuntime() ||
+    !session.refreshToken ||
+    session.refreshRotationRequestId
+  ) {
+    return session
+  }
+
+  const preparedSession: StoredAuthSession = {
+    ...session,
+    refreshRotationRequestId: generateUuidV7(),
+  }
+
+  // Persist the operation before the request. If this fails, the server must
+  // not rotate the token because a process restart could not replay it safely.
+  await writeStoredAuthSession(preparedSession)
+
+  return preparedSession
 }
 
 export async function clearStoredAuthSession(
@@ -346,6 +390,9 @@ function isStoredAuthSession(value: unknown): value is StoredAuthSession {
     typeof value.accessToken === 'string' &&
     typeof value.email === 'string' &&
     typeof value.expiresAt === 'string' &&
+    (!('refreshRotationRequestId' in value) ||
+      (typeof value.refreshRotationRequestId === 'string' &&
+        isUuidV7(value.refreshRotationRequestId))) &&
     (!('refreshToken' in value) || typeof value.refreshToken === 'string') &&
     typeof value.userId === 'string'
   )

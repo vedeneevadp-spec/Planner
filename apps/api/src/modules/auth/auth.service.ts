@@ -1,4 +1,10 @@
-import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto'
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  scrypt,
+  timingSafeEqual,
+} from 'node:crypto'
 
 import {
   authPasswordSchema,
@@ -143,14 +149,19 @@ export class AuthService {
   async refresh(
     refreshToken: string,
     metadata: AuthRequestMetadata,
+    rotationRequestId?: string,
   ): Promise<AuthTokenResponse> {
-    const nextRefreshToken = createOpaqueToken()
+    const nextRefreshToken = createRefreshRotation(
+      refreshToken,
+      rotationRequestId,
+    )
     const user = await this.repository.rotateRefreshToken(
       hashOpaqueToken(refreshToken),
       {
         expiresAt: this.createRefreshTokenExpiresAt(),
         metadata,
-        refreshTokenHash: hashOpaqueToken(nextRefreshToken),
+        refreshTokenHash: hashOpaqueToken(nextRefreshToken.token),
+        refreshTokenId: nextRefreshToken.id,
       },
     )
 
@@ -158,7 +169,11 @@ export class AuthService {
       throw invalidRefreshTokenError()
     }
 
-    return this.createTokenResponse(user, nextRefreshToken, user.sessionId)
+    return this.createTokenResponse(
+      user,
+      nextRefreshToken.token,
+      user.sessionId,
+    )
   }
 
   async signOut(refreshToken: string): Promise<void> {
@@ -385,6 +400,63 @@ function scryptAsync(
 
 function createOpaqueToken(): string {
   return randomBytes(32).toString('base64url')
+}
+
+function createRefreshRotation(
+  currentRefreshToken: string,
+  rotationRequestId: string | undefined,
+): { id: string; token: string } {
+  if (!rotationRequestId) {
+    return {
+      id: generateUuidV7(),
+      token: createOpaqueToken(),
+    }
+  }
+
+  const token = deriveRefreshRotationBytes(
+    currentRefreshToken,
+    rotationRequestId,
+    'token',
+  ).toString('base64url')
+  const idBytes = Buffer.from(
+    deriveRefreshRotationBytes(
+      currentRefreshToken,
+      rotationRequestId,
+      'id',
+    ).subarray(0, 16),
+  )
+
+  // UUIDv8 is reserved for application-defined, deterministic identifiers.
+  idBytes[6] = (idBytes[6]! & 0x0f) | 0x80
+  idBytes[8] = (idBytes[8]! & 0x3f) | 0x80
+
+  return {
+    id: formatUuid(idBytes),
+    token,
+  }
+}
+
+function deriveRefreshRotationBytes(
+  currentRefreshToken: string,
+  rotationRequestId: string,
+  purpose: 'id' | 'token',
+): Buffer {
+  return createHmac('sha256', currentRefreshToken)
+    .update(`planner.auth.refresh-rotation.${purpose}.v1\0`)
+    .update(rotationRequestId)
+    .digest()
+}
+
+function formatUuid(bytes: Buffer): string {
+  const hex = bytes.toString('hex')
+
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-')
 }
 
 function hashOpaqueToken(token: string): string {

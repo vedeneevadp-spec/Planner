@@ -61,6 +61,9 @@ interface SessionAuthStub {
   canUseProtectedApi: boolean
   email: string | null
   isAuthEnabled: boolean
+  recoverSession: (options?: {
+    retryDeniedRefresh?: boolean
+  }) => Promise<'deferred' | 'recovered' | 'signed_out'>
   signOut: () => Promise<void>
 }
 
@@ -74,6 +77,7 @@ const mocks = vi.hoisted(() => ({
   downloadUserBackup: vi.fn(),
   previewUserBackupImport: vi.fn(),
   reloadAfterUserBackupRestore: vi.fn(),
+  recoverSession: vi.fn(() => Promise.resolve('recovered' as const)),
   restoreUserBackupImport: vi.fn(),
   saveUserBackupFile: vi.fn(),
   signOut: vi.fn<() => Promise<void>>(),
@@ -207,6 +211,7 @@ function renderMorePage(
     canUseProtectedApi: false,
     email: 'vedeneeva.d.p@gmail.com',
     isAuthEnabled: true,
+    recoverSession: mocks.recoverSession,
     signOut: mocks.signOut,
     ...options.auth,
   })
@@ -273,7 +278,7 @@ describe('MorePage', () => {
     cleanup()
   })
 
-  it('shows retry for readiness connection issues without a planner feature error', () => {
+  it('retries auth before planner sync for a deferred session', () => {
     const refresh = vi.fn()
 
     renderMorePage({
@@ -288,7 +293,32 @@ describe('MorePage', () => {
       screen.getByRole('button', { name: 'Повторить синхронизацию' }),
     )
 
+    expect(mocks.recoverSession).toHaveBeenCalledWith({
+      retryDeniedRefresh: true,
+    })
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it('retries planner queries when auth is already usable', () => {
+    const refresh = vi.fn()
+
+    renderMorePage({
+      auth: {
+        accessToken: 'access-token',
+        canUseProtectedApi: true,
+      },
+      planner: {
+        errorMessage: 'Network unavailable',
+        refresh,
+      },
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Повторить синхронизацию' }),
+    )
+
     expect(refresh).toHaveBeenCalledTimes(1)
+    expect(mocks.recoverSession).not.toHaveBeenCalled()
   })
 
   it('shows connection debug details only to the global owner', () => {

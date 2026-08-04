@@ -221,7 +221,9 @@ describe('session auth machine', () => {
         currentRefreshToken: 'refresh-token',
         isAuthEnabled: true,
         nativeRuntime: true,
-        storedSession: null,
+        storedSession: createExpiredStoredSession({
+          refreshToken: 'refresh-token',
+        }),
         type: 'auth.recovery_requested',
       },
       expected: {
@@ -241,10 +243,11 @@ describe('session auth machine', () => {
         type: 'auth.recovery_requested',
       },
       expected: {
-        refreshToken: 'current-refresh-token',
-        type: 'request_refresh',
+        reason: 'storage_empty_on_resume',
+        result: 'deferred',
+        type: 'keep_device_session',
       },
-      name: 'uses current native refresh token when storage is unavailable',
+      name: 'does not rotate a native token without durable storage',
     },
     {
       event: {

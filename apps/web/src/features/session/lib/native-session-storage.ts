@@ -1,9 +1,20 @@
 import { App } from '@capacitor/app'
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
+import {
+  Capacitor,
+  type PluginListenerHandle,
+  registerPlugin,
+} from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 
 const NATIVE_AUTH_STORAGE_PREFIX = 'planner.auth.'
 const NATIVE_AUTH_DEVICE_ID_STORAGE_KEY = `${NATIVE_AUTH_STORAGE_PREFIX}deviceId`
+const plannerAuthStorage =
+  registerPlugin<PlannerAuthStoragePlugin>('PlannerAuthStorage')
+
+interface PlannerAuthStoragePlugin {
+  remove: (options: { key: string }) => Promise<void>
+  set: (options: { key: string; value: string }) => Promise<void>
+}
 
 export interface AuthStorage {
   getItem: (key: string) => Promise<string | null> | string | null
@@ -31,10 +42,7 @@ export async function getNativeAuthDeviceId(): Promise<string | null> {
 
   const nextDeviceId = createNativeAuthDeviceId()
 
-  await Preferences.set({
-    key: NATIVE_AUTH_DEVICE_ID_STORAGE_KEY,
-    value: nextDeviceId,
-  })
+  await setNativePreference(NATIVE_AUTH_DEVICE_ID_STORAGE_KEY, nextDeviceId)
 
   return nextDeviceId
 }
@@ -49,26 +57,17 @@ export function createNativeSessionStorage(): AuthStorage {
       return value
     },
     async removeItem(key) {
-      await Preferences.remove({
-        key: toNativeAuthStorageKey(key),
-      })
+      await removeNativePreference(toNativeAuthStorageKey(key))
     },
     async setItem(key, value) {
-      await Preferences.set({
-        key: toNativeAuthStorageKey(key),
-        value,
-      })
+      await setNativePreference(toNativeAuthStorageKey(key), value)
     },
   }
 }
 
 export async function clearNativeSessionStorage(keys: string[]): Promise<void> {
   await Promise.all(
-    keys.map((key) =>
-      Preferences.remove({
-        key: toNativeAuthStorageKey(key),
-      }),
-    ),
+    keys.map((key) => removeNativePreference(toNativeAuthStorageKey(key))),
   )
 }
 
@@ -88,6 +87,32 @@ export async function addNativeAppStateChangeListener(
 
 function toNativeAuthStorageKey(key: string): string {
   return `${NATIVE_AUTH_STORAGE_PREFIX}${key}`
+}
+
+async function setNativePreference(key: string, value: string): Promise<void> {
+  if (shouldUseDurableAndroidStorage()) {
+    await plannerAuthStorage.set({ key, value })
+    return
+  }
+
+  await Preferences.set({ key, value })
+}
+
+async function removeNativePreference(key: string): Promise<void> {
+  if (shouldUseDurableAndroidStorage()) {
+    await plannerAuthStorage.remove({ key })
+    return
+  }
+
+  await Preferences.remove({ key })
+}
+
+function shouldUseDurableAndroidStorage(): boolean {
+  return (
+    isNativeSessionPersistenceRuntime() &&
+    typeof Capacitor.getPlatform === 'function' &&
+    Capacitor.getPlatform() === 'android'
+  )
 }
 
 function normalizeDeviceId(deviceId: string | null | undefined): string | null {

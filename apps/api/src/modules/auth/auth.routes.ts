@@ -106,6 +106,7 @@ export function registerAuthRoutes(
     const response = await service.refresh(
       refreshToken,
       getRequestMetadata(request),
+      input.rotationRequestId,
     )
 
     return sendAuthTokenResponse(reply, request, response, options)
