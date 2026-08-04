@@ -18,7 +18,8 @@ type SessionFeatureReadinessResult = ReturnType<
 
 const mocks = vi.hoisted(() => ({
   usePlannerTimeZone: vi.fn<() => string>(),
-  useSessionFeatureReadiness: vi.fn<() => SessionFeatureReadinessResult>(),
+  useSessionFeatureReadiness:
+    vi.fn<(options?: { enabled?: boolean }) => SessionFeatureReadinessResult>(),
 }))
 
 vi.mock('@/features/session', async (importOriginal) => {
@@ -43,8 +44,10 @@ describe('useCleaning', () => {
   beforeEach(() => {
     fetchMock = vi.fn<typeof fetch>()
     vi.stubGlobal('fetch', fetchMock)
-    mocks.useSessionFeatureReadiness.mockReturnValue(
-      createFeatureReadinessResult(),
+    mocks.useSessionFeatureReadiness.mockImplementation((options) =>
+      createFeatureReadinessResult({
+        isApiEnabled: options?.enabled !== false,
+      }),
     )
     mocks.usePlannerTimeZone.mockReturnValue('Europe/Astrakhan')
   })
@@ -142,6 +145,19 @@ describe('useCleaning', () => {
     expect(result.current.activeZoneCount).toBe(0)
     expect(result.current.dueCount).toBe(0)
     expect(result.current.urgentCount).toBe(0)
+  })
+
+  it('keeps the today summary idle when it is explicitly deferred', () => {
+    const { result } = renderHook(
+      () => useCleaningSummary('2026-05-26', { enabled: false }),
+      { wrapper: createQueryWrapper() },
+    )
+
+    expect(result.current.isLoading).toBe(false)
+    expect(mocks.useSessionFeatureReadiness).toHaveBeenCalledWith({
+      enabled: false,
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

@@ -4,9 +4,11 @@ import {
   type PlannerIntent,
   type TaskRecord,
   type VoiceActionContext,
+} from '@planner/contracts'
+import {
   voiceCommandCorpusV1,
   type VoiceTestCase,
-} from '@planner/contracts'
+} from '@planner/contracts/voice-test-corpus'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createSafeVoicePreviewTelemetryPayload } from './locked-screen-scrubber'

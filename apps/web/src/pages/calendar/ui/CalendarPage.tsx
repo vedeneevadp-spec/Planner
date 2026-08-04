@@ -663,6 +663,18 @@ export function CalendarPage() {
     () => buildTimelineLayout(calendarTasks, anchorDate),
     [anchorDate, calendarTasks],
   )
+  const weekTimelineEntries = useMemo(() => {
+    if (viewMode !== 'week') {
+      return new Map<string, ReturnType<typeof buildTimelineLayout>>()
+    }
+
+    return new Map(
+      weekDateKeys.map((dateKey) => [
+        dateKey,
+        buildTimelineLayout(calendarTasks, dateKey),
+      ]),
+    )
+  }, [calendarTasks, viewMode, weekDateKeys])
   const dayUnscheduledTasks = useMemo(() => {
     const scheduledTaskIds = new Set(
       buildTimelineLayout(tasks, anchorDate).map((entry) => entry.task.id),
@@ -1127,10 +1139,7 @@ export function CalendarPage() {
 
             <div className={styles.weekColumns}>
               {weekDateKeys.map((dateKey) => {
-                const timelineEntries = buildTimelineLayout(
-                  calendarTasks,
-                  dateKey,
-                )
+                const timelineEntries = weekTimelineEntries.get(dateKey) ?? []
 
                 return (
                   <div key={dateKey} className={styles.weekColumn}>

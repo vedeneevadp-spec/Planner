@@ -206,6 +206,83 @@ describe('loadPlannerSession', () => {
     fetchMock.mockRestore()
   })
 
+  it('reuses a fresh planner session when another consumer mounts', async () => {
+    const session = createSessionResponse({
+      actorUserId: 'user-a',
+      role: 'owner',
+      workspace: createWorkspaceMembership({
+        id: 'workspace-a',
+        kind: 'personal',
+        name: 'User A',
+        role: 'owner',
+        slug: 'user-a',
+      }),
+      workspaceId: 'workspace-a',
+      workspaces: [
+        createWorkspaceMembership({
+          id: 'workspace-a',
+          kind: 'personal',
+          name: 'User A',
+          role: 'owner',
+          slug: 'user-a',
+        }),
+      ],
+    })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(session), {
+          headers: {
+            'content-type': 'application/json',
+          },
+          status: 200,
+        }),
+      ),
+    )
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+    })
+    const authState = createAuthState()
+
+    function renderProbe() {
+      return render(
+        createElement(
+          SessionAuthContext.Provider,
+          { value: authState },
+          createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            createElement(CachedSessionProbe),
+          ),
+        ),
+      )
+    }
+
+    const firstConsumer = renderProbe()
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('workspace-id')).toHaveTextContent(
+        'workspace-a',
+      )
+    })
+
+    firstConsumer.unmount()
+    renderProbe()
+
+    await waitFor(() => {
+      expect(screen.getByTestId('workspace-id')).toHaveTextContent(
+        'workspace-a',
+      )
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fetchMock.mockRestore()
+  })
+
   it('retries without a stale selected workspace after 403', async () => {
     setSelectedWorkspaceId('workspace-a', 'user-a')
     setSelectedWorkspaceId('workspace-stale', 'user-b')

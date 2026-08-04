@@ -1,4 +1,4 @@
-import { voiceCommandCorpusV1 } from '@planner/contracts'
+import { voiceCommandCorpusV1 } from '@planner/contracts/voice-test-corpus'
 import { describe, expect, it } from 'vitest'
 
 import {

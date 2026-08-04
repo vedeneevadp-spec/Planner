@@ -31,34 +31,45 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('/node_modules/@tanstack/react-query/')) {
-            return 'vendor-query'
-          }
-
-          if (id.includes('/node_modules/react-router/')) {
-            return 'vendor-router'
-          }
-
-          if (
-            id.includes('/node_modules/react/') ||
-            id.includes('/node_modules/react-dom/') ||
-            id.includes('/node_modules/scheduler/')
-          ) {
-            return 'vendor-react'
-          }
-
-          if (id.includes('/node_modules/zod/')) {
-            return 'vendor-zod'
-          }
-
-          if (id === path.join(contractsPath, 'backup.ts')) {
-            return 'backup-contracts'
-          }
-
-          if (id.startsWith(contractsPath)) {
-            return 'planner-contracts'
-          }
+        codeSplitting: {
+          groups: [
+            {
+              includeDependenciesRecursively: false,
+              name: 'backup-contracts',
+              priority: 100,
+              test: (id) => id === path.join(contractsPath, 'backup.ts'),
+            },
+            {
+              includeDependenciesRecursively: false,
+              name: 'vendor-query',
+              priority: 90,
+              test: /node_modules[\/]@tanstack[\/]react-query[\/]/,
+            },
+            {
+              includeDependenciesRecursively: false,
+              name: 'vendor-router',
+              priority: 90,
+              test: /node_modules[\/]react-router[\/]/,
+            },
+            {
+              includeDependenciesRecursively: false,
+              name: 'vendor-react',
+              priority: 90,
+              test: /node_modules[\/](?:react|react-dom|scheduler)[\/]/,
+            },
+            {
+              includeDependenciesRecursively: false,
+              name: 'vendor-zod',
+              priority: 90,
+              test: /node_modules[\/]zod[\/]/,
+            },
+            {
+              includeDependenciesRecursively: false,
+              name: 'planner-contracts',
+              priority: 50,
+              test: (id) => id.startsWith(contractsPath),
+            },
+          ],
         },
       },
     },

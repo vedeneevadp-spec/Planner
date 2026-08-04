@@ -77,7 +77,7 @@ export {
   WorkspaceSettingsApiError,
 } from './lib/workspace-settings-api'
 export { AuthGate } from './ui/AuthGate'
-export { NativePushRegistration } from './ui/NativePushRegistration'
+export { LazyNativePushRegistration as NativePushRegistration } from './ui/LazyNativePushRegistration'
 export { ProfileAccountPanel, ProfileDialog } from './ui/ProfileDialog'
 export { SessionProvider } from './ui/SessionProvider'
 export { TimeZoneChangeBanner } from './ui/TimeZoneChangeBanner'

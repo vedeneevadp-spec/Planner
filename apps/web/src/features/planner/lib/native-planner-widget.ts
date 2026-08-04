@@ -1,9 +1,5 @@
 import { App } from '@capacitor/app'
-import {
-  Capacitor,
-  type PluginListenerHandle,
-  registerPlugin,
-} from '@capacitor/core'
+import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import {
   type CleaningTaskWithState,
@@ -32,6 +28,7 @@ import {
   formatTimeRange,
   isBeforeDate,
 } from '@/shared/lib/date'
+import { isAndroidNativeRuntime } from '@/shared/lib/native-runtime'
 import {
   addDateDays,
   getDateKeyInTimeZone,
@@ -60,7 +57,7 @@ export type { NativePlannerWidgetSnapshot, NativePlannerWidgetTask }
 const NativePlannerWidget = registerPlugin<PlannerWidgetPlugin>('PlannerWidget')
 
 export function isAndroidPlannerWidgetRuntime(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
+  return isAndroidNativeRuntime()
 }
 
 export function buildNativePlannerWidgetSnapshot(

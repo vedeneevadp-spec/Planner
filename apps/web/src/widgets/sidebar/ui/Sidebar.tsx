@@ -51,6 +51,8 @@ interface SidebarProps {
   onCollapsedChange?: (isCollapsed: boolean) => void
 }
 
+const SERVICE_SUMMARY_DEFER_MS = 1_500
+
 export function Sidebar({
   isCollapsed = false,
   navigationMode = 'full',
@@ -68,8 +70,13 @@ export function Sidebar({
     spheres,
     tasks,
   } = usePlanner()
-  const cleaningSummary = useCleaningSummary()
-  const shoppingListSummary = useShoppingListSummary()
+  const shouldLoadServiceSummaries = useDeferredServiceSummaries(!isLoading)
+  const cleaningSummary = useCleaningSummary(undefined, {
+    enabled: shouldLoadServiceSummaries,
+  })
+  const shoppingListSummary = useShoppingListSummary({
+    enabled: shouldLoadServiceSummaries,
+  })
   const location = useLocation()
   const auth = useSessionAuth()
   const { isDark, toggleTheme } = useColorTheme()
@@ -90,7 +97,7 @@ export function Sidebar({
     (task) => isActiveTaskStatus(task.status) && task.plannedDate !== null,
   ).length
   const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
-    enabled: !isSharedWorkspace,
+    enabled: shouldLoadServiceSummaries && !isSharedWorkspace,
   })
   const pendingSelfCareTodayCount = countPendingSelfCare(
     selfCareDashboardQuery.data,
@@ -719,6 +726,26 @@ export function Sidebar({
       ) : null}
     </>
   )
+}
+
+function useDeferredServiceSummaries(canLoad: boolean): boolean {
+  const [isReady, setIsReady] = useState(false)
+
+  useEffect(() => {
+    if (!canLoad || isReady) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setIsReady(true)
+    }, SERVICE_SUMMARY_DEFER_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [canLoad, isReady])
+
+  return isReady
 }
 
 function matchesRoute(pathname: string, route: string): boolean {

@@ -7,6 +7,8 @@ import {
   getVisibleAppRouteDefinitions,
 } from '@/shared/config/routes'
 
+import styles from './AppRouter.module.css'
+
 const TodayPage = lazy(() =>
   import('@/pages/today').then((module) => ({ default: module.TodayPage })),
 )
@@ -136,7 +138,7 @@ export function AppRouter() {
   const visibleRoutes = getVisibleAppRouteDefinitions(workspaceKind)
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<Navigate replace to="/today" />} />
         <Route path="/timeline" element={<TimelineRedirect />} />
@@ -150,5 +152,19 @@ export function AppRouter() {
         <Route path="*" element={<Navigate replace to="/today" />} />
       </Routes>
     </Suspense>
+  )
+}
+
+function RouteFallback() {
+  return (
+    <div className={styles.routeFallback} role="status" aria-live="polite">
+      <span className={styles.routeFallbackStatus}>Загружаем раздел</span>
+      <div className={styles.routeFallbackPanel} aria-hidden="true">
+        <span className={styles.routeFallbackLine} />
+        <span
+          className={`${styles.routeFallbackLine} ${styles.routeFallbackLineShort}`}
+        />
+      </div>
+    </div>
   )
 }

@@ -37,7 +37,6 @@ import {
   writeStoredAuthSession,
 } from './auth-session-storage'
 import { getBrowserAuthDeviceId } from './browser-auth-device-id'
-import { unregisterStoredNativePushDevice } from './native-push-notifications'
 import {
   addNativeAppStateChangeListener,
   getNativeAppIsActive,
@@ -201,11 +200,16 @@ export function useSessionAuthController(): SessionAuthState {
 
       clearRefreshTimer()
       deferredRefreshRetryCountRef.current = 0
-      await unregisterStoredNativePushDevice({
-        accessToken: snapshot.sessionAccessToken,
-        actorUserId,
-        apiBaseUrl: plannerApiConfig.apiBaseUrl,
-      })
+      if (isNativeSessionRuntime) {
+        const { unregisterStoredNativePushDevice } =
+          await import('./native-push-notifications')
+
+        await unregisterStoredNativePushDevice({
+          accessToken: snapshot.sessionAccessToken,
+          actorUserId,
+          apiBaseUrl: plannerApiConfig.apiBaseUrl,
+        })
+      }
 
       pendingSignOutNoticeRef.current = notice
       blockedNativeRefreshTokenRef.current = null

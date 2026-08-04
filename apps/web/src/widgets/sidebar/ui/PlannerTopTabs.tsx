@@ -69,12 +69,12 @@ const SHOPPING_CATEGORY_FILTERS: Array<{
     value: 'groceries',
   },
   {
-    iconSrc: `${SHOPPING_ICON_BASE_URL}/household.png`,
+    iconSrc: `${SHOPPING_ICON_BASE_URL}/household.webp`,
     label: 'Бытовое',
     value: 'household',
   },
   {
-    iconSrc: `${SHOPPING_ICON_BASE_URL}/other.png`,
+    iconSrc: `${SHOPPING_ICON_BASE_URL}/other.webp`,
     label: 'Прочее',
     value: 'other',
   },
@@ -87,7 +87,7 @@ const SHOPPING_FLAG_FILTERS: Array<{
     | typeof SHOPPING_FILTER_QUERY_KEYS.urgent
 }> = [
   {
-    iconSrc: `${SHOPPING_ICON_BASE_URL}/favorite.png`,
+    iconSrc: `${SHOPPING_ICON_BASE_URL}/favorite.webp`,
     label: 'Избранное',
     param: SHOPPING_FILTER_QUERY_KEYS.favorite,
   },

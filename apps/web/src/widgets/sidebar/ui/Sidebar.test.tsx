@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -92,7 +93,13 @@ const mocks = vi.hoisted(() => ({
   useCreateSharedWorkspace: vi.fn<() => MutationStub>(),
   useDeclineWorkspaceInvitation: vi.fn<() => MutationStub>(),
   useDeleteSharedWorkspace: vi.fn<() => MutationStub>(),
-  useCleaningSummary: vi.fn<() => { dueCount: number; urgentCount: number }>(),
+  useCleaningSummary:
+    vi.fn<
+      (
+        date?: string,
+        options?: { enabled?: boolean },
+      ) => { dueCount: number; urgentCount: number }
+    >(),
   useLeaveSharedWorkspace: vi.fn<() => MutationStub>(),
   usePlanner: vi.fn<() => PlannerStub>(),
   usePlannerSession: vi.fn<() => { data: SidebarSessionStub }>(),
@@ -101,9 +108,13 @@ const mocks = vi.hoisted(() => ({
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
   useSelfCareDashboard:
     vi.fn<
-      () => { data: { flexibleGoals: unknown[]; todayItems: unknown[] } }
+      (
+        date: string,
+        options?: { enabled?: boolean },
+      ) => { data: { flexibleGoals: unknown[]; todayItems: unknown[] } }
     >(),
-  useShoppingListSummary: vi.fn<() => { activeItemCount: number }>(),
+  useShoppingListSummary:
+    vi.fn<(options?: { enabled?: boolean }) => { activeItemCount: number }>(),
   useUpdateSharedWorkspace: vi.fn<() => MutationStub>(),
 }))
 
@@ -112,15 +123,18 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/cleaning', () => ({
-  useCleaningSummary: () => mocks.useCleaningSummary(),
+  useCleaningSummary: (date?: string, options?: { enabled?: boolean }) =>
+    mocks.useCleaningSummary(date, options),
 }))
 
 vi.mock('@/features/self-care', () => ({
-  useSelfCareDashboard: () => mocks.useSelfCareDashboard(),
+  useSelfCareDashboard: (date: string, options?: { enabled?: boolean }) =>
+    mocks.useSelfCareDashboard(date, options),
 }))
 
 vi.mock('@/features/shopping-list', () => ({
-  useShoppingListSummary: () => mocks.useShoppingListSummary(),
+  useShoppingListSummary: (options?: { enabled?: boolean }) =>
+    mocks.useShoppingListSummary(options),
 }))
 
 vi.mock('@/features/session', () => ({
@@ -363,6 +377,39 @@ describe('Sidebar', () => {
 
   afterEach(() => {
     cleanup()
+    vi.useRealTimers()
+  })
+
+  it('defers noncritical service summaries until planner content settles', () => {
+    vi.useFakeTimers()
+
+    renderSidebar(createSession('personal'))
+
+    expect(mocks.useCleaningSummary).toHaveBeenLastCalledWith(undefined, {
+      enabled: false,
+    })
+    expect(mocks.useShoppingListSummary).toHaveBeenLastCalledWith({
+      enabled: false,
+    })
+    expect(mocks.useSelfCareDashboard).toHaveBeenLastCalledWith(
+      expect.any(String),
+      { enabled: false },
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(1_500)
+    })
+
+    expect(mocks.useCleaningSummary).toHaveBeenLastCalledWith(undefined, {
+      enabled: true,
+    })
+    expect(mocks.useShoppingListSummary).toHaveBeenLastCalledWith({
+      enabled: true,
+    })
+    expect(mocks.useSelfCareDashboard).toHaveBeenLastCalledWith(
+      expect.any(String),
+      { enabled: true },
+    )
   })
 
   it('keeps side tab sections out of the mobile more sheet for personal workspaces', () => {
