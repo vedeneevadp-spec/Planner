@@ -77,6 +77,27 @@ export class SessionService {
     )
   }
 
+  async deleteAdminUserAccount(context: SessionContext, userId: string) {
+    const session = await this.resolveSession(context)
+
+    assertCanManageAdminUsers(session)
+    await this.deleteUserAccount(session, context, userId)
+  }
+
+  async deleteCurrentUserAccount(context: SessionContext) {
+    const session = await this.resolveSession(context)
+
+    if (session.appRole === 'owner') {
+      throw new HttpError(
+        400,
+        'owner_account_deletion_forbidden',
+        'The global owner account cannot be deleted.',
+      )
+    }
+
+    await this.deleteUserAccount(session, context, session.actorUserId)
+  }
+
   async createSharedWorkspace(
     context: SessionContext,
     input: CreateSharedWorkspaceInput,
@@ -371,6 +392,36 @@ export class SessionService {
       }
 
       throw error
+    }
+  }
+
+  private async deleteUserAccount(
+    session: SessionSnapshot,
+    context: SessionContext,
+    userId: string,
+  ): Promise<void> {
+    const deletedAccount = await withRepositoryErrorMapping(() =>
+      this.repository.deleteUserAccount(session, context.auth, userId),
+    )
+
+    this.authSessionCache.clear()
+
+    if (
+      !deletedAccount.avatarUrl ||
+      deletedAccount.avatarUrl.startsWith('data:')
+    ) {
+      return
+    }
+
+    try {
+      await this.profileAvatarStorage.deleteProfileAvatar(
+        deletedAccount.avatarUrl,
+      )
+    } catch (error) {
+      console.error(
+        'Failed to delete profile avatar after account deletion.',
+        error,
+      )
     }
   }
 }

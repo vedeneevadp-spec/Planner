@@ -25,6 +25,11 @@ import type {
 
 export interface SessionRepository {
   resolve(context: SessionContext): Promise<SessionSnapshot>
+  deleteUserAccount(
+    session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
+    userId: string,
+  ): Promise<{ avatarUrl: string | null }>
   createSharedWorkspace(
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,

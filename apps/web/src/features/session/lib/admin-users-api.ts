@@ -45,6 +45,7 @@ export interface AdminUsersApiClientConfig {
 }
 
 export interface AdminUsersApiClient {
+  deleteAdminUserAccount: (userId: string) => Promise<void>
   listAdminUsers: (signal?: RequestSignal) => Promise<AdminUserListResponse>
   updateAdminUserRole: (
     userId: string,
@@ -63,6 +64,14 @@ export function createAdminUsersApiClient(
   )
 
   return {
+    async deleteAdminUserAccount(userId) {
+      await request({
+        actorHeader: 'always',
+        fallbackErrorMessage: 'Не удалось удалить аккаунт пользователя.',
+        method: 'DELETE',
+        path: `/api/v1/admin/users/${encodeURIComponent(userId)}`,
+      })
+    },
     listAdminUsers(signal) {
       return request({
         actorHeader: 'always',

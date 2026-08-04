@@ -172,6 +172,156 @@ void test('PostgresSessionRepository exposes admin user metrics under runtime RL
   }
 })
 
+void test('PostgresSessionRepository permanently deletes self-owned data and anonymizes shared references', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const targetUserId = randomUUID()
+  const hostUserId = randomUUID()
+  const targetEmail = `contract-delete-target-${targetUserId}@example.test`
+  const hostEmail = `contract-delete-host-${hostUserId}@example.test`
+  const sharedTaskId = randomUUID()
+
+  try {
+    await seedUserSession({
+      appRole: 'user',
+      email: targetEmail,
+      userId: targetUserId,
+    })
+    await seedUserSession({
+      appRole: 'user',
+      email: hostEmail,
+      userId: hostUserId,
+    })
+
+    const targetSession = await repository.resolve({
+      actorUserId: targetUserId,
+      auth: null,
+      workspaceId: undefined,
+    })
+    const hostWorkspaceId = await resolvePersonalWorkspaceId(hostUserId)
+
+    await connection.pool.query(
+      `
+        insert into app.tasks (
+          id,
+          workspace_id,
+          title,
+          description,
+          created_by,
+          updated_by
+        )
+        values ($1, $2, 'Shared reference survives', '', $3, $3)
+      `,
+      [sharedTaskId, hostWorkspaceId, targetUserId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.outbox (
+          aggregate_type,
+          aggregate_id,
+          topic,
+          payload
+        )
+        values (
+          'user',
+          $1::uuid,
+          'user.test',
+          jsonb_build_object('actorUserId', $1::uuid)
+        )
+      `,
+      [targetUserId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.mcp_audit_logs (user_id, tool_name)
+        values ($1, 'contract-delete-test')
+      `,
+      [targetUserId],
+    )
+
+    await repository.deleteUserAccount(
+      targetSession,
+      createSessionAuthContext({
+        email: targetEmail,
+        userId: targetUserId,
+      }),
+      targetUserId,
+    )
+
+    const result = await connection.pool.query<{
+      auditCount: number
+      outboxCount: number
+      targetUserCount: number
+      targetWorkspaceCount: number
+      taskCreatedBy: string | null
+      taskUpdatedBy: string | null
+    }>(
+      `
+        select
+          (select count(*)::int from app.mcp_audit_logs where user_id = $1) as "auditCount",
+          (select count(*)::int from app.outbox where payload::text like '%' || $1::text || '%') as "outboxCount",
+          (select count(*)::int from app.users where id = $1) as "targetUserCount",
+          (select count(*)::int from app.workspaces where owner_user_id = $1) as "targetWorkspaceCount",
+          (select created_by from app.tasks where id = $2) as "taskCreatedBy",
+          (select updated_by from app.tasks where id = $2) as "taskUpdatedBy"
+      `,
+      [targetUserId, sharedTaskId],
+    )
+
+    assert.deepEqual(result.rows[0], {
+      auditCount: 0,
+      outboxCount: 0,
+      targetUserCount: 0,
+      targetWorkspaceCount: 0,
+      taskCreatedBy: null,
+      taskUpdatedBy: null,
+    })
+  } finally {
+    await cleanupUsers([targetUserId, hostUserId])
+  }
+})
+
+void test('PostgresSessionRepository lets the global owner delete another account under runtime RLS', async () => {
+  const repository = new PostgresSessionRepository(connection.db)
+  const targetUserId = randomUUID()
+  const targetEmail = `contract-admin-delete-${targetUserId}@example.test`
+  const owner = await resolveOwnerUser()
+  const cleanupUserIds = owner.seeded
+    ? [owner.id, targetUserId]
+    : [targetUserId]
+
+  try {
+    await seedUserSession({
+      appRole: 'user',
+      email: targetEmail,
+      userId: targetUserId,
+    })
+
+    const ownerSession = await repository.resolve({
+      actorUserId: owner.id,
+      auth: null,
+      workspaceId: undefined,
+    })
+
+    await repository.deleteUserAccount(
+      ownerSession,
+      createSessionAuthContext({
+        email: owner.email,
+        userId: owner.id,
+      }),
+      targetUserId,
+    )
+
+    const result = await connection.pool.query<{ total: number }>(
+      'select count(*)::int as total from app.users where id = $1',
+      [targetUserId],
+    )
+
+    assert.equal(result.rows[0]?.total, 0)
+  } finally {
+    await cleanupUsers(cleanupUserIds)
+  }
+})
+
 void test('PostgresSessionRepository keeps session lifecycle working under runtime RLS', async () => {
   const repository = new PostgresSessionRepository(connection.db)
   const ownerUserId = randomUUID()

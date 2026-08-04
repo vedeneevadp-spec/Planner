@@ -135,6 +135,46 @@ test('registers a user and creates a task through the app shell', async ({
   await expect(page.getByText(updatedTaskTitle)).toBeHidden()
 })
 
+test('deletes the current account from profile after email confirmation', async ({
+  page,
+}) => {
+  const user = createE2eUser('e2e-account-deletion')
+
+  await registerUser({ ...user, page })
+  await page.goto('/profile')
+
+  await expect(
+    page.getByRole('heading', { name: 'Удаление аккаунта' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Удалить аккаунт' }).click()
+
+  const dialog = page.getByRole('alertdialog', {
+    name: `Удалить аккаунт ${user.displayName}?`,
+  })
+
+  await expect(dialog).toContainText(
+    'Аккаунт и все связанные с ним данные будут безвозвратно удалены',
+  )
+  await expect(
+    dialog.getByRole('button', { name: 'Удалить навсегда' }),
+  ).toBeDisabled()
+
+  await dialog
+    .getByRole('textbox', { name: 'Email для подтверждения удаления' })
+    .fill(user.email)
+  await dialog.getByRole('button', { name: 'Удалить навсегда' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Вход' })).toBeVisible()
+
+  await page.getByLabel('Email').fill(user.email)
+  await page.getByLabel('Пароль', { exact: true }).fill(user.password)
+  await page.getByRole('button', { name: 'Войти' }).click()
+
+  await expect(page.getByRole('alert')).toContainText(
+    'Неверный email или пароль.',
+  )
+})
+
 test('keeps task composer field layout stable on desktop and mobile', async ({
   page,
 }) => {

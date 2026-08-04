@@ -1,0 +1,75 @@
+.panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--danger-border);
+  border-radius: 24px;
+  padding: 1rem;
+  background: var(--danger-bg);
+  box-shadow: var(--inset-highlight), var(--shadow-soft);
+}
+
+.copy {
+  display: grid;
+  gap: 0.32rem;
+}
+
+.kicker,
+.copy h3,
+.copy p {
+  margin: 0;
+}
+
+.kicker {
+  color: var(--danger);
+  font-size: 0.76rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.copy h3 {
+  font-size: 1rem;
+}
+
+.copy p {
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.ownerNote {
+  color: var(--danger) !important;
+}
+
+.deleteButton {
+  display: inline-flex;
+  min-height: 2.9rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid var(--danger-border-strong);
+  border-radius: 15px;
+  padding: 0.72rem 0.95rem;
+  color: var(--danger-strong);
+  background: var(--danger-bg);
+  font: inherit;
+}
+
+.deleteButton:not(:disabled):hover {
+  transform: translateY(-1px);
+  background: var(--danger-bg-hover);
+}
+
+.deleteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+@media (max-width: 640px) {
+  .panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

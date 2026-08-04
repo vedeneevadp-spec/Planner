@@ -74,6 +74,40 @@ export function useUpdateAdminUserRole() {
   })
 }
 
+export function useDeleteAdminUserAccount() {
+  const auth = useSessionAuth()
+  const sessionQuery = usePlannerSession()
+  const session = sessionQuery.data
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (userId: string) => {
+      if (!session) {
+        throw new Error('Planner session is required to delete user accounts.')
+      }
+
+      assertCanUseProtectedSessionApi(auth)
+
+      await createAdminUsersApiClient(
+        createAdminUsersApiClientConfig({
+          accessToken: auth.accessToken,
+          actorUserId: session.actorUserId,
+          workspaceId: session.workspaceId,
+        }),
+      ).deleteAdminUserAccount(userId)
+    },
+    onSuccess: async () => {
+      if (!session) {
+        return
+      }
+
+      await queryClient.invalidateQueries({
+        queryKey: adminUsersQueryKey(session.workspaceId),
+      })
+    },
+  })
+}
+
 function createAdminUsersApiClientConfig(input: {
   accessToken: string | null
   actorUserId: string
