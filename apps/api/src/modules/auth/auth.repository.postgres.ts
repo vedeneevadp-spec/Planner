@@ -176,7 +176,7 @@ export class PostgresAuthRepository implements AuthRepository {
       select *
       from app.auth_rotate_refresh_token(
         ${currentRefreshTokenHash},
-        ${generateUuidV7()}::uuid,
+        ${nextRefreshToken.refreshTokenId}::uuid,
         ${nextRefreshToken.refreshTokenHash},
         ${nextRefreshToken.expiresAt}::timestamptz,
         ${nextRefreshToken.metadata.deviceId ?? null},

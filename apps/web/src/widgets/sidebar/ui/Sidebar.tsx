@@ -225,6 +225,15 @@ export function Sidebar({
     handleSignOut()
   }, [handleSignOut])
 
+  const handleConnectionRetry = useCallback(() => {
+    if (auth.isAuthEnabled && !auth.canUseProtectedApi) {
+      void auth.recoverSession({ retryDeniedRefresh: true })
+      return
+    }
+
+    void refresh()
+  }, [auth, refresh])
+
   useEffect(() => {
     if (!isMoreOpen) {
       return
@@ -535,9 +544,7 @@ export function Sidebar({
                     <ConnectionIssuePanel
                       debugDetails={connectionIssueDebugDetails}
                       message={connectionIssueMessage}
-                      onRetry={() => {
-                        void refresh()
-                      }}
+                      onRetry={handleConnectionRetry}
                     />
                   </section>
                 ) : null}
@@ -680,9 +687,7 @@ export function Sidebar({
               <ConnectionIssuePanel
                 debugDetails={connectionIssueDebugDetails}
                 message={connectionIssueMessage}
-                onRetry={() => {
-                  void refresh()
-                }}
+                onRetry={handleConnectionRetry}
               />
             ) : null}
           </section>

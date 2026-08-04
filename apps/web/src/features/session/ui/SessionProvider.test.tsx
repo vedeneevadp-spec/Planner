@@ -23,6 +23,7 @@ const authApiMocks = vi.hoisted(() => ({
 
 const authStorageMocks = vi.hoisted(() => ({
   clearStoredAuthSession: vi.fn(),
+  prepareStoredAuthSessionRefresh: vi.fn(),
   readStoredAuthSession: vi.fn(),
   writeStoredAuthSession: vi.fn(),
 }))
@@ -63,6 +64,8 @@ vi.mock('../lib/auth-api', () => ({
 vi.mock('../lib/auth-session-storage', () => ({
   clearStoredAuthSession: authStorageMocks.clearStoredAuthSession,
   getRememberSessionPreference: () => true,
+  prepareStoredAuthSessionRefresh:
+    authStorageMocks.prepareStoredAuthSessionRefresh,
   readStoredAuthSession: authStorageMocks.readStoredAuthSession,
   setRememberSessionPreference: vi.fn(),
   writeStoredAuthSession: authStorageMocks.writeStoredAuthSession,
@@ -93,6 +96,7 @@ interface StoredAuthSession {
   accessToken: string
   email: string
   expiresAt: string
+  refreshRotationRequestId?: string
   refreshToken?: string
   userId: string
 }
@@ -129,6 +133,7 @@ describe('SessionProvider', () => {
     authApiMocks.updatePassword.mockReset()
 
     authStorageMocks.clearStoredAuthSession.mockReset()
+    authStorageMocks.prepareStoredAuthSessionRefresh.mockReset()
     authStorageMocks.readStoredAuthSession.mockReset()
     authStorageMocks.writeStoredAuthSession.mockReset()
 
@@ -147,6 +152,9 @@ describe('SessionProvider', () => {
         error.status === 401,
     )
     authStorageMocks.clearStoredAuthSession.mockResolvedValue(undefined)
+    authStorageMocks.prepareStoredAuthSessionRefresh.mockImplementation(
+      (storedSession: StoredAuthSession) => Promise.resolve(storedSession),
+    )
     authStorageMocks.writeStoredAuthSession.mockResolvedValue(undefined)
     browserDeviceMocks.getBrowserAuthDeviceId.mockReturnValue(
       'browser-device-1',
@@ -210,14 +218,19 @@ describe('SessionProvider', () => {
     })
 
     await waitFor(() => {
-      expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalledWith({
-        accessToken: 'new-access-token',
-        email: 'mobile@example.com',
-        expiresAt: refreshedSession.expiresAt,
-        refreshToken: 'new-refresh-token',
-        userId: 'user-1',
-      })
+      expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalled()
     })
+    const storedSession = readLastWrittenStoredAuthSession()
+    expect(storedSession).toMatchObject({
+      accessToken: 'new-access-token',
+      email: 'mobile@example.com',
+      expiresAt: refreshedSession.expiresAt,
+      refreshToken: 'new-refresh-token',
+      userId: 'user-1',
+    })
+    expect(storedSession.refreshRotationRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
 
     unmount()
@@ -287,18 +300,123 @@ describe('SessionProvider', () => {
     await flushAsyncWork()
 
     expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(2)
-    expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalledWith({
+    const storedSession = readLastWrittenStoredAuthSession()
+    expect(storedSession).toMatchObject({
       accessToken: 'new-access-token',
       email: 'mobile@example.com',
       expiresAt: refreshedSession.expiresAt,
       refreshToken: 'new-refresh-token',
       userId: 'user-1',
     })
+    expect(storedSession.refreshRotationRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
     expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
       'new-access-token',
     )
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+  })
+
+  it('reuses a persisted rotation after the server response was not saved and more than five minutes passed', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-04T10:00:00.000Z'))
+
+    const rotationRequestId = '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585'
+    let durableSession = createExpiredStoredSession()
+    let failFreshSessionWrite = true
+
+    authStorageMocks.readStoredAuthSession.mockImplementation(() =>
+      Promise.resolve(durableSession),
+    )
+    authStorageMocks.prepareStoredAuthSessionRefresh.mockImplementation(
+      (storedSession: StoredAuthSession) => {
+        durableSession = storedSession.refreshRotationRequestId
+          ? storedSession
+          : {
+              ...storedSession,
+              refreshRotationRequestId: rotationRequestId,
+            }
+
+        return Promise.resolve(durableSession)
+      },
+    )
+    authStorageMocks.writeStoredAuthSession.mockImplementation(
+      (storedSession: StoredAuthSession) => {
+        if (
+          failFreshSessionWrite &&
+          storedSession.refreshToken === 'new-refresh-token'
+        ) {
+          return Promise.reject(new TypeError('Preferences write failed'))
+        }
+
+        durableSession = storedSession
+        return Promise.resolve()
+      },
+    )
+    authApiMocks.refreshAuthSession.mockResolvedValue(createTokenResponse())
+
+    const firstLaunch = render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await flushAsyncWork()
+
+    expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+    expect(authApiMocks.refreshAuthSession).toHaveBeenNthCalledWith(
+      1,
+      {
+        refreshToken: 'old-refresh-token',
+        rotationRequestId,
+      },
+      {
+        deviceId: 'native-device-1',
+        rememberSession: true,
+        tokenTransport: 'body',
+      },
+    )
+    expect(durableSession).toMatchObject({
+      refreshRotationRequestId: rotationRequestId,
+      refreshToken: 'old-refresh-token',
+    })
+
+    firstLaunch.unmount()
+    vi.setSystemTime(new Date('2026-08-04T10:06:00.000Z'))
+    failFreshSessionWrite = false
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await flushAsyncWork()
+
+    expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(2)
+    expect(authApiMocks.refreshAuthSession).toHaveBeenNthCalledWith(
+      2,
+      {
+        refreshToken: 'old-refresh-token',
+        rotationRequestId,
+      },
+      {
+        deviceId: 'native-device-1',
+        rememberSession: true,
+        tokenTransport: 'body',
+      },
+    )
+    expect(durableSession).toMatchObject({
+      refreshToken: 'new-refresh-token',
+    })
+    expect(durableSession.refreshRotationRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    )
+    expect(durableSession.refreshRotationRequestId).not.toBe(rotationRequestId)
+    expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+      'new-access-token',
+    )
   })
 
   it('does not refresh a native session without a stable device id', async () => {
@@ -685,6 +803,17 @@ function AuthSnapshotProbe() {
       <output data-testid="auth-session-version">{auth.sessionVersion}</output>
     </>
   )
+}
+
+function readLastWrittenStoredAuthSession(): StoredAuthSession {
+  const lastCall = authStorageMocks.writeStoredAuthSession.mock.calls.at(-1) as
+    [StoredAuthSession] | undefined
+
+  if (!lastCall) {
+    throw new Error('Expected a stored auth session write.')
+  }
+
+  return lastCall[0]
 }
 
 async function flushAsyncWork(): Promise<void> {

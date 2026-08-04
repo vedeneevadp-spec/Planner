@@ -77,11 +77,15 @@ interface SessionAuthStub {
   isLoading: boolean
   lifecycleStatus:
     'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
+  recoverSession: (options?: {
+    retryDeniedRefresh?: boolean
+  }) => Promise<'deferred' | 'recovered' | 'signed_out'>
   signOut: () => Promise<void>
   userId: string
 }
 
 const mocks = vi.hoisted(() => ({
+  recoverSession: vi.fn(() => Promise.resolve('recovered' as const)),
   setSelectedWorkspaceIdForActors: vi.fn(),
   signOut: vi.fn<() => Promise<void>>(),
   useAcceptWorkspaceInvitation: vi.fn<() => MutationStub>(),
@@ -245,6 +249,7 @@ function renderSidebar(
     isAuthEnabled: true,
     isLoading: false,
     lifecycleStatus: 'authenticated' as const,
+    recoverSession: mocks.recoverSession,
     signOut: mocks.signOut,
     userId: session.actorUserId,
     ...options.auth,
@@ -455,7 +460,7 @@ describe('Sidebar', () => {
     expect(screen.queryByText('Connected')).not.toBeInTheDocument()
   })
 
-  it('keeps retry available for readiness connection issues without a planner feature error', () => {
+  it('routes readiness retry through auth for a deferred session', () => {
     const refresh = vi.fn()
 
     renderSidebar(createSession('personal'), {
@@ -475,7 +480,10 @@ describe('Sidebar', () => {
       screen.getByRole('button', { name: 'Повторить синхронизацию' }),
     )
 
-    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(mocks.recoverSession).toHaveBeenCalledWith({
+      retryDeniedRefresh: true,
+    })
+    expect(refresh).not.toHaveBeenCalled()
   })
 
   it('shows retry inside the mobile sheet for readiness connection issues', () => {

@@ -1,4 +1,5 @@
-import { expect, type Page, test } from '@playwright/test'
+import { expect, type Page, type Route, test } from '@playwright/test'
+import { Client } from 'pg'
 
 interface MobileInstalledSmokeRuntime {
   expireNativeAuthSession: () => void
@@ -10,6 +11,7 @@ interface MobileInstalledAuthSession {
   accessToken: string
   email: string
   expiresAt: string
+  refreshRotationRequestId?: string
   refreshToken?: string
   userId: string
 }
@@ -89,7 +91,29 @@ test.beforeEach(async ({ page }) => {
 
     window.Capacitor = {
       nativeCallback: () => Promise.resolve(`callback-${crypto.randomUUID()}`),
-      nativePromise: (pluginName, methodName) => {
+      nativePromise: (pluginName, methodName, options) => {
+        if (pluginName === 'PlannerAuthStorage') {
+          const input = options as {
+            key?: string
+            value?: string
+          }
+          const storageKey = input.key ? `CapacitorStorage.${input.key}` : null
+
+          if (!storageKey) {
+            return Promise.reject(new Error('Auth storage key is required.'))
+          }
+
+          if (methodName === 'set' && typeof input.value === 'string') {
+            window.localStorage.setItem(storageKey, input.value)
+            return Promise.resolve({})
+          }
+
+          if (methodName === 'remove') {
+            window.localStorage.removeItem(storageKey)
+            return Promise.resolve({})
+          }
+        }
+
         if (pluginName === 'PlannerWidget') {
           switch (methodName) {
             case 'consumePendingCompletedTasks':
@@ -234,6 +258,13 @@ test.beforeEach(async ({ page }) => {
       PluginHeaders: [
         {
           methods: [
+            { name: 'remove', rtype: 'promise' },
+            { name: 'set', rtype: 'promise' },
+          ],
+          name: 'PlannerAuthStorage',
+        },
+        {
+          methods: [
             { name: 'consumePendingCompletedTasks', rtype: 'promise' },
             { name: 'readPendingCompletedTasks', rtype: 'promise' },
             { name: 'consumePendingRoute', rtype: 'promise' },
@@ -319,6 +350,8 @@ test.beforeEach(async ({ page }) => {
       typeof value.email === 'string' &&
       typeof value.expiresAt === 'string' &&
       typeof value.userId === 'string' &&
+      (!('refreshRotationRequestId' in value) ||
+        typeof value.refreshRotationRequestId === 'string') &&
       (!('refreshToken' in value) || typeof value.refreshToken === 'string')
 
     Object.defineProperty(document, 'hidden', {
@@ -422,6 +455,71 @@ test('keeps installed mobile auth across cold start, resume, and offline expired
   await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
 })
 
+test('recovers after a committed rotation response is lost and the old token remains stored for more than five minutes', async ({
+  page,
+}) => {
+  const user = createMobileE2eUser()
+
+  await registerUser({ ...user, page })
+
+  const initialSession = await readNativeAuthSession(page)
+
+  expect(initialSession?.refreshToken).toBeTruthy()
+  expect(initialSession?.refreshRotationRequestId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  )
+
+  let interceptedRefreshCount = 0
+  const loseCommittedRefreshResponse = async (route: Route) => {
+    const response = await route.fetch()
+
+    expect(response.ok()).toBe(true)
+    interceptedRefreshCount += 1
+    await route.abort('connectionfailed')
+  }
+
+  await page.route('**/api/v1/auth/refresh', loseCommittedRefreshResponse)
+  await page.evaluate(() =>
+    window.__chaotikaMobileInstalledSmoke?.expireNativeAuthSession(),
+  )
+  await replayNativeResume(page)
+
+  await expect.poll(() => interceptedRefreshCount).toBe(2)
+  await expect
+    .poll(() => readDiagnosticEventNames(page))
+    .toContain('auth_refresh_deferred')
+
+  const sessionAfterLostResponse = await readNativeAuthSession(page)
+
+  expect(sessionAfterLostResponse).toMatchObject({
+    refreshRotationRequestId: initialSession?.refreshRotationRequestId,
+    refreshToken: initialSession?.refreshToken,
+    userId: initialSession?.userId,
+  })
+  expect(sessionAfterLostResponse?.refreshRotationRequestId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  )
+
+  await ageCommittedRefreshRotation(initialSession!.userId)
+  await page.unroute('**/api/v1/auth/refresh', loseCommittedRefreshResponse)
+  await page.reload()
+
+  await expect(page.getByRole('button', { name: 'Новая задача' })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'Вход' })).toBeHidden()
+
+  const recoveredSession = await readNativeAuthSession(page)
+
+  expect(recoveredSession?.refreshToken).toBeTruthy()
+  expect(recoveredSession?.refreshToken).not.toBe(initialSession?.refreshToken)
+  expect(recoveredSession?.refreshRotationRequestId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  )
+  expect(recoveredSession?.refreshRotationRequestId).not.toBe(
+    sessionAfterLostResponse?.refreshRotationRequestId,
+  )
+  await expectNoRevokedRefreshTokens(initialSession!.userId)
+})
+
 async function registerUser({
   displayName,
   email,
@@ -459,9 +557,70 @@ async function readNativeAuthEmail(page: Page) {
   )
 }
 
+async function readNativeAuthSession(
+  page: Page,
+): Promise<MobileInstalledAuthSession | null> {
+  return page.evaluate(
+    () =>
+      window.__chaotikaMobileInstalledSmoke?.readNativeAuthSession() ?? null,
+  )
+}
+
 async function readDiagnosticEventNames(page: Page) {
   return page.evaluate<string[]>(
     () =>
       window.__CHAOTIKA_DIAGNOSTICS__?.events.map((event) => event.name) ?? [],
   )
+}
+
+async function ageCommittedRefreshRotation(userId: string): Promise<void> {
+  const client = createDatabaseClient()
+
+  await client.connect()
+
+  try {
+    const result = await client.query(
+      `
+        update app.auth_refresh_tokens
+        set rotated_at = now() - interval '6 minutes'
+        where user_id = $1::uuid
+          and replaced_by_token_id is not null
+          and revoked_at is null
+      `,
+      [userId],
+    )
+
+    expect(result.rowCount).toBe(1)
+  } finally {
+    await client.end()
+  }
+}
+
+async function expectNoRevokedRefreshTokens(userId: string): Promise<void> {
+  const client = createDatabaseClient()
+
+  await client.connect()
+
+  try {
+    const result = await client.query<{ revoked_count: string }>(
+      `
+        select count(*) filter (where revoked_at is not null) as revoked_count
+        from app.auth_refresh_tokens
+        where user_id = $1::uuid
+      `,
+      [userId],
+    )
+
+    expect(Number(result.rows[0]?.revoked_count ?? 0)).toBe(0)
+  } finally {
+    await client.end()
+  }
+}
+
+function createDatabaseClient(): Client {
+  return new Client({
+    connectionString:
+      process.env.DATABASE_URL ??
+      'postgres://planner:planner@127.0.0.1:54329/planner_development',
+  })
 }

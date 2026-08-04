@@ -59,6 +59,7 @@ export interface CreateRefreshTokenCommand extends CreateRefreshTokenPayload {
 export interface RotateRefreshTokenPayload {
   expiresAt: Date
   metadata: AuthRequestMetadata
+  refreshTokenId: string
   refreshTokenHash: string
 }
 

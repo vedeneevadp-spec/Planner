@@ -27,6 +27,7 @@ import {
   taskUpdateInputSchema,
 } from './task.js'
 import { taskTemplateSchema } from './task-template.js'
+import { uuidV7Schema } from './uuid.js'
 
 export const storageDriverSchema = z.enum(['memory', 'postgres'])
 export const appRoleSchema = z.enum(['owner', 'admin', 'test', 'user', 'guest'])
@@ -92,9 +93,12 @@ export const authSignUpInputSchema = z.object({
 
 export const authRefreshInputSchema = z.object({
   refreshToken: z.string().min(1).optional(),
+  rotationRequestId: uuidV7Schema.optional(),
 })
 
-export const authSignOutInputSchema = authRefreshInputSchema
+export const authSignOutInputSchema = z.object({
+  refreshToken: z.string().min(1).optional(),
+})
 
 export const authPasswordResetRequestInputSchema = z.object({
   email: authEmailSchema,

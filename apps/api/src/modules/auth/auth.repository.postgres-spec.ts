@@ -300,7 +300,7 @@ void describe('Postgres auth runtime functions', () => {
     }
   })
 
-  void test('revokes an expired exact same-device retry', async () => {
+  void test('replays the exact committed rotation after the five-minute window', async () => {
     const fixture = createFixture()
 
     try {
@@ -328,12 +328,13 @@ void describe('Postgres auth runtime functions', () => {
 
       const retriedResult = await rotateRefreshToken(client, input)
 
-      assert.equal(retriedResult.rows.length, 0)
+      assert.equal(retriedResult.rows[0]?.id, fixture.userId)
+      assert.equal(retriedResult.rows[0]?.session_id, fixture.sessionId)
 
       const tokenState = await getRefreshTokenState(fixture)
 
       assert.equal(Number(tokenState.next_token_count), 1)
-      assert.equal(Number(tokenState.revoked_count), 3)
+      assert.equal(Number(tokenState.revoked_count), 0)
     } finally {
       await cleanupRefreshFixture(fixture)
     }

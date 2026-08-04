@@ -192,9 +192,22 @@ export function transitionSessionAuthMachine(
         return none('signed_out')
       }
 
-      const refreshToken = event.nativeRuntime
-        ? (event.storedSession?.refreshToken ?? event.currentRefreshToken)
-        : (event.storedSession?.refreshToken ?? null)
+      if (
+        event.nativeRuntime &&
+        !event.storedSession &&
+        event.currentRefreshToken
+      ) {
+        return keepDeviceSession({
+          error: new Error(
+            'Native auth storage returned no durable refresh session.',
+          ),
+          logMessage: 'Native auth session refresh skipped.',
+          reason: 'storage_empty_on_resume',
+          storedSession: null,
+        })
+      }
+
+      const refreshToken = event.storedSession?.refreshToken ?? null
 
       if (event.nativeRuntime && !refreshToken) {
         if (event.storedSession) {
@@ -306,7 +319,11 @@ export function transitionSessionAuthMachine(
 }
 
 export function isRetryableAuthError(error: unknown): boolean {
-  if (error instanceof DOMException || error instanceof TypeError) {
+  if (
+    isAuthSessionStorageError(error) ||
+    error instanceof DOMException ||
+    error instanceof TypeError
+  ) {
     return true
   }
 
@@ -326,6 +343,10 @@ export function isRetryableAuthError(error: unknown): boolean {
 }
 
 export function getAuthErrorKind(error: unknown): string {
+  if (isAuthSessionStorageError(error)) {
+    return 'storage'
+  }
+
   if (error instanceof DOMException) {
     return 'dom_exception'
   }
@@ -347,6 +368,10 @@ export function getAuthErrorKind(error: unknown): string {
   }
 
   return 'unknown'
+}
+
+function isAuthSessionStorageError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AuthSessionStorageError'
 }
 
 function clearExpiredSession(): SessionAuthMachineCommand {
