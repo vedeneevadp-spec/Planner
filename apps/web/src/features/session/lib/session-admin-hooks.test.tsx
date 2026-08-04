@@ -54,7 +54,11 @@ vi.mock('./useSessionAuth', () => ({
   useSessionAuth: () => mocks.useSessionAuth(),
 }))
 
-import { useAdminUsers, useUpdateAdminUserRole } from './useAdminUsers'
+import {
+  useAdminUsers,
+  useDeleteAdminUserAccount,
+  useUpdateAdminUserRole,
+} from './useAdminUsers'
 import { useUpdateUserPreferences } from './useUserPreferences'
 import { useUpdateUserProfile } from './useUserProfile'
 import { useUpdateWorkspaceSettings } from './useWorkspaceSettings'
@@ -146,6 +150,32 @@ describe('session admin hooks', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ['planner', 'session'],
+    })
+  })
+
+  it('deletes an admin user account and refreshes the list', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = renderHook(() => useDeleteAdminUserAccount(), {
+      wrapper,
+    })
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync('user-2'),
+      ).resolves.toBeUndefined()
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]!
+
+    expect(getRequestUrl(url)).toBe(
+      'https://api.chaotika.test/api/v1/admin/users/user-2',
+    )
+    expect(init?.method).toBe('DELETE')
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['admin-users', 'workspace-1'],
     })
   })
 

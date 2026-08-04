@@ -4,6 +4,7 @@ export {
 } from './lib/admin-users-api'
 export {
   createSharedWorkspace,
+  deleteCurrentUserAccount,
   deleteSharedWorkspace,
   isUnauthorizedSessionApiError,
   leaveSharedWorkspace,
@@ -20,7 +21,11 @@ export {
   type SessionReadiness,
   type SessionReadinessStatus,
 } from './lib/session-readiness'
-export { useAdminUsers, useUpdateAdminUserRole } from './lib/useAdminUsers'
+export {
+  useAdminUsers,
+  useDeleteAdminUserAccount,
+  useUpdateAdminUserRole,
+} from './lib/useAdminUsers'
 export { usePlannerSession } from './lib/usePlannerSession'
 export { usePlannerTimeZone } from './lib/usePlannerTimeZone'
 export { useSessionAuth } from './lib/useSessionAuth'

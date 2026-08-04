@@ -104,6 +104,11 @@ export interface UpdateUserProfileOptions {
   workspaceId?: string | undefined
 }
 
+export type DeleteCurrentUserAccountOptions = Omit<
+  UpdateUserProfileOptions,
+  'input'
+>
+
 export async function updateSharedWorkspace(
   options: UpdateSharedWorkspaceOptions,
   fetchFn: typeof fetch = fetch,
@@ -137,6 +142,20 @@ export async function updateUserProfile(
   })
 
   return resolveUserProfileAssetUrls(profile)
+}
+
+export async function deleteCurrentUserAccount(
+  options: DeleteCurrentUserAccountOptions,
+  fetchFn: typeof fetch = fetch,
+): Promise<void> {
+  const request = createSessionRequest(options, fetchFn)
+
+  await request({
+    actorHeader: 'always',
+    fallbackErrorMessage: 'Не удалось удалить аккаунт.',
+    method: 'DELETE',
+    path: '/api/v1/profile',
+  })
 }
 
 export interface DeleteSharedWorkspaceOptions {

@@ -4,6 +4,7 @@ import { plannerApiConfig } from '@/shared/config/planner-api'
 
 import {
   createSharedWorkspace,
+  deleteCurrentUserAccount,
   deleteSharedWorkspace,
   isUnauthorizedSessionApiError,
   resolvePlannerSession,
@@ -300,6 +301,29 @@ describe('sessionApi', () => {
     expect(headers.get('x-workspace-id')).toBe('workspace-shared')
   })
 
+  it('deletes the current user account through the protected profile route', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 204 }))
+
+    await deleteCurrentUserAccount(
+      {
+        accessToken: 'planner-access-token',
+        actorUserId: 'user-1',
+        workspaceId: 'workspace-1',
+      },
+      fetchMock,
+    )
+
+    const [url, requestInit] = fetchMock.mock.calls[0]!
+    const headers = new Headers(requestInit?.headers)
+
+    expect(getRequestUrl(url)).toContain('/api/v1/profile')
+    expect(requestInit?.method).toBe('DELETE')
+    expect(headers.get('authorization')).toBe('Bearer planner-access-token')
+    expect(headers.get('x-workspace-id')).toBe('workspace-1')
+  })
+
   it('throws typed error on failed resolve', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(
@@ -339,4 +363,16 @@ function parseJsonBody(requestInit: RequestInit | undefined): unknown {
   }
 
   return JSON.parse(body) as unknown
+}
+
+function getRequestUrl(input: RequestInfo | URL): string {
+  if (typeof input === 'string') {
+    return input
+  }
+
+  if (input instanceof URL) {
+    return input.toString()
+  }
+
+  return input.url
 }

@@ -431,6 +431,26 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['session'],
       },
     },
+    '/api/v1/admin/users/{userId}': {
+      delete: {
+        operationId: 'deleteAdminUserAccount',
+        parameters: [
+          userIdParameter(),
+          parameter('requiredWorkspaceIdHeader'),
+          parameter('actorUserIdHeader'),
+        ],
+        responses: {
+          204: emptyResponse('Application user account deleted.'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Permanently delete an application user account',
+        tags: ['session'],
+      },
+    },
     '/api/v1/admin/users/{userId}/role': {
       patch: {
         operationId: 'updateAdminUserRole',
@@ -2089,6 +2109,14 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       }),
     },
     '/api/v1/profile': {
+      delete: createJsonOperation({
+        noContentDescription: 'Current user account deleted.',
+        operationId: 'deleteCurrentUserAccount',
+        parameters: workspaceWriteParameters(),
+        security: authenticatedSecurity(),
+        summary: 'Permanently delete the current user account',
+        tags: ['session'],
+      }),
       patch: createJsonOperation({
         operationId: 'updateUserProfile',
         parameters: workspaceWriteParameters(),

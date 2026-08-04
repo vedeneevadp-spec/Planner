@@ -172,6 +172,73 @@ export class MemorySessionRepository implements SessionRepository {
     )
   }
 
+  deleteUserAccount(
+    session: SessionSnapshot,
+    _authContext: AuthenticatedRequestContext | null,
+    userId: string,
+  ): Promise<{ avatarUrl: string | null }> {
+    const targetUser = this.getUserById(userId)
+
+    if (!targetUser) {
+      throw new HttpError(
+        404,
+        'admin_user_not_found',
+        'Application user was not found.',
+      )
+    }
+
+    if (targetUser.appRole === 'owner') {
+      throw new HttpError(
+        400,
+        'owner_account_deletion_forbidden',
+        'The global owner account cannot be deleted.',
+      )
+    }
+
+    if (session.actorUserId !== userId && session.appRole !== 'owner') {
+      throw new HttpError(
+        403,
+        'account_deletion_forbidden',
+        'The current user is not allowed to delete this account.',
+      )
+    }
+
+    const ownedWorkspaceIds = new Set(
+      this.workspaces
+        .filter((workspace) => workspace.ownerUserId === userId)
+        .map((workspace) => workspace.id),
+    )
+
+    this.workspaces = this.workspaces.filter(
+      (workspace) => !ownedWorkspaceIds.has(workspace.id),
+    )
+    this.memberships = this.memberships
+      .filter(
+        (membership) =>
+          membership.userId !== userId &&
+          !ownedWorkspaceIds.has(membership.workspaceId),
+      )
+      .map((membership) => ({
+        ...membership,
+        invitedBy:
+          membership.invitedBy === userId ? null : membership.invitedBy,
+      }))
+    this.invitations = this.invitations
+      .filter((invitation) => !ownedWorkspaceIds.has(invitation.workspaceId))
+      .map((invitation) => ({
+        ...invitation,
+        acceptedBy:
+          invitation.acceptedBy === userId ? null : invitation.acceptedBy,
+        declinedBy:
+          invitation.declinedBy === userId ? null : invitation.declinedBy,
+        invitedBy:
+          invitation.invitedBy === userId ? null : invitation.invitedBy,
+      }))
+    this.users = this.users.filter((user) => user.id !== userId)
+
+    return Promise.resolve({ avatarUrl: targetUser.avatarUrl })
+  }
+
   createSharedWorkspace(
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,

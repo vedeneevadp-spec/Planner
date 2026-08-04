@@ -156,6 +156,13 @@ const guestSessionRepository: SessionRepository = {
       ],
     })
   },
+  deleteUserAccount() {
+    throw new HttpError(
+      403,
+      'account_deletion_forbidden',
+      'The current user is not allowed to delete this account.',
+    )
+  },
   createSharedWorkspace() {
     throw new HttpError(
       403,
@@ -395,6 +402,67 @@ void describe('buildApiApp', () => {
     assert.equal(body.users[0]?.lastSeenAt, null)
     assert.equal(body.users[0]?.taskCount, 0)
     assert.equal(body.users[1]?.appRole, 'user')
+  })
+
+  void it('lets the global owner permanently delete an application user', async () => {
+    const sessionRepository = new MemorySessionRepository()
+
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(sessionRepository),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const deleteResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'DELETE',
+      url: '/api/v1/admin/users/44444444-4444-4444-8444-444444444444',
+    })
+
+    assert.equal(deleteResponse.statusCode, 204)
+
+    const listResponse = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'GET',
+      url: '/api/v1/admin/users',
+    })
+    const users = adminUserListResponseSchema.parse(listResponse.json()).users
+
+    assert.deepEqual(
+      users.map((user) => user.id),
+      ['11111111-1111-4111-8111-111111111111'],
+    )
+  })
+
+  void it('protects the global owner from self-deletion', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': '11111111-1111-4111-8111-111111111111',
+        'x-workspace-id': '22222222-2222-4222-8222-222222222222',
+      },
+      method: 'DELETE',
+      url: '/api/v1/profile',
+    })
+
+    assert.equal(response.statusCode, 400)
+    assert.equal(
+      apiErrorSchema.parse(response.json()).error.code,
+      'owner_account_deletion_forbidden',
+    )
   })
 
   void it('forbids application user management for non-owner role', async () => {
@@ -2292,6 +2360,9 @@ void describe('buildApiApp', () => {
           Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
         )
       },
+      deleteUserAccount() {
+        throw new Error('deleteUserAccount should not be called.')
+      },
       createSharedWorkspace() {
         throw new Error('createSharedWorkspace should not be called.')
       },
@@ -2662,6 +2733,9 @@ void describe('buildApiApp', () => {
         return Promise.reject(
           Object.assign(new Error('read ETIMEDOUT'), { code: 'ETIMEDOUT' }),
         )
+      },
+      deleteUserAccount() {
+        throw new Error('Not implemented.')
       },
       createSharedWorkspace() {
         throw new Error('Not implemented.')

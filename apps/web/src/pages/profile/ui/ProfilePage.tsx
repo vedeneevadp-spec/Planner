@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router'
 
+import { AccountDeletionPanel } from '@/features/account-deletion'
 import { ProfileAccountPanel } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
 import pageStyles from '@/shared/ui/Page'
@@ -19,6 +20,7 @@ export function ProfilePage() {
           void navigate('/today')
         }}
       />
+      <AccountDeletionPanel />
     </section>
   )
 }

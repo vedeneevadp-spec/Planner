@@ -93,15 +93,67 @@
   gap: 0.55rem;
 }
 
+.userSort {
+  width: min(100%, 17rem);
+}
+
+.userSectionHeader {
+  align-items: center;
+}
+
+.userSectionTitle {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.userSectionTitle h3 {
+  margin: 0;
+}
+
 .userRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(12rem, auto) minmax(8rem, 10rem);
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, auto) minmax(11rem, auto);
   align-items: center;
   gap: 0.65rem;
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 0.72rem;
   background: var(--field-bg-muted);
+}
+
+.userActions {
+  display: grid;
+  grid-template-columns: minmax(8rem, 10rem) 2.55rem;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.userActions:has(.roleValue) {
+  grid-template-columns: minmax(8rem, 10rem);
+}
+
+.userDeleteButton {
+  display: inline-grid;
+  width: 2.55rem;
+  height: 2.55rem;
+  place-items: center;
+  border: 1px solid var(--danger-border);
+  border-radius: 14px;
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.userDeleteButton:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: var(--danger-border-strong);
+  background: var(--danger-bg-hover);
+}
+
+.userDeleteButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .userIdentity {
@@ -171,6 +223,12 @@
 
 .field,
 .roleSelect {
+  --select-picker-height: 2.55rem;
+  --select-picker-radius: 16px;
+  --select-picker-padding: 0.72rem 0.82rem;
+}
+
+.userSort {
   --select-picker-height: 2.55rem;
   --select-picker-radius: 16px;
   --select-picker-padding: 0.72rem 0.82rem;
@@ -610,6 +668,10 @@
   .toggleRow,
   .userRow {
     grid-template-columns: 1fr;
+  }
+
+  .userActions {
+    grid-template-columns: minmax(0, 1fr) 2.55rem;
   }
 
   .previewCell,

@@ -102,6 +102,59 @@ export class PostgresSessionRepository implements SessionRepository {
     })
   }
 
+  async deleteUserAccount(
+    session: SessionSnapshot,
+    authContext: AuthenticatedRequestContext | null,
+    userId: string,
+  ): Promise<{ avatarUrl: string | null }> {
+    const effectiveAuthContext =
+      authContext ?? createInternalAuthenticatedContext(session)
+
+    return withWriteTransaction(
+      this.db,
+      effectiveAuthContext,
+      async (trx) => {
+        const targetUser = await trx
+          .selectFrom('app.users')
+          .select(['app_role as appRole', 'avatar_url as avatarUrl'])
+          .where('id', '=', userId)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst()
+
+        if (!targetUser) {
+          throw new HttpError(
+            404,
+            'admin_user_not_found',
+            'Application user was not found.',
+          )
+        }
+
+        if (targetUser.appRole === 'owner') {
+          throw new HttpError(
+            400,
+            'owner_account_deletion_forbidden',
+            'The global owner account cannot be deleted.',
+          )
+        }
+
+        const result = await sql<{ deleted: boolean }>`
+          select app.delete_user_account(${userId}::uuid) as deleted
+        `.execute(trx)
+
+        if (!result.rows[0]?.deleted) {
+          throw new HttpError(
+            403,
+            'account_deletion_forbidden',
+            'The current user is not allowed to delete this account.',
+          )
+        }
+
+        return { avatarUrl: targetUser.avatarUrl }
+      },
+      session.actorUserId,
+    )
+  }
+
   async createSharedWorkspace(
     session: SessionSnapshot,
     input: CreateSharedWorkspaceInput,
@@ -1421,6 +1474,22 @@ export class PostgresSessionRepository implements SessionRepository {
     const normalizedValue = value.trim()
 
     return normalizedValue.length > 0 ? normalizedValue : null
+  }
+}
+
+function createInternalAuthenticatedContext(
+  session: SessionSnapshot,
+): AuthenticatedRequestContext {
+  return {
+    accessToken: 'internal-session-repository',
+    claims: {
+      email: session.actor.email,
+      payload: {
+        email: session.actor.email,
+      },
+      role: 'authenticated',
+      sub: session.actorUserId,
+    },
   }
 }
 

@@ -82,6 +82,14 @@ export function registerSessionRoutes(
     return userProfileSchema.parse(profile)
   })
 
+  app.delete('/api/v1/profile', async (request, reply) => {
+    const context = resolveRequiredSessionContext(request)
+
+    await service.deleteCurrentUserAccount(context)
+
+    return reply.code(204).send()
+  })
+
   app.patch('/api/v1/preferences', async (request) => {
     const context = resolveRequiredSessionContext(request)
     const input = parseOrThrow(
@@ -162,6 +170,19 @@ export function registerSessionRoutes(
     )
 
     return adminUserRecordSchema.parse(user)
+  })
+
+  app.delete('/api/v1/admin/users/:userId', async (request, reply) => {
+    const context = resolveRequiredSessionContext(request)
+    const params = parseOrThrow(
+      userParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+
+    await service.deleteAdminUserAccount(context, params.userId)
+
+    return reply.code(204).send()
   })
 
   app.patch('/api/v1/admin/workspace-settings', async (request) => {

@@ -1,5 +1,10 @@
 .profilePage {
   align-items: flex-start;
+  gap: 1rem;
+}
+
+.profilePage > * {
+  width: min(100%, 42rem);
 }
 
 @media (max-width: 820px) {

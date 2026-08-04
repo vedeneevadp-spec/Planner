@@ -1,7 +1,18 @@
-import type { AppRole, AssignableAppRole } from '@planner/contracts'
-import { type ChangeEvent, type FormEvent, useEffect, useState } from 'react'
+import type {
+  AdminUserRecord,
+  AppRole,
+  AssignableAppRole,
+} from '@planner/contracts'
+import {
+  type ChangeEvent,
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import { EmojiGlyph, type NewEmojiAssetInput } from '@/entities/emoji-set'
+import { AccountDeletionDialog } from '@/features/account-deletion'
 import {
   useAddEmojiSetItems,
   useCreateEmojiSet,
@@ -11,15 +22,18 @@ import {
 } from '@/features/emoji-library'
 import {
   useAdminUsers,
+  useDeleteAdminUserAccount,
   usePlannerSession,
   useUpdateAdminUserRole,
   useUpdateWorkspaceSettings,
 } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
+import { TrashIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
+import { type AdminUserSort, sortAdminUsers } from '../lib/admin-user-sort'
 import {
   ACCEPTED_ICON_TYPES,
   createLabelFromFile,
@@ -64,6 +78,16 @@ const ROLE_LABELS: Record<AppRole, string> = {
   test: 'test',
   user: 'user',
 }
+const ADMIN_USER_SORT_OPTIONS: Array<{
+  label: string
+  value: AdminUserSort
+}> = [
+  { label: 'По имени', value: 'name' },
+  { label: 'Задач: сначала больше', value: 'tasks-desc' },
+  { label: 'Задач: сначала меньше', value: 'tasks-asc' },
+  { label: 'Заходили недавно', value: 'last-seen-desc' },
+  { label: 'Заходили давно', value: 'last-seen-asc' },
+]
 
 let draftItemCounter = 0
 
@@ -110,6 +134,7 @@ export function AdminPage() {
   const deleteIconSet = useDeleteEmojiSet()
   const deleteIconSetItem = useDeleteEmojiSetItem()
   const updateWorkspaceSettings = useUpdateWorkspaceSettings()
+  const deleteAdminUserAccount = useDeleteAdminUserAccount()
   const [activeSection, setActiveSection] = useState<AdminSection>('users')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -121,6 +146,8 @@ export function AdminPage() {
   const [libraryError, setLibraryError] = useState<string | null>(null)
   const [settingsError, setSettingsError] = useState<string | null>(null)
   const [userError, setUserError] = useState<string | null>(null)
+  const [userSort, setUserSort] = useState<AdminUserSort>('name')
+  const [deletingUser, setDeletingUser] = useState<AdminUserRecord | null>(null)
   const [brokenIconIds, setBrokenIconIds] = useState<Set<string>>(
     () => new Set(),
   )
@@ -131,13 +158,21 @@ export function AdminPage() {
     session?.workspaceSettings ?? DEFAULT_WORKSPACE_SETTINGS
   const adminUsersQuery = useAdminUsers({ enabled: isOwner })
   const updateAdminUserRole = useUpdateAdminUserRole()
-  const adminUsers = adminUsersQuery.data?.users ?? []
+  const adminUsers = useMemo(
+    () => adminUsersQuery.data?.users ?? [],
+    [adminUsersQuery.data?.users],
+  )
+  const sortedAdminUsers = useMemo(
+    () => sortAdminUsers(adminUsers, userSort),
+    [adminUsers, userSort],
+  )
   const iconSets = iconSetsQuery.data ?? []
   const isCreatingNewSet = targetSetId === NEW_ICON_SET_TARGET
   const isSaving = createIconSet.isPending || addIconSetItems.isPending
   const isDeleting = deleteIconSet.isPending || deleteIconSetItem.isPending
   const isUpdatingSettings = updateWorkspaceSettings.isPending
-  const isUpdatingUsers = updateAdminUserRole.isPending
+  const isUpdatingUsers =
+    updateAdminUserRole.isPending || deleteAdminUserAccount.isPending
 
   useEffect(() => {
     if (!canManage) {
@@ -352,6 +387,25 @@ export function AdminPage() {
     }
   }
 
+  async function handleDeleteUserAccount() {
+    if (!deletingUser) {
+      return
+    }
+
+    setUserError(null)
+
+    try {
+      await deleteAdminUserAccount.mutateAsync(deletingUser.id)
+      setDeletingUser(null)
+    } catch (error) {
+      setUserError(
+        error instanceof Error
+          ? error.message
+          : 'Не удалось удалить аккаунт пользователя.',
+      )
+    }
+  }
+
   async function handleTaskCompletionConfettiChange(enabled: boolean) {
     setSettingsError(null)
 
@@ -428,20 +482,23 @@ export function AdminPage() {
 
       {activeSection === 'users' ? (
         <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            <div>
-              <p className={styles.eyebrow}>Access</p>
+          <div className={cx(styles.sectionHeader, styles.userSectionHeader)}>
+            <div className={styles.userSectionTitle}>
               <h3>Пользователи приложения</h3>
+              {isOwner ? (
+                <span className={styles.countBadge}>{adminUsers.length}</span>
+              ) : null}
             </div>
-            {isOwner ? (
-              <span className={styles.countBadge}>{adminUsers.length}</span>
+            {isOwner && adminUsers.length > 1 ? (
+              <SelectPicker
+                ariaLabel="Сортировка пользователей"
+                className={styles.userSort}
+                options={ADMIN_USER_SORT_OPTIONS}
+                value={userSort}
+                onChange={setUserSort}
+              />
             ) : null}
           </div>
-          <p className={styles.sectionCopy}>
-            {isOwner
-              ? 'Глобальный owner видит всех пользователей приложения и может менять их глобальные роли.'
-              : 'Только глобальный owner может управлять ролями пользователей.'}
-          </p>
 
           {userError ? <p className={styles.formError}>{userError}</p> : null}
 
@@ -455,7 +512,7 @@ export function AdminPage() {
             </div>
           ) : adminUsers.length > 0 ? (
             <div className={styles.userList}>
-              {adminUsers.map((user) => (
+              {sortedAdminUsers.map((user) => (
                 <div className={styles.userRow} key={user.id}>
                   <div className={styles.userIdentity}>
                     <strong>{user.displayName}</strong>
@@ -477,31 +534,60 @@ export function AdminPage() {
                       <span className={styles.currentUserBadge}>вы</span>
                     ) : null}
                   </div>
-                  {user.appRole === 'owner' ? (
-                    <span className={styles.roleValue}>
-                      {ROLE_LABELS[user.appRole]}
-                    </span>
-                  ) : (
-                    <SelectPicker
-                      className={styles.roleSelect}
-                      value={user.appRole}
-                      disabled={isUpdatingUsers}
-                      ariaLabel={`Роль ${user.displayName}`}
-                      options={MANAGEABLE_APP_ROLES.map((role) => ({
-                        label: ROLE_LABELS[role],
-                        value: role,
-                      }))}
-                      onChange={(nextRole) => {
-                        void handleUserRoleChange(user.id, nextRole)
-                      }}
-                    />
-                  )}
+                  <div className={styles.userActions}>
+                    {user.appRole === 'owner' ? (
+                      <span className={styles.roleValue}>
+                        {ROLE_LABELS[user.appRole]}
+                      </span>
+                    ) : (
+                      <>
+                        <SelectPicker
+                          className={styles.roleSelect}
+                          value={user.appRole}
+                          disabled={isUpdatingUsers}
+                          ariaLabel={`Роль ${user.displayName}`}
+                          options={MANAGEABLE_APP_ROLES.map((role) => ({
+                            label: ROLE_LABELS[role],
+                            value: role,
+                          }))}
+                          onChange={(nextRole) => {
+                            void handleUserRoleChange(user.id, nextRole)
+                          }}
+                        />
+                        <button
+                          aria-label={`Удалить аккаунт ${user.displayName}`}
+                          className={styles.userDeleteButton}
+                          disabled={isUpdatingUsers}
+                          type="button"
+                          onClick={() => {
+                            setUserError(null)
+                            deleteAdminUserAccount.reset()
+                            setDeletingUser(user)
+                          }}
+                        >
+                          <TrashIcon size={17} strokeWidth={2.1} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className={pageStyles.emptyPanel}>Пользователей пока нет.</div>
           )}
+
+          <AccountDeletionDialog
+            displayName={deletingUser?.displayName ?? ''}
+            email={deletingUser?.email ?? ''}
+            errorMessage={userError}
+            isOpen={Boolean(deletingUser)}
+            isPending={deleteAdminUserAccount.isPending}
+            onCancel={() => setDeletingUser(null)}
+            onConfirm={() => {
+              void handleDeleteUserAccount()
+            }}
+          />
         </section>
       ) : null}
 
