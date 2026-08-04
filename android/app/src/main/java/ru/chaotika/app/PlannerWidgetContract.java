@@ -10,8 +10,8 @@ import org.json.JSONObject;
 final class PlannerWidgetContract {
 
     static final String DEFAULT_TASK_COLOR = "#8EE7C8";
-    static final int MAX_SNAPSHOT_TASKS = 24;
-    static final int SNAPSHOT_VERSION = 4;
+    static final int MAX_SNAPSHOT_TASKS = 72;
+    static final int SNAPSHOT_VERSION = 5;
 
     private PlannerWidgetContract() {}
 
@@ -47,6 +47,8 @@ final class PlannerWidgetContract {
                 nonNegativeInt(value.optInt("doneTodayCount", 0)),
                 nonNegativeInt(value.optInt("overdueCount", 0)),
                 nonNegativeInt(value.optInt("hiddenTaskCount", 0)),
+                nonNegativeInt(value.optInt("hiddenSelfCareTaskCount", 0)),
+                nonNegativeInt(value.optInt("hiddenCleaningTaskCount", 0)),
                 tasks
             );
         } catch (JSONException exception) {
@@ -85,6 +87,7 @@ final class PlannerWidgetContract {
             JSONArray nextTasks = new JSONArray();
             boolean didRemoveTask = false;
             String removedDateBucket = "today";
+            String removedTaskSource = "planner";
 
             if (taskValues != null) {
                 for (int index = 0; index < taskValues.length(); index += 1) {
@@ -101,6 +104,7 @@ final class PlannerWidgetContract {
                                 taskValue.optBoolean("isOverdue", false) ? "overdue" : "today"
                             )
                         );
+                        removedTaskSource = parseTaskSource(taskValue.optString("source", "planner"));
                         didRemoveTask = true;
                         continue;
                     }
@@ -114,13 +118,16 @@ final class PlannerWidgetContract {
             }
 
             value.put("tasks", nextTasks);
-            value.put("doneTodayCount", snapshot.doneTodayCount + 1);
             value.put("generatedAt", generatedAt);
 
-            if ("overdue".equals(removedDateBucket)) {
-                value.put("overdueCount", Math.max(0, snapshot.overdueCount - 1));
-            } else if ("today".equals(removedDateBucket)) {
-                value.put("todayCount", Math.max(0, snapshot.todayCount - 1));
+            if ("planner".equals(removedTaskSource)) {
+                value.put("doneTodayCount", snapshot.doneTodayCount + 1);
+
+                if ("overdue".equals(removedDateBucket)) {
+                    value.put("overdueCount", Math.max(0, snapshot.overdueCount - 1));
+                } else if ("today".equals(removedDateBucket)) {
+                    value.put("todayCount", Math.max(0, snapshot.todayCount - 1));
+                }
             }
 
             return value.toString();
@@ -144,6 +151,7 @@ final class PlannerWidgetContract {
 
         String timeLabel = value.isNull("timeLabel") ? null : value.optString("timeLabel", null);
         boolean isOverdue = value.optBoolean("isOverdue", false);
+        String source = parseTaskSource(value.optString("source", "planner"));
 
         return new PlannerWidgetTask(
             id,
@@ -153,8 +161,65 @@ final class PlannerWidgetContract {
             timeLabel,
             isOverdue,
             parseDateBucket(value.optString("dateBucket", isOverdue ? "overdue" : "today")),
-            parseVisualTone(value.optString("visualTone", "default"))
+            parseVisualTone(value.optString("visualTone", "default")),
+            source,
+            value.optBoolean("canComplete", !"self_care".equals(source))
         );
+    }
+
+    static List<PlannerWidgetTask> filterTasks(
+        PlannerWidgetSnapshot snapshot,
+        boolean showSelfCare,
+        boolean showCleaning
+    ) {
+        List<PlannerWidgetTask> visibleTasks = new ArrayList<>();
+
+        if (snapshot == null) {
+            return visibleTasks;
+        }
+
+        for (PlannerWidgetTask task : snapshot.tasks) {
+            if (
+                ("self_care".equals(task.source) && !showSelfCare) ||
+                ("cleaning".equals(task.source) && !showCleaning)
+            ) {
+                continue;
+            }
+
+            visibleTasks.add(task);
+        }
+
+        return visibleTasks;
+    }
+
+    static int getHiddenTaskCount(
+        PlannerWidgetSnapshot snapshot,
+        boolean showSelfCare,
+        boolean showCleaning
+    ) {
+        if (snapshot == null) {
+            return 0;
+        }
+
+        return snapshot.hiddenTaskCount +
+            (showSelfCare ? snapshot.hiddenSelfCareTaskCount : 0) +
+            (showCleaning ? snapshot.hiddenCleaningTaskCount : 0);
+    }
+
+    static boolean canCompleteTask(String rawSnapshot, String taskId) {
+        PlannerWidgetSnapshot snapshot = parseSnapshot(rawSnapshot);
+
+        if (snapshot == null || !isSupportedTaskId(taskId)) {
+            return false;
+        }
+
+        for (PlannerWidgetTask task : snapshot.tasks) {
+            if (task.id.equals(taskId)) {
+                return task.canComplete;
+            }
+        }
+
+        return false;
     }
 
     private static String parseColor(String value) {
@@ -194,6 +259,14 @@ final class PlannerWidgetContract {
         return "default";
     }
 
+    private static String parseTaskSource(String value) {
+        if ("cleaning".equals(value) || "self_care".equals(value)) {
+            return value;
+        }
+
+        return "planner";
+    }
+
     private static boolean isSupportedTaskId(String taskId) {
         return taskId != null && !taskId.trim().isEmpty();
     }
@@ -222,6 +295,8 @@ final class PlannerWidgetState {
 final class PlannerWidgetSnapshot {
     final String dateKey;
     final int doneTodayCount;
+    final int hiddenCleaningTaskCount;
+    final int hiddenSelfCareTaskCount;
     final int hiddenTaskCount;
     final int overdueCount;
     final List<PlannerWidgetTask> tasks;
@@ -233,6 +308,8 @@ final class PlannerWidgetSnapshot {
         int doneTodayCount,
         int overdueCount,
         int hiddenTaskCount,
+        int hiddenSelfCareTaskCount,
+        int hiddenCleaningTaskCount,
         List<PlannerWidgetTask> tasks
     ) {
         this.dateKey = dateKey;
@@ -240,18 +317,22 @@ final class PlannerWidgetSnapshot {
         this.doneTodayCount = doneTodayCount;
         this.overdueCount = overdueCount;
         this.hiddenTaskCount = hiddenTaskCount;
+        this.hiddenSelfCareTaskCount = hiddenSelfCareTaskCount;
+        this.hiddenCleaningTaskCount = hiddenCleaningTaskCount;
         this.tasks = tasks;
     }
 }
 
 final class PlannerWidgetTask {
     final String id;
+    final boolean canComplete;
     final String color;
     final String dateBucket;
     final String icon;
     final boolean isOverdue;
     final String timeLabel;
     final String title;
+    final String source;
     final String visualTone;
 
     PlannerWidgetTask(
@@ -262,7 +343,9 @@ final class PlannerWidgetTask {
         String timeLabel,
         boolean isOverdue,
         String dateBucket,
-        String visualTone
+        String visualTone,
+        String source,
+        boolean canComplete
     ) {
         this.id = id;
         this.title = title;
@@ -272,5 +355,7 @@ final class PlannerWidgetTask {
         this.isOverdue = isOverdue;
         this.dateBucket = dateBucket;
         this.visualTone = visualTone;
+        this.source = source;
+        this.canComplete = canComplete;
     }
 }

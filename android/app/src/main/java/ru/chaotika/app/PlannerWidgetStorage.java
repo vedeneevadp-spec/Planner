@@ -27,6 +27,9 @@ final class PlannerWidgetStorage {
 
     private static final int DEFAULT_BACKGROUND_OPACITY_PERCENT = 85;
     private static final String BACKGROUND_OPACITY_KEY = "planner.widget.background.opacityPercent";
+    private static final String READ_ONLY_KEY = "planner.widget.read-only";
+    private static final String SHOW_CLEANING_KEY = "planner.widget.show-cleaning";
+    private static final String SHOW_SELF_CARE_KEY = "planner.widget.show-self-care";
     private static final String PENDING_COMPLETED_TASK_IDS_KEY = "planner.widget.pending-completed-task-ids";
     private static final String PENDING_ROUTE_KEY = "planner.widget.pending-route";
     private static final String PREFERENCES_NAME = "CapacitorStorage";
@@ -114,12 +117,43 @@ final class PlannerWidgetStorage {
         }
     }
 
+    static PlannerWidgetConfiguration readConfiguration(Context context) {
+        SharedPreferences preferences = getPreferences(context);
+
+        return new PlannerWidgetConfiguration(
+            readBackgroundOpacityPercent(preferences),
+            preferences.getBoolean(READ_ONLY_KEY, false),
+            preferences.getBoolean(SHOW_SELF_CARE_KEY, false),
+            preferences.getBoolean(SHOW_CLEANING_KEY, false)
+        );
+    }
+
     static int writeBackgroundOpacityPercent(Context context, int value) {
         int opacity = normalizeBackgroundOpacityPercent(value);
 
         getPreferences(context).edit().putString(BACKGROUND_OPACITY_KEY, String.valueOf(opacity)).apply();
 
         return opacity;
+    }
+
+    static PlannerWidgetConfiguration writeConfiguration(
+        Context context,
+        int backgroundOpacityPercent,
+        boolean readOnly,
+        boolean showSelfCare,
+        boolean showCleaning
+    ) {
+        int opacity = normalizeBackgroundOpacityPercent(backgroundOpacityPercent);
+
+        getPreferences(context)
+            .edit()
+            .putString(BACKGROUND_OPACITY_KEY, String.valueOf(opacity))
+            .putBoolean(READ_ONLY_KEY, readOnly)
+            .putBoolean(SHOW_SELF_CARE_KEY, showSelfCare)
+            .putBoolean(SHOW_CLEANING_KEY, showCleaning)
+            .apply();
+
+        return new PlannerWidgetConfiguration(opacity, readOnly, showSelfCare, showCleaning);
     }
 
     static void markTaskCompletedInSnapshot(Context context, String taskId) {
@@ -169,6 +203,20 @@ final class PlannerWidgetStorage {
         return context.getApplicationContext().getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE);
     }
 
+    private static int readBackgroundOpacityPercent(SharedPreferences preferences) {
+        String value = preferences.getString(BACKGROUND_OPACITY_KEY, null);
+
+        if (value == null) {
+            return DEFAULT_BACKGROUND_OPACITY_PERCENT;
+        }
+
+        try {
+            return normalizeBackgroundOpacityPercent(Integer.parseInt(value));
+        } catch (NumberFormatException exception) {
+            return DEFAULT_BACKGROUND_OPACITY_PERCENT;
+        }
+    }
+
     private static boolean isSupportedRoute(String route) {
         return route != null && route.startsWith("/") && !route.startsWith("//");
     }
@@ -202,5 +250,24 @@ final class PlannerWidgetStorage {
         formatter.setTimeZone(TimeZone.getTimeZone("UTC"));
 
         return formatter.format(new Date());
+    }
+}
+
+final class PlannerWidgetConfiguration {
+    final int backgroundOpacityPercent;
+    final boolean readOnly;
+    final boolean showCleaning;
+    final boolean showSelfCare;
+
+    PlannerWidgetConfiguration(
+        int backgroundOpacityPercent,
+        boolean readOnly,
+        boolean showSelfCare,
+        boolean showCleaning
+    ) {
+        this.backgroundOpacityPercent = backgroundOpacityPercent;
+        this.readOnly = readOnly;
+        this.showSelfCare = showSelfCare;
+        this.showCleaning = showCleaning;
     }
 }

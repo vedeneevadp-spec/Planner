@@ -15,6 +15,8 @@ import type { ReactNode } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { Task } from '@/entities/task'
+
 import { buildSelfCareCalendarTasks } from '../lib/calendar-load'
 import { CalendarPage } from './CalendarPage'
 
@@ -44,6 +46,7 @@ interface TaskComposerMockProps {
 const mocks = vi.hoisted(() => ({
   mutatePreferences:
     vi.fn<(input: { calendarViewMode: CalendarViewMode }) => void>(),
+  tasks: [] as Task[],
   taskComposer: vi.fn<(props: TaskComposerMockProps) => void>(),
   usePlannerSession: vi.fn<() => { data: SessionStub }>(),
 }))
@@ -62,7 +65,7 @@ vi.mock('@/features/planner', () => ({
     setTaskSchedule: vi.fn(),
     setTaskStatus: vi.fn(),
     spheres: [],
-    tasks: [],
+    tasks: mocks.tasks,
     updateTask: vi.fn(),
   }),
 }))
@@ -97,6 +100,7 @@ describe('CalendarPage', () => {
   beforeEach(() => {
     currentSession = createSession('week')
     mocks.mutatePreferences.mockReset()
+    mocks.tasks = []
     mocks.taskComposer.mockReset()
     mocks.usePlannerSession.mockImplementation(() => ({ data: currentSession }))
   })
@@ -130,6 +134,15 @@ describe('CalendarPage', () => {
     renderCalendarPage('/calendar')
 
     expect(screen.getByLabelText('Расписание')).toBeVisible()
+  })
+
+  it('marks week view for its scoped responsive layout', () => {
+    renderCalendarPage('/calendar?calendarView=week')
+
+    expect(screen.getByLabelText('Неделя').parentElement).toHaveAttribute(
+      'data-calendar-view',
+      'week',
+    )
   })
 
   it('uses the day view from the calendar query', async () => {
@@ -191,6 +204,26 @@ describe('CalendarPage', () => {
 
     expect(markers).toHaveLength(1)
     expect(markers[0]).toHaveStyle({ top: '59.375%' })
+  })
+
+  it('does not show untimed tasks in week view', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-03T14:15:00'))
+    mocks.tasks = [
+      createTask({
+        plannedDate: '2026-06-03',
+        title: 'Недельная задача без времени',
+      }),
+    ]
+
+    renderCalendarPage('/calendar?calendarView=week')
+
+    const week = within(screen.getByLabelText('Неделя'))
+
+    expect(week.queryByText('Без времени')).not.toBeInTheDocument()
+    expect(
+      week.queryByText('Недельная задача без времени'),
+    ).not.toBeInTheDocument()
   })
 
   it('hides planning-only after-completion self-care repeats from the calendar', () => {
@@ -331,6 +364,35 @@ function createSession(calendarViewMode: CalendarViewMode): SessionStub {
       kind: 'personal',
     },
     workspaceId: 'workspace-1',
+  }
+}
+
+function createTask(overrides: Partial<Task> = {}): Task {
+  return {
+    assigneeDisplayName: null,
+    assigneeUserId: null,
+    authorDisplayName: null,
+    authorUserId: null,
+    completedAt: null,
+    createdAt: '2026-06-03T08:00:00.000Z',
+    dueDate: null,
+    icon: '',
+    id: 'task-1',
+    importance: 'not_important',
+    necessity: 'desired',
+    note: '',
+    plannedDate: '2026-06-03',
+    plannedEndTime: null,
+    plannedStartTime: null,
+    project: '',
+    projectId: null,
+    requiresConfirmation: false,
+    resource: null,
+    sphereId: null,
+    status: 'todo',
+    title: 'Задача без времени',
+    urgency: 'not_urgent',
+    ...overrides,
   }
 }
 

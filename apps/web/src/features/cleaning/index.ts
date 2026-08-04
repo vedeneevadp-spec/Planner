@@ -1,4 +1,10 @@
 export {
+  type CleaningApiClient,
+  type CleaningApiClientConfig,
+  CleaningApiError,
+  createCleaningApiClient,
+} from './lib/cleaning-api'
+export {
   CLEANING_FOCUS_MODES,
   CLEANING_FOCUS_QUERY_KEY,
   type CleaningFocusMode,

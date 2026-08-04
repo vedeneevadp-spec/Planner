@@ -27,6 +27,8 @@ public class PlannerWidgetContractTest {
         assertEquals("svg:bell", snapshot.tasks.get(0).icon);
         assertEquals(true, snapshot.tasks.get(0).isOverdue);
         assertEquals("overdue", snapshot.tasks.get(0).visualTone);
+        assertEquals("planner", snapshot.tasks.get(0).source);
+        assertEquals(true, snapshot.tasks.get(0).canComplete);
         assertEquals("task-today", snapshot.tasks.get(1).id);
         assertEquals("#2F6F62", snapshot.tasks.get(1).color);
         assertEquals("today", snapshot.tasks.get(1).dateBucket);
@@ -39,7 +41,7 @@ public class PlannerWidgetContractTest {
     public void parseSnapshot_rejectsMissingOrOldContract() {
         assertNull(PlannerWidgetContract.parseSnapshot(null));
         assertNull(PlannerWidgetContract.parseSnapshot(""));
-        assertNull(PlannerWidgetContract.parseSnapshot("{\"version\":2,\"dateKey\":\"2026-05-09\"}"));
+        assertNull(PlannerWidgetContract.parseSnapshot("{\"version\":4,\"dateKey\":\"2026-05-09\"}"));
     }
 
     @Test
@@ -95,15 +97,49 @@ public class PlannerWidgetContractTest {
         assertEquals("task-today", tasks.getJSONObject(1).getString("id"));
     }
 
+    @Test
+    public void filtersOptionalSourcesAndCountsOnlyTheirHiddenTasks() {
+        PlannerWidgetSnapshot snapshot = PlannerWidgetContract.parseSnapshot(
+            createSnapshotWithOptionalSources("2026-05-09")
+        );
+
+        assertNotNull(snapshot);
+        assertEquals(2, PlannerWidgetContract.filterTasks(snapshot, false, false).size());
+        assertEquals(3, PlannerWidgetContract.filterTasks(snapshot, true, false).size());
+        assertEquals(4, PlannerWidgetContract.filterTasks(snapshot, true, true).size());
+        assertEquals(3, PlannerWidgetContract.getHiddenTaskCount(snapshot, false, false));
+        assertEquals(5, PlannerWidgetContract.getHiddenTaskCount(snapshot, true, false));
+        assertEquals(9, PlannerWidgetContract.getHiddenTaskCount(snapshot, true, true));
+        assertEquals(false, PlannerWidgetContract.canCompleteTask(createSnapshotWithOptionalSources("2026-05-09"), "self-care:care-1"));
+        assertEquals(true, PlannerWidgetContract.canCompleteTask(createSnapshotWithOptionalSources("2026-05-09"), "cleaning:clean-1"));
+    }
+
+    @Test
+    public void markTaskDone_removesCleaningTaskWithoutChangingPlannerCounters() throws Exception {
+        String nextSnapshot = PlannerWidgetContract.markTaskDone(
+            createSnapshotWithOptionalSources("2026-05-09"),
+            "cleaning:clean-1",
+            "2026-05-09T10:00:00.000Z"
+        );
+        JSONObject value = new JSONObject(nextSnapshot);
+
+        assertEquals(0, value.getInt("doneTodayCount"));
+        assertEquals(1, value.getInt("overdueCount"));
+        assertEquals(2, value.getInt("todayCount"));
+        assertEquals(3, value.getJSONArray("tasks").length());
+    }
+
     private static String createSnapshot(String dateKey) {
         return "{"
-            + "\"version\":4,"
+            + "\"version\":5,"
             + "\"dateKey\":\"" + dateKey + "\","
             + "\"generatedAt\":\"2026-05-09T09:00:00.000Z\","
             + "\"todayCount\":2,"
             + "\"doneTodayCount\":0,"
             + "\"overdueCount\":1,"
             + "\"hiddenTaskCount\":3,"
+            + "\"hiddenSelfCareTaskCount\":0,"
+            + "\"hiddenCleaningTaskCount\":0,"
             + "\"tasks\":["
             + "{"
             + "\"id\":\"task-overdue\","
@@ -113,6 +149,8 @@ public class PlannerWidgetContractTest {
             + "\"title\":\"Просроченная\","
             + "\"timeLabel\":null,"
             + "\"isOverdue\":true,"
+            + "\"source\":\"planner\","
+            + "\"canComplete\":true,"
             + "\"visualTone\":\"overdue\""
             + "},"
             + "{"
@@ -123,6 +161,8 @@ public class PlannerWidgetContractTest {
             + "\"title\":\"Фокус\","
             + "\"timeLabel\":\"09:00 - 10:00\","
             + "\"isOverdue\":false,"
+            + "\"source\":\"planner\","
+            + "\"canComplete\":true,"
             + "\"visualTone\":\"urgent\""
             + "}"
             + "]"
@@ -131,13 +171,15 @@ public class PlannerWidgetContractTest {
 
     private static String createSnapshotWithFutureTask(String dateKey) {
         return "{"
-            + "\"version\":4,"
+            + "\"version\":5,"
             + "\"dateKey\":\"" + dateKey + "\","
             + "\"generatedAt\":\"2026-05-09T09:00:00.000Z\","
             + "\"todayCount\":2,"
             + "\"doneTodayCount\":0,"
             + "\"overdueCount\":1,"
             + "\"hiddenTaskCount\":0,"
+            + "\"hiddenSelfCareTaskCount\":0,"
+            + "\"hiddenCleaningTaskCount\":0,"
             + "\"tasks\":["
             + "{"
             + "\"id\":\"task-overdue\","
@@ -147,6 +189,8 @@ public class PlannerWidgetContractTest {
             + "\"title\":\"Просроченная\","
             + "\"timeLabel\":null,"
             + "\"isOverdue\":true,"
+            + "\"source\":\"planner\","
+            + "\"canComplete\":true,"
             + "\"visualTone\":\"overdue\""
             + "},"
             + "{"
@@ -157,6 +201,8 @@ public class PlannerWidgetContractTest {
             + "\"title\":\"Фокус\","
             + "\"timeLabel\":\"09:00 - 10:00\","
             + "\"isOverdue\":false,"
+            + "\"source\":\"planner\","
+            + "\"canComplete\":true,"
             + "\"visualTone\":\"urgent\""
             + "},"
             + "{"
@@ -167,9 +213,24 @@ public class PlannerWidgetContractTest {
             + "\"title\":\"15 мая: Позже\","
             + "\"timeLabel\":null,"
             + "\"isOverdue\":false,"
+            + "\"source\":\"planner\","
+            + "\"canComplete\":true,"
             + "\"visualTone\":\"default\""
             + "}"
             + "]"
             + "}";
+    }
+
+    private static String createSnapshotWithOptionalSources(String dateKey) {
+        String baseSnapshot = createSnapshot(dateKey);
+
+        return baseSnapshot
+            .replace("\"hiddenSelfCareTaskCount\":0", "\"hiddenSelfCareTaskCount\":2")
+            .replace("\"hiddenCleaningTaskCount\":0", "\"hiddenCleaningTaskCount\":4")
+            .replace(
+                "]}",
+                ",{\"id\":\"self-care:care-1\",\"color\":\"#B9B3FF\",\"dateBucket\":\"today\",\"icon\":\"♥\",\"title\":\"Забота: прогулка\",\"timeLabel\":null,\"isOverdue\":false,\"source\":\"self_care\",\"canComplete\":false,\"visualTone\":\"default\"}"
+                    + ",{\"id\":\"cleaning:clean-1\",\"color\":\"#8EE7C8\",\"dateBucket\":\"today\",\"icon\":\"🧹\",\"title\":\"Уборка: кухня\",\"timeLabel\":null,\"isOverdue\":false,\"source\":\"cleaning\",\"canComplete\":true,\"visualTone\":\"default\"}]}"
+            );
     }
 }

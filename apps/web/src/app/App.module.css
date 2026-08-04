@@ -90,6 +90,10 @@
     padding: 0.48rem 0.45rem 0;
     box-shadow: var(--inset-highlight), var(--planner-page-shadow);
   }
+
+  .main:has([data-calendar-view='week']) {
+    padding-inline: 0.15rem;
+  }
 }
 
 @media (max-width: 560px) {

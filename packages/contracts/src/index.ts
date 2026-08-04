@@ -393,6 +393,7 @@ export type {
   NativePlannerWidgetSnapshot,
   NativePlannerWidgetTask,
   NativePlannerWidgetTaskDateBucket,
+  NativePlannerWidgetTaskSource,
   NativePlannerWidgetTaskVisualTone,
 } from './planner-widget.js'
 export {
@@ -401,6 +402,7 @@ export {
   nativePlannerWidgetSnapshotSchema,
   nativePlannerWidgetTaskDateBucketSchema,
   nativePlannerWidgetTaskSchema,
+  nativePlannerWidgetTaskSourceSchema,
   nativePlannerWidgetTaskVisualToneSchema,
 } from './planner-widget.js'
 export type {

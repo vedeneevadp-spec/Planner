@@ -1075,8 +1075,16 @@ function updateSelfCareEntryWithCompletion(
     )
   }
 
-  if (entry.item.id !== completion.itemId || entry.occurrence) {
+  if (entry.item.id !== completion.itemId) {
     return entry
+  }
+
+  if (entry.occurrence) {
+    return entry.item.type === 'exercise' &&
+      completion.measurementValue !== null &&
+      isProgressSelfCareCompletion(completion)
+      ? { ...entry, lastExercise: completion }
+      : entry
   }
 
   if (isFlexibleGoalEntry(entry)) {

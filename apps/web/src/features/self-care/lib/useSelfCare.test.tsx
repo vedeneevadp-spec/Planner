@@ -1,4 +1,5 @@
 import type {
+  SelfCareCompletion,
   SelfCareDashboardResponse,
   SelfCarePlanResponse,
   SelfCareTodayItem,
@@ -55,6 +56,7 @@ import {
   selfCareHistoryQueryKey,
   selfCarePlanQueryKey,
   selfCareSettingsQueryKey,
+  useCompleteSelfCareItemNow,
   useCompleteSelfCareOccurrence,
   useCreateSelfCareItem,
   useSelfCareDashboard,
@@ -278,6 +280,90 @@ describe('useSelfCareDashboard', () => {
     )
   })
 
+  it('updates scheduled exercise caches after saving another set without active refetch', async () => {
+    const previousCompletion = createSelfCareCompletion({
+      exerciseSets: [{ index: 1, value: 7 }],
+      measurementValue: 7,
+    })
+    const baseEntry = createSelfCareEntry()
+    const entry = {
+      ...baseEntry,
+      item: {
+        ...baseEntry.item,
+        title: 'Отжимания',
+        type: 'exercise',
+      },
+      lastExercise: previousCompletion,
+    } as SelfCareTodayItem
+    const nextCompletion = createSelfCareCompletion({
+      completedAt: '2026-06-18T09:10:00.000Z',
+      exerciseSets: [
+        { index: 1, value: 7 },
+        { index: 2, value: 8 },
+      ],
+      measurementValue: 15,
+    })
+
+    vi.mocked(selfCareApi.completeItemNow).mockResolvedValueOnce(nextCompletion)
+    mocks.useSessionFeatureReadiness.mockReturnValue(createReadinessStub())
+    queryClient.setQueryData(
+      selfCareDashboardQueryKey('workspace-1', '2026-06-18'),
+      createSelfCareDashboard([entry]),
+    )
+    queryClient.setQueryData(
+      selfCarePlanQueryKey('workspace-1', '2026-06-18', '2026-07-03'),
+      createSelfCarePlan([entry]),
+    )
+    queryClient.setQueryData(
+      selfCareHistoryQueryKey('workspace-1', '2026-06-01', '2026-06-30'),
+      {
+        appointmentDetails: [],
+        completions: [previousCompletion],
+        items: [entry.item],
+        procedureDetails: [],
+        stepCompletions: [],
+      },
+    )
+
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = renderHook(() => useCompleteSelfCareItemNow(), {
+      wrapper: createQueryWrapper(queryClient),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ itemId: entry.item.id })
+    })
+
+    for (const cachedEntry of [
+      queryClient.getQueryData<ReturnType<typeof createSelfCareDashboard>>(
+        selfCareDashboardQueryKey('workspace-1', '2026-06-18'),
+      )?.todayItems[0],
+      queryClient.getQueryData<ReturnType<typeof createSelfCarePlan>>(
+        selfCarePlanQueryKey('workspace-1', '2026-06-18', '2026-07-03'),
+      )?.occurrences[0],
+    ]) {
+      expect(cachedEntry).toMatchObject({
+        completion: null,
+        lastExercise: {
+          exerciseSets: [
+            { index: 1, value: 7 },
+            { index: 2, value: 8 },
+          ],
+          measurementValue: 15,
+        },
+        occurrence: { status: 'scheduled' },
+      })
+    }
+    expect(
+      queryClient.getQueryData<{ completions: SelfCareCompletion[] }>(
+        selfCareHistoryQueryKey('workspace-1', '2026-06-01', '2026-06-30'),
+      )?.completions,
+    ).toEqual([nextCompletion])
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ refetchType: 'none' }),
+    )
+  })
+
   it('updates loaded occurrence caches after skipping without active refetch', async () => {
     const entry = createSelfCareEntry()
     vi.mocked(selfCareApi.skipOccurrence).mockResolvedValueOnce({
@@ -408,6 +494,35 @@ function createSelfCareEntry(): SelfCareTodayItem {
     steps: [],
     timeGroup: 'anytime',
   } as unknown as SelfCareTodayItem
+}
+
+function createSelfCareCompletion(
+  overrides: Partial<SelfCareCompletion> = {},
+): SelfCareCompletion {
+  return {
+    alternativeTitle: null,
+    completedAt: '2026-06-18T09:00:00.000Z',
+    completedVariant: null,
+    createdAt: '2026-06-18T09:00:00.000Z',
+    currency: null,
+    durationMinutes: null,
+    energyAfter: null,
+    energyBefore: null,
+    exerciseSets: [],
+    id: 'completion-1',
+    itemId: 'self-care-item-1',
+    measurementUnit: 'reps',
+    measurementValue: null,
+    moodAfter: null,
+    moodBefore: null,
+    note: '',
+    occurrenceId: null,
+    price: null,
+    scheduledFor: '2026-06-18',
+    status: 'partial',
+    userId: 'user-1',
+    ...overrides,
+  }
 }
 
 function createSelfCareDashboard(

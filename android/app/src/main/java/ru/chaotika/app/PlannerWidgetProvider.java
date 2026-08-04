@@ -228,8 +228,13 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
 
     private static void handleCompleteTask(Context context, Intent intent) {
         String taskId = intent.getStringExtra(PlannerWidgetStorage.EXTRA_WIDGET_TASK_ID);
+        PlannerWidgetConfiguration configuration = PlannerWidgetStorage.readConfiguration(context);
 
-        if (PlannerWidgetStorage.storePendingCompletedTaskId(context, taskId)) {
+        if (
+            !configuration.readOnly &&
+            PlannerWidgetContract.canCompleteTask(PlannerWidgetStorage.readSnapshot(context), taskId) &&
+            PlannerWidgetStorage.storePendingCompletedTaskId(context, taskId)
+        ) {
             PlannerWidgetStorage.markTaskCompletedInSnapshot(context, taskId);
         }
 

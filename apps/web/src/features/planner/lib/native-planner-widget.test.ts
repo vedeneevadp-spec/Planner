@@ -1,3 +1,7 @@
+import type {
+  CleaningTodayResponse,
+  SelfCareDashboardResponse,
+} from '@planner/contracts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const capacitorMocks = vi.hoisted(() => ({
@@ -45,6 +49,7 @@ import type { Task } from '@/entities/task'
 import {
   ackPendingNativePlannerWidgetCompletedTasks,
   buildNativePlannerWidgetSnapshot,
+  getNativePlannerWidgetCleaningTaskId,
   persistNativePlannerWidgetSnapshot,
   readPendingNativePlannerWidgetCompletedTasks,
 } from './native-planner-widget'
@@ -146,57 +151,69 @@ describe('native planner widget snapshot', () => {
       dateKey: '2026-05-09',
       doneTodayCount: 1,
       hiddenTaskCount: 0,
+      hiddenCleaningTaskCount: 0,
+      hiddenSelfCareTaskCount: 0,
       overdueCount: 1,
       todayCount: 1,
-      version: 4,
+      version: 5,
     })
     expect(snapshot.tasks).toEqual([
       {
+        canComplete: true,
         color: '#8EE7C8',
         dateBucket: 'overdue',
         icon: '',
         id: 'task-2',
         isOverdue: true,
+        source: 'planner',
         timeLabel: null,
         title: 'Просроченная задача',
         visualTone: 'overdue',
       },
       {
+        canComplete: true,
         color: '#8EE7C8',
         dateBucket: 'today',
         icon: '',
         id: 'task-1',
         isOverdue: false,
+        source: 'planner',
         timeLabel: '09:00 - 10:00',
         title: 'Утренний фокус',
         visualTone: 'default',
       },
       {
+        canComplete: true,
         color: '#8EE7C8',
         dateBucket: 'tomorrow',
         icon: '',
         id: 'task-4',
         isOverdue: false,
+        source: 'planner',
         timeLabel: null,
         title: 'Завтра: Позвонить',
         visualTone: 'default',
       },
       {
+        canComplete: true,
         color: '#8EE7C8',
         dateBucket: 'future',
         icon: '',
         id: 'task-6',
         isOverdue: false,
+        source: 'planner',
         timeLabel: null,
         title: '15 мая: Позже',
         visualTone: 'default',
       },
       {
+        canComplete: true,
         color: '#8EE7C8',
         dateBucket: 'unscheduled',
         icon: '',
         id: 'task-5',
         isOverdue: false,
+        source: 'planner',
         timeLabel: null,
         title: 'Без даты: Когда-нибудь',
         visualTone: 'default',
@@ -308,6 +325,80 @@ describe('native planner widget snapshot', () => {
       icon: '🎯',
       id: 'task-1',
     })
+  })
+
+  it('adds care and cleaning tasks with source-specific completion behavior', () => {
+    const selfCare = {
+      flexibleGoals: [],
+      overdueItems: [],
+      todayItems: [
+        {
+          appointment: null,
+          completion: null,
+          courseDetails: null,
+          flexibleProgress: null,
+          item: {
+            color: '#b9b3ff',
+            icon: '♥',
+            id: 'care-1',
+            isActive: true,
+            isArchived: false,
+            title: 'Прогулка',
+            type: 'task',
+          },
+          occurrence: {
+            dueAt: '09:30',
+            id: 'occurrence-1',
+            reminderTimeZone: null,
+            scheduledFor: '2026-05-09',
+            status: 'scheduled',
+          },
+          scheduleRule: null,
+        },
+      ],
+    } as unknown as SelfCareDashboardResponse
+    const cleaning = {
+      generalItems: [],
+      items: [
+        {
+          isOverdue: false,
+          task: {
+            id: 'cleaning-1',
+            priority: 'high',
+            title: 'Кухня',
+          },
+        },
+      ],
+    } as unknown as CleaningTodayResponse
+    const snapshot = buildNativePlannerWidgetSnapshot(
+      [baseTask],
+      [],
+      new Date(2026, 4, 9, 12),
+      { cleaning, selfCare },
+    )
+
+    expect(snapshot.tasks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          canComplete: false,
+          id: 'self-care:occurrence-1',
+          source: 'self_care',
+          timeLabel: '09:30',
+          title: 'Забота: Прогулка',
+        }),
+        expect.objectContaining({
+          canComplete: true,
+          id: 'cleaning:cleaning-1',
+          source: 'cleaning',
+          title: 'Уборка: Кухня',
+          visualTone: 'urgent',
+        }),
+      ]),
+    )
+    expect(getNativePlannerWidgetCleaningTaskId('cleaning:cleaning-1')).toBe(
+      'cleaning-1',
+    )
+    expect(getNativePlannerWidgetCleaningTaskId('task-1')).toBeNull()
   })
 
   it('reads and filters pending Android widget completions', async () => {
