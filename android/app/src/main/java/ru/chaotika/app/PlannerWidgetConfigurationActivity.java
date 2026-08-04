@@ -2,6 +2,7 @@ package ru.chaotika.app;
 
 import android.app.Activity;
 import android.appwidget.AppWidgetManager;
+import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -10,7 +11,9 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
@@ -19,6 +22,9 @@ public class PlannerWidgetConfigurationActivity extends Activity {
     private static final int[] OPACITY_OPTIONS = {40, 55, 70, 85, 100};
     private int appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID;
     private int selectedOpacity = 85;
+    private boolean selectedReadOnly = false;
+    private boolean selectedShowCleaning = false;
+    private boolean selectedShowSelfCare = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,40 +41,55 @@ public class PlannerWidgetConfigurationActivity extends Activity {
             );
         }
 
-        selectedOpacity = PlannerWidgetStorage.readBackgroundOpacityPercent(this);
+        PlannerWidgetConfiguration configuration = PlannerWidgetStorage.readConfiguration(this);
+
+        selectedOpacity = configuration.backgroundOpacityPercent;
+        selectedReadOnly = configuration.readOnly;
+        selectedShowSelfCare = configuration.showSelfCare;
+        selectedShowCleaning = configuration.showCleaning;
         setContentView(createContentView());
     }
 
-    private LinearLayout createContentView() {
-        LinearLayout root = new LinearLayout(this);
-        root.setLayoutParams(
+    private ScrollView createContentView() {
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setLayoutParams(
             new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         );
-        root.setGravity(Gravity.CENTER_VERTICAL);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(24), dp(24), dp(24), dp(24));
-        root.setBackgroundColor(Color.rgb(20, 23, 28));
+        scrollView.setFillViewport(true);
+        scrollView.setBackgroundColor(Color.rgb(20, 23, 28));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setLayoutParams(
+            new ScrollView.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        );
+        content.setGravity(Gravity.CENTER_VERTICAL);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(24), dp(24), dp(24), dp(24));
+        scrollView.addView(content);
 
         TextView title = new TextView(this);
         title.setText(R.string.planner_widget_configuration_title);
         title.setTextColor(Color.rgb(255, 249, 240));
         title.setTextSize(24);
         title.setTypeface(Typeface.DEFAULT_BOLD);
-        root.addView(title);
+        content.addView(title);
 
         TextView opacityLabel = new TextView(this);
         opacityLabel.setTextColor(Color.argb(210, 255, 255, 255));
         opacityLabel.setTextSize(16);
         opacityLabel.setPadding(0, dp(18), 0, dp(10));
-        root.addView(opacityLabel);
+        content.addView(opacityLabel);
 
         SeekBar opacitySeekBar = new SeekBar(this);
         opacitySeekBar.setMax(OPACITY_OPTIONS.length - 1);
         opacitySeekBar.setProgress(getOpacityIndex(selectedOpacity));
-        root.addView(
+        content.addView(
             opacitySeekBar,
             new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -76,19 +97,36 @@ public class PlannerWidgetConfigurationActivity extends Activity {
             )
         );
 
+        CheckBox readOnlyCheckBox = createCheckBox(
+            R.string.planner_widget_configuration_read_only,
+            selectedReadOnly
+        );
+        CheckBox showSelfCareCheckBox = createCheckBox(
+            R.string.planner_widget_configuration_show_self_care,
+            selectedShowSelfCare
+        );
+        CheckBox showCleaningCheckBox = createCheckBox(
+            R.string.planner_widget_configuration_show_cleaning,
+            selectedShowCleaning
+        );
+
+        content.addView(readOnlyCheckBox);
+        content.addView(showSelfCareCheckBox);
+        content.addView(showCleaningCheckBox);
+
         Button doneButton = new Button(this);
         LinearLayout.LayoutParams doneButtonParams = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             dp(52)
         );
 
-        doneButtonParams.setMargins(0, dp(26), 0, 0);
+        doneButtonParams.setMargins(0, dp(18), 0, 0);
         doneButton.setText(R.string.planner_widget_configuration_done);
         doneButton.setTextColor(Color.rgb(20, 23, 28));
         doneButton.setTextSize(16);
         doneButton.setTypeface(Typeface.DEFAULT_BOLD);
         doneButton.setBackground(createButtonBackground());
-        root.addView(doneButton, doneButtonParams);
+        content.addView(doneButton, doneButtonParams);
 
         updateOpacityLabel(opacityLabel, selectedOpacity);
         opacitySeekBar.setOnSeekBarChangeListener(
@@ -106,13 +144,28 @@ public class PlannerWidgetConfigurationActivity extends Activity {
                 public void onStopTrackingTouch(SeekBar seekBar) {}
             }
         );
+        readOnlyCheckBox.setOnCheckedChangeListener(
+            (buttonView, isChecked) -> selectedReadOnly = isChecked
+        );
+        showSelfCareCheckBox.setOnCheckedChangeListener(
+            (buttonView, isChecked) -> selectedShowSelfCare = isChecked
+        );
+        showCleaningCheckBox.setOnCheckedChangeListener(
+            (buttonView, isChecked) -> selectedShowCleaning = isChecked
+        );
         doneButton.setOnClickListener(view -> saveAndClose());
 
-        return root;
+        return scrollView;
     }
 
     private void saveAndClose() {
-        PlannerWidgetStorage.writeBackgroundOpacityPercent(this, selectedOpacity);
+        PlannerWidgetStorage.writeConfiguration(
+            this,
+            selectedOpacity,
+            selectedReadOnly,
+            selectedShowSelfCare,
+            selectedShowCleaning
+        );
         PlannerWidgetUpdateDispatcher.updateAllWidgets(this);
 
         Intent result = new Intent();
@@ -132,6 +185,35 @@ public class PlannerWidgetConfigurationActivity extends Activity {
         drawable.setCornerRadius(dp(16));
 
         return drawable;
+    }
+
+    private CheckBox createCheckBox(int labelResource, boolean checked) {
+        CheckBox checkBox = new CheckBox(this);
+        int accentColor = Color.rgb(142, 231, 200);
+        int uncheckedColor = Color.argb(180, 255, 255, 255);
+
+        checkBox.setLayoutParams(
+            new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(48)
+            )
+        );
+        checkBox.setButtonTintList(
+            new ColorStateList(
+                new int[][] {
+                    new int[] {android.R.attr.state_checked},
+                    new int[] {}
+                },
+                new int[] {accentColor, uncheckedColor}
+            )
+        );
+        checkBox.setChecked(checked);
+        checkBox.setGravity(Gravity.CENTER_VERTICAL);
+        checkBox.setText(labelResource);
+        checkBox.setTextColor(Color.rgb(255, 249, 240));
+        checkBox.setTextSize(16);
+
+        return checkBox;
     }
 
     private int getOpacityIndex(int opacity) {

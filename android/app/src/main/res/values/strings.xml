@@ -12,6 +12,9 @@
     <string name="planner_widget_complete_task_content_description">Отметить выполненной: %1$s</string>
     <string name="planner_widget_configuration_done">Готово</string>
     <string name="planner_widget_configuration_opacity">Непрозрачность фона</string>
+    <string name="planner_widget_configuration_read_only">Только просмотр</string>
+    <string name="planner_widget_configuration_show_cleaning">Показывать задачи уборки</string>
+    <string name="planner_widget_configuration_show_self_care">Показывать заботу</string>
     <string name="planner_widget_configuration_title">Настройки виджета</string>
     <string name="planner_widget_done_summary">%1$d/%2$d выполнено</string>
     <string name="planner_widget_empty_today">Активных задач нет.</string>

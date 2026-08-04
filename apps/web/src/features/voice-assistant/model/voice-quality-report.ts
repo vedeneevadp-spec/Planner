@@ -6,15 +6,17 @@ import {
   type PlannerIntentParserContext,
   type SafeVoiceMetricEvent,
   type TaskRecord,
-  VOICE_COMMAND_CORPUS_VERSION,
-  VOICE_TEST_CASE_CATEGORIES,
   type VoiceActionContext,
   type VoiceActionPreview,
-  voiceCommandCorpusV1,
   type VoiceMetricEventName,
+} from '@planner/contracts'
+import {
+  VOICE_COMMAND_CORPUS_VERSION,
+  VOICE_TEST_CASE_CATEGORIES,
+  voiceCommandCorpusV1,
   type VoiceTestCase,
   type VoiceTestCaseCategory,
-} from '@planner/contracts'
+} from '@planner/contracts/voice-test-corpus'
 
 import {
   PlannerActionExecutor,

@@ -152,7 +152,6 @@
 }
 
 .weekHeaderGrid,
-.allDayGrid,
 .weekColumns,
 .monthWeekdays,
 .monthGrid {
@@ -174,8 +173,7 @@
 }
 
 .timeZoneLabel,
-.weekDayHeader,
-.allDayLabel {
+.weekDayHeader {
   color: var(--text-soft);
   font-size: 0.78rem;
 }
@@ -216,29 +214,6 @@
 .weekDayHeaderToday strong {
   background: var(--accent-fill);
   color: var(--accent-text-on-fill);
-}
-
-.allDayGrid {
-  position: sticky;
-  top: var(--week-header-height);
-  z-index: 3;
-  min-width: 56.5rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--surface-overlay);
-  backdrop-filter: blur(14px);
-}
-
-.allDayLabel {
-  padding: 0.45rem 0.7rem;
-}
-
-.allDayCell {
-  display: grid;
-  align-content: start;
-  gap: 0.22rem;
-  min-height: 2.55rem;
-  padding: 0.35rem 0.28rem;
-  border-left: 1px solid var(--line);
 }
 
 .weekTimeGrid {
@@ -338,6 +313,12 @@
 .timedTask strong {
   font-size: 0.78rem;
   line-height: 1.15;
+}
+
+.calendarPage[data-calendar-view='week'] .timedTask strong {
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .dayTimedTask {
@@ -513,15 +494,6 @@
   text-align: left;
   cursor: pointer;
   appearance: none;
-}
-
-.allDayCell .taskPill {
-  font-size: 0.78rem;
-  line-height: 1.15;
-}
-
-.allDayCell .taskPill span {
-  font-weight: 700;
 }
 
 .taskPill:hover {
@@ -1164,6 +1136,13 @@
     box-shadow: none;
   }
 
+  .calendarPage[data-calendar-view='week'] .weekSurface {
+    --time-gutter: 3.2rem;
+
+    border-radius: 0;
+    background: transparent;
+  }
+
   .scheduleList {
     min-width: 0;
   }
@@ -1215,8 +1194,7 @@
     font-size: 0.8rem;
   }
 
-  .weekHeaderGrid,
-  .allDayGrid {
+  .weekHeaderGrid {
     min-width: 0;
     background:
       linear-gradient(var(--surface-muted), var(--surface-muted)),
@@ -1224,14 +1202,18 @@
     backdrop-filter: none;
   }
 
+  .calendarPage[data-calendar-view='week'] .weekHeaderGrid {
+    background:
+      linear-gradient(var(--planner-page-bg), var(--planner-page-bg)),
+      var(--planner-page-bg);
+  }
+
   .weekHeaderGrid,
-  .allDayGrid,
   .weekTimeGrid {
     min-width: 0;
   }
 
-  .weekHeaderGrid,
-  .allDayGrid {
+  .weekHeaderGrid {
     grid-template-columns: var(--time-gutter) repeat(7, minmax(0, 1fr));
   }
 
@@ -1270,24 +1252,6 @@
     width: 2.25rem;
     height: 2.25rem;
     font-size: 1.22rem;
-  }
-
-  .allDayGrid {
-    top: 3.65rem;
-    border-bottom: 0;
-  }
-
-  .allDayLabel {
-    padding: 0.28rem 0.38rem;
-    font-size: 0.68rem;
-    line-height: 1.2;
-  }
-
-  .allDayCell {
-    min-height: 2.35rem;
-    gap: 0.12rem;
-    padding: 0.18rem 0.12rem;
-    border-left: 0;
   }
 
   .timeAxis {
@@ -1330,11 +1294,6 @@
 
   .timedTaskProject {
     font-size: 0.66rem;
-  }
-
-  .allDayCell .taskPill {
-    font-size: 0.68rem;
-    line-height: 1.05;
   }
 
   .monthSurface {
@@ -1479,8 +1438,11 @@
     --hour-height: 2rem;
   }
 
-  .timeZoneLabel,
-  .allDayLabel {
+  .calendarPage[data-calendar-view='week'] .weekSurface {
+    --time-gutter: 2.75rem;
+  }
+
+  .timeZoneLabel {
     padding-left: 0.2rem;
     padding-right: 0.2rem;
     font-size: 0.62rem;
@@ -1496,10 +1458,6 @@
     font-size: 1.08rem;
   }
 
-  .allDayGrid {
-    top: 3.35rem;
-  }
-
   .timeLabel {
     padding-right: 0.28rem;
     font-size: 0.72rem;
@@ -1510,10 +1468,6 @@
   }
 
   .timedTask strong {
-    font-size: 0.62rem;
-  }
-
-  .allDayCell .taskPill {
     font-size: 0.62rem;
   }
 

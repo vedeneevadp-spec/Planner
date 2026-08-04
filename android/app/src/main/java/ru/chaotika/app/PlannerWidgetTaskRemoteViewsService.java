@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.view.View;
 import android.widget.RemoteViews;
 import android.widget.RemoteViewsService;
 import java.text.SimpleDateFormat;
@@ -57,6 +58,7 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
         private final float taskTextSizeSp;
         private final List<PlannerWidgetTask> tasks = new ArrayList<>();
         private int hiddenTaskCount = 0;
+        private boolean readOnly = false;
 
         TaskRemoteViewsFactory(Context context, Intent intent) {
             this.context = context;
@@ -78,21 +80,41 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
                 PlannerWidgetStorage.readSnapshot(context),
                 getTodayKey()
             );
+            PlannerWidgetConfiguration configuration = PlannerWidgetStorage.readConfiguration(context);
 
             tasks.clear();
             hiddenTaskCount = 0;
+            readOnly = configuration.readOnly;
 
             if (state.kind != PlannerWidgetStateKind.VALID || state.snapshot == null) {
                 return;
             }
 
             if (isTimeline()) {
-                tasks.addAll(getTimelineTasks(state.snapshot.tasks));
+                tasks.addAll(
+                    getTimelineTasks(
+                        PlannerWidgetContract.filterTasks(
+                            state.snapshot,
+                            configuration.showSelfCare,
+                            configuration.showCleaning
+                        )
+                    )
+                );
                 return;
             }
 
-            tasks.addAll(state.snapshot.tasks);
-            hiddenTaskCount = state.snapshot.hiddenTaskCount;
+            tasks.addAll(
+                PlannerWidgetContract.filterTasks(
+                    state.snapshot,
+                    configuration.showSelfCare,
+                    configuration.showCleaning
+                )
+            );
+            hiddenTaskCount = PlannerWidgetContract.getHiddenTaskCount(
+                state.snapshot,
+                configuration.showSelfCare,
+                configuration.showCleaning
+            );
         }
 
         @Override
@@ -157,6 +179,10 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
                 R.id.planner_widget_task_item_checkbox,
                 PlannerWidgetVisuals.createCheckboxBitmap(context, accentColor)
             );
+            views.setViewVisibility(
+                R.id.planner_widget_task_item_checkbox,
+                canComplete(task) ? View.VISIBLE : View.GONE
+            );
             views.setTextViewText(R.id.planner_widget_task_item_title, taskText);
             views.setTextColor(
                 R.id.planner_widget_task_item_title,
@@ -165,10 +191,15 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
             views.setFloat(R.id.planner_widget_task_item_title, "setTextSize", taskTextSizeSp);
             views.setContentDescription(
                 R.id.planner_widget_task_item_row,
-                context.getString(R.string.planner_widget_complete_task_content_description, taskText)
+                canComplete(task)
+                    ? context.getString(R.string.planner_widget_complete_task_content_description, taskText)
+                    : taskText
             );
-            bindCompleteIntent(views, R.id.planner_widget_task_item_row, task);
-            bindCompleteIntent(views, R.id.planner_widget_task_item_checkbox, task);
+
+            if (canComplete(task)) {
+                bindCompleteIntent(views, R.id.planner_widget_task_item_row, task);
+                bindCompleteIntent(views, R.id.planner_widget_task_item_checkbox, task);
+            }
 
             return views;
         }
@@ -184,6 +215,10 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
             views.setImageViewBitmap(
                 R.id.planner_timeline_task_item_checkbox,
                 PlannerWidgetVisuals.createCheckboxBitmap(context, accentColor)
+            );
+            views.setViewVisibility(
+                R.id.planner_timeline_task_item_checkbox,
+                canComplete(task) ? View.VISIBLE : View.GONE
             );
             views.setTextViewText(
                 R.id.planner_timeline_task_item_time,
@@ -202,10 +237,15 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
             );
             views.setContentDescription(
                 R.id.planner_timeline_task_item_row,
-                context.getString(R.string.planner_widget_complete_task_content_description, task.title)
+                canComplete(task)
+                    ? context.getString(R.string.planner_widget_complete_task_content_description, task.title)
+                    : task.title
             );
-            bindCompleteIntent(views, R.id.planner_timeline_task_item_row, task);
-            bindCompleteIntent(views, R.id.planner_timeline_task_item_checkbox, task);
+
+            if (canComplete(task)) {
+                bindCompleteIntent(views, R.id.planner_timeline_task_item_row, task);
+                bindCompleteIntent(views, R.id.planner_timeline_task_item_checkbox, task);
+            }
 
             return views;
         }
@@ -230,6 +270,10 @@ public class PlannerWidgetTaskRemoteViewsService extends RemoteViewsService {
 
             fillInIntent.putExtra(PlannerWidgetStorage.EXTRA_WIDGET_TASK_ID, task.id);
             views.setOnClickFillInIntent(viewId, fillInIntent);
+        }
+
+        private boolean canComplete(PlannerWidgetTask task) {
+            return !readOnly && task.canComplete;
         }
 
         private boolean isTimeline() {

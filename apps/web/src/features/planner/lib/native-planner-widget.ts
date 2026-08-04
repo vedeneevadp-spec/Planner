@@ -1,11 +1,9 @@
 import { App } from '@capacitor/app'
-import {
-  Capacitor,
-  type PluginListenerHandle,
-  registerPlugin,
-} from '@capacitor/core'
+import { type PluginListenerHandle, registerPlugin } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import {
+  type CleaningTaskWithState,
+  type CleaningTodayResponse,
   NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS,
   NATIVE_PLANNER_WIDGET_SNAPSHOT_VERSION,
   type NativePlannerWidgetSnapshot,
@@ -13,6 +11,8 @@ import {
   type NativePlannerWidgetTask,
   type NativePlannerWidgetTaskDateBucket,
   type NativePlannerWidgetTaskVisualTone,
+  type SelfCareDashboardResponse,
+  type SelfCareTodayItem,
 } from '@planner/contracts'
 
 import type { Sphere } from '@/entities/sphere'
@@ -28,13 +28,21 @@ import {
   formatTimeRange,
   isBeforeDate,
 } from '@/shared/lib/date'
+import { isAndroidNativeRuntime } from '@/shared/lib/native-runtime'
 import {
   addDateDays,
   getDateKeyInTimeZone,
   getDeviceTimeZone,
+  getTimeInTimeZone,
 } from '@/shared/time/time.service'
 
 const PLANNER_WIDGET_SNAPSHOT_KEY = 'planner.widget.today.snapshot'
+export const NATIVE_PLANNER_WIDGET_CLEANING_TASK_PREFIX = 'cleaning:'
+
+export interface NativePlannerWidgetSupplementalData {
+  cleaning?: CleaningTodayResponse | undefined
+  selfCare?: SelfCareDashboardResponse | undefined
+}
 
 interface PlannerWidgetPlugin {
   ackPendingCompletedTasks: (input: { taskIds: string[] }) => Promise<void>
@@ -49,13 +57,14 @@ export type { NativePlannerWidgetSnapshot, NativePlannerWidgetTask }
 const NativePlannerWidget = registerPlugin<PlannerWidgetPlugin>('PlannerWidget')
 
 export function isAndroidPlannerWidgetRuntime(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
+  return isAndroidNativeRuntime()
 }
 
 export function buildNativePlannerWidgetSnapshot(
   tasks: Task[],
   spheresOrNow: Sphere[] | Date = [],
   maybeNow?: Date,
+  supplementalData: NativePlannerWidgetSupplementalData = {},
 ): NativePlannerWidgetSnapshot {
   const { now, spheres } = resolveSnapshotContext(spheresOrNow, maybeNow)
   const timeZone = getDeviceTimeZone() ?? 'UTC'
@@ -65,7 +74,7 @@ export function buildNativePlannerWidgetSnapshot(
   const todayTasks = selectTodayTasks(tasks, dateKey)
   const overdueTasks = selectOverdueTasks(tasks, dateKey)
   const doneTodayTasks = selectDoneTodayTasks(tasks, dateKey, timeZone)
-  const widgetTasks = selectTodoTasks(tasks)
+  const plannerWidgetTasks = selectTodoTasks(tasks)
     .sort((left, right) =>
       compareWidgetTasks(left, right, dateKey, tomorrowKey),
     )
@@ -78,16 +87,37 @@ export function buildNativePlannerWidgetSnapshot(
         sphereLookup,
       ),
     )
+  const selfCareWidgetTasks = buildSelfCareWidgetTasks(
+    supplementalData.selfCare,
+    dateKey,
+    timeZone,
+  )
+  const cleaningWidgetTasks = buildCleaningWidgetTasks(
+    supplementalData.cleaning,
+  )
+  const widgetTasks = [
+    ...plannerWidgetTasks.slice(0, NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS),
+    ...selfCareWidgetTasks.slice(0, NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS),
+    ...cleaningWidgetTasks.slice(0, NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS),
+  ].sort(compareNativeWidgetTasks)
   const snapshot = {
     dateKey,
     doneTodayCount: doneTodayTasks.length,
     generatedAt: now.toISOString(),
+    hiddenCleaningTaskCount: Math.max(
+      0,
+      cleaningWidgetTasks.length - NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS,
+    ),
+    hiddenSelfCareTaskCount: Math.max(
+      0,
+      selfCareWidgetTasks.length - NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS,
+    ),
     hiddenTaskCount: Math.max(
       0,
-      widgetTasks.length - NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS,
+      plannerWidgetTasks.length - NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS,
     ),
     overdueCount: overdueTasks.length,
-    tasks: widgetTasks.slice(0, NATIVE_PLANNER_WIDGET_MAX_SNAPSHOT_TASKS),
+    tasks: widgetTasks,
     todayCount: todayTasks.length,
     version: NATIVE_PLANNER_WIDGET_SNAPSHOT_VERSION,
   }
@@ -146,13 +176,17 @@ function getNativePlannerWidgetSnapshotSignature(
     dateKey: snapshot.dateKey,
     doneTodayCount: snapshot.doneTodayCount,
     hiddenTaskCount: snapshot.hiddenTaskCount,
+    hiddenCleaningTaskCount: snapshot.hiddenCleaningTaskCount,
+    hiddenSelfCareTaskCount: snapshot.hiddenSelfCareTaskCount,
     overdueCount: snapshot.overdueCount,
     tasks: snapshot.tasks.map((task) => ({
       color: task.color,
+      canComplete: task.canComplete,
       dateBucket: task.dateBucket,
       icon: task.icon,
       id: task.id,
       isOverdue: task.isOverdue,
+      source: task.source,
       timeLabel: task.timeLabel,
       title: task.title,
       visualTone: task.visualTone,
@@ -244,17 +278,263 @@ function toNativePlannerWidgetTask(
   const sphere = findWidgetSphere(task, sphereLookup)
 
   return {
+    canComplete: true,
     color: normalizeWidgetColor(sphere?.color),
     dateBucket: getWidgetTaskDateBucket(task, todayKey, tomorrowKey),
     icon: normalizeWidgetIcon(task.icon) || normalizeWidgetIcon(sphere?.icon),
     id: task.id,
     isOverdue,
+    source: 'planner',
     timeLabel:
       task.plannedDate === todayKey && task.plannedStartTime
         ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
         : null,
     title: getWidgetTaskTitle(task, todayKey, tomorrowKey, isOverdue),
     visualTone: getWidgetTaskVisualTone(task, isOverdue),
+  }
+}
+
+export function getNativePlannerWidgetCleaningTaskId(
+  widgetTaskId: string,
+): string | null {
+  if (!widgetTaskId.startsWith(NATIVE_PLANNER_WIDGET_CLEANING_TASK_PREFIX)) {
+    return null
+  }
+
+  const taskId = widgetTaskId.slice(
+    NATIVE_PLANNER_WIDGET_CLEANING_TASK_PREFIX.length,
+  )
+
+  return taskId.length > 0 ? taskId : null
+}
+
+function buildSelfCareWidgetTasks(
+  dashboard: SelfCareDashboardResponse | undefined,
+  todayKey: string,
+  timeZone: string,
+): NativePlannerWidgetTask[] {
+  if (!dashboard) {
+    return []
+  }
+
+  const overdueEntryKeys = new Set(
+    dashboard.overdueItems.map(getSelfCareWidgetEntryKey),
+  )
+  const entries = deduplicateSelfCareEntries([
+    ...dashboard.overdueItems,
+    ...dashboard.todayItems,
+    ...dashboard.flexibleGoals.filter(isSelfCareDailyFlexibleGoal),
+  ]).filter(isVisibleSelfCareWidgetEntry)
+
+  return entries.map((entry) => {
+    const isOverdue =
+      overdueEntryKeys.has(getSelfCareWidgetEntryKey(entry)) ||
+      Boolean(
+        entry.occurrence?.scheduledFor &&
+        entry.occurrence.scheduledFor < todayKey,
+      )
+    const sourceTime = getSelfCareWidgetTime(entry, timeZone)
+
+    return {
+      canComplete: false,
+      color: normalizeWidgetColor(entry.item.color ?? '#B9B3FF'),
+      dateBucket: isOverdue ? 'overdue' : 'today',
+      icon: normalizeWidgetIcon(entry.item.icon ?? '') || '♥',
+      id: `self-care:${getSelfCareWidgetEntryKey(entry)}`,
+      isOverdue,
+      source: 'self_care',
+      timeLabel: sourceTime,
+      title: `Забота: ${normalizeWidgetTaskTitle(entry.item.title)}`,
+      visualTone: isOverdue ? 'overdue' : 'default',
+    }
+  })
+}
+
+function buildCleaningWidgetTasks(
+  today: CleaningTodayResponse | undefined,
+): NativePlannerWidgetTask[] {
+  if (!today) {
+    return []
+  }
+
+  return deduplicateCleaningItems([...today.items, ...today.generalItems]).map(
+    (entry) => ({
+      canComplete: true,
+      color:
+        entry.task.priority === 'high'
+          ? '#FFD166'
+          : entry.isOverdue
+            ? '#FF9F7A'
+            : '#8EE7C8',
+      dateBucket: entry.isOverdue ? 'overdue' : 'today',
+      icon: '🧹',
+      id: `${NATIVE_PLANNER_WIDGET_CLEANING_TASK_PREFIX}${entry.task.id}`,
+      isOverdue: entry.isOverdue,
+      source: 'cleaning',
+      timeLabel: null,
+      title: `Уборка: ${normalizeWidgetTaskTitle(entry.task.title)}`,
+      visualTone:
+        entry.task.priority === 'high'
+          ? 'urgent'
+          : entry.isOverdue
+            ? 'overdue'
+            : 'default',
+    }),
+  )
+}
+
+function deduplicateSelfCareEntries(
+  entries: SelfCareTodayItem[],
+): SelfCareTodayItem[] {
+  const seenKeys = new Set<string>()
+
+  return entries.filter((entry) => {
+    const key = getSelfCareWidgetEntryKey(entry)
+
+    if (seenKeys.has(key)) {
+      return false
+    }
+
+    seenKeys.add(key)
+    return true
+  })
+}
+
+function deduplicateCleaningItems(
+  entries: CleaningTaskWithState[],
+): CleaningTaskWithState[] {
+  const seenTaskIds = new Set<string>()
+
+  return entries.filter((entry) => {
+    if (seenTaskIds.has(entry.task.id)) {
+      return false
+    }
+
+    seenTaskIds.add(entry.task.id)
+    return true
+  })
+}
+
+function getSelfCareWidgetEntryKey(entry: SelfCareTodayItem): string {
+  return entry.occurrence?.id ?? entry.item.id
+}
+
+function isVisibleSelfCareWidgetEntry(entry: SelfCareTodayItem): boolean {
+  if (
+    entry.item.isArchived ||
+    !entry.item.isActive ||
+    entry.completion ||
+    ['cancelled', 'done', 'missed', 'moved', 'partial', 'skipped'].includes(
+      entry.occurrence?.status ?? 'scheduled',
+    )
+  ) {
+    return false
+  }
+
+  if (
+    entry.item.type === 'course' &&
+    (entry.courseDetails?.isCompleted ||
+      entry.courseDetails?.isPaused ||
+      (entry.occurrence &&
+        entry.scheduleRule?.repeatKind === 'course' &&
+        entry.scheduleRule.startDate &&
+        entry.occurrence.scheduledFor < entry.scheduleRule.startDate))
+  ) {
+    return false
+  }
+
+  return !(
+    entry.flexibleProgress &&
+    entry.flexibleProgress.completedCount >= entry.flexibleProgress.targetCount
+  )
+}
+
+function isSelfCareDailyFlexibleGoal(entry: SelfCareTodayItem): boolean {
+  const rule = entry.scheduleRule
+
+  return Boolean(
+    rule &&
+    rule.flexiblePeriod === 'day' &&
+    (entry.item.type === 'flexible_goal' ||
+      rule.repeatKind === 'flexible_goal'),
+  )
+}
+
+function getSelfCareWidgetTime(
+  entry: SelfCareTodayItem,
+  timeZone: string,
+): string | null {
+  const sourceTime =
+    entry.occurrence?.dueAt ??
+    entry.appointment?.startsAt ??
+    entry.scheduleRule?.preferredTime ??
+    null
+
+  if (!sourceTime) {
+    return null
+  }
+
+  if (sourceTime.includes('T')) {
+    try {
+      return getTimeInTimeZone(
+        sourceTime,
+        entry.occurrence?.reminderTimeZone ??
+          entry.scheduleRule?.timezone ??
+          timeZone,
+      )
+    } catch {
+      // Fall through to extracting a plain time below.
+    }
+  }
+
+  return (
+    /^\d{2}:\d{2}/.exec(sourceTime)?.[0] ??
+    /T(\d{2}:\d{2})/.exec(sourceTime)?.[1] ??
+    null
+  )
+}
+
+function compareNativeWidgetTasks(
+  left: NativePlannerWidgetTask,
+  right: NativePlannerWidgetTask,
+): number {
+  const bucketComparison =
+    getNativeWidgetDateBucketWeight(left.dateBucket) -
+    getNativeWidgetDateBucketWeight(right.dateBucket)
+
+  if (bucketComparison !== 0) {
+    return bucketComparison
+  }
+
+  if (left.timeLabel !== right.timeLabel) {
+    if (left.timeLabel === null) {
+      return 1
+    }
+
+    if (right.timeLabel === null) {
+      return -1
+    }
+
+    return left.timeLabel.localeCompare(right.timeLabel)
+  }
+
+  return 0
+}
+
+function getNativeWidgetDateBucketWeight(
+  bucket: NativePlannerWidgetTaskDateBucket,
+): number {
+  switch (bucket) {
+    case 'overdue':
+      return 0
+    case 'today':
+      return 1
+    case 'tomorrow':
+      return 2
+    case 'future':
+      return 3
+    case 'unscheduled':
+      return 4
   }
 }
 

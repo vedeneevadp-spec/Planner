@@ -1,11 +1,13 @@
 import { App } from '@capacitor/app'
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core'
+import { type PluginListenerHandle } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import {
   PushNotifications,
   type PushNotificationSchema,
   type Token,
 } from '@capacitor/push-notifications'
+
+import { isAndroidNativeRuntime } from '@/shared/lib/native-runtime'
 
 import {
   createPushNotificationsApiClient,
@@ -30,7 +32,7 @@ interface RegisterNativePushNotificationsOptions {
 }
 
 export function isAndroidPushNotificationsRuntime(): boolean {
-  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
+  return isAndroidNativeRuntime()
 }
 
 export async function registerNativePushNotifications(

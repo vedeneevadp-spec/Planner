@@ -393,6 +393,7 @@ export type {
   NativePlannerWidgetSnapshot,
   NativePlannerWidgetTask,
   NativePlannerWidgetTaskDateBucket,
+  NativePlannerWidgetTaskSource,
   NativePlannerWidgetTaskVisualTone,
 } from './planner-widget.js'
 export {
@@ -401,6 +402,7 @@ export {
   nativePlannerWidgetSnapshotSchema,
   nativePlannerWidgetTaskDateBucketSchema,
   nativePlannerWidgetTaskSchema,
+  nativePlannerWidgetTaskSourceSchema,
   nativePlannerWidgetTaskVisualToneSchema,
 } from './planner-widget.js'
 export type {
@@ -745,43 +747,3 @@ export {
   voiceMetricWakeWordProviderSchema,
   voiceSessionResultSchema,
 } from './voice-metrics.js'
-export type {
-  VoiceTestCase,
-  VoiceTestCaseCategory,
-  VoiceTestContext,
-  VoiceTestExpectedAudioSignal,
-  VoiceTestExpectedIntent,
-  VoiceTestExpectedPreview,
-  VoiceTestExpectedUi,
-  VoiceTestExpectedUiCard,
-} from './voice-test-corpus/index.js'
-export {
-  countVoiceTestCasesByCategory,
-  DEFAULT_TEST_CONTEXT,
-  DEFAULT_VOICE_TEST_LOCALE,
-  DEFAULT_VOICE_TEST_NOW,
-  DEFAULT_VOICE_TEST_SPHERES,
-  DEFAULT_VOICE_TEST_TIMEZONE,
-  findVoiceCorpusCoverageGaps,
-  LOCKED_TEST_CONTEXT,
-  REQUIRED_VOICE_TEST_CORPUS_MINIMUMS,
-  TEST_ROLE_CONTEXTS,
-  VOICE_COMMAND_CORPUS_VERSION,
-  VOICE_TEST_CASE_CATEGORIES,
-  voiceCommandCorpusV1,
-  voicePrivateFieldSchema,
-  voiceTestCaseCategorySchema,
-  voiceTestCaseSchema,
-  voiceTestContextSchema,
-  voiceTestCorpusSchema,
-  voiceTestExpectedAndroidRuntimeSchema,
-  voiceTestExpectedAudioSignalSchema,
-  voiceTestExpectedIntentSchema,
-  voiceTestExpectedMetricsSchema,
-  voiceTestExpectedPreviewSchema,
-  voiceTestExpectedPrivacySchema,
-  voiceTestExpectedUiCardSchema,
-  voiceTestExpectedUiSchema,
-  voiceTestExpectedWebFlowSchema,
-  voiceTestSphereSchema,
-} from './voice-test-corpus/index.js'

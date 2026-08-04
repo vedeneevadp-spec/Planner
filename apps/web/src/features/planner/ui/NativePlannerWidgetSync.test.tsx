@@ -43,7 +43,16 @@ const mocks = vi.hoisted(() => ({
   addNativePlannerWidgetResumeListener:
     vi.fn<(listener: () => void) => Promise<WidgetListenerHandle>>(),
   buildNativePlannerWidgetSnapshot:
-    vi.fn<(tasks: Task[], spheres: unknown[]) => unknown>(),
+    vi.fn<
+      (
+        tasks: Task[],
+        spheres: unknown[],
+        now?: Date,
+        supplementalData?: unknown,
+      ) => unknown
+    >(),
+  completeCleaningTask:
+    vi.fn<(taskId: string, input: unknown) => Promise<unknown>>(),
   consumePendingNativePlannerWidgetRoute: vi.fn<() => Promise<string | null>>(),
   isAndroidPlannerWidgetRuntime: vi.fn<() => boolean>(),
   persistNativePlannerWidgetSnapshot:
@@ -51,6 +60,8 @@ const mocks = vi.hoisted(() => ({
   readPendingNativePlannerWidgetCompletedTasks:
     vi.fn<() => Promise<string[]>>(),
   createPlannerApiClient: vi.fn<() => unknown>(),
+  createCleaningApiClient: vi.fn<() => unknown>(),
+  createSelfCareApiClient: vi.fn<() => unknown>(),
   enqueuePlannerOfflineMutation: vi.fn<(input: unknown) => Promise<null>>(),
   loadCachedLifeSphereRecords: vi.fn<(workspaceId: string) => Promise<[]>>(),
   loadCachedTaskRecords: vi.fn<(workspaceId: string) => Promise<[]>>(),
@@ -74,6 +85,14 @@ const mocks = vi.hoisted(() => ({
     }
   >(),
   useSessionAuth: vi.fn<() => SessionAuthStub>(),
+}))
+
+vi.mock('@/features/cleaning', () => ({
+  createCleaningApiClient: () => mocks.createCleaningApiClient(),
+}))
+
+vi.mock('@/features/self-care', () => ({
+  createSelfCareApiClient: () => mocks.createSelfCareApiClient(),
 }))
 
 vi.mock('@/features/session', () => ({
@@ -112,10 +131,22 @@ vi.mock('../lib/native-planner-widget', () => ({
     mocks.ackPendingNativePlannerWidgetCompletedTasks(taskIds),
   addNativePlannerWidgetResumeListener: (listener: () => void) =>
     mocks.addNativePlannerWidgetResumeListener(listener),
-  buildNativePlannerWidgetSnapshot: (tasks: Task[], spheres: unknown[]) =>
-    mocks.buildNativePlannerWidgetSnapshot(tasks, spheres),
+  buildNativePlannerWidgetSnapshot: (
+    tasks: Task[],
+    spheres: unknown[],
+    now?: Date,
+    supplementalData?: unknown,
+  ) =>
+    mocks.buildNativePlannerWidgetSnapshot(
+      tasks,
+      spheres,
+      now,
+      supplementalData,
+    ),
   consumePendingNativePlannerWidgetRoute: () =>
     mocks.consumePendingNativePlannerWidgetRoute(),
+  getNativePlannerWidgetCleaningTaskId: (taskId: string) =>
+    taskId.startsWith('cleaning:') ? taskId.slice('cleaning:'.length) : null,
   isAndroidPlannerWidgetRuntime: () => mocks.isAndroidPlannerWidgetRuntime(),
   persistNativePlannerWidgetSnapshot: (snapshot: unknown) =>
     mocks.persistNativePlannerWidgetSnapshot(snapshot),
@@ -163,11 +194,13 @@ describe('NativePlannerWidgetSync', () => {
       dateKey: '2026-05-09',
       doneTodayCount: 0,
       generatedAt: '2026-05-09T09:00:00.000Z',
+      hiddenCleaningTaskCount: 0,
+      hiddenSelfCareTaskCount: 0,
       hiddenTaskCount: 0,
       overdueCount: 0,
       tasks: [],
       todayCount: 0,
-      version: 4,
+      version: 5,
     })
     mocks.consumePendingNativePlannerWidgetRoute.mockResolvedValue(null)
     mocks.isAndroidPlannerWidgetRuntime.mockReturnValue(true)
@@ -177,6 +210,18 @@ describe('NativePlannerWidgetSync', () => {
       listLifeSpheres: vi.fn().mockResolvedValue([]),
       listTasks: vi.fn().mockResolvedValue([]),
       setTaskStatus: vi.fn(),
+    })
+    mocks.completeCleaningTask.mockResolvedValue({})
+    mocks.createCleaningApiClient.mockReturnValue({
+      completeTask: mocks.completeCleaningTask,
+      getToday: vi.fn().mockResolvedValue({ generalItems: [], items: [] }),
+    })
+    mocks.createSelfCareApiClient.mockReturnValue({
+      getDashboard: vi.fn().mockResolvedValue({
+        flexibleGoals: [],
+        overdueItems: [],
+        todayItems: [],
+      }),
     })
     mocks.enqueuePlannerOfflineMutation.mockResolvedValue(null)
     mocks.loadCachedLifeSphereRecords.mockResolvedValue([])
@@ -286,11 +331,22 @@ describe('NativePlannerWidgetSync', () => {
     renderSync()
 
     await waitFor(() => {
-      expect(mocks.buildNativePlannerWidgetSnapshot).toHaveBeenCalledWith(
-        [expect.objectContaining({ id: 'personal-task' })],
-        [],
-      )
+      expect(mocks.buildNativePlannerWidgetSnapshot).toHaveBeenCalled()
     })
+    const buildCall = mocks.buildNativePlannerWidgetSnapshot.mock.calls.at(-1)
+    const supplementalData = buildCall?.[3]
+
+    expect(buildCall?.[0][0]?.id).toBe('personal-task')
+    expect(buildCall?.[1]).toEqual([])
+    expect(buildCall?.[2]).toBeUndefined()
+    expect(isRecord(supplementalData)).toBe(true)
+
+    if (!isRecord(supplementalData)) {
+      throw new Error('Expected widget supplemental data.')
+    }
+
+    expect(isRecord(supplementalData.cleaning)).toBe(true)
+    expect(isRecord(supplementalData.selfCare)).toBe(true)
   })
 
   it('acknowledges personal widget completions while a shared workspace is open', async () => {
@@ -339,6 +395,45 @@ describe('NativePlannerWidgetSync', () => {
       ).toHaveBeenCalledWith(['personal-task'])
     })
     expect(mocks.enqueuePlannerOfflineMutation).not.toHaveBeenCalled()
+  })
+
+  it('completes and acknowledges cleaning tasks queued by the widget', async () => {
+    mocks.createCleaningApiClient.mockReturnValue({
+      completeTask: mocks.completeCleaningTask,
+      getToday: vi.fn().mockResolvedValue({
+        generalItems: [],
+        items: [{ task: { id: 'kitchen' } }],
+      }),
+    })
+    mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
+      'cleaning:kitchen',
+    ])
+    mocks.usePlanner.mockReturnValue(createPlannerStub())
+
+    renderSync()
+
+    await waitFor(() => {
+      expect(mocks.completeCleaningTask).toHaveBeenCalled()
+    })
+    const completionCall = mocks.completeCleaningTask.mock.calls[0]
+    const completionInput = completionCall?.[1]
+
+    expect(completionCall?.[0]).toBe('kitchen')
+    expect(isRecord(completionInput)).toBe(true)
+
+    if (!isRecord(completionInput)) {
+      throw new Error('Expected cleaning completion input.')
+    }
+
+    expect(completionInput.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(completionInput.mode).toBe('next_cycle')
+    expect(completionInput.note).toBe('')
+    expect(completionInput.targetDate).toBeNull()
+    await waitFor(() => {
+      expect(
+        mocks.ackPendingNativePlannerWidgetCompletedTasks,
+      ).toHaveBeenCalledWith(['cleaning:kitchen'])
+    })
   })
 })
 
@@ -426,4 +521,8 @@ function createTaskRecord(
     version: 1,
     workspaceId: overrides.workspaceId ?? 'personal-workspace',
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }

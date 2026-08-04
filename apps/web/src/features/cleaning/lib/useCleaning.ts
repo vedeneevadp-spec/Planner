@@ -78,8 +78,11 @@ export function useCleaningToday(
   })
 }
 
-export function useCleaningSummary(date?: string) {
-  const query = useCleaningToday(date)
+export function useCleaningSummary(
+  date?: string,
+  options: { enabled?: boolean } = {},
+) {
+  const query = useCleaningToday(date, options)
 
   return {
     activeZoneCount: query.data?.summary.activeZoneCount ?? 0,
@@ -294,15 +297,9 @@ async function invalidateCleaning(
   queryClient: ReturnType<typeof useQueryClient>,
   workspaceId: string,
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: cleaningQueryKey(workspaceId) }),
-    queryClient.invalidateQueries({
-      predicate: (query) =>
-        Array.isArray(query.queryKey) &&
-        query.queryKey[0] === 'cleaning' &&
-        query.queryKey[1] === workspaceId,
-    }),
-  ])
+  await queryClient.invalidateQueries({
+    queryKey: cleaningQueryKey(workspaceId),
+  })
 }
 
 export type { CleaningListResponse, CleaningTodayResponse }

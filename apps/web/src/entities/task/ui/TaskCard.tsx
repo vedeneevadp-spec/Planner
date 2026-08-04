@@ -3,7 +3,7 @@ import type {
   WorkspaceRole,
   WorkspaceUserRecord,
 } from '@planner/contracts'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import type { Sphere } from '@/entities/sphere'
@@ -195,11 +195,15 @@ export function TaskCard({
   const taskType = getTaskTypeValue(task)
   const taskResource = getTaskResource(task)
   const reminderLabel = getTaskReminderLabel(task, isSharedWorkspace)
-  const chainTasks = task.chainId
-    ? sortChainTasks(
-        allTasks.filter((candidate) => candidate.chainId === task.chainId),
-      )
-    : []
+  const chainTasks = useMemo(
+    () =>
+      task.chainId
+        ? sortChainTasks(
+            allTasks.filter((candidate) => candidate.chainId === task.chainId),
+          )
+        : [],
+    [allTasks, task.chainId],
+  )
   const stageLabel = getTaskStageLabel(task, chainTasks)
   const actionPolicy = resolveTaskCardActionPolicy({
     currentActorUserId,

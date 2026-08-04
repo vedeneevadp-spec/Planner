@@ -1,0 +1,59 @@
+.routeFallback {
+  display: grid;
+  min-height: 12rem;
+  place-items: start stretch;
+  padding-block: 0.5rem;
+}
+
+.routeFallbackStatus {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.routeFallbackPanel {
+  display: grid;
+  gap: 0.72rem;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 1rem;
+  background: var(--surface);
+}
+
+.routeFallbackLine {
+  width: min(18rem, 64%);
+  height: 0.82rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--field-bg-muted) 25%,
+    var(--field-bg) 50%,
+    var(--field-bg-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: routeFallbackPulse 1.2s ease-in-out infinite;
+}
+
+.routeFallbackLineShort {
+  width: min(11rem, 42%);
+}
+
+@keyframes routeFallbackPulse {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .routeFallbackLine {
+    animation: none;
+  }
+}

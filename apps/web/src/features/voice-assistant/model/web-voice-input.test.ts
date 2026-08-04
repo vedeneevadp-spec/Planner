@@ -1,4 +1,7 @@
-import { voiceCommandCorpusV1, type VoiceTestCase } from '@planner/contracts'
+import {
+  voiceCommandCorpusV1,
+  type VoiceTestCase,
+} from '@planner/contracts/voice-test-corpus'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {

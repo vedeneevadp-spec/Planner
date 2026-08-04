@@ -1,13 +1,15 @@
 import {
-  findVoiceCorpusCoverageGaps,
   type PlannerIntent,
   PlannerIntentParser,
   type PlannerIntentParserContext,
   plannerIntentSchema,
+} from '@planner/contracts'
+import {
+  findVoiceCorpusCoverageGaps,
   voiceCommandCorpusV1,
   type VoiceTestCase,
   voiceTestCaseSchema,
-} from '@planner/contracts'
+} from '@planner/contracts/voice-test-corpus'
 import { describe, expect, it } from 'vitest'
 
 describe('voice command test corpus', () => {

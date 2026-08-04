@@ -221,15 +221,6 @@ function getTasksForDate(
   )
 }
 
-function getUntimedTasksForDate(
-  tasks: CalendarDisplayTask[],
-  dateKey: string,
-): CalendarDisplayTask[] {
-  return getTasksForDate(tasks, dateKey).filter(
-    (task) => !task.plannedStartTime,
-  )
-}
-
 function getScheduleDateKeys(anchorDateKey: string): string[] {
   return Array.from({ length: SCHEDULE_PERIOD_DAYS }, (_, index) =>
     addDateDays(anchorDateKey, index),
@@ -672,6 +663,18 @@ export function CalendarPage() {
     () => buildTimelineLayout(calendarTasks, anchorDate),
     [anchorDate, calendarTasks],
   )
+  const weekTimelineEntries = useMemo(() => {
+    if (viewMode !== 'week') {
+      return new Map<string, ReturnType<typeof buildTimelineLayout>>()
+    }
+
+    return new Map(
+      weekDateKeys.map((dateKey) => [
+        dateKey,
+        buildTimelineLayout(calendarTasks, dateKey),
+      ]),
+    )
+  }, [calendarTasks, viewMode, weekDateKeys])
   const dayUnscheduledTasks = useMemo(() => {
     const scheduledTaskIds = new Set(
       buildTimelineLayout(tasks, anchorDate).map((entry) => entry.task.id),
@@ -915,9 +918,7 @@ export function CalendarPage() {
       const header = surface.querySelector<HTMLElement>(
         `.${styles.weekHeaderGrid}`,
       )
-      const allDay = surface.querySelector<HTMLElement>(`.${styles.allDayGrid}`)
-      const stickyOffset =
-        (header?.offsetHeight ?? 0) + (allDay?.offsetHeight ?? 0)
+      const stickyOffset = header?.offsetHeight ?? 0
       const surfaceRect = surface.getBoundingClientRect()
       const targetRect = target.getBoundingClientRect()
       const targetTop = targetRect.top - surfaceRect.top + surface.scrollTop
@@ -930,7 +931,10 @@ export function CalendarPage() {
   }, [anchorDate, timeRange.endHour, timeRange.startHour, viewMode])
 
   return (
-    <section className={`${pageStyles.page} ${styles.calendarPage}`}>
+    <section
+      className={`${pageStyles.page} ${styles.calendarPage}`}
+      data-calendar-view={viewMode}
+    >
       <h1 className={styles.visuallyHidden}>Календарь</h1>
 
       <header className={styles.toolbar}>
@@ -1117,34 +1121,6 @@ export function CalendarPage() {
             })}
           </div>
 
-          <div className={styles.allDayGrid}>
-            <div className={styles.allDayLabel}>Без времени</div>
-            {weekDateKeys.map((dateKey) => {
-              const untimedTasks = getUntimedTasksForDate(
-                calendarTasks,
-                dateKey,
-              )
-
-              return (
-                <div key={dateKey} className={styles.allDayCell}>
-                  {untimedTasks.slice(0, 3).map((task) => (
-                    <CalendarTaskPill
-                      key={task.id}
-                      compact
-                      task={task}
-                      onOpenTask={openTaskCard}
-                    />
-                  ))}
-                  {untimedTasks.length > 3 ? (
-                    <span className={styles.moreTasks}>
-                      +{untimedTasks.length - 3}
-                    </span>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-
           <div
             className={styles.weekTimeGrid}
             style={{ '--hour-count': timeRange.hours.length } as CSSProperties}
@@ -1163,10 +1139,7 @@ export function CalendarPage() {
 
             <div className={styles.weekColumns}>
               {weekDateKeys.map((dateKey) => {
-                const timelineEntries = buildTimelineLayout(
-                  calendarTasks,
-                  dateKey,
-                )
+                const timelineEntries = weekTimelineEntries.get(dateKey) ?? []
 
                 return (
                   <div key={dateKey} className={styles.weekColumn}>

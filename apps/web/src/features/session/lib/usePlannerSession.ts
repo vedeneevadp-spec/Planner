@@ -81,7 +81,7 @@ export function usePlannerSession() {
           initialDataUpdatedAt: 0,
         }
       : {}),
-    refetchOnMount: 'always',
+    refetchOnMount: true,
     retry: (failureCount, error) =>
       !isUnauthorizedSessionApiError(error) && failureCount < 2,
     staleTime: 5 * 60_000,

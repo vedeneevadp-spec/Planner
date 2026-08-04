@@ -1,4 +1,8 @@
-import type { TaskRecord } from '@planner/contracts'
+import type {
+  CleaningTodayResponse,
+  SelfCareDashboardResponse,
+  TaskRecord,
+} from '@planner/contracts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router'
@@ -10,14 +14,27 @@ import {
   type Task,
   type TaskStatus,
 } from '@/entities/task'
+import {
+  type CleaningApiClient,
+  createCleaningApiClient,
+} from '@/features/cleaning'
+import {
+  createSelfCareApiClient,
+  type SelfCareApiClient,
+} from '@/features/self-care'
 import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
+import {
+  getDateKeyInTimeZone,
+  getDeviceTimeZone,
+} from '@/shared/time/time.service'
 
 import {
   ackPendingNativePlannerWidgetCompletedTasks,
   addNativePlannerWidgetResumeListener,
   buildNativePlannerWidgetSnapshot,
   consumePendingNativePlannerWidgetRoute,
+  getNativePlannerWidgetCleaningTaskId,
   isAndroidPlannerWidgetRuntime,
   persistNativePlannerWidgetSnapshot,
   readPendingNativePlannerWidgetCompletedTasks,
@@ -62,17 +79,40 @@ type NativeWidgetSphereQueryKey = readonly [
   number,
 ]
 
+type NativeWidgetSelfCareQueryKey = readonly [
+  'planner',
+  'native-widget',
+  'personal-self-care',
+  string,
+  string,
+  number,
+]
+
+type NativeWidgetCleaningQueryKey = readonly [
+  'planner',
+  'native-widget',
+  'personal-cleaning',
+  string,
+  string,
+  number,
+]
+
 interface NativeWidgetPlannerRef {
   actorUserId: string | undefined
+  cleaningApi: CleaningApiClient | null
+  cleaningQueryKey: NativeWidgetCleaningQueryKey
+  cleaningToday: CleaningTodayResponse | undefined
   isActivePersonalWorkspace: boolean
   isLoading: boolean
   personalApi: PlannerApiClient | null
   personalTaskQueryKey: NativeWidgetTaskQueryKey
   personalWorkspaceId: string | undefined
+  selfCareDashboard: SelfCareDashboardResponse | undefined
   setActiveTaskStatus: (taskId: string, status: TaskStatus) => Promise<boolean>
   spheres: Sphere[]
   taskRecords: TaskRecord[]
   tasks: Task[]
+  widgetDateKey: string
 }
 
 const EMPTY_PERSONAL_TASK_RECORDS: TaskRecord[] = []
@@ -102,6 +142,29 @@ export function NativePlannerWidgetSync() {
       workspaceId: personalWorkspaceId,
     })
   }, [apiConfig, personalWorkspaceId])
+  const personalCleaningApi = useMemo(() => {
+    if (!apiConfig || !personalWorkspaceId) {
+      return null
+    }
+
+    return createCleaningApiClient({
+      ...apiConfig,
+      workspaceId: personalWorkspaceId,
+    })
+  }, [apiConfig, personalWorkspaceId])
+  const personalSelfCareApi = useMemo(() => {
+    if (!apiConfig || !personalWorkspaceId) {
+      return null
+    }
+
+    return createSelfCareApiClient({
+      ...apiConfig,
+      workspaceId: personalWorkspaceId,
+    })
+  }, [apiConfig, personalWorkspaceId])
+  const widgetTimeZone =
+    apiConfig?.clientTimeZone ?? getDeviceTimeZone() ?? 'UTC'
+  const widgetDateKey = getDateKeyInTimeZone(new Date(), widgetTimeZone)
   const personalTaskQueryKey = useMemo<NativeWidgetTaskQueryKey>(
     () => [
       'planner',
@@ -121,6 +184,28 @@ export function NativePlannerWidgetSync() {
       sessionVersion,
     ],
     [personalWorkspaceId, sessionVersion],
+  )
+  const selfCareQueryKey = useMemo<NativeWidgetSelfCareQueryKey>(
+    () => [
+      'planner',
+      'native-widget',
+      'personal-self-care',
+      personalWorkspaceId ?? 'pending',
+      widgetDateKey,
+      sessionVersion,
+    ],
+    [personalWorkspaceId, sessionVersion, widgetDateKey],
+  )
+  const cleaningQueryKey = useMemo<NativeWidgetCleaningQueryKey>(
+    () => [
+      'planner',
+      'native-widget',
+      'personal-cleaning',
+      personalWorkspaceId ?? 'pending',
+      widgetDateKey,
+      sessionVersion,
+    ],
+    [personalWorkspaceId, sessionVersion, widgetDateKey],
   )
   const shouldLoadPersonalWorkspace =
     isAndroidPlannerWidgetRuntime() &&
@@ -142,6 +227,33 @@ export function NativePlannerWidgetSync() {
     retry: 1,
     staleTime: 30_000,
   })
+  const shouldLoadSupplementalData =
+    isAndroidPlannerWidgetRuntime() &&
+    Boolean(personalWorkspaceId && personalCleaningApi && personalSelfCareApi)
+  const selfCareQuery = useQuery({
+    enabled: shouldLoadSupplementalData,
+    queryFn: ({ signal }) =>
+      loadPersonalWidgetSelfCareDashboard(
+        personalSelfCareApi,
+        widgetDateKey,
+        signal,
+      ),
+    queryKey: selfCareQueryKey,
+    retry: 1,
+    staleTime: 20_000,
+  })
+  const cleaningQuery = useQuery({
+    enabled: shouldLoadSupplementalData,
+    queryFn: ({ signal }) =>
+      loadPersonalWidgetCleaningToday(
+        personalCleaningApi,
+        widgetDateKey,
+        signal,
+      ),
+    queryKey: cleaningQueryKey,
+    retry: 1,
+    staleTime: 20_000,
+  })
   const personalTaskRecords =
     personalTasksQuery.data ?? EMPTY_PERSONAL_TASK_RECORDS
   const widgetTasks = useMemo(
@@ -159,20 +271,30 @@ export function NativePlannerWidgetSync() {
     : !personalWorkspaceId ||
       personalTasksQuery.data === undefined ||
       personalSpheresQuery.data === undefined
+  const isSupplementalDataLoading =
+    shouldLoadSupplementalData &&
+    (selfCareQuery.isLoading || cleaningQuery.isLoading)
   const isWidgetSyncing = isActivePersonalWorkspace
     ? activePlanner.isSyncing
     : personalTasksQuery.isFetching || personalSpheresQuery.isFetching
+  const isAnyWidgetDataSyncing =
+    isWidgetSyncing || selfCareQuery.isFetching || cleaningQuery.isFetching
   const plannerRef = useRef<NativeWidgetPlannerRef>({
     actorUserId: session?.actorUserId,
+    cleaningApi: personalCleaningApi,
+    cleaningQueryKey,
+    cleaningToday: cleaningQuery.data,
     isActivePersonalWorkspace,
-    isLoading: isWidgetLoading,
+    isLoading: isWidgetLoading || isSupplementalDataLoading,
     personalApi,
     personalTaskQueryKey,
     personalWorkspaceId,
+    selfCareDashboard: selfCareQuery.data,
     setActiveTaskStatus: activePlanner.setTaskStatus,
     spheres: widgetSpheres,
     taskRecords: isActivePersonalWorkspace ? [] : personalTaskRecords,
     tasks: widgetTasks,
+    widgetDateKey,
   })
   const deferredCompletedTaskIdsRef = useRef<Set<string>>(new Set())
   const completionSyncPromiseRef =
@@ -183,27 +305,38 @@ export function NativePlannerWidgetSync() {
   useEffect(() => {
     plannerRef.current = {
       actorUserId: session?.actorUserId,
+      cleaningApi: personalCleaningApi,
+      cleaningQueryKey,
+      cleaningToday: cleaningQuery.data,
       isActivePersonalWorkspace,
-      isLoading: isWidgetLoading,
+      isLoading: isWidgetLoading || isSupplementalDataLoading,
       personalApi,
       personalTaskQueryKey,
       personalWorkspaceId,
+      selfCareDashboard: selfCareQuery.data,
       setActiveTaskStatus: activePlanner.setTaskStatus,
       spheres: widgetSpheres,
       taskRecords: isActivePersonalWorkspace ? [] : personalTaskRecords,
       tasks: widgetTasks,
+      widgetDateKey,
     }
   }, [
     activePlanner.setTaskStatus,
+    cleaningQuery.data,
+    cleaningQueryKey,
     isActivePersonalWorkspace,
     isWidgetLoading,
+    isSupplementalDataLoading,
+    personalCleaningApi,
     personalApi,
     personalTaskQueryKey,
     personalTaskRecords,
     personalWorkspaceId,
     session?.actorUserId,
+    selfCareQuery.data,
     widgetSpheres,
     widgetTasks,
+    widgetDateKey,
   ])
 
   const syncSnapshot = useCallback(() => {
@@ -216,6 +349,11 @@ export function NativePlannerWidgetSync() {
     const snapshot = buildNativePlannerWidgetSnapshot(
       planner.tasks,
       planner.spheres,
+      undefined,
+      {
+        cleaning: planner.cleaningToday,
+        selfCare: planner.selfCareDashboard,
+      },
     )
 
     void persistNativePlannerWidgetSnapshot(snapshot).catch((error) => {
@@ -226,6 +364,46 @@ export function NativePlannerWidgetSync() {
   const completeWidgetTask = useCallback(
     async (taskId: string): Promise<boolean> => {
       const planner = plannerRef.current
+      const cleaningTaskId = getNativePlannerWidgetCleaningTaskId(taskId)
+
+      if (cleaningTaskId) {
+        if (!planner.cleaningToday) {
+          return false
+        }
+
+        const cleaningItems = [
+          ...planner.cleaningToday.items,
+          ...planner.cleaningToday.generalItems,
+        ]
+        const cleaningTask = cleaningItems.find(
+          (candidate) => candidate.task.id === cleaningTaskId,
+        )
+
+        if (!cleaningTask) {
+          return true
+        }
+
+        if (!planner.cleaningApi) {
+          return false
+        }
+
+        try {
+          await planner.cleaningApi.completeTask(cleaningTaskId, {
+            date: planner.widgetDateKey,
+            mode: 'next_cycle',
+            note: '',
+            targetDate: null,
+          })
+          await queryClient.invalidateQueries({
+            queryKey: planner.cleaningQueryKey,
+          })
+
+          return true
+        } catch {
+          return false
+        }
+      }
+
       const task = planner.tasks.find((candidate) => candidate.id === taskId)
 
       if (!task || !isActiveTaskStatus(task.status)) {
@@ -352,7 +530,15 @@ export function NativePlannerWidgetSync() {
 
   useEffect(() => {
     syncFromNativeWidget()
-  }, [isWidgetLoading, syncFromNativeWidget, widgetSpheres, widgetTasks])
+  }, [
+    cleaningQuery.data,
+    isSupplementalDataLoading,
+    isWidgetLoading,
+    selfCareQuery.data,
+    syncFromNativeWidget,
+    widgetSpheres,
+    widgetTasks,
+  ])
 
   useEffect(() => {
     consumePendingRoute()
@@ -373,12 +559,12 @@ export function NativePlannerWidgetSync() {
       return
     }
 
-    if (wasSyncingRef.current && !isWidgetSyncing) {
+    if (wasSyncingRef.current && !isAnyWidgetDataSyncing) {
       syncFromNativeWidget()
     }
 
-    wasSyncingRef.current = isWidgetSyncing
-  }, [isWidgetSyncing, syncFromNativeWidget])
+    wasSyncingRef.current = isAnyWidgetDataSyncing
+  }, [isAnyWidgetDataSyncing, syncFromNativeWidget])
 
   useEffect(() => {
     if (!isAndroidPlannerWidgetRuntime()) {
@@ -487,6 +673,30 @@ async function loadPersonalWidgetSphereRecords(
 
     throw error
   }
+}
+
+async function loadPersonalWidgetSelfCareDashboard(
+  api: SelfCareApiClient | null,
+  date: string,
+  signal: AbortSignal,
+): Promise<SelfCareDashboardResponse> {
+  if (!api) {
+    throw new Error('Self-care API is not ready for the Android widget.')
+  }
+
+  return api.getDashboard(date, signal)
+}
+
+async function loadPersonalWidgetCleaningToday(
+  api: CleaningApiClient | null,
+  date: string,
+  signal: AbortSignal,
+): Promise<CleaningTodayResponse> {
+  if (!api) {
+    throw new Error('Cleaning API is not ready for the Android widget.')
+  }
+
+  return api.getToday(date, signal)
 }
 
 async function completePersonalWidgetTask({

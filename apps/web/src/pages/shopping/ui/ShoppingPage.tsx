@@ -29,7 +29,7 @@ interface ShoppingCategoryOption {
 
 const SHOPPING_ICON_BASE_URL = '/icons/shopping'
 const OTHER_CATEGORY_OPTION = {
-  iconSrc: `${SHOPPING_ICON_BASE_URL}/other.png`,
+  iconSrc: `${SHOPPING_ICON_BASE_URL}/other.webp`,
   label: 'Прочее',
   value: 'other',
 } satisfies ShoppingCategoryOption
@@ -40,7 +40,7 @@ const SHOPPING_CATEGORY_OPTIONS = [
     value: 'groceries',
   },
   {
-    iconSrc: `${SHOPPING_ICON_BASE_URL}/household.png`,
+    iconSrc: `${SHOPPING_ICON_BASE_URL}/household.webp`,
     label: 'Бытовое',
     value: 'household',
   },
@@ -49,7 +49,7 @@ const SHOPPING_CATEGORY_OPTIONS = [
 const DRAFT_CATEGORY_OPTIONS = SHOPPING_CATEGORY_OPTIONS.filter(
   (option) => option.value !== 'other',
 )
-const FAVORITE_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/favorite.png`
+const FAVORITE_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/favorite.webp`
 const URGENT_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/urgent.webp`
 
 export function ShoppingPage() {

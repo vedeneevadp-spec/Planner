@@ -25,9 +25,9 @@ const publicIconsDirectory = path.join(
 
 const initialJsMaxBytes = readBudgetKilobytes(
   'WEB_BUNDLE_INITIAL_JS_MAX_KB',
-  837,
+  780,
 )
-const entryJsMaxBytes = readBudgetKilobytes('WEB_BUNDLE_ENTRY_JS_MAX_KB', 250)
+const entryJsMaxBytes = readBudgetKilobytes('WEB_BUNDLE_ENTRY_JS_MAX_KB', 155)
 const routeAssetBudgets = [
   {
     defaultMaxKb: 125,
@@ -72,14 +72,14 @@ const routeAssetBudgets = [
     variable: 'WEB_BUNDLE_VOICE_ASSISTANT_CSS_MAX_KB',
   },
   {
-    defaultMaxKb: 210,
+    defaultMaxKb: 90,
     extension: '.js',
     label: 'planner contracts JS',
     prefix: 'planner-contracts-',
     variable: 'WEB_BUNDLE_PLANNER_CONTRACTS_JS_MAX_KB',
   },
   {
-    defaultMaxKb: 100,
+    defaultMaxKb: 20,
     extension: '.js',
     label: 'backup contracts JS',
     prefix: 'backup-contracts-',
@@ -101,18 +101,22 @@ const publicAssetBudgets = [
     variable: 'WEB_PUBLIC_SELF_CARE_ASSETS_MAX_KB',
   },
   {
-    defaultMaxKb: 800,
+    defaultMaxKb: 150,
     directory: publicIconsDirectory,
     label: 'public icon assets',
     variable: 'WEB_PUBLIC_ICON_ASSETS_MAX_KB',
   },
 ]
 const forbiddenInitialPreloadPatterns = [
+  /\/assets\/backup-contracts-[^/]+\.js$/,
+  /\/assets\/confetti\.module-[^/]+\.js$/,
+  /\/assets\/NativePushRegistration-[^/]+\.js$/,
   /\/assets\/NativePlannerWidgetSync-[^/]+\.js$/,
   /\/assets\/VoiceAssistant-[^/]+\.js$/,
   /\/assets\/VoiceAssistantSettingsPanel-[^/]+\.js$/,
   /\/assets\/lottie_light_canvas-[^/]+\.js$/,
   /\/assets\/native-voice-assistant-[^/]+\.js$/,
+  /\/assets\/native-push-notifications-[^/]+\.js$/,
 ]
 
 const indexHtml = await readText(indexHtmlPath)
