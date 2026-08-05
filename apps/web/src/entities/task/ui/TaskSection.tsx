@@ -15,7 +15,7 @@ import styles from './TaskSection.module.css'
 
 type TaskCardVariant = 'card' | 'compact'
 
-interface TaskSectionProps {
+export interface TaskSectionProps {
   title: string
   tasks: Task[]
   allTasks?: Task[] | undefined

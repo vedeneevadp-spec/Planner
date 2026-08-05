@@ -2,8 +2,14 @@ import type {
   SelfCareDashboardResponse,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
@@ -36,11 +42,15 @@ const mocks = vi.hoisted(() => {
 
   return {
     copyTaskToPersonal: vi.fn(),
+    createNextTaskStage: vi.fn(),
+    detachTaskFromChain: vi.fn(),
     moveTaskToPersonal: vi.fn(),
     removeTask: vi.fn(),
     selfCareDashboards,
+    selfCareDashboardRequest: vi.fn(),
     setTaskPlannedDate: vi.fn(),
     setTaskStatus: vi.fn(),
+    taskComposer: vi.fn(),
     updateTask: vi.fn(),
     updateUserPreferences: vi.fn(),
     usePlannerSession: vi.fn<() => { data: PlannerSessionStub }>(),
@@ -54,6 +64,8 @@ vi.mock('@/features/emoji-library', () => ({
 vi.mock('@/features/planner', () => ({
   usePlanner: () => ({
     copyTaskToPersonal: mocks.copyTaskToPersonal,
+    createNextTaskStage: mocks.createNextTaskStage,
+    detachTaskFromChain: mocks.detachTaskFromChain,
     isTaskPending: () => false,
     moveTaskToPersonal: mocks.moveTaskToPersonal,
     removeTask: mocks.removeTask,
@@ -66,9 +78,13 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/self-care', () => ({
-  useSelfCareDashboard: (date: string) => ({
-    data: mocks.selfCareDashboards[date],
-  }),
+  useSelfCareDashboard: (date: string) => {
+    mocks.selfCareDashboardRequest(date)
+
+    return {
+      data: mocks.selfCareDashboards[date],
+    }
+  },
 }))
 
 vi.mock('@/features/session', () => ({
@@ -81,11 +97,10 @@ vi.mock('@/features/session', () => ({
 }))
 
 vi.mock('@/features/task-create', () => ({
-  TaskComposer: () => null,
-}))
-
-vi.mock('./ResourcePlanPanel', () => ({
-  ResourcePlanPanel: () => null,
+  TaskComposer: (props: unknown) => {
+    mocks.taskComposer(props)
+    return null
+  },
 }))
 
 let plannerTasks: Task[] = []
@@ -247,19 +262,30 @@ function renderTodayPage({
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <TodayPage />
+      <LocationProbe />
     </MemoryRouter>,
   )
+}
+
+function LocationProbe() {
+  const location = useLocation()
+
+  return <output data-testid="today-location">{location.search}</output>
 }
 
 describe('TodayPage', () => {
   beforeEach(() => {
     plannerTasks = []
     mocks.copyTaskToPersonal.mockReset()
+    mocks.createNextTaskStage.mockReset()
+    mocks.detachTaskFromChain.mockReset()
     mocks.moveTaskToPersonal.mockReset()
     mocks.removeTask.mockReset()
     mocks.selfCareDashboards = {}
+    mocks.selfCareDashboardRequest.mockReset()
     mocks.setTaskPlannedDate.mockReset()
     mocks.setTaskStatus.mockReset()
+    mocks.taskComposer.mockReset()
     mocks.updateTask.mockReset()
     mocks.updateTask.mockResolvedValue(true)
     mocks.updateUserPreferences.mockReset()
@@ -443,6 +469,93 @@ describe('TodayPage', () => {
     expect(
       screen.queryByText('Подробности не видны в компактном списке'),
     ).not.toBeInTheDocument()
+  })
+
+  it('shows resource planning only in a personal workspace', () => {
+    const personal = renderTodayPage({ tasks: [] })
+
+    expect(screen.getByText('Антиперегруз')).toBeVisible()
+    expect(mocks.selfCareDashboardRequest).toHaveBeenCalledTimes(2)
+
+    personal.unmount()
+    mocks.selfCareDashboardRequest.mockClear()
+    renderTodayPage({ kind: 'shared', tasks: [] })
+
+    expect(screen.queryByText('Антиперегруз')).not.toBeInTheDocument()
+    expect(mocks.selfCareDashboardRequest).not.toHaveBeenCalled()
+  })
+
+  it('persists only a newly selected energy mode', () => {
+    renderTodayPage({ tasks: [] })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Норм/ }))
+
+    expect(mocks.updateUserPreferences).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /Минимум/ }))
+
+    expect(mocks.updateUserPreferences).toHaveBeenCalledWith({
+      energyMode: 'minimum',
+    })
+  })
+
+  it('moves the selected unload candidate to tomorrow', () => {
+    const todayKey = getDateKey(new Date())
+    const tomorrowKey = getDateKey(addDays(new Date(), 1))
+
+    renderTodayPage({
+      tasks: [
+        createTask({
+          id: 'heavy-1',
+          plannedDate: todayKey,
+          resource: -5,
+          title: 'Тяжёлая задача 1',
+        }),
+        createTask({
+          id: 'heavy-2',
+          plannedDate: todayKey,
+          resource: -5,
+          title: 'Тяжёлая задача 2',
+        }),
+      ],
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Открыть антиперегруз' }),
+    )
+    fireEvent.click(screen.getAllByRole('button', { name: 'На завтра' })[0]!)
+
+    expect(mocks.setTaskPlannedDate).toHaveBeenCalledWith(
+      'heavy-1',
+      tomorrowKey,
+    )
+  })
+
+  it('opens a widget draft once and preserves unrelated query parameters', async () => {
+    const todayKey = getDateKey(new Date())
+
+    renderTodayPage({
+      initialEntry: '/today?taskView=list&createTask=request-1&foo=bar',
+      tasks: [],
+    })
+
+    expect(mocks.taskComposer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        initialPlannedDate: todayKey,
+        openDraft: {
+          plannedDate: todayKey,
+          requestId: 'request-1',
+        },
+      }),
+    )
+    await waitFor(() => {
+      expect(screen.getByTestId('today-location')).toHaveTextContent(
+        '?taskView=list&foo=bar',
+      )
+    })
   })
 
   it('renders migrated self-care items from the self-care dashboard in routine', () => {
