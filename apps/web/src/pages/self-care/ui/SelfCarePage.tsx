@@ -396,6 +396,9 @@ export function SelfCarePage() {
           moveOccurrence: moveOccurrenceMutation.mutateAsync,
           scheduleItem: scheduleItemMutation.mutateAsync,
         })
+        setHiddenScheduledItemIds((current) =>
+          new Set(current).add(entry.item.id),
+        )
       }
     })()
       .then(() => {

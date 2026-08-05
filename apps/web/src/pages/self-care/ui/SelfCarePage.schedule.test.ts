@@ -274,6 +274,37 @@ describe('self-care schedule availability helpers', () => {
     ).toEqual(['available'])
   })
 
+  it('does not offer an item today after it is scheduled for a future date', () => {
+    const postponed = createItem({
+      id: 'postponed',
+      title: 'Записаться на ресницы',
+      type: 'task',
+    })
+    const futureOccurrence = createOccurrence({
+      id: 'future-occurrence',
+      itemId: postponed.id,
+      scheduledFor: '2026-06-26',
+      scheduleRuleId: null,
+    })
+
+    expect(
+      buildAvailableTodayEntries({
+        dashboard: createDashboard(),
+        history: createHistory(),
+        list: createList({ items: [postponed] }),
+        plan: createPlan({
+          occurrences: [
+            createTodayEntry({
+              item: postponed,
+              occurrence: futureOccurrence,
+            }),
+          ],
+        }),
+        todayKey: '2026-06-20',
+      }),
+    ).toEqual([])
+  })
+
   it('keeps overdue occurrences available for the rituals tab', () => {
     const overdueItem = createItem({
       id: 'vitamin-c',

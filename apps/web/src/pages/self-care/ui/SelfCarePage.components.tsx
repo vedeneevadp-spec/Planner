@@ -155,7 +155,11 @@ export function SelfCareTodayTab({
     list,
     plan,
     todayKey,
-  }).filter((entry) => entry.item.type !== 'course')
+  }).filter(
+    (entry) =>
+      entry.item.type !== 'course' &&
+      !hiddenScheduledItemIds.has(entry.item.id),
+  )
   const planningHints = dashboard.planningHints.filter(
     (entry) => !hiddenScheduledItemIds.has(entry.item.id),
   )
