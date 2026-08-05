@@ -9,6 +9,7 @@ import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
+import { formatShortDate } from '@/shared/lib/date'
 
 import { TaskCard } from './TaskCard'
 
@@ -152,6 +153,44 @@ describe('TaskCard', () => {
     renderTaskCard(createTask({ necessity: 'required' }))
 
     expect(screen.getByText('Обязательно')).toBeVisible()
+  })
+
+  it("hides today's date while preserving its time and other planned dates", () => {
+    const today = renderTaskCard(
+      createTask({
+        plannedEndTime: '10:00',
+        plannedStartTime: '09:00',
+      }),
+    )
+
+    expect(screen.getByText('09:00 - 10:00')).toBeVisible()
+    expect(
+      screen.queryByText(formatShortDate('2026-04-23')),
+    ).not.toBeInTheDocument()
+
+    today.unmount()
+    renderTaskCard(
+      createTask({
+        plannedDate: '2026-04-24',
+        plannedEndTime: '10:00',
+        plannedStartTime: '09:00',
+      }),
+    )
+
+    expect(
+      screen.getByText(`09:00 - 10:00 • ${formatShortDate('2026-04-24')}`),
+    ).toBeVisible()
+  })
+
+  it('hides an unselected sphere and keeps a selected sphere visible', () => {
+    const withoutSphere = renderTaskCard(createTask())
+
+    expect(screen.queryByText('Без сферы')).not.toBeInTheDocument()
+
+    withoutSphere.unmount()
+    renderTaskCard(createTask({ project: 'Работа' }))
+
+    expect(screen.getByText('Работа')).toBeVisible()
   })
 
   it('keeps quick actions from opening the task preview', () => {

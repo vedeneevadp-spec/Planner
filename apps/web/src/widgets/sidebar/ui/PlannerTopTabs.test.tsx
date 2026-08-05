@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router'
+import { Link, MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { formatLongDate } from '@/shared/lib/date'
+import { getTodayDate } from '@/shared/time/time.service'
 
 import styles from './PlannerTabs.module.css'
 import { PlannerTopTabs } from './PlannerTopTabs'
@@ -32,6 +35,7 @@ const sessionMocks = vi.hoisted(() => ({
 vi.mock('@/features/session', () => ({
   setSelectedWorkspaceIdForActors: sessionMocks.setSelectedWorkspaceIdForActors,
   usePlannerSession: () => sessionMocks.usePlannerSession(),
+  usePlannerTimeZone: () => 'UTC',
   useSessionAuth: () => sessionMocks.useSessionAuth(),
 }))
 
@@ -55,6 +59,17 @@ function renderPlannerTopTabs(initialEntry: string) {
   )
 }
 
+function renderPlannerTopTabsWithNavigation(initialEntry: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <PlannerTopTabs />
+      <Link to="/calendar">Тест: календарь</Link>
+      <Link to="/today">Тест: сегодня</Link>
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+}
+
 function requireClassName(className: string | undefined): string {
   if (!className) {
     throw new Error('Expected CSS module class to be available.')
@@ -65,6 +80,7 @@ function requireClassName(className: string | undefined): string {
 
 describe('PlannerTopTabs', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     sessionMocks.setSelectedWorkspaceIdForActors.mockClear()
     sessionMocks.usePlannerSession.mockReturnValue({
       data: {
@@ -102,6 +118,19 @@ describe('PlannerTopTabs', () => {
     ).toBeVisible()
   })
 
+  it('shows the current weekday and date only on today', () => {
+    const todayKey = getTodayDate('UTC')
+    const todayLabel = formatLongDate(todayKey)
+    const today = renderPlannerTopTabs('/today')
+
+    expect(screen.getByText(todayLabel)).toHaveAttribute('datetime', todayKey)
+
+    today.unmount()
+    renderPlannerTopTabs('/calendar')
+
+    expect(screen.queryByText(todayLabel)).not.toBeInTheDocument()
+  })
+
   it('opens task creation through a query trigger', () => {
     renderPlannerTopTabs('/today?foo=bar')
 
@@ -128,6 +157,41 @@ describe('PlannerTopTabs', () => {
     )
 
     expect(screen.getByTestId('location')).toHaveTextContent('/today?foo=bar')
+  })
+
+  it('restores the selected task view after leaving and returning to today', () => {
+    renderPlannerTopTabsWithNavigation('/today')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Показать задачи списком' }),
+    )
+    fireEvent.click(screen.getByRole('link', { name: 'Тест: календарь' }))
+
+    expect(
+      screen.queryByRole('button', { name: 'Показать задачи плитками' }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('link', { name: 'Тест: сегодня' }))
+
+    expect(
+      screen.getByRole('button', { name: 'Показать задачи плитками' }),
+    ).toBeVisible()
+    expect(screen.getByTestId('location')).toHaveTextContent('/today')
+  })
+
+  it('restores the selected task view after remounting', () => {
+    const first = renderPlannerTopTabs('/today')
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Показать задачи списком' }),
+    )
+    first.unmount()
+
+    renderPlannerTopTabs('/today')
+
+    expect(
+      screen.getByRole('button', { name: 'Показать задачи плитками' }),
+    ).toBeVisible()
   })
 
   it('normalizes unknown task views to cards', () => {

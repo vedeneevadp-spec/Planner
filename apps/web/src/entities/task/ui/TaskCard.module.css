@@ -268,8 +268,7 @@
   flex: 0 0 auto;
 }
 
-.projectBadge,
-.projectBadgeMuted {
+.projectBadge {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -281,8 +280,7 @@
   line-height: 1.2;
 }
 
-.projectBadge span:last-child,
-.projectBadgeMuted {
+.projectBadge span:last-child {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -293,12 +291,6 @@
   border: 1px solid var(--accent-border);
   background: var(--accent-muted);
   color: var(--accent-strong);
-}
-
-.projectBadgeMuted {
-  border: 1px dashed var(--line-strong);
-  background: var(--field-bg-muted);
-  color: var(--text-soft);
 }
 
 .projectIcon {

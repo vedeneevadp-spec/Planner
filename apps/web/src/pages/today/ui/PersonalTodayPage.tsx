@@ -9,6 +9,7 @@ import {
   usePlannerTimeZone,
   useUpdateUserPreferences,
 } from '@/features/session'
+import { useTodayTaskView } from '@/shared/lib/today-task-view'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
 import type { EnergyMode } from '../lib/resource-plan'
@@ -16,11 +17,13 @@ import {
   buildTodaySelfCareModel,
   getSelfCareTaskKey,
 } from '../lib/today-self-care'
-import { buildTodayTaskModel, getTodayTaskView } from '../lib/today-task-model'
+import { buildTodayTaskModel } from '../lib/today-task-model'
+import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
 import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
 import { TodayPageLayout } from './TodayPageLayout'
+import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
 
 export function PersonalTodayPage() {
@@ -54,8 +57,9 @@ export function PersonalTodayPage() {
   const tomorrowSelfCareDashboardQuery = useSelfCareDashboard(tomorrowKey, {
     enabled: selfCareDashboardEnabled,
   })
-  const taskView = getTodayTaskView(searchParams)
+  const taskView = useTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
+  const routineSummary = useTodayRoutineSummary(todayKey)
   const taskModel = useMemo(
     () =>
       buildTodayTaskModel({
@@ -145,8 +149,17 @@ export function PersonalTodayPage() {
             items: selfCareOverdueTaskCards,
           },
           routine: {
-            itemCount: selfCareRoutineTaskCards.length,
-            items: selfCareRoutineTaskCards,
+            itemCount:
+              routineSummary.itemCount + selfCareRoutineTaskCards.length,
+            items: (
+              <>
+                <TodayRoutineSummaryCards
+                  {...routineSummary}
+                  variant={taskCardVariant}
+                />
+                {selfCareRoutineTaskCards}
+              </>
+            ),
           },
           tomorrow: {
             itemCount: selfCareTomorrowTaskCards.length,

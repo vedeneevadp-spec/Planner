@@ -57,6 +57,7 @@ describe('ResourcePlanPanel', () => {
 
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByText('спокойно')).toBeVisible()
+    expect(screen.getByLabelText('Установленный режим: Норм')).toBeVisible()
     expect(
       screen.queryByRole('heading', {
         name: 'Сколько у тебя ресурса сегодня?',

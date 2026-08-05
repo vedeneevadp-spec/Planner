@@ -265,6 +265,20 @@
   border-color: var(--planner-top-tab-border);
 }
 
+.topTodayDate {
+  align-self: center;
+  flex: 1 1 auto;
+  min-width: 8rem;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--text) 86%, var(--text-soft));
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .topLogoImage {
   display: block;
   width: 1.76rem;
@@ -558,6 +572,11 @@
 
   .topWorkspaceSelect {
     display: none;
+  }
+
+  .topTodayDate {
+    min-width: 7rem;
+    font-size: 0.72rem;
   }
 
   .topIconAction {
