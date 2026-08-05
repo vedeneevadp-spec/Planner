@@ -9,8 +9,6 @@ import {
   type Task,
 } from '@/entities/task'
 
-export type TodayTaskView = 'cards' | 'list'
-
 export interface BuildTodayTaskModelInput {
   plannerTimeZone: string
   tasks: Task[]
@@ -133,8 +131,4 @@ export function getTodaySectionDefaultCollapseState({
     other: beforeOther,
     tomorrow: beforeTomorrow,
   }
-}
-
-export function getTodayTaskView(searchParams: URLSearchParams): TodayTaskView {
-  return searchParams.get('taskView') === 'list' ? 'list' : 'cards'
 }

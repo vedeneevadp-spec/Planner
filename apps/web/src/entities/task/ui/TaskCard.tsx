@@ -29,23 +29,6 @@ const LEGACY_EMPTY_PROJECT_TITLES = new Set([
   'No project',
 ])
 
-function getEmptyProjectLabel(): string {
-  return 'Без сферы'
-}
-
-function getSphereDisplayTitle(projectTitle: string): string {
-  const normalizedProjectTitle = projectTitle.trim()
-
-  if (
-    !normalizedProjectTitle ||
-    LEGACY_EMPTY_PROJECT_TITLES.has(normalizedProjectTitle)
-  ) {
-    return getEmptyProjectLabel()
-  }
-
-  return normalizedProjectTitle
-}
-
 function getTaskReminderLabel(
   task: Task,
   isSharedWorkspace: boolean,
@@ -186,12 +169,11 @@ export function TaskCard({
   const isCompactView = variant === 'compact'
   const isDetailView = variant === 'detail'
   const rawProjectTitle = sphere?.name ?? task.project
-  const projectTitle = getSphereDisplayTitle(rawProjectTitle)
-  const normalizedRawProjectTitle = rawProjectTitle.trim()
+  const projectTitle = rawProjectTitle.trim()
   const hasProject =
     !isSharedWorkspace &&
-    Boolean(normalizedRawProjectTitle) &&
-    !LEGACY_EMPTY_PROJECT_TITLES.has(normalizedRawProjectTitle)
+    Boolean(projectTitle) &&
+    !LEGACY_EMPTY_PROJECT_TITLES.has(projectTitle)
   const taskType = getTaskTypeValue(task)
   const taskResource = getTaskResource(task)
   const reminderLabel = getTaskReminderLabel(task, isSharedWorkspace)
@@ -244,7 +226,9 @@ export function TaskCard({
     task.plannedStartTime
       ? formatTimeRange(task.plannedStartTime, task.plannedEndTime)
       : null,
-    task.plannedDate ? formatShortDate(task.plannedDate) : null,
+    task.plannedDate && task.plannedDate !== todayKey
+      ? formatShortDate(task.plannedDate)
+      : null,
   ].filter((value): value is string => Boolean(value))
   const toneClass =
     tone === 'warning'
@@ -644,32 +628,32 @@ export function TaskCard({
 
             {task.note ? <p className={styles.note}>{task.note}</p> : null}
 
-            <div className={styles.detailRow}>
-              {hasProject ? (
-                <span className={styles.projectBadge}>
-                  {sphere ? (
-                    <span
-                      className={styles.projectIcon}
-                      style={{ backgroundColor: sphere.color }}
-                      aria-hidden="true"
-                    >
-                      <IconMark
-                        value={sphere.icon}
-                        uploadedIcons={uploadedIcons}
-                      />
-                    </span>
-                  ) : null}
-                  <span>{projectTitle}</span>
-                </span>
-              ) : !isSharedWorkspace ? (
-                <span className={styles.projectBadgeMuted}>{projectTitle}</span>
-              ) : null}
-              {scheduleDetails.length > 0 ? (
-                <span className={styles.detailText}>
-                  {scheduleDetails.join(' • ')}
-                </span>
-              ) : null}
-            </div>
+            {hasProject || scheduleDetails.length > 0 ? (
+              <div className={styles.detailRow}>
+                {hasProject ? (
+                  <span className={styles.projectBadge}>
+                    {sphere ? (
+                      <span
+                        className={styles.projectIcon}
+                        style={{ backgroundColor: sphere.color }}
+                        aria-hidden="true"
+                      >
+                        <IconMark
+                          value={sphere.icon}
+                          uploadedIcons={uploadedIcons}
+                        />
+                      </span>
+                    ) : null}
+                    <span>{projectTitle}</span>
+                  </span>
+                ) : null}
+                {scheduleDetails.length > 0 ? (
+                  <span className={styles.detailText}>
+                    {scheduleDetails.join(' • ')}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className={styles.meta}>
               <span

@@ -1,4 +1,8 @@
 import type {
+  ChaosInboxItemRecord,
+  CleaningTaskWithState,
+  CleaningTodayResponse,
+  CleaningZoneRecord,
   SelfCareDashboardResponse,
   SelfCareTodayItem,
 } from '@planner/contracts'
@@ -14,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
 import { addDays, getDateKey } from '@/shared/lib/date'
+import { setStoredTodayTaskView } from '@/shared/lib/today-task-view'
 
 import { TodayPage } from './TodayPage'
 
@@ -39,8 +44,14 @@ const mocks = vi.hoisted(() => {
     string,
     SelfCareDashboardResponse | undefined
   > = {}
+  const cleaningTodayResponses: Record<
+    string,
+    CleaningTodayResponse | undefined
+  > = {}
 
   return {
+    cleaningTodayRequest: vi.fn(),
+    cleaningTodayResponses,
     copyTaskToPersonal: vi.fn(),
     createNextTaskStage: vi.fn(),
     detachTaskFromChain: vi.fn(),
@@ -50,6 +61,9 @@ const mocks = vi.hoisted(() => {
     selfCareDashboardRequest: vi.fn(),
     setTaskPlannedDate: vi.fn(),
     setTaskStatus: vi.fn(),
+    shoppingActiveItems: [] as ChaosInboxItemRecord[],
+    shoppingItemPending: false,
+    shoppingItemUpdate: vi.fn(),
     taskComposer: vi.fn(),
     updateTask: vi.fn(),
     updateUserPreferences: vi.fn(),
@@ -74,6 +88,30 @@ vi.mock('@/features/planner', () => ({
     spheres: [],
     tasks: plannerTasks,
     updateTask: mocks.updateTask,
+  }),
+}))
+
+vi.mock('@/features/cleaning', () => ({
+  useCleaningToday: (date: string) => {
+    mocks.cleaningTodayRequest(date)
+
+    return {
+      data: mocks.cleaningTodayResponses[date],
+    }
+  },
+}))
+
+vi.mock('@/features/shopping-list', () => ({
+  useShoppingListSummary: () => ({
+    activeItemCount: mocks.shoppingActiveItems.length,
+    activeItems: mocks.shoppingActiveItems,
+    completedItemCount: 0,
+    completedItems: [],
+    totalItemCount: mocks.shoppingActiveItems.length,
+  }),
+  useUpdateShoppingListItem: () => ({
+    isPending: mocks.shoppingItemPending,
+    mutate: mocks.shoppingItemUpdate,
   }),
 }))
 
@@ -163,6 +201,149 @@ function createRoutineTask(overrides: Partial<Task> = {}): Task {
     },
     ...overrides,
   })
+}
+
+function createShoppingItem(
+  overrides: Partial<ChaosInboxItemRecord> = {},
+): ChaosInboxItemRecord {
+  return {
+    activatedAt: null,
+    completedAt: null,
+    convertedNoteId: null,
+    convertedTaskId: null,
+    createdAt: '2026-05-19T08:00:00.000Z',
+    deletedAt: null,
+    dueDate: null,
+    id: 'shopping-1',
+    isFavorite: false,
+    kind: 'shopping',
+    linkedTaskDeleted: false,
+    priority: null,
+    shoppingCategory: 'groceries',
+    source: 'manual',
+    sphereId: null,
+    status: 'new',
+    text: 'Молоко',
+    updatedAt: '2026-05-19T08:00:00.000Z',
+    userId: 'user-1',
+    version: 1,
+    workspaceId: 'personal-workspace',
+    ...overrides,
+  }
+}
+
+function createCleaningZone(
+  overrides: Partial<CleaningZoneRecord> = {},
+): CleaningZoneRecord {
+  return {
+    createdAt: '2026-05-19T08:00:00.000Z',
+    dayOfWeek: 2,
+    deletedAt: null,
+    description: '',
+    id: 'cleaning-zone-1',
+    isActive: true,
+    sortOrder: 0,
+    title: 'Кухня',
+    updatedAt: '2026-05-19T08:00:00.000Z',
+    userId: 'user-1',
+    version: 1,
+    workspaceId: 'personal-workspace',
+    ...overrides,
+  }
+}
+
+function createCleaningTaskWithState(
+  zone: CleaningZoneRecord | null,
+  overrides: Partial<CleaningTaskWithState> = {},
+): CleaningTaskWithState {
+  const taskId = overrides.task?.id ?? 'cleaning-task-1'
+
+  return {
+    isDue: true,
+    isOverdue: false,
+    score: 3,
+    state: {
+      lastCompletedAt: null,
+      lastPostponedAt: null,
+      lastSkippedAt: null,
+      nextDueAt: null,
+      postponeCount: 0,
+      taskId,
+      updatedAt: '2026-05-19T08:00:00.000Z',
+      version: 1,
+      workspaceId: 'personal-workspace',
+    },
+    task: {
+      assignee: 'anyone',
+      createdAt: '2026-05-19T08:00:00.000Z',
+      customIntervalDays: null,
+      deletedAt: null,
+      depth: 'regular',
+      description: '',
+      energy: 'normal',
+      estimatedMinutes: 15,
+      frequencyInterval: 1,
+      frequencyType: 'weekly',
+      id: taskId,
+      impactScore: 3,
+      isActive: true,
+      isSeasonal: false,
+      priority: 'normal',
+      scope: zone ? 'zone' : 'general',
+      seasonMonths: [],
+      sortOrder: 0,
+      tags: [],
+      title: 'Протереть поверхности',
+      updatedAt: '2026-05-19T08:00:00.000Z',
+      userId: 'user-1',
+      version: 1,
+      workspaceId: 'personal-workspace',
+      zoneId: zone?.id ?? null,
+    },
+    zone,
+    ...overrides,
+  }
+}
+
+function createCleaningTodayResponse(
+  options: {
+    date?: string
+    generalItems?: CleaningTaskWithState[]
+    items?: CleaningTaskWithState[]
+  } = {},
+): CleaningTodayResponse {
+  const items = options.items ?? []
+  const generalItems = options.generalItems ?? []
+  const zones = Array.from(
+    new Map(
+      items.flatMap((item) =>
+        item.zone ? [[item.zone.id, item.zone] as const] : [],
+      ),
+    ).values(),
+  )
+
+  return {
+    accumulatedItems: [],
+    date: options.date ?? getDateKey(new Date()),
+    dayOfWeek: 2,
+    generalItems,
+    history: [],
+    items,
+    quickItems: [],
+    seasonalItems: [],
+    summary: {
+      accumulatedCount: 0,
+      activeZoneCount: zones.length,
+      completedTodayCount: 0,
+      dueCount: items.length + generalItems.length,
+      generalCount: generalItems.length,
+      quickCount: 0,
+      seasonalCount: 0,
+      urgentCount: 0,
+    },
+    urgentItems: [],
+    zones,
+  }
 }
 
 type SelfCareTodayItemOverrides = Omit<Partial<SelfCareTodayItem>, 'item'> & {
@@ -275,7 +456,10 @@ function LocationProbe() {
 
 describe('TodayPage', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     plannerTasks = []
+    mocks.cleaningTodayRequest.mockReset()
+    mocks.cleaningTodayResponses = {}
     mocks.copyTaskToPersonal.mockReset()
     mocks.createNextTaskStage.mockReset()
     mocks.detachTaskFromChain.mockReset()
@@ -285,6 +469,9 @@ describe('TodayPage', () => {
     mocks.selfCareDashboardRequest.mockReset()
     mocks.setTaskPlannedDate.mockReset()
     mocks.setTaskStatus.mockReset()
+    mocks.shoppingActiveItems = []
+    mocks.shoppingItemPending = false
+    mocks.shoppingItemUpdate.mockReset()
     mocks.taskComposer.mockReset()
     mocks.updateTask.mockReset()
     mocks.updateTask.mockResolvedValue(true)
@@ -471,6 +658,27 @@ describe('TodayPage', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('uses the stored list view without a task view query parameter', () => {
+    const todayKey = getDateKey(new Date())
+    setStoredTodayTaskView('list')
+
+    renderTodayPage({
+      tasks: [
+        createTask({
+          id: 'today-task',
+          note: 'Подробности сохранённого режима не видны',
+          plannedDate: todayKey,
+          title: 'Задача сохранённого списка',
+        }),
+      ],
+    })
+
+    expect(screen.getByText('Задача сохранённого списка')).toBeVisible()
+    expect(
+      screen.queryByText('Подробности сохранённого режима не видны'),
+    ).not.toBeInTheDocument()
+  })
+
   it('shows resource planning only in a personal workspace', () => {
     const personal = renderTodayPage({ tasks: [] })
 
@@ -571,6 +779,127 @@ describe('TodayPage', () => {
       }),
     ).toBeVisible()
     expect(screen.queryByText('image:legacy-icon')).not.toBeInTheDocument()
+  })
+
+  it('marks a single shopping item as bought from the routine card', () => {
+    mocks.shoppingActiveItems = [createShoppingItem()]
+
+    const rendered = renderTodayPage({ tasks: [] })
+    const shoppingButton = screen.getByRole('button', {
+      name: 'Отметить покупку купленной: Молоко',
+    })
+
+    expect(shoppingButton).toBeVisible()
+    expect(shoppingButton).toHaveTextContent('Купить Молоко')
+    expect(screen.getByRole('button', { name: 'Рутина' })).toHaveTextContent(
+      '1',
+    )
+
+    fireEvent.click(shoppingButton)
+
+    expect(mocks.shoppingItemUpdate).toHaveBeenCalledWith({
+      itemId: 'shopping-1',
+      patch: {
+        priority: null,
+        status: 'archived',
+      },
+    })
+
+    mocks.shoppingActiveItems = []
+    rendered.rerender(
+      <MemoryRouter initialEntries={['/today']}>
+        <TodayPage />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+
+    expect(
+      screen.queryByRole('button', {
+        name: 'Отметить покупку купленной: Молоко',
+      }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Рутина' })).toBeNull()
+  })
+
+  it('disables the single shopping action while its update is pending', () => {
+    mocks.shoppingActiveItems = [createShoppingItem()]
+    mocks.shoppingItemPending = true
+
+    renderTodayPage({ tasks: [] })
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Отметить покупку купленной: Молоко',
+      }),
+    ).toBeDisabled()
+  })
+
+  it('links a multi-item shopping summary to shopping in a shared workspace', () => {
+    mocks.shoppingActiveItems = [
+      createShoppingItem(),
+      createShoppingItem({ id: 'shopping-2', text: 'Хлеб' }),
+    ]
+
+    renderTodayPage({ kind: 'shared', tasks: [] })
+
+    expect(
+      screen.getByRole('link', { name: 'Открыть покупки: 2 покупки' }),
+    ).toHaveAttribute('href', '/shopping')
+    expect(screen.getByText('2 покупки')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Рутина' })).toHaveTextContent(
+      '1',
+    )
+  })
+
+  it('links the cleaning summary with zones and task count from routine', () => {
+    const todayKey = getDateKey(new Date())
+    const kitchen = createCleaningZone()
+    const bathroom = createCleaningZone({
+      id: 'cleaning-zone-2',
+      title: 'Ванная',
+    })
+    const generalTask = createCleaningTaskWithState(null, {
+      task: {
+        ...createCleaningTaskWithState(null).task,
+        id: 'cleaning-task-3',
+      },
+    })
+
+    mocks.cleaningTodayResponses[todayKey] = createCleaningTodayResponse({
+      date: todayKey,
+      generalItems: [generalTask],
+      items: [
+        createCleaningTaskWithState(kitchen),
+        createCleaningTaskWithState(bathroom, {
+          task: {
+            ...createCleaningTaskWithState(bathroom).task,
+            id: 'cleaning-task-2',
+          },
+        }),
+      ],
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(
+      screen.getByRole('link', {
+        name: 'Открыть уборку: Кухня, Ванная, Прочее, 3 задачи',
+      }),
+    ).toHaveAttribute('href', '/cleaning')
+    expect(screen.getByText('3 задачи · Кухня, Ванная, Прочее')).toBeVisible()
+  })
+
+  it('keeps aggregate routine cards hidden without active items', () => {
+    const todayKey = getDateKey(new Date())
+    mocks.cleaningTodayResponses[todayKey] = createCleaningTodayResponse({
+      date: todayKey,
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(screen.queryByRole('button', { name: 'Рутина' })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Открыть покупки/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /Открыть уборку/ })).toBeNull()
   })
 
   it('renders daily flexible self-care goals from the self-care dashboard in routine', () => {

@@ -48,6 +48,14 @@ export function ResourcePlanPanel({
             Антиперегруз
           </p>
         </div>
+        {!isExpanded ? (
+          <span
+            className={styles.selectedMode}
+            aria-label={`Установленный режим: ${activeConfig.label}`}
+          >
+            {activeConfig.label}
+          </span>
+        ) : null}
         <div className={styles.headerControls}>
           <span className={cx(styles.stateBadge, styles[analysis.state])}>
             {getLoadStateLabel(analysis.state)}

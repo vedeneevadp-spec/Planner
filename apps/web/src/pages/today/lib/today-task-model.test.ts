@@ -5,7 +5,6 @@ import type { Task } from '@/entities/task'
 import {
   buildTodayTaskModel,
   getTodaySectionDefaultCollapseState,
-  getTodayTaskView,
 } from './today-task-model'
 
 const TODAY_KEY = '2026-05-20'
@@ -261,15 +260,5 @@ describe('today task model', () => {
     expect(
       getTodaySectionDefaultCollapseState({ ...empty, ...values }),
     ).toEqual(expected)
-  })
-
-  it.each([
-    ['', 'cards'],
-    ['taskView=cards', 'cards'],
-    ['taskView=unknown', 'cards'],
-    ['taskView=LIST', 'cards'],
-    ['taskView=list', 'list'],
-  ] as const)('resolves task view from %s', (query, expected) => {
-    expect(getTodayTaskView(new URLSearchParams(query))).toBe(expected)
   })
 })

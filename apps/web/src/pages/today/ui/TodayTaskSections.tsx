@@ -2,12 +2,12 @@ import type { ReactElement, ReactNode } from 'react'
 
 import type { Task } from '@/entities/task'
 import { TaskSection, type TaskSectionProps } from '@/entities/task/ui'
+import type { TodayTaskView } from '@/shared/lib/today-task-view'
 import pageStyles from '@/shared/ui/Page'
 
 import {
   getTodaySectionDefaultCollapseState,
   type TodayTaskModel,
-  type TodayTaskView,
 } from '../lib/today-task-model'
 import styles from './TodayPage.module.css'
 

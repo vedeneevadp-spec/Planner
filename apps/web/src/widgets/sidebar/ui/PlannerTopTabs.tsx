@@ -9,6 +9,7 @@ import {
 import {
   setSelectedWorkspaceIdForActors,
   usePlannerSession,
+  usePlannerTimeZone,
   useSessionAuth,
 } from '@/features/session'
 import {
@@ -18,6 +19,14 @@ import {
   type ShoppingCategory,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
+import { formatLongDate } from '@/shared/lib/date'
+import {
+  setStoredTodayTaskView,
+  TODAY_TASK_VIEW_SEARCH_PARAM,
+  type TodayTaskView,
+  useTodayTaskView,
+} from '@/shared/lib/today-task-view'
+import { getTodayDate } from '@/shared/time/time.service'
 import {
   GearIcon,
   LightningIcon,
@@ -30,7 +39,6 @@ import { SelectPicker } from '@/shared/ui/SelectPicker'
 import styles from './PlannerTabs.module.css'
 
 type CalendarTopViewMode = 'day' | 'week' | 'month' | 'schedule'
-type TodayTaskView = 'cards' | 'list'
 
 const CALENDAR_VIEW_SEARCH_PARAM = 'calendarView'
 const SELF_CARE_ACTION_REQUEST_SEARCH_PARAM = 'selfCareActionRequest'
@@ -39,7 +47,6 @@ const SHOPPING_ICON_BASE_URL = '/icons/shopping'
 const SPHERES_ACTION_REQUEST_SEARCH_PARAM = 'spheresActionRequest'
 const SPHERES_ACTION_SEARCH_PARAM = 'spheresAction'
 const TASK_CREATE_SEARCH_PARAM = 'createTask'
-const TASK_VIEW_SEARCH_PARAM = 'taskView'
 const CALENDAR_VIEW_TABS: Array<{
   label: string
   mode: CalendarTopViewMode
@@ -103,8 +110,10 @@ export function PlannerTopTabs() {
   const navigate = useNavigate()
   const auth = useSessionAuth()
   const { data: session } = usePlannerSession()
+  const plannerTimeZone = usePlannerTimeZone()
   const [searchParams] = useSearchParams()
   const isHomeActive = matchesRoute(location.pathname, '/today')
+  const todayKey = isHomeActive ? getTodayDate(plannerTimeZone) : null
   const isCalendarActive = matchesRoute(location.pathname, '/calendar')
   const isCleaningActive = location.pathname === '/cleaning'
   const isCleaningSettingsActive = matchesRoute(
@@ -124,7 +133,7 @@ export function PlannerTopTabs() {
   const cleaningFocusMode = getCleaningFocusModeFromSearchParams(searchParams)
   const shoppingFilters = getShoppingFiltersFromSearchParams(searchParams)
   const hasShoppingFilters = hasActiveShoppingFilters(shoppingFilters)
-  const taskView = getTodayTaskView(searchParams)
+  const taskView = useTodayTaskView(isHomeActive ? searchParams : null)
   const nextTaskView: TodayTaskView = taskView === 'cards' ? 'list' : 'cards'
   const taskViewToggleLabel =
     taskView === 'cards'
@@ -133,11 +142,12 @@ export function PlannerTopTabs() {
 
   function toggleTaskView() {
     const nextParams = new URLSearchParams(searchParams)
+    setStoredTodayTaskView(nextTaskView)
 
     if (nextTaskView === 'list') {
-      nextParams.set(TASK_VIEW_SEARCH_PARAM, nextTaskView)
+      nextParams.set(TODAY_TASK_VIEW_SEARCH_PARAM, nextTaskView)
     } else {
-      nextParams.delete(TASK_VIEW_SEARCH_PARAM)
+      nextParams.delete(TODAY_TASK_VIEW_SEARCH_PARAM)
     }
 
     navigateWithSearchParams(nextParams)
@@ -281,6 +291,12 @@ export function PlannerTopTabs() {
           ])
         }}
       />
+
+      {todayKey ? (
+        <time className={styles.topTodayDate} dateTime={todayKey}>
+          {formatLongDate(todayKey)}
+        </time>
+      ) : null}
 
       {isCleaningSettingsActive ? (
         <div
@@ -585,10 +601,6 @@ function getCalendarViewMode(
   }
 
   return null
-}
-
-function getTodayTaskView(searchParams: URLSearchParams): TodayTaskView {
-  return searchParams.get(TASK_VIEW_SEARCH_PARAM) === 'list' ? 'list' : 'cards'
 }
 
 function createActionRequestId(): string {

@@ -34,6 +34,7 @@ import {
   useCreateShoppingListItem,
   useShoppingListSummary,
   useShoppingListSyncStatus,
+  useUpdateShoppingListItem,
 } from './useShoppingList'
 
 describe('useShoppingList hooks', () => {
@@ -202,6 +203,79 @@ describe('useShoppingList hooks', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('optimistically removes an archived item from the active summary', async () => {
+    const activeItem = createShoppingItemRecord({
+      id: 'item-active',
+      status: 'new',
+      text: 'Молоко',
+    })
+    const archivedItem = {
+      ...activeItem,
+      completedAt: '2026-05-26T01:00:00.000Z',
+      status: 'archived' as const,
+      version: activeItem.version + 1,
+    }
+    let resolveUpdateResponse: ((response: Response) => void) | undefined
+
+    fetchMock
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [activeItem],
+          limit: 200,
+          page: 1,
+          total: 1,
+        }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveUpdateResponse = resolve
+          }),
+      )
+
+    const { result } = renderHook(
+      () => ({
+        summary: useShoppingListSummary(),
+        updateItem: useUpdateShoppingListItem(),
+      }),
+      {
+        wrapper: createQueryWrapper(),
+      },
+    )
+
+    await waitFor(() => {
+      expect(result.current.summary.activeItemCount).toBe(1)
+    })
+
+    act(() => {
+      result.current.updateItem.mutate({
+        itemId: activeItem.id,
+        patch: {
+          priority: null,
+          status: 'archived',
+        },
+      })
+    })
+
+    await waitFor(() => {
+      expect(result.current.summary.activeItemCount).toBe(0)
+    })
+    expect(result.current.updateItem.isPending).toBe(true)
+
+    const resolveUpdate = resolveUpdateResponse
+
+    if (!resolveUpdate) {
+      throw new Error('Expected the shopping update request to start.')
+    }
+
+    act(() => {
+      resolveUpdate(jsonResponse(archivedItem))
+    })
+    await waitFor(() => {
+      expect(result.current.updateItem.isSuccess).toBe(true)
+    })
   })
 
   it('reports pending and conflicted shopping offline mutations', async () => {

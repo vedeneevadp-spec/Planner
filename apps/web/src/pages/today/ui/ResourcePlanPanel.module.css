@@ -65,6 +65,14 @@
   text-transform: uppercase;
 }
 
+.selectedMode {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .header h3,
 .unloadBox h4 {
   margin: 0.2rem 0 0;
@@ -258,6 +266,10 @@
 
   .eyebrow {
     font-size: 0.68rem;
+  }
+
+  .selectedMode {
+    font-size: 0.72rem;
   }
 
   .header h3 {

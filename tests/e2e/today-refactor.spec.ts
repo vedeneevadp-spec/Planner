@@ -79,6 +79,10 @@ test('keeps the personal Today flow intact after the refactor', async ({
   await expect(page.getByText(tomorrowTask)).toBeVisible()
 
   await page.goto('/today')
+  await expect(
+    page.getByRole('button', { name: 'Показать задачи плитками' }),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Показать задачи плитками' }).click()
 
   await page
     .getByRole('button', { name: `Действия с задачей ${tomorrowTask}` })

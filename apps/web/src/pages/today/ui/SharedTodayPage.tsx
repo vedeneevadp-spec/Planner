@@ -8,11 +8,14 @@ import {
   usePlannerTimeZone,
   useWorkspaceUsers,
 } from '@/features/session'
+import { useTodayTaskView } from '@/shared/lib/today-task-view'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
-import { buildTodayTaskModel, getTodayTaskView } from '../lib/today-task-model'
+import { buildTodayTaskModel } from '../lib/today-task-model'
+import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
 import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { TodayPageLayout } from './TodayPageLayout'
+import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
 
 export function SharedTodayPage() {
@@ -38,7 +41,8 @@ export function SharedTodayPage() {
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
   const widgetTaskComposerDraft = useWidgetTaskComposerDraft(todayKey)
-  const taskView = getTodayTaskView(searchParams)
+  const taskView = useTodayTaskView(searchParams)
+  const routineSummary = useTodayRoutineSummary(todayKey)
   const taskModel = useMemo(
     () =>
       buildTodayTaskModel({
@@ -63,6 +67,17 @@ export function SharedTodayPage() {
           setTaskPlannedDate,
           setTaskStatus,
           updateTask,
+        }}
+        extras={{
+          routine: {
+            itemCount: routineSummary.itemCount,
+            items: (
+              <TodayRoutineSummaryCards
+                {...routineSummary}
+                variant={taskView === 'list' ? 'compact' : 'card'}
+              />
+            ),
+          },
         }}
         model={taskModel}
         spheres={spheres}
