@@ -13,4 +13,4 @@ export {
 } from './TaskMetaPickers'
 export { TaskNextStageDialog } from './TaskNextStageDialog'
 export { TaskRecurrenceFields } from './TaskRecurrenceFields'
-export { TaskSection } from './TaskSection'
+export { TaskSection, type TaskSectionProps } from './TaskSection'

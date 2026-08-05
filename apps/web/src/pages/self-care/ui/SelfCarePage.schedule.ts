@@ -751,7 +751,12 @@ function getOccupiedTodayItemIds(
   }
 
   for (const entry of plan?.occurrences ?? []) {
-    if (entry.occurrence?.scheduledFor === todayKey) {
+    if (
+      entry.occurrence &&
+      (entry.occurrence.scheduledFor === todayKey ||
+        (entry.occurrence.scheduledFor > todayKey &&
+          shouldShowPlannedEntry(entry)))
+    ) {
       itemIds.add(entry.item.id)
     }
   }
