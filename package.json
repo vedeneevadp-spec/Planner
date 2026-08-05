@@ -150,7 +150,7 @@
     "eslint-plugin-simple-import-sort": "^13.0.0",
     "eslint-plugin-unused-imports": "^4.4.1",
     "fake-indexeddb": "^6.2.5",
-    "globals": "^17.8.0",
+    "globals": "^17.9.0",
     "husky": "^9.1.7",
     "jsdom": "^27.4.0",
     "knip": "^6.31.0",
