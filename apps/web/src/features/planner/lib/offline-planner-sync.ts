@@ -11,6 +11,8 @@ import {
 
 import {
   completePlannerOfflineMutation,
+  getPlannerOfflineWorkspaceWriteGeneration,
+  isPlannerOfflineWorkspaceWriteGenerationCurrent,
   listRetryablePlannerOfflineMutations,
   markPlannerOfflineMutationConflicted,
   markPlannerOfflineMutationFailed,
@@ -56,6 +58,8 @@ export async function drainPlannerOfflineQueue({
     conflicted: 0,
   })
   const callbacks: OfflineMutationCallbacks = {}
+  const expectedWriteGeneration =
+    getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
 
   if (onLifeSphereSynced) {
     callbacks.onLifeSphereSynced = onLifeSphereSynced
@@ -69,26 +73,69 @@ export async function drainPlannerOfflineQueue({
     callbacks.onTaskSynced = onTaskSynced
   }
 
-  return drainOfflineQueue({
-    adapter: {
-      completeMutation: completePlannerOfflineMutation,
-      getMutationId: (mutation) => mutation.id,
-      listRetryableMutations: () =>
-        listRetryablePlannerOfflineMutations(workspaceId, actorUserId),
-      markMutationSyncing: markPlannerOfflineMutationSyncing,
-    },
-    apply: (mutation) => applyOfflineMutation(api, mutation, callbacks),
-    result,
-    onError: createOfflineDrainErrorHandler<PlannerOfflineDrainResult>({
+  const handleError = createOfflineDrainErrorHandler<PlannerOfflineDrainResult>(
+    {
       getErrorMessage,
       isTerminalError: isTerminalPlannerSyncError,
-      markConflicted: markPlannerOfflineMutationConflicted,
-      markFailed: markPlannerOfflineMutationFailed,
+      markConflicted: (mutationId, conflict) =>
+        markPlannerOfflineMutationConflicted(
+          mutationId,
+          conflict,
+          workspaceId,
+          expectedWriteGeneration,
+        ),
+      markFailed: (mutationId, message) =>
+        markPlannerOfflineMutationFailed(
+          mutationId,
+          message,
+          workspaceId,
+          expectedWriteGeneration,
+        ),
       readConflict: (error) =>
         error instanceof PlannerApiError
           ? readOfflineConflictDetails(error.details)
           : { actualVersion: null, expectedVersion: null },
-    }),
+    },
+  )
+
+  return drainOfflineQueue({
+    adapter: {
+      completeMutation: (mutationId) =>
+        completePlannerOfflineMutation(
+          mutationId,
+          workspaceId,
+          expectedWriteGeneration,
+        ),
+      getMutationId: (mutation) => mutation.id,
+      listRetryableMutations: () =>
+        listRetryablePlannerOfflineMutations(
+          workspaceId,
+          actorUserId,
+          expectedWriteGeneration,
+        ),
+      markMutationSyncing: (mutationId) =>
+        markPlannerOfflineMutationSyncing(
+          mutationId,
+          workspaceId,
+          expectedWriteGeneration,
+        ),
+    },
+    apply: (mutation) =>
+      applyOfflineMutation(api, mutation, callbacks, expectedWriteGeneration),
+    result,
+    onError: (input) => {
+      if (
+        input.error instanceof PlannerOfflineDrainInvalidatedError ||
+        !isPlannerOfflineWorkspaceWriteGenerationCurrent(
+          workspaceId,
+          expectedWriteGeneration,
+        )
+      ) {
+        return Promise.resolve('break')
+      }
+
+      return handleError(input)
+    },
   })
 }
 
@@ -104,11 +151,20 @@ async function applyOfflineMutation(
   api: PlannerApiClient,
   mutation: PlannerOfflineMutationRecord,
   callbacks: OfflineMutationCallbacks,
+  expectedWriteGeneration: number,
 ): Promise<void> {
+  assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+
   if (mutation.type === 'lifeSphere.create') {
     const sphere = await api.createLifeSphere(mutation.input)
 
-    await upsertCachedLifeSphereRecord(mutation.workspaceId, sphere)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await upsertCachedLifeSphereRecord(
+      mutation.workspaceId,
+      sphere,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onLifeSphereSynced?.(sphere)
 
     return
@@ -117,7 +173,13 @@ async function applyOfflineMutation(
   if (mutation.type === 'lifeSphere.update') {
     const sphere = await api.updateLifeSphere(mutation.sphereId, mutation.input)
 
-    await upsertCachedLifeSphereRecord(mutation.workspaceId, sphere)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await upsertCachedLifeSphereRecord(
+      mutation.workspaceId,
+      sphere,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onLifeSphereSynced?.(sphere)
 
     return
@@ -126,7 +188,13 @@ async function applyOfflineMutation(
   if (mutation.type === 'task.create') {
     const task = await api.createTask(mutation.input)
 
-    await upsertCachedTaskRecord(mutation.workspaceId, task)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await upsertCachedTaskRecord(
+      mutation.workspaceId,
+      task,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onTaskSynced?.(task)
 
     return
@@ -138,7 +206,13 @@ async function applyOfflineMutation(
       expectedVersion: mutation.expectedVersion,
     })
 
-    await upsertCachedTaskRecord(mutation.workspaceId, task)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await upsertCachedTaskRecord(
+      mutation.workspaceId,
+      task,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onTaskSynced?.(task)
 
     return
@@ -150,7 +224,13 @@ async function applyOfflineMutation(
       status: mutation.statusValue,
     })
 
-    await upsertCachedTaskRecord(mutation.workspaceId, task)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await upsertCachedTaskRecord(
+      mutation.workspaceId,
+      task,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onTaskSynced?.(task)
 
     return
@@ -162,7 +242,13 @@ async function applyOfflineMutation(
       schedule: mutation.schedule,
     })
 
-    await upsertCachedTaskRecord(mutation.workspaceId, task)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await upsertCachedTaskRecord(
+      mutation.workspaceId,
+      task,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onTaskSynced?.(task)
 
     return
@@ -170,7 +256,13 @@ async function applyOfflineMutation(
 
   if (mutation.type === 'task.delete') {
     await api.removeTask(mutation.taskId, mutation.expectedVersion)
-    await removeCachedTaskRecord(mutation.workspaceId, mutation.taskId)
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+    await removeCachedTaskRecord(
+      mutation.workspaceId,
+      mutation.taskId,
+      expectedWriteGeneration,
+    )
+    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     callbacks.onTaskDeleted?.(mutation.taskId)
 
     return
@@ -180,6 +272,22 @@ async function applyOfflineMutation(
   throw new Error(
     `Unsupported offline mutation type "${unsupportedMutation.type}".`,
   )
+}
+
+class PlannerOfflineDrainInvalidatedError extends Error {}
+
+function assertPlannerOfflineDrainIsCurrent(
+  mutation: PlannerOfflineMutationRecord,
+  expectedWriteGeneration: number,
+): void {
+  if (
+    !isPlannerOfflineWorkspaceWriteGenerationCurrent(
+      mutation.workspaceId,
+      expectedWriteGeneration,
+    )
+  ) {
+    throw new PlannerOfflineDrainInvalidatedError()
+  }
 }
 
 function isTerminalPlannerSyncError(error: unknown): error is PlannerApiError {

@@ -28,12 +28,29 @@ export interface PlannerState {
   taskTemplates: TaskTemplate[]
   readiness: SessionReadiness
   conflictedMutationCount: number
+  hasLifeSphereRecords: boolean
+  hasLifeSphereReadError: boolean
+  hasReadError: boolean
+  hasTaskRecords: boolean
+  hasTaskReadError: boolean
+  hasTaskTemplateReadError: boolean
+  isLifeSphereOffline: boolean
+  isLifeSphereCacheHydrating: boolean
   isLoading: boolean
+  isOffline: boolean
+  isTaskOffline: boolean
+  isTaskCacheHydrating: boolean
+  isTaskTemplateOffline: boolean
+  isTaskTemplateCacheHydrating: boolean
   isSyncing: boolean
+  lifeSphereLastSuccessfulSyncAt: string | null
+  lastSuccessfulSyncAt: string | null
   queuedMutationCount: number
   errorMessage: string | null
   debugErrorDetails: string | null
   taskActionSnackbar: PlannerTaskActionSnackbar | null
+  taskLastSuccessfulSyncAt: string | null
+  taskTemplateLastSuccessfulSyncAt: string | null
   clearTaskActionSnackbar: () => void
   isTaskPending: (taskId: string) => boolean
   refresh: () => Promise<void>

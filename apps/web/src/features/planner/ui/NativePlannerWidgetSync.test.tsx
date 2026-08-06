@@ -53,6 +53,10 @@ const mocks = vi.hoisted(() => ({
     >(),
   completeCleaningTask:
     vi.fn<(taskId: string, input: unknown) => Promise<unknown>>(),
+  queueCleaningTaskCompletion:
+    vi.fn<
+      (input: Record<string, unknown>) => Promise<Record<string, unknown>>
+    >(),
   consumePendingNativePlannerWidgetRoute: vi.fn<() => Promise<string | null>>(),
   isAndroidPlannerWidgetRuntime: vi.fn<() => boolean>(),
   persistNativePlannerWidgetSnapshot:
@@ -89,6 +93,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/cleaning', () => ({
   createCleaningApiClient: () => mocks.createCleaningApiClient(),
+  queueCleaningTaskCompletion: (input: Record<string, unknown>) =>
+    mocks.queueCleaningTaskCompletion(input),
 }))
 
 vi.mock('@/features/self-care', () => ({
@@ -212,6 +218,13 @@ describe('NativePlannerWidgetSync', () => {
       setTaskStatus: vi.fn(),
     })
     mocks.completeCleaningTask.mockResolvedValue({})
+    mocks.queueCleaningTaskCompletion.mockImplementation((input) =>
+      Promise.resolve({
+        operationId: '0198a620-1d00-7000-8000-000000000001',
+        queued: true,
+        today: input.today,
+      }),
+    )
     mocks.createCleaningApiClient.mockReturnValue({
       completeTask: mocks.completeCleaningTask,
       getToday: vi.fn().mockResolvedValue({ generalItems: [], items: [] }),
@@ -398,13 +411,14 @@ describe('NativePlannerWidgetSync', () => {
   })
 
   it('completes and acknowledges cleaning tasks queued by the widget', async () => {
-    mocks.createCleaningApiClient.mockReturnValue({
+    const cleaningApi = {
       completeTask: mocks.completeCleaningTask,
       getToday: vi.fn().mockResolvedValue({
         generalItems: [],
         items: [{ task: { id: 'kitchen' } }],
       }),
-    })
+    }
+    mocks.createCleaningApiClient.mockReturnValue(cleaningApi)
     mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
       'cleaning:kitchen',
     ])
@@ -413,22 +427,18 @@ describe('NativePlannerWidgetSync', () => {
     renderSync()
 
     await waitFor(() => {
-      expect(mocks.completeCleaningTask).toHaveBeenCalled()
+      expect(mocks.queueCleaningTaskCompletion).toHaveBeenCalled()
     })
-    const completionCall = mocks.completeCleaningTask.mock.calls[0]
-    const completionInput = completionCall?.[1]
-
-    expect(completionCall?.[0]).toBe('kitchen')
-    expect(isRecord(completionInput)).toBe(true)
-
-    if (!isRecord(completionInput)) {
-      throw new Error('Expected cleaning completion input.')
-    }
-
-    expect(completionInput.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-    expect(completionInput.mode).toBe('next_cycle')
-    expect(completionInput.note).toBe('')
-    expect(completionInput.targetDate).toBeNull()
+    const queuedCompletion =
+      mocks.queueCleaningTaskCompletion.mock.calls[0]?.[0]
+    expect(queuedCompletion).toMatchObject({
+      actorUserId: 'actor-user-1',
+      taskId: 'kitchen',
+      workspaceId: 'personal-workspace',
+    })
+    expect(queuedCompletion?.api).toBe(cleaningApi)
+    expect(queuedCompletion?.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    expect(mocks.completeCleaningTask).not.toHaveBeenCalled()
     await waitFor(() => {
       expect(
         mocks.ackPendingNativePlannerWidgetCompletedTasks,

@@ -1,3 +1,5 @@
+import type { SelfCareOfflineCommand } from '@planner/contracts'
+
 import { HttpError } from '../../bootstrap/http-error.js'
 import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
@@ -60,6 +62,27 @@ export class SelfCareService {
   listTemplates(context: SelfCareReadContext) {
     assertCanReadSelfCare(context)
     return this.repository.listTemplates(context)
+  }
+
+  executeOfflineCommand(
+    context: SelfCareWriteContext,
+    request: Parameters<
+      SelfCareRepository['executeOfflineCommand']
+    >[0]['request'],
+  ) {
+    assertCanWriteSelfCare(context)
+    const dispatchContext = request.clientTimeZone
+      ? { ...context, clientTimeZone: request.clientTimeZone }
+      : context
+
+    return this.repository.executeOfflineCommand({
+      context: dispatchContext,
+      dispatchCommand: withOfflineCommandClientTimeZone(
+        dispatchContext,
+        request.command,
+      ),
+      request,
+    })
   }
 
   createItem(
@@ -265,6 +288,86 @@ export class SelfCareService {
       input,
       templateId,
     })
+  }
+}
+
+function withOfflineCommandClientTimeZone(
+  context: SelfCareWriteContext,
+  command: SelfCareOfflineCommand,
+): SelfCareOfflineCommand {
+  switch (command.type) {
+    case 'create_item':
+      return {
+        ...command,
+        input: withScheduleRuleClientTimeZone(context, command.input),
+        ...(command.initialSchedule
+          ? {
+              initialSchedule: {
+                ...command.initialSchedule,
+                input: withScheduleClientTimeZone(
+                  context,
+                  command.initialSchedule.input,
+                ),
+              },
+            }
+          : {}),
+      }
+    case 'create_item_from_template':
+      return {
+        ...command,
+        overrides: withScheduleRuleClientTimeZone(context, command.overrides),
+        ...(command.initialSchedule
+          ? {
+              initialSchedule: {
+                ...command.initialSchedule,
+                input: withScheduleClientTimeZone(
+                  context,
+                  command.initialSchedule.input,
+                ),
+              },
+            }
+          : {}),
+      }
+    case 'update_item':
+      return {
+        ...command,
+        input: withScheduleRuleClientTimeZone(context, command.input),
+        ...(command.scheduleChange
+          ? {
+              scheduleChange:
+                command.scheduleChange.type === 'reschedule'
+                  ? {
+                      ...command.scheduleChange,
+                      replacementInput: withScheduleClientTimeZone(
+                        context,
+                        command.scheduleChange.replacementInput,
+                      ),
+                    }
+                  : {
+                      ...command.scheduleChange,
+                      input: withScheduleClientTimeZone(
+                        context,
+                        command.scheduleChange.input,
+                      ),
+                    },
+            }
+          : {}),
+      }
+    case 'schedule_item':
+      return {
+        ...command,
+        input: withScheduleClientTimeZone(context, command.input),
+      }
+    case 'move_occurrence':
+      return {
+        ...command,
+        replacementInput: withScheduleClientTimeZone(
+          context,
+          command.replacementInput,
+        ),
+      }
+    default:
+      return command
   }
 }
 

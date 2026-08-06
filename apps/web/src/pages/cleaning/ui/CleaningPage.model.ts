@@ -295,11 +295,11 @@ export function filterItemsByFocusMode(
 
 export function getHeroHint(today: CleaningTodayResponse): string {
   if (today.summary.urgentCount > 0) {
-    return `Одна-две задачи давно ждут внимания, лучше начать с верхнего блока.`
+    return 'Есть несколько важных задач — можно выбрать любую из верхнего блока.'
   }
 
   if (today.summary.quickCount > 0) {
-    return 'Можно закрыть короткий набор и оставить глубокие задачи на другой цикл.'
+    return 'Есть короткие задачи — можно выбрать одну из них или оставить на другой цикл.'
   }
 
   return 'На сегодня всё выглядит спокойно.'

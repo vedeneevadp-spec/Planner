@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  getSelfCareActiveTabCoreReadScope,
+  getSelfCareActiveTabReadScopes,
+  getSelfCareActiveTabReadValues,
   getSelfCareAnalyticsDetailSearchParams,
   getSelfCareAnalyticsOverviewSearchParams,
   getSelfCareCloseCreateDialogAndTabSearchParams,
@@ -9,8 +12,6 @@ import {
   getSelfCarePageLoadFlags,
   getSelfCarePageRouteState,
   getSelfCareTabSearchParams,
-  isSelfCareActiveTabLoading,
-  type SelfCareActiveTabLoadingInput,
 } from './SelfCarePage.model'
 
 describe('SelfCarePage model', () => {
@@ -92,6 +93,59 @@ describe('SelfCarePage model', () => {
     })
   })
 
+  it('waits for every read model that can change the visible tab layout', () => {
+    expect(getSelfCareActiveTabReadScopes('today')).toEqual([
+      'dashboard',
+      'items',
+      'plan',
+      'history',
+      'ritualStepDrafts',
+    ])
+    expect(getSelfCareActiveTabReadScopes('rituals')).toEqual([
+      'dashboard',
+      'items',
+      'plan',
+      'history',
+      'ritualStepDrafts',
+    ])
+    expect(getSelfCareActiveTabReadScopes('settings')).toEqual([
+      'settings',
+      'items',
+      'templates',
+    ])
+  })
+
+  it('uses one tab-specific core scope for blocking page states', () => {
+    expect(getSelfCareActiveTabCoreReadScope('today')).toBe('dashboard')
+    expect(getSelfCareActiveTabCoreReadScope('rituals')).toBe('items')
+    expect(getSelfCareActiveTabCoreReadScope('plan')).toBe('plan')
+    expect(getSelfCareActiveTabCoreReadScope('history')).toBe('history')
+    expect(getSelfCareActiveTabCoreReadScope('analytics')).toBe('analytics')
+    expect(getSelfCareActiveTabCoreReadScope('settings')).toBe('settings')
+  })
+
+  it('keeps read errors scoped to the newly selected tab', () => {
+    const historyError = new Error('history failed')
+    const analyticsError = new Error('analytics failed')
+    const errorsByScope = {
+      analytics: analyticsError,
+      dashboard: null,
+      history: historyError,
+      items: null,
+      plan: null,
+      ritualStepDrafts: null,
+      settings: null,
+      templates: null,
+    }
+
+    expect(getSelfCareActiveTabReadValues('history', errorsByScope)).toEqual([
+      historyError,
+    ])
+    expect(getSelfCareActiveTabReadValues('analytics', errorsByScope)).toEqual([
+      analyticsError,
+    ])
+  })
+
   it('loads creation dependencies while the create dialog is open', () => {
     expect(
       getSelfCarePageLoadFlags({
@@ -109,46 +163,6 @@ describe('SelfCarePage model', () => {
       settings: true,
       templates: true,
     })
-  })
-
-  it('shows the active tab loading state only until visible data exists', () => {
-    const baseInput: SelfCareActiveTabLoadingInput = {
-      activeTab: 'today',
-      hasAnalytics: false,
-      hasDashboard: false,
-      hasHistory: false,
-      hasItems: false,
-      hasPlan: false,
-      hasSettings: false,
-      isAnalyticsLoading: true,
-      isDashboardLoading: true,
-      isHistoryLoading: true,
-      isItemsLoading: true,
-      isPlanLoading: true,
-      isSettingsLoading: true,
-    }
-
-    expect(isSelfCareActiveTabLoading(baseInput)).toBe(true)
-    expect(
-      isSelfCareActiveTabLoading({
-        ...baseInput,
-        hasDashboard: true,
-      }),
-    ).toBe(false)
-    expect(
-      isSelfCareActiveTabLoading({
-        ...baseInput,
-        activeTab: 'analytics',
-        hasDashboard: false,
-      }),
-    ).toBe(true)
-    expect(
-      isSelfCareActiveTabLoading({
-        ...baseInput,
-        activeTab: 'analytics',
-        hasAnalytics: true,
-      }),
-    ).toBe(false)
   })
 
   it('updates tab search params while preserving unrelated params', () => {

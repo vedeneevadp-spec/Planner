@@ -135,6 +135,14 @@ export function parseUserBackupArchiveText(text: string): UserBackupArchive {
 }
 
 export function getUserBackupErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    error.code === 'backup_local_cleanup_failed'
+  ) {
+    return error.message
+  }
+
   if (error instanceof UserBackupApiError) {
     if (error.code === 'backup_personal_workspace_required') {
       return 'Резервные копии пока доступны только для личного пространства.'

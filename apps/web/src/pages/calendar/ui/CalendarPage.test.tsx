@@ -16,6 +16,7 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
+import type { SessionReadiness } from '@/features/session'
 
 import { buildSelfCareCalendarTasks } from '../lib/calendar-load'
 import { CalendarPage } from './CalendarPage'
@@ -30,22 +31,52 @@ interface SessionStub {
     voiceAssistantEnabled: true
   }
   workspace: {
-    kind: 'personal'
+    kind: 'personal' | 'shared'
   }
   workspaceId: string
 }
 
 interface TaskComposerMockProps {
   desktopOpenButtonHidden?: boolean
+  hideOpenButton?: boolean
   initialPlannedDate: string | null
   openDraft?: { plannedDate?: string | null; requestId: string } | null
   openButtonLabel?: string
   showTimeFields?: boolean
 }
 
+function createSelfCarePlanData():
+  { occurrences: SelfCareTodayItem[] } | undefined {
+  return { occurrences: [] }
+}
+
 const mocks = vi.hoisted(() => ({
+  hasTaskReadError: false,
+  hasTaskRecords: true,
+  isTaskOffline: false,
+  isTaskCacheHydrating: false,
+  isLoading: false,
+  taskLastSuccessfulSyncAt: '2026-06-03T10:00:00.000Z',
   mutatePreferences:
     vi.fn<(input: { calendarViewMode: CalendarViewMode }) => void>(),
+  readiness: createReadiness(),
+  refresh: vi.fn(() => Promise.resolve()),
+  selfCarePlanQuery: {
+    data: createSelfCarePlanData(),
+    error: null as Error | null,
+    isPending: false,
+    isCacheLoading: false,
+    lastSuccessfulSyncAt: '2026-06-03T10:00:00.000Z',
+    refetch: vi.fn(() => Promise.resolve()),
+  },
+  selfCareSettingsQuery: {
+    data: undefined as { settings: SelfCareSettings } | undefined,
+    error: null as Error | null,
+    isPending: false,
+    isCacheLoading: false,
+    lastSuccessfulSyncAt: null as string | null,
+    refetch: vi.fn(() => Promise.resolve()),
+  },
   tasks: [] as Task[],
   taskComposer: vi.fn<(props: TaskComposerMockProps) => void>(),
   usePlannerSession: vi.fn<() => { data: SessionStub }>(),
@@ -58,21 +89,29 @@ vi.mock('@/features/emoji-library', () => ({
 vi.mock('@/features/planner', () => ({
   usePlanner: () => ({
     copyTaskToPersonal: vi.fn(),
+    hasTaskReadError: mocks.hasTaskReadError,
+    hasTaskRecords: mocks.hasTaskRecords,
+    isLoading: mocks.isLoading,
     isTaskPending: () => false,
+    isTaskOffline: mocks.isTaskOffline,
+    isTaskCacheHydrating: mocks.isTaskCacheHydrating,
     moveTaskToPersonal: vi.fn(),
+    readiness: mocks.readiness,
+    refresh: mocks.refresh,
     removeTask: vi.fn(),
     setTaskPlannedDate: vi.fn(),
     setTaskSchedule: vi.fn(),
     setTaskStatus: vi.fn(),
     spheres: [],
+    taskLastSuccessfulSyncAt: mocks.taskLastSuccessfulSyncAt,
     tasks: mocks.tasks,
     updateTask: vi.fn(),
   }),
 }))
 
 vi.mock('@/features/self-care', () => ({
-  useSelfCarePlan: () => ({ data: { occurrences: [] } }),
-  useSelfCareSettings: () => ({ data: undefined }),
+  useSelfCarePlan: () => mocks.selfCarePlanQuery,
+  useSelfCareSettings: () => mocks.selfCareSettingsQuery,
 }))
 
 vi.mock('@/features/session', () => ({
@@ -90,7 +129,7 @@ vi.mock('@/features/task-create', () => ({
   TaskComposer: (props: TaskComposerMockProps) => {
     mocks.taskComposer(props)
 
-    return <button type="button">Задача</button>
+    return props.hideOpenButton ? null : <button type="button">Задача</button>
   },
 }))
 
@@ -100,6 +139,31 @@ describe('CalendarPage', () => {
   beforeEach(() => {
     currentSession = createSession('week')
     mocks.mutatePreferences.mockReset()
+    mocks.hasTaskReadError = false
+    mocks.hasTaskRecords = true
+    mocks.isTaskOffline = false
+    mocks.isTaskCacheHydrating = false
+    mocks.isLoading = false
+    mocks.taskLastSuccessfulSyncAt = '2026-06-03T10:00:00.000Z'
+    mocks.readiness = createReadiness()
+    mocks.refresh.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
+    mocks.selfCarePlanQuery.data = { occurrences: [] }
+    mocks.selfCarePlanQuery.error = null
+    mocks.selfCarePlanQuery.isPending = false
+    mocks.selfCarePlanQuery.isCacheLoading = false
+    mocks.selfCarePlanQuery.lastSuccessfulSyncAt = '2026-06-03T10:00:00.000Z'
+    mocks.selfCarePlanQuery.refetch.mockReset()
+    mocks.selfCarePlanQuery.refetch.mockResolvedValue(undefined)
+    mocks.selfCareSettingsQuery.data = {
+      settings: createSelfCareSettings(),
+    }
+    mocks.selfCareSettingsQuery.error = null
+    mocks.selfCareSettingsQuery.isPending = false
+    mocks.selfCareSettingsQuery.isCacheLoading = false
+    mocks.selfCareSettingsQuery.lastSuccessfulSyncAt = null
+    mocks.selfCareSettingsQuery.refetch.mockReset()
+    mocks.selfCareSettingsQuery.refetch.mockResolvedValue(undefined)
     mocks.tasks = []
     mocks.taskComposer.mockReset()
     mocks.usePlannerSession.mockImplementation(() => ({ data: currentSession }))
@@ -108,6 +172,7 @@ describe('CalendarPage', () => {
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
+    vi.restoreAllMocks()
   })
 
   it('keeps the query-selected view when preference sync rolls back', async () => {
@@ -139,10 +204,9 @@ describe('CalendarPage', () => {
   it('marks week view for its scoped responsive layout', () => {
     renderCalendarPage('/calendar?calendarView=week')
 
-    expect(screen.getByLabelText('Неделя').parentElement).toHaveAttribute(
-      'data-calendar-view',
-      'week',
-    )
+    expect(
+      screen.getByLabelText('Неделя').closest('[data-calendar-view]'),
+    ).toHaveAttribute('data-calendar-view', 'week')
   })
 
   it('uses the day view from the calendar query', async () => {
@@ -176,6 +240,451 @@ describe('CalendarPage', () => {
         '/calendar?foo=bar',
       )
     })
+  })
+
+  it.each([
+    {
+      name: 'loading',
+      setup: () => {
+        mocks.hasTaskRecords = false
+        mocks.isLoading = true
+        mocks.readiness = createReadiness({
+          reason: 'planner_pending',
+          status: 'blockedAuth',
+        })
+      },
+    },
+    {
+      name: 'offline',
+      setup: () => {
+        mocks.hasTaskRecords = false
+        mocks.isTaskOffline = true
+      },
+    },
+    {
+      name: 'unavailable access',
+      setup: () => {
+        mocks.hasTaskRecords = false
+        mocks.isLoading = true
+        mocks.readiness = createReadiness({
+          canUseProtectedApi: false,
+          canWriteProtectedData: false,
+          reason: 'auth_deferred',
+          status: 'blockedAuth',
+        })
+      },
+    },
+  ])(
+    'defers a task creation deep link during $name and opens it after recovery',
+    async ({ setup }) => {
+      setup()
+      const view = renderCalendarPage(
+        '/calendar?calendarView=schedule&createTask=request-blocked',
+      )
+
+      await waitFor(() => {
+        expect(mocks.taskComposer).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            hideOpenButton: true,
+            openDraft: null,
+          }),
+        )
+      })
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        'createTask=request-blocked',
+      )
+
+      mocks.hasTaskRecords = true
+      mocks.isLoading = false
+      mocks.isTaskOffline = false
+      mocks.readiness = createReadiness()
+      view.rerender(
+        <MemoryRouter
+          initialEntries={[
+            '/calendar?calendarView=schedule&createTask=request-blocked',
+          ]}
+        >
+          <CalendarPage />
+          <LocationProbe />
+        </MemoryRouter>,
+      )
+
+      await waitFor(() => {
+        expect(
+          mocks.taskComposer.mock.calls.some(
+            ([props]) => props.openDraft?.requestId === 'request-blocked',
+          ),
+        ).toBe(true)
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('location')).not.toHaveTextContent(
+          'createTask=request-blocked',
+        )
+      })
+    },
+  )
+
+  it('shows a meaningful schedule empty state with one next action', () => {
+    currentSession = createSession('schedule')
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'На выбранные дни задач нет',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.getByText(/Добавьте задачу на один из выбранных дней/),
+    ).toBeVisible()
+    expect(screen.getByLabelText('Расписание').className).toContain(
+      'scheduleSurfaceState',
+    )
+    expect(screen.getByLabelText('Расписание')).not.toHaveAttribute('tabindex')
+    expect(
+      within(screen.getByLabelText('Расписание')).getByRole('button', {
+        name: 'Добавить задачу',
+      }),
+    ).toBeVisible()
+  })
+
+  it('opens the existing task composer from the schedule empty state', async () => {
+    currentSession = createSession('schedule')
+
+    renderCalendarPage('/calendar?calendarView=schedule&foo=bar')
+
+    fireEvent.click(
+      within(screen.getByLabelText('Расписание')).getByRole('button', {
+        name: 'Добавить задачу',
+      }),
+    )
+
+    await waitFor(() => {
+      expect(
+        mocks.taskComposer.mock.calls.some(
+          ([props]) =>
+            props.openDraft?.requestId.startsWith('calendar-empty-') === true,
+        ),
+      ).toBe(true)
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/calendar?calendarView=schedule&foo=bar',
+      )
+    })
+  })
+
+  it('shows a calendar skeleton during the initial schedule load', () => {
+    currentSession = createSession('schedule')
+    mocks.hasTaskRecords = false
+    mocks.isLoading = true
+    mocks.readiness = createReadiness({
+      reason: 'planner_pending',
+      status: 'blockedAuth',
+    })
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+    expect(screen.getByText('Загружаем календарь')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', {
+        name: 'На выбранные дни задач нет',
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it.each<CalendarViewMode>(['day', 'week', 'month'])(
+    'shows the shared loading state in %s view',
+    (viewMode) => {
+      currentSession = createSession(viewMode)
+      mocks.hasTaskRecords = false
+      mocks.isLoading = true
+      mocks.readiness = createReadiness({
+        reason: 'planner_pending',
+        status: 'blockedAuth',
+      })
+
+      renderCalendarPage(`/calendar?calendarView=${viewMode}`)
+
+      expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+      expect(screen.getByText('Загружаем календарь')).toBeVisible()
+      expect(screen.queryByLabelText('День')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Неделя')).not.toBeInTheDocument()
+      expect(screen.queryByLabelText('Месяц')).not.toBeInTheDocument()
+    },
+  )
+
+  it('shows an explicit schedule error and retries all data sources', async () => {
+    currentSession = createSession('schedule')
+    mocks.hasTaskReadError = true
+    mocks.hasTaskRecords = false
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Не удалось загрузить календарь',
+      }),
+    ).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+
+    await waitFor(() => {
+      expect(mocks.refresh).toHaveBeenCalledTimes(1)
+      expect(mocks.selfCarePlanQuery.refetch).toHaveBeenCalledTimes(1)
+      expect(mocks.selfCareSettingsQuery.refetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('does not describe an unavailable auth session as offline', () => {
+    currentSession = createSession('schedule')
+    mocks.hasTaskRecords = false
+    mocks.isLoading = true
+    mocks.readiness = createReadiness({
+      reason: 'auth_deferred',
+      status: 'offlineWithCache',
+    })
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByText(/Не удалось подтвердить доступ/)).toBeVisible()
+    expect(screen.queryByText('Нет подключения')).not.toBeInTheDocument()
+  })
+
+  it('shows offline with retry when the schedule has no local task cache', () => {
+    currentSession = createSession('schedule')
+    mocks.hasTaskRecords = false
+    mocks.isTaskOffline = true
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Календарь недоступен без подключения',
+      }),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible()
+    expect(
+      screen.getByText('Время последней синхронизации неизвестно'),
+    ).toBeVisible()
+  })
+
+  it('shows offline immediately when browser queries are paused without cache', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    currentSession = createSession('schedule')
+    mocks.hasTaskRecords = false
+    mocks.isLoading = true
+    mocks.readiness = createReadiness({
+      reason: 'planner_pending',
+      status: 'blockedAuth',
+    })
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Календарь недоступен без подключения',
+      }),
+    ).toBeVisible()
+    expect(screen.queryByTestId('page-state-skeleton')).not.toBeInTheDocument()
+  })
+
+  it('checks the local task cache before declaring a cold start offline', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    currentSession = createSession('schedule')
+    mocks.hasTaskRecords = false
+    mocks.isTaskCacheHydrating = true
+    mocks.isLoading = true
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+    expect(screen.getByText('Проверяем сохранённый календарь')).toBeVisible()
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Календарь недоступен без подключения',
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('explains restoring access in every cached calendar view', () => {
+    currentSession = createSession('month')
+    currentSession.workspace.kind = 'shared'
+    mocks.readiness = createReadiness({
+      canUseProtectedApi: false,
+      canWriteProtectedData: false,
+      reason: 'auth_restoring',
+      status: 'blockedAuth',
+    })
+
+    renderCalendarPage('/calendar?calendarView=month')
+
+    expect(screen.getByText('Восстанавливаем доступ')).toBeVisible()
+    expect(screen.getByLabelText('Месяц')).toBeVisible()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps cached schedule visible when the browser goes offline', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-03T08:00:00.000Z'))
+    let isOnline = true
+    vi.spyOn(window.navigator, 'onLine', 'get').mockImplementation(
+      () => isOnline,
+    )
+    currentSession = createSession('schedule')
+    currentSession.workspace.kind = 'shared'
+    mocks.tasks = [
+      createTask({ plannedDate: '2026-06-03', title: 'Сохранённая задача' }),
+    ]
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    isOnline = false
+    fireEvent(window, new Event('offline'))
+
+    expect(screen.getByText('Нет подключения')).toBeVisible()
+    expect(screen.getByText('Сохранённая задача')).toBeVisible()
+    expect(screen.getByLabelText('Расписание')).toHaveAttribute('tabindex', '0')
+  })
+
+  it('keeps cached schedule content visible offline with freshness', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-03T14:15:00'))
+    currentSession = createSession('schedule')
+    currentSession.workspace.kind = 'shared'
+    mocks.hasTaskReadError = true
+    mocks.isTaskOffline = true
+    mocks.tasks = [
+      createTask({
+        plannedDate: '2026-06-03',
+        title: 'Сохранённая задача',
+      }),
+    ]
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByText('Нет подключения')).toBeVisible()
+    expect(screen.getByText(/Последняя синхронизация:/)).toHaveAttribute(
+      'datetime',
+      '2026-06-03T10:00:00.000Z',
+    )
+    expect(screen.getByText('Сохранённая задача')).toBeVisible()
+  })
+
+  it('shows a non-blocking error when cached tasks survive an online read failure', () => {
+    currentSession = createSession('schedule')
+    currentSession.workspace.kind = 'shared'
+    mocks.hasTaskReadError = true
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByText('Календарь обновился не полностью')).toBeVisible()
+    expect(
+      screen.getByRole('heading', {
+        name: 'На выбранные дни задач нет',
+      }),
+    ).toBeVisible()
+  })
+
+  it('keeps an empty planner cache usable when self-care data is unavailable offline', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    currentSession = createSession('schedule')
+    mocks.selfCareSettingsQuery.data = undefined
+    mocks.selfCarePlanQuery.data = undefined
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByText('Нет подключения')).toBeVisible()
+    expect(screen.getByText(/Последняя синхронизация:/)).toHaveAttribute(
+      'datetime',
+      '2026-06-03T10:00:00.000Z',
+    )
+    expect(
+      screen.getByRole('heading', {
+        name: 'В сохранённых задачах на выбранные дни ничего нет',
+      }),
+    ).toBeVisible()
+    expect(
+      within(screen.getByLabelText('Расписание')).getByText(
+        /Записи заботы о себе появятся после восстановления/,
+      ),
+    ).toBeVisible()
+    expect(
+      within(screen.getByLabelText('Расписание')).getByRole('button', {
+        name: 'Добавить задачу',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Календарь недоступен без подключения',
+      }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Расписание')).not.toHaveAttribute('tabindex')
+  })
+
+  it('shows a non-blocking qualified empty state when self-care refresh fails', () => {
+    currentSession = createSession('schedule')
+    mocks.selfCarePlanQuery.data = undefined
+    mocks.selfCarePlanQuery.error = new Error('Self-care failed')
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByText('Календарь обновился не полностью')).toBeVisible()
+    expect(
+      screen.getByRole('heading', {
+        name: 'В сохранённых задачах на выбранные дни ничего нет',
+      }),
+    ).toBeVisible()
+    expect(
+      within(screen.getByLabelText('Расписание')).getByRole('button', {
+        name: 'Добавить задачу',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Не удалось загрузить календарь полностью',
+      }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps cached self-care schedule data visible after a refresh error', () => {
+    currentSession = createSession('schedule')
+    mocks.selfCareSettingsQuery.data = {
+      settings: createSelfCareSettings(),
+    }
+    mocks.selfCareSettingsQuery.lastSuccessfulSyncAt =
+      '2026-06-03T09:00:00.000Z'
+    mocks.selfCarePlanQuery.error = new Error('Refresh failed')
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(screen.getByText('Календарь обновился не полностью')).toBeVisible()
+    expect(
+      screen.getByRole('heading', {
+        name: 'На выбранные дни задач нет',
+      }),
+    ).toBeVisible()
+  })
+
+  it('does not block the calendar on a plan that settings exclude', () => {
+    currentSession = createSession('schedule')
+    mocks.selfCareSettingsQuery.data = {
+      settings: createSelfCareSettings({
+        showAppointmentsInCalendar: false,
+      }),
+    }
+    mocks.selfCarePlanQuery.data = undefined
+    mocks.selfCarePlanQuery.error = new Error('Excluded plan failed')
+
+    renderCalendarPage('/calendar?calendarView=schedule')
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'На выбранные дни задач нет',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.queryByText('Расписание обновилось не полностью'),
+    ).not.toBeInTheDocument()
   })
 
   it('shows the current time marker in today day view', () => {
@@ -367,6 +876,20 @@ function createSession(calendarViewMode: CalendarViewMode): SessionStub {
   }
 }
 
+function createReadiness(
+  overrides: Partial<SessionReadiness> = {},
+): SessionReadiness {
+  return {
+    canReadCachedData: true,
+    canRenderAppContent: true,
+    canUseProtectedApi: true,
+    canWriteProtectedData: true,
+    reason: 'ready',
+    status: 'ready',
+    ...overrides,
+  }
+}
+
 function createTask(overrides: Partial<Task> = {}): Task {
   return {
     assigneeDisplayName: null,
@@ -412,6 +935,7 @@ function createSelfCareSettings(
     showSelfCareInMainTasks: true,
     updatedAt: '2026-06-01T00:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }
@@ -470,6 +994,7 @@ function createSelfCareCalendarEntry(
       status: 'scheduled',
       updatedAt: '2026-06-01T00:00:00.000Z',
       userId: 'user-1',
+      version: 1,
     },
     procedure: null,
     scheduleRule: {

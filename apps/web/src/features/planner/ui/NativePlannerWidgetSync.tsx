@@ -17,6 +17,7 @@ import {
 import {
   type CleaningApiClient,
   createCleaningApiClient,
+  queueCleaningTaskCompletion,
 } from '@/features/cleaning'
 import {
   createSelfCareApiClient,
@@ -383,20 +384,27 @@ export function NativePlannerWidgetSync() {
           return true
         }
 
-        if (!planner.cleaningApi) {
+        if (!planner.actorUserId || !planner.personalWorkspaceId) {
           return false
         }
 
         try {
-          await planner.cleaningApi.completeTask(cleaningTaskId, {
+          const result = await queueCleaningTaskCompletion({
+            actorUserId: planner.actorUserId,
+            api: planner.cleaningApi,
             date: planner.widgetDateKey,
-            mode: 'next_cycle',
-            note: '',
-            targetDate: null,
+            taskId: cleaningTaskId,
+            today: planner.cleaningToday,
+            workspaceId: planner.personalWorkspaceId,
           })
-          await queryClient.invalidateQueries({
-            queryKey: planner.cleaningQueryKey,
-          })
+          queryClient.setQueryData(planner.cleaningQueryKey, result.today)
+
+          if (result.queued) {
+            recordClientEvent('widget_completion_queued', {
+              reason: 'durable_cleaning_outbox',
+              source: 'cleaning',
+            })
+          }
 
           return true
         } catch {

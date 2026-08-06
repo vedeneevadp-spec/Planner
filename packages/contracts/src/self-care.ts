@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { isValidTimeZone } from './time/time.service.js'
 import { uuidV7Schema } from './uuid.js'
 
 const nullableStringInput = z
@@ -228,6 +229,7 @@ export const selfCareOccurrenceSchema = z.object({
   status: selfCareOccurrenceStatusSchema,
   updatedAt: z.string(),
   userId: z.string(),
+  version: z.number().int().positive(),
 })
 
 export const selfCareCompletionSchema = z.object({
@@ -259,7 +261,9 @@ export const selfCareCompletionSchema = z.object({
   price: z.number().nonnegative().nullable().optional().default(null),
   scheduledFor: z.string().nullable(),
   status: selfCareCompletionStatusSchema,
+  updatedAt: z.string(),
   userId: z.string(),
+  version: z.number().int().positive(),
 })
 
 export const selfCareRitualStepSchema = z.object({
@@ -280,7 +284,7 @@ export const selfCareRitualStepCompletionSchema = z.object({
   stepId: z.string(),
 })
 
-export const selfCareRitualStepDraftSchema = z.object({
+const selfCareRitualStepDraftInputObjectSchema = z.object({
   date: z.string().min(1),
   itemId: z.string().min(1),
   occurrenceId: z.string().min(1).nullable(),
@@ -289,7 +293,13 @@ export const selfCareRitualStepDraftSchema = z.object({
     .transform((values) => [...new Set(values)]),
 })
 
-export const selfCareRitualStepDraftInputSchema = selfCareRitualStepDraftSchema
+export const selfCareRitualStepDraftSchema =
+  selfCareRitualStepDraftInputObjectSchema.extend({
+    version: z.number().int().positive(),
+  })
+
+export const selfCareRitualStepDraftInputSchema =
+  selfCareRitualStepDraftInputObjectSchema
 
 export const selfCareRitualStepDraftListResponseSchema = z.object({
   date: z.string().min(1),
@@ -393,6 +403,7 @@ export const selfCareDailyStateSchema = z.object({
   stress: optionalRatingSchema.nullable().optional().default(null),
   updatedAt: z.string(),
   userId: z.string(),
+  version: z.number().int().positive(),
 })
 
 export const selfCareTemplateSchema = z.object({
@@ -424,6 +435,7 @@ export const selfCareSettingsSchema = z.object({
   showSelfCareInMainTasks: z.boolean(),
   updatedAt: z.string(),
   userId: z.string(),
+  version: z.number().int().positive(),
 })
 
 export const selfCareMinimumItemSchema = z.object({
@@ -435,6 +447,7 @@ export const selfCareMinimumItemSchema = z.object({
   title: z.string().min(1),
   updatedAt: z.string(),
   userId: z.string(),
+  version: z.number().int().positive(),
 })
 
 export const selfCareItemAlternativeSchema = z.object({
@@ -1019,8 +1032,253 @@ export const selfCareTemplateCreateInputSchema = z.object({
   overrides: selfCareItemInputObjectSchema.partial().optional().default({}),
 })
 
+const selfCareCommandExpectedVersionSchema = z.number().int().positive()
+const selfCareCommandActionAtSchema = z.string().datetime({ offset: true })
+const selfCareCommandClientTimeZoneSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => isValidTimeZone(value), {
+    message: 'Expected a valid IANA timezone.',
+  })
+const selfCareCommandCompletionInputSchema =
+  selfCareRitualCompletionInputSchema.extend({
+    completedAt: selfCareCommandActionAtSchema,
+  })
+const selfCareCommandSimpleCompletionInputSchema =
+  selfCareCompletionInputSchema.extend({
+    completedAt: selfCareCommandActionAtSchema,
+  })
+const selfCareCommandScheduleChangeSchema = z.discriminatedUnion('type', [
+  z.object({
+    input: selfCareItemScheduleInputSchema,
+    occurrenceId: uuidV7Schema,
+    type: z.literal('schedule'),
+  }),
+  z.object({
+    expectedVersion: selfCareCommandExpectedVersionSchema,
+    input: selfCareItemScheduleInputSchema,
+    occurrenceId: z.string().min(1),
+    type: z.literal('update_schedule'),
+  }),
+  z.object({
+    actedAt: selfCareCommandActionAtSchema,
+    completionId: uuidV7Schema,
+    expectedVersion: selfCareCommandExpectedVersionSchema,
+    input: selfCareOccurrenceMoveInputSchema,
+    occurrenceId: z.string().min(1),
+    replacementInput: selfCareItemScheduleInputSchema,
+    replacementOccurrenceId: uuidV7Schema,
+    type: z.literal('reschedule'),
+  }),
+])
+
+export const selfCareOfflineCommandSchema = z
+  .discriminatedUnion('type', [
+    z.object({
+      initialSchedule: z
+        .object({
+          input: selfCareItemScheduleInputSchema,
+          occurrenceId: uuidV7Schema,
+        })
+        .optional(),
+      input: selfCareItemInputSchema.and(z.object({ id: uuidV7Schema })),
+      type: z.literal('create_item'),
+    }),
+    z.object({
+      initialSchedule: z
+        .object({
+          input: selfCareItemScheduleInputSchema,
+          occurrenceId: uuidV7Schema,
+        })
+        .optional(),
+      itemId: uuidV7Schema,
+      overrides: selfCareItemInputObjectSchema.partial().optional().default({}),
+      templateId: z.string().min(1),
+      type: z.literal('create_item_from_template'),
+    }),
+    z.object({
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareItemUpdateInputSchema,
+      itemId: z.string().min(1),
+      scheduleChange: selfCareCommandScheduleChangeSchema.optional(),
+      type: z.literal('update_item'),
+    }),
+    z.object({
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      itemId: z.string().min(1),
+      type: z.literal('archive_item'),
+    }),
+    z.object({
+      existingOccurrenceId: z.string().min(1).optional(),
+      expectedOccurrenceVersion:
+        selfCareCommandExpectedVersionSchema.optional(),
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareItemScheduleInputSchema,
+      itemId: z.string().min(1),
+      occurrenceId: uuidV7Schema.optional(),
+      type: z.literal('schedule_item'),
+    }),
+    z.object({
+      actedAt: selfCareCommandActionAtSchema,
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareOccurrenceMoveInputSchema,
+      occurrenceId: z.string().min(1),
+      replacementInput: selfCareItemScheduleInputSchema,
+      replacementOccurrenceId: uuidV7Schema,
+      type: z.literal('move_occurrence'),
+    }),
+    z.object({
+      actedAt: selfCareCommandActionAtSchema,
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      occurrenceId: z.string().min(1),
+      type: z.literal('cancel_occurrence'),
+    }),
+    z.object({
+      actedAt: selfCareCommandActionAtSchema,
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareOccurrenceSkipInputSchema,
+      occurrenceId: z.string().min(1),
+      type: z.literal('skip_occurrence'),
+    }),
+    z.object({
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareCommandCompletionInputSchema,
+      occurrenceId: z.string().min(1),
+      type: z.literal('complete_occurrence'),
+    }),
+    z.object({
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareCommandCompletionInputSchema,
+      itemId: z.string().min(1),
+      type: z.literal('complete_item_now'),
+    }),
+    z.object({
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareCommandSimpleCompletionInputSchema,
+      itemId: z.string().min(1),
+      type: z.literal('complete_flexible_goal'),
+    }),
+    z.object({
+      completionId: uuidV7Schema,
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareCommandSimpleCompletionInputSchema,
+      itemId: z.string().min(1),
+      type: z.literal('complete_course_session'),
+    }),
+    z.object({
+      completionId: z.string().min(1),
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareCompletionUpdateInputSchema,
+      type: z.literal('update_completion'),
+    }),
+    z.object({
+      expectedVersion: selfCareCommandExpectedVersionSchema,
+      input: selfCareSettingsUpdateInputSchema,
+      type: z.literal('update_settings'),
+    }),
+    z.object({
+      expectedVersion: selfCareCommandExpectedVersionSchema.nullable(),
+      input: selfCareRitualStepDraftInputSchema,
+      type: z.literal('upsert_ritual_step_draft'),
+    }),
+  ])
+  .superRefine((command, context) => {
+    if (command.type !== 'schedule_item') {
+      return
+    }
+
+    const hasExistingOccurrenceId = command.existingOccurrenceId !== undefined
+    const hasExpectedOccurrenceVersion =
+      command.expectedOccurrenceVersion !== undefined
+
+    if (hasExistingOccurrenceId !== hasExpectedOccurrenceVersion) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'existingOccurrenceId and expectedOccurrenceVersion must be provided together.',
+        path: [
+          hasExistingOccurrenceId
+            ? 'expectedOccurrenceVersion'
+            : 'existingOccurrenceId',
+        ],
+      })
+    }
+
+    if (!hasExistingOccurrenceId && command.occurrenceId === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'occurrenceId is required when scheduling a new occurrence.',
+        path: ['occurrenceId'],
+      })
+    }
+  })
+
+export const selfCareOfflineCommandRequestSchema = z.object({
+  clientTimeZone: selfCareCommandClientTimeZoneSchema.optional(),
+  command: selfCareOfflineCommandSchema,
+  operationId: uuidV7Schema,
+})
+
+export const selfCareOfflineCommandResultSchema = z.discriminatedUnion('kind', [
+  z.object({
+    item: selfCareItemSchema,
+    kind: z.literal('item'),
+    occurrence: selfCareOccurrenceSchema.nullable().optional(),
+    replacement: selfCareOccurrenceSchema.optional(),
+  }),
+  z.object({
+    kind: z.literal('occurrence'),
+    occurrence: selfCareOccurrenceSchema,
+  }),
+  z.object({
+    kind: z.literal('occurrence_rescheduled'),
+    occurrence: selfCareOccurrenceSchema,
+    replacement: selfCareOccurrenceSchema,
+  }),
+  z.object({
+    completion: selfCareCompletionSchema,
+    courseDetails: selfCareCourseDetailsSchema.nullable().optional(),
+    item: selfCareItemSchema.optional(),
+    kind: z.literal('completion'),
+    scheduleRule: selfCareScheduleRuleSchema.nullable().optional(),
+  }),
+  z.object({
+    kind: z.literal('settings'),
+    value: selfCareSettingsResponseSchema,
+  }),
+  z.object({
+    kind: z.literal('ritual_step_drafts'),
+    value: selfCareRitualStepDraftListResponseSchema,
+  }),
+])
+
+export const selfCareOfflineCommandResponseSchema = z.object({
+  operationId: uuidV7Schema,
+  replayed: z.boolean(),
+  result: selfCareOfflineCommandResultSchema,
+})
+
 export type SelfCareAlternativeInput = z.infer<
   typeof selfCareAlternativeInputSchema
+>
+export type SelfCareOfflineCommand = z.infer<
+  typeof selfCareOfflineCommandSchema
+>
+export type SelfCareOfflineCommandRequest = z.infer<
+  typeof selfCareOfflineCommandRequestSchema
+>
+export type SelfCareOfflineCommandResponse = z.infer<
+  typeof selfCareOfflineCommandResponseSchema
+>
+export type SelfCareOfflineCommandResult = z.infer<
+  typeof selfCareOfflineCommandResultSchema
 >
 export type SelfCareAnalyticsResponse = z.infer<
   typeof selfCareAnalyticsResponseSchema

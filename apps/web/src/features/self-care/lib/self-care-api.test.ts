@@ -1,11 +1,12 @@
-import type {
-  SelfCareCompletion,
-  SelfCareDashboardResponse,
-  SelfCareItem,
-  SelfCareListResponse,
-  SelfCareOccurrence,
-  SelfCareSettingsResponse,
-  SelfCareTemplate,
+import {
+  generateUuidV7,
+  type SelfCareCompletion,
+  type SelfCareDashboardResponse,
+  type SelfCareItem,
+  type SelfCareListResponse,
+  type SelfCareOccurrence,
+  type SelfCareSettingsResponse,
+  type SelfCareTemplate,
 } from '@planner/contracts'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -196,6 +197,43 @@ describe('createSelfCareApiClient', () => {
     })
   })
 
+  it('executes a versioned offline command through the idempotent command endpoint', async () => {
+    const operationId = generateUuidV7()
+    const response = {
+      operationId,
+      replayed: false,
+      result: {
+        kind: 'settings' as const,
+        value: createSettingsResponse(),
+      },
+    }
+    const { fetchFn, requests } = createQueuedFetch([response])
+    const client = createSelfCareApiClient(apiConfig, fetchFn)
+
+    await expect(
+      client.executeOfflineCommand({
+        command: {
+          expectedVersion: 1,
+          input: { currency: 'EUR' },
+          type: 'update_settings',
+        },
+        operationId,
+      }),
+    ).resolves.toEqual(response)
+
+    expect(requests[0]?.url.pathname).toBe('/api/v1/self-care/commands')
+    expect(requests[0]?.init.method).toBe('POST')
+    expect(requests[0]?.headers.get('x-actor-user-id')).toBe('user-1')
+    expect(readJsonBody(requests[0])).toEqual({
+      command: {
+        expectedVersion: 1,
+        input: { currency: 'EUR' },
+        type: 'update_settings',
+      },
+      operationId,
+    })
+  })
+
   it('maps API error payloads to SelfCareApiError', async () => {
     const { fetchFn } = createQueuedFetch([
       {
@@ -355,6 +393,7 @@ function createOccurrence(
     status: 'scheduled',
     updatedAt: '2026-06-01T00:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }
@@ -383,7 +422,9 @@ function createCompletion(
     price: null,
     scheduledFor: null,
     status: 'done',
+    updatedAt: '2026-06-22T08:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }
@@ -469,6 +510,7 @@ function createSettings(): SelfCareSettingsResponse['settings'] {
     showSelfCareInMainTasks: true,
     updatedAt: '2026-06-01T00:00:00.000Z',
     userId: 'user-1',
+    version: 1,
   }
 }
 
@@ -481,6 +523,7 @@ function createRitualStepDraftResponse() {
         itemId: 'ritual-1',
         occurrenceId: null,
         stepIds: ['step-1'],
+        version: 1,
       },
     ],
   }

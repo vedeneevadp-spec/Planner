@@ -13,23 +13,28 @@ import { VoiceAssistantSettingsPanel } from './VoiceAssistantSettingsPanel'
 type AppRole = 'admin' | 'guest' | 'owner' | 'test' | 'user'
 
 interface PlannerSessionHookResult {
-  data: {
-    appRole: AppRole
-    userPreferences: {
-      calendarViewMode: 'week'
-      energyMode: 'normal'
-      voiceAssistantEnabled: boolean
-    }
-    workspaceSettings: {
-      taskCompletionConfettiEnabled: boolean
-      wakeWordTrainingModeEnabled: boolean
-    }
-  }
+  data:
+    | {
+        appRole: AppRole
+        userPreferences: {
+          calendarViewMode: 'week'
+          energyMode: 'normal'
+          voiceAssistantEnabled: boolean
+        }
+        workspaceSettings: {
+          taskCompletionConfettiEnabled: boolean
+          wakeWordTrainingModeEnabled: boolean
+        }
+      }
+    | undefined
+  error: Error | null
+  isPending: boolean
+  refetch: () => Promise<unknown>
 }
 
 interface UpdateUserPreferencesHookResult {
   isPending: boolean
-  mutate: (input: { voiceAssistantEnabled: boolean }) => void
+  mutateAsync: (input: { voiceAssistantEnabled: boolean }) => Promise<void>
 }
 
 interface UpdateWorkspaceSettingsHookResult {
@@ -41,9 +46,12 @@ interface UpdateWorkspaceSettingsHookResult {
 }
 
 const mocks = vi.hoisted(() => ({
+  browserOffline: false,
   getVoiceAssistantNativeStatus:
     vi.fn<() => Promise<VoiceAssistantNativeStatus>>(),
   isAndroidVoiceAssistantRuntime: vi.fn(() => false),
+  openAndroidBatteryOptimizationSettings: vi.fn(() => Promise.resolve()),
+  openAndroidSystemAppSettings: vi.fn(() => Promise.resolve()),
   requestAndroidMicrophonePermission: vi.fn(() =>
     Promise.resolve({ status: 'granted' }),
   ),
@@ -60,6 +68,10 @@ const mocks = vi.hoisted(() => ({
     Promise.resolve(),
   ),
   stopAndroidVoiceAssistant: vi.fn(() => Promise.resolve()),
+  readiness: {
+    canWriteProtectedData: true,
+    reason: 'ready',
+  },
   usePlannerSession: vi.fn<() => PlannerSessionHookResult>(),
   useUpdateUserPreferences: vi.fn<() => UpdateUserPreferencesHookResult>(),
   useUpdateWorkspaceSettings: vi.fn<() => UpdateWorkspaceSettingsHookResult>(),
@@ -67,16 +79,22 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
+  useSessionFeatureReadiness: () => ({ readiness: mocks.readiness }),
   useUpdateUserPreferences: () => mocks.useUpdateUserPreferences(),
   useUpdateWorkspaceSettings: () => mocks.useUpdateWorkspaceSettings(),
+}))
+
+vi.mock('@/shared/lib/offline-sync', () => ({
+  useBrowserOffline: () => mocks.browserOffline,
 }))
 
 vi.mock('../lib/native-voice-assistant', () => ({
   addVoiceAssistantSettingsChangedListener: () => () => {},
   getVoiceAssistantNativeStatus: () => mocks.getVoiceAssistantNativeStatus(),
   isAndroidVoiceAssistantRuntime: () => mocks.isAndroidVoiceAssistantRuntime(),
-  openAndroidBatteryOptimizationSettings: vi.fn(() => Promise.resolve()),
-  openAndroidSystemAppSettings: vi.fn(() => Promise.resolve()),
+  openAndroidBatteryOptimizationSettings: () =>
+    mocks.openAndroidBatteryOptimizationSettings(),
+  openAndroidSystemAppSettings: () => mocks.openAndroidSystemAppSettings(),
   requestAndroidMicrophonePermission: () =>
     mocks.requestAndroidMicrophonePermission(),
   requestAndroidNotificationPermission: () =>
@@ -93,9 +111,27 @@ vi.mock('../lib/native-voice-assistant', () => ({
 describe('VoiceAssistantSettingsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.browserOffline = false
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(false)
+    mocks.openAndroidBatteryOptimizationSettings.mockResolvedValue(undefined)
+    mocks.openAndroidSystemAppSettings.mockResolvedValue(undefined)
+    mocks.requestAndroidMicrophonePermission.mockResolvedValue({
+      status: 'granted',
+    })
+    mocks.requestAndroidNotificationPermission.mockResolvedValue({
+      status: 'granted',
+    })
+    mocks.setAndroidBackgroundWakeWordEnabled.mockResolvedValue(undefined)
+    mocks.setAndroidVoiceCuesEnabled.mockResolvedValue(undefined)
+    mocks.setAndroidWakeWordEnabled.mockResolvedValue(undefined)
+    mocks.stopAndroidVoiceAssistant.mockResolvedValue(undefined)
+    mocks.readiness = {
+      canWriteProtectedData: true,
+      reason: 'ready',
+    }
     mocks.useUpdateUserPreferences.mockReturnValue({
       isPending: false,
-      mutate: vi.fn(),
+      mutateAsync: vi.fn(() => Promise.resolve()),
     })
     mocks.useUpdateWorkspaceSettings.mockReturnValue({
       isPending: false,
@@ -106,6 +142,7 @@ describe('VoiceAssistantSettingsPanel', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it.each(['owner', 'test'] satisfies AppRole[])(
@@ -122,15 +159,68 @@ describe('VoiceAssistantSettingsPanel', () => {
     },
   )
 
+  it('shows a settings skeleton while the session is loading', () => {
+    mocks.usePlannerSession.mockReturnValue({
+      data: undefined,
+      error: null,
+      isPending: true,
+      refetch: vi.fn(() => Promise.resolve()),
+    })
+
+    render(<VoiceAssistantSettingsPanel />)
+
+    expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+    expect(
+      screen.getByText('Загружаем настройки голосового помощника'),
+    ).toBeInTheDocument()
+    expect(mocks.getVoiceAssistantNativeStatus).not.toHaveBeenCalled()
+  })
+
+  it('shows a session error with retry instead of an empty screen', () => {
+    const refetch = vi.fn(() => Promise.resolve())
+    mocks.usePlannerSession.mockReturnValue({
+      data: undefined,
+      error: new Error('Session failed'),
+      isPending: false,
+      refetch,
+    })
+
+    render(<VoiceAssistantSettingsPanel />)
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Не удалось загрузить настройки',
+      }),
+    ).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(mocks.getVoiceAssistantNativeStatus).not.toHaveBeenCalled()
+  })
+
   it.each(['admin', 'user', 'guest'] satisfies AppRole[])(
-    'blocks %s without active toggles',
+    'explains controlled access and offers %s one next action',
     (appRole) => {
       renderSettings({ appRole })
 
       expect(
-        screen.getByText('Голосовой помощник пока недоступен для вашей роли.'),
+        screen.getByRole('heading', { name: 'Доступ подключается отдельно' }),
       ).toBeVisible()
+      expect(
+        screen.getByText(
+          'Голосовой помощник подключается к аккаунту отдельно и сейчас проходит ограниченное тестирование. Запросите доступ — команда уточнит возможность подключения для вашего аккаунта.',
+        ),
+      ).toBeVisible()
+      expect(
+        screen.queryByText(/владельцам пространства/i),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('link', { name: 'Запросить доступ' }),
+      ).toHaveAttribute(
+        'href',
+        expect.stringMatching(/^mailto:support@chaotika\.ru\?subject=/),
+      )
       expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+      expect(mocks.getVoiceAssistantNativeStatus).not.toHaveBeenCalled()
     },
   )
 
@@ -149,6 +239,154 @@ describe('VoiceAssistantSettingsPanel', () => {
     expect(screen.queryByText(/auto-confirm/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/tts/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/выбор.*фраз/i)).not.toBeInTheDocument()
+  })
+
+  it('shows a retryable native-status error and recovers the controls', async () => {
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.getVoiceAssistantNativeStatus
+      .mockRejectedValueOnce(new Error('Bridge unavailable'))
+      .mockResolvedValueOnce(createStatus())
+
+    renderSettings()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось прочитать статус голосового помощника.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('switch', { name: 'Wake word "Хаотика"' }),
+      ).toBeEnabled()
+    })
+  })
+
+  it('keeps permission actions disabled while native status is unknown', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.getVoiceAssistantNativeStatus.mockRejectedValue(
+      new Error('Bridge unavailable'),
+    )
+
+    renderSettings()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось прочитать статус голосового помощника.',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Разрешить микрофон' }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Разрешить уведомления' }),
+    ).toBeDisabled()
+  })
+
+  it('presents granted permissions as completed disabled actions', async () => {
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+
+    renderSettings()
+
+    expect(await screen.findAllByRole('button', { name: 'Разрешено' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ disabled: true }),
+        expect.objectContaining({ disabled: true }),
+      ]),
+    )
+  })
+
+  it('keeps account settings read-only offline while native controls remain available', async () => {
+    mocks.browserOffline = true
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+
+    renderSettings()
+
+    expect(await screen.findByText('Нет подключения')).toBeVisible()
+    expect(
+      screen.getByText('Время последней синхронизации неизвестно'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('switch', {
+        name: 'Включить голосовой помощник',
+      }),
+    ).toBeDisabled()
+    expect(
+      await screen.findByRole('switch', {
+        name: 'Показывать окно оценки срабатывания "Хаотика"',
+      }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('switch', {
+        name: 'Проигрывать короткие сигналы',
+      }),
+    ).toBeEnabled()
+  })
+
+  it('shows a preference error and does not stop the native runtime after rejection', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const mutateAsync = vi.fn(() => Promise.reject(new Error('Save failed')))
+    mocks.useUpdateUserPreferences.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+    })
+
+    renderSettings()
+    fireEvent.click(
+      screen.getByRole('switch', {
+        name: 'Включить голосовой помощник',
+      }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось сохранить настройку. Повторите попытку.',
+    )
+    expect(mutateAsync).toHaveBeenCalledWith({ voiceAssistantEnabled: false })
+    expect(mocks.stopAndroidVoiceAssistant).not.toHaveBeenCalled()
+  })
+
+  it('stops the native runtime only after disabling is saved', async () => {
+    let resolvePreference!: () => void
+    const mutateAsync = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePreference = resolve
+        }),
+    )
+    mocks.useUpdateUserPreferences.mockReturnValue({
+      isPending: false,
+      mutateAsync,
+    })
+
+    renderSettings()
+    fireEvent.click(
+      screen.getByRole('switch', {
+        name: 'Включить голосовой помощник',
+      }),
+    )
+
+    expect(mocks.stopAndroidVoiceAssistant).not.toHaveBeenCalled()
+    resolvePreference()
+
+    await waitFor(() => {
+      expect(mocks.stopAndroidVoiceAssistant).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('shows a handled error when system settings cannot be opened', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(true)
+    mocks.openAndroidSystemAppSettings.mockRejectedValue(
+      new Error('No settings activity'),
+    )
+
+    renderSettings()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть настройки' }),
+    )
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось открыть системные настройки.',
+    )
   })
 
   it('blocks background wake word when microphone permission is missing', async () => {
@@ -369,6 +607,9 @@ function renderSettings({
         wakeWordTrainingModeEnabled,
       },
     },
+    error: null,
+    isPending: false,
+    refetch: vi.fn(() => Promise.resolve()),
   })
 
   return render(<VoiceAssistantSettingsPanel />)

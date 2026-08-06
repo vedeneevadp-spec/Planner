@@ -11,6 +11,13 @@ import {
 import { useCallback, useMemo } from 'react'
 
 import {
+  getPlannerOfflineWorkspaceWriteGeneration,
+  type PlannerDataSyncScope,
+  replaceCachedLifeSphereRecordsFromServer,
+  replaceCachedTaskRecordsFromServer,
+  replaceCachedTaskTemplateRecordsFromServer,
+} from '../lib/offline-planner-store'
+import {
   isUnauthorizedPlannerApiError,
   type PlannerApiClient,
 } from '../lib/planner-api'
@@ -34,6 +41,10 @@ export type PlannerTaskTemplateQueryKey = readonly [
 
 interface PlannerQueriesParams {
   authSessionVersion: number
+  onServerReadSuccess: (
+    scope: PlannerDataSyncScope,
+    lastSuccessfulSyncAt: string,
+  ) => void
   plannerApi: PlannerApiClient | null
   queryClient: QueryClient
   workspaceId: string | undefined
@@ -77,6 +88,7 @@ export function getPlannerTaskTemplateQueryKey(
 
 export function usePlannerQueries({
   authSessionVersion,
+  onServerReadSuccess,
   plannerApi,
   queryClient,
   workspaceId,
@@ -106,24 +118,86 @@ export function usePlannerQueries({
 
   const tasksQuery = useQuery<TaskRecord[], Error>({
     enabled: plannerApi !== null,
-    queryFn: ({ signal }) =>
-      requirePlannerApi(plannerApi).listTasks({}, signal),
+    queryFn: async ({ signal }) => {
+      const writeGeneration = workspaceId
+        ? getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
+        : 0
+      const records = await requirePlannerApi(plannerApi).listTasks({}, signal)
+      const lastSuccessfulSyncAt = new Date().toISOString()
+
+      if (workspaceId) {
+        void replaceCachedTaskRecordsFromServer(
+          workspaceId,
+          records,
+          lastSuccessfulSyncAt,
+          writeGeneration,
+        ).catch((error) => {
+          console.warn('Failed to persist server task snapshot.', error)
+        })
+      }
+      onServerReadSuccess('tasks', lastSuccessfulSyncAt)
+
+      return records
+    },
     queryKey: taskQueryKey,
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
   const spheresQuery = useQuery<LifeSphereRecord[], Error>({
     enabled: plannerApi !== null,
-    queryFn: ({ signal }) =>
-      requirePlannerApi(plannerApi).listLifeSpheres(signal),
+    queryFn: async ({ signal }) => {
+      const writeGeneration = workspaceId
+        ? getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
+        : 0
+      const records =
+        await requirePlannerApi(plannerApi).listLifeSpheres(signal)
+      const lastSuccessfulSyncAt = new Date().toISOString()
+
+      if (workspaceId) {
+        void replaceCachedLifeSphereRecordsFromServer(
+          workspaceId,
+          records,
+          lastSuccessfulSyncAt,
+          writeGeneration,
+        ).catch((error) => {
+          console.warn('Failed to persist server life-sphere snapshot.', error)
+        })
+      }
+      onServerReadSuccess('life-spheres', lastSuccessfulSyncAt)
+
+      return records
+    },
     queryKey: sphereQueryKey,
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
   const taskTemplatesQuery = useQuery<TaskTemplateRecord[], Error>({
     enabled: plannerApi !== null,
-    queryFn: ({ signal }) =>
-      requirePlannerApi(plannerApi).listTaskTemplates(signal),
+    queryFn: async ({ signal }) => {
+      const writeGeneration = workspaceId
+        ? getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
+        : 0
+      const records =
+        await requirePlannerApi(plannerApi).listTaskTemplates(signal)
+      const lastSuccessfulSyncAt = new Date().toISOString()
+
+      if (workspaceId) {
+        void replaceCachedTaskTemplateRecordsFromServer(
+          workspaceId,
+          records,
+          lastSuccessfulSyncAt,
+          writeGeneration,
+        ).catch((error) => {
+          console.warn(
+            'Failed to persist server task-template snapshot.',
+            error,
+          )
+        })
+      }
+      onServerReadSuccess('task-templates', lastSuccessfulSyncAt)
+
+      return records
+    },
     queryKey: taskTemplateQueryKey,
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,

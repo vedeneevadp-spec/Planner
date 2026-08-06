@@ -10,7 +10,7 @@ import { createSvgIconValue } from '@/shared/ui/Icon'
 
 export const UNSPHERED_ID = '__unsphered__'
 
-export type SphereHealth = 'abandoned' | 'healthy' | 'warning'
+export type SphereActivityState = 'active' | 'attention' | 'empty' | 'quiet'
 
 export interface WeekRange {
   from: string
@@ -20,7 +20,7 @@ export interface WeekRange {
 export interface SphereStats {
   color: string
   completedCount: number
-  health: SphereHealth
+  activityState: SphereActivityState
   icon: string
   idleDays: number | null
   isUnassigned: boolean
@@ -88,32 +88,30 @@ function getLatestActivityDate(task: Task, timeZone: string): string {
     .at(-1)!
 }
 
-function resolveHealth(options: {
+function resolveActivityState(options: {
   idleDays: number | null
   overdueCount: number
-  plannedCount: number
-  completedCount: number
-}): SphereHealth {
-  if (options.idleDays === null || options.idleDays >= 10) {
-    return 'abandoned'
+}): SphereActivityState {
+  if (options.idleDays === null) {
+    return 'empty'
   }
 
-  if (
-    options.idleDays >= 5 ||
-    options.overdueCount > 0 ||
-    options.plannedCount + options.completedCount === 0
-  ) {
-    return 'warning'
+  if (options.overdueCount > 0) {
+    return 'attention'
   }
 
-  return 'healthy'
+  if (options.idleDays >= 10) {
+    return 'quiet'
+  }
+
+  return 'active'
 }
 
 function createSphereStats(sphere: Sphere): SphereStats {
   return {
     color: sphere.color,
     completedCount: 0,
-    health: 'abandoned',
+    activityState: 'empty',
     icon: sphere.icon,
     idleDays: null,
     isUnassigned: false,
@@ -133,7 +131,7 @@ function createUnassignedStats(): SphereStats {
   return {
     color: '#6f766d',
     completedCount: 0,
-    health: 'warning',
+    activityState: 'empty',
     icon: createSvgIconValue('folder'),
     idleDays: null,
     isUnassigned: true,
@@ -218,11 +216,9 @@ export function buildSphereStats(
 
       return {
         ...stats,
-        health: resolveHealth({
-          completedCount: stats.completedCount,
+        activityState: resolveActivityState({
           idleDays,
           overdueCount: stats.overdueCount,
-          plannedCount: stats.plannedCount,
         }),
         idleDays,
         weeklyShare:
@@ -232,14 +228,18 @@ export function buildSphereStats(
       }
     })
     .sort((left, right) => {
-      if (left.health !== right.health) {
-        const healthOrder: Record<SphereHealth, number> = {
-          abandoned: 0,
-          warning: 1,
-          healthy: 2,
+      if (left.activityState !== right.activityState) {
+        const activityStateOrder: Record<SphereActivityState, number> = {
+          attention: 0,
+          quiet: 1,
+          active: 2,
+          empty: 3,
         }
 
-        return healthOrder[left.health] - healthOrder[right.health]
+        return (
+          activityStateOrder[left.activityState] -
+          activityStateOrder[right.activityState]
+        )
       }
 
       if (left.weeklyShare !== right.weeklyShare) {
@@ -250,14 +250,20 @@ export function buildSphereStats(
     })
 }
 
-export function getSphereHealthLabel(health: SphereHealth): string {
-  if (health === 'abandoned') {
-    return 'заброшено'
+export function getSphereActivityLabel(
+  activityState: SphereActivityState,
+): string {
+  if (activityState === 'empty') {
+    return 'пока без задач'
   }
 
-  if (health === 'warning') {
-    return 'проседает'
+  if (activityState === 'attention') {
+    return 'есть задачи с прошедшей датой'
   }
 
-  return 'в порядке'
+  if (activityState === 'quiet') {
+    return 'без задач за последнее время'
+  }
+
+  return 'есть активность'
 }

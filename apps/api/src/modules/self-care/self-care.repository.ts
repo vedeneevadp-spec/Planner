@@ -9,6 +9,8 @@ import type {
   CreateSelfCareItemFromTemplateCommand,
   DeleteSelfCareItemCommand,
   DeleteSelfCareRitualStepDraftCommand,
+  ExecuteSelfCareOfflineCommand,
+  ExecuteSelfCareOfflineCommandResult,
   GenerateSelfCareOccurrencesCommand,
   GetSelfCareDashboardCommand,
   GetSelfCareOccurrencesCommand,
@@ -43,6 +45,9 @@ import type {
 } from './self-care.model.js'
 
 export interface SelfCareRepository {
+  executeOfflineCommand: (
+    command: ExecuteSelfCareOfflineCommand,
+  ) => Promise<ExecuteSelfCareOfflineCommandResult>
   archiveItem: (
     command: ArchiveSelfCareItemCommand,
   ) => Promise<StoredSelfCareItemRecord>

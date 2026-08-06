@@ -279,6 +279,7 @@ describe('SelfCarePage helpers', () => {
           itemId: 'ritual-1',
           occurrenceId: 'occurrence-1',
           stepIds: ['step-1'],
+          version: 1,
         },
       ],
     }
@@ -887,7 +888,9 @@ function createCompletion(
     price: null,
     scheduledFor: null,
     status: 'done',
+    updatedAt: '2026-06-22T08:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }
@@ -910,6 +913,7 @@ function createOccurrence(
     status: 'scheduled',
     updatedAt: '2026-06-01T00:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }

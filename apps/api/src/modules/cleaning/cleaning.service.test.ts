@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   cleaningTaskActionInputSchema,
   cleaningZoneUpdateInputSchema,
+  generateUuidV7,
   newCleaningTaskInputSchema,
   newCleaningZoneInputSchema,
 } from '@planner/contracts'
@@ -185,6 +186,133 @@ void test('CleaningService accumulates untouched zone tasks after their assigned
     true,
   )
   assert.equal(nextDay.summary.accumulatedCount, 1)
+})
+
+void test('CleaningService never overwrites stable ids owned by another scope or a deleted row', async () => {
+  const repository = new MemoryCleaningRepository()
+  const service = new CleaningService(repository)
+  const otherContext = {
+    ...OWNER_CONTEXT,
+    actorUserId: 'user-2',
+    workspaceId: 'workspace-2',
+  }
+  const zoneId = generateUuidV7()
+  const firstZone = await service.createZone(
+    OWNER_CONTEXT,
+    newCleaningZoneInputSchema.parse({
+      dayOfWeek: 1,
+      id: zoneId,
+      title: 'First zone',
+    }),
+  )
+
+  await assert.rejects(
+    service.createZone(
+      otherContext,
+      newCleaningZoneInputSchema.parse({
+        dayOfWeek: 2,
+        id: zoneId,
+        title: 'Other scope zone',
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.code === 'cleaning_zone_create_conflict',
+  )
+  assert.equal(
+    (await service.listCleaning(OWNER_CONTEXT)).zones[0]?.id,
+    firstZone.id,
+  )
+  assert.equal((await service.listCleaning(otherContext)).zones.length, 0)
+
+  const otherZone = await service.createZone(
+    otherContext,
+    newCleaningZoneInputSchema.parse({
+      dayOfWeek: 2,
+      title: 'Other zone',
+    }),
+  )
+  const taskId = generateUuidV7()
+  await service.createTask(
+    OWNER_CONTEXT,
+    newCleaningTaskInputSchema.parse({
+      id: taskId,
+      title: 'First task',
+      zoneId: firstZone.id,
+    }),
+  )
+  await assert.rejects(
+    service.createTask(
+      otherContext,
+      newCleaningTaskInputSchema.parse({
+        id: taskId,
+        title: 'Other scope task',
+        zoneId: otherZone.id,
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.code === 'cleaning_task_create_conflict',
+  )
+
+  await service.removeZone(OWNER_CONTEXT, firstZone.id)
+  await assert.rejects(
+    service.createZone(
+      OWNER_CONTEXT,
+      newCleaningZoneInputSchema.parse({
+        dayOfWeek: 3,
+        id: zoneId,
+        title: 'Reused deleted id',
+      }),
+    ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.code === 'cleaning_zone_create_conflict',
+  )
+})
+
+void test('CleaningService replays operation receipts only within the same actor and workspace', async () => {
+  const service = new CleaningService(new MemoryCleaningRepository())
+  const operationId = generateUuidV7()
+  const input = newCleaningZoneInputSchema.parse({
+    dayOfWeek: 1,
+    id: generateUuidV7(),
+    title: 'Idempotent zone',
+  })
+  const first = await service.createZone(OWNER_CONTEXT, input, operationId)
+  const replay = await service.createZone(OWNER_CONTEXT, input, operationId)
+
+  assert.deepEqual(replay, first)
+  await assert.rejects(
+    service.createZone(
+      OWNER_CONTEXT,
+      newCleaningZoneInputSchema.parse({
+        ...input,
+        title: 'Different payload',
+      }),
+      operationId,
+    ),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.code === 'cleaning_operation_conflict',
+  )
+
+  const otherContext = {
+    ...OWNER_CONTEXT,
+    actorUserId: 'user-2',
+    workspaceId: 'workspace-2',
+  }
+  const other = await service.createZone(
+    otherContext,
+    newCleaningZoneInputSchema.parse({
+      dayOfWeek: 2,
+      id: generateUuidV7(),
+      title: 'Scoped operation',
+    }),
+    operationId,
+  )
+
+  assert.equal(other.workspaceId, otherContext.workspaceId)
 })
 
 function addDaysToDateKey(dateKey: string, amount: number): string {

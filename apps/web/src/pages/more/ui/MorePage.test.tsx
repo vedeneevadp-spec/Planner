@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   cleanup,
   fireEvent,
@@ -73,8 +74,8 @@ const mocks = vi.hoisted(() => ({
     mutateAsync: vi.fn(() => Promise.resolve(undefined)),
     reset: vi.fn(),
   },
-  clearRestoredWorkspaceLocalData: vi.fn(() => Promise.resolve()),
   downloadUserBackup: vi.fn(),
+  prepareWorkspaceForUserBackupRestore: vi.fn(() => Promise.resolve()),
   previewUserBackupImport: vi.fn(),
   reloadAfterUserBackupRestore: vi.fn(),
   recoverSession: vi.fn(() => Promise.resolve('recovered' as const)),
@@ -91,12 +92,16 @@ vi.mock('@/features/planner', () => ({
 }))
 
 vi.mock('@/features/user-backup', () => ({
-  clearRestoredWorkspaceLocalData: mocks.clearRestoredWorkspaceLocalData,
   downloadUserBackup: mocks.downloadUserBackup,
-  getUserBackupErrorMessage: () => 'Не удалось обработать резервную копию.',
+  getUserBackupErrorMessage: (error: unknown) =>
+    error instanceof Error
+      ? error.message
+      : 'Не удалось обработать резервную копию.',
   parseUserBackupArchiveText: (text: string) =>
     JSON.parse(text) as Record<string, unknown>,
   previewUserBackupImport: mocks.previewUserBackupImport,
+  prepareWorkspaceForUserBackupRestore:
+    mocks.prepareWorkspaceForUserBackupRestore,
   reloadAfterUserBackupRestore: mocks.reloadAfterUserBackupRestore,
   restoreUserBackupImport: mocks.restoreUserBackupImport,
   saveUserBackupFile: mocks.saveUserBackupFile,
@@ -216,18 +221,31 @@ function renderMorePage(
     ...options.auth,
   })
 
-  return render(
-    <ThemeProvider>
-      <MemoryRouter>
-        <MorePage />
-      </MemoryRouter>
-    </ThemeProvider>,
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false },
+    },
+  })
+  const rendered = render(
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <MemoryRouter>
+          <MorePage />
+        </MemoryRouter>
+      </ThemeProvider>
+    </QueryClientProvider>,
   )
+
+  return { ...rendered, queryClient }
 }
 
 describe('MorePage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.prepareWorkspaceForUserBackupRestore
+      .mockReset()
+      .mockResolvedValue(undefined)
     mocks.downloadUserBackup.mockResolvedValue({
       fileName: 'planner-backup.json',
       text: '{"format":"planner.user-backup"}',
@@ -454,7 +472,7 @@ describe('MorePage', () => {
     expect(screen.getByText(/Открылся выбор файла/)).toBeVisible()
   })
 
-  it('restores a checked archive and clears workspace-local state', async () => {
+  it('clears workspace-local state before and after restoring a checked archive', async () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const file = {
       name: 'backup.json',
@@ -463,7 +481,7 @@ describe('MorePage', () => {
       text: vi.fn(() => Promise.resolve('{"format":"planner.user-backup"}')),
     } as unknown as File
 
-    renderMorePage({
+    const { queryClient } = renderMorePage({
       auth: {
         accessToken: 'access-token',
         canUseProtectedApi: true,
@@ -489,19 +507,126 @@ describe('MorePage', () => {
     )
 
     await waitFor(() => {
+      expect(
+        mocks.prepareWorkspaceForUserBackupRestore,
+      ).toHaveBeenNthCalledWith(1, 'personal-workspace', queryClient)
       expect(mocks.restoreUserBackupImport).toHaveBeenCalledWith(
         expect.objectContaining({
           accessToken: 'access-token',
           workspaceId: 'personal-workspace',
         }),
       )
+      expect(
+        mocks.prepareWorkspaceForUserBackupRestore,
+      ).toHaveBeenNthCalledWith(
+        2,
+        'personal-workspace',
+        queryClient,
+        'after-restore',
+      )
     })
-    expect(mocks.clearRestoredWorkspaceLocalData).toHaveBeenCalledWith(
-      'personal-workspace',
+    expect(
+      mocks.prepareWorkspaceForUserBackupRestore.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.restoreUserBackupImport.mock.invocationCallOrder[0]!)
+    expect(
+      mocks.restoreUserBackupImport.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      mocks.prepareWorkspaceForUserBackupRestore.mock.invocationCallOrder[1]!,
+    )
+    expect(
+      mocks.prepareWorkspaceForUserBackupRestore.mock.invocationCallOrder[1],
+    ).toBeLessThan(
+      mocks.reloadAfterUserBackupRestore.mock.invocationCallOrder[0]!,
     )
     expect(mocks.reloadAfterUserBackupRestore).toHaveBeenCalledWith(
       'Восстановление завершено: изменено 5, сохранено без изменений 3, пропущено 0.',
     )
+
+    confirm.mockRestore()
+  })
+
+  it('does not start restore or reload when safe local cleanup is incomplete', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const cleanupMessage =
+      'Не удалось завершить безопасную очистку локальных данных. Восстановление не начато. Закройте другие вкладки приложения, проверьте доступ браузера к хранилищу и повторите.'
+    mocks.prepareWorkspaceForUserBackupRestore.mockRejectedValueOnce(
+      new Error(cleanupMessage),
+    )
+    const file = {
+      name: 'backup.json',
+      size: 32,
+      stream: undefined,
+      text: vi.fn(() => Promise.resolve('{"format":"planner.user-backup"}')),
+    } as unknown as File
+
+    renderMorePage({
+      auth: {
+        accessToken: 'access-token',
+        canUseProtectedApi: true,
+      },
+    })
+
+    fireEvent.change(screen.getByLabelText('Файл резервной копии'), {
+      target: { files: [file] },
+    })
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Восстановить данные' }),
+    )
+
+    expect(await screen.findByText(cleanupMessage)).toBeVisible()
+    expect(mocks.restoreUserBackupImport).not.toHaveBeenCalled()
+    expect(mocks.reloadAfterUserBackupRestore).not.toHaveBeenCalled()
+
+    confirm.mockRestore()
+  })
+
+  it('does not reload when the post-restore local cleanup is incomplete', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const cleanupMessage =
+      'Данные на сервере восстановлены, но безопасно обновить локальные данные не удалось. Закройте другие вкладки приложения, проверьте доступ браузера к хранилищу и повторите восстановление.'
+    mocks.prepareWorkspaceForUserBackupRestore
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error(cleanupMessage))
+    const file = {
+      name: 'backup.json',
+      size: 32,
+      stream: undefined,
+      text: vi.fn(() => Promise.resolve('{"format":"planner.user-backup"}')),
+    } as unknown as File
+
+    renderMorePage({
+      auth: {
+        accessToken: 'access-token',
+        canUseProtectedApi: true,
+      },
+    })
+
+    fireEvent.change(screen.getByLabelText('Файл резервной копии'), {
+      target: { files: [file] },
+    })
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Восстановить данные' }),
+    )
+
+    expect(await screen.findByText(cleanupMessage)).toBeVisible()
+    expect(mocks.restoreUserBackupImport).toHaveBeenCalledTimes(1)
+    expect(mocks.prepareWorkspaceForUserBackupRestore).toHaveBeenCalledTimes(2)
+    expect(mocks.reloadAfterUserBackupRestore).not.toHaveBeenCalled()
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Восстановить данные' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.reloadAfterUserBackupRestore).toHaveBeenCalledTimes(1)
+    })
+    expect(mocks.restoreUserBackupImport).toHaveBeenCalledTimes(1)
+    expect(mocks.prepareWorkspaceForUserBackupRestore).toHaveBeenCalledTimes(3)
+    expect(mocks.prepareWorkspaceForUserBackupRestore.mock.calls[2]).toEqual([
+      'personal-workspace',
+      expect.any(QueryClient),
+      'after-restore',
+    ])
 
     confirm.mockRestore()
   })

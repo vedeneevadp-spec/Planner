@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type ComponentType, useCallback, useEffect, useState } from 'react'
 import { NavLink, useLocation } from 'react-router'
 
 import { getPlannerSummary, isActiveTaskStatus } from '@/entities/task'
-import { useCleaningSummary } from '@/features/cleaning'
 import { usePlanner } from '@/features/planner'
-import { useSelfCareDashboard } from '@/features/self-care'
 import {
   getSessionReadinessConnectionView,
   setSelectedWorkspaceIdForActors,
@@ -14,7 +12,6 @@ import {
   useSessionAuth,
   WorkspaceParticipantsDialog,
 } from '@/features/session'
-import { useShoppingListSummary } from '@/features/shopping-list'
 import { getVisibleNavigationRouteDefinitions } from '@/shared/config/routes'
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
@@ -36,6 +33,7 @@ import { PlannerSideTabs } from './PlannerSideTabs'
 import styles from './Sidebar.module.css'
 import { MoreIcon, SidebarNavIcon } from './SidebarIcons'
 import { SidebarNavigation } from './SidebarNavigation'
+import type { SidebarServiceNavigationProps } from './SidebarServiceNavigation'
 import { SidebarTodaySummary } from './SidebarTodaySummary'
 import { SidebarWorkspaceActions } from './SidebarWorkspaceActions'
 import { SidebarWorkspaceHeader } from './SidebarWorkspaceHeader'
@@ -70,13 +68,9 @@ export function Sidebar({
     spheres,
     tasks,
   } = usePlanner()
-  const shouldLoadServiceSummaries = useDeferredServiceSummaries(!isLoading)
-  const cleaningSummary = useCleaningSummary(undefined, {
-    enabled: shouldLoadServiceSummaries,
-  })
-  const shoppingListSummary = useShoppingListSummary({
-    enabled: shouldLoadServiceSummaries,
-  })
+  const shouldLoadServiceSummaries = useDeferredServiceSummaries(
+    navigationMode === 'full' && !isLoading,
+  )
   const location = useLocation()
   const auth = useSessionAuth()
   const { isDark, toggleTheme } = useColorTheme()
@@ -96,19 +90,13 @@ export function Sidebar({
   const plannedTaskCount = tasks.filter(
     (task) => isActiveTaskStatus(task.status) && task.plannedDate !== null,
   ).length
-  const selfCareDashboardQuery = useSelfCareDashboard(todayKey, {
-    enabled: shouldLoadServiceSummaries && !isSharedWorkspace,
-  })
-  const pendingSelfCareTodayCount = countPendingSelfCare(
-    selfCareDashboardQuery.data,
-  )
-  const navigationCounts = {
+  const baseNavigationCounts = {
     appRoleLabel: session?.appRole ?? 'Admin',
-    cleaningDueCount: cleaningSummary.dueCount,
-    cleaningUrgentCount: cleaningSummary.urgentCount,
-    pendingSelfCareTodayCount,
+    cleaningDueCount: 0,
+    cleaningUrgentCount: 0,
+    pendingSelfCareTodayCount: 0,
     plannedTaskCount,
-    shoppingActiveItemCount: shoppingListSummary.activeItemCount,
+    shoppingActiveItemCount: 0,
     sphereCount: spheres.length,
     summary,
   }
@@ -699,11 +687,21 @@ export function Sidebar({
             ) : null}
           </section>
 
-          <SidebarNavigation
-            counts={navigationCounts}
-            isCollapsed={isCollapsed}
-            items={visibleNavigation}
-          />
+          {shouldLoadServiceSummaries ? (
+            <DeferredSidebarServiceNavigation
+              baseCounts={baseNavigationCounts}
+              isCollapsed={isCollapsed}
+              isSharedWorkspace={isSharedWorkspace}
+              items={visibleNavigation}
+              todayKey={todayKey}
+            />
+          ) : (
+            <SidebarNavigation
+              counts={baseNavigationCounts}
+              isCollapsed={isCollapsed}
+              items={visibleNavigation}
+            />
+          )}
 
           <SidebarTodaySummary summary={summary} todayKey={todayKey} />
         </aside>
@@ -752,27 +750,41 @@ function matchesRoute(pathname: string, route: string): boolean {
   return pathname === route || pathname.startsWith(`${route}/`)
 }
 
-function countPendingSelfCare(
-  dashboard: ReturnType<typeof useSelfCareDashboard>['data'] | undefined,
-): number {
-  const todayItems = dashboard?.todayItems ?? []
-  const flexibleGoals = dashboard?.flexibleGoals ?? []
-  const pendingTodayItems = todayItems.filter((entry) => {
-    const status = entry.occurrence?.status
+function DeferredSidebarServiceNavigation(
+  props: SidebarServiceNavigationProps,
+) {
+  const [ServiceNavigation, setServiceNavigation] =
+    useState<ComponentType<SidebarServiceNavigationProps> | null>(null)
 
+  useEffect(() => {
+    let isActive = true
+
+    void import('./SidebarServiceNavigation')
+      .then(({ SidebarServiceNavigation }) => {
+        if (isActive) {
+          setServiceNavigation(() => SidebarServiceNavigation)
+        }
+      })
+      .catch(() => {
+        // Counts are optional enrichment; synchronous navigation stays usable.
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  if (!ServiceNavigation) {
     return (
-      status !== 'done' &&
-      status !== 'partial' &&
-      status !== 'skipped' &&
-      status !== 'cancelled' &&
-      !entry.completion
+      <SidebarNavigation
+        counts={props.baseCounts}
+        isCollapsed={props.isCollapsed}
+        items={props.items}
+      />
     )
-  }).length
-  const pendingFlexibleGoals = flexibleGoals.filter(
-    (entry) => (entry.flexibleProgress?.remainingCount ?? 0) > 0,
-  ).length
+  }
 
-  return pendingTodayItems + pendingFlexibleGoals
+  return <ServiceNavigation {...props} />
 }
 
 function ConnectionIssuePanel({

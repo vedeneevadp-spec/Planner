@@ -5,7 +5,7 @@ import {
   type CleaningFocusMode,
   getCleaningFocusModeAriaLabel,
   getCleaningFocusModeFromSearchParams,
-} from '@/features/cleaning'
+} from '@/features/cleaning/focus-query'
 import {
   setSelectedWorkspaceIdForActors,
   usePlannerSession,
@@ -17,7 +17,7 @@ import {
   hasActiveShoppingFilters,
   SHOPPING_FILTER_QUERY_KEYS,
   type ShoppingCategory,
-} from '@/features/shopping-list'
+} from '@/features/shopping-list/filter-query'
 import { cx } from '@/shared/lib/classnames'
 import { formatLongDate } from '@/shared/lib/date'
 import {

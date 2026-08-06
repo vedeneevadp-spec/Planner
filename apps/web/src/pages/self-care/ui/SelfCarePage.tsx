@@ -5,24 +5,23 @@ import type {
   SelfCareItemScheduleInput,
   SelfCareTodayItem,
 } from '@planner/contracts'
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import {
   getSelfCareErrorMessage,
   isSelfCareApiUnavailableError,
   SELF_CARE_API_UNAVAILABLE_MESSAGE,
+  useSelfCareOfflineQueue,
 } from '@/features/self-care'
 import { useSessionFeatureReadiness } from '@/features/session'
-import pageStyles from '@/shared/ui/Page'
-
 import {
-  SelfCareCompletionEditDialog,
-  SelfCareCourseRestartDialog,
-  SelfCareExerciseDialog,
-  SelfCareMeasurementDialog,
-  SelfCareScheduleDialog,
-} from './SelfCarePage.action-dialogs'
+  isBrowserRetryableOfflineError,
+  useBrowserOffline,
+} from '@/shared/lib/offline-sync'
+import pageStyles from '@/shared/ui/Page'
+import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
+
 import {
   SelfCareHistoryTab,
   SelfCarePlanTab,
@@ -32,9 +31,15 @@ import {
 } from './SelfCarePage.components'
 import { useSelfCarePageData } from './SelfCarePage.data'
 import {
-  SelfCareCreateDialog,
-  SelfCareEditDialog,
-} from './SelfCarePage.dialogs'
+  DeferredSelfCareCompletionEditDialog,
+  DeferredSelfCareCourseRestartDialog,
+  DeferredSelfCareCreateDialog,
+  DeferredSelfCareEditDialog,
+  DeferredSelfCareExerciseDialog,
+  DeferredSelfCareMeasurementDialog,
+  DeferredSelfCareScheduleDialog,
+} from './SelfCarePage.deferred-dialog'
+import { startSelfCareDialogWarmup } from './SelfCarePage.dialog-loader'
 import {
   applyRitualStepDraftOverrides,
   buildCompletionInput,
@@ -87,24 +92,26 @@ export function SelfCarePage() {
   const { activeTab, createDialogMode } = routeState
   const {
     analytics,
-    analyticsQuery,
+    activeTabReadErrors,
     createdTemplateIds,
+    createDialogReadErrors,
     dashboard,
-    dashboardQuery,
     defaultCurrency,
     history,
-    historyQuery,
+    hasActiveTabData,
+    hasCreateDialogData,
+    hasCreateDialogReadError,
+    isActiveTabCacheLoading,
     isActiveTabLoading,
-    itemsQuery,
+    isCreateDialogLoading,
     list,
+    lastSuccessfulSyncAt,
     plan,
-    planQuery,
+    retryActiveTab,
     serverRitualStepDrafts,
-    settingsQuery,
     settingsResponse,
-    stepDraftsQuery,
     templates,
-    templatesQuery,
+    templatesLoaded,
     todayKey,
     uploadedIcons,
   } = useSelfCarePageData(routeState)
@@ -127,7 +134,9 @@ export function SelfCarePage() {
     updateSettingsMutation,
     upsertRitualStepDraftMutation,
   } = useSelfCarePageMutations()
-  const { readiness: selfCareReadiness } = useSessionFeatureReadiness()
+  const { readiness: selfCareReadiness, sessionQuery: selfCareSessionQuery } =
+    useSessionFeatureReadiness()
+  const selfCareOfflineQueue = useSelfCareOfflineQueue()
   const [formError, setFormError] = useState<string | null>(null)
   const [scheduleDialogEntry, setScheduleDialogEntry] =
     useState<SelfCareTodayItem | null>(null)
@@ -162,28 +171,73 @@ export function SelfCarePage() {
     () => new Set([...createdTemplateIds, ...creatingTemplateIds]),
     [createdTemplateIds, creatingTemplateIds],
   )
-  const canUseSelfCareActions = selfCareReadiness.canWriteProtectedData
+  const isBrowserOffline = useBrowserOffline()
+  const visibleFormError = formError
+  const hasFeatureConnectionError = activeTabReadErrors.some(
+    isBrowserRetryableOfflineError,
+  )
+  const hasReadConnectionIssue = selfCareReadiness.reason === 'planner_error'
+  const hasOfflineConnectionIssue =
+    isBrowserOffline || hasFeatureConnectionError || hasReadConnectionIssue
+  const canUseSelfCareWrites =
+    selfCareOfflineQueue.canWriteFromSession &&
+    (hasOfflineConnectionIssue
+      ? selfCareOfflineQueue.canQueueWrites
+      : selfCareReadiness.canWriteProtectedData ||
+        selfCareOfflineQueue.canQueueWrites)
+  const canUseSelfCareActions =
+    canUseSelfCareWrites && (!hasFeatureConnectionError || hasActiveTabData)
+  const isAddingCare =
+    createItemMutation.isPending || createFromTemplateMutation.isPending
   const isSelfCareActionBusy = isActionBusy || !canUseSelfCareActions
-  const visibleFormError =
-    formError === SELF_CARE_API_UNAVAILABLE_MESSAGE ? null : formError
-  const errorMessage =
-    visibleFormError ||
-    firstErrorMessage(
-      [
-        dashboardQuery.error,
-        itemsQuery.error,
-        planQuery.error,
-        stepDraftsQuery.error,
-        historyQuery.error,
-        analyticsQuery.error,
-        settingsQuery.error,
-        templatesQuery.error,
-        ...mutationErrors,
-      ],
-      {
+  const readErrorMessage = hasFeatureConnectionError
+    ? 'Не удалось связаться с сервером. Проверь подключение и попробуй снова.'
+    : firstErrorMessage(activeTabReadErrors, {
         shouldIgnore: isSelfCareApiUnavailableError,
-      },
-    )
+      })
+  const mutationErrorMessage = firstErrorMessage([...mutationErrors], {
+    shouldIgnore: isSelfCareApiUnavailableError,
+  })
+  const createDialogReadErrorMessage = firstErrorMessage(
+    createDialogReadErrors,
+    { shouldIgnore: isSelfCareApiUnavailableError },
+  )
+  const createDialogErrorMessage =
+    visibleFormError || createDialogReadErrorMessage || mutationErrorMessage
+  const canUseCreateDialogActions =
+    canUseSelfCareWrites && (!hasCreateDialogReadError || hasCreateDialogData)
+  const isSessionRestoring =
+    selfCareReadiness.reason === 'auth_restoring' ||
+    selfCareReadiness.reason === 'planner_pending'
+  const isSessionUnavailable =
+    selfCareReadiness.reason === 'auth_deferred' ||
+    selfCareReadiness.reason === 'unauthorized' ||
+    selfCareReadiness.reason === 'no_session'
+  const shouldShowLoadingState =
+    !hasActiveTabData &&
+    (isActiveTabCacheLoading ||
+      (!hasOfflineConnectionIssue &&
+        (isSessionRestoring || isActiveTabLoading)))
+  const blockingState = hasActiveTabData
+    ? null
+    : isSessionUnavailable
+      ? 'unavailable'
+      : shouldShowLoadingState
+        ? 'loading'
+        : hasOfflineConnectionIssue
+          ? 'offline'
+          : 'error'
+  const canShowCreateDialog = Boolean(
+    createDialogMode && canUseSelfCareWrites && !isSessionUnavailable,
+  )
+
+  useEffect(() => {
+    if (!hasActiveTabData) {
+      return
+    }
+
+    return startSelfCareDialogWarmup()
+  }, [hasActiveTabData])
 
   function setActiveTab(tab: SelfCareTab) {
     setSearchParams(getSelfCareTabSearchParams(searchParams, tab), {
@@ -205,7 +259,24 @@ export function SelfCarePage() {
   }
 
   function openCreateDialog(): void {
+    if (!canUseSelfCareActions) {
+      setFormError(SELF_CARE_API_UNAVAILABLE_MESSAGE)
+      return
+    }
+
     setSearchParams(getSelfCareCreateDialogSearchParams(searchParams, 'choice'))
+  }
+
+  function retrySelfCare(): void {
+    setFormError(null)
+    void (async () => {
+      if (!selfCareReadiness.canUseProtectedApi) {
+        await selfCareSessionQuery.refetch()
+        return
+      }
+
+      await retryActiveTab()
+    })()
   }
 
   function setCreateDialogMode(mode: SelfCareCreateDialogMode): void {
@@ -227,19 +298,10 @@ export function SelfCarePage() {
   function handleCreateCustomCare(payload: SelfCareCustomCreatePayload): void {
     setFormError(null)
 
-    const shouldSchedule = Boolean(payload.scheduleInput)
     void createItemMutation
       .mutateAsync({
         input: payload.input,
-        skipInvalidation: shouldSchedule,
-      })
-      .then(async (item) => {
-        if (payload.scheduleInput) {
-          await scheduleItemMutation.mutateAsync({
-            input: payload.scheduleInput,
-            itemId: item.id,
-          })
-        }
+        scheduleInput: payload.scheduleInput,
       })
       .then(() => {
         closeCreateDialogAndShowTab(payload.scheduleInput ? 'plan' : 'rituals')
@@ -381,27 +443,20 @@ export function SelfCarePage() {
 
     const entry = editDialogEntry
     setFormError(null)
-    void (async () => {
-      await updateItemMutation.mutateAsync({
+    void updateItemMutation
+      .mutateAsync({
+        entry,
         input: payload.input,
         itemId: entry.item.id,
-        skipInvalidation: Boolean(payload.scheduleInput),
+        moveNote: 'Дата записи изменена в настройках.',
+        scheduleInput: payload.scheduleInput,
       })
-
-      if (payload.scheduleInput) {
-        await scheduleSelfCareEntryOccurrence({
-          entry,
-          input: payload.scheduleInput,
-          moveNote: 'Дата записи изменена в настройках.',
-          moveOccurrence: moveOccurrenceMutation.mutateAsync,
-          scheduleItem: scheduleItemMutation.mutateAsync,
-        })
-        setHiddenScheduledItemIds((current) =>
-          new Set(current).add(entry.item.id),
-        )
-      }
-    })()
       .then(() => {
+        if (payload.scheduleInput) {
+          setHiddenScheduledItemIds((current) =>
+            new Set(current).add(entry.item.id),
+          )
+        }
         closeEditDialog()
       })
       .catch((error: unknown) => {
@@ -443,7 +498,7 @@ export function SelfCarePage() {
       input,
       moveNote:
         entry.occurrence && entry.occurrence.scheduledFor < todayKey
-          ? 'Перенесено из просроченного плана.'
+          ? 'Перенесено из плана с прошедшей датой.'
           : 'Дата записи изменена в плане.',
       moveOccurrence: moveOccurrenceMutation.mutateAsync,
       scheduleItem: scheduleItemMutation.mutateAsync,
@@ -695,22 +750,147 @@ export function SelfCarePage() {
 
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
-      {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
-
+      <h1 className={pageStyles.visuallyHidden}>Забота о себе</h1>
       <SelfCarePageTabs activeTab={activeTab} onSelectTab={setActiveTab} />
 
-      {isActiveTabLoading ? (
-        <section className={styles.emptyPanel}>
-          Загружаем заботу о себе.
-        </section>
+      {blockingState === 'loading' ? (
+        <PageStateView
+          kind="loading"
+          title={
+            isBrowserOffline && isActiveTabCacheLoading
+              ? 'Проверяем сохранённые данные'
+              : 'Загружаем заботу о себе'
+          }
+          skeletonVariant={activeTab === 'settings' ? 'settings' : 'cards'}
+        />
       ) : null}
 
-      {activeTab === 'today' ? (
+      {blockingState === 'offline' ? (
+        <PageStateView
+          action={{ label: 'Повторить', onClick: retrySelfCare }}
+          description="На устройстве нет полного сохранённого набора данных для этого раздела. Проверь подключение и попробуй ещё раз."
+          kind="offline"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+          title="Забота о себе недоступна без подключения"
+        />
+      ) : null}
+
+      {blockingState === 'unavailable' ? (
+        <PageStateView
+          action={{ label: 'Обновить доступ', onClick: retrySelfCare }}
+          description="Не удалось подтвердить сессию. После восстановления доступа данные загрузятся автоматически."
+          kind="unavailable"
+          title="Нужно восстановить доступ"
+        />
+      ) : null}
+
+      {blockingState === 'error' ? (
+        <PageStateView
+          action={{ label: 'Повторить', onClick: retrySelfCare }}
+          description={
+            readErrorMessage ??
+            (hasReadConnectionIssue
+              ? 'Не удалось связаться с сервером. Попробуй ещё раз.'
+              : 'Не удалось загрузить данные. Попробуй ещё раз.')
+          }
+          kind="error"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          title="Не удалось открыть заботу о себе"
+        />
+      ) : null}
+
+      {hasActiveTabData &&
+      hasOfflineConnectionIssue &&
+      !isSessionUnavailable ? (
+        <PageStatusBanner
+          action={{ label: 'Повторить', onClick: retrySelfCare }}
+          description={
+            selfCareOfflineQueue.canQueueWrites
+              ? 'Сохранённые данные доступны. Новые изменения останутся на устройстве и отправятся после восстановления связи.'
+              : 'Можно просматривать сохранённые данные. Для изменений нужно восстановить связь.'
+          }
+          kind="offline"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+        />
+      ) : null}
+
+      {hasActiveTabData && isSessionRestoring && !hasOfflineConnectionIssue ? (
+        <PageStatusBanner
+          description="Сохранённые данные доступны для просмотра. Изменения появятся после восстановления доступа."
+          kind="info"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+          title="Восстанавливаем доступ"
+        />
+      ) : null}
+
+      {hasActiveTabData &&
+      !hasOfflineConnectionIssue &&
+      hasReadConnectionIssue ? (
+        <PageStatusBanner
+          action={{ label: 'Повторить', onClick: retrySelfCare }}
+          description={
+            selfCareOfflineQueue.canQueueWrites
+              ? 'Показываем сохранённые данные. Новые изменения безопасно сохранятся на устройстве.'
+              : 'Показываем сохранённые данные. Для изменений нужно восстановить связь с сервером.'
+          }
+          kind="error"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+          title="Не удалось обновить данные"
+        />
+      ) : null}
+
+      {hasActiveTabData && isSessionUnavailable ? (
+        <PageStatusBanner
+          action={{ label: 'Обновить доступ', onClick: retrySelfCare }}
+          description="Данные доступны для просмотра. Для изменений нужно восстановить сессию."
+          kind="error"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+          title="Изменения временно недоступны"
+        />
+      ) : null}
+
+      {hasActiveTabData &&
+      !hasOfflineConnectionIssue &&
+      !hasReadConnectionIssue &&
+      !isSessionUnavailable &&
+      readErrorMessage ? (
+        <PageStatusBanner
+          action={{ label: 'Повторить', onClick: retrySelfCare }}
+          description={readErrorMessage}
+          kind="error"
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+        />
+      ) : null}
+
+      {hasActiveTabData &&
+      !readErrorMessage &&
+      (visibleFormError || mutationErrorMessage) ? (
+        <PageStatusBanner
+          description={visibleFormError ?? mutationErrorMessage ?? undefined}
+          kind="error"
+          title="Не удалось выполнить действие"
+        />
+      ) : null}
+
+      <SelfCareQueueStatus
+        isOffline={hasOfflineConnectionIssue}
+        queue={selfCareOfflineQueue}
+      />
+
+      {hasActiveTabData && activeTab === 'today' ? (
         <SelfCareTodayTab
+          canAddCare={canUseSelfCareActions}
           dashboard={dashboard}
           history={history}
           hiddenScheduledItemIds={hiddenScheduledItemIds}
           isBusy={isSelfCareActionBusy}
+          isAddingCare={isAddingCare}
           list={list}
           plan={plan}
           ritualStepDrafts={ritualStepDrafts}
@@ -729,16 +909,19 @@ export function SelfCarePage() {
         />
       ) : null}
 
-      {activeTab === 'plan' ? (
+      {hasActiveTabData && activeTab === 'plan' ? (
         <SelfCarePlanTab
+          canAddCare={canUseSelfCareActions}
           hiddenScheduledItemIds={hiddenScheduledItemIds}
           history={history}
           isBusy={isSelfCareActionBusy}
+          isAddingCare={isAddingCare}
           plan={plan}
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
           onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
+          onAddCare={openCreateDialog}
           onCancelOccurrence={handleCancelPlannedOccurrence}
           onEditItem={handleEditItem}
           onRestartCourse={handleRestartCourse}
@@ -746,13 +929,15 @@ export function SelfCarePage() {
         />
       ) : null}
 
-      {activeTab === 'rituals' ? (
+      {hasActiveTabData && activeTab === 'rituals' ? (
         <SelfCareRitualsTab
+          canAddCare={canUseSelfCareActions}
           list={list}
           history={history}
           plan={plan}
           dashboardItems={buildRitualDashboardItems(dashboard)}
           isBusy={isSelfCareActionBusy}
+          isAddingCare={isAddingCare}
           ritualStepDrafts={ritualStepDrafts}
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
@@ -761,24 +946,30 @@ export function SelfCarePage() {
           onEditItem={handleEditItem}
           onRestartCourse={handleRestartCourse}
           onToggleRitualStep={handleToggleRitualStep}
+          onAddCare={openCreateDialog}
         />
       ) : null}
 
-      {activeTab === 'history' ? (
+      {hasActiveTabData && activeTab === 'history' ? (
         <SelfCareHistoryTab
+          canAddCare={canUseSelfCareActions}
           defaultCurrency={defaultCurrency}
           history={history}
           isBusy={updateCompletionMutation.isPending || !canUseSelfCareActions}
+          isAddingCare={isAddingCare}
+          onAddCare={openCreateDialog}
           onEditCompletion={setCompletionEditDialogEntry}
         />
       ) : null}
 
-      {activeTab === 'analytics' ? (
+      {hasActiveTabData && activeTab === 'analytics' ? (
         <Suspense
           fallback={
-            <section className={styles.emptyPanel}>
-              Загружаем аналитику.
-            </section>
+            <PageStateView
+              kind="loading"
+              skeletonVariant="cards"
+              title="Загружаем аналитику"
+            />
           }
         >
           <SelfCareAnalyticsTab
@@ -791,7 +982,7 @@ export function SelfCarePage() {
         </Suspense>
       ) : null}
 
-      {activeTab === 'settings' ? (
+      {hasActiveTabData && activeTab === 'settings' ? (
         <SelfCareSettingsTab
           isBusy={isSelfCareActionBusy}
           disabledTemplateIds={disabledTemplateIds}
@@ -802,15 +993,21 @@ export function SelfCarePage() {
         />
       ) : null}
 
-      {createDialogMode ? (
-        <SelfCareCreateDialog
+      {canShowCreateDialog && createDialogMode ? (
+        <DeferredSelfCareCreateDialog
           mode={createDialogMode}
           defaultCurrency={defaultCurrency}
-          errorMessage={errorMessage}
+          errorMessage={createDialogErrorMessage}
           disabledTemplateIds={disabledTemplateIds}
-          isBusy={isSelfCareActionBusy || !list}
+          hasRequiredData={hasCreateDialogData}
+          hasReadError={hasCreateDialogReadError}
+          isBusy={
+            isActionBusy || !canUseCreateDialogActions || !hasCreateDialogData
+          }
+          isLoading={isCreateDialogLoading}
           todayKey={todayKey}
           templates={templates}
+          templatesLoaded={templatesLoaded}
           uploadedIcons={uploadedIcons}
           onBack={() => setCreateDialogMode('choice')}
           onClose={closeCreateDialog}
@@ -818,13 +1015,14 @@ export function SelfCarePage() {
           onCreateFromTemplate={(templateId) =>
             handleCreateFromTemplate(templateId, { closeAfterCreate: true })
           }
+          onRetry={retrySelfCare}
           onSelectCustom={() => setCreateDialogMode('custom')}
           onSelectTemplate={() => setCreateDialogMode('template')}
         />
       ) : null}
 
       {scheduleDialogEntry ? (
-        <SelfCareScheduleDialog
+        <DeferredSelfCareScheduleDialog
           date={scheduleDate}
           defaultCurrency={defaultCurrency}
           entry={scheduleDialogEntry}
@@ -842,7 +1040,7 @@ export function SelfCarePage() {
       ) : null}
 
       {measurementDialogEntry ? (
-        <SelfCareMeasurementDialog
+        <DeferredSelfCareMeasurementDialog
           entry={measurementDialogEntry}
           errorMessage={visibleFormError}
           isBusy={
@@ -856,7 +1054,7 @@ export function SelfCarePage() {
       ) : null}
 
       {exerciseDialogEntry ? (
-        <SelfCareExerciseDialog
+        <DeferredSelfCareExerciseDialog
           entry={exerciseDialogEntry}
           errorMessage={visibleFormError}
           isBusy={
@@ -871,7 +1069,7 @@ export function SelfCarePage() {
       ) : null}
 
       {editDialogEntry ? (
-        <SelfCareEditDialog
+        <DeferredSelfCareEditDialog
           defaultCurrency={defaultCurrency}
           entry={editDialogEntry}
           errorMessage={visibleFormError}
@@ -889,7 +1087,7 @@ export function SelfCarePage() {
       ) : null}
 
       {completionEditDialogEntry ? (
-        <SelfCareCompletionEditDialog
+        <DeferredSelfCareCompletionEditDialog
           completion={completionEditDialogEntry}
           defaultCurrency={defaultCurrency}
           errorMessage={visibleFormError}
@@ -915,7 +1113,7 @@ export function SelfCarePage() {
       ) : null}
 
       {restartCourseDialogEntry ? (
-        <SelfCareCourseRestartDialog
+        <DeferredSelfCareCourseRestartDialog
           entry={restartCourseDialogEntry}
           errorMessage={visibleFormError}
           isBusy={updateItemMutation.isPending || !canUseSelfCareActions}
@@ -926,4 +1124,95 @@ export function SelfCarePage() {
       ) : null}
     </section>
   )
+}
+
+function SelfCareQueueStatus({
+  isOffline,
+  queue,
+}: {
+  isOffline: boolean
+  queue: ReturnType<typeof useSelfCareOfflineQueue>
+}) {
+  if (queue.conflicted > 0) {
+    return (
+      <>
+        <PageStatusBanner
+          action={{
+            label: 'Обновить и повторить',
+            onClick: () => {
+              void queue.refreshAndRetryConflicts()
+            },
+          }}
+          description={`${queue.conflicted} ${queue.conflicted === 1 ? 'изменение требует' : 'изменения требуют'} сверки с актуальными данными. Ничего не заменено без вашего решения.`}
+          kind="error"
+          title="Нужно проверить изменения"
+        />
+        <PageStatusBanner
+          action={{
+            label: 'Отменить локальные изменения',
+            onClick: () => {
+              void queue.discardConflicts()
+            },
+          }}
+          description="Конфликтующие изменения и зависящие от них локальные шаги будут отменены."
+          kind="info"
+          title="Можно оставить данные сервера"
+        />
+      </>
+    )
+  }
+
+  if (queue.isDraining || queue.awaitingRefresh > 0) {
+    return (
+      <PageStatusBanner
+        description="Сохранённые на устройстве изменения отправляются по порядку."
+        kind="info"
+        title="Синхронизируем изменения"
+      />
+    )
+  }
+
+  if (queue.failed > 0 && !isOffline) {
+    return (
+      <PageStatusBanner
+        action={{
+          label: 'Повторить',
+          onClick: () => {
+            void queue.retry()
+          },
+        }}
+        description="Изменения остаются на устройстве. Можно повторить отправку."
+        kind="error"
+        title="Не все изменения синхронизированы"
+      />
+    )
+  }
+
+  if (queue.pending > 0 || queue.failed > 0) {
+    const count = queue.pending + queue.failed
+    return (
+      <PageStatusBanner
+        description={formatQueuedChangeCount(count)}
+        kind={isOffline ? 'offline' : 'info'}
+        title="Изменения сохранены на устройстве"
+      />
+    )
+  }
+
+  return null
+}
+
+function formatQueuedChangeCount(count: number): string {
+  const remainder100 = count % 100
+  const remainder10 = count % 10
+  const noun =
+    remainder10 === 1 && remainder100 !== 11
+      ? 'изменение будет отправлено'
+      : remainder10 >= 2 &&
+          remainder10 <= 4 &&
+          (remainder100 < 12 || remainder100 > 14)
+        ? 'изменения будут отправлены'
+        : 'изменений будут отправлены'
+
+  return `${count} ${noun} после восстановления связи.`
 }

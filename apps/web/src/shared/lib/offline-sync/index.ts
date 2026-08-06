@@ -13,5 +13,12 @@ export {
   type OfflineQueueAdapter,
   readOfflineConflictDetails,
 } from './offline-sync'
+export { useBrowserOffline } from './useBrowserOffline'
 export { useOfflineQueueDrain } from './useOfflineQueueDrain'
 export { useOnlineSync } from './useOnlineSync'
+export {
+  broadcastWorkspaceLocalDataInvalidation,
+  registerWorkspaceLocalDataInvalidationListener,
+  type WorkspaceLocalDataInvalidationReason,
+  WorkspaceLocalDataInvalidationUnavailableError,
+} from './workspace-local-data-invalidation'

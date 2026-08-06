@@ -21,6 +21,7 @@ import {
   TrashIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
+import { PageStateView } from '@/shared/ui/PageState'
 
 import {
   canRestartCourse,
@@ -82,10 +83,12 @@ import { SelfCareSection } from './SelfCarePage.sections'
 export { SelfCareSettingsTab } from './SelfCarePage.settings'
 
 export function SelfCareTodayTab({
+  canAddCare,
   dashboard,
   history,
   hiddenScheduledItemIds,
   isBusy,
+  isAddingCare,
   list,
   onAddCare,
   onCardAction,
@@ -102,10 +105,12 @@ export function SelfCareTodayTab({
   uploadedIcons,
   onToggleRitualStep,
 }: {
+  canAddCare: boolean
   dashboard: ReturnType<typeof useSelfCareDashboard>['data'] | undefined
   history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
   hiddenScheduledItemIds: ReadonlySet<string>
   isBusy: boolean
+  isAddingCare: boolean
   list: SelfCareListResponse | undefined
   onAddCare: () => void
   onCardAction: (entry: SelfCareTodayItem) => void
@@ -179,22 +184,13 @@ export function SelfCareTodayTab({
     plan,
     shiftDateKey(todayKey, 1),
   )
-  const isAvailableTodayLoading = !list || !history
-
-  if (!hasVisibleTodayContent && isAvailableTodayLoading) {
-    return (
-      <div className={styles.tabPanel}>
-        <section className={styles.emptyPanel}>
-          Загружаем доступные на сегодня действия.
-        </section>
-      </div>
-    )
-  }
-
   if (!hasVisibleTodayContent) {
     return (
       <SelfCareTodayClearState
+        canAddCare={canAddCare}
         hasClosedTodayWork={hasClosedTodayWork}
+        isAddingCare={isAddingCare}
+        isBusy={isBusy}
         tomorrowCount={tomorrowCount}
         onAddCare={onAddCare}
         onShowHistory={onShowHistory}
@@ -206,7 +202,7 @@ export function SelfCareTodayTab({
   return (
     <div className={styles.tabPanel}>
       {overdueItems.length ? (
-        <SelfCareSection title="Не закрыто за прошлые дни">
+        <SelfCareSection title="Осталось с прошлых дней">
           {overdueItems.map((entry) => (
             <SelfCareItemCard
               key={`overdue-${entry.occurrence?.id ?? entry.item.id}`}
@@ -340,18 +336,37 @@ export function SelfCareTodayTab({
 }
 
 function SelfCareTodayClearState({
+  canAddCare,
   hasClosedTodayWork,
+  isAddingCare,
+  isBusy,
   onAddCare,
   onShowHistory,
   onShowPlan,
   tomorrowCount,
 }: {
+  canAddCare: boolean
   hasClosedTodayWork: boolean
+  isAddingCare: boolean
+  isBusy: boolean
   onAddCare: () => void
   onShowHistory: () => void
   onShowPlan: () => void
   tomorrowCount: number | null
 }) {
+  const nextAction =
+    tomorrowCount && tomorrowCount > 0
+      ? { label: 'Открыть план', onClick: onShowPlan }
+      : hasClosedTodayWork
+        ? { label: 'Посмотреть выполненное', onClick: onShowHistory }
+        : canAddCare
+          ? {
+              disabled: isBusy,
+              label: isAddingCare ? 'Добавляем…' : 'Добавить заботу',
+              onClick: onAddCare,
+            }
+          : null
+
   return (
     <div className={styles.tabPanel}>
       <section className={styles.clearStatePanel}>
@@ -372,20 +387,17 @@ function SelfCareTodayClearState({
           </div>
 
           <div className={styles.clearStateActions}>
-            <button
-              className={styles.softButton}
-              type="button"
-              onClick={onShowHistory}
-            >
-              Посмотреть выполненное
-            </button>
-            <button
-              className={styles.primaryButton}
-              type="button"
-              onClick={onAddCare}
-            >
-              Добавить заботу
-            </button>
+            {nextAction ? (
+              <button
+                aria-busy={nextAction.disabled || undefined}
+                className={styles.primaryButton}
+                type="button"
+                disabled={nextAction.disabled}
+                onClick={nextAction.onClick}
+              >
+                {nextAction.label}
+              </button>
+            ) : null}
           </div>
 
           <div className={styles.tomorrowPreview}>
@@ -393,15 +405,6 @@ function SelfCareTodayClearState({
               <span>Завтра</span>
               <strong>{formatTomorrowPlanSummary(tomorrowCount)}</strong>
             </div>
-            {tomorrowCount && tomorrowCount > 0 ? (
-              <button
-                className={styles.softButton}
-                type="button"
-                onClick={onShowPlan}
-              >
-                Посмотреть
-              </button>
-            ) : null}
           </div>
         </div>
 
@@ -427,11 +430,14 @@ function SelfCareTodayClearState({
 }
 
 export function SelfCarePlanTab({
+  canAddCare,
   hiddenScheduledItemIds,
   history,
   isBusy,
+  isAddingCare,
   onCardAction,
   onArchiveItem,
+  onAddCare,
   onCancelOccurrence,
   onEditItem,
   onRestartCourse,
@@ -440,11 +446,14 @@ export function SelfCarePlanTab({
   todayKey,
   uploadedIcons,
 }: {
+  canAddCare: boolean
   hiddenScheduledItemIds: ReadonlySet<string>
   history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
   isBusy: boolean
+  isAddingCare: boolean
   onCardAction: (entry: SelfCareTodayItem) => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
+  onAddCare: () => void
   onCancelOccurrence: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
@@ -498,13 +507,24 @@ export function SelfCarePlanTab({
           ))}
         </SelfCareSection>
       ) : !hasPlanContent ? (
-        <section className={styles.emptyPanel}>
-          На ближайшие даты пока ничего не запланировано.
-        </section>
+        <PageStateView
+          action={
+            canAddCare
+              ? {
+                  disabled: isBusy,
+                  label: isAddingCare ? 'Добавляем…' : 'Добавить заботу',
+                  onClick: onAddCare,
+                }
+              : undefined
+          }
+          description="Можно оставить ближайшие дни свободными или добавить одну подходящую заботу."
+          kind="empty"
+          title="На ближайшие даты ничего не запланировано"
+        />
       ) : null}
 
       {planningHints.length ? (
-        <SelfCareSection title="Пора запланировать">
+        <SelfCareSection title="Можно запланировать">
           {planningHints.map((entry) => (
             <PlanningHintCard
               key={`plan-hint-${entry.item.id}`}
@@ -555,29 +575,35 @@ export function SelfCarePlanTab({
 }
 
 export function SelfCareRitualsTab({
+  canAddCare,
   dashboardItems,
   history,
   isBusy,
+  isAddingCare,
   list,
   plan,
   ritualStepDrafts,
   todayKey,
   uploadedIcons,
   onCardAction,
+  onAddCare,
   onArchiveItem,
   onEditItem,
   onRestartCourse,
   onToggleRitualStep,
 }: {
+  canAddCare: boolean
   dashboardItems: SelfCareTodayItem[]
   history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
   isBusy: boolean
+  isAddingCare: boolean
   list: SelfCareListResponse | undefined
   plan: ReturnType<typeof useSelfCarePlan>['data'] | undefined
   ritualStepDrafts: RitualStepDrafts
   todayKey: string
   uploadedIcons: UploadedIconAsset[]
   onCardAction: (entry: SelfCareTodayItem) => void
+  onAddCare: () => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
@@ -598,6 +624,31 @@ export function SelfCareRitualsTab({
 
   if (!list) {
     return <div className={styles.tabPanel} />
+  }
+
+  const hasVisibleItems = Object.values(grouped).some(
+    (items) => items.length > 0,
+  )
+
+  if (!hasVisibleItems) {
+    return (
+      <div className={styles.tabPanel}>
+        <PageStateView
+          action={
+            canAddCare
+              ? {
+                  disabled: isBusy,
+                  label: isAddingCare ? 'Добавляем…' : 'Добавить заботу',
+                  onClick: onAddCare,
+                }
+              : undefined
+          }
+          description="Можно добавить первую заботу, которую хочется держать под рукой."
+          kind="empty"
+          title="Здесь пока нет забот"
+        />
+      </div>
+    )
   }
 
   return (
@@ -655,14 +706,20 @@ export function SelfCareRitualsTab({
 }
 
 export function SelfCareHistoryTab({
+  canAddCare,
   defaultCurrency,
   history,
   isBusy,
+  isAddingCare,
+  onAddCare,
   onEditCompletion,
 }: {
+  canAddCare: boolean
   defaultCurrency: string
   history: ReturnType<typeof useSelfCareHistory>['data'] | undefined
   isBusy: boolean
+  isAddingCare: boolean
+  onAddCare: () => void
   onEditCompletion: (completion: SelfCareCompletion) => void
 }) {
   const itemById = new Map(
@@ -674,9 +731,20 @@ export function SelfCareHistoryTab({
 
   if (!completions.length) {
     return (
-      <section className={styles.emptyPanel}>
-        История появится после первых выполнений.
-      </section>
+      <PageStateView
+        action={
+          canAddCare
+            ? {
+                disabled: isBusy,
+                label: isAddingCare ? 'Добавляем…' : 'Добавить заботу',
+                onClick: onAddCare,
+              }
+            : undefined
+        }
+        description="Здесь появятся завершённые заботы и заметки о них."
+        kind="empty"
+        title="История пока пуста"
+      />
     )
   }
 
