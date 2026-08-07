@@ -3,19 +3,77 @@ import { randomUUID } from 'node:crypto'
 import test from 'node:test'
 
 import {
+  generateUuidV7,
   selfCareCompletionInputSchema,
   selfCareCompletionUpdateInputSchema,
   selfCareItemInputSchema,
   selfCareItemScheduleInputSchema,
   selfCareItemUpdateInputSchema,
   selfCareOccurrenceSkipInputSchema,
+  selfCareOfflineCommandRequestSchema,
   selfCareRitualCompletionInputSchema,
   selfCareRitualStepDraftInputSchema,
 } from '@planner/contracts'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import type { SelfCareWriteContext } from './self-care.model.js'
 import { MemorySelfCareRepository } from './self-care.repository.memory.js'
 import { addDays, getDateKey } from './self-care.shared.js'
+
+void test('self-care offline schedule commands require either a new id or a complete existing-occurrence version pair', () => {
+  const base = {
+    command: {
+      expectedVersion: 1,
+      input: { scheduledFor: '2026-08-06' },
+      itemId: generateUuidV7(),
+      type: 'schedule_item' as const,
+    },
+    operationId: generateUuidV7(),
+  }
+
+  assert.equal(
+    selfCareOfflineCommandRequestSchema.safeParse({
+      ...base,
+      command: { ...base.command, occurrenceId: generateUuidV7() },
+    }).success,
+    true,
+  )
+  assert.equal(
+    selfCareOfflineCommandRequestSchema.safeParse({
+      ...base,
+      command: {
+        ...base.command,
+        existingOccurrenceId: randomUUID(),
+        expectedOccurrenceVersion: 2,
+      },
+    }).success,
+    true,
+  )
+  assert.equal(
+    selfCareOfflineCommandRequestSchema.safeParse(base).success,
+    false,
+  )
+  assert.equal(
+    selfCareOfflineCommandRequestSchema.safeParse({
+      ...base,
+      command: {
+        ...base.command,
+        existingOccurrenceId: randomUUID(),
+      },
+    }).success,
+    false,
+  )
+  assert.equal(
+    selfCareOfflineCommandRequestSchema.safeParse({
+      ...base,
+      command: {
+        ...base.command,
+        expectedOccurrenceVersion: 2,
+      },
+    }).success,
+    false,
+  )
+})
 
 void test('MemorySelfCareRepository reactivates an existing occurrence when it is scheduled again', async () => {
   const repository = new MemorySelfCareRepository()
@@ -120,6 +178,117 @@ void test('MemorySelfCareRepository stores scheduled local time as a fixed-zone 
 
   assert.equal(occurrence.dueAt, '2026-06-25T14:00:00.000Z')
   assert.equal(occurrence.reminderTimeZone, 'Europe/Astrakhan')
+})
+
+void test('MemorySelfCareRepository updates same-date schedule details offline without recording a move', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      title: 'Пауза',
+      type: 'rest_action',
+    }),
+  })
+  const occurrence = await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      place: 'Дома',
+      scheduledFor: '2026-08-06',
+      scheduledTime: '10:00',
+      timezone: 'Europe/Samara',
+    }),
+    itemId: item.id,
+  })
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    clientTimeZone: 'Europe/Samara',
+    command: {
+      existingOccurrenceId: occurrence.id,
+      expectedOccurrenceVersion: occurrence.version,
+      expectedVersion: item.version,
+      input: {
+        note: 'Взять плед',
+        place: 'На балконе',
+        scheduledFor: occurrence.scheduledFor,
+        scheduledTime: '11:30',
+        timezone: 'Europe/Samara',
+      },
+      itemId: item.id,
+      type: 'schedule_item',
+    },
+    operationId: generateUuidV7(),
+  })
+
+  const result = await repository.executeOfflineCommand({ context, request })
+  const replay = await repository.executeOfflineCommand({ context, request })
+
+  assert.equal(result.result.kind, 'occurrence')
+  assert.equal(replay.replayed, true)
+  assert.deepEqual(replay.result, result.result)
+  assert.equal(result.result.occurrence.id, occurrence.id)
+  assert.equal(result.result.occurrence.version, occurrence.version + 1)
+  assert.equal(result.result.occurrence.status, 'scheduled')
+  assert.equal(result.result.occurrence.dueAt, '2026-08-06T07:30:00.000Z')
+  const list = await repository.listItems(context)
+  const details = list.appointmentDetails.find(
+    (candidate) => candidate.occurrenceId === occurrence.id,
+  )
+  assert.equal(
+    list.items.find((candidate) => candidate.id === item.id)?.version,
+    item.version,
+  )
+  assert.equal(details?.place, 'На балконе')
+  assert.equal(details?.preparationNote, 'Взять плед')
+  assert.equal(details?.startsAt, '2026-08-06T07:30:00.000Z')
+  assert.deepEqual(
+    (await repository.getHistory(context, '2026-08-06', '2026-08-06'))
+      .completions,
+    [],
+  )
+
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context,
+      request: selfCareOfflineCommandRequestSchema.parse({
+        command: {
+          existingOccurrenceId: occurrence.id,
+          expectedOccurrenceVersion: occurrence.version,
+          expectedVersion: item.version,
+          input: {
+            scheduledFor: occurrence.scheduledFor,
+            scheduledTime: '12:00',
+          },
+          itemId: item.id,
+          type: 'schedule_item',
+        },
+        operationId: generateUuidV7(),
+      }),
+    }),
+    isConflict('self_care_version_conflict'),
+  )
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context,
+      request: selfCareOfflineCommandRequestSchema.parse({
+        command: {
+          existingOccurrenceId: occurrence.id,
+          expectedOccurrenceVersion: result.result.occurrence.version,
+          expectedVersion: item.version,
+          input: { scheduledFor: '2026-08-07' },
+          itemId: item.id,
+          type: 'schedule_item',
+        },
+        operationId: generateUuidV7(),
+      }),
+    }),
+    isConflict('self_care_schedule_date_conflict'),
+  )
+  assert.deepEqual(
+    (await repository.getHistory(context, '2026-08-06', '2026-08-07'))
+      .completions,
+    [],
+  )
 })
 
 void test('MemorySelfCareRepository keeps stale daily occurrences overdue', async () => {
@@ -356,6 +525,140 @@ void test('MemorySelfCareRepository deduplicates ad-hoc item completion per day'
 
   assert.equal(second.id, first.id)
   assert.equal(history.completions.length, 1)
+})
+
+void test('MemorySelfCareRepository versions gentle-mode changes like Postgres', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const defaults = await repository.getSettings(context)
+
+  const enabled = await repository.enableGentleMode({
+    context,
+    date: '2026-08-06',
+  })
+  const disabled = await repository.disableGentleMode({
+    context,
+    date: '2026-08-06',
+  })
+
+  assert.equal(enabled.settings.version, defaults.settings.version + 1)
+  assert.equal(disabled.settings.version, enabled.settings.version + 1)
+})
+
+void test('MemorySelfCareRepository consumes one item version and clears the draft for an accepted deduplicated completion command', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      steps: [{ title: 'Умыться' }],
+      title: 'Утренний ритуал',
+      type: 'ritual',
+    }),
+  })
+  const step = (await repository.listItems(context)).steps.find(
+    (candidate) => candidate.itemId === item.id,
+  )
+  assert.ok(step)
+
+  const input = {
+    completedAt: '2026-08-06T08:00:00.000Z',
+    status: 'done' as const,
+    steps: [{ isDone: true, stepId: step.id }],
+  }
+  const first = await repository.executeOfflineCommand({
+    context,
+    request: selfCareOfflineCommandRequestSchema.parse({
+      clientTimeZone: 'UTC',
+      command: {
+        completionId: generateUuidV7(),
+        expectedVersion: item.version,
+        input,
+        itemId: item.id,
+        type: 'complete_item_now',
+      },
+      operationId: generateUuidV7(),
+    }),
+  })
+  assert.equal(first.result.kind, 'completion')
+  assert.ok(first.result.kind === 'completion' && first.result.item)
+  assert.equal(first.result.item.version, item.version + 1)
+
+  await repository.upsertRitualStepDraft({
+    context,
+    expectedVersion: null,
+    input: selfCareRitualStepDraftInputSchema.parse({
+      date: '2026-08-06',
+      itemId: item.id,
+      occurrenceId: null,
+      stepIds: [step.id],
+    }),
+  })
+
+  const second = await repository.executeOfflineCommand({
+    context,
+    request: selfCareOfflineCommandRequestSchema.parse({
+      clientTimeZone: 'UTC',
+      command: {
+        completionId: generateUuidV7(),
+        expectedVersion: first.result.item.version,
+        input,
+        itemId: item.id,
+        type: 'complete_item_now',
+      },
+      operationId: generateUuidV7(),
+    }),
+  })
+  assert.equal(second.result.kind, 'completion')
+  assert.ok(second.result.kind === 'completion' && second.result.item)
+  assert.equal(second.result.completion.id, first.result.completion.id)
+  assert.equal(second.result.item.version, first.result.item.version + 1)
+  assert.deepEqual(
+    (
+      await repository.getRitualStepDrafts({
+        context,
+        date: '2026-08-06',
+      })
+    ).drafts,
+    [],
+  )
+
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context,
+      request: selfCareOfflineCommandRequestSchema.parse({
+        clientTimeZone: 'UTC',
+        command: {
+          completionId: generateUuidV7(),
+          expectedVersion: first.result.item.version,
+          input,
+          itemId: item.id,
+          type: 'complete_item_now',
+        },
+        operationId: generateUuidV7(),
+      }),
+    }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 409 &&
+      error.code === 'self_care_version_conflict',
+  )
+
+  const updated = await repository.executeOfflineCommand({
+    context,
+    request: selfCareOfflineCommandRequestSchema.parse({
+      command: {
+        expectedVersion: second.result.item.version,
+        input: { title: 'Утренний ритуал — обновлён' },
+        itemId: item.id,
+        type: 'update_item',
+      },
+      operationId: generateUuidV7(),
+    }),
+  })
+  assert.equal(updated.result.kind, 'item')
+  assert.equal(updated.result.item.version, second.result.item.version + 1)
 })
 
 void test('MemorySelfCareRepository allows repeated completions for migrated flexible habits', async () => {
@@ -621,6 +924,184 @@ void test('MemorySelfCareRepository stores ad-hoc ritual step completion', async
   assert.equal(stepDoneById.get(secondStep.id), false)
 })
 
+void test('MemorySelfCareRepository rejects a ritual completion step from another item without partial writes', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const source = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      steps: [{ title: 'Шаг источника' }],
+      title: 'Первый ритуал',
+      type: 'ritual',
+    }),
+  })
+  const target = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      steps: [{ title: 'Шаг цели' }],
+      title: 'Второй ритуал',
+      type: 'ritual',
+    }),
+  })
+  const list = await repository.listItems(context)
+  const sourceStep = list.steps.find((step) => step.itemId === source.id)
+  const targetStep = list.steps.find((step) => step.itemId === target.id)
+  assert.ok(sourceStep)
+  assert.ok(targetStep)
+
+  await repository.upsertRitualStepDraft({
+    context,
+    expectedVersion: null,
+    input: selfCareRitualStepDraftInputSchema.parse({
+      date: '2026-08-06',
+      itemId: target.id,
+      occurrenceId: null,
+      stepIds: [targetStep.id],
+    }),
+  })
+
+  await assert.rejects(
+    repository.completeItemNow({
+      context,
+      expectedVersion: target.version,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-08-06T08:00:00.000Z',
+        status: 'done',
+        steps: [{ isDone: true, stepId: sourceStep.id }],
+      }),
+      itemId: target.id,
+    }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 409 &&
+      error.code === 'self_care_ritual_step_conflict',
+  )
+  await assert.rejects(
+    repository.completeItemNow({
+      context,
+      expectedVersion: target.version,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-08-06T08:00:00.000Z',
+        status: 'done',
+        steps: [
+          { isDone: true, stepId: targetStep.id },
+          { isDone: false, stepId: targetStep.id },
+        ],
+      }),
+      itemId: target.id,
+    }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 400 &&
+      error.code === 'self_care_ritual_completion_invalid_step',
+  )
+
+  const after = await repository.listItems(context)
+  assert.equal(
+    after.items.find((item) => item.id === target.id)?.version,
+    target.version,
+  )
+  assert.equal(
+    (await repository.getHistory(context, '2026-08-06', '2026-08-06'))
+      .completions.length,
+    0,
+  )
+  assert.deepEqual(
+    (
+      await repository.getRitualStepDrafts({
+        context,
+        date: '2026-08-06',
+      })
+    ).drafts[0]?.stepIds,
+    [targetStep.id],
+  )
+})
+
+void test('MemorySelfCareRepository rejects a guessed cross-user ritual step before changing an occurrence or course', async () => {
+  const repository = new MemorySelfCareRepository()
+  const firstContext = createWriteContext()
+  const secondContext = createWriteContext()
+  const source = await repository.createItem({
+    context: firstContext,
+    input: selfCareItemInputSchema.parse({
+      category: 'daily_base',
+      steps: [{ title: 'Чужой шаг' }],
+      title: 'Чужой ритуал',
+      type: 'ritual',
+    }),
+  })
+  const sourceStep = (await repository.listItems(firstContext)).steps.find(
+    (step) => step.itemId === source.id,
+  )
+  assert.ok(sourceStep)
+  const courseItem = await repository.createItem({
+    context: secondContext,
+    input: selfCareItemInputSchema.parse({
+      category: 'medical',
+      courseDetails: {
+        courseType: 'sessions',
+        endDate: null,
+        startDate: '2026-08-06',
+        totalCount: 3,
+      },
+      title: 'Курс второго пользователя',
+      type: 'course',
+    }),
+  })
+  const occurrence = await repository.scheduleItem({
+    context: secondContext,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+    }),
+    itemId: courseItem.id,
+  })
+  const courseBefore = (
+    await repository.listItems(secondContext)
+  ).courseDetails.find((course) => course.itemId === courseItem.id)
+  assert.ok(courseBefore)
+
+  await assert.rejects(
+    repository.completeOccurrence({
+      context: secondContext,
+      expectedVersion: occurrence.version,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-08-06T09:00:00.000Z',
+        status: 'done',
+        steps: [{ isDone: true, stepId: sourceStep.id }],
+      }),
+      occurrenceId: occurrence.id,
+    }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 409 &&
+      error.code === 'self_care_ritual_step_conflict',
+  )
+
+  const occurrenceAfter = (
+    await repository.getOccurrences({
+      context: secondContext,
+      from: '2026-08-06',
+      to: '2026-08-06',
+    })
+  ).find((candidate) => candidate.id === occurrence.id)
+  const courseAfter = (
+    await repository.listItems(secondContext)
+  ).courseDetails.find((course) => course.itemId === courseItem.id)
+  const history = await repository.getHistory(
+    secondContext,
+    '2026-08-06',
+    '2026-08-06',
+  )
+
+  assert.equal(occurrenceAfter?.status, 'scheduled')
+  assert.equal(occurrenceAfter?.version, occurrence.version)
+  assert.deepEqual(courseAfter, courseBefore)
+  assert.deepEqual(history.completions, [])
+  assert.deepEqual(history.stepCompletions, [])
+})
+
 void test('MemorySelfCareRepository stores measurement details and reading', async () => {
   const repository = new MemorySelfCareRepository()
   const context = createWriteContext()
@@ -877,6 +1358,13 @@ void test('MemorySelfCareRepository updates exercise progress instead of appendi
 
   assert.equal(second.id, first.id)
   assert.equal(final.id, first.id)
+  assert.equal(first.version, 1)
+  assert.equal(second.version, 2)
+  assert.equal(final.version, 3)
+  assert.equal(second.createdAt, first.createdAt)
+  assert.equal(final.createdAt, first.createdAt)
+  assert.notEqual(second.updatedAt, second.completedAt)
+  assert.notEqual(final.updatedAt, final.completedAt)
   assert.equal(history.completions.length, 1)
   assert.equal(history.completions[0]?.status, 'done')
   assert.equal(history.completions[0]?.measurementValue, 28)
@@ -1034,6 +1522,650 @@ void test('MemorySelfCareRepository persists ritual step drafts until completion
 
   assert.deepEqual(drafts.drafts, [])
 })
+
+void test('MemorySelfCareRepository replays an offline command once and rejects operation id reuse', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const createdItemId = '0198f4c0-7340-7a20-aadf-09db0ee49201'
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      initialSchedule: {
+        input: { scheduledFor: '2026-08-06' },
+        occurrenceId: '0198f4c0-7340-7a20-aadf-09db0ee49202',
+      },
+      input: {
+        category: 'relax',
+        id: createdItemId,
+        title: 'Тихая пауза',
+        type: 'rest_action',
+      },
+      type: 'create_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49200',
+  })
+
+  const first = await repository.executeOfflineCommand({ context, request })
+  const replay = await repository.executeOfflineCommand({ context, request })
+  const state = await repository.listItems(context)
+  const occurrences = await repository.getOccurrences({
+    context,
+    from: '2026-08-06',
+    to: '2026-08-06',
+  })
+
+  assert.equal(first.replayed, false)
+  assert.equal(replay.replayed, true)
+  assert.deepEqual(replay.result, first.result)
+  assert.equal(
+    state.items.filter((item) => item.id === createdItemId).length,
+    1,
+  )
+  assert.equal(occurrences.length, 1)
+
+  const reused = selfCareOfflineCommandRequestSchema.parse({
+    ...request,
+    command: {
+      initialSchedule: {
+        input: { scheduledFor: '2026-08-06' },
+        occurrenceId: '0198f4c0-7340-7a20-aadf-09db0ee49202',
+      },
+      input: {
+        category: 'relax',
+        id: createdItemId,
+        title: 'Другая пауза',
+        type: 'rest_action',
+      },
+      type: 'create_item',
+    },
+  })
+  await assert.rejects(
+    repository.executeOfflineCommand({ context, request: reused }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 409 &&
+      error.code === 'self_care_operation_id_reused',
+  )
+})
+
+void test('MemorySelfCareRepository returns both occurrences from an atomic item update and reschedule', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      description: 'До изменения',
+      title: 'Тихая пауза',
+      type: 'rest_action',
+    }),
+  })
+  const occurrence = await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+    }),
+    itemId: item.id,
+  })
+  const replacementOccurrenceId = '0198f4c0-7340-7a20-aadf-09db0ee49212'
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      expectedVersion: item.version,
+      input: { description: 'После изменения' },
+      itemId: item.id,
+      scheduleChange: {
+        actedAt: '2026-08-06T09:00:00.000Z',
+        completionId: '0198f4c0-7340-7a20-aadf-09db0ee49211',
+        expectedVersion: occurrence.version,
+        input: { newDate: '2026-08-07' },
+        occurrenceId: occurrence.id,
+        replacementInput: { scheduledFor: '2026-08-07' },
+        replacementOccurrenceId,
+        type: 'reschedule',
+      },
+      type: 'update_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49210',
+  })
+
+  const response = await repository.executeOfflineCommand({
+    context,
+    request,
+  })
+
+  assert.equal(response.result.kind, 'item')
+  if (response.result.kind !== 'item') return
+  assert.equal(response.result.item.description, 'После изменения')
+  assert.equal(response.result.occurrence?.id, occurrence.id)
+  assert.equal(response.result.occurrence?.status, 'moved')
+  assert.equal(response.result.occurrence?.movedTo, '2026-08-07')
+  assert.equal(response.result.replacement?.id, replacementOccurrenceId)
+  assert.equal(response.result.replacement?.status, 'scheduled')
+  assert.equal(response.result.replacement?.scheduledFor, '2026-08-07')
+})
+
+void test('MemorySelfCareRepository atomically updates an item and same-date schedule details without move history', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      description: 'До изменения',
+      title: 'Тихая пауза',
+      type: 'rest_action',
+    }),
+  })
+  const occurrence = await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+      scheduledTime: '10:00',
+      timezone: 'Europe/Samara',
+    }),
+    itemId: item.id,
+  })
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    clientTimeZone: 'Europe/Samara',
+    command: {
+      expectedVersion: item.version,
+      input: { description: 'После изменения' },
+      itemId: item.id,
+      scheduleChange: {
+        expectedVersion: occurrence.version,
+        input: {
+          note: 'Взять плед',
+          place: 'На балконе',
+          scheduledFor: occurrence.scheduledFor,
+          scheduledTime: '11:30',
+          timezone: 'Europe/Samara',
+        },
+        occurrenceId: occurrence.id,
+        type: 'update_schedule',
+      },
+      type: 'update_item',
+    },
+    operationId: generateUuidV7(),
+  })
+
+  const response = await repository.executeOfflineCommand({ context, request })
+
+  assert.equal(response.result.kind, 'item')
+  assert.ok(response.result.kind === 'item' && response.result.occurrence)
+  assert.equal(response.result.item.description, 'После изменения')
+  assert.equal(response.result.item.version, item.version + 1)
+  assert.equal(response.result.occurrence.id, occurrence.id)
+  assert.equal(response.result.occurrence.version, occurrence.version + 1)
+  assert.equal(response.result.occurrence.status, 'scheduled')
+  assert.equal(response.result.occurrence.movedTo, null)
+  assert.equal(response.result.replacement, undefined)
+  assert.deepEqual(
+    (await repository.getHistory(context, '2026-08-06', '2026-08-06'))
+      .completions,
+    [],
+  )
+
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context,
+      request: selfCareOfflineCommandRequestSchema.parse({
+        command: {
+          expectedVersion: response.result.item.version,
+          input: { description: 'Не должно сохраниться' },
+          itemId: item.id,
+          scheduleChange: {
+            expectedVersion: occurrence.version,
+            input: {
+              scheduledFor: occurrence.scheduledFor,
+              scheduledTime: '12:00',
+            },
+            occurrenceId: occurrence.id,
+            type: 'update_schedule',
+          },
+          type: 'update_item',
+        },
+        operationId: generateUuidV7(),
+      }),
+    }),
+    isConflict('self_care_version_conflict'),
+  )
+  const afterRejected = await repository.listItems(context)
+  assert.equal(
+    afterRejected.items.find((candidate) => candidate.id === item.id)
+      ?.description,
+    'После изменения',
+  )
+  assert.equal(
+    afterRejected.items.find((candidate) => candidate.id === item.id)?.version,
+    item.version + 1,
+  )
+})
+
+void test('MemorySelfCareRepository returns authoritative course progress from an offline completion', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'medical',
+      courseDetails: {
+        breakDays: 0,
+        courseType: 'sessions',
+        repeatAfterCompletion: false,
+        startDate: '2026-08-06',
+        totalCount: 2,
+      },
+      scheduleRule: {
+        repeatKind: 'course',
+        startDate: '2026-08-06',
+      },
+      title: 'Курс',
+      type: 'course',
+    }),
+  })
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      completionId: '0198f4c0-7340-7a20-aadf-09db0ee49222',
+      expectedVersion: item.version,
+      input: {
+        completedAt: '2026-08-06T12:00:00.000Z',
+        status: 'done',
+      },
+      itemId: item.id,
+      type: 'complete_course_session',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49221',
+  })
+
+  const response = await repository.executeOfflineCommand({
+    context,
+    request,
+  })
+
+  assert.equal(response.result.kind, 'completion')
+  if (response.result.kind !== 'completion') return
+  assert.equal(response.result.item?.version, item.version + 1)
+  assert.equal(response.result.courseDetails?.completedCount, 1)
+  assert.equal(response.result.courseDetails?.isCompleted, false)
+  assert.equal(response.result.scheduleRule?.itemId, item.id)
+})
+
+void test('MemorySelfCareRepository rolls back a failed atomic create and does not reserve its operation id', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const createdItemId = '0198f4c0-7340-7a20-aadf-09db0ee49301'
+  const existing = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'health',
+      title: 'Вода',
+      type: 'task',
+    }),
+  })
+  const collidingOccurrenceId = '0198f4c0-7340-7a20-aadf-09db0ee49302'
+  await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+    }),
+    itemId: existing.id,
+    occurrenceId: collidingOccurrenceId,
+    strictInsert: true,
+  })
+
+  const failedRequest = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      initialSchedule: {
+        input: { scheduledFor: '2026-08-07' },
+        occurrenceId: collidingOccurrenceId,
+      },
+      input: {
+        category: 'relax',
+        id: createdItemId,
+        title: 'Новая пауза',
+        type: 'rest_action',
+      },
+      type: 'create_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49300',
+  })
+
+  await assert.rejects(
+    repository.executeOfflineCommand({ context, request: failedRequest }),
+    (error: unknown) => error instanceof HttpError && error.statusCode === 409,
+  )
+  assert.equal(
+    (await repository.listItems(context)).items.some(
+      (item) => item.id === createdItemId,
+    ),
+    false,
+  )
+
+  const retry = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      input: {
+        category: 'relax',
+        id: createdItemId,
+        title: 'Новая пауза',
+        type: 'rest_action',
+      },
+      type: 'create_item',
+    },
+    operationId: failedRequest.operationId,
+  })
+  const result = await repository.executeOfflineCommand({
+    context,
+    request: retry,
+  })
+
+  assert.equal(result.replayed, false)
+  assert.equal(result.result.kind, 'item')
+})
+
+void test('MemorySelfCareRepository reports optimistic version conflicts and never resurrects a closed occurrence in strict mode', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const item = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      title: 'Дыхание',
+      type: 'task',
+    }),
+  })
+  const occurrence = await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+    }),
+    itemId: item.id,
+  })
+
+  await repository.completeOccurrence({
+    completionId: '0198f4c0-7340-7a20-aadf-09db0ee49401',
+    context,
+    expectedVersion: occurrence.version,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-08-06T10:00:00.000Z',
+      status: 'done',
+    }),
+    occurrenceId: occurrence.id,
+  })
+
+  await assert.rejects(
+    repository.scheduleItem({
+      context,
+      input: selfCareItemScheduleInputSchema.parse({
+        scheduledFor: occurrence.scheduledFor,
+      }),
+      itemId: item.id,
+      occurrenceId: '0198f4c0-7340-7a20-aadf-09db0ee49402',
+      strictInsert: true,
+    }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 409 &&
+      error.code === 'self_care_schedule_slot_conflict',
+  )
+
+  await assert.rejects(
+    repository.completeOccurrence({
+      completionId: '0198f4c0-7340-7a20-aadf-09db0ee49403',
+      context,
+      expectedVersion: occurrence.version,
+      input: selfCareRitualCompletionInputSchema.parse({
+        completedAt: '2026-08-06T11:00:00.000Z',
+        status: 'done',
+      }),
+      occurrenceId: occurrence.id,
+    }),
+    (error: unknown) => {
+      if (!(error instanceof HttpError)) return false
+      assert.equal(error.statusCode, 409)
+      assert.equal(error.code, 'self_care_version_conflict')
+      assert.deepEqual(error.details, {
+        actualVersion: occurrence.version + 1,
+        entityId: occurrence.id,
+        entityType: 'occurrence',
+        expectedVersion: occurrence.version,
+      })
+      return true
+    },
+  )
+})
+
+void test('MemorySelfCareRepository rolls back a composite update when the occurrence belongs to another item', async () => {
+  const repository = new MemorySelfCareRepository()
+  const context = createWriteContext()
+  const itemA = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      description: 'До изменения',
+      title: 'Пауза A',
+      type: 'rest_action',
+    }),
+  })
+  const itemB = await repository.createItem({
+    context,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      title: 'Пауза B',
+      type: 'rest_action',
+    }),
+  })
+  const occurrenceB = await repository.scheduleItem({
+    context,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+    }),
+    itemId: itemB.id,
+  })
+  const request = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      expectedVersion: itemA.version,
+      input: { description: 'Не должно сохраниться' },
+      itemId: itemA.id,
+      scheduleChange: {
+        actedAt: '2026-08-06T09:00:00.000Z',
+        completionId: '0198f4c0-7340-7a20-aadf-09db0ee49501',
+        expectedVersion: occurrenceB.version,
+        input: { newDate: '2026-08-07' },
+        occurrenceId: occurrenceB.id,
+        replacementInput: { scheduledFor: '2026-08-07' },
+        replacementOccurrenceId: '0198f4c0-7340-7a20-aadf-09db0ee49502',
+        type: 'reschedule',
+      },
+      type: 'update_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49500',
+  })
+
+  await assert.rejects(
+    repository.executeOfflineCommand({ context, request }),
+    (error: unknown) =>
+      error instanceof HttpError &&
+      error.statusCode === 409 &&
+      error.code === 'self_care_reschedule_item_conflict',
+  )
+
+  const state = await repository.listItems(context)
+  const storedA = state.items.find((item) => item.id === itemA.id)
+  const storedOccurrenceB = (
+    await repository.getOccurrences({
+      context,
+      from: '2026-08-06',
+      to: '2026-08-07',
+    })
+  ).find((occurrence) => occurrence.id === occurrenceB.id)
+
+  assert.equal(storedA?.description, 'До изменения')
+  assert.equal(storedA?.version, itemA.version)
+  assert.equal(storedOccurrenceB?.status, 'scheduled')
+  assert.equal(storedOccurrenceB?.version, occurrenceB.version)
+  assert.deepEqual(
+    (await repository.getHistory(context, '2026-08-06', '2026-08-07'))
+      .completions,
+    [],
+  )
+})
+
+void test('MemorySelfCareRepository keeps client item, occurrence, and completion ids isolated across users', async () => {
+  const repository = new MemorySelfCareRepository()
+  const firstContext = createWriteContext()
+  const secondContext = createWriteContext()
+  const sharedItemId = '0198f4c0-7340-7a20-aadf-09db0ee49601'
+  const sharedOccurrenceId = '0198f4c0-7340-7a20-aadf-09db0ee49602'
+  const sharedCompletionId = '0198f4c0-7340-7a20-aadf-09db0ee49603'
+  const sharedStepId = '0198f4c0-7340-7a20-aadf-09db0ee49604'
+
+  const deletedItem = await repository.createItem({
+    context: firstContext,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      id: sharedItemId,
+      title: 'Удалённая запись первого пользователя',
+      type: 'rest_action',
+    }),
+  })
+  await repository.deleteItem({
+    context: firstContext,
+    itemId: deletedItem.id,
+  })
+
+  const collidingItemRequest = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      input: {
+        category: 'relax',
+        id: sharedItemId,
+        title: 'Запись второго пользователя',
+        type: 'rest_action',
+      },
+      type: 'create_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49610',
+  })
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context: secondContext,
+      request: collidingItemRequest,
+    }),
+    isConflict('self_care_item_id_conflict'),
+  )
+
+  const firstItem = await repository.createItem({
+    context: firstContext,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      steps: [{ id: sharedStepId, title: 'Шаг первого пользователя' }],
+      title: 'Активная запись первого пользователя',
+      type: 'ritual',
+    }),
+  })
+  const secondItem = await repository.createItem({
+    context: secondContext,
+    input: selfCareItemInputSchema.parse({
+      category: 'relax',
+      title: 'Активная запись второго пользователя',
+      type: 'rest_action',
+    }),
+  })
+  await repository.scheduleItem({
+    context: firstContext,
+    input: selfCareItemScheduleInputSchema.parse({
+      scheduledFor: '2026-08-06',
+    }),
+    itemId: firstItem.id,
+    occurrenceId: sharedOccurrenceId,
+    strictInsert: true,
+  })
+
+  const collidingOccurrenceRequest = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      expectedVersion: secondItem.version,
+      input: { scheduledFor: '2026-08-07' },
+      itemId: secondItem.id,
+      occurrenceId: sharedOccurrenceId,
+      type: 'schedule_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49611',
+  })
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context: secondContext,
+      request: collidingOccurrenceRequest,
+    }),
+    isConflict('self_care_occurrence_id_conflict'),
+  )
+
+  const collidingStepRequest = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      expectedVersion: secondItem.version,
+      input: {
+        steps: [{ id: sharedStepId, title: 'Шаг второго пользователя' }],
+      },
+      itemId: secondItem.id,
+      type: 'update_item',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49613',
+  })
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context: secondContext,
+      request: collidingStepRequest,
+    }),
+    isConflict('self_care_item_id_conflict'),
+  )
+  const firstListAfterCollision = await repository.listItems(firstContext)
+  assert.equal(
+    firstListAfterCollision.steps.find((step) => step.id === sharedStepId)
+      ?.title,
+    'Шаг первого пользователя',
+  )
+  assert.equal(
+    (await repository.listItems(secondContext)).items[0]?.version,
+    secondItem.version,
+  )
+
+  await repository.completeItemNow({
+    completionId: sharedCompletionId,
+    context: firstContext,
+    expectedVersion: firstItem.version,
+    input: selfCareRitualCompletionInputSchema.parse({
+      completedAt: '2026-08-06T10:00:00.000Z',
+      status: 'done',
+    }),
+    itemId: firstItem.id,
+  })
+  const collidingCompletionRequest = selfCareOfflineCommandRequestSchema.parse({
+    command: {
+      completionId: sharedCompletionId,
+      expectedVersion: secondItem.version,
+      input: {
+        completedAt: '2026-08-06T10:01:00.000Z',
+        status: 'done',
+      },
+      itemId: secondItem.id,
+      type: 'complete_item_now',
+    },
+    operationId: '0198f4c0-7340-7a20-aadf-09db0ee49612',
+  })
+  await assert.rejects(
+    repository.executeOfflineCommand({
+      context: secondContext,
+      request: collidingCompletionRequest,
+    }),
+    isConflict('self_care_completion_id_conflict'),
+  )
+
+  assert.equal((await repository.listItems(secondContext)).items.length, 1)
+})
+
+function isConflict(code: string) {
+  return (error: unknown) =>
+    error instanceof HttpError &&
+    error.statusCode === 409 &&
+    error.code === code
+}
 
 function createWriteContext(): SelfCareWriteContext {
   return {

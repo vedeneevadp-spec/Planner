@@ -1,5 +1,5 @@
 .balancePanel,
-.forgottenPanel,
+.quietPanel,
 .detailPanel,
 .sphereForm,
 .sphereCard {
@@ -11,7 +11,7 @@
 }
 
 .balancePanel,
-.forgottenPanel,
+.quietPanel,
 .detailPanel,
 .sphereForm {
   display: flex;
@@ -38,7 +38,7 @@
 .formHeader,
 .pickerRow,
 .sphereIdentity,
-.forgottenPanel {
+.quietPanel {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -55,14 +55,13 @@
 
 .detailHeader h3,
 .formHeader h3,
-.forgottenPanel h3,
+.quietPanel h3,
 .sphereCard h3 {
   margin: 0.2rem 0 0;
   font-family: Georgia, 'Times New Roman', serif;
   letter-spacing: -0.03em;
 }
 
-.emptyCopy,
 .sphereDescription,
 .cardCopy,
 .statsGrid span {
@@ -70,7 +69,6 @@
 }
 
 .balanceCaption,
-.emptyCopy,
 .sphereDescription,
 .cardCopy {
   margin: 0.18rem 0 0;
@@ -145,26 +143,26 @@
   opacity: 0.9;
 }
 
-.forgottenPanel {
+.quietPanel {
   align-items: center;
   background:
-    linear-gradient(135deg, rgba(173, 78, 47, 0.1), var(--surface-muted)),
+    linear-gradient(135deg, var(--accent-muted), var(--surface-muted)),
     var(--surface);
 }
 
-.forgottenList {
+.quietList {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.55rem;
 }
 
-.forgottenChip {
-  border: 1px solid rgba(140, 75, 36, 0.2);
+.quietChip {
+  border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.48rem 0.78rem;
   background: var(--field-bg-muted);
-  color: var(--warning);
+  color: var(--text-soft);
   text-decoration: none;
 }
 
@@ -218,26 +216,27 @@
   height: 1.8rem;
 }
 
-.healthBadge {
+.activityBadge {
   border-radius: 999px;
   padding: 0.28rem 0.58rem;
   font-size: 0.72rem;
   font-weight: 700;
 }
 
-.healthBadge[data-health='healthy'] {
+.activityBadge[data-activity-state='active'] {
   background: var(--accent-muted-strong);
   color: var(--success);
 }
 
-.healthBadge[data-health='warning'] {
+.activityBadge[data-activity-state='attention'] {
   background: rgba(225, 161, 82, 0.2);
   color: var(--warning);
 }
 
-.healthBadge[data-health='abandoned'] {
-  background: rgba(173, 78, 47, 0.14);
-  color: var(--danger);
+.activityBadge[data-activity-state='quiet'],
+.activityBadge[data-activity-state='empty'] {
+  background: var(--field-bg-muted);
+  color: var(--text-soft);
 }
 
 .statsGrid {
@@ -589,7 +588,7 @@
 }
 
 @media (max-width: 760px) {
-  .forgottenPanel,
+  .quietPanel,
   .cardActions,
   .detailHeader,
   .formGridDetailed,
@@ -603,14 +602,14 @@
     display: flex;
   }
 
-  .forgottenList {
+  .quietList {
     justify-content: flex-start;
   }
 }
 
 @media (max-width: 560px) {
   .balancePanel,
-  .forgottenPanel,
+  .quietPanel,
   .detailPanel,
   .sphereForm,
   .sphereCard {

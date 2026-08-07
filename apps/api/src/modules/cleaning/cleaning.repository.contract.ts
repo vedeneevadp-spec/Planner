@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
+  cleaningSeedInputSchema,
   cleaningTaskActionInputSchema,
   cleaningTaskUpdateInputSchema,
   cleaningZoneUpdateInputSchema,
@@ -40,9 +41,10 @@ export function defineCleaningRepositoryContractSuite(input: {
         const duplicateKitchenZone = await harness.repository.createZone({
           context: harness.context,
           input: newCleaningZoneInputSchema.parse({
-            dayOfWeek: 5,
+            dayOfWeek: 1,
+            description: 'Main room',
             id: kitchenZone.id,
-            title: 'Duplicate zone',
+            title: 'Kitchen',
           }),
         })
         const bathroomZone = await harness.repository.createZone({
@@ -111,8 +113,16 @@ export function defineCleaningRepositoryContractSuite(input: {
         const duplicateTask = await harness.repository.createTask({
           context: harness.context,
           input: newCleaningTaskInputSchema.parse({
+            customIntervalDays: null,
+            estimatedMinutes: 30,
+            frequencyInterval: 3,
+            frequencyType: 'custom',
             id: task.id,
-            title: 'Duplicate task',
+            isSeasonal: true,
+            priority: 'high',
+            seasonMonths: [12, 1, 12],
+            tags: ['weekly', 'deep'],
+            title: 'Clean fridge',
             zoneId: updatedKitchenZone.id,
           }),
         })
@@ -506,6 +516,348 @@ export function defineCleaningRepositoryContractSuite(input: {
         assert.equal(skippedAction.historyItem.action, 'skipped')
         assert.equal(skippedAction.state.nextDueAt, '2026-06-01')
         assert.ok(skippedAction.state.lastSkippedAt)
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('rejects stale concurrent actions but permits a later fresh action of another type', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const zone = await harness.repository.createZone({
+          context: harness.context,
+          input: newCleaningZoneInputSchema.parse({
+            dayOfWeek: 1,
+            title: 'Concurrency zone',
+          }),
+        })
+        const task = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            title: 'Concurrency task',
+            zoneId: zone.id,
+          }),
+        })
+        const actionInput = cleaningTaskActionInputSchema.parse({
+          date: '2026-05-25',
+          expectedStateVersion: 1,
+          expectedTaskVersion: task.version,
+          occurredAt: '2026-05-25T08:00:00.000Z',
+        })
+        const concurrent = await Promise.allSettled([
+          harness.repository.recordTaskAction({
+            action: 'completed',
+            context: harness.context,
+            input: actionInput,
+            taskId: task.id,
+          }),
+          harness.repository.recordTaskAction({
+            action: 'skipped',
+            context: harness.context,
+            input: actionInput,
+            taskId: task.id,
+          }),
+        ])
+
+        assert.equal(
+          concurrent.filter((result) => result.status === 'fulfilled').length,
+          1,
+        )
+        assert.equal(
+          concurrent.filter(
+            (result) =>
+              result.status === 'rejected' &&
+              hasHttpErrorCode(
+                result.reason,
+                'cleaning_task_state_version_conflict',
+              ),
+          ).length,
+          1,
+        )
+
+        const first = concurrent.find((result) => result.status === 'fulfilled')
+        assert.ok(first && first.status === 'fulfilled')
+        const nextAction =
+          first.value.historyItem.action === 'completed'
+            ? ('skipped' as const)
+            : ('completed' as const)
+        const fresh = await harness.repository.recordTaskAction({
+          action: nextAction,
+          context: harness.context,
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-05-25',
+            expectedStateVersion: first.value.state.version,
+            expectedTaskVersion: task.version,
+            occurredAt: '2026-05-25T09:00:00.000Z',
+          }),
+          taskId: task.id,
+        })
+
+        assert.equal(fresh.historyItem.action, nextAction)
+        assert.equal(fresh.state.version, first.value.state.version + 1)
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('treats stable create ids as idempotent only for the same payload', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const id = generateUuidV7()
+        const firstInput = newCleaningZoneInputSchema.parse({
+          dayOfWeek: 2,
+          id,
+          title: 'Stable zone',
+        })
+        const first = await harness.repository.createZone({
+          context: harness.context,
+          input: firstInput,
+        })
+        const replay = await harness.repository.createZone({
+          context: harness.context,
+          input: firstInput,
+        })
+
+        assert.equal(replay.id, first.id)
+        await assert.rejects(
+          harness.repository.createZone({
+            context: harness.context,
+            input: newCleaningZoneInputSchema.parse({
+              dayOfWeek: 3,
+              id,
+              title: 'Different zone',
+            }),
+          }),
+          (error: unknown) =>
+            hasHttpErrorCode(error, 'cleaning_zone_create_conflict'),
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('replays an operation receipt and rejects operation id reuse', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const operationId = generateUuidV7()
+        const zoneId = generateUuidV7()
+        const zoneInput = newCleaningZoneInputSchema.parse({
+          dayOfWeek: 3,
+          id: zoneId,
+          title: 'Operation zone',
+        })
+        const operation = {
+          fingerprint: 'a'.repeat(64),
+          id: operationId,
+          type: 'zone.create',
+        }
+        const first = await harness.repository.createZone({
+          context: harness.context,
+          input: zoneInput,
+          operation,
+        })
+        const replay = await harness.repository.createZone({
+          context: harness.context,
+          input: zoneInput,
+          operation,
+        })
+
+        assert.deepEqual(replay, first)
+        await assert.rejects(
+          harness.repository.createZone({
+            context: harness.context,
+            input: zoneInput,
+            operation: {
+              ...operation,
+              fingerprint: 'b'.repeat(64),
+            },
+          }),
+          (error: unknown) =>
+            hasHttpErrorCode(error, 'cleaning_operation_conflict'),
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('seeds starter data atomically with stable client ids', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        await harness.repository.createZone({
+          context: harness.context,
+          input: newCleaningZoneInputSchema.parse({
+            dayOfWeek: 1,
+            title: 'Existing Monday',
+          }),
+        })
+        const transientZoneId = generateUuidV7()
+        const conflictingSeed = cleaningSeedInputSchema.parse({
+          zones: [
+            {
+              tasks: [],
+              zone: {
+                dayOfWeek: 2,
+                id: transientZoneId,
+                title: 'Tuesday',
+              },
+            },
+            {
+              tasks: [],
+              zone: {
+                dayOfWeek: 1,
+                id: generateUuidV7(),
+                title: 'Conflicting Monday',
+              },
+            },
+          ],
+        })
+
+        await assert.rejects(
+          harness.repository.seed({
+            context: harness.context,
+            input: conflictingSeed,
+          }),
+          (error: unknown) =>
+            hasHttpErrorCode(error, 'cleaning_seed_day_conflict'),
+        )
+        assert.equal(
+          (
+            await harness.repository.listByWorkspace(harness.context)
+          ).zones.some((zone) => zone.id === transientZoneId),
+          false,
+        )
+
+        const zoneId = generateUuidV7()
+        const taskId = generateUuidV7()
+        const seeded = await harness.repository.seed({
+          context: harness.context,
+          input: cleaningSeedInputSchema.parse({
+            zones: [
+              {
+                tasks: [
+                  {
+                    id: taskId,
+                    title: 'Seed task',
+                    zoneId,
+                  },
+                ],
+                zone: {
+                  dayOfWeek: 2,
+                  id: zoneId,
+                  title: 'Seed zone',
+                },
+              },
+            ],
+          }),
+        })
+
+        assert.equal(
+          seeded.zones.some((zone) => zone.id === zoneId),
+          true,
+        )
+        assert.equal(
+          seeded.tasks.some((task) => task.id === taskId),
+          true,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('serializes concurrent seeds for the same workspace', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const results = await Promise.allSettled(
+          ['First seed', 'Second seed'].map((title) =>
+            harness.repository.seed({
+              context: harness.context,
+              input: cleaningSeedInputSchema.parse({
+                zones: [
+                  {
+                    tasks: [],
+                    zone: {
+                      dayOfWeek: 3,
+                      id: generateUuidV7(),
+                      title,
+                    },
+                  },
+                ],
+              }),
+            }),
+          ),
+        )
+        const fulfilled = results.filter(
+          (result) => result.status === 'fulfilled',
+        )
+        const rejected = results.filter(
+          (result): result is PromiseRejectedResult =>
+            result.status === 'rejected',
+        )
+
+        assert.equal(fulfilled.length, 1)
+        assert.equal(rejected.length, 1)
+        assert.equal(
+          hasHttpErrorCode(rejected[0]?.reason, 'cleaning_seed_day_conflict'),
+          true,
+        )
+        assert.equal(
+          (await harness.repository.listByWorkspace(harness.context)).zones
+            .length,
+          1,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('guards offline zone deletion with the exact child version snapshot', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const zone = await harness.repository.createZone({
+          context: harness.context,
+          input: newCleaningZoneInputSchema.parse({
+            dayOfWeek: 4,
+            title: 'Delete snapshot zone',
+          }),
+        })
+        const task = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            title: 'Child task',
+            zoneId: zone.id,
+          }),
+        })
+        await harness.repository.updateTask({
+          context: harness.context,
+          input: cleaningTaskUpdateInputSchema.parse({
+            expectedVersion: task.version,
+            title: 'Changed child task',
+          }),
+          taskId: task.id,
+        })
+
+        await assert.rejects(
+          harness.repository.removeZone({
+            context: harness.context,
+            expectedTaskVersions: [{ taskId: task.id, version: task.version }],
+            expectedVersion: zone.version,
+            zoneId: zone.id,
+          }),
+          (error: unknown) =>
+            hasHttpErrorCode(error, 'cleaning_zone_children_conflict'),
+        )
+        assert.equal(
+          (
+            await harness.repository.listByWorkspace(harness.context)
+          ).zones.some((candidate) => candidate.id === zone.id),
+          true,
+        )
       } finally {
         await harness.cleanup()
       }

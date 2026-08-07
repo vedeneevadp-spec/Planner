@@ -1,20 +1,25 @@
 import {
   type CleaningListResponse,
   cleaningListResponseSchema,
+  type CleaningSeedInput,
+  cleaningSeedInputSchema,
   type CleaningTaskActionInput,
   cleaningTaskActionInputSchema,
   type CleaningTaskActionResponse,
   cleaningTaskActionResponseSchema,
+  cleaningTaskDeleteInputSchema,
   type CleaningTaskRecord,
   cleaningTaskRecordSchema,
   type CleaningTaskUpdateInput,
   cleaningTaskUpdateInputSchema,
   type CleaningTodayResponse,
   cleaningTodayResponseSchema,
+  cleaningZoneDeleteInputSchema,
   type CleaningZoneRecord,
   cleaningZoneRecordSchema,
   type CleaningZoneUpdateInput,
   cleaningZoneUpdateInputSchema,
+  generateUuidV7,
   type NewCleaningTaskInput,
   newCleaningTaskInputSchema,
   type NewCleaningZoneInput,
@@ -58,13 +63,32 @@ export interface CleaningApiClientConfig {
   workspaceId: string
 }
 
+export interface CleaningWriteOptions {
+  operationId?: string | undefined
+}
+
+export interface CleaningDeleteOptions extends CleaningWriteOptions {
+  expectedVersion?: number | undefined
+}
+
+export interface CleaningZoneDeleteOptions extends CleaningDeleteOptions {
+  expectedTaskVersions?: Array<{ taskId: string; version: number }> | undefined
+}
+
 export interface CleaningApiClient {
   completeTask: (
     taskId: string,
     input?: CleaningTaskActionInput,
+    options?: CleaningWriteOptions,
   ) => Promise<CleaningTaskActionResponse>
-  createTask: (input: NewCleaningTaskInput) => Promise<CleaningTaskRecord>
-  createZone: (input: NewCleaningZoneInput) => Promise<CleaningZoneRecord>
+  createTask: (
+    input: NewCleaningTaskInput,
+    options?: CleaningWriteOptions,
+  ) => Promise<CleaningTaskRecord>
+  createZone: (
+    input: NewCleaningZoneInput,
+    options?: CleaningWriteOptions,
+  ) => Promise<CleaningZoneRecord>
   getToday: (
     date: string,
     signal?: RequestSignal,
@@ -73,20 +97,31 @@ export interface CleaningApiClient {
   postponeTask: (
     taskId: string,
     input?: CleaningTaskActionInput,
+    options?: CleaningWriteOptions,
   ) => Promise<CleaningTaskActionResponse>
-  removeTask: (taskId: string) => Promise<void>
-  removeZone: (zoneId: string) => Promise<void>
+  removeTask: (taskId: string, options?: CleaningDeleteOptions) => Promise<void>
+  removeZone: (
+    zoneId: string,
+    options?: CleaningZoneDeleteOptions,
+  ) => Promise<void>
+  seed: (
+    input: CleaningSeedInput,
+    options?: CleaningWriteOptions,
+  ) => Promise<CleaningListResponse>
   skipTask: (
     taskId: string,
     input?: CleaningTaskActionInput,
+    options?: CleaningWriteOptions,
   ) => Promise<CleaningTaskActionResponse>
   updateTask: (
     taskId: string,
     input: CleaningTaskUpdateInput,
+    options?: CleaningWriteOptions,
   ) => Promise<CleaningTaskRecord>
   updateZone: (
     zoneId: string,
     input: CleaningZoneUpdateInput,
+    options?: CleaningWriteOptions,
   ) => Promise<CleaningZoneRecord>
 }
 
@@ -105,27 +140,30 @@ export function createCleaningApiClient(
   )
 
   return {
-    completeTask(taskId, input = createDefaultActionInput()) {
+    completeTask(taskId, input = createDefaultActionInput(), options) {
       return request({
         body: cleaningTaskActionInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'POST',
         path: `/api/v1/cleaning/tasks/${encodeURIComponent(taskId)}/complete`,
         responseSchema: cleaningTaskActionResponseSchema,
         writeAccess: true,
       })
     },
-    createTask(input) {
+    createTask(input, options) {
       return request({
         body: newCleaningTaskInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'POST',
         path: '/api/v1/cleaning/tasks',
         responseSchema: cleaningTaskRecordSchema,
         writeAccess: true,
       })
     },
-    createZone(input) {
+    createZone(input, options) {
       return request({
         body: newCleaningZoneInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'POST',
         path: '/api/v1/cleaning/zones',
         responseSchema: cleaningZoneRecordSchema,
@@ -147,56 +185,85 @@ export function createCleaningApiClient(
         signal,
       })
     },
-    postponeTask(taskId, input = createDefaultActionInput()) {
+    postponeTask(taskId, input = createDefaultActionInput(), options) {
       return request({
         body: cleaningTaskActionInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'POST',
         path: `/api/v1/cleaning/tasks/${encodeURIComponent(taskId)}/postpone`,
         responseSchema: cleaningTaskActionResponseSchema,
         writeAccess: true,
       })
     },
-    removeTask(taskId) {
+    removeTask(taskId, options) {
       return request<void>({
+        body: cleaningTaskDeleteInputSchema.parse({
+          expectedVersion: options?.expectedVersion,
+        }),
+        headers: createOperationHeaders(options),
         method: 'DELETE',
         path: `/api/v1/cleaning/tasks/${encodeURIComponent(taskId)}`,
         writeAccess: true,
       })
     },
-    removeZone(zoneId) {
+    removeZone(zoneId, options) {
       return request<void>({
+        body: cleaningZoneDeleteInputSchema.parse({
+          expectedTaskVersions: options?.expectedTaskVersions,
+          expectedVersion: options?.expectedVersion,
+        }),
+        headers: createOperationHeaders(options),
         method: 'DELETE',
         path: `/api/v1/cleaning/zones/${encodeURIComponent(zoneId)}`,
         writeAccess: true,
       })
     },
-    skipTask(taskId, input = createDefaultActionInput()) {
+    seed(input, options) {
+      return request({
+        body: cleaningSeedInputSchema.parse(input),
+        headers: createOperationHeaders(options),
+        method: 'POST',
+        path: '/api/v1/cleaning/seed',
+        responseSchema: cleaningListResponseSchema,
+        writeAccess: true,
+      })
+    },
+    skipTask(taskId, input = createDefaultActionInput(), options) {
       return request({
         body: cleaningTaskActionInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'POST',
         path: `/api/v1/cleaning/tasks/${encodeURIComponent(taskId)}/skip`,
         responseSchema: cleaningTaskActionResponseSchema,
         writeAccess: true,
       })
     },
-    updateTask(taskId, input) {
+    updateTask(taskId, input, options) {
       return request({
         body: cleaningTaskUpdateInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'PATCH',
         path: `/api/v1/cleaning/tasks/${encodeURIComponent(taskId)}`,
         responseSchema: cleaningTaskRecordSchema,
         writeAccess: true,
       })
     },
-    updateZone(zoneId, input) {
+    updateZone(zoneId, input, options) {
       return request({
         body: cleaningZoneUpdateInputSchema.parse(input),
+        headers: createOperationHeaders(options),
         method: 'PATCH',
         path: `/api/v1/cleaning/zones/${encodeURIComponent(zoneId)}`,
         responseSchema: cleaningZoneRecordSchema,
         writeAccess: true,
       })
     },
+  }
+}
+
+function createOperationHeaders(options?: CleaningWriteOptions): HeadersInit {
+  return {
+    'idempotency-key': options?.operationId ?? generateUuidV7(),
   }
 }
 

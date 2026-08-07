@@ -6,7 +6,7 @@ import {
   type TaskStageType,
 } from '@planner/contracts'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   LifeSphereUpdateInput,
@@ -30,7 +30,11 @@ import {
   useSessionFeatureReadiness,
 } from '@/features/session'
 
-import { enqueuePlannerOfflineMutation } from '../lib/offline-planner-store'
+import {
+  enqueuePlannerOfflineMutation,
+  getPlannerDataLastSuccessfulSyncAt,
+  type PlannerDataSyncScope,
+} from '../lib/offline-planner-store'
 import {
   createPlannerApiClient,
   isUnauthorizedPlannerApiError,
@@ -41,6 +45,7 @@ import {
   getErrorDebugDetails,
   getErrorMessage,
   getPlannerQueryErrorMessage,
+  isRetryablePlannerConnectionError,
   shouldKeepOptimisticMutation,
 } from './planner-error-policy'
 import {
@@ -59,6 +64,19 @@ import {
   toPlannerTaskTemplate,
 } from './planner-records'
 
+type PlannerSyncFreshnessByScope = Record<PlannerDataSyncScope, string | null>
+
+interface PlannerSyncFreshness {
+  byScope: PlannerSyncFreshnessByScope
+  workspaceId: string
+}
+
+const EMPTY_PLANNER_SYNC_FRESHNESS: PlannerSyncFreshnessByScope = {
+  'life-spheres': null,
+  'task-templates': null,
+  tasks: null,
+}
+
 export function usePlannerState(): PlannerState {
   const { accessToken, isAuthEnabled, recoverSession, sessionVersion } =
     useSessionAuth()
@@ -70,6 +88,10 @@ export function usePlannerState(): PlannerState {
     session?.workspaceSettings.taskCompletionConfettiEnabled ?? true
   const workspaceId = session?.workspaceId
   const queryClient = useQueryClient()
+  const [syncFreshness, setSyncFreshness] =
+    useState<PlannerSyncFreshness | null>(null)
+  const currentWorkspaceIdRef = useRef(workspaceId)
+  currentWorkspaceIdRef.current = workspaceId
   const [mutationErrorMessage, setMutationErrorMessage] = useState<
     string | null
   >(null)
@@ -83,6 +105,25 @@ export function usePlannerState(): PlannerState {
     () => (apiConfig ? createPlannerApiClient(apiConfig) : null),
     [apiConfig],
   )
+  const recordServerReadSuccess = useCallback(
+    (scope: PlannerDataSyncScope, lastSuccessfulSyncAt: string) => {
+      if (!workspaceId) {
+        return
+      }
+
+      if (currentWorkspaceIdRef.current !== workspaceId) {
+        return
+      }
+
+      setSyncFreshness((current) =>
+        mergePlannerSyncFreshness(current, workspaceId, {
+          ...EMPTY_PLANNER_SYNC_FRESHNESS,
+          [scope]: lastSuccessfulSyncAt,
+        }),
+      )
+    },
+    [workspaceId],
+  )
   const {
     invalidatePlannerQueries,
     sphereQueryKey,
@@ -93,6 +134,7 @@ export function usePlannerState(): PlannerState {
     tasksQuery,
   } = usePlannerQueries({
     authSessionVersion: sessionVersion,
+    onServerReadSuccess: recordServerReadSuccess,
     plannerApi,
     queryClient,
     workspaceId,
@@ -104,9 +146,58 @@ export function usePlannerState(): PlannerState {
     hasCachedData:
       hasTaskRecords || hasLifeSphereRecords || hasTaskTemplateRecords,
   })
+  const currentSyncFreshness =
+    syncFreshness && syncFreshness.workspaceId === workspaceId
+      ? syncFreshness.byScope
+      : null
+  const taskLastSuccessfulSyncAt = currentSyncFreshness?.tasks ?? null
+  const lifeSphereLastSuccessfulSyncAt =
+    currentSyncFreshness?.['life-spheres'] ?? null
+  const taskTemplateLastSuccessfulSyncAt =
+    currentSyncFreshness?.['task-templates'] ?? null
+  const lastSuccessfulSyncAt = getOldestCompleteTimestamp([
+    taskLastSuccessfulSyncAt,
+    lifeSphereLastSuccessfulSyncAt,
+    taskTemplateLastSuccessfulSyncAt,
+  ])
+
+  useEffect(() => {
+    if (!workspaceId) {
+      return
+    }
+
+    let isActive = true
+
+    void Promise.all([
+      getPlannerDataLastSuccessfulSyncAt(workspaceId, 'tasks'),
+      getPlannerDataLastSuccessfulSyncAt(workspaceId, 'life-spheres'),
+      getPlannerDataLastSuccessfulSyncAt(workspaceId, 'task-templates'),
+    ])
+      .then(([tasks, lifeSpheres, taskTemplates]) => {
+        if (isActive) {
+          setSyncFreshness((current) =>
+            mergePlannerSyncFreshness(current, workspaceId, {
+              'life-spheres': lifeSpheres,
+              'task-templates': taskTemplates,
+              tasks,
+            }),
+          )
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to read planner sync freshness.', error)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [workspaceId])
   const {
     conflictedMutationCount,
     isDrainingOfflineQueue,
+    isLifeSphereCacheHydrating,
+    isTaskCacheHydrating,
+    isTaskTemplateCacheHydrating,
     persistCurrentLifeSphereRecords,
     persistCurrentTaskRecords,
     persistCurrentTaskTemplateRecords,
@@ -178,6 +269,27 @@ export function usePlannerState(): PlannerState {
   const hasUnauthorizedAuthError =
     isUnauthorizedSessionApiError(authError) ||
     isUnauthorizedPlannerApiError(authError)
+  const readErrors = [
+    sessionQuery.error,
+    spheresQuery.error,
+    taskTemplatesQuery.error,
+    tasksQuery.error,
+  ]
+  const hasReadError = readErrors.some(Boolean)
+  const isOffline = readErrors.some(isRetryablePlannerConnectionError)
+  const taskReadErrors = [sessionQuery.error, tasksQuery.error]
+  const lifeSphereReadErrors = [sessionQuery.error, spheresQuery.error]
+  const taskTemplateReadErrors = [sessionQuery.error, taskTemplatesQuery.error]
+  const hasTaskReadError = taskReadErrors.some(Boolean)
+  const hasLifeSphereReadError = lifeSphereReadErrors.some(Boolean)
+  const hasTaskTemplateReadError = taskTemplateReadErrors.some(Boolean)
+  const isTaskOffline = taskReadErrors.some(isRetryablePlannerConnectionError)
+  const isLifeSphereOffline = lifeSphereReadErrors.some(
+    isRetryablePlannerConnectionError,
+  )
+  const isTaskTemplateOffline = taskTemplateReadErrors.some(
+    isRetryablePlannerConnectionError,
+  )
 
   useEffect(() => {
     if (
@@ -953,6 +1065,21 @@ export function usePlannerState(): PlannerState {
       setTaskScheduleMutation.isPending ||
       removeTaskMutation.isPending,
     isTaskPending,
+    hasLifeSphereRecords,
+    hasLifeSphereReadError,
+    hasReadError,
+    hasTaskRecords,
+    hasTaskReadError,
+    hasTaskTemplateReadError,
+    isLifeSphereOffline,
+    isLifeSphereCacheHydrating,
+    isOffline,
+    isTaskOffline,
+    isTaskCacheHydrating,
+    isTaskTemplateOffline,
+    isTaskTemplateCacheHydrating,
+    lifeSphereLastSuccessfulSyncAt,
+    lastSuccessfulSyncAt,
     readiness,
     spheres,
     queuedMutationCount,
@@ -966,9 +1093,71 @@ export function usePlannerState(): PlannerState {
     setTaskStatus,
     tasks,
     taskActionSnackbar,
+    taskLastSuccessfulSyncAt,
+    taskTemplateLastSuccessfulSyncAt,
     taskTemplates,
     undoNextTaskStage,
     updateSphere,
     updateTask,
   }
+}
+
+function mergePlannerSyncFreshness(
+  current: PlannerSyncFreshness | null,
+  workspaceId: string,
+  incoming: PlannerSyncFreshnessByScope,
+): PlannerSyncFreshness {
+  const currentByScope =
+    current?.workspaceId === workspaceId
+      ? current.byScope
+      : EMPTY_PLANNER_SYNC_FRESHNESS
+
+  return {
+    byScope: {
+      'life-spheres': getNewestSyncTimestamp(
+        currentByScope['life-spheres'],
+        incoming['life-spheres'],
+      ),
+      'task-templates': getNewestSyncTimestamp(
+        currentByScope['task-templates'],
+        incoming['task-templates'],
+      ),
+      tasks: getNewestSyncTimestamp(currentByScope.tasks, incoming.tasks),
+    },
+    workspaceId,
+  }
+}
+
+function getNewestSyncTimestamp(
+  current: string | null,
+  incoming: string | null,
+): string | null {
+  if (!current) {
+    return incoming
+  }
+
+  if (!incoming) {
+    return current
+  }
+
+  return incoming > current ? incoming : current
+}
+
+function getOldestCompleteTimestamp(
+  timestamps: readonly (string | null)[],
+): string | null {
+  const completeTimestamps = timestamps.filter(
+    (timestamp): timestamp is string => Boolean(timestamp),
+  )
+
+  if (
+    completeTimestamps.length === 0 ||
+    completeTimestamps.length !== timestamps.length
+  ) {
+    return null
+  }
+
+  return completeTimestamps.reduce((oldest, timestamp) =>
+    timestamp < oldest ? timestamp : oldest,
+  )
 }

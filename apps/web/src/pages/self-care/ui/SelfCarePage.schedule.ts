@@ -24,6 +24,7 @@ type SelfCareQueryScope =
   'analytics' | 'dashboard' | 'history' | 'items' | 'plan'
 
 type ScheduleMutationVariables = {
+  existingOccurrenceId?: string | undefined
   input: SelfCareItemScheduleInput
   itemId: string
   skipInvalidation?: boolean | undefined
@@ -33,6 +34,7 @@ type MoveOccurrenceMutationVariables = {
   input: SelfCareOccurrenceMoveInput
   invalidationScopes?: readonly SelfCareQueryScope[] | undefined
   occurrenceId: string
+  replacementInput?: SelfCareItemScheduleInput | undefined
 }
 
 type SelfCareScheduleEntry = {
@@ -80,18 +82,17 @@ export async function scheduleSelfCareEntryOccurrence({
   moveOccurrence,
   scheduleItem,
 }: ScheduleSelfCareEntryOccurrenceOptions): Promise<void> {
-  const shouldMoveExistingOccurrence = shouldMoveExistingSelfCareOccurrence(
-    entry,
-    input,
-  )
+  if (!entry.occurrence) {
+    await scheduleItem({ input, itemId: entry.item.id })
+    return
+  }
 
-  await scheduleItem({
-    input,
-    itemId: entry.item.id,
-    skipInvalidation: shouldMoveExistingOccurrence,
-  })
-
-  if (!entry.occurrence || !shouldMoveExistingOccurrence) {
+  if (!shouldMoveExistingSelfCareOccurrence(entry, input)) {
+    await scheduleItem({
+      existingOccurrenceId: entry.occurrence.id,
+      input,
+      itemId: entry.item.id,
+    })
     return
   }
 
@@ -102,6 +103,7 @@ export async function scheduleSelfCareEntryOccurrence({
       note: moveNote,
     },
     occurrenceId: entry.occurrence.id,
+    replacementInput: input,
   })
 }
 

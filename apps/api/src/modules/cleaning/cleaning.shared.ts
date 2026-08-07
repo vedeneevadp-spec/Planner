@@ -140,12 +140,13 @@ export function createStoredCleaningHistoryItemRecord(
   },
   context: {
     actorUserId: string
+    createdAt?: string | undefined
     workspaceId: string
   },
 ): StoredCleaningTaskHistoryItemRecord {
   return {
     action: input.action,
-    createdAt: new Date().toISOString(),
+    createdAt: context.createdAt ?? new Date().toISOString(),
     date: input.date,
     id: generateUuidV7(),
     note: input.note.trim(),

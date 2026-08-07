@@ -9,6 +9,7 @@ import {
   CloseIcon,
   type UploadedIconAsset,
 } from '@/shared/ui/Icon'
+import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
 import {
   SelfCareCustomCreateForm,
@@ -42,30 +43,40 @@ export function SelfCareCreateDialog({
   defaultCurrency,
   disabledTemplateIds,
   errorMessage,
+  hasRequiredData,
+  hasReadError,
   isBusy,
+  isLoading,
   mode,
   onBack,
   onClose,
   onCreateCustom,
   onCreateFromTemplate,
+  onRetry,
   onSelectCustom,
   onSelectTemplate,
   templates,
+  templatesLoaded,
   todayKey,
   uploadedIcons,
 }: {
   defaultCurrency: string
   disabledTemplateIds: ReadonlySet<string>
   errorMessage: string | null
+  hasRequiredData: boolean
+  hasReadError: boolean
   isBusy: boolean
+  isLoading: boolean
   mode: SelfCareCreateDialogMode
   onBack: () => void
   onClose: () => void
   onCreateCustom: (payload: SelfCareCustomCreatePayload) => void
   onCreateFromTemplate: (templateId: string) => void
+  onRetry: () => void
   onSelectCustom: () => void
   onSelectTemplate: () => void
   templates: SelfCareTemplate[]
+  templatesLoaded: boolean
   todayKey: string
   uploadedIcons: UploadedIconAsset[]
 }) {
@@ -157,11 +168,42 @@ export function SelfCareCreateDialog({
           </button>
         ) : null}
 
-        {errorMessage ? (
-          <p className={styles.errorText}>{errorMessage}</p>
+        {errorMessage && hasRequiredData ? (
+          <PageStatusBanner
+            action={
+              hasReadError
+                ? { label: 'Обновить данные', onClick: onRetry }
+                : undefined
+            }
+            description={errorMessage}
+            kind="error"
+            title={
+              hasReadError
+                ? 'Не удалось обновить данные'
+                : 'Изменение не сохранено'
+            }
+          />
         ) : null}
 
-        {mode === 'choice' ? (
+        {isLoading ? (
+          <PageStateView
+            kind="loading"
+            skeletonVariant="detail"
+            title="Готовим добавление заботы"
+          />
+        ) : !hasRequiredData ? (
+          <PageStateView
+            action={{ label: 'Повторить', onClick: onRetry }}
+            description={
+              errorMessage ??
+              'Не удалось загрузить данные для добавления заботы.'
+            }
+            kind="error"
+            title="Не удалось открыть добавление"
+          />
+        ) : null}
+
+        {hasRequiredData && mode === 'choice' ? (
           <div className={styles.addCareChoiceContent}>
             <div className={styles.createChoiceGrid}>
               <button
@@ -231,7 +273,7 @@ export function SelfCareCreateDialog({
           </div>
         ) : null}
 
-        {mode === 'custom' ? (
+        {hasRequiredData && mode === 'custom' ? (
           <SelfCareCustomCreateForm
             defaultCurrency={defaultCurrency}
             isBusy={isBusy}
@@ -241,7 +283,7 @@ export function SelfCareCreateDialog({
           />
         ) : null}
 
-        {mode === 'template' ? (
+        {hasRequiredData && mode === 'template' ? (
           filteredTemplates.length ? (
             <div className={styles.templateGrid}>
               {filteredTemplates.slice(0, 12).map((template) => {
@@ -269,9 +311,29 @@ export function SelfCareCreateDialog({
                 )
               })}
             </div>
-          ) : (
-            <p className={styles.mutedText}>Шаблоны загружаются.</p>
-          )
+          ) : templatesLoaded ? (
+            <PageStateView
+              action={
+                templateFilter
+                  ? {
+                      label: 'Показать все шаблоны',
+                      onClick: () => openTemplatePicker(null),
+                    }
+                  : { label: 'Создать свою', onClick: onSelectCustom }
+              }
+              description={
+                templateFilter
+                  ? 'В этой категории пока нет готовых вариантов.'
+                  : 'Можно создать свою заботу и настроить её под себя.'
+              }
+              kind="empty"
+              title={
+                templateFilter
+                  ? 'В этой категории пока пусто'
+                  : 'Шаблонов пока нет'
+              }
+            />
+          ) : null
         ) : null}
       </section>
     </div>,

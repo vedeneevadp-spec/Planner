@@ -82,6 +82,7 @@ function createOccurrence(
     status,
     updatedAt: '2026-05-19T08:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }

@@ -1,4 +1,9 @@
 export {
+  clearSelfCareOfflineWorkspaceData,
+  SELF_CARE_OFFLINE_DATABASE_NAME,
+  SELF_CARE_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
+} from './lib/offline-self-care-store'
+export {
   createSelfCareApiClient,
   type SelfCareApiClient,
   type SelfCareApiClientConfig,
@@ -25,15 +30,13 @@ export {
   useCompleteSelfCareOccurrence,
   useCreateSelfCareItem,
   useCreateSelfCareItemFromTemplate,
-  useDeleteSelfCareRitualStepDraft,
-  useDisableSelfCareGentleMode,
-  useEnableSelfCareGentleMode,
   useMoveSelfCareOccurrence,
   useScheduleSelfCareItem,
   useSelfCareAnalytics,
   useSelfCareDashboard,
   useSelfCareHistory,
   useSelfCareItems,
+  useSelfCareOfflineQueue,
   useSelfCarePlan,
   useSelfCareRitualStepDrafts,
   useSelfCareSettings,
@@ -41,8 +44,6 @@ export {
   useSkipSelfCareOccurrence,
   useUpdateSelfCareCompletion,
   useUpdateSelfCareItem,
-  useUpdateSelfCareMinimumItems,
   useUpdateSelfCareSettings,
-  useUpsertSelfCareDailyState,
   useUpsertSelfCareRitualStepDraft,
 } from './lib/useSelfCare'

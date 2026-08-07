@@ -133,8 +133,7 @@
 
 .readonlyRow span,
 .note,
-.platformNote,
-.unavailable {
+.platformNote {
   color: var(--text-soft);
 }
 
@@ -150,7 +149,6 @@
 }
 
 .platformNote,
-.unavailable,
 .warning,
 .message,
 .note {

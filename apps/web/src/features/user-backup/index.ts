@@ -14,7 +14,8 @@ export {
   type SaveUserBackupFileResult,
 } from './lib/user-backup-file'
 export {
-  clearRestoredWorkspaceLocalData,
+  prepareWorkspaceForUserBackupRestore,
   reloadAfterUserBackupRestore,
   takeUserBackupRestoreMessage,
+  UserBackupLocalCleanupError,
 } from './lib/user-backup-local-state'

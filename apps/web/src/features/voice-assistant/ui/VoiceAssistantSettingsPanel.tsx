@@ -9,11 +9,14 @@ import {
 
 import {
   usePlannerSession,
+  useSessionFeatureReadiness,
   useUpdateUserPreferences,
   useUpdateWorkspaceSettings,
 } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
+import { useBrowserOffline } from '@/shared/lib/offline-sync'
 import { BellIcon, GearIcon, MicIcon } from '@/shared/ui/Icon'
+import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
 import {
   addVoiceAssistantSettingsChangedListener,
@@ -35,13 +38,26 @@ import {
 } from '../model/voice-assistant-settings'
 import styles from './VoiceAssistantSettingsPanel.module.css'
 
+interface VoiceSettingsFeedback {
+  kind: 'error' | 'info'
+  text: string
+}
+
 export function VoiceAssistantSettingsPanel() {
-  const session = usePlannerSession().data
+  const sessionQuery = usePlannerSession()
+  const session = sessionQuery.data
+  const { readiness } = useSessionFeatureReadiness({
+    hasCachedData: Boolean(session),
+  })
+  const isBrowserOffline = useBrowserOffline()
   const updateUserPreferences = useUpdateUserPreferences()
   const updateWorkspaceSettings = useUpdateWorkspaceSettings()
   const [nativeStatus, setNativeStatus] =
     useState<VoiceAssistantNativeStatus | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<VoiceSettingsFeedback | null>(null)
+  const [nativeStatusError, setNativeStatusError] = useState<string | null>(
+    null,
+  )
   const [isNativeActionPending, setIsNativeActionPending] = useState(false)
   const isVoiceAvailable = canUseVoiceAssistant(session?.appRole)
   const voiceAssistantEnabled =
@@ -57,6 +73,15 @@ export function VoiceAssistantSettingsPanel() {
   const canUpdateWakeWordTrainingMode = session?.appRole === 'owner'
   const canShowRuntimeDiagnostics =
     isAndroid && (session?.appRole === 'owner' || session?.appRole === 'test')
+  const serverSettingsState = isBrowserOffline
+    ? ('offline' as const)
+    : readiness.reason === 'auth_restoring' ||
+        readiness.reason === 'planner_pending'
+      ? ('restoring' as const)
+      : !readiness.canWriteProtectedData
+        ? ('unavailable' as const)
+        : null
+  const serverSettingsDisabled = serverSettingsState !== null
   const wakeWordModelMissing = status?.wakeWordModelStatus === 'missing'
   const androidControlsDisabled =
     !voiceAssistantEnabled || isNativeActionPending || isMasterPending
@@ -71,13 +96,18 @@ export function VoiceAssistantSettingsPanel() {
   const refreshStatus = useCallback(async () => {
     try {
       setNativeStatus(await getVoiceAssistantNativeStatus())
+      setNativeStatusError(null)
     } catch (error) {
       console.warn('Failed to load voice assistant native status.', error)
-      setMessage('Не удалось прочитать статус голосового помощника.')
+      setNativeStatusError('Не удалось прочитать статус голосового помощника.')
     }
   }, [])
 
   useEffect(() => {
+    if (!isVoiceAvailable) {
+      return
+    }
+
     let isDisposed = false
 
     async function refreshNativeStatus() {
@@ -86,12 +116,15 @@ export function VoiceAssistantSettingsPanel() {
 
         if (!isDisposed) {
           setNativeStatus(nextStatus)
+          setNativeStatusError(null)
         }
       } catch (error) {
         console.warn('Failed to load voice assistant native status.', error)
 
         if (!isDisposed) {
-          setMessage('Не удалось прочитать статус голосового помощника.')
+          setNativeStatusError(
+            'Не удалось прочитать статус голосового помощника.',
+          )
         }
       }
     }
@@ -107,7 +140,7 @@ export function VoiceAssistantSettingsPanel() {
       isDisposed = true
       removeSettingsChangedListener()
     }
-  }, [])
+  }, [isVoiceAvailable])
 
   const permissionRows = useMemo(
     () => [
@@ -130,33 +163,63 @@ export function VoiceAssistantSettingsPanel() {
   )
 
   async function handleVoiceAssistantToggle(enabled: boolean) {
-    if (!session) {
+    if (!session || serverSettingsDisabled) {
       return
     }
 
-    setMessage(null)
-    updateUserPreferences.mutate({ voiceAssistantEnabled: enabled })
+    setFeedback(null)
 
-    if (!enabled) {
-      await stopAndroidVoiceAssistant().catch((error) => {
-        console.warn('Failed to stop Android voice assistant.', error)
+    try {
+      await updateUserPreferences.mutateAsync({
+        voiceAssistantEnabled: enabled,
+      })
+    } catch (error) {
+      console.warn('Failed to update voice assistant preference.', error)
+      setFeedback({
+        kind: 'error',
+        text: 'Не удалось сохранить настройку. Повторите попытку.',
+      })
+      return
+    }
+
+    if (enabled) {
+      return
+    }
+
+    try {
+      await stopAndroidVoiceAssistant()
+    } catch (error) {
+      console.warn('Failed to stop Android voice assistant.', error)
+      setFeedback({
+        kind: 'error',
+        text: 'Настройка сохранена, но помощник не остановился на устройстве. Повторите попытку или откройте системные настройки.',
       })
     }
   }
 
-  async function runNativeAction(action: () => Promise<void>) {
+  async function runNativeAction(
+    action: () => Promise<unknown>,
+    options: {
+      errorMessage?: string | undefined
+      refreshAfter?: boolean | undefined
+    } = {},
+  ) {
     setIsNativeActionPending(true)
-    setMessage(null)
+    setFeedback(null)
 
     try {
       await action()
-      await refreshStatus()
+      if (options.refreshAfter !== false) {
+        await refreshStatus()
+      }
     } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось обновить настройки голосового помощника.',
-      )
+      console.warn('Failed to run voice assistant native action.', error)
+      setFeedback({
+        kind: 'error',
+        text:
+          options.errorMessage ??
+          'Не удалось обновить настройки на устройстве. Повторите попытку.',
+      })
     } finally {
       setIsNativeActionPending(false)
     }
@@ -164,9 +227,10 @@ export function VoiceAssistantSettingsPanel() {
 
   async function handleWakeWordToggle(enabled: boolean) {
     if (enabled && status?.wakeWordModelStatus === 'missing') {
-      setMessage(
-        `Модель "${VOICE_ASSISTANT_WAKE_PHRASE}" не установлена. Кнопка микрофона остается доступной.`,
-      )
+      setFeedback({
+        kind: 'info',
+        text: `Модель "${VOICE_ASSISTANT_WAKE_PHRASE}" не установлена. Кнопка микрофона остается доступной.`,
+      })
       return
     }
 
@@ -186,7 +250,7 @@ export function VoiceAssistantSettingsPanel() {
     )
 
     if (blocker) {
-      setMessage(blocker)
+      setFeedback({ kind: 'info', text: blocker })
       return
     }
 
@@ -198,7 +262,11 @@ export function VoiceAssistantSettingsPanel() {
       return
     }
 
-    setMessage(null)
+    if (serverSettingsDisabled) {
+      return
+    }
+
+    setFeedback(null)
 
     try {
       await updateWorkspaceSettings.mutateAsync({
@@ -207,26 +275,51 @@ export function VoiceAssistantSettingsPanel() {
         wakeWordTrainingModeEnabled: enabled,
       })
     } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : 'Не удалось обновить режим дообучения.',
-      )
+      console.warn('Failed to update wake word training mode.', error)
+      setFeedback({
+        kind: 'error',
+        text: 'Не удалось обновить режим дообучения. Повторите попытку.',
+      })
     }
   }
 
   if (!session) {
-    return null
+    if (sessionQuery.isPending) {
+      return (
+        <PageStateView
+          kind="loading"
+          title="Загружаем настройки голосового помощника"
+          skeletonVariant="settings"
+        />
+      )
+    }
+
+    return (
+      <PageStateView
+        kind="error"
+        title="Не удалось загрузить настройки"
+        description="Не удалось подтвердить сессию и получить настройки голосового помощника. Повторите попытку."
+        action={{
+          label: 'Повторить',
+          onClick: () => {
+            void sessionQuery.refetch()
+          },
+        }}
+      />
+    )
   }
 
   if (!isVoiceAvailable) {
     return (
-      <section className={styles.panel} aria-label="Голосовой помощник">
-        <PanelHeader />
-        <p className={styles.unavailable}>
-          Голосовой помощник пока недоступен для вашей роли.
-        </p>
-      </section>
+      <PageStateView
+        kind="unavailable"
+        title="Доступ подключается отдельно"
+        description="Голосовой помощник подключается к аккаунту отдельно и сейчас проходит ограниченное тестирование. Запросите доступ — команда уточнит возможность подключения для вашего аккаунта."
+        action={{
+          href: 'mailto:support@chaotika.ru?subject=%D0%94%D0%BE%D1%81%D1%82%D1%83%D0%BF%20%D0%BA%20%D0%B3%D0%BE%D0%BB%D0%BE%D1%81%D0%BE%D0%B2%D0%BE%D0%BC%D1%83%20%D0%BF%D0%BE%D0%BC%D0%BE%D1%89%D0%BD%D0%B8%D0%BA%D1%83',
+          label: 'Запросить доступ',
+        }}
+      />
     )
   }
 
@@ -234,9 +327,60 @@ export function VoiceAssistantSettingsPanel() {
     <section className={styles.panel} aria-label="Голосовой помощник">
       <PanelHeader />
 
+      {nativeStatusError ? (
+        <PageStatusBanner
+          action={{
+            label: 'Повторить',
+            onClick: () => {
+              void refreshStatus()
+            },
+          }}
+          description="Настройки устройства пока не подтверждены. Повторите чтение статуса."
+          kind="error"
+          title={nativeStatusError}
+        />
+      ) : null}
+
+      {serverSettingsState ? (
+        <PageStatusBanner
+          action={
+            serverSettingsState === 'unavailable'
+              ? {
+                  label: 'Обновить доступ',
+                  onClick: () => {
+                    void sessionQuery.refetch()
+                  },
+                }
+              : undefined
+          }
+          description={
+            serverSettingsState === 'offline'
+              ? 'Настройки аккаунта доступны для просмотра. Изменить их можно после подключения; настройки этого устройства остаются доступны.'
+              : serverSettingsState === 'restoring'
+                ? 'Настройки аккаунта доступны для просмотра. Изменения появятся после восстановления доступа.'
+                : 'Не удалось подтвердить доступ к настройкам аккаунта. Настройки этого устройства остаются доступны.'
+          }
+          kind={
+            serverSettingsState === 'offline'
+              ? 'offline'
+              : serverSettingsState === 'restoring'
+                ? 'info'
+                : 'error'
+          }
+          showUnknownLastSync
+          title={
+            serverSettingsState === 'offline'
+              ? 'Нет подключения'
+              : serverSettingsState === 'restoring'
+                ? 'Восстанавливаем доступ'
+                : 'Изменения аккаунта временно недоступны'
+          }
+        />
+      ) : null}
+
       <SettingsSwitch
         checked={voiceAssistantEnabled}
-        disabled={isMasterPending}
+        disabled={isMasterPending || serverSettingsDisabled}
         label="Включить голосовой помощник"
         onCheckedChange={(enabled) => {
           void handleVoiceAssistantToggle(enabled)
@@ -333,6 +477,7 @@ export function VoiceAssistantSettingsPanel() {
               disabled={
                 androidControlsDisabled ||
                 isWorkspaceSettingsPending ||
+                serverSettingsDisabled ||
                 !canUpdateWakeWordTrainingMode ||
                 !status
               }
@@ -354,8 +499,15 @@ export function VoiceAssistantSettingsPanel() {
               {permissionRows.map((row) => (
                 <PermissionRow
                   key={row.label}
-                  buttonLabel={row.buttonLabel}
-                  disabled={isNativeActionPending}
+                  buttonLabel={
+                    row.status === 'granted' ? 'Разрешено' : row.buttonLabel
+                  }
+                  disabled={
+                    isNativeActionPending ||
+                    !status ||
+                    Boolean(nativeStatusError) ||
+                    row.status === 'granted'
+                  }
                   icon={row.icon}
                   label={row.label}
                   status={formatPermissionStatus(row.status)}
@@ -384,8 +536,12 @@ export function VoiceAssistantSettingsPanel() {
               <button
                 className={styles.secondaryButton}
                 type="button"
+                disabled={isNativeActionPending}
                 onClick={() => {
-                  void openAndroidSystemAppSettings()
+                  void runNativeAction(openAndroidSystemAppSettings, {
+                    errorMessage: 'Не удалось открыть системные настройки.',
+                    refreshAfter: false,
+                  })
                 }}
               >
                 Открыть настройки
@@ -393,8 +549,12 @@ export function VoiceAssistantSettingsPanel() {
               <button
                 className={styles.secondaryButton}
                 type="button"
+                disabled={isNativeActionPending}
                 onClick={() => {
-                  void openAndroidBatteryOptimizationSettings()
+                  void runNativeAction(openAndroidBatteryOptimizationSettings, {
+                    errorMessage: 'Не удалось открыть настройки батареи.',
+                    refreshAfter: false,
+                  })
                 }}
               >
                 Настройки батареи
@@ -451,10 +611,16 @@ export function VoiceAssistantSettingsPanel() {
         </>
       ) : null}
 
-      {message ? (
-        <p className={styles.message} role="status">
-          {message}
-        </p>
+      {feedback ? (
+        <PageStatusBanner
+          description={feedback.text}
+          kind={feedback.kind}
+          title={
+            feedback.kind === 'error'
+              ? 'Не удалось выполнить действие'
+              : 'Что нужно для продолжения'
+          }
+        />
       ) : null}
     </section>
   )

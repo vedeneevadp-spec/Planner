@@ -19,6 +19,8 @@ import {
   selfCareOccurrenceMoveInputSchema,
   selfCareOccurrenceSchema,
   selfCareOccurrenceSkipInputSchema,
+  selfCareOfflineCommandRequestSchema,
+  selfCareOfflineCommandResponseSchema,
   selfCarePlanResponseSchema,
   selfCareRangeQuerySchema,
   selfCareRitualCompletionInputSchema,
@@ -183,6 +185,17 @@ export function registerSelfCareRoutes(
     const item = await service.createItem(context, input)
     reply.code(201)
     return selfCareItemSchema.parse(item)
+  })
+
+  app.post('/api/v1/self-care/commands', async (request) => {
+    const input = parseOrThrow(
+      selfCareOfflineCommandRequestSchema,
+      request.body,
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const result = await service.executeOfflineCommand(context, input)
+    return selfCareOfflineCommandResponseSchema.parse(result)
   })
 
   app.patch('/api/v1/self-care/:itemId', async (request) => {

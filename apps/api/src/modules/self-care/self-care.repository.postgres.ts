@@ -7,19 +7,20 @@ import {
   type SelfCareMeasurementDetails,
   type SelfCareMedicalDetails,
   type SelfCareOccurrence,
+  selfCareOfflineCommandResultSchema,
   type SelfCareProcedureDetails,
   type SelfCareRitualStep,
   type SelfCareScheduleRule,
   type SelfCareSettings,
 } from '@planner/contracts'
-import { type Kysely, sql } from 'kysely'
+import { type Kysely, sql, type Transaction } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import { getDatabaseErrorCode } from '../../infrastructure/db/errors.js'
 import {
   type DatabaseExecutor,
-  withOptionalRls,
-  withWriteTransaction,
+  withOptionalRls as withRootOptionalRls,
+  withWriteTransaction as withRootWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type {
@@ -33,6 +34,8 @@ import type {
   CreateSelfCareItemFromTemplateCommand,
   DeleteSelfCareItemCommand,
   DeleteSelfCareRitualStepDraftCommand,
+  ExecuteSelfCareOfflineCommand,
+  ExecuteSelfCareOfflineCommandResult,
   GenerateSelfCareOccurrencesCommand,
   GetSelfCareDashboardCommand,
   GetSelfCareOccurrencesCommand,
@@ -43,6 +46,7 @@ import type {
   ScheduleSelfCareItemCommand,
   SelfCareListFilters,
   SelfCareReadContext,
+  SelfCareWriteContext,
   SkipSelfCareOccurrenceCommand,
   StoredSelfCareCompletionRecord,
   StoredSelfCareItemRecord,
@@ -56,6 +60,10 @@ import type {
   UpsertSelfCareDailyStateCommand,
   UpsertSelfCareRitualStepDraftCommand,
 } from './self-care.model.js'
+import {
+  dispatchSelfCareOfflineCommand,
+  fingerprintSelfCareCommandRequest,
+} from './self-care.offline-command.js'
 import type { SelfCareRepository } from './self-care.repository.js'
 import {
   assertExerciseCompletionInput,
@@ -108,12 +116,119 @@ import {
   shouldDeduplicateSelfCareItemCompletion,
   updateOccurrenceStatus,
 } from './self-care.shared.js'
+import {
+  createSelfCareReadGenerationKey,
+  SelfCareReadGenerationCoordinator,
+} from './self-care-read-generation-coordinator.js'
+
+function withWriteTransaction<T>(
+  db: Kysely<DatabaseSchema>,
+  auth: SelfCareWriteContext['auth'],
+  callback: (trx: Transaction<DatabaseSchema>) => Promise<T>,
+  actorUserId?: string,
+): Promise<T> {
+  if (db.isTransaction) {
+    return callback(db as Transaction<DatabaseSchema>)
+  }
+
+  return withRootWriteTransaction(db, auth, callback, actorUserId)
+}
+
+function withOptionalRls<T>(
+  db: Kysely<DatabaseSchema>,
+  auth: SelfCareReadContext['auth'],
+  callback: (executor: DatabaseExecutor) => Promise<T>,
+  actorUserId?: string,
+): Promise<T> {
+  if (db.isTransaction) {
+    return callback(db)
+  }
+
+  return withRootOptionalRls(db, auth, callback, actorUserId)
+}
 
 export class PostgresSelfCareRepository implements SelfCareRepository {
   private readonly readModels: PostgresSelfCareReadModelLoader
+  private readonly readGenerationCoordinator =
+    new SelfCareReadGenerationCoordinator<SelfCareWriteContext>()
 
   constructor(private readonly db: Kysely<DatabaseSchema>) {
     this.readModels = new PostgresSelfCareReadModelLoader(db)
+  }
+
+  executeOfflineCommand(
+    command: ExecuteSelfCareOfflineCommand,
+  ): Promise<ExecuteSelfCareOfflineCommandResult> {
+    const fingerprint = fingerprintSelfCareCommandRequest(command.request)
+
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        await sql`
+          select app.lock_self_care_command_operation(
+            ${command.context.workspaceId},
+            ${command.context.actorUserId},
+            ${command.request.operationId}
+          )
+        `.execute(trx)
+
+        const receipt = await sql<{
+          request_fingerprint: string
+          response: unknown
+        }>`
+          select request_fingerprint, response
+          from app.read_self_care_command_receipt(
+            ${command.context.workspaceId},
+            ${command.context.actorUserId},
+            ${command.request.operationId}
+          )
+        `.execute(trx)
+        const existing = receipt.rows[0]
+
+        if (existing) {
+          if (existing.request_fingerprint !== fingerprint) {
+            throw new HttpError(
+              409,
+              'self_care_operation_id_reused',
+              'The self-care operation identifier was already used for a different command.',
+            )
+          }
+
+          return {
+            operationId: command.request.operationId,
+            replayed: true,
+            result: selfCareOfflineCommandResultSchema.parse(existing.response),
+          }
+        }
+
+        const transactionalRepository = new PostgresSelfCareRepository(trx)
+        const result = selfCareOfflineCommandResultSchema.parse(
+          await dispatchSelfCareOfflineCommand(
+            transactionalRepository,
+            command.context,
+            command.dispatchCommand ?? command.request.command,
+          ),
+        )
+
+        await sql`
+          select app.record_self_care_command_receipt(
+            ${command.context.workspaceId},
+            ${command.context.actorUserId},
+            ${command.request.operationId},
+            ${fingerprint},
+            ${JSON.stringify(result)}::jsonb
+          )
+        `.execute(trx)
+
+        return {
+          operationId: command.request.operationId,
+          replayed: false,
+          result,
+        }
+      },
+      command.context.actorUserId,
+    )
   }
 
   async listItems(
@@ -133,262 +248,317 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       workspaceId: command.context.workspaceId,
     })
 
-    await withWriteTransaction(
-      this.db,
-      command.context.auth,
-      async (trx) => {
-        await this.insertCreatedRecords(
-          trx,
-          records,
-          command.context.actorUserId,
+    try {
+      await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        async (trx) => {
+          await this.insertCreatedRecords(
+            trx,
+            records,
+            command.context.actorUserId,
+          )
+        },
+        command.context.actorUserId,
+      )
+    } catch (error) {
+      if (getDatabaseErrorCode(error) === '23505') {
+        throw new HttpError(
+          409,
+          'self_care_item_id_conflict',
+          'The self-care item identifier is already in use.',
         )
-      },
-      command.context.actorUserId,
-    )
+      }
+
+      throw error
+    }
 
     return records.item
   }
 
   async updateItem(command: UpdateSelfCareItemCommand) {
-    return withWriteTransaction(
-      this.db,
-      command.context.auth,
-      async (trx) => {
-        let updateQuery = trx
-          .updateTable('app.self_care_items')
-          .set({
-            ...(command.input.category !== undefined
-              ? { category: command.input.category }
-              : {}),
-            ...(command.input.color !== undefined
-              ? { color: command.input.color }
-              : {}),
-            ...(command.input.customCategoryId !== undefined
-              ? { custom_category_id: command.input.customCategoryId }
-              : {}),
-            ...(command.input.defaultDurationMinutes !== undefined
-              ? {
-                  default_duration_minutes:
-                    command.input.defaultDurationMinutes,
-                }
-              : {}),
-            ...(command.input.description !== undefined
-              ? { description: command.input.description }
-              : {}),
-            ...(command.input.icon !== undefined
-              ? { icon: command.input.icon }
-              : {}),
-            ...(command.input.importance !== undefined
-              ? { importance: command.input.importance }
-              : {}),
-            ...(command.input.isActive !== undefined
-              ? { is_active: command.input.isActive }
-              : {}),
-            ...(command.input.isArchived !== undefined
-              ? { is_archived: command.input.isArchived }
-              : {}),
-            ...(command.input.isPrivate !== undefined
-              ? { is_private: command.input.isPrivate }
-              : {}),
-            ...(command.input.minimumVersion !== undefined
-              ? {
-                  minimum_version_description:
-                    command.input.minimumVersion?.description || null,
-                  minimum_version_duration_minutes:
-                    command.input.minimumVersion?.durationMinutes ?? null,
-                  minimum_version_title:
-                    command.input.minimumVersion?.title ?? null,
-                }
-              : {}),
-            ...(command.input.preferredTimeOfDay !== undefined
-              ? { preferred_time_of_day: command.input.preferredTimeOfDay }
-              : {}),
-            ...(command.input.title !== undefined
-              ? { title: command.input.title }
-              : {}),
-            ...(command.input.type !== undefined
-              ? { type: command.input.type }
-              : {}),
-            updated_by: command.context.actorUserId,
-          })
-          .where('id', '=', command.itemId)
-          .where('workspace_id', '=', command.context.workspaceId)
-          .where('user_id', '=', command.context.actorUserId)
-          .where('deleted_at', 'is', null)
-          .where('is_archived', '=', false)
+    try {
+      return await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        async (trx) => {
+          let updateQuery = trx
+            .updateTable('app.self_care_items')
+            .set({
+              ...(command.input.category !== undefined
+                ? { category: command.input.category }
+                : {}),
+              ...(command.input.color !== undefined
+                ? { color: command.input.color }
+                : {}),
+              ...(command.input.customCategoryId !== undefined
+                ? { custom_category_id: command.input.customCategoryId }
+                : {}),
+              ...(command.input.defaultDurationMinutes !== undefined
+                ? {
+                    default_duration_minutes:
+                      command.input.defaultDurationMinutes,
+                  }
+                : {}),
+              ...(command.input.description !== undefined
+                ? { description: command.input.description }
+                : {}),
+              ...(command.input.icon !== undefined
+                ? { icon: command.input.icon }
+                : {}),
+              ...(command.input.importance !== undefined
+                ? { importance: command.input.importance }
+                : {}),
+              ...(command.input.isActive !== undefined
+                ? { is_active: command.input.isActive }
+                : {}),
+              ...(command.input.isArchived !== undefined
+                ? { is_archived: command.input.isArchived }
+                : {}),
+              ...(command.input.isPrivate !== undefined
+                ? { is_private: command.input.isPrivate }
+                : {}),
+              ...(command.input.minimumVersion !== undefined
+                ? {
+                    minimum_version_description:
+                      command.input.minimumVersion?.description || null,
+                    minimum_version_duration_minutes:
+                      command.input.minimumVersion?.durationMinutes ?? null,
+                    minimum_version_title:
+                      command.input.minimumVersion?.title ?? null,
+                  }
+                : {}),
+              ...(command.input.preferredTimeOfDay !== undefined
+                ? { preferred_time_of_day: command.input.preferredTimeOfDay }
+                : {}),
+              ...(command.input.title !== undefined
+                ? { title: command.input.title }
+                : {}),
+              ...(command.input.type !== undefined
+                ? { type: command.input.type }
+                : {}),
+              updated_by: command.context.actorUserId,
+            })
+            .where('id', '=', command.itemId)
+            .where('workspace_id', '=', command.context.workspaceId)
+            .where('user_id', '=', command.context.actorUserId)
+            .where('deleted_at', 'is', null)
+            .where('is_archived', '=', false)
 
-        if (command.input.expectedVersion !== undefined) {
-          updateQuery = updateQuery.where(
-            'version',
-            '=',
-            command.input.expectedVersion,
-          )
-        }
-
-        const updated = await updateQuery.returningAll().executeTakeFirst()
-
-        if (!updated) {
-          throw new HttpError(
-            404,
-            'self_care_item_not_found',
-            'Self-care item not found.',
-          )
-        }
-
-        if (command.input.scheduleRule) {
-          await this.upsertScheduleRule(
-            trx,
-            createScheduleRuleRecord(
-              command.itemId,
-              command.input.scheduleRule,
-            ),
-            command.context.actorUserId,
-          )
-        }
-
-        if (command.input.steps) {
-          await trx
-            .deleteFrom('app.self_care_ritual_step_drafts')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await trx
-            .deleteFrom('app.self_care_ritual_steps')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          for (const [index, step] of command.input.steps.entries()) {
-            await this.insertStep(
-              trx,
-              createRitualStepRecord(command.itemId, step, index),
+          if (command.input.expectedVersion !== undefined) {
+            updateQuery = updateQuery.where(
+              'version',
+              '=',
+              command.input.expectedVersion,
             )
           }
-        }
 
-        if (command.input.alternatives) {
-          await trx
-            .deleteFrom('app.self_care_item_alternatives')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          for (const alternative of command.input.alternatives) {
-            await trx
-              .insertInto('app.self_care_item_alternatives')
-              .values({
-                counts_as_completion: alternative.countsAsCompletion,
-                description: alternative.description,
-                id: alternative.id,
-                item_id: command.itemId,
-                title: alternative.title,
-              })
-              .execute()
+          const updated = await updateQuery.returningAll().executeTakeFirst()
+
+          if (!updated) {
+            if (command.input.expectedVersion !== undefined) {
+              const current = await trx
+                .selectFrom('app.self_care_items')
+                .select(['id', 'version'])
+                .where('id', '=', command.itemId)
+                .where('workspace_id', '=', command.context.workspaceId)
+                .where('user_id', '=', command.context.actorUserId)
+                .where('deleted_at', 'is', null)
+                .where('is_archived', '=', false)
+                .executeTakeFirst()
+
+              if (current) {
+                assertSelfCareVersion(
+                  'item',
+                  current.id,
+                  command.input.expectedVersion,
+                  Number(current.version),
+                )
+              }
+            }
+
+            throw new HttpError(
+              404,
+              'self_care_item_not_found',
+              'Self-care item not found.',
+            )
           }
-        }
 
-        if (command.input.procedureDetails) {
-          await trx
-            .deleteFrom('app.self_care_procedure_details')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await this.insertProcedureDetails(
-            trx,
-            createProcedureDetailsRecord(
-              command.itemId,
-              command.input.procedureDetails,
-            ),
-          )
-        }
+          if (command.input.scheduleRule) {
+            await this.upsertScheduleRule(
+              trx,
+              createScheduleRuleRecord(
+                command.itemId,
+                command.input.scheduleRule,
+              ),
+              command.context.actorUserId,
+            )
+          }
 
-        if (command.input.appointmentDetails) {
-          await trx
-            .deleteFrom('app.self_care_appointment_details')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await this.insertAppointmentDetails(
-            trx,
-            createAppointmentDetailsRecord(
-              command.itemId,
-              command.input.appointmentDetails,
-            ),
-          )
-        }
+          if (command.input.steps) {
+            await trx
+              .deleteFrom('app.self_care_ritual_step_drafts')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await trx
+              .deleteFrom('app.self_care_ritual_steps')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            for (const [index, step] of command.input.steps.entries()) {
+              await this.insertStep(
+                trx,
+                createRitualStepRecord(command.itemId, step, index),
+              )
+            }
+          }
 
-        if (command.input.medicalDetails) {
-          await trx
-            .deleteFrom('app.self_care_medical_details')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await this.insertMedicalDetails(
-            trx,
-            createMedicalDetailsRecord(
-              command.itemId,
-              command.input.medicalDetails,
-            ),
-          )
-        }
+          if (command.input.alternatives) {
+            await trx
+              .deleteFrom('app.self_care_item_alternatives')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            for (const alternative of command.input.alternatives) {
+              await trx
+                .insertInto('app.self_care_item_alternatives')
+                .values({
+                  counts_as_completion: alternative.countsAsCompletion,
+                  description: alternative.description,
+                  id: alternative.id,
+                  item_id: command.itemId,
+                  title: alternative.title,
+                })
+                .execute()
+            }
+          }
 
-        if (command.input.measurementDetails) {
-          await trx
-            .deleteFrom('app.self_care_measurement_details')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await this.insertMeasurementDetails(
-            trx,
-            createMeasurementDetailsRecord(
-              command.itemId,
-              command.input.measurementDetails,
-            ),
-          )
-        }
+          if (command.input.procedureDetails) {
+            await trx
+              .deleteFrom('app.self_care_procedure_details')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await this.insertProcedureDetails(
+              trx,
+              createProcedureDetailsRecord(
+                command.itemId,
+                command.input.procedureDetails,
+              ),
+            )
+          }
 
-        if (command.input.exerciseDetails) {
-          await trx
-            .deleteFrom('app.self_care_exercise_details')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await this.insertExerciseDetails(
-            trx,
-            createExerciseDetailsRecord(
-              command.itemId,
-              command.input.exerciseDetails,
-            ),
-          )
-        }
+          if (command.input.appointmentDetails) {
+            await trx
+              .deleteFrom('app.self_care_appointment_details')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await this.insertAppointmentDetails(
+              trx,
+              createAppointmentDetailsRecord(
+                command.itemId,
+                command.input.appointmentDetails,
+              ),
+            )
+          }
 
-        if (command.input.courseDetails) {
-          await trx
-            .deleteFrom('app.self_care_course_details')
-            .where('item_id', '=', command.itemId)
-            .execute()
-          await this.insertCourseDetails(
-            trx,
-            createCourseDetailsRecord(
-              command.itemId,
-              command.input.courseDetails,
-            ),
-          )
-        }
+          if (command.input.medicalDetails) {
+            await trx
+              .deleteFrom('app.self_care_medical_details')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await this.insertMedicalDetails(
+              trx,
+              createMedicalDetailsRecord(
+                command.itemId,
+                command.input.medicalDetails,
+              ),
+            )
+          }
 
-        if (
-          updated.migrated_from_habit_id &&
-          (command.input.isActive !== undefined ||
-            command.input.isArchived !== undefined)
-        ) {
-          await this.updateMigratedHabitState(trx, command.context, {
-            habitId: updated.migrated_from_habit_id,
-            isActive: updated.is_active && !updated.is_archived,
-          })
-        }
+          if (command.input.measurementDetails) {
+            await trx
+              .deleteFrom('app.self_care_measurement_details')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await this.insertMeasurementDetails(
+              trx,
+              createMeasurementDetailsRecord(
+                command.itemId,
+                command.input.measurementDetails,
+              ),
+            )
+          }
 
-        return mapItemRow(updated)
-      },
-      command.context.actorUserId,
-    )
+          if (command.input.exerciseDetails) {
+            await trx
+              .deleteFrom('app.self_care_exercise_details')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await this.insertExerciseDetails(
+              trx,
+              createExerciseDetailsRecord(
+                command.itemId,
+                command.input.exerciseDetails,
+              ),
+            )
+          }
+
+          if (command.input.courseDetails) {
+            await trx
+              .deleteFrom('app.self_care_course_details')
+              .where('item_id', '=', command.itemId)
+              .execute()
+            await this.insertCourseDetails(
+              trx,
+              createCourseDetailsRecord(
+                command.itemId,
+                command.input.courseDetails,
+              ),
+            )
+          }
+
+          if (
+            updated.migrated_from_habit_id &&
+            (command.input.isActive !== undefined ||
+              command.input.isArchived !== undefined)
+          ) {
+            await this.updateMigratedHabitState(trx, command.context, {
+              habitId: updated.migrated_from_habit_id,
+              isActive: updated.is_active && !updated.is_archived,
+            })
+          }
+
+          return mapItemRow(updated)
+        },
+        command.context.actorUserId,
+      )
+    } catch (error) {
+      if (getDatabaseErrorCode(error) === '23505') {
+        throw new HttpError(
+          409,
+          'self_care_item_id_conflict',
+          'A self-care item identifier is already in use.',
+        )
+      }
+
+      throw error
+    }
   }
 
   async archiveItem(command: ArchiveSelfCareItemCommand) {
-    return this.setArchiveState(command.context, command.itemId, true)
+    return this.setArchiveState(
+      command.context,
+      command.itemId,
+      true,
+      command.expectedVersion,
+    )
   }
 
   async restoreItem(command: RestoreSelfCareItemCommand) {
-    return this.setArchiveState(command.context, command.itemId, false)
+    return this.setArchiveState(
+      command.context,
+      command.itemId,
+      false,
+      command.expectedVersion,
+    )
   }
 
   async deleteItem(command: DeleteSelfCareItemCommand) {
@@ -629,17 +799,20 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const occurrenceRow = await this.loadOccurrenceRow(
-          trx,
-          command.context.actorUserId,
-          command.occurrenceId,
-        )
+        const { itemRow, occurrenceRow } =
+          await this.loadOccurrenceWithActiveItemRowsForUpdate(
+            trx,
+            command.context,
+            command.occurrenceId,
+          )
         const occurrence = mapOccurrenceRow(occurrenceRow)
-        const itemRow = await this.loadActiveItemRow(
-          trx,
-          command.context,
-          occurrence.itemId,
+        assertSelfCareVersion(
+          'occurrence',
+          occurrence.id,
+          command.expectedVersion,
+          occurrence.version,
         )
+        assertSelfCareOccurrenceOpen(occurrence)
         const item = mapItemRow(itemRow)
         assertExerciseCompletionInput(item, command.input)
         assertMeasurementCompletionInput(item, command.input)
@@ -650,6 +823,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .where('item_id', '=', item.id)
           .execute()
         const steps = stepRows.map((row) => mapStepRow(row))
+        assertRitualCompletionSteps(item.id, steps, command.input.steps)
         const pendingStepCompletions = createRitualStepCompletions(
           'pending',
           command.input,
@@ -661,7 +835,12 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         })
         const completion = createCompletionRecord(
           { ...command.input, status },
-          { itemId: item.id, occurrence, userId: command.context.actorUserId },
+          {
+            completionId: command.completionId,
+            itemId: item.id,
+            occurrence,
+            userId: command.context.actorUserId,
+          },
         )
         const completionDate = getSelfCareCompletionDateKey(
           command.input,
@@ -677,14 +856,15 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
                 userId: command.context.actorUserId,
               })
             : null
-        const storedCompletion = exerciseProgressCompletion ?? completion
-
-        if (!exerciseProgressCompletion) {
-          await this.insertCompletion(
+        const storedCompletion =
+          exerciseProgressCompletion ??
+          (await this.insertCompletion(
             trx,
             completion,
             command.context.actorUserId,
-          )
+          ))
+
+        if (!exerciseProgressCompletion) {
           for (const step of pendingStepCompletions) {
             await trx
               .insertInto('app.self_care_ritual_step_completions')
@@ -737,9 +917,22 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         const item = mapItemRow(
           await this.loadActiveItemRow(trx, command.context, command.itemId),
         )
+        assertSelfCareVersion(
+          'item',
+          item.id,
+          command.expectedVersion,
+          item.version,
+        )
         assertExerciseCompletionInput(item, command.input)
         assertMeasurementCompletionInput(item, command.input)
         assertMoodCheckCompletionInput(item, command.input)
+        const stepRows = await trx
+          .selectFrom('app.self_care_ritual_steps')
+          .selectAll()
+          .where('item_id', '=', item.id)
+          .execute()
+        const steps = stepRows.map((row) => mapStepRow(row))
+        assertRitualCompletionSteps(item.id, steps, command.input.steps)
         const ruleRow = await trx
           .selectFrom('app.self_care_schedule_rules')
           .selectAll()
@@ -763,15 +956,30 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           : null
 
         if (existingCompletion) {
+          await this.deleteRitualStepDraftRow(trx, {
+            date: completionDate,
+            itemId: item.id,
+            occurrenceId: null,
+            userId: command.context.actorUserId,
+            workspaceId: command.context.workspaceId,
+          })
+          const touchedItem = await trx
+            .updateTable('app.self_care_items')
+            .set({ updated_by: command.context.actorUserId })
+            .where('id', '=', item.id)
+            .where('workspace_id', '=', command.context.workspaceId)
+            .where('user_id', '=', command.context.actorUserId)
+            .where('deleted_at', 'is', null)
+            .where('version', '=', item.version)
+            .returning('version')
+            .executeTakeFirst()
+
+          if (!touchedItem) {
+            assertSelfCareVersion('item', item.id, item.version, null)
+          }
           return existingCompletion
         }
 
-        const stepRows = await trx
-          .selectFrom('app.self_care_ritual_steps')
-          .selectAll()
-          .where('item_id', '=', item.id)
-          .execute()
-        const steps = stepRows.map((row) => mapStepRow(row))
         const pendingStepCompletions = createRitualStepCompletions(
           'pending',
           command.input,
@@ -784,6 +992,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         const completion = createCompletionRecord(
           { ...command.input, status },
           {
+            completionId: command.completionId,
             itemId: item.id,
             scheduledFor: completionDate,
             userId: command.context.actorUserId,
@@ -799,14 +1008,15 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
                 userId: command.context.actorUserId,
               })
             : null
-        const storedCompletion = exerciseProgressCompletion ?? completion
-
-        if (!exerciseProgressCompletion) {
-          await this.insertCompletion(
+        const storedCompletion =
+          exerciseProgressCompletion ??
+          (await this.insertCompletion(
             trx,
             completion,
             command.context.actorUserId,
-          )
+          ))
+
+        if (!exerciseProgressCompletion) {
           for (const step of pendingStepCompletions) {
             await trx
               .insertInto('app.self_care_ritual_step_completions')
@@ -826,13 +1036,21 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           userId: command.context.actorUserId,
           workspaceId: command.context.workspaceId,
         })
-        await this.deactivateFlexibleGoalIfCompleted(trx, {
+        const deactivated = await this.deactivateFlexibleGoalIfCompleted(trx, {
           actorUserId: command.context.actorUserId,
           completion: storedCompletion,
           item,
           scheduleRule,
         })
         await this.incrementCourse(trx, item.id, completionDate)
+        if (!deactivated) {
+          await trx
+            .updateTable('app.self_care_items')
+            .set({ updated_by: command.context.actorUserId })
+            .where('id', '=', item.id)
+            .where('version', '=', item.version)
+            .executeTakeFirstOrThrow()
+        }
         return storedCompletion
       },
       command.context.actorUserId,
@@ -841,7 +1059,9 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
   completeFlexibleGoal(command: CompleteFlexibleGoalCommand) {
     return this.completeItemNow({
+      completionId: command.completionId,
       context: command.context,
+      expectedVersion: command.expectedVersion,
       input: { ...command.input, steps: [] },
       itemId: command.itemId,
     })
@@ -849,7 +1069,9 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
 
   completeCourseSession(command: CompleteCourseSessionCommand) {
     return this.completeItemNow({
+      completionId: command.completionId,
       context: command.context,
+      expectedVersion: command.expectedVersion,
       input: { ...command.input, steps: [] },
       itemId: command.itemId,
     })
@@ -860,38 +1082,14 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const current = await trx
+        const reference = await trx
           .selectFrom('app.self_care_completions as completion')
           .innerJoin(
             'app.self_care_items as item',
             'item.id',
             'completion.item_id',
           )
-          .select([
-            'completion.alternative_title',
-            'completion.completed_at',
-            'completion.completed_variant',
-            'completion.created_at',
-            'completion.created_by',
-            'completion.currency',
-            'completion.duration_minutes',
-            'completion.energy_after',
-            'completion.energy_before',
-            'completion.exercise_sets',
-            'completion.id',
-            'completion.item_id',
-            'completion.measurement_unit',
-            'completion.measurement_value',
-            'completion.mood_after',
-            'completion.mood_before',
-            'completion.note',
-            'completion.occurrence_id',
-            'completion.price',
-            'completion.scheduled_for',
-            'completion.status',
-            'completion.user_id',
-            'item.type as item_type',
-          ])
+          .select('completion.item_id')
           .where('completion.id', '=', command.completionId)
           .where('completion.user_id', '=', command.context.actorUserId)
           .where('item.workspace_id', '=', command.context.workspaceId)
@@ -899,9 +1097,34 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .where('item.deleted_at', 'is', null)
           .executeTakeFirst()
 
+        if (!reference) {
+          return null
+        }
+
+        const itemRow = await this.loadOwnedItemRowForUpdate(
+          trx,
+          command.context,
+          reference.item_id,
+        )
+        const current = await trx
+          .selectFrom('app.self_care_completions')
+          .selectAll()
+          .where('id', '=', command.completionId)
+          .where('item_id', '=', itemRow.id)
+          .where('user_id', '=', command.context.actorUserId)
+          .forUpdate()
+          .executeTakeFirst()
+
         if (!current) {
           return null
         }
+
+        assertSelfCareVersion(
+          'completion',
+          current.id,
+          command.expectedVersion,
+          Number(current.version),
+        )
 
         const merged = {
           measurementValue:
@@ -921,7 +1144,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         }
 
         if (
-          current.item_type === 'measurement' &&
+          itemRow.type === 'measurement' &&
           merged.measurementValue === null
         ) {
           throw new HttpError(
@@ -931,10 +1154,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           )
         }
 
-        if (
-          current.item_type === 'exercise' &&
-          merged.measurementValue === null
-        ) {
+        if (itemRow.type === 'exercise' && merged.measurementValue === null) {
           throw new HttpError(
             400,
             'self_care_exercise_value_required',
@@ -943,7 +1163,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         }
 
         if (
-          current.item_type === 'mood_check' &&
+          itemRow.type === 'mood_check' &&
           merged.moodAfter === null &&
           merged.energyAfter === null
         ) {
@@ -999,6 +1219,9 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           })
           .where('id', '=', command.completionId)
           .where('user_id', '=', command.context.actorUserId)
+          .$if(command.expectedVersion !== undefined, (query) =>
+            query.where('version', '=', command.expectedVersion!),
+          )
           .returningAll()
           .executeTakeFirst()
       },
@@ -1017,12 +1240,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   skipOccurrence(command: SkipSelfCareOccurrenceCommand) {
-    return this.recordOccurrenceStatus(
-      command.context,
-      command.occurrenceId,
-      'skipped',
-      command.input.reason,
-    )
+    return this.recordOccurrenceStatus(command, 'skipped', command.input.reason)
   }
 
   moveOccurrence(command: MoveSelfCareOccurrenceCommand) {
@@ -1030,13 +1248,21 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       this.db,
       command.context.auth,
       async (trx) => {
-        const occurrence = mapOccurrenceRow(
-          await this.loadOccurrenceRow(
+        const { occurrenceRow } =
+          await this.loadOccurrenceWithActiveItemRowsForUpdate(
             trx,
-            command.context.actorUserId,
+            command.context,
             command.occurrenceId,
-          ),
+            command.expectedItemId,
+          )
+        const occurrence = mapOccurrenceRow(occurrenceRow)
+        assertSelfCareVersion(
+          'occurrence',
+          occurrence.id,
+          command.expectedVersion,
+          occurrence.version,
         )
+        assertSelfCareOccurrenceOpen(occurrence)
         const completion = createCompletionRecord(
           {
             alternativeTitle: null,
@@ -1053,8 +1279,10 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             note: command.input.note,
             price: null,
             status: 'moved',
+            ...(command.actedAt ? { completedAt: command.actedAt } : {}),
           },
           {
+            completionId: command.completionId,
             itemId: occurrence.itemId,
             occurrence,
             userId: command.context.actorUserId,
@@ -1082,6 +1310,12 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       async (trx) => {
         const item = mapItemRow(
           await this.loadActiveItemRow(trx, command.context, command.itemId),
+        )
+        assertSelfCareVersion(
+          'item',
+          item.id,
+          command.expectedVersion,
+          item.version,
         )
         const ruleRow = await trx
           .selectFrom('app.self_care_schedule_rules')
@@ -1129,9 +1363,113 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           reminderTimeZone,
         )
 
+        if (
+          (command.existingOccurrenceId === undefined) !==
+          (command.expectedOccurrenceVersion === undefined)
+        ) {
+          throw new HttpError(
+            400,
+            'self_care_schedule_update_invalid',
+            'Existing occurrence id and version must be provided together.',
+          )
+        }
+
+        if (
+          command.existingOccurrenceId !== undefined &&
+          command.expectedOccurrenceVersion !== undefined
+        ) {
+          const existingExactRow = await trx
+            .selectFrom('app.self_care_occurrences')
+            .selectAll()
+            .where('id', '=', command.existingOccurrenceId)
+            .where('item_id', '=', item.id)
+            .where('user_id', '=', command.context.actorUserId)
+            .forUpdate()
+            .executeTakeFirst()
+
+          if (!existingExactRow) {
+            throw new HttpError(
+              404,
+              'self_care_occurrence_not_found',
+              'Self-care occurrence not found.',
+            )
+          }
+
+          const existing = mapOccurrenceRow(existingExactRow)
+          assertSelfCareVersion(
+            'occurrence',
+            existing.id,
+            command.expectedOccurrenceVersion,
+            existing.version,
+          )
+          assertSelfCareOccurrenceOpen(existing)
+          if (existing.scheduledFor !== command.input.scheduledFor) {
+            throw new HttpError(
+              409,
+              'self_care_schedule_date_conflict',
+              'An in-place schedule update must keep the existing date.',
+              {
+                actualScheduledFor: existing.scheduledFor,
+                entityId: existing.id,
+                entityType: 'occurrence',
+                requestedScheduledFor: command.input.scheduledFor,
+              },
+            )
+          }
+
+          const updatedRow = await trx
+            .updateTable('app.self_care_occurrences')
+            .set({
+              completed_at: null,
+              due_at: dueAt,
+              moved_to: null,
+              reminder_offsets_minutes: reminderOffsetsMinutes,
+              reminder_time_zone: reminderTimeZone,
+              status: 'scheduled',
+              updated_by: command.context.actorUserId,
+            })
+            .where('id', '=', existing.id)
+            .where('item_id', '=', item.id)
+            .where('user_id', '=', command.context.actorUserId)
+            .where('version', '=', command.expectedOccurrenceVersion)
+            .returningAll()
+            .executeTakeFirst()
+
+          if (!updatedRow) {
+            assertSelfCareVersion(
+              'occurrence',
+              existing.id,
+              command.expectedOccurrenceVersion,
+              null,
+            )
+          }
+
+          const occurrence = mapOccurrenceRow(updatedRow ?? existingExactRow)
+          await this.upsertScheduledDetails(
+            trx,
+            item,
+            occurrence,
+            command.input,
+          )
+          return occurrence
+        }
+
         if (existingRow) {
+          const existing = mapOccurrenceRow(existingRow)
+          if (command.strictInsert) {
+            throw new HttpError(
+              409,
+              'self_care_schedule_slot_conflict',
+              'A self-care occurrence already exists for this schedule slot.',
+              {
+                actualVersion: existing.version,
+                entityId: existing.id,
+                entityType: 'occurrence',
+              },
+            )
+          }
           const occurrence = {
-            ...mapOccurrenceRow(existingRow),
+            ...existing,
             completedAt: null,
             dueAt,
             movedTo: null,
@@ -1140,6 +1478,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             scheduleRuleId: scheduleRule?.id ?? null,
             status: 'scheduled' as const,
             updatedAt: new Date().toISOString(),
+            version: existing.version + 1,
           }
           await this.updateOccurrence(
             trx,
@@ -1159,6 +1498,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         const occurrence = createOccurrenceRecord({
           dueAt,
           item,
+          occurrenceId: command.occurrenceId,
           scheduledFor: command.input.scheduledFor,
           scheduleRule,
         })
@@ -1173,6 +1513,14 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         if (inserted) {
           await this.upsertScheduledDetails(trx, item, inserted, command.input)
           return inserted
+        }
+
+        if (command.strictInsert) {
+          throw new HttpError(
+            409,
+            'self_care_occurrence_id_conflict',
+            'The self-care occurrence identifier or schedule slot is already in use.',
+          )
         }
 
         const fallback = await trx
@@ -1225,12 +1573,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   cancelOccurrence(command: CancelSelfCareOccurrenceCommand) {
-    return this.recordOccurrenceStatus(
-      command.context,
-      command.occurrenceId,
-      'cancelled',
-      '',
-    )
+    return this.recordOccurrenceStatus(command, 'cancelled', '')
   }
 
   async getDailyState(context: SelfCareReadContext, date: string) {
@@ -1268,32 +1611,76 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     const row = await withWriteTransaction(
       this.db,
       command.context.auth,
-      (trx) =>
-        trx
+      async (trx) => {
+        const values = {
+          date: record.date,
+          energy: record.energy,
+          id: record.id,
+          mood: record.mood,
+          note: record.note,
+          pain: record.pain,
+          sleep_quality: record.sleepQuality,
+          stress: record.stress,
+          user_id: record.userId,
+        }
+        const updates = {
+          energy: record.energy,
+          mood: record.mood,
+          note: record.note,
+          pain: record.pain,
+          sleep_quality: record.sleepQuality,
+          stress: record.stress,
+        }
+
+        if (command.expectedVersion !== undefined) {
+          await sql`
+            select pg_advisory_xact_lock(
+              hashtextextended(
+                ${`${command.context.actorUserId}:${command.date}`},
+                8_062_028
+              )
+            )
+          `.execute(trx)
+          const current = await trx
+            .selectFrom('app.self_care_daily_states')
+            .select(['id', 'version'])
+            .where('user_id', '=', command.context.actorUserId)
+            .where('date', '=', command.date)
+            .forUpdate()
+            .executeTakeFirst()
+          assertSelfCareVersion(
+            'daily_state',
+            current?.id ?? `${command.context.actorUserId}:${command.date}`,
+            command.expectedVersion,
+            current ? Number(current.version) : null,
+          )
+
+          if (current) {
+            return trx
+              .updateTable('app.self_care_daily_states')
+              .set(updates)
+              .where('id', '=', current.id)
+              .where('version', '=', current.version)
+              .returningAll()
+              .executeTakeFirstOrThrow()
+          }
+
+          return trx
+            .insertInto('app.self_care_daily_states')
+            .values(values)
+            .returningAll()
+            .executeTakeFirstOrThrow()
+        }
+
+        return trx
           .insertInto('app.self_care_daily_states')
-          .values({
-            date: record.date,
-            energy: record.energy,
-            id: record.id,
-            mood: record.mood,
-            note: record.note,
-            pain: record.pain,
-            sleep_quality: record.sleepQuality,
-            stress: record.stress,
-            user_id: record.userId,
-          })
+          .values(values)
           .onConflict((conflict) =>
-            conflict.columns(['user_id', 'date']).doUpdateSet({
-              energy: record.energy,
-              mood: record.mood,
-              note: record.note,
-              pain: record.pain,
-              sleep_quality: record.sleepQuality,
-              stress: record.stress,
-            }),
+            conflict.columns(['user_id', 'date']).doUpdateSet(updates),
           )
           .returningAll()
-          .executeTakeFirstOrThrow(),
+          .executeTakeFirstOrThrow()
+      },
       command.context.actorUserId,
     )
     return mapDailyStateRow(row)
@@ -1304,7 +1691,12 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   async updateSettings(command: UpdateSelfCareSettingsCommand) {
-    await this.upsertSettings(command.context, command.input)
+    await this.upsertSettings(
+      command.context,
+      command.input,
+      {},
+      command.expectedVersion,
+    )
     return this.getSettings(command.context)
   }
 
@@ -1447,24 +1839,63 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           itemId: itemRow.id,
           stepIds: command.input.stepIds,
         })
-        await this.deleteRitualStepDraftRow(trx, {
-          date: command.input.date,
-          itemId: itemRow.id,
-          occurrenceId: command.input.occurrenceId,
-          userId: command.context.actorUserId,
-          workspaceId: command.context.workspaceId,
-        })
-        await trx
-          .insertInto('app.self_care_ritual_step_drafts')
-          .values({
-            date: command.input.date,
-            item_id: itemRow.id,
-            occurrence_id: command.input.occurrenceId,
-            step_ids: [...new Set(command.input.stepIds)],
-            user_id: command.context.actorUserId,
-            workspace_id: command.context.workspaceId,
-          })
-          .execute()
+        await sql`
+          select pg_advisory_xact_lock(
+            hashtextextended(
+              ${[
+                command.context.workspaceId,
+                command.context.actorUserId,
+                command.input.date,
+                itemRow.id,
+                command.input.occurrenceId ?? '',
+              ].join(':')},
+              8_062_027
+            )
+          )
+        `.execute(trx)
+        const current = await trx
+          .selectFrom('app.self_care_ritual_step_drafts')
+          .select(['id', 'version'])
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('user_id', '=', command.context.actorUserId)
+          .where('date', '=', command.input.date)
+          .where('item_id', '=', itemRow.id)
+          .$if(command.input.occurrenceId !== null, (query) =>
+            query.where('occurrence_id', '=', command.input.occurrenceId!),
+          )
+          .$if(command.input.occurrenceId === null, (query) =>
+            query.where('occurrence_id', 'is', null),
+          )
+          .forUpdate()
+          .executeTakeFirst()
+
+        assertSelfCareVersion(
+          'ritual_step_draft',
+          current?.id ?? `${itemRow.id}:${command.input.date}`,
+          command.expectedVersion,
+          current ? Number(current.version) : null,
+        )
+
+        if (current) {
+          await trx
+            .updateTable('app.self_care_ritual_step_drafts')
+            .set({ step_ids: [...new Set(command.input.stepIds)] })
+            .where('id', '=', current.id)
+            .where('version', '=', current.version)
+            .execute()
+        } else {
+          await trx
+            .insertInto('app.self_care_ritual_step_drafts')
+            .values({
+              date: command.input.date,
+              item_id: itemRow.id,
+              occurrence_id: command.input.occurrenceId,
+              step_ids: [...new Set(command.input.stepIds)],
+              user_id: command.context.actorUserId,
+              workspace_id: command.context.workspaceId,
+            })
+            .execute()
+        }
       },
       command.context.actorUserId,
     )
@@ -1566,13 +1997,25 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         workspaceId: command.context.workspaceId,
       },
     )
-    await withWriteTransaction(
-      this.db,
-      command.context.auth,
-      (trx) =>
-        this.insertCreatedRecords(trx, records, command.context.actorUserId),
-      command.context.actorUserId,
-    )
+    try {
+      await withWriteTransaction(
+        this.db,
+        command.context.auth,
+        (trx) =>
+          this.insertCreatedRecords(trx, records, command.context.actorUserId),
+        command.context.actorUserId,
+      )
+    } catch (error) {
+      if (getDatabaseErrorCode(error) === '23505') {
+        throw new HttpError(
+          409,
+          'self_care_item_id_conflict',
+          'The self-care item identifier is already in use.',
+        )
+      }
+
+      throw error
+    }
     return records.item
   }
 
@@ -1580,12 +2023,13 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     context: ArchiveSelfCareItemCommand['context'],
     itemId: string,
     isArchived: boolean,
+    expectedVersion?: number,
   ) {
     const row = await withWriteTransaction(
       this.db,
       context.auth,
       async (trx) => {
-        const updated = await trx
+        let updateQuery = trx
           .updateTable('app.self_care_items')
           .set({
             is_active: isArchived ? false : true,
@@ -1596,8 +2040,32 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
           .where('workspace_id', '=', context.workspaceId)
           .where('user_id', '=', context.actorUserId)
           .where('deleted_at', 'is', null)
-          .returningAll()
-          .executeTakeFirst()
+
+        if (expectedVersion !== undefined) {
+          updateQuery = updateQuery.where('version', '=', expectedVersion)
+        }
+
+        const updated = await updateQuery.returningAll().executeTakeFirst()
+
+        if (!updated && expectedVersion !== undefined) {
+          const current = await trx
+            .selectFrom('app.self_care_items')
+            .select(['id', 'version'])
+            .where('id', '=', itemId)
+            .where('workspace_id', '=', context.workspaceId)
+            .where('user_id', '=', context.actorUserId)
+            .where('deleted_at', 'is', null)
+            .executeTakeFirst()
+
+          if (current) {
+            assertSelfCareVersion(
+              'item',
+              current.id,
+              expectedVersion,
+              Number(current.version),
+            )
+          }
+        }
 
         if (updated?.migrated_from_habit_id) {
           await this.updateMigratedHabitState(trx, context, {
@@ -1652,18 +2120,28 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
   }
 
   private async recordOccurrenceStatus(
-    context: SkipSelfCareOccurrenceCommand['context'],
-    occurrenceId: string,
+    command: SkipSelfCareOccurrenceCommand | CancelSelfCareOccurrenceCommand,
     status: 'cancelled' | 'skipped',
     note: string,
   ) {
     return withWriteTransaction(
       this.db,
-      context.auth,
+      command.context.auth,
       async (trx) => {
-        const occurrence = mapOccurrenceRow(
-          await this.loadOccurrenceRow(trx, context.actorUserId, occurrenceId),
+        const { occurrenceRow } =
+          await this.loadOccurrenceWithActiveItemRowsForUpdate(
+            trx,
+            command.context,
+            command.occurrenceId,
+          )
+        const occurrence = mapOccurrenceRow(occurrenceRow)
+        assertSelfCareVersion(
+          'occurrence',
+          occurrence.id,
+          command.expectedVersion,
+          occurrence.version,
         )
+        assertSelfCareOccurrenceOpen(occurrence)
         const completion = createCompletionRecord(
           {
             alternativeTitle: null,
@@ -1680,19 +2158,25 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
             note,
             price: null,
             status,
+            ...(command.actedAt ? { completedAt: command.actedAt } : {}),
           },
           {
+            completionId: command.completionId,
             itemId: occurrence.itemId,
             occurrence,
-            userId: context.actorUserId,
+            userId: command.context.actorUserId,
           },
         )
-        await this.insertCompletion(trx, completion, context.actorUserId)
+        await this.insertCompletion(
+          trx,
+          completion,
+          command.context.actorUserId,
+        )
         const next = updateOccurrenceStatus(occurrence, status)
-        await this.updateOccurrence(trx, next, context.actorUserId)
+        await this.updateOccurrence(trx, next, command.context.actorUserId)
         return next
       },
-      context.actorUserId,
+      command.context.actorUserId,
     )
   }
 
@@ -1712,11 +2196,25 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       return
     }
 
-    await this.generateOccurrences({
-      context: { ...context, actorUserId },
+    const resolvedContext: SelfCareWriteContext = { ...context, actorUserId }
+
+    await this.readGenerationCoordinator.schedule(
+      createSelfCareReadGenerationKey({
+        actorUserId,
+        clientTimeZone: context.clientTimeZone,
+        workspaceId: context.workspaceId,
+      }),
+      resolvedContext,
       from,
       to,
-    })
+      async (generationContext, generationFrom, generationTo) => {
+        await this.generateOccurrences({
+          context: generationContext,
+          from: generationFrom,
+          to: generationTo,
+        })
+      },
+    )
   }
 
   private async loadProgressCompletionForDate(
@@ -2236,37 +2734,52 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return rows.map((row) => mapOccurrenceRow(row))
   }
 
-  private insertCompletion(
+  private async insertCompletion(
     executor: DatabaseExecutor,
     completion: SelfCareCompletion,
     actorUserId: string,
-  ) {
-    return executor
-      .insertInto('app.self_care_completions')
-      .values({
-        alternative_title: completion.alternativeTitle,
-        completed_at: completion.completedAt,
-        completed_variant: completion.completedVariant,
-        created_by: actorUserId,
-        currency: completion.currency,
-        duration_minutes: completion.durationMinutes,
-        energy_after: completion.energyAfter,
-        energy_before: completion.energyBefore,
-        exercise_sets: JSON.stringify(completion.exerciseSets),
-        id: completion.id,
-        item_id: completion.itemId,
-        measurement_unit: completion.measurementUnit,
-        measurement_value: completion.measurementValue,
-        mood_after: completion.moodAfter,
-        mood_before: completion.moodBefore,
-        note: completion.note,
-        occurrence_id: completion.occurrenceId,
-        price: completion.price,
-        scheduled_for: completion.scheduledFor,
-        status: completion.status,
-        user_id: completion.userId,
-      })
-      .execute()
+  ): Promise<StoredSelfCareCompletionRecord> {
+    try {
+      const row = await executor
+        .insertInto('app.self_care_completions')
+        .values({
+          alternative_title: completion.alternativeTitle,
+          completed_at: completion.completedAt,
+          completed_variant: completion.completedVariant,
+          created_by: actorUserId,
+          currency: completion.currency,
+          duration_minutes: completion.durationMinutes,
+          energy_after: completion.energyAfter,
+          energy_before: completion.energyBefore,
+          exercise_sets: JSON.stringify(completion.exerciseSets),
+          id: completion.id,
+          item_id: completion.itemId,
+          measurement_unit: completion.measurementUnit,
+          measurement_value: completion.measurementValue,
+          mood_after: completion.moodAfter,
+          mood_before: completion.moodBefore,
+          note: completion.note,
+          occurrence_id: completion.occurrenceId,
+          price: completion.price,
+          scheduled_for: completion.scheduledFor,
+          status: completion.status,
+          user_id: completion.userId,
+        })
+        .returningAll()
+        .executeTakeFirstOrThrow()
+
+      return mapCompletionRow(row)
+    } catch (error) {
+      if (getDatabaseErrorCode(error) === '23505') {
+        throw new HttpError(
+          409,
+          'self_care_completion_id_conflict',
+          'The self-care completion identifier is already in use.',
+        )
+      }
+
+      throw error
+    }
   }
 
   private async updateOpenExerciseProgressCompletion(
@@ -2396,7 +2909,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       item: StoredSelfCareItemRecord
       scheduleRule: SelfCareScheduleRule | null
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const completionRows = await executor
       .selectFrom('app.self_care_completions')
       .selectAll()
@@ -2413,19 +2926,19 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
         scheduleRule: input.scheduleRule,
       })
     ) {
-      return
+      return false
     }
 
     await executor
       .updateTable('app.self_care_items')
       .set({
         is_active: false,
-        updated_at: sql`now()`,
-        version: sql`version + 1`,
+        updated_by: input.actorUserId,
       })
       .where('id', '=', input.item.id)
       .where('user_id', '=', input.actorUserId)
       .execute()
+    return true
   }
 
   private async upsertSettings(
@@ -2434,6 +2947,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     overrides: Partial<
       Pick<SelfCareSettings, 'gentleModeDate' | 'gentleModeEnabledToday'>
     > = {},
+    expectedVersion?: number,
   ) {
     const defaults = createDefaultSelfCareSettings({
       userId: context.actorUserId,
@@ -2441,56 +2955,81 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     await withWriteTransaction(
       this.db,
       context.auth,
-      (trx) =>
-        trx
-          .insertInto('app.self_care_settings')
-          .values({
-            currency: input.currency ?? defaults.currency,
-            default_reminder_tone: defaults.defaultReminderTone,
-            gentle_mode_date:
-              overrides.gentleModeDate ?? defaults.gentleModeDate,
-            gentle_mode_enabled_today:
-              overrides.gentleModeEnabledToday ??
-              defaults.gentleModeEnabledToday,
-            id: defaults.id,
-            quiet_hours_end: defaults.quietHoursEnd,
-            quiet_hours_start: defaults.quietHoursStart,
-            show_appointments_in_calendar:
-              input.showAppointmentsInCalendar ??
-              defaults.showAppointmentsInCalendar,
-            show_daily_rituals_in_calendar: false,
-            show_self_care_in_main_tasks:
-              input.showSelfCareInMainTasks ?? defaults.showSelfCareInMainTasks,
-            user_id: context.actorUserId,
-          })
-          .onConflict((conflict) =>
-            conflict.column('user_id').doUpdateSet({
-              ...(input.currency !== undefined
-                ? { currency: input.currency }
-                : {}),
-              ...(input.showAppointmentsInCalendar !== undefined
-                ? {
-                    show_appointments_in_calendar:
-                      input.showAppointmentsInCalendar,
-                  }
-                : {}),
-              ...(input.showSelfCareInMainTasks !== undefined
-                ? {
-                    show_self_care_in_main_tasks: input.showSelfCareInMainTasks,
-                  }
-                : {}),
-              ...(overrides.gentleModeDate !== undefined
-                ? { gentle_mode_date: overrides.gentleModeDate }
-                : {}),
-              ...(overrides.gentleModeEnabledToday !== undefined
-                ? {
-                    gentle_mode_enabled_today: overrides.gentleModeEnabledToday,
-                  }
-                : {}),
-              updated_at: sql`now()`,
-            }),
+      async (trx) => {
+        const values = {
+          currency: input.currency ?? defaults.currency,
+          default_reminder_tone: defaults.defaultReminderTone,
+          gentle_mode_date: overrides.gentleModeDate ?? defaults.gentleModeDate,
+          gentle_mode_enabled_today:
+            overrides.gentleModeEnabledToday ?? defaults.gentleModeEnabledToday,
+          id: defaults.id,
+          quiet_hours_end: defaults.quietHoursEnd,
+          quiet_hours_start: defaults.quietHoursStart,
+          show_appointments_in_calendar:
+            input.showAppointmentsInCalendar ??
+            defaults.showAppointmentsInCalendar,
+          show_daily_rituals_in_calendar: false,
+          show_self_care_in_main_tasks:
+            input.showSelfCareInMainTasks ?? defaults.showSelfCareInMainTasks,
+          user_id: context.actorUserId,
+        }
+        const updates = {
+          ...(input.currency !== undefined ? { currency: input.currency } : {}),
+          ...(input.showAppointmentsInCalendar !== undefined
+            ? {
+                show_appointments_in_calendar: input.showAppointmentsInCalendar,
+              }
+            : {}),
+          ...(input.showSelfCareInMainTasks !== undefined
+            ? {
+                show_self_care_in_main_tasks: input.showSelfCareInMainTasks,
+              }
+            : {}),
+          ...(overrides.gentleModeDate !== undefined
+            ? { gentle_mode_date: overrides.gentleModeDate }
+            : {}),
+          ...(overrides.gentleModeEnabledToday !== undefined
+            ? {
+                gentle_mode_enabled_today: overrides.gentleModeEnabledToday,
+              }
+            : {}),
+        }
+
+        if (expectedVersion !== undefined) {
+          await trx
+            .insertInto('app.self_care_settings')
+            .values(values)
+            .onConflict((conflict) => conflict.column('user_id').doNothing())
+            .execute()
+          const current = await trx
+            .selectFrom('app.self_care_settings')
+            .select(['id', 'version'])
+            .where('user_id', '=', context.actorUserId)
+            .forUpdate()
+            .executeTakeFirstOrThrow()
+          assertSelfCareVersion(
+            'settings',
+            current.id,
+            expectedVersion,
+            Number(current.version),
           )
-          .execute(),
+          await trx
+            .updateTable('app.self_care_settings')
+            .set(updates)
+            .where('id', '=', current.id)
+            .where('version', '=', expectedVersion)
+            .execute()
+          return
+        }
+
+        await trx
+          .insertInto('app.self_care_settings')
+          .values({ ...values, version: 2 })
+          .onConflict((conflict) =>
+            conflict.column('user_id').doUpdateSet(updates),
+          )
+          .execute()
+      },
       context.actorUserId,
     )
   }
@@ -2499,13 +3038,25 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     executor: DatabaseExecutor,
     userId: string,
     occurrenceId: string,
+    expectedItemId?: string,
   ) {
     const row = await executor
       .selectFrom('app.self_care_occurrences')
       .selectAll()
       .where('id', '=', occurrenceId)
       .where('user_id', '=', userId)
+      .$if(expectedItemId !== undefined, (query) =>
+        query.where('item_id', '=', expectedItemId!),
+      )
+      .forUpdate()
       .executeTakeFirst()
+    if (!row && expectedItemId !== undefined) {
+      throw new HttpError(
+        409,
+        'self_care_reschedule_item_conflict',
+        'The occurrence selected for rescheduling belongs to another self-care item.',
+      )
+    }
     if (!row)
       throw new HttpError(
         404,
@@ -2515,7 +3066,82 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
     return row
   }
 
+  private async loadOccurrenceWithActiveItemRowsForUpdate(
+    executor: DatabaseExecutor,
+    context: UpdateSelfCareItemCommand['context'],
+    occurrenceId: string,
+    expectedItemId?: string,
+  ) {
+    // All compound self-care writes lock the aggregate root first. The first
+    // read intentionally does not lock: item_id is immutable, and the
+    // occurrence is locked and revalidated immediately after the item.
+    const reference = await executor
+      .selectFrom('app.self_care_occurrences')
+      .select(['id', 'item_id'])
+      .where('id', '=', occurrenceId)
+      .where('user_id', '=', context.actorUserId)
+      .$if(expectedItemId !== undefined, (query) =>
+        query.where('item_id', '=', expectedItemId!),
+      )
+      .executeTakeFirst()
+
+    if (!reference) {
+      if (expectedItemId !== undefined) {
+        throw new HttpError(
+          409,
+          'self_care_reschedule_item_conflict',
+          'The occurrence selected for rescheduling belongs to another self-care item.',
+        )
+      }
+      throw new HttpError(
+        404,
+        'self_care_occurrence_not_found',
+        'Self-care occurrence not found.',
+      )
+    }
+
+    const itemRow = await this.loadActiveItemRow(
+      executor,
+      context,
+      reference.item_id,
+    )
+    const occurrenceRow = await this.loadOccurrenceRow(
+      executor,
+      context.actorUserId,
+      occurrenceId,
+      expectedItemId,
+    )
+
+    if (occurrenceRow.item_id !== itemRow.id) {
+      throw new HttpError(
+        409,
+        'self_care_occurrence_item_conflict',
+        'Self-care occurrence no longer belongs to the expected item.',
+      )
+    }
+
+    return { itemRow, occurrenceRow }
+  }
+
   private async loadActiveItemRow(
+    executor: DatabaseExecutor,
+    context: UpdateSelfCareItemCommand['context'],
+    itemId: string,
+  ) {
+    const row = await this.loadOwnedItemRowForUpdate(executor, context, itemId)
+
+    if (row.is_archived) {
+      throw new HttpError(
+        404,
+        'self_care_item_not_found',
+        'Self-care item not found.',
+      )
+    }
+
+    return row
+  }
+
+  private async loadOwnedItemRowForUpdate(
     executor: DatabaseExecutor,
     context: UpdateSelfCareItemCommand['context'],
     itemId: string,
@@ -2527,7 +3153,7 @@ export class PostgresSelfCareRepository implements SelfCareRepository {
       .where('workspace_id', '=', context.workspaceId)
       .where('user_id', '=', context.actorUserId)
       .where('deleted_at', 'is', null)
-      .where('is_archived', '=', false)
+      .forUpdate()
       .executeTakeFirst()
     if (!row)
       throw new HttpError(
@@ -2602,4 +3228,67 @@ function resolveSelfCareReminderTimeZone(
   } catch {
     return 'UTC'
   }
+}
+
+function assertSelfCareVersion(
+  entityType: string,
+  entityId: string,
+  expectedVersion: number | null | undefined,
+  actualVersion: number | null,
+): void {
+  if (expectedVersion === undefined || expectedVersion === actualVersion) {
+    return
+  }
+
+  throw new HttpError(
+    409,
+    'self_care_version_conflict',
+    'Self-care data was changed on the server.',
+    { actualVersion, entityId, entityType, expectedVersion },
+  )
+}
+
+function assertSelfCareOccurrenceOpen(occurrence: SelfCareOccurrence): void {
+  if (occurrence.status === 'scheduled' || occurrence.status === 'missed') {
+    return
+  }
+
+  throw new HttpError(
+    409,
+    'self_care_occurrence_closed',
+    'The self-care occurrence was already completed or changed.',
+    {
+      actualVersion: occurrence.version,
+      entityId: occurrence.id,
+      entityType: 'occurrence',
+    },
+  )
+}
+
+function assertRitualCompletionSteps(
+  itemId: string,
+  availableSteps: readonly Pick<SelfCareRitualStep, 'id'>[],
+  submittedSteps: readonly { stepId: string }[],
+): void {
+  const availableStepIds = new Set(availableSteps.map((step) => step.id))
+  const submittedStepIds = submittedSteps.map((step) => step.stepId)
+
+  if (new Set(submittedStepIds).size !== submittedStepIds.length) {
+    throw new HttpError(
+      400,
+      'self_care_ritual_completion_invalid_step',
+      'Self-care ritual completion contains a duplicate step.',
+    )
+  }
+
+  if (submittedStepIds.every((stepId) => availableStepIds.has(stepId))) {
+    return
+  }
+
+  throw new HttpError(
+    409,
+    'self_care_ritual_step_conflict',
+    'Self-care ritual steps changed before this completion was saved.',
+    { entityId: itemId, entityType: 'item' },
+  )
 }

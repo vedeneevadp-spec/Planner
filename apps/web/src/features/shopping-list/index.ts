@@ -1,4 +1,8 @@
-export { clearShoppingListOfflineWorkspaceData } from './lib/offline-shopping-list-store'
+export {
+  clearShoppingListOfflineWorkspaceData,
+  SHOPPING_LIST_OFFLINE_DATABASE_NAME,
+  SHOPPING_LIST_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
+} from './lib/offline-shopping-list-store'
 export {
   DEFAULT_SHOPPING_FILTERS,
   getShoppingFiltersFromSearchParams,

@@ -6,6 +6,8 @@ import {
   type AppRouteId,
   getVisibleAppRouteDefinitions,
 } from '@/shared/config/routes'
+import { AsyncLoadErrorBoundary } from '@/shared/ui/AsyncLoadErrorBoundary'
+import { PageStateView } from '@/shared/ui/PageState'
 
 import styles from './AppRouter.module.css'
 
@@ -134,24 +136,59 @@ const routeElements = {
 
 export function AppRouter() {
   const { data: session } = usePlannerSession()
+  const location = useLocation()
   const workspaceKind = session?.workspace.kind ?? 'personal'
   const visibleRoutes = getVisibleAppRouteDefinitions(workspaceKind)
 
   return (
-    <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/" element={<Navigate replace to="/today" />} />
-        <Route path="/timeline" element={<TimelineRedirect />} />
-        {visibleRoutes.map((route) => (
-          <Route
-            key={route.id}
-            path={route.path}
-            element={routeElements[route.id]}
-          />
-        ))}
-        <Route path="*" element={<Navigate replace to="/today" />} />
-      </Routes>
-    </Suspense>
+    <AsyncLoadErrorBoundary
+      fallback={<RouteLoadError />}
+      onError={(error) => {
+        console.warn('Failed to load a planner route.', error)
+      }}
+      resetKey={`${location.pathname}${location.search}`}
+    >
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/" element={<Navigate replace to="/today" />} />
+          <Route path="/timeline" element={<TimelineRedirect />} />
+          {visibleRoutes.map((route) => (
+            <Route
+              key={route.id}
+              path={route.path}
+              element={routeElements[route.id]}
+            />
+          ))}
+          <Route path="*" element={<Navigate replace to="/today" />} />
+        </Routes>
+      </Suspense>
+    </AsyncLoadErrorBoundary>
+  )
+}
+
+function RouteLoadError() {
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+
+  return (
+    <PageStateView
+      action={{
+        label: 'Повторить',
+        onClick: () => {
+          window.location.reload()
+        },
+      }}
+      description={
+        isOffline
+          ? 'Этот раздел ещё не сохранён на устройстве. Подключитесь к интернету и повторите.'
+          : 'Обновите страницу. Если ошибка повторится, попробуйте ещё раз позже.'
+      }
+      kind={isOffline ? 'offline' : 'error'}
+      title={
+        isOffline
+          ? 'Раздел не загрузился без сети'
+          : 'Не удалось открыть раздел'
+      }
+    />
   )
 }
 

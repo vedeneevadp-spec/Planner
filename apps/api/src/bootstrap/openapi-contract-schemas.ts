@@ -187,6 +187,8 @@ export function createCleaningContractSchemas(): Record<
     CleaningTaskActionInput: objectSchema(
       {
         date: stringSchema(),
+        expectedStateVersion: positiveIntegerSchema(),
+        expectedTaskVersion: positiveIntegerSchema(),
         mode: {
           ...enumSchema(cleaningPostponeModeSchema.options),
           default: 'next_cycle',
@@ -196,6 +198,7 @@ export function createCleaningContractSchemas(): Record<
           maxLength: 500,
           type: 'string',
         },
+        occurredAt: dateTimeSchema(),
         targetDate: {
           ...nullableStringSchema(),
           default: null,
@@ -207,6 +210,10 @@ export function createCleaningContractSchemas(): Record<
       historyItem: ref('CleaningTaskHistoryItemRecord'),
       state: ref('CleaningTaskStateRecord'),
     }),
+    CleaningTaskDeleteInput: objectSchema(
+      { expectedVersion: positiveIntegerSchema() },
+      [],
+    ),
     CleaningTaskHistoryItemRecord: objectSchema({
       action: enumSchema(cleaningTaskHistoryActionSchema.options),
       createdAt: stringSchema(),
@@ -331,6 +338,20 @@ export function createCleaningContractSchemas(): Record<
       version: positiveIntegerSchema(),
       workspaceId: stringSchema(),
     }),
+    CleaningZoneDeleteInput: objectSchema(
+      {
+        expectedTaskVersions: {
+          items: objectSchema({
+            taskId: stringSchema(),
+            version: positiveIntegerSchema(),
+          }),
+          maxItems: 200,
+          type: 'array',
+        },
+        expectedVersion: positiveIntegerSchema(),
+      },
+      [],
+    ),
     CleaningZoneUpdateInput: objectSchema(
       {
         dayOfWeek: integerRangeSchema(1, 7),
@@ -440,6 +461,26 @@ export function createCleaningContractSchemas(): Record<
       },
       ['dayOfWeek', 'title'],
     ),
+    CleaningSeedInput: objectSchema({
+      zones: {
+        items: objectSchema({
+          tasks: {
+            items: {
+              allOf: [ref('NewCleaningTaskInput')],
+              required: ['id', 'zoneId'],
+            },
+            type: 'array',
+          },
+          zone: {
+            allOf: [ref('NewCleaningZoneInput')],
+            required: ['id'],
+          },
+        }),
+        maxItems: 7,
+        minItems: 1,
+        type: 'array',
+      },
+    }),
   }
 }
 
@@ -1004,7 +1045,9 @@ export function createSelfCareContractSchemas(): Record<
       price: nullableNonnegativeNumberSchema(),
       scheduledFor: nullableStringSchema(),
       status: enumSchema(selfCareCompletionStatusSchema.options),
+      updatedAt: stringSchema(),
       userId: stringSchema(),
+      version: positiveIntegerSchema(),
     }),
     SelfCareCompletionInput: objectSchema(
       selfCareCompletionInputProperties(),
@@ -1088,6 +1131,7 @@ export function createSelfCareContractSchemas(): Record<
       stress: nullableIntegerRangeSchema(1, 5),
       updatedAt: stringSchema(),
       userId: stringSchema(),
+      version: positiveIntegerSchema(),
     }),
     SelfCareDailyStateInput: objectSchema(
       {
@@ -1401,6 +1445,7 @@ export function createSelfCareContractSchemas(): Record<
       },
       updatedAt: stringSchema(),
       userId: stringSchema(),
+      version: positiveIntegerSchema(),
     }),
     SelfCareMinimumItemInput: objectSchema(
       {
@@ -1457,6 +1502,7 @@ export function createSelfCareContractSchemas(): Record<
       status: enumSchema(selfCareOccurrenceStatusSchema.options),
       updatedAt: stringSchema(),
       userId: stringSchema(),
+      version: positiveIntegerSchema(),
     }),
     SelfCareOccurrenceListResponse: arrayOfRef('SelfCareOccurrence'),
     SelfCareOccurrenceMoveInput: objectSchema({
@@ -1480,6 +1526,61 @@ export function createSelfCareContractSchemas(): Record<
       },
       [],
     ),
+    SelfCareOfflineCommand: selfCareOfflineCommandOpenApiSchema(),
+    SelfCareOfflineCommandRequest: objectSchema(
+      {
+        clientTimeZone: {
+          description:
+            'IANA timezone captured when the offline action was created.',
+          example: 'Europe/Samara',
+          minLength: 1,
+          type: 'string',
+        },
+        command: ref('SelfCareOfflineCommand'),
+        operationId: uuidSchema(),
+      },
+      ['command', 'operationId'],
+    ),
+    SelfCareOfflineCommandResponse: objectSchema({
+      operationId: uuidSchema(),
+      replayed: booleanSchema(),
+      result: ref('SelfCareOfflineCommandResult'),
+    }),
+    SelfCareOfflineCommandResult: selfCareOfflineCommandResultOpenApiSchema(),
+    SelfCareOfflineCompletionInput: objectSchema(
+      {
+        ...selfCareCompletionInputProperties(),
+        completedAt: dateTimeSchema(),
+      },
+      ['completedAt'],
+    ),
+    SelfCareOfflineCreateItemInput: objectSchema(
+      {
+        ...selfCareItemInputProperties(),
+        id: uuidSchema(),
+      },
+      ['category', 'id', 'title', 'type'],
+    ),
+    SelfCareOfflineInitialSchedule: objectSchema({
+      input: ref('SelfCareItemScheduleInput'),
+      occurrenceId: uuidSchema(),
+    }),
+    SelfCareOfflineItemPatch: objectSchema(selfCareItemInputProperties(), []),
+    SelfCareOfflineRitualCompletionInput: objectSchema(
+      {
+        ...selfCareCompletionInputProperties(),
+        completedAt: dateTimeSchema(),
+        steps: {
+          items: objectSchema({
+            isDone: booleanSchema(),
+            stepId: stringSchema(),
+          }),
+          type: 'array',
+        },
+      },
+      ['completedAt'],
+    ),
+    SelfCareOfflineScheduleChange: selfCareOfflineScheduleChangeOpenApiSchema(),
     SelfCarePlanResponse: objectSchema({
       courses: arrayOfRef('SelfCareTodayItem'),
       from: stringSchema(),
@@ -1560,6 +1661,7 @@ export function createSelfCareContractSchemas(): Record<
       },
       occurrenceId: nullableStringSchema(),
       stepIds: stringArraySchema(),
+      version: positiveIntegerSchema(),
     }),
     SelfCareRitualStepDraftInput: objectSchema({
       date: {
@@ -1680,6 +1782,7 @@ export function createSelfCareContractSchemas(): Record<
       showSelfCareInMainTasks: booleanSchema(),
       updatedAt: stringSchema(),
       userId: stringSchema(),
+      version: positiveIntegerSchema(),
     }),
     SelfCareSettingsResponse: objectSchema({
       minimumItems: arrayOfRef('SelfCareMinimumItem'),
@@ -1737,6 +1840,234 @@ export function createSelfCareContractSchemas(): Record<
   }
 }
 
+function selfCareOfflineCommandOpenApiSchema(): OpenAPIV3.SchemaObject {
+  const expectedVersion = positiveIntegerSchema()
+  const actionAt = dateTimeSchema()
+  const completionId = uuidSchema()
+
+  return {
+    discriminator: { propertyName: 'type' },
+    oneOf: [
+      objectSchema(
+        {
+          initialSchedule: ref('SelfCareOfflineInitialSchedule'),
+          input: ref('SelfCareOfflineCreateItemInput'),
+          type: enumSchema(['create_item']),
+        },
+        ['input', 'type'],
+      ),
+      objectSchema(
+        {
+          initialSchedule: ref('SelfCareOfflineInitialSchedule'),
+          itemId: uuidSchema(),
+          overrides: ref('SelfCareOfflineItemPatch'),
+          templateId: stringSchema(),
+          type: enumSchema(['create_item_from_template']),
+        },
+        ['itemId', 'templateId', 'type'],
+      ),
+      objectSchema(
+        {
+          expectedVersion,
+          input: ref('SelfCareOfflineItemPatch'),
+          itemId: stringSchema(),
+          scheduleChange: ref('SelfCareOfflineScheduleChange'),
+          type: enumSchema(['update_item']),
+        },
+        ['expectedVersion', 'input', 'itemId', 'type'],
+      ),
+      objectSchema({
+        expectedVersion,
+        itemId: stringSchema(),
+        type: enumSchema(['archive_item']),
+      }),
+      {
+        ...objectSchema(
+          {
+            existingOccurrenceId: {
+              description:
+                'Existing occurrence to update in place. Must be paired with expectedOccurrenceVersion.',
+              minLength: 1,
+              type: 'string',
+            },
+            expectedOccurrenceVersion: {
+              ...expectedVersion,
+              description:
+                'Optimistic version of existingOccurrenceId for an in-place same-date update.',
+            },
+            expectedVersion,
+            input: ref('SelfCareItemScheduleInput'),
+            itemId: stringSchema(),
+            occurrenceId: {
+              ...uuidSchema(),
+              description:
+                'Client-generated UUIDv7 required for a new occurrence; omitted for an in-place update.',
+            },
+            type: enumSchema(['schedule_item']),
+          },
+          ['expectedVersion', 'input', 'itemId', 'type'],
+        ),
+        oneOf: [
+          {
+            not: {
+              anyOf: [
+                { required: ['existingOccurrenceId'] },
+                { required: ['expectedOccurrenceVersion'] },
+              ],
+            },
+            required: ['occurrenceId'],
+          },
+          {
+            required: ['existingOccurrenceId', 'expectedOccurrenceVersion'],
+          },
+        ],
+      },
+      objectSchema({
+        actedAt: actionAt,
+        completionId,
+        expectedVersion,
+        input: ref('SelfCareOccurrenceMoveInput'),
+        occurrenceId: stringSchema(),
+        replacementInput: ref('SelfCareItemScheduleInput'),
+        replacementOccurrenceId: uuidSchema(),
+        type: enumSchema(['move_occurrence']),
+      }),
+      objectSchema({
+        actedAt: actionAt,
+        completionId,
+        expectedVersion,
+        occurrenceId: stringSchema(),
+        type: enumSchema(['cancel_occurrence']),
+      }),
+      objectSchema({
+        actedAt: actionAt,
+        completionId,
+        expectedVersion,
+        input: ref('SelfCareOccurrenceSkipInput'),
+        occurrenceId: stringSchema(),
+        type: enumSchema(['skip_occurrence']),
+      }),
+      objectSchema({
+        completionId,
+        expectedVersion,
+        input: ref('SelfCareOfflineRitualCompletionInput'),
+        occurrenceId: stringSchema(),
+        type: enumSchema(['complete_occurrence']),
+      }),
+      objectSchema({
+        completionId,
+        expectedVersion,
+        input: ref('SelfCareOfflineRitualCompletionInput'),
+        itemId: stringSchema(),
+        type: enumSchema(['complete_item_now']),
+      }),
+      objectSchema({
+        completionId,
+        expectedVersion,
+        input: ref('SelfCareOfflineCompletionInput'),
+        itemId: stringSchema(),
+        type: enumSchema(['complete_flexible_goal']),
+      }),
+      objectSchema({
+        completionId,
+        expectedVersion,
+        input: ref('SelfCareOfflineCompletionInput'),
+        itemId: stringSchema(),
+        type: enumSchema(['complete_course_session']),
+      }),
+      objectSchema({
+        completionId: stringSchema(),
+        expectedVersion,
+        input: ref('SelfCareCompletionUpdateInput'),
+        type: enumSchema(['update_completion']),
+      }),
+      objectSchema({
+        expectedVersion,
+        input: ref('SelfCareSettingsUpdateInput'),
+        type: enumSchema(['update_settings']),
+      }),
+      objectSchema({
+        expectedVersion: nullablePositiveIntegerSchema(),
+        input: ref('SelfCareRitualStepDraftInput'),
+        type: enumSchema(['upsert_ritual_step_draft']),
+      }),
+    ],
+  }
+}
+
+function selfCareOfflineScheduleChangeOpenApiSchema(): OpenAPIV3.SchemaObject {
+  return {
+    discriminator: { propertyName: 'type' },
+    oneOf: [
+      objectSchema({
+        input: ref('SelfCareItemScheduleInput'),
+        occurrenceId: uuidSchema(),
+        type: enumSchema(['schedule']),
+      }),
+      objectSchema({
+        expectedVersion: positiveIntegerSchema(),
+        input: ref('SelfCareItemScheduleInput'),
+        occurrenceId: stringSchema(),
+        type: enumSchema(['update_schedule']),
+      }),
+      objectSchema({
+        actedAt: dateTimeSchema(),
+        completionId: uuidSchema(),
+        expectedVersion: positiveIntegerSchema(),
+        input: ref('SelfCareOccurrenceMoveInput'),
+        occurrenceId: stringSchema(),
+        replacementInput: ref('SelfCareItemScheduleInput'),
+        replacementOccurrenceId: uuidSchema(),
+        type: enumSchema(['reschedule']),
+      }),
+    ],
+  }
+}
+
+function selfCareOfflineCommandResultOpenApiSchema(): OpenAPIV3.SchemaObject {
+  return {
+    discriminator: { propertyName: 'kind' },
+    oneOf: [
+      objectSchema(
+        {
+          item: ref('SelfCareItem'),
+          kind: enumSchema(['item']),
+          occurrence: nullableRef('SelfCareOccurrence'),
+          replacement: ref('SelfCareOccurrence'),
+        },
+        ['item', 'kind'],
+      ),
+      objectSchema({
+        kind: enumSchema(['occurrence']),
+        occurrence: ref('SelfCareOccurrence'),
+      }),
+      objectSchema({
+        kind: enumSchema(['occurrence_rescheduled']),
+        occurrence: ref('SelfCareOccurrence'),
+        replacement: ref('SelfCareOccurrence'),
+      }),
+      objectSchema(
+        {
+          completion: ref('SelfCareCompletion'),
+          courseDetails: nullableRef('SelfCareCourseDetails'),
+          item: ref('SelfCareItem'),
+          kind: enumSchema(['completion']),
+          scheduleRule: nullableRef('SelfCareScheduleRule'),
+        },
+        ['completion', 'kind'],
+      ),
+      objectSchema({
+        kind: enumSchema(['settings']),
+        value: ref('SelfCareSettingsResponse'),
+      }),
+      objectSchema({
+        kind: enumSchema(['ritual_step_drafts']),
+        value: ref('SelfCareRitualStepDraftListResponse'),
+      }),
+    ],
+  }
+}
+
 function objectSchema(
   properties: SchemaProperties,
   required = Object.keys(properties),
@@ -1752,6 +2083,13 @@ function objectSchema(
   }
 
   return schema
+}
+
+function dateTimeSchema(): OpenAPIV3.SchemaObject {
+  return {
+    format: 'date-time',
+    type: 'string',
+  }
 }
 
 function genericJsonSchema(): OpenAPIV3.SchemaObject {

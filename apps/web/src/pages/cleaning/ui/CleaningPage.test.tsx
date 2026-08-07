@@ -19,6 +19,18 @@ import { CleaningPage, CleaningSettingsPage } from './CleaningPage'
 import styles from './CleaningPage.module.css'
 import { TaskSection } from './CleaningPage.sections'
 
+interface CleaningOfflineQueueStub {
+  canQueueWrites: boolean
+  canWriteFromSession: boolean
+  conflicted: number
+  discardConflicts: ReturnType<typeof vi.fn>
+  failed: number
+  isDraining: boolean
+  pending: number
+  refreshAndRetryConflicts: ReturnType<typeof vi.fn>
+  retry: ReturnType<typeof vi.fn>
+}
+
 const mocks = vi.hoisted(() => ({
   completeTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   createTask: vi.fn<(input: unknown) => Promise<unknown>>(),
@@ -26,21 +38,38 @@ const mocks = vi.hoisted(() => ({
   postponeTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   removeTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   removeZone: vi.fn<(input: unknown) => Promise<unknown>>(),
+  planRefetch: vi.fn<() => Promise<unknown>>(),
+  retrySession: vi.fn<() => Promise<unknown>>(),
+  seed: vi.fn<(input: unknown) => Promise<unknown>>(),
   skipTask: vi.fn<(input: unknown) => Promise<unknown>>(),
+  todayRefetch: vi.fn<() => Promise<unknown>>(),
   updateTask: vi.fn<(input: unknown) => Promise<unknown>>(),
   updateZone: vi.fn<(input: unknown) => Promise<unknown>>(),
   useCleaningPlan: vi.fn<
     () => {
       data: CleaningListResponse | undefined
       error: Error | null
+      isCacheHydrating?: boolean
       isLoading: boolean
+      lastSuccessfulSyncAt?: string | null
+      offlineQueue?: CleaningOfflineQueueStub
+      readiness?: ReturnType<typeof createReadiness>
+      refetch?: () => Promise<unknown>
+      retrySession?: () => Promise<unknown>
+      sessionError?: Error | null
     }
   >(),
   useCleaningToday: vi.fn<
     () => {
-      data: CleaningTodayResponse | null
-      error: null
+      data: CleaningTodayResponse | null | undefined
+      error: Error | null
+      isCacheHydrating?: boolean
       isLoading: boolean
+      lastSuccessfulSyncAt?: string | null
+      readiness?: ReturnType<typeof createReadiness>
+      refetch?: () => Promise<unknown>
+      retrySession?: () => Promise<unknown>
+      sessionError?: Error | null
     }
   >(),
 }))
@@ -58,6 +87,20 @@ vi.mock('@/features/cleaning', async (importOriginal) => {
     }
   }
 
+  function createOfflineQueueStub() {
+    return {
+      canQueueWrites: true,
+      canWriteFromSession: true,
+      conflicted: 0,
+      discardConflicts: vi.fn(),
+      failed: 0,
+      isDraining: false,
+      pending: 0,
+      refreshAndRetryConflicts: vi.fn(),
+      retry: vi.fn(),
+    }
+  }
+
   return {
     ...actual,
     getCleaningErrorMessage: (error: unknown) =>
@@ -66,7 +109,10 @@ vi.mock('@/features/cleaning', async (importOriginal) => {
         : error instanceof Error
           ? error.message
           : 'Не удалось сохранить уборку.',
-    useCleaningPlan: () => mocks.useCleaningPlan(),
+    useCleaningPlan: () => ({
+      offlineQueue: createOfflineQueueStub(),
+      ...mocks.useCleaningPlan(),
+    }),
     useCleaningToday: () => mocks.useCleaningToday(),
     useCompleteCleaningTask: () => createMutationStub(mocks.completeTask),
     useCreateCleaningTask: () => createMutationStub(mocks.createTask),
@@ -74,6 +120,7 @@ vi.mock('@/features/cleaning', async (importOriginal) => {
     usePostponeCleaningTask: () => createMutationStub(mocks.postponeTask),
     useRemoveCleaningTask: () => createMutationStub(mocks.removeTask),
     useRemoveCleaningZone: () => createMutationStub(mocks.removeZone),
+    useSeedCleaningTemplates: () => createMutationStub(mocks.seed),
     useSkipCleaningTask: () => createMutationStub(mocks.skipTask),
     useUpdateCleaningTask: () => createMutationStub(mocks.updateTask),
     useUpdateCleaningZone: () => createMutationStub(mocks.updateZone),
@@ -259,6 +306,56 @@ function renderCleaningPage(initialEntry = '/cleaning') {
   )
 }
 
+function createReadiness(
+  overrides: Partial<{
+    canReadCachedData: boolean
+    canRenderAppContent: boolean
+    canUseProtectedApi: boolean
+    canWriteProtectedData: boolean
+    reason:
+      | 'auth_deferred'
+      | 'auth_restoring'
+      | 'no_session'
+      | 'planner_error'
+      | 'planner_pending'
+      | 'ready'
+      | 'unauthorized'
+    status:
+      | 'blockedAuth'
+      | 'offlineWithCache'
+      | 'ready'
+      | 'restoringWithCache'
+      | 'serverError'
+  }> = {},
+) {
+  return {
+    canReadCachedData: true,
+    canRenderAppContent: true,
+    canUseProtectedApi: true,
+    canWriteProtectedData: true,
+    reason: 'ready' as const,
+    status: 'ready' as const,
+    ...overrides,
+  }
+}
+
+function createOfflineQueueStub(
+  overrides: Partial<CleaningOfflineQueueStub> = {},
+): CleaningOfflineQueueStub {
+  return {
+    canQueueWrites: true,
+    canWriteFromSession: true,
+    conflicted: 0,
+    discardConflicts: vi.fn(),
+    failed: 0,
+    isDraining: false,
+    pending: 0,
+    refreshAndRetryConflicts: vi.fn(),
+    retry: vi.fn(),
+    ...overrides,
+  }
+}
+
 function expectNextCycleActionCall(action: unknown) {
   if (typeof action !== 'object' || action === null) {
     throw new Error('Cleaning action call was not an object.')
@@ -326,6 +423,7 @@ describe('CleaningSettingsPage', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it('closes zone editing after saving zone settings', async () => {
@@ -514,11 +612,91 @@ describe('CleaningSettingsPage', () => {
     ).toBeVisible()
     expect(screen.getByRole('button', { name: 'Добавить' })).toBeVisible()
   })
+
+  it('keeps cached settings editable through the offline queue after a connection failure', () => {
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(),
+      error: new TypeError('Failed to fetch'),
+      isLoading: false,
+      readiness: createReadiness(),
+      refetch: mocks.planRefetch,
+      retrySession: mocks.retrySession,
+    })
+
+    renderCleaningSettingsPage()
+
+    expect(
+      screen.getByText('Настройки открыты из сохранённых данных'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Редактировать зону' }),
+    ).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'Добавить задачу' }),
+    ).toBeEnabled()
+  })
+
+  it('keeps cached settings read-only offline when durable storage is unavailable', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(),
+      error: null,
+      isLoading: false,
+      offlineQueue: createOfflineQueueStub({ canQueueWrites: false }),
+      readiness: createReadiness(),
+      refetch: mocks.planRefetch,
+      retrySession: mocks.retrySession,
+    })
+
+    renderCleaningSettingsPage()
+
+    expect(
+      screen.getByRole('button', { name: 'Редактировать зону' }),
+    ).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: 'Добавить задачу' }),
+    ).toBeDisabled()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Для изменений нужно восстановить доступ',
+    )
+    expect(screen.getByRole('status')).not.toHaveTextContent(
+      'Изменения сохранятся на этом устройстве',
+    )
+  })
+
+  it('states when the last settings sync time is unknown offline', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    mocks.useCleaningPlan.mockReturnValue({
+      data: undefined,
+      error: null,
+      isCacheHydrating: false,
+      isLoading: true,
+      lastSuccessfulSyncAt: null,
+      readiness: createReadiness({
+        canUseProtectedApi: false,
+        canWriteProtectedData: false,
+        reason: 'planner_pending',
+        status: 'blockedAuth',
+      }),
+    })
+
+    renderCleaningSettingsPage()
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Настройки доступны после подключения',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.getByText('Время последней синхронизации неизвестно'),
+    ).toBeVisible()
+  })
 })
 
 describe('TaskSection', () => {
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it('hides volume, energy and assignee metadata on cleaning cards', () => {
@@ -549,7 +727,10 @@ describe('CleaningPage', () => {
     mocks.createTask.mockResolvedValue(undefined)
     mocks.createZone.mockResolvedValue(createZone())
     mocks.postponeTask.mockResolvedValue(undefined)
+    mocks.planRefetch.mockResolvedValue(undefined)
+    mocks.retrySession.mockResolvedValue(undefined)
     mocks.skipTask.mockResolvedValue(undefined)
+    mocks.todayRefetch.mockResolvedValue(undefined)
     mocks.useCleaningPlan.mockReturnValue({
       data: createEmptyPlan(),
       error: null,
@@ -564,6 +745,311 @@ describe('CleaningPage', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
+  })
+
+  it('shows a stable skeleton while both cleaning read models are loading', () => {
+    mocks.useCleaningPlan.mockReturnValue({
+      data: undefined,
+      error: null,
+      isLoading: true,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: undefined,
+      error: null,
+      isLoading: true,
+    })
+
+    renderCleaningPage()
+
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+    expect(
+      screen.queryByText(/Восстанавливаем подключение/i),
+    ).not.toBeInTheDocument()
+  })
+
+  it('checks the local cache before declaring a cold start offline', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    const restoringReadiness = createReadiness({
+      canUseProtectedApi: false,
+      canWriteProtectedData: false,
+      reason: 'planner_pending',
+      status: 'blockedAuth',
+    })
+    mocks.useCleaningPlan.mockReturnValue({
+      data: undefined,
+      error: null,
+      isCacheHydrating: true,
+      isLoading: true,
+      readiness: restoringReadiness,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: undefined,
+      error: null,
+      isCacheHydrating: true,
+      isLoading: true,
+      readiness: restoringReadiness,
+    })
+
+    const view = renderCleaningPage()
+
+    expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Уборка доступна после подключения',
+      }),
+    ).not.toBeInTheDocument()
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: undefined,
+      error: null,
+      isCacheHydrating: false,
+      isLoading: true,
+      readiness: restoringReadiness,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: undefined,
+      error: null,
+      isCacheHydrating: false,
+      isLoading: true,
+      readiness: restoringReadiness,
+    })
+    view.rerender(
+      <MemoryRouter initialEntries={['/cleaning']}>
+        <CleaningPage />
+      </MemoryRouter>,
+    )
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Уборка доступна после подключения',
+      }),
+    ).toBeVisible()
+  })
+
+  it('shows a load error with a working retry action', async () => {
+    mocks.useCleaningPlan.mockReturnValue({
+      data: undefined,
+      error: new Error('Сервис временно недоступен.'),
+      isLoading: false,
+      readiness: createReadiness(),
+      refetch: mocks.planRefetch,
+      retrySession: mocks.retrySession,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: undefined,
+      error: null,
+      isLoading: false,
+      readiness: createReadiness(),
+      refetch: mocks.todayRefetch,
+      retrySession: mocks.retrySession,
+    })
+
+    renderCleaningPage()
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Не удалось загрузить уборку',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+
+    await waitFor(() => {
+      expect(mocks.planRefetch).toHaveBeenCalledTimes(1)
+      expect(mocks.todayRefetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('keeps cached cleaning visible offline with the last server sync time', () => {
+    const offlineReadiness = createReadiness({
+      canUseProtectedApi: false,
+      canWriteProtectedData: false,
+      reason: 'planner_error',
+      status: 'offlineWithCache',
+    })
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(),
+      error: null,
+      isLoading: false,
+      lastSuccessfulSyncAt: '2026-08-06T08:30:00.000Z',
+      readiness: offlineReadiness,
+      refetch: mocks.planRefetch,
+      retrySession: mocks.retrySession,
+      sessionError: new TypeError('Failed to fetch'),
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse(),
+      error: null,
+      isLoading: false,
+      lastSuccessfulSyncAt: '2026-08-06T08:31:00.000Z',
+      readiness: offlineReadiness,
+      refetch: mocks.todayRefetch,
+      retrySession: mocks.retrySession,
+      sessionError: new TypeError('Failed to fetch'),
+    })
+
+    renderCleaningPage()
+
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Работаем с сохранёнными данными',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Последняя синхронизация:',
+    )
+    expect(screen.getByText('Комната Кирилла')).toBeVisible()
+  })
+
+  it('keeps cached cleaning actions available through the offline queue after a connection failure', () => {
+    const zone = createZone()
+    const item = createCleaningItem(zone)
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlanWithItems(zone, [item]),
+      error: new TypeError('Failed to fetch'),
+      isLoading: false,
+      readiness: createReadiness(),
+      refetch: mocks.planRefetch,
+      retrySession: mocks.retrySession,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone, [item]),
+      error: null,
+      isLoading: false,
+      readiness: createReadiness(),
+      refetch: mocks.todayRefetch,
+      retrySession: mocks.retrySession,
+    })
+
+    renderCleaningPage()
+
+    expect(screen.getByText('Работаем с сохранёнными данными')).toBeVisible()
+    expect(
+      screen.getByRole('button', {
+        name: 'Отметить «Протереть пол» выполненной',
+      }),
+    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Отложить' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Пропустить' })).toBeEnabled()
+  })
+
+  it('reacts to browser offline events and keeps durable write actions available', () => {
+    let isOnline = true
+    vi.spyOn(window.navigator, 'onLine', 'get').mockImplementation(
+      () => isOnline,
+    )
+    renderCleaningPage()
+
+    expect(
+      screen.getByRole('button', { name: 'Добавить базовый набор' }),
+    ).toBeVisible()
+
+    isOnline = false
+    fireEvent(window, new Event('offline'))
+
+    expect(screen.getByText('Работаем с сохранёнными данными')).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Добавить базовый набор' }),
+    ).toBeEnabled()
+  })
+
+  it('keeps a previously failed queued change visible after going offline', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createEmptyPlan(),
+      error: null,
+      isLoading: false,
+      offlineQueue: createOfflineQueueStub({ failed: 1, pending: 1 }),
+      readiness: createReadiness(),
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: null,
+      error: null,
+      isLoading: false,
+      readiness: createReadiness(),
+    })
+
+    renderCleaningPage()
+
+    expect(screen.getByText('Изменения сохранены на устройстве')).toBeVisible()
+    expect(
+      screen.getByText(
+        '2 изменения будут отправлены после восстановления связи.',
+      ),
+    ).toBeVisible()
+  })
+
+  it('does not promise or enable offline writes when durable storage is unavailable', () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createEmptyPlan(),
+      error: null,
+      isLoading: false,
+      offlineQueue: createOfflineQueueStub({ canQueueWrites: false }),
+      readiness: createReadiness(),
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: null,
+      error: null,
+      isLoading: false,
+      readiness: createReadiness(),
+    })
+
+    renderCleaningPage()
+
+    expect(
+      screen.queryByRole('button', { name: 'Добавить базовый набор' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Показываем сохранённые данные. Для изменений нужно восстановить доступ.',
+      ),
+    ).toBeVisible()
+    expect(
+      screen.queryByText(/Изменения сохранятся на этом устройстве/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('does not label a partial page cache with a full-page sync time', () => {
+    const offlineReadiness = createReadiness({
+      canUseProtectedApi: false,
+      canWriteProtectedData: false,
+      reason: 'planner_error',
+      status: 'offlineWithCache',
+    })
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(),
+      error: null,
+      isLoading: false,
+      lastSuccessfulSyncAt: '2026-08-06T08:30:00.000Z',
+      readiness: offlineReadiness,
+      refetch: mocks.planRefetch,
+      retrySession: mocks.retrySession,
+      sessionError: new TypeError('Failed to fetch'),
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: undefined,
+      error: null,
+      isLoading: false,
+      lastSuccessfulSyncAt: null,
+      readiness: offlineReadiness,
+      refetch: mocks.todayRefetch,
+      retrySession: mocks.retrySession,
+      sessionError: new TypeError('Failed to fetch'),
+    })
+
+    renderCleaningPage()
+
+    expect(
+      screen.getByRole('heading', {
+        name: 'Уборка доступна после подключения',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.queryByText(/Последняя синхронизация:/),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText('Время последней синхронизации неизвестно'),
+    ).toBeVisible()
   })
 
   it('keeps the empty cleaning seed action inside the empty state card', () => {
@@ -575,6 +1061,72 @@ describe('CleaningPage', () => {
     expect(
       screen.getByRole('button', { name: 'Добавить базовый набор' }),
     ).toBeVisible()
+  })
+
+  it('keeps a completely empty cleaning page focused on one next action', () => {
+    const emptyToday = createTodayResponse()
+    mocks.useCleaningToday.mockReturnValue({
+      data: {
+        ...emptyToday,
+        summary: { ...emptyToday.summary, activeZoneCount: 0 },
+        zones: [],
+      },
+      error: null,
+      isLoading: false,
+    })
+
+    renderCleaningPage()
+
+    const emptyState = screen
+      .getByRole('heading', { name: 'Зоны ещё не настроены' })
+      .closest<HTMLElement>('[role="status"]')
+
+    if (!emptyState) {
+      throw new Error('Cleaning empty state was not found.')
+    }
+
+    expect(
+      within(emptyState).getByRole('button', {
+        name: 'Добавить базовый набор',
+      }),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole('heading', { name: 'Прочая уборка' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Отложенные задачи' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Сезонные' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('disables the empty-state action while the base plan is being added', async () => {
+    let resolveSeed!: (plan: CleaningListResponse) => void
+    mocks.seed.mockReturnValueOnce(
+      new Promise<CleaningListResponse>((resolve) => {
+        resolveSeed = resolve
+      }),
+    )
+    renderCleaningPage()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Добавить базовый набор' }),
+    )
+
+    const busyAction = await screen.findByRole('button', {
+      name: 'Добавляем...',
+    })
+    expect(busyAction).toBeDisabled()
+    expect(busyAction).toHaveAttribute('aria-busy', 'true')
+
+    resolveSeed(createPlan())
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Добавить базовый набор' }),
+      ).toBeEnabled()
+    })
   })
 
   it('does not show an empty setup state while the cleaning plan is unavailable', () => {

@@ -12,7 +12,18 @@ export {
   getCleaningFocusModeFromSearchParams,
 } from './lib/cleaning-focus-query'
 export {
+  queueCleaningTaskCompletion,
+  type QueueCleaningTaskCompletionInput,
+  type QueueCleaningTaskCompletionResult,
+} from './lib/cleaning-offline-command'
+export {
+  CLEANING_OFFLINE_DATABASE_NAME,
+  CLEANING_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
+  clearCleaningOfflineWorkspaceData,
+} from './lib/offline-cleaning-store'
+export {
   getCleaningErrorMessage,
+  isCleaningConnectionError,
   useCleaningPlan,
   useCleaningSummary,
   useCleaningToday,
@@ -22,6 +33,7 @@ export {
   usePostponeCleaningTask,
   useRemoveCleaningTask,
   useRemoveCleaningZone,
+  useSeedCleaningTemplates,
   useSkipCleaningTask,
   useUpdateCleaningTask,
   useUpdateCleaningZone,

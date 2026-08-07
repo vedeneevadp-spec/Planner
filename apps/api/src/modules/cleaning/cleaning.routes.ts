@@ -1,16 +1,20 @@
 import {
   cleaningListResponseSchema,
+  cleaningSeedInputSchema,
   cleaningTaskActionInputSchema,
   cleaningTaskActionResponseSchema,
+  cleaningTaskDeleteInputSchema,
   cleaningTaskRecordSchema,
   cleaningTaskUpdateInputSchema,
   cleaningTodayQuerySchema,
   cleaningTodayResponseSchema,
+  cleaningZoneDeleteInputSchema,
   cleaningZoneRecordSchema,
   cleaningZoneUpdateInputSchema,
   getTodayDate,
   newCleaningTaskInputSchema,
   newCleaningZoneInputSchema,
+  uuidV7Schema,
 } from '@planner/contracts'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
@@ -29,6 +33,10 @@ const cleaningZoneParamsSchema = z.object({
 
 const cleaningTaskParamsSchema = z.object({
   taskId: z.string().min(1),
+})
+
+const cleaningOperationHeadersSchema = z.object({
+  'idempotency-key': uuidV7Schema.optional(),
 })
 
 export function registerCleaningRoutes(
@@ -65,7 +73,11 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const zone = await service.createZone(context, input)
+    const zone = await service.createZone(
+      context,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     reply.code(201)
 
@@ -84,7 +96,12 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const zone = await service.updateZone(context, params.zoneId, input)
+    const zone = await service.updateZone(
+      context,
+      params.zoneId,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     return cleaningZoneRecordSchema.parse(zone)
   })
@@ -95,9 +112,20 @@ export function registerCleaningRoutes(
       request.params,
       'invalid_params',
     )
+    const input = parseOrThrow(
+      cleaningZoneDeleteInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
     const context = await resolveRouteWriteContext(request, sessionService)
 
-    await service.removeZone(context, params.zoneId)
+    await service.removeZone(
+      context,
+      params.zoneId,
+      input.expectedVersion,
+      input.expectedTaskVersions,
+      readCleaningOperationId(request.headers),
+    )
 
     reply.code(204)
 
@@ -111,7 +139,11 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const task = await service.createTask(context, input)
+    const task = await service.createTask(
+      context,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     reply.code(201)
 
@@ -130,7 +162,12 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const task = await service.updateTask(context, params.taskId, input)
+    const task = await service.updateTask(
+      context,
+      params.taskId,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     return cleaningTaskRecordSchema.parse(task)
   })
@@ -141,9 +178,19 @@ export function registerCleaningRoutes(
       request.params,
       'invalid_params',
     )
+    const input = parseOrThrow(
+      cleaningTaskDeleteInputSchema,
+      request.body ?? {},
+      'invalid_body',
+    )
     const context = await resolveRouteWriteContext(request, sessionService)
 
-    await service.removeTask(context, params.taskId)
+    await service.removeTask(
+      context,
+      params.taskId,
+      input.expectedVersion,
+      readCleaningOperationId(request.headers),
+    )
 
     reply.code(204)
 
@@ -162,7 +209,12 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const result = await service.completeTask(context, params.taskId, input)
+    const result = await service.completeTask(
+      context,
+      params.taskId,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     return cleaningTaskActionResponseSchema.parse(result)
   })
@@ -179,7 +231,12 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const result = await service.postponeTask(context, params.taskId, input)
+    const result = await service.postponeTask(
+      context,
+      params.taskId,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     return cleaningTaskActionResponseSchema.parse(result)
   })
@@ -196,8 +253,41 @@ export function registerCleaningRoutes(
       'invalid_body',
     )
     const context = await resolveRouteWriteContext(request, sessionService)
-    const result = await service.skipTask(context, params.taskId, input)
+    const result = await service.skipTask(
+      context,
+      params.taskId,
+      input,
+      readCleaningOperationId(request.headers),
+    )
 
     return cleaningTaskActionResponseSchema.parse(result)
   })
+
+  app.post('/api/v1/cleaning/seed', async (request, reply) => {
+    const input = parseOrThrow(
+      cleaningSeedInputSchema,
+      request.body,
+      'invalid_body',
+    )
+    const context = await resolveRouteWriteContext(request, sessionService)
+    const result = await service.seed(
+      context,
+      input,
+      readCleaningOperationId(request.headers),
+    )
+
+    reply.code(201)
+
+    return cleaningListResponseSchema.parse(result)
+  })
+}
+
+function readCleaningOperationId(
+  headers: Record<string, string | string[] | undefined>,
+): string | undefined {
+  return parseOrThrow(
+    cleaningOperationHeadersSchema,
+    headers,
+    'invalid_headers',
+  )['idempotency-key']
 }

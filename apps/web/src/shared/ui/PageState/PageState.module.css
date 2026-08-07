@@ -1,0 +1,432 @@
+.pageState {
+  display: grid;
+  width: 100%;
+  min-height: clamp(13rem, 32vh, 20rem);
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: clamp(1.1rem, 4vw, 2.5rem);
+  color: var(--text);
+  background:
+    radial-gradient(circle at 50% 0%, var(--accent-muted) 0, transparent 52%),
+    var(--surface-muted);
+  box-shadow: var(--inset-highlight);
+}
+
+.loadingState {
+  place-items: stretch;
+}
+
+.errorState {
+  border-color: var(--danger-border);
+  background:
+    radial-gradient(circle at 50% 0%, var(--danger-bg) 0, transparent 52%),
+    var(--surface-muted);
+}
+
+.offlineState {
+  border-color: color-mix(in srgb, var(--warning) 22%, var(--line));
+  background:
+    radial-gradient(circle at 50% 0%, var(--warning-bg) 0, transparent 52%),
+    var(--surface-muted);
+}
+
+.emptyState,
+.unavailableState {
+  border-style: dashed;
+}
+
+.stateContent {
+  display: grid;
+  max-width: 34rem;
+  justify-items: center;
+  gap: 0.9rem;
+  text-align: center;
+}
+
+.stateMark {
+  display: inline-grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 50%;
+  color: var(--accent-strong);
+  background: var(--accent-muted);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.errorState .stateMark,
+.errorBanner .stateMark {
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.offlineState .stateMark,
+.offlineBanner .stateMark {
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.unavailableState .stateMark {
+  border-color: var(--line-strong);
+  color: var(--text-soft);
+  background: var(--field-bg-muted);
+}
+
+.stateText {
+  display: grid;
+  justify-items: center;
+  gap: 0.42rem;
+}
+
+.stateText h1,
+.stateText h2,
+.stateText h3,
+.stateText p {
+  margin: 0;
+}
+
+.stateText h1,
+.stateText h2,
+.stateText h3 {
+  font-size: clamp(1.18rem, 3vw, 1.48rem);
+  line-height: 1.25;
+}
+
+.stateText p {
+  max-width: 31rem;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+.lastSync {
+  display: block;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.65rem;
+  border: 1px solid var(--accent-border-strong);
+  border-radius: 999px;
+  padding: 0.62rem 1rem;
+  color: var(--accent-text-on-fill);
+  background: var(--accent-fill);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  text-decoration: none;
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.action:hover {
+  background: var(--accent-fill-hover);
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+.action:disabled,
+.action:disabled:hover {
+  opacity: 0.68;
+  background: var(--accent-fill);
+  box-shadow: var(--shadow-soft);
+  cursor: wait;
+  transform: none;
+}
+
+.action:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0.7rem 0.8rem;
+  background: var(--surface-strong);
+  box-shadow: var(--inset-highlight);
+}
+
+.errorBanner {
+  border-color: var(--danger-border);
+  background: color-mix(in srgb, var(--danger-bg) 72%, var(--surface-strong));
+}
+
+.offlineBanner {
+  border-color: color-mix(in srgb, var(--warning) 22%, var(--line));
+  background: color-mix(in srgb, var(--warning-bg) 62%, var(--surface-strong));
+}
+
+.infoBanner {
+  border-color: var(--accent-border);
+  background: color-mix(
+    in srgb,
+    var(--accent-muted) 68%,
+    var(--surface-strong)
+  );
+}
+
+.banner .stateMark {
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+}
+
+.bannerText {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.08rem;
+}
+
+.bannerText strong {
+  font-size: 0.88rem;
+  line-height: 1.3;
+}
+
+.bannerText > span {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.bannerText .lastSync {
+  margin-top: 0.12rem;
+  font-size: 0.72rem;
+}
+
+.bannerAction {
+  min-height: 2.15rem;
+  flex: 0 0 auto;
+  border-color: var(--line-strong);
+  padding: 0.45rem 0.72rem;
+  color: var(--text);
+  background: var(--field-bg-strong);
+  box-shadow: none;
+  font-size: 0.8rem;
+}
+
+.bannerAction:hover {
+  color: var(--accent-strong);
+  background: var(--field-bg-solid);
+  box-shadow: none;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skeleton {
+  display: grid;
+  width: 100%;
+  align-content: start;
+  gap: 1rem;
+}
+
+.skeletonHeading {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.skeletonTitle,
+.skeletonLine,
+.skeletonMark,
+.skeletonDot,
+.skeletonControl,
+.skeletonHero,
+.skeletonCalendarHeader span,
+.skeletonCalendarGrid span {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--field-bg-muted) 20%,
+    var(--field-bg-strong) 50%,
+    var(--field-bg-muted) 80%
+  );
+  background-size: 220% 100%;
+  animation: skeletonShimmer 1.35s ease-in-out infinite;
+}
+
+.skeletonTitle {
+  width: min(17rem, 62%);
+  height: 1.2rem;
+}
+
+.skeletonLine {
+  width: min(100%, 24rem);
+  height: 0.72rem;
+}
+
+.skeletonLineShort {
+  width: min(64%, 14rem);
+}
+
+.skeletonCardGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.skeletonCard {
+  display: grid;
+  gap: 0.62rem;
+  min-height: 8rem;
+  align-content: start;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 0.9rem;
+  background: var(--surface);
+}
+
+.skeletonMark,
+.skeletonDot {
+  width: 2rem;
+  height: 2rem;
+}
+
+.skeletonList,
+.skeletonSettings,
+.skeletonDetailLines {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.skeletonRow,
+.skeletonSetting {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.72rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0.72rem;
+  background: var(--surface);
+}
+
+.skeletonDot {
+  flex: 0 0 auto;
+  border-radius: 50%;
+}
+
+.skeletonRowText {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 0.42rem;
+}
+
+.skeletonControl {
+  width: min(8rem, 28%);
+  height: 2.25rem;
+  flex: 0 0 auto;
+}
+
+.skeletonCalendarHeader,
+.skeletonCalendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.skeletonCalendarHeader span {
+  height: 0.66rem;
+}
+
+.skeletonCalendarGrid span {
+  height: 3.9rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.skeletonHero {
+  width: 100%;
+  height: clamp(5rem, 14vw, 8rem);
+  border-radius: 18px;
+}
+
+@keyframes skeletonShimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .pageState {
+    min-height: 12rem;
+    border-radius: 20px;
+    padding: 1rem;
+  }
+
+  .skeletonCardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .skeletonCard:nth-child(n + 3) {
+    display: none;
+  }
+
+  .banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .bannerText {
+    width: calc(100% - 2.72rem);
+  }
+
+  .bannerAction {
+    width: calc(100% - 2.72rem);
+    margin-inline-start: 2.72rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .action {
+    transition: none;
+  }
+
+  .action:hover {
+    transform: none;
+  }
+
+  .skeletonTitle,
+  .skeletonLine,
+  .skeletonMark,
+  .skeletonDot,
+  .skeletonControl,
+  .skeletonHero,
+  .skeletonCalendarHeader span,
+  .skeletonCalendarGrid span {
+    animation: none;
+  }
+}

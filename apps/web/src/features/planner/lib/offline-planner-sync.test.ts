@@ -9,12 +9,17 @@ import type {
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  clearPlannerOfflineWorkspaceData,
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   enqueuePlannerOfflineMutation,
+  getPlannerDataLastSuccessfulSyncAt,
   loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
+  replaceCachedTaskRecords,
+  replaceCachedTaskRecordsFromServer,
   resetPlannerOfflineDatabaseForTests,
+  setPlannerDataLastSuccessfulSyncAt,
 } from './offline-planner-store'
 import { drainPlannerOfflineQueue } from './offline-planner-sync'
 import { type PlannerApiClient, PlannerApiError } from './planner-api'
@@ -49,6 +54,64 @@ const createSphereInput: NewLifeSphereInput = {
 describe('offline planner sync', () => {
   beforeEach(async () => {
     await resetPlannerOfflineDatabaseForTests()
+  })
+
+  it('tracks server freshness separately from local cache writes', async () => {
+    const firstSync = '2026-08-06T08:00:00.000Z'
+    const secondSync = '2026-08-06T09:00:00.000Z'
+
+    await setPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID, 'tasks', secondSync)
+    await setPlannerDataLastSuccessfulSyncAt(
+      WORKSPACE_ID,
+      'life-spheres',
+      firstSync,
+    )
+    await replaceCachedTaskRecords(WORKSPACE_ID, [createTaskRecord('task-1')])
+
+    expect(
+      await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID, 'tasks'),
+    ).toBe(secondSync)
+    expect(await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID)).toBeNull()
+
+    await setPlannerDataLastSuccessfulSyncAt(
+      WORKSPACE_ID,
+      'task-templates',
+      secondSync,
+    )
+
+    expect(await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID)).toBe(
+      firstSync,
+    )
+  })
+
+  it('commits an empty server snapshot and its freshness atomically', async () => {
+    const syncedAt = '2026-08-06T08:30:00.000Z'
+
+    await replaceCachedTaskRecordsFromServer(WORKSPACE_ID, [], syncedAt)
+
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([])
+    expect(
+      await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID, 'tasks'),
+    ).toBe(syncedAt)
+  })
+
+  it('does not advance freshness when a server snapshot cannot be stored', async () => {
+    const invalidRecord = {
+      ...createTaskRecord('task-invalid'),
+      nonCloneableValue: () => undefined,
+    } as unknown as TaskRecord
+
+    await expect(
+      replaceCachedTaskRecordsFromServer(
+        WORKSPACE_ID,
+        [invalidRecord],
+        '2026-08-06T08:30:00.000Z',
+      ),
+    ).rejects.toBeDefined()
+    expect(
+      await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID, 'tasks'),
+    ).toBeNull()
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([])
   })
 
   it('replays queued creates through the API and caches the server record', async () => {
@@ -247,6 +310,108 @@ describe('offline planner sync', () => {
       sphereRecord,
     ])
   })
+
+  it('lets workspace cleanup win over a delayed task replay and removes the remaining queue', async () => {
+    const deferredTask = createDeferred<TaskRecord>()
+    const onLifeSphereSynced = vi.fn()
+    const onTaskSynced = vi.fn()
+    const api = createPlannerApiClientMock({
+      createLifeSphere: vi
+        .fn()
+        .mockResolvedValue(createLifeSphereRecord(createSphereInput.id!)),
+      createTask: vi.fn().mockReturnValue(deferredTask.promise),
+    })
+
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      input: createInput,
+      taskId: createInput.id!,
+      type: 'task.create',
+      workspaceId: WORKSPACE_ID,
+    })
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      input: createSphereInput,
+      sphereId: createSphereInput.id!,
+      type: 'lifeSphere.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const drainPromise = drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onLifeSphereSynced,
+      onTaskSynced,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    await vi.waitFor(() => expect(api.createTask).toHaveBeenCalledTimes(1))
+    await clearPlannerOfflineWorkspaceData(WORKSPACE_ID)
+    deferredTask.resolve(createTaskRecord(createInput.id!))
+
+    await expect(drainPromise).resolves.toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 0,
+    })
+    expect(api.createLifeSphere).not.toHaveBeenCalled()
+    expect(onTaskSynced).not.toHaveBeenCalled()
+    expect(onLifeSphereSynced).not.toHaveBeenCalled()
+    await expect(loadCachedTaskRecords(WORKSPACE_ID)).resolves.toEqual([])
+    await expect(loadCachedLifeSphereRecords(WORKSPACE_ID)).resolves.toEqual([])
+    await expect(
+      countRetryablePlannerOfflineMutations(WORKSPACE_ID),
+    ).resolves.toBe(0)
+    await expect(
+      countConflictedPlannerOfflineMutations(WORKSPACE_ID),
+    ).resolves.toBe(0)
+  })
+
+  it('does not resurrect a sphere returned after workspace cleanup', async () => {
+    const deferredSphere = createDeferred<LifeSphereRecord>()
+    const onLifeSphereSynced = vi.fn()
+    const api = createPlannerApiClientMock({
+      createLifeSphere: vi.fn().mockReturnValue(deferredSphere.promise),
+    })
+
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      input: createSphereInput,
+      sphereId: createSphereInput.id!,
+      type: 'lifeSphere.create',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const drainPromise = drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onLifeSphereSynced,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    await vi.waitFor(() =>
+      expect(api.createLifeSphere).toHaveBeenCalledTimes(1),
+    )
+    await clearPlannerOfflineWorkspaceData(WORKSPACE_ID)
+    deferredSphere.resolve(createLifeSphereRecord(createSphereInput.id!))
+
+    await expect(drainPromise).resolves.toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 0,
+    })
+    expect(onLifeSphereSynced).not.toHaveBeenCalled()
+    await expect(loadCachedLifeSphereRecords(WORKSPACE_ID)).resolves.toEqual([])
+    await expect(
+      countRetryablePlannerOfflineMutations(WORKSPACE_ID),
+    ).resolves.toBe(0)
+    await expect(
+      countConflictedPlannerOfflineMutations(WORKSPACE_ID),
+    ).resolves.toBe(0)
+  })
 })
 
 function createPlannerApiClientMock(
@@ -338,4 +503,16 @@ function waitForNextMutationTimestamp(): Promise<void> {
   return new Promise((resolve) => {
     window.setTimeout(resolve, 1)
   })
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+
+  return { promise, resolve }
 }

@@ -4,6 +4,7 @@ import {
   type UserBackupRestoreResponse,
 } from '@planner/contracts'
 import { USER_BACKUP_MAX_REQUEST_BYTES } from '@planner/contracts/backup'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   type ChangeEvent,
   type FormEvent,
@@ -24,10 +25,10 @@ import {
   WorkspaceParticipantsDialog,
 } from '@/features/session'
 import {
-  clearRestoredWorkspaceLocalData,
   downloadUserBackup,
   getUserBackupErrorMessage,
   parseUserBackupArchiveText,
+  prepareWorkspaceForUserBackupRestore,
   previewUserBackupImport,
   reloadAfterUserBackupRestore,
   restoreUserBackupImport,
@@ -55,6 +56,7 @@ import pageStyles from '@/shared/ui/Page'
 import styles from './MorePage.module.css'
 
 export function MorePage() {
+  const queryClient = useQueryClient()
   const { data: session } = usePlannerSession()
   const auth = useSessionAuth()
   const planner = usePlanner()
@@ -290,6 +292,7 @@ export function MorePage() {
           ? {
               archive,
               idempotencyKey: createBackupRestoreIdempotencyKey(),
+              restoreResult: null,
             }
           : null,
       )
@@ -334,26 +337,46 @@ export function MorePage() {
 
     setBackupOperation('restore')
     setBackupProgress({
-      label: 'Восстанавливаем данные...',
+      label: 'Подготавливаем локальные данные...',
       loadedBytes: 0,
     })
     setBackupStatus(null)
     setBackupError(null)
 
     try {
-      const result = await restoreUserBackupImport({
-        accessToken: auth.accessToken,
-        actorUserId: session.actorUserId,
-        archive: backupRestoreCandidate.archive,
-        idempotencyKey: backupRestoreCandidate.idempotencyKey,
-        workspaceId: session.workspaceId,
-      })
+      let result = backupRestoreCandidate.restoreResult
+
+      if (!result) {
+        await prepareWorkspaceForUserBackupRestore(
+          session.workspaceId,
+          queryClient,
+        )
+        setBackupProgress({
+          label: 'Восстанавливаем данные...',
+          loadedBytes: 0,
+        })
+        result = await restoreUserBackupImport({
+          accessToken: auth.accessToken,
+          actorUserId: session.actorUserId,
+          archive: backupRestoreCandidate.archive,
+          idempotencyKey: backupRestoreCandidate.idempotencyKey,
+          workspaceId: session.workspaceId,
+        })
+        setBackupRestoreCandidate({
+          ...backupRestoreCandidate,
+          restoreResult: result,
+        })
+      }
 
       setBackupProgress({
         label: 'Обновляем локальные данные...',
         loadedBytes: 0,
       })
-      await clearRestoredWorkspaceLocalData(session.workspaceId)
+      await prepareWorkspaceForUserBackupRestore(
+        session.workspaceId,
+        queryClient,
+        'after-restore',
+      )
       reloadAfterUserBackupRestore(getBackupRestoreMessage(result))
     } catch (error) {
       setBackupProgress(null)
@@ -644,6 +667,7 @@ type BackupOperation = 'download' | 'preview' | 'restore' | null
 interface BackupRestoreCandidate {
   archive: UserBackupArchive
   idempotencyKey: string
+  restoreResult: UserBackupRestoreResponse | null
 }
 
 interface BackupProgressState extends UserBackupTransferProgress {

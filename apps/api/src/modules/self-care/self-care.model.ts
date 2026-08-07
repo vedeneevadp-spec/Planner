@@ -16,6 +16,9 @@ import type {
   SelfCareOccurrence,
   SelfCareOccurrenceMoveInput,
   SelfCareOccurrenceSkipInput,
+  SelfCareOfflineCommand,
+  SelfCareOfflineCommandRequest,
+  SelfCareOfflineCommandResponse,
   SelfCarePlanResponse,
   SelfCareRitualCompletionInput,
   SelfCareRitualStepDraft,
@@ -76,16 +79,19 @@ export interface UpdateSelfCareItemCommand {
 
 export interface ArchiveSelfCareItemCommand {
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   itemId: string
 }
 
 export interface RestoreSelfCareItemCommand {
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   itemId: string
 }
 
 export interface DeleteSelfCareItemCommand {
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   itemId: string
 }
 
@@ -97,8 +103,13 @@ export interface GenerateSelfCareOccurrencesCommand {
 
 export interface ScheduleSelfCareItemCommand {
   context: SelfCareWriteContext
+  existingOccurrenceId?: string | undefined
+  expectedOccurrenceVersion?: number | undefined
+  expectedVersion?: number | undefined
   input: SelfCareItemScheduleInput
   itemId: string
+  occurrenceId?: string | undefined
+  strictInsert?: boolean | undefined
 }
 
 export interface GetSelfCareDashboardCommand {
@@ -119,25 +130,33 @@ export interface GetSelfCareOccurrencesCommand {
 }
 
 export interface CompleteSelfCareOccurrenceCommand {
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareRitualCompletionInput
   occurrenceId: string
 }
 
 export interface CompleteSelfCareItemNowCommand {
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareRitualCompletionInput
   itemId: string
 }
 
 export interface CompleteFlexibleGoalCommand {
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareCompletionInput
   itemId: string
 }
 
 export interface CompleteCourseSessionCommand {
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareCompletionInput
   itemId: string
 }
@@ -145,23 +164,34 @@ export interface CompleteCourseSessionCommand {
 export interface UpdateSelfCareCompletionCommand {
   completionId: string
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareCompletionUpdateInput
 }
 
 export interface MoveSelfCareOccurrenceCommand {
+  actedAt?: string | undefined
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedItemId?: string | undefined
+  expectedVersion?: number | undefined
   input: SelfCareOccurrenceMoveInput
   occurrenceId: string
 }
 
 export interface SkipSelfCareOccurrenceCommand {
+  actedAt?: string | undefined
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareOccurrenceSkipInput
   occurrenceId: string
 }
 
 export interface CancelSelfCareOccurrenceCommand {
+  actedAt?: string | undefined
+  completionId?: string | undefined
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   occurrenceId: string
 }
 
@@ -169,10 +199,12 @@ export interface UpsertSelfCareDailyStateCommand {
   context: SelfCareWriteContext
   date: string
   input: SelfCareDailyStateInput
+  expectedVersion?: number | null | undefined
 }
 
 export interface UpdateSelfCareSettingsCommand {
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareSettingsUpdateInput
 }
 
@@ -183,6 +215,7 @@ export interface ToggleSelfCareGentleModeCommand {
 
 export interface UpdateSelfCareMinimumItemsCommand {
   context: SelfCareWriteContext
+  expectedVersion?: number | undefined
   input: SelfCareMinimumItemsUpdateInput
 }
 
@@ -199,6 +232,7 @@ export interface GetSelfCareRitualStepDraftsCommand {
 
 export interface UpsertSelfCareRitualStepDraftCommand {
   context: SelfCareWriteContext
+  expectedVersion?: number | null | undefined
   input: SelfCareRitualStepDraftInput
 }
 
@@ -207,7 +241,16 @@ export interface DeleteSelfCareRitualStepDraftCommand {
   date: string
   itemId: string
   occurrenceId: string | null
+  expectedVersion?: number | undefined
 }
+
+export interface ExecuteSelfCareOfflineCommand {
+  context: SelfCareWriteContext
+  dispatchCommand?: SelfCareOfflineCommand | undefined
+  request: SelfCareOfflineCommandRequest
+}
+
+export type ExecuteSelfCareOfflineCommandResult = SelfCareOfflineCommandResponse
 
 export interface CreateSelfCareItemFromTemplateCommand {
   context: SelfCareWriteContext

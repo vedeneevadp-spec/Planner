@@ -57,7 +57,7 @@ const scheduleInput: SelfCareItemScheduleInput = {
 }
 
 describe('scheduleSelfCareEntryOccurrence', () => {
-  it('schedules the new date and marks the previous occurrence as moved', async () => {
+  it('replaces an existing occurrence atomically when the date changes', async () => {
     const calls: string[] = []
     const scheduleItem = vi.fn(() => {
       calls.push('schedule')
@@ -82,12 +82,8 @@ describe('scheduleSelfCareEntryOccurrence', () => {
       scheduleItem,
     })
 
-    expect(calls).toEqual(['schedule', 'move'])
-    expect(scheduleItem).toHaveBeenCalledWith({
-      input: scheduleInput,
-      itemId: 'self-care-massage',
-      skipInvalidation: true,
-    })
+    expect(calls).toEqual(['move'])
+    expect(scheduleItem).not.toHaveBeenCalled()
     expect(moveOccurrence).toHaveBeenCalledWith({
       invalidationScopes: [
         'dashboard',
@@ -101,10 +97,11 @@ describe('scheduleSelfCareEntryOccurrence', () => {
         note: 'Дата записи изменена в настройках.',
       },
       occurrenceId: 'occurrence-old',
+      replacementInput: scheduleInput,
     })
   })
 
-  it('updates the scheduled details without moving when the date is unchanged', async () => {
+  it('updates the existing slot without recording a false move', async () => {
     const scheduleItem = vi.fn(() => Promise.resolve())
     const moveOccurrence = vi.fn(() => Promise.resolve())
 
@@ -135,9 +132,9 @@ describe('scheduleSelfCareEntryOccurrence', () => {
       ),
     ).toBe(false)
     expect(scheduleItem).toHaveBeenCalledWith({
+      existingOccurrenceId: 'occurrence-current',
       input: scheduleInput,
       itemId: 'self-care-massage',
-      skipInvalidation: false,
     })
     expect(moveOccurrence).not.toHaveBeenCalled()
   })
@@ -901,7 +898,9 @@ function createCompletion(
     price: null,
     scheduledFor: null,
     status: 'done',
+    updatedAt: '2026-06-20T10:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }
@@ -924,6 +923,7 @@ function createOccurrence(
     status: 'scheduled',
     updatedAt: '2026-06-01T00:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }
@@ -1123,6 +1123,7 @@ function createSettings(
     showSelfCareInMainTasks: true,
     updatedAt: '2026-06-01T00:00:00.000Z',
     userId: 'user-1',
+    version: 1,
     ...overrides,
   }
 }

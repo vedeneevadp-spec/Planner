@@ -357,6 +357,45 @@ test('redirects legacy habits route and manages a self-care item', async ({
   await expect(page.getByRole('heading', { name: careTitle })).toBeHidden()
 })
 
+test('creates self-care offline and keeps it after reconnect and reload', async ({
+  context,
+  page,
+}) => {
+  const user = createE2eUser('e2e-self-care-offline')
+  const careTitle = `E2E offline care ${user.suffix}`
+
+  await registerUser({ ...user, page })
+  await page.goto(
+    `/self-care?tab=rituals&selfCareAction=care&selfCareActionRequest=custom`,
+  )
+
+  const dialog = page.getByRole('dialog', { name: 'Создать свою заботу' })
+  await expect(dialog).toBeVisible()
+
+  await context.setOffline(true)
+  await expect(page.getByText('Нет подключения').first()).toBeVisible()
+  await dialog.getByLabel('Название').fill(careTitle)
+  await dialog.getByRole('button', { name: 'Создать заботу' }).click()
+
+  await expect(
+    page.getByRole('heading', { name: careTitle }).last(),
+  ).toBeVisible()
+  await expect(
+    page.getByText('Изменения сохранены на устройстве'),
+  ).toBeVisible()
+
+  await context.setOffline(false)
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByText('Изменения сохранены на устройстве')).toBeHidden({
+    timeout: 15_000,
+  })
+
+  await page.reload()
+  await expect(
+    page.getByRole('heading', { name: careTitle }).last(),
+  ).toBeVisible()
+})
+
 test('creates a cleaning zone with a task and completes it today', async ({
   page,
 }) => {
@@ -399,4 +438,44 @@ test('creates a cleaning zone with a task and completes it today', async ({
   await expect(
     cleaningTasks.getByText('На сегодня всё отмечено.'),
   ).toBeVisible()
+})
+
+test('creates a cleaning zone offline and keeps it after reconnect and reload', async ({
+  context,
+  page,
+}) => {
+  const user = createE2eUser('e2e-cleaning-offline')
+  const zoneTitle = `E2E offline zone ${user.suffix}`
+
+  await registerUser({ ...user, page })
+  await page.goto('/cleaning/settings')
+  await expect(
+    page.getByRole('button', { name: 'Добавить зону' }),
+  ).toBeVisible()
+
+  await context.setOffline(true)
+  await expect(
+    page.getByText('Настройки открыты из сохранённых данных'),
+  ).toBeVisible()
+  await page.getByRole('button', { name: 'Добавить зону' }).click()
+
+  const zoneForm = page.locator('form').filter({
+    has: page.getByPlaceholder('Новая зона'),
+  })
+  await zoneForm.getByPlaceholder('Новая зона').fill(zoneTitle)
+  await zoneForm.getByRole('button', { name: 'Добавить' }).click()
+
+  await expect(page.getByRole('heading', { name: zoneTitle })).toBeVisible()
+  await expect(
+    page.getByText('Изменения сохранены на устройстве'),
+  ).toBeVisible()
+
+  await context.setOffline(false)
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await expect(page.getByText('Изменения сохранены на устройстве')).toBeHidden({
+    timeout: 15_000,
+  })
+
+  await page.reload()
+  await expect(page.getByRole('heading', { name: zoneTitle })).toBeVisible()
 })

@@ -1398,10 +1398,22 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         tags: ['cleaning'],
       }),
     },
+    '/api/v1/cleaning/seed': {
+      post: createJsonOperation({
+        operationId: 'seedCleaningPlan',
+        parameters: cleaningWriteParameters(),
+        requestSchema: 'CleaningSeedInput',
+        responseSchema: 'CleaningListResponse',
+        responseStatus: 201,
+        security: authenticatedSecurity(),
+        summary: 'Create a cleaning starter plan atomically',
+        tags: ['cleaning'],
+      }),
+    },
     '/api/v1/cleaning/tasks': {
       post: createJsonOperation({
         operationId: 'createCleaningTask',
-        parameters: workspaceWriteParameters(),
+        parameters: cleaningWriteParameters(),
         requestSchema: 'NewCleaningTaskInput',
         responseSchema: 'CleaningTaskRecord',
         responseStatus: 201,
@@ -1414,14 +1426,15 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       delete: createJsonOperation({
         noContentDescription: 'Cleaning task deleted.',
         operationId: 'deleteCleaningTask',
-        parameters: [taskIdParameter(), ...workspaceWriteParameters()],
+        parameters: [taskIdParameter(), ...cleaningWriteParameters()],
+        requestSchema: 'CleaningTaskDeleteInput',
         security: authenticatedSecurity(),
         summary: 'Delete a cleaning task',
         tags: ['cleaning'],
       }),
       patch: createJsonOperation({
         operationId: 'updateCleaningTask',
-        parameters: [taskIdParameter(), ...workspaceWriteParameters()],
+        parameters: [taskIdParameter(), ...cleaningWriteParameters()],
         requestSchema: 'CleaningTaskUpdateInput',
         responseSchema: 'CleaningTaskRecord',
         security: authenticatedSecurity(),
@@ -1441,7 +1454,7 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
     '/api/v1/cleaning/zones': {
       post: createJsonOperation({
         operationId: 'createCleaningZone',
-        parameters: workspaceWriteParameters(),
+        parameters: cleaningWriteParameters(),
         requestSchema: 'NewCleaningZoneInput',
         responseSchema: 'CleaningZoneRecord',
         responseStatus: 201,
@@ -1454,14 +1467,15 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
       delete: createJsonOperation({
         noContentDescription: 'Cleaning zone deleted.',
         operationId: 'deleteCleaningZone',
-        parameters: [zoneIdParameter(), ...workspaceWriteParameters()],
+        parameters: [zoneIdParameter(), ...cleaningWriteParameters()],
+        requestSchema: 'CleaningZoneDeleteInput',
         security: authenticatedSecurity(),
         summary: 'Delete a cleaning zone',
         tags: ['cleaning'],
       }),
       patch: createJsonOperation({
         operationId: 'updateCleaningZone',
-        parameters: [zoneIdParameter(), ...workspaceWriteParameters()],
+        parameters: [zoneIdParameter(), ...cleaningWriteParameters()],
         requestSchema: 'CleaningZoneUpdateInput',
         responseSchema: 'CleaningZoneRecord',
         security: authenticatedSecurity(),
@@ -1632,6 +1646,17 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         responseStatus: 201,
         security: authenticatedSecurity(),
         summary: 'Create a self-care item',
+        tags: ['selfCare'],
+      }),
+    },
+    '/api/v1/self-care/commands': {
+      post: createJsonOperation({
+        operationId: 'executeSelfCareOfflineCommand',
+        parameters: workspaceWriteParameters(),
+        requestSchema: 'SelfCareOfflineCommandRequest',
+        responseSchema: 'SelfCareOfflineCommandResponse',
+        security: authenticatedSecurity(),
+        summary: 'Execute an atomic, idempotent self-care offline command',
         tags: ['selfCare'],
       }),
     },
@@ -2306,7 +2331,7 @@ function cleaningTaskActionOperation(
 ): OpenAPIV3.OperationObject {
   return createJsonOperation({
     operationId,
-    parameters: [taskIdParameter(), ...workspaceWriteParameters()],
+    parameters: [taskIdParameter(), ...cleaningWriteParameters()],
     requestSchema: 'CleaningTaskActionInput',
     responseSchema: 'CleaningTaskActionResponse',
     security: authenticatedSecurity(),
@@ -2327,5 +2352,22 @@ function workspaceWriteParameters(): ApiParameter[] {
   return [
     parameter('requiredWorkspaceIdHeader'),
     parameter('actorUserIdHeader'),
+  ]
+}
+
+function cleaningWriteParameters(): ApiParameter[] {
+  return [
+    ...workspaceWriteParameters(),
+    {
+      description:
+        'Stable UUIDv7 used to replay an offline cleaning command exactly once.',
+      in: 'header',
+      name: 'Idempotency-Key',
+      required: false,
+      schema: {
+        format: 'uuid',
+        type: 'string',
+      },
+    },
   ]
 }

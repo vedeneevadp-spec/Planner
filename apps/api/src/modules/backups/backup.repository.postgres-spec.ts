@@ -39,6 +39,7 @@ void test('PostgresUserBackupRepository exports a strict runtime-RLS snapshot', 
   const userId = randomUUID()
   const workspaceId = randomUUID()
   const membershipId = randomUUID()
+  const selfCareItemId = randomUUID()
   const email = `backup-contract-${userId}@example.test`
 
   try {
@@ -75,6 +76,64 @@ void test('PostgresUserBackupRepository exports a strict runtime-RLS snapshot', 
       `,
       [membershipId, workspaceId, userId],
     )
+    await connection.pool.query(
+      `
+        insert into app.self_care_items (
+          id,
+          workspace_id,
+          user_id,
+          title,
+          type,
+          category,
+          created_by,
+          updated_by
+        )
+        values ($1, $2, $3, 'Backup state', 'ritual', 'daily_base', $3, $3)
+      `,
+      [selfCareItemId, workspaceId, userId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.self_care_completions (
+          item_id,
+          user_id,
+          status,
+          completed_at
+        )
+        values ($1, $2, 'done', '2026-08-06T08:00:00.000Z')
+      `,
+      [selfCareItemId, userId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.self_care_ritual_step_drafts (
+          workspace_id,
+          user_id,
+          item_id,
+          date
+        )
+        values ($1, $2, $3, '2026-08-06')
+      `,
+      [workspaceId, userId, selfCareItemId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.self_care_daily_states (user_id, date)
+        values ($1, '2026-08-06')
+      `,
+      [userId],
+    )
+    await connection.pool.query(
+      `insert into app.self_care_settings (user_id) values ($1)`,
+      [userId],
+    )
+    await connection.pool.query(
+      `
+        insert into app.self_care_minimum_items (user_id, title)
+        values ($1, 'Минимум')
+      `,
+      [userId],
+    )
 
     const repository = new PostgresUserBackupRepository(
       connection.db,
@@ -96,6 +155,19 @@ void test('PostgresUserBackupRepository exports a strict runtime-RLS snapshot', 
     assert.equal(archive.scope.workspaceId, workspaceId)
     assert.equal(archive.tables.users?.length, 1)
     assert.equal(archive.tables.workspaces?.length, 1)
+    for (const tableName of [
+      'self_care_completions',
+      'self_care_daily_states',
+      'self_care_minimum_items',
+      'self_care_ritual_step_drafts',
+      'self_care_settings',
+    ] as const) {
+      assert.equal(archive.tables[tableName]?.[0]?.version, 1)
+    }
+    assert.equal(
+      typeof archive.tables.self_care_completions?.[0]?.updated_at,
+      'string',
+    )
   } finally {
     await connection.pool.query(
       `delete from app.workspace_members where user_id = $1`,
@@ -187,6 +259,13 @@ void test('PostgresUserBackupRepository restores missing rows idempotently', asy
       `,
       [taskId, workspaceId, projectId, userId],
     )
+    await connection.pool.query(
+      `
+        insert into app.self_care_settings (user_id, version)
+        values ($1, 7)
+      `,
+      [userId],
+    )
 
     const repository = new PostgresUserBackupRepository(
       connection.db,
@@ -201,6 +280,10 @@ void test('PostgresUserBackupRepository restores missing rows idempotently', asy
     await connection.pool.query(`delete from app.projects where id = $1`, [
       projectId,
     ])
+    await connection.pool.query(
+      `delete from app.self_care_settings where user_id = $1`,
+      [userId],
+    )
 
     const input = {
       archive,
@@ -226,10 +309,15 @@ void test('PostgresUserBackupRepository restores missing rows idempotently', asy
       `,
       [taskId],
     )
+    const restoredSettings = await connection.pool.query<{ version: string }>(
+      `select version::text from app.self_care_settings where user_id = $1`,
+      [userId],
+    )
 
     assert.deepEqual(retried, restored)
     assert.equal(rows.rows[0]?.project_title, 'Restored project')
     assert.equal(rows.rows[0]?.task_title, 'Restored task')
+    assert.equal(Number(restoredSettings.rows[0]?.version), 7)
     assert.equal(
       restored.tables.find((table) => table.name === 'projects')?.inserted,
       1,

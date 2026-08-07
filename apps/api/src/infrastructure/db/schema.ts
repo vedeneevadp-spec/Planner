@@ -337,7 +337,9 @@ export interface AppSelfCareCompletionsTable {
   scheduled_for: DateColumn | null
   status:
     'alternative_done' | 'cancelled' | 'done' | 'moved' | 'partial' | 'skipped'
+  updated_at: Generated<TimestampColumn>
   user_id: string
+  version: Generated<number>
 }
 
 export interface AppSelfCareRitualStepsTable {
@@ -367,6 +369,7 @@ export interface AppSelfCareRitualStepDraftsTable {
   step_ids: ColumnType<string[], string[] | string, string[] | string>
   updated_at: Generated<TimestampColumn>
   user_id: string
+  version: Generated<number>
   workspace_id: string
 }
 
@@ -487,6 +490,7 @@ export interface AppSelfCareDailyStatesTable {
   stress: number | null
   updated_at: Generated<TimestampColumn>
   user_id: string
+  version: Generated<number>
 }
 
 export interface AppSelfCareTemplatesTable {
@@ -523,6 +527,7 @@ export interface AppSelfCareSettingsTable {
   show_self_care_in_main_tasks: boolean
   updated_at: Generated<TimestampColumn>
   user_id: string
+  version: Generated<number>
 }
 
 export interface AppSelfCareMinimumItemsTable {
@@ -534,6 +539,16 @@ export interface AppSelfCareMinimumItemsTable {
   title: string
   updated_at: Generated<TimestampColumn>
   user_id: string
+  version: Generated<number>
+}
+
+export interface AppSelfCareCommandLedgerTable {
+  actor_user_id: string
+  created_at: Generated<TimestampColumn>
+  operation_id: string
+  request_fingerprint: string
+  response: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
+  workspace_id: string
 }
 
 export interface AppCleaningZonesTable {
@@ -1002,6 +1017,7 @@ export interface DatabaseSchema {
   'app.projects': AppProjectsTable
   'app.self_care_appointment_details': AppSelfCareAppointmentDetailsTable
   'app.self_care_completions': AppSelfCareCompletionsTable
+  'app.self_care_command_ledger': AppSelfCareCommandLedgerTable
   'app.self_care_course_details': AppSelfCareCourseDetailsTable
   'app.self_care_daily_states': AppSelfCareDailyStatesTable
   'app.self_care_exercise_details': AppSelfCareExerciseDetailsTable

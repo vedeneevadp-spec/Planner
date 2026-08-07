@@ -1,46 +1,98 @@
 import {
+  generateUuidV7,
   type HabitTodayResponse,
+  type SelfCareAnalyticsResponse,
   type SelfCareCompletion,
   type SelfCareCompletionInput,
   type SelfCareCompletionUpdateInput,
-  type SelfCareDailyStateInput,
   type SelfCareDashboardResponse,
   type SelfCareHistoryResponse,
+  type SelfCareItem,
   type SelfCareItemInput,
   type SelfCareItemScheduleInput,
   type SelfCareItemUpdateInput,
-  type SelfCareMinimumItemsUpdateInput,
+  type SelfCareListResponse,
   type SelfCareOccurrence,
   type SelfCareOccurrenceMoveInput,
   type SelfCareOccurrenceSkipInput,
-  type SelfCareOccurrenceStatus,
+  type SelfCareOfflineCommand,
+  type SelfCareOfflineCommandResult,
+  selfCareOfflineCommandSchema,
   type SelfCarePlanResponse,
   type SelfCareRitualCompletionInput,
   type SelfCareRitualStepDraftInput,
   type SelfCareRitualStepDraftListResponse,
+  type SelfCareSettingsResponse,
   type SelfCareSettingsUpdateInput,
+  type SelfCareTemplate,
   type SelfCareTemplateCreateInput,
   type SelfCareTodayItem,
+  type SessionResponse,
 } from '@planner/contracts'
 import {
   type QueryClient,
-  useMutation,
+  useMutation as useTanstackMutation,
+  type UseMutationOptions,
+  type UseMutationResult,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import {
   usePlannerTimeZone,
   useSessionFeatureReadiness,
 } from '@/features/session'
+import {
+  isBrowserRetryableOfflineError,
+  useOfflineQueueDrain,
+} from '@/shared/lib/offline-sync'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
+import {
+  cancelSelfCareOfflineMutation,
+  commitSelfCareOfflineMutationResult,
+  completeSelfCareOfflineMutation,
+  countSelfCareOfflineMutations,
+  createSelfCareCacheKey,
+  enqueueSelfCareOfflineMutation,
+  getSelfCareOfflineStorageHealth,
+  getSelfCareOfflineWorkspaceWriteGeneration,
+  isSelfCareOfflineStorageAvailable,
+  isSelfCareOfflineWorkspaceWriteGenerationCurrent,
+  listSelfCareOfflineMutations,
+  loadCachedSelfCareRead,
+  loadConfirmedSelfCareCachedScopes,
+  loadProjectedCachedSelfCareRead,
+  probeSelfCareOfflineStorage,
+  rebaseSelfCareOfflineMutations,
+  reportSelfCareOfflineStorageFailure,
+  saveCachedSelfCareRead,
+  type SelfCareCachedRead,
+  type SelfCareOfflineMutationRecord,
+  type SelfCareOfflineOverlay,
+  subscribeSelfCareOfflineQueue,
+} from './offline-self-care-store'
 import {
   createSelfCareApiClient,
   type SelfCareApiClient,
   SelfCareApiError,
 } from './self-care-api'
+import {
+  createOptimisticSelfCareResult,
+  findSelfCareCompletion,
+  findSelfCareItem,
+  findSelfCareOccurrence,
+  SelfCareOfflineBaseUnavailableError,
+  type SelfCareOptimisticSource,
+} from './self-care-offline-command'
+import {
+  getSelfCareCommandEntityKeys,
+  getSelfCareResultEntityKeys,
+  projectSelfCareCachedRead,
+  projectSelfCareRead,
+} from './self-care-offline-projection'
+import { drainSelfCareOfflineQueue } from './self-care-offline-sync'
 
 interface OccurrenceMutationVariables<TInput> {
   input?: TInput | undefined
@@ -52,6 +104,7 @@ interface RequiredOccurrenceMutationVariables<TInput> {
   input: TInput
   invalidationScopes?: readonly SelfCareQueryScope[] | undefined
   occurrenceId: string
+  replacementInput?: SelfCareItemScheduleInput | undefined
   skipInvalidation?: boolean | undefined
 }
 
@@ -66,6 +119,7 @@ interface CompletionUpdateVariables {
 }
 
 interface ItemScheduleVariables {
+  existingOccurrenceId?: string | undefined
   input: SelfCareItemScheduleInput
   invalidationScopes?: readonly SelfCareQueryScope[] | undefined
   itemId: string
@@ -73,25 +127,24 @@ interface ItemScheduleVariables {
 }
 
 interface ItemUpdateVariables {
+  entry?: SelfCareTodayItem | undefined
   input: SelfCareItemUpdateInput
   itemId: string
+  moveNote?: string | undefined
+  scheduleInput?: SelfCareItemScheduleInput | undefined
   skipInvalidation?: boolean | undefined
 }
 
 interface CreateItemVariables {
   input: SelfCareItemInput
+  scheduleInput?: SelfCareItemScheduleInput | undefined
   skipInvalidation?: boolean | undefined
 }
 
 interface CreateFromTemplateVariables {
   input?: SelfCareTemplateCreateInput | undefined
+  scheduleInput?: SelfCareItemScheduleInput | undefined
   templateId: string
-}
-
-interface RitualStepDraftDeleteVariables {
-  date: string
-  itemId: string
-  occurrenceId: string | null
 }
 
 type SelfCareQueryScope =
@@ -109,6 +162,17 @@ type SelfCareRefetchType = 'active' | 'all' | 'inactive' | 'none'
 interface SelfCareInvalidationOptions {
   refetchType?: SelfCareRefetchType | undefined
   skipInvalidation?: boolean | undefined
+}
+
+function useMutation<
+  TData = unknown,
+  TError = Error,
+  TVariables = void,
+  TOnMutateResult = unknown,
+>(
+  options: UseMutationOptions<TData, TError, TVariables, TOnMutateResult>,
+): UseMutationResult<TData, TError, TVariables, TOnMutateResult> {
+  return useTanstackMutation({ ...options, networkMode: 'always' })
 }
 
 const SELF_CARE_ITEM_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
@@ -141,13 +205,29 @@ const SELF_CARE_STALE_ONLY_INVALIDATION = {
 } satisfies SelfCareInvalidationOptions
 
 export const SELF_CARE_API_UNAVAILABLE_MESSAGE =
-  'Сессия еще не готова. Подожди пару секунд и попробуй снова.'
+  'Сейчас не удалось надёжно сохранить изменение. Проверь доступ к профилю или подключение и попробуй снова.'
+
+export const SELF_CARE_NETWORK_ERROR_MESSAGE =
+  'Не удалось связаться с сервером, и сохранить изменение на устройстве тоже не получилось. Проверь подключение и попробуй снова.'
 
 export class SelfCareApiUnavailableError extends Error {
   constructor() {
     super(SELF_CARE_API_UNAVAILABLE_MESSAGE)
     this.name = 'SelfCareApiUnavailableError'
   }
+}
+
+declare const selfCareQueryOwnerIdBrand: unique symbol
+
+export type SelfCareQueryOwnerId = string & {
+  readonly [selfCareQueryOwnerIdBrand]: true
+}
+
+export function createSelfCareQueryOwnerId(
+  workspaceId: string,
+  actorUserId: string,
+): SelfCareQueryOwnerId {
+  return JSON.stringify([workspaceId, actorUserId]) as SelfCareQueryOwnerId
 }
 
 export function isSelfCareApiUnavailableError(
@@ -160,16 +240,19 @@ export function isSelfCareApiUnavailableError(
   )
 }
 
-export function selfCareDashboardQueryKey(workspaceId: string, date: string) {
+export function selfCareDashboardQueryKey(
+  workspaceId: SelfCareQueryOwnerId,
+  date: string,
+) {
   return ['self-care', workspaceId, 'dashboard', date] as const
 }
 
-export function selfCareItemsQueryKey(workspaceId: string) {
+export function selfCareItemsQueryKey(workspaceId: SelfCareQueryOwnerId) {
   return ['self-care', workspaceId, 'items'] as const
 }
 
 export function selfCarePlanQueryKey(
-  workspaceId: string,
+  workspaceId: SelfCareQueryOwnerId,
   from: string,
   to: string,
 ) {
@@ -177,14 +260,14 @@ export function selfCarePlanQueryKey(
 }
 
 export function selfCareRitualStepDraftsQueryKey(
-  workspaceId: string,
+  workspaceId: SelfCareQueryOwnerId,
   date: string,
 ) {
   return ['self-care', workspaceId, 'ritual-step-drafts', date] as const
 }
 
 export function selfCareHistoryQueryKey(
-  workspaceId: string,
+  workspaceId: SelfCareQueryOwnerId,
   from: string,
   to: string,
 ) {
@@ -192,18 +275,18 @@ export function selfCareHistoryQueryKey(
 }
 
 export function selfCareAnalyticsQueryKey(
-  workspaceId: string,
+  workspaceId: SelfCareQueryOwnerId,
   from: string,
   to: string,
 ) {
   return ['self-care', workspaceId, 'analytics', from, to] as const
 }
 
-export function selfCareSettingsQueryKey(workspaceId: string) {
+export function selfCareSettingsQueryKey(workspaceId: SelfCareQueryOwnerId) {
   return ['self-care', workspaceId, 'settings'] as const
 }
 
-export function selfCareTemplatesQueryKey(workspaceId: string) {
+export function selfCareTemplatesQueryKey(workspaceId: SelfCareQueryOwnerId) {
   return ['self-care', workspaceId, 'templates'] as const
 }
 
@@ -211,34 +294,26 @@ export function useSelfCareDashboard(
   date?: string,
   options: { enabled?: boolean } = {},
 ) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
   const plannerTimeZone = usePlannerTimeZone()
   const resolvedDate = date ?? getTodayDate(plannerTimeZone)
-  const queryKey = useMemo(
-    () => selfCareDashboardQueryKey(workspaceId, resolvedDate),
-    [resolvedDate, workspaceId],
-  )
 
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getDashboard(resolvedDate, signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareDashboardResponse>({
+    cacheParameters: [resolvedDate],
+    enabled: options.enabled,
+    queryKey: (workspaceId) =>
+      selfCareDashboardQueryKey(workspaceId, resolvedDate),
+    request: (api, signal) => api.getDashboard(resolvedDate, signal),
+    scope: 'dashboard',
     staleTime: 20_000,
   })
 }
 
 export function useSelfCareItems(options: { enabled?: boolean } = {}) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
-  const queryKey = useMemo(
-    () => selfCareItemsQueryKey(workspaceId),
-    [workspaceId],
-  )
-
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) => requireSelfCareApi(api).listItems({}, signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareListResponse>({
+    enabled: options.enabled,
+    queryKey: selfCareItemsQueryKey,
+    request: (api, signal) => api.listItems({}, signal),
+    scope: 'items',
     staleTime: 30_000,
   })
 }
@@ -248,20 +323,17 @@ export function useSelfCarePlan(
   to?: string,
   options: { enabled?: boolean } = {},
 ) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
   const plannerTimeZone = usePlannerTimeZone()
   const resolvedFrom = from ?? getTodayDate(plannerTimeZone)
   const resolvedTo = to ?? addDateDays(resolvedFrom, 45)
-  const queryKey = useMemo(
-    () => selfCarePlanQueryKey(workspaceId, resolvedFrom, resolvedTo),
-    [resolvedFrom, resolvedTo, workspaceId],
-  )
 
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getPlan(resolvedFrom, resolvedTo, signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCarePlanResponse>({
+    cacheParameters: [resolvedFrom, resolvedTo],
+    enabled: options.enabled,
+    queryKey: (workspaceId) =>
+      selfCarePlanQueryKey(workspaceId, resolvedFrom, resolvedTo),
+    request: (api, signal) => api.getPlan(resolvedFrom, resolvedTo, signal),
+    scope: 'plan',
     staleTime: 30_000,
   })
 }
@@ -270,19 +342,16 @@ export function useSelfCareRitualStepDrafts(
   date?: string,
   options: { enabled?: boolean } = {},
 ) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
   const plannerTimeZone = usePlannerTimeZone()
   const resolvedDate = date ?? getTodayDate(plannerTimeZone)
-  const queryKey = useMemo(
-    () => selfCareRitualStepDraftsQueryKey(workspaceId, resolvedDate),
-    [resolvedDate, workspaceId],
-  )
 
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getRitualStepDrafts(resolvedDate, signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareRitualStepDraftListResponse>({
+    cacheParameters: [resolvedDate],
+    enabled: options.enabled,
+    queryKey: (workspaceId) =>
+      selfCareRitualStepDraftsQueryKey(workspaceId, resolvedDate),
+    request: (api, signal) => api.getRitualStepDrafts(resolvedDate, signal),
+    scope: 'ritual-step-drafts',
     staleTime: 20_000,
   })
 }
@@ -292,20 +361,17 @@ export function useSelfCareHistory(
   to?: string,
   options: { enabled?: boolean } = {},
 ) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
   const plannerTimeZone = usePlannerTimeZone()
   const resolvedTo = to ?? getTodayDate(plannerTimeZone)
   const resolvedFrom = from ?? addDateDays(resolvedTo, -30)
-  const queryKey = useMemo(
-    () => selfCareHistoryQueryKey(workspaceId, resolvedFrom, resolvedTo),
-    [resolvedFrom, resolvedTo, workspaceId],
-  )
 
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getHistory(resolvedFrom, resolvedTo, signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareHistoryResponse>({
+    cacheParameters: [resolvedFrom, resolvedTo],
+    enabled: options.enabled,
+    queryKey: (workspaceId) =>
+      selfCareHistoryQueryKey(workspaceId, resolvedFrom, resolvedTo),
+    request: (api, signal) => api.getHistory(resolvedFrom, resolvedTo, signal),
+    scope: 'history',
     staleTime: 30_000,
   })
 }
@@ -315,493 +381,710 @@ export function useSelfCareAnalytics(
   to?: string,
   options: { enabled?: boolean } = {},
 ) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
   const plannerTimeZone = usePlannerTimeZone()
   const resolvedTo = to ?? getTodayDate(plannerTimeZone)
   const resolvedFrom = from ?? addDateDays(resolvedTo, -30)
-  const queryKey = useMemo(
-    () => selfCareAnalyticsQueryKey(workspaceId, resolvedFrom, resolvedTo),
-    [resolvedFrom, resolvedTo, workspaceId],
-  )
 
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) =>
-      requireSelfCareApi(api).getAnalytics(resolvedFrom, resolvedTo, signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareAnalyticsResponse>({
+    cacheParameters: [resolvedFrom, resolvedTo],
+    enabled: options.enabled,
+    queryKey: (workspaceId) =>
+      selfCareAnalyticsQueryKey(workspaceId, resolvedFrom, resolvedTo),
+    request: (api, signal) =>
+      api.getAnalytics(resolvedFrom, resolvedTo, signal),
+    scope: 'analytics',
     staleTime: 30_000,
   })
 }
 
 export function useSelfCareSettings(options: { enabled?: boolean } = {}) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
-  const queryKey = useMemo(
-    () => selfCareSettingsQueryKey(workspaceId),
-    [workspaceId],
-  )
-
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) => requireSelfCareApi(api).getSettings(signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareSettingsResponse>({
+    enabled: options.enabled,
+    queryKey: selfCareSettingsQueryKey,
+    request: (api, signal) => api.getSettings(signal),
+    scope: 'settings',
     staleTime: 30_000,
   })
 }
 
 export function useSelfCareTemplates(options: { enabled?: boolean } = {}) {
-  const { api, isEnabled, workspaceId } = useSelfCareApi(options)
-  const queryKey = useMemo(
-    () => selfCareTemplatesQueryKey(workspaceId),
-    [workspaceId],
-  )
-
-  return useQuery({
-    enabled: isEnabled,
-    queryFn: ({ signal }) => requireSelfCareApi(api).listTemplates(signal),
-    queryKey,
+  return usePersistentSelfCareQuery<SelfCareTemplate[]>({
+    enabled: options.enabled,
+    queryKey: selfCareTemplatesQueryKey,
+    request: (api, signal) => api.listTemplates(signal),
+    scope: 'templates',
     staleTime: 300_000,
   })
 }
 
-export function useCreateSelfCareItem() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
+const EMPTY_SELF_CARE_OFFLINE_QUEUE_COUNTS = {
+  awaitingRefresh: 0,
+  conflicted: 0,
+  failed: 0,
+  pending: 0,
+  total: 0,
+}
 
-  return useMutation({
-    mutationFn: async (variables: SelfCareItemInput | CreateItemVariables) => {
-      const { input, skipInvalidation } =
-        normalizeCreateItemVariables(variables)
-      assertSession(session, 'создать заботу')
-      const item = await requireSelfCareApi(api).createItem(input)
-      queueSelfCareInvalidationUnlessSkipped(
-        queryClient,
-        workspaceId,
-        SELF_CARE_ITEM_CHANGE_SCOPES,
-        { skipInvalidation },
-      )
-      return item
+export function useSelfCareOfflineQueue() {
+  const queryClient = useQueryClient()
+  const context = useSelfCareApi()
+  const scopeIdentity = `${context.storageWorkspaceId}\u0000${context.actorUserId}`
+  const scopeToken = useMemo(() => Symbol(scopeIdentity), [scopeIdentity])
+  const [countsByScope, setCountsByScope] = useState(
+    () =>
+      new Map([[scopeToken, EMPTY_SELF_CARE_OFFLINE_QUEUE_COUNTS]] as const),
+  )
+  const [drainingByScope, setDrainingByScope] = useState(
+    () => new Map<symbol, boolean>([[scopeToken, false]]),
+  )
+  const [storageHealth, setStorageHealth] = useState(
+    getSelfCareOfflineStorageHealth,
+  )
+  const setScopeCounts = useCallback(
+    (counts: typeof EMPTY_SELF_CARE_OFFLINE_QUEUE_COUNTS) => {
+      setCountsByScope((current) => {
+        const next = new Map(current)
+        next.set(scopeToken, counts)
+        return next
+      })
     },
+    [scopeToken],
+  )
+  const setScopeDraining = useCallback(
+    (isDraining: boolean) => {
+      setDrainingByScope((current) => {
+        const next = new Map(current)
+        next.set(scopeToken, isDraining)
+        return next
+      })
+    },
+    [scopeToken],
+  )
+  const refreshCounts = useCallback(
+    async (shouldCommit: () => boolean = () => true) => {
+      if (
+        context.storageWorkspaceId === 'pending' ||
+        context.actorUserId === 'pending'
+      ) {
+        if (shouldCommit()) {
+          setScopeCounts(EMPTY_SELF_CARE_OFFLINE_QUEUE_COUNTS)
+        }
+        return
+      }
+
+      try {
+        const counts = await countSelfCareOfflineMutations(
+          context.storageWorkspaceId,
+          context.actorUserId,
+        )
+
+        if (shouldCommit()) {
+          setScopeCounts(counts)
+        }
+      } catch (error) {
+        reportSelfCareOfflineStorageFailure(error)
+
+        if (shouldCommit()) {
+          setStorageHealth(getSelfCareOfflineStorageHealth())
+        }
+        console.warn('Failed to read the self-care offline queue.', error)
+      }
+    },
+    [context.actorUserId, context.storageWorkspaceId, setScopeCounts],
+  )
+  const reconcileAwaiting = useCallback(async () => {
+    const mutations = await listSelfCareOfflineMutations(
+      context.storageWorkspaceId,
+      context.actorUserId,
+    )
+
+    for (const mutation of mutations) {
+      if (mutation.status !== 'awaiting_refresh' || !mutation.serverResult) {
+        continue
+      }
+
+      await reconcileAcknowledgedSelfCareMutation(
+        mutation,
+        mutation.serverResult,
+        context,
+      )
+    }
+  }, [context])
+  const drain = useCallback(async () => {
+    if (
+      !context.api ||
+      !context.readiness.canWriteProtectedData ||
+      context.storageWorkspaceId === 'pending' ||
+      context.actorUserId === 'pending' ||
+      (typeof navigator !== 'undefined' && navigator.onLine === false)
+    ) {
+      await refreshCounts()
+      return null
+    }
+
+    setScopeDraining(true)
+    try {
+      await reconcileAwaiting()
+      const result = await drainSelfCareOfflineQueue({
+        actorUserId: context.actorUserId,
+        api: context.api,
+        onApplied: async ({ mutation, response }) => {
+          await reconcileAcknowledgedSelfCareMutation(
+            mutation,
+            response.result,
+            context,
+          )
+        },
+        workspaceId: context.storageWorkspaceId,
+      })
+      await hydrateSelfCareQueriesFromCache(queryClient, context)
+      await refreshCounts()
+      return result
+    } catch (error) {
+      const isStorageFailure = reportSelfCareOfflineStorageFailure(error)
+      setStorageHealth(getSelfCareOfflineStorageHealth())
+
+      if (isStorageFailure) {
+        return null
+      }
+
+      throw error
+    } finally {
+      setScopeDraining(false)
+    }
+  }, [context, queryClient, reconcileAwaiting, refreshCounts, setScopeDraining])
+  const discardConflicts = useCallback(async () => {
+    const mutations = await listSelfCareOfflineMutations(
+      context.storageWorkspaceId,
+      context.actorUserId,
+    )
+    await Promise.all(
+      mutations
+        .filter((mutation) => mutation.status === 'conflicted')
+        .map((mutation) =>
+          cancelSelfCareOfflineMutation(
+            mutation.id,
+            context.storageWorkspaceId,
+            context.actorUserId,
+          ),
+        ),
+    )
+    await hydrateSelfCareQueriesFromCache(queryClient, context)
+    await refreshCounts()
+  }, [context, queryClient, refreshCounts])
+  const refreshAndRetryConflicts = useCallback(async () => {
+    if (
+      !context.api ||
+      !context.readiness.canWriteProtectedData ||
+      (typeof navigator !== 'undefined' && navigator.onLine === false)
+    ) {
+      await refreshCounts()
+      return null
+    }
+
+    await queryClient.refetchQueries({
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey[0] === 'self-care' &&
+        query.queryKey[1] === context.workspaceId,
+    })
+    await rebaseConflictedSelfCareMutations(context)
+    return drain()
+  }, [context, drain, queryClient, refreshCounts])
+
+  useEffect(() => {
+    let isActive = true
+    const shouldCommit = () => isActive
+    const updateStorageHealth = (
+      health: ReturnType<typeof getSelfCareOfflineStorageHealth>,
+    ) => {
+      if (isActive) {
+        setStorageHealth(health)
+      }
+    }
+
+    void probeSelfCareOfflineStorage().then(updateStorageHealth)
+    void Promise.resolve().then(() => refreshCounts(shouldCommit))
+    void Promise.resolve()
+      .then(reconcileAwaiting)
+      .then(() =>
+        isActive
+          ? hydrateSelfCareQueriesFromCache(queryClient, context)
+          : undefined,
+      )
+      .catch((error) => {
+        reportSelfCareOfflineStorageFailure(error)
+
+        if (isActive) {
+          setStorageHealth(getSelfCareOfflineStorageHealth())
+        }
+        console.warn('Failed to reconcile the self-care offline queue.', error)
+      })
+
+    const unsubscribe = subscribeSelfCareOfflineQueue(() => {
+      const nextHealth = getSelfCareOfflineStorageHealth()
+      updateStorageHealth(nextHealth)
+
+      if (nextHealth === 'unknown') {
+        void probeSelfCareOfflineStorage().then(updateStorageHealth)
+      }
+
+      void refreshCounts(shouldCommit)
+    })
+
+    return () => {
+      isActive = false
+      unsubscribe()
+    }
+  }, [context, queryClient, reconcileAwaiting, refreshCounts])
+
+  useOfflineQueueDrain({
+    drain,
+    enabled:
+      context.canQueueOfflineWrites &&
+      context.readiness.canWriteProtectedData &&
+      Boolean(context.api) &&
+      storageHealth === 'ready',
+  })
+
+  return {
+    ...(countsByScope.get(scopeToken) ?? EMPTY_SELF_CARE_OFFLINE_QUEUE_COUNTS),
+    canQueueWrites:
+      context.canQueueOfflineWrites &&
+      storageHealth === 'ready' &&
+      isSelfCareOfflineStorageAvailable(),
+    canWriteFromSession: context.canQueueOfflineWrites,
+    discardConflicts,
+    isDraining: drainingByScope.get(scopeToken) ?? false,
+    refreshAndRetryConflicts,
+    retry: drain,
+  }
+}
+
+export function useCreateSelfCareItem() {
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      variables: SelfCareItemInput | CreateItemVariables,
+      source,
+    ) => {
+      const { input, scheduleInput } = normalizeCreateItemVariables(variables)
+      const itemId = input.id ?? generateUuidV7()
+      return {
+        ...(scheduleInput
+          ? {
+              initialSchedule: {
+                input: scheduleInput,
+                occurrenceId: generateUuidV7(),
+              },
+            }
+          : {}),
+        input: normalizeSelfCareItemRelationIds(
+          { ...input, id: itemId },
+          source.list,
+          itemId,
+        ),
+        type: 'create_item',
+      }
+    },
+    getInvalidationOptions: (variables) => ({
+      skipInvalidation:
+        normalizeCreateItemVariables(variables).skipInvalidation,
+    }),
+    scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
+    selectResult: selectItemResult,
   })
 }
 
 export function useCreateSelfCareItemFromTemplate() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({ input, templateId }: CreateFromTemplateVariables) => {
-      assertSession(session, 'создать заботу из шаблона')
-      const item = await requireSelfCareApi(api).createItemFromTemplate(
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      { input, scheduleInput, templateId }: CreateFromTemplateVariables,
+      source,
+    ) => {
+      const itemId = generateUuidV7()
+      const template = source.templates?.find(
+        (candidate) => candidate.id === templateId,
+      )
+      const overrides = input?.overrides ?? {}
+      return {
+        ...(scheduleInput
+          ? {
+              initialSchedule: {
+                input: scheduleInput,
+                occurrenceId: generateUuidV7(),
+              },
+            }
+          : {}),
+        itemId,
+        overrides: normalizeSelfCareItemRelationIds(
+          {
+            ...overrides,
+            ...(overrides.steps
+              ? {}
+              : {
+                  steps: (template?.defaultSteps ?? []).map((title, order) => ({
+                    defaultChecked: false,
+                    id: generateUuidV7(),
+                    isOptional: false,
+                    order,
+                    title,
+                  })),
+                }),
+          },
+          source.list,
+          itemId,
+        ),
         templateId,
-        input,
-      )
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_ITEM_CHANGE_SCOPES,
-      )
-      return item
+        type: 'create_item_from_template',
+      }
     },
+    scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
+    selectResult: selectItemResult,
   })
 }
 
 export function useUpdateSelfCareItem() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
-      itemId,
-      skipInvalidation,
-    }: ItemUpdateVariables) => {
-      assertSession(session, 'обновить заботу')
-      const item = await requireSelfCareApi(api).updateItem(itemId, input)
-      queueSelfCareInvalidationUnlessSkipped(
-        queryClient,
-        workspaceId,
-        SELF_CARE_ITEM_CHANGE_SCOPES,
-        { skipInvalidation },
+  return useSelfCareCommandMutation({
+    buildCommand: (variables: ItemUpdateVariables, source, occurredAt) => {
+      const item = requireSelfCareItemFromSource(source, variables.itemId)
+      const { expectedVersion: _ignored, ...rawInput } = variables.input
+      const input = normalizeSelfCareItemRelationIds(
+        rawInput,
+        source.list,
+        item.id,
       )
-      return item
+      const occurrence = variables.entry?.occurrence ?? null
+      const scheduleChange = variables.scheduleInput
+        ? occurrence
+          ? variables.scheduleInput.scheduledFor === occurrence.scheduledFor
+            ? {
+                expectedVersion: occurrence.version,
+                input: variables.scheduleInput,
+                occurrenceId: occurrence.id,
+                type: 'update_schedule',
+              }
+            : {
+                actedAt: occurredAt,
+                completionId: generateUuidV7(),
+                expectedVersion: occurrence.version,
+                input: {
+                  newDate: variables.scheduleInput.scheduledFor,
+                  note:
+                    variables.moveNote ??
+                    variables.scheduleInput.note ??
+                    'Дата записи изменена.',
+                },
+                occurrenceId: occurrence.id,
+                replacementInput: variables.scheduleInput,
+                replacementOccurrenceId: generateUuidV7(),
+                type: 'reschedule',
+              }
+          : {
+              input: variables.scheduleInput,
+              occurrenceId: generateUuidV7(),
+              type: 'schedule',
+            }
+        : undefined
+
+      return {
+        expectedVersion: item.version,
+        input,
+        itemId: item.id,
+        ...(scheduleChange ? { scheduleChange } : {}),
+        type: 'update_item',
+      }
     },
+    getInvalidationOptions: (variables: ItemUpdateVariables) => ({
+      skipInvalidation: variables.skipInvalidation,
+    }),
+    scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
+    selectResult: selectItemResult,
   })
 }
 
 export function useArchiveSelfCareItem() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (itemId: string) => {
-      assertSession(session, 'архивировать заботу')
-      const item = await requireSelfCareApi(api).archiveItem(itemId)
-      queueSelfCareInvalidation(
+  return useSelfCareCommandMutation({
+    afterResult: async (item, { queryClient, storageWorkspaceId }) => {
+      await invalidateMigratedHabitRoutine(
         queryClient,
-        workspaceId,
-        SELF_CARE_ITEM_CHANGE_SCOPES,
-      )
-      void invalidateMigratedHabitRoutine(
-        queryClient,
-        workspaceId,
+        storageWorkspaceId,
         item.migratedFromHabitId,
       )
-      return item
     },
+    buildCommand: (itemId: string, source) => {
+      const item = requireSelfCareItemFromSource(source, itemId)
+      return {
+        expectedVersion: item.version,
+        itemId,
+        type: 'archive_item',
+      }
+    },
+    scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
+    selectResult: selectItemResult,
   })
 }
 
 export function useCancelSelfCareOccurrence() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (occurrenceId: string) => {
-      assertSession(session, 'убрать заботу из плана')
-      const occurrence =
-        await requireSelfCareApi(api).cancelOccurrence(occurrenceId)
-      applySelfCareOccurrenceToCache(queryClient, workspaceId, occurrence)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
-        SELF_CARE_STALE_ONLY_INVALIDATION,
+  return useSelfCareCommandMutation({
+    buildCommand: (occurrenceId: string, source, occurredAt) => {
+      const occurrence = requireSelfCareOccurrenceFromSource(
+        source,
+        occurrenceId,
       )
-      return occurrence
+      return {
+        actedAt: occurredAt,
+        completionId: generateUuidV7(),
+        expectedVersion: occurrence.version,
+        occurrenceId,
+        type: 'cancel_occurrence',
+      }
     },
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+    selectResult: selectOccurrenceResult,
   })
 }
 
 export function useCompleteSelfCareOccurrence() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
-      occurrenceId,
-    }: OccurrenceMutationVariables<SelfCareRitualCompletionInput>) => {
-      assertSession(session, 'отметить заботу')
-      const completion = await requireSelfCareApi(api).completeOccurrence(
-        occurrenceId,
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      {
         input,
+        occurrenceId,
+      }: OccurrenceMutationVariables<SelfCareRitualCompletionInput>,
+      source,
+      occurredAt,
+    ) => {
+      const occurrence = requireSelfCareOccurrenceFromSource(
+        source,
+        occurrenceId,
       )
-      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_COMPLETION_CHANGE_SCOPES,
-        SELF_CARE_STALE_ONLY_INVALIDATION,
-      )
-      return completion
+      return {
+        completionId: generateUuidV7(),
+        expectedVersion: occurrence.version,
+        input: withCommandCompletionTime(input, occurredAt),
+        occurrenceId,
+        type: 'complete_occurrence',
+      }
     },
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
+    selectResult: selectCompletionResult,
   })
 }
 
 export function useUpsertSelfCareRitualStepDraft() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (input: SelfCareRitualStepDraftInput) => {
-      assertSession(session, 'сохранить этапы заботы')
-      const result = await requireSelfCareApi(api).upsertRitualStepDraft(input)
-      setRitualStepDraftQueryData(queryClient, workspaceId, result)
-      return result
-    },
-  })
-}
-
-export function useDeleteSelfCareRitualStepDraft() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (input: RitualStepDraftDeleteVariables) => {
-      assertSession(session, 'очистить этапы заботы')
-      const result = await requireSelfCareApi(api).deleteRitualStepDraft(input)
-      setRitualStepDraftQueryData(queryClient, workspaceId, result)
-      return result
-    },
+  return useSelfCareCommandMutation({
+    buildCommand: (input: SelfCareRitualStepDraftInput, source) => ({
+      expectedVersion:
+        source.drafts?.drafts.find(
+          (draft) =>
+            draft.date === input.date &&
+            draft.itemId === input.itemId &&
+            draft.occurrenceId === input.occurrenceId,
+        )?.version ?? null,
+      input,
+      type: 'upsert_ritual_step_draft',
+    }),
+    scopes: ['ritual-step-drafts'],
+    selectResult: selectRitualStepDraftsResult,
   })
 }
 
 export function useCompleteSelfCareItemNow() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      { input, itemId }: ItemCompletionVariables<SelfCareRitualCompletionInput>,
+      source,
+      occurredAt,
+    ) => ({
+      completionId: generateUuidV7(),
+      expectedVersion: requireSelfCareItemFromSource(source, itemId).version,
+      input: withCommandCompletionTime(input, occurredAt),
       itemId,
-    }: ItemCompletionVariables<SelfCareRitualCompletionInput>) => {
-      assertSession(session, 'отметить заботу')
-      const completion = await requireSelfCareApi(api).completeItemNow(
-        itemId,
-        input,
-      )
-      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_COMPLETION_CHANGE_SCOPES,
-        SELF_CARE_STALE_ONLY_INVALIDATION,
-      )
-      return completion
-    },
+      type: 'complete_item_now',
+    }),
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
+    selectResult: selectCompletionResult,
   })
 }
 
 export function useUpdateSelfCareCompletion() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({ completionId, input }: CompletionUpdateVariables) => {
-      assertSession(session, 'обновить запись заботы')
-      const completion = await requireSelfCareApi(api).updateCompletion(
-        completionId,
-        input,
-      )
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_COMPLETION_CHANGE_SCOPES,
-      )
-      return completion
-    },
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      { completionId, input }: CompletionUpdateVariables,
+      source,
+    ) => ({
+      completionId,
+      expectedVersion: requireSelfCareCompletionFromSource(source, completionId)
+        .version,
+      input,
+      type: 'update_completion',
+    }),
+    scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
+    selectResult: selectCompletionResult,
   })
 }
 
 export function useCompleteSelfCareFlexibleGoal() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      { input, itemId }: ItemCompletionVariables<SelfCareCompletionInput>,
+      source,
+      occurredAt,
+    ) => ({
+      completionId: generateUuidV7(),
+      expectedVersion: requireSelfCareItemFromSource(source, itemId).version,
+      input: withCommandCompletionTime(input, occurredAt),
       itemId,
-    }: ItemCompletionVariables<SelfCareCompletionInput>) => {
-      assertSession(session, 'засчитать гибкую цель')
-      const completion = await requireSelfCareApi(api).completeFlexibleGoal(
-        itemId,
-        input,
-      )
-      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
-        SELF_CARE_STALE_ONLY_INVALIDATION,
-      )
-      return completion
-    },
+      type: 'complete_flexible_goal',
+    }),
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
+    selectResult: selectCompletionResult,
   })
 }
 
 export function useCompleteSelfCareCourseSession() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      { input, itemId }: ItemCompletionVariables<SelfCareCompletionInput>,
+      source,
+      occurredAt,
+    ) => ({
+      completionId: generateUuidV7(),
+      expectedVersion: requireSelfCareItemFromSource(source, itemId).version,
+      input: withCommandCompletionTime(input, occurredAt),
       itemId,
-    }: ItemCompletionVariables<SelfCareCompletionInput>) => {
-      assertSession(session, 'засчитать курс')
-      const completion = await requireSelfCareApi(api).completeCourseSession(
-        itemId,
-        input,
-      )
-      applySelfCareCompletionToCache(queryClient, workspaceId, completion)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_COMPLETION_CHANGE_SCOPES,
-        SELF_CARE_STALE_ONLY_INVALIDATION,
-      )
-      return completion
-    },
+      type: 'complete_course_session',
+    }),
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
+    selectResult: selectCompletionResult,
   })
 }
 
 export function useSkipSelfCareOccurrence() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
-      occurrenceId,
-    }: OccurrenceMutationVariables<SelfCareOccurrenceSkipInput>) => {
-      assertSession(session, 'мягко пропустить заботу')
-      const occurrence = await requireSelfCareApi(api).skipOccurrence(
-        occurrenceId,
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      {
         input,
-      )
-      applySelfCareOccurrenceToCache(queryClient, workspaceId, occurrence)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
-        SELF_CARE_STALE_ONLY_INVALIDATION,
-      )
-      return occurrence
-    },
+        occurrenceId,
+      }: OccurrenceMutationVariables<SelfCareOccurrenceSkipInput>,
+      source,
+      occurredAt,
+    ) => ({
+      actedAt: occurredAt,
+      completionId: generateUuidV7(),
+      expectedVersion: requireSelfCareOccurrenceFromSource(source, occurrenceId)
+        .version,
+      input: input ?? {},
+      occurrenceId,
+      type: 'skip_occurrence',
+    }),
+    invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
+    scopes: SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+    selectResult: selectOccurrenceResult,
   })
 }
 
 export function useMoveSelfCareOccurrence() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      input,
-      invalidationScopes,
-      occurrenceId,
-      skipInvalidation,
-    }: RequiredOccurrenceMutationVariables<SelfCareOccurrenceMoveInput>) => {
-      assertSession(session, 'перенести заботу')
-      const occurrence = await requireSelfCareApi(api).moveOccurrence(
-        occurrenceId,
-        input,
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      variables: RequiredOccurrenceMutationVariables<SelfCareOccurrenceMoveInput>,
+      source,
+      occurredAt,
+    ) => {
+      const occurrence = requireSelfCareOccurrenceFromSource(
+        source,
+        variables.occurrenceId,
       )
-      queueSelfCareInvalidationUnlessSkipped(
-        queryClient,
-        workspaceId,
-        invalidationScopes ?? SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
-        { skipInvalidation },
-      )
-      return occurrence
+      return {
+        actedAt: occurredAt,
+        completionId: generateUuidV7(),
+        expectedVersion: occurrence.version,
+        input: variables.input,
+        occurrenceId: variables.occurrenceId,
+        replacementInput:
+          variables.replacementInput ??
+          createReplacementScheduleInput(occurrence, variables.input.newDate),
+        replacementOccurrenceId: generateUuidV7(),
+        type: 'move_occurrence',
+      }
     },
+    getInvalidationOptions: (variables) => ({
+      skipInvalidation: variables.skipInvalidation,
+    }),
+    getScopes: (variables) =>
+      variables.invalidationScopes ?? SELF_CARE_OCCURRENCE_CHANGE_SCOPES,
+    selectResult: selectOccurrenceResult,
   })
 }
 
 export function useScheduleSelfCareItem() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
+  return useSelfCareCommandMutation({
+    buildCommand: (
+      { existingOccurrenceId, input, itemId }: ItemScheduleVariables,
+      source,
+    ) => {
+      const existingOccurrence = existingOccurrenceId
+        ? requireSelfCareOccurrenceFromSource(source, existingOccurrenceId)
+        : null
 
-  return useMutation({
-    mutationFn: async ({
-      input,
-      invalidationScopes,
-      itemId,
-      skipInvalidation,
-    }: ItemScheduleVariables) => {
-      assertSession(session, 'запланировать заботу')
-      const occurrence = await requireSelfCareApi(api).scheduleItem(
-        itemId,
+      return {
+        ...(existingOccurrence
+          ? {
+              existingOccurrenceId: existingOccurrence.id,
+              expectedOccurrenceVersion: existingOccurrence.version,
+            }
+          : { occurrenceId: generateUuidV7() }),
+        expectedVersion: requireSelfCareItemFromSource(source, itemId).version,
         input,
-      )
-      queueSelfCareInvalidationUnlessSkipped(
-        queryClient,
-        workspaceId,
-        invalidationScopes ?? SELF_CARE_ITEM_CHANGE_SCOPES,
-        { skipInvalidation },
-      )
-      return occurrence
+        itemId,
+        type: 'schedule_item',
+      }
     },
-  })
-}
-
-export function useEnableSelfCareGentleMode() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (date: string) => {
-      assertSession(session, 'включить бережный режим')
-      const settings = await requireSelfCareApi(api).enableGentleMode(date)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_SETTINGS_CHANGE_SCOPES,
-      )
-      return settings
-    },
-  })
-}
-
-export function useDisableSelfCareGentleMode() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (date: string) => {
-      assertSession(session, 'выключить бережный режим')
-      const settings = await requireSelfCareApi(api).disableGentleMode(date)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_SETTINGS_CHANGE_SCOPES,
-      )
-      return settings
-    },
-  })
-}
-
-export function useUpdateSelfCareMinimumItems() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async (input: SelfCareMinimumItemsUpdateInput) => {
-      assertSession(session, 'обновить минимум заботы')
-      const settings = await requireSelfCareApi(api).updateMinimumItems(input)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_SETTINGS_CHANGE_SCOPES,
-      )
-      return settings
-    },
+    getInvalidationOptions: (variables) => ({
+      skipInvalidation: variables.skipInvalidation,
+    }),
+    getScopes: (variables) =>
+      variables.invalidationScopes ?? SELF_CARE_ITEM_CHANGE_SCOPES,
+    selectResult: selectOccurrenceResult,
   })
 }
 
 export function useUpdateSelfCareSettings() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
+  return useSelfCareCommandMutation({
+    buildCommand: (input: SelfCareSettingsUpdateInput, source) => {
+      const settings =
+        source.settings?.settings ?? source.dashboard?.settings ?? null
 
-  return useMutation({
-    mutationFn: async (input: SelfCareSettingsUpdateInput) => {
-      assertSession(session, 'обновить настройки заботы')
-      const settings = await requireSelfCareApi(api).updateSettings(input)
-      queueSelfCareInvalidation(
-        queryClient,
-        workspaceId,
-        SELF_CARE_SETTINGS_CHANGE_SCOPES,
-      )
-      return settings
+      if (!settings) {
+        throw new SelfCareOfflineBaseUnavailableError()
+      }
+
+      return {
+        expectedVersion: settings.version,
+        input,
+        type: 'update_settings',
+      }
     },
-  })
-}
-
-export function useUpsertSelfCareDailyState() {
-  const queryClient = useQueryClient()
-  const { api, session, workspaceId } = useSelfCareApi()
-
-  return useMutation({
-    mutationFn: async ({
-      date,
-      input,
-    }: {
-      date: string
-      input: SelfCareDailyStateInput
-    }) => {
-      assertSession(session, 'сохранить состояние')
-      const state = await requireSelfCareApi(api).upsertDailyState(date, input)
-      queueSelfCareInvalidation(queryClient, workspaceId, [
-        'dashboard',
-        'analytics',
-      ])
-      return state
-    },
+    scopes: SELF_CARE_SETTINGS_CHANGE_SCOPES,
+    selectResult: selectSettingsResult,
   })
 }
 
 export function getSelfCareErrorMessage(error: unknown): string {
+  if (isSelfCareNetworkError(error)) {
+    return SELF_CARE_NETWORK_ERROR_MESSAGE
+  }
+
   if (error instanceof SelfCareApiError) {
+    if (error.code === 'self_care_request_failed') {
+      return 'Не удалось выполнить запрос. Повтори попытку.'
+    }
+
     return error.message
   }
 
@@ -812,20 +1095,1283 @@ export function getSelfCareErrorMessage(error: unknown): string {
   return 'Не получилось сохранить. Попробуй еще раз.'
 }
 
+interface PersistentSelfCareQueryOptions<TData> {
+  cacheParameters?: readonly string[] | undefined
+  enabled?: boolean | undefined
+  queryKey: (workspaceId: SelfCareQueryOwnerId) => readonly unknown[]
+  request: (api: SelfCareApiClient, signal: AbortSignal) => Promise<TData>
+  scope: SelfCareQueryScope
+  staleTime: number
+}
+
+interface PersistentSelfCareReadState<TData> {
+  cacheIdentity: string
+  isLoading: boolean
+  read: SelfCareCachedRead<TData> | null
+}
+
+interface PersistentSelfCareSyncState {
+  cacheIdentity: string
+  lastSuccessfulSyncAt: string
+}
+
+function usePersistentSelfCareQuery<TData>(
+  options: PersistentSelfCareQueryOptions<TData>,
+) {
+  const { actorUserId, api, isEnabled, storageWorkspaceId, workspaceId } =
+    useSelfCareApi(
+      options.enabled === undefined ? {} : { enabled: options.enabled },
+    )
+  const cacheKey = createSelfCareCacheKey(
+    options.scope,
+    options.cacheParameters,
+  )
+  const cacheIdentity = `${workspaceId}:${cacheKey}`
+  const [persistentReadState, setPersistentReadState] =
+    useState<PersistentSelfCareReadState<TData> | null>(null)
+  const [successfulSyncState, setSuccessfulSyncState] =
+    useState<PersistentSelfCareSyncState | null>(null)
+  const currentPersistentReadState =
+    persistentReadState?.cacheIdentity === cacheIdentity
+      ? persistentReadState
+      : null
+
+  useEffect(() => {
+    if (options.enabled === false || storageWorkspaceId === 'pending') {
+      return
+    }
+
+    let isActive = true
+    const cacheParameters = readSelfCareCacheParameters(options.scope, cacheKey)
+    void loadProjectedCachedSelfCareRead<TData>(
+      storageWorkspaceId,
+      actorUserId,
+      cacheKey,
+      (data, overlay) =>
+        projectSelfCareRead(
+          options.scope,
+          cacheParameters,
+          data,
+          overlay,
+        ) as TData,
+    )
+      .then((read) => {
+        if (!isActive) {
+          return
+        }
+
+        setPersistentReadState({ cacheIdentity, isLoading: false, read })
+      })
+      .catch((error) => {
+        reportSelfCareOfflineStorageFailure(error)
+        console.warn('Failed to load cached self-care read model.', error)
+        if (isActive) {
+          setPersistentReadState({
+            cacheIdentity,
+            isLoading: false,
+            read: null,
+          })
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [
+    actorUserId,
+    cacheIdentity,
+    cacheKey,
+    options.enabled,
+    options.scope,
+    storageWorkspaceId,
+  ])
+  const serverQuery = useQuery({
+    enabled: isEnabled,
+    queryFn: async ({ signal }) => {
+      const requestStartedAt = Date.now()
+      const writeGeneration =
+        getSelfCareOfflineWorkspaceWriteGeneration(storageWorkspaceId)
+      const data = await options.request(requireSelfCareApi(api), signal)
+      const lastSuccessfulSyncAt = new Date().toISOString()
+
+      try {
+        const cachedRead = await saveCachedSelfCareRead(
+          storageWorkspaceId,
+          actorUserId,
+          options.scope,
+          cacheKey,
+          data,
+          lastSuccessfulSyncAt,
+          writeGeneration,
+          requestStartedAt,
+        )
+        setSuccessfulSyncState({
+          cacheIdentity,
+          lastSuccessfulSyncAt: cachedRead.lastSuccessfulSyncAt,
+        })
+        const projected = await loadProjectedCachedSelfCareRead<TData>(
+          storageWorkspaceId,
+          actorUserId,
+          cacheKey,
+          (base, overlay) =>
+            projectSelfCareRead(
+              options.scope,
+              options.cacheParameters ?? [],
+              base,
+              overlay,
+            ) as TData,
+        )
+        return projected?.data ?? cachedRead.data
+      } catch (error) {
+        reportSelfCareOfflineStorageFailure(error)
+        console.warn('Failed to persist self-care read model.', error)
+        setSuccessfulSyncState({ cacheIdentity, lastSuccessfulSyncAt })
+        return data
+      }
+    },
+    queryKey: options.queryKey(workspaceId),
+    staleTime: options.staleTime,
+  })
+  const cachedRead = currentPersistentReadState?.read ?? null
+  const data = serverQuery.data ?? cachedRead?.data
+  const hasData = data !== undefined
+  const isCacheLoading =
+    options.enabled === false
+      ? false
+      : (currentPersistentReadState?.isLoading ?? true)
+  const lastSuccessfulSyncAt =
+    (successfulSyncState?.cacheIdentity === cacheIdentity
+      ? successfulSyncState.lastSuccessfulSyncAt
+      : null) ??
+    cachedRead?.lastSuccessfulSyncAt ??
+    null
+
+  return {
+    ...serverQuery,
+    data,
+    isCacheLoading: !hasData && isCacheLoading,
+    isError: !hasData && serverQuery.isError,
+    isLoading: !hasData && (serverQuery.isLoading || isCacheLoading),
+    isPending: !hasData && (serverQuery.isPending || isCacheLoading),
+    isShowingCachedData:
+      serverQuery.data === undefined &&
+      cachedRead !== null &&
+      cachedRead !== undefined,
+    isSuccess: hasData,
+    lastSuccessfulSyncAt,
+    status: hasData ? ('success' as const) : serverQuery.status,
+  }
+}
+
 function useSelfCareApi(options: { enabled?: boolean } = {}) {
-  const { apiConfig, isApiEnabled, session, workspaceId } =
+  const clientTimeZone = usePlannerTimeZone()
+  const { apiConfig, isApiEnabled, readiness, session, workspaceId } =
     useSessionFeatureReadiness({ enabled: options.enabled })
   const api = useMemo(
     () => (apiConfig ? createSelfCareApiClient(apiConfig) : null),
     [apiConfig],
   )
 
+  const actorUserId = session?.actorUserId ?? 'pending'
+  const canQueueOfflineWrites = canSessionQueueSelfCare(session)
+  const writeReadiness = useMemo(
+    () => ({ canWriteProtectedData: readiness.canWriteProtectedData }),
+    [readiness.canWriteProtectedData],
+  )
+
+  return useMemo(
+    () => ({
+      actorUserId,
+      api,
+      canQueueOfflineWrites,
+      clientTimeZone,
+      isEnabled: isApiEnabled && api !== null,
+      readiness: writeReadiness,
+      storageWorkspaceId: workspaceId,
+      workspaceId: createSelfCareQueryOwnerId(workspaceId, actorUserId),
+    }),
+    [
+      actorUserId,
+      api,
+      canQueueOfflineWrites,
+      clientTimeZone,
+      isApiEnabled,
+      workspaceId,
+      writeReadiness,
+    ],
+  )
+}
+
+export function canSessionQueueSelfCare(
+  session: SessionResponse | undefined,
+): boolean {
+  return Boolean(
+    session &&
+    session.workspace.kind === 'personal' &&
+    session.workspace.id === session.workspaceId &&
+    session.role !== 'guest' &&
+    session.actorUserId === session.actor.id,
+  )
+}
+
+class SelfCareOfflineConflictError extends Error {
+  constructor() {
+    super(
+      'Данные изменились в другом месте. Обновите их и повторите изменение.',
+    )
+    this.name = 'SelfCareOfflineConflictError'
+  }
+}
+
+type SelfCareApiContext = ReturnType<typeof useSelfCareApi>
+
+interface SelfCareCommandMutationOptions<TData, TVariables> {
+  afterResult?:
+    | ((
+        result: TData,
+        context: {
+          queryClient: QueryClient
+          storageWorkspaceId: string
+        },
+      ) => Promise<void> | void)
+    | undefined
+  buildCommand: (
+    variables: TVariables,
+    source: SelfCareOptimisticSource,
+    occurredAt: string,
+  ) => unknown
+  getInvalidationOptions?:
+    ((variables: TVariables) => SelfCareInvalidationOptions) | undefined
+  getScopes?:
+    ((variables: TVariables) => readonly SelfCareQueryScope[]) | undefined
+  invalidationOptions?: SelfCareInvalidationOptions | undefined
+  scopes?: readonly SelfCareQueryScope[] | undefined
+  selectResult: (result: SelfCareOfflineCommandResult) => TData
+}
+
+function useSelfCareCommandMutation<TData, TVariables>(
+  options: SelfCareCommandMutationOptions<TData, TVariables>,
+) {
+  const queryClient = useQueryClient()
+  const context = useSelfCareApi()
+
+  return useMutation<TData, Error, TVariables>({
+    mutationFn: async (variables) => {
+      const occurredAt = new Date().toISOString()
+      const source = readSelfCareOptimisticSource(queryClient, context)
+      const command = selfCareOfflineCommandSchema.parse(
+        options.buildCommand(variables, source, occurredAt),
+      )
+      const result = await executeSelfCareCommand({
+        command,
+        context,
+        occurredAt,
+        queryClient,
+        source,
+      })
+      const scopes = options.getScopes?.(variables) ?? options.scopes ?? []
+      const invalidationOptions =
+        options.getInvalidationOptions?.(variables) ??
+        options.invalidationOptions ??
+        SELF_CARE_STALE_ONLY_INVALIDATION
+
+      queueSelfCareInvalidationUnlessSkipped(
+        queryClient,
+        context.workspaceId,
+        scopes,
+        invalidationOptions,
+      )
+      const selected = options.selectResult(result)
+      await options.afterResult?.(selected, {
+        queryClient,
+        storageWorkspaceId: context.storageWorkspaceId,
+      })
+      return selected
+    },
+  })
+}
+
+async function executeSelfCareCommand(input: {
+  command: SelfCareOfflineCommand
+  context: SelfCareApiContext
+  occurredAt: string
+  queryClient: QueryClient
+  source: SelfCareOptimisticSource
+}): Promise<SelfCareOfflineCommandResult> {
+  const { command, context, occurredAt, queryClient, source } = input
+  const expectedWriteGeneration = getSelfCareOfflineWorkspaceWriteGeneration(
+    context.storageWorkspaceId,
+  )
+
+  if (!context.canQueueOfflineWrites) {
+    throw new SelfCareApiUnavailableError()
+  }
+
+  const optimisticResult = createOptimisticSelfCareResult(command, source)
+
+  if (getSelfCareOfflineStorageHealth() === 'unknown') {
+    await probeSelfCareOfflineStorage()
+  }
+
+  if (!isSelfCareOfflineStorageAvailable()) {
+    return executeSelfCareCommandDirectly(queryClient, context, command)
+  }
+
+  let queued: SelfCareOfflineMutationRecord
+
+  try {
+    const existing = await listSelfCareOfflineMutations(
+      context.storageWorkspaceId,
+      context.actorUserId,
+      expectedWriteGeneration,
+    )
+
+    if (existing.length === 0) {
+      await persistCurrentSelfCareQueryBases(
+        queryClient,
+        context,
+        expectedWriteGeneration,
+      )
+    }
+
+    const entityKeys = new Set([
+      ...getSelfCareCommandEntityKeys(command),
+      ...getSelfCareResultEntityKeys(optimisticResult),
+    ])
+    const dependsOn = getSelfCareMutationDependencies(existing, entityKeys)
+    const operationId = generateUuidV7()
+    const record = await enqueueSelfCareOfflineMutation({
+      actorUserId: context.actorUserId,
+      clientTimeZone: context.clientTimeZone,
+      command,
+      dependsOn,
+      expectedWriteGeneration,
+      occurredAt,
+      operationId,
+      optimisticResult,
+      workspaceId: context.storageWorkspaceId,
+    })
+
+    if (!record) {
+      if (
+        !isSelfCareOfflineWorkspaceWriteGenerationCurrent(
+          context.storageWorkspaceId,
+          expectedWriteGeneration,
+        )
+      ) {
+        throw new SelfCareApiUnavailableError()
+      }
+
+      if (!isSelfCareOfflineStorageAvailable()) {
+        return executeSelfCareCommandDirectly(queryClient, context, command)
+      }
+
+      throw new SelfCareApiUnavailableError()
+    }
+
+    queued = record
+  } catch (error) {
+    if (reportSelfCareOfflineStorageFailure(error)) {
+      return executeSelfCareCommandDirectly(queryClient, context, command)
+    }
+
+    throw error
+  }
+
+  applySelfCareOverlayToQueries(queryClient, context.workspaceId, {
+    command,
+    operationId: queued.operationId,
+    result: optimisticResult,
+    sequence: queued.sequence,
+    status: 'pending',
+  })
+
+  let serverResult: SelfCareOfflineCommandResult | null = null
+
+  if (
+    context.api &&
+    context.readiness.canWriteProtectedData &&
+    (typeof navigator === 'undefined' || navigator.onLine !== false)
+  ) {
+    await drainSelfCareOfflineQueue({
+      actorUserId: context.actorUserId,
+      api: context.api,
+      onApplied: async ({ mutation, response }) => {
+        await reconcileAcknowledgedSelfCareMutation(
+          mutation,
+          response.result,
+          context,
+        )
+
+        if (mutation.id === queued.id) {
+          serverResult = response.result
+        }
+      },
+      workspaceId: context.storageWorkspaceId,
+    })
+    await hydrateSelfCareQueriesFromCache(queryClient, context)
+
+    const remaining = await listSelfCareOfflineMutations(
+      context.storageWorkspaceId,
+      context.actorUserId,
+    )
+    const current = remaining.find((mutation) => mutation.id === queued.id)
+
+    if (current?.status === 'conflicted') {
+      throw new SelfCareOfflineConflictError()
+    }
+  }
+
+  return serverResult ?? optimisticResult
+}
+
+async function executeSelfCareCommandDirectly(
+  queryClient: QueryClient,
+  context: SelfCareApiContext,
+  command: SelfCareOfflineCommand,
+): Promise<SelfCareOfflineCommandResult> {
+  if (
+    !context.api ||
+    !context.readiness.canWriteProtectedData ||
+    (typeof navigator !== 'undefined' && navigator.onLine === false)
+  ) {
+    throw new SelfCareApiUnavailableError()
+  }
+
+  const response = await context.api.executeOfflineCommand({
+    clientTimeZone: context.clientTimeZone,
+    command,
+    operationId: generateUuidV7(),
+  })
+  applySelfCareOverlayToQueries(queryClient, context.workspaceId, {
+    command,
+    operationId: response.operationId,
+    result: response.result,
+    sequence: Number.MAX_SAFE_INTEGER,
+    status: 'awaiting_refresh',
+  })
+  return response.result
+}
+
+function getMutationEntityKeys(
+  mutation: SelfCareOfflineMutationRecord,
+): string[] {
+  return [
+    ...getSelfCareCommandEntityKeys(mutation.command),
+    ...getSelfCareResultEntityKeys(mutation.optimisticResult),
+  ]
+}
+
+function getSelfCareMutationDependencies(
+  existing: readonly SelfCareOfflineMutationRecord[],
+  entityKeys: ReadonlySet<string>,
+): string[] {
+  const latestByEntity = new Map<string, SelfCareOfflineMutationRecord>()
+
+  for (const mutation of existing) {
+    for (const key of getMutationEntityKeys(mutation)) {
+      if (entityKeys.has(key)) {
+        latestByEntity.set(key, mutation)
+      }
+    }
+  }
+
+  return [...new Set([...latestByEntity.values()].map((value) => value.id))]
+}
+
+interface SelfCareScopeValue {
+  cacheKey: string
+  data: unknown
+  parameters: string[]
+  scope: string
+}
+
+function readSelfCareOptimisticSource(
+  queryClient: QueryClient,
+  context: SelfCareApiContext,
+): SelfCareOptimisticSource {
+  return buildSelfCareOptimisticSource(
+    readSelfCareScopeValues(queryClient, context.workspaceId),
+    context.actorUserId,
+    context.storageWorkspaceId,
+    new Date().toISOString(),
+  )
+}
+
+function readSelfCareScopeValues(
+  queryClient: QueryClient,
+  workspaceId: string,
+): SelfCareScopeValue[] {
+  return queryClient
+    .getQueryCache()
+    .findAll({
+      predicate: (query) =>
+        Array.isArray(query.queryKey) &&
+        query.queryKey[0] === 'self-care' &&
+        query.queryKey[1] === workspaceId,
+    })
+    .flatMap((query) => {
+      const scope = query.queryKey[2]
+      const parameters = query.queryKey.slice(3)
+
+      if (
+        typeof scope !== 'string' ||
+        query.state.data === undefined ||
+        !parameters.every((value): value is string => typeof value === 'string')
+      ) {
+        return []
+      }
+
+      return [
+        {
+          cacheKey: createSelfCareCacheKey(scope, parameters),
+          data: query.state.data,
+          parameters,
+          scope,
+        },
+      ]
+    })
+}
+
+function buildSelfCareOptimisticSource(
+  values: readonly SelfCareScopeValue[],
+  actorUserId: string,
+  workspaceId: string,
+  occurredAt: string,
+): SelfCareOptimisticSource {
+  const dashboards = readScopeData<SelfCareDashboardResponse>(
+    values,
+    'dashboard',
+  )
+  const plans = readScopeData<SelfCarePlanResponse>(values, 'plan')
+  const histories = readScopeData<SelfCareHistoryResponse>(values, 'history')
+
   return {
-    api,
-    isEnabled: isApiEnabled && api !== null,
-    session,
+    actorUserId,
+    dashboard: mergeSelfCareDashboards(dashboards),
+    drafts: readScopeData<SelfCareRitualStepDraftListResponse>(
+      values,
+      'ritual-step-drafts',
+    )[0],
+    history: mergeSelfCareHistories(histories),
+    list: readScopeData<SelfCareListResponse>(values, 'items')[0],
+    occurredAt,
+    plan: mergeSelfCarePlans(plans),
+    settings: readScopeData<SelfCareSettingsResponse>(values, 'settings')[0],
+    templates: readScopeData<SelfCareTemplate[]>(values, 'templates')[0],
     workspaceId,
   }
+}
+
+function readScopeData<TData>(
+  values: readonly SelfCareScopeValue[],
+  scope: string,
+): TData[] {
+  return values
+    .filter((value) => value.scope === scope)
+    .map((value) => value.data as TData)
+}
+
+function mergeSelfCareDashboards(
+  values: readonly SelfCareDashboardResponse[],
+): SelfCareDashboardResponse | undefined {
+  const first = values[0]
+
+  return first
+    ? {
+        ...first,
+        flexibleGoals: uniqueSelfCareEntries(
+          values.flatMap((value) => value.flexibleGoals),
+        ),
+        overdueItems: uniqueSelfCareEntries(
+          values.flatMap((value) => value.overdueItems),
+        ),
+        planningHints: uniqueSelfCareEntries(
+          values.flatMap((value) => value.planningHints),
+        ),
+        todayItems: uniqueSelfCareEntries(
+          values.flatMap((value) => value.todayItems),
+        ),
+        upcomingImportant: uniqueSelfCareEntries(
+          values.flatMap((value) => value.upcomingImportant),
+        ),
+      }
+    : undefined
+}
+
+function mergeSelfCarePlans(
+  values: readonly SelfCarePlanResponse[],
+): SelfCarePlanResponse | undefined {
+  const first = values[0]
+
+  return first
+    ? {
+        ...first,
+        courses: uniqueSelfCareEntries(
+          values.flatMap((value) => value.courses),
+        ),
+        medical: uniqueSelfCareEntries(
+          values.flatMap((value) => value.medical),
+        ),
+        occurrences: uniqueSelfCareEntries(
+          values.flatMap((value) => value.occurrences),
+        ),
+        planningHints: uniqueSelfCareEntries(
+          values.flatMap((value) => value.planningHints),
+        ),
+      }
+    : undefined
+}
+
+function mergeSelfCareHistories(
+  values: readonly SelfCareHistoryResponse[],
+): SelfCareHistoryResponse | undefined {
+  const first = values[0]
+
+  return first
+    ? {
+        ...first,
+        completions: uniqueById(values.flatMap((value) => value.completions)),
+        items: uniqueById(values.flatMap((value) => value.items)),
+      }
+    : undefined
+}
+
+function uniqueSelfCareEntries(
+  values: SelfCareTodayItem[],
+): SelfCareTodayItem[] {
+  const byKey = new Map<string, SelfCareTodayItem>()
+
+  for (const value of values) {
+    byKey.set(value.occurrence?.id ?? `item:${value.item.id}`, value)
+  }
+
+  return [...byKey.values()]
+}
+
+function uniqueById<T extends { id: string }>(values: T[]): T[] {
+  return [...new Map(values.map((value) => [value.id, value])).values()]
+}
+
+async function persistCurrentSelfCareQueryBases(
+  queryClient: QueryClient,
+  context: SelfCareApiContext,
+  expectedWriteGeneration: number,
+): Promise<void> {
+  const values = readSelfCareScopeValues(queryClient, context.workspaceId)
+
+  if (!values.length) {
+    throw new SelfCareOfflineBaseUnavailableError()
+  }
+
+  await Promise.all(
+    values.map(async (value) => {
+      const current = await loadCachedSelfCareRead(
+        context.storageWorkspaceId,
+        context.actorUserId,
+        value.cacheKey,
+      )
+
+      if (!current) {
+        await saveCachedSelfCareRead(
+          context.storageWorkspaceId,
+          context.actorUserId,
+          value.scope,
+          value.cacheKey,
+          value.data,
+          new Date().toISOString(),
+          expectedWriteGeneration,
+        )
+      }
+    }),
+  )
+}
+
+function applySelfCareOverlayToQueries(
+  queryClient: QueryClient,
+  workspaceId: string,
+  overlay: SelfCareOfflineOverlay,
+): void {
+  for (const value of readSelfCareScopeValues(queryClient, workspaceId)) {
+    const queryKey = [
+      'self-care',
+      workspaceId,
+      value.scope,
+      ...value.parameters,
+    ] as const
+    queryClient.setQueryData(queryKey, (current: unknown) =>
+      current === undefined
+        ? current
+        : projectSelfCareRead(value.scope, value.parameters, current, overlay),
+    )
+  }
+}
+
+async function hydrateSelfCareQueriesFromCache(
+  queryClient: QueryClient,
+  context: Pick<
+    SelfCareApiContext,
+    'actorUserId' | 'storageWorkspaceId' | 'workspaceId'
+  >,
+): Promise<void> {
+  const values = readSelfCareScopeValues(queryClient, context.workspaceId)
+  await Promise.all(
+    values.map(async (value) => {
+      const read = await loadProjectedCachedSelfCareRead(
+        context.storageWorkspaceId,
+        context.actorUserId,
+        value.cacheKey,
+        (data, overlay) =>
+          projectSelfCareRead(value.scope, value.parameters, data, overlay),
+      )
+
+      if (read) {
+        queryClient.setQueryData(
+          ['self-care', context.workspaceId, value.scope, ...value.parameters],
+          read.data,
+        )
+      }
+    }),
+  )
+}
+
+async function reconcileAcknowledgedSelfCareMutation(
+  mutation: SelfCareOfflineMutationRecord,
+  authoritativeResult: SelfCareOfflineCommandResult,
+  context: SelfCareApiContext,
+): Promise<void> {
+  const committed = await commitSelfCareOfflineMutationResult(
+    mutation.id,
+    context.storageWorkspaceId,
+    context.actorUserId,
+    projectSelfCareCachedRead,
+    { retainMutation: true },
+  )
+
+  if (!committed) {
+    throw new Error('Self-care result reconciliation is incomplete.')
+  }
+
+  await rebaseSelfCareDependentsAfterAcknowledgement(
+    mutation,
+    authoritativeResult,
+    context,
+  )
+  await completeSelfCareOfflineMutation(
+    mutation.id,
+    context.storageWorkspaceId,
+    context.actorUserId,
+  )
+}
+
+async function rebaseSelfCareDependentsAfterAcknowledgement(
+  acknowledged: SelfCareOfflineMutationRecord,
+  authoritativeResult: SelfCareOfflineCommandResult,
+  context: SelfCareApiContext,
+): Promise<void> {
+  const mutations = await listSelfCareOfflineMutations(
+    context.storageWorkspaceId,
+    context.actorUserId,
+  )
+  const dependentIds = collectSelfCareDependentIds(mutations, acknowledged.id)
+
+  if (!dependentIds.size) {
+    return
+  }
+
+  const snapshots = await loadConfirmedSelfCareCachedScopes(
+    context.storageWorkspaceId,
+    context.actorUserId,
+  )
+  let virtualValues: SelfCareScopeValue[] = snapshots.map((snapshot) => ({
+    ...snapshot,
+    parameters: readSelfCareCacheParameters(snapshot.scope, snapshot.cacheKey),
+  }))
+  const completionIdAliases = getCompletionIdAliases(
+    acknowledged.optimisticResult,
+    authoritativeResult,
+  )
+  const rebases = []
+
+  for (const mutation of mutations) {
+    if (mutation.status === 'conflicted') {
+      continue
+    }
+
+    if (dependentIds.has(mutation.id)) {
+      const source = buildSelfCareOptimisticSource(
+        virtualValues,
+        context.actorUserId,
+        context.storageWorkspaceId,
+        mutation.occurredAt,
+      )
+      const command = rebaseSelfCareCommand(
+        mutation.command,
+        source,
+        completionIdAliases,
+      )
+      const optimisticResult = createOptimisticSelfCareResult(command, source)
+      rebases.push({
+        command,
+        mutationId: mutation.id,
+        optimisticResult,
+      })
+      virtualValues = projectSelfCareScopeValues(virtualValues, {
+        command,
+        operationId: mutation.operationId,
+        result: optimisticResult,
+        sequence: mutation.sequence,
+        status: 'pending',
+      })
+      continue
+    }
+
+    if (mutation.status !== 'awaiting_refresh') {
+      virtualValues = projectSelfCareScopeValues(virtualValues, {
+        command: mutation.command,
+        operationId: mutation.operationId,
+        result: mutation.serverResult ?? mutation.optimisticResult,
+        sequence: mutation.sequence,
+        status: mutation.status,
+      })
+    }
+  }
+
+  await rebaseSelfCareOfflineMutations(
+    context.storageWorkspaceId,
+    context.actorUserId,
+    rebases,
+  )
+}
+
+async function rebaseConflictedSelfCareMutations(
+  context: SelfCareApiContext,
+): Promise<void> {
+  const mutations = await listSelfCareOfflineMutations(
+    context.storageWorkspaceId,
+    context.actorUserId,
+  )
+  const conflictRoots = mutations.filter(
+    (mutation) => mutation.status === 'conflicted',
+  )
+
+  if (!conflictRoots.length) {
+    return
+  }
+
+  const rebaseIds = new Set<string>()
+  for (const root of conflictRoots) {
+    rebaseIds.add(root.id)
+    for (const dependentId of collectSelfCareDependentIds(mutations, root.id)) {
+      rebaseIds.add(dependentId)
+    }
+  }
+
+  const snapshots = await loadConfirmedSelfCareCachedScopes(
+    context.storageWorkspaceId,
+    context.actorUserId,
+  )
+  let virtualValues: SelfCareScopeValue[] = snapshots.map((snapshot) => ({
+    ...snapshot,
+    parameters: readSelfCareCacheParameters(snapshot.scope, snapshot.cacheKey),
+  }))
+  const rebases = []
+
+  for (const mutation of mutations) {
+    if (rebaseIds.has(mutation.id)) {
+      const source = buildSelfCareOptimisticSource(
+        virtualValues,
+        context.actorUserId,
+        context.storageWorkspaceId,
+        mutation.occurredAt,
+      )
+      const command = rebaseSelfCareCommand(mutation.command, source, new Map())
+      const optimisticResult = createOptimisticSelfCareResult(command, source)
+      rebases.push({
+        command,
+        mutationId: mutation.id,
+        ...(mutation.status === 'conflicted'
+          ? { operationId: generateUuidV7() }
+          : {}),
+        optimisticResult,
+      })
+      virtualValues = projectSelfCareScopeValues(virtualValues, {
+        command,
+        operationId: mutation.operationId,
+        result: optimisticResult,
+        sequence: mutation.sequence,
+        status: 'pending',
+      })
+      continue
+    }
+
+    if (mutation.status !== 'conflicted') {
+      virtualValues = projectSelfCareScopeValues(virtualValues, {
+        command: mutation.command,
+        operationId: mutation.operationId,
+        result: mutation.serverResult ?? mutation.optimisticResult,
+        sequence: mutation.sequence,
+        status: mutation.status,
+      })
+    }
+  }
+
+  await rebaseSelfCareOfflineMutations(
+    context.storageWorkspaceId,
+    context.actorUserId,
+    rebases,
+  )
+}
+
+function projectSelfCareScopeValues(
+  values: readonly SelfCareScopeValue[],
+  overlay: SelfCareOfflineOverlay,
+): SelfCareScopeValue[] {
+  return values.map((value) => ({
+    ...value,
+    data: projectSelfCareRead(
+      value.scope,
+      value.parameters,
+      value.data,
+      overlay,
+    ),
+  }))
+}
+
+function collectSelfCareDependentIds(
+  mutations: readonly SelfCareOfflineMutationRecord[],
+  rootId: string,
+): Set<string> {
+  const resolved = new Set([rootId])
+  const dependents = new Set<string>()
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const mutation of mutations) {
+      if (
+        !resolved.has(mutation.id) &&
+        mutation.dependsOn.some((dependency) => resolved.has(dependency))
+      ) {
+        resolved.add(mutation.id)
+        dependents.add(mutation.id)
+        changed = true
+      }
+    }
+  }
+
+  return dependents
+}
+
+function getCompletionIdAliases(
+  optimistic: SelfCareOfflineCommandResult,
+  authoritative: SelfCareOfflineCommandResult,
+): ReadonlyMap<string, string> {
+  return optimistic.kind === 'completion' &&
+    authoritative.kind === 'completion' &&
+    optimistic.completion.id !== authoritative.completion.id
+    ? new Map([[optimistic.completion.id, authoritative.completion.id]])
+    : new Map()
+}
+
+function rebaseSelfCareCommand(
+  command: SelfCareOfflineCommand,
+  source: SelfCareOptimisticSource,
+  completionIdAliases: ReadonlyMap<string, string>,
+): SelfCareOfflineCommand {
+  switch (command.type) {
+    case 'create_item':
+    case 'create_item_from_template':
+      return command
+    case 'update_item': {
+      const scheduleChange = command.scheduleChange
+      return {
+        ...command,
+        expectedVersion: requireSelfCareItemFromSource(source, command.itemId)
+          .version,
+        ...(scheduleChange?.type === 'reschedule' ||
+        scheduleChange?.type === 'update_schedule'
+          ? {
+              scheduleChange: {
+                ...scheduleChange,
+                expectedVersion: requireSelfCareOccurrenceFromSource(
+                  source,
+                  scheduleChange.occurrenceId,
+                ).version,
+              },
+            }
+          : {}),
+      }
+    }
+    case 'archive_item':
+    case 'complete_item_now':
+    case 'complete_flexible_goal':
+    case 'complete_course_session':
+      return {
+        ...command,
+        expectedVersion: requireSelfCareItemFromSource(source, command.itemId)
+          .version,
+      }
+    case 'schedule_item':
+      return {
+        ...command,
+        expectedVersion: requireSelfCareItemFromSource(source, command.itemId)
+          .version,
+        ...(command.existingOccurrenceId
+          ? {
+              expectedOccurrenceVersion: requireSelfCareOccurrenceFromSource(
+                source,
+                command.existingOccurrenceId,
+              ).version,
+            }
+          : {}),
+      }
+    case 'move_occurrence':
+    case 'cancel_occurrence':
+    case 'skip_occurrence':
+    case 'complete_occurrence':
+      return {
+        ...command,
+        expectedVersion: requireSelfCareOccurrenceFromSource(
+          source,
+          command.occurrenceId,
+        ).version,
+      }
+    case 'update_completion': {
+      const completionId =
+        completionIdAliases.get(command.completionId) ?? command.completionId
+      return {
+        ...command,
+        completionId,
+        expectedVersion: requireSelfCareCompletionFromSource(
+          source,
+          completionId,
+        ).version,
+      }
+    }
+    case 'update_settings': {
+      const settings = source.settings?.settings ?? source.dashboard?.settings
+
+      if (!settings) {
+        throw new SelfCareOfflineBaseUnavailableError()
+      }
+
+      return { ...command, expectedVersion: settings.version }
+    }
+    case 'upsert_ritual_step_draft':
+      return {
+        ...command,
+        expectedVersion:
+          source.drafts?.drafts.find(
+            (draft) =>
+              draft.date === command.input.date &&
+              draft.itemId === command.input.itemId &&
+              draft.occurrenceId === command.input.occurrenceId,
+          )?.version ?? null,
+      }
+  }
+}
+
+function readSelfCareCacheParameters(
+  scope: string,
+  cacheKey: string,
+): string[] {
+  const prefix = `${scope}:`
+  return cacheKey.startsWith(prefix)
+    ? cacheKey
+        .slice(prefix.length)
+        .split(':')
+        .filter(Boolean)
+        .map((value) => decodeURIComponent(value))
+    : []
+}
+
+function requireSelfCareItemFromSource(
+  source: SelfCareOptimisticSource,
+  itemId: string,
+): SelfCareItem {
+  const item = findSelfCareItem(source, itemId)
+
+  if (!item) {
+    throw new SelfCareOfflineBaseUnavailableError()
+  }
+
+  return item
+}
+
+function requireSelfCareOccurrenceFromSource(
+  source: SelfCareOptimisticSource,
+  occurrenceId: string,
+): SelfCareOccurrence {
+  const occurrence = findSelfCareOccurrence(source, occurrenceId)
+
+  if (!occurrence) {
+    throw new SelfCareOfflineBaseUnavailableError()
+  }
+
+  return occurrence
+}
+
+function requireSelfCareCompletionFromSource(
+  source: SelfCareOptimisticSource,
+  completionId: string,
+): SelfCareCompletion {
+  const completion = findSelfCareCompletion(source, completionId)
+
+  if (!completion) {
+    throw new SelfCareOfflineBaseUnavailableError()
+  }
+
+  return completion
+}
+
+function withCommandCompletionTime<
+  TInput extends { completedAt?: string | undefined },
+>(
+  input: TInput | undefined,
+  occurredAt: string,
+): TInput & { completedAt: string } {
+  return {
+    ...(input ?? ({} as TInput)),
+    completedAt: input?.completedAt ?? occurredAt,
+  }
+}
+
+function createReplacementScheduleInput(
+  occurrence: SelfCareOccurrence,
+  scheduledFor: string,
+): SelfCareItemScheduleInput {
+  return {
+    currency: null,
+    note: '',
+    place: null,
+    price: null,
+    reminderOffsetsMinutes: occurrence.reminderOffsetsMinutes,
+    scheduledFor,
+    scheduledTime: null,
+    specialistContact: null,
+    specialistName: null,
+    timezone: occurrence.reminderTimeZone,
+  }
+}
+
+function normalizeSelfCareItemRelationIds<
+  TInput extends {
+    alternatives?: SelfCareItemInput['alternatives'] | undefined
+    scheduleRule?: SelfCareItemInput['scheduleRule'] | undefined
+    steps?: SelfCareItemInput['steps'] | undefined
+  },
+>(
+  input: TInput,
+  list: SelfCareListResponse | undefined,
+  itemId: string,
+): TInput {
+  const existingSteps = (list?.steps ?? [])
+    .filter((step) => step.itemId === itemId)
+    .sort((left, right) => left.order - right.order)
+  const usedStepIds = new Set<string>()
+  const steps = input.steps?.map((step, index) => {
+    const existing =
+      (step.id
+        ? existingSteps.find((candidate) => candidate.id === step.id)
+        : (existingSteps.find(
+            (candidate) =>
+              candidate.title === step.title && !usedStepIds.has(candidate.id),
+          ) ?? existingSteps[index])) ?? null
+    const id = step.id ?? existing?.id ?? generateUuidV7()
+    usedStepIds.add(id)
+    return { ...step, id }
+  })
+  const existingAlternatives = (list?.alternatives ?? []).filter(
+    (alternative) => alternative.itemId === itemId,
+  )
+  const usedAlternativeIds = new Set<string>()
+  const alternatives = input.alternatives?.map((alternative, index) => {
+    const existing =
+      (alternative.id
+        ? existingAlternatives.find(
+            (candidate) => candidate.id === alternative.id,
+          )
+        : (existingAlternatives.find(
+            (candidate) =>
+              candidate.title === alternative.title &&
+              !usedAlternativeIds.has(candidate.id),
+          ) ?? existingAlternatives[index])) ?? null
+    const id = alternative.id ?? existing?.id ?? generateUuidV7()
+    usedAlternativeIds.add(id)
+    return { ...alternative, id }
+  })
+  const existingScheduleRule = list?.scheduleRules.find(
+    (rule) => rule.itemId === itemId,
+  )
+
+  return {
+    ...input,
+    ...(alternatives ? { alternatives } : {}),
+    ...(input.scheduleRule
+      ? {
+          scheduleRule: {
+            ...input.scheduleRule,
+            id:
+              input.scheduleRule.id ??
+              existingScheduleRule?.id ??
+              generateUuidV7(),
+          },
+        }
+      : {}),
+    ...(steps ? { steps } : {}),
+  }
+}
+
+function selectItemResult(result: SelfCareOfflineCommandResult): SelfCareItem {
+  if (result.kind !== 'item') {
+    throw new Error('Self-care command returned an unexpected result.')
+  }
+
+  return result.item
+}
+
+function selectOccurrenceResult(
+  result: SelfCareOfflineCommandResult,
+): SelfCareOccurrence {
+  if (
+    result.kind !== 'occurrence' &&
+    result.kind !== 'occurrence_rescheduled'
+  ) {
+    throw new Error('Self-care command returned an unexpected result.')
+  }
+
+  return result.occurrence
+}
+
+function selectCompletionResult(
+  result: SelfCareOfflineCommandResult,
+): SelfCareCompletion {
+  if (result.kind !== 'completion') {
+    throw new Error('Self-care command returned an unexpected result.')
+  }
+
+  return result.completion
+}
+
+function selectSettingsResult(
+  result: SelfCareOfflineCommandResult,
+): SelfCareSettingsResponse {
+  if (result.kind !== 'settings') {
+    throw new Error('Self-care command returned an unexpected result.')
+  }
+
+  return result.value
+}
+
+function selectRitualStepDraftsResult(
+  result: SelfCareOfflineCommandResult,
+): SelfCareRitualStepDraftListResponse {
+  if (result.kind !== 'ritual_step_drafts') {
+    throw new Error('Self-care command returned an unexpected result.')
+  }
+
+  return result.value
 }
 
 function requireSelfCareApi(api: SelfCareApiClient | null): SelfCareApiClient {
@@ -836,10 +2382,8 @@ function requireSelfCareApi(api: SelfCareApiClient | null): SelfCareApiClient {
   return api
 }
 
-function assertSession(session: unknown, _action: string): void {
-  if (!session) {
-    throw new SelfCareApiUnavailableError()
-  }
+function isSelfCareNetworkError(error: unknown): boolean {
+  return isBrowserRetryableOfflineError(error)
 }
 
 function normalizeCreateItemVariables(
@@ -887,363 +2431,6 @@ function queueSelfCareInvalidation(
     options.refetchType
       ? { predicate, refetchType: options.refetchType }
       : { predicate },
-  )
-}
-
-function applySelfCareCompletionToCache(
-  queryClient: QueryClient,
-  workspaceId: string,
-  completion: SelfCareCompletion,
-): void {
-  setSelfCareQueriesData<SelfCareDashboardResponse>(
-    queryClient,
-    workspaceId,
-    'dashboard',
-    (current) => ({
-      ...current,
-      flexibleGoals: updateSelfCareEntriesWithCompletion(
-        current.flexibleGoals,
-        completion,
-      ),
-      overdueItems: updateSelfCareEntriesWithCompletion(
-        current.overdueItems,
-        completion,
-      ),
-      planningHints: updateSelfCareEntriesWithCompletion(
-        current.planningHints,
-        completion,
-      ),
-      todayItems: updateSelfCareEntriesWithCompletion(
-        current.todayItems,
-        completion,
-      ),
-      upcomingImportant: updateSelfCareEntriesWithCompletion(
-        current.upcomingImportant,
-        completion,
-      ),
-    }),
-  )
-
-  setSelfCareQueriesData<SelfCarePlanResponse>(
-    queryClient,
-    workspaceId,
-    'plan',
-    (current) => ({
-      ...current,
-      courses: updateSelfCareEntriesWithCompletion(current.courses, completion),
-      medical: updateSelfCareEntriesWithCompletion(current.medical, completion),
-      occurrences: updateSelfCareEntriesWithCompletion(
-        current.occurrences,
-        completion,
-      ),
-      planningHints: updateSelfCareEntriesWithCompletion(
-        current.planningHints,
-        completion,
-      ),
-    }),
-  )
-
-  updateSelfCareHistoryQueries(queryClient, workspaceId, completion)
-}
-
-function applySelfCareOccurrenceToCache(
-  queryClient: QueryClient,
-  workspaceId: string,
-  occurrence: SelfCareOccurrence,
-): void {
-  setSelfCareQueriesData<SelfCareDashboardResponse>(
-    queryClient,
-    workspaceId,
-    'dashboard',
-    (current) => ({
-      ...current,
-      flexibleGoals: replaceSelfCareOccurrence(
-        current.flexibleGoals,
-        occurrence,
-      ),
-      overdueItems: replaceSelfCareOccurrence(current.overdueItems, occurrence),
-      planningHints: replaceSelfCareOccurrence(
-        current.planningHints,
-        occurrence,
-      ),
-      todayItems: replaceSelfCareOccurrence(current.todayItems, occurrence),
-      upcomingImportant: replaceSelfCareOccurrence(
-        current.upcomingImportant,
-        occurrence,
-      ),
-    }),
-  )
-
-  setSelfCareQueriesData<SelfCarePlanResponse>(
-    queryClient,
-    workspaceId,
-    'plan',
-    (current) => ({
-      ...current,
-      courses: replaceSelfCareOccurrence(current.courses, occurrence),
-      medical: replaceSelfCareOccurrence(current.medical, occurrence),
-      occurrences: replaceSelfCareOccurrence(current.occurrences, occurrence),
-      planningHints: replaceSelfCareOccurrence(
-        current.planningHints,
-        occurrence,
-      ),
-    }),
-  )
-}
-
-function setSelfCareQueriesData<TData>(
-  queryClient: QueryClient,
-  workspaceId: string,
-  scope: SelfCareQueryScope,
-  updater: (current: TData) => TData,
-): void {
-  queryClient.setQueriesData<TData>(
-    {
-      predicate: (query) =>
-        isSelfCareQueryForScope(query.queryKey, workspaceId, scope),
-    },
-    (current) => (current ? updater(current) : current),
-  )
-}
-
-function updateSelfCareHistoryQueries(
-  queryClient: QueryClient,
-  workspaceId: string,
-  completion: SelfCareCompletion,
-): void {
-  const completionDate = completion.completedAt.slice(0, 10)
-  const queries = queryClient.getQueryCache().findAll({
-    predicate: (query) => {
-      const key = query.queryKey
-      return (
-        isSelfCareQueryForScope(key, workspaceId, 'history') &&
-        typeof key[3] === 'string' &&
-        typeof key[4] === 'string' &&
-        completionDate >= key[3] &&
-        completionDate <= key[4]
-      )
-    },
-  })
-
-  for (const query of queries) {
-    queryClient.setQueryData<SelfCareHistoryResponse>(
-      query.queryKey,
-      (current) =>
-        current
-          ? {
-              ...current,
-              completions: upsertSelfCareCompletion(
-                current.completions,
-                completion,
-              ),
-            }
-          : current,
-    )
-  }
-}
-
-function updateSelfCareEntriesWithCompletion(
-  entries: SelfCareTodayItem[],
-  completion: SelfCareCompletion,
-): SelfCareTodayItem[] {
-  return entries.map((entry) =>
-    updateSelfCareEntryWithCompletion(entry, completion),
-  )
-}
-
-function updateSelfCareEntryWithCompletion(
-  entry: SelfCareTodayItem,
-  completion: SelfCareCompletion,
-): SelfCareTodayItem {
-  if (completion.occurrenceId) {
-    if (entry.occurrence?.id !== completion.occurrenceId) {
-      return entry
-    }
-
-    return withSelfCareEntryCompletion(
-      {
-        ...entry,
-        occurrence: {
-          ...entry.occurrence,
-          completedAt: isProgressSelfCareCompletion(completion)
-            ? completion.completedAt
-            : entry.occurrence.completedAt,
-          status: mapCompletionStatusToOccurrenceStatus(completion.status),
-        },
-      },
-      completion,
-    )
-  }
-
-  if (entry.item.id !== completion.itemId) {
-    return entry
-  }
-
-  if (entry.occurrence) {
-    return entry.item.type === 'exercise' &&
-      completion.measurementValue !== null &&
-      isProgressSelfCareCompletion(completion)
-      ? { ...entry, lastExercise: completion }
-      : entry
-  }
-
-  if (isFlexibleGoalEntry(entry)) {
-    return updateSelfCareFlexibleProgress(entry, completion)
-  }
-
-  return withSelfCareEntryCompletion(entry, completion)
-}
-
-function withSelfCareEntryCompletion(
-  entry: SelfCareTodayItem,
-  completion: SelfCareCompletion,
-): SelfCareTodayItem {
-  return updateSelfCareCourseProgress(
-    {
-      ...entry,
-      completion,
-      lastExercise:
-        entry.item.type === 'exercise' && completion.measurementValue !== null
-          ? completion
-          : entry.lastExercise,
-      lastMeasurement:
-        entry.item.type === 'measurement' &&
-        completion.measurementValue !== null
-          ? completion
-          : entry.lastMeasurement,
-    },
-    completion,
-  )
-}
-
-function updateSelfCareFlexibleProgress(
-  entry: SelfCareTodayItem,
-  completion: SelfCareCompletion,
-): SelfCareTodayItem {
-  if (
-    !entry.flexibleProgress ||
-    !isProgressSelfCareCompletion(completion) ||
-    !isCompletionInFlexibleProgressPeriod(completion, entry.flexibleProgress)
-  ) {
-    return entry
-  }
-
-  const completedCount = Math.min(
-    entry.flexibleProgress.targetCount,
-    entry.flexibleProgress.completedCount + 1,
-  )
-
-  return {
-    ...entry,
-    flexibleProgress: {
-      ...entry.flexibleProgress,
-      completedCount,
-      remainingCount: Math.max(
-        0,
-        entry.flexibleProgress.targetCount - completedCount,
-      ),
-    },
-  }
-}
-
-function updateSelfCareCourseProgress(
-  entry: SelfCareTodayItem,
-  completion: SelfCareCompletion,
-): SelfCareTodayItem {
-  if (
-    entry.item.type !== 'course' ||
-    !entry.courseDetails ||
-    !isProgressSelfCareCompletion(completion)
-  ) {
-    return entry
-  }
-
-  const completedCount = Math.min(
-    entry.courseDetails.totalCount,
-    entry.courseDetails.completedCount + 1,
-  )
-
-  return {
-    ...entry,
-    courseDetails: {
-      ...entry.courseDetails,
-      completedCount,
-      isCompleted: completedCount >= entry.courseDetails.totalCount,
-    },
-  }
-}
-
-function replaceSelfCareOccurrence(
-  entries: SelfCareTodayItem[],
-  occurrence: SelfCareOccurrence,
-): SelfCareTodayItem[] {
-  return entries.map((entry) =>
-    entry.occurrence?.id === occurrence.id ? { ...entry, occurrence } : entry,
-  )
-}
-
-function upsertSelfCareCompletion(
-  completions: SelfCareCompletion[],
-  completion: SelfCareCompletion,
-): SelfCareCompletion[] {
-  const withoutCurrent = completions.filter(
-    (candidate) => candidate.id !== completion.id,
-  )
-  return [...withoutCurrent, completion].sort((left, right) =>
-    right.completedAt.localeCompare(left.completedAt),
-  )
-}
-
-function isSelfCareQueryForScope(
-  queryKey: readonly unknown[],
-  workspaceId: string,
-  scope: SelfCareQueryScope,
-): boolean {
-  return (
-    Array.isArray(queryKey) &&
-    queryKey[0] === 'self-care' &&
-    queryKey[1] === workspaceId &&
-    queryKey[2] === scope
-  )
-}
-
-function mapCompletionStatusToOccurrenceStatus(
-  status: SelfCareCompletion['status'],
-): SelfCareOccurrenceStatus {
-  return status === 'alternative_done' ? 'partial' : status
-}
-
-function isProgressSelfCareCompletion(completion: SelfCareCompletion): boolean {
-  return (
-    completion.status === 'done' ||
-    completion.status === 'partial' ||
-    completion.status === 'alternative_done'
-  )
-}
-
-function isFlexibleGoalEntry(entry: SelfCareTodayItem): boolean {
-  return (
-    entry.item.type === 'flexible_goal' ||
-    entry.scheduleRule?.repeatKind === 'flexible_goal'
-  )
-}
-
-function isCompletionInFlexibleProgressPeriod(
-  completion: SelfCareCompletion,
-  progress: NonNullable<SelfCareTodayItem['flexibleProgress']>,
-): boolean {
-  const date = completion.completedAt.slice(0, 10)
-  return date >= progress.periodStart && date <= progress.periodEnd
-}
-
-function setRitualStepDraftQueryData(
-  queryClient: QueryClient,
-  workspaceId: string,
-  result: SelfCareRitualStepDraftListResponse,
-): void {
-  queryClient.setQueryData(
-    selfCareRitualStepDraftsQueryKey(workspaceId, result.date),
-    result,
   )
 }
 

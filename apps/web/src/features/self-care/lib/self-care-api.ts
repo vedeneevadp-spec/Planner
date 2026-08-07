@@ -33,6 +33,10 @@ import {
   selfCareOccurrenceSchema,
   type SelfCareOccurrenceSkipInput,
   selfCareOccurrenceSkipInputSchema,
+  type SelfCareOfflineCommandRequest,
+  selfCareOfflineCommandRequestSchema,
+  type SelfCareOfflineCommandResponse,
+  selfCareOfflineCommandResponseSchema,
   type SelfCarePlanResponse,
   selfCarePlanResponseSchema,
   type SelfCareRitualCompletionInput,
@@ -129,6 +133,9 @@ export interface SelfCareApiClient {
   }) => Promise<SelfCareRitualStepDraftListResponse>
   disableGentleMode: (date: string) => Promise<SelfCareSettingsResponse>
   enableGentleMode: (date: string) => Promise<SelfCareSettingsResponse>
+  executeOfflineCommand: (
+    input: SelfCareOfflineCommandRequest,
+  ) => Promise<SelfCareOfflineCommandResponse>
   generateOccurrences: (
     from: string,
     to: string,
@@ -228,7 +235,7 @@ export function createSelfCareApiClient(
     fetchFn,
     {
       fallbackErrorCode: 'self_care_request_failed',
-      fallbackErrorMessage: 'Self-care request failed.',
+      fallbackErrorMessage: 'Не удалось выполнить запрос. Повтори попытку.',
     },
   )
 
@@ -347,6 +354,15 @@ export function createSelfCareApiClient(
         path: '/api/v1/self-care/settings/gentle-mode/enable',
         query: { date },
         responseSchema: selfCareSettingsResponseSchema,
+        writeAccess: true,
+      })
+    },
+    executeOfflineCommand(input) {
+      return request({
+        body: selfCareOfflineCommandRequestSchema.parse(input),
+        method: 'POST',
+        path: '/api/v1/self-care/commands',
+        responseSchema: selfCareOfflineCommandResponseSchema,
         writeAccess: true,
       })
     },

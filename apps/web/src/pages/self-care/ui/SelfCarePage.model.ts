@@ -28,21 +28,7 @@ export interface SelfCarePageLoadFlags {
   templates: boolean
 }
 
-export interface SelfCareActiveTabLoadingInput {
-  activeTab: SelfCareTab
-  hasAnalytics: boolean
-  hasDashboard: boolean
-  hasHistory: boolean
-  hasItems: boolean
-  hasPlan: boolean
-  hasSettings: boolean
-  isAnalyticsLoading: boolean
-  isDashboardLoading: boolean
-  isHistoryLoading: boolean
-  isItemsLoading: boolean
-  isPlanLoading: boolean
-  isSettingsLoading: boolean
-}
+export type SelfCarePageReadScope = keyof SelfCarePageLoadFlags
 
 export function getSelfCarePageRouteState(
   searchParams: URLSearchParams,
@@ -81,26 +67,55 @@ export function getSelfCarePageLoadFlags(
   }
 }
 
-export function isSelfCareActiveTabLoading(
-  input: SelfCareActiveTabLoadingInput,
-): boolean {
-  return (
-    (input.activeTab === 'today' &&
-      input.isDashboardLoading &&
-      !input.hasDashboard) ||
-    (input.activeTab === 'plan' && input.isPlanLoading && !input.hasPlan) ||
-    (input.activeTab === 'rituals' &&
-      input.isItemsLoading &&
-      !input.hasItems) ||
-    (input.activeTab === 'history' &&
-      input.isHistoryLoading &&
-      !input.hasHistory) ||
-    (input.activeTab === 'analytics' &&
-      input.isAnalyticsLoading &&
-      !input.hasAnalytics) ||
-    (input.activeTab === 'settings' &&
-      input.isSettingsLoading &&
-      !input.hasSettings)
+export function getSelfCareActiveTabReadScopes(
+  activeTab: SelfCareTab,
+): readonly SelfCarePageReadScope[] {
+  switch (activeTab) {
+    case 'today':
+    case 'rituals':
+      return ['dashboard', 'items', 'plan', 'history', 'ritualStepDrafts']
+
+    case 'plan':
+      return ['plan', 'history']
+
+    case 'history':
+      return ['history']
+
+    case 'analytics':
+      return ['analytics']
+
+    case 'settings':
+      return ['settings', 'items', 'templates']
+  }
+}
+
+export function getSelfCareActiveTabCoreReadScope(
+  activeTab: SelfCareTab,
+): SelfCarePageReadScope {
+  switch (activeTab) {
+    case 'today':
+      return 'dashboard'
+    case 'rituals':
+      return 'items'
+    case 'plan':
+      return 'plan'
+    case 'history':
+      return 'history'
+    case 'analytics':
+      return 'analytics'
+    case 'settings':
+      return 'settings'
+  }
+}
+
+export function getSelfCareActiveTabReadValues<
+  TValues extends Readonly<Record<SelfCarePageReadScope, unknown>>,
+>(
+  activeTab: SelfCareTab,
+  valuesByScope: TValues,
+): Array<TValues[SelfCarePageReadScope]> {
+  return getSelfCareActiveTabReadScopes(activeTab).map(
+    (scope) => valuesByScope[scope],
   )
 }
 

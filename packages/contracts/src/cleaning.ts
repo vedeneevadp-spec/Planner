@@ -254,10 +254,101 @@ export const cleaningTaskUpdateInputSchema = z
     'At least one cleaning task field must be provided.',
   )
 
+export const cleaningTaskDeleteInputSchema = z.object({
+  expectedVersion: z.number().int().positive().optional(),
+})
+
+export const cleaningZoneDeleteInputSchema = z.object({
+  expectedTaskVersions: z
+    .array(
+      z.object({
+        taskId: z.string().trim().min(1),
+        version: z.number().int().positive(),
+      }),
+    )
+    .max(200)
+    .optional(),
+  expectedVersion: z.number().int().positive().optional(),
+})
+
+export const cleaningSeedInputSchema = z
+  .object({
+    zones: z
+      .array(
+        z.object({
+          tasks: z.array(newCleaningTaskInputSchema).max(80),
+          zone: newCleaningZoneInputSchema,
+        }),
+      )
+      .min(1)
+      .max(7),
+  })
+  .superRefine((input, context) => {
+    const seenDays = new Set<number>()
+    const seenEntityIds = new Set<string>()
+
+    for (const [zoneIndex, entry] of input.zones.entries()) {
+      if (!entry.zone.id) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Seed zones require stable client ids.',
+          path: ['zones', zoneIndex, 'zone', 'id'],
+        })
+      } else if (seenEntityIds.has(entry.zone.id)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Seed entity ids must be unique.',
+          path: ['zones', zoneIndex, 'zone', 'id'],
+        })
+      } else {
+        seenEntityIds.add(entry.zone.id)
+      }
+
+      if (seenDays.has(entry.zone.dayOfWeek)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Seed zones must use unique weekdays.',
+          path: ['zones', zoneIndex, 'zone', 'dayOfWeek'],
+        })
+      } else {
+        seenDays.add(entry.zone.dayOfWeek)
+      }
+
+      for (const [taskIndex, task] of entry.tasks.entries()) {
+        if (!task.id) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Seed tasks require stable client ids.',
+            path: ['zones', zoneIndex, 'tasks', taskIndex, 'id'],
+          })
+        } else if (seenEntityIds.has(task.id)) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Seed entity ids must be unique.',
+            path: ['zones', zoneIndex, 'tasks', taskIndex, 'id'],
+          })
+        } else {
+          seenEntityIds.add(task.id)
+        }
+
+        if (entry.zone.id && task.zoneId !== entry.zone.id) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Seed task zoneId must match its zone id.',
+            path: ['zones', zoneIndex, 'tasks', taskIndex, 'zoneId'],
+          })
+        }
+      }
+    }
+  })
+
 export const cleaningTaskActionInputSchema = z.object({
   date: z.string().optional(),
+  expectedStateVersion: z.number().int().positive().optional(),
+  expectedTaskVersion: z.number().int().positive().optional(),
   mode: cleaningPostponeModeSchema.optional().default('next_cycle'),
   note: z.string().trim().max(500).optional().default(''),
+  occurredAt: z.string().datetime({ offset: true }).optional(),
   targetDate: z.string().nullable().optional().default(null),
 })
 
@@ -283,14 +374,21 @@ export type CleaningTaskHistoryItem = z.infer<
   typeof cleaningTaskHistoryItemSchema
 >
 export type CleaningTaskState = z.infer<typeof cleaningTaskStateSchema>
+export type CleaningTaskDeleteInput = z.infer<
+  typeof cleaningTaskDeleteInputSchema
+>
 export type CleaningTaskUpdateInput = z.infer<
   typeof cleaningTaskUpdateInputSchema
 >
 export type CleaningTodayQuery = z.infer<typeof cleaningTodayQuerySchema>
+export type CleaningSeedInput = z.infer<typeof cleaningSeedInputSchema>
 export type CleaningWeekday = z.infer<typeof cleaningWeekdaySchema>
 export type CleaningZone = z.infer<typeof cleaningZoneSchema>
 export type CleaningZoneUpdateInput = z.infer<
   typeof cleaningZoneUpdateInputSchema
+>
+export type CleaningZoneDeleteInput = z.infer<
+  typeof cleaningZoneDeleteInputSchema
 >
 export type NewCleaningTaskInput = z.infer<typeof newCleaningTaskInputSchema>
 export type NewCleaningZoneInput = z.infer<typeof newCleaningZoneInputSchema>

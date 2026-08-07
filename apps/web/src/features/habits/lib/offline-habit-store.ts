@@ -130,6 +130,28 @@ const RETRYABLE_QUEUE_STATUSES: HabitOfflineMutationStatus[] = [
 ]
 export const HABIT_OFFLINE_DATABASE_NAME = 'habit-offline'
 export const HABIT_OFFLINE_SCHEMA_VERSION = 1
+export const HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX =
+  'planner.habitOfflineLifecycle:'
+
+interface HabitOfflineLifecycleState {
+  pendingPurges: Record<string, number>
+  writeGenerations: Record<string, number>
+}
+
+interface HabitOfflineWorkspaceLifecycleState {
+  pendingPurgeGeneration: number | null
+  writeGeneration: number
+}
+
+export class HabitOfflinePurgeUnavailableError extends Error {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Не удалось безопасно очистить локальные данные привычек. Повторите действие после перезапуска приложения.',
+      options,
+    )
+    this.name = 'HabitOfflinePurgeUnavailableError'
+  }
+}
 
 class HabitOfflineDatabase extends Dexie {
   cachedHabits!: Table<HabitCachedHabitRow, string>
@@ -151,58 +173,89 @@ class HabitOfflineDatabase extends Dexie {
 }
 
 let database: HabitOfflineDatabase | null = null
+let lifecycleFlush: Promise<void> | null = null
+let lifecycleStorageListenerAttached = false
+const pendingWorkspaceWrites = new Map<string, Set<Promise<unknown>>>()
+const workspaceWriteGenerations = new Map<string, number>()
+const localPendingPurgeWorkspaces = new Map<string, number>()
+const runtimeInvalidatedWorkspaces = new Map<string, number>()
+let runtimeLifecycleBaseline = readStoredHabitOfflineLifecycleState()
 
 export function isHabitOfflineStorageAvailable(): boolean {
+  ensureHabitOfflineLifecycleStorageListener()
   return typeof indexedDB !== 'undefined'
 }
 
 export async function resetHabitOfflineDatabaseForTests(): Promise<void> {
   database?.close()
   database = null
+  lifecycleFlush = null
+  pendingWorkspaceWrites.clear()
+  workspaceWriteGenerations.clear()
+  localPendingPurgeWorkspaces.clear()
+  runtimeInvalidatedWorkspaces.clear()
 
   if (isHabitOfflineStorageAvailable()) {
     await Dexie.delete(HABIT_OFFLINE_DATABASE_NAME)
   }
+
+  removeStoredHabitOfflineLifecycleState()
+  runtimeLifecycleBaseline = readStoredHabitOfflineLifecycleState()
+}
+
+export function resetHabitOfflineRuntimeForTests(): void {
+  database?.close()
+  database = null
+  lifecycleFlush = null
+  pendingWorkspaceWrites.clear()
+  workspaceWriteGenerations.clear()
+  localPendingPurgeWorkspaces.clear()
+  runtimeInvalidatedWorkspaces.clear()
+  runtimeLifecycleBaseline = readStoredHabitOfflineLifecycleState()
 }
 
 export async function clearHabitOfflineWorkspaceData(
   workspaceId: string,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const generation = getHabitOfflineWorkspaceWriteGeneration(workspaceId) + 1
+  const markerPersisted = beginHabitOfflineWorkspacePurge(
+    workspaceId,
+    generation,
+  )
+  await waitForHabitWorkspaceWrites(workspaceId)
+  const db = getHabitOfflineDatabaseForMaintenance()
 
   if (!db) {
-    return
+    if (markerPersisted) {
+      return
+    }
+
+    throw new HabitOfflinePurgeUnavailableError()
   }
 
-  await db.transaction(
-    'rw',
-    [
-      db.cachedHabits,
-      db.cachedStatsResponses,
-      db.cachedTodayResponses,
-      db.mutationQueue,
-    ],
-    async () => {
-      await Promise.all([
-        db.cachedHabits.where('workspaceId').equals(workspaceId).delete(),
-        db.cachedStatsResponses
-          .where('workspaceId')
-          .equals(workspaceId)
-          .delete(),
-        db.cachedTodayResponses
-          .where('workspaceId')
-          .equals(workspaceId)
-          .delete(),
-        db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
-      ])
-    },
-  )
+  try {
+    await purgeHabitOfflineWorkspaces(db, [workspaceId])
+  } catch (error) {
+    if (markerPersisted) {
+      return
+    }
+
+    throw new HabitOfflinePurgeUnavailableError({ cause: error })
+  }
+
+  if (
+    !markerPersisted ||
+    !completeHabitOfflineWorkspacePurges({ [workspaceId]: generation })
+  ) {
+    throw new HabitOfflinePurgeUnavailableError()
+  }
 }
 
 export async function loadCachedHabitRecords(
   workspaceId: string,
 ): Promise<HabitRecord[]> {
-  const db = getHabitOfflineDatabase()
+  const readGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
+  const db = await getHabitOfflineDatabaseForAccess(workspaceId)
 
   if (!db) {
     return []
@@ -213,6 +266,12 @@ export async function loadCachedHabitRecords(
     .equals(workspaceId)
     .toArray()
 
+  if (
+    !isHabitOfflineWorkspaceWriteGenerationCurrent(workspaceId, readGeneration)
+  ) {
+    return []
+  }
+
   return rows.map((row) => row.habit)
 }
 
@@ -220,11 +279,7 @@ export async function replaceCachedHabitRecords(
   workspaceId: string,
   habits: HabitRecord[],
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
-
-  if (!db) {
-    return
-  }
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
   const updatedAt = new Date().toISOString()
   const rows = habits.map((habit): HabitCachedHabitRow => ({
@@ -235,52 +290,51 @@ export async function replaceCachedHabitRecords(
     workspaceId,
   }))
 
-  await db.transaction('rw', db.cachedHabits, async () => {
-    await db.cachedHabits.where('workspaceId').equals(workspaceId).delete()
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.transaction('rw', db.cachedHabits, async () => {
+      await db.cachedHabits.where('workspaceId').equals(workspaceId).delete()
 
-    if (rows.length > 0) {
-      await db.cachedHabits.bulkPut(rows)
-    }
-  })
+      if (rows.length > 0) {
+        await db.cachedHabits.bulkPut(rows)
+      }
+    }),
+  )
 }
 
 export async function upsertCachedHabitRecord(
   workspaceId: string,
   habit: HabitRecord,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
-
-  await db.cachedHabits.put({
-    habit,
-    habitId: habit.id,
-    key: createCachedHabitKey(workspaceId, habit.id),
-    updatedAt: new Date().toISOString(),
-    workspaceId,
-  })
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.cachedHabits.put({
+      habit,
+      habitId: habit.id,
+      key: createCachedHabitKey(workspaceId, habit.id),
+      updatedAt: new Date().toISOString(),
+      workspaceId,
+    }),
+  )
 }
 
 export async function removeCachedHabitRecord(
   workspaceId: string,
   habitId: string,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
-
-  await db.cachedHabits.delete(createCachedHabitKey(workspaceId, habitId))
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.cachedHabits.delete(createCachedHabitKey(workspaceId, habitId)),
+  )
 }
 
 export async function loadCachedHabitTodayResponse(
   workspaceId: string,
   date: string,
 ): Promise<HabitTodayResponse | null> {
-  const db = getHabitOfflineDatabase()
+  const readGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
+  const db = await getHabitOfflineDatabaseForAccess(workspaceId)
 
   if (!db) {
     return null
@@ -290,7 +344,12 @@ export async function loadCachedHabitTodayResponse(
     createCachedTodayKey(workspaceId, date),
   )
 
-  return row?.response ?? null
+  return isHabitOfflineWorkspaceWriteGenerationCurrent(
+    workspaceId,
+    readGeneration,
+  )
+    ? (row?.response ?? null)
+    : null
 }
 
 export async function replaceCachedHabitTodayResponse(
@@ -298,73 +357,67 @@ export async function replaceCachedHabitTodayResponse(
   date: string,
   response: HabitTodayResponse,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
-
-  await db.cachedTodayResponses.put({
-    date,
-    key: createCachedTodayKey(workspaceId, date),
-    response,
-    updatedAt: new Date().toISOString(),
-    workspaceId,
-  })
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.cachedTodayResponses.put({
+      date,
+      key: createCachedTodayKey(workspaceId, date),
+      response,
+      updatedAt: new Date().toISOString(),
+      workspaceId,
+    }),
+  )
 }
 
 export async function upsertCachedHabitInTodayResponses(
   workspaceId: string,
   habit: HabitRecord,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.transaction('rw', db.cachedTodayResponses, async () => {
+      const rows = await db.cachedTodayResponses
+        .where('workspaceId')
+        .equals(workspaceId)
+        .toArray()
+      const updatedAt = new Date().toISOString()
 
-  const rows = await db.cachedTodayResponses
-    .where('workspaceId')
-    .equals(workspaceId)
-    .toArray()
-  const updatedAt = new Date().toISOString()
-
-  await db.transaction('rw', db.cachedTodayResponses, async () => {
-    for (const row of rows) {
-      await db.cachedTodayResponses.put({
-        ...row,
-        response: upsertHabitInTodayResponse(row.response, habit),
-        updatedAt,
-      })
-    }
-  })
+      for (const row of rows) {
+        await db.cachedTodayResponses.put({
+          ...row,
+          response: upsertHabitInTodayResponse(row.response, habit),
+          updatedAt,
+        })
+      }
+    }),
+  )
 }
 
 export async function removeCachedHabitFromTodayResponses(
   workspaceId: string,
   habitId: string,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.transaction('rw', db.cachedTodayResponses, async () => {
+      const rows = await db.cachedTodayResponses
+        .where('workspaceId')
+        .equals(workspaceId)
+        .toArray()
+      const updatedAt = new Date().toISOString()
 
-  const rows = await db.cachedTodayResponses
-    .where('workspaceId')
-    .equals(workspaceId)
-    .toArray()
-  const updatedAt = new Date().toISOString()
-
-  await db.transaction('rw', db.cachedTodayResponses, async () => {
-    for (const row of rows) {
-      await db.cachedTodayResponses.put({
-        ...row,
-        response: removeHabitFromTodayResponse(row.response, habitId),
-        updatedAt,
-      })
-    }
-  })
+      for (const row of rows) {
+        await db.cachedTodayResponses.put({
+          ...row,
+          response: removeHabitFromTodayResponse(row.response, habitId),
+          updatedAt,
+        })
+      }
+    }),
+  )
 }
 
 export async function upsertCachedHabitTodayEntry(
@@ -373,24 +426,24 @@ export async function upsertCachedHabitTodayEntry(
   date: string,
   entry: HabitEntryRecord,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.transaction('rw', db.cachedTodayResponses, async () => {
+      const key = createCachedTodayKey(workspaceId, date)
+      const row = await db.cachedTodayResponses.get(key)
 
-  const key = createCachedTodayKey(workspaceId, date)
-  const row = await db.cachedTodayResponses.get(key)
+      if (!row) {
+        return
+      }
 
-  if (!row) {
-    return
-  }
-
-  await db.cachedTodayResponses.put({
-    ...row,
-    response: upsertEntryInTodayResponse(row.response, habitId, entry),
-    updatedAt: new Date().toISOString(),
-  })
+      await db.cachedTodayResponses.put({
+        ...row,
+        response: upsertEntryInTodayResponse(row.response, habitId, entry),
+        updatedAt: new Date().toISOString(),
+      })
+    }),
+  )
 }
 
 export async function removeCachedHabitTodayEntry(
@@ -398,24 +451,24 @@ export async function removeCachedHabitTodayEntry(
   habitId: string,
   date: string,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.transaction('rw', db.cachedTodayResponses, async () => {
+      const key = createCachedTodayKey(workspaceId, date)
+      const row = await db.cachedTodayResponses.get(key)
 
-  const key = createCachedTodayKey(workspaceId, date)
-  const row = await db.cachedTodayResponses.get(key)
+      if (!row) {
+        return
+      }
 
-  if (!row) {
-    return
-  }
-
-  await db.cachedTodayResponses.put({
-    ...row,
-    response: removeEntryInTodayResponse(row.response, habitId),
-    updatedAt: new Date().toISOString(),
-  })
+      await db.cachedTodayResponses.put({
+        ...row,
+        response: removeEntryInTodayResponse(row.response, habitId),
+        updatedAt: new Date().toISOString(),
+      })
+    }),
+  )
 }
 
 export async function loadCachedHabitStatsResponse(
@@ -423,7 +476,8 @@ export async function loadCachedHabitStatsResponse(
   from: string,
   to: string,
 ): Promise<HabitStatsResponse | null> {
-  const db = getHabitOfflineDatabase()
+  const readGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
+  const db = await getHabitOfflineDatabaseForAccess(workspaceId)
 
   if (!db) {
     return null
@@ -433,7 +487,12 @@ export async function loadCachedHabitStatsResponse(
     createCachedStatsKey(workspaceId, from, to),
   )
 
-  return row?.response ?? null
+  return isHabitOfflineWorkspaceWriteGenerationCurrent(
+    workspaceId,
+    readGeneration,
+  )
+    ? (row?.response ?? null)
+    : null
 }
 
 export async function replaceCachedHabitStatsResponse(
@@ -442,64 +501,68 @@ export async function replaceCachedHabitStatsResponse(
   to: string,
   response: HabitStatsResponse,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
 
-  if (!db) {
-    return
-  }
-
-  await db.cachedStatsResponses.put({
-    from,
-    key: createCachedStatsKey(workspaceId, from, to),
-    rangeKey: createStatsRangeKey(from, to),
-    response,
-    to,
-    updatedAt: new Date().toISOString(),
-    workspaceId,
-  })
+  await runHabitWorkspaceWrite(workspaceId, writeGeneration, (db) =>
+    db.cachedStatsResponses.put({
+      from,
+      key: createCachedStatsKey(workspaceId, from, to),
+      rangeKey: createStatsRangeKey(from, to),
+      response,
+      to,
+      updatedAt: new Date().toISOString(),
+      workspaceId,
+    }),
+  )
 }
 
 export async function enqueueHabitOfflineMutation(
   input: HabitOfflineMutationInput,
 ): Promise<HabitOfflineMutationRecord | null> {
-  const db = getHabitOfflineDatabase()
-
-  if (!db) {
-    return null
-  }
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(
+    input.workspaceId,
+  )
 
   const now = new Date().toISOString()
 
-  return db.transaction('rw', db.mutationQueue, async () => {
-    const existingMutations = await db.mutationQueue
-      .where('workspaceId')
-      .equals(input.workspaceId)
-      .filter(
-        (mutation) =>
-          mutation.actorUserId === input.actorUserId &&
-          RETRYABLE_QUEUE_STATUSES.includes(mutation.status),
-      )
-      .toArray()
-    const foldedMutation = await foldHabitOfflineMutation(
-      db,
-      input,
-      existingMutations.sort(compareOfflineMutations),
-      now,
-    )
+  const stored = await runHabitWorkspaceWrite(
+    input.workspaceId,
+    writeGeneration,
+    (db) =>
+      db.transaction('rw', db.mutationQueue, async () => {
+        const existingMutations = await db.mutationQueue
+          .where('workspaceId')
+          .equals(input.workspaceId)
+          .filter(
+            (mutation) =>
+              mutation.actorUserId === input.actorUserId &&
+              RETRYABLE_QUEUE_STATUSES.includes(mutation.status),
+          )
+          .toArray()
+        const foldedMutation = await foldHabitOfflineMutation(
+          db,
+          input,
+          existingMutations.sort(compareOfflineMutations),
+          now,
+        )
 
-    if (foldedMutation) {
-      await db.mutationQueue.put(foldedMutation)
-    }
+        if (foldedMutation) {
+          await db.mutationQueue.put(foldedMutation)
+        }
 
-    return foldedMutation
-  })
+        return foldedMutation
+      }),
+  )
+
+  return stored ?? null
 }
 
 export async function listRetryableHabitOfflineMutations(
   workspaceId: string,
   actorUserId?: string,
 ): Promise<HabitOfflineMutationRecord[]> {
-  const db = getHabitOfflineDatabase()
+  const readGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
+  const db = await getHabitOfflineDatabaseForAccess(workspaceId)
 
   if (!db) {
     return []
@@ -514,6 +577,12 @@ export async function listRetryableHabitOfflineMutations(
         RETRYABLE_QUEUE_STATUSES.includes(mutation.status),
     )
     .toArray()
+
+  if (
+    !isHabitOfflineWorkspaceWriteGenerationCurrent(workspaceId, readGeneration)
+  ) {
+    return []
+  }
 
   return rows.sort(compareOfflineMutations)
 }
@@ -534,13 +603,14 @@ export async function countConflictedHabitOfflineMutations(
   workspaceId: string,
   actorUserId?: string,
 ): Promise<number> {
-  const db = getHabitOfflineDatabase()
+  const readGeneration = getHabitOfflineWorkspaceWriteGeneration(workspaceId)
+  const db = await getHabitOfflineDatabaseForAccess(workspaceId)
 
   if (!db) {
     return 0
   }
 
-  return db.mutationQueue
+  const count = await db.mutationQueue
     .where('workspaceId')
     .equals(workspaceId)
     .filter(
@@ -549,12 +619,187 @@ export async function countConflictedHabitOfflineMutations(
         mutation.status === 'conflicted',
     )
     .count()
+
+  return isHabitOfflineWorkspaceWriteGenerationCurrent(
+    workspaceId,
+    readGeneration,
+  )
+    ? count
+    : 0
 }
 
 export async function markHabitOfflineMutationSyncing(
   mutationId: string,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  await runHabitMutationWrite(mutationId, (db, mutation) =>
+    db.mutationQueue.update(mutationId, {
+      attemptCount: mutation.attemptCount + 1,
+      conflictActualVersion: null,
+      conflictExpectedVersion: null,
+      lastError: null,
+      status: 'syncing',
+      updatedAt: new Date().toISOString(),
+    }),
+  )
+}
+
+export async function completeHabitOfflineMutation(
+  mutationId: string,
+): Promise<void> {
+  await runHabitMutationWrite(mutationId, (db) =>
+    db.mutationQueue.delete(mutationId),
+  )
+}
+
+export async function markHabitOfflineMutationFailed(
+  mutationId: string,
+  errorMessage: string,
+): Promise<void> {
+  await runHabitMutationWrite(mutationId, (db) =>
+    db.mutationQueue.update(mutationId, {
+      lastError: errorMessage,
+      status: 'failed',
+      updatedAt: new Date().toISOString(),
+    }),
+  )
+}
+
+export async function markHabitOfflineMutationConflicted(
+  mutationId: string,
+  conflict: {
+    actualVersion: number | null
+    expectedVersion: number | null
+    message: string
+  },
+): Promise<void> {
+  await runHabitMutationWrite(mutationId, (db) =>
+    db.mutationQueue.update(mutationId, {
+      conflictActualVersion: conflict.actualVersion,
+      conflictExpectedVersion: conflict.expectedVersion,
+      lastError: conflict.message,
+      status: 'conflicted',
+      updatedAt: new Date().toISOString(),
+    }),
+  )
+}
+
+function getHabitOfflineDatabaseForMaintenance(): HabitOfflineDatabase | null {
+  if (!isHabitOfflineStorageAvailable()) {
+    return null
+  }
+
+  database ??= new HabitOfflineDatabase()
+
+  return database
+}
+
+async function getHabitOfflineDatabaseForAccess(
+  workspaceId?: string,
+): Promise<HabitOfflineDatabase | null> {
+  const db = getHabitOfflineDatabaseForMaintenance()
+
+  if (!db) {
+    return null
+  }
+
+  await flushPendingHabitOfflinePurges(db)
+
+  if (workspaceId && runtimeInvalidatedWorkspaces.has(workspaceId)) {
+    return null
+  }
+
+  return db
+}
+
+function getHabitOfflineWorkspaceWriteGeneration(workspaceId: string): number {
+  ensureHabitOfflineLifecycleStorageListener()
+  const runtimeGeneration = workspaceWriteGenerations.get(workspaceId) ?? 0
+  const persistedGeneration =
+    readStoredHabitOfflineWorkspaceLifecycleState(workspaceId).writeGeneration
+  const generation = Math.max(runtimeGeneration, persistedGeneration)
+  const baselineGeneration =
+    runtimeLifecycleBaseline.writeGenerations[workspaceId] ?? 0
+
+  if (generation !== runtimeGeneration) {
+    workspaceWriteGenerations.set(workspaceId, generation)
+  }
+
+  if (persistedGeneration > baselineGeneration) {
+    runtimeInvalidatedWorkspaces.set(workspaceId, persistedGeneration)
+  }
+
+  return generation
+}
+
+function isHabitOfflineWorkspaceWriteGenerationCurrent(
+  workspaceId: string,
+  expectedWriteGeneration: number,
+): boolean {
+  return (
+    expectedWriteGeneration ===
+      getHabitOfflineWorkspaceWriteGeneration(workspaceId) &&
+    !runtimeInvalidatedWorkspaces.has(workspaceId)
+  )
+}
+
+async function runHabitWorkspaceWrite<T>(
+  workspaceId: string,
+  expectedWriteGeneration: number,
+  write: (db: HabitOfflineDatabase) => Promise<T>,
+): Promise<T | undefined> {
+  const current = (async () => {
+    const db = await getHabitOfflineDatabaseForAccess(workspaceId)
+
+    if (!db) {
+      return undefined
+    }
+
+    return db.transaction(
+      'rw',
+      [
+        db.cachedHabits,
+        db.cachedStatsResponses,
+        db.cachedTodayResponses,
+        db.mutationQueue,
+      ],
+      async () => {
+        if (
+          !isHabitOfflineWorkspaceWriteGenerationCurrent(
+            workspaceId,
+            expectedWriteGeneration,
+          )
+        ) {
+          return undefined
+        }
+
+        return write(db)
+      },
+    )
+  })()
+  const workspaceWrites =
+    pendingWorkspaceWrites.get(workspaceId) ?? new Set<Promise<unknown>>()
+  workspaceWrites.add(current)
+  pendingWorkspaceWrites.set(workspaceId, workspaceWrites)
+
+  try {
+    return await current
+  } finally {
+    workspaceWrites.delete(current)
+
+    if (workspaceWrites.size === 0) {
+      pendingWorkspaceWrites.delete(workspaceId)
+    }
+  }
+}
+
+async function runHabitMutationWrite(
+  mutationId: string,
+  write: (
+    db: HabitOfflineDatabase,
+    mutation: HabitOfflineMutationRecord,
+  ) => Promise<unknown>,
+): Promise<void> {
+  const db = await getHabitOfflineDatabaseForAccess()
 
   if (!db) {
     return
@@ -566,76 +811,340 @@ export async function markHabitOfflineMutationSyncing(
     return
   }
 
-  await db.mutationQueue.update(mutationId, {
-    attemptCount: mutation.attemptCount + 1,
-    conflictActualVersion: null,
-    conflictExpectedVersion: null,
-    lastError: null,
-    status: 'syncing',
-    updatedAt: new Date().toISOString(),
+  const writeGeneration = getHabitOfflineWorkspaceWriteGeneration(
+    mutation.workspaceId,
+  )
+
+  await runHabitWorkspaceWrite(
+    mutation.workspaceId,
+    writeGeneration,
+    async (currentDb) => {
+      const currentMutation = await currentDb.mutationQueue.get(mutationId)
+
+      if (!currentMutation) {
+        return
+      }
+
+      await write(currentDb, currentMutation)
+    },
+  )
+}
+
+async function waitForHabitWorkspaceWrites(workspaceId: string): Promise<void> {
+  const writes = [...(pendingWorkspaceWrites.get(workspaceId) ?? [])]
+  await Promise.allSettled(writes)
+}
+
+function beginHabitOfflineWorkspacePurge(
+  workspaceId: string,
+  generation: number,
+): boolean {
+  workspaceWriteGenerations.set(workspaceId, generation)
+  runtimeInvalidatedWorkspaces.set(workspaceId, generation)
+  localPendingPurgeWorkspaces.set(workspaceId, generation)
+  const lifecycle = readStoredHabitOfflineWorkspaceLifecycleState(workspaceId)
+  return writeStoredHabitOfflineWorkspaceLifecycleState(workspaceId, {
+    pendingPurgeGeneration: Math.max(
+      lifecycle.pendingPurgeGeneration ?? 0,
+      generation,
+    ),
+    writeGeneration: Math.max(lifecycle.writeGeneration, generation),
   })
 }
 
-export async function completeHabitOfflineMutation(
-  mutationId: string,
+async function flushPendingHabitOfflinePurges(
+  db: HabitOfflineDatabase,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
-
-  if (!db) {
-    return
-  }
-
-  await db.mutationQueue.delete(mutationId)
-}
-
-export async function markHabitOfflineMutationFailed(
-  mutationId: string,
-  errorMessage: string,
-): Promise<void> {
-  const db = getHabitOfflineDatabase()
-
-  if (!db) {
-    return
-  }
-
-  await db.mutationQueue.update(mutationId, {
-    lastError: errorMessage,
-    status: 'failed',
-    updatedAt: new Date().toISOString(),
+  lifecycleFlush ??= flushPendingHabitOfflinePurgesOnce(db).finally(() => {
+    lifecycleFlush = null
   })
+  await lifecycleFlush
 }
 
-export async function markHabitOfflineMutationConflicted(
-  mutationId: string,
-  conflict: {
-    actualVersion: number | null
-    expectedVersion: number | null
-    message: string
-  },
+async function flushPendingHabitOfflinePurgesOnce(
+  db: HabitOfflineDatabase,
 ): Promise<void> {
-  const db = getHabitOfflineDatabase()
+  for (;;) {
+    const pendingPurges = {
+      ...readStoredHabitOfflineLifecycleState().pendingPurges,
+    }
 
-  if (!db) {
+    for (const [workspaceId, generation] of localPendingPurgeWorkspaces) {
+      pendingPurges[workspaceId] = Math.max(
+        pendingPurges[workspaceId] ?? 0,
+        generation,
+      )
+    }
+
+    const workspaceIds = Object.keys(pendingPurges)
+
+    if (workspaceIds.length === 0) {
+      return
+    }
+
+    await purgeHabitOfflineWorkspaces(db, workspaceIds)
+
+    if (!completeHabitOfflineWorkspacePurges(pendingPurges)) {
+      throw new HabitOfflinePurgeUnavailableError()
+    }
+  }
+}
+
+async function purgeHabitOfflineWorkspaces(
+  db: HabitOfflineDatabase,
+  workspaceIds: readonly string[],
+): Promise<void> {
+  await db.transaction(
+    'rw',
+    [
+      db.cachedHabits,
+      db.cachedStatsResponses,
+      db.cachedTodayResponses,
+      db.mutationQueue,
+    ],
+    async () => {
+      for (const workspaceId of workspaceIds) {
+        await Promise.all([
+          db.cachedHabits.where('workspaceId').equals(workspaceId).delete(),
+          db.cachedStatsResponses
+            .where('workspaceId')
+            .equals(workspaceId)
+            .delete(),
+          db.cachedTodayResponses
+            .where('workspaceId')
+            .equals(workspaceId)
+            .delete(),
+          db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
+        ])
+      }
+    },
+  )
+}
+
+function completeHabitOfflineWorkspacePurges(
+  completedPurges: Readonly<Record<string, number>>,
+): boolean {
+  let completed = true
+
+  for (const [workspaceId, generation] of Object.entries(completedPurges)) {
+    const localGeneration = localPendingPurgeWorkspaces.get(workspaceId)
+
+    if (localGeneration !== undefined && localGeneration <= generation) {
+      localPendingPurgeWorkspaces.delete(workspaceId)
+    }
+
+    const lifecycle = readStoredHabitOfflineWorkspaceLifecycleState(workspaceId)
+    const persistedGeneration = lifecycle.pendingPurgeGeneration
+
+    if (persistedGeneration !== null && persistedGeneration <= generation) {
+      completed =
+        writeStoredHabitOfflineWorkspaceLifecycleState(workspaceId, {
+          pendingPurgeGeneration: null,
+          writeGeneration: Math.max(lifecycle.writeGeneration, generation),
+        }) && completed
+    }
+  }
+
+  return completed
+}
+
+function readStoredHabitOfflineLifecycleState(): HabitOfflineLifecycleState {
+  const lifecycle: HabitOfflineLifecycleState = {
+    pendingPurges: {},
+    writeGenerations: {},
+  }
+
+  for (const key of listStoredHabitOfflineLifecycleKeys()) {
+    const workspaceId = parseHabitOfflineLifecycleStorageKey(key)
+
+    if (!workspaceId) {
+      continue
+    }
+
+    const workspaceLifecycle =
+      readStoredHabitOfflineWorkspaceLifecycleState(workspaceId)
+    lifecycle.writeGenerations[workspaceId] = workspaceLifecycle.writeGeneration
+
+    if (workspaceLifecycle.pendingPurgeGeneration !== null) {
+      lifecycle.pendingPurges[workspaceId] =
+        workspaceLifecycle.pendingPurgeGeneration
+    }
+  }
+
+  return lifecycle
+}
+
+function readStoredHabitOfflineWorkspaceLifecycleState(
+  workspaceId: string,
+): HabitOfflineWorkspaceLifecycleState {
+  if (typeof window === 'undefined') {
+    return { pendingPurgeGeneration: null, writeGeneration: 0 }
+  }
+
+  try {
+    return parseHabitOfflineWorkspaceLifecycleState(
+      window.localStorage.getItem(
+        createHabitOfflineLifecycleStorageKey(workspaceId),
+      ),
+    )
+  } catch {
+    return { pendingPurgeGeneration: null, writeGeneration: 0 }
+  }
+}
+
+function parseHabitOfflineWorkspaceLifecycleState(
+  rawValue: string | null,
+): HabitOfflineWorkspaceLifecycleState {
+  if (!rawValue) {
+    return { pendingPurgeGeneration: null, writeGeneration: 0 }
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as unknown
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { pendingPurgeGeneration: null, writeGeneration: 0 }
+    }
+
+    const value = parsed as Record<string, unknown>
+    const writeGeneration = sanitizeHabitOfflineGeneration(
+      value.writeGeneration,
+    )
+    const pendingPurgeGeneration =
+      value.pendingPurgeGeneration === null
+        ? null
+        : sanitizeOptionalHabitOfflineGeneration(value.pendingPurgeGeneration)
+
+    return {
+      pendingPurgeGeneration,
+      writeGeneration,
+    }
+  } catch {
+    return { pendingPurgeGeneration: null, writeGeneration: 0 }
+  }
+}
+
+function sanitizeHabitOfflineGeneration(value: unknown): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : 0
+}
+
+function sanitizeOptionalHabitOfflineGeneration(value: unknown): number | null {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null
+}
+
+function writeStoredHabitOfflineWorkspaceLifecycleState(
+  workspaceId: string,
+  lifecycle: HabitOfflineWorkspaceLifecycleState,
+): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+
+  try {
+    const serialized = JSON.stringify(lifecycle)
+    const storageKey = createHabitOfflineLifecycleStorageKey(workspaceId)
+    window.localStorage.setItem(storageKey, serialized)
+    return window.localStorage.getItem(storageKey) === serialized
+  } catch {
+    return false
+  }
+}
+
+function removeStoredHabitOfflineLifecycleState(): void {
+  if (typeof window === 'undefined') {
     return
   }
 
-  await db.mutationQueue.update(mutationId, {
-    conflictActualVersion: conflict.actualVersion,
-    conflictExpectedVersion: conflict.expectedVersion,
-    lastError: conflict.message,
-    status: 'conflicted',
-    updatedAt: new Date().toISOString(),
-  })
+  try {
+    for (const key of listStoredHabitOfflineLifecycleKeys()) {
+      window.localStorage.removeItem(key)
+    }
+  } catch {
+    // Test cleanup remains best-effort when localStorage is unavailable.
+  }
 }
 
-function getHabitOfflineDatabase(): HabitOfflineDatabase | null {
-  if (!isHabitOfflineStorageAvailable()) {
+function ensureHabitOfflineLifecycleStorageListener(): void {
+  if (lifecycleStorageListenerAttached || typeof window === 'undefined') {
+    return
+  }
+
+  window.addEventListener('storage', handleHabitOfflineLifecycleStorage)
+  lifecycleStorageListenerAttached = true
+}
+
+function handleHabitOfflineLifecycleStorage(event: StorageEvent): void {
+  const workspaceId = parseHabitOfflineLifecycleStorageKey(event.key)
+
+  if (!workspaceId) {
+    return
+  }
+
+  const lifecycle = parseHabitOfflineWorkspaceLifecycleState(event.newValue)
+  const generation = lifecycle.writeGeneration
+  const runtimeGeneration = workspaceWriteGenerations.get(workspaceId) ?? 0
+  const baselineGeneration =
+    runtimeLifecycleBaseline.writeGenerations[workspaceId] ?? 0
+
+  if (generation > runtimeGeneration) {
+    workspaceWriteGenerations.set(workspaceId, generation)
+  }
+
+  if (generation > baselineGeneration) {
+    runtimeInvalidatedWorkspaces.set(workspaceId, generation)
+  }
+}
+
+function createHabitOfflineLifecycleStorageKey(workspaceId: string): string {
+  return `${HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX}${encodeURIComponent(workspaceId)}`
+}
+
+function parseHabitOfflineLifecycleStorageKey(
+  storageKey: string | null,
+): string | null {
+  if (!storageKey?.startsWith(HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX)) {
     return null
   }
 
-  database ??= new HabitOfflineDatabase()
+  const encodedWorkspaceId = storageKey.slice(
+    HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX.length,
+  )
 
-  return database
+  if (!encodedWorkspaceId) {
+    return null
+  }
+
+  try {
+    return decodeURIComponent(encodedWorkspaceId)
+  } catch {
+    return null
+  }
+}
+
+function listStoredHabitOfflineLifecycleKeys(): string[] {
+  if (typeof window === 'undefined') {
+    return []
+  }
+
+  try {
+    const keys: string[] = []
+
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)
+
+      if (key?.startsWith(HABIT_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX)) {
+        keys.push(key)
+      }
+    }
+
+    return keys
+  } catch {
+    return []
+  }
 }
 
 async function foldHabitOfflineMutation(

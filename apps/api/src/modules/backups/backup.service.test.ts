@@ -178,6 +178,82 @@ void test('user backup v1 schema rejects unknown columns and malformed payloads'
   )
 })
 
+void test('user backup v1 schema accepts self-care concurrency metadata', () => {
+  const userId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const workspaceId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const itemId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  const completionId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+  const dailyStateId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+  const settingsId = 'ffffffff-ffff-4fff-8fff-ffffffffffff'
+  const minimumItemId = '11111111-1111-4111-8111-111111111111'
+  const draftId = '22222222-2222-4222-8222-222222222222'
+  const timestamp = '2026-08-06T10:00:00.000Z'
+  const result = userBackupArchiveSchema.safeParse(
+    createArchive({
+      tables: {
+        self_care_completions: [
+          {
+            completed_at: timestamp,
+            created_at: timestamp,
+            id: completionId,
+            item_id: itemId,
+            updated_at: timestamp,
+            user_id: userId,
+            version: 3,
+          },
+        ],
+        self_care_daily_states: [
+          {
+            id: dailyStateId,
+            updated_at: timestamp,
+            user_id: userId,
+            version: 2,
+          },
+        ],
+        self_care_minimum_items: [
+          {
+            id: minimumItemId,
+            updated_at: timestamp,
+            user_id: userId,
+            version: 4,
+          },
+        ],
+        self_care_ritual_step_drafts: [
+          {
+            id: draftId,
+            item_id: itemId,
+            updated_at: timestamp,
+            user_id: userId,
+            version: 5,
+            workspace_id: workspaceId,
+          },
+        ],
+        self_care_settings: [
+          {
+            id: settingsId,
+            updated_at: timestamp,
+            user_id: userId,
+            version: 6,
+          },
+        ],
+        tasks: [],
+        users: [{ id: userId }],
+        workspaces: [{ id: workspaceId, owner_user_id: userId }],
+      },
+      userId,
+      workspaceId,
+    }),
+  )
+
+  assert.equal(
+    result.success,
+    true,
+    result.error?.issues
+      .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+      .join('\n'),
+  )
+})
+
 void test('UserBackupService rejects duplicate and cross-scope rows in preview', () => {
   const service = new UserBackupService(new FakeUserBackupRepository(), '1.2.3')
   const archive = createArchive({

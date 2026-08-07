@@ -441,6 +441,7 @@ export function createDefaultSelfCareSettings(input: {
     showSelfCareInMainTasks: true,
     updatedAt: now,
     userId: input.userId,
+    version: 1,
   }
 }
 
@@ -458,6 +459,7 @@ export function createDefaultMinimumItems(
     title,
     updatedAt: now,
     userId,
+    version: 1,
   }))
 }
 
@@ -476,6 +478,7 @@ export function createMinimumItemRecord(
     title: input.title,
     updatedAt: now,
     userId: context.userId,
+    version: 1,
   }
 }
 
@@ -498,12 +501,14 @@ export function createDailyStateRecord(
     stress: input.stress,
     updatedAt: now,
     userId: context.userId,
+    version: 1,
   }
 }
 
 export function createCompletionRecord(
   input: SelfCareCompletionInput,
   context: {
+    completionId?: string | undefined
     itemId: string
     occurrence?: SelfCareOccurrence | null | undefined
     scheduledFor?: string | null | undefined
@@ -511,18 +516,19 @@ export function createCompletionRecord(
   },
 ): SelfCareCompletion {
   const completedAt = input.completedAt ?? new Date().toISOString()
+  const persistedAt = new Date().toISOString()
 
   return {
     alternativeTitle: input.alternativeTitle,
     completedAt,
     completedVariant: input.completedVariant,
-    createdAt: completedAt,
+    createdAt: persistedAt,
     currency: input.currency,
     durationMinutes: input.durationMinutes,
     energyAfter: input.energyAfter,
     energyBefore: input.energyBefore,
     exerciseSets: input.exerciseSets,
-    id: generateUuidV7(),
+    id: context.completionId ?? generateUuidV7(),
     itemId: context.itemId,
     measurementUnit: input.measurementUnit ?? null,
     measurementValue: input.measurementValue ?? null,
@@ -534,7 +540,9 @@ export function createCompletionRecord(
     scheduledFor:
       context.scheduledFor ?? context.occurrence?.scheduledFor ?? null,
     status: input.status,
+    updatedAt: persistedAt,
     userId: context.userId,
+    version: 1,
   }
 }
 
@@ -578,6 +586,7 @@ export function inferRitualCompletionStatus(input: {
 export function createOccurrenceRecord(input: {
   dueAt: string | null
   item: SelfCareItem
+  occurrenceId?: string | undefined
   scheduledFor: string
   scheduleRule: SelfCareScheduleRule | null
 }): SelfCareOccurrence {
@@ -588,7 +597,7 @@ export function createOccurrenceRecord(input: {
     createdAt: now,
     dueAt: input.dueAt,
     generatedAt: now,
-    id: generateUuidV7(),
+    id: input.occurrenceId ?? generateUuidV7(),
     itemId: input.item.id,
     movedTo: null,
     reminderOffsetsMinutes: [],
@@ -598,6 +607,7 @@ export function createOccurrenceRecord(input: {
     status: 'scheduled',
     updatedAt: now,
     userId: input.item.userId,
+    version: 1,
   }
 }
 
@@ -633,6 +643,7 @@ export function updateOccurrenceStatus(
     ...extra,
     status,
     updatedAt: new Date().toISOString(),
+    version: occurrence.version + 1,
   }
 }
 
@@ -1544,7 +1555,9 @@ export function mapHabitEntryToSelfCareCompletion(input: {
     price: null,
     scheduledFor: input.entry.date,
     status: input.entry.status === 'skipped' ? 'skipped' : 'done',
+    updatedAt: input.entry.updatedAt,
     userId: input.entry.userId,
+    version: 1,
   }
 }
 

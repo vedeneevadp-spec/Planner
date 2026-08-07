@@ -9,6 +9,7 @@ import {
   type SelfCareMeasurementDetails,
   type SelfCareMedicalDetails,
   type SelfCareMinimumItem,
+  selfCareOfflineCommandResultSchema,
   type SelfCareProcedureDetails,
   type SelfCareRitualStep,
   type SelfCareRitualStepCompletion,
@@ -28,6 +29,8 @@ import type {
   CreateSelfCareItemFromTemplateCommand,
   DeleteSelfCareItemCommand,
   DeleteSelfCareRitualStepDraftCommand,
+  ExecuteSelfCareOfflineCommand,
+  ExecuteSelfCareOfflineCommandResult,
   GenerateSelfCareOccurrencesCommand,
   GetSelfCareDashboardCommand,
   GetSelfCareOccurrencesCommand,
@@ -54,6 +57,10 @@ import type {
   UpsertSelfCareDailyStateCommand,
   UpsertSelfCareRitualStepDraftCommand,
 } from './self-care.model.js'
+import {
+  dispatchSelfCareOfflineCommand,
+  fingerprintSelfCareCommandRequest,
+} from './self-care.offline-command.js'
 import type { SelfCareRepository } from './self-care.repository.js'
 import {
   addDays,
@@ -91,6 +98,14 @@ import {
 } from './self-care.shared.js'
 
 export class MemorySelfCareRepository implements SelfCareRepository {
+  private commandExecution = Promise.resolve()
+  private readonly commandLedger = new Map<
+    string,
+    {
+      fingerprint: string
+      result: ExecuteSelfCareOfflineCommandResult['result']
+    }
+  >()
   private readonly alternatives = new Map<string, SelfCareItemAlternative>()
   private readonly appointmentDetails = new Map<
     string,
@@ -131,6 +146,17 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   private readonly steps = new Map<string, SelfCareRitualStep>()
   private readonly templates = buildSystemSelfCareTemplates()
 
+  executeOfflineCommand(command: ExecuteSelfCareOfflineCommand) {
+    const execution = this.commandExecution.then(() =>
+      this.executeOfflineCommandSerialized(command),
+    )
+    this.commandExecution = execution.then(
+      () => undefined,
+      () => undefined,
+    )
+    return execution
+  }
+
   async listItems(
     context: SelfCareReadContext,
     filters: SelfCareListFilters = {},
@@ -157,8 +183,14 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     ) {
       throw new HttpError(
         409,
-        'self_care_item_version_conflict',
+        'self_care_version_conflict',
         'Self-care item was changed on the server.',
+        {
+          actualVersion: item.version,
+          entityId: item.id,
+          entityType: 'item',
+          expectedVersion: command.input.expectedVersion,
+        },
       )
     }
 
@@ -212,45 +244,74 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       updatedAt: now,
       version: item.version + 1,
     }
-
-    this.items.set(nextItem.id, nextItem)
-
-    if (command.input.scheduleRule) {
-      const existingRule =
-        [...this.scheduleRules.values()].find(
+    const existingRule = command.input.scheduleRule
+      ? ([...this.scheduleRules.values()].find(
           (candidate) => candidate.itemId === nextItem.id,
-        ) ?? null
-      const rule = createScheduleRuleRecord(
-        nextItem.id,
-        {
-          ...command.input.scheduleRule,
-          id: existingRule?.id ?? command.input.scheduleRule.id,
-        },
-        now,
-      )
-      this.scheduleRules.set(rule.id, rule)
-      this.relinkOpenOccurrencesToScheduleRule(rule)
-    }
-
-    if (command.input.steps) {
-      this.deleteForItem(this.steps, nextItem.id)
-      this.deleteForItem(this.stepDrafts, nextItem.id)
-      command.input.steps.forEach((step, index) => {
-        const record = createRitualStepRecord(nextItem.id, step, index, now)
-        this.steps.set(record.id, record)
-      })
-    }
-
-    if (command.input.alternatives) {
-      this.deleteForItem(this.alternatives, nextItem.id)
-      command.input.alternatives.forEach((alternative) => {
-        const record = {
+        ) ?? null)
+      : null
+    const nextRule = command.input.scheduleRule
+      ? createScheduleRuleRecord(
+          nextItem.id,
+          {
+            ...command.input.scheduleRule,
+            id: existingRule?.id ?? command.input.scheduleRule.id,
+          },
+          now,
+        )
+      : null
+    const nextSteps = command.input.steps
+      ? command.input.steps.map((step, index) =>
+          createRitualStepRecord(nextItem.id, step, index, now),
+        )
+      : null
+    const nextAlternatives = command.input.alternatives
+      ? command.input.alternatives.map((alternative) => ({
           countsAsCompletion: alternative.countsAsCompletion,
           description: alternative.description,
           id: alternative.id ?? `${nextItem.id}-${alternative.title}`,
           itemId: nextItem.id,
           title: alternative.title,
-        }
+        }))
+      : null
+
+    if (nextRule) {
+      assertChildRecordIdsAvailable(
+        this.scheduleRules,
+        [nextRule],
+        nextItem.id,
+        true,
+      )
+    }
+    if (nextSteps) {
+      assertChildRecordIdsAvailable(this.steps, nextSteps, nextItem.id, true)
+    }
+    if (nextAlternatives) {
+      assertChildRecordIdsAvailable(
+        this.alternatives,
+        nextAlternatives,
+        nextItem.id,
+        true,
+      )
+    }
+
+    this.items.set(nextItem.id, nextItem)
+
+    if (nextRule) {
+      this.scheduleRules.set(nextRule.id, nextRule)
+      this.relinkOpenOccurrencesToScheduleRule(nextRule)
+    }
+
+    if (nextSteps) {
+      this.deleteForItem(this.steps, nextItem.id)
+      this.deleteForItem(this.stepDrafts, nextItem.id)
+      nextSteps.forEach((record) => {
+        this.steps.set(record.id, record)
+      })
+    }
+
+    if (nextAlternatives) {
+      this.deleteForItem(this.alternatives, nextItem.id)
+      nextAlternatives.forEach((record) => {
         this.alternatives.set(record.id, record)
       })
     }
@@ -319,15 +380,31 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   }
 
   async archiveItem(command: ArchiveSelfCareItemCommand) {
-    return this.setArchiveState(command.context, command.itemId, true)
+    return this.setArchiveState(
+      command.context,
+      command.itemId,
+      true,
+      command.expectedVersion,
+    )
   }
 
   async restoreItem(command: RestoreSelfCareItemCommand) {
-    return this.setArchiveState(command.context, command.itemId, false)
+    return this.setArchiveState(
+      command.context,
+      command.itemId,
+      false,
+      command.expectedVersion,
+    )
   }
 
   async deleteItem(command: DeleteSelfCareItemCommand) {
     const item = this.getWritableItem(command.context, command.itemId)
+    assertSelfCareVersion(
+      'item',
+      item.id,
+      command.expectedVersion,
+      item.version,
+    )
     this.items.set(item.id, {
       ...item,
       deletedAt: new Date().toISOString(),
@@ -396,10 +473,20 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async completeOccurrence(command: CompleteSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
+    assertSelfCareVersion(
+      'occurrence',
+      occurrence.id,
+      command.expectedVersion,
+      occurrence.version,
+    )
+    assertSelfCareOccurrenceOpen(occurrence)
+    this.assertCompletionIdAvailable(command.completionId)
     const item = this.getWritableItem(command.context, occurrence.itemId)
     assertExerciseCompletionInput(item, command.input)
     assertMeasurementCompletionInput(item, command.input)
     assertMoodCheckCompletionInput(item, command.input)
+    const steps = this.loadStepsForItem(item.id)
+    assertRitualCompletionSteps(item.id, steps, command.input.steps)
     const stepCompletions = createRitualStepCompletions(
       'pending',
       command.input,
@@ -407,11 +494,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const status = inferRitualCompletionStatus({
       requestedStatus: command.input.status,
       stepCompletions,
-      steps: this.loadStepsForItem(item.id),
+      steps,
     })
     const completion = createCompletionRecord(
       { ...command.input, status },
       {
+        completionId: command.completionId,
         itemId: item.id,
         occurrence,
         userId: command.context.actorUserId,
@@ -483,9 +571,17 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async completeItemNow(command: CompleteSelfCareItemNowCommand) {
     const item = this.getWritableItem(command.context, command.itemId)
+    assertSelfCareVersion(
+      'item',
+      item.id,
+      command.expectedVersion,
+      item.version,
+    )
     assertExerciseCompletionInput(item, command.input)
     assertMeasurementCompletionInput(item, command.input)
     assertMoodCheckCompletionInput(item, command.input)
+    const steps = this.loadStepsForItem(item.id)
+    assertRitualCompletionSteps(item.id, steps, command.input.steps)
     const scheduleRule = this.findScheduleRuleForItem(item.id)
     const completionDate = getSelfCareCompletionDateKey(
       command.input,
@@ -504,8 +600,22 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       : null
 
     if (existingCompletion) {
+      this.deleteRitualStepDraftRecord({
+        date: completionDate,
+        itemId: item.id,
+        occurrenceId: null,
+        userId: command.context.actorUserId,
+        workspaceId: command.context.workspaceId,
+      })
+      this.items.set(item.id, {
+        ...item,
+        updatedAt: new Date().toISOString(),
+        version: item.version + 1,
+      })
       return existingCompletion
     }
+
+    this.assertCompletionIdAvailable(command.completionId)
 
     const pendingStepCompletions = createRitualStepCompletions(
       'pending',
@@ -514,11 +624,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const status = inferRitualCompletionStatus({
       requestedStatus: command.input.status,
       stepCompletions: pendingStepCompletions,
-      steps: this.loadStepsForItem(item.id),
+      steps,
     })
     const completion = createCompletionRecord(
       { ...command.input, status },
       {
+        completionId: command.completionId,
         itemId: item.id,
         scheduledFor: completionDate,
         userId: command.context.actorUserId,
@@ -555,12 +666,20 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       workspaceId: command.context.workspaceId,
     })
     this.incrementCourseIfNeeded(item.id, completionDate)
+    const currentItem = this.items.get(item.id) ?? item
+    this.items.set(item.id, {
+      ...currentItem,
+      updatedAt: new Date().toISOString(),
+      version: item.version + 1,
+    })
     return storedCompletion
   }
 
   async completeFlexibleGoal(command: CompleteFlexibleGoalCommand) {
     const completion = await this.completeItemNow({
+      completionId: command.completionId,
       context: command.context,
+      expectedVersion: command.expectedVersion,
       input: { ...command.input, steps: [] },
       itemId: command.itemId,
     })
@@ -576,7 +695,9 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async completeCourseSession(command: CompleteCourseSessionCommand) {
     return this.completeItemNow({
+      completionId: command.completionId,
       context: command.context,
+      expectedVersion: command.expectedVersion,
       input: { ...command.input, steps: [] },
       itemId: command.itemId,
     })
@@ -595,6 +716,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const item = this.getWritableItem(command.context, current.itemId, {
       allowArchived: true,
     })
+    assertSelfCareVersion(
+      'completion',
+      current.id,
+      command.expectedVersion,
+      current.version,
+    )
     const next: StoredSelfCareCompletionRecord = {
       ...current,
       ...(command.input.alternativeTitle !== undefined
@@ -634,6 +761,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ...(command.input.price !== undefined
         ? { price: command.input.price }
         : {}),
+      updatedAt: new Date().toISOString(),
+      version: current.version + 1,
     }
 
     assertExerciseCompletionInput(item, { ...next, steps: [] })
@@ -646,6 +775,14 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async skipOccurrence(command: SkipSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
+    assertSelfCareVersion(
+      'occurrence',
+      occurrence.id,
+      command.expectedVersion,
+      occurrence.version,
+    )
+    assertSelfCareOccurrenceOpen(occurrence)
+    this.assertCompletionIdAvailable(command.completionId)
     const completion = createCompletionRecord(
       {
         alternativeTitle: null,
@@ -662,8 +799,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         note: command.input.reason,
         price: null,
         status: 'skipped',
+        ...(command.actedAt ? { completedAt: command.actedAt } : {}),
       },
       {
+        completionId: command.completionId,
         itemId: occurrence.itemId,
         occurrence,
         userId: command.context.actorUserId,
@@ -677,6 +816,24 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async moveOccurrence(command: MoveSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
+    if (
+      command.expectedItemId !== undefined &&
+      occurrence.itemId !== command.expectedItemId
+    ) {
+      throw new HttpError(
+        409,
+        'self_care_reschedule_item_conflict',
+        'The occurrence selected for rescheduling belongs to another self-care item.',
+      )
+    }
+    assertSelfCareVersion(
+      'occurrence',
+      occurrence.id,
+      command.expectedVersion,
+      occurrence.version,
+    )
+    assertSelfCareOccurrenceOpen(occurrence)
+    this.assertCompletionIdAvailable(command.completionId)
     const completion = createCompletionRecord(
       {
         alternativeTitle: null,
@@ -693,8 +850,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         note: command.input.note,
         price: null,
         status: 'moved',
+        ...(command.actedAt ? { completedAt: command.actedAt } : {}),
       },
       {
+        completionId: command.completionId,
         itemId: occurrence.itemId,
         occurrence,
         userId: command.context.actorUserId,
@@ -710,6 +869,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async scheduleItem(command: ScheduleSelfCareItemCommand) {
     const item = this.getWritableItem(command.context, command.itemId)
+    assertSelfCareVersion(
+      'item',
+      item.id,
+      command.expectedVersion,
+      item.version,
+    )
     const scheduleRule =
       [...this.scheduleRules.values()].find(
         (candidate) => candidate.itemId === item.id,
@@ -725,6 +890,71 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       scheduledTime ?? scheduleRule?.preferredTime ?? null,
       reminderTimeZone,
     )
+
+    if (
+      (command.existingOccurrenceId === undefined) !==
+      (command.expectedOccurrenceVersion === undefined)
+    ) {
+      throw new HttpError(
+        400,
+        'self_care_schedule_update_invalid',
+        'Existing occurrence id and version must be provided together.',
+      )
+    }
+
+    if (
+      command.existingOccurrenceId !== undefined &&
+      command.expectedOccurrenceVersion !== undefined
+    ) {
+      const existing = this.getOccurrence(
+        command.context,
+        command.existingOccurrenceId,
+      )
+
+      if (existing.itemId !== item.id) {
+        throw new HttpError(
+          404,
+          'self_care_occurrence_not_found',
+          'Self-care occurrence not found.',
+        )
+      }
+      assertSelfCareVersion(
+        'occurrence',
+        existing.id,
+        command.expectedOccurrenceVersion,
+        existing.version,
+      )
+      assertSelfCareOccurrenceOpen(existing)
+      if (existing.scheduledFor !== command.input.scheduledFor) {
+        throw new HttpError(
+          409,
+          'self_care_schedule_date_conflict',
+          'An in-place schedule update must keep the existing date.',
+          {
+            actualScheduledFor: existing.scheduledFor,
+            entityId: existing.id,
+            entityType: 'occurrence',
+            requestedScheduledFor: command.input.scheduledFor,
+          },
+        )
+      }
+
+      const nextOccurrence = {
+        ...existing,
+        completedAt: null,
+        dueAt,
+        movedTo: null,
+        reminderOffsetsMinutes: command.input.reminderOffsetsMinutes,
+        reminderTimeZone,
+        status: 'scheduled' as const,
+        updatedAt: new Date().toISOString(),
+        version: existing.version + 1,
+      }
+      this.occurrences.set(nextOccurrence.id, nextOccurrence)
+      this.upsertScheduledDetails(item, nextOccurrence, command.input)
+      return nextOccurrence
+    }
+
     const existing = [...this.occurrences.values()].find(
       (occurrence) =>
         occurrence.itemId === item.id &&
@@ -733,6 +963,18 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     )
 
     if (existing) {
+      if (command.strictInsert) {
+        throw new HttpError(
+          409,
+          'self_care_schedule_slot_conflict',
+          'A self-care occurrence already exists for this schedule slot.',
+          {
+            actualVersion: existing.version,
+            entityId: existing.id,
+            entityType: 'occurrence',
+          },
+        )
+      }
       const nextOccurrence = {
         ...existing,
         completedAt: null,
@@ -743,15 +985,25 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         scheduleRuleId: scheduleRule?.id ?? null,
         status: 'scheduled' as const,
         updatedAt: new Date().toISOString(),
+        version: existing.version + 1,
       }
       this.occurrences.set(nextOccurrence.id, nextOccurrence)
       this.upsertScheduledDetails(item, nextOccurrence, command.input)
       return nextOccurrence
     }
 
+    if (command.occurrenceId && this.occurrences.has(command.occurrenceId)) {
+      throw new HttpError(
+        409,
+        'self_care_occurrence_id_conflict',
+        'The self-care occurrence identifier is already in use.',
+      )
+    }
+
     const occurrence = createOccurrenceRecord({
       dueAt,
       item,
+      occurrenceId: command.occurrenceId,
       scheduledFor: command.input.scheduledFor,
       scheduleRule,
     })
@@ -839,6 +1091,14 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async cancelOccurrence(command: CancelSelfCareOccurrenceCommand) {
     const occurrence = this.getOccurrence(command.context, command.occurrenceId)
+    assertSelfCareVersion(
+      'occurrence',
+      occurrence.id,
+      command.expectedVersion,
+      occurrence.version,
+    )
+    assertSelfCareOccurrenceOpen(occurrence)
+    this.assertCompletionIdAvailable(command.completionId)
     const completion = createCompletionRecord(
       {
         alternativeTitle: null,
@@ -855,8 +1115,10 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         note: '',
         price: null,
         status: 'cancelled',
+        ...(command.actedAt ? { completedAt: command.actedAt } : {}),
       },
       {
+        completionId: command.completionId,
         itemId: occurrence.itemId,
         occurrence,
         userId: command.context.actorUserId,
@@ -879,12 +1141,19 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   async upsertDailyState(command: UpsertSelfCareDailyStateCommand) {
     const stateKey = `${command.context.actorUserId}:${command.date}`
     const existing = this.dailyStates.get(stateKey)
+    assertSelfCareVersion(
+      'daily_state',
+      existing?.id ?? stateKey,
+      command.expectedVersion,
+      existing?.version ?? null,
+    )
     const next = existing
       ? {
           ...existing,
           ...command.input,
           date: command.date,
           updatedAt: new Date().toISOString(),
+          version: existing.version + 1,
         }
       : createDailyStateRecord(command.date, command.input, {
           userId: command.context.actorUserId,
@@ -900,6 +1169,12 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async updateSettings(command: UpdateSelfCareSettingsCommand) {
     const settings = this.getOrCreateSettings(command.context)
+    assertSelfCareVersion(
+      'settings',
+      settings.id,
+      command.expectedVersion,
+      settings.version,
+    )
     const next = {
       ...settings,
       ...(command.input.currency !== undefined
@@ -915,6 +1190,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
         ? { showSelfCareInMainTasks: command.input.showSelfCareInMainTasks }
         : {}),
       updatedAt: new Date().toISOString(),
+      version: settings.version + 1,
     }
     this.settings.set(settings.userId, next)
     return this.getSettings(command.context)
@@ -927,6 +1203,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       gentleModeDate: command.date,
       gentleModeEnabledToday: true,
       updatedAt: new Date().toISOString(),
+      version: settings.version + 1,
     })
     return this.getSettings(command.context)
   }
@@ -938,6 +1215,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       gentleModeDate: command.date,
       gentleModeEnabledToday: false,
       updatedAt: new Date().toISOString(),
+      version: settings.version + 1,
     })
     return this.getSettings(command.context)
   }
@@ -990,15 +1268,31 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     this.assertRitualStepDraftOccurrence(command)
     this.assertRitualStepDraftSteps(item.id, command.input.stepIds)
 
+    const draftKey = getRitualStepDraftKey({
+      date: command.input.date,
+      itemId: item.id,
+      occurrenceId: command.input.occurrenceId,
+      userId: command.context.actorUserId,
+      workspaceId: command.context.workspaceId,
+    })
+    const existing = this.stepDrafts.get(draftKey)
+    assertSelfCareVersion(
+      'ritual_step_draft',
+      draftKey,
+      command.expectedVersion,
+      existing?.version ?? null,
+    )
+
     const draft: StoredSelfCareRitualStepDraftRecord = {
       date: command.input.date,
       itemId: item.id,
       occurrenceId: command.input.occurrenceId,
       stepIds: [...new Set(command.input.stepIds)],
       userId: command.context.actorUserId,
+      version: existing ? existing.version + 1 : 1,
       workspaceId: command.context.workspaceId,
     }
-    this.stepDrafts.set(getRitualStepDraftKey(draft), draft)
+    this.stepDrafts.set(draftKey, draft)
 
     return this.getRitualStepDrafts({
       context: command.context,
@@ -1067,14 +1361,99 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     return records.item
   }
 
+  private async executeOfflineCommandSerialized(
+    command: ExecuteSelfCareOfflineCommand,
+  ): Promise<ExecuteSelfCareOfflineCommandResult> {
+    const ledgerKey = [
+      command.context.workspaceId,
+      command.context.actorUserId,
+      command.request.operationId,
+    ].join(':')
+    const fingerprint = fingerprintSelfCareCommandRequest(command.request)
+    const existing = this.commandLedger.get(ledgerKey)
+
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new HttpError(
+          409,
+          'self_care_operation_id_reused',
+          'The self-care operation identifier was already used for a different command.',
+        )
+      }
+
+      return {
+        operationId: command.request.operationId,
+        replayed: true,
+        result: existing.result,
+      }
+    }
+
+    const snapshot = {
+      alternatives: new Map(this.alternatives),
+      appointmentDetails: new Map(this.appointmentDetails),
+      completions: new Map(this.completions),
+      courseDetails: new Map(this.courseDetails),
+      dailyStates: new Map(this.dailyStates),
+      exerciseDetails: new Map(this.exerciseDetails),
+      items: new Map(this.items),
+      medicalDetails: new Map(this.medicalDetails),
+      measurementDetails: new Map(this.measurementDetails),
+      minimumItems: new Map(this.minimumItems),
+      occurrences: new Map(this.occurrences),
+      procedureDetails: new Map(this.procedureDetails),
+      scheduleRules: new Map(this.scheduleRules),
+      settings: new Map(this.settings),
+      stepCompletions: new Map(this.stepCompletions),
+      stepDrafts: new Map(this.stepDrafts),
+      steps: new Map(this.steps),
+    }
+
+    try {
+      const result = selfCareOfflineCommandResultSchema.parse(
+        await dispatchSelfCareOfflineCommand(
+          this,
+          command.context,
+          command.dispatchCommand ?? command.request.command,
+        ),
+      )
+      this.commandLedger.set(ledgerKey, { fingerprint, result })
+      return {
+        operationId: command.request.operationId,
+        replayed: false,
+        result,
+      }
+    } catch (error) {
+      restoreMap(this.alternatives, snapshot.alternatives)
+      restoreMap(this.appointmentDetails, snapshot.appointmentDetails)
+      restoreMap(this.completions, snapshot.completions)
+      restoreMap(this.courseDetails, snapshot.courseDetails)
+      restoreMap(this.dailyStates, snapshot.dailyStates)
+      restoreMap(this.exerciseDetails, snapshot.exerciseDetails)
+      restoreMap(this.items, snapshot.items)
+      restoreMap(this.medicalDetails, snapshot.medicalDetails)
+      restoreMap(this.measurementDetails, snapshot.measurementDetails)
+      restoreMap(this.minimumItems, snapshot.minimumItems)
+      restoreMap(this.occurrences, snapshot.occurrences)
+      restoreMap(this.procedureDetails, snapshot.procedureDetails)
+      restoreMap(this.scheduleRules, snapshot.scheduleRules)
+      restoreMap(this.settings, snapshot.settings)
+      restoreMap(this.stepCompletions, snapshot.stepCompletions)
+      restoreMap(this.stepDrafts, snapshot.stepDrafts)
+      restoreMap(this.steps, snapshot.steps)
+      throw error
+    }
+  }
+
   private setArchiveState(
     context: SelfCareWriteContext,
     itemId: string,
     isArchived: boolean,
+    expectedVersion?: number,
   ) {
     const item = this.getWritableItem(context, itemId, {
       allowArchived: !isArchived,
     })
+    assertSelfCareVersion('item', item.id, expectedVersion, item.version)
     const next = {
       ...item,
       isActive: isArchived ? false : true,
@@ -1089,6 +1468,44 @@ export class MemorySelfCareRepository implements SelfCareRepository {
   private storeCreatedRecords(
     records: ReturnType<typeof createSelfCareRecords>,
   ) {
+    if (this.items.has(records.item.id)) {
+      throw new HttpError(
+        409,
+        'self_care_item_id_conflict',
+        'The self-care item identifier is already in use.',
+      )
+    }
+
+    assertChildRecordIdsAvailable(
+      this.alternatives,
+      records.alternatives,
+      records.item.id,
+    )
+    assertChildRecordIdsAvailable(this.steps, records.steps, records.item.id)
+    if (records.scheduleRule) {
+      assertChildRecordIdsAvailable(
+        this.scheduleRules,
+        [records.scheduleRule],
+        records.item.id,
+      )
+    }
+    for (const [recordsById, record] of [
+      [this.procedureDetails, records.procedureDetails],
+      [this.appointmentDetails, records.appointmentDetails],
+      [this.medicalDetails, records.medicalDetails],
+      [this.measurementDetails, records.measurementDetails],
+      [this.exerciseDetails, records.exerciseDetails],
+      [this.courseDetails, records.courseDetails],
+    ] as const) {
+      if (record) {
+        assertChildRecordIdsAvailable(
+          recordsById as Map<string, typeof record>,
+          [record],
+          records.item.id,
+        )
+      }
+    }
+
     this.items.set(records.item.id, records.item)
     records.alternatives.forEach((record) =>
       this.alternatives.set(record.id, record),
@@ -1268,6 +1685,8 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ...input.completion,
       createdAt: existingCompletion.createdAt,
       id: existingCompletion.id,
+      updatedAt: input.completion.updatedAt,
+      version: existingCompletion.version + 1,
     }
 
     this.completions.set(existingCompletion.id, completion)
@@ -1316,6 +1735,18 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   private loadStepsForItem(itemId: string) {
     return [...this.steps.values()].filter((step) => step.itemId === itemId)
+  }
+
+  private assertCompletionIdAvailable(completionId?: string): void {
+    if (!completionId || !this.completions.has(completionId)) {
+      return
+    }
+
+    throw new HttpError(
+      409,
+      'self_care_completion_id_conflict',
+      'The self-care completion identifier is already in use.',
+    )
   }
 
   private assertRitualStepDraftOccurrence(
@@ -1425,7 +1856,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       ...item,
       isActive: false,
       updatedAt: new Date().toISOString(),
-      version: item.version + 1,
+      version: item.version,
     })
   }
 
@@ -1514,6 +1945,7 @@ function toPublicRitualStepDraft(draft: StoredSelfCareRitualStepDraftRecord) {
     itemId: draft.itemId,
     occurrenceId: draft.occurrenceId,
     stepIds: draft.stepIds,
+    version: draft.version,
   }
 }
 
@@ -1522,6 +1954,109 @@ function mapCompletionStatusToOccurrenceStatus(
 ): StoredSelfCareOccurrenceRecord['status'] {
   if (status === 'alternative_done') return 'partial'
   return status
+}
+
+function assertSelfCareVersion(
+  entityType: string,
+  entityId: string,
+  expectedVersion: number | null | undefined,
+  actualVersion: number | null,
+): void {
+  if (expectedVersion === undefined || expectedVersion === actualVersion) {
+    return
+  }
+
+  throw new HttpError(
+    409,
+    'self_care_version_conflict',
+    'Self-care data was changed on the server.',
+    { actualVersion, entityId, entityType, expectedVersion },
+  )
+}
+
+function assertSelfCareOccurrenceOpen(
+  occurrence: StoredSelfCareOccurrenceRecord,
+): void {
+  if (occurrence.status === 'scheduled' || occurrence.status === 'missed') {
+    return
+  }
+
+  throw new HttpError(
+    409,
+    'self_care_occurrence_closed',
+    'The self-care occurrence was already completed or changed.',
+    {
+      actualVersion: occurrence.version,
+      entityId: occurrence.id,
+      entityType: 'occurrence',
+    },
+  )
+}
+
+function assertRitualCompletionSteps(
+  itemId: string,
+  availableSteps: readonly Pick<SelfCareRitualStep, 'id'>[],
+  submittedSteps: readonly { stepId: string }[],
+): void {
+  const availableStepIds = new Set(availableSteps.map((step) => step.id))
+  const submittedStepIds = submittedSteps.map((step) => step.stepId)
+
+  if (new Set(submittedStepIds).size !== submittedStepIds.length) {
+    throw new HttpError(
+      400,
+      'self_care_ritual_completion_invalid_step',
+      'Self-care ritual completion contains a duplicate step.',
+    )
+  }
+
+  if (submittedStepIds.every((stepId) => availableStepIds.has(stepId))) {
+    return
+  }
+
+  throw new HttpError(
+    409,
+    'self_care_ritual_step_conflict',
+    'Self-care ritual steps changed before this completion was saved.',
+    { entityId: itemId, entityType: 'item' },
+  )
+}
+
+function assertChildRecordIdsAvailable<
+  TRecord extends { id: string; itemId: string },
+>(
+  stored: Map<string, TRecord>,
+  candidates: readonly TRecord[],
+  itemId: string,
+  allowSameItem = false,
+): void {
+  const candidateIds = new Set<string>()
+
+  for (const candidate of candidates) {
+    const existing = stored.get(candidate.id)
+
+    if (
+      candidateIds.has(candidate.id) ||
+      (existing && (!allowSameItem || existing.itemId !== itemId))
+    ) {
+      throw new HttpError(
+        409,
+        'self_care_item_id_conflict',
+        'A self-care item identifier is already in use.',
+      )
+    }
+
+    candidateIds.add(candidate.id)
+  }
+}
+
+function restoreMap<TKey, TValue>(
+  target: Map<TKey, TValue>,
+  snapshot: Map<TKey, TValue>,
+): void {
+  target.clear()
+  for (const [key, value] of snapshot) {
+    target.set(key, value)
+  }
 }
 
 function isSameScheduleSlot(

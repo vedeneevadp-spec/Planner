@@ -9,6 +9,7 @@ import type {
   DeleteCleaningZoneCommand,
   GetCleaningTodayCommand,
   RecordCleaningTaskActionCommand,
+  SeedCleaningCommand,
   StoredCleaningTaskRecord,
   StoredCleaningZoneRecord,
   UpdateCleaningTaskCommand,
@@ -29,6 +30,7 @@ export interface CleaningRepository {
   ) => Promise<CleaningTaskActionResult>
   removeTask: (command: DeleteCleaningTaskCommand) => Promise<void>
   removeZone: (command: DeleteCleaningZoneCommand) => Promise<void>
+  seed: (command: SeedCleaningCommand) => Promise<CleaningListResult>
   updateTask: (
     command: UpdateCleaningTaskCommand,
   ) => Promise<StoredCleaningTaskRecord>

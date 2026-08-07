@@ -17,6 +17,7 @@ import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   getLastTaskEventId,
+  getPlannerDataLastSuccessfulSyncAt,
   loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
   loadCachedTaskTemplateRecords,
@@ -68,11 +69,21 @@ interface PlannerOfflineSyncParams {
 interface PlannerOfflineSync {
   conflictedMutationCount: number
   isDrainingOfflineQueue: boolean
+  isLifeSphereCacheHydrating: boolean
+  isTaskCacheHydrating: boolean
+  isTaskTemplateCacheHydrating: boolean
   persistCurrentLifeSphereRecords: () => Promise<void>
   persistCurrentTaskRecords: () => Promise<void>
   persistCurrentTaskTemplateRecords: () => Promise<void>
   queuedMutationCount: number
   refreshQueuedMutationCount: () => Promise<void>
+}
+
+type PlannerCacheHydrationScope = 'life-spheres' | 'task-templates' | 'tasks'
+
+interface PlannerCacheHydrationState {
+  completedScopes: ReadonlySet<PlannerCacheHydrationScope>
+  workspaceId: string
 }
 
 const plannerDrainCoordinator = createOfflineDrainCoordinator<string, void>()
@@ -97,6 +108,21 @@ export function usePlannerOfflineSync({
   const [isDrainingOfflineQueue, setIsDrainingOfflineQueue] = useState(false)
   const [queuedMutationCount, setQueuedMutationCount] = useState(0)
   const [conflictedMutationCount, setConflictedMutationCount] = useState(0)
+  const [cacheHydration, setCacheHydration] =
+    useState<PlannerCacheHydrationState | null>(null)
+  const completedHydrationScopes =
+    cacheHydration && cacheHydration.workspaceId === workspaceId
+      ? cacheHydration.completedScopes
+      : EMPTY_CACHE_HYDRATION_SCOPES
+  const isTaskCacheHydrating = Boolean(
+    workspaceId && !completedHydrationScopes.has('tasks'),
+  )
+  const isLifeSphereCacheHydrating = Boolean(
+    workspaceId && !completedHydrationScopes.has('life-spheres'),
+  )
+  const isTaskTemplateCacheHydrating = Boolean(
+    workspaceId && !completedHydrationScopes.has('task-templates'),
+  )
 
   const refreshQueuedMutationCount = useCallback(async () => {
     if (!actorUserId || !workspaceId) {
@@ -325,19 +351,42 @@ export function usePlannerOfflineSync({
 
     let isActive = true
 
-    void loadCachedTaskRecords(workspaceId).then((cachedTaskRecords) => {
-      if (!isActive || cachedTaskRecords.length === 0) {
-        return
-      }
+    void Promise.all([
+      loadCachedTaskRecords(workspaceId),
+      getPlannerDataLastSuccessfulSyncAt(workspaceId, 'tasks'),
+    ])
+      .then(([cachedTaskRecords, lastSuccessfulSyncAt]) => {
+        if (
+          !isActive ||
+          (cachedTaskRecords.length === 0 && !lastSuccessfulSyncAt)
+        ) {
+          return
+        }
 
-      queryClient.setQueryData<TaskRecord[]>(
-        taskQueryKey,
-        (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
-      )
-    })
-    void loadCachedLifeSphereRecords(workspaceId).then(
-      (cachedLifeSphereRecords) => {
-        if (!isActive || cachedLifeSphereRecords.length === 0) {
+        queryClient.setQueryData<TaskRecord[]>(
+          taskQueryKey,
+          (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
+        )
+      })
+      .catch((error) => {
+        console.warn('Failed to hydrate cached planner tasks.', error)
+      })
+      .finally(() => {
+        if (isActive) {
+          setCacheHydration((current) =>
+            completeCacheHydration(current, workspaceId, 'tasks'),
+          )
+        }
+      })
+    void Promise.all([
+      loadCachedLifeSphereRecords(workspaceId),
+      getPlannerDataLastSuccessfulSyncAt(workspaceId, 'life-spheres'),
+    ])
+      .then(([cachedLifeSphereRecords, lastSuccessfulSyncAt]) => {
+        if (
+          !isActive ||
+          (cachedLifeSphereRecords.length === 0 && !lastSuccessfulSyncAt)
+        ) {
           return
         }
 
@@ -346,11 +395,26 @@ export function usePlannerOfflineSync({
           (currentLifeSphereRecords) =>
             currentLifeSphereRecords ?? cachedLifeSphereRecords,
         )
-      },
-    )
-    void loadCachedTaskTemplateRecords(workspaceId).then(
-      (cachedTemplateRecords) => {
-        if (!isActive || cachedTemplateRecords.length === 0) {
+      })
+      .catch((error) => {
+        console.warn('Failed to hydrate cached planner spheres.', error)
+      })
+      .finally(() => {
+        if (isActive) {
+          setCacheHydration((current) =>
+            completeCacheHydration(current, workspaceId, 'life-spheres'),
+          )
+        }
+      })
+    void Promise.all([
+      loadCachedTaskTemplateRecords(workspaceId),
+      getPlannerDataLastSuccessfulSyncAt(workspaceId, 'task-templates'),
+    ])
+      .then(([cachedTemplateRecords, lastSuccessfulSyncAt]) => {
+        if (
+          !isActive ||
+          (cachedTemplateRecords.length === 0 && !lastSuccessfulSyncAt)
+        ) {
           return
         }
 
@@ -359,8 +423,17 @@ export function usePlannerOfflineSync({
           (currentTemplateRecords) =>
             currentTemplateRecords ?? cachedTemplateRecords,
         )
-      },
-    )
+      })
+      .catch((error) => {
+        console.warn('Failed to hydrate cached planner templates.', error)
+      })
+      .finally(() => {
+        if (isActive) {
+          setCacheHydration((current) =>
+            completeCacheHydration(current, workspaceId, 'task-templates'),
+          )
+        }
+      })
     const refreshQueuedMutationTimer = window.setTimeout(() => {
       void refreshQueuedMutationCount()
     }, 0)
@@ -383,7 +456,9 @@ export function usePlannerOfflineSync({
       return
     }
 
-    void replaceCachedTaskRecords(workspaceId, tasks)
+    void replaceCachedTaskRecords(workspaceId, tasks).catch((error) => {
+      console.warn('Failed to persist cached planner tasks.', error)
+    })
   }, [tasks, workspaceId])
 
   useEffect(() => {
@@ -391,7 +466,9 @@ export function usePlannerOfflineSync({
       return
     }
 
-    void replaceCachedLifeSphereRecords(workspaceId, spheres)
+    void replaceCachedLifeSphereRecords(workspaceId, spheres).catch((error) => {
+      console.warn('Failed to persist cached planner spheres.', error)
+    })
   }, [spheres, workspaceId])
 
   useEffect(() => {
@@ -399,7 +476,11 @@ export function usePlannerOfflineSync({
       return
     }
 
-    void replaceCachedTaskTemplateRecords(workspaceId, taskTemplates)
+    void replaceCachedTaskTemplateRecords(workspaceId, taskTemplates).catch(
+      (error) => {
+        console.warn('Failed to persist cached planner templates.', error)
+      },
+    )
   }, [taskTemplates, workspaceId])
 
   useOfflineQueueDrain({
@@ -445,10 +526,31 @@ export function usePlannerOfflineSync({
   return {
     conflictedMutationCount,
     isDrainingOfflineQueue,
+    isLifeSphereCacheHydrating,
+    isTaskCacheHydrating,
+    isTaskTemplateCacheHydrating,
     persistCurrentLifeSphereRecords,
     persistCurrentTaskRecords,
     persistCurrentTaskTemplateRecords,
     queuedMutationCount,
     refreshQueuedMutationCount,
   }
+}
+
+const EMPTY_CACHE_HYDRATION_SCOPES: ReadonlySet<PlannerCacheHydrationScope> =
+  new Set()
+
+function completeCacheHydration(
+  current: PlannerCacheHydrationState | null,
+  workspaceId: string,
+  scope: PlannerCacheHydrationScope,
+): PlannerCacheHydrationState {
+  const completedScopes =
+    current?.workspaceId === workspaceId
+      ? new Set(current.completedScopes)
+      : new Set<PlannerCacheHydrationScope>()
+
+  completedScopes.add(scope)
+
+  return { completedScopes, workspaceId }
 }

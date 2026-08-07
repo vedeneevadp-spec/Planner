@@ -106,12 +106,12 @@ const USER_BACKUP_V1_COLUMNS = {
   self_care_occurrences:
     'id,item_id,schedule_rule_id,user_id,scheduled_for,due_at,status,completed_at,moved_to,generated_at,reminder_offsets_minutes,reminder_time_zone,created_by,updated_by,created_at,updated_at,version',
   self_care_completions:
-    'id,item_id,occurrence_id,user_id,scheduled_for,completed_at,status,duration_minutes,note,completed_variant,alternative_title,mood_before,mood_after,energy_before,energy_after,price,currency,measurement_value,measurement_unit,exercise_sets,created_by,created_at',
+    'id,item_id,occurrence_id,user_id,scheduled_for,completed_at,status,duration_minutes,note,completed_variant,alternative_title,mood_before,mood_after,energy_before,energy_after,price,currency,measurement_value,measurement_unit,exercise_sets,created_by,created_at,updated_at,version',
   self_care_ritual_steps:
     'id,item_id,title,sort_order,is_optional,default_checked,created_at,updated_at',
   self_care_ritual_step_completions: 'id,completion_id,step_id,is_done',
   self_care_ritual_step_drafts:
-    'id,item_id,occurrence_id,user_id,workspace_id,date,step_ids,created_at,updated_at',
+    'id,item_id,occurrence_id,user_id,workspace_id,date,step_ids,created_at,updated_at,version',
   self_care_procedure_details:
     'id,item_id,specialist_name,place,contact,default_price,currency,created_at,updated_at',
   self_care_appointment_details:
@@ -125,11 +125,11 @@ const USER_BACKUP_V1_COLUMNS = {
   self_care_exercise_details:
     'id,item_id,metric_type,unit,planned_value,planned_sets,use_sets,created_at,updated_at',
   self_care_daily_states:
-    'id,user_id,date,mood,energy,stress,sleep_quality,pain,note,created_at,updated_at',
+    'id,user_id,date,mood,energy,stress,sleep_quality,pain,note,created_at,updated_at,version',
   self_care_settings:
-    'id,user_id,currency,default_reminder_tone,quiet_hours_start,quiet_hours_end,show_self_care_in_main_tasks,show_appointments_in_calendar,show_daily_rituals_in_calendar,gentle_mode_enabled_today,gentle_mode_date,created_at,updated_at',
+    'id,user_id,currency,default_reminder_tone,quiet_hours_start,quiet_hours_end,show_self_care_in_main_tasks,show_appointments_in_calendar,show_daily_rituals_in_calendar,gentle_mode_enabled_today,gentle_mode_date,created_at,updated_at,version',
   self_care_minimum_items:
-    'id,user_id,title,sort_order,is_active,linked_item_id,created_at,updated_at',
+    'id,user_id,title,sort_order,is_active,linked_item_id,created_at,updated_at,version',
 } as const satisfies Record<z.infer<typeof userBackupTableNameSchema>, string>
 
 const USER_BACKUP_STRUCTURED_COLUMNS = new Set([

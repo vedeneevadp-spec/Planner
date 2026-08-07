@@ -1,6 +1,7 @@
 import {
   type CleaningPriority,
   type CleaningZoneUpdateInput,
+  generateUuidV7,
 } from '@planner/contracts'
 import { type FormEvent, useMemo, useState } from 'react'
 import {
@@ -14,6 +15,7 @@ import {
 import {
   getCleaningErrorMessage,
   getCleaningFocusModeFromSearchParams,
+  isCleaningConnectionError,
   useCleaningPlan,
   useCleaningToday,
   useCompleteCleaningTask,
@@ -22,16 +24,19 @@ import {
   usePostponeCleaningTask,
   useRemoveCleaningTask,
   useRemoveCleaningZone,
+  useSeedCleaningTemplates,
   useSkipCleaningTask,
   useUpdateCleaningTask,
   useUpdateCleaningZone,
 } from '@/features/cleaning'
 import { usePlannerTimeZone } from '@/features/session'
 import { cx } from '@/shared/lib/classnames'
+import { useBrowserOffline } from '@/shared/lib/offline-sync'
 import { getTodayDate } from '@/shared/time/time.service'
 import { CheckIcon, EditIcon, PlusIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
 import { PageHeader } from '@/shared/ui/PageHeader'
+import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
@@ -72,8 +77,7 @@ export function CleaningPage() {
   const todayKey = getTodayDate(plannerTimeZone)
   const planQuery = useCleaningPlan()
   const todayQuery = useCleaningToday(todayKey)
-  const createZoneMutation = useCreateCleaningZone()
-  const createTaskMutation = useCreateCleaningTask()
+  const seedMutation = useSeedCleaningTemplates()
   const completeTaskMutation = useCompleteCleaningTask()
   const postponeTaskMutation = usePostponeCleaningTask()
   const skipTaskMutation = useSkipCleaningTask()
@@ -83,58 +87,108 @@ export function CleaningPage() {
   >({})
   const [formError, setFormError] = useState<string | null>(null)
   const [isSeeding, setIsSeeding] = useState(false)
+  const isBrowserOffline = useBrowserOffline()
   const plan = planQuery.data
   const today = todayQuery.data
   const hasLoadedPlan = plan !== undefined
+  const hasLoadedToday = today !== undefined
+  const hasCriticalData = hasLoadedPlan && hasLoadedToday
   const zones = plan?.zones ?? []
   const todayItems = today?.items ?? []
   const generalItems = today?.generalItems ?? []
   const visibleTodayItems = filterItemsByFocusMode(todayItems, focusMode)
   const visibleGeneralItems = filterItemsByFocusMode(generalItems, focusMode)
-  const isBusy =
-    createZoneMutation.isPending ||
-    createTaskMutation.isPending ||
+  const hasConfiguredZones = zones.length > 0 || Boolean(today?.zones.length)
+  const shouldShowGeneralSection =
+    Boolean(today) && (hasConfiguredZones || generalItems.length > 0)
+  const shouldShowSecondaryLists =
+    (hasLoadedPlan || Boolean(today)) &&
+    (hasConfiguredZones ||
+      Boolean(today?.accumulatedItems.length) ||
+      Boolean(today?.seasonalItems.length))
+  const readiness = hasLoadedPlan
+    ? planQuery.readiness
+    : hasLoadedToday
+      ? todayQuery.readiness
+      : planQuery.readiness
+  const loadError =
+    planQuery.error ??
+    todayQuery.error ??
+    planQuery.sessionError ??
+    todayQuery.sessionError
+  const isOffline = isBrowserOffline || isOfflineCleaningState(loadError)
+  const lastSuccessfulSyncAt = getOldestTimestamp([
+    hasLoadedPlan ? planQuery.lastSuccessfulSyncAt : null,
+    hasLoadedToday ? todayQuery.lastSuccessfulSyncAt : null,
+  ])
+  const canWrite =
+    planQuery.offlineQueue.canWriteFromSession &&
+    (isOffline
+      ? planQuery.offlineQueue.canQueueWrites
+      : Boolean(readiness?.canWriteProtectedData) ||
+        planQuery.offlineQueue.canQueueWrites)
+  const isInitialLoading =
+    !hasCriticalData &&
+    (planQuery.isCacheHydrating ||
+      todayQuery.isCacheHydrating ||
+      (!isOffline &&
+        !loadError &&
+        (planQuery.isLoading ||
+          todayQuery.isLoading ||
+          readiness?.reason === 'auth_restoring' ||
+          readiness?.reason === 'planner_pending')))
+  const isMutationBusy =
+    seedMutation.isPending ||
     completeTaskMutation.isPending ||
     postponeTaskMutation.isPending ||
     skipTaskMutation.isPending ||
     isSeeding
-  const errorMessage =
+  const isBusy = isMutationBusy || !canWrite
+  const mutationErrorMessage =
     formError ||
     getFirstErrorMessage([
-      planQuery.error,
-      todayQuery.error,
-      createZoneMutation.error,
-      createTaskMutation.error,
+      seedMutation.error,
       completeTaskMutation.error,
       postponeTaskMutation.error,
       skipTaskMutation.error,
     ])
+
+  async function handleRetryLoad() {
+    if (readiness && !readiness.canUseProtectedApi) {
+      await planQuery.retrySession()
+      return
+    }
+
+    await Promise.allSettled([planQuery.refetch(), todayQuery.refetch()])
+  }
 
   async function handleSeedTemplates() {
     setIsSeeding(true)
     setFormError(null)
 
     try {
-      for (const [
-        zoneIndex,
-        template,
-      ] of DEFAULT_CLEANING_TEMPLATES.entries()) {
-        const zone = await createZoneMutation.mutateAsync({
-          dayOfWeek: template.dayOfWeek,
-          description: template.description,
-          isActive: true,
-          sortOrder: zoneIndex,
-          title: template.title,
-        })
+      await seedMutation.mutateAsync({
+        zones: DEFAULT_CLEANING_TEMPLATES.map((template, zoneIndex) => {
+          const zoneId = generateUuidV7()
 
-        for (const [taskIndex, task] of template.tasks.entries()) {
-          await createTaskMutation.mutateAsync({
-            ...task,
-            sortOrder: taskIndex,
-            zoneId: zone.id,
-          })
-        }
-      }
+          return {
+            tasks: template.tasks.map((task, taskIndex) => ({
+              ...task,
+              id: generateUuidV7(),
+              sortOrder: taskIndex,
+              zoneId,
+            })),
+            zone: {
+              dayOfWeek: template.dayOfWeek,
+              description: template.description,
+              id: zoneId,
+              isActive: true,
+              sortOrder: zoneIndex,
+              title: template.title,
+            },
+          }
+        }),
+      })
     } catch (error) {
       setFormError(getCleaningErrorMessage(error))
     } finally {
@@ -149,9 +203,91 @@ export function CleaningPage() {
     }))
   }
 
+  if (!hasCriticalData) {
+    return (
+      <section className={`${pageStyles.page} ${styles.page}`}>
+        <h1 className={pageStyles.visuallyHidden}>Уборка</h1>
+        {isInitialLoading ? (
+          <PageStateView
+            kind="loading"
+            title="Загружаем план уборки"
+            skeletonVariant="cards"
+          />
+        ) : (
+          <PageStateView
+            kind={isOffline ? 'offline' : 'error'}
+            title={
+              isOffline
+                ? 'Уборка доступна после подключения'
+                : isCleaningAccessUnavailable(readiness?.reason)
+                  ? 'Нужно восстановить доступ к уборке'
+                  : 'Не удалось загрузить уборку'
+            }
+            description={getCleaningLoadDescription(
+              loadError,
+              readiness?.reason,
+            )}
+            lastSyncedAt={lastSuccessfulSyncAt}
+            showUnknownLastSync={isOffline}
+            action={{
+              label: 'Повторить',
+              onClick: () => {
+                void handleRetryLoad()
+              },
+            }}
+          />
+        )}
+      </section>
+    )
+  }
+
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
-      {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
+      <h1 className={pageStyles.visuallyHidden}>Уборка</h1>
+      {loadError || isOffline || !canWrite ? (
+        <PageStatusBanner
+          kind={
+            isOffline
+              ? 'offline'
+              : isCleaningAccessRestoring(readiness?.reason)
+                ? 'info'
+                : 'error'
+          }
+          title={
+            isOffline
+              ? 'Работаем с сохранёнными данными'
+              : isCleaningAccessRestoring(readiness?.reason)
+                ? 'Восстанавливаем доступ'
+                : undefined
+          }
+          description={getCleaningCachedDescription(
+            loadError,
+            readiness?.reason,
+            canWrite,
+          )}
+          lastSyncedAt={lastSuccessfulSyncAt}
+          showUnknownLastSync
+          action={{
+            label: 'Повторить',
+            onClick: () => {
+              void handleRetryLoad()
+            },
+          }}
+        />
+      ) : null}
+
+      {mutationErrorMessage ? (
+        <PageStatusBanner
+          kind="error"
+          title="Изменение не сохранено"
+          description={mutationErrorMessage}
+        />
+      ) : null}
+
+      <CleaningQueueStatus
+        isOffline={isOffline}
+        queue={planQuery.offlineQueue}
+      />
 
       <section className={styles.todayHero}>
         <div>
@@ -167,11 +303,9 @@ export function CleaningPage() {
           <p>
             {today?.zones.length
               ? getHeroHint(today)
-              : !hasLoadedPlan
-                ? 'Восстанавливаем подключение к плану уборки.'
-                : zones.length === 0
-                  ? 'Пока нет зон. Можно начать с базового набора и потом всё переименовать.'
-                  : 'На этот день зона не назначена.'}
+              : zones.length === 0
+                ? 'Пока нет зон. Можно начать с базового набора и потом всё переименовать.'
+                : 'На этот день зона не назначена.'}
           </p>
         </div>
 
@@ -189,7 +323,7 @@ export function CleaningPage() {
             value={String(today?.summary.quickCount ?? 0)}
           />
           <StatPill
-            label="накопилось"
+            label="отложено"
             value={String(today?.summary.accumulatedCount ?? 0)}
           />
           <StatPill
@@ -200,21 +334,24 @@ export function CleaningPage() {
       </section>
 
       {hasLoadedPlan && zones.length === 0 ? (
-        <section className={styles.emptyPanel}>
-          <h3>Зоны ещё не настроены</h3>
-          <p>Базовый набор создаст 7 зон и стартовые задачи с частотами.</p>
-          <button
-            className={styles.primaryButton}
-            type="button"
-            disabled={isBusy}
-            onClick={() => {
-              void handleSeedTemplates()
-            }}
-          >
-            <PlusIcon size={18} strokeWidth={2.15} />
-            <span>{isSeeding ? 'Добавляем...' : 'Добавить базовый набор'}</span>
-          </button>
-        </section>
+        <PageStateView
+          kind="empty"
+          title="Зоны ещё не настроены"
+          description="Базовый набор создаст 7 зон и стартовые задачи с частотами. Всё можно изменить позже."
+          action={
+            canWrite
+              ? {
+                  label: isSeeding ? 'Добавляем...' : 'Добавить базовый набор',
+                  disabled: isMutationBusy,
+                  onClick: () => {
+                    if (!isMutationBusy) {
+                      void handleSeedTemplates()
+                    }
+                  },
+                }
+              : undefined
+          }
+        />
       ) : null}
 
       {today?.urgentItems.length ? (
@@ -289,7 +426,7 @@ export function CleaningPage() {
         />
       ) : null}
 
-      {today ? (
+      {shouldShowGeneralSection ? (
         <TaskSection
           title="Прочая уборка"
           emptyMessage="Прочих задач уборки сейчас нет."
@@ -331,11 +468,11 @@ export function CleaningPage() {
         />
       ) : null}
 
-      {hasLoadedPlan || today ? (
+      {shouldShowSecondaryLists ? (
         <section className={styles.sideGrid}>
           <CompactList
-            title="Накопилось"
-            emptyMessage="Давно отложенных задач сейчас нет."
+            title="Отложенные задачи"
+            emptyMessage="Отложенных задач сейчас нет."
             items={today?.accumulatedItems ?? []}
             isBusy={isBusy}
             onComplete={(taskId) => {
@@ -369,6 +506,7 @@ export function CleaningSettingsPage() {
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
   const planQuery = useCleaningPlan()
+  const seedMutation = useSeedCleaningTemplates()
   const createZoneMutation = useCreateCleaningZone()
   const updateZoneMutation = useUpdateCleaningZone()
   const removeZoneMutation = useRemoveCleaningZone()
@@ -386,8 +524,26 @@ export function CleaningSettingsPage() {
   const [isZoneEditOpen, setIsZoneEditOpen] = useState(false)
   const [isTaskCreateOpen, setIsTaskCreateOpen] = useState(false)
   const [isSeeding, setIsSeeding] = useState(false)
+  const isBrowserOffline = useBrowserOffline()
   const plan = planQuery.data
   const hasLoadedPlan = plan !== undefined
+  const readiness = planQuery.readiness
+  const loadError = planQuery.error ?? planQuery.sessionError
+  const isOffline = isBrowserOffline || isOfflineCleaningState(loadError)
+  const canWrite =
+    planQuery.offlineQueue.canWriteFromSession &&
+    (isOffline
+      ? planQuery.offlineQueue.canQueueWrites
+      : Boolean(readiness?.canWriteProtectedData) ||
+        planQuery.offlineQueue.canQueueWrites)
+  const isInitialLoading =
+    !hasLoadedPlan &&
+    (planQuery.isCacheHydrating ||
+      (!isOffline &&
+        !loadError &&
+        (planQuery.isLoading ||
+          readiness?.reason === 'auth_restoring' ||
+          readiness?.reason === 'planner_pending')))
   const zones = useMemo(() => plan?.zones ?? [], [plan?.zones])
   const tasks = useMemo(() => plan?.tasks ?? [], [plan?.tasks])
   const freeWeekdays = useMemo(() => {
@@ -433,24 +589,26 @@ export function CleaningSettingsPage() {
 
     return WEEKDAYS.filter((day) => !occupiedDays.has(day.value))
   }, [freeWeekdays, selectedZone, zones])
-  const isBusy =
+  const isMutationBusy =
     createZoneMutation.isPending ||
     updateZoneMutation.isPending ||
     removeZoneMutation.isPending ||
     createTaskMutation.isPending ||
     updateTaskMutation.isPending ||
     removeTaskMutation.isPending ||
+    seedMutation.isPending ||
     isSeeding
-  const errorMessage =
+  const isBusy = isMutationBusy || !canWrite
+  const mutationErrorMessage =
     formError ||
     getFirstErrorMessage([
-      planQuery.error,
       createZoneMutation.error,
       updateZoneMutation.error,
       removeZoneMutation.error,
       createTaskMutation.error,
       updateTaskMutation.error,
       removeTaskMutation.error,
+      seedMutation.error,
     ])
 
   const selectedZoneDayOfWeek = freeWeekdays.some(
@@ -577,26 +735,28 @@ export function CleaningSettingsPage() {
     setFormError(null)
 
     try {
-      for (const [
-        zoneIndex,
-        template,
-      ] of DEFAULT_CLEANING_TEMPLATES.entries()) {
-        const zone = await createZoneMutation.mutateAsync({
-          dayOfWeek: template.dayOfWeek,
-          description: template.description,
-          isActive: true,
-          sortOrder: zoneIndex,
-          title: template.title,
-        })
+      await seedMutation.mutateAsync({
+        zones: DEFAULT_CLEANING_TEMPLATES.map((template, zoneIndex) => {
+          const zoneId = generateUuidV7()
 
-        for (const [taskIndex, task] of template.tasks.entries()) {
-          await createTaskMutation.mutateAsync({
-            ...task,
-            sortOrder: taskIndex,
-            zoneId: zone.id,
-          })
-        }
-      }
+          return {
+            tasks: template.tasks.map((task, taskIndex) => ({
+              ...task,
+              id: generateUuidV7(),
+              sortOrder: taskIndex,
+              zoneId,
+            })),
+            zone: {
+              dayOfWeek: template.dayOfWeek,
+              description: template.description,
+              id: zoneId,
+              isActive: true,
+              sortOrder: zoneIndex,
+              title: template.title,
+            },
+          }
+        }),
+      })
     } catch (error) {
       setFormError(getCleaningErrorMessage(error))
     } finally {
@@ -604,8 +764,56 @@ export function CleaningSettingsPage() {
     }
   }
 
+  async function handleRetryLoad() {
+    if (readiness && !readiness.canUseProtectedApi) {
+      await planQuery.retrySession()
+      return
+    }
+
+    await planQuery.refetch()
+  }
+
+  if (!hasLoadedPlan) {
+    return (
+      <section className={`${pageStyles.page} ${styles.page}`}>
+        <h1 className={pageStyles.visuallyHidden}>Настройки уборки</h1>
+        {isInitialLoading ? (
+          <PageStateView
+            kind="loading"
+            title="Загружаем настройки уборки"
+            skeletonVariant="settings"
+          />
+        ) : (
+          <PageStateView
+            kind={isOffline ? 'offline' : 'error'}
+            title={
+              isOffline
+                ? 'Настройки доступны после подключения'
+                : isCleaningAccessUnavailable(readiness?.reason)
+                  ? 'Нужно восстановить доступ к настройкам'
+                  : 'Не удалось загрузить настройки уборки'
+            }
+            description={getCleaningLoadDescription(
+              loadError,
+              readiness?.reason,
+            )}
+            lastSyncedAt={planQuery.lastSuccessfulSyncAt}
+            showUnknownLastSync={isOffline}
+            action={{
+              label: 'Повторить',
+              onClick: () => {
+                void handleRetryLoad()
+              },
+            }}
+          />
+        )}
+      </section>
+    )
+  }
+
   return (
     <section className={`${pageStyles.page} ${styles.page}`}>
+      <h1 className={pageStyles.visuallyHidden}>Настройки уборки</h1>
       <div className={styles.settingsHeaderShell}>
         <PageHeader
           kicker="Уборка"
@@ -631,7 +839,50 @@ export function CleaningSettingsPage() {
         />
       </div>
 
-      {errorMessage ? <p className={styles.errorText}>{errorMessage}</p> : null}
+      {loadError || isOffline || !canWrite ? (
+        <PageStatusBanner
+          kind={
+            isOffline
+              ? 'offline'
+              : isCleaningAccessRestoring(readiness?.reason)
+                ? 'info'
+                : 'error'
+          }
+          title={
+            isOffline
+              ? 'Настройки открыты из сохранённых данных'
+              : isCleaningAccessRestoring(readiness?.reason)
+                ? 'Восстанавливаем доступ'
+                : undefined
+          }
+          description={getCleaningCachedDescription(
+            loadError,
+            readiness?.reason,
+            canWrite,
+          )}
+          lastSyncedAt={planQuery.lastSuccessfulSyncAt}
+          showUnknownLastSync
+          action={{
+            label: 'Повторить',
+            onClick: () => {
+              void handleRetryLoad()
+            },
+          }}
+        />
+      ) : null}
+
+      {mutationErrorMessage ? (
+        <PageStatusBanner
+          kind="error"
+          title="Изменение не сохранено"
+          description={mutationErrorMessage}
+        />
+      ) : null}
+
+      <CleaningQueueStatus
+        isOffline={isOffline}
+        queue={planQuery.offlineQueue}
+      />
 
       <section className={styles.managementGrid}>
         <section className={cx(styles.panel, styles.zonePickerPanel)}>
@@ -663,28 +914,24 @@ export function CleaningSettingsPage() {
             ) : null}
           </div>
 
-          {hasLoadedPlan ? (
-            <ZonePicker
-              disabled={isBusy}
-              isGeneralSelected={isGeneralSelected}
-              selectedZone={selectedZone}
-              zones={zones}
-              onSelect={(zoneId) => {
-                setIsZoneEditOpen(false)
-                setIsTaskCreateOpen(false)
-                setFormError(null)
-                void navigate(`/cleaning/settings/zones/${zoneId}`)
-              }}
-              onSelectGeneral={() => {
-                setIsZoneEditOpen(false)
-                setIsTaskCreateOpen(false)
-                setFormError(null)
-                void navigate(CLEANING_GENERAL_SETTINGS_PATH)
-              }}
-            />
-          ) : (
-            <p className={styles.emptyCopy}>Восстанавливаем подключение.</p>
-          )}
+          <ZonePicker
+            disabled={isBusy}
+            isGeneralSelected={isGeneralSelected}
+            selectedZone={selectedZone}
+            zones={zones}
+            onSelect={(zoneId) => {
+              setIsZoneEditOpen(false)
+              setIsTaskCreateOpen(false)
+              setFormError(null)
+              void navigate(`/cleaning/settings/zones/${zoneId}`)
+            }}
+            onSelectGeneral={() => {
+              setIsZoneEditOpen(false)
+              setIsTaskCreateOpen(false)
+              setFormError(null)
+              void navigate(CLEANING_GENERAL_SETTINGS_PATH)
+            }}
+          />
 
           {freeWeekdays.length > 0 && isZoneCreateOpen ? (
             <form
@@ -1082,4 +1329,190 @@ export function CleaningSettingsPage() {
       </section>
     </section>
   )
+}
+
+function CleaningQueueStatus({
+  isOffline,
+  queue,
+}: {
+  isOffline: boolean
+  queue: ReturnType<typeof useCleaningPlan>['offlineQueue']
+}) {
+  if (queue.conflicted > 0) {
+    return (
+      <>
+        <PageStatusBanner
+          kind="error"
+          title="Некоторые изменения требуют проверки"
+          description={`${queue.conflicted} ${queue.conflicted === 1 ? 'изменение не совпало' : 'изменения не совпали'} с актуальными данными. Мы не заменили их без вашего решения.`}
+          action={{
+            label: 'Обновить и повторить',
+            onClick: () => {
+              void queue.refreshAndRetryConflicts()
+            },
+          }}
+        />
+        <PageStatusBanner
+          kind="info"
+          title="Можно оставить данные сервера"
+          description="Конфликтующие изменения и зависящие от них локальные шаги будут отменены."
+          action={{
+            label: 'Отменить локальные изменения',
+            onClick: () => {
+              void queue.discardConflicts()
+            },
+          }}
+        />
+      </>
+    )
+  }
+
+  if (queue.isDraining) {
+    return (
+      <PageStatusBanner
+        kind="info"
+        title="Синхронизируем изменения"
+        description="Сохранённые на устройстве изменения отправляются по порядку."
+      />
+    )
+  }
+
+  if (queue.failed > 0 && !isOffline) {
+    return (
+      <PageStatusBanner
+        kind="error"
+        title="Не все изменения синхронизированы"
+        description="Изменения остаются на устройстве. Можно повторить отправку."
+        action={{
+          label: 'Повторить',
+          onClick: () => {
+            void queue.retry()
+          },
+        }}
+      />
+    )
+  }
+
+  if (queue.pending > 0 || queue.failed > 0) {
+    const count = queue.pending + queue.failed
+
+    return (
+      <PageStatusBanner
+        kind={isOffline ? 'offline' : 'info'}
+        title="Изменения сохранены на устройстве"
+        description={formatQueuedChangeCount(count)}
+      />
+    )
+  }
+
+  return null
+}
+
+function formatQueuedChangeCount(count: number): string {
+  const remainder100 = count % 100
+  const remainder10 = count % 10
+  const noun =
+    remainder10 === 1 && remainder100 !== 11
+      ? 'изменение будет отправлено'
+      : remainder10 >= 2 &&
+          remainder10 <= 4 &&
+          (remainder100 < 12 || remainder100 > 14)
+        ? 'изменения будут отправлены'
+        : 'изменений будут отправлены'
+
+  return `${count} ${noun} после восстановления связи.`
+}
+
+function isOfflineCleaningState(error: unknown): boolean {
+  return (
+    (typeof navigator !== 'undefined' && navigator.onLine === false) ||
+    isCleaningConnectionError(error)
+  )
+}
+
+function getCleaningLoadDescription(
+  error: unknown,
+  readinessReason?: string,
+): string {
+  if (isOfflineCleaningState(error)) {
+    return 'Нет подключения, а на устройстве нет полного сохранённого набора данных для этого экрана. Проверьте сеть и повторите.'
+  }
+
+  if (readinessReason === 'unauthorized' || readinessReason === 'no_session') {
+    return 'Сессия завершилась. Повторите попытку, чтобы восстановить доступ к данным.'
+  }
+
+  if (readinessReason === 'auth_deferred') {
+    return 'Не удалось восстановить вход. Повторите попытку, когда авторизация будет доступна.'
+  }
+
+  return error
+    ? getCleaningErrorMessage(error)
+    : 'Сервис пока не ответил. Повторите попытку.'
+}
+
+function getCleaningCachedDescription(
+  error: unknown,
+  readinessReason: string | undefined,
+  canWrite: boolean,
+): string {
+  if (isOfflineCleaningState(error)) {
+    return canWrite
+      ? 'Показываем сохранённые данные. Изменения сохранятся на этом устройстве и синхронизируются после подключения.'
+      : 'Показываем сохранённые данные. Для изменений нужно восстановить доступ.'
+  }
+
+  if (
+    readinessReason === 'unauthorized' ||
+    readinessReason === 'auth_deferred' ||
+    readinessReason === 'no_session'
+  ) {
+    return 'Сохранённые данные доступны для просмотра. Чтобы вносить изменения, восстановите вход.'
+  }
+
+  if (!canWrite) {
+    if (
+      readinessReason === 'auth_restoring' ||
+      readinessReason === 'planner_pending'
+    ) {
+      return 'Восстанавливаем доступ. Сохранённые данные пока доступны только для просмотра.'
+    }
+
+    return 'Сохранённые данные доступны для просмотра. Изменения станут доступны после восстановления соединения.'
+  }
+
+  return error
+    ? `Сохранённые данные остаются доступны. ${getCleaningErrorMessage(error)}`
+    : 'Сохранённые данные остаются доступны.'
+}
+
+function isCleaningAccessUnavailable(
+  readinessReason: string | undefined,
+): boolean {
+  return (
+    readinessReason === 'unauthorized' ||
+    readinessReason === 'auth_deferred' ||
+    readinessReason === 'no_session'
+  )
+}
+
+function isCleaningAccessRestoring(
+  readinessReason: string | undefined,
+): boolean {
+  return (
+    readinessReason === 'auth_restoring' ||
+    readinessReason === 'planner_pending'
+  )
+}
+
+function getOldestTimestamp(
+  values: Array<string | null | undefined>,
+): string | null {
+  const timestamps = values.filter((value): value is string => Boolean(value))
+
+  if (values.length === 0 || timestamps.length !== values.length) {
+    return null
+  }
+
+  return timestamps.reduce((oldest, value) => (value < oldest ? value : oldest))
 }

@@ -180,6 +180,7 @@ export function mapOccurrenceRow(
     status: row.status,
     updatedAt: serializeTimestamp(row.updated_at),
     userId: row.user_id,
+    version: Number(row.version),
   }
 }
 
@@ -211,7 +212,9 @@ export function mapCompletionRow(
     price: row.price === null ? null : Number(row.price),
     scheduledFor: serializeNullableDate(row.scheduled_for),
     status: row.status,
+    updatedAt: serializeTimestamp(row.updated_at),
     userId: row.user_id,
+    version: Number(row.version),
   }
 }
 
@@ -248,6 +251,7 @@ export function mapStepDraftRow(
     occurrenceId: row.occurrence_id,
     stepIds: parseJsonArray<string>(row.step_ids, []),
     userId: row.user_id,
+    version: Number(row.version),
     workspaceId: row.workspace_id,
   }
 }
@@ -366,6 +370,7 @@ export function mapDailyStateRow(row: DailyStateRow): SelfCareDailyState {
     stress: row.stress,
     updatedAt: serializeTimestamp(row.updated_at),
     userId: row.user_id,
+    version: Number(row.version),
   }
 }
 
@@ -401,6 +406,7 @@ export function mapSettingsRow(row: SettingsRow): SelfCareSettings {
     showSelfCareInMainTasks: row.show_self_care_in_main_tasks,
     updatedAt: serializeTimestamp(row.updated_at),
     userId: row.user_id,
+    version: Number(row.version),
   }
 }
 
@@ -414,6 +420,7 @@ export function mapMinimumRow(row: MinimumRow): SelfCareMinimumItem {
     title: row.title,
     updatedAt: serializeTimestamp(row.updated_at),
     userId: row.user_id,
+    version: Number(row.version),
   }
 }
 
@@ -585,6 +592,7 @@ export function toPublicRitualStepDraft(
     itemId: draft.itemId,
     occurrenceId: draft.occurrenceId,
     stepIds: draft.stepIds,
+    version: draft.version,
   }
 }
 

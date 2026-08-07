@@ -380,36 +380,52 @@ describe('Sidebar', () => {
     vi.useRealTimers()
   })
 
-  it('defers noncritical service summaries until planner content settles', () => {
+  it('keeps navigation immediately available and enriches counts later', async () => {
     vi.useFakeTimers()
 
     renderSidebar(createSession('personal'))
 
-    expect(mocks.useCleaningSummary).toHaveBeenLastCalledWith(undefined, {
-      enabled: false,
+    const mainNavigation = screen.getByRole('navigation', {
+      name: 'Main navigation',
     })
-    expect(mocks.useShoppingListSummary).toHaveBeenLastCalledWith({
-      enabled: false,
-    })
-    expect(mocks.useSelfCareDashboard).toHaveBeenLastCalledWith(
-      expect.any(String),
-      { enabled: false },
-    )
-
-    act(() => {
-      vi.advanceTimersByTime(1_500)
+    const cleaningLink = within(mainNavigation).getByRole('link', {
+      name: /Уборка/,
     })
 
-    expect(mocks.useCleaningSummary).toHaveBeenLastCalledWith(undefined, {
-      enabled: true,
+    expect(cleaningLink).toHaveAttribute('href', '/cleaning')
+    expect(within(cleaningLink).getByText('0')).toBeVisible()
+    expect(mocks.useCleaningSummary).not.toHaveBeenCalled()
+    expect(mocks.useShoppingListSummary).not.toHaveBeenCalled()
+    expect(mocks.useSelfCareDashboard).not.toHaveBeenCalled()
+
+    mocks.useCleaningSummary.mockReturnValue({
+      dueCount: 4,
+      urgentCount: 2,
     })
-    expect(mocks.useShoppingListSummary).toHaveBeenLastCalledWith({
-      enabled: true,
+    mocks.useShoppingListSummary.mockReturnValue({
+      activeItemCount: 3,
     })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500)
+    })
+    await act(async () => {
+      await vi.dynamicImportSettled()
+    })
+
+    expect(mocks.useCleaningSummary).toHaveBeenCalledWith(undefined, undefined)
+    expect(mocks.useShoppingListSummary).toHaveBeenCalledWith(undefined)
     expect(mocks.useSelfCareDashboard).toHaveBeenLastCalledWith(
       expect.any(String),
       { enabled: true },
     )
+    expect(
+      within(
+        within(
+          screen.getByRole('navigation', { name: 'Main navigation' }),
+        ).getByRole('link', { name: /Уборка/ }),
+      ).getByText('2'),
+    ).toBeVisible()
   })
 
   it('keeps side tab sections out of the mobile more sheet for personal workspaces', () => {

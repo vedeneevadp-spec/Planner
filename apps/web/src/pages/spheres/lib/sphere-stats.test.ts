@@ -6,6 +6,7 @@ import type { Task } from '@/entities/task'
 import {
   buildSphereStats,
   getCurrentWeekRange,
+  getSphereActivityLabel,
   UNSPHERED_ID,
 } from './sphere-stats'
 
@@ -141,5 +142,71 @@ describe('sphere stats', () => {
     )
 
     expect(stats[0]?.sphereId).toBe(UNSPHERED_ID)
+  })
+
+  it('marks a sphere without tasks as empty instead of abandoned', () => {
+    const stats = buildSphereStats(
+      [project],
+      [],
+      { from: '2026-04-20', to: '2026-04-26' },
+      '2026-04-22',
+      'Europe/Astrakhan',
+    )
+
+    expect(stats[0]?.activityState).toBe('empty')
+    expect(getSphereActivityLabel(stats[0]!.activityState)).toBe(
+      'пока без задач',
+    )
+  })
+
+  it('prioritizes overdue tasks over the age of the latest activity', () => {
+    const stats = buildSphereStats(
+      [project],
+      [createTask({ plannedDate: '2026-04-20' })],
+      { from: '2026-04-20', to: '2026-04-26' },
+      '2026-04-22',
+      'Europe/Astrakhan',
+    )
+
+    expect(stats[0]?.activityState).toBe('attention')
+    expect(getSphereActivityLabel(stats[0]!.activityState)).toBe(
+      'есть задачи с прошедшей датой',
+    )
+  })
+
+  it('uses a neutral active state for recent tasks', () => {
+    const stats = buildSphereStats(
+      [project],
+      [createTask({ plannedDate: '2026-04-22' })],
+      { from: '2026-04-20', to: '2026-04-26' },
+      '2026-04-22',
+      'Europe/Astrakhan',
+    )
+
+    expect(stats[0]?.activityState).toBe('active')
+    expect(getSphereActivityLabel(stats[0]!.activityState)).toBe(
+      'есть активность',
+    )
+  })
+
+  it('uses a neutral quiet state after ten days without activity', () => {
+    const stats = buildSphereStats(
+      [project],
+      [
+        createTask({
+          createdAt: '2026-04-01T08:00:00.000Z',
+          plannedDate: '2026-04-01',
+          status: 'done',
+        }),
+      ],
+      { from: '2026-04-20', to: '2026-04-26' },
+      '2026-04-22',
+      'Europe/Astrakhan',
+    )
+
+    expect(stats[0]?.activityState).toBe('quiet')
+    expect(getSphereActivityLabel(stats[0]!.activityState)).toBe(
+      'без задач за последнее время',
+    )
   })
 })

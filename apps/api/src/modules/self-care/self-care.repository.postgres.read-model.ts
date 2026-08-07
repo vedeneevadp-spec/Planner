@@ -2,7 +2,7 @@ import { type Kysely } from 'kysely'
 
 import {
   type DatabaseExecutor,
-  withOptionalRls,
+  withOptionalRls as withRootOptionalRls,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import type { SelfCareReadContext } from './self-care.model.js'
@@ -44,6 +44,19 @@ import {
 } from './self-care.shared.js'
 
 const EMPTY_SELF_CARE_USER_ID = '00000000-0000-0000-0000-000000000000'
+
+function withOptionalRls<T>(
+  db: Kysely<DatabaseSchema>,
+  auth: SelfCareReadContext['auth'],
+  callback: (executor: DatabaseExecutor) => Promise<T>,
+  actorUserId?: string,
+): Promise<T> {
+  if (db.isTransaction) {
+    return callback(db)
+  }
+
+  return withRootOptionalRls(db, auth, callback, actorUserId)
+}
 
 export class PostgresSelfCareReadModelLoader {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}

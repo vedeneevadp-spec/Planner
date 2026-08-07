@@ -1779,6 +1779,8 @@ function selfCareCompletion(
     status: 'done',
     userId: 'user-1',
     ...overrides,
+    updatedAt: overrides.updatedAt ?? NOW,
+    version: overrides.version ?? 1,
   }
 }
 
@@ -1801,6 +1803,7 @@ function selfCareOccurrence(
     updatedAt: NOW,
     userId: 'user-1',
     ...overrides,
+    version: overrides.version ?? 1,
   }
 }
 

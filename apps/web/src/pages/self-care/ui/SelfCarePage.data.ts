@@ -21,8 +21,9 @@ import {
   SELF_CARE_PLAN_LOOKAHEAD_DAYS,
 } from './SelfCarePage.helpers'
 import {
+  getSelfCareActiveTabCoreReadScope,
+  getSelfCareActiveTabReadValues,
   getSelfCarePageLoadFlags,
-  isSelfCareActiveTabLoading,
   type SelfCarePageRouteState,
 } from './SelfCarePage.model'
 
@@ -38,13 +39,15 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   const planTo = addDateDays(todayKey, SELF_CARE_PLAN_LOOKAHEAD_DAYS)
   const loadFlags = getSelfCarePageLoadFlags(routeState)
   const { uploadedIcons } = useUploadedIconAssets()
+  // Start the widest occurrence range first. The API coalesces the overlapping
+  // dashboard generation into this range, avoiding duplicate write work.
+  const planQuery = useSelfCarePlan(todayKey, planTo, {
+    enabled: loadFlags.plan,
+  })
   const dashboardQuery = useSelfCareDashboard(todayKey, {
     enabled: loadFlags.dashboard,
   })
   const itemsQuery = useSelfCareItems({ enabled: loadFlags.items })
-  const planQuery = useSelfCarePlan(todayKey, planTo, {
-    enabled: loadFlags.plan,
-  })
   const stepDraftsQuery = useSelfCareRitualStepDrafts(todayKey, {
     enabled: loadFlags.ritualStepDrafts,
   })
@@ -69,21 +72,61 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
     () => (templatesQuery.data ?? []).filter(isVisibleSelfCareTemplate),
     [templatesQuery.data],
   )
-  const isActiveTabLoading = isSelfCareActiveTabLoading({
-    activeTab: routeState.activeTab,
-    hasAnalytics: Boolean(analytics),
-    hasDashboard: Boolean(dashboard),
-    hasHistory: Boolean(history),
-    hasItems: Boolean(list),
-    hasPlan: Boolean(plan),
-    hasSettings: Boolean(settingsResponse),
-    isAnalyticsLoading: analyticsQuery.isLoading,
-    isDashboardLoading: dashboardQuery.isLoading,
-    isHistoryLoading: historyQuery.isLoading,
-    isItemsLoading: itemsQuery.isLoading,
-    isPlanLoading: planQuery.isLoading,
-    isSettingsLoading: settingsQuery.isLoading,
-  })
+  const queryByScope = {
+    analytics: analyticsQuery,
+    dashboard: dashboardQuery,
+    history: historyQuery,
+    items: itemsQuery,
+    plan: planQuery,
+    ritualStepDrafts: stepDraftsQuery,
+    settings: settingsQuery,
+    templates: templatesQuery,
+  }
+  const activeTabQueries = getSelfCareActiveTabReadValues(
+    routeState.activeTab,
+    queryByScope,
+  )
+  const activeTabCoreQuery =
+    queryByScope[getSelfCareActiveTabCoreReadScope(routeState.activeTab)]
+  const createDialogQueries = [itemsQuery, settingsQuery, templatesQuery]
+  const createDialogRequiredQueries =
+    routeState.createDialogMode === 'template'
+      ? createDialogQueries
+      : [itemsQuery, settingsQuery]
+  const visibleQueries = routeState.createDialogMode
+    ? Array.from(new Set([...activeTabQueries, ...createDialogQueries]))
+    : activeTabQueries
+  const activeTabReadErrors = activeTabQueries
+    .map((query) => query.error)
+    .filter((error): error is Error => Boolean(error))
+  const createDialogReadErrors = createDialogRequiredQueries
+    .map((query) => query.error)
+    .filter((error): error is Error => Boolean(error))
+  const isActiveTabLoading =
+    activeTabCoreQuery.data === undefined && activeTabCoreQuery.isLoading
+  const isActiveTabCacheLoading =
+    activeTabCoreQuery.data === undefined && activeTabCoreQuery.isCacheLoading
+  const hasActiveTabData = activeTabCoreQuery.data !== undefined
+  const hasCompleteActiveTabData = activeTabQueries.every(
+    (query) => query.data !== undefined,
+  )
+  const activeTabLastSyncTimes = activeTabQueries
+    .map((query) => query.lastSuccessfulSyncAt)
+    .filter((value): value is string => Boolean(value))
+  const lastSuccessfulSyncAt = activeTabLastSyncTimes.sort()[0] ?? null
+  const retryActiveTab = async () => {
+    await Promise.allSettled(visibleQueries.map((query) => query.refetch()))
+  }
+  const isCreateDialogLoading = Boolean(
+    routeState.createDialogMode &&
+    createDialogRequiredQueries.some(
+      (query) =>
+        query.data === undefined && (query.isLoading || query.isCacheLoading),
+    ),
+  )
+  const hasCreateDialogData = createDialogRequiredQueries.every(
+    (query) => query.data !== undefined,
+  )
   const serverRitualStepDrafts = useMemo(
     () =>
       stepDraftsQuery.data ? buildRitualStepDraftMap(stepDraftsQuery.data) : {},
@@ -94,22 +137,33 @@ export function useSelfCarePageData(routeState: SelfCarePageRouteState) {
   return {
     analytics,
     analyticsQuery,
+    activeTabReadErrors,
     createdTemplateIds,
+    createDialogReadErrors,
     dashboard,
     dashboardQuery,
     defaultCurrency,
     history,
     historyQuery,
+    hasActiveTabData,
+    hasCompleteActiveTabData,
+    hasCreateDialogReadError: createDialogReadErrors.length > 0,
+    hasCreateDialogData,
+    isActiveTabCacheLoading,
     isActiveTabLoading,
+    isCreateDialogLoading,
     itemsQuery,
     list,
+    lastSuccessfulSyncAt,
     plan,
     planQuery,
+    retryActiveTab,
     serverRitualStepDrafts,
     settingsQuery,
     settingsResponse,
     stepDraftsQuery,
     templates,
+    templatesLoaded: templatesQuery.data !== undefined,
     templatesQuery,
     todayKey,
     uploadedIcons,

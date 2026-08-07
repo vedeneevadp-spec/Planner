@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 
 import { useSessionFeatureReadiness } from '@/features/session'
 import { isAndroidNativeRuntime } from '@/shared/lib/native-runtime'
+import { AsyncLoadErrorBoundary } from '@/shared/ui/AsyncLoadErrorBoundary'
 
 const WEB_VOICE_ASSISTANT_MOUNT_DELAY_MS = 1_500
 
@@ -40,8 +41,15 @@ export function LazyVoiceAssistant() {
   }
 
   return (
-    <Suspense fallback={null}>
-      <VoiceAssistantComponent />
-    </Suspense>
+    <AsyncLoadErrorBoundary
+      fallback={null}
+      onError={(error) => {
+        console.warn('Failed to load the optional voice assistant.', error)
+      }}
+    >
+      <Suspense fallback={null}>
+        <VoiceAssistantComponent />
+      </Suspense>
+    </AsyncLoadErrorBoundary>
   )
 }
