@@ -119,7 +119,7 @@
     ]
   },
   "dependencies": {
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.0.4",
     "pg": "^8.22.0"
   },
   "overrides": {
