@@ -10,6 +10,7 @@ import {
   createReleaseLayout,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
+import { internalAppTables } from './db-security-repair-config.mjs'
 import {
   createRemoteDatabaseTransportValidatorScript,
   createRemoteDeployLockScript,
@@ -178,6 +179,13 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   assertOrder(script, 'npm run toolchain:check', 'npm ci')
   assertOrder(script, 'npm ci', 'npm run build')
   assertOrder(script, 'npm run build', 'npm run db:migrate')
+  assertOrder(script, 'npm run db:migrate', 'npm run db:security:repair')
+  assertOrder(script, 'npm run db:security:repair', 'npm run db:security:check')
+  assertOrder(
+    script,
+    'npm run db:security:check',
+    'atomic_switch "$release_dir"',
+  )
   assertOrder(
     script,
     'npm run backup:restore-db:check',
@@ -211,6 +219,17 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   assert.match(script, /rm -f "\$release_dir\/\.deploy-complete"/)
   assert.match(script, /reload_caddy/)
   assert.match(script, /prune_releases/)
+})
+
+test('repairs grants for internal offline command ledgers', () => {
+  assert.deepEqual(internalAppTables, [
+    'cleaning_operations',
+    'device_sessions',
+    'outbox',
+    'schema_migrations',
+    'self_care_command_ledger',
+    'sync_cursors',
+  ])
 })
 
 test('runtime services and Caddy resolve the current release symlink', async () => {

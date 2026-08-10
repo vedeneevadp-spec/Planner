@@ -5,6 +5,7 @@ import {
   createPgConnectionConfig,
   preparePgAdminConnection,
 } from './pg-connection-config.mjs'
+import { internalAppTables } from './db-security-repair-config.mjs'
 
 const connectionString =
   process.env.MIGRATE_DATABASE_URL ??
@@ -13,12 +14,6 @@ const connectionString =
 const args = new Set(process.argv.slice(2))
 const dryRun =
   args.has('--dry-run') || process.env.DB_SECURITY_REPAIR_DRY_RUN === '1'
-const internalTables = [
-  'device_sessions',
-  'outbox',
-  'schema_migrations',
-  'sync_cursors',
-]
 const revokedRoles = ['authenticated', 'public']
 
 if (args.has('--help') || args.has('-h')) {
@@ -76,7 +71,7 @@ async function readInternalTableGrants(client) {
          and lower(grantee) = any($2::text[])
        order by table_name, grantee, privilege_type
     `,
-    [internalTables, revokedRoles],
+    [internalAppTables, revokedRoles],
   )
 
   return result.rows.map((row) => ({
@@ -97,7 +92,7 @@ async function readInternalTableOwners(client) {
          and pg_class.relname = any($1::text[])
        order by owner_name
     `,
-    [internalTables],
+    [internalAppTables],
   )
 
   return result.rows
@@ -106,7 +101,7 @@ async function readInternalTableOwners(client) {
 }
 
 function createRepairStatements(owners) {
-  const tableList = internalTables
+  const tableList = internalAppTables
     .map((tableName) => `app.${quoteIdentifier(tableName)}`)
     .join(', ')
   const statements = revokedRoles.map(
