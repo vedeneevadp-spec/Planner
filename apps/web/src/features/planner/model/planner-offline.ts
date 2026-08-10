@@ -133,12 +133,21 @@ export function usePlannerOfflineSync({
       return
     }
 
-    setQueuedMutationCount(
-      await countRetryablePlannerOfflineMutations(workspaceId, actorUserId),
-    )
-    setConflictedMutationCount(
-      await countConflictedPlannerOfflineMutations(workspaceId, actorUserId),
-    )
+    try {
+      const [nextQueuedMutationCount, nextConflictedMutationCount] =
+        await Promise.all([
+          countRetryablePlannerOfflineMutations(workspaceId, actorUserId),
+          countConflictedPlannerOfflineMutations(workspaceId, actorUserId),
+        ])
+
+      setQueuedMutationCount(nextQueuedMutationCount)
+      setConflictedMutationCount(nextConflictedMutationCount)
+    } catch (error) {
+      // Queue counters are diagnostic UI. A transient IndexedDB lifecycle
+      // failure must not reject a successfully queued mutation or leak from a
+      // fire-and-forget refresh while the app is switching sessions.
+      console.warn('Failed to refresh queued planner mutation counts.', error)
+    }
   }, [actorUserId, workspaceId])
 
   const persistCurrentTaskRecords = useCallback(async () => {
