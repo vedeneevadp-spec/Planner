@@ -67,6 +67,7 @@ export function TaskEditDialog({
   onUpdate,
 }: TaskEditDialogProps) {
   const confirmationFieldId = useId()
+  const submissionLockRef = useRef(false)
   const reminderAvailabilityRef = useRef(
     !isSharedWorkspace && Boolean(task.plannedDate && task.plannedStartTime),
   )
@@ -110,6 +111,7 @@ export function TaskEditDialog({
     () => createTaskRecurrenceFormFromRecurrence(task.recurrence),
   )
   const [note, setNote] = useState(task.note)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const canManageConfirmation =
     task.authorUserId !== null && task.authorUserId === currentActorUserId
   const isReminderAvailable =
@@ -117,13 +119,14 @@ export function TaskEditDialog({
   const isRoutineTask = Boolean(task.routine)
   const canEditRecurrence = !isRoutineTask
   const hasPlannedStartTime = Boolean(plannedStartTime)
+  const isSubmitPending = isPending || isSubmitting
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !submissionLockRef.current && !isPending) {
         onClose()
       }
     }
@@ -134,7 +137,13 @@ export function TaskEditDialog({
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onClose])
+  }, [isPending, onClose])
+
+  function handleClose() {
+    if (!submissionLockRef.current && !isPending) {
+      onClose()
+    }
+  }
 
   function handlePlannedDateChange(nextPlannedDate: string) {
     setPlannedDate(nextPlannedDate)
@@ -175,62 +184,76 @@ export function TaskEditDialog({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (submissionLockRef.current || isPending) {
+      return
+    }
+
     const normalizedTitle = title.trim()
 
     if (!normalizedTitle) {
       return
     }
 
-    const selectedSphere =
-      spheres.find((sphere) => sphere.id === projectId) ?? null
-    const projectInput = {
-      project: selectedSphere?.name ?? '',
-      projectId: selectedSphere?.id ?? null,
+    submissionLockRef.current = true
+    setIsSubmitting(true)
+
+    let isUpdated = false
+
+    try {
+      const selectedSphere =
+        spheres.find((sphere) => sphere.id === projectId) ?? null
+      const projectInput = {
+        project: selectedSphere?.name ?? '',
+        projectId: selectedSphere?.id ?? null,
+      }
+      const resolvedPlannedDate =
+        canEditRecurrence && recurrenceForm.isEnabled && !plannedDate
+          ? todayKey
+          : plannedDate
+      const hasPlannedDate = Boolean(resolvedPlannedDate)
+      const resolvedReminderOffsets =
+        !isSharedWorkspace && hasPlannedDate && plannedStartTime
+          ? reminderOffsets
+          : []
+      isUpdated = await onUpdate(task.id, {
+        assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
+        dueDate: task.dueDate ?? null,
+        icon,
+        importance: isImportant ? 'important' : 'not_important',
+        necessity,
+        note,
+        plannedDate: resolvedPlannedDate || null,
+        plannedEndTime:
+          hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
+        plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
+        project: projectInput.project,
+        projectId: projectInput.projectId,
+        recurrence: canEditRecurrence
+          ? buildTaskRecurrenceFromForm(
+              recurrenceForm,
+              resolvedPlannedDate || todayKey,
+              task.recurrence?.seriesId,
+            )
+          : null,
+        remindBeforeStart: resolvedReminderOffsets.length > 0,
+        reminderOffsets: resolvedReminderOffsets,
+        reminderTimeZone:
+          resolvedReminderOffsets.length > 0
+            ? resolveClientTimeZone()
+            : undefined,
+        resource: getResourceFromValue(resource),
+        requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
+        routine: isRoutineTask
+          ? buildRoutineTaskFromForm(routineForm, task.routine?.seriesId)
+          : null,
+        sphereId: task.sphereId,
+        title: normalizedTitle,
+        urgency: isRoutineTask ? 'urgent' : 'not_urgent',
+      })
+    } finally {
+      submissionLockRef.current = false
+      setIsSubmitting(false)
     }
-    const resolvedPlannedDate =
-      canEditRecurrence && recurrenceForm.isEnabled && !plannedDate
-        ? todayKey
-        : plannedDate
-    const hasPlannedDate = Boolean(resolvedPlannedDate)
-    const resolvedReminderOffsets =
-      !isSharedWorkspace && hasPlannedDate && plannedStartTime
-        ? reminderOffsets
-        : []
-    const isUpdated = await onUpdate(task.id, {
-      assigneeUserId: isSharedWorkspace ? assigneeUserId || null : null,
-      dueDate: task.dueDate ?? null,
-      icon,
-      importance: isImportant ? 'important' : 'not_important',
-      necessity,
-      note,
-      plannedDate: resolvedPlannedDate || null,
-      plannedEndTime:
-        hasPlannedDate && plannedStartTime ? plannedEndTime || null : null,
-      plannedStartTime: hasPlannedDate ? plannedStartTime || null : null,
-      project: projectInput.project,
-      projectId: projectInput.projectId,
-      recurrence: canEditRecurrence
-        ? buildTaskRecurrenceFromForm(
-            recurrenceForm,
-            resolvedPlannedDate || todayKey,
-            task.recurrence?.seriesId,
-          )
-        : null,
-      remindBeforeStart: resolvedReminderOffsets.length > 0,
-      reminderOffsets: resolvedReminderOffsets,
-      reminderTimeZone:
-        resolvedReminderOffsets.length > 0
-          ? resolveClientTimeZone()
-          : undefined,
-      resource: getResourceFromValue(resource),
-      requiresConfirmation: isSharedWorkspace ? requiresConfirmation : false,
-      routine: isRoutineTask
-        ? buildRoutineTaskFromForm(routineForm, task.routine?.seriesId)
-        : null,
-      sphereId: task.sphereId,
-      title: normalizedTitle,
-      urgency: isRoutineTask ? 'urgent' : 'not_urgent',
-    })
 
     if (isUpdated) {
       onClose()
@@ -247,12 +270,14 @@ export function TaskEditDialog({
       role="dialog"
       aria-modal="true"
       aria-label="Редактировать задачу"
+      aria-busy={isSubmitPending || undefined}
     >
       <button
         className={styles.editorBackdrop}
         type="button"
         aria-label="Закрыть редактирование"
-        onClick={onClose}
+        disabled={isSubmitPending}
+        onClick={handleClose}
       />
 
       <form
@@ -267,17 +292,23 @@ export function TaskEditDialog({
             className={styles.closeButton}
             type="button"
             aria-label="Закрыть"
-            onClick={onClose}
+            disabled={isSubmitPending}
+            onClick={handleClose}
           >
             <span aria-hidden="true">×</span>
           </button>
           <button
             className={styles.mobileHeaderSubmit}
             type="submit"
-            aria-label="Сохранить"
-            disabled={isPending || !title.trim()}
+            aria-label={isSubmitting ? 'Сохраняем…' : 'Сохранить'}
+            aria-busy={isSubmitting || undefined}
+            disabled={isSubmitPending || !title.trim()}
           >
-            <CheckIcon size={16} />
+            {isSubmitting ? (
+              <span className={styles.submitSpinner} aria-hidden="true" />
+            ) : (
+              <CheckIcon size={16} />
+            )}
           </button>
         </div>
 
@@ -539,12 +570,17 @@ export function TaskEditDialog({
             <button
               className={cx(styles.primaryButton, styles.footerPrimaryButton)}
               type="submit"
-              disabled={isPending || !title.trim()}
+              aria-busy={isSubmitting || undefined}
+              disabled={isSubmitPending || !title.trim()}
             >
               <span className={styles.buttonIconStrong} aria-hidden="true">
-                <CheckIcon size={16} />
+                {isSubmitting ? (
+                  <span className={styles.submitSpinner} />
+                ) : (
+                  <CheckIcon size={16} />
+                )}
               </span>
-              Сохранить
+              {isSubmitting ? 'Сохраняем…' : 'Сохранить'}
             </button>
           </div>
         </div>

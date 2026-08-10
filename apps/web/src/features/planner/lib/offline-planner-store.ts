@@ -181,6 +181,11 @@ export type PlannerOfflineMutationInput =
       workspaceId: string
     }
 
+interface EnqueuePlannerOfflineMutationOptions {
+  optimisticTask?: TaskRecord | undefined
+  removeCachedTaskId?: string | undefined
+}
+
 const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
   'failed',
   'pending',
@@ -865,6 +870,7 @@ export async function removeCachedTaskRecord(
 
 export async function enqueuePlannerOfflineMutation(
   input: PlannerOfflineMutationInput,
+  options: EnqueuePlannerOfflineMutationOptions = {},
 ): Promise<PlannerOfflineMutationRecord | null> {
   const expectedWriteGeneration = getPlannerOfflineWorkspaceWriteGeneration(
     input.workspaceId,
@@ -888,14 +894,55 @@ export async function enqueuePlannerOfflineMutation(
     updatedAt: now,
   } satisfies PlannerOfflineMutationRecord
 
+  const optimisticTask = options.optimisticTask
+  const removeCachedTaskId = options.removeCachedTaskId
+
+  if (
+    optimisticTask &&
+    (!('taskId' in input) ||
+      optimisticTask.id !== input.taskId ||
+      optimisticTask.workspaceId !== input.workspaceId)
+  ) {
+    throw new Error('Optimistic task does not match the queued mutation.')
+  }
+
+  if (
+    removeCachedTaskId &&
+    (!('taskId' in input) || removeCachedTaskId !== input.taskId)
+  ) {
+    throw new Error('Removed task does not match the queued mutation.')
+  }
+
+  if (optimisticTask && removeCachedTaskId) {
+    throw new Error(
+      'A planner mutation cannot upsert and remove the cached task together.',
+    )
+  }
+
+  const updatesCachedTask = Boolean(optimisticTask || removeCachedTaskId)
+
   const stored = await runPlannerCacheWrite(
     db,
     input.workspaceId,
     'mutation-queue',
     expectedWriteGeneration,
-    [db.mutationQueue],
+    updatesCachedTask ? [db.mutationQueue, db.cachedTasks] : [db.mutationQueue],
     async () => {
       await db.mutationQueue.put(mutation)
+
+      if (optimisticTask) {
+        await db.cachedTasks.put({
+          key: createCachedTaskKey(input.workspaceId, optimisticTask.id),
+          task: optimisticTask,
+          taskId: optimisticTask.id,
+          updatedAt: now,
+          workspaceId: input.workspaceId,
+        })
+      } else if (removeCachedTaskId) {
+        await db.cachedTasks.delete(
+          createCachedTaskKey(input.workspaceId, removeCachedTaskId),
+        )
+      }
 
       return true
     },

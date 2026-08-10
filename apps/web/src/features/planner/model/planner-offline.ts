@@ -77,6 +77,7 @@ interface PlannerOfflineSync {
   persistCurrentTaskTemplateRecords: () => Promise<void>
   queuedMutationCount: number
   refreshQueuedMutationCount: () => Promise<void>
+  requestQueuedMutationDrain: () => void
 }
 
 type PlannerCacheHydrationScope = 'life-spheres' | 'task-templates' | 'tasks'
@@ -296,8 +297,16 @@ export function usePlannerOfflineSync({
           },
           workspaceId,
         })
+        const remainingRetryableCount =
+          await countRetryablePlannerOfflineMutations(
+            workspaceId,
+            currentActorUserId,
+          )
 
-        if (result.synced > 0 || result.conflicted > 0) {
+        if (
+          remainingRetryableCount === 0 &&
+          (result.synced > 0 || result.conflicted > 0)
+        ) {
           await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
           await queryClient.invalidateQueries({
             queryKey: taskTemplateQueryKey,
@@ -322,7 +331,11 @@ export function usePlannerOfflineSync({
           )
         }
 
-        if (result.processed > 0 && result.failed === 0) {
+        if (
+          remainingRetryableCount === 0 &&
+          result.processed > 0 &&
+          result.failed === 0
+        ) {
           await syncTaskEventCursor()
         }
       })
@@ -343,6 +356,19 @@ export function usePlannerOfflineSync({
     taskQueryKey,
     workspaceId,
   ])
+
+  const requestQueuedMutationDrain = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return
+    }
+
+    void (async () => {
+      await drainQueuedMutations()
+      await drainQueuedMutations()
+    })().catch((error) => {
+      setMutationErrorMessage(getErrorMessage(error))
+    })
+  }, [drainQueuedMutations, setMutationErrorMessage])
 
   useEffect(() => {
     if (!workspaceId) {
@@ -534,6 +560,7 @@ export function usePlannerOfflineSync({
     persistCurrentTaskTemplateRecords,
     queuedMutationCount,
     refreshQueuedMutationCount,
+    requestQueuedMutationDrain,
   }
 }
 

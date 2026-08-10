@@ -67,7 +67,6 @@ import {
   getCleaningOfflineWorkspaceWriteGeneration,
   isCleaningOfflineStorageReady,
   isCleaningOfflineWorkspaceWriteGenerationCurrent,
-  listCleaningOfflineMutations,
   loadCachedCleaningPlan,
   loadCachedCleaningToday,
   probeCleaningOfflineStorage,
@@ -109,6 +108,8 @@ const cleaningDrainCoordinator = createOfflineDrainCoordinator<
   string,
   CleaningOfflineDrainResult
 >()
+const cleaningInFlightWrites = new Map<string, Promise<unknown>>()
+const cleaningWriteTails = new Map<string, Promise<void>>()
 
 function useMutation<
   TData = unknown,
@@ -460,12 +461,14 @@ export function useCreateCleaningZone() {
 
   return useMutation({
     mutationFn: async (input: NewCleaningZoneInput) => {
+      const dedupeKey = `zone.create:${serializeCleaningWriteKey(input)}`
       const normalized = newCleaningZoneInputSchema.parse({
         ...input,
         id: input.id ?? generateUuidV7(),
       }) as NewCleaningZoneInput & { id: string }
       return executeCleaningWrite({
         context,
+        dedupeKey,
         directWrite: (api, operationId) =>
           api.createZone(normalized, { operationId }),
         queryClient,
@@ -503,19 +506,26 @@ export function useUpdateCleaningZone() {
 
   return useMutation({
     mutationFn: async ({ input, zoneId }: CleaningZoneUpdateVariables) => {
-      const plan = requireCurrentCleaningPlan(queryClient, context)
-      const zone = requireCleaningZone(plan, zoneId)
       const normalized = cleaningZoneUpdateInputSchema.parse(input)
+      const readCurrentZone = () =>
+        requireCleaningZone(
+          requireCurrentCleaningPlan(queryClient, context),
+          zoneId,
+        )
       return executeCleaningWrite({
         context,
-        directWrite: (api, operationId) =>
-          api.updateZone(
+        dedupeKey: `zone.update:${zoneId}:${serializeCleaningWriteKey(normalized)}`,
+        directWrite: (api, operationId) => {
+          const zone = readCurrentZone()
+          return api.updateZone(
             zoneId,
             { ...normalized, expectedVersion: zone.version },
             { operationId },
-          ),
+          )
+        },
         queryClient,
         queuedWrite: async (expectedWriteGeneration, operationId) => {
+          const zone = readCurrentZone()
           const projected = await enqueueAndSyncCleaningMutation(
             queryClient,
             context,
@@ -545,22 +555,31 @@ export function useRemoveCleaningZone() {
 
   return useMutation({
     mutationFn: async (zoneId: string) => {
-      const plan = requireCurrentCleaningPlan(queryClient, context)
-      const zone = requireCleaningZone(plan, zoneId)
-      const expectedTaskVersions = plan.tasks
-        .filter((task) => task.zoneId === zoneId)
-        .map((task) => ({ taskId: task.id, version: task.version }))
+      const readCurrentZoneDeleteBase = () => {
+        const plan = requireCurrentCleaningPlan(queryClient, context)
+        const zone = requireCleaningZone(plan, zoneId)
+        return {
+          expectedTaskVersions: plan.tasks
+            .filter((task) => task.zoneId === zoneId)
+            .map((task) => ({ taskId: task.id, version: task.version })),
+          zone,
+        }
+      }
       return executeCleaningWrite({
         context,
-        directWrite: (api, operationId) =>
-          api.removeZone(zoneId, {
+        dedupeKey: `zone.delete:${zoneId}`,
+        directWrite: (api, operationId) => {
+          const { expectedTaskVersions, zone } = readCurrentZoneDeleteBase()
+          return api.removeZone(zoneId, {
             expectedTaskVersions,
             expectedVersion: zone.version,
             operationId,
-          }),
+          })
+        },
         queryClient,
-        queuedWrite: (expectedWriteGeneration, operationId) =>
-          enqueueAndSyncCleaningMutation(
+        queuedWrite: (expectedWriteGeneration, operationId) => {
+          const { expectedTaskVersions, zone } = readCurrentZoneDeleteBase()
+          return enqueueAndSyncCleaningMutation(
             queryClient,
             context,
             {
@@ -577,7 +596,8 @@ export function useRemoveCleaningZone() {
               zoneId,
             },
             expectedWriteGeneration,
-          ).then(() => undefined),
+          ).then(() => undefined)
+        },
       })
     },
   })
@@ -589,12 +609,14 @@ export function useCreateCleaningTask() {
 
   return useMutation({
     mutationFn: async (input: NewCleaningTaskInput) => {
+      const dedupeKey = `task.create:${serializeCleaningWriteKey(input)}`
       const normalized = newCleaningTaskInputSchema.parse({
         ...input,
         id: input.id ?? generateUuidV7(),
       }) as NewCleaningTaskInput & { id: string }
       return executeCleaningWrite({
         context,
+        dedupeKey,
         directWrite: (api, operationId) =>
           api.createTask(normalized, { operationId }),
         queryClient,
@@ -635,19 +657,26 @@ export function useUpdateCleaningTask() {
 
   return useMutation({
     mutationFn: async ({ input, taskId }: CleaningTaskUpdateVariables) => {
-      const plan = requireCurrentCleaningPlan(queryClient, context)
-      const task = requireCleaningTask(plan, taskId)
       const normalized = cleaningTaskUpdateInputSchema.parse(input)
+      const readCurrentTask = () =>
+        requireCleaningTask(
+          requireCurrentCleaningPlan(queryClient, context),
+          taskId,
+        )
       return executeCleaningWrite({
         context,
-        directWrite: (api, operationId) =>
-          api.updateTask(
+        dedupeKey: `task.update:${taskId}:${serializeCleaningWriteKey(normalized)}`,
+        directWrite: (api, operationId) => {
+          const task = readCurrentTask()
+          return api.updateTask(
             taskId,
             { ...normalized, expectedVersion: task.version },
             { operationId },
-          ),
+          )
+        },
         queryClient,
         queuedWrite: async (expectedWriteGeneration, operationId) => {
+          const task = readCurrentTask()
           const projected = await enqueueAndSyncCleaningMutation(
             queryClient,
             context,
@@ -677,18 +706,25 @@ export function useRemoveCleaningTask() {
 
   return useMutation({
     mutationFn: async (taskId: string) => {
-      const plan = requireCurrentCleaningPlan(queryClient, context)
-      const task = requireCleaningTask(plan, taskId)
+      const readCurrentTask = () =>
+        requireCleaningTask(
+          requireCurrentCleaningPlan(queryClient, context),
+          taskId,
+        )
       return executeCleaningWrite({
         context,
-        directWrite: (api, operationId) =>
-          api.removeTask(taskId, {
+        dedupeKey: `task.delete:${taskId}`,
+        directWrite: (api, operationId) => {
+          const task = readCurrentTask()
+          return api.removeTask(taskId, {
             expectedVersion: task.version,
             operationId,
-          }),
+          })
+        },
         queryClient,
-        queuedWrite: (expectedWriteGeneration, operationId) =>
-          enqueueAndSyncCleaningMutation(
+        queuedWrite: (expectedWriteGeneration, operationId) => {
+          const task = readCurrentTask()
+          return enqueueAndSyncCleaningMutation(
             queryClient,
             context,
             {
@@ -701,7 +737,8 @@ export function useRemoveCleaningTask() {
               workspaceId: context.workspaceId,
             },
             expectedWriteGeneration,
-          ).then(() => undefined),
+          ).then(() => undefined)
+        },
       })
     },
   })
@@ -728,6 +765,7 @@ export function useSeedCleaningTemplates() {
       const normalized = cleaningSeedInputSchema.parse(input)
       return executeCleaningWrite({
         context,
+        dedupeKey: `cleaning.seed:${serializeCleaningWriteKey(normalized)}`,
         directWrite: (api, operationId) =>
           api.seed(normalized, { operationId }),
         queryClient,
@@ -764,31 +802,38 @@ function useCleaningTaskAction(action: CleaningTaskHistoryAction) {
     CleaningTaskActionVariables
   >({
     mutationFn: async ({ input, taskId }) => {
-      const plan = requireCurrentCleaningPlan(queryClient, context)
-      const task = requireCleaningTask(plan, taskId)
-      const state =
-        plan.states.find((item) => item.taskId === taskId) ??
-        createInitialCleaningState(task, context.workspaceId)
       const normalized = cleaningTaskActionInputSchema.parse({
         ...input,
         date: input?.date ?? getTodayDate(plannerTimeZone),
         occurredAt: input?.occurredAt ?? new Date().toISOString(),
       }) as CleaningTaskActionInput & { date: string; occurredAt: string }
-      const actionInput = {
-        ...normalized,
-        expectedStateVersion: state.version,
-        expectedTaskVersion: task.version,
+      const readCurrentActionBase = () => {
+        const plan = requireCurrentCleaningPlan(queryClient, context)
+        const task = requireCleaningTask(plan, taskId)
+        const state =
+          plan.states.find((item) => item.taskId === taskId) ??
+          createInitialCleaningState(task, context.workspaceId)
+        return { state, task }
       }
       return executeCleaningWrite({
         context,
-        directWrite: (api, operationId) =>
-          action === 'completed'
+        dedupeKey: `task.action:${taskId}:${action}:${normalized.date}`,
+        directWrite: (api, operationId) => {
+          const { state, task } = readCurrentActionBase()
+          const actionInput = {
+            ...normalized,
+            expectedStateVersion: state.version,
+            expectedTaskVersion: task.version,
+          }
+          return action === 'completed'
             ? api.completeTask(taskId, actionInput, { operationId })
             : action === 'postponed'
               ? api.postponeTask(taskId, actionInput, { operationId })
-              : api.skipTask(taskId, actionInput, { operationId }),
+              : api.skipTask(taskId, actionInput, { operationId })
+        },
         queryClient,
         queuedWrite: async (expectedWriteGeneration, operationId) => {
+          const { state, task } = readCurrentActionBase()
           const projected = await enqueueAndSyncCleaningMutation(
             queryClient,
             context,
@@ -1143,15 +1188,6 @@ class CleaningWriteUnavailableError extends Error {
   }
 }
 
-class CleaningConflictError extends Error {
-  constructor() {
-    super(
-      'Данные изменились в другом месте. Обновите данные и повторите изменение.',
-    )
-    this.name = 'CleaningConflictError'
-  }
-}
-
 type CleaningApiContext = ReturnType<typeof useCleaningApi>
 
 async function getDirectCleaningWriteApi(
@@ -1218,8 +1254,6 @@ async function enqueueAndSyncCleaningMutation(
   }
 
   const currentPlan = requireCurrentCleaningPlan(queryClient, context)
-  let queued: Awaited<ReturnType<typeof enqueueCleaningOfflineMutation>>
-
   try {
     const cached = await loadCachedCleaningPlan(
       context.workspaceId,
@@ -1239,10 +1273,7 @@ async function enqueueAndSyncCleaningMutation(
     }
 
     assertCleaningWriteGenerationCurrent(context, expectedWriteGeneration)
-    queued = await enqueueCleaningOfflineMutation(
-      input,
-      expectedWriteGeneration,
-    )
+    await enqueueCleaningOfflineMutation(input, expectedWriteGeneration)
   } catch (error) {
     if (
       error instanceof CleaningOfflineMutationNotPersistedError ||
@@ -1255,52 +1286,41 @@ async function enqueueAndSyncCleaningMutation(
     throw error
   }
 
-  let projected = await hydrateCleaningQueriesFromCache(queryClient, context)
+  const projected = await hydrateCleaningQueriesFromCache(queryClient, context)
+  scheduleCleaningOfflineDrain(queryClient, context)
+  return projected
+}
 
+function scheduleCleaningOfflineDrain(
+  queryClient: QueryClient,
+  context: CleaningApiContext,
+): void {
   if (
-    context.api &&
-    context.readiness.canWriteProtectedData &&
-    (typeof navigator === 'undefined' || navigator.onLine !== false)
+    !context.api ||
+    !context.readiness.canWriteProtectedData ||
+    (typeof navigator !== 'undefined' && navigator.onLine === false)
   ) {
-    const scopeKey = `${context.workspaceId}:${context.actorUserId}`
-    await cleaningDrainCoordinator.drain(scopeKey, () =>
+    return
+  }
+
+  const scopeKey = `${context.workspaceId}:${context.actorUserId}`
+  void cleaningDrainCoordinator
+    .drain(scopeKey, () =>
       drainCleaningOfflineQueue({
         actorUserId: context.actorUserId,
         api: context.api!,
         workspaceId: context.workspaceId,
       }),
     )
-    projected = await hydrateCleaningQueriesFromCache(queryClient, context)
-    const remaining = await listCleaningOfflineMutations(
-      context.workspaceId,
-      context.actorUserId,
-      expectedWriteGeneration,
-    )
-    const current = remaining.find(
-      (mutation) => mutation.operationId === queued.operationId,
-    )
-
-    if (current?.status === 'conflicted') {
-      throw new CleaningConflictError()
-    }
-
-    if (current && ['failed', 'pending', 'syncing'].includes(current.status)) {
-      await cleaningDrainCoordinator.drain(scopeKey, () =>
-        drainCleaningOfflineQueue({
-          actorUserId: context.actorUserId,
-          api: context.api!,
-          workspaceId: context.workspaceId,
-        }),
-      )
-      projected = await hydrateCleaningQueriesFromCache(queryClient, context)
-    }
-  }
-
-  return projected
+    .then(() => hydrateCleaningQueriesFromCache(queryClient, context))
+    .catch((error: unknown) => {
+      console.warn('Failed to synchronize queued cleaning changes.', error)
+    })
 }
 
 async function executeCleaningWrite<T>(input: {
   context: CleaningApiContext
+  dedupeKey: string
   directWrite: (api: CleaningApiClient, operationId: string) => Promise<T>
   queryClient: QueryClient
   queuedWrite: (
@@ -1308,40 +1328,103 @@ async function executeCleaningWrite<T>(input: {
     operationId: string,
   ) => Promise<T>
 }): Promise<T> {
-  const { context, directWrite, queryClient, queuedWrite } = input
-  const expectedWriteGeneration = getCleaningOfflineWorkspaceWriteGeneration(
-    context.workspaceId,
-  )
-  const operationId = generateUuidV7()
-  const directApi = await getDirectCleaningWriteApi(
-    context,
-    queryClient,
-    expectedWriteGeneration,
-  )
+  const { context, dedupeKey, directWrite, queryClient, queuedWrite } = input
+  const scopeKey = `${context.workspaceId}:${context.actorUserId}`
+  const scopedDedupeKey = `${context.workspaceId}:${context.actorUserId}:${dedupeKey}`
 
-  if (directApi) {
-    const result = await directWrite(directApi, operationId)
-    await invalidateCleaning(queryClient, context.workspaceId)
-    return result
+  return runCleaningWriteOnce(scopedDedupeKey, () =>
+    runCleaningWriteSerially(scopeKey, async () => {
+      const expectedWriteGeneration =
+        getCleaningOfflineWorkspaceWriteGeneration(context.workspaceId)
+      const operationId = generateUuidV7()
+      const directApi = await getDirectCleaningWriteApi(
+        context,
+        queryClient,
+        expectedWriteGeneration,
+      )
+
+      if (directApi) {
+        const result = await directWrite(directApi, operationId)
+        await invalidateCleaning(queryClient, context.workspaceId)
+        return result
+      }
+
+      try {
+        return await queuedWrite(expectedWriteGeneration, operationId)
+      } catch (error) {
+        if (
+          !(error instanceof CleaningOfflineMutationNotPersistedError) ||
+          !context.api ||
+          !context.readiness.canWriteProtectedData ||
+          (typeof navigator !== 'undefined' && navigator.onLine === false)
+        ) {
+          throw error
+        }
+
+        assertCleaningWriteGenerationCurrent(context, expectedWriteGeneration)
+        const result = await directWrite(context.api, operationId)
+        await invalidateCleaning(queryClient, context.workspaceId)
+        return result
+      }
+    }),
+  )
+}
+
+function runCleaningWriteOnce<T>(
+  key: string,
+  write: () => Promise<T>,
+): Promise<T> {
+  const active = cleaningInFlightWrites.get(key)
+
+  if (active) {
+    return active as Promise<T>
   }
 
-  try {
-    return await queuedWrite(expectedWriteGeneration, operationId)
-  } catch (error) {
-    if (
-      !(error instanceof CleaningOfflineMutationNotPersistedError) ||
-      !context.api ||
-      !context.readiness.canWriteProtectedData ||
-      (typeof navigator !== 'undefined' && navigator.onLine === false)
-    ) {
-      throw error
+  const pending = write().finally(() => {
+    if (cleaningInFlightWrites.get(key) === pending) {
+      cleaningInFlightWrites.delete(key)
     }
+  })
+  cleaningInFlightWrites.set(key, pending)
+  return pending
+}
 
-    assertCleaningWriteGenerationCurrent(context, expectedWriteGeneration)
-    const result = await directWrite(context.api, operationId)
-    await invalidateCleaning(queryClient, context.workspaceId)
-    return result
+function runCleaningWriteSerially<T>(
+  scopeKey: string,
+  write: () => Promise<T>,
+): Promise<T> {
+  const previous = cleaningWriteTails.get(scopeKey) ?? Promise.resolve()
+  const result = previous.catch(() => undefined).then(write)
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  cleaningWriteTails.set(scopeKey, tail)
+  void tail.finally(() => {
+    if (cleaningWriteTails.get(scopeKey) === tail) {
+      cleaningWriteTails.delete(scopeKey)
+    }
+  })
+  return result
+}
+
+function serializeCleaningWriteKey(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(serializeCleaningWriteKey).join(',')}]`
   }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([key, entry]) =>
+          `${JSON.stringify(key)}:${serializeCleaningWriteKey(entry)}`,
+      )
+      .join(',')}}`
+  }
+
+  return JSON.stringify(value) ?? String(value)
 }
 
 function assertCleaningWriteGenerationCurrent(

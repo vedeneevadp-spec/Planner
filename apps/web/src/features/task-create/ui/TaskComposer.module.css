@@ -95,6 +95,10 @@
   cursor: default;
 }
 
+.backdropButton:disabled {
+  cursor: wait;
+}
+
 .panel {
   --control-height: 3rem;
   --hero-control-height: 3.35rem;
@@ -166,6 +170,11 @@
   transform: translateY(-1px);
   border-color: var(--line-strong);
   background: var(--field-bg-strong);
+}
+
+.closeButton:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .titleField {
@@ -350,6 +359,27 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.16);
   color: var(--accent-text-on-fill);
+}
+
+.submitSpinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 999px;
+  animation: taskSubmitSpin 700ms linear infinite;
+}
+
+@keyframes taskSubmitSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .submitSpinner {
+    animation-duration: 1.4s;
+  }
 }
 
 .footer {

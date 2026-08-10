@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 
 import type {
   CleaningListResponse,
+  CleaningTaskActionResponse,
   CleaningTaskRecord,
   CleaningTodayResponse,
   CleaningZoneRecord,
@@ -51,7 +52,10 @@ import {
   useCleaningPlan,
   useCleaningSummary,
   useCleaningToday,
+  useCompleteCleaningTask,
+  useCreateCleaningTask,
   useCreateCleaningZone,
+  useUpdateCleaningTask,
 } from './useCleaning'
 
 type TestDexieTransaction = (this: Dexie, ...args: unknown[]) => unknown
@@ -371,7 +375,195 @@ describe('useCleaning', () => {
     await act(async () => {
       await expect(mutation).resolves.toMatchObject({ title: zone.title })
     })
-    expect(fetchMock).toHaveBeenCalledOnce()
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('creates once and resolves from the durable queue while the online request is stalled', async () => {
+    const plan = createCleaningPlan()
+    const request = createDeferred<Response>()
+    let requestReleased = false
+    fetchMock.mockImplementation(() => request.promise)
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    await seedCleaningWriteBase(queryClient, plan)
+    const { result } = renderHook(() => useCreateCleaningTask(), { wrapper })
+    const input = {
+      assignee: 'anyone' as const,
+      customIntervalDays: null,
+      depth: 'regular' as const,
+      description: '',
+      energy: 'normal' as const,
+      estimatedMinutes: 10,
+      frequencyInterval: 1,
+      frequencyType: 'weekly' as const,
+      impactScore: 3,
+      isActive: true,
+      isSeasonal: false,
+      priority: 'normal' as const,
+      scope: 'zone' as const,
+      seasonMonths: [],
+      tags: [],
+      title: 'Протереть зеркало',
+      zoneId: 'zone-1',
+    }
+    let first!: Promise<CleaningTaskRecord>
+    let duplicate!: Promise<CleaningTaskRecord>
+
+    act(() => {
+      first = result.current.mutateAsync(input)
+      duplicate = result.current.mutateAsync({ ...input })
+    })
+
+    let created!: CleaningTaskRecord
+    await act(async () => {
+      const results = await Promise.all([first, duplicate])
+      expect(results[0]?.id).toBe(results[1]?.id)
+      created = results[0]!
+    })
+    expect(requestReleased).toBe(false)
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+    await expect(
+      listCleaningOfflineMutations('workspace-1', 'user-1'),
+    ).resolves.toHaveLength(1)
+
+    requestReleased = true
+    request.resolve(jsonResponse({ ...createCleaningTaskRecord(), ...created }))
+    await waitFor(async () => {
+      expect(
+        await listCleaningOfflineMutations('workspace-1', 'user-1'),
+      ).toEqual([])
+    })
+  })
+
+  it('edits once and resolves from the durable queue while the online request is stalled', async () => {
+    const plan = createCleaningPlan()
+    const request = createDeferred<Response>()
+    let requestReleased = false
+    fetchMock.mockImplementation(() => request.promise)
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    await seedCleaningWriteBase(queryClient, plan)
+    const { result } = renderHook(() => useUpdateCleaningTask(), { wrapper })
+    const variables = {
+      input: { title: 'Протереть зеркало' },
+      taskId: 'task-1',
+    }
+    let first!: Promise<CleaningTaskRecord>
+    let duplicate!: Promise<CleaningTaskRecord>
+
+    act(() => {
+      first = result.current.mutateAsync(variables)
+      duplicate = result.current.mutateAsync({
+        input: { ...variables.input },
+        taskId: variables.taskId,
+      })
+    })
+
+    await act(async () => {
+      const results = await Promise.all([first, duplicate])
+      expect(results[0]?.title).toBe('Протереть зеркало')
+      expect(results[1]?.title).toBe('Протереть зеркало')
+    })
+    expect(requestReleased).toBe(false)
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    requestReleased = true
+    request.resolve(
+      jsonResponse({
+        ...createCleaningTaskRecord(),
+        title: 'Протереть зеркало',
+        version: 2,
+      }),
+    )
+    await waitFor(async () => {
+      expect(
+        await listCleaningOfflineMutations('workspace-1', 'user-1'),
+      ).toEqual([])
+    })
+  })
+
+  it('serializes distinct offline edits so the second one uses the first projected version', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    const plan = createCleaningPlan()
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    await seedCleaningWriteBase(queryClient, plan)
+    const { result } = renderHook(() => useUpdateCleaningTask(), { wrapper })
+    let first!: Promise<CleaningTaskRecord>
+    let second!: Promise<CleaningTaskRecord>
+
+    act(() => {
+      first = result.current.mutateAsync({
+        input: { title: 'Сначала зеркало' },
+        taskId: 'task-1',
+      })
+      second = result.current.mutateAsync({
+        input: { title: 'Потом раковина' },
+        taskId: 'task-1',
+      })
+    })
+
+    await act(async () => {
+      await Promise.all([first, second])
+    })
+    const queued = await listCleaningOfflineMutations('workspace-1', 'user-1')
+    expect(queued).toHaveLength(2)
+    expect(queued[0]).toMatchObject({ expectedVersion: 1 })
+    expect(queued[1]).toMatchObject({
+      dependsOnOperationIds: [queued[0]!.operationId],
+      expectedVersion: 2,
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('marks completion once and resolves from the durable queue while the online request is stalled', async () => {
+    const plan = createCleaningPlan()
+    const request = createDeferred<Response>()
+    let requestReleased = false
+    fetchMock.mockImplementation(() => request.promise)
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    await seedCleaningWriteBase(queryClient, plan)
+    const { result } = renderHook(() => useCompleteCleaningTask(), { wrapper })
+    const variables = {
+      input: {
+        date: '2026-05-26',
+        mode: 'next_cycle' as const,
+        note: '',
+        occurredAt: '2026-05-26T08:00:00.000Z',
+        targetDate: null,
+      },
+      taskId: 'task-1',
+    }
+    let first!: Promise<CleaningTaskActionResponse>
+    let duplicate!: Promise<CleaningTaskActionResponse>
+
+    act(() => {
+      first = result.current.mutateAsync(variables)
+      duplicate = result.current.mutateAsync({
+        input: { ...variables.input },
+        taskId: variables.taskId,
+      })
+    })
+
+    await act(async () => {
+      const results = await Promise.all([first, duplicate])
+      expect(results[0]?.historyItem.id).toBe(results[1]?.historyItem.id)
+    })
+    expect(requestReleased).toBe(false)
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledOnce()
+    })
+
+    requestReleased = true
+    request.resolve(jsonResponse(createCleaningActionResponse()))
+    await waitFor(async () => {
+      expect(
+        await listCleaningOfflineMutations('workspace-1', 'user-1'),
+      ).toEqual([])
+    })
   })
 
   it('falls back to one direct online request after an unpersisted enqueue failure', async () => {
@@ -681,6 +873,48 @@ function createCleaningTaskRecord(): CleaningTaskRecord {
     version: 1,
     workspaceId: 'workspace-1',
     zoneId: 'zone-1',
+  }
+}
+
+async function seedCleaningWriteBase(
+  queryClient: QueryClient,
+  plan: CleaningListResponse,
+): Promise<void> {
+  await replaceCachedCleaningPlan(
+    'workspace-1',
+    'user-1',
+    plan,
+    '2026-05-26T00:00:00.000Z',
+  )
+  await probeCleaningOfflineStorage()
+  queryClient.setQueryData(['cleaning', 'workspace-1', 'user-1'], plan)
+}
+
+function createCleaningActionResponse(): CleaningTaskActionResponse {
+  return {
+    historyItem: {
+      action: 'completed',
+      createdAt: '2026-05-26T08:00:00.000Z',
+      date: '2026-05-26',
+      id: 'history-1',
+      note: '',
+      targetDate: null,
+      taskId: 'task-1',
+      userId: 'user-1',
+      workspaceId: 'workspace-1',
+      zoneId: 'zone-1',
+    },
+    state: {
+      lastCompletedAt: '2026-05-26T08:00:00.000Z',
+      lastPostponedAt: null,
+      lastSkippedAt: null,
+      nextDueAt: '2026-06-02',
+      postponeCount: 0,
+      taskId: 'task-1',
+      updatedAt: '2026-05-26T08:00:00.000Z',
+      version: 2,
+      workspaceId: 'workspace-1',
+    },
   }
 }
 

@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from 'react'
+import { type FormEvent, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import {
@@ -63,6 +63,12 @@ export function ShoppingPage() {
     [searchParams],
   )
   const [formError, setFormError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const isSubmittingRef = useRef(false)
+  const [pendingItemIds, setPendingItemIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const pendingItemIdsRef = useRef<Set<string>>(new Set())
   const shoppingListQuery = useShoppingListSummary()
   const syncStatus = useShoppingListSyncStatus()
   const createItemMutation = useCreateShoppingListItem()
@@ -79,10 +85,6 @@ export function ShoppingPage() {
     () => filterShoppingItems(completedItems, filters),
     [completedItems, filters],
   )
-  const isBusy =
-    createItemMutation.isPending ||
-    updateItemMutation.isPending ||
-    removeItemMutation.isPending
   const completedEmptyMessage =
     completedItems.length === 0 ? 'Куплено пусто.' : 'По фильтру пусто.'
   const errorMessage = useMemo(
@@ -108,6 +110,10 @@ export function ShoppingPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (isSubmittingRef.current) {
+      return
+    }
+
     const text = formatShoppingListText(draft)
 
     if (!text) {
@@ -117,19 +123,19 @@ export function ShoppingPage() {
 
     setFormError(null)
 
+    const activeDuplicate = findShoppingListItemByText(activeItems, text)
+
+    if (activeDuplicate) {
+      setFormError('Такая покупка уже есть.')
+      return
+    }
+
+    const completedDuplicate = findShoppingListItemByText(completedItems, text)
+
+    isSubmittingRef.current = true
+    setIsSubmitting(true)
+
     try {
-      const activeDuplicate = findShoppingListItemByText(activeItems, text)
-
-      if (activeDuplicate) {
-        setFormError('Такая покупка уже есть.')
-        return
-      }
-
-      const completedDuplicate = findShoppingListItemByText(
-        completedItems,
-        text,
-      )
-
       if (completedDuplicate) {
         await updateItemMutation.mutateAsync({
           itemId: completedDuplicate.id,
@@ -150,37 +156,66 @@ export function ShoppingPage() {
       setDraftCategory(null)
     } catch {
       // handled through mutation state
+    } finally {
+      isSubmittingRef.current = false
+      setIsSubmitting(false)
     }
   }
 
+  function runItemMutation(itemId: string, action: () => Promise<unknown>) {
+    if (pendingItemIdsRef.current.has(itemId)) {
+      return
+    }
+
+    const nextPendingItemIds = new Set(pendingItemIdsRef.current)
+    nextPendingItemIds.add(itemId)
+    pendingItemIdsRef.current = nextPendingItemIds
+    setPendingItemIds(nextPendingItemIds)
+
+    void action()
+      .catch(() => undefined)
+      .finally(() => {
+        const next = new Set(pendingItemIdsRef.current)
+        next.delete(itemId)
+        pendingItemIdsRef.current = next
+        setPendingItemIds(next)
+      })
+  }
+
   function handleToggleFavorite(item: ShoppingListItem) {
-    void updateItemMutation.mutateAsync({
-      itemId: item.id,
-      patch: {
-        isFavorite: item.isFavorite !== true,
-      },
-    })
+    runItemMutation(item.id, () =>
+      updateItemMutation.mutateAsync({
+        itemId: item.id,
+        patch: {
+          isFavorite: item.isFavorite !== true,
+        },
+      }),
+    )
   }
 
   function handleToggleUrgent(item: ShoppingListItem) {
-    void updateItemMutation.mutateAsync({
-      itemId: item.id,
-      patch: {
-        priority: item.priority === 'high' ? null : 'high',
-      },
-    })
+    runItemMutation(item.id, () =>
+      updateItemMutation.mutateAsync({
+        itemId: item.id,
+        patch: {
+          priority: item.priority === 'high' ? null : 'high',
+        },
+      }),
+    )
   }
 
   function renderItemRow(item: ShoppingListItem, isCompleted: boolean) {
     const category = getShoppingCategoryOption(item.shoppingCategory)
     const checkboxId = `shopping-item-${item.id}`
     const isFavorite = item.isFavorite === true
+    const isItemPending = pendingItemIds.has(item.id)
     const isUrgent = item.priority === 'high'
 
     return (
       <div
         key={item.id}
         className={cx(styles.itemRow, isCompleted && styles.itemRowCompleted)}
+        aria-busy={isItemPending}
       >
         <div className={styles.itemToggle}>
           <input
@@ -188,14 +223,16 @@ export function ShoppingPage() {
             id={checkboxId}
             type="checkbox"
             checked={isCompleted}
-            disabled={isBusy}
+            disabled={isItemPending}
             onChange={() => {
-              void updateItemMutation.mutateAsync({
-                itemId: item.id,
-                patch: isCompleted
-                  ? { status: 'new' }
-                  : { priority: null, status: 'archived' },
-              })
+              runItemMutation(item.id, () =>
+                updateItemMutation.mutateAsync({
+                  itemId: item.id,
+                  patch: isCompleted
+                    ? { status: 'new' }
+                    : { priority: null, status: 'archived' },
+                }),
+              )
             }}
           />
           <label className={styles.itemLine} htmlFor={checkboxId}>
@@ -234,7 +271,7 @@ export function ShoppingPage() {
                 : `Добавить в избранное: ${item.text}`
             }
             aria-pressed={isFavorite}
-            disabled={isBusy}
+            disabled={isItemPending}
             onClick={() => {
               handleToggleFavorite(item)
             }}
@@ -255,7 +292,7 @@ export function ShoppingPage() {
                   : `Пометить срочным: ${item.text}`
               }
               aria-pressed={isUrgent}
-              disabled={isBusy}
+              disabled={isItemPending}
               onClick={() => {
                 handleToggleUrgent(item)
               }}
@@ -267,9 +304,11 @@ export function ShoppingPage() {
             className={styles.iconButton}
             type="button"
             aria-label={`Удалить ${item.text}`}
-            disabled={isBusy}
+            disabled={isItemPending}
             onClick={() => {
-              void removeItemMutation.mutateAsync(item.id)
+              runItemMutation(item.id, () =>
+                removeItemMutation.mutateAsync(item.id),
+              )
             }}
           >
             <TrashIcon size={18} strokeWidth={2.05} />
@@ -300,6 +339,7 @@ export function ShoppingPage() {
       <div className={styles.fixedTop}>
         <form
           className={styles.composer}
+          aria-busy={isSubmitting}
           onSubmit={(event) => {
             void handleSubmit(event)
           }}
@@ -310,7 +350,7 @@ export function ShoppingPage() {
               value={draft}
               maxLength={5000}
               placeholder="Добавить покупку"
-              disabled={isBusy}
+              disabled={isSubmitting}
               onChange={(event) => {
                 setDraft(event.target.value)
                 setFormError(null)
@@ -332,7 +372,7 @@ export function ShoppingPage() {
                       : `Выбрать вид: ${option.label}`
                   }
                   aria-pressed={draftCategory === option.value}
-                  disabled={isBusy}
+                  disabled={isSubmitting}
                   onClick={() => {
                     setDraftCategory((currentCategory) =>
                       currentCategory === option.value ? null : option.value,
@@ -348,8 +388,8 @@ export function ShoppingPage() {
           <button
             className={styles.addButton}
             type="submit"
-            aria-label="Добавить покупку"
-            disabled={isBusy}
+            aria-label={isSubmitting ? 'Сохраняем покупку' : 'Добавить покупку'}
+            disabled={isSubmitting}
           >
             <CheckIcon size={18} strokeWidth={2.15} />
           </button>

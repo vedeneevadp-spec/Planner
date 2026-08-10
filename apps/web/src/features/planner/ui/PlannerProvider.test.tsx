@@ -162,6 +162,16 @@ describe('PlannerProvider', () => {
 
     renderPlannerProvider()
 
+    const snackbar = screen.getByRole('status')
+    const setPointerCapture = vi.fn()
+    Object.defineProperty(snackbar, 'setPointerCapture', {
+      configurable: true,
+      value: setPointerCapture,
+    })
+    const closeChainButton = screen.getByRole('button', {
+      name: 'Завершить цепочку',
+    })
+
     expect(
       screen.getByRole('button', { name: 'Создать следующий этап' }),
     ).toBeInTheDocument()
@@ -169,7 +179,15 @@ describe('PlannerProvider', () => {
       screen.queryByRole('button', { name: 'Поставить на ожидание' }),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Завершить цепочку' }))
+    fireEvent.pointerDown(closeChainButton, {
+      button: 0,
+      clientX: 220,
+      clientY: 20,
+      pointerId: 1,
+    })
+    expect(setPointerCapture).not.toHaveBeenCalled()
+
+    fireEvent.click(closeChainButton)
 
     expect(closeTaskChain).toHaveBeenCalledWith('task-1')
   })

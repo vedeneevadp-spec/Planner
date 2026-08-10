@@ -26,6 +26,7 @@ import type {
 } from '@/entities/task-template'
 import {
   isUnauthorizedSessionApiError,
+  usePlannerTimeZone,
   useSessionAuth,
   useSessionFeatureReadiness,
 } from '@/features/session'
@@ -33,7 +34,9 @@ import {
 import {
   enqueuePlannerOfflineMutation,
   getPlannerDataLastSuccessfulSyncAt,
+  isPlannerOfflineStorageAvailable,
   type PlannerDataSyncScope,
+  type PlannerOfflineMutationInput,
 } from '../lib/offline-planner-store'
 import {
   createPlannerApiClient,
@@ -56,7 +59,13 @@ import { usePlannerMutations } from './planner-mutations'
 import { usePlannerOfflineSync } from './planner-offline'
 import { usePlannerQueries } from './planner-queries'
 import {
+  createOptimisticTaskRecord,
+  createOptimisticTaskScheduleRecord,
+  createOptimisticTaskStatusRecord,
+  createOptimisticUpdatedTaskRecord,
   getTaskRecord,
+  removeTaskRecord,
+  replaceTaskRecord,
   sortSpheres,
   sortTaskTemplates,
   toggleTaskId,
@@ -65,6 +74,19 @@ import {
 } from './planner-records'
 
 type PlannerSyncFreshnessByScope = Record<PlannerDataSyncScope, string | null>
+type PlannerTaskOfflineMutationInput = Extract<
+  PlannerOfflineMutationInput,
+  { taskId: string }
+>
+type PlannerTaskOptimisticProjection =
+  | {
+      optimisticTask: TaskRecord
+      removeTaskId?: never
+    }
+  | {
+      optimisticTask?: never
+      removeTaskId: string
+    }
 
 interface PlannerSyncFreshness {
   byScope: PlannerSyncFreshnessByScope
@@ -78,6 +100,7 @@ const EMPTY_PLANNER_SYNC_FRESHNESS: PlannerSyncFreshnessByScope = {
 }
 
 export function usePlannerState(): PlannerState {
+  const plannerTimeZone = usePlannerTimeZone()
   const { accessToken, isAuthEnabled, recoverSession, sessionVersion } =
     useSessionAuth()
   const { apiConfig, getReadiness, session, sessionQuery } =
@@ -203,6 +226,7 @@ export function usePlannerState(): PlannerState {
     persistCurrentTaskTemplateRecords,
     queuedMutationCount,
     refreshQueuedMutationCount,
+    requestQueuedMutationDrain,
   } = usePlannerOfflineSync({
     actorUserId,
     invalidatePlannerQueries,
@@ -327,8 +351,13 @@ export function usePlannerState(): PlannerState {
     [taskTemplatesQuery.data],
   )
   const tasks = useMemo(
-    () => sortTasks((tasksQuery.data ?? []).map((task) => toPlannerTask(task))),
-    [tasksQuery.data],
+    () =>
+      sortTasks(
+        (tasksQuery.data ?? []).map((task) =>
+          toPlannerTask(task, plannerTimeZone),
+        ),
+      ),
+    [plannerTimeZone, tasksQuery.data],
   )
 
   function setTaskPending(taskId: string, isPending: boolean): void {
@@ -383,6 +412,56 @@ export function usePlannerState(): PlannerState {
         })
         setMutationErrorMessage(versionConflict.message)
         return false
+      }
+
+      setMutationErrorMessage(getErrorMessage(error))
+
+      return false
+    }
+  }
+
+  async function enqueueOptimisticTaskMutation(
+    mutation: PlannerTaskOfflineMutationInput,
+    projection: PlannerTaskOptimisticProjection,
+  ): Promise<boolean | null> {
+    if (!isPlannerOfflineStorageAvailable()) {
+      return null
+    }
+
+    try {
+      setMutationErrorMessage(null)
+      await queryClient.cancelQueries({ queryKey: taskQueryKey })
+
+      const queuedMutation = await enqueuePlannerOfflineMutation(mutation, {
+        optimisticTask: projection.optimisticTask,
+        removeCachedTaskId: projection.removeTaskId,
+      })
+
+      if (!queuedMutation) {
+        return null
+      }
+
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        projection.optimisticTask
+          ? replaceTaskRecord(current, projection.optimisticTask)
+          : removeTaskRecord(current, projection.removeTaskId),
+      )
+      void refreshQueuedMutationCount()
+
+      if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          getQueuedPlannerMutationMessage(
+            new TypeError('Browser is currently offline.'),
+          ),
+        )
+      } else {
+        requestQueuedMutationDrain()
+      }
+
+      return true
+    } catch (error) {
+      if (!isBrowserOfflineNow()) {
+        return null
       }
 
       setMutationErrorMessage(getErrorMessage(error))
@@ -455,6 +534,37 @@ export function usePlannerState(): PlannerState {
       id: taskId,
     }
 
+    if (actorUserId && workspaceId) {
+      const queuedResult = await enqueueOptimisticTaskMutation(
+        {
+          actorUserId,
+          input: inputWithId,
+          taskId,
+          type: 'task.create',
+          workspaceId,
+        },
+        {
+          optimisticTask: createOptimisticTaskRecord(inputWithId, {
+            authorDisplayName: session?.actor.displayName ?? null,
+            authorUserId: actorUserId,
+            workspaceId,
+          }),
+        },
+      )
+
+      if (queuedResult !== null) {
+        return queuedResult
+      }
+    }
+
+    if (isBrowserOfflineNow()) {
+      setMutationErrorMessage(
+        'Не удалось сохранить задачу на устройстве. Проверьте доступное место и повторите.',
+      )
+
+      return false
+    }
+
     return runMutation(
       () => createTaskMutation.mutateAsync(inputWithId),
       async () => {
@@ -485,8 +595,34 @@ export function usePlannerState(): PlannerState {
       return false
     }
 
-    return runTaskMutation(taskId, () =>
-      runMutation(
+    return runTaskMutation(taskId, async () => {
+      if (actorUserId && workspaceId) {
+        const queuedResult = await enqueueOptimisticTaskMutation(
+          {
+            actorUserId,
+            expectedVersion: task.version,
+            input,
+            taskId,
+            type: 'task.update',
+            workspaceId,
+          },
+          { optimisticTask: createOptimisticUpdatedTaskRecord(task, input) },
+        )
+
+        if (queuedResult !== null) {
+          return queuedResult
+        }
+      }
+
+      if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          'Не удалось сохранить изменения на устройстве. Проверьте доступное место и повторите.',
+        )
+
+        return false
+      }
+
+      return runMutation(
         () =>
           updateTaskMutation.mutateAsync({
             expectedVersion: task.version,
@@ -507,8 +643,8 @@ export function usePlannerState(): PlannerState {
             workspaceId,
           })
         },
-      ),
-    )
+      )
+    })
   }
 
   async function copyTaskToPersonal(taskId: string): Promise<boolean> {
@@ -755,28 +891,55 @@ export function usePlannerState(): PlannerState {
     return runTaskMutation(taskId, async () => {
       const didCompleteTask =
         isActiveTaskStatus(task.status) && status === 'done'
-      const didUpdate = await runMutation(
-        () =>
-          setTaskStatusMutation.mutateAsync({
-            expectedVersion: task.version,
-            status,
-            taskId,
-          }),
-        async () => {
-          if (!actorUserId || !workspaceId) {
-            throw new Error('Planner session is not ready.')
-          }
+      const queuedResult =
+        actorUserId && workspaceId
+          ? await enqueueOptimisticTaskMutation(
+              {
+                actorUserId,
+                expectedVersion: task.version,
+                statusValue: status,
+                taskId,
+                type: 'task.status.update',
+                workspaceId,
+              },
+              {
+                optimisticTask: createOptimisticTaskStatusRecord(task, status),
+              },
+            )
+          : null
+      let didUpdate: boolean
 
-          await enqueuePlannerOfflineMutation({
-            actorUserId,
-            expectedVersion: task.version,
-            statusValue: status,
-            taskId,
-            type: 'task.status.update',
-            workspaceId,
-          })
-        },
-      )
+      if (queuedResult !== null) {
+        didUpdate = queuedResult
+      } else if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          'Не удалось сохранить выполнение на устройстве. Проверьте доступное место и повторите.',
+        )
+        didUpdate = false
+      } else {
+        didUpdate = await runMutation(
+          () =>
+            setTaskStatusMutation.mutateAsync({
+              expectedVersion: task.version,
+              status,
+              taskId,
+            }),
+          async () => {
+            if (!actorUserId || !workspaceId) {
+              throw new Error('Planner session is not ready.')
+            }
+
+            await enqueuePlannerOfflineMutation({
+              actorUserId,
+              expectedVersion: task.version,
+              statusValue: status,
+              taskId,
+              type: 'task.status.update',
+              workspaceId,
+            })
+          },
+        )
+      }
 
       if (didUpdate && didCompleteTask && isTaskCompletionConfettiEnabled) {
         fireTaskCompletionConfetti()
@@ -806,14 +969,47 @@ export function usePlannerState(): PlannerState {
       return false
     }
 
+    const displayedTask = toPlannerTask(task, plannerTimeZone)
     const schedule = {
       plannedDate,
-      plannedEndTime: plannedDate ? (task.plannedEndTime ?? null) : null,
-      plannedStartTime: plannedDate ? (task.plannedStartTime ?? null) : null,
+      plannedEndTime: plannedDate
+        ? (displayedTask.plannedEndTime ?? null)
+        : null,
+      plannedStartTime: plannedDate
+        ? (displayedTask.plannedStartTime ?? null)
+        : null,
     }
 
-    return runTaskMutation(taskId, () =>
-      runMutation(
+    return runTaskMutation(taskId, async () => {
+      if (actorUserId && workspaceId) {
+        const queuedResult = await enqueueOptimisticTaskMutation(
+          {
+            actorUserId,
+            expectedVersion: task.version,
+            schedule,
+            taskId,
+            type: 'task.schedule.update',
+            workspaceId,
+          },
+          {
+            optimisticTask: createOptimisticTaskScheduleRecord(task, schedule),
+          },
+        )
+
+        if (queuedResult !== null) {
+          return queuedResult
+        }
+      }
+
+      if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          'Не удалось сохранить расписание на устройстве. Проверьте доступное место и повторите.',
+        )
+
+        return false
+      }
+
+      return runMutation(
         () =>
           setTaskScheduleMutation.mutateAsync({
             expectedVersion: task.version,
@@ -834,8 +1030,8 @@ export function usePlannerState(): PlannerState {
             workspaceId,
           })
         },
-      ),
-    )
+      )
+    })
   }
 
   async function setTaskSchedule(
@@ -850,8 +1046,36 @@ export function usePlannerState(): PlannerState {
       return false
     }
 
-    return runTaskMutation(taskId, () =>
-      runMutation(
+    return runTaskMutation(taskId, async () => {
+      if (actorUserId && workspaceId) {
+        const queuedResult = await enqueueOptimisticTaskMutation(
+          {
+            actorUserId,
+            expectedVersion: task.version,
+            schedule,
+            taskId,
+            type: 'task.schedule.update',
+            workspaceId,
+          },
+          {
+            optimisticTask: createOptimisticTaskScheduleRecord(task, schedule),
+          },
+        )
+
+        if (queuedResult !== null) {
+          return queuedResult
+        }
+      }
+
+      if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          'Не удалось сохранить расписание на устройстве. Проверьте доступное место и повторите.',
+        )
+
+        return false
+      }
+
+      return runMutation(
         () =>
           setTaskScheduleMutation.mutateAsync({
             expectedVersion: task.version,
@@ -872,8 +1096,8 @@ export function usePlannerState(): PlannerState {
             workspaceId,
           })
         },
-      ),
-    )
+      )
+    })
   }
 
   async function removeTask(taskId: string): Promise<boolean> {
@@ -885,8 +1109,33 @@ export function usePlannerState(): PlannerState {
       return false
     }
 
-    return runTaskMutation(taskId, () =>
-      runMutation(
+    return runTaskMutation(taskId, async () => {
+      if (actorUserId && workspaceId) {
+        const queuedResult = await enqueueOptimisticTaskMutation(
+          {
+            actorUserId,
+            expectedVersion: task.version,
+            taskId,
+            type: 'task.delete',
+            workspaceId,
+          },
+          { removeTaskId: taskId },
+        )
+
+        if (queuedResult !== null) {
+          return queuedResult
+        }
+      }
+
+      if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          'Не удалось сохранить удаление на устройстве. Проверьте доступное место и повторите.',
+        )
+
+        return false
+      }
+
+      return runMutation(
         () =>
           removeTaskMutation.mutateAsync({
             expectedVersion: task.version,
@@ -905,8 +1154,8 @@ export function usePlannerState(): PlannerState {
             workspaceId,
           })
         },
-      ),
-    )
+      )
+    })
   }
 
   async function removeTaskTemplate(templateId: string): Promise<boolean> {
@@ -1126,6 +1375,10 @@ function mergePlannerSyncFreshness(
     },
     workspaceId,
   }
+}
+
+function isBrowserOfflineNow(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
 }
 
 function getNewestSyncTimestamp(

@@ -145,6 +145,130 @@ describe('offline planner sync', () => {
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([taskRecord])
   })
 
+  it('does not overwrite newer task projections with older replay responses', async () => {
+    const createdTask = createTaskRecord(createInput.id!)
+    const updatedTask = {
+      ...createdTask,
+      title: 'Updated offline task',
+      version: 2,
+    }
+    const completedTask = {
+      ...updatedTask,
+      completedAt: '2026-08-10T09:00:00.000Z',
+      status: 'done' as const,
+      version: 3,
+    }
+    const updateInput = {
+      assigneeUserId: createInput.assigneeUserId,
+      dueDate: createInput.dueDate,
+      note: createInput.note,
+      plannedDate: createInput.plannedDate,
+      plannedEndTime: createInput.plannedEndTime,
+      plannedStartTime: createInput.plannedStartTime,
+      project: createInput.project,
+      projectId: createInput.projectId,
+      requiresConfirmation: createInput.requiresConfirmation,
+      resource: createInput.resource,
+      sphereId: createInput.sphereId,
+      title: updatedTask.title,
+    }
+    const onTaskSynced = vi.fn()
+    const api = createPlannerApiClientMock({
+      createTask: vi.fn().mockResolvedValue(createdTask),
+      setTaskStatus: vi.fn().mockResolvedValue(completedTask),
+      updateTask: vi.fn().mockResolvedValue(updatedTask),
+    })
+
+    await enqueuePlannerOfflineMutation(
+      {
+        actorUserId: ACTOR_USER_ID,
+        input: createInput,
+        taskId: createInput.id!,
+        type: 'task.create',
+        workspaceId: WORKSPACE_ID,
+      },
+      { optimisticTask: createdTask },
+    )
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation(
+      {
+        actorUserId: ACTOR_USER_ID,
+        expectedVersion: 1,
+        input: updateInput,
+        taskId: createInput.id!,
+        type: 'task.update',
+        workspaceId: WORKSPACE_ID,
+      },
+      { optimisticTask: updatedTask },
+    )
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation(
+      {
+        actorUserId: ACTOR_USER_ID,
+        expectedVersion: 2,
+        statusValue: 'done',
+        taskId: createInput.id!,
+        type: 'task.status.update',
+        workspaceId: WORKSPACE_ID,
+      },
+      { optimisticTask: completedTask },
+    )
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onTaskSynced,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 3,
+      synced: 3,
+    })
+    expect(onTaskSynced).toHaveBeenCalledTimes(1)
+    expect(onTaskSynced).toHaveBeenCalledWith(completedTask)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([completedTask])
+  })
+
+  it('treats an already missing queued task delete as successful', async () => {
+    const task = createTaskRecord('already-deleted-task')
+    const onTaskDeleted = vi.fn()
+    const api = createPlannerApiClientMock({
+      removeTask: vi.fn().mockRejectedValue(
+        new PlannerApiError('Task was not found.', {
+          code: 'task_not_found',
+          status: 404,
+        }),
+      ),
+    })
+    await replaceCachedTaskRecords(WORKSPACE_ID, [task])
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      expectedVersion: task.version,
+      taskId: task.id,
+      type: 'task.delete',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onTaskDeleted,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 1,
+    })
+    expect(onTaskDeleted).toHaveBeenCalledWith(task.id)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([])
+  })
+
   it('never replays another actor mutation from the same workspace', async () => {
     const otherActorUserId = 'user-2'
     const taskRecord = createTaskRecord(createInput.id!)
