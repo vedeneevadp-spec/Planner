@@ -188,14 +188,7 @@ async function applyOfflineMutation(
   if (mutation.type === 'task.create') {
     const task = await api.createTask(mutation.input)
 
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    await upsertCachedTaskRecord(
-      mutation.workspaceId,
-      task,
-      expectedWriteGeneration,
-    )
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    callbacks.onTaskSynced?.(task)
+    await commitSyncedTask(mutation, task, callbacks, expectedWriteGeneration)
 
     return
   }
@@ -206,14 +199,7 @@ async function applyOfflineMutation(
       expectedVersion: mutation.expectedVersion,
     })
 
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    await upsertCachedTaskRecord(
-      mutation.workspaceId,
-      task,
-      expectedWriteGeneration,
-    )
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    callbacks.onTaskSynced?.(task)
+    await commitSyncedTask(mutation, task, callbacks, expectedWriteGeneration)
 
     return
   }
@@ -224,14 +210,7 @@ async function applyOfflineMutation(
       status: mutation.statusValue,
     })
 
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    await upsertCachedTaskRecord(
-      mutation.workspaceId,
-      task,
-      expectedWriteGeneration,
-    )
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    callbacks.onTaskSynced?.(task)
+    await commitSyncedTask(mutation, task, callbacks, expectedWriteGeneration)
 
     return
   }
@@ -242,20 +221,19 @@ async function applyOfflineMutation(
       schedule: mutation.schedule,
     })
 
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    await upsertCachedTaskRecord(
-      mutation.workspaceId,
-      task,
-      expectedWriteGeneration,
-    )
-    assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
-    callbacks.onTaskSynced?.(task)
+    await commitSyncedTask(mutation, task, callbacks, expectedWriteGeneration)
 
     return
   }
 
   if (mutation.type === 'task.delete') {
-    await api.removeTask(mutation.taskId, mutation.expectedVersion)
+    try {
+      await api.removeTask(mutation.taskId, mutation.expectedVersion)
+    } catch (error) {
+      if (!isMissingTaskError(error)) {
+        throw error
+      }
+    }
     assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
     await removeCachedTaskRecord(
       mutation.workspaceId,
@@ -272,6 +250,62 @@ async function applyOfflineMutation(
   throw new Error(
     `Unsupported offline mutation type "${unsupportedMutation.type}".`,
   )
+}
+
+type PlannerTaskOfflineMutation = Extract<
+  PlannerOfflineMutationRecord,
+  { taskId: string }
+>
+
+async function commitSyncedTask(
+  mutation: PlannerTaskOfflineMutation,
+  task: TaskRecord,
+  callbacks: OfflineMutationCallbacks,
+  expectedWriteGeneration: number,
+): Promise<void> {
+  assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+
+  if (await hasLaterTaskMutation(mutation, expectedWriteGeneration)) {
+    return
+  }
+
+  assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+  await upsertCachedTaskRecord(
+    mutation.workspaceId,
+    task,
+    expectedWriteGeneration,
+  )
+  assertPlannerOfflineDrainIsCurrent(mutation, expectedWriteGeneration)
+  callbacks.onTaskSynced?.(task)
+}
+
+async function hasLaterTaskMutation(
+  mutation: PlannerTaskOfflineMutation,
+  expectedWriteGeneration: number,
+): Promise<boolean> {
+  const queuedMutations = await listRetryablePlannerOfflineMutations(
+    mutation.workspaceId,
+    mutation.actorUserId,
+    expectedWriteGeneration,
+  )
+  const currentIndex = queuedMutations.findIndex(
+    (queuedMutation) => queuedMutation.id === mutation.id,
+  )
+
+  if (currentIndex === -1) {
+    return false
+  }
+
+  return queuedMutations
+    .slice(currentIndex + 1)
+    .some(
+      (queuedMutation) =>
+        'taskId' in queuedMutation && queuedMutation.taskId === mutation.taskId,
+    )
+}
+
+function isMissingTaskError(error: unknown): error is PlannerApiError {
+  return error instanceof PlannerApiError && error.code === 'task_not_found'
 }
 
 class PlannerOfflineDrainInvalidatedError extends Error {}

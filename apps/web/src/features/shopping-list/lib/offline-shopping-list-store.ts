@@ -71,6 +71,11 @@ export type ShoppingListOfflineMutationInput =
       workspaceId: string
     }
 
+export interface EnqueueShoppingListOfflineMutationOptions {
+  optimisticItem?: ChaosInboxItemRecord | undefined
+  removeCachedItemId?: string | undefined
+}
+
 const RETRYABLE_QUEUE_STATUSES: ShoppingListOfflineMutationStatus[] = [
   'failed',
   'pending',
@@ -282,6 +287,7 @@ export async function removeCachedShoppingListItem(
 
 export async function enqueueShoppingListOfflineMutation(
   input: ShoppingListOfflineMutationInput,
+  options: EnqueueShoppingListOfflineMutationOptions = {},
 ): Promise<ShoppingListOfflineMutationRecord | null> {
   const writeGeneration = getShoppingListOfflineWorkspaceWriteGeneration(
     input.workspaceId,
@@ -298,10 +304,55 @@ export async function enqueueShoppingListOfflineMutation(
     updatedAt: now,
   } satisfies ShoppingListOfflineMutationRecord
 
+  if (
+    options.optimisticItem &&
+    (options.optimisticItem.id !== input.itemId ||
+      options.optimisticItem.workspaceId !== input.workspaceId)
+  ) {
+    throw new Error('Optimistic shopping item does not match the mutation.')
+  }
+
+  if (
+    options.removeCachedItemId &&
+    options.removeCachedItemId !== input.itemId
+  ) {
+    throw new Error('Removed shopping item does not match the mutation.')
+  }
+
+  if (options.optimisticItem && options.removeCachedItemId) {
+    throw new Error(
+      'A shopping mutation cannot upsert and remove the cached item together.',
+    )
+  }
+
   const stored = await runShoppingListWorkspaceWrite(
     input.workspaceId,
     writeGeneration,
-    (db) => db.mutationQueue.put(mutation).then(() => mutation),
+    async (db) => {
+      await db.mutationQueue.put(mutation)
+
+      if (options.optimisticItem) {
+        await db.cachedItems.put({
+          item: options.optimisticItem,
+          itemId: options.optimisticItem.id,
+          key: createCachedShoppingListItemKey(
+            input.workspaceId,
+            options.optimisticItem.id,
+          ),
+          updatedAt: now,
+          workspaceId: input.workspaceId,
+        })
+      } else if (options.removeCachedItemId) {
+        await db.cachedItems.delete(
+          createCachedShoppingListItemKey(
+            input.workspaceId,
+            options.removeCachedItemId,
+          ),
+        )
+      }
+
+      return mutation
+    },
   )
 
   return stored ?? null

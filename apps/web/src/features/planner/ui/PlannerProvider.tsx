@@ -96,7 +96,11 @@ function PlannerTaskActionSnackbarContent({
   function handleSnackbarPointerDown(
     event: PointerEvent<HTMLDivElement>,
   ): void {
-    if (event.button !== 0) {
+    if (
+      event.button !== 0 ||
+      (event.target instanceof Element &&
+        event.target.closest('button, a, input, select, textarea'))
+    ) {
       return
     }
 

@@ -5,11 +5,13 @@ import styles from './TaskComposer.module.css'
 
 interface TaskComposerFooterProps {
   isSubmitDisabled: boolean
+  isSubmitting: boolean
   submitLabel: string
 }
 
 export function TaskComposerFooter({
   isSubmitDisabled,
+  isSubmitting,
   submitLabel,
 }: TaskComposerFooterProps) {
   return (
@@ -18,11 +20,16 @@ export function TaskComposerFooter({
         className={cx(styles.primaryButton, styles.footerPrimaryButton)}
         type="submit"
         disabled={isSubmitDisabled}
+        aria-busy={isSubmitting || undefined}
       >
         <span className={styles.buttonIconStrong} aria-hidden="true">
-          <PlusIcon size={16} />
+          {isSubmitting ? (
+            <span className={styles.submitSpinner} />
+          ) : (
+            <PlusIcon size={16} />
+          )}
         </span>
-        {submitLabel}
+        {isSubmitting ? 'Сохраняем…' : submitLabel}
       </button>
     </div>
   )

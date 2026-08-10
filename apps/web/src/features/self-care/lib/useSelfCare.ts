@@ -203,6 +203,8 @@ const SELF_CARE_SETTINGS_CHANGE_SCOPES: readonly SelfCareQueryScope[] = [
 const SELF_CARE_STALE_ONLY_INVALIDATION = {
   refetchType: 'none',
 } satisfies SelfCareInvalidationOptions
+const selfCareInFlightCommands = new Map<string, Promise<unknown>>()
+const selfCareCommandTails = new Map<string, Promise<void>>()
 
 export const SELF_CARE_API_UNAVAILABLE_MESSAGE =
   'Сейчас не удалось надёжно сохранить изменение. Проверь доступ к профилю или подключение и попробуй снова.'
@@ -690,6 +692,8 @@ export function useCreateSelfCareItem() {
       skipInvalidation:
         normalizeCreateItemVariables(variables).skipInvalidation,
     }),
+    getPendingKey: (variables) =>
+      `create_item:${serializeSelfCareCommandKey(normalizeCreateItemVariables(variables))}`,
     scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
     selectResult: selectItemResult,
   })
@@ -738,6 +742,8 @@ export function useCreateSelfCareItemFromTemplate() {
         type: 'create_item_from_template',
       }
     },
+    getPendingKey: ({ templateId }) =>
+      `create_item_from_template:${templateId}`,
     scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
     selectResult: selectItemResult,
   })
@@ -797,6 +803,11 @@ export function useUpdateSelfCareItem() {
     getInvalidationOptions: (variables: ItemUpdateVariables) => ({
       skipInvalidation: variables.skipInvalidation,
     }),
+    getPendingKey: (variables: ItemUpdateVariables) =>
+      `update_item:${variables.itemId}:${serializeSelfCareCommandKey({
+        input: variables.input,
+        scheduleInput: variables.scheduleInput,
+      })}`,
     scopes: SELF_CARE_ITEM_CHANGE_SCOPES,
     selectResult: selectItemResult,
   })
@@ -867,6 +878,7 @@ export function useCompleteSelfCareOccurrence() {
         type: 'complete_occurrence',
       }
     },
+    getPendingKey: ({ occurrenceId }) => `complete_occurrence:${occurrenceId}`,
     invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
     scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
     selectResult: selectCompletionResult,
@@ -904,6 +916,7 @@ export function useCompleteSelfCareItemNow() {
       itemId,
       type: 'complete_item_now',
     }),
+    getPendingKey: ({ itemId }) => `complete_item_now:${itemId}`,
     invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
     scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
     selectResult: selectCompletionResult,
@@ -922,6 +935,8 @@ export function useUpdateSelfCareCompletion() {
       input,
       type: 'update_completion',
     }),
+    getPendingKey: ({ completionId, input }) =>
+      `update_completion:${completionId}:${serializeSelfCareCommandKey(input)}`,
     scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
     selectResult: selectCompletionResult,
   })
@@ -940,6 +955,7 @@ export function useCompleteSelfCareFlexibleGoal() {
       itemId,
       type: 'complete_flexible_goal',
     }),
+    getPendingKey: ({ itemId }) => `complete_flexible_goal:${itemId}`,
     invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
     scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
     selectResult: selectCompletionResult,
@@ -959,6 +975,7 @@ export function useCompleteSelfCareCourseSession() {
       itemId,
       type: 'complete_course_session',
     }),
+    getPendingKey: ({ itemId }) => `complete_course_session:${itemId}`,
     invalidationOptions: SELF_CARE_STALE_ONLY_INVALIDATION,
     scopes: SELF_CARE_COMPLETION_CHANGE_SCOPES,
     selectResult: selectCompletionResult,
@@ -1314,15 +1331,6 @@ export function canSessionQueueSelfCare(
   )
 }
 
-class SelfCareOfflineConflictError extends Error {
-  constructor() {
-    super(
-      'Данные изменились в другом месте. Обновите их и повторите изменение.',
-    )
-    this.name = 'SelfCareOfflineConflictError'
-  }
-}
-
 type SelfCareApiContext = ReturnType<typeof useSelfCareApi>
 
 interface SelfCareCommandMutationOptions<TData, TVariables> {
@@ -1342,6 +1350,7 @@ interface SelfCareCommandMutationOptions<TData, TVariables> {
   ) => unknown
   getInvalidationOptions?:
     ((variables: TVariables) => SelfCareInvalidationOptions) | undefined
+  getPendingKey?: ((variables: TVariables) => string) | undefined
   getScopes?:
     ((variables: TVariables) => readonly SelfCareQueryScope[]) | undefined
   invalidationOptions?: SelfCareInvalidationOptions | undefined
@@ -1356,39 +1365,106 @@ function useSelfCareCommandMutation<TData, TVariables>(
   const context = useSelfCareApi()
 
   return useMutation<TData, Error, TVariables>({
-    mutationFn: async (variables) => {
-      const occurredAt = new Date().toISOString()
-      const source = readSelfCareOptimisticSource(queryClient, context)
-      const command = selfCareOfflineCommandSchema.parse(
-        options.buildCommand(variables, source, occurredAt),
-      )
-      const result = await executeSelfCareCommand({
-        command,
-        context,
-        occurredAt,
-        queryClient,
-        source,
-      })
-      const scopes = options.getScopes?.(variables) ?? options.scopes ?? []
-      const invalidationOptions =
-        options.getInvalidationOptions?.(variables) ??
-        options.invalidationOptions ??
-        SELF_CARE_STALE_ONLY_INVALIDATION
+    mutationFn: (variables) => {
+      const pendingKey = options.getPendingKey?.(variables)
+      const scopeKey = `${context.storageWorkspaceId}:${context.actorUserId}`
+      const execute = async () => {
+        const occurredAt = new Date().toISOString()
+        const source = readSelfCareOptimisticSource(queryClient, context)
+        const command = selfCareOfflineCommandSchema.parse(
+          options.buildCommand(variables, source, occurredAt),
+        )
+        const result = await executeSelfCareCommand({
+          command,
+          context,
+          occurredAt,
+          queryClient,
+          source,
+        })
+        const scopes = options.getScopes?.(variables) ?? options.scopes ?? []
+        const invalidationOptions =
+          options.getInvalidationOptions?.(variables) ??
+          options.invalidationOptions ??
+          SELF_CARE_STALE_ONLY_INVALIDATION
 
-      queueSelfCareInvalidationUnlessSkipped(
-        queryClient,
-        context.workspaceId,
-        scopes,
-        invalidationOptions,
-      )
-      const selected = options.selectResult(result)
-      await options.afterResult?.(selected, {
-        queryClient,
-        storageWorkspaceId: context.storageWorkspaceId,
-      })
-      return selected
+        queueSelfCareInvalidationUnlessSkipped(
+          queryClient,
+          context.workspaceId,
+          scopes,
+          invalidationOptions,
+        )
+        const selected = options.selectResult(result)
+        await options.afterResult?.(selected, {
+          queryClient,
+          storageWorkspaceId: context.storageWorkspaceId,
+        })
+        return selected
+      }
+
+      return pendingKey
+        ? runSelfCareCommandOnce(`${scopeKey}:${pendingKey}`, () =>
+            runSelfCareCommandSerially(scopeKey, execute),
+          )
+        : runSelfCareCommandSerially(scopeKey, execute)
     },
   })
+}
+
+function runSelfCareCommandOnce<T>(
+  key: string,
+  execute: () => Promise<T>,
+): Promise<T> {
+  const active = selfCareInFlightCommands.get(key)
+
+  if (active) {
+    return active as Promise<T>
+  }
+
+  const pending = execute().finally(() => {
+    if (selfCareInFlightCommands.get(key) === pending) {
+      selfCareInFlightCommands.delete(key)
+    }
+  })
+  selfCareInFlightCommands.set(key, pending)
+  return pending
+}
+
+function runSelfCareCommandSerially<T>(
+  scopeKey: string,
+  execute: () => Promise<T>,
+): Promise<T> {
+  const previous = selfCareCommandTails.get(scopeKey) ?? Promise.resolve()
+  const result = previous.catch(() => undefined).then(execute)
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  selfCareCommandTails.set(scopeKey, tail)
+  void tail.finally(() => {
+    if (selfCareCommandTails.get(scopeKey) === tail) {
+      selfCareCommandTails.delete(scopeKey)
+    }
+  })
+  return result
+}
+
+function serializeSelfCareCommandKey(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(serializeSelfCareCommandKey).join(',')}]`
+  }
+
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(
+        ([key, entry]) =>
+          `${JSON.stringify(key)}:${serializeSelfCareCommandKey(entry)}`,
+      )
+      .join(',')}}`
+  }
+
+  return JSON.stringify(value) ?? String(value)
 }
 
 async function executeSelfCareCommand(input: {
@@ -1486,43 +1562,42 @@ async function executeSelfCareCommand(input: {
     status: 'pending',
   })
 
-  let serverResult: SelfCareOfflineCommandResult | null = null
-
   if (
     context.api &&
     context.readiness.canWriteProtectedData &&
     (typeof navigator === 'undefined' || navigator.onLine !== false)
   ) {
-    await drainSelfCareOfflineQueue({
-      actorUserId: context.actorUserId,
-      api: context.api,
-      onApplied: async ({ mutation, response }) => {
-        await reconcileAcknowledgedSelfCareMutation(
-          mutation,
-          response.result,
-          context,
-        )
-
-        if (mutation.id === queued.id) {
-          serverResult = response.result
-        }
-      },
-      workspaceId: context.storageWorkspaceId,
-    })
-    await hydrateSelfCareQueriesFromCache(queryClient, context)
-
-    const remaining = await listSelfCareOfflineMutations(
-      context.storageWorkspaceId,
-      context.actorUserId,
-    )
-    const current = remaining.find((mutation) => mutation.id === queued.id)
-
-    if (current?.status === 'conflicted') {
-      throw new SelfCareOfflineConflictError()
-    }
+    scheduleSelfCareOfflineDrain(queryClient, context)
   }
 
-  return serverResult ?? optimisticResult
+  return optimisticResult
+}
+
+function scheduleSelfCareOfflineDrain(
+  queryClient: QueryClient,
+  context: SelfCareApiContext,
+): void {
+  if (!context.api) {
+    return
+  }
+
+  void drainSelfCareOfflineQueue({
+    actorUserId: context.actorUserId,
+    api: context.api,
+    onApplied: async ({ mutation, response }) => {
+      await reconcileAcknowledgedSelfCareMutation(
+        mutation,
+        response.result,
+        context,
+      )
+    },
+    workspaceId: context.storageWorkspaceId,
+  })
+    .then(() => hydrateSelfCareQueriesFromCache(queryClient, context))
+    .catch((error: unknown) => {
+      reportSelfCareOfflineStorageFailure(error)
+      console.warn('Failed to synchronize queued self-care changes.', error)
+    })
 }
 
 async function executeSelfCareCommandDirectly(

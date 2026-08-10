@@ -34,6 +34,51 @@ describe('offline planner workspace lifecycle', () => {
     await resetPlannerOfflineDatabaseForTests()
   })
 
+  it('persists a queued create and its optimistic task in one durable write', async () => {
+    const task = createTaskRecord('optimistic-create')
+
+    await expect(
+      enqueuePlannerOfflineMutation(
+        {
+          actorUserId: ACTOR_USER_ID,
+          input: createTaskInput(task.id),
+          taskId: task.id,
+          type: 'task.create',
+          workspaceId: WORKSPACE_ID,
+        },
+        { optimisticTask: task },
+      ),
+    ).resolves.not.toBeNull()
+
+    await expect(loadCachedTaskRecords(WORKSPACE_ID)).resolves.toEqual([task])
+    await expect(
+      countRetryablePlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).resolves.toBe(1)
+  })
+
+  it('persists a queued delete and removes its cached task in one durable write', async () => {
+    const task = createTaskRecord('optimistic-delete')
+    await replaceCachedTaskRecords(WORKSPACE_ID, [task])
+
+    await expect(
+      enqueuePlannerOfflineMutation(
+        {
+          actorUserId: ACTOR_USER_ID,
+          expectedVersion: task.version,
+          taskId: task.id,
+          type: 'task.delete',
+          workspaceId: WORKSPACE_ID,
+        },
+        { removeCachedTaskId: task.id },
+      ),
+    ).resolves.not.toBeNull()
+
+    await expect(loadCachedTaskRecords(WORKSPACE_ID)).resolves.toEqual([])
+    await expect(
+      countRetryablePlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).resolves.toBe(1)
+  })
+
   it('blocks stale and newly-created writes in an old tab after a cross-tab purge', async () => {
     await replaceCachedTaskRecords(WORKSPACE_ID, [createTaskRecord('before')])
     await enqueueTaskMutation('queued-before')

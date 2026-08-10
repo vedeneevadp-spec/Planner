@@ -135,6 +135,125 @@ test('registers a user and creates a task through the app shell', async ({
   await expect(page.getByText(updatedTaskTitle)).toBeHidden()
 })
 
+test('keeps desktop chain notification actions clickable', async ({ page }) => {
+  const user = createE2eUser('e2e-task-chain-notice')
+  const taskTitle = `E2E chain task ${user.suffix}`
+
+  await registerUser({ ...user, page })
+  await openTaskComposer(page)
+
+  const createTaskDialog = page.getByRole('dialog', { name: 'Новая задача' })
+  await createTaskDialog
+    .getByRole('textbox', { name: 'Задача' })
+    .fill(taskTitle)
+  await createTaskDialog
+    .getByRole('button', { name: 'Добавить задачу' })
+    .click()
+
+  await page
+    .getByRole('button', { name: `Действия с задачей ${taskTitle}` })
+    .click()
+  await page
+    .getByRole('menuitem', { exact: true, name: 'Создать следующий этап' })
+    .click()
+
+  const nextStageDialog = page.getByRole('dialog', {
+    name: 'Создать следующий этап',
+  })
+  await nextStageDialog.getByRole('button', { name: 'Создать' }).click()
+
+  const notification = page.getByRole('status')
+  await expect(notification).toContainText('Следующий этап создан')
+  await notification
+    .getByRole('button', { name: 'Закрыть уведомление' })
+    .click()
+  await expect(notification).toBeHidden()
+
+  await page.getByRole('button', { name: 'Завершить задачу' }).click()
+  await expect(notification).toContainText('Этап выполнен')
+
+  await notification
+    .getByRole('button', { name: 'Создать следующий этап' })
+    .click()
+  await expect(nextStageDialog).toBeVisible()
+  await nextStageDialog.getByRole('button', { name: 'Закрыть' }).last().click()
+
+  await notification.getByRole('button', { name: 'Завершить цепочку' }).click()
+  await expect(notification).toContainText('Цепочка завершена')
+  await notification
+    .getByRole('button', { name: 'Закрыть уведомление' })
+    .click()
+  await expect(notification).toBeHidden()
+})
+
+test('creates and edits one task offline despite repeated submits', async ({
+  context,
+  page,
+}) => {
+  const user = createE2eUser('e2e-task-offline-submit')
+  const taskTitle = `E2E offline task ${user.suffix}`
+  const updatedTaskTitle = `${taskTitle} updated`
+
+  await registerUser({ ...user, page })
+  await openTaskComposer(page)
+  await expect(page.getByRole('dialog', { name: 'Новая задача' })).toBeVisible()
+  await page.getByRole('button', { exact: true, name: 'Закрыть' }).click()
+  await context.setOffline(true)
+  await openTaskComposer(page)
+
+  const createDialog = page.getByRole('dialog', { name: 'Новая задача' })
+  await createDialog.getByRole('textbox', { name: 'Задача' }).fill(taskTitle)
+
+  await createDialog.locator('form').evaluate((form: HTMLFormElement) => {
+    form.requestSubmit()
+    form.requestSubmit()
+  })
+
+  await expect(createDialog).toBeHidden({ timeout: 2_000 })
+  await expect(page.getByText(taskTitle, { exact: true })).toHaveCount(1)
+
+  await page
+    .getByRole('button', { name: `Действия с задачей ${taskTitle}` })
+    .click()
+  await page.getByRole('menuitem', { name: 'Редактировать' }).click()
+
+  const editDialog = page.getByRole('dialog', {
+    name: 'Редактировать задачу',
+  })
+  await editDialog
+    .getByRole('textbox', { name: 'Задача' })
+    .fill(updatedTaskTitle)
+  await editDialog.locator('form').evaluate((form: HTMLFormElement) => {
+    form.requestSubmit()
+    form.requestSubmit()
+  })
+
+  await expect(editDialog).toBeHidden({ timeout: 2_000 })
+  await expect(page.getByText(taskTitle, { exact: true })).toHaveCount(0)
+  await expect(page.getByText(updatedTaskTitle, { exact: true })).toHaveCount(1)
+
+  const createSynced = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/api/v1/tasks' &&
+      response.status() === 201,
+  )
+  const updateSynced = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      /^\/api\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname) &&
+      response.ok(),
+  )
+
+  await context.setOffline(false)
+  await page.evaluate(() => window.dispatchEvent(new Event('online')))
+  await Promise.all([createSynced, updateSynced])
+
+  await page.reload()
+  await expect(page.getByText(taskTitle, { exact: true })).toHaveCount(0)
+  await expect(page.getByText(updatedTaskTitle, { exact: true })).toHaveCount(1)
+})
+
 test('deletes the current account from profile after email confirmation', async ({
   page,
 }) => {

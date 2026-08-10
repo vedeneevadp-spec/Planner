@@ -24,6 +24,7 @@ import {
   loadCachedShoppingListItems,
   removeCachedShoppingListItem,
   replaceCachedShoppingListItems,
+  type ShoppingListOfflineMutationInput,
   upsertCachedShoppingListItem,
 } from './offline-shopping-list-store'
 import {
@@ -86,10 +87,23 @@ class ShoppingListApiUnavailableError extends Error {
   }
 }
 
+class ShoppingListOfflinePersistenceError extends Error {
+  constructor(options?: ErrorOptions) {
+    super(
+      'Не удалось сохранить покупку на устройстве. Проверьте доступное место и повторите.',
+      options,
+    )
+    this.name = 'ShoppingListOfflinePersistenceError'
+  }
+}
+
 const shoppingListDrainCoordinator = createOfflineDrainCoordinator<
   string,
   ShoppingListOfflineDrainResult
 >()
+const shoppingListMutationTails = new Map<string, Promise<void>>()
+const shoppingListQueueRevisions = new Map<string, number>()
+const shoppingListCompletedDrainRevisions = new Map<string, number>()
 
 export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   const { api, session, workspaceId } = useShoppingListApi(options)
@@ -196,6 +210,7 @@ export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
     staleTime: 5_000,
   })
   const retryMutation = useMutation({
+    networkMode: 'always',
     mutationFn: async () => {
       if (api && session) {
         await drainQueuedShoppingListMutations({
@@ -239,6 +254,7 @@ export function useCreateShoppingListItem() {
   )
 
   return useMutation({
+    networkMode: 'always',
     mutationFn: async (input: string | ShoppingListItemDraft) => {
       if (!session) {
         throw new Error(
@@ -246,133 +262,161 @@ export function useCreateShoppingListItem() {
         )
       }
 
-      const itemInput = normalizeShoppingListItemDraft(input)
-      const itemId = generateUuidV7()
-      const optimisticItem = createOptimisticShoppingListItem(
-        {
-          id: itemId,
-          ...itemInput,
-        },
-        {
-          actorUserId: session.actorUserId,
-          workspaceId: session.workspaceId,
-        },
-      )
-      const previousItems =
-        queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
-        (await loadCachedShoppingListItems(session.workspaceId))
-      const existingItem = findShoppingListItemByText(
-        previousItems,
-        itemInput.text,
-      )
-
-      if (existingItem) {
-        if (isActiveShoppingListTextItem(existingItem)) {
-          return existingItem
-        }
-
-        const optimisticItem = applyShoppingListItemPatch(existingItem, {
-          status: 'new',
-        })
-
-        queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current = []) =>
-          replaceShoppingListItemRecord(current, optimisticItem),
-        )
-        await upsertCachedShoppingListItem(session.workspaceId, optimisticItem)
-
-        try {
-          const updatedItem = await requireShoppingListApi(api).updateItem(
-            existingItem.id,
-            { status: 'new' },
+      return runShoppingListMutationSerially(
+        `${session.actorUserId}:${session.workspaceId}`,
+        async () => {
+          const itemInput = normalizeShoppingListItemDraft(input)
+          const previousItems =
+            queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
+            (await loadCachedShoppingListItems(session.workspaceId))
+          const existingItem = findShoppingListItemByText(
+            previousItems,
+            itemInput.text,
           )
 
-          queryClient.setQueryData<ShoppingListItem[]>(
-            queryKey,
-            (current = []) =>
-              replaceShoppingListItemRecord(current, updatedItem),
-          )
-          await upsertCachedShoppingListItem(session.workspaceId, updatedItem)
+          if (existingItem) {
+            if (isActiveShoppingListTextItem(existingItem)) {
+              return existingItem
+            }
 
-          return updatedItem
-        } catch (error) {
-          if (shouldKeepOptimisticShoppingListMutation(error)) {
-            await enqueueShoppingListOfflineMutation({
-              actorUserId: session.actorUserId,
-              itemId: existingItem.id,
-              patch: { status: 'new' },
-              type: 'shopping.update',
-              workspaceId: session.workspaceId,
-            })
-            await refreshShoppingListOfflineStatus(
+            const patch = { status: 'new' as const }
+            const optimisticItem = applyShoppingListItemPatch(
+              existingItem,
+              patch,
+            )
+            const queued = await persistQueuedShoppingListMutation({
+              api,
+              baseItems: previousItems,
+              mutation: {
+                actorUserId: session.actorUserId,
+                itemId: existingItem.id,
+                patch,
+                type: 'shopping.update',
+                workspaceId: session.workspaceId,
+              },
+              optimisticItem,
               queryClient,
+              queryKey,
+            })
+
+            if (queued) {
+              return optimisticItem
+            }
+
+            assertShoppingListNetworkFallbackAvailable()
+            queryClient.setQueryData<ShoppingListItem[]>(
+              queryKey,
+              (current = previousItems) =>
+                replaceShoppingListItemRecord(current, optimisticItem),
+            )
+            await upsertCachedShoppingListItem(
               session.workspaceId,
-              session.actorUserId,
+              optimisticItem,
             )
 
+            try {
+              const updatedItem = await requireShoppingListApi(api).updateItem(
+                existingItem.id,
+                patch,
+              )
+
+              queryClient.setQueryData<ShoppingListItem[]>(
+                queryKey,
+                (current = []) =>
+                  replaceShoppingListItemRecord(current, updatedItem),
+              )
+              await upsertCachedShoppingListItem(
+                session.workspaceId,
+                updatedItem,
+              )
+
+              return updatedItem
+            } catch (error) {
+              await restoreShoppingListItem({
+                index: previousItems.findIndex(
+                  (item) => item.id === existingItem.id,
+                ),
+                item: existingItem,
+                queryClient,
+                queryKey,
+                workspaceId: session.workspaceId,
+              })
+
+              throw error
+            }
+          }
+
+          const itemId = generateUuidV7()
+          const optimisticItem = createOptimisticShoppingListItem(
+            {
+              id: itemId,
+              ...itemInput,
+            },
+            {
+              actorUserId: session.actorUserId,
+              workspaceId: session.workspaceId,
+            },
+          )
+          const queued = await persistQueuedShoppingListMutation({
+            api,
+            baseItems: previousItems,
+            mutation: {
+              actorUserId: session.actorUserId,
+              isFavorite: optimisticItem.isFavorite,
+              itemId,
+              priority: optimisticItem.priority,
+              shoppingCategory: optimisticItem.shoppingCategory,
+              text: optimisticItem.text,
+              type: 'shopping.create',
+              workspaceId: session.workspaceId,
+            },
+            optimisticItem,
+            queryClient,
+            queryKey,
+          })
+
+          if (queued) {
             return optimisticItem
           }
 
-          await restoreShoppingListItem({
-            index: previousItems.findIndex(
-              (item) => item.id === existingItem.id,
+          assertShoppingListNetworkFallbackAvailable()
+          queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
+            replaceShoppingListItemRecord(
+              current ?? previousItems,
+              optimisticItem,
             ),
-            item: existingItem,
-            queryClient,
-            queryKey,
-            workspaceId: session.workspaceId,
-          })
-
-          throw error
-        }
-      }
-
-      queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
-        replaceShoppingListItemRecord(current ?? previousItems, optimisticItem),
-      )
-      await upsertCachedShoppingListItem(session.workspaceId, optimisticItem)
-
-      try {
-        const createdItem = await requireShoppingListApi(api).createItem({
-          id: itemId,
-          ...itemInput,
-        })
-
-        queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current = []) =>
-          replaceShoppingListItemRecord(current, createdItem),
-        )
-        await upsertCachedShoppingListItem(session.workspaceId, createdItem)
-
-        return createdItem
-      } catch (error) {
-        if (shouldKeepOptimisticShoppingListMutation(error)) {
-          await enqueueShoppingListOfflineMutation({
-            actorUserId: session.actorUserId,
-            isFavorite: optimisticItem.isFavorite,
-            itemId,
-            priority: optimisticItem.priority,
-            shoppingCategory: optimisticItem.shoppingCategory,
-            text: optimisticItem.text,
-            type: 'shopping.create',
-            workspaceId: session.workspaceId,
-          })
-          await refreshShoppingListOfflineStatus(
-            queryClient,
+          )
+          await upsertCachedShoppingListItem(
             session.workspaceId,
-            session.actorUserId,
+            optimisticItem,
           )
 
-          return optimisticItem
-        }
+          try {
+            const createdItem = await requireShoppingListApi(api).createItem({
+              id: itemId,
+              ...itemInput,
+            })
 
-        await removeOptimisticShoppingListItem({
-          itemId,
-          queryClient,
-          queryKey,
-          workspaceId: session.workspaceId,
-        })
+            queryClient.setQueryData<ShoppingListItem[]>(
+              queryKey,
+              (current = []) =>
+                replaceShoppingListItemRecord(current, createdItem),
+            )
+            await upsertCachedShoppingListItem(session.workspaceId, createdItem)
 
-        throw error
-      }
+            return createdItem
+          } catch (error) {
+            await removeOptimisticShoppingListItem({
+              itemId,
+              queryClient,
+              queryKey,
+              workspaceId: session.workspaceId,
+            })
+
+            throw error
+          }
+        },
+      )
     },
   })
 }
@@ -386,6 +430,7 @@ export function useUpdateShoppingListItem() {
   )
 
   return useMutation({
+    networkMode: 'always',
     mutationFn: async (input: {
       itemId: string
       patch: ChaosInboxItemUpdateInput
@@ -396,65 +441,85 @@ export function useUpdateShoppingListItem() {
         )
       }
 
-      const previousItems =
-        queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
-        (await loadCachedShoppingListItems(session.workspaceId))
-      const currentItem = previousItems.find((item) => item.id === input.itemId)
-
-      if (!currentItem) {
-        throw new Error(`Shopping list item "${input.itemId}" was not found.`)
-      }
-
-      const optimisticItem = applyShoppingListItemPatch(
-        currentItem,
-        input.patch,
-      )
-
-      queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current = []) =>
-        replaceShoppingListItemRecord(current, optimisticItem),
-      )
-      await upsertCachedShoppingListItem(session.workspaceId, optimisticItem)
-
-      try {
-        const updatedItem = await requireShoppingListApi(api).updateItem(
-          input.itemId,
-          input.patch,
-        )
-
-        queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current = []) =>
-          replaceShoppingListItemRecord(current, updatedItem),
-        )
-        await upsertCachedShoppingListItem(session.workspaceId, updatedItem)
-
-        return updatedItem
-      } catch (error) {
-        if (shouldKeepOptimisticShoppingListMutation(error)) {
-          await enqueueShoppingListOfflineMutation({
-            actorUserId: session.actorUserId,
-            itemId: input.itemId,
-            patch: input.patch,
-            type: 'shopping.update',
-            workspaceId: session.workspaceId,
-          })
-          await refreshShoppingListOfflineStatus(
-            queryClient,
-            session.workspaceId,
-            session.actorUserId,
+      return runShoppingListMutationSerially(
+        `${session.actorUserId}:${session.workspaceId}`,
+        async () => {
+          const previousItems =
+            queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
+            (await loadCachedShoppingListItems(session.workspaceId))
+          const currentItem = previousItems.find(
+            (item) => item.id === input.itemId,
           )
 
-          return optimisticItem
-        }
+          if (!currentItem) {
+            throw new Error(
+              `Shopping list item "${input.itemId}" was not found.`,
+            )
+          }
 
-        await restoreShoppingListItem({
-          index: previousItems.findIndex((item) => item.id === currentItem.id),
-          item: currentItem,
-          queryClient,
-          queryKey,
-          workspaceId: session.workspaceId,
-        })
+          const optimisticItem = applyShoppingListItemPatch(
+            currentItem,
+            input.patch,
+          )
+          const queued = await persistQueuedShoppingListMutation({
+            api,
+            baseItems: previousItems,
+            mutation: {
+              actorUserId: session.actorUserId,
+              itemId: input.itemId,
+              patch: input.patch,
+              type: 'shopping.update',
+              workspaceId: session.workspaceId,
+            },
+            optimisticItem,
+            queryClient,
+            queryKey,
+          })
 
-        throw error
-      }
+          if (queued) {
+            return optimisticItem
+          }
+
+          assertShoppingListNetworkFallbackAvailable()
+          queryClient.setQueryData<ShoppingListItem[]>(
+            queryKey,
+            (current = previousItems) =>
+              replaceShoppingListItemRecord(current, optimisticItem),
+          )
+          await upsertCachedShoppingListItem(
+            session.workspaceId,
+            optimisticItem,
+          )
+
+          try {
+            const updatedItem = await requireShoppingListApi(api).updateItem(
+              input.itemId,
+              input.patch,
+            )
+
+            queryClient.setQueryData<ShoppingListItem[]>(
+              queryKey,
+              (current = []) =>
+                replaceShoppingListItemRecord(current, updatedItem),
+            )
+            await upsertCachedShoppingListItem(session.workspaceId, updatedItem)
+
+            return updatedItem
+          } catch (error) {
+            await restoreShoppingListItem({
+              index: previousItems.findIndex(
+                (item) => item.id === currentItem.id,
+              ),
+              item: currentItem,
+              queryClient,
+              queryKey,
+              workspaceId: session.workspaceId,
+            })
+
+            throw error
+          }
+        },
+      )
     },
   })
 }
@@ -468,6 +533,7 @@ export function useRemoveShoppingListItem() {
   )
 
   return useMutation({
+    networkMode: 'always',
     mutationFn: async (itemId: string) => {
       if (!session) {
         throw new Error(
@@ -475,51 +541,63 @@ export function useRemoveShoppingListItem() {
         )
       }
 
-      const previousItems =
-        queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
-        (await loadCachedShoppingListItems(session.workspaceId))
-      const previousItemIndex = previousItems.findIndex(
-        (item) => item.id === itemId,
-      )
-      const previousItem =
-        previousItemIndex >= 0 ? previousItems[previousItemIndex] : undefined
-
-      queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
-        removeShoppingListItemRecord(current ?? previousItems, itemId),
-      )
-      await removeCachedShoppingListItem(session.workspaceId, itemId)
-
-      try {
-        await requireShoppingListApi(api).removeItem(itemId)
-      } catch (error) {
-        if (shouldKeepOptimisticShoppingListMutation(error)) {
-          await enqueueShoppingListOfflineMutation({
-            actorUserId: session.actorUserId,
-            itemId,
-            type: 'shopping.delete',
-            workspaceId: session.workspaceId,
-          })
-          await refreshShoppingListOfflineStatus(
-            queryClient,
-            session.workspaceId,
-            session.actorUserId,
+      return runShoppingListMutationSerially(
+        `${session.actorUserId}:${session.workspaceId}`,
+        async () => {
+          const previousItems =
+            queryClient.getQueryData<ShoppingListItem[]>(queryKey) ??
+            (await loadCachedShoppingListItems(session.workspaceId))
+          const previousItemIndex = previousItems.findIndex(
+            (item) => item.id === itemId,
           )
+          const previousItem =
+            previousItemIndex >= 0
+              ? previousItems[previousItemIndex]
+              : undefined
 
-          return
-        }
+          if (!previousItem) {
+            return
+          }
 
-        if (previousItem) {
-          await restoreShoppingListItem({
-            index: previousItemIndex,
-            item: previousItem,
+          const queued = await persistQueuedShoppingListMutation({
+            api,
+            baseItems: previousItems,
+            mutation: {
+              actorUserId: session.actorUserId,
+              itemId,
+              type: 'shopping.delete',
+              workspaceId: session.workspaceId,
+            },
             queryClient,
             queryKey,
-            workspaceId: session.workspaceId,
+            removeCachedItemId: itemId,
           })
-        }
 
-        throw error
-      }
+          if (queued) {
+            return
+          }
+
+          assertShoppingListNetworkFallbackAvailable()
+          queryClient.setQueryData<ShoppingListItem[]>(queryKey, (current) =>
+            removeShoppingListItemRecord(current ?? previousItems, itemId),
+          )
+          await removeCachedShoppingListItem(session.workspaceId, itemId)
+
+          try {
+            await requireShoppingListApi(api).removeItem(itemId)
+          } catch (error) {
+            await restoreShoppingListItem({
+              index: previousItemIndex,
+              item: previousItem,
+              queryClient,
+              queryKey,
+              workspaceId: session.workspaceId,
+            })
+
+            throw error
+          }
+        },
+      )
     },
   })
 }
@@ -705,12 +783,184 @@ function requireShoppingListApi(
   return api
 }
 
-function shouldKeepOptimisticShoppingListMutation(error: unknown): boolean {
-  return (
-    isShoppingListOfflineStorageAvailable() &&
-    (error instanceof ShoppingListApiUnavailableError ||
-      isQueueableShoppingListMutationError(error))
+interface PersistQueuedShoppingListMutationInput {
+  api: ShoppingListApiClient | null
+  baseItems: ShoppingListItem[]
+  mutation: ShoppingListOfflineMutationInput
+  optimisticItem?: ShoppingListItem | undefined
+  queryClient: QueryClient
+  queryKey: ReturnType<typeof shoppingListQueryKey>
+  removeCachedItemId?: string | undefined
+}
+
+async function persistQueuedShoppingListMutation({
+  api,
+  baseItems,
+  mutation,
+  optimisticItem,
+  queryClient,
+  queryKey,
+  removeCachedItemId,
+}: PersistQueuedShoppingListMutationInput): Promise<boolean> {
+  if (!isShoppingListOfflineStorageAvailable()) {
+    return false
+  }
+
+  try {
+    const queuedMutation = await enqueueShoppingListOfflineMutation(mutation, {
+      optimisticItem,
+      removeCachedItemId,
+    })
+
+    if (!queuedMutation) {
+      return false
+    }
+
+    incrementShoppingListQueueRevision(
+      mutation.actorUserId,
+      mutation.workspaceId,
+    )
+
+    if (optimisticItem) {
+      queryClient.setQueryData<ShoppingListItem[]>(
+        queryKey,
+        (current = baseItems) =>
+          replaceShoppingListItemRecord(current, optimisticItem),
+      )
+    } else if (removeCachedItemId) {
+      queryClient.setQueryData<ShoppingListItem[]>(
+        queryKey,
+        (current = baseItems) =>
+          removeShoppingListItemRecord(current, removeCachedItemId),
+      )
+    }
+
+    scheduleShoppingListOfflineSync({
+      actorUserId: mutation.actorUserId,
+      api,
+      queryClient,
+      workspaceId: mutation.workspaceId,
+    })
+
+    return true
+  } catch (error) {
+    if (isBrowserOfflineNow()) {
+      throw new ShoppingListOfflinePersistenceError({ cause: error })
+    }
+
+    return false
+  }
+}
+
+function scheduleShoppingListOfflineSync(input: {
+  actorUserId: string
+  api: ShoppingListApiClient | null
+  queryClient: QueryClient
+  workspaceId: string
+}): void {
+  void refreshShoppingListOfflineStatus(
+    input.queryClient,
+    input.workspaceId,
+    input.actorUserId,
   )
+    .catch((error) => {
+      console.warn('Failed to refresh shopping offline status.', error)
+    })
+    .finally(() => {
+      if (!input.api || isBrowserOfflineNow()) {
+        return
+      }
+
+      requestQueuedShoppingListMutationDrain({
+        actorUserId: input.actorUserId,
+        api: input.api,
+        queryClient: input.queryClient,
+        workspaceId: input.workspaceId,
+      })
+    })
+}
+
+function requestQueuedShoppingListMutationDrain(input: {
+  actorUserId: string
+  api: ShoppingListApiClient
+  queryClient: QueryClient
+  workspaceId: string
+}): void {
+  const scopeKey = getShoppingListMutationScopeKey(
+    input.actorUserId,
+    input.workspaceId,
+  )
+  const requestedRevision = shoppingListQueueRevisions.get(scopeKey) ?? 0
+
+  void drainQueuedShoppingListMutations(input)
+    .then((result) => {
+      if (
+        result.failed > 0 ||
+        (shoppingListCompletedDrainRevisions.get(scopeKey) ?? 0) >=
+          requestedRevision
+      ) {
+        return result
+      }
+
+      // This request joined a drain that started before its mutation was
+      // queued. A second pass picks up that newer command.
+      return drainQueuedShoppingListMutations(input)
+    })
+    .catch((error) => {
+      console.warn('Failed to drain shopping offline mutations.', error)
+    })
+}
+
+async function runShoppingListMutationSerially<T>(
+  scopeKey: string,
+  action: () => Promise<T>,
+): Promise<T> {
+  const previousTail = shoppingListMutationTails.get(scopeKey)
+  const result = (previousTail ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(action)
+  const nextTail = result.then(
+    () => undefined,
+    () => undefined,
+  )
+
+  shoppingListMutationTails.set(scopeKey, nextTail)
+
+  try {
+    return await result
+  } finally {
+    if (shoppingListMutationTails.get(scopeKey) === nextTail) {
+      shoppingListMutationTails.delete(scopeKey)
+    }
+  }
+}
+
+function assertShoppingListNetworkFallbackAvailable(): void {
+  if (isBrowserOfflineNow()) {
+    throw new ShoppingListOfflinePersistenceError()
+  }
+}
+
+function isBrowserOfflineNow(): boolean {
+  return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+function incrementShoppingListQueueRevision(
+  actorUserId: string,
+  workspaceId: string,
+): void {
+  const scopeKey = getShoppingListMutationScopeKey(actorUserId, workspaceId)
+  shoppingListQueueRevisions.set(
+    scopeKey,
+    (shoppingListQueueRevisions.get(scopeKey) ?? 0) + 1,
+  )
+}
+
+function getShoppingListMutationScopeKey(
+  actorUserId: string,
+  workspaceId: string,
+): string {
+  return `${actorUserId}:${workspaceId}`
 }
 
 async function drainQueuedShoppingListMutations(input: {
@@ -719,41 +969,53 @@ async function drainQueuedShoppingListMutations(input: {
   queryClient: QueryClient
   workspaceId: string
 }): Promise<ShoppingListOfflineDrainResult> {
-  return shoppingListDrainCoordinator.drain(
-    `${input.actorUserId}:${input.workspaceId}`,
-    async () => {
-      const queryKey = shoppingListQueryKey(input.workspaceId)
-      const result = await drainShoppingListOfflineQueue({
-        actorUserId: input.actorUserId,
-        api: input.api,
-        onItemDeleted: (itemId) => {
-          input.queryClient.setQueryData<ShoppingListItem[]>(
-            queryKey,
-            (current = []) => removeShoppingListItemRecord(current, itemId),
-          )
-        },
-        onItemSynced: (item) => {
-          input.queryClient.setQueryData<ShoppingListItem[]>(
-            queryKey,
-            (current = []) => replaceShoppingListItemRecord(current, item),
-          )
-        },
-        workspaceId: input.workspaceId,
-      })
-
-      if (result.synced > 0 || result.conflicted > 0) {
-        await input.queryClient.invalidateQueries({ queryKey })
-      }
-
-      await refreshShoppingListOfflineStatus(
-        input.queryClient,
-        input.workspaceId,
-        input.actorUserId,
-      )
-
-      return result
-    },
+  const scopeKey = getShoppingListMutationScopeKey(
+    input.actorUserId,
+    input.workspaceId,
   )
+
+  return shoppingListDrainCoordinator.drain(scopeKey, async () => {
+    const drainRevision = shoppingListQueueRevisions.get(scopeKey) ?? 0
+    const queryKey = shoppingListQueryKey(input.workspaceId)
+    const result = await drainShoppingListOfflineQueue({
+      actorUserId: input.actorUserId,
+      api: input.api,
+      onItemDeleted: (itemId) => {
+        input.queryClient.setQueryData<ShoppingListItem[]>(
+          queryKey,
+          (current = []) => removeShoppingListItemRecord(current, itemId),
+        )
+      },
+      onItemSynced: (item) => {
+        input.queryClient.setQueryData<ShoppingListItem[]>(
+          queryKey,
+          (current = []) => replaceShoppingListItemRecord(current, item),
+        )
+      },
+      workspaceId: input.workspaceId,
+    })
+
+    if (result.synced > 0 || result.conflicted > 0) {
+      void input.queryClient.invalidateQueries({ queryKey }).catch((error) => {
+        console.warn('Failed to refresh the synced shopping list.', error)
+      })
+    }
+
+    await refreshShoppingListOfflineStatus(
+      input.queryClient,
+      input.workspaceId,
+      input.actorUserId,
+    )
+    shoppingListCompletedDrainRevisions.set(
+      scopeKey,
+      Math.max(
+        shoppingListCompletedDrainRevisions.get(scopeKey) ?? 0,
+        drainRevision,
+      ),
+    )
+
+    return result
+  })
 }
 
 async function refreshShoppingListOfflineStatus(

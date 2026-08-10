@@ -78,6 +78,7 @@ export function TaskComposer({
   const openButtonRef = useRef<HTMLButtonElement>(null)
   const openDraftRequestIdRef = useRef<string | null>(null)
   const reminderAvailabilityRef = useRef(false)
+  const submitLockRef = useRef(false)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const plannerTimeZone = usePlannerTimeZone()
   const todayKey = getTodayDate(plannerTimeZone)
@@ -109,6 +110,7 @@ export function TaskComposer({
     TaskReminderOffsetMinutes[]
   >([])
   const [note, setNote] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     if (!isOpen) {
@@ -155,7 +157,7 @@ export function TaskComposer({
     })
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !submitLockRef.current) {
         setIsOpen(false)
       }
     }
@@ -341,6 +343,10 @@ export function TaskComposer({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
+    if (submitLockRef.current || createHabitMutation.isPending) {
+      return
+    }
+
     if (isHabitTaskType) {
       const habitInput = buildCurrentHabitInput()
 
@@ -348,9 +354,17 @@ export function TaskComposer({
         return
       }
 
-      await createHabitMutation.mutateAsync(habitInput)
-      resetForm()
-      setIsOpen(false)
+      submitLockRef.current = true
+      setIsSubmitting(true)
+
+      try {
+        await createHabitMutation.mutateAsync(habitInput)
+        resetForm()
+        setIsOpen(false)
+      } finally {
+        submitLockRef.current = false
+        setIsSubmitting(false)
+      }
 
       return
     }
@@ -361,22 +375,41 @@ export function TaskComposer({
       return
     }
 
-    const isCreated = await addTask(input)
-
-    if (!isCreated) {
-      return
-    }
+    submitLockRef.current = true
+    setIsSubmitting(true)
+    let isCreated = false
 
     try {
-      await onTaskCreated?.(input)
-    } finally {
+      isCreated = await addTask(input)
+
+      if (!isCreated) {
+        return
+      }
+
       resetForm()
       setIsOpen(false)
+    } finally {
+      submitLockRef.current = false
+      setIsSubmitting(false)
+    }
+
+    if (isCreated) {
+      await onTaskCreated?.(input)
     }
   }
 
   function openComposer() {
+    if (submitLockRef.current) {
+      return
+    }
+
     setIsOpen(true)
+  }
+
+  function closeComposer() {
+    if (!submitLockRef.current) {
+      setIsOpen(false)
+    }
   }
 
   return (
@@ -399,13 +432,15 @@ export function TaskComposer({
               role="dialog"
               aria-modal="true"
               aria-labelledby={titleId}
+              aria-busy={isSubmitting || undefined}
             >
               <button
                 className={styles.backdropButton}
                 type="button"
                 tabIndex={-1}
                 aria-label="Закрыть окно создания задачи"
-                onClick={() => setIsOpen(false)}
+                disabled={isSubmitting}
+                onClick={closeComposer}
               />
 
               <form
@@ -415,15 +450,17 @@ export function TaskComposer({
                 }}
               >
                 <TaskComposerModalHeader
+                  isCloseDisabled={isSubmitting}
                   isSubmitDisabled={
-                    !title.trim() || createHabitMutation.isPending
+                    !title.trim() ||
+                    isSubmitting ||
+                    createHabitMutation.isPending
                   }
+                  isSubmitting={isSubmitting}
                   submitLabel={submitLabel}
                   title={composerTitle}
                   titleId={titleId}
-                  onClose={() => {
-                    setIsOpen(false)
-                  }}
+                  onClose={closeComposer}
                 />
 
                 <div className={styles.formScroller}>
@@ -484,7 +521,12 @@ export function TaskComposer({
                   </div>
 
                   <TaskComposerFooter
-                    isSubmitDisabled={createHabitMutation.isPending}
+                    isSubmitDisabled={
+                      !title.trim() ||
+                      isSubmitting ||
+                      createHabitMutation.isPending
+                    }
+                    isSubmitting={isSubmitting}
                     submitLabel={submitLabel}
                   />
                 </div>
