@@ -272,6 +272,38 @@ describe('SelfCarePage states', () => {
     )
   })
 
+  it('keeps cached care editable while server authorization is deferred', async () => {
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createSessionFeatureReadiness(
+        createReadiness({
+          canUseProtectedApi: false,
+          canWriteProtectedData: false,
+          reason: 'auth_deferred',
+          status: 'offlineWithCache',
+        }),
+      ),
+    )
+
+    renderPage('/self-care?selfCareAction=care&selfCareActionRequest=custom')
+
+    expect(screen.getByText('Нет подключения')).toBeVisible()
+    expect(
+      screen.getByText(
+        'Сохранённые данные доступны. Новые изменения останутся на устройстве и отправятся после восстановления связи.',
+      ),
+    ).toBeVisible()
+    expect(
+      screen.queryByText('Изменения временно недоступны'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('today-tab')).toHaveAttribute(
+      'data-read-only',
+      'false',
+    )
+    expect(
+      await screen.findByRole('dialog', { name: 'Создать свою заботу' }),
+    ).toBeVisible()
+  })
+
   it('keeps the Today core cache visible when an auxiliary scope fails', () => {
     mocks.useSelfCarePageData.mockReturnValue(
       createPageData({

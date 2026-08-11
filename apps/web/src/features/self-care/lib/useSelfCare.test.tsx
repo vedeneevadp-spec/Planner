@@ -391,6 +391,114 @@ describe('self-care persistent reads and offline commands', () => {
     })
   })
 
+  describe('cached-only command recovery', () => {
+    it('hydrates the confirmed actor cache before completing a visible item', async () => {
+      browserOnline = false
+      const dashboard = createDashboard()
+      const list = createList()
+      const lastSuccessfulSyncAt = '2026-06-18T08:30:00.000Z'
+
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'dashboard',
+        createSelfCareCacheKey('dashboard', [DATE]),
+        dashboard,
+        lastSuccessfulSyncAt,
+      )
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'items',
+        createSelfCareCacheKey('items'),
+        list,
+        lastSuccessfulSyncAt,
+      )
+      mocks.useSessionFeatureReadiness.mockReturnValue(
+        createReadinessStub({
+          apiConfig: null,
+          isApiEnabled: false,
+          readiness: { canWriteProtectedData: false },
+        }),
+      )
+
+      const mutation = renderHook(() => useCompleteSelfCareItemNow(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+
+      await act(async () => {
+        await mutation.result.current.mutateAsync({
+          input: createRitualCompletionInput('Сделано из кэша'),
+          itemId: ITEM_ID,
+        })
+      })
+
+      const [queued] = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued?.command).toMatchObject({
+        expectedVersion: 7,
+        input: { note: 'Сделано из кэша' },
+        itemId: ITEM_ID,
+        type: 'complete_item_now',
+      })
+      expect(
+        queryClient.getQueryData(selfCareDashboardQueryKey(OWNER_ID, DATE)),
+      ).toBeDefined()
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+    })
+
+    it('projects a created item into a cached-only list immediately', async () => {
+      browserOnline = false
+      const lastSuccessfulSyncAt = '2026-06-18T08:30:00.000Z'
+
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'dashboard',
+        createSelfCareCacheKey('dashboard', [DATE]),
+        createDashboard(),
+        lastSuccessfulSyncAt,
+      )
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'items',
+        createSelfCareCacheKey('items'),
+        createList(),
+        lastSuccessfulSyncAt,
+      )
+      mocks.useSessionFeatureReadiness.mockReturnValue(
+        createReadinessStub({
+          apiConfig: null,
+          isApiEnabled: false,
+          readiness: { canWriteProtectedData: false },
+        }),
+      )
+      const mutation = renderHook(() => useCreateSelfCareItem(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+
+      await act(async () => {
+        await mutation.result.current.mutateAsync({
+          input: { ...createItemInput(), title: 'Новая офлайн-забота' },
+        })
+      })
+
+      const visibleList = queryClient.getQueryData<SelfCareListResponse>(
+        selfCareItemsQueryKey(OWNER_ID),
+      )
+      expect(
+        visibleList?.items.some((item) => item.title === 'Новая офлайн-забота'),
+      ).toBe(true)
+      expect(
+        await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+      ).toHaveLength(1)
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+    })
+  })
+
   describe('all page mutation commands', () => {
     const scenarios = createCommandScenarios()
 
@@ -412,6 +520,216 @@ describe('self-care persistent reads and offline commands', () => {
         expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
       })
     }
+  })
+
+  describe('responsive queued writes while the browser still reports online', () => {
+    it('creates one item and resolves before the stalled request', async () => {
+      seedSelfCareSource(queryClient)
+      const response =
+        createDeferred<
+          Awaited<ReturnType<SelfCareApiClient['executeOfflineCommand']>>
+        >()
+      let request: SelfCareOfflineCommandRequest | undefined
+      let requestReleased = false
+      vi.mocked(selfCareApi.executeOfflineCommand).mockImplementation(
+        (input) => {
+          request = input
+          return response.promise
+        },
+      )
+      const mutation = renderHook(() => useCreateSelfCareItem(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+      const variables = { input: createItemInput() }
+      let first!: Promise<SelfCareItem>
+      let duplicate!: Promise<SelfCareItem>
+
+      act(() => {
+        first = mutation.result.current.mutateAsync(variables)
+        duplicate = mutation.result.current.mutateAsync({
+          input: { ...variables.input },
+        })
+      })
+
+      await act(async () => {
+        const results = await Promise.all([first, duplicate])
+        expect(results[0]?.id).toBe(results[1]?.id)
+      })
+      expect(requestReleased).toBe(false)
+      await waitFor(() => {
+        expect(selfCareApi.executeOfflineCommand).toHaveBeenCalledOnce()
+      })
+      const [queued] = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued).toBeDefined()
+
+      requestReleased = true
+      response.resolve({
+        operationId: request!.operationId,
+        replayed: false,
+        result: queued!.optimisticResult,
+      })
+      await waitFor(async () => {
+        expect(
+          await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+        ).toEqual([])
+      })
+    })
+
+    it('edits one item and resolves before the stalled request', async () => {
+      seedSelfCareSource(queryClient)
+      const response =
+        createDeferred<
+          Awaited<ReturnType<SelfCareApiClient['executeOfflineCommand']>>
+        >()
+      let request: SelfCareOfflineCommandRequest | undefined
+      let requestReleased = false
+      vi.mocked(selfCareApi.executeOfflineCommand).mockImplementation(
+        (input) => {
+          request = input
+          return response.promise
+        },
+      )
+      const mutation = renderHook(() => useUpdateSelfCareItem(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+      const variables = {
+        input: { title: 'Обновлённая забота' },
+        itemId: ITEM_ID,
+      }
+      let first!: Promise<SelfCareItem>
+      let duplicate!: Promise<SelfCareItem>
+
+      act(() => {
+        first = mutation.result.current.mutateAsync(variables)
+        duplicate = mutation.result.current.mutateAsync({
+          input: { ...variables.input },
+          itemId: variables.itemId,
+        })
+      })
+
+      await act(async () => {
+        const results = await Promise.all([first, duplicate])
+        expect(results[0]?.title).toBe('Обновлённая забота')
+        expect(results[1]?.title).toBe('Обновлённая забота')
+      })
+      expect(requestReleased).toBe(false)
+      await waitFor(() => {
+        expect(selfCareApi.executeOfflineCommand).toHaveBeenCalledOnce()
+      })
+      const [queued] = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued).toBeDefined()
+
+      requestReleased = true
+      response.resolve({
+        operationId: request!.operationId,
+        replayed: false,
+        result: queued!.optimisticResult,
+      })
+      await waitFor(async () => {
+        expect(
+          await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+        ).toEqual([])
+      })
+    })
+
+    it('serializes distinct offline edits so the second one depends on the first projection', async () => {
+      browserOnline = false
+      seedSelfCareSource(queryClient)
+      const mutation = renderHook(() => useUpdateSelfCareItem(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+      let first!: Promise<SelfCareItem>
+      let second!: Promise<SelfCareItem>
+
+      act(() => {
+        first = mutation.result.current.mutateAsync({
+          input: { title: 'Сначала вода' },
+          itemId: ITEM_ID,
+        })
+        second = mutation.result.current.mutateAsync({
+          input: { title: 'Потом витамины' },
+          itemId: ITEM_ID,
+        })
+      })
+
+      await act(async () => {
+        await Promise.all([first, second])
+      })
+      const queued = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued).toHaveLength(2)
+      expect(queued[0]?.command).toMatchObject({ expectedVersion: 7 })
+      expect(queued[1]?.command).toMatchObject({ expectedVersion: 8 })
+      expect(queued[1]?.dependsOn).toEqual([queued[0]!.id])
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+    })
+
+    it('records one completion and resolves before the stalled request', async () => {
+      seedSelfCareSource(queryClient)
+      const response =
+        createDeferred<
+          Awaited<ReturnType<SelfCareApiClient['executeOfflineCommand']>>
+        >()
+      let request: SelfCareOfflineCommandRequest | undefined
+      let requestReleased = false
+      vi.mocked(selfCareApi.executeOfflineCommand).mockImplementation(
+        (input) => {
+          request = input
+          return response.promise
+        },
+      )
+      const mutation = renderHook(() => useCompleteSelfCareOccurrence(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+      const variables = {
+        input: createRitualCompletionInput('Готово'),
+        occurrenceId: OCCURRENCE_ID,
+      }
+      let first!: Promise<SelfCareCompletion>
+      let duplicate!: Promise<SelfCareCompletion>
+
+      act(() => {
+        first = mutation.result.current.mutateAsync(variables)
+        duplicate = mutation.result.current.mutateAsync({
+          input: { ...variables.input },
+          occurrenceId: variables.occurrenceId,
+        })
+      })
+
+      await act(async () => {
+        const results = await Promise.all([first, duplicate])
+        expect(results[0]?.id).toBe(results[1]?.id)
+      })
+      expect(requestReleased).toBe(false)
+      await waitFor(() => {
+        expect(selfCareApi.executeOfflineCommand).toHaveBeenCalledOnce()
+      })
+      const [queued] = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued).toBeDefined()
+
+      requestReleased = true
+      response.resolve({
+        operationId: request!.operationId,
+        replayed: false,
+        result: queued!.optimisticResult,
+      })
+      await waitFor(async () => {
+        expect(
+          await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+        ).toEqual([])
+      })
+    })
   })
 
   describe('outbox lifecycle and reconciliation', () => {
@@ -686,12 +1004,16 @@ describe('self-care persistent reads and offline commands', () => {
         ).resolves.toMatchObject({ settings: { currency: 'USD', version: 6 } })
       })
 
-      expect(selfCareApi.executeOfflineCommand).toHaveBeenCalledWith(
-        expect.objectContaining({ clientTimeZone: CLIENT_TIME_ZONE }),
-      )
-      expect(
-        await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
-      ).toEqual([])
+      await waitFor(() => {
+        expect(selfCareApi.executeOfflineCommand).toHaveBeenCalledWith(
+          expect.objectContaining({ clientTimeZone: CLIENT_TIME_ZONE }),
+        )
+      })
+      await waitFor(async () => {
+        expect(
+          await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+        ).toEqual([])
+      })
       expect(
         queryClient.getQueryData<SelfCareSettingsResponse>(
           selfCareSettingsQueryKey(OWNER_ID),
@@ -733,7 +1055,14 @@ describe('self-care persistent reads and offline commands', () => {
           occurrenceId: OCCURRENCE_ID,
         })
       })
-      expect(requests).toHaveLength(1)
+      await waitFor(() => {
+        expect(requests).toHaveLength(1)
+      })
+      await waitFor(async () => {
+        expect(
+          await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+        ).toEqual([expect.objectContaining({ status: 'failed' })])
+      })
       const firstOperationId = requests[0]!.operationId
 
       browserOnline = false
@@ -948,7 +1277,7 @@ describe('self-care persistent reads and offline commands', () => {
       await act(async () => {
         await expect(
           hooks.result.current.mutation.mutateAsync({ currency: 'USD' }),
-        ).rejects.toMatchObject({ name: 'SelfCareOfflineConflictError' })
+        ).resolves.toMatchObject({ settings: { currency: 'USD' } })
       })
       await waitFor(() => {
         expect(hooks.result.current.queue.conflicted).toBe(1)
@@ -969,7 +1298,7 @@ describe('self-care persistent reads and offline commands', () => {
       await act(async () => {
         await expect(
           hooks.result.current.mutation.mutateAsync({ currency: 'EUR' }),
-        ).rejects.toMatchObject({ name: 'SelfCareOfflineConflictError' })
+        ).resolves.toMatchObject({ settings: { currency: 'EUR' } })
       })
       await waitFor(() => {
         expect(hooks.result.current.queue.conflicted).toBe(1)
@@ -1743,6 +2072,17 @@ function createSettingsResult(
       settings: createSettings({ currency, version }),
     },
   }
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+
+  return { promise, reject, resolve }
 }
 
 function deferNextDexieTransaction(): {

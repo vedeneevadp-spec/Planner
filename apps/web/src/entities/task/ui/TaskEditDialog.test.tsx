@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -169,4 +170,91 @@ describe('TaskEditDialog', () => {
       )
     })
   })
+
+  it('submits a slow edit once and exposes its pending state', async () => {
+    const deferred = createDeferred<boolean>()
+    const onClose = vi.fn()
+    const onUpdate = vi.fn(() => deferred.promise)
+
+    render(
+      <TaskEditDialog
+        currentActorUserId="user-1"
+        todayKey="2026-05-19"
+        task={createTask()}
+        spheres={[]}
+        uploadedIcons={[]}
+        onClose={onClose}
+        onUpdate={onUpdate}
+      />,
+    )
+
+    const dialog = screen.getByRole('dialog', {
+      name: 'Редактировать задачу',
+    })
+    const form = dialog.querySelector('form')
+    expect(form).not.toBeNull()
+
+    act(() => {
+      form!.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }),
+      )
+      form!.dispatchEvent(
+        new Event('submit', { bubbles: true, cancelable: true }),
+      )
+    })
+
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+    expect(dialog).toHaveAttribute('aria-busy', 'true')
+    expect(
+      screen.getAllByRole('button', { name: 'Сохраняем…' }),
+    ).not.toHaveLength(0)
+    expect(screen.getByRole('button', { name: 'Закрыть' })).toBeDisabled()
+
+    await act(async () => {
+      deferred.resolve(true)
+      await deferred.promise
+    })
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('unlocks editing after a rejected local update', async () => {
+    const onUpdate = vi.fn(() => Promise.resolve(false))
+
+    render(
+      <TaskEditDialog
+        currentActorUserId="user-1"
+        todayKey="2026-05-19"
+        task={createTask()}
+        spheres={[]}
+        uploadedIcons={[]}
+        onClose={vi.fn()}
+        onUpdate={onUpdate}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Сохранить' }).at(-1)!,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole('button', { name: 'Сохранить' }).at(-1),
+      ).toBeEnabled()
+    })
+    expect(
+      screen.getByRole('dialog', { name: 'Редактировать задачу' }),
+    ).toBeInTheDocument()
+  })
 })
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve
+  })
+
+  return { promise, resolve }
+}

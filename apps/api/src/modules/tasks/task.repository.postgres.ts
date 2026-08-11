@@ -389,7 +389,7 @@ export class PostgresTaskRepository implements TaskRepository {
     command: CreateTaskNextStageCommand,
   ): Promise<TaskNextStageResult> {
     const now = new Date().toISOString()
-    const nextTaskId = generateUuidV7()
+    const nextTaskId = command.input.nextTaskId ?? generateUuidV7()
 
     return withWriteTransaction(
       this.db,
@@ -401,6 +401,7 @@ export class PostgresTaskRepository implements TaskRepository {
           .where('id', '=', command.taskId)
           .where('workspace_id', '=', command.context.workspaceId)
           .where('deleted_at', 'is', null)
+          .forUpdate()
           .executeTakeFirst()
 
         if (!sourceTaskRow) {
@@ -439,7 +440,8 @@ export class PostgresTaskRepository implements TaskRepository {
           assigneeDisplayName,
           await loadUserDisplayName(trx, sourceTaskRow.created_by),
         )
-        const chainId = sourceTaskRow.chain_id ?? generateUuidV7()
+        const chainId =
+          sourceTaskRow.chain_id ?? command.input.chainId ?? generateUuidV7()
         const currentStageIndex = sourceTaskRow.stage_index ?? 1
         const currentStageType = sourceTaskRow.stage_type ?? 'task'
 

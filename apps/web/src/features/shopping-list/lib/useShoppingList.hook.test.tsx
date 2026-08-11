@@ -26,12 +26,16 @@ vi.mock('@/features/session', async (importOriginal) => {
 })
 
 import {
+  countRetryableShoppingListOfflineMutations,
   enqueueShoppingListOfflineMutation,
+  loadCachedShoppingListItems,
   markShoppingListOfflineMutationConflicted,
+  replaceCachedShoppingListItems,
   resetShoppingListOfflineDatabaseForTests,
 } from './offline-shopping-list-store'
 import {
   useCreateShoppingListItem,
+  useRemoveShoppingListItem,
   useShoppingListSummary,
   useShoppingListSyncStatus,
   useUpdateShoppingListItem,
@@ -52,6 +56,7 @@ describe('useShoppingList hooks', () => {
   afterEach(async () => {
     cleanup()
     await resetShoppingListOfflineDatabaseForTests()
+    vi.restoreAllMocks()
     vi.unstubAllGlobals()
     mocks.useSessionFeatureReadiness.mockReset()
   })
@@ -117,33 +122,51 @@ describe('useShoppingList hooks', () => {
   })
 
   it('creates a shopping item with normalized API payload', async () => {
-    const createdItem = createShoppingItemRecord({
-      id: 'item-created',
-      isFavorite: true,
-      priority: 'high',
-      shoppingCategory: 'groceries',
-      text: 'Сыр',
-    })
+    fetchMock.mockImplementationOnce((_url, init) => {
+      const body = parseRequestBody<{
+        items: Array<{ id: string }>
+      }>(init)
 
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        items: [createdItem],
-      }),
-    )
+      return Promise.resolve(
+        jsonResponse({
+          items: [
+            createShoppingItemRecord({
+              id: body.items[0]!.id,
+              isFavorite: true,
+              priority: 'high',
+              shoppingCategory: 'groceries',
+              text: 'Сыр',
+            }),
+          ],
+        }),
+      )
+    })
 
     const { result } = renderHook(() => useCreateShoppingListItem(), {
       wrapper: createQueryWrapper(),
     })
 
+    let optimisticItem: ChaosInboxItemRecord | undefined
+
     await act(async () => {
-      await expect(
-        result.current.mutateAsync({
-          isFavorite: true,
-          priority: 'high',
-          shoppingCategory: 'groceries',
-          text: '  сыр  ',
-        }),
-      ).resolves.toEqual(createdItem)
+      optimisticItem = await result.current.mutateAsync({
+        isFavorite: true,
+        priority: 'high',
+        shoppingCategory: 'groceries',
+        text: '  сыр  ',
+      })
+    })
+
+    expect(optimisticItem).toMatchObject({
+      isFavorite: true,
+      priority: 'high',
+      shoppingCategory: 'groceries',
+      status: 'new',
+      text: 'Сыр',
+    })
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1)
     })
 
     const [url, init] = fetchMock.mock.calls[0]!
@@ -164,6 +187,37 @@ describe('useShoppingList hooks', () => {
       text: 'Сыр',
     })
     expect(typeof body.items[0]?.id).toBe('string')
+    expect(body.items[0]?.id).toBe(optimisticItem?.id)
+    await waitFor(async () => {
+      expect(
+        await countRetryableShoppingListOfflineMutations('workspace-1'),
+      ).toBe(0)
+    })
+  })
+
+  it('creates one durable item for concurrent duplicate submissions while offline', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    const { result } = renderHook(() => useCreateShoppingListItem(), {
+      wrapper: createQueryWrapper(),
+    })
+    let createdItems: ChaosInboxItemRecord[] = []
+
+    await act(async () => {
+      createdItems = await Promise.all([
+        result.current.mutateAsync('молоко'),
+        result.current.mutateAsync('  Молоко  '),
+      ])
+    })
+
+    expect(createdItems[0]?.id).toBe(createdItems[1]?.id)
+    expect(await loadCachedShoppingListItems('workspace-1')).toHaveLength(1)
+    expect(
+      await countRetryableShoppingListOfflineMutations('workspace-1'),
+    ).toBe(1)
+    expect(fetchMock).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(result.current.isPending).toBe(false)
+    })
   })
 
   it('does not create a duplicate active shopping item', async () => {
@@ -220,6 +274,14 @@ describe('useShoppingList hooks', () => {
     let resolveUpdateResponse: ((response: Response) => void) | undefined
 
     fetchMock
+      .mockResolvedValue(
+        jsonResponse({
+          items: [archivedItem],
+          limit: 200,
+          page: 1,
+          total: 1,
+        }),
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           items: [activeItem],
@@ -249,8 +311,10 @@ describe('useShoppingList hooks', () => {
       expect(result.current.summary.activeItemCount).toBe(1)
     })
 
-    act(() => {
-      result.current.updateItem.mutate({
+    let optimisticItem: ChaosInboxItemRecord | undefined
+
+    await act(async () => {
+      optimisticItem = await result.current.updateItem.mutateAsync({
         itemId: activeItem.id,
         patch: {
           priority: null,
@@ -259,10 +323,15 @@ describe('useShoppingList hooks', () => {
       })
     })
 
+    expect(optimisticItem?.status).toBe('archived')
     await waitFor(() => {
       expect(result.current.summary.activeItemCount).toBe(0)
     })
-    expect(result.current.updateItem.isPending).toBe(true)
+    expect(result.current.updateItem.isPending).toBe(false)
+
+    await waitFor(() => {
+      expect(resolveUpdateResponse).toBeTypeOf('function')
+    })
 
     const resolveUpdate = resolveUpdateResponse
 
@@ -273,8 +342,57 @@ describe('useShoppingList hooks', () => {
     act(() => {
       resolveUpdate(jsonResponse(archivedItem))
     })
+    await waitFor(async () => {
+      expect(
+        await countRetryableShoppingListOfflineMutations('workspace-1'),
+      ).toBe(0)
+    })
+  })
+
+  it('updates and removes cached shopping items without waiting for the network while offline', async () => {
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
+    const activeItem = createShoppingItemRecord({
+      id: 'item-offline',
+      status: 'new',
+      text: 'Молоко',
+    })
+    await replaceCachedShoppingListItems('workspace-1', [activeItem])
+    const { queryClient, wrapper } = createQueryHarness()
+    queryClient.setQueryData(['shopping-list', 'workspace-1'], [activeItem])
+    const { result } = renderHook(
+      () => ({
+        removeItem: useRemoveShoppingListItem(),
+        updateItem: useUpdateShoppingListItem(),
+      }),
+      { wrapper },
+    )
+
+    await act(async () => {
+      await expect(
+        result.current.updateItem.mutateAsync({
+          itemId: activeItem.id,
+          patch: { priority: 'high' },
+        }),
+      ).resolves.toMatchObject({ priority: 'high' })
+    })
+    expect(
+      (await loadCachedShoppingListItems('workspace-1'))[0]?.priority,
+    ).toBe('high')
+
+    await act(async () => {
+      await Promise.all([
+        result.current.removeItem.mutateAsync(activeItem.id),
+        result.current.removeItem.mutateAsync(activeItem.id),
+      ])
+    })
+
+    expect(await loadCachedShoppingListItems('workspace-1')).toEqual([])
+    expect(
+      await countRetryableShoppingListOfflineMutations('workspace-1'),
+    ).toBe(2)
+    expect(fetchMock).not.toHaveBeenCalled()
     await waitFor(() => {
-      expect(result.current.updateItem.isSuccess).toBe(true)
+      expect(result.current.removeItem.isPending).toBe(false)
     })
   })
 
@@ -326,6 +444,14 @@ describe('useShoppingList hooks', () => {
     }
 
     fetchMock
+      .mockResolvedValue(
+        jsonResponse({
+          items: [reactivatedItem],
+          limit: 200,
+          page: 1,
+          total: 1,
+        }),
+      )
       .mockResolvedValueOnce(
         jsonResponse({
           items: [completedItem],
@@ -350,13 +476,29 @@ describe('useShoppingList hooks', () => {
       expect(result.current.summary.totalItemCount).toBe(1)
     })
 
+    let optimisticItem: ChaosInboxItemRecord | undefined
+
     await act(async () => {
-      await expect(
-        result.current.createItem.mutateAsync('хлеб'),
-      ).resolves.toEqual(reactivatedItem)
+      optimisticItem = await result.current.createItem.mutateAsync('хлеб')
     })
 
-    const [url, init] = fetchMock.mock.calls[1]!
+    expect(optimisticItem).toMatchObject({
+      id: completedItem.id,
+      status: 'new',
+    })
+
+    let updateRequest: (typeof fetchMock.mock.calls)[number] | undefined
+
+    await waitFor(() => {
+      updateRequest = fetchMock.mock.calls.find(
+        ([request, init]) =>
+          getRequestUrl(request).endsWith('/item-completed') &&
+          init?.method === 'PATCH',
+      )
+      expect(updateRequest).toBeDefined()
+    })
+
+    const [url, init] = updateRequest!
     const body = parseRequestBody<Record<string, unknown>>(init)
 
     expect(getRequestUrl(url)).toBe(
@@ -364,10 +506,19 @@ describe('useShoppingList hooks', () => {
     )
     expect(init?.method).toBe('PATCH')
     expect(body).toEqual({ status: 'new' })
+    await waitFor(async () => {
+      expect(
+        await countRetryableShoppingListOfflineMutations('workspace-1'),
+      ).toBe(0)
+    })
   })
 })
 
 function createQueryWrapper() {
+  return createQueryHarness().wrapper
+}
+
+function createQueryHarness() {
   const queryClient = new QueryClient({
     defaultOptions: {
       mutations: {
@@ -385,7 +536,10 @@ function createQueryWrapper() {
     )
   }
 
-  return TestQueryWrapper
+  return {
+    queryClient,
+    wrapper: TestQueryWrapper,
+  }
 }
 
 function jsonResponse(value: unknown): Response {

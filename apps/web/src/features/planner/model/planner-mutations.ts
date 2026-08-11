@@ -32,10 +32,12 @@ import type {
 import {
   createOptimisticLifeSphereRecord,
   createOptimisticTaskRecord,
+  createOptimisticTaskScheduleRecord,
+  createOptimisticTaskStatusRecord,
   createOptimisticTaskTemplateRecord,
+  createOptimisticUpdatedTaskRecord,
   detachLifeSphereFromTaskRecords,
   detachLifeSphereFromTaskTemplateRecords,
-  normalizeSchedule,
   removeLifeSphereRecord,
   removeTaskRecord,
   removeTaskTemplateRecord,
@@ -104,8 +106,10 @@ export interface TransferTaskToPersonalMutationVariables {
 }
 
 export interface CreateNextTaskStageMutationVariables {
+  chainId: string
   completeCurrent: boolean
   expectedVersion: number
+  nextTaskId: string
   note?: string | undefined
   plannedDate?: string | null | undefined
   stageType?: TaskStageType | undefined
@@ -315,10 +319,9 @@ export function usePlannerMutations({
         workspaceId: session?.workspaceId ?? 'pending',
       })
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => [
-        optimisticTask,
-        ...current,
-      ])
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+        replaceTaskRecord(current, optimisticTask),
+      )
 
       return {
         optimisticTaskId: optimisticTask.id,
@@ -362,44 +365,12 @@ export function usePlannerMutations({
 
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
-      const normalizedSchedule = normalizeSchedule({
-        plannedDate: input.plannedDate,
-        plannedEndTime: input.plannedEndTime,
-        plannedStartTime: input.plannedStartTime,
-      })
       const now = new Date().toISOString()
 
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskRecord(current, taskId, (task) => ({
-          ...task,
-          assigneeDisplayName: null,
-          assigneeUserId: input.assigneeUserId ?? null,
-          dueDate: input.dueDate,
-          icon: (input.icon ?? '').trim(),
-          importance: input.importance ?? 'not_important',
-          note: input.note.trim(),
-          plannedDate: normalizedSchedule.plannedDate,
-          plannedEndTime: normalizedSchedule.plannedEndTime,
-          plannedStartTime: normalizedSchedule.plannedStartTime,
-          project: input.project.trim(),
-          projectId: input.projectId,
-          recurrence: input.recurrence ?? null,
-          remindBeforeStart: input.remindBeforeStart ? true : undefined,
-          reminderOffsets:
-            input.reminderOffsets && input.reminderOffsets.length > 0
-              ? input.reminderOffsets
-              : input.remindBeforeStart
-                ? [15]
-                : undefined,
-          resource: input.resource,
-          requiresConfirmation: input.requiresConfirmation ?? false,
-          routine: input.routine ?? null,
-          sphereId: input.sphereId,
-          title: input.title.trim(),
-          urgency: input.urgency ?? 'not_urgent',
-          updatedAt: now,
-          version: task.version + 1,
-        })),
+        updateTaskRecord(current, taskId, (task) =>
+          createOptimisticUpdatedTaskRecord(task, input, now),
+        ),
       )
 
       return {
@@ -426,8 +397,10 @@ export function usePlannerMutations({
 
   const createNextTaskStageMutation = useMutation({
     mutationFn: ({
+      chainId,
       completeCurrent,
       expectedVersion,
+      nextTaskId,
       note,
       plannedDate,
       stageType,
@@ -435,8 +408,10 @@ export function usePlannerMutations({
       title,
     }: CreateNextTaskStageMutationVariables) =>
       requirePlannerApi(plannerApi).createNextTaskStage(taskId, {
+        chainId,
         completeCurrent,
         expectedVersion,
+        nextTaskId,
         ...(note !== undefined ? { note } : {}),
         ...(plannedDate !== undefined ? { plannedDate } : {}),
         ...(stageType !== undefined ? { stageType } : {}),
@@ -565,16 +540,10 @@ export function usePlannerMutations({
 
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
-      const now = new Date().toISOString()
-
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskRecord(current, taskId, (task) => ({
-          ...task,
-          completedAt: status === 'done' ? now : null,
-          status,
-          updatedAt: now,
-          version: task.version + 1,
-        })),
+        updateTaskRecord(current, taskId, (task) =>
+          createOptimisticTaskStatusRecord(task, status),
+        ),
       )
 
       return {
@@ -615,29 +584,10 @@ export function usePlannerMutations({
 
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
-      const normalizedSchedule = normalizeSchedule(schedule)
-      const now = new Date().toISOString()
-
       queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        updateTaskRecord(current, taskId, (task) => ({
-          ...task,
-          plannedDate: normalizedSchedule.plannedDate,
-          plannedEndTime: normalizedSchedule.plannedEndTime,
-          plannedStartTime: normalizedSchedule.plannedStartTime,
-          remindBeforeStart:
-            normalizedSchedule.plannedDate &&
-            normalizedSchedule.plannedStartTime
-              ? task.remindBeforeStart
-              : undefined,
-          reminderOffsets:
-            normalizedSchedule.plannedDate &&
-            normalizedSchedule.plannedStartTime
-              ? (task.reminderOffsets ??
-                (task.remindBeforeStart ? [15] : undefined))
-              : undefined,
-          updatedAt: now,
-          version: task.version + 1,
-        })),
+        updateTaskRecord(current, taskId, (task) =>
+          createOptimisticTaskScheduleRecord(task, schedule),
+        ),
       )
 
       return {

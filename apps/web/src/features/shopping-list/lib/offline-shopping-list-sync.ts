@@ -97,16 +97,9 @@ async function applyOfflineMutation(
   callbacks: OfflineMutationCallbacks,
 ): Promise<void> {
   if (mutation.type === 'shopping.create') {
-    const item = await api.createItem({
-      id: mutation.itemId,
-      isFavorite: mutation.isFavorite ?? false,
-      priority: mutation.priority ?? null,
-      shoppingCategory: mutation.shoppingCategory ?? null,
-      text: mutation.text,
-    })
+    const item = await createShoppingListItemIdempotently(api, mutation)
 
-    await upsertCachedShoppingListItem(mutation.workspaceId, item)
-    callbacks.onItemSynced?.(item)
+    await commitSyncedShoppingListItem(mutation, item, callbacks)
 
     return
   }
@@ -114,18 +107,108 @@ async function applyOfflineMutation(
   if (mutation.type === 'shopping.update') {
     const item = await api.updateItem(mutation.itemId, mutation.patch)
 
-    await upsertCachedShoppingListItem(mutation.workspaceId, item)
-    callbacks.onItemSynced?.(item)
+    await commitSyncedShoppingListItem(mutation, item, callbacks)
 
     return
   }
 
-  await api.removeItem(mutation.itemId)
-  await removeCachedShoppingListItem(mutation.workspaceId, mutation.itemId)
-  callbacks.onItemDeleted?.(mutation.itemId)
+  try {
+    await api.removeItem(mutation.itemId)
+  } catch (error) {
+    if (!isMissingShoppingListItemError(error)) {
+      throw error
+    }
+  }
+
+  if (!(await hasLaterShoppingListMutation(mutation))) {
+    await removeCachedShoppingListItem(mutation.workspaceId, mutation.itemId)
+    callbacks.onItemDeleted?.(mutation.itemId)
+  }
+}
+
+async function createShoppingListItemIdempotently(
+  api: ShoppingListApiClient,
+  mutation: Extract<
+    ShoppingListOfflineMutationRecord,
+    { type: 'shopping.create' }
+  >,
+): Promise<ChaosInboxItemRecord> {
+  try {
+    return await api.createItem({
+      id: mutation.itemId,
+      isFavorite: mutation.isFavorite ?? false,
+      priority: mutation.priority ?? null,
+      shoppingCategory: mutation.shoppingCategory ?? null,
+      text: mutation.text,
+    })
+  } catch (error) {
+    if (!(error instanceof ShoppingListApiError)) {
+      throw error
+    }
+
+    // A previous POST may have reached the server even when its response was
+    // lost. The stable client-generated id lets us reconcile that ambiguous
+    // retry instead of creating a duplicate or leaving the queue stuck.
+    const existingItem = (await api.listItems()).find(
+      (item) => item.id === mutation.itemId,
+    )
+
+    if (
+      !existingItem ||
+      existingItem.kind !== 'shopping' ||
+      existingItem.workspaceId !== mutation.workspaceId ||
+      existingItem.text !== mutation.text
+    ) {
+      throw error
+    }
+
+    return existingItem
+  }
+}
+
+async function commitSyncedShoppingListItem(
+  mutation: ShoppingListOfflineMutationRecord,
+  item: ChaosInboxItemRecord,
+  callbacks: OfflineMutationCallbacks,
+): Promise<void> {
+  if (await hasLaterShoppingListMutation(mutation)) {
+    // A newer local command already projected its state into the cache. Do not
+    // overwrite it with an older server response while that command waits for
+    // the next drain pass.
+    return
+  }
+
+  await upsertCachedShoppingListItem(mutation.workspaceId, item)
+  callbacks.onItemSynced?.(item)
+}
+
+async function hasLaterShoppingListMutation(
+  mutation: ShoppingListOfflineMutationRecord,
+): Promise<boolean> {
+  const queuedMutations = await listRetryableShoppingListOfflineMutations(
+    mutation.workspaceId,
+    mutation.actorUserId,
+  )
+  const currentIndex = queuedMutations.findIndex(
+    (queuedMutation) => queuedMutation.id === mutation.id,
+  )
+
+  if (currentIndex === -1) {
+    return false
+  }
+
+  return queuedMutations
+    .slice(currentIndex + 1)
+    .some((queuedMutation) => queuedMutation.itemId === mutation.itemId)
 }
 
 function isTerminalShoppingListSyncError(
+  error: unknown,
+): error is ShoppingListApiError {
+  return isMissingShoppingListItemError(error)
+}
+
+function isMissingShoppingListItemError(
   error: unknown,
 ): error is ShoppingListApiError {
   return (

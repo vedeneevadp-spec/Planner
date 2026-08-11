@@ -295,8 +295,10 @@ export const taskDeleteSchema = z.object({
 })
 
 export const taskNextStageInputSchema = z.object({
+  chainId: uuidV7Schema.optional(),
   completeCurrent: z.boolean().optional().default(false),
   expectedVersion: z.number().int().positive().optional(),
+  nextTaskId: uuidV7Schema.optional(),
   note: z.string().max(2000).optional(),
   plannedDate: nullableStringWithDefault,
   stageType: taskStageTypeSchema.optional(),

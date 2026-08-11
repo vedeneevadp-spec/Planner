@@ -4,6 +4,7 @@ import {
   type LifeSphereUpdateInput,
   type NewLifeSphereInput,
   type NewTaskInput,
+  type TaskNextStageInput,
   type TaskRecord,
   type TaskScheduleInput,
   type TaskStatus,
@@ -105,6 +106,13 @@ export type PlannerOfflineMutationRecord =
     })
   | (PlannerOfflineMutationBase & {
       expectedVersion: number
+      input: TaskNextStageInput
+      nextTaskId: string
+      taskId: string
+      type: 'task.next-stage'
+    })
+  | (PlannerOfflineMutationBase & {
+      expectedVersion: number
       input: TaskUpdateInput
       taskId: string
       type: 'task.update'
@@ -152,6 +160,15 @@ export type PlannerOfflineMutationInput =
   | {
       actorUserId: string
       expectedVersion: number
+      input: TaskNextStageInput
+      nextTaskId: string
+      taskId: string
+      type: 'task.next-stage'
+      workspaceId: string
+    }
+  | {
+      actorUserId: string
+      expectedVersion: number
       input: TaskUpdateInput
       taskId: string
       type: 'task.update'
@@ -180,6 +197,12 @@ export type PlannerOfflineMutationInput =
       type: 'task.delete'
       workspaceId: string
     }
+
+interface EnqueuePlannerOfflineMutationOptions {
+  optimisticTask?: TaskRecord | undefined
+  optimisticTasks?: readonly TaskRecord[] | undefined
+  removeCachedTaskId?: string | undefined
+}
 
 const RETRYABLE_QUEUE_STATUSES: PlannerOfflineMutationStatus[] = [
   'failed',
@@ -787,6 +810,20 @@ export async function upsertCachedTaskRecord(
     workspaceId,
   ),
 ): Promise<void> {
+  await upsertCachedTaskRecords(workspaceId, [task], expectedWriteGeneration)
+}
+
+export async function upsertCachedTaskRecords(
+  workspaceId: string,
+  tasks: readonly TaskRecord[],
+  expectedWriteGeneration = getPlannerOfflineWorkspaceWriteGeneration(
+    workspaceId,
+  ),
+): Promise<void> {
+  if (!tasks.length) {
+    return
+  }
+
   const db = await getPlannerOfflineDatabase(workspaceId)
 
   if (!db) {
@@ -799,14 +836,19 @@ export async function upsertCachedTaskRecord(
     'tasks',
     expectedWriteGeneration,
     [db.cachedTasks],
-    () =>
-      db.cachedTasks.put({
-        key: createCachedTaskKey(workspaceId, task.id),
-        task,
-        taskId: task.id,
-        updatedAt: new Date().toISOString(),
-        workspaceId,
-      }),
+    async () => {
+      const updatedAt = new Date().toISOString()
+
+      await db.cachedTasks.bulkPut(
+        tasks.map((task) => ({
+          key: createCachedTaskKey(workspaceId, task.id),
+          task,
+          taskId: task.id,
+          updatedAt,
+          workspaceId,
+        })),
+      )
+    },
   )
 }
 
@@ -865,6 +907,7 @@ export async function removeCachedTaskRecord(
 
 export async function enqueuePlannerOfflineMutation(
   input: PlannerOfflineMutationInput,
+  options: EnqueuePlannerOfflineMutationOptions = {},
 ): Promise<PlannerOfflineMutationRecord | null> {
   const expectedWriteGeneration = getPlannerOfflineWorkspaceWriteGeneration(
     input.workspaceId,
@@ -888,14 +931,86 @@ export async function enqueuePlannerOfflineMutation(
     updatedAt: now,
   } satisfies PlannerOfflineMutationRecord
 
+  if (options.optimisticTask && options.optimisticTasks) {
+    throw new Error(
+      'Use either optimisticTask or optimisticTasks for a planner mutation.',
+    )
+  }
+
+  const optimisticTasks = options.optimisticTasks
+    ? [...options.optimisticTasks]
+    : options.optimisticTask
+      ? [options.optimisticTask]
+      : []
+  const removeCachedTaskId = options.removeCachedTaskId
+
+  if (optimisticTasks.some((task) => task.workspaceId !== input.workspaceId)) {
+    throw new Error('Optimistic task belongs to a different workspace.')
+  }
+
+  if (input.type === 'task.next-stage') {
+    const optimisticTaskIds = new Set(optimisticTasks.map((task) => task.id))
+
+    if (
+      optimisticTasks.length !== 2 ||
+      optimisticTaskIds.size !== 2 ||
+      !optimisticTaskIds.has(input.taskId) ||
+      !optimisticTaskIds.has(input.nextTaskId)
+    ) {
+      throw new Error(
+        'Next-stage mutation must persist its current and next task together.',
+      )
+    }
+  } else if (
+    optimisticTasks.length > 0 &&
+    (!('taskId' in input) ||
+      optimisticTasks.length !== 1 ||
+      optimisticTasks[0]?.id !== input.taskId)
+  ) {
+    throw new Error('Optimistic task does not match the queued mutation.')
+  }
+
+  if (
+    removeCachedTaskId &&
+    (!('taskId' in input) || removeCachedTaskId !== input.taskId)
+  ) {
+    throw new Error('Removed task does not match the queued mutation.')
+  }
+
+  if (optimisticTasks.length > 0 && removeCachedTaskId) {
+    throw new Error(
+      'A planner mutation cannot upsert and remove the cached task together.',
+    )
+  }
+
+  const updatesCachedTask = Boolean(
+    optimisticTasks.length > 0 || removeCachedTaskId,
+  )
+
   const stored = await runPlannerCacheWrite(
     db,
     input.workspaceId,
     'mutation-queue',
     expectedWriteGeneration,
-    [db.mutationQueue],
+    updatesCachedTask ? [db.mutationQueue, db.cachedTasks] : [db.mutationQueue],
     async () => {
       await db.mutationQueue.put(mutation)
+
+      if (optimisticTasks.length > 0) {
+        await db.cachedTasks.bulkPut(
+          optimisticTasks.map((task) => ({
+            key: createCachedTaskKey(input.workspaceId, task.id),
+            task,
+            taskId: task.id,
+            updatedAt: now,
+            workspaceId: input.workspaceId,
+          })),
+        )
+      } else if (removeCachedTaskId) {
+        await db.cachedTasks.delete(
+          createCachedTaskKey(input.workspaceId, removeCachedTaskId),
+        )
+      }
 
       return true
     },

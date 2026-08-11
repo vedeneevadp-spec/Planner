@@ -228,6 +228,52 @@ describe('session admin hooks', () => {
     })
   })
 
+  it('applies timezone preferences before the server response arrives', async () => {
+    const response = createDeferred<Response>()
+    fetchMock.mockReturnValueOnce(response.promise)
+
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    queryClient.setQueryData(['planner', 'session'], createSessionResponse())
+    const { result } = renderHook(() => useUpdateUserPreferences(), {
+      wrapper,
+    })
+    let mutationPromise: ReturnType<typeof result.current.mutateAsync>
+
+    act(() => {
+      mutationPromise = result.current.mutateAsync({
+        defaultTimeZone: 'Europe/Samara',
+        lastSeenTimeZone: 'Asia/Novosibirsk',
+        timeZoneMode: 'device',
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<SessionResponse>(['planner', 'session'])
+          ?.userPreferences,
+      ).toMatchObject({
+        defaultTimeZone: 'Europe/Samara',
+        lastSeenTimeZone: 'Asia/Novosibirsk',
+        timeZoneMode: 'device',
+      })
+    })
+
+    response.resolve(
+      jsonResponse({
+        calendarViewMode: 'week',
+        defaultTimeZone: 'Europe/Samara',
+        energyMode: 'normal',
+        lastSeenTimeZone: 'Asia/Novosibirsk',
+        timeZoneMode: 'device',
+        voiceAssistantEnabled: true,
+      }),
+    )
+
+    await act(async () => {
+      await mutationPromise
+    })
+  })
+
   it('updates profile data in the cached planner session', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -370,6 +416,18 @@ function parseRequestBody<T>(init: RequestInit | undefined): T {
   }
 
   return JSON.parse(body) as T
+}
+
+function createDeferred<T>(): {
+  promise: Promise<T>
+  resolve: (value: T) => void
+} {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve
+  })
+
+  return { promise, resolve }
 }
 
 function createAdminUserRecord() {

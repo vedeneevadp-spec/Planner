@@ -1,18 +1,30 @@
 import {
   generateUuidV7,
+  getDateKeyInTimeZone,
+  getTimeInTimeZone,
   type LifeSphereRecord,
+  type TaskNextStageInput,
+  type TaskNextStageResponse,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
 
 import type { NewLifeSphereInput } from '@/entities/sphere'
-import type { NewTaskInput, Task, TaskScheduleInput } from '@/entities/task'
+import type {
+  NewTaskInput,
+  Task,
+  TaskScheduleInput,
+  TaskStatus,
+  TaskUpdateInput,
+} from '@/entities/task'
 import type {
   NewTaskTemplateInput,
   TaskTemplate,
 } from '@/entities/task-template'
 
-export function toPlannerTask(task: TaskRecord): Task {
+export function toPlannerTask(task: TaskRecord, displayTimeZone: string): Task {
+  const displayedSchedule = getDisplayedTaskSchedule(task, displayTimeZone)
+
   return {
     assigneeDisplayName: task.assigneeDisplayName,
     assigneeUserId: task.assigneeUserId,
@@ -29,9 +41,9 @@ export function toPlannerTask(task: TaskRecord): Task {
     linkedTask: task.linkedTask ?? null,
     necessity: task.necessity,
     note: task.note,
-    plannedDate: task.plannedDate,
-    plannedEndTime: task.plannedEndTime,
-    plannedStartTime: task.plannedStartTime,
+    plannedDate: displayedSchedule.plannedDate,
+    plannedEndTime: displayedSchedule.plannedEndTime,
+    plannedStartTime: displayedSchedule.plannedStartTime,
     previousTaskId: task.previousTaskId ?? null,
     project: task.project,
     projectId: task.projectId,
@@ -41,6 +53,7 @@ export function toPlannerTask(task: TaskRecord): Task {
     resource: task.resource,
     requiresConfirmation: task.requiresConfirmation,
     routine: task.routine ?? null,
+    schedule: task.schedule ?? null,
     sphereId: task.sphereId,
     sourceWorkspace: task.sourceWorkspace ?? null,
     stageIndex: task.stageIndex ?? null,
@@ -49,6 +62,96 @@ export function toPlannerTask(task: TaskRecord): Task {
     title: task.title,
     urgency: task.urgency,
   }
+}
+
+function getDisplayedTaskSchedule(
+  task: TaskRecord,
+  displayTimeZone: string,
+): TaskScheduleInput {
+  if (task.schedule?.kind !== 'fixed_zone_datetime') {
+    return {
+      plannedDate: task.plannedDate,
+      plannedEndTime: task.plannedEndTime,
+      plannedStartTime: task.plannedStartTime,
+    }
+  }
+
+  try {
+    const startInstant = new Date(task.schedule.instantUtc)
+
+    if (Number.isNaN(startInstant.getTime())) {
+      return getLegacyTaskSchedule(task)
+    }
+
+    const durationMinutes = getTaskDurationMinutes(task)
+
+    return {
+      plannedDate: getDateKeyInTimeZone(startInstant, displayTimeZone),
+      plannedEndTime:
+        durationMinutes === null
+          ? null
+          : getTimeInTimeZone(
+              new Date(startInstant.getTime() + durationMinutes * 60_000),
+              displayTimeZone,
+            ),
+      plannedStartTime: getTimeInTimeZone(startInstant, displayTimeZone),
+    }
+  } catch {
+    return getLegacyTaskSchedule(task)
+  }
+}
+
+function getLegacyTaskSchedule(task: TaskRecord): TaskScheduleInput {
+  return {
+    plannedDate: task.plannedDate,
+    plannedEndTime: task.plannedEndTime,
+    plannedStartTime: task.plannedStartTime,
+  }
+}
+
+function getTaskDurationMinutes(task: TaskRecord): number | null {
+  if (!task.plannedEndTime) {
+    return null
+  }
+
+  const startMinutes = parseTimeMinutes(
+    task.plannedStartTime ??
+      (task.schedule?.kind === 'fixed_zone_datetime'
+        ? task.schedule.localTime
+        : null),
+  )
+  const endMinutes = parseTimeMinutes(task.plannedEndTime)
+
+  if (
+    startMinutes === null ||
+    endMinutes === null ||
+    endMinutes <= startMinutes
+  ) {
+    return null
+  }
+
+  return endMinutes - startMinutes
+}
+
+function parseTimeMinutes(value: string | null): number | null {
+  if (!value) {
+    return null
+  }
+
+  const match = /^(\d{2}):(\d{2})$/u.exec(value)
+
+  if (!match?.[1] || !match[2]) {
+    return null
+  }
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+
+  if (hours > 23 || minutes > 59) {
+    return null
+  }
+
+  return hours * 60 + minutes
 }
 
 export function toPlannerTaskTemplate(
@@ -200,6 +303,170 @@ export function createOptimisticTaskRecord(
     updatedAt: now,
     version: 1,
     workspaceId: options.workspaceId,
+  }
+}
+
+export function createOptimisticTaskNextStageResult(
+  task: TaskRecord,
+  input: TaskNextStageInput,
+  options: {
+    authorDisplayName?: string | null | undefined
+    authorUserId?: string | null | undefined
+    chainId?: string | undefined
+    nextTaskId: string
+    updatedAt?: string | undefined
+  },
+): TaskNextStageResponse {
+  const updatedAt = options.updatedAt ?? new Date().toISOString()
+  const chainId =
+    task.chainId ?? input.chainId ?? options.chainId ?? generateUuidV7()
+  const currentStageIndex = task.stageIndex ?? 1
+  const currentTask: TaskRecord = {
+    ...task,
+    chainId,
+    completionType: input.completeCurrent ? 'advanced' : task.completionType,
+    completedAt: input.completeCurrent ? updatedAt : task.completedAt,
+    previousTaskId: task.previousTaskId ?? null,
+    stageIndex: currentStageIndex,
+    stageType: task.stageType ?? 'task',
+    status: input.completeCurrent ? 'done' : task.status,
+    updatedAt,
+    version: task.version + 1,
+  }
+  const nextTask: TaskRecord = {
+    ...task,
+    authorDisplayName:
+      options.authorDisplayName === undefined
+        ? task.authorDisplayName
+        : options.authorDisplayName,
+    authorUserId:
+      options.authorUserId === undefined
+        ? task.authorUserId
+        : options.authorUserId,
+    chainId,
+    completionType: null,
+    completedAt: null,
+    createdAt: updatedAt,
+    deletedAt: null,
+    dueDate: null,
+    id: options.nextTaskId,
+    note: input.note !== undefined ? input.note.trim() : task.note,
+    plannedDate: input.plannedDate ?? null,
+    plannedEndTime: null,
+    plannedStartTime: null,
+    previousTaskId: task.id,
+    recurrence: null,
+    remindBeforeStart: undefined,
+    reminderOffsets: undefined,
+    routine: null,
+    schedule: null,
+    stageIndex: currentStageIndex + 1,
+    stageType: input.stageType ?? 'task',
+    status: 'todo',
+    title: input.title?.trim() || task.title,
+    updatedAt,
+    version: 1,
+  }
+
+  return {
+    currentTask,
+    nextTask,
+    undo: {
+      createdTaskExpectedVersion: nextTask.version,
+      createdTaskId: nextTask.id,
+      previousChainId: task.chainId ?? null,
+      previousCompletionType: task.completionType ?? null,
+      previousCompletedAt: task.completedAt,
+      previousPreviousTaskId: task.previousTaskId ?? null,
+      previousStageIndex: task.stageIndex ?? null,
+      previousStageType: task.stageType ?? null,
+      previousStatus: task.status,
+      previousTaskExpectedVersion: currentTask.version,
+    },
+  }
+}
+
+export function createOptimisticUpdatedTaskRecord(
+  task: TaskRecord,
+  input: TaskUpdateInput,
+  updatedAt = new Date().toISOString(),
+): TaskRecord {
+  const normalizedSchedule = normalizeSchedule({
+    plannedDate: input.plannedDate,
+    plannedEndTime: input.plannedEndTime,
+    plannedStartTime: input.plannedStartTime,
+  })
+
+  return {
+    ...task,
+    assigneeDisplayName: null,
+    assigneeUserId: input.assigneeUserId ?? null,
+    dueDate: input.dueDate,
+    icon: (input.icon ?? '').trim(),
+    importance: input.importance ?? 'not_important',
+    necessity: input.necessity ?? 'desired',
+    note: input.note.trim(),
+    plannedDate: normalizedSchedule.plannedDate,
+    plannedEndTime: normalizedSchedule.plannedEndTime,
+    plannedStartTime: normalizedSchedule.plannedStartTime,
+    project: input.project.trim(),
+    projectId: input.projectId,
+    recurrence: input.recurrence ?? null,
+    remindBeforeStart: input.remindBeforeStart ? true : undefined,
+    reminderOffsets:
+      input.reminderOffsets && input.reminderOffsets.length > 0
+        ? input.reminderOffsets
+        : input.remindBeforeStart
+          ? [15]
+          : undefined,
+    resource: input.resource,
+    requiresConfirmation: input.requiresConfirmation ?? false,
+    routine: input.routine ?? null,
+    schedule: null,
+    sphereId: input.sphereId,
+    title: input.title.trim(),
+    urgency: input.urgency ?? 'not_urgent',
+    updatedAt,
+    version: task.version + 1,
+  }
+}
+
+export function createOptimisticTaskStatusRecord(
+  task: TaskRecord,
+  status: TaskStatus,
+  updatedAt = new Date().toISOString(),
+): TaskRecord {
+  return {
+    ...task,
+    completedAt: status === 'done' ? updatedAt : null,
+    status,
+    updatedAt,
+    version: task.version + 1,
+  }
+}
+
+export function createOptimisticTaskScheduleRecord(
+  task: TaskRecord,
+  schedule: TaskScheduleInput,
+  updatedAt = new Date().toISOString(),
+): TaskRecord {
+  const normalizedSchedule = normalizeSchedule(schedule)
+  const hasPlannedStart = Boolean(
+    normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime,
+  )
+
+  return {
+    ...task,
+    plannedDate: normalizedSchedule.plannedDate,
+    plannedEndTime: normalizedSchedule.plannedEndTime,
+    plannedStartTime: normalizedSchedule.plannedStartTime,
+    remindBeforeStart: hasPlannedStart ? task.remindBeforeStart : undefined,
+    reminderOffsets: hasPlannedStart
+      ? (task.reminderOffsets ?? (task.remindBeforeStart ? [15] : undefined))
+      : undefined,
+    schedule: null,
+    updatedAt,
+    version: task.version + 1,
   }
 }
 

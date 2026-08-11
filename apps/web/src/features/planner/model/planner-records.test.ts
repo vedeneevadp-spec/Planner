@@ -1,14 +1,19 @@
-import type {
-  LifeSphereRecord,
-  TaskRecord,
-  TaskTemplateRecord,
+import {
+  type LifeSphereRecord,
+  makeFixedZoneDateTime,
+  type TaskRecord,
+  type TaskTemplateRecord,
 } from '@planner/contracts'
 import { describe, expect, it } from 'vitest'
 
 import {
   createOptimisticLifeSphereRecord,
+  createOptimisticTaskNextStageResult,
   createOptimisticTaskRecord,
+  createOptimisticTaskScheduleRecord,
+  createOptimisticTaskStatusRecord,
   createOptimisticTaskTemplateRecord,
+  createOptimisticUpdatedTaskRecord,
   detachLifeSphereFromTaskRecords,
   detachLifeSphereFromTaskTemplateRecords,
   normalizeSchedule,
@@ -19,11 +24,110 @@ import {
   sortSpheres,
   sortTaskTemplates,
   toggleTaskId,
+  toPlannerTask,
   updateTaskLifeSphereRecords,
   updateTaskTemplateLifeSphereRecords,
 } from './planner-records'
 
 describe('planner record projections', () => {
+  it('projects a fixed-zone task into the active planner timezone', () => {
+    const record = createTaskRecord({
+      plannedDate: '2026-08-10',
+      plannedEndTime: '23:45',
+      plannedStartTime: '23:30',
+      schedule: {
+        instantUtc: '2026-08-10T19:30:00.000Z',
+        kind: 'fixed_zone_datetime',
+        localDate: '2026-08-10',
+        localTime: '23:30',
+        timeZone: 'Europe/Samara',
+        timeZoneInferred: true,
+      },
+    })
+
+    const task = toPlannerTask(record, 'Asia/Novosibirsk')
+
+    expect(task).toMatchObject({
+      plannedDate: '2026-08-11',
+      plannedEndTime: '02:45',
+      plannedStartTime: '02:30',
+      schedule: record.schedule,
+    })
+    expect(
+      makeFixedZoneDateTime({
+        localDate: task.plannedDate!,
+        localTime: task.plannedStartTime!,
+        timeZone: 'Asia/Novosibirsk',
+      }).instantUtc,
+    ).toBe(
+      record.schedule?.kind === 'fixed_zone_datetime'
+        ? record.schedule.instantUtc
+        : null,
+    )
+    expect(record).toMatchObject({
+      plannedDate: '2026-08-10',
+      plannedEndTime: '23:45',
+      plannedStartTime: '23:30',
+    })
+  })
+
+  it('keeps date-only and floating schedules stable across timezone changes', () => {
+    const dateOnlyTask = toPlannerTask(
+      createTaskRecord({
+        plannedDate: '2026-08-10',
+        schedule: {
+          kind: 'date_only',
+          localDate: '2026-08-10',
+        },
+      }),
+      'Asia/Novosibirsk',
+    )
+    const floatingTask = toPlannerTask(
+      createTaskRecord({
+        plannedDate: '2026-08-10',
+        plannedEndTime: '08:15',
+        plannedStartTime: '08:00',
+        schedule: {
+          kind: 'floating_local_time',
+          localTime: '08:00',
+          recurrenceRule: 'FREQ=DAILY',
+        },
+      }),
+      'Europe/Amsterdam',
+    )
+
+    expect(dateOnlyTask.plannedDate).toBe('2026-08-10')
+    expect(floatingTask).toMatchObject({
+      plannedDate: '2026-08-10',
+      plannedEndTime: '08:15',
+      plannedStartTime: '08:00',
+    })
+  })
+
+  it('falls back to legacy schedule fields for an invalid fixed instant', () => {
+    const task = toPlannerTask(
+      createTaskRecord({
+        plannedDate: '2026-08-10',
+        plannedEndTime: '17:15',
+        plannedStartTime: '17:00',
+        schedule: {
+          instantUtc: 'not-an-instant',
+          kind: 'fixed_zone_datetime',
+          localDate: '2026-08-10',
+          localTime: '17:00',
+          timeZone: 'Europe/Samara',
+        },
+      }),
+      'Asia/Novosibirsk',
+    )
+
+    expect(task).toMatchObject({
+      plannedDate: '2026-08-10',
+      plannedEndTime: '17:15',
+      plannedStartTime: '17:00',
+    })
+  })
+
   it('restores one failed task without overwriting another successful mutation', () => {
     const previousTask = createTaskRecord({ id: 'task-1', title: 'Before' })
     const successfulTask = createTaskRecord({
@@ -112,6 +216,178 @@ describe('planner record projections', () => {
       workspaceId: 'workspace-1',
     })
     expect(task.id).toBeTruthy()
+  })
+
+  it('projects task edits with one version increment', () => {
+    const task = createOptimisticUpdatedTaskRecord(
+      createTaskRecord({
+        schedule: {
+          instantUtc: '2026-08-10T06:00:00.000Z',
+          kind: 'fixed_zone_datetime',
+          localDate: '2026-08-10',
+          localTime: '10:00',
+          timeZone: 'Europe/Samara',
+        },
+        title: 'Before',
+        version: 4,
+      }),
+      {
+        assigneeUserId: null,
+        dueDate: null,
+        icon: '  inbox  ',
+        importance: 'important',
+        necessity: 'required',
+        note: '  updated  ',
+        plannedDate: '2026-08-10',
+        plannedEndTime: '10:30',
+        plannedStartTime: '10:00',
+        project: '  Home  ',
+        projectId: 'sphere-1',
+        remindBeforeStart: true,
+        reminderOffsets: [30],
+        requiresConfirmation: false,
+        resource: 2,
+        sphereId: 'sphere-1',
+        title: '  After  ',
+      },
+      '2026-08-10T08:00:00.000Z',
+    )
+
+    expect(task).toMatchObject({
+      icon: 'inbox',
+      necessity: 'required',
+      note: 'updated',
+      plannedEndTime: '10:30',
+      plannedStartTime: '10:00',
+      project: 'Home',
+      reminderOffsets: [30],
+      schedule: null,
+      title: 'After',
+      updatedAt: '2026-08-10T08:00:00.000Z',
+      version: 5,
+    })
+  })
+
+  it('projects task completion with one version increment', () => {
+    const task = createOptimisticTaskStatusRecord(
+      createTaskRecord({ status: 'in_progress', version: 2 }),
+      'done',
+      '2026-08-10T09:00:00.000Z',
+    )
+
+    expect(task).toMatchObject({
+      completedAt: '2026-08-10T09:00:00.000Z',
+      status: 'done',
+      updatedAt: '2026-08-10T09:00:00.000Z',
+      version: 3,
+    })
+  })
+
+  it('projects both sides of a next-stage command with a stable client id', () => {
+    const task = createTaskRecord({
+      chainId: null,
+      completedAt: null,
+      recurrence: {
+        daysOfWeek: [1],
+        endDate: null,
+        frequency: 'daily',
+        interval: 1,
+        isActive: true,
+        seriesId: 'recurrence-1',
+        startDate: '2026-08-11',
+      },
+      routine: {
+        daysOfWeek: [1],
+        frequency: 'daily',
+        seriesId: 'routine-1',
+        targetType: 'check',
+        targetValue: 1,
+        unit: '',
+      },
+      stageIndex: null,
+      stageType: null,
+      status: 'in_progress',
+      version: 4,
+    })
+
+    const result = createOptimisticTaskNextStageResult(
+      task,
+      {
+        chainId: 'chain-1',
+        completeCurrent: true,
+        expectedVersion: task.version,
+        nextTaskId: 'next-stage-1',
+        note: '  Следующий шаг  ',
+        plannedDate: '2026-08-12',
+        stageType: 'waiting',
+        title: '  Дождаться ответа  ',
+      },
+      {
+        chainId: 'chain-1',
+        nextTaskId: 'next-stage-1',
+        updatedAt: '2026-08-11T05:00:00.000Z',
+      },
+    )
+
+    expect(result.currentTask).toMatchObject({
+      chainId: 'chain-1',
+      completedAt: '2026-08-11T05:00:00.000Z',
+      completionType: 'advanced',
+      stageIndex: 1,
+      stageType: 'task',
+      status: 'done',
+      version: 5,
+    })
+    expect(result.nextTask).toMatchObject({
+      chainId: 'chain-1',
+      id: 'next-stage-1',
+      note: 'Следующий шаг',
+      plannedDate: '2026-08-12',
+      previousTaskId: task.id,
+      recurrence: null,
+      routine: null,
+      stageIndex: 2,
+      stageType: 'waiting',
+      status: 'todo',
+      title: 'Дождаться ответа',
+      version: 1,
+    })
+    expect(result.undo).toMatchObject({
+      createdTaskId: 'next-stage-1',
+      previousChainId: null,
+      previousStageIndex: null,
+      previousStatus: 'in_progress',
+      previousTaskExpectedVersion: 5,
+    })
+  })
+
+  it('projects schedule changes and clears unavailable reminders', () => {
+    const task = createOptimisticTaskScheduleRecord(
+      createTaskRecord({
+        plannedDate: '2026-08-10',
+        plannedStartTime: '09:00',
+        remindBeforeStart: true,
+        reminderOffsets: [30],
+        version: 3,
+      }),
+      {
+        plannedDate: '2026-08-11',
+        plannedEndTime: null,
+        plannedStartTime: null,
+      },
+      '2026-08-10T09:05:00.000Z',
+    )
+
+    expect(task).toMatchObject({
+      plannedDate: '2026-08-11',
+      plannedEndTime: null,
+      plannedStartTime: null,
+      schedule: null,
+      updatedAt: '2026-08-10T09:05:00.000Z',
+      version: 4,
+    })
+    expect(task.remindBeforeStart).toBeUndefined()
+    expect(task.reminderOffsets).toBeUndefined()
   })
 
   it('creates optimistic templates and life spheres with normalized defaults', () => {

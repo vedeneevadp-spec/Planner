@@ -77,6 +77,7 @@ interface PlannerOfflineSync {
   persistCurrentTaskTemplateRecords: () => Promise<void>
   queuedMutationCount: number
   refreshQueuedMutationCount: () => Promise<void>
+  requestQueuedMutationDrain: () => void
 }
 
 type PlannerCacheHydrationScope = 'life-spheres' | 'task-templates' | 'tasks'
@@ -132,12 +133,21 @@ export function usePlannerOfflineSync({
       return
     }
 
-    setQueuedMutationCount(
-      await countRetryablePlannerOfflineMutations(workspaceId, actorUserId),
-    )
-    setConflictedMutationCount(
-      await countConflictedPlannerOfflineMutations(workspaceId, actorUserId),
-    )
+    try {
+      const [nextQueuedMutationCount, nextConflictedMutationCount] =
+        await Promise.all([
+          countRetryablePlannerOfflineMutations(workspaceId, actorUserId),
+          countConflictedPlannerOfflineMutations(workspaceId, actorUserId),
+        ])
+
+      setQueuedMutationCount(nextQueuedMutationCount)
+      setConflictedMutationCount(nextConflictedMutationCount)
+    } catch (error) {
+      // Queue counters are diagnostic UI. A transient IndexedDB lifecycle
+      // failure must not reject a successfully queued mutation or leak from a
+      // fire-and-forget refresh while the app is switching sessions.
+      console.warn('Failed to refresh queued planner mutation counts.', error)
+    }
   }, [actorUserId, workspaceId])
 
   const persistCurrentTaskRecords = useCallback(async () => {
@@ -296,8 +306,16 @@ export function usePlannerOfflineSync({
           },
           workspaceId,
         })
+        const remainingRetryableCount =
+          await countRetryablePlannerOfflineMutations(
+            workspaceId,
+            currentActorUserId,
+          )
 
-        if (result.synced > 0 || result.conflicted > 0) {
+        if (
+          remainingRetryableCount === 0 &&
+          (result.synced > 0 || result.conflicted > 0)
+        ) {
           await queryClient.invalidateQueries({ queryKey: sphereQueryKey })
           await queryClient.invalidateQueries({
             queryKey: taskTemplateQueryKey,
@@ -322,7 +340,11 @@ export function usePlannerOfflineSync({
           )
         }
 
-        if (result.processed > 0 && result.failed === 0) {
+        if (
+          remainingRetryableCount === 0 &&
+          result.processed > 0 &&
+          result.failed === 0
+        ) {
           await syncTaskEventCursor()
         }
       })
@@ -343,6 +365,19 @@ export function usePlannerOfflineSync({
     taskQueryKey,
     workspaceId,
   ])
+
+  const requestQueuedMutationDrain = useCallback(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return
+    }
+
+    void (async () => {
+      await drainQueuedMutations()
+      await drainQueuedMutations()
+    })().catch((error) => {
+      setMutationErrorMessage(getErrorMessage(error))
+    })
+  }, [drainQueuedMutations, setMutationErrorMessage])
 
   useEffect(() => {
     if (!workspaceId) {
@@ -534,6 +569,7 @@ export function usePlannerOfflineSync({
     persistCurrentTaskTemplateRecords,
     queuedMutationCount,
     refreshQueuedMutationCount,
+    requestQueuedMutationDrain,
   }
 }
 

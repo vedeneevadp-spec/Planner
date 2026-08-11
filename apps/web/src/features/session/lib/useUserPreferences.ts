@@ -60,7 +60,16 @@ export function useUpdateUserPreferences() {
                   ...(input.calendarViewMode
                     ? { calendarViewMode: input.calendarViewMode }
                     : {}),
+                  ...(input.defaultTimeZone !== undefined
+                    ? { defaultTimeZone: input.defaultTimeZone }
+                    : {}),
                   ...(input.energyMode ? { energyMode: input.energyMode } : {}),
+                  ...(input.lastSeenTimeZone !== undefined
+                    ? { lastSeenTimeZone: input.lastSeenTimeZone }
+                    : {}),
+                  ...(input.timeZoneMode
+                    ? { timeZoneMode: input.timeZoneMode }
+                    : {}),
                   ...(input.voiceAssistantEnabled !== undefined
                     ? { voiceAssistantEnabled: input.voiceAssistantEnabled }
                     : {}),

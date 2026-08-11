@@ -404,7 +404,7 @@ function projectEntryList(
   const occurrences = readResultOccurrences(overlay)
   let next = entries
 
-  if (item) {
+  if (item && !completion) {
     next =
       item.isArchived || item.deletedAt
         ? next.filter((entry) => entry.item.id !== item.id)
@@ -535,41 +535,56 @@ function updateEntryWithCompletion(
   resultItem: SelfCareItem | null,
   overlay: SelfCareOfflineOverlay,
 ): SelfCareTodayItem {
-  const matches = completion.occurrenceId
-    ? entry.occurrence?.id === completion.occurrenceId
-    : entry.item.id === completion.itemId
-
-  if (!matches) {
-    return resultItem && entry.item.id === resultItem.id
-      ? { ...entry, item: resultItem }
-      : entry
+  if (entry.item.id !== completion.itemId) {
+    return entry
   }
 
-  const wasAlreadyApplied = entry.completion?.id === completion.id
-  const isProgress = isProgressCompletion(completion)
+  const command = overlay.command
+  const targetsOccurrence =
+    command.type === 'complete_occurrence' &&
+    entry.occurrence?.id === command.occurrenceId
+  const updatesAttachedCompletion =
+    targetsOccurrence ||
+    (command.type === 'update_completion' &&
+      entry.completion?.id === completion.id)
+  const wasOccurrenceCompletionApplied = Boolean(
+    targetsOccurrence &&
+    entry.occurrence &&
+    entry.occurrence.version > command.expectedVersion,
+  )
+  const wasItemCompletionApplied = Boolean(
+    isItemCompletionCommand(command) &&
+    resultItem &&
+    entry.item.version >= resultItem.version,
+  )
+  const shouldAdvanceProgress =
+    isProgressCompletion(completion) &&
+    ((targetsOccurrence && !wasOccurrenceCompletionApplied) ||
+      (isItemCompletionCommand(command) && !wasItemCompletionApplied))
   const completionResult =
     overlay.result.kind === 'completion' ? overlay.result : null
 
-  const occurrence = entry.occurrence
-    ? {
-        ...entry.occurrence,
-        completedAt: completion.completedAt,
-        status:
-          completion.status === 'alternative_done'
-            ? ('partial' as const)
-            : completion.status,
-        version: wasAlreadyApplied
-          ? entry.occurrence.version
-          : getProjectedOccurrenceVersion(entry.occurrence, overlay),
-      }
-    : null
+  const occurrence =
+    targetsOccurrence && entry.occurrence
+      ? {
+          ...entry.occurrence,
+          completedAt: completion.completedAt,
+          status:
+            completion.status === 'alternative_done'
+              ? ('partial' as const)
+              : completion.status,
+          version: wasOccurrenceCompletionApplied
+            ? entry.occurrence.version
+            : getProjectedOccurrenceVersion(entry.occurrence, overlay),
+        }
+      : entry.occurrence
 
   const courseDetails = Object.prototype.hasOwnProperty.call(
     completionResult ?? {},
     'courseDetails',
   )
     ? (completionResult?.courseDetails ?? null)
-    : entry.courseDetails && isProgress && !wasAlreadyApplied
+    : entry.courseDetails && shouldAdvanceProgress
       ? {
           ...entry.courseDetails,
           completedCount: Math.min(
@@ -583,7 +598,7 @@ function updateEntryWithCompletion(
         }
       : entry.courseDetails
   const flexibleProgress =
-    entry.flexibleProgress && isProgress && !wasAlreadyApplied
+    entry.flexibleProgress && shouldAdvanceProgress
       ? {
           ...entry.flexibleProgress,
           completedCount: Math.min(
@@ -599,17 +614,27 @@ function updateEntryWithCompletion(
 
   return {
     ...entry,
-    completion,
+    completion: updatesAttachedCompletion ? completion : entry.completion,
     courseDetails,
     flexibleProgress,
     ...(resultItem ? { item: resultItem } : {}),
     lastExercise:
-      entry.item.type === 'exercise' && completion.measurementValue !== null
-        ? completion
+      entry.item.type === 'exercise'
+        ? projectLatestMeasurementCompletion(
+            entry.lastExercise,
+            completion,
+            command.type !== 'update_completion' ||
+              entry.lastExercise?.id === completion.id,
+          )
         : entry.lastExercise,
     lastMeasurement:
-      entry.item.type === 'measurement' && completion.measurementValue !== null
-        ? completion
+      entry.item.type === 'measurement'
+        ? projectLatestMeasurementCompletion(
+            entry.lastMeasurement,
+            completion,
+            command.type !== 'update_completion' ||
+              entry.lastMeasurement?.id === completion.id,
+          )
         : entry.lastMeasurement,
     occurrence,
     scheduleRule: Object.prototype.hasOwnProperty.call(
@@ -619,6 +644,46 @@ function updateEntryWithCompletion(
       ? (completionResult?.scheduleRule ?? null)
       : entry.scheduleRule,
   }
+}
+
+function isItemCompletionCommand(
+  command: SelfCareOfflineCommand,
+): command is Extract<
+  SelfCareOfflineCommand,
+  {
+    type:
+      'complete_course_session' | 'complete_flexible_goal' | 'complete_item_now'
+  }
+> {
+  return (
+    command.type === 'complete_course_session' ||
+    command.type === 'complete_flexible_goal' ||
+    command.type === 'complete_item_now'
+  )
+}
+
+function projectLatestMeasurementCompletion(
+  current: SelfCareCompletion | null,
+  completion: SelfCareCompletion,
+  shouldConsider: boolean,
+): SelfCareCompletion | null {
+  if (
+    !shouldConsider ||
+    completion.measurementValue === null ||
+    !isProgressCompletion(completion)
+  ) {
+    return current
+  }
+
+  if (
+    current &&
+    current.id !== completion.id &&
+    current.completedAt > completion.completedAt
+  ) {
+    return current
+  }
+
+  return completion
 }
 
 function getProjectedOccurrenceVersion(

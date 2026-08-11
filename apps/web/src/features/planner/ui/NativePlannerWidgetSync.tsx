@@ -261,8 +261,17 @@ export function NativePlannerWidgetSync() {
     () =>
       isActivePersonalWorkspace
         ? activePlanner.tasks
-        : sortTasks(personalTaskRecords.map((task) => toPlannerTask(task))),
-    [activePlanner.tasks, isActivePersonalWorkspace, personalTaskRecords],
+        : sortTasks(
+            personalTaskRecords.map((task) =>
+              toPlannerTask(task, widgetTimeZone),
+            ),
+          ),
+    [
+      activePlanner.tasks,
+      isActivePersonalWorkspace,
+      personalTaskRecords,
+      widgetTimeZone,
+    ],
   )
   const widgetSpheres = isActivePersonalWorkspace
     ? activePlanner.spheres

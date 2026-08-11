@@ -145,6 +145,203 @@ describe('offline planner sync', () => {
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([taskRecord])
   })
 
+  it('replays a next-stage command with its stable id and commits both tasks', async () => {
+    const stage = createTaskNextStageRecords()
+    const onTaskSynced = vi.fn()
+    const api = createPlannerApiClientMock({
+      createNextTaskStage: vi.fn().mockResolvedValue(stage.response),
+    })
+
+    await enqueueNextStageMutation(stage)
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onTaskSynced,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 1,
+    })
+    expect(api.createNextTaskStage).toHaveBeenCalledWith(stage.source.id, {
+      chainId: 'chain-1',
+      completeCurrent: true,
+      expectedVersion: stage.source.version,
+      nextTaskId: stage.next.id,
+      plannedDate: null,
+    })
+    expect(onTaskSynced).toHaveBeenCalledTimes(2)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual(
+      expect.arrayContaining([stage.current, stage.next]),
+    )
+  })
+
+  it('reconciles a lost next-stage response without creating a duplicate', async () => {
+    const stage = createTaskNextStageRecords()
+    const api = createPlannerApiClientMock({
+      createNextTaskStage: vi.fn().mockRejectedValue(
+        new PlannerApiError('Version conflict', {
+          code: 'task_version_conflict',
+          details: {
+            actualVersion: stage.current.version,
+            expectedVersion: stage.source.version,
+          },
+          status: 409,
+        }),
+      ),
+      listTasks: vi.fn().mockResolvedValue([stage.current, stage.next]),
+    })
+
+    await enqueueNextStageMutation(stage)
+
+    await expect(
+      drainPlannerOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        api,
+        workspaceId: WORKSPACE_ID,
+      }),
+    ).resolves.toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 1,
+    })
+    expect(api.createNextTaskStage).toHaveBeenCalledTimes(1)
+    expect(api.listTasks).toHaveBeenCalledTimes(1)
+    expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual(
+      expect.arrayContaining([stage.current, stage.next]),
+    )
+  })
+
+  it('does not overwrite newer task projections with older replay responses', async () => {
+    const createdTask = createTaskRecord(createInput.id!)
+    const updatedTask = {
+      ...createdTask,
+      title: 'Updated offline task',
+      version: 2,
+    }
+    const completedTask = {
+      ...updatedTask,
+      completedAt: '2026-08-10T09:00:00.000Z',
+      status: 'done' as const,
+      version: 3,
+    }
+    const updateInput = {
+      assigneeUserId: createInput.assigneeUserId,
+      dueDate: createInput.dueDate,
+      note: createInput.note,
+      plannedDate: createInput.plannedDate,
+      plannedEndTime: createInput.plannedEndTime,
+      plannedStartTime: createInput.plannedStartTime,
+      project: createInput.project,
+      projectId: createInput.projectId,
+      requiresConfirmation: createInput.requiresConfirmation,
+      resource: createInput.resource,
+      sphereId: createInput.sphereId,
+      title: updatedTask.title,
+    }
+    const onTaskSynced = vi.fn()
+    const api = createPlannerApiClientMock({
+      createTask: vi.fn().mockResolvedValue(createdTask),
+      setTaskStatus: vi.fn().mockResolvedValue(completedTask),
+      updateTask: vi.fn().mockResolvedValue(updatedTask),
+    })
+
+    await enqueuePlannerOfflineMutation(
+      {
+        actorUserId: ACTOR_USER_ID,
+        input: createInput,
+        taskId: createInput.id!,
+        type: 'task.create',
+        workspaceId: WORKSPACE_ID,
+      },
+      { optimisticTask: createdTask },
+    )
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation(
+      {
+        actorUserId: ACTOR_USER_ID,
+        expectedVersion: 1,
+        input: updateInput,
+        taskId: createInput.id!,
+        type: 'task.update',
+        workspaceId: WORKSPACE_ID,
+      },
+      { optimisticTask: updatedTask },
+    )
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation(
+      {
+        actorUserId: ACTOR_USER_ID,
+        expectedVersion: 2,
+        statusValue: 'done',
+        taskId: createInput.id!,
+        type: 'task.status.update',
+        workspaceId: WORKSPACE_ID,
+      },
+      { optimisticTask: completedTask },
+    )
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onTaskSynced,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 3,
+      synced: 3,
+    })
+    expect(onTaskSynced).toHaveBeenCalledTimes(1)
+    expect(onTaskSynced).toHaveBeenCalledWith(completedTask)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([completedTask])
+  })
+
+  it('treats an already missing queued task delete as successful', async () => {
+    const task = createTaskRecord('already-deleted-task')
+    const onTaskDeleted = vi.fn()
+    const api = createPlannerApiClientMock({
+      removeTask: vi.fn().mockRejectedValue(
+        new PlannerApiError('Task was not found.', {
+          code: 'task_not_found',
+          status: 404,
+        }),
+      ),
+    })
+    await replaceCachedTaskRecords(WORKSPACE_ID, [task])
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      expectedVersion: task.version,
+      taskId: task.id,
+      type: 'task.delete',
+      workspaceId: WORKSPACE_ID,
+    })
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onTaskDeleted,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 1,
+    })
+    expect(onTaskDeleted).toHaveBeenCalledWith(task.id)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([])
+  })
+
   it('never replays another actor mutation from the same workspace', async () => {
     const otherActorUserId = 'user-2'
     const taskRecord = createTaskRecord(createInput.id!)
@@ -478,6 +675,74 @@ function createTaskRecord(taskId: string): TaskRecord {
     version: 1,
     workspaceId: WORKSPACE_ID,
   }
+}
+
+function createTaskNextStageRecords() {
+  const source = createTaskRecord('chain-current')
+  const current: TaskRecord = {
+    ...source,
+    chainId: 'chain-1',
+    completedAt: '2026-08-11T05:00:00.000Z',
+    completionType: 'advanced',
+    stageIndex: 1,
+    stageType: 'task',
+    status: 'done',
+    version: 2,
+  }
+  const next: TaskRecord = {
+    ...source,
+    chainId: 'chain-1',
+    id: 'chain-next',
+    previousTaskId: source.id,
+    stageIndex: 2,
+    stageType: 'task',
+    version: 1,
+  }
+
+  return {
+    current,
+    next,
+    response: {
+      currentTask: current,
+      nextTask: next,
+      undo: {
+        createdTaskExpectedVersion: next.version,
+        createdTaskId: next.id,
+        previousChainId: null,
+        previousCompletionType: null,
+        previousCompletedAt: null,
+        previousPreviousTaskId: null,
+        previousStageIndex: null,
+        previousStageType: null,
+        previousStatus: source.status,
+        previousTaskExpectedVersion: current.version,
+      },
+    },
+    source,
+  }
+}
+
+async function enqueueNextStageMutation(
+  stage: ReturnType<typeof createTaskNextStageRecords>,
+): Promise<void> {
+  await enqueuePlannerOfflineMutation(
+    {
+      actorUserId: ACTOR_USER_ID,
+      expectedVersion: stage.source.version,
+      input: {
+        chainId: 'chain-1',
+        completeCurrent: true,
+        expectedVersion: stage.source.version,
+        nextTaskId: stage.next.id,
+        plannedDate: null,
+      },
+      nextTaskId: stage.next.id,
+      taskId: stage.source.id,
+      type: 'task.next-stage',
+      workspaceId: WORKSPACE_ID,
+    },
+    { optimisticTasks: [stage.current, stage.next] },
+  )
 }
 
 function createLifeSphereRecord(sphereId: string): LifeSphereRecord {

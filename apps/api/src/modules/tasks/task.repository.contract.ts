@@ -364,11 +364,15 @@ export function defineTaskRepositoryContractSuite(input: {
           }),
         })
 
+        const clientNextTaskId = randomUUID()
+        const clientChainId = randomUUID()
         const firstStage = await harness.repository.createNextStage({
           context: harness.personalContext,
           input: {
+            chainId: clientChainId,
             completeCurrent: true,
             expectedVersion: task.version,
+            nextTaskId: clientNextTaskId,
             note: 'Take the car to the service',
             plannedDate: '2026-05-31',
             title: 'Arrive at service',
@@ -376,6 +380,7 @@ export function defineTaskRepositoryContractSuite(input: {
           taskId: task.id,
         })
 
+        assert.equal(firstStage.nextTask.id, clientNextTaskId)
         assert.notEqual(firstStage.nextTask.id, task.id)
         assert.equal(firstStage.currentTask.id, task.id)
         assert.equal(firstStage.currentTask.status, 'done')
@@ -385,7 +390,7 @@ export function defineTaskRepositoryContractSuite(input: {
           firstStage.currentTask.chainId,
           firstStage.nextTask.chainId,
         )
-        assert.ok(firstStage.currentTask.chainId)
+        assert.equal(firstStage.currentTask.chainId, clientChainId)
         assert.equal(firstStage.currentTask.previousTaskId, null)
         assert.equal(firstStage.currentTask.stageIndex, 1)
         assert.equal(firstStage.currentTask.stageType, 'task')
@@ -518,6 +523,75 @@ export function defineTaskRepositoryContractSuite(input: {
             stage.currentTask.id,
           ),
           null,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('accepts only one concurrent next-stage command', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const task = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({
+            plannedDate: '2026-05-23',
+            project: 'Concurrent chain',
+            title: 'Start concurrent chain',
+          }),
+        })
+        const results = await Promise.allSettled([
+          Promise.resolve().then(() =>
+            harness.repository.createNextStage({
+              context: harness.personalContext,
+              input: {
+                chainId: randomUUID(),
+                completeCurrent: true,
+                expectedVersion: task.version,
+                nextTaskId: randomUUID(),
+                plannedDate: null,
+                title: 'First next stage',
+              },
+              taskId: task.id,
+            }),
+          ),
+          Promise.resolve().then(() =>
+            harness.repository.createNextStage({
+              context: harness.personalContext,
+              input: {
+                chainId: randomUUID(),
+                completeCurrent: true,
+                expectedVersion: task.version,
+                nextTaskId: randomUUID(),
+                plannedDate: null,
+                title: 'Second next stage',
+              },
+              taskId: task.id,
+            }),
+          ),
+        ])
+        const fulfilled = results.filter(
+          (result) => result.status === 'fulfilled',
+        )
+        const rejected = results.filter(
+          (result) => result.status === 'rejected',
+        )
+
+        assert.equal(fulfilled.length, 1)
+        assert.equal(rejected.length, 1)
+        assert.ok(
+          rejected[0]?.status === 'rejected' &&
+            hasHttpErrorCode(rejected[0].reason, 'task_version_conflict'),
+        )
+
+        const tasks = await harness.repository.listByWorkspace(
+          harness.personalContext,
+        )
+        assert.equal(
+          tasks.filter((candidate) => candidate.previousTaskId === task.id)
+            .length,
+          1,
         )
       } finally {
         await harness.cleanup()
