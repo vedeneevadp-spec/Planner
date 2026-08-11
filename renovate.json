@@ -89,6 +89,7 @@
       "matchManagers": ["npm"],
       "matchPackageNames": ["@fastify/swagger-ui", "@fastify/static"],
       "matchUpdateTypes": ["patch", "minor", "major"],
+      "separateMajorMinor": false,
       "dependencyDashboardApproval": true,
       "groupName": "Fastify Swagger UI updates",
       "automerge": false
