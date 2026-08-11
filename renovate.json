@@ -51,6 +51,8 @@
       "enabled": false
     },
     {
+      "description": "Require approval for high-impact npm updates while keeping unrelated dependencies in separate PRs.",
+      "matchManagers": ["npm"],
       "matchPackageNames": [
         "/^@capacitor\\//",
         "/^@fastify\\//",
@@ -70,7 +72,26 @@
       ],
       "matchUpdateTypes": ["major", "minor"],
       "dependencyDashboardApproval": true,
-      "groupName": "manual quality-gate dependencies"
+      "groupName": "{{{depName}}} updates",
+      "automerge": false
+    },
+    {
+      "description": "Keep Capacitor packages aligned across web, Android, iOS, and the CLI.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["/^@capacitor\\//"],
+      "matchUpdateTypes": ["patch", "minor", "major"],
+      "dependencyDashboardApproval": true,
+      "groupName": "Capacitor updates",
+      "automerge": false
+    },
+    {
+      "description": "Coordinate Swagger UI with its forced @fastify/static runtime dependency.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@fastify/swagger-ui", "@fastify/static"],
+      "matchUpdateTypes": ["patch", "minor", "major"],
+      "dependencyDashboardApproval": true,
+      "groupName": "Fastify Swagger UI updates",
+      "automerge": false
     },
     {
       "matchDepTypes": ["dependencies"],
