@@ -3,6 +3,8 @@ import {
   getDateKeyInTimeZone,
   getTimeInTimeZone,
   type LifeSphereRecord,
+  type TaskNextStageInput,
+  type TaskNextStageResponse,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
@@ -301,6 +303,86 @@ export function createOptimisticTaskRecord(
     updatedAt: now,
     version: 1,
     workspaceId: options.workspaceId,
+  }
+}
+
+export function createOptimisticTaskNextStageResult(
+  task: TaskRecord,
+  input: TaskNextStageInput,
+  options: {
+    authorDisplayName?: string | null | undefined
+    authorUserId?: string | null | undefined
+    chainId?: string | undefined
+    nextTaskId: string
+    updatedAt?: string | undefined
+  },
+): TaskNextStageResponse {
+  const updatedAt = options.updatedAt ?? new Date().toISOString()
+  const chainId =
+    task.chainId ?? input.chainId ?? options.chainId ?? generateUuidV7()
+  const currentStageIndex = task.stageIndex ?? 1
+  const currentTask: TaskRecord = {
+    ...task,
+    chainId,
+    completionType: input.completeCurrent ? 'advanced' : task.completionType,
+    completedAt: input.completeCurrent ? updatedAt : task.completedAt,
+    previousTaskId: task.previousTaskId ?? null,
+    stageIndex: currentStageIndex,
+    stageType: task.stageType ?? 'task',
+    status: input.completeCurrent ? 'done' : task.status,
+    updatedAt,
+    version: task.version + 1,
+  }
+  const nextTask: TaskRecord = {
+    ...task,
+    authorDisplayName:
+      options.authorDisplayName === undefined
+        ? task.authorDisplayName
+        : options.authorDisplayName,
+    authorUserId:
+      options.authorUserId === undefined
+        ? task.authorUserId
+        : options.authorUserId,
+    chainId,
+    completionType: null,
+    completedAt: null,
+    createdAt: updatedAt,
+    deletedAt: null,
+    dueDate: null,
+    id: options.nextTaskId,
+    note: input.note !== undefined ? input.note.trim() : task.note,
+    plannedDate: input.plannedDate ?? null,
+    plannedEndTime: null,
+    plannedStartTime: null,
+    previousTaskId: task.id,
+    recurrence: null,
+    remindBeforeStart: undefined,
+    reminderOffsets: undefined,
+    routine: null,
+    schedule: null,
+    stageIndex: currentStageIndex + 1,
+    stageType: input.stageType ?? 'task',
+    status: 'todo',
+    title: input.title?.trim() || task.title,
+    updatedAt,
+    version: 1,
+  }
+
+  return {
+    currentTask,
+    nextTask,
+    undo: {
+      createdTaskExpectedVersion: nextTask.version,
+      createdTaskId: nextTask.id,
+      previousChainId: task.chainId ?? null,
+      previousCompletionType: task.completionType ?? null,
+      previousCompletedAt: task.completedAt,
+      previousPreviousTaskId: task.previousTaskId ?? null,
+      previousStageIndex: task.stageIndex ?? null,
+      previousStageType: task.stageType ?? null,
+      previousStatus: task.status,
+      previousTaskExpectedVersion: currentTask.version,
+    },
   }
 }
 

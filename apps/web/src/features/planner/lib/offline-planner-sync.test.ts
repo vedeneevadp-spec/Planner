@@ -145,6 +145,79 @@ describe('offline planner sync', () => {
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([taskRecord])
   })
 
+  it('replays a next-stage command with its stable id and commits both tasks', async () => {
+    const stage = createTaskNextStageRecords()
+    const onTaskSynced = vi.fn()
+    const api = createPlannerApiClientMock({
+      createNextTaskStage: vi.fn().mockResolvedValue(stage.response),
+    })
+
+    await enqueueNextStageMutation(stage)
+
+    const result = await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      api,
+      onTaskSynced,
+      workspaceId: WORKSPACE_ID,
+    })
+
+    expect(result).toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 1,
+    })
+    expect(api.createNextTaskStage).toHaveBeenCalledWith(stage.source.id, {
+      chainId: 'chain-1',
+      completeCurrent: true,
+      expectedVersion: stage.source.version,
+      nextTaskId: stage.next.id,
+      plannedDate: null,
+    })
+    expect(onTaskSynced).toHaveBeenCalledTimes(2)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual(
+      expect.arrayContaining([stage.current, stage.next]),
+    )
+  })
+
+  it('reconciles a lost next-stage response without creating a duplicate', async () => {
+    const stage = createTaskNextStageRecords()
+    const api = createPlannerApiClientMock({
+      createNextTaskStage: vi.fn().mockRejectedValue(
+        new PlannerApiError('Version conflict', {
+          code: 'task_version_conflict',
+          details: {
+            actualVersion: stage.current.version,
+            expectedVersion: stage.source.version,
+          },
+          status: 409,
+        }),
+      ),
+      listTasks: vi.fn().mockResolvedValue([stage.current, stage.next]),
+    })
+
+    await enqueueNextStageMutation(stage)
+
+    await expect(
+      drainPlannerOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        api,
+        workspaceId: WORKSPACE_ID,
+      }),
+    ).resolves.toEqual({
+      conflicted: 0,
+      failed: 0,
+      processed: 1,
+      synced: 1,
+    })
+    expect(api.createNextTaskStage).toHaveBeenCalledTimes(1)
+    expect(api.listTasks).toHaveBeenCalledTimes(1)
+    expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
+    expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual(
+      expect.arrayContaining([stage.current, stage.next]),
+    )
+  })
+
   it('does not overwrite newer task projections with older replay responses', async () => {
     const createdTask = createTaskRecord(createInput.id!)
     const updatedTask = {
@@ -602,6 +675,74 @@ function createTaskRecord(taskId: string): TaskRecord {
     version: 1,
     workspaceId: WORKSPACE_ID,
   }
+}
+
+function createTaskNextStageRecords() {
+  const source = createTaskRecord('chain-current')
+  const current: TaskRecord = {
+    ...source,
+    chainId: 'chain-1',
+    completedAt: '2026-08-11T05:00:00.000Z',
+    completionType: 'advanced',
+    stageIndex: 1,
+    stageType: 'task',
+    status: 'done',
+    version: 2,
+  }
+  const next: TaskRecord = {
+    ...source,
+    chainId: 'chain-1',
+    id: 'chain-next',
+    previousTaskId: source.id,
+    stageIndex: 2,
+    stageType: 'task',
+    version: 1,
+  }
+
+  return {
+    current,
+    next,
+    response: {
+      currentTask: current,
+      nextTask: next,
+      undo: {
+        createdTaskExpectedVersion: next.version,
+        createdTaskId: next.id,
+        previousChainId: null,
+        previousCompletionType: null,
+        previousCompletedAt: null,
+        previousPreviousTaskId: null,
+        previousStageIndex: null,
+        previousStageType: null,
+        previousStatus: source.status,
+        previousTaskExpectedVersion: current.version,
+      },
+    },
+    source,
+  }
+}
+
+async function enqueueNextStageMutation(
+  stage: ReturnType<typeof createTaskNextStageRecords>,
+): Promise<void> {
+  await enqueuePlannerOfflineMutation(
+    {
+      actorUserId: ACTOR_USER_ID,
+      expectedVersion: stage.source.version,
+      input: {
+        chainId: 'chain-1',
+        completeCurrent: true,
+        expectedVersion: stage.source.version,
+        nextTaskId: stage.next.id,
+        plannedDate: null,
+      },
+      nextTaskId: stage.next.id,
+      taskId: stage.source.id,
+      type: 'task.next-stage',
+      workspaceId: WORKSPACE_ID,
+    },
+    { optimisticTasks: [stage.current, stage.next] },
+  )
 }
 
 function createLifeSphereRecord(sphereId: string): LifeSphereRecord {

@@ -177,8 +177,16 @@ export function SelfCarePage() {
     isBrowserRetryableOfflineError,
   )
   const hasReadConnectionIssue = selfCareReadiness.reason === 'planner_error'
+  const canQueueSelfCareWrites =
+    selfCareOfflineQueue.canWriteFromSession &&
+    selfCareOfflineQueue.canQueueWrites
+  const hasDeferredAuthWithLocalWrites =
+    selfCareReadiness.reason === 'auth_deferred' && canQueueSelfCareWrites
   const hasOfflineConnectionIssue =
-    isBrowserOffline || hasFeatureConnectionError || hasReadConnectionIssue
+    isBrowserOffline ||
+    hasFeatureConnectionError ||
+    hasReadConnectionIssue ||
+    hasDeferredAuthWithLocalWrites
   const canUseSelfCareWrites =
     selfCareOfflineQueue.canWriteFromSession &&
     (hasOfflineConnectionIssue
@@ -210,9 +218,10 @@ export function SelfCarePage() {
     selfCareReadiness.reason === 'auth_restoring' ||
     selfCareReadiness.reason === 'planner_pending'
   const isSessionUnavailable =
-    selfCareReadiness.reason === 'auth_deferred' ||
     selfCareReadiness.reason === 'unauthorized' ||
-    selfCareReadiness.reason === 'no_session'
+    selfCareReadiness.reason === 'no_session' ||
+    (selfCareReadiness.reason === 'auth_deferred' &&
+      !hasDeferredAuthWithLocalWrites)
   const shouldShowLoadingState =
     !hasActiveTabData &&
     (isActiveTabCacheLoading ||

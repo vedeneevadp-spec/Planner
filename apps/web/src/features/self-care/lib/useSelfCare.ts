@@ -1370,17 +1370,57 @@ function useSelfCareCommandMutation<TData, TVariables>(
       const scopeKey = `${context.storageWorkspaceId}:${context.actorUserId}`
       const execute = async () => {
         const occurredAt = new Date().toISOString()
-        const source = readSelfCareOptimisticSource(queryClient, context)
-        const command = selfCareOfflineCommandSchema.parse(
-          options.buildCommand(variables, source, occurredAt),
-        )
-        const result = await executeSelfCareCommand({
-          command,
-          context,
-          occurredAt,
+        const currentScopeValues = readSelfCareScopeValues(
           queryClient,
-          source,
-        })
+          context.workspaceId,
+        )
+        const shouldHydrateConfirmedCache =
+          currentScopeValues.length === 0 ||
+          !context.readiness.canWriteProtectedData ||
+          (typeof navigator !== 'undefined' && navigator.onLine === false)
+        const initialSource = shouldHydrateConfirmedCache
+          ? ((await hydrateSelfCareOptimisticSourceFromConfirmedCache(
+              queryClient,
+              context,
+            )) ?? readSelfCareOptimisticSource(queryClient, context))
+          : readSelfCareOptimisticSource(queryClient, context)
+        const buildAndExecute = async (source: SelfCareOptimisticSource) => {
+          const command = selfCareOfflineCommandSchema.parse(
+            options.buildCommand(variables, source, occurredAt),
+          )
+          const result = await executeSelfCareCommand({
+            command,
+            context,
+            occurredAt,
+            queryClient,
+            source,
+          })
+
+          return result
+        }
+        let execution: Awaited<ReturnType<typeof buildAndExecute>>
+
+        try {
+          execution = await buildAndExecute(initialSource)
+        } catch (error) {
+          if (!(error instanceof SelfCareOfflineBaseUnavailableError)) {
+            throw error
+          }
+
+          const restoredSource =
+            await hydrateSelfCareOptimisticSourceFromConfirmedCache(
+              queryClient,
+              context,
+            )
+
+          if (!restoredSource) {
+            throw error
+          }
+
+          execution = await buildAndExecute(restoredSource)
+        }
+
+        const result = execution
         const scopes = options.getScopes?.(variables) ?? options.scopes ?? []
         const invalidationOptions =
           options.getInvalidationOptions?.(variables) ??
@@ -1673,6 +1713,53 @@ function readSelfCareOptimisticSource(
   )
 }
 
+async function hydrateSelfCareOptimisticSourceFromConfirmedCache(
+  queryClient: QueryClient,
+  context: SelfCareApiContext,
+): Promise<SelfCareOptimisticSource | null> {
+  const snapshots = await loadConfirmedSelfCareCachedScopes(
+    context.storageWorkspaceId,
+    context.actorUserId,
+  )
+
+  if (!snapshots.length) {
+    return null
+  }
+
+  await Promise.all(
+    snapshots.map(async (snapshot) => {
+      const parameters = readSelfCareCacheParameters(
+        snapshot.scope,
+        snapshot.cacheKey,
+      )
+      const queryKey = [
+        'self-care',
+        context.workspaceId,
+        snapshot.scope,
+        ...parameters,
+      ] as const
+
+      if (queryClient.getQueryData(queryKey) !== undefined) {
+        return
+      }
+
+      const projected = await loadProjectedCachedSelfCareRead(
+        context.storageWorkspaceId,
+        context.actorUserId,
+        snapshot.cacheKey,
+        (data, overlay) =>
+          projectSelfCareRead(snapshot.scope, parameters, data, overlay),
+      )
+
+      if (projected) {
+        queryClient.setQueryData(queryKey, projected.data)
+      }
+    }),
+  )
+
+  return readSelfCareOptimisticSource(queryClient, context)
+}
+
 function readSelfCareScopeValues(
   queryClient: QueryClient,
   workspaceId: string,
@@ -1836,6 +1923,16 @@ async function persistCurrentSelfCareQueryBases(
   const values = readSelfCareScopeValues(queryClient, context.workspaceId)
 
   if (!values.length) {
+    const confirmed = await loadConfirmedSelfCareCachedScopes(
+      context.storageWorkspaceId,
+      context.actorUserId,
+      expectedWriteGeneration,
+    )
+
+    if (confirmed.length > 0) {
+      return
+    }
+
     throw new SelfCareOfflineBaseUnavailableError()
   }
 

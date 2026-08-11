@@ -56,6 +56,39 @@ describe('offline planner workspace lifecycle', () => {
     ).resolves.toBe(1)
   })
 
+  it('persists both optimistic chain stages and their command atomically', async () => {
+    const currentTask = createTaskRecord('chain-current')
+    const nextTask = createTaskRecord('chain-next')
+
+    await expect(
+      enqueuePlannerOfflineMutation(
+        {
+          actorUserId: ACTOR_USER_ID,
+          expectedVersion: currentTask.version,
+          input: {
+            chainId: 'chain-offline',
+            completeCurrent: true,
+            expectedVersion: currentTask.version,
+            nextTaskId: nextTask.id,
+            plannedDate: null,
+          },
+          nextTaskId: nextTask.id,
+          taskId: currentTask.id,
+          type: 'task.next-stage',
+          workspaceId: WORKSPACE_ID,
+        },
+        { optimisticTasks: [currentTask, nextTask] },
+      ),
+    ).resolves.not.toBeNull()
+
+    await expect(loadCachedTaskRecords(WORKSPACE_ID)).resolves.toEqual(
+      expect.arrayContaining([currentTask, nextTask]),
+    )
+    await expect(
+      countRetryablePlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).resolves.toBe(1)
+  })
+
   it('persists a queued delete and removes its cached task in one durable write', async () => {
     const task = createTaskRecord('optimistic-delete')
     await replaceCachedTaskRecords(WORKSPACE_ID, [task])

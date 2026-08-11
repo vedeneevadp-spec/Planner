@@ -1,5 +1,6 @@
 import {
   generateUuidV7,
+  type TaskNextStageInput,
   type TaskNextStageResponse,
   type TaskNextStageUndoInput,
   type TaskRecord,
@@ -59,6 +60,7 @@ import { usePlannerMutations } from './planner-mutations'
 import { usePlannerOfflineSync } from './planner-offline'
 import { usePlannerQueries } from './planner-queries'
 import {
+  createOptimisticTaskNextStageResult,
   createOptimisticTaskRecord,
   createOptimisticTaskScheduleRecord,
   createOptimisticTaskStatusRecord,
@@ -81,10 +83,17 @@ type PlannerTaskOfflineMutationInput = Extract<
 type PlannerTaskOptimisticProjection =
   | {
       optimisticTask: TaskRecord
+      optimisticTasks?: never
       removeTaskId?: never
     }
   | {
       optimisticTask?: never
+      optimisticTasks: readonly TaskRecord[]
+      removeTaskId?: never
+    }
+  | {
+      optimisticTask?: never
+      optimisticTasks?: never
       removeTaskId: string
     }
 
@@ -434,6 +443,7 @@ export function usePlannerState(): PlannerState {
 
       const queuedMutation = await enqueuePlannerOfflineMutation(mutation, {
         optimisticTask: projection.optimisticTask,
+        optimisticTasks: projection.optimisticTasks,
         removeCachedTaskId: projection.removeTaskId,
       })
 
@@ -441,11 +451,20 @@ export function usePlannerState(): PlannerState {
         return null
       }
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
-        projection.optimisticTask
-          ? replaceTaskRecord(current, projection.optimisticTask)
-          : removeTaskRecord(current, projection.removeTaskId),
-      )
+      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => {
+        if (projection.optimisticTask) {
+          return replaceTaskRecord(current, projection.optimisticTask)
+        }
+
+        if (projection.optimisticTasks) {
+          return projection.optimisticTasks.reduce(
+            (tasks, task) => replaceTaskRecord(tasks, task),
+            current,
+          )
+        }
+
+        return removeTaskRecord(current, projection.removeTaskId)
+      })
       void refreshQueuedMutationCount()
 
       if (isBrowserOfflineNow()) {
@@ -714,20 +733,84 @@ export function usePlannerState(): PlannerState {
     setTaskPending(taskId, true)
 
     try {
+      const nextTaskId = generateUuidV7()
+      const chainId = task.chainId ?? generateUuidV7()
+      const nextStageInput = {
+        chainId,
+        completeCurrent: input.completeCurrent === true,
+        expectedVersion: task.version,
+        nextTaskId,
+        ...(input.note !== undefined ? { note: input.note } : {}),
+        plannedDate: input.plannedDate ?? null,
+        ...(input.stageType !== undefined
+          ? { stageType: input.stageType }
+          : {}),
+        ...(input.title !== undefined ? { title: input.title } : {}),
+      } satisfies TaskNextStageInput
+      const optimisticResult = createOptimisticTaskNextStageResult(
+        task,
+        nextStageInput,
+        {
+          authorDisplayName: session?.actor.displayName ?? null,
+          authorUserId: actorUserId ?? null,
+          nextTaskId,
+        },
+      )
+
+      if (actorUserId && workspaceId) {
+        const queuedResult = await enqueueOptimisticTaskMutation(
+          {
+            actorUserId,
+            expectedVersion: task.version,
+            input: nextStageInput,
+            nextTaskId,
+            taskId,
+            type: 'task.next-stage',
+            workspaceId,
+          },
+          {
+            optimisticTasks: [
+              optimisticResult.currentTask,
+              optimisticResult.nextTask,
+            ],
+          },
+        )
+
+        if (queuedResult !== null) {
+          if (queuedResult) {
+            setTaskActionSnackbar({
+              id: generateUuidV7(),
+              message:
+                input.completeCurrent === true
+                  ? 'Выполнено, следующий этап создан'
+                  : 'Следующий этап создан',
+            })
+
+            if (
+              input.completeCurrent === true &&
+              isTaskCompletionConfettiEnabled
+            ) {
+              fireTaskCompletionConfetti()
+            }
+          }
+
+          return queuedResult ? optimisticResult : null
+        }
+      }
+
+      if (isBrowserOfflineNow()) {
+        setMutationErrorMessage(
+          'Не удалось сохранить этап на устройстве. Проверьте доступное место и повторите.',
+        )
+
+        return null
+      }
+
       let result: TaskNextStageResponse | null = null
       const didUpdate = await runMutation(async () => {
         const nextResult = await createNextTaskStageMutation.mutateAsync({
-          completeCurrent: input.completeCurrent === true,
-          expectedVersion: task.version,
-          ...(input.note !== undefined ? { note: input.note } : {}),
-          ...(input.plannedDate !== undefined
-            ? { plannedDate: input.plannedDate }
-            : {}),
-          ...(input.stageType !== undefined
-            ? { stageType: input.stageType }
-            : {}),
+          ...nextStageInput,
           taskId,
-          ...(input.title !== undefined ? { title: input.title } : {}),
         })
         result = nextResult
         setTaskActionSnackbar({
