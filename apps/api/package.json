@@ -16,11 +16,11 @@
     "task-reminders:worker": "tsx src/workers/task-reminders.ts"
   },
   "dependencies": {
-    "@fastify/cors": "^11.2.0",
-    "@fastify/swagger": "^9.7.0",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^5.2.6",
     "@planner/contracts": "file:../../packages/contracts",
-    "fastify": "^5.9.0",
+    "fastify": "^5.11.3",
     "jose": "^6.2.8",
     "kysely": "^0.29.4",
     "nodemailer": "^9.0.4",
