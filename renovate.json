@@ -1,70 +1,43 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":dependencyDashboard"
-  ],
+  "extends": ["config:recommended", ":dependencyDashboard"],
   "timezone": "Europe/Samara",
-  "labels": [
-    "dependencies"
-  ],
+  "labels": ["dependencies"],
   "rangeStrategy": "bump",
   "minimumReleaseAge": "3 days",
   "prConcurrentLimit": 6,
   "prHourlyLimit": 2,
   "packageRules": [
     {
-      "matchManagers": [
-        "npm"
-      ],
-      "matchUpdateTypes": [
-        "patch"
-      ],
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["patch"],
       "groupName": "npm patch updates",
       "automerge": true,
       "automergeType": "pr",
       "platformAutomerge": true
     },
     {
-      "matchManagers": [
-        "npm"
-      ],
-      "matchUpdateTypes": [
-        "minor"
-      ],
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor"],
       "groupName": "npm minor updates"
     },
     {
       "description": "Keep npm CLI updates isolated because production enforces an exact npm version.",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchPackageNames": [
-        "npm"
-      ],
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["npm"],
       "groupName": "npm toolchain updates",
       "automerge": false
     },
     {
       "description": "Keep React Router updates isolated for security review and major-version migration testing.",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchPackageNames": [
-        "react-router",
-        "react-router-dom"
-      ],
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["react-router", "react-router-dom"],
       "groupName": "React Router updates",
       "automerge": false
     },
     {
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "minor"
-      ],
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor"],
       "groupName": "GitHub Actions updates",
       "automerge": true,
       "automergeType": "pr",
@@ -72,16 +45,14 @@
     },
     {
       "description": "LiteRT 2.1.6 publishes litert and litert-api AARs with the same Android namespace, which breaks manifest merging.",
-      "matchManagers": [
-        "gradle"
-      ],
-      "matchPackageNames": [
-        "com.google.ai.edge.litert:litert"
-      ],
+      "matchManagers": ["gradle"],
+      "matchPackageNames": ["com.google.ai.edge.litert:litert"],
       "matchNewValue": "2.1.6",
       "enabled": false
     },
     {
+      "description": "Require approval for high-impact npm updates while keeping unrelated dependencies in separate PRs.",
+      "matchManagers": ["npm"],
       "matchPackageNames": [
         "/^@capacitor\\//",
         "/^@fastify\\//",
@@ -99,60 +70,32 @@
         "vitest",
         "zod"
       ],
-      "matchUpdateTypes": [
-        "major",
-        "minor"
-      ],
+      "matchUpdateTypes": ["major", "minor"],
       "dependencyDashboardApproval": true,
       "groupName": "{{{depName}}} updates",
-      "description": "Require approval for high-impact npm updates while keeping unrelated dependencies in separate PRs.",
-      "matchManagers": [
-        "npm"
-      ],
       "automerge": false
     },
     {
       "description": "Keep Capacitor packages aligned across web, Android, iOS, and the CLI.",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchPackageNames": [
-        "/^@capacitor\\//"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "minor",
-        "major"
-      ],
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["/^@capacitor\\//"],
+      "matchUpdateTypes": ["patch", "minor", "major"],
       "dependencyDashboardApproval": true,
       "groupName": "Capacitor updates",
       "automerge": false
     },
     {
       "description": "Coordinate Swagger UI with its forced @fastify/static runtime dependency.",
-      "matchManagers": [
-        "npm"
-      ],
-      "matchPackageNames": [
-        "@fastify/swagger-ui",
-        "@fastify/static"
-      ],
-      "matchUpdateTypes": [
-        "patch",
-        "minor",
-        "major"
-      ],
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["@fastify/swagger-ui", "@fastify/static"],
+      "matchUpdateTypes": ["patch", "minor", "major"],
       "dependencyDashboardApproval": true,
       "groupName": "Fastify Swagger UI updates",
       "automerge": false
     },
     {
-      "matchDepTypes": [
-        "dependencies"
-      ],
-      "matchUpdateTypes": [
-        "major"
-      ],
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
     }
   ]
