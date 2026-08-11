@@ -391,6 +391,114 @@ describe('self-care persistent reads and offline commands', () => {
     })
   })
 
+  describe('cached-only command recovery', () => {
+    it('hydrates the confirmed actor cache before completing a visible item', async () => {
+      browserOnline = false
+      const dashboard = createDashboard()
+      const list = createList()
+      const lastSuccessfulSyncAt = '2026-06-18T08:30:00.000Z'
+
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'dashboard',
+        createSelfCareCacheKey('dashboard', [DATE]),
+        dashboard,
+        lastSuccessfulSyncAt,
+      )
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'items',
+        createSelfCareCacheKey('items'),
+        list,
+        lastSuccessfulSyncAt,
+      )
+      mocks.useSessionFeatureReadiness.mockReturnValue(
+        createReadinessStub({
+          apiConfig: null,
+          isApiEnabled: false,
+          readiness: { canWriteProtectedData: false },
+        }),
+      )
+
+      const mutation = renderHook(() => useCompleteSelfCareItemNow(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+
+      await act(async () => {
+        await mutation.result.current.mutateAsync({
+          input: createRitualCompletionInput('Сделано из кэша'),
+          itemId: ITEM_ID,
+        })
+      })
+
+      const [queued] = await listSelfCareOfflineMutations(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+      )
+      expect(queued?.command).toMatchObject({
+        expectedVersion: 7,
+        input: { note: 'Сделано из кэша' },
+        itemId: ITEM_ID,
+        type: 'complete_item_now',
+      })
+      expect(
+        queryClient.getQueryData(selfCareDashboardQueryKey(OWNER_ID, DATE)),
+      ).toBeDefined()
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+    })
+
+    it('projects a created item into a cached-only list immediately', async () => {
+      browserOnline = false
+      const lastSuccessfulSyncAt = '2026-06-18T08:30:00.000Z'
+
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'dashboard',
+        createSelfCareCacheKey('dashboard', [DATE]),
+        createDashboard(),
+        lastSuccessfulSyncAt,
+      )
+      await saveCachedSelfCareRead(
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        'items',
+        createSelfCareCacheKey('items'),
+        createList(),
+        lastSuccessfulSyncAt,
+      )
+      mocks.useSessionFeatureReadiness.mockReturnValue(
+        createReadinessStub({
+          apiConfig: null,
+          isApiEnabled: false,
+          readiness: { canWriteProtectedData: false },
+        }),
+      )
+      const mutation = renderHook(() => useCreateSelfCareItem(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+
+      await act(async () => {
+        await mutation.result.current.mutateAsync({
+          input: { ...createItemInput(), title: 'Новая офлайн-забота' },
+        })
+      })
+
+      const visibleList = queryClient.getQueryData<SelfCareListResponse>(
+        selfCareItemsQueryKey(OWNER_ID),
+      )
+      expect(
+        visibleList?.items.some((item) => item.title === 'Новая офлайн-забота'),
+      ).toBe(true)
+      expect(
+        await listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+      ).toHaveLength(1)
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+    })
+  })
+
   describe('all page mutation commands', () => {
     const scenarios = createCommandScenarios()
 

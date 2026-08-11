@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createOptimisticLifeSphereRecord,
+  createOptimisticTaskNextStageResult,
   createOptimisticTaskRecord,
   createOptimisticTaskScheduleRecord,
   createOptimisticTaskStatusRecord,
@@ -279,6 +280,84 @@ describe('planner record projections', () => {
       status: 'done',
       updatedAt: '2026-08-10T09:00:00.000Z',
       version: 3,
+    })
+  })
+
+  it('projects both sides of a next-stage command with a stable client id', () => {
+    const task = createTaskRecord({
+      chainId: null,
+      completedAt: null,
+      recurrence: {
+        daysOfWeek: [1],
+        endDate: null,
+        frequency: 'daily',
+        interval: 1,
+        isActive: true,
+        seriesId: 'recurrence-1',
+        startDate: '2026-08-11',
+      },
+      routine: {
+        daysOfWeek: [1],
+        frequency: 'daily',
+        seriesId: 'routine-1',
+        targetType: 'check',
+        targetValue: 1,
+        unit: '',
+      },
+      stageIndex: null,
+      stageType: null,
+      status: 'in_progress',
+      version: 4,
+    })
+
+    const result = createOptimisticTaskNextStageResult(
+      task,
+      {
+        chainId: 'chain-1',
+        completeCurrent: true,
+        expectedVersion: task.version,
+        nextTaskId: 'next-stage-1',
+        note: '  Следующий шаг  ',
+        plannedDate: '2026-08-12',
+        stageType: 'waiting',
+        title: '  Дождаться ответа  ',
+      },
+      {
+        chainId: 'chain-1',
+        nextTaskId: 'next-stage-1',
+        updatedAt: '2026-08-11T05:00:00.000Z',
+      },
+    )
+
+    expect(result.currentTask).toMatchObject({
+      chainId: 'chain-1',
+      completedAt: '2026-08-11T05:00:00.000Z',
+      completionType: 'advanced',
+      stageIndex: 1,
+      stageType: 'task',
+      status: 'done',
+      version: 5,
+    })
+    expect(result.nextTask).toMatchObject({
+      chainId: 'chain-1',
+      id: 'next-stage-1',
+      note: 'Следующий шаг',
+      plannedDate: '2026-08-12',
+      previousTaskId: task.id,
+      recurrence: null,
+      routine: null,
+      stageIndex: 2,
+      stageType: 'waiting',
+      status: 'todo',
+      title: 'Дождаться ответа',
+      version: 1,
+    })
+    expect(result.undo).toMatchObject({
+      createdTaskId: 'next-stage-1',
+      previousChainId: null,
+      previousStageIndex: null,
+      previousStatus: 'in_progress',
+      previousTaskExpectedVersion: 5,
     })
   })
 

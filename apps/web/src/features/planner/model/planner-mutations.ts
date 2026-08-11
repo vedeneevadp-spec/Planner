@@ -106,8 +106,10 @@ export interface TransferTaskToPersonalMutationVariables {
 }
 
 export interface CreateNextTaskStageMutationVariables {
+  chainId: string
   completeCurrent: boolean
   expectedVersion: number
+  nextTaskId: string
   note?: string | undefined
   plannedDate?: string | null | undefined
   stageType?: TaskStageType | undefined
@@ -395,8 +397,10 @@ export function usePlannerMutations({
 
   const createNextTaskStageMutation = useMutation({
     mutationFn: ({
+      chainId,
       completeCurrent,
       expectedVersion,
+      nextTaskId,
       note,
       plannedDate,
       stageType,
@@ -404,8 +408,10 @@ export function usePlannerMutations({
       title,
     }: CreateNextTaskStageMutationVariables) =>
       requirePlannerApi(plannerApi).createNextTaskStage(taskId, {
+        chainId,
         completeCurrent,
         expectedVersion,
+        nextTaskId,
         ...(note !== undefined ? { note } : {}),
         ...(plannedDate !== undefined ? { plannedDate } : {}),
         ...(stageType !== undefined ? { stageType } : {}),

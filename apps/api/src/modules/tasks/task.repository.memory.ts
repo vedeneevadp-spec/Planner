@@ -155,7 +155,13 @@ export class MemoryTaskRepository implements TaskRepository {
     this.assertVersion(task, command.input.expectedVersion)
 
     const now = new Date().toISOString()
-    const chainId = task.chainId ?? generateUuidV7()
+    const chainId = task.chainId ?? command.input.chainId ?? generateUuidV7()
+    const nextTaskId = command.input.nextTaskId ?? generateUuidV7()
+
+    if (this.tasks.has(nextTaskId)) {
+      throw new Error(`Task "${nextTaskId}" already exists.`)
+    }
+
     const currentStageIndex = task.stageIndex ?? 1
     const currentStageType = task.stageType ?? 'task'
     const currentTask: StoredTaskRecord = {
@@ -180,7 +186,7 @@ export class MemoryTaskRepository implements TaskRepository {
       createdAt: now,
       deletedAt: null,
       dueDate: null,
-      id: generateUuidV7(),
+      id: nextTaskId,
       note:
         command.input.note !== undefined
           ? command.input.note.trim()
@@ -189,8 +195,10 @@ export class MemoryTaskRepository implements TaskRepository {
       plannedEndTime: null,
       plannedStartTime: null,
       previousTaskId: task.id,
+      recurrence: null,
       remindBeforeStart: undefined,
       reminderOffsets: undefined,
+      routine: null,
       schedule: null,
       stageIndex: currentStageIndex + 1,
       stageType: command.input.stageType ?? 'task',
