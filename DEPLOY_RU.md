@@ -82,7 +82,7 @@ apt install -y curl git ufw caddy rsync postgresql-client util-linux
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-apt install -y nodejs=24.18.1-1nodesource1
+apt install -y nodejs=24.19.0-1nodesource1
 npm install -g npm@12.0.1
 node -v
 npm -v
