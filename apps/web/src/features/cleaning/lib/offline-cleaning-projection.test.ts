@@ -2,14 +2,33 @@ import type {
   CleaningListResponse,
   CleaningTaskActionResponse,
   CleaningTaskHistoryAction,
+  CleaningTaskRecord,
+  CleaningTaskStateRecord,
   CleaningZoneRecord,
 } from '@planner/contracts'
 import { describe, expect, it } from 'vitest'
 
 import type { CleaningOfflineMutationRecord } from './offline-cleaning-mutation'
-import { applyCleaningServerConfirmation } from './offline-cleaning-projection'
+import {
+  applyCleaningServerConfirmation,
+  projectCleaningPlan,
+} from './offline-cleaning-projection'
 
 describe('cleaning offline projection', () => {
+  it('resets the postpone counter for an offline completion', () => {
+    const projected = projectCleaningPlan(
+      {
+        history: [],
+        states: [taskStateRecord(2)],
+        tasks: [taskRecord()],
+        zones: [],
+      },
+      [actionMutation('completed', 'operation-complete', 1)],
+    )
+
+    expect(projected.states[0]?.postponeCount).toBe(0)
+  })
+
   it('retains sequential actions of different types on the same date', () => {
     const confirmed: CleaningListResponse = {
       history: [],
@@ -103,6 +122,50 @@ function zoneRecord(version: number, title: string): CleaningZoneRecord {
     updatedAt: '2026-08-06T08:00:00.000Z',
     userId: 'user-1',
     version,
+    workspaceId: 'workspace-1',
+  }
+}
+
+function taskRecord(): CleaningTaskRecord {
+  return {
+    assignee: 'anyone',
+    createdAt: '2026-08-01T08:00:00.000Z',
+    customIntervalDays: null,
+    deletedAt: null,
+    depth: 'regular',
+    description: '',
+    energy: 'normal',
+    estimatedMinutes: 15,
+    frequencyInterval: 1,
+    frequencyType: 'weekly',
+    id: 'task-1',
+    impactScore: 3,
+    isActive: true,
+    isSeasonal: false,
+    priority: 'normal',
+    scope: 'general',
+    seasonMonths: [],
+    sortOrder: 0,
+    tags: [],
+    title: 'Помыть холодильник',
+    updatedAt: '2026-08-01T08:00:00.000Z',
+    userId: 'user-1',
+    version: 1,
+    workspaceId: 'workspace-1',
+    zoneId: null,
+  }
+}
+
+function taskStateRecord(postponeCount: number): CleaningTaskStateRecord {
+  return {
+    lastCompletedAt: null,
+    lastPostponedAt: '2026-08-01T08:00:00.000Z',
+    lastSkippedAt: null,
+    nextDueAt: '2026-08-06',
+    postponeCount,
+    taskId: 'task-1',
+    updatedAt: '2026-08-01T08:00:00.000Z',
+    version: 1,
     workspaceId: 'workspace-1',
   }
 }

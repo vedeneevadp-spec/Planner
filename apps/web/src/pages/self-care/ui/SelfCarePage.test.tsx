@@ -186,6 +186,67 @@ describe('SelfCarePage states', () => {
     )
   })
 
+  it('does not show a transient device-save banner for online changes', () => {
+    mocks.useSelfCareOfflineQueue.mockReturnValue(
+      createOfflineQueue({ pending: 1, total: 1 }),
+    )
+
+    renderPage()
+
+    expect(
+      screen.queryByText('Изменения сохранены на устройстве'),
+    ).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { awaitingRefresh: 0, isDraining: true },
+    { awaitingRefresh: 1, isDraining: false },
+  ])(
+    'does not show a transient sync banner during a normal online queue transition',
+    (queueState) => {
+      mocks.useSelfCareOfflineQueue.mockReturnValue(
+        createOfflineQueue(queueState),
+      )
+
+      renderPage()
+
+      expect(
+        screen.queryByText('Синхронизируем изменения'),
+      ).not.toBeInTheDocument()
+    },
+  )
+
+  it('keeps an online synchronization failure visible and actionable', () => {
+    mocks.useSelfCareOfflineQueue.mockReturnValue(
+      createOfflineQueue({ failed: 1, total: 1 }),
+    )
+
+    renderPage()
+
+    expect(screen.getByText('Не все изменения синхронизированы')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible()
+  })
+
+  it('shows the device-save banner for queued changes during a network failure', () => {
+    mocks.useSelfCareOfflineQueue.mockReturnValue(
+      createOfflineQueue({ pending: 1, total: 1 }),
+    )
+    mocks.useSelfCarePageData.mockReturnValue(
+      createPageData({
+        activeTabReadErrors: [new TypeError('Failed to fetch')],
+      }),
+    )
+
+    renderPage()
+
+    expect(screen.getByText('Изменения сохранены на устройстве')).toBeVisible()
+    expect(
+      screen.getByText(
+        '1 изменение будет отправлено после восстановления связи.',
+      ),
+    ).toBeVisible()
+  })
+
   it('shows a server error and retries the active data scope', async () => {
     mocks.useSelfCarePageData.mockReturnValue(
       createPageData({

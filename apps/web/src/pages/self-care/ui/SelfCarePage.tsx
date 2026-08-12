@@ -1171,16 +1171,6 @@ function SelfCareQueueStatus({
     )
   }
 
-  if (queue.isDraining || queue.awaitingRefresh > 0) {
-    return (
-      <PageStatusBanner
-        description="Сохранённые на устройстве изменения отправляются по порядку."
-        kind="info"
-        title="Синхронизируем изменения"
-      />
-    )
-  }
-
   if (queue.failed > 0 && !isOffline) {
     return (
       <PageStatusBanner
@@ -1197,12 +1187,12 @@ function SelfCareQueueStatus({
     )
   }
 
-  if (queue.pending > 0 || queue.failed > 0) {
+  if (isOffline && (queue.pending > 0 || queue.failed > 0)) {
     const count = queue.pending + queue.failed
     return (
       <PageStatusBanner
         description={formatQueuedChangeCount(count)}
-        kind={isOffline ? 'offline' : 'info'}
+        kind="offline"
         title="Изменения сохранены на устройстве"
       />
     )

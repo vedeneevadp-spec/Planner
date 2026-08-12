@@ -5,7 +5,6 @@ import {
 } from '@planner/contracts'
 import { type FormEvent, useMemo, useState } from 'react'
 import {
-  Link,
   useLocation,
   useNavigate,
   useParams,
@@ -49,6 +48,7 @@ import {
   getFrequencyUnitOptions,
   getHeroHint,
   getIsoWeekdayFromDate,
+  getPostponedCleaningItems,
   getWeekdayLabel,
   MONTHS,
   parseTags,
@@ -59,7 +59,7 @@ import {
 } from './CleaningPage.model'
 import styles from './CleaningPage.module.css'
 import {
-  CompactList,
+  CollapsibleTaskSection,
   HistoryList,
   StatPill,
   TaskSection,
@@ -82,9 +82,6 @@ export function CleaningPage() {
   const postponeTaskMutation = usePostponeCleaningTask()
   const skipTaskMutation = useSkipCleaningTask()
   const focusMode = getCleaningFocusModeFromSearchParams(searchParams)
-  const [postponeTargets, setPostponeTargets] = useState<
-    Record<string, string>
-  >({})
   const [formError, setFormError] = useState<string | null>(null)
   const [isSeeding, setIsSeeding] = useState(false)
   const isBrowserOffline = useBrowserOffline()
@@ -96,16 +93,10 @@ export function CleaningPage() {
   const zones = plan?.zones ?? []
   const todayItems = today?.items ?? []
   const generalItems = today?.generalItems ?? []
+  const postponedItems = getPostponedCleaningItems(plan, today, todayKey)
   const visibleTodayItems = filterItemsByFocusMode(todayItems, focusMode)
   const visibleGeneralItems = filterItemsByFocusMode(generalItems, focusMode)
-  const hasConfiguredZones = zones.length > 0 || Boolean(today?.zones.length)
-  const shouldShowGeneralSection =
-    Boolean(today) && (hasConfiguredZones || generalItems.length > 0)
-  const shouldShowSecondaryLists =
-    (hasLoadedPlan || Boolean(today)) &&
-    (hasConfiguredZones ||
-      Boolean(today?.accumulatedItems.length) ||
-      Boolean(today?.seasonalItems.length))
+  const shouldShowGeneralSection = generalItems.length > 0
   const readiness = hasLoadedPlan
     ? planQuery.readiness
     : hasLoadedToday
@@ -194,13 +185,6 @@ export function CleaningPage() {
     } finally {
       setIsSeeding(false)
     }
-  }
-
-  function updatePostponeTarget(taskId: string, value: string) {
-    setPostponeTargets((current) => ({
-      ...current,
-      [taskId]: value,
-    }))
   }
 
   if (!hasCriticalData) {
@@ -322,10 +306,7 @@ export function CleaningPage() {
             label="быстрые"
             value={String(today?.summary.quickCount ?? 0)}
           />
-          <StatPill
-            label="отложено"
-            value={String(today?.summary.accumulatedCount ?? 0)}
-          />
+          <StatPill label="отложено" value={String(postponedItems.length)} />
           <StatPill
             label="прочие"
             value={String(today?.summary.generalCount ?? 0)}
@@ -354,39 +335,6 @@ export function CleaningPage() {
         />
       ) : null}
 
-      {today?.urgentItems.length ? (
-        <TaskSection
-          title="Рекомендуется сегодня"
-          items={today.urgentItems}
-          isBusy={isBusy}
-          postponeTargets={postponeTargets}
-          onComplete={(taskId) => {
-            void completeTaskMutation.mutateAsync({
-              input: createActionInput(todayKey),
-              taskId,
-            })
-          }}
-          onPostpone={(taskId) => {
-            void postponeTaskMutation.mutateAsync({
-              input: {
-                date: todayKey,
-                mode: postponeTargets[taskId] ? 'specific_date' : 'next_cycle',
-                note: '',
-                targetDate: postponeTargets[taskId] || null,
-              },
-              taskId,
-            })
-          }}
-          onSkip={(taskId) => {
-            void skipTaskMutation.mutateAsync({
-              input: createActionInput(todayKey),
-              taskId,
-            })
-          }}
-          onTargetChange={updatePostponeTarget}
-        />
-      ) : null}
-
       {today?.zones.length ? (
         <TaskSection
           title="Все задачи зоны"
@@ -398,7 +346,6 @@ export function CleaningPage() {
           }
           items={visibleTodayItems}
           isBusy={isBusy}
-          postponeTargets={postponeTargets}
           onComplete={(taskId) => {
             void completeTaskMutation.mutateAsync({
               input: createActionInput(todayKey),
@@ -407,12 +354,7 @@ export function CleaningPage() {
           }}
           onPostpone={(taskId) => {
             void postponeTaskMutation.mutateAsync({
-              input: {
-                date: todayKey,
-                mode: postponeTargets[taskId] ? 'specific_date' : 'next_cycle',
-                note: '',
-                targetDate: postponeTargets[taskId] || null,
-              },
+              input: createActionInput(todayKey),
               taskId,
             })
           }}
@@ -422,25 +364,15 @@ export function CleaningPage() {
               taskId,
             })
           }}
-          onTargetChange={updatePostponeTarget}
         />
       ) : null}
 
       {shouldShowGeneralSection ? (
         <TaskSection
           title="Прочая уборка"
-          emptyMessage="Прочих задач уборки сейчас нет."
-          emptyAction={
-            <Link
-              className={cx(styles.softLinkButton, styles.emptyActionLink)}
-              to={CLEANING_GENERAL_SETTINGS_PATH}
-            >
-              Добавить
-            </Link>
-          }
+          emptyMessage="Для выбранного режима задач нет."
           items={visibleGeneralItems}
           isBusy={isBusy}
-          postponeTargets={postponeTargets}
           onComplete={(taskId) => {
             void completeTaskMutation.mutateAsync({
               input: createActionInput(todayKey),
@@ -449,12 +381,7 @@ export function CleaningPage() {
           }}
           onPostpone={(taskId) => {
             void postponeTaskMutation.mutateAsync({
-              input: {
-                date: todayKey,
-                mode: postponeTargets[taskId] ? 'specific_date' : 'next_cycle',
-                note: '',
-                targetDate: postponeTargets[taskId] || null,
-              },
+              input: createActionInput(todayKey),
               taskId,
             })
           }}
@@ -464,36 +391,21 @@ export function CleaningPage() {
               taskId,
             })
           }}
-          onTargetChange={updatePostponeTarget}
         />
       ) : null}
 
-      {shouldShowSecondaryLists ? (
-        <section className={styles.sideGrid}>
-          <CompactList
-            title="Отложенные задачи"
-            emptyMessage="Отложенных задач сейчас нет."
-            items={today?.accumulatedItems ?? []}
-            isBusy={isBusy}
-            onComplete={(taskId) => {
-              void completeTaskMutation.mutateAsync({
-                input: createActionInput(todayKey),
-                taskId,
-              })
-            }}
-            onPostpone={(taskId) => {
-              void postponeTaskMutation.mutateAsync({
-                input: createActionInput(todayKey),
-                taskId,
-              })
-            }}
-          />
-          <CompactList
-            title="Сезонные"
-            emptyMessage="На этот месяц сезонных задач нет."
-            items={today?.seasonalItems ?? []}
-          />
-        </section>
+      {postponedItems.length > 0 ? (
+        <CollapsibleTaskSection
+          title="Отложено"
+          items={postponedItems}
+          isBusy={isBusy}
+          onComplete={(taskId) => {
+            void completeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+        />
       ) : null}
     </section>
   )
@@ -1393,12 +1305,12 @@ function CleaningQueueStatus({
     )
   }
 
-  if (queue.pending > 0 || queue.failed > 0) {
+  if (isOffline && (queue.pending > 0 || queue.failed > 0)) {
     const count = queue.pending + queue.failed
 
     return (
       <PageStatusBanner
-        kind={isOffline ? 'offline' : 'info'}
+        kind="offline"
         title="Изменения сохранены на устройстве"
         description={formatQueuedChangeCount(count)}
       />

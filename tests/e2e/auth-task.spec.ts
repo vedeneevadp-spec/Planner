@@ -545,7 +545,7 @@ test('creates a cleaning zone with a task and completes it today', async ({
   await page.goto('/cleaning')
   const cleaningTasks = page.locator('#cleaning-tasks')
 
-  await expect(cleaningTasks.getByText(zoneTitle)).toBeVisible()
+  await expect(page.getByRole('heading', { name: zoneTitle })).toBeVisible()
   await expect(cleaningTasks.getByText(taskTitle)).toBeVisible()
 
   await page
