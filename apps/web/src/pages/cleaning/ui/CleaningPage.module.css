@@ -326,7 +326,6 @@
   margin-top: 0;
 }
 
-.emptyActionLink,
 .emptyTaskState .softButton {
   min-height: 1.92rem;
   border-color: color-mix(in srgb, var(--accent) 18%, transparent);
@@ -348,6 +347,47 @@
 
 .panelHeader h3 {
   font-size: 1.18rem;
+}
+
+.collapsibleTaskSection {
+  overflow: clip;
+}
+
+.collapsibleTaskSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.62rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsibleTaskSummary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsibleTaskTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 1.18rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.collapsibleTaskChevron {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+  transition: transform 150ms ease;
+}
+
+.collapsibleTaskSection[open] .collapsibleTaskSummary {
+  margin-bottom: 0.58rem;
+}
+
+.collapsibleTaskSection[open] .collapsibleTaskChevron {
+  transform: rotate(90deg);
 }
 
 .zoneHeaderActions {
@@ -400,6 +440,32 @@
   background: var(--field-bg-muted);
 }
 
+.taskZoneLabel {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 0.66rem;
+  font-weight: 720;
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.postponedTaskTopRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.postponedTaskMeta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
 .taskCardHeader {
   display: flex;
   align-items: start;
@@ -413,6 +479,13 @@
   line-height: 1.2;
 }
 
+.taskCardHeaderActions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .metaLine,
 .taskStateLine,
 .actionRow {
@@ -422,13 +495,15 @@
 }
 
 .metaLine span,
+.durationBadge,
 .taskStateLine span {
   border-radius: 999px;
   padding: 0.18rem 0.4rem;
   font-size: 0.69rem;
 }
 
-.metaLine span {
+.metaLine span,
+.durationBadge {
   color: var(--accent);
   background: var(--accent-muted);
 }
@@ -447,10 +522,12 @@
 .taskCard .doneButton,
 .taskCard .softButton {
   min-height: 2.35rem;
+  border-color: color-mix(in srgb, var(--accent) 16%, transparent);
   border-radius: 10px;
   padding: 0.42rem 0.5rem;
   font-size: 0.9rem;
-  font-weight: 620;
+  font-weight: 590;
+  background: transparent;
 }
 
 .taskCard .doneButton {
@@ -458,18 +535,16 @@
   padding: 0;
 }
 
+.taskCard .inlineDoneButton {
+  width: 2.25rem;
+  min-height: 2.25rem;
+  border-radius: 999px;
+}
+
 .doneButtonLabel {
   display: none;
 }
 
-.dateField {
-  display: grid;
-  gap: 0.28rem;
-  color: var(--text-soft);
-  font-size: 0.72rem;
-}
-
-.dateField input,
 .inlineForm input,
 .taskForm input,
 .zoneSettings input,
@@ -492,14 +567,9 @@
   --select-picker-padding: 0.5rem 0.62rem;
 }
 
-.sideGrid,
 .managementGrid {
   display: grid;
   gap: 0.72rem;
-}
-
-.sideGrid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .managementGrid {
@@ -555,7 +625,6 @@
   transform: rotate(45deg);
 }
 
-.compactList,
 .zoneList,
 .zoneTaskList,
 .historyList {
@@ -563,7 +632,6 @@
   gap: 0.45rem;
 }
 
-.compactItem,
 .zoneLink,
 .zoneTaskRow,
 .historyItem {
@@ -572,30 +640,6 @@
   background: var(--field-bg-muted);
 }
 
-.compactItem {
-  display: grid;
-  gap: 0.12rem;
-  padding: 0.56rem 0.64rem;
-}
-
-.compactActions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.32rem;
-  margin-top: 0.38rem;
-}
-
-.compactActions .doneButton,
-.compactActions .softButton {
-  min-width: 0;
-  min-height: 2.12rem;
-  border-radius: 10px;
-  padding: 0.36rem 0.46rem;
-  font-size: 0.82rem;
-  font-weight: 620;
-}
-
-.compactItem span,
 .zoneTaskRow span,
 .historyItem span,
 .historyItem time {
@@ -1054,7 +1098,6 @@
 
 @media (max-width: 1100px) {
   .todayHero,
-  .sideGrid,
   .managementGrid {
     grid-template-columns: 1fr;
   }
@@ -1081,6 +1124,11 @@
 }
 
 @media (max-width: 720px) {
+  .page {
+    gap: 0.42rem;
+    padding-bottom: 0.8rem;
+  }
+
   .settingsHeaderShell h2 {
     display: none;
   }
@@ -1097,6 +1145,119 @@
     align-items: center;
     gap: 0;
     padding: 0.58rem 0.72rem;
+  }
+
+  .taskSection {
+    border: 0;
+    border-radius: 0;
+    padding: 0.42rem 0.14rem 0.12rem;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+
+  .taskSection .panelHeader {
+    align-items: center;
+    margin-bottom: 0.08rem;
+    padding-inline: 0.12rem;
+  }
+
+  .taskSection .panelHeader h3 {
+    font-size: 1.05rem;
+  }
+
+  .collapsibleTaskSection {
+    border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  }
+
+  .collapsibleTaskSummary {
+    padding-inline: 0.12rem;
+  }
+
+  .collapsibleTaskTitle {
+    font-size: 1.05rem;
+  }
+
+  .collapsibleTaskSection[open] .collapsibleTaskSummary {
+    margin-bottom: 0.08rem;
+  }
+
+  .taskSection .badge,
+  .taskCard .priorityBadge {
+    min-height: 1.35rem;
+    padding: 0.16rem 0.42rem;
+    font-size: 0.66rem;
+  }
+
+  .taskGrid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  }
+
+  .taskCard {
+    gap: 0.34rem;
+    border: 0;
+    border-radius: 0;
+    padding: 0.58rem 0.12rem 0.62rem;
+    background: transparent;
+  }
+
+  .taskCard + .taskCard {
+    border-top: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  }
+
+  .taskCardHeader {
+    gap: 0.4rem;
+  }
+
+  .taskCardHeader h4 {
+    line-height: 1.15;
+  }
+
+  .taskCard .metaLine,
+  .taskCard .taskStateLine {
+    gap: 0.18rem;
+  }
+
+  .taskCard .metaLine span,
+  .taskCard .durationBadge,
+  .taskCard .taskStateLine span {
+    padding: 0.12rem 0.32rem;
+    font-size: 0.65rem;
+  }
+
+  .taskCard .taskStateLine {
+    gap: 0.1rem 0.42rem;
+  }
+
+  .taskCard .taskStateLine span {
+    border-radius: 0;
+    padding: 0;
+    background: transparent;
+  }
+
+  .taskCard .actionRow {
+    gap: 0.24rem;
+  }
+
+  .taskCard .doneButton,
+  .taskCard .softButton {
+    min-height: 2.3rem;
+    border-color: color-mix(in srgb, var(--accent) 13%, transparent);
+    border-radius: 9px;
+    padding: 0.36rem 0.42rem;
+    font-size: 0.84rem;
+  }
+
+  .taskCard .doneButton {
+    width: 2.3rem;
+  }
+
+  .taskCard .inlineDoneButton {
+    width: 2.3rem;
+    min-height: 2.3rem;
+    border-radius: 999px;
   }
 
   .todayHero h2 {
@@ -1293,6 +1454,12 @@
   .taskCard .doneButton {
     width: 2.45rem;
     padding: 0;
+  }
+
+  .taskCard .inlineDoneButton {
+    width: 2.3rem;
+    min-height: 2.3rem;
+    border-radius: 999px;
   }
 
   .taskCard .doneButtonLabel {

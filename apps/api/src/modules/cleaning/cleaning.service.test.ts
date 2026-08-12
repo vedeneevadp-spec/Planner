@@ -85,13 +85,15 @@ void test('CleaningService promotes postponed tasks and resets counter on comple
   assert.equal(postponedToday.urgentItems[0]?.task.id, task.id)
   assert.equal(postponedToday.urgentItems[0]?.state.postponeCount, 2)
 
-  await service.completeTask(
+  const completedAction = await service.completeTask(
     OWNER_CONTEXT,
     task.id,
     cleaningTaskActionInputSchema.parse({
       date: '2026-05-25',
     }),
   )
+
+  assert.equal(completedAction.state.postponeCount, 0)
 
   const sameDayAfterCompletion = await service.getToday(
     OWNER_CONTEXT,
@@ -186,6 +188,31 @@ void test('CleaningService accumulates untouched zone tasks after their assigned
     true,
   )
   assert.equal(nextDay.summary.accumulatedCount, 1)
+})
+
+void test('CleaningService includes seasonal tasks in the general flow only during configured months', async () => {
+  const service = new CleaningService(new MemoryCleaningRepository())
+  const task = await service.createTask(
+    OWNER_CONTEXT,
+    newCleaningTaskInputSchema.parse({
+      isSeasonal: true,
+      scope: 'general',
+      seasonMonths: [12],
+      title: 'Полить растения',
+    }),
+  )
+
+  const activeMonth = await service.getToday(OWNER_CONTEXT, '2099-12-01')
+  const inactiveMonth = await service.getToday(OWNER_CONTEXT, '2099-11-01')
+
+  assert.equal(
+    activeMonth.generalItems.some((item) => item.task.id === task.id),
+    true,
+  )
+  assert.equal(
+    inactiveMonth.generalItems.some((item) => item.task.id === task.id),
+    false,
+  )
 })
 
 void test('CleaningService never overwrites stable ids owned by another scope or a deleted row', async () => {

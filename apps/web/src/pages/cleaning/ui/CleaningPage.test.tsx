@@ -356,7 +356,7 @@ function createOfflineQueueStub(
   }
 }
 
-function expectNextCycleActionCall(action: unknown) {
+function expectNextCycleActionCall(action: unknown, taskId: string) {
   if (typeof action !== 'object' || action === null) {
     throw new Error('Cleaning action call was not an object.')
   }
@@ -370,13 +370,12 @@ function expectNextCycleActionCall(action: unknown) {
 
   const input = inputValue as Record<string, unknown>
 
-  expect(payload.taskId).toBe('task-1')
+  expect(payload.taskId).toBe(taskId)
   expect(typeof input.date).toBe('string')
-  expect(input).toMatchObject({
-    mode: 'next_cycle',
-    note: '',
-    targetDate: null,
-  })
+  expect(input.date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  expect(input.mode).toBe('next_cycle')
+  expect(input.note).toBe('')
+  expect(input.targetDate).toBeNull()
 }
 
 function getZoneStatsElement() {
@@ -699,24 +698,32 @@ describe('TaskSection', () => {
     vi.restoreAllMocks()
   })
 
-  it('hides volume, energy and assignee metadata on cleaning cards', () => {
-    render(
+  it('keeps task metadata compact and hides a zero postpone count', () => {
+    const postponedItem = createCleaningItem(createZone(), {
+      id: 'task-postponed',
+      title: 'Помыть окно',
+    })
+    postponedItem.state.postponeCount = 2
+
+    const { container } = render(
       <TaskSection
         title="Все задачи зоны"
-        items={[createCleaningItem()]}
+        items={[createCleaningItem(), postponedItem]}
         isBusy={false}
-        postponeTargets={{}}
         onComplete={vi.fn()}
         onPostpone={vi.fn()}
         onSkip={vi.fn()}
-        onTargetChange={vi.fn()}
       />,
     )
 
-    expect(screen.getByText('15 мин')).toBeInTheDocument()
+    expect(screen.getAllByText('15 мин')).toHaveLength(2)
     expect(screen.queryByText('обычная')).not.toBeInTheDocument()
     expect(screen.queryByText('нормально')).not.toBeInTheDocument()
     expect(screen.queryByText('любой')).not.toBeInTheDocument()
+    expect(screen.queryByText('Отложено: 0 раз')).not.toBeInTheDocument()
+    expect(screen.getByText('Отложено: 2 раза')).toBeVisible()
+    expect(screen.queryByText('Дата переноса')).not.toBeInTheDocument()
+    expect(container.querySelector('input[type="date"]')).toBeNull()
   })
 })
 
@@ -952,6 +959,31 @@ describe('CleaningPage', () => {
     ).toBeEnabled()
   })
 
+  it('does not show a transient device-save banner for online changes', () => {
+    const zone = createZone()
+
+    vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(true)
+    mocks.useCleaningPlan.mockReturnValue({
+      data: createPlan(zone),
+      error: null,
+      isLoading: false,
+      offlineQueue: createOfflineQueueStub({ pending: 1 }),
+      readiness: createReadiness(),
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone),
+      error: null,
+      isLoading: false,
+      readiness: createReadiness(),
+    })
+
+    renderCleaningPage()
+
+    expect(
+      screen.queryByText('Изменения сохранены на устройстве'),
+    ).not.toBeInTheDocument()
+  })
+
   it('keeps a previously failed queued change visible after going offline', () => {
     vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
     mocks.useCleaningPlan.mockReturnValue({
@@ -1183,9 +1215,30 @@ describe('CleaningPage', () => {
     expect(screen.queryByText('Помыть окно')).not.toBeInTheDocument()
   })
 
-  it('lets accumulated cleaning tasks be completed or postponed to the next cycle', async () => {
+  it('does not render duplicate recommended or accumulated task sections', () => {
     const zone = createZone()
-    const accumulatedItem = createCleaningItem(zone)
+    const dueItem = createCleaningItem(zone, {
+      id: 'task-due',
+      title: 'Протереть пол',
+    })
+    const accumulatedItem = createCleaningItem(zone, {
+      id: 'task-accumulated',
+      title: 'Помыть плинтусы',
+    })
+    const seasonalItem = createCleaningItem(zone, {
+      id: 'task-seasonal',
+      isSeasonal: true,
+      scope: 'general',
+      seasonMonths: [5],
+      title: 'Полив',
+      zoneId: null,
+    })
+    const today = createTodayResponse(
+      [accumulatedItem],
+      zone,
+      [dueItem],
+      [seasonalItem],
+    )
 
     mocks.useCleaningPlan.mockReturnValue({
       data: createPlan(zone),
@@ -1193,34 +1246,38 @@ describe('CleaningPage', () => {
       isLoading: false,
     })
     mocks.useCleaningToday.mockReturnValue({
-      data: createTodayResponse([accumulatedItem], zone),
+      data: {
+        ...today,
+        seasonalItems: [seasonalItem],
+        summary: { ...today.summary, seasonalCount: 1, urgentCount: 1 },
+        urgentItems: [dueItem],
+      },
       error: null,
       isLoading: false,
     })
 
     renderCleaningPage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Отложить' }))
-
-    await waitFor(() => {
-      expect(mocks.postponeTask).toHaveBeenCalledTimes(1)
-    })
-    expectNextCycleActionCall(mocks.postponeTask.mock.calls[0]?.[0])
-
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Отметить «Протереть пол» выполненной',
-      }),
-    )
-
-    await waitFor(() => {
-      expect(mocks.completeTask).toHaveBeenCalledTimes(1)
-    })
-    expectNextCycleActionCall(mocks.completeTask.mock.calls[0]?.[0])
+    expect(
+      screen.queryByRole('heading', { name: 'Рекомендуется сегодня' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Отложенные задачи' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: 'Сезонные' }),
+    ).not.toBeInTheDocument()
+    expect(screen.getAllByText('Протереть пол')).toHaveLength(1)
+    expect(screen.queryByText('Помыть плинтусы')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Полив')).toHaveLength(1)
   })
 
-  it('shows general cleaning tasks in a separate block without zone metadata', () => {
+  it('does not repeat scope labels inside zone and general task sections', () => {
     const zone = createZone()
+    const zoneItem = createCleaningItem(zone, {
+      id: 'task-zone',
+      title: 'Протереть пол',
+    })
     const generalItem = createCleaningItem(zone, {
       id: 'task-general',
       scope: 'general',
@@ -1229,32 +1286,142 @@ describe('CleaningPage', () => {
     })
 
     mocks.useCleaningPlan.mockReturnValue({
-      data: createPlanWithItems(zone, [generalItem]),
+      data: createPlanWithItems(zone, [zoneItem, generalItem]),
       error: null,
       isLoading: false,
     })
     mocks.useCleaningToday.mockReturnValue({
-      data: createTodayResponse([], zone, [], [generalItem]),
+      data: createTodayResponse([], zone, [zoneItem], [generalItem]),
       error: null,
       isLoading: false,
     })
 
     renderCleaningPage()
 
+    const zoneSection = screen
+      .getByRole('heading', { name: 'Все задачи зоны' })
+      .closest('section')
     const generalSection = screen
       .getByRole('heading', { name: 'Прочая уборка' })
       .closest('section')
 
-    if (!generalSection) {
-      throw new Error('General cleaning section was not found.')
+    if (!zoneSection || !generalSection) {
+      throw new Error('Cleaning task sections were not found.')
     }
 
+    expect(within(zoneSection).getByText('Протереть пол')).toBeVisible()
+    expect(within(zoneSection).queryByText('Комната Кирилла')).toBeNull()
     expect(within(generalSection).getByText('Помыть окна')).toBeVisible()
-    expect(within(generalSection).getByText('Прочее')).toBeVisible()
+    expect(within(generalSection).queryByText('Прочее')).toBeNull()
     expect(within(generalSection).queryByText('Комната Кирилла')).toBeNull()
   })
 
-  it('shows a general cleaning empty state on the main cleaning page', () => {
+  it('keeps postponed tasks outside current zones in a collapsed section at the bottom', async () => {
+    const zone = createZone()
+    const otherZone: CleaningZoneRecord = {
+      ...createZone(),
+      dayOfWeek: 5,
+      id: 'zone-2',
+      title: 'Кухня',
+    }
+    const currentItem = createCleaningItem(zone, {
+      id: 'task-current',
+      title: 'Разобрать одежду',
+    })
+    currentItem.state.lastPostponedAt = '2026-05-18T08:00:00.000Z'
+    currentItem.state.postponeCount = 1
+
+    const postponedItem = createCleaningItem(otherZone, {
+      id: 'task-postponed',
+      title: 'Помыть холодильник',
+    })
+    postponedItem.state.lastPostponedAt = '2026-05-19T08:00:00.000Z'
+    postponedItem.state.nextDueAt = '2026-05-26'
+    postponedItem.state.postponeCount = 2
+
+    const completedItem = createCleaningItem(otherZone, {
+      id: 'task-completed',
+      title: 'Протереть двери',
+    })
+    completedItem.state.lastPostponedAt = '2026-05-17T08:00:00.000Z'
+    completedItem.state.postponeCount = 0
+
+    mocks.useCleaningPlan.mockReturnValue({
+      data: {
+        ...createPlanWithItems(zone, [
+          currentItem,
+          postponedItem,
+          completedItem,
+        ]),
+        zones: [zone, otherZone],
+      },
+      error: null,
+      isLoading: false,
+    })
+    mocks.useCleaningToday.mockReturnValue({
+      data: createTodayResponse([], zone),
+      error: null,
+      isLoading: false,
+    })
+
+    const { container } = renderCleaningPage()
+    const summary = screen.getByText('Отложено').closest('summary')
+    const details = summary?.closest('details')
+
+    if (!summary || !details) {
+      throw new Error('Postponed cleaning section was not found.')
+    }
+
+    expect(details).not.toHaveAttribute('open')
+    expect(within(details).getByText('Помыть холодильник')).not.toBeVisible()
+    expect(within(details).queryByText('Разобрать одежду')).toBeNull()
+    expect(within(details).queryByText('Протереть двери')).toBeNull()
+    expect(within(details).getByText('1')).toBeInTheDocument()
+    const taskSections = container.querySelectorAll(`.${styles.taskSection}`)
+
+    expect(details).toBe(taskSections.item(taskSections.length - 1))
+
+    fireEvent.click(summary)
+
+    expect(details).toHaveAttribute('open')
+    expect(within(details).getByText('Помыть холодильник')).toBeVisible()
+    expect(within(details).getByText('Кухня')).toBeVisible()
+    expect(
+      within(details).queryByRole('button', { name: 'Отложить' }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(details).queryByRole('button', { name: 'Пропустить' }),
+    ).not.toBeInTheDocument()
+
+    const completeButton = within(details).getByRole('button', {
+      name: 'Отметить «Помыть холодильник» выполненной',
+    })
+
+    const postponedTopRow = completeButton.closest(
+      `.${styles.postponedTaskTopRow}`,
+    )
+
+    if (!(postponedTopRow instanceof HTMLElement)) {
+      throw new Error('Postponed task top row was not found.')
+    }
+
+    expect(within(postponedTopRow).getByText('Кухня')).toBeVisible()
+    expect(within(postponedTopRow).getByText('обычно')).toBeVisible()
+    expect(within(postponedTopRow).getByText('15 мин')).toBeVisible()
+    expect(details.querySelector(`.${styles.actionRow}`)).toBeNull()
+
+    fireEvent.click(completeButton)
+
+    await waitFor(() => {
+      expect(mocks.completeTask).toHaveBeenCalledTimes(1)
+    })
+    expectNextCycleActionCall(
+      mocks.completeTask.mock.calls[0]?.[0],
+      'task-postponed',
+    )
+  })
+
+  it('hides general cleaning when no current tasks remain', () => {
     const zone = createZone()
 
     mocks.useCleaningPlan.mockReturnValue({
@@ -1270,20 +1437,10 @@ describe('CleaningPage', () => {
 
     renderCleaningPage()
 
-    const generalSection = screen
-      .getByRole('heading', { name: 'Прочая уборка' })
-      .closest('section')
-
-    if (!generalSection) {
-      throw new Error('General cleaning section was not found.')
-    }
-
     expect(
-      within(generalSection).getByText('Прочих задач уборки сейчас нет.'),
-    ).toBeVisible()
-    expect(
-      within(generalSection).getByRole('link', { name: 'Добавить' }),
-    ).toHaveAttribute('href', '/cleaning/settings/general')
+      screen.queryByRole('heading', { name: 'Прочая уборка' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Отложено')).not.toBeInTheDocument()
   })
 
   it('lets general cleaning tasks be completed, postponed and skipped', async () => {
@@ -1332,12 +1489,15 @@ describe('CleaningPage', () => {
       expect(mocks.completeTask).toHaveBeenCalledWith(
         expect.objectContaining({ taskId: 'task-general' }),
       )
-      expect(mocks.postponeTask).toHaveBeenCalledWith(
-        expect.objectContaining({ taskId: 'task-general' }),
-      )
+      expect(mocks.postponeTask).toHaveBeenCalledTimes(1)
       expect(mocks.skipTask).toHaveBeenCalledWith(
         expect.objectContaining({ taskId: 'task-general' }),
       )
     })
+
+    expectNextCycleActionCall(
+      mocks.postponeTask.mock.calls[0]?.[0],
+      'task-general',
+    )
   })
 })

@@ -2,6 +2,7 @@ import {
   type CleaningDepth,
   type CleaningEnergy,
   type CleaningFrequencyType,
+  type CleaningListResponse,
   type CleaningPriority,
   type CleaningTaskRecord,
   type CleaningTaskWithState,
@@ -291,6 +292,89 @@ export function filterItemsByFocusMode(
   }
 
   return items.filter((item) => item.task.priority === mode)
+}
+
+export function getPostponedCleaningItems(
+  plan: CleaningListResponse | undefined,
+  today: CleaningTodayResponse | null | undefined,
+  date: string,
+): CleaningTaskWithState[] {
+  if (!plan) {
+    return []
+  }
+
+  const currentTaskIds = new Set(
+    [...(today?.items ?? []), ...(today?.generalItems ?? [])].map(
+      (item) => item.task.id,
+    ),
+  )
+  const currentZoneIds = new Set((today?.zones ?? []).map((zone) => zone.id))
+  const tasksById = new Map(plan.tasks.map((task) => [task.id, task]))
+  const zonesById = new Map(plan.zones.map((zone) => [zone.id, zone]))
+
+  return plan.states
+    .flatMap((state): CleaningTaskWithState[] => {
+      if (state.postponeCount === 0 || currentTaskIds.has(state.taskId)) {
+        return []
+      }
+
+      const task = tasksById.get(state.taskId)
+
+      if (
+        !task ||
+        !task.isActive ||
+        task.deletedAt !== null ||
+        (task.zoneId !== null && currentZoneIds.has(task.zoneId)) ||
+        !isCleaningTaskSeasonActive(task, date)
+      ) {
+        return []
+      }
+
+      const zone = task.zoneId ? (zonesById.get(task.zoneId) ?? null) : null
+
+      if (
+        task.scope === 'zone' &&
+        (!zone || !zone.isActive || zone.deletedAt !== null)
+      ) {
+        return []
+      }
+
+      const isDue = state.nextDueAt === null || state.nextDueAt <= date
+      const isOverdue = state.nextDueAt !== null && state.nextDueAt < date
+
+      return [
+        {
+          isDue,
+          isOverdue,
+          score: state.postponeCount * 10 + task.impactScore,
+          state,
+          task,
+          zone: task.scope === 'general' ? null : zone,
+        },
+      ]
+    })
+    .sort((left, right) => {
+      const postponedOrder = (right.state.lastPostponedAt ?? '').localeCompare(
+        left.state.lastPostponedAt ?? '',
+      )
+
+      return (
+        postponedOrder ||
+        left.task.sortOrder - right.task.sortOrder ||
+        left.task.title.localeCompare(right.task.title, 'ru')
+      )
+    })
+}
+
+function isCleaningTaskSeasonActive(
+  task: Pick<CleaningTaskRecord, 'isSeasonal' | 'seasonMonths'>,
+  date: string,
+): boolean {
+  return (
+    !task.isSeasonal ||
+    task.seasonMonths.length === 0 ||
+    task.seasonMonths.includes(Number(date.slice(5, 7)))
+  )
 }
 
 export function getHeroHint(today: CleaningTodayResponse): string {

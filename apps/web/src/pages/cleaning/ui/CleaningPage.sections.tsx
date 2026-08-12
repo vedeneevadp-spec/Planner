@@ -13,7 +13,13 @@ import { type FormEvent, type ReactNode, useState } from 'react'
 
 import { cx } from '@/shared/lib/classnames'
 import { formatShortDate } from '@/shared/lib/date'
-import { CheckIcon, CloseIcon, EditIcon, TrashIcon } from '@/shared/ui/Icon'
+import {
+  CheckIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  EditIcon,
+  TrashIcon,
+} from '@/shared/ui/Icon'
 import { SelectPicker } from '@/shared/ui/SelectPicker'
 
 import {
@@ -28,18 +34,24 @@ import {
 } from './CleaningPage.model'
 import styles from './CleaningPage.module.css'
 
-export function TaskSection(props: {
-  emptyMessage?: string
-  emptyAction?: ReactNode
+interface TaskListProps {
   isBusy: boolean
   items: CleaningTaskWithState[]
-  postponeTargets: Record<string, string>
-  title: string
+  showZone?: boolean
   onComplete: (taskId: string) => void
-  onPostpone: (taskId: string) => void
-  onSkip: (taskId: string) => void
-  onTargetChange: (taskId: string, value: string) => void
-}) {
+  onPostpone?: (taskId: string) => void
+  onSkip?: (taskId: string) => void
+}
+
+export function TaskSection(
+  props: TaskListProps & {
+    emptyMessage?: string
+    emptyAction?: ReactNode
+    onPostpone: (taskId: string) => void
+    onSkip: (taskId: string) => void
+    title: string
+  },
+) {
   return (
     <section className={styles.taskSection} id="cleaning-tasks">
       <div className={styles.panelHeader}>
@@ -47,24 +59,93 @@ export function TaskSection(props: {
         <span className={styles.badge}>{props.items.length}</span>
       </div>
 
-      {props.items.length === 0 ? (
-        <div className={styles.taskSectionEmpty}>
-          <p className={styles.emptyCopy}>
-            {props.emptyMessage ?? 'Здесь пока нет задач.'}
-          </p>
-          {props.emptyAction}
-        </div>
-      ) : (
-        <div className={styles.taskGrid}>
-          {props.items.map((item) => (
-            <article key={item.task.id} className={styles.taskCard}>
-              <div className={styles.taskCardHeader}>
-                <div>
-                  <p className={styles.kicker}>
-                    {item.zone?.title ?? 'Прочее'}
-                  </p>
-                  <h4>{item.task.title}</h4>
-                </div>
+      <TaskSectionContent {...props} />
+    </section>
+  )
+}
+
+export function CollapsibleTaskSection(
+  props: TaskListProps & {
+    emptyMessage?: string
+    title: string
+  },
+) {
+  return (
+    <details className={cx(styles.taskSection, styles.collapsibleTaskSection)}>
+      <summary className={styles.collapsibleTaskSummary}>
+        <span className={styles.collapsibleTaskTitle}>
+          <ChevronRightIcon
+            className={styles.collapsibleTaskChevron}
+            size={17}
+            strokeWidth={2}
+          />
+          <span>{props.title}</span>
+        </span>
+        <span className={styles.badge}>{props.items.length}</span>
+      </summary>
+
+      <TaskSectionContent {...props} showZone />
+    </details>
+  )
+}
+
+function TaskSectionContent(
+  props: TaskListProps & {
+    emptyMessage?: string
+    emptyAction?: ReactNode
+  },
+) {
+  if (props.items.length === 0) {
+    return (
+      <div className={styles.taskSectionEmpty}>
+        <p className={styles.emptyCopy}>
+          {props.emptyMessage ?? 'Здесь пока нет задач.'}
+        </p>
+        {props.emptyAction}
+      </div>
+    )
+  }
+
+  const hasSecondaryActions = Boolean(props.onPostpone || props.onSkip)
+  const usesCompactHeader = Boolean(props.showZone && !hasSecondaryActions)
+
+  return (
+    <div className={styles.taskGrid}>
+      {props.items.map((item) => (
+        <article key={item.task.id} className={styles.taskCard}>
+          {usesCompactHeader ? (
+            <div className={styles.postponedTaskTopRow}>
+              <p className={styles.taskZoneLabel}>
+                {item.zone?.title ?? 'Без зоны'}
+              </p>
+              <div className={styles.postponedTaskMeta}>
+                <span
+                  className={cx(
+                    styles.priorityBadge,
+                    item.task.priority === 'high' && styles.priorityHigh,
+                  )}
+                >
+                  {PRIORITY_LABELS[item.task.priority]}
+                </span>
+                {item.task.estimatedMinutes ? (
+                  <span className={styles.durationBadge}>
+                    {item.task.estimatedMinutes} мин
+                  </span>
+                ) : null}
+              </div>
+              <CompleteTaskButton
+                compact
+                isBusy={props.isBusy}
+                taskId={item.task.id}
+                taskTitle={item.task.title}
+                onComplete={props.onComplete}
+              />
+            </div>
+          ) : null}
+          <div className={styles.taskCardHeader}>
+            <h4>{item.task.title}</h4>
+            {!usesCompactHeader ? (
+              <div className={styles.taskCardHeaderActions}>
                 <span
                   className={cx(
                     styles.priorityBadge,
@@ -74,150 +155,100 @@ export function TaskSection(props: {
                   {PRIORITY_LABELS[item.task.priority]}
                 </span>
               </div>
+            ) : null}
+          </div>
 
-              {item.task.estimatedMinutes ? (
-                <div className={styles.metaLine}>
-                  <span>{item.task.estimatedMinutes} мин</span>
-                </div>
-              ) : null}
+          {!usesCompactHeader && item.task.estimatedMinutes ? (
+            <div className={styles.metaLine}>
+              <span>{item.task.estimatedMinutes} мин</span>
+            </div>
+          ) : null}
 
-              <div className={styles.taskStateLine}>
-                <span>
-                  Отложено: {formatPostponeCount(item.state.postponeCount)}
-                </span>
-                <span>
-                  Последнее:{' '}
-                  {item.state.lastCompletedAt
-                    ? formatShortDate(item.state.lastCompletedAt.slice(0, 10))
-                    : 'нет'}
-                </span>
-                <span>
-                  Следующее:{' '}
-                  {item.state.nextDueAt
-                    ? formatShortDate(item.state.nextDueAt)
-                    : 'сейчас'}
-                </span>
-              </div>
+          <div className={styles.taskStateLine}>
+            {item.state.postponeCount > 0 ? (
+              <span>
+                Отложено: {formatPostponeCount(item.state.postponeCount)}
+              </span>
+            ) : null}
+            <span>
+              Последнее:{' '}
+              {item.state.lastCompletedAt
+                ? formatShortDate(item.state.lastCompletedAt.slice(0, 10))
+                : 'нет'}
+            </span>
+            <span>
+              Следующее:{' '}
+              {item.state.nextDueAt
+                ? formatShortDate(item.state.nextDueAt)
+                : 'сейчас'}
+            </span>
+          </div>
 
-              <div className={styles.actionRow}>
-                <button
-                  className={styles.doneButton}
-                  type="button"
-                  disabled={props.isBusy}
-                  aria-label={`Отметить «${item.task.title}» выполненной`}
-                  onClick={() => {
-                    props.onComplete(item.task.id)
-                  }}
-                >
-                  <CheckIcon size={16} strokeWidth={2.15} />
-                  <span className={styles.doneButtonLabel}>Сделано</span>
-                </button>
+          {hasSecondaryActions ? (
+            <div className={styles.actionRow}>
+              <CompleteTaskButton
+                isBusy={props.isBusy}
+                taskId={item.task.id}
+                taskTitle={item.task.title}
+                onComplete={props.onComplete}
+              />
+              {props.onPostpone ? (
                 <button
                   className={styles.softButton}
                   type="button"
                   disabled={props.isBusy}
                   onClick={() => {
-                    props.onPostpone(item.task.id)
+                    props.onPostpone?.(item.task.id)
                   }}
                 >
                   <EditIcon size={16} strokeWidth={2.1} />
                   <span>Отложить</span>
                 </button>
+              ) : null}
+              {props.onSkip ? (
                 <button
                   className={styles.softButton}
                   type="button"
                   disabled={props.isBusy}
                   onClick={() => {
-                    props.onSkip(item.task.id)
+                    props.onSkip?.(item.task.id)
                   }}
                 >
                   <CloseIcon size={16} strokeWidth={2.1} />
                   <span>Пропустить</span>
                 </button>
-              </div>
-
-              <label className={styles.dateField}>
-                <span>Дата переноса</span>
-                <input
-                  type="date"
-                  value={props.postponeTargets[item.task.id] ?? ''}
-                  disabled={props.isBusy}
-                  onChange={(event) => {
-                    props.onTargetChange(item.task.id, event.target.value)
-                  }}
-                />
-              </label>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
+              ) : null}
+            </div>
+          ) : null}
+        </article>
+      ))}
+    </div>
   )
 }
 
-export function CompactList(props: {
-  emptyMessage: string
-  isBusy?: boolean | undefined
-  items: CleaningTaskWithState[]
-  title: string
-  onComplete?: ((taskId: string) => void) | undefined
-  onPostpone?: ((taskId: string) => void) | undefined
+function CompleteTaskButton(props: {
+  compact?: boolean
+  isBusy: boolean
+  taskId: string
+  taskTitle: string
+  onComplete: (taskId: string) => void
 }) {
-  const hasActions = Boolean(props.onComplete || props.onPostpone)
-
   return (
-    <section className={styles.panel}>
-      <div className={styles.panelHeader}>
-        <h3>{props.title}</h3>
-        <span className={styles.badge}>{props.items.length}</span>
-      </div>
-      {props.items.length === 0 ? (
-        <p className={styles.emptyCopy}>{props.emptyMessage}</p>
-      ) : (
-        <div className={styles.compactList}>
-          {props.items.slice(0, 6).map((item) => (
-            <div key={item.task.id} className={styles.compactItem}>
-              <strong>{item.task.title}</strong>
-              <span>
-                {item.zone?.title ?? 'Прочее'} · отложено{' '}
-                {formatPostponeCount(item.state.postponeCount)}
-              </span>
-              {hasActions ? (
-                <div className={styles.compactActions}>
-                  {props.onComplete ? (
-                    <button
-                      className={styles.doneButton}
-                      type="button"
-                      disabled={props.isBusy}
-                      aria-label={`Отметить «${item.task.title}» выполненной`}
-                      onClick={() => {
-                        props.onComplete?.(item.task.id)
-                      }}
-                    >
-                      <CheckIcon size={15} strokeWidth={2.15} />
-                      <span>Сделано</span>
-                    </button>
-                  ) : null}
-                  {props.onPostpone ? (
-                    <button
-                      className={styles.softButton}
-                      type="button"
-                      disabled={props.isBusy}
-                      onClick={() => {
-                        props.onPostpone?.(item.task.id)
-                      }}
-                    >
-                      <EditIcon size={15} strokeWidth={2.1} />
-                      <span>Отложить</span>
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
+    <button
+      className={cx(
+        styles.doneButton,
+        props.compact && styles.inlineDoneButton,
       )}
-    </section>
+      type="button"
+      disabled={props.isBusy}
+      aria-label={`Отметить «${props.taskTitle}» выполненной`}
+      onClick={() => {
+        props.onComplete(props.taskId)
+      }}
+    >
+      <CheckIcon size={16} strokeWidth={2.15} />
+      <span className={styles.doneButtonLabel}>Сделано</span>
+    </button>
   )
 }
 
