@@ -100,6 +100,7 @@ void test('TaskService creates the next recurring occurrence after completion', 
   const service = new TaskService(new MemoryTaskRepository())
   const task = await service.createTask(PERSONAL_CONTEXT, {
     ...BASE_INPUT,
+    necessity: 'required',
     plannedDate: '2099-01-01',
     recurrence: {
       daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
@@ -126,6 +127,7 @@ void test('TaskService creates the next recurring occurrence after completion', 
   assert.equal(nextTask?.status, 'todo')
   assert.equal(nextTask?.plannedDate, '2099-01-02')
   assert.equal(nextTask?.title, 'Умыться')
+  assert.equal(nextTask?.necessity, 'required')
 })
 
 void test('TaskService uses client timezone for next recurring reminder occurrence', async () => {
@@ -342,6 +344,7 @@ void test('TaskService creates the next routine occurrence without recurrence', 
   const service = new TaskService(new MemoryTaskRepository())
   const task = await service.createTask(PERSONAL_CONTEXT, {
     ...BASE_INPUT,
+    necessity: 'optional',
     plannedDate: '2099-01-01',
     routine: {
       daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
@@ -369,6 +372,7 @@ void test('TaskService creates the next routine occurrence without recurrence', 
   assert.equal(nextTask?.title, 'Рутинная задача')
   assert.equal(nextTask?.recurrence, null)
   assert.equal(nextTask?.routine?.frequency, 'daily')
+  assert.equal(nextTask?.necessity, 'optional')
 })
 
 void test('TaskService creates a linked personal copy and syncs status', async () => {

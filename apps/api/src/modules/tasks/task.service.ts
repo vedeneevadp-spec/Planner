@@ -467,6 +467,7 @@ export class TaskService {
             : null,
         icon: completedTask.icon,
         importance: completedTask.importance,
+        necessity: completedTask.necessity,
         note: completedTask.note,
         plannedDate: nextPlannedDate,
         plannedEndTime: completedTask.plannedEndTime,
