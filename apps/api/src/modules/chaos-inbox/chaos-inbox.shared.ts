@@ -1,4 +1,8 @@
-import { generateUuidV7, type NewChaosInboxItemInput } from '@planner/contracts'
+import {
+  generateUuidV7,
+  type NewChaosInboxItemInput,
+  type NewTaskInput,
+} from '@planner/contracts'
 
 import type { StoredChaosInboxItemRecord } from './chaos-inbox.model.js'
 
@@ -35,5 +39,30 @@ export function createStoredChaosInboxItemRecord(
     userId: options.userId,
     version: 1,
     workspaceId: options.workspaceId,
+  }
+}
+
+export function buildChaosInboxTaskInput(
+  item: StoredChaosInboxItemRecord,
+  taskId = generateUuidV7(),
+): NewTaskInput {
+  return {
+    assigneeUserId: null,
+    dueDate: item.dueDate,
+    icon: '',
+    id: taskId,
+    importance: item.priority === 'high' ? 'important' : 'not_important',
+    necessity: 'desired',
+    note: '',
+    plannedDate: item.dueDate,
+    plannedEndTime: null,
+    plannedStartTime: null,
+    project: '',
+    projectId: item.sphereId,
+    resource: item.priority === 'high' ? 3 : item.priority === 'low' ? 1 : 2,
+    requiresConfirmation: false,
+    sphereId: item.sphereId,
+    title: item.text,
+    urgency: item.priority === 'high' ? 'urgent' : 'not_urgent',
   }
 }

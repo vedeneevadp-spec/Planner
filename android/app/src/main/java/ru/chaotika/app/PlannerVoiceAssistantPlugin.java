@@ -89,6 +89,19 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void clearSessionContext(PluginCall call) {
+        Context context = getContext();
+
+        context.startService(WakeWordService.createStopIntent(context));
+        try {
+            PlannerVoiceAssistantStorage.clearSessionContext(context);
+            call.resolve(createStateResponse(VoiceAssistantState.IDLE.value));
+        } catch (RuntimeException exception) {
+            call.reject("Failed to clear voice assistant session context.", exception);
+        }
+    }
+
+    @PluginMethod
     public void getState(PluginCall call) {
         call.resolve(createStateResponse(PlannerVoiceAssistantStorage.readState(getContext())));
     }

@@ -1,21 +1,30 @@
 import { HttpError } from '../../bootstrap/http-error.js'
+import { MemoryTaskRepository, type TaskRepository } from '../tasks/index.js'
 import type {
   BulkDeleteChaosInboxItemsCommand,
   BulkUpdateChaosInboxItemsCommand,
   ChaosInboxListResult,
   ChaosInboxReadContext,
+  ChaosInboxTaskConversionResult,
+  ConvertChaosInboxItemsCommand,
   CreateChaosInboxItemsCommand,
   DeleteChaosInboxItemCommand,
   ListChaosInboxItemsCommand,
-  MarkChaosInboxItemConvertedCommand,
   StoredChaosInboxItemRecord,
   UpdateChaosInboxItemCommand,
 } from './chaos-inbox.model.js'
 import type { ChaosInboxRepository } from './chaos-inbox.repository.js'
-import { createStoredChaosInboxItemRecord } from './chaos-inbox.shared.js'
+import {
+  buildChaosInboxTaskInput,
+  createStoredChaosInboxItemRecord,
+} from './chaos-inbox.shared.js'
 
 export class MemoryChaosInboxRepository implements ChaosInboxRepository {
   private readonly items = new Map<string, StoredChaosInboxItemRecord>()
+
+  constructor(
+    private readonly taskRepository: TaskRepository = new MemoryTaskRepository(),
+  ) {}
 
   list(command: ListChaosInboxItemsCommand): Promise<ChaosInboxListResult> {
     const page = command.filters?.page ?? 1
@@ -95,24 +104,42 @@ export class MemoryChaosInboxRepository implements ChaosInboxRepository {
     return Promise.resolve(updated)
   }
 
-  markConverted(
-    command: MarkChaosInboxItemConvertedCommand,
-  ): Promise<StoredChaosInboxItemRecord> {
-    const item = this.getItemOrThrow(command.context, command.id)
-    const now = new Date().toISOString()
-    const nextItem: StoredChaosInboxItemRecord = {
-      ...item,
-      completedAt: now,
-      convertedTaskId: command.convertedTaskId,
-      kind: 'task',
-      status: 'converted',
-      updatedAt: now,
-      version: item.version + 1,
+  async convertToTasks(
+    command: ConvertChaosInboxItemsCommand,
+  ): Promise<ChaosInboxTaskConversionResult[]> {
+    for (const id of new Set(command.ids)) {
+      this.getItemOrThrow(command.context, id)
     }
 
-    this.items.set(nextItem.id, nextItem)
+    const conversions: ChaosInboxTaskConversionResult[] = []
 
-    return Promise.resolve(nextItem)
+    for (const id of command.ids) {
+      const item = this.getItemOrThrow(command.context, id)
+      if (item.convertedTaskId) {
+        conversions.push({ inboxItem: item, taskId: item.convertedTaskId })
+        continue
+      }
+
+      const task = await this.taskRepository.create({
+        context: command.context,
+        input: buildChaosInboxTaskInput(item),
+      })
+      const now = new Date().toISOString()
+      const inboxItem: StoredChaosInboxItemRecord = {
+        ...item,
+        completedAt: now,
+        convertedTaskId: task.id,
+        kind: 'task',
+        status: 'converted',
+        updatedAt: now,
+        version: item.version + 1,
+      }
+
+      this.items.set(inboxItem.id, inboxItem)
+      conversions.push({ inboxItem, taskId: task.id })
+    }
+
+    return conversions
   }
 
   remove(command: DeleteChaosInboxItemCommand): Promise<void> {

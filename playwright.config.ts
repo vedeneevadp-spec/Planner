@@ -14,6 +14,7 @@ export default defineConfig({
     timeout: 10_000,
   },
   fullyParallel: false,
+  globalSetup: './tests/e2e/global-setup.ts',
   retries: process.env.CI ? 1 : 0,
   testDir: './tests/e2e',
   timeout: 60_000,

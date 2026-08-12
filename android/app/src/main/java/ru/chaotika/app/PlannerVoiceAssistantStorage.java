@@ -70,7 +70,9 @@ final class PlannerVoiceAssistantStorage {
 
     static void storeApiConfig(Context context, VoiceAssistantApiConfig config) {
         if (config == null || !config.isUsable()) {
-            getPreferences(context).edit().remove(API_CONFIG_KEY).apply();
+            if (!PlannerSecureStorage.remove(context, API_CONFIG_KEY, PREFERENCES_NAME)) {
+                throw new IllegalStateException("Failed to remove voice API config.");
+            }
             return;
         }
 
@@ -88,11 +90,18 @@ final class PlannerVoiceAssistantStorage {
             return;
         }
 
-        getPreferences(context).edit().putString(API_CONFIG_KEY, value.toString()).apply();
+        if (!PlannerSecureStorage.putString(
+            context,
+            API_CONFIG_KEY,
+            value.toString(),
+            PREFERENCES_NAME
+        )) {
+            throw new IllegalStateException("Failed to persist voice API config.");
+        }
     }
 
     static VoiceAssistantApiConfig readApiConfig(Context context) {
-        String rawConfig = getPreferences(context).getString(API_CONFIG_KEY, null);
+        String rawConfig = PlannerSecureStorage.getString(context, API_CONFIG_KEY, PREFERENCES_NAME);
 
         if (rawConfig == null) {
             return null;
@@ -141,7 +150,14 @@ final class PlannerVoiceAssistantStorage {
             return;
         }
 
-        getPreferences(context).edit().putString(PENDING_COMMAND_KEY, command.toString()).apply();
+        if (!PlannerSecureStorage.putString(
+            context,
+            PENDING_COMMAND_KEY,
+            command.toString(),
+            PREFERENCES_NAME
+        )) {
+            throw new IllegalStateException("Failed to persist pending voice command.");
+        }
     }
 
     static void storePendingError(Context context, SttException error) {
@@ -157,18 +173,30 @@ final class PlannerVoiceAssistantStorage {
             return;
         }
 
-        getPreferences(context).edit().putString(PENDING_COMMAND_KEY, command.toString()).apply();
+        if (!PlannerSecureStorage.putString(
+            context,
+            PENDING_COMMAND_KEY,
+            command.toString(),
+            PREFERENCES_NAME
+        )) {
+            throw new IllegalStateException("Failed to persist pending voice error.");
+        }
     }
 
     static PendingVoiceCommand consumePendingCommand(Context context) {
-        SharedPreferences preferences = getPreferences(context);
-        String rawCommand = preferences.getString(PENDING_COMMAND_KEY, null);
+        String rawCommand = PlannerSecureStorage.getString(
+            context,
+            PENDING_COMMAND_KEY,
+            PREFERENCES_NAME
+        );
 
         if (rawCommand == null) {
             return null;
         }
 
-        preferences.edit().remove(PENDING_COMMAND_KEY).apply();
+        if (!PlannerSecureStorage.remove(context, PENDING_COMMAND_KEY, PREFERENCES_NAME)) {
+            throw new IllegalStateException("Failed to remove pending voice command.");
+        }
 
         try {
             JSONObject command = new JSONObject(rawCommand);
@@ -199,6 +227,23 @@ final class PlannerVoiceAssistantStorage {
             );
         } catch (JSONException exception) {
             return null;
+        }
+    }
+
+    static void clearSessionContext(Context context) {
+        boolean apiConfigRemoved = PlannerSecureStorage.remove(
+            context,
+            API_CONFIG_KEY,
+            PREFERENCES_NAME
+        );
+        boolean pendingCommandRemoved = PlannerSecureStorage.remove(
+            context,
+            PENDING_COMMAND_KEY,
+            PREFERENCES_NAME
+        );
+
+        if (!apiConfigRemoved || !pendingCommandRemoved) {
+            throw new IllegalStateException("Failed to clear voice session context.");
         }
     }
 

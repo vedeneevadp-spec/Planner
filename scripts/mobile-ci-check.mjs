@@ -11,6 +11,23 @@ const androidCapacitorSettingsGradle = await readFile(
   'utf8',
 )
 const androidBuildGradle = await readFile('android/app/build.gradle', 'utf8')
+const androidManifest = await readFile(
+  'android/app/src/main/AndroidManifest.xml',
+  'utf8',
+)
+const androidBackupRules = await readFile(
+  'android/app/src/main/res/xml/backup_rules.xml',
+  'utf8',
+)
+const androidDataExtractionRules = await readFile(
+  'android/app/src/main/res/xml/data_extraction_rules.xml',
+  'utf8',
+)
+const androidSecureStorage = await readFile(
+  'android/app/src/main/java/ru/chaotika/app/PlannerSecureStorage.java',
+  'utf8',
+)
+const iosAppDelegate = await readFile('ios/App/App/AppDelegate.swift', 'utf8')
 const iosSpmPackage = await readFile('ios/App/CapApp-SPM/Package.swift', 'utf8')
 const iosProject = await readFile(
   'ios/App/App.xcodeproj/project.pbxproj',
@@ -18,6 +35,10 @@ const iosProject = await readFile(
 )
 const manifest = JSON.parse(
   await readFile('apps/web/public/manifest.webmanifest', 'utf8'),
+)
+const nativeSessionStorage = await readFile(
+  'apps/web/src/features/session/lib/native-session-storage.ts',
+  'utf8',
 )
 
 const appId = readSingleMatch(capacitorConfig, /appId:\s*'([^']+)'/, 'appId')
@@ -63,6 +84,7 @@ assert.deepEqual(iosBundleIds, [appId])
 assert.equal(appName, manifest.name)
 assert.equal(webDir, 'apps/web/dist')
 assertCapacitorPlugins()
+assertSecureNativeAuthStorage()
 assert.ok(Number.isInteger(androidVersionCode) && androidVersionCode > 0)
 assert.deepEqual(iosBuildNumbers, [String(androidVersionCode)])
 assert.deepEqual(iosMarketingVersions, [androidVersionName])
@@ -116,6 +138,35 @@ function assertCapacitorPlugins() {
       `Missing ${plugin.iosPackage} in ios/App/CapApp-SPM/Package.swift.`,
     )
   }
+}
+
+function assertSecureNativeAuthStorage() {
+  assert.match(androidSecureStorage, /AndroidKeyStore/)
+  assert.match(androidSecureStorage, /AES\/GCM\/NoPadding/)
+  assert.match(
+    androidManifest,
+    /android:dataExtractionRules="@xml\/data_extraction_rules"/,
+  )
+  assert.match(
+    androidManifest,
+    /android:fullBackupContent="@xml\/backup_rules"/,
+  )
+
+  for (const rules of [androidBackupRules, androidDataExtractionRules]) {
+    assert.match(rules, /CapacitorStorage\.xml/)
+    assert.match(rules, /planner_secure_storage\.xml/)
+  }
+
+  assert.match(iosAppDelegate, /kSecClassGenericPassword/)
+  assert.match(
+    iosAppDelegate,
+    /kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly/,
+  )
+  assert.match(
+    iosAppDelegate,
+    /registerPluginInstance\(PlannerAuthStoragePlugin\(\)\)/,
+  )
+  assert.doesNotMatch(nativeSessionStorage, /@capacitor\/preferences/)
 }
 
 function readSingleMatch(content, pattern, label) {

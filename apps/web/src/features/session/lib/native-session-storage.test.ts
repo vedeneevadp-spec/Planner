@@ -2,14 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const capacitorMocks = vi.hoisted(() => ({
   addListener: vi.fn(),
+  durableGet: vi.fn(),
   durableRemove: vi.fn(),
   durableSet: vi.fn(),
-  get: vi.fn(),
   getPlatform: vi.fn(),
   getState: vi.fn(),
   isNativePlatform: vi.fn(),
-  remove: vi.fn(),
-  set: vi.fn(),
 }))
 
 vi.mock('@capacitor/app', () => ({
@@ -25,17 +23,10 @@ vi.mock('@capacitor/core', () => ({
     isNativePlatform: capacitorMocks.isNativePlatform,
   },
   registerPlugin: () => ({
+    get: capacitorMocks.durableGet,
     remove: capacitorMocks.durableRemove,
     set: capacitorMocks.durableSet,
   }),
-}))
-
-vi.mock('@capacitor/preferences', () => ({
-  Preferences: {
-    get: capacitorMocks.get,
-    remove: capacitorMocks.remove,
-    set: capacitorMocks.set,
-  },
 }))
 
 import {
@@ -50,18 +41,16 @@ import {
 describe('native session storage', () => {
   beforeEach(() => {
     capacitorMocks.addListener.mockReset()
+    capacitorMocks.durableGet.mockReset()
     capacitorMocks.durableRemove.mockReset()
     capacitorMocks.durableRemove.mockResolvedValue(undefined)
     capacitorMocks.durableSet.mockReset()
     capacitorMocks.durableSet.mockResolvedValue(undefined)
-    capacitorMocks.get.mockReset()
     capacitorMocks.getPlatform.mockReset()
     capacitorMocks.getPlatform.mockReturnValue('android')
     capacitorMocks.getState.mockReset()
     capacitorMocks.isNativePlatform.mockReset()
     capacitorMocks.isNativePlatform.mockReturnValue(true)
-    capacitorMocks.remove.mockReset()
-    capacitorMocks.set.mockReset()
   })
 
   it('detects native runtime through Capacitor', () => {
@@ -74,15 +63,15 @@ describe('native session storage', () => {
     capacitorMocks.isNativePlatform.mockReturnValue(false)
 
     await expect(getNativeAuthDeviceId()).resolves.toBeNull()
-    expect(capacitorMocks.get).not.toHaveBeenCalled()
+    expect(capacitorMocks.durableGet).not.toHaveBeenCalled()
   })
 
   it('reuses a stored native auth device id', async () => {
     capacitorMocks.isNativePlatform.mockReturnValue(true)
-    capacitorMocks.get.mockResolvedValue({ value: 'native-device-1' })
+    capacitorMocks.durableGet.mockResolvedValue({ value: 'native-device-1' })
 
     await expect(getNativeAuthDeviceId()).resolves.toBe('native-device-1')
-    expect(capacitorMocks.get).toHaveBeenCalledWith({
+    expect(capacitorMocks.durableGet).toHaveBeenCalledWith({
       key: 'planner.auth.deviceId',
     })
     expect(capacitorMocks.durableSet).not.toHaveBeenCalled()
@@ -90,7 +79,7 @@ describe('native session storage', () => {
 
   it('creates and stores a native auth device id when none exists', async () => {
     capacitorMocks.isNativePlatform.mockReturnValue(true)
-    capacitorMocks.get.mockResolvedValue({ value: null })
+    capacitorMocks.durableGet.mockResolvedValue({ value: null })
 
     const deviceId = await getNativeAuthDeviceId()
 
@@ -101,9 +90,9 @@ describe('native session storage', () => {
     })
   })
 
-  it('reads through Preferences and commits auth writes through the Android bridge', async () => {
+  it('reads and commits auth values through the native secure-storage bridge', async () => {
     const storage = createNativeSessionStorage()
-    capacitorMocks.get.mockResolvedValue({ value: 'stored-session' })
+    capacitorMocks.durableGet.mockResolvedValue({ value: 'stored-session' })
 
     await expect(storage.getItem('sb-test-auth-token')).resolves.toBe(
       'stored-session',
@@ -111,7 +100,7 @@ describe('native session storage', () => {
     await storage.setItem('sb-test-auth-token', 'fresh-session')
     await storage.removeItem('sb-test-auth-token')
 
-    expect(capacitorMocks.get).toHaveBeenCalledWith({
+    expect(capacitorMocks.durableGet).toHaveBeenCalledWith({
       key: 'planner.auth.sb-test-auth-token',
     })
     expect(capacitorMocks.durableSet).toHaveBeenCalledWith({

@@ -6,7 +6,7 @@ Date: 2026-06-23
 
 The codebase currently mixes at least four time semantics:
 
-- Instant timestamps: `created_at`, `updated_at`, `completed_at`, `deleted_at`, auth token expiry, outbox processing, reminder sending.
+- Instant timestamps: `created_at`, `updated_at`, `completed_at`, `deleted_at`, auth token expiry, reminder delivery/expiry.
 - Date-only planner dates: task `planned_on`, `due_on`, daily plans, habit entries, cleaning state/history dates, self-care scheduled days.
 - Fixed-zone date-times: task `planned_on` plus `task_time_blocks.starts_at/ends_at`, self-care appointments, reminder due times.
 - Floating local routines: task recurrence/routine, habits, cleaning rules, self-care schedule rules.
@@ -114,7 +114,7 @@ The risky part is that several fixed-zone and date-only operations currently pas
 
 ## Classification of existing fields
 
-- `created_at`, `updated_at`, `deleted_at`, `completed_at`, auth `expires_at`, outbox `processed_at`, reminders `sent_at`: instant, UTC/timestamptz.
+- `created_at`, `updated_at`, `deleted_at`, `completed_at`, auth `expires_at`, reminders `sent_at`/`expired_at`/`failed_at`: instant, UTC/timestamptz.
 - `planned_on`, `due_on`, daily plan `date`, habit entry `date`, cleaning history `date`, cleaning `next_due_at`, self-care `scheduled_for`, `start_date`, `end_date`: date-only.
 - `task_time_blocks.starts_at/ends_at`, self-care appointment `starts_at/ends_at`, reminder `due_at/reminder_at`: fixed-zone datetime or occurrence instant. They require an IANA timezone next to the local date/time source.
 - Recurrence metadata and routine/habit/self-care repeating rules: floating local time unless explicitly tied to a fixed event timezone.

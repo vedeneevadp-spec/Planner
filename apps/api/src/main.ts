@@ -4,6 +4,10 @@ import type { FastifyInstance } from 'fastify'
 
 import { buildApiApp } from './bootstrap/build-app.js'
 import { createApiConfig } from './bootstrap/config.js'
+import {
+  MemoryRateLimiter,
+  PostgresRateLimiter,
+} from './bootstrap/rate-limit.js'
 import { NoopRequestAuthenticator } from './bootstrap/request-auth.js'
 import { JwtRequestAuthenticator } from './infrastructure/auth/jwt-request-authenticator.js'
 import {
@@ -132,7 +136,7 @@ export function createApiKernel(
     : new MemoryTaskRepository()
   const chaosInboxRepository = database
     ? new PostgresChaosInboxRepository(database.db)
-    : new MemoryChaosInboxRepository()
+    : new MemoryChaosInboxRepository(taskRepository)
   const dailyPlanRepository = database
     ? new PostgresDailyPlanRepository(database.db)
     : new MemoryDailyPlanRepository()
@@ -205,10 +209,7 @@ export function createApiKernel(
   )
   const taskTemplateService = new TaskTemplateService(taskTemplateRepository)
   const taskService = new TaskService(taskRepository)
-  const chaosInboxService = new ChaosInboxService(
-    chaosInboxRepository,
-    taskService,
-  )
+  const chaosInboxService = new ChaosInboxService(chaosInboxRepository)
   const dailyPlanService = new DailyPlanService(dailyPlanRepository)
   const voiceCommandProvider = new YandexSpeechKitProvider(config.voiceStt)
   const voiceCommandService = new VoiceCommandService(
@@ -258,6 +259,9 @@ export function createApiKernel(
     mcpAuditRepository,
     mcpOAuthService,
     pushNotificationsService,
+    rateLimiter: database
+      ? new PostgresRateLimiter(database.db)
+      : new MemoryRateLimiter(),
     requestAuthenticator,
     selfCareService,
     sessionService,

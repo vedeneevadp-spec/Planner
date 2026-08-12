@@ -15,7 +15,6 @@ import type { ChaosInboxRepository } from './chaos-inbox.repository.js'
 export interface ChaosInboxRepositoryContractHarness {
   cleanup: () => Promise<void>
   context: ChaosInboxWriteContext
-  convertedTaskId: string
   otherContext: ChaosInboxWriteContext
   repository: ChaosInboxRepository
 }
@@ -173,16 +172,58 @@ export function defineChaosInboxRepositoryContractSuite(input: {
         assert.equal(bulkUpdatedIdea?.status, 'archived')
         assert.equal(bulkUpdatedIdea?.completedAt !== null, true)
 
-        const converted = await harness.repository.markConverted({
+        const rollbackItemId = generateUuidV7()
+        await harness.repository.create({
           context: harness.context,
-          convertedTaskId: harness.convertedTaskId,
-          id: ideaItemId,
+          input: createChaosInboxItemsInputSchema.parse({
+            items: [
+              {
+                id: rollbackItemId,
+                kind: 'task',
+                source: 'manual',
+                text: 'Atomic bulk rollback',
+              },
+            ],
+          }),
         })
+
+        await assert.rejects(
+          harness.repository.convertToTasks({
+            context: harness.context,
+            ids: [rollbackItemId, generateUuidV7()],
+          }),
+          (error: unknown) =>
+            hasHttpErrorCode(error, 'chaos_inbox_item_not_found'),
+        )
+        assert.equal(
+          (await harness.repository.getById(harness.context, rollbackItemId))
+            .convertedTaskId,
+          null,
+        )
+
+        await harness.repository.remove({
+          context: harness.context,
+          id: rollbackItemId,
+        })
+
+        const [conversion] = await harness.repository.convertToTasks({
+          context: harness.context,
+          ids: [ideaItemId],
+        })
+        const converted = conversion!.inboxItem
 
         assert.equal(converted.kind, 'task')
         assert.equal(converted.status, 'converted')
         assert.equal(converted.completedAt !== null, true)
         assert.equal(converted.convertedTaskId !== null, true)
+
+        const [replayedConversion] = await harness.repository.convertToTasks({
+          context: harness.context,
+          ids: [ideaItemId],
+        })
+
+        assert.equal(replayedConversion?.taskId, conversion?.taskId)
+        assert.equal(replayedConversion?.inboxItem.version, converted.version)
 
         await harness.repository.remove({
           context: harness.context,

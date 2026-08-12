@@ -17,6 +17,7 @@ export type StoredChaosInboxItemRecord = ChaosInboxItemRecord
 export interface ChaosInboxReadContext {
   actorUserId?: string | undefined
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
@@ -27,6 +28,7 @@ export interface ChaosInboxWriteContext {
   actorUserId: string
   actorDisplayName: string
   auth: AuthenticatedRequestContext | null
+  clientTimeZone?: string | undefined
   groupRole?: WorkspaceGroupRole | null | undefined
   role?: WorkspaceRole | undefined
   workspaceKind?: WorkspaceKind | undefined
@@ -64,10 +66,14 @@ export interface BulkDeleteChaosInboxItemsCommand {
   ids: string[]
 }
 
-export interface MarkChaosInboxItemConvertedCommand {
+export interface ConvertChaosInboxItemsCommand {
   context: ChaosInboxWriteContext
-  convertedTaskId: string
-  id: string
+  ids: string[]
+}
+
+export interface ChaosInboxTaskConversionResult {
+  inboxItem: StoredChaosInboxItemRecord
+  taskId: string
 }
 
 export type ChaosInboxListResult = ChaosInboxListRecordResponse

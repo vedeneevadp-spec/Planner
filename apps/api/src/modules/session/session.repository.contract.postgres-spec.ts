@@ -215,23 +215,6 @@ void test('PostgresSessionRepository permanently deletes self-owned data and ano
     )
     await connection.pool.query(
       `
-        insert into app.outbox (
-          aggregate_type,
-          aggregate_id,
-          topic,
-          payload
-        )
-        values (
-          'user',
-          $1::uuid,
-          'user.test',
-          jsonb_build_object('actorUserId', $1::uuid)
-        )
-      `,
-      [targetUserId],
-    )
-    await connection.pool.query(
-      `
         insert into app.mcp_audit_logs (user_id, tool_name)
         values ($1, 'contract-delete-test')
       `,
@@ -249,7 +232,6 @@ void test('PostgresSessionRepository permanently deletes self-owned data and ano
 
     const result = await connection.pool.query<{
       auditCount: number
-      outboxCount: number
       targetUserCount: number
       targetWorkspaceCount: number
       taskCreatedBy: string | null
@@ -258,7 +240,6 @@ void test('PostgresSessionRepository permanently deletes self-owned data and ano
       `
         select
           (select count(*)::int from app.mcp_audit_logs where user_id = $1) as "auditCount",
-          (select count(*)::int from app.outbox where payload::text like '%' || $1::text || '%') as "outboxCount",
           (select count(*)::int from app.users where id = $1) as "targetUserCount",
           (select count(*)::int from app.workspaces where owner_user_id = $1) as "targetWorkspaceCount",
           (select created_by from app.tasks where id = $2) as "taskCreatedBy",
@@ -269,7 +250,6 @@ void test('PostgresSessionRepository permanently deletes self-owned data and ano
 
     assert.deepEqual(result.rows[0], {
       auditCount: 0,
-      outboxCount: 0,
       targetUserCount: 0,
       targetWorkspaceCount: 0,
       taskCreatedBy: null,

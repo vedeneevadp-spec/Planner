@@ -91,6 +91,15 @@ export interface UpdateTaskStatusCommand {
   expectedVersion?: number
 }
 
+export interface CompleteRecurringTaskCommand {
+  context: TaskWriteContext
+  expectedVersion?: number
+  nextPlannedDate: string
+  nextTaskInput: NewTaskInput
+  recurrenceSeriesId: string
+  taskId: string
+}
+
 export interface UpdateTaskCommand {
   context: TaskWriteContext
   input: TaskUpdateInput

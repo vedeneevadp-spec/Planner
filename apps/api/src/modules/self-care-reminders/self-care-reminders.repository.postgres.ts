@@ -20,13 +20,14 @@ interface DueSelfCareReminderRow {
 
 const CLAIM_TIMEOUT_INTERVAL = "interval '5 minutes'"
 const STALE_GRACE_INTERVAL = "interval '5 minutes'"
+const MAX_DELIVERY_ATTEMPTS = 8
 
 export class PostgresSelfCareReminderRepository implements SelfCareReminderRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
   async claimDueReminders(limit: number): Promise<DueSelfCareReminder[]> {
     await this.cancelInvalidPendingReminders()
-    await this.markStalePendingRemindersDelivered()
+    await this.markStalePendingRemindersExpired()
     await this.materializeDueReminders()
 
     const result = await sql<DueSelfCareReminderRow>`
@@ -48,6 +49,8 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
           on item.id = reminder.item_id
           and item.workspace_id = reminder.workspace_id
         where reminder.sent_at is null
+          and reminder.expired_at is null
+          and reminder.failed_at is null
           and reminder.canceled_at is null
           and (
             reminder.claimed_at is null
@@ -83,20 +86,32 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
       .updateTable('app.self_care_reminders')
       .set({
         claimed_at: null,
+        last_error: null,
         sent_at: new Date().toISOString(),
       })
       .where('id', '=', reminderId)
+      .where('expired_at', 'is', null)
+      .where('failed_at', 'is', null)
+      .where('canceled_at', 'is', null)
       .execute()
   }
 
-  async releaseClaim(reminderId: string): Promise<void> {
-    await this.db
-      .updateTable('app.self_care_reminders')
-      .set({
-        claimed_at: null,
-      })
-      .where('id', '=', reminderId)
-      .execute()
+  async releaseClaim(reminderId: string, error: string): Promise<void> {
+    await sql`
+      update app.self_care_reminders
+      set
+        attempt_count = attempt_count + 1,
+        claimed_at = null,
+        failed_at = case
+          when attempt_count + 1 >= ${MAX_DELIVERY_ATTEMPTS} then now()
+          else failed_at
+        end,
+        last_error = left(${error}, 1000)
+      where id = cast(${reminderId} as uuid)
+        and sent_at is null
+        and expired_at is null
+        and canceled_at is null
+    `.execute(this.db)
   }
 
   private async cancelInvalidPendingReminders(): Promise<void> {
@@ -134,13 +149,16 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
     `.execute(this.db)
   }
 
-  private async markStalePendingRemindersDelivered(): Promise<void> {
+  private async markStalePendingRemindersExpired(): Promise<void> {
     await sql`
       update app.self_care_reminders as reminder
       set
         claimed_at = null,
-        sent_at = now()
+        expired_at = now(),
+        last_error = 'delivery_window_expired'
       where reminder.sent_at is null
+        and reminder.expired_at is null
+        and reminder.failed_at is null
         and reminder.canceled_at is null
         and reminder.due_at <= now() - ${sql.raw(STALE_GRACE_INTERVAL)}
     `.execute(this.db)
@@ -202,7 +220,11 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
         time_zone,
         claimed_at,
         sent_at,
-        canceled_at
+        canceled_at,
+        expired_at,
+        failed_at,
+        attempt_count,
+        last_error
       )
       select
         workspace_id,
@@ -216,6 +238,10 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
         time_zone,
         null,
         null,
+        null,
+        null,
+        null,
+        0,
         null
       from candidate_reminders
       where reminder_at <= now()
@@ -230,6 +256,34 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
         time_zone = excluded.time_zone,
         claimed_at = null,
         canceled_at = null,
+        expired_at = case
+          when app.self_care_reminders.due_at = excluded.due_at
+            and app.self_care_reminders.reminder_at = excluded.reminder_at
+            and app.self_care_reminders.time_zone = excluded.time_zone
+          then app.self_care_reminders.expired_at
+          else null
+        end,
+        failed_at = case
+          when app.self_care_reminders.due_at = excluded.due_at
+            and app.self_care_reminders.reminder_at = excluded.reminder_at
+            and app.self_care_reminders.time_zone = excluded.time_zone
+          then app.self_care_reminders.failed_at
+          else null
+        end,
+        attempt_count = case
+          when app.self_care_reminders.due_at = excluded.due_at
+            and app.self_care_reminders.reminder_at = excluded.reminder_at
+            and app.self_care_reminders.time_zone = excluded.time_zone
+          then app.self_care_reminders.attempt_count
+          else 0
+        end,
+        last_error = case
+          when app.self_care_reminders.due_at = excluded.due_at
+            and app.self_care_reminders.reminder_at = excluded.reminder_at
+            and app.self_care_reminders.time_zone = excluded.time_zone
+          then app.self_care_reminders.last_error
+          else null
+        end,
         sent_at = case
           when app.self_care_reminders.due_at = excluded.due_at
             and app.self_care_reminders.reminder_at = excluded.reminder_at

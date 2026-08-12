@@ -38,15 +38,21 @@ export class SelfCareRemindersService {
         )
 
         if (shouldRetryReminder(result)) {
-          await this.repository.releaseClaim(reminder.id)
+          await this.repository.releaseClaim(
+            reminder.id,
+            'push_delivery_retryable',
+          )
           releasedCount += 1
           continue
         }
 
         await this.repository.markDelivered(reminder.id)
         deliveredCount += 1
-      } catch {
-        await this.repository.releaseClaim(reminder.id)
+      } catch (error) {
+        await this.repository.releaseClaim(
+          reminder.id,
+          formatDeliveryError(error),
+        )
         releasedCount += 1
       }
     }
@@ -57,6 +63,14 @@ export class SelfCareRemindersService {
       releasedCount,
     }
   }
+}
+
+function formatDeliveryError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`
+  }
+
+  return 'Unknown reminder delivery error.'
 }
 
 function buildSelfCareReminderBody(reminder: DueSelfCareReminder): string {

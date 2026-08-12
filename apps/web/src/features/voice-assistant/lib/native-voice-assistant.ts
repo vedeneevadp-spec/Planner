@@ -145,6 +145,7 @@ interface PlannerVoiceAssistantPlugin {
   captureCommand: (
     options: NativeVoiceAssistantApiConfig,
   ) => Promise<{ state: string; wakeWord: string }>
+  clearSessionContext: () => Promise<{ state: string }>
   consumePendingCommand: () => Promise<{
     command: NativeVoiceCommand | null
   }>
@@ -313,6 +314,14 @@ export async function stopAndroidVoiceAssistant(): Promise<void> {
   }
 
   await NativePlannerVoiceAssistant.stop()
+}
+
+export async function clearAndroidVoiceAssistantSessionContext(): Promise<void> {
+  if (!isAndroidVoiceAssistantRuntime()) {
+    return
+  }
+
+  await NativePlannerVoiceAssistant.clearSessionContext()
 }
 
 export async function consumePendingAndroidVoiceCommand(): Promise<NativeVoiceCommand | null> {

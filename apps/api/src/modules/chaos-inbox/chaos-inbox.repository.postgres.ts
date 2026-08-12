@@ -8,19 +8,31 @@ import {
   withWriteTransaction,
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
+import { writeTaskMutationArtifacts } from '../tasks/task.repository.postgres.artifacts.js'
+import {
+  buildTaskMetadata,
+  mapTaskRecord,
+} from '../tasks/task.repository.postgres.mapper.js'
+import {
+  buildTaskTimeFields,
+  normalizeTaskInput,
+  normalizeTaskSchedule,
+} from '../tasks/task.shared.js'
 import type {
   BulkDeleteChaosInboxItemsCommand,
   BulkUpdateChaosInboxItemsCommand,
   ChaosInboxListResult,
   ChaosInboxReadContext,
+  ChaosInboxTaskConversionResult,
+  ConvertChaosInboxItemsCommand,
   CreateChaosInboxItemsCommand,
   DeleteChaosInboxItemCommand,
   ListChaosInboxItemsCommand,
-  MarkChaosInboxItemConvertedCommand,
   StoredChaosInboxItemRecord,
   UpdateChaosInboxItemCommand,
 } from './chaos-inbox.model.js'
 import type { ChaosInboxRepository } from './chaos-inbox.repository.js'
+import { buildChaosInboxTaskInput } from './chaos-inbox.shared.js'
 
 type ChaosInboxRow = Selectable<DatabaseSchema['app.chaos_inbox_items']>
 type TaskRow = Pick<
@@ -190,33 +202,32 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
     return rows.map((row) => this.mapItemRecord(row, new Set()))
   }
 
-  async markConverted(
-    command: MarkChaosInboxItemConvertedCommand,
-  ): Promise<StoredChaosInboxItemRecord> {
-    const row = await withWriteTransaction(
+  async convertToTasks(
+    command: ConvertChaosInboxItemsCommand,
+  ): Promise<ChaosInboxTaskConversionResult[]> {
+    return withWriteTransaction(
       this.db,
       command.context.auth,
       async (trx) => {
-        const now = new Date().toISOString()
-        const updated = trx
-          .updateTable('app.chaos_inbox_items')
-          .set({
-            completed_at: now,
-            converted_task_id: command.convertedTaskId,
-            kind: 'task',
-            status: 'converted',
-            updated_by: command.context.actorUserId,
-          })
+        const uniqueIds = [...new Set(command.ids)]
+        let itemQuery = trx
+          .selectFrom('app.chaos_inbox_items')
+          .selectAll()
           .where('workspace_id', '=', command.context.workspaceId)
-          .where('id', '=', command.id)
+          .where('id', 'in', uniqueIds)
           .where('deleted_at', 'is', null)
-        const scopedUpdate =
-          command.context.workspaceKind === 'shared'
-            ? updated
-            : updated.where('user_id', '=', command.context.actorUserId)
-        const row = await scopedUpdate.returningAll().executeTakeFirst()
 
-        if (!row) {
+        if (command.context.workspaceKind !== 'shared') {
+          itemQuery = itemQuery.where(
+            'user_id',
+            '=',
+            command.context.actorUserId,
+          )
+        }
+
+        const rows = await itemQuery.orderBy('id').forUpdate().execute()
+
+        if (rows.length !== uniqueIds.length) {
           throw new HttpError(
             404,
             'chaos_inbox_item_not_found',
@@ -224,12 +235,125 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
           )
         }
 
-        return row
+        const rowsById = new Map(rows.map((row) => [row.id, row]))
+        const conversions: ChaosInboxTaskConversionResult[] = []
+
+        for (const id of command.ids) {
+          const itemRow = rowsById.get(id)!
+
+          if (itemRow.converted_task_id) {
+            conversions.push({
+              inboxItem: this.mapItemRecord(itemRow, new Set()),
+              taskId: itemRow.converted_task_id,
+            })
+            continue
+          }
+
+          const item = this.mapItemRecord(itemRow, new Set())
+          const normalizedInput = normalizeTaskInput(
+            buildChaosInboxTaskInput(item),
+          )
+          const normalizedSchedule = normalizeTaskSchedule(normalizedInput)
+          const project = itemRow.sphere_id
+            ? await trx
+                .selectFrom('app.projects')
+                .select(['id', 'title'])
+                .where('id', '=', itemRow.sphere_id)
+                .where('workspace_id', '=', command.context.workspaceId)
+                .where('deleted_at', 'is', null)
+                .where('status', '=', 'active')
+                .executeTakeFirst()
+            : null
+
+          if (itemRow.sphere_id && !project) {
+            throw new HttpError(
+              404,
+              'life_sphere_not_found',
+              `Life sphere "${itemRow.sphere_id}" was not found.`,
+            )
+          }
+
+          const metadata = buildTaskMetadata('', normalizedInput)
+          const timeFields = buildTaskTimeFields({
+            plannerTimeZone: command.context.clientTimeZone,
+            schedule: normalizedSchedule,
+          })
+          const task = await trx
+            .insertInto('app.tasks')
+            .values({
+              assignee_user_id: null,
+              created_by: command.context.actorUserId,
+              deleted_at: null,
+              description: normalizedInput.note,
+              due_at: null,
+              due_on: normalizedInput.dueDate,
+              id: normalizedInput.id ?? generateUuidV7(),
+              local_date: timeFields.localDate,
+              local_time: timeFields.localTime,
+              metadata,
+              planned_on: normalizedSchedule.plannedDate,
+              priority: 2,
+              project_id: project?.id ?? null,
+              recurrence_rule: timeFields.recurrenceRule,
+              recurrence_start_date: timeFields.recurrenceStartDate,
+              recurrence_time_zone: timeFields.recurrenceTimeZone,
+              resource: normalizedInput.resource,
+              sort_key: '',
+              sphere_id: project?.id ?? null,
+              starts_at_utc: timeFields.startsAtUtc,
+              status: 'todo',
+              time_kind: timeFields.timeKind,
+              time_zone: timeFields.timeZone,
+              time_zone_inferred: timeFields.timeZoneInferred,
+              title: normalizedInput.title,
+              updated_by: command.context.actorUserId,
+              workspace_id: command.context.workspaceId,
+            })
+            .returningAll()
+            .executeTakeFirstOrThrow()
+          const taskRecord = mapTaskRecord(
+            task,
+            undefined,
+            project?.title ?? null,
+            null,
+            command.context.actorDisplayName,
+          )
+
+          await writeTaskMutationArtifacts(trx, {
+            actorUserId: command.context.actorUserId,
+            eventType: 'task.created',
+            payload: { task: taskRecord },
+            taskId: task.id,
+            workspaceId: command.context.workspaceId,
+          })
+
+          const now = new Date().toISOString()
+          const convertedItem = await trx
+            .updateTable('app.chaos_inbox_items')
+            .set({
+              completed_at: now,
+              converted_task_id: task.id,
+              kind: 'task',
+              status: 'converted',
+              updated_by: command.context.actorUserId,
+            })
+            .where('id', '=', id)
+            .where('workspace_id', '=', command.context.workspaceId)
+            .where('converted_task_id', 'is', null)
+            .returningAll()
+            .executeTakeFirstOrThrow()
+
+          rowsById.set(id, convertedItem)
+          conversions.push({
+            inboxItem: this.mapItemRecord(convertedItem, new Set()),
+            taskId: task.id,
+          })
+        }
+
+        return conversions
       },
       command.context.actorUserId,
     )
-
-    return this.mapItemRecord(row, new Set())
   }
 
   async remove(command: DeleteChaosInboxItemCommand): Promise<void> {

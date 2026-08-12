@@ -225,7 +225,7 @@ test('repairs grants for internal offline command ledgers', () => {
   assert.deepEqual(internalAppTables, [
     'cleaning_operations',
     'device_sessions',
-    'outbox',
+    'rate_limit_buckets',
     'schema_migrations',
     'self_care_command_ledger',
     'sync_cursors',

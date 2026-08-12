@@ -1,5 +1,6 @@
 import type {
   CloseTaskChainCommand,
+  CompleteRecurringTaskCommand,
   CopyTaskToPersonalCommand,
   CreateTaskCommand,
   CreateTaskNextStageCommand,
@@ -38,6 +39,9 @@ export interface TaskRepository {
     filters?: TaskEventFilters,
   ): Promise<TaskEventListResult>
   closeChain(command: CloseTaskChainCommand): Promise<StoredTaskRecord>
+  completeRecurring(
+    command: CompleteRecurringTaskCommand,
+  ): Promise<StoredTaskRecord>
   copyToPersonal(command: CopyTaskToPersonalCommand): Promise<StoredTaskRecord>
   create(command: CreateTaskCommand): Promise<StoredTaskRecord>
   createNextStage(

@@ -209,6 +209,13 @@ export function useSessionAuthController(): SessionAuthState {
           actorUserId,
           apiBaseUrl: plannerApiConfig.apiBaseUrl,
         })
+
+        const { clearAndroidVoiceAssistantSessionContext } =
+          await import('@/features/voice-assistant')
+
+        await clearAndroidVoiceAssistantSessionContext().catch((error) => {
+          console.error('Failed to clear native voice session context.', error)
+        })
       }
 
       pendingSignOutNoticeRef.current = notice

@@ -3,8 +3,8 @@ import test from 'node:test'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import type {
+  CompleteRecurringTaskCommand,
   CreateTaskCommand,
-  UpdateTaskStatusCommand,
 } from './task.model.js'
 import { MemoryTaskRepository } from './task.repository.memory.js'
 import { TaskService } from './task.service.js'
@@ -165,7 +165,8 @@ void test('TaskService uses client timezone for next recurring reminder occurren
 
 void test('TaskService uses client timezone for recurring completion reference date', async () => {
   const service = new TaskService(
-    new FixedCompletionTimeTaskRepository('2026-06-14T21:30:00.000Z'),
+    new MemoryTaskRepository(),
+    () => new Date('2026-06-14T21:30:00.000Z'),
   )
   const context = {
     ...PERSONAL_CONTEXT,
@@ -263,6 +264,55 @@ void test('TaskService treats stale same-status completion as idempotent', async
   assert.equal(replayedTask.status, 'done')
   assert.equal(replayedTask.version, completedTask.version)
   assert.equal(tasks.length, 2)
+})
+
+void test('TaskService does not recreate an occurrence that was already completed', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const firstTask = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    plannedDate: '2099-01-01',
+    recurrence: {
+      daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+      endDate: null,
+      frequency: 'daily',
+      interval: 1,
+      isActive: true,
+      seriesId: '019db853-b277-7000-8000-000000000008',
+      startDate: '2099-01-01',
+    },
+    title: 'Повтор после следующего выполнения',
+  })
+
+  await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    firstTask.id,
+    'done',
+    firstTask.version,
+  )
+  const secondTask = (await service.listTasks(PERSONAL_CONTEXT)).find(
+    (task) => task.plannedDate === '2099-01-02',
+  )!
+
+  await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    secondTask.id,
+    'done',
+    secondTask.version,
+  )
+  await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    firstTask.id,
+    'done',
+    firstTask.version,
+  )
+
+  const tasks = await service.listTasks(PERSONAL_CONTEXT)
+
+  assert.equal(tasks.length, 3)
+  assert.equal(
+    tasks.filter((task) => task.plannedDate === '2099-01-02').length,
+    1,
+  )
 })
 
 void test('TaskService keeps stale conflicting status updates strict', async () => {
@@ -427,22 +477,11 @@ class RecordingMemoryTaskRepository extends MemoryTaskRepository {
 
     return super.create(command)
   }
-}
 
-class FixedCompletionTimeTaskRepository extends MemoryTaskRepository {
-  constructor(private readonly completedAt: string) {
-    super()
-  }
+  override completeRecurring(command: CompleteRecurringTaskCommand) {
+    this.createdReminderTimeZones.push(command.nextTaskInput.reminderTimeZone)
 
-  override async updateStatus(command: UpdateTaskStatusCommand) {
-    const task = await super.updateStatus(command)
-
-    return command.status === 'done'
-      ? {
-          ...task,
-          completedAt: this.completedAt,
-        }
-      : task
+    return super.completeRecurring(command)
   }
 }
 

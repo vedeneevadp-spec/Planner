@@ -1,9 +1,38 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-07-29.
+Дата анализа: 2026-05-21. Обновлено: 2026-08-12.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
+
+## Закрыто в коде 2026-08-12: пять P1 из повторного аудита
+
+1. Native auth session и device id переведены с backupable Preferences на
+   Android Keystore + AES-GCM и iOS Keychain с
+   `AfterFirstUnlockThisDeviceOnly`. Android backup/transfer исключает как
+   encrypted storage, так и legacy `CapacitorStorage`; logout останавливает
+   voice service и очищает API token/pending command.
+2. Completion recurring task и создание следующего occurrence выполняются одной
+   repository transaction. Source row и recurrence series блокируются,
+   повторный запрос восстанавливает пропущенный occurrence и не создаёт дубль,
+   включая случай, когда следующий occurrence уже завершён. Chaos Inbox
+   single/bulk conversion также перенесён в одну repository transaction:
+   task, `task.created` и `converted_task_id` commit/rollback вместе; replay
+   возвращает исходный task id.
+3. Неиспользуемый outbox удалён полностью: runtime module/worker/scripts/schema,
+   DB trigger, cron job, PGMQ queue, table и enum. `task_events` остаётся sync
+   trail.
+4. Task/self-care reminders больше не записывают просроченную доставку как
+   `sent`: появились `expired_at`, `failed_at`, attempt count и безопасная
+   причина последней ошибки. FCM OAuth/send имеют timeout, retry ограничен, а
+   poller после повторяющихся инфраструктурных ошибок становится unhealthy.
+5. Auth/OAuth/MCP rate limiting перенесён в атомарные PostgreSQL buckets. Для
+   auth отдельно считаются hashed IP и account buckets, поэтому смена email или
+   API-процесса не обходит ограничение.
+
+Проверка: memory/API suite, обычные Postgres contracts и pooler contracts
+включают replay/concurrency, bulk rollback и multi-instance rate-limit
+сценарии. Миграции `000093`-`000095` применяются транзакционно.
 
 Свежий срез 2026-07-02 после коммита `4cf79cf`: guardrails в целом зеленые
 (`toolchain:check`, `db:migrations:check`, prod/dev audit, `openapi:check`,
@@ -735,7 +764,7 @@ assets `608.1 KB`. Android budgets проходят с debug APK `153.1 MB`, rel
 
 - production deploy мог упасть на `db:security:check`, если у роли
   `authenticated` остались прямые grants на внутренние таблицы без RLS:
-  `app.device_sessions`, `app.outbox`, `app.schema_migrations`,
+  `app.device_sessions`, `app.rate_limit_buckets`, `app.schema_migrations`,
   `app.sync_cursors`
 - repair до этого выполнялся ручным SQL после диагностики production grants
 

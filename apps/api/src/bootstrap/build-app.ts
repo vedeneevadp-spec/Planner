@@ -67,6 +67,7 @@ import {
   registerApiObservability,
 } from './observability.js'
 import { registerOpenApi } from './openapi.js'
+import { MemoryRateLimiter, type RateLimiter } from './rate-limit.js'
 import {
   NoopRequestAuthenticator,
   type RequestAuthenticator,
@@ -91,6 +92,7 @@ export interface BuildApiAppOptions {
   mcpAuditRepository?: McpAuditLogRepository
   mcpOAuthService?: McpOAuthService
   pushNotificationsService?: PushNotificationsService
+  rateLimiter?: RateLimiter
   selfCareService?: SelfCareService
   sessionService: SessionService
   taskTemplateService?: TaskTemplateService
@@ -115,6 +117,7 @@ export function buildApiApp({
   mcpAuditRepository,
   mcpOAuthService,
   pushNotificationsService,
+  rateLimiter = new MemoryRateLimiter(),
   selfCareService,
   sessionService,
   taskTemplateService,
@@ -146,6 +149,7 @@ export function buildApiApp({
       auditRepository: mcpAuditRepository,
       config: config.mcpHaotika,
       oauthService: mcpOAuthService,
+      rateLimiter,
       sessionService,
     })
   }
@@ -205,11 +209,13 @@ export function buildApiApp({
     if (authService) {
       registerAuthRoutes(instance, authService, {
         isSecureCookie: config.appEnv === 'production',
+        rateLimiter,
         refreshCookieMaxAgeSeconds:
           config.plannerAuth?.refreshTokenTtlSeconds ?? 60 * 60 * 24 * 30,
       })
       registerOAuthRoutes(instance, {
         aliceOAuth: config.aliceOAuth,
+        rateLimiter,
         service: authService,
       })
     }

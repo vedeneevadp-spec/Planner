@@ -130,7 +130,7 @@ role. Этот credential используется только restore reposito
 
 - password hashes, refresh/reset tokens и OAuth authorization codes;
 - MCP OAuth tokens и audit logs;
-- push tokens, device sessions, sync cursors и outbox;
+- push tokens, device sessions и sync cursors;
 - delivery/runtime jobs, которые пересоздаются из domain state;
 - системные self-care templates;
 - глобальная emoji library и ее файлы;

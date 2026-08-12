@@ -103,6 +103,12 @@ test.beforeEach(async ({ page }) => {
             return Promise.reject(new Error('Auth storage key is required.'))
           }
 
+          if (methodName === 'get') {
+            return Promise.resolve({
+              value: window.localStorage.getItem(storageKey),
+            })
+          }
+
           if (methodName === 'set' && typeof input.value === 'string') {
             window.localStorage.setItem(storageKey, input.value)
             return Promise.resolve({})
@@ -258,6 +264,7 @@ test.beforeEach(async ({ page }) => {
       PluginHeaders: [
         {
           methods: [
+            { name: 'get', rtype: 'promise' },
             { name: 'remove', rtype: 'promise' },
             { name: 'set', rtype: 'promise' },
           ],

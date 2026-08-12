@@ -80,7 +80,6 @@ version-specific директорию и поднимет fresh dev-базу. Д
 | `npm run db:security:check`                             | проверить RLS/security-инварианты PostgreSQL             |
 | `npm run db:security:repair`                            | снять drift grants с внутренних app-таблиц               |
 | `npm run db:setup`                                      | `db:up` + migrations + seed                              |
-| `npm run outbox:run`                                    | обработать одну пачку outbox-сообщений                   |
 | `npm run task-reminders:worker`                         | отдельный long-running worker напоминаний задач и заботы |
 | `npm run toolchain:check`                               | проверить pinned Node/npm перед quality gates            |
 | `npm run actionlint`                                    | проверить GitHub Actions workflow через actionlint       |

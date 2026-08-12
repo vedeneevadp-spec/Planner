@@ -303,6 +303,71 @@ export function defineTaskRepositoryContractSuite(input: {
       }
     })
 
+    void test('completes a recurring task and creates one next occurrence atomically', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const seriesId = randomUUID()
+        const task = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({
+            id: randomUUID(),
+            plannedDate: '2099-01-01',
+            recurrence: {
+              daysOfWeek: [1, 2, 3, 4, 5, 6, 7],
+              endDate: null,
+              frequency: 'daily',
+              interval: 1,
+              isActive: true,
+              seriesId,
+              startDate: '2099-01-01',
+            },
+            title: 'Atomic recurring contract',
+          }),
+        })
+        const nextTaskInput = createTaskInput({
+          id: randomUUID(),
+          plannedDate: '2099-01-02',
+          recurrence: task.recurrence,
+          title: task.title,
+        })
+        const command = {
+          context: harness.personalContext,
+          expectedVersion: task.version,
+          nextPlannedDate: '2099-01-02',
+          nextTaskInput,
+          recurrenceSeriesId: seriesId,
+          taskId: task.id,
+        }
+        const [firstResult, replayResult] = await Promise.all([
+          harness.repository.completeRecurring(command),
+          harness.repository.completeRecurring({
+            ...command,
+            nextTaskInput: {
+              ...nextTaskInput,
+              id: randomUUID(),
+            },
+          }),
+        ])
+        const tasks = await harness.repository.listByWorkspace(
+          harness.personalContext,
+        )
+        const nextOccurrences = tasks.filter(
+          (candidate) =>
+            candidate.status !== 'done' &&
+            candidate.plannedDate === '2099-01-02' &&
+            candidate.recurrence?.seriesId === seriesId,
+        )
+
+        assert.equal(firstResult.status, 'done')
+        assert.equal(replayResult.id, firstResult.id)
+        assert.equal(replayResult.version, firstResult.version)
+        assert.equal(nextOccurrences.length, 1)
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('keeps fixed-zone task end times stable after reload', async () => {
       const harness = await input.createHarness()
       const context: TaskWriteContext = {

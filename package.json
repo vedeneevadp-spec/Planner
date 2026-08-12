@@ -105,7 +105,6 @@
     "ci": "npm run toolchain:check && npm run audit:prod && npm run audit:dev-tooling && npm run check && npm run deadcode:strict && npm run coverage && npm run openapi:check && npm run mobile:ci-check && npm run build && npm run build:budget",
     "release:check": "npm run ci && npm run mobile:android:ci",
     "prepare": "husky",
-    "outbox:run": "npm run -w apps/api outbox:run",
     "task-reminders:worker": "npm run -w apps/api task-reminders:worker",
     "deploy:prod": "node ./scripts/deploy-prod.mjs"
   },

@@ -1,8 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import {
-  assertInMemoryRateLimit,
   getClientAddress,
+  type RateLimiter,
 } from '../../bootstrap/rate-limit.js'
 import {
   type AiContextService,
@@ -44,6 +45,7 @@ interface RegisterMcpHaotikaRoutesOptions {
   auditRepository: McpAuditLogRepository
   config: McpHaotikaRuntimeConfig
   oauthService: McpOAuthService
+  rateLimiter: RateLimiter
   sessionService: SessionService
 }
 
@@ -378,7 +380,7 @@ async function handleToolCall(
 
   try {
     const auth = await resolveMcpAuth(request, options, requiredScopes)
-    assertMcpRateLimit(options, auth)
+    await assertMcpRateLimit(options, auth, request)
     const output = await executeMcpTool({
       aiContextService: options.aiContextService,
       arguments: toolArguments,
@@ -460,17 +462,29 @@ async function resolveMcpAuth(
   return options.oauthService.authenticateBearer(authorization, requiredScopes)
 }
 
-function assertMcpRateLimit(
+async function assertMcpRateLimit(
   options: RegisterMcpHaotikaRoutesOptions,
   auth: ResolvedMcpAuthContext,
-): void {
+  request: FastifyRequest,
+): Promise<void> {
   try {
-    assertInMemoryRateLimit({
-      key: `mcp:${auth.tokenId ?? auth.userId}`,
-      limit: options.config.rateLimitPerMinute,
-      windowMs: 60_000,
-    })
-  } catch {
+    await Promise.all([
+      options.rateLimiter.consume({
+        key: `mcp:credential:${auth.tokenId ?? auth.userId}`,
+        limit: options.config.rateLimitPerMinute,
+        windowMs: 60_000,
+      }),
+      options.rateLimiter.consume({
+        key: `mcp:ip:${getClientAddress(request)}`,
+        limit: Math.max(options.config.rateLimitPerMinute * 5, 100),
+        windowMs: 60_000,
+      }),
+    ])
+  } catch (error) {
+    if (!(error instanceof HttpError) || error.statusCode !== 429) {
+      throw error
+    }
+
     throw new McpHaotikaError(
       'RATE_LIMIT_EXCEEDED',
       'Rate limit exceeded.',

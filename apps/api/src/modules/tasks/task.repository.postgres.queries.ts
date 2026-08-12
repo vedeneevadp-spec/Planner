@@ -289,15 +289,27 @@ export async function resolveTaskProject(
   context: CreateTaskCommand['context'],
   projectId: string | null,
 ): Promise<ResolvedTaskProject | null> {
+  return withOptionalRls(
+    db,
+    context.auth,
+    (executor) => resolveTaskProjectInExecutor(executor, context, projectId),
+    context.actorUserId,
+  )
+}
+
+export async function resolveTaskProjectInExecutor(
+  executor: DatabaseExecutor,
+  context: CreateTaskCommand['context'],
+  projectId: string | null,
+): Promise<ResolvedTaskProject | null> {
   if (!projectId) {
     return null
   }
 
-  const project = await withOptionalRls(
-    db,
-    context.auth,
-    (executor) => loadActiveProject(executor, context.workspaceId, projectId),
-    context.actorUserId,
+  const project = await loadActiveProject(
+    executor,
+    context.workspaceId,
+    projectId,
   )
 
   if (!project) {
@@ -315,6 +327,20 @@ export async function resolveTaskAssignee(
   context: CreateTaskCommand['context'],
   assigneeUserId: string | null,
 ): Promise<ResolvedTaskAssignee | null> {
+  return withOptionalRls(
+    db,
+    context.auth,
+    (executor) =>
+      resolveTaskAssigneeInExecutor(executor, context, assigneeUserId),
+    context.actorUserId,
+  )
+}
+
+export async function resolveTaskAssigneeInExecutor(
+  executor: DatabaseExecutor,
+  context: CreateTaskCommand['context'],
+  assigneeUserId: string | null,
+): Promise<ResolvedTaskAssignee | null> {
   if (!assigneeUserId) {
     return null
   }
@@ -327,16 +353,10 @@ export async function resolveTaskAssignee(
     )
   }
 
-  const assignee = await withOptionalRls(
-    db,
-    context.auth,
-    (executor) =>
-      loadActiveWorkspaceAssignee(
-        executor,
-        context.workspaceId,
-        assigneeUserId,
-      ),
-    context.actorUserId,
+  const assignee = await loadActiveWorkspaceAssignee(
+    executor,
+    context.workspaceId,
+    assigneeUserId,
   )
 
   if (!assignee) {
