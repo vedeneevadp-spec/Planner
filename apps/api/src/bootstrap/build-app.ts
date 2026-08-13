@@ -1,6 +1,7 @@
 import path from 'node:path'
 
 import cors from '@fastify/cors'
+import fastifyRateLimit from '@fastify/rate-limit'
 import type {
   ApiError,
   HealthDatabaseStatus,
@@ -151,13 +152,31 @@ export function buildApiApp({
   registerApiObservability(app)
   registerOpenApi(app, config)
   if (aiContextService && mcpOAuthService && mcpAuditRepository) {
-    registerMcpHaotikaRoutes(app, {
-      aiContextService,
-      auditRepository: mcpAuditRepository,
-      config: config.mcpHaotika,
-      oauthService: mcpOAuthService,
-      rateLimiter,
-      sessionService,
+    app.register(async (instance) => {
+      instance.register(fastifyRateLimit, {
+        errorResponseBuilder: (_request, context) =>
+          new HttpError(
+            429,
+            'rate_limit_exceeded',
+            'Too many requests. Please try again later.',
+            {
+              retryAfterSeconds: Math.max(1, Math.ceil(context.ttl / 1000)),
+            },
+          ),
+        global: false,
+        keyGenerator: getClientAddress,
+        max: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
+        timeWindow: RATE_LIMIT_WINDOW_MS,
+      })
+      await instance.after()
+      registerMcpHaotikaRoutes(instance, {
+        aiContextService,
+        auditRepository: mcpAuditRepository,
+        config: config.mcpHaotika,
+        oauthService: mcpOAuthService,
+        rateLimiter,
+        sessionService,
+      })
     })
   }
   registerIconAssetRoutes(app, config.iconAssetDirectory)
@@ -202,22 +221,32 @@ export function buildApiApp({
     taskService,
   })
 
-  app.decorateRequest('authContext', null)
-
-  app.addHook('onRequest', async (request) => {
-    if (isPublicRequest(request.method, request.url)) {
-      return
-    }
-
-    await rateLimiter.consume({
-      key: `api:protected:ip:${getClientAddress(request)}`,
-      limit: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
-      windowMs: RATE_LIMIT_WINDOW_MS,
+  app.register(async (instance) => {
+    instance.register(fastifyRateLimit, {
+      errorResponseBuilder: (_request, context) =>
+        new HttpError(
+          429,
+          'rate_limit_exceeded',
+          'Too many requests. Please try again later.',
+          {
+            retryAfterSeconds: Math.max(1, Math.ceil(context.ttl / 1000)),
+          },
+        ),
+      keyGenerator: getClientAddress,
+      max: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
+      timeWindow: RATE_LIMIT_WINDOW_MS,
     })
-    request.authContext = await requestAuthenticator.authenticate(request)
-  })
+    await instance.after()
+    instance.decorateRequest('authContext', null)
+    instance.addHook('preParsing', async (request, _reply, payload) => {
+      if (isPublicRequest(request.method, request.url)) {
+        return payload
+      }
 
-  app.register((instance) => {
+      request.authContext = await requestAuthenticator.authenticate(request)
+      return payload
+    })
+
     if (authService) {
       registerAuthRoutes(instance, authService, {
         isSecureCookie: config.appEnv === 'production',

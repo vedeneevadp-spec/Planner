@@ -3624,37 +3624,33 @@ void describe('buildApiApp', () => {
         AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
       }),
       database: null,
-      rateLimiter: {
-        consume(options) {
-          assert.match(options.key, /^api:protected:ip:/)
-
-          return Promise.reject(
-            new HttpError(
-              429,
-              'rate_limit_exceeded',
-              'Too many requests. Please try again later.',
-            ),
-          )
-        },
-      },
       requestAuthenticator: {
         authenticate() {
           authenticateCalls += 1
 
-          return Promise.resolve(AUTH_CONTEXT)
+          throw new HttpError(
+            401,
+            'authentication_required',
+            'A valid bearer token is required for this request.',
+          )
         },
       },
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     })
 
-    const response = await app.inject({
-      method: 'GET',
-      url: '/api/v1/session',
-    })
+    let response: LightMyRequestResponse | null = null
 
+    for (let requestIndex = 0; requestIndex <= 600; requestIndex += 1) {
+      response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/session',
+      })
+    }
+
+    assert.ok(response)
     assert.equal(response.statusCode, 429)
-    assert.equal(authenticateCalls, 0)
+    assert.equal(authenticateCalls, 600)
 
     const body = apiErrorSchema.parse(response.json())
 
