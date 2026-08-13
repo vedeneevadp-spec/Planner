@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 
-import fastifyRateLimit from '@fastify/rate-limit'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { HttpError } from '../../bootstrap/http-error.js'
@@ -186,7 +185,7 @@ void describe('MCP Haotika server', () => {
     assert.match(response.body, /Слишком много попыток/)
   })
 
-  void it('enforces the Fastify OAuth route limit before verification', async () => {
+  void it('enforces the in-memory OAuth route limit before verification', async () => {
     let authorizeCalls = 0
 
     app = createMcpTestApp({
@@ -253,34 +252,22 @@ function createMcpTestApp(options: {
   }
   const sessionService = new SessionService(new MemorySessionRepository())
 
-  app.register(async (instance) => {
-    instance.register(fastifyRateLimit, {
-      errorResponseBuilder: () =>
-        new HttpError(
-          429,
-          'rate_limit_exceeded',
-          'Too many requests. Please try again later.',
-        ),
-      global: false,
-    })
-    await instance.after()
-    registerMcpHaotikaRoutes(instance, {
-      aiContextService: {
-        getTodayContext: () =>
-          Promise.resolve({
-            date: '2026-06-21',
-            generatedAt: '2026-06-21T00:00:00.000Z',
-            timezone: 'Europe/Astrakhan',
-          }),
-      } as unknown as AiContextService,
-      auditRepository: new MemoryMcpAuditLogRepository(),
-      config,
-      oauthService:
-        options.oauthService ??
-        new McpOAuthService(new MemoryMcpOAuthTokenRepository(), config),
-      rateLimiter: options.rateLimiter ?? new MemoryRateLimiter(),
-      sessionService,
-    })
+  registerMcpHaotikaRoutes(app, {
+    aiContextService: {
+      getTodayContext: () =>
+        Promise.resolve({
+          date: '2026-06-21',
+          generatedAt: '2026-06-21T00:00:00.000Z',
+          timezone: 'Europe/Astrakhan',
+        }),
+    } as unknown as AiContextService,
+    auditRepository: new MemoryMcpAuditLogRepository(),
+    config,
+    oauthService:
+      options.oauthService ??
+      new McpOAuthService(new MemoryMcpOAuthTokenRepository(), config),
+    rateLimiter: options.rateLimiter ?? new MemoryRateLimiter(),
+    sessionService,
   })
 
   return app

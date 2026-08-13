@@ -1,9 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { RateLimiterMemory } from 'rate-limiter-flexible'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import {
   getClientAddress,
   type RateLimiter,
+  readRateLimitRetryAfterSeconds,
 } from '../../bootstrap/rate-limit.js'
 import {
   type AiContextService,
@@ -65,6 +67,11 @@ export function registerMcpHaotikaRoutes(
   options: RegisterMcpHaotikaRoutesOptions,
 ): void {
   registerUrlEncodedFormParser(app)
+  const oauthAuthorizeRateLimiter = new RateLimiterMemory({
+    duration: 60,
+    keyPrefix: 'mcp-oauth-authorize',
+    points: Math.max(options.config.rateLimitPerMinute * 5, 100),
+  })
 
   app.get('/docs/mcp-haotika', async (_request, reply) =>
     reply.type('text/plain; charset=utf-8').send(MCP_HAOTIKA_PUBLIC_DOCS),
@@ -130,112 +137,119 @@ export function registerMcpHaotikaRoutes(
     )
   })
 
-  app.post(
-    '/oauth/authorize',
-    {
-      config: {
-        rateLimit: {
-          groupId: 'mcp-oauth-authorize',
-          max: Math.max(options.config.rateLimitPerMinute * 5, 100),
-          timeWindow: 60_000,
-        },
-      },
-    },
-    async (request, reply) => {
-      if (!options.config.enabled) {
-        return sendMcpHttpError(
-          reply,
-          503,
-          'MCP_DISABLED',
-          'MCP connector is disabled.',
+  app.post('/oauth/authorize', async (request, reply) => {
+    if (!options.config.enabled) {
+      return sendMcpHttpError(
+        reply,
+        503,
+        'MCP_DISABLED',
+        'MCP connector is disabled.',
+      )
+    }
+
+    const form = readAuthorizeForm(request.body)
+    const validationError = validateAuthorizeQuery(form)
+
+    if (validationError) {
+      return reply
+        .code(400)
+        .type('text/html; charset=utf-8')
+        .send(
+          renderAuthorizePage({
+            errorMessage: validationError,
+            query: form,
+            values: form,
+          }),
         )
-      }
+    }
 
-      const form = readAuthorizeForm(request.body)
-      const validationError = validateAuthorizeQuery(form)
+    try {
+      await oauthAuthorizeRateLimiter.consume(request.ip)
+      await options.rateLimiter.consume({
+        key: `mcp:oauth-authorize:ip:${getClientAddress(request)}`,
+        limit: Math.max(options.config.rateLimitPerMinute * 5, 100),
+        windowMs: 60_000,
+      })
+      const redirectUrl = await options.oauthService.completeAuthorize(
+        {
+          clientId: form.client_id,
+          codeChallenge: form.code_challenge,
+          codeChallengeMethod: form.code_challenge_method,
+          email: form.email ?? '',
+          password: form.password ?? '',
+          redirectUri: form.redirect_uri ?? '',
+          resource: form.resource,
+          scope: form.scope,
+          state: form.state,
+        },
+        {
+          ipAddress: getClientAddress(request),
+          userAgent: readUserAgent(request) ?? undefined,
+        },
+      )
 
-      if (validationError) {
+      return reply.redirect(redirectUrl, 302)
+    } catch (error) {
+      if (isRateLimiterRejection(error)) {
+        reply.header(
+          'retry-after',
+          String(readRateLimitRetryAfterSeconds(error)),
+        )
+
         return reply
-          .code(400)
+          .code(429)
           .type('text/html; charset=utf-8')
           .send(
             renderAuthorizePage({
-              errorMessage: validationError,
+              errorMessage: 'Слишком много попыток. Попробуйте позже.',
               query: form,
               values: form,
             }),
           )
       }
 
-      try {
-        await options.rateLimiter.consume({
-          key: `mcp:oauth-authorize:ip:${getClientAddress(request)}`,
-          limit: Math.max(options.config.rateLimitPerMinute * 5, 100),
-          windowMs: 60_000,
-        })
-        const redirectUrl = await options.oauthService.completeAuthorize(
-          {
-            clientId: form.client_id,
-            codeChallenge: form.code_challenge,
-            codeChallengeMethod: form.code_challenge_method,
-            email: form.email ?? '',
-            password: form.password ?? '',
-            redirectUri: form.redirect_uri ?? '',
-            resource: form.resource,
-            scope: form.scope,
-            state: form.state,
-          },
-          {
-            ipAddress: getClientAddress(request),
-            userAgent: readUserAgent(request) ?? undefined,
-          },
-        )
-
-        return reply.redirect(redirectUrl, 302)
-      } catch (error) {
-        if (isInvalidCredentialsError(error)) {
-          return reply
-            .code(401)
-            .type('text/html; charset=utf-8')
-            .send(
-              renderAuthorizePage({
-                errorMessage: 'Неверный email или пароль.',
-                query: form,
-                values: form,
-              }),
-            )
-        }
-
-        if (error instanceof HttpError && error.statusCode === 429) {
-          return reply
-            .code(429)
-            .type('text/html; charset=utf-8')
-            .send(
-              renderAuthorizePage({
-                errorMessage: 'Слишком много попыток. Попробуйте позже.',
-                query: form,
-                values: form,
-              }),
-            )
-        }
-
-        if (error instanceof McpHaotikaError) {
-          return reply
-            .code(error.statusCode)
-            .type('text/html; charset=utf-8')
-            .send(
-              renderAuthorizePage({
-                errorMessage: error.message,
-                query: form,
-                values: form,
-              }),
-            )
-        }
-
-        throw error
+      if (isInvalidCredentialsError(error)) {
+        return reply
+          .code(401)
+          .type('text/html; charset=utf-8')
+          .send(
+            renderAuthorizePage({
+              errorMessage: 'Неверный email или пароль.',
+              query: form,
+              values: form,
+            }),
+          )
       }
-    },
-  )
+
+      if (error instanceof HttpError && error.statusCode === 429) {
+        return reply
+          .code(429)
+          .type('text/html; charset=utf-8')
+          .send(
+            renderAuthorizePage({
+              errorMessage: 'Слишком много попыток. Попробуйте позже.',
+              query: form,
+              values: form,
+            }),
+          )
+      }
+
+      if (error instanceof McpHaotikaError) {
+        return reply
+          .code(error.statusCode)
+          .type('text/html; charset=utf-8')
+          .send(
+            renderAuthorizePage({
+              errorMessage: error.message,
+              query: form,
+              values: form,
+            }),
+          )
+      }
+
+      throw error
+    }
+  })
 
   app.post('/oauth/token', async (request, reply) => {
     if (!options.config.enabled) {
@@ -819,6 +833,10 @@ function hasJsonRpcId(message: JsonRpcRequest): boolean {
 
 function isInvalidCredentialsError(error: unknown): boolean {
   return isRecord(error) && error.code === 'auth_invalid_credentials'
+}
+
+function isRateLimiterRejection(error: unknown): boolean {
+  return isRecord(error) && typeof error.msBeforeNext === 'number'
 }
 
 function escapeHtml(value: string): string {

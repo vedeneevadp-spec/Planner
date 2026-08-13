@@ -95,6 +95,23 @@ export function getClientAddress(request: FastifyRequest): string {
   return request.ip
 }
 
+export function readRateLimitRetryAfterSeconds(
+  error: unknown,
+  fallbackWindowMs = 60_000,
+): number {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'msBeforeNext' in error &&
+    typeof error.msBeforeNext === 'number' &&
+    Number.isFinite(error.msBeforeNext)
+  ) {
+    return Math.max(1, Math.ceil(error.msBeforeNext / 1000))
+  }
+
+  return Math.max(1, Math.ceil(fallbackWindowMs / 1000))
+}
+
 function assertValidOptions(
   key: string,
   limit: number,
