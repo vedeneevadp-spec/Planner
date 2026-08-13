@@ -288,7 +288,7 @@ function createPlannerAuthConfig(
   return {
     accessTokenTtlSeconds: parsePositiveInteger(
       env.AUTH_ACCESS_TOKEN_TTL_SECONDS,
-      3600,
+      900,
       'AUTH_ACCESS_TOKEN_TTL_SECONDS',
     ),
     emailFrom: env.AUTH_EMAIL_FROM?.trim() || 'Chaotika <no-reply@chaotika.ru>',

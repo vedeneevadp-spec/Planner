@@ -85,6 +85,17 @@ export class PostgresAuthRepository implements AuthRepository {
     return row.rows[0] ? mapAuthUserRow(row.rows[0]) : null
   }
 
+  async isSessionActive(userId: string, sessionId: string): Promise<boolean> {
+    const row = await sql<{ active: boolean }>`
+      select app.auth_is_session_active(
+        ${userId}::uuid,
+        ${sessionId}::uuid
+      ) as active
+    `.execute(this.db)
+
+    return row.rows[0]?.active === true
+  }
+
   async createUserWithCredential(
     command: CreateAuthUserCommand,
   ): Promise<AuthUserRecord> {

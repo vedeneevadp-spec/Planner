@@ -63,6 +63,7 @@ import {
   createInitialSessionAuthState,
   sessionAuthReducer,
 } from './session-auth-reducer'
+import { clearSessionOfflineWorkspaceData } from './session-offline-data-cleanup'
 import {
   clearLastActorUserId,
   clearSelectedWorkspaceId,
@@ -199,14 +200,14 @@ export function useSessionAuthController(): SessionAuthState {
       const refreshToken = isNativeSessionRuntime
         ? snapshot.refreshToken
         : undefined
-      const offlineCleanup = import('./session-offline-data-cleanup')
-        .then(({ clearSessionOfflineWorkspaceData }) =>
-          clearSessionOfflineWorkspaceData(actorUserId),
-        )
-        .catch((error: unknown) => ({
-          failures: [error],
-          workspaceIds: [],
-        }))
+      // Start synchronously while session/workspace metadata is still present.
+      // The cleanup function captures all workspace ids before its first await.
+      const offlineCleanup = clearSessionOfflineWorkspaceData(
+        actorUserId,
+      ).catch((error: unknown) => ({
+        failures: [error],
+        workspaceIds: [],
+      }))
 
       clearRefreshTimer()
       deferredRefreshRetryCountRef.current = 0

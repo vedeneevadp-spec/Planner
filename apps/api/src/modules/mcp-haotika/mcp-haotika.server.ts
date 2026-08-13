@@ -130,76 +130,112 @@ export function registerMcpHaotikaRoutes(
     )
   })
 
-  app.post('/oauth/authorize', async (request, reply) => {
-    if (!options.config.enabled) {
-      return sendMcpHttpError(
-        reply,
-        503,
-        'MCP_DISABLED',
-        'MCP connector is disabled.',
-      )
-    }
-
-    const form = readAuthorizeForm(request.body)
-    const validationError = validateAuthorizeQuery(form)
-
-    if (validationError) {
-      return reply
-        .code(400)
-        .type('text/html; charset=utf-8')
-        .send(
-          renderAuthorizePage({
-            errorMessage: validationError,
-            query: form,
-            values: form,
-          }),
+  app.post(
+    '/oauth/authorize',
+    {
+      config: {
+        rateLimit: {
+          groupId: 'mcp-oauth-authorize',
+          max: Math.max(options.config.rateLimitPerMinute * 5, 100),
+          timeWindow: 60_000,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!options.config.enabled) {
+        return sendMcpHttpError(
+          reply,
+          503,
+          'MCP_DISABLED',
+          'MCP connector is disabled.',
         )
-    }
+      }
 
-    try {
-      const redirectUrl = await options.oauthService.completeAuthorize({
-        clientId: form.client_id,
-        codeChallenge: form.code_challenge,
-        codeChallengeMethod: form.code_challenge_method,
-        email: form.email ?? '',
-        password: form.password ?? '',
-        redirectUri: form.redirect_uri ?? '',
-        resource: form.resource,
-        scope: form.scope,
-        state: form.state,
-      })
+      const form = readAuthorizeForm(request.body)
+      const validationError = validateAuthorizeQuery(form)
 
-      return reply.redirect(redirectUrl, 302)
-    } catch (error) {
-      if (isInvalidCredentialsError(error)) {
+      if (validationError) {
         return reply
-          .code(401)
+          .code(400)
           .type('text/html; charset=utf-8')
           .send(
             renderAuthorizePage({
-              errorMessage: 'Неверный email или пароль.',
+              errorMessage: validationError,
               query: form,
               values: form,
             }),
           )
       }
 
-      if (error instanceof McpHaotikaError) {
-        return reply
-          .code(error.statusCode)
-          .type('text/html; charset=utf-8')
-          .send(
-            renderAuthorizePage({
-              errorMessage: error.message,
-              query: form,
-              values: form,
-            }),
-          )
-      }
+      try {
+        await options.rateLimiter.consume({
+          key: `mcp:oauth-authorize:ip:${getClientAddress(request)}`,
+          limit: Math.max(options.config.rateLimitPerMinute * 5, 100),
+          windowMs: 60_000,
+        })
+        const redirectUrl = await options.oauthService.completeAuthorize(
+          {
+            clientId: form.client_id,
+            codeChallenge: form.code_challenge,
+            codeChallengeMethod: form.code_challenge_method,
+            email: form.email ?? '',
+            password: form.password ?? '',
+            redirectUri: form.redirect_uri ?? '',
+            resource: form.resource,
+            scope: form.scope,
+            state: form.state,
+          },
+          {
+            ipAddress: getClientAddress(request),
+            userAgent: readUserAgent(request) ?? undefined,
+          },
+        )
 
-      throw error
-    }
-  })
+        return reply.redirect(redirectUrl, 302)
+      } catch (error) {
+        if (isInvalidCredentialsError(error)) {
+          return reply
+            .code(401)
+            .type('text/html; charset=utf-8')
+            .send(
+              renderAuthorizePage({
+                errorMessage: 'Неверный email или пароль.',
+                query: form,
+                values: form,
+              }),
+            )
+        }
+
+        if (error instanceof HttpError && error.statusCode === 429) {
+          return reply
+            .code(429)
+            .type('text/html; charset=utf-8')
+            .send(
+              renderAuthorizePage({
+                errorMessage: 'Слишком много попыток. Попробуйте позже.',
+                query: form,
+                values: form,
+              }),
+            )
+        }
+
+        if (error instanceof McpHaotikaError) {
+          return reply
+            .code(error.statusCode)
+            .type('text/html; charset=utf-8')
+            .send(
+              renderAuthorizePage({
+                errorMessage: error.message,
+                query: form,
+                values: form,
+              }),
+            )
+        }
+
+        throw error
+      }
+    },
+  )
 
   app.post('/oauth/token', async (request, reply) => {
     if (!options.config.enabled) {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { describe, it } from 'node:test'
 
-import type { AuthService } from '../auth/index.js'
+import type { AuthRequestMetadata, AuthService } from '../auth/index.js'
 import {
   createMcpResource,
   hashOpaqueToken,
@@ -25,26 +25,33 @@ const RESOURCE = createMcpResource(CONFIG.publicBaseUrl)
 void describe('McpOAuthService', () => {
   void it('completes the authorization-code flow and stores hashed tokens only', async () => {
     const repository = new MemoryMcpOAuthTokenRepository()
+    const signInMetadata: AuthRequestMetadata[] = []
     const service = new McpOAuthService(
       repository,
       CONFIG,
-      createAuthServiceStub(),
+      createAuthServiceStub((metadata) => signInMetadata.push(metadata)),
     )
     const codeVerifier = 'test-code-verifier'
     const codeChallenge = createHash('sha256')
       .update(codeVerifier)
       .digest('base64url')
-    const redirectUrl = await service.completeAuthorize({
-      clientId: 'chatgpt',
-      codeChallenge,
-      codeChallengeMethod: 'S256',
-      email: 'owner@example.test',
-      password: 'password',
-      redirectUri: 'https://chatgpt.test/oauth/callback',
-      resource: RESOURCE,
-      scope: 'haotika:tasks.read',
-      state: 'state-1',
-    })
+    const redirectUrl = await service.completeAuthorize(
+      {
+        clientId: 'chatgpt',
+        codeChallenge,
+        codeChallengeMethod: 'S256',
+        email: 'owner@example.test',
+        password: 'password',
+        redirectUri: 'https://chatgpt.test/oauth/callback',
+        resource: RESOURCE,
+        scope: 'haotika:tasks.read',
+        state: 'state-1',
+      },
+      {
+        ipAddress: '198.51.100.10',
+        userAgent: 'MCP OAuth test',
+      },
+    )
     const code = new URL(redirectUrl).searchParams.get('code')
 
     assert.equal(Boolean(code), true)
@@ -74,6 +81,12 @@ void describe('McpOAuthService', () => {
     assert.equal(storedToken?.userId, USER_ID)
     assert.equal(plainLookup, null)
     assert.equal(auth.userId, USER_ID)
+    assert.deepEqual(signInMetadata, [
+      {
+        ipAddress: '198.51.100.10',
+        userAgent: 'MCP OAuth test',
+      },
+    ])
   })
 
   void it('rejects protected tools without a bearer token', async () => {
@@ -218,13 +231,19 @@ void describe('McpOAuthService', () => {
   })
 })
 
-function createAuthServiceStub(): AuthService {
+function createAuthServiceStub(
+  onSignIn?: (metadata: AuthRequestMetadata) => void,
+): AuthService {
   return {
-    signIn: () =>
-      Promise.resolve({
-        user: {
-          id: USER_ID,
-        },
-      }),
+    authenticatePassword: (
+      _input: { email: string; password: string },
+      metadata: AuthRequestMetadata,
+    ) => {
+      onSignIn?.(metadata)
+
+      return Promise.resolve({
+        id: USER_ID,
+      })
+    },
   } as unknown as AuthService
 }

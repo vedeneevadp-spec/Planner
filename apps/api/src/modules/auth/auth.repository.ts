@@ -34,6 +34,7 @@ export interface AuthRepository {
     userId: string,
   ) => Promise<AuthCredentialRecord | null>
   findUserByEmail: (email: string) => Promise<AuthUserRecord | null>
+  isSessionActive: (userId: string, sessionId: string) => Promise<boolean>
   revokeRefreshToken: (refreshTokenHash: string) => Promise<void>
   rotateRefreshToken: (
     currentRefreshTokenHash: string,
