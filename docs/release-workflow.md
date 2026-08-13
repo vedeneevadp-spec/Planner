@@ -279,7 +279,7 @@ npm run deploy:prod
 
 1. предупреждает о dirty worktree
 2. берет неблокирующий remote `flock` до локального `npm run ci` и удерживает
-   его во время `rsync`, build, migrations, activation, healthchecks и
+   его во время передачи source archive, build, migrations, activation, healthchecks и
    retention; параллельный deploy сразу завершается, не ожидая освобождения lock
 3. запускает `npm run ci`, если не указан `--skip-checks`
 4. синхронизирует проект в неизменяемый каталог

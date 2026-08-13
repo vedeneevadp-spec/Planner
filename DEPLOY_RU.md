@@ -242,7 +242,8 @@ npm run deploy:prod
 3. Запускает npm run ci, пока remote lock уже удерживается.
 4. Создает `releases`, `shared/backups` и `shared/state`; при первом переходе
    сохраняет legacy `/opt/planner` как target symlink `current`.
-5. Копирует проект через rsync в `/opt/planner/releases/<commit>`, не изменяя
+5. Упаковывает только committed Git tree через `git archive`, передает единый
+   архив в `/opt/planner/releases/<commit>` и распаковывает его, не изменяя
    active release.
 6. Копирует apps/api/tmp/icon-assets, если папка есть.
 7. На сервере проверяет, что Node/npm совпадают с `.node-version`,

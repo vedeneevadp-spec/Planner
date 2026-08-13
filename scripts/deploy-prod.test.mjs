@@ -6,7 +6,6 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
-  createProjectSyncFilter,
   createReleaseLayout,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
@@ -16,6 +15,7 @@ import {
   createRemoteDeployLockScript,
   createRemotePreparationScript,
   createRemoteReleaseScript,
+  createRemoteSourceExtractionScript,
 } from './deploy-prod.mjs'
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -70,7 +70,7 @@ test('documents remote deploy lock behavior in command help', () => {
   assert.match(result.stdout, /concurrent deploy exits\s+immediately/)
 })
 
-test('holds the remote lock around preparation, rsync, and release', async () => {
+test('holds the remote lock around preparation, source transfer, and release', async () => {
   const deploySource = await readFile(
     resolve(repositoryRoot, 'scripts/deploy-prod.mjs'),
     'utf8',
@@ -140,29 +140,20 @@ test('requires TLS for remote production PostgreSQL before deploy', () => {
   }
 })
 
-test('limits rsync to tracked files inside the inactive release', () => {
-  const filter = createProjectSyncFilter([
-    'apps/api/src/index.ts',
-    'docs/file[1].md',
-    'docs\\literal?.md',
-    'package.json',
-  ])
+test('packages only the committed Git tree into the inactive release', async () => {
+  const deploySource = await readFile(
+    resolve(repositoryRoot, 'scripts/deploy-prod.mjs'),
+    'utf8',
+  )
+  const extractionScript = createRemoteSourceExtractionScript(layout)
 
-  assert.match(filter, /^P \/\.env$/m)
-  assert.match(filter, /^P \/node_modules\/\*\*\*$/m)
-  assert.match(filter, /^\+ \/apps\/$/m)
-  assert.match(filter, /^\+ \/apps\/api\/src\/index\.ts$/m)
-  assert.match(filter, /^\+ \/docs\/file\\\[1\\\]\.md$/m)
-  assert.ok(filter.split('\n').includes(String.raw`+ /docs\\literal\?.md`))
-  assert.match(filter, /- \/\*\*\*\n$/)
-  assert.throws(
-    () => createProjectSyncFilter(['../planner.env']),
-    /Unexpected tracked file path/,
-  )
-  assert.throws(
-    () => createProjectSyncFilter(['docs/report\n+ /.env']),
-    /Unexpected tracked file path/,
-  )
+  assert.match(deploySource, /'git',[\s\S]*'archive'/)
+  assert.match(deploySource, /layout\.releaseId/)
+  assert.match(deploySource, /'scp'/)
+  assert.doesNotMatch(deploySource, /collectTrackedProjectFiles/)
+  assertBashSyntax(extractionScript)
+  assert.match(extractionScript, /tar -xzf "\$archive_path"/)
+  assert.match(extractionScript, /test -f "\$release_dir\/package\.json"/)
 })
 
 test('keeps the legacy production root available during first preparation', () => {
@@ -418,7 +409,8 @@ test('runtime services and Caddy resolve the current release symlink', async () 
     caddyfile,
     /^\s*root \* \/opt\/planner\/current\/apps\/web\/dist$/m,
   )
-  assert.match(deploySource, /\.deploy-dry-run-\$\{layout\.releaseId\}/)
+  assert.match(deploySource, /Dry run: tracked source archive upload skipped/)
+  assert.doesNotMatch(deploySource, /\.deploy-dry-run-/)
   assert.doesNotMatch(
     deploySource,
     /`\$\{config\.remoteHost\}:\$\{config\.remoteRoot\}\/`,/,

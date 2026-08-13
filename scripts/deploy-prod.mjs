@@ -1,13 +1,12 @@
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 import {
-  createProjectSyncFilter,
   createReleaseLayout,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
@@ -152,7 +151,7 @@ Source guard:
   The deploy runs only from a clean tracked branch whose HEAD matches upstream.
 
 Concurrency:
-  A non-blocking remote flock covers preparation, rsync, build, migrations,
+  A non-blocking remote flock covers preparation, source transfer, build, migrations,
   activation, healthchecks, and release retention. A concurrent deploy exits
   immediately instead of waiting for the active deploy.
 
@@ -161,7 +160,7 @@ Options:
   --skip-db-backup
                  Do not run pg_dump before production migrations.
   --skip-icons   Do not copy local uploaded icon assets.
-  --dry-run      Run checks and rsync dry-run, but do not build/restart remote services.
+  --dry-run      Run checks and package source, but do not upload/build/restart remote services.
 
 Environment overrides:
   DEPLOY_HOST=root@147.45.158.186
@@ -461,36 +460,56 @@ async function ensureRemoteDirectories(layout, signal) {
 }
 
 async function syncProject(layout, signal) {
-  const trackedFiles = await collectTrackedProjectFiles()
-  const filterDirectory = await mkdtemp(path.join(tmpdir(), 'planner-deploy-'))
-  const filterPath = path.join(filterDirectory, 'rsync-filter')
-  const remoteDirectory = dryRun
-    ? `${layout.remoteRoot}/.deploy-dry-run-${layout.releaseId}`
-    : layout.releaseDirectory
+  const archiveDirectory = await mkdtemp(
+    path.join(tmpdir(), 'planner-deploy-source-'),
+  )
+  const archivePath = path.join(archiveDirectory, 'source.tar.gz')
+  const remoteArchivePath = `${layout.releaseDirectory}/.deploy-source.tar.gz`
 
   try {
-    await writeFile(filterPath, createProjectSyncFilter(trackedFiles), 'utf8')
-
-    const rsyncArgs = [
-      '-az',
-      '--delete',
-      '--delete-excluded',
-      '-e',
-      RSYNC_REMOTE_SHELL,
-      '--filter',
-      `merge ${filterPath}`,
-      './',
-      `${config.remoteHost}:${remoteDirectory}/`,
-    ]
+    await run(
+      'git',
+      ['archive', '--format=tar.gz', '--output', archivePath, layout.releaseId],
+      { signal },
+    )
 
     if (dryRun) {
-      rsyncArgs.unshift('--dry-run')
+      console.log('[deploy] Dry run: tracked source archive upload skipped.')
+      return
     }
 
-    await run('rsync', rsyncArgs, { signal })
+    await run(
+      'scp',
+      [
+        ...SSH_CONNECTION_ARGS,
+        archivePath,
+        `${config.remoteHost}:${remoteArchivePath}`,
+      ],
+      { signal },
+    )
+    await runWithInput(
+      'ssh',
+      [...SSH_CONNECTION_ARGS, config.remoteHost, 'bash', '-se'],
+      createRemoteSourceExtractionScript(layout),
+      { signal },
+    )
   } finally {
-    await rm(filterDirectory, { force: true, recursive: true })
+    await rm(archiveDirectory, { force: true, recursive: true })
   }
+}
+
+export function createRemoteSourceExtractionScript(layout) {
+  return `
+set -euo pipefail
+
+release_dir=${shellQuote(layout.releaseDirectory)}
+archive_path=${shellQuote(`${layout.releaseDirectory}/.deploy-source.tar.gz`)}
+
+test -f "$archive_path"
+tar -xzf "$archive_path" -C "$release_dir"
+rm -f "$archive_path"
+test -f "$release_dir/package.json"
+`
 }
 
 async function syncIconAssets(signal) {
@@ -1623,21 +1642,6 @@ function createLocalCheckEnv() {
 
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`
-}
-
-async function collectTrackedProjectFiles() {
-  const output = await collect('git', ['ls-files', '-z'])
-  const files = output
-    .split('\0')
-    .filter(Boolean)
-    .filter((file) => existsSync(file))
-    .sort()
-
-  if (files.length === 0) {
-    throw new Error('No tracked project files found for deploy sync.')
-  }
-
-  return files
 }
 
 function resolveCommand(command) {
