@@ -35,6 +35,10 @@ export default defineConfig({
         AUTH_JWT_SECRET: 'planner-e2e-jwt-secret-with-at-least-32-chars',
         DATABASE_URL: databaseUrl,
         NODE_ENV: 'production',
+        USER_BACKUP_RESTORE_HELPER_SECRET:
+          'planner-e2e-restore-helper-secret-32-chars',
+        USER_BACKUP_RESTORE_HELPER_URL:
+          'http://127.0.0.1:3012/internal/user-backup/restore',
       },
       reuseExistingServer,
       timeout: 30_000,
