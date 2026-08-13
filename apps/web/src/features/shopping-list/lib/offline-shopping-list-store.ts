@@ -18,6 +18,16 @@ interface ShoppingListCachedItemRow {
   workspaceId: string
 }
 
+interface ShoppingListCachedSnapshotRow {
+  lastSuccessfulSyncAt: string
+  workspaceId: string
+}
+
+export interface CachedShoppingListSnapshot {
+  items: ChaosInboxItemRecord[]
+  lastSuccessfulSyncAt: string | null
+}
+
 interface ShoppingListOfflineMutationBase {
   actorUserId: string
   attemptCount: number
@@ -82,7 +92,7 @@ const RETRYABLE_QUEUE_STATUSES: ShoppingListOfflineMutationStatus[] = [
   'syncing',
 ]
 export const SHOPPING_LIST_OFFLINE_DATABASE_NAME = 'shopping-list-offline'
-export const SHOPPING_LIST_OFFLINE_SCHEMA_VERSION = 1
+export const SHOPPING_LIST_OFFLINE_SCHEMA_VERSION = 2
 export const SHOPPING_LIST_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX =
   'planner.shoppingListOfflineLifecycle:'
 
@@ -108,6 +118,7 @@ export class ShoppingListOfflinePurgeUnavailableError extends Error {
 
 class ShoppingListOfflineDatabase extends Dexie {
   cachedItems!: Table<ShoppingListCachedItemRow, string>
+  cachedSnapshots!: Table<ShoppingListCachedSnapshotRow, string>
   mutationQueue!: Table<ShoppingListOfflineMutationRecord, string>
 
   constructor() {
@@ -115,6 +126,7 @@ class ShoppingListOfflineDatabase extends Dexie {
 
     this.version(SHOPPING_LIST_OFFLINE_SCHEMA_VERSION).stores({
       cachedItems: 'key, workspaceId, itemId, updatedAt',
+      cachedSnapshots: 'workspaceId, lastSuccessfulSyncAt',
       mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
     })
   }
@@ -203,18 +215,30 @@ export async function clearShoppingListOfflineWorkspaceData(
 export async function loadCachedShoppingListItems(
   workspaceId: string,
 ): Promise<ChaosInboxItemRecord[]> {
+  return (await loadCachedShoppingListSnapshot(workspaceId))?.items ?? []
+}
+
+export async function loadCachedShoppingListSnapshot(
+  workspaceId: string,
+): Promise<CachedShoppingListSnapshot | null> {
   const readGeneration =
     getShoppingListOfflineWorkspaceWriteGeneration(workspaceId)
   const db = await getShoppingListOfflineDatabaseForAccess(workspaceId)
 
   if (!db) {
-    return []
+    return null
   }
 
-  const rows = await db.cachedItems
-    .where('workspaceId')
-    .equals(workspaceId)
-    .toArray()
+  const [rows, snapshot, queuedMutationCount] = await db.transaction(
+    'r',
+    [db.cachedItems, db.cachedSnapshots, db.mutationQueue],
+    () =>
+      Promise.all([
+        db.cachedItems.where('workspaceId').equals(workspaceId).toArray(),
+        db.cachedSnapshots.get(workspaceId),
+        db.mutationQueue.where('workspaceId').equals(workspaceId).count(),
+      ]),
+  )
 
   if (
     !isShoppingListOfflineWorkspaceWriteGenerationCurrent(
@@ -222,20 +246,29 @@ export async function loadCachedShoppingListItems(
       readGeneration,
     )
   ) {
-    return []
+    return null
   }
 
-  return rows.map((row) => row.item)
+  if (!snapshot && rows.length === 0 && queuedMutationCount === 0) {
+    return null
+  }
+
+  return {
+    items: rows.map((row) => row.item),
+    lastSuccessfulSyncAt:
+      snapshot?.lastSuccessfulSyncAt ?? getLatestCachedItemTimestamp(rows),
+  }
 }
 
 export async function replaceCachedShoppingListItems(
   workspaceId: string,
   items: ChaosInboxItemRecord[],
+  lastSuccessfulSyncAt = new Date().toISOString(),
 ): Promise<void> {
   const writeGeneration =
     getShoppingListOfflineWorkspaceWriteGeneration(workspaceId)
 
-  const updatedAt = new Date().toISOString()
+  const updatedAt = lastSuccessfulSyncAt
   const rows = items.map((item): ShoppingListCachedItemRow => ({
     item,
     itemId: item.id,
@@ -245,12 +278,14 @@ export async function replaceCachedShoppingListItems(
   }))
 
   await runShoppingListWorkspaceWrite(workspaceId, writeGeneration, (db) =>
-    db.transaction('rw', db.cachedItems, async () => {
+    db.transaction('rw', [db.cachedItems, db.cachedSnapshots], async () => {
       await db.cachedItems.where('workspaceId').equals(workspaceId).delete()
 
       if (rows.length > 0) {
         await db.cachedItems.bulkPut(rows)
       }
+
+      await db.cachedSnapshots.put({ lastSuccessfulSyncAt, workspaceId })
     }),
   )
 }
@@ -544,6 +579,18 @@ function isShoppingListOfflineWorkspaceWriteGenerationCurrent(
   )
 }
 
+function getLatestCachedItemTimestamp(
+  rows: readonly ShoppingListCachedItemRow[],
+): string | null {
+  return (
+    rows.reduce<string | null>(
+      (latest, row) =>
+        !latest || row.updatedAt > latest ? row.updatedAt : latest,
+      null,
+    ) ?? null
+  )
+}
+
 async function runShoppingListWorkspaceWrite<T>(
   workspaceId: string,
   expectedWriteGeneration: number,
@@ -558,7 +605,7 @@ async function runShoppingListWorkspaceWrite<T>(
 
     return db.transaction(
       'rw',
-      [db.cachedItems, db.mutationQueue],
+      [db.cachedItems, db.cachedSnapshots, db.mutationQueue],
       async () => {
         if (
           !isShoppingListOfflineWorkspaceWriteGenerationCurrent(
@@ -696,14 +743,19 @@ async function purgeShoppingListOfflineWorkspaces(
   db: ShoppingListOfflineDatabase,
   workspaceIds: readonly string[],
 ): Promise<void> {
-  await db.transaction('rw', [db.cachedItems, db.mutationQueue], async () => {
-    for (const workspaceId of workspaceIds) {
-      await Promise.all([
-        db.cachedItems.where('workspaceId').equals(workspaceId).delete(),
-        db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
-      ])
-    }
-  })
+  await db.transaction(
+    'rw',
+    [db.cachedItems, db.cachedSnapshots, db.mutationQueue],
+    async () => {
+      for (const workspaceId of workspaceIds) {
+        await Promise.all([
+          db.cachedItems.where('workspaceId').equals(workspaceId).delete(),
+          db.cachedSnapshots.delete(workspaceId),
+          db.mutationQueue.where('workspaceId').equals(workspaceId).delete(),
+        ])
+      }
+    },
+  )
 }
 
 function completeShoppingListOfflineWorkspacePurges(

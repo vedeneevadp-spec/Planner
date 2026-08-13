@@ -284,12 +284,16 @@ export interface AppSelfCareOccurrencesTable {
 }
 
 export interface AppSelfCareRemindersTable {
+  attempt_count: Generated<number>
   canceled_at: TimestampColumn | null
   claimed_at: TimestampColumn | null
   created_at: Generated<TimestampColumn>
   due_at: TimestampColumn
+  expired_at: TimestampColumn | null
+  failed_at: TimestampColumn | null
   id: Generated<string>
   item_id: string
+  last_error: string | null
   occurrence_id: string
   reminder_at: TimestampColumn
   remind_offset_minutes: number
@@ -903,10 +907,14 @@ export interface AppTaskEventsTable {
 }
 
 export interface AppTaskRemindersTable {
+  attempt_count: Generated<number>
   canceled_at: TimestampColumn | null
   claimed_at: TimestampColumn | null
   created_at: Generated<TimestampColumn>
+  expired_at: TimestampColumn | null
+  failed_at: TimestampColumn | null
   id: Generated<string>
+  last_error: string | null
   planned_date: DateColumn
   planned_start_time: TimeColumn
   remind_offset_minutes: number
@@ -917,6 +925,13 @@ export interface AppTaskRemindersTable {
   user_id: string
   version: Generated<number>
   workspace_id: string
+}
+
+export interface AppRateLimitBucketsTable {
+  bucket_key: string
+  request_count: number
+  reset_at: TimestampColumn
+  updated_at: Generated<TimestampColumn>
 }
 
 export interface AppTaskOccurrencesTable {
@@ -978,21 +993,6 @@ export interface AppPushDevicesTable {
   workspace_id: string
 }
 
-export interface AppOutboxTable {
-  aggregate_id: string
-  aggregate_type: string
-  attempts: Generated<number>
-  available_at: Generated<TimestampColumn>
-  created_at: Generated<TimestampColumn>
-  id: Generated<number>
-  last_error: string | null
-  locked_at: TimestampColumn | null
-  payload: ColumnType<JsonObject, JsonObject | string, JsonObject | string>
-  processed_at: TimestampColumn | null
-  status: Generated<'pending' | 'processing' | 'completed' | 'failed'>
-  topic: string
-}
-
 export interface DatabaseSchema {
   'app.auth_credentials': AppAuthCredentialsTable
   'app.auth_password_reset_tokens': AppAuthPasswordResetTokensTable
@@ -1011,9 +1011,9 @@ export interface DatabaseSchema {
   'app.life_spheres': AppLifeSpheresTable
   'app.mcp_audit_logs': AppMcpAuditLogsTable
   'app.mcp_oauth_tokens': AppMcpOAuthTokensTable
-  'app.outbox': AppOutboxTable
   'app.oauth_authorization_codes': AppOAuthAuthorizationCodesTable
   'app.push_devices': AppPushDevicesTable
+  'app.rate_limit_buckets': AppRateLimitBucketsTable
   'app.projects': AppProjectsTable
   'app.self_care_appointment_details': AppSelfCareAppointmentDetailsTable
   'app.self_care_completions': AppSelfCareCompletionsTable

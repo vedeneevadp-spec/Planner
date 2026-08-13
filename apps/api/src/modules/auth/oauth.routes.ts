@@ -5,8 +5,8 @@ import { z } from 'zod'
 import type { AliceOAuthConfig } from '../../bootstrap/config.js'
 import { HttpError } from '../../bootstrap/http-error.js'
 import {
-  assertInMemoryRateLimit,
   getClientAddress,
+  type RateLimiter,
 } from '../../bootstrap/rate-limit.js'
 import type { AuthRequestMetadata } from './auth.model.js'
 import type { AuthService } from './auth.service.js'
@@ -42,6 +42,7 @@ type OAuthAuthorizeMode = AuthorizationForm['mode']
 
 interface RegisterOAuthRoutesOptions {
   aliceOAuth: AliceOAuthConfig | null
+  rateLimiter: RateLimiter
   service: AuthService
 }
 
@@ -113,7 +114,11 @@ export function registerOAuthRoutes(
         )
     }
 
-    assertOAuthAuthorizeRateLimit(request, parsedForm.data.email)
+    await assertOAuthAuthorizeRateLimit(
+      options.rateLimiter,
+      request,
+      parsedForm.data.email,
+    )
 
     try {
       const metadata = getRequestMetadata(request)
@@ -569,15 +574,23 @@ function readOptionalHeader(value: unknown): string | undefined {
     : undefined
 }
 
-function assertOAuthAuthorizeRateLimit(
+async function assertOAuthAuthorizeRateLimit(
+  rateLimiter: RateLimiter,
   request: FastifyRequest,
   email: string,
-): void {
-  assertInMemoryRateLimit({
-    key: `oauth:alice:authorize:${getClientAddress(request)}:${email.trim().toLowerCase()}`,
-    limit: 5,
-    windowMs: 15 * 60_000,
-  })
+): Promise<void> {
+  await Promise.all([
+    rateLimiter.consume({
+      key: `oauth:alice:authorize:ip:${getClientAddress(request)}`,
+      limit: 50,
+      windowMs: 15 * 60_000,
+    }),
+    rateLimiter.consume({
+      key: `oauth:alice:authorize:account:${email.trim().toLowerCase()}`,
+      limit: 5,
+      windowMs: 15 * 60_000,
+    }),
+  ])
 }
 
 function addSeconds(seconds: number): Date {

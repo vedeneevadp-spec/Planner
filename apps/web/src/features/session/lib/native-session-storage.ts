@@ -4,7 +4,6 @@ import {
   type PluginListenerHandle,
   registerPlugin,
 } from '@capacitor/core'
-import { Preferences } from '@capacitor/preferences'
 
 const NATIVE_AUTH_STORAGE_PREFIX = 'planner.auth.'
 const NATIVE_AUTH_DEVICE_ID_STORAGE_KEY = `${NATIVE_AUTH_STORAGE_PREFIX}deviceId`
@@ -12,6 +11,7 @@ const plannerAuthStorage =
   registerPlugin<PlannerAuthStoragePlugin>('PlannerAuthStorage')
 
 interface PlannerAuthStoragePlugin {
+  get: (options: { key: string }) => Promise<{ value: string | null }>
   remove: (options: { key: string }) => Promise<void>
   set: (options: { key: string; value: string }) => Promise<void>
 }
@@ -31,7 +31,7 @@ export async function getNativeAuthDeviceId(): Promise<string | null> {
     return null
   }
 
-  const { value } = await Preferences.get({
+  const { value } = await plannerAuthStorage.get({
     key: NATIVE_AUTH_DEVICE_ID_STORAGE_KEY,
   })
   const storedDeviceId = normalizeDeviceId(value)
@@ -50,7 +50,7 @@ export async function getNativeAuthDeviceId(): Promise<string | null> {
 export function createNativeSessionStorage(): AuthStorage {
   return {
     async getItem(key) {
-      const { value } = await Preferences.get({
+      const { value } = await plannerAuthStorage.get({
         key: toNativeAuthStorageKey(key),
       })
 
@@ -90,29 +90,11 @@ function toNativeAuthStorageKey(key: string): string {
 }
 
 async function setNativePreference(key: string, value: string): Promise<void> {
-  if (shouldUseDurableAndroidStorage()) {
-    await plannerAuthStorage.set({ key, value })
-    return
-  }
-
-  await Preferences.set({ key, value })
+  await plannerAuthStorage.set({ key, value })
 }
 
 async function removeNativePreference(key: string): Promise<void> {
-  if (shouldUseDurableAndroidStorage()) {
-    await plannerAuthStorage.remove({ key })
-    return
-  }
-
-  await Preferences.remove({ key })
-}
-
-function shouldUseDurableAndroidStorage(): boolean {
-  return (
-    isNativeSessionPersistenceRuntime() &&
-    typeof Capacitor.getPlatform === 'function' &&
-    Capacitor.getPlatform() === 'android'
-  )
+  await plannerAuthStorage.remove({ key })
 }
 
 function normalizeDeviceId(deviceId: string | null | undefined): string | null {

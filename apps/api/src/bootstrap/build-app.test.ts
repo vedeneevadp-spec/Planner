@@ -33,6 +33,7 @@ import {
   workspaceUserListResponseSchema,
   workspaceUserRecordSchema,
 } from '@planner/contracts'
+import type { LightMyRequestResponse } from 'fastify'
 
 import type { AuthRequestMetadata, AuthService } from '../modules/auth/index.js'
 import {
@@ -2533,6 +2534,44 @@ void describe('buildApiApp', () => {
     assert.match(setCookie, /Path=\/api\/v1\/auth/)
   })
 
+  void it('rate limits sign-in by IP independently from the email bucket', async () => {
+    app = buildApiApp({
+      authService: createCookieAuthService(),
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    for (let requestIndex = 0; requestIndex < 50; requestIndex += 1) {
+      const response: LightMyRequestResponse = await app.inject({
+        method: 'POST',
+        payload: {
+          email: `distributed-${requestIndex}@example.test`,
+          password: 'secret-password',
+        },
+        url: '/api/v1/auth/sign-in',
+      })
+
+      assert.equal(response.statusCode, 200)
+    }
+
+    const limitedResponse = await app.inject({
+      method: 'POST',
+      payload: {
+        email: 'distributed-final@example.test',
+        password: 'secret-password',
+      },
+      url: '/api/v1/auth/sign-in',
+    })
+
+    assert.equal(limitedResponse.statusCode, 429)
+    assert.equal(
+      apiErrorSchema.parse(limitedResponse.json()).error.code,
+      'rate_limit_exceeded',
+    )
+  })
+
   void it('refreshes and clears browser sessions through the refresh cookie', async () => {
     const authService = createCookieAuthService()
 
@@ -3026,7 +3065,6 @@ void describe('buildApiApp', () => {
     app = buildApiApp({
       chaosInboxService: new ChaosInboxService(
         new MemoryChaosInboxRepository(),
-        new TaskService(new MemoryTaskRepository()),
       ),
       config: createTestConfig(),
       database: null,

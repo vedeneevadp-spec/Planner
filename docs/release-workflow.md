@@ -125,7 +125,15 @@ maintenance-запросы без JWT subject.
 
 Same-scope пользовательский restore использует отдельный
 `USER_BACKUP_RESTORE_DATABASE_URL`. Deploy требует этот URL и запрещает
-совпадение с runtime `DATABASE_URL`.
+совпадение с runtime `DATABASE_URL`, но передает credential только отдельному
+`planner-user-backup-restore`. API получает loopback URL и HMAC secret, а не
+привилегированный DB URL.
+
+`/etc/planner/planner.env` служит только root-only источником конфигурации.
+Deploy атомарно создает минимальные env-файлы для API, reminder worker, restore
+helper, backup и alert jobs. Active release после сборки и `npm prune
+--omit=dev` становится root-owned/read-only; runtime запускает собранный JS без
+`tsx`, TypeScript и Vite.
 
 Migration runner хранит checksum примененных файлов и берет PostgreSQL advisory
 lock; уже примененные SQL-файлы нужно менять новой migration, а не правкой
@@ -271,8 +279,11 @@ npm run deploy:prod
 
 1. предупреждает о dirty worktree
 2. берет неблокирующий remote `flock` до локального `npm run ci` и удерживает
-   его во время `rsync`, build, migrations, activation, healthchecks и
+   его во время передачи source archive, build, migrations, activation, healthchecks и
    retention; параллельный deploy сразу завершается, не ожидая освобождения lock
+   Source archive передается небольшими частями с retry, после чего сервер проверяет
+   SHA-256 собранного архива до распаковки. Частичный или поврежденный release не
+   будет собран или активирован после обрыва SSH.
 3. запускает `npm run ci`, если не указан `--skip-checks`
 4. синхронизирует проект в неизменяемый каталог
    `/opt/planner/releases/<commit>`, не затрагивая текущий release

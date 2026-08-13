@@ -24,6 +24,7 @@ import type {
 } from './backup.model.js'
 import type { UserBackupRepository } from './backup.repository.js'
 import { restorePostgresPersonalWorkspace } from './backup.repository.postgres.restore.js'
+import type { UserBackupRestoreExecutor } from './backup.restore-executor.js'
 
 const PROFILE_ASSET_PATH_PREFIX = '/api/v1/profile-assets/'
 
@@ -58,6 +59,7 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
     private readonly db: Kysely<DatabaseSchema>,
     assetDirectory: string,
     private readonly restoreDb: Kysely<DatabaseSchema> | null = db,
+    private readonly restoreExecutor: UserBackupRestoreExecutor | null = null,
   ) {
     this.assetDirectory = path.resolve(assetDirectory)
   }
@@ -115,6 +117,10 @@ export class PostgresUserBackupRepository implements UserBackupRepository {
   }
 
   restorePersonalWorkspace(input: UserBackupRestoreInput) {
+    if (this.restoreExecutor) {
+      return this.restoreExecutor.restorePersonalWorkspace(input)
+    }
+
     if (!this.restoreDb) {
       throw new HttpError(
         503,

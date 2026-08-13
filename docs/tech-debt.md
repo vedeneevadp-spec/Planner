@@ -1,9 +1,67 @@
 # Техдолг проекта
 
-Дата анализа: 2026-05-21. Обновлено: 2026-07-29.
+Дата анализа: 2026-05-21. Обновлено: 2026-08-12.
 
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
+
+## Закрыто в коде 2026-08-13: production API имел широкую зону поражения
+
+Исходный риск: API, reminder worker и backup jobs работали как `planner`,
+читали общий `planner.env`, active release принадлежал тому же пользователю, а
+API напрямую открывал privileged restore connection. Production также запускал
+исходный TypeScript через dev-only `tsx` и оставлял dev toolchain в release.
+
+Реализовано:
+
+- отдельные `planner-api`, `planner-worker`, `planner-restore`,
+  `planner-backup`, `planner-alert`, build и migrate users;
+- root-only source env и минимальные service-specific env-файлы;
+- privileged restore вынесен в loopback helper с HMAC/freshness/digest/scope
+  validation; production API fail-fast отвергает restore/migration/worker DB
+  URLs;
+- API/helper/worker собираются в JS, после сборки выполняется `npm prune
+--omit=dev`; active release становится root-owned/read-only;
+- systemd units получили `NoNewPrivileges`, `ProtectSystem=strict`, private
+  tmp/devices, capability/namespace restrictions и точечные writable paths;
+- Firebase, scheduled backup DB, Restic и alert secrets разделены по Unix
+  groups и env-файлам; migration URL не попадает в systemd backup jobs;
+- rollback совместим с предыдущим release, где restore-helper unit ещё
+  отсутствовал.
+
+Репозиторные contract tests подтверждают shell syntax/order, отсутствие dev
+runtime, env/user boundaries и helper authentication. Операционное закрытие
+нужно подтвердить отдельным production deploy: проверить service users,
+systemd hardening, права release/env/assets, helper readiness и внешний smoke.
+
+## Закрыто в коде 2026-08-12: пять P1 из повторного аудита
+
+1. Native auth session и device id переведены с backupable Preferences на
+   Android Keystore + AES-GCM и iOS Keychain с
+   `AfterFirstUnlockThisDeviceOnly`. Android backup/transfer исключает как
+   encrypted storage, так и legacy `CapacitorStorage`; logout останавливает
+   voice service и очищает API token/pending command.
+2. Completion recurring task и создание следующего occurrence выполняются одной
+   repository transaction. Source row и recurrence series блокируются,
+   повторный запрос восстанавливает пропущенный occurrence и не создаёт дубль,
+   включая случай, когда следующий occurrence уже завершён. Chaos Inbox
+   single/bulk conversion также перенесён в одну repository transaction:
+   task, `task.created` и `converted_task_id` commit/rollback вместе; replay
+   возвращает исходный task id.
+3. Неиспользуемый outbox удалён полностью: runtime module/worker/scripts/schema,
+   DB trigger, cron job, PGMQ queue, table и enum. `task_events` остаётся sync
+   trail.
+4. Task/self-care reminders больше не записывают просроченную доставку как
+   `sent`: появились `expired_at`, `failed_at`, attempt count и безопасная
+   причина последней ошибки. FCM OAuth/send имеют timeout, retry ограничен, а
+   poller после повторяющихся инфраструктурных ошибок становится unhealthy.
+5. Auth/OAuth/MCP rate limiting перенесён в атомарные PostgreSQL buckets. Для
+   auth отдельно считаются hashed IP и account buckets, поэтому смена email или
+   API-процесса не обходит ограничение.
+
+Проверка: memory/API suite, обычные Postgres contracts и pooler contracts
+включают replay/concurrency, bulk rollback и multi-instance rate-limit
+сценарии. Миграции `000093`-`000095` применяются транзакционно.
 
 Свежий срез 2026-07-02 после коммита `4cf79cf`: guardrails в целом зеленые
 (`toolchain:check`, `db:migrations:check`, prod/dev audit, `openapi:check`,
@@ -735,7 +793,7 @@ assets `608.1 KB`. Android budgets проходят с debug APK `153.1 MB`, rel
 
 - production deploy мог упасть на `db:security:check`, если у роли
   `authenticated` остались прямые grants на внутренние таблицы без RLS:
-  `app.device_sessions`, `app.outbox`, `app.schema_migrations`,
+  `app.device_sessions`, `app.rate_limit_buckets`, `app.schema_migrations`,
   `app.sync_cursors`
 - repair до этого выполнялся ручным SQL после диагностики production grants
 

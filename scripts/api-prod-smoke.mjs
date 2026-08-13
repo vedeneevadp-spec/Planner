@@ -64,7 +64,7 @@ try {
 
 function startLocalProductionApi(port) {
   const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const child = spawn(npmBin, ['run', '-w', 'apps/api', 'start'], {
+  const child = spawn(npmBin, ['run', '-w', 'apps/api', 'start:source'], {
     cwd: process.cwd(),
     detached: process.platform !== 'win32',
     env: {
@@ -82,6 +82,12 @@ function startLocalProductionApi(port) {
         process.env.DATABASE_URL ??
         'postgres://planner:planner@127.0.0.1:54329/planner_development',
       NODE_ENV: 'production',
+      USER_BACKUP_RESTORE_HELPER_SECRET:
+        process.env.USER_BACKUP_RESTORE_HELPER_SECRET ??
+        'planner-smoke-restore-helper-secret-32-chars',
+      USER_BACKUP_RESTORE_HELPER_URL:
+        process.env.USER_BACKUP_RESTORE_HELPER_URL ??
+        'http://127.0.0.1:3012/internal/user-backup/restore',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   })

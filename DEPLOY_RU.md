@@ -97,13 +97,13 @@ ufw allow 443
 ufw enable
 ```
 
-Создать пользователя и рабочие директории:
+Создать рабочие директории. Изолированные service users и groups создаст первый
+deploy:
 
 ```bash
-useradd --system --create-home --shell /usr/sbin/nologin planner || true
 mkdir -p /opt/planner /etc/planner /var/lib/planner/icon-assets
-chown -R planner:planner /opt/planner /var/lib/planner
-chmod 750 /etc/planner
+chown root:root /opt/planner /etc/planner /var/lib/planner
+chmod 711 /etc/planner
 ```
 
 ## 3. Создать production env
@@ -131,6 +131,9 @@ API_ICON_ASSET_DIR=/var/lib/planner/icon-assets
 DATABASE_URL=<Timeweb Managed PostgreSQL runtime non-owner URL>
 MIGRATE_DATABASE_URL=<Timeweb Managed PostgreSQL owner/admin URL>
 TASK_REMINDERS_DATABASE_URL=<Timeweb Managed PostgreSQL owner/admin URL>
+USER_BACKUP_RESTORE_DATABASE_URL=<dedicated restore role URL>
+USER_BACKUP_RESTORE_HELPER_URL=http://127.0.0.1:3012/internal/user-backup/restore
+USER_BACKUP_RESTORE_HELPER_SECRET=<long-random-independent-secret>
 AUTH_JWT_SECRET=<long-random-secret>
 AUTH_JWT_ISSUER=planner-api
 AUTH_JWT_AUDIENCE=authenticated
@@ -194,6 +197,11 @@ Timeweb firewall для Managed PostgreSQL должен разрешать вх�
 кластер PostgreSQL.
 
 `AUTH_JWT_SECRET` должен быть длинным случайным секретом, минимум 32 символа.
+`USER_BACKUP_RESTORE_HELPER_SECRET` должен быть отдельным случайным секретом,
+не совпадающим с JWT или DB passwords. `planner.env` после deploy читает только
+root; сервисы получают сгенерированные минимальные env-файлы. Deploy также
+выставляет group-read права на Firebase service account только для
+`planner-api`/`planner-worker`.
 SMTP нужен для рабочих писем восстановления пароля.
 `ALICE_LLM_*` необязательны: без них навык работает на rules parser. Если
 включать fallback, основной production-вариант для доступности в РФ -
@@ -210,8 +218,8 @@ nano /etc/planner/planner.env
 После сохранения выставить права:
 
 ```bash
-chown root:planner /etc/planner/planner.env
-chmod 640 /etc/planner/planner.env
+chown root:root /etc/planner/planner.env
+chmod 600 /etc/planner/planner.env
 ```
 
 ## 4. Первый deploy
@@ -234,26 +242,30 @@ npm run deploy:prod
 3. Запускает npm run ci, пока remote lock уже удерживается.
 4. Создает `releases`, `shared/backups` и `shared/state`; при первом переходе
    сохраняет legacy `/opt/planner` как target symlink `current`.
-5. Копирует проект через rsync в `/opt/planner/releases/<commit>`, не изменяя
+5. Упаковывает только committed Git tree через `git archive`, передает единый
+   архив в `/opt/planner/releases/<commit>` и распаковывает его, не изменяя
    active release.
 6. Копирует apps/api/tmp/icon-assets, если папка есть.
 7. На сервере проверяет, что Node/npm совпадают с `.node-version`,
    `.nvmrc` и `packageManager`.
-8. Запускает npm ci --include=dev --ignore-scripts и затем
-   точечно rebuild для install-скриптов, нужных сборке/runtime.
+8. Под `planner-build` запускает `npm ci --include=dev --ignore-scripts`,
+   точечный rebuild и сборку web + API JavaScript entrypoints.
 9. Валидирует production env: `NODE_ENV=production`, `API_AUTH_MODE=jwt`,
    включенный RLS mode, явный CORS, неплейсхолдерный JWT secret и
    `DATABASE_URL`.
 10. Перед миграциями снимает `pg_dump` backup в
    `/opt/planner/shared/backups`.
-11. Запускает production DB migrations через `npm run db:migrate`; runner
+11. Под отдельным `planner-migrate` запускает production DB migrations; runner
     проверяет checksum уже примененных файлов и берет PostgreSQL advisory lock.
 12. Проверяет RLS/security-инварианты через `npm run db:security:check`.
-13. Собирает web с VITE_API_BASE_URL=https://chaotika.ru.
-14. Валидирует runtime-конфигурации и атомарно переключает
+13. Удаляет dev dependencies через `npm prune --omit=dev`, проверяет отсутствие
+    `tsx`/TypeScript/Vite и делает release root-owned/read-only.
+14. Создает минимальные env-файлы для отдельных service users, валидирует
+    runtime-конфигурации и атомарно переключает
     `/opt/planner/current` на подготовленный release.
 15. Устанавливает systemd unit-файлы и Caddyfile из active release.
-16. Перезапускает planner-api; при последующей ошибке возвращает previous
+16. Запускает loopback restore helper и перезапускает planner-api; при ошибке
+    возвращает previous
     symlink/configs и перезапускает сервисы.
 17. Если `API_TASK_REMINDERS_RUNTIME=worker`, включает и перезапускает
     planner-task-reminders; иначе останавливает отдельный worker.
@@ -333,7 +345,7 @@ curl -s https://chaotika.ru/api/v1/alice/webhook \
 Один раз после первого deploy включить автозапуск API после reboot:
 
 ```bash
-ssh root@147.45.158.186 "systemctl enable planner-api && systemctl enable planner-task-reminders && systemctl enable caddy"
+ssh root@147.45.158.186 "systemctl enable planner-user-backup-restore planner-api planner-task-reminders caddy"
 ```
 
 ## 5. Проверить Chaotika Auth
@@ -419,10 +431,13 @@ API на сервере:
 ```bash
 systemctl status planner-api
 journalctl -u planner-api -n 100 --no-pager
+systemctl status planner-user-backup-restore
+journalctl -u planner-user-backup-restore -n 100 --no-pager
 systemctl status planner-task-reminders
 journalctl -u planner-task-reminders -n 100 --no-pager
 curl http://127.0.0.1:3001/api/health
 curl http://127.0.0.1:3001/api/metrics
+curl http://127.0.0.1:3012/internal/ready
 ```
 
 Caddy/HTTPS:
@@ -440,6 +455,9 @@ curl https://chaotika.ru/api/health
 grep -E '^(NODE_ENV|API_|WEB_AUTH_PROVIDER)' /etc/planner/planner.env
 cd /opt/planner/current
 node -e "const fs=require('fs');const text=fs.readFileSync('/etc/planner/planner.env','utf8');const get=(k)=>text.match(new RegExp('^'+k+'=(.*)$','m'))?.[1]?.replace(/^['\\\"]|['\\\"]$/g,'');for (const k of ['DATABASE_URL','MIGRATE_DATABASE_URL','TASK_REMINDERS_DATABASE_URL']) { const v=get(k); if (v) console.log(k+' user='+new URL(v).username) }"
+stat -c '%U:%G %a %n' /etc/planner/planner.env /etc/planner/api.env /etc/planner/reminders.env /etc/planner/restore-helper.env
+stat -c '%U:%G %a %n' /opt/planner/current
+systemctl show planner-api planner-user-backup-restore planner-task-reminders -p User -p NoNewPrivileges -p ProtectSystem
 ```
 
 Проверить файлы web build:

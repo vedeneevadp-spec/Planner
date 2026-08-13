@@ -19,7 +19,6 @@ defineChaosInboxRepositoryContractSuite({
         workspaceId: randomUUID(),
         workspaceKind: 'personal' as const,
       },
-      convertedTaskId: randomUUID(),
       otherContext: {
         actorDisplayName: 'Contract Other User',
         actorUserId: otherActorUserId,

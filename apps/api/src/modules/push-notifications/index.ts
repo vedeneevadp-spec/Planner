@@ -2,6 +2,10 @@ export {
   FirebasePushNotificationSender,
   NoopPushNotificationSender,
 } from './push-notifications.delivery.js'
+export {
+  classifyReminderPushDelivery,
+  type ReminderPushDeliveryOutcome,
+} from './push-notifications.outcome.js'
 export type { PushNotificationsRepository } from './push-notifications.repository.js'
 export { MemoryPushNotificationsRepository } from './push-notifications.repository.memory.js'
 export { PostgresPushNotificationsRepository } from './push-notifications.repository.postgres.js'

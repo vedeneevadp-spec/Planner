@@ -127,10 +127,26 @@ test('registers a user and creates a task through the app shell', async ({
   await expect(page.getByText(updatedTaskTitle)).toBeVisible()
 
   await page.getByRole('button', { name: 'Завершить задачу' }).click()
-  await page
+  const doneTodayToggle = page.getByRole('button', {
+    exact: true,
+    name: 'Выполнено сегодня',
+  })
+
+  await expect(doneTodayToggle).toBeVisible()
+
+  if ((await doneTodayToggle.getAttribute('aria-expanded')) !== 'true') {
+    await doneTodayToggle.click()
+  }
+
+  const doneTodaySection = doneTodayToggle.locator('xpath=ancestor::section[1]')
+
+  await expect(
+    doneTodaySection.getByText(updatedTaskTitle, { exact: true }),
+  ).toBeVisible()
+  await doneTodaySection
     .getByRole('button', { name: `Действия с задачей ${updatedTaskTitle}` })
     .click()
-  await page.getByRole('menuitem', { name: 'Удалить' }).click()
+  await doneTodaySection.getByRole('menuitem', { name: 'Удалить' }).click()
 
   await expect(page.getByText(updatedTaskTitle)).toBeHidden()
 })
@@ -169,7 +185,12 @@ test('keeps desktop chain notification actions clickable', async ({ page }) => {
     .click()
   await expect(notification).toBeHidden()
 
-  await page.getByRole('button', { name: 'Завершить задачу' }).click()
+  const firstStageCard = page
+    .getByRole('article')
+    .filter({ hasText: taskTitle })
+    .filter({ hasText: '1/2' })
+  await expect(firstStageCard).toBeVisible()
+  await firstStageCard.getByRole('button', { name: 'Завершить задачу' }).click()
   await expect(notification).toContainText('Этап выполнен')
 
   await notification

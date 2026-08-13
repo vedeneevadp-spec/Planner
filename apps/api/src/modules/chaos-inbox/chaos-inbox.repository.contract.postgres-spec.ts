@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { after, before } from 'node:test'
 
-import { newTaskInputSchema } from '@planner/contracts'
-
 import {
   createDatabaseConnection,
   type DatabaseConnection,
@@ -14,7 +12,6 @@ import {
   createRepositoryContractAuthContext,
   seedRepositoryContractWorkspace,
 } from '../../testing/repository-contract-fixtures.js'
-import { PostgresTaskRepository } from '../tasks/task.repository.postgres.js'
 import { defineChaosInboxRepositoryContractSuite } from './chaos-inbox.repository.contract.js'
 import { PostgresChaosInboxRepository } from './chaos-inbox.repository.postgres.js'
 
@@ -54,10 +51,6 @@ defineChaosInboxRepositoryContractSuite({
       userId: otherActorUserId,
       workspaceName: 'Contract Other Inbox',
     })
-    const personalWorkspace = {
-      id: workspace.workspaceId,
-      name: workspace.workspaceName,
-    }
     const authContext = createRepositoryContractAuthContext({
       email: workspace.email,
       userId: actorUserId,
@@ -66,27 +59,6 @@ defineChaosInboxRepositoryContractSuite({
       email: otherWorkspace.email,
       userId: otherActorUserId,
     })
-    const convertedTask = await new PostgresTaskRepository(
-      connection.db,
-    ).create({
-      context: {
-        actorDisplayName: workspace.displayName,
-        actorUserId,
-        auth: authContext,
-        groupRole: null,
-        personalWorkspace,
-        role: 'owner' as const,
-        workspaceId: workspace.workspaceId,
-        workspaceKind: 'personal' as const,
-        workspaceName: workspace.workspaceName,
-      },
-      input: newTaskInputSchema.parse({
-        note: '',
-        project: '',
-        title: 'Converted target',
-      }),
-    })
-
     return {
       cleanup: () =>
         cleanupRepositoryContractUsers(connection, [...trackedUserIds]),
@@ -99,7 +71,6 @@ defineChaosInboxRepositoryContractSuite({
         workspaceId: workspace.workspaceId,
         workspaceKind: 'personal' as const,
       },
-      convertedTaskId: convertedTask.id,
       otherContext: {
         actorDisplayName: otherWorkspace.displayName,
         actorUserId: otherActorUserId,

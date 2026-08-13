@@ -22,6 +22,7 @@ const outputPath = path.join(backupDirectory, `planner-${timestamp}.dump`)
 await mkdir(backupDirectory, { recursive: true })
 await run('pg_dump', [
   '--format=custom',
+  '--enable-row-security',
   '--no-owner',
   '--no-privileges',
   '--file',

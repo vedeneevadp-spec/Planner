@@ -12,6 +12,7 @@ import type {
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
   CloseTaskChainCommand,
+  CompleteRecurringTaskCommand,
   CopyTaskToPersonalCommand,
   CreateTaskCommand,
   CreateTaskNextStageCommand,
@@ -57,7 +58,9 @@ import {
   loadTaskRowsWithPrimaryTimeBlock,
   loadUserDisplayName,
   resolveTaskAssignee,
+  resolveTaskAssigneeInExecutor,
   resolveTaskProject,
+  resolveTaskProjectInExecutor,
 } from './task.repository.postgres.queries.js'
 import type { TaskRow } from './task.repository.postgres.types.js'
 import {
@@ -380,6 +383,265 @@ export class PostgresTaskRepository implements TaskRepository {
         }
 
         return record
+      },
+      command.context.actorUserId,
+    )
+  }
+
+  async completeRecurring(
+    command: CompleteRecurringTaskCommand,
+  ): Promise<StoredTaskRecord> {
+    const normalizedInput = normalizeTaskInput(command.nextTaskInput)
+    const normalizedSchedule = normalizeTaskSchedule(command.nextTaskInput)
+    const sphereProjectId =
+      normalizedInput.projectId ?? normalizedInput.sphereId
+    const nextTaskId = normalizedInput.id ?? generateUuidV7()
+    const timeFields = buildTaskTimeFields({
+      plannerTimeZone:
+        normalizedInput.reminderTimeZone ?? command.context.clientTimeZone,
+      recurrence: normalizedInput.recurrence,
+      schedule: normalizedSchedule,
+    })
+    const startsAt =
+      normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+        ? buildTimestampFromDateAndTime(
+            normalizedSchedule.plannedDate,
+            normalizedSchedule.plannedStartTime,
+            timeFields.timeZone ?? undefined,
+          )
+        : null
+    const endsAt =
+      normalizedSchedule.plannedDate && normalizedSchedule.plannedStartTime
+        ? buildTimestampFromDateAndTime(
+            normalizedSchedule.plannedDate,
+            normalizedSchedule.plannedEndTime ??
+              buildDefaultEndTime(normalizedSchedule.plannedStartTime),
+            timeFields.timeZone ?? undefined,
+          )
+        : null
+
+    return withWriteTransaction(
+      this.db,
+      command.context.auth,
+      async (trx) => {
+        const currentTask = await trx
+          .selectFrom('app.tasks')
+          .selectAll()
+          .where('id', '=', command.taskId)
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .forUpdate()
+          .executeTakeFirst()
+
+        if (!currentTask) {
+          throw new TaskNotFoundError(command.taskId)
+        }
+
+        const alreadyCompleted = currentTask.status === 'done'
+
+        if (
+          !alreadyCompleted &&
+          command.expectedVersion !== undefined &&
+          Number(currentTask.version) !== command.expectedVersion
+        ) {
+          throw new TaskVersionConflictError(
+            command.taskId,
+            command.expectedVersion,
+            Number(currentTask.version),
+          )
+        }
+
+        await sql`
+          select pg_advisory_xact_lock(
+            hashtextextended(
+              ${`${command.context.workspaceId}:${command.recurrenceSeriesId}:${command.nextPlannedDate}`},
+              0
+            )
+          )
+        `.execute(trx)
+
+        const completedAt = new Date().toISOString()
+        const completedTask = alreadyCompleted
+          ? currentTask
+          : await trx
+              .updateTable('app.tasks')
+              .set({
+                completion_type: 'completed',
+                completed_at: completedAt,
+                status: 'done',
+                updated_by: command.context.actorUserId,
+              })
+              .where('id', '=', command.taskId)
+              .where('workspace_id', '=', command.context.workspaceId)
+              .where('deleted_at', 'is', null)
+              .returningAll()
+              .executeTakeFirstOrThrow()
+        const currentTimeBlock = await loadPrimaryTimeBlock(
+          trx,
+          command.context.workspaceId,
+          command.taskId,
+        )
+        const currentProjectTitle = await loadProjectTitle(
+          trx,
+          command.context.workspaceId,
+          completedTask.project_id,
+        )
+        const currentAssigneeDisplayName = await loadAssigneeDisplayName(
+          trx,
+          completedTask.assignee_user_id,
+        )
+        const currentAuthorDisplayName = await loadUserDisplayName(
+          trx,
+          completedTask.created_by,
+        )
+        const completedRecord = mapTaskRecord(
+          completedTask,
+          currentTimeBlock,
+          currentProjectTitle,
+          currentAssigneeDisplayName,
+          currentAuthorDisplayName,
+        )
+
+        if (!alreadyCompleted) {
+          await syncTaskReminder(trx, {
+            isActive: false,
+            plannedDate: completedRecord.plannedDate,
+            plannedStartTime: completedRecord.plannedStartTime,
+            remindBeforeStart: completedRecord.remindBeforeStart === true,
+            reminderOffsets: completedRecord.reminderOffsets ?? [],
+            reminderTimeZone: undefined,
+            taskId: completedRecord.id,
+            userId: completedTask.created_by ?? command.context.actorUserId,
+            workspaceId: command.context.workspaceId,
+          })
+          await writeTaskMutationArtifacts(trx, {
+            actorUserId: command.context.actorUserId,
+            eventType: 'task.status_changed',
+            payload: {
+              status: completedRecord.status,
+              version: completedRecord.version,
+            },
+            taskId: completedRecord.id,
+            workspaceId: command.context.workspaceId,
+          })
+          await this.propagateLinkedTaskStatus(
+            trx,
+            {
+              context: command.context,
+              taskId: command.taskId,
+              status: 'done',
+            },
+            completedTask,
+          )
+        }
+
+        const existingNextTask = await trx
+          .selectFrom('app.tasks')
+          .select('id')
+          .where('workspace_id', '=', command.context.workspaceId)
+          .where('deleted_at', 'is', null)
+          .where('planned_on', '=', command.nextPlannedDate)
+          .where(
+            sql<string>`coalesce(
+              nullif(metadata #>> '{taskRecurrence,seriesId}', ''),
+              nullif(metadata #>> '{taskRoutine,seriesId}', '')
+            )`,
+            '=',
+            command.recurrenceSeriesId,
+          )
+          .executeTakeFirst()
+
+        if (!existingNextTask) {
+          const project = await resolveTaskProjectInExecutor(
+            trx,
+            command.context,
+            sphereProjectId,
+          )
+          const assignee = await resolveTaskAssigneeInExecutor(
+            trx,
+            command.context,
+            normalizedInput.assigneeUserId,
+          )
+          const metadata = buildTaskMetadata(
+            project ? '' : normalizedInput.project,
+            normalizedInput,
+          )
+          const insertedTask = await trx
+            .insertInto('app.tasks')
+            .values({
+              assignee_user_id: assignee?.id ?? null,
+              created_by: command.context.actorUserId,
+              deleted_at: null,
+              description: normalizedInput.note,
+              due_at: null,
+              due_on: normalizedInput.dueDate,
+              id: nextTaskId,
+              local_date: timeFields.localDate,
+              local_time: timeFields.localTime,
+              metadata,
+              planned_on: normalizedSchedule.plannedDate,
+              priority: 2,
+              project_id: project?.id ?? null,
+              resource: normalizedInput.resource,
+              sphere_id: project?.id ?? null,
+              sort_key: '',
+              starts_at_utc: timeFields.startsAtUtc,
+              status: 'todo',
+              time_kind: timeFields.timeKind,
+              time_zone: timeFields.timeZone,
+              time_zone_inferred: timeFields.timeZoneInferred,
+              recurrence_rule: timeFields.recurrenceRule,
+              recurrence_start_date: timeFields.recurrenceStartDate,
+              recurrence_time_zone: timeFields.recurrenceTimeZone,
+              title: normalizedInput.title,
+              updated_by: command.context.actorUserId,
+              workspace_id: command.context.workspaceId,
+            })
+            .onConflict((conflict) => conflict.column('id').doNothing())
+            .returningAll()
+            .executeTakeFirst()
+
+          if (!insertedTask) {
+            throw new Error('Failed to create recurring task occurrence.')
+          }
+
+          const nextTimeBlock = await insertPrimaryTimeBlock(trx, {
+            actorUserId: command.context.actorUserId,
+            endsAt,
+            startsAt,
+            taskId: insertedTask.id,
+            timeZone: timeFields.timeZone,
+            workspaceId: command.context.workspaceId,
+          })
+          const nextRecord = mapTaskRecord(
+            insertedTask,
+            nextTimeBlock,
+            project?.title ?? null,
+            assignee?.displayName ?? null,
+            command.context.actorDisplayName,
+          )
+
+          await syncTaskReminder(trx, {
+            isActive: true,
+            plannedDate: nextRecord.plannedDate,
+            plannedStartTime: nextRecord.plannedStartTime,
+            remindBeforeStart: nextRecord.remindBeforeStart === true,
+            reminderOffsets: nextRecord.reminderOffsets ?? [],
+            reminderTimeZone: normalizedInput.reminderTimeZone,
+            taskId: insertedTask.id,
+            userId: insertedTask.created_by ?? command.context.actorUserId,
+            workspaceId: command.context.workspaceId,
+          })
+          await writeTaskMutationArtifacts(trx, {
+            actorUserId: command.context.actorUserId,
+            eventType: 'task.created',
+            payload: { task: nextRecord },
+            taskId: insertedTask.id,
+            workspaceId: command.context.workspaceId,
+          })
+        }
+
+        return completedRecord
       },
       command.context.actorUserId,
     )

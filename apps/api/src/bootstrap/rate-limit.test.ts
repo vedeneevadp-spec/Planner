@@ -2,30 +2,31 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { HttpError } from './http-error.js'
-import { assertInMemoryRateLimit } from './rate-limit.js'
+import { MemoryRateLimiter } from './rate-limit.js'
 
-void describe('assertInMemoryRateLimit', () => {
-  void it('rejects requests after the configured bucket limit', () => {
+void describe('MemoryRateLimiter', () => {
+  void it('rejects requests after the configured bucket limit', async () => {
     const key = `test:${Date.now()}:${Math.random()}`
+    const rateLimiter = new MemoryRateLimiter()
 
-    assert.doesNotThrow(() =>
-      assertInMemoryRateLimit({
+    await assert.doesNotReject(() =>
+      rateLimiter.consume({
         key,
         limit: 2,
         windowMs: 60_000,
       }),
     )
-    assert.doesNotThrow(() =>
-      assertInMemoryRateLimit({
+    await assert.doesNotReject(() =>
+      rateLimiter.consume({
         key,
         limit: 2,
         windowMs: 60_000,
       }),
     )
 
-    assert.throws(
+    await assert.rejects(
       () =>
-        assertInMemoryRateLimit({
+        rateLimiter.consume({
           key,
           limit: 2,
           windowMs: 60_000,

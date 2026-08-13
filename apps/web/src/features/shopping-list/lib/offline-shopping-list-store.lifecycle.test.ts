@@ -9,11 +9,13 @@ import {
   enqueueShoppingListOfflineMutation,
   listRetryableShoppingListOfflineMutations,
   loadCachedShoppingListItems,
+  loadCachedShoppingListSnapshot,
   replaceCachedShoppingListItems,
   resetShoppingListOfflineDatabaseForTests,
   resetShoppingListOfflineRuntimeForTests,
   SHOPPING_LIST_OFFLINE_DATABASE_NAME,
   SHOPPING_LIST_OFFLINE_LIFECYCLE_STORAGE_KEY_PREFIX,
+  SHOPPING_LIST_OFFLINE_SCHEMA_VERSION,
   ShoppingListOfflinePurgeUnavailableError,
   upsertCachedShoppingListItem,
 } from './offline-shopping-list-store'
@@ -44,6 +46,50 @@ describe('offline shopping-list workspace lifecycle', () => {
     await expect(
       clearShoppingListOfflineWorkspaceData(WORKSPACE_ID),
     ).rejects.toBeInstanceOf(ShoppingListOfflinePurgeUnavailableError)
+  })
+
+  it('persists a complete empty snapshot with its last successful sync time', async () => {
+    const lastSuccessfulSyncAt = '2026-08-13T09:00:00.000Z'
+
+    await replaceCachedShoppingListItems(WORKSPACE_ID, [], lastSuccessfulSyncAt)
+
+    expect(await loadCachedShoppingListSnapshot(WORKSPACE_ID)).toEqual({
+      items: [],
+      lastSuccessfulSyncAt,
+    })
+  })
+
+  it('upgrades a v1 item cache without losing its offline data', async () => {
+    await resetShoppingListOfflineDatabaseForTests()
+    const legacyDatabase = new Dexie(SHOPPING_LIST_OFFLINE_DATABASE_NAME)
+    legacyDatabase.version(1).stores({
+      cachedItems: 'key, workspaceId, itemId, updatedAt',
+      mutationQueue: 'id, workspaceId, status, createdAt, updatedAt',
+    })
+    await legacyDatabase.open()
+    const item = createShoppingListItem('legacy-item')
+    const updatedAt = '2026-08-12T08:30:00.000Z'
+    await legacyDatabase.table('cachedItems').put({
+      item,
+      itemId: item.id,
+      key: `${WORKSPACE_ID}:${item.id}`,
+      updatedAt,
+      workspaceId: WORKSPACE_ID,
+    })
+    legacyDatabase.close()
+    resetShoppingListOfflineRuntimeForTests()
+
+    expect(await loadCachedShoppingListSnapshot(WORKSPACE_ID)).toEqual({
+      items: [item],
+      lastSuccessfulSyncAt: updatedAt,
+    })
+
+    const upgradedDatabase = await openShoppingListDatabase()
+    expect(upgradedDatabase.verno).toBe(SHOPPING_LIST_OFFLINE_SCHEMA_VERSION)
+    expect(upgradedDatabase.tables.map((table) => table.name)).toContain(
+      'cachedSnapshots',
+    )
+    upgradedDatabase.close()
   })
 
   it('rejects a current-tab purge without the durable cross-tab marker', async () => {

@@ -151,6 +151,41 @@ void describe('FirebasePushNotificationSender', () => {
       },
     )
   })
+
+  void it('aborts an FCM request that exceeds the delivery timeout', async () => {
+    const sender = new FirebasePushNotificationSender(
+      {
+        clientEmail: 'firebase-admin@example.iam.gserviceaccount.com',
+        privateKey: PRIVATE_KEY,
+        projectId: 'planner-mobile',
+      },
+      (url, init) => {
+        if (stringifyFetchUrl(url) === 'https://oauth2.googleapis.com/token') {
+          return Promise.resolve(
+            jsonResponse({
+              access_token: 'oauth-token',
+              expires_in: 3600,
+            }),
+          )
+        }
+
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'))
+          })
+        })
+      },
+      10,
+    )
+
+    await assert.rejects(
+      sender.sendToTokens(['slow-token'], {
+        body: 'Body',
+        title: 'Title',
+      }),
+      /timed out/,
+    )
+  })
 })
 
 function jsonResponse(value: unknown, status = 200): Response {

@@ -75,7 +75,13 @@ export interface ApiConfig {
   storageDriver: StorageDriver
   taskRemindersRuntime: TaskRemindersRuntimeMode
   trustedProxyHops: ApiTrustedProxyHops
+  userBackupRestoreHelper: UserBackupRestoreHelperClientConfig | null
   voiceStt: VoiceSttConfig
+}
+
+export interface UserBackupRestoreHelperClientConfig {
+  secret: string
+  url: string
 }
 
 interface ProductionConfigValidationInput {
@@ -84,6 +90,7 @@ interface ProductionConfigValidationInput {
   corsOrigin: string
   env: NodeJS.ProcessEnv
   jwtAuth: JwtAuthRuntimeConfig | null
+  userBackupRestoreHelper: UserBackupRestoreHelperClientConfig | null
 }
 
 function parsePort(value: string | undefined): number {
@@ -187,7 +194,7 @@ function parseTaskRemindersRuntime(
   throw new Error(`Invalid API_TASK_REMINDERS_RUNTIME: ${value}`)
 }
 
-function createFirebasePushConfig(
+export function createFirebasePushConfig(
   env: NodeJS.ProcessEnv,
 ): FirebasePushConfig | null {
   const jsonValue = env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()
@@ -580,6 +587,10 @@ export function createApiConfig(
   parseDatabaseRlsMode(env.API_DB_RLS_MODE)
   const jwtAuth = createJwtAuthConfig(env, authMode)
   const corsOrigin = env.API_CORS_ORIGIN ?? '*'
+  const userBackupRestoreHelper = createUserBackupRestoreHelperClientConfig(
+    env,
+    appEnv,
+  )
 
   validateProductionConfig({
     appEnv,
@@ -587,6 +598,7 @@ export function createApiConfig(
     corsOrigin,
     env,
     jwtAuth,
+    userBackupRestoreHelper,
   })
   validateAuthModeForEnvironment(appEnv, authMode)
 
@@ -608,6 +620,7 @@ export function createApiConfig(
       env.API_TASK_REMINDERS_RUNTIME,
     ),
     trustedProxyHops: parseTrustedProxyHops(env.API_TRUST_PROXY_HOPS),
+    userBackupRestoreHelper,
     voiceStt: createVoiceSttConfig(env),
   }
 }
@@ -634,6 +647,7 @@ function validateProductionConfig({
   corsOrigin,
   env,
   jwtAuth,
+  userBackupRestoreHelper,
 }: ProductionConfigValidationInput): void {
   if (appEnv !== 'production') {
     return
@@ -657,6 +671,25 @@ function validateProductionConfig({
     )
   }
 
+  for (const name of [
+    'MIGRATE_DATABASE_URL',
+    'TASK_REMINDERS_DATABASE_URL',
+    'USER_BACKUP_RESTORE_DATABASE_URL',
+    'WORKER_DATABASE_URL',
+  ]) {
+    if (env[name]?.trim()) {
+      throw new Error(
+        `${name} must not be exposed to the production API process.`,
+      )
+    }
+  }
+
+  if (!userBackupRestoreHelper) {
+    throw new Error(
+      'USER_BACKUP_RESTORE_HELPER_URL and USER_BACKUP_RESTORE_HELPER_SECRET must be configured when NODE_ENV=production.',
+    )
+  }
+
   validateProductionDatabaseTransport(env.DATABASE_URL)
 
   const jwtSecret = env.AUTH_JWT_SECRET?.trim()
@@ -672,7 +705,9 @@ function validateProductionConfig({
   }
 }
 
-function validateProductionDatabaseTransport(value: string | undefined): void {
+export function validateProductionDatabaseTransport(
+  value: string | undefined,
+): void {
   const databaseUrl = value?.trim()
 
   if (!databaseUrl) {
@@ -702,6 +737,63 @@ function validateProductionDatabaseTransport(value: string | undefined): void {
       'DATABASE_URL must require TLS for remote PostgreSQL when NODE_ENV=production (sslmode=require, verify-ca, or verify-full).',
     )
   }
+}
+
+function createUserBackupRestoreHelperClientConfig(
+  env: NodeJS.ProcessEnv,
+  appEnv: string,
+): UserBackupRestoreHelperClientConfig | null {
+  const rawUrl = env.USER_BACKUP_RESTORE_HELPER_URL?.trim()
+  const secret = env.USER_BACKUP_RESTORE_HELPER_SECRET?.trim()
+
+  if (!rawUrl && !secret) {
+    return null
+  }
+
+  if (!rawUrl || !secret) {
+    throw new Error(
+      'USER_BACKUP_RESTORE_HELPER_URL and USER_BACKUP_RESTORE_HELPER_SECRET must be configured together.',
+    )
+  }
+
+  if (
+    secret.length < 32 ||
+    /^(change|replace|secret|your)[_-]?/i.test(secret)
+  ) {
+    throw new Error(
+      'USER_BACKUP_RESTORE_HELPER_SECRET must be a non-placeholder secret with at least 32 characters.',
+    )
+  }
+
+  let url: URL
+
+  try {
+    url = new URL(rawUrl)
+  } catch {
+    throw new Error('USER_BACKUP_RESTORE_HELPER_URL must be a valid URL.')
+  }
+
+  if (
+    url.protocol !== 'http:' ||
+    !isLoopbackDatabaseHost(url.hostname) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.pathname !== '/internal/user-backup/restore'
+  ) {
+    throw new Error(
+      'USER_BACKUP_RESTORE_HELPER_URL must use the loopback HTTP restore endpoint.',
+    )
+  }
+
+  if (appEnv === 'production' && !url.port) {
+    throw new Error(
+      'USER_BACKUP_RESTORE_HELPER_URL must use an explicit loopback port in production.',
+    )
+  }
+
+  return { secret, url: url.toString() }
 }
 
 function isLoopbackDatabaseHost(hostname: string): boolean {

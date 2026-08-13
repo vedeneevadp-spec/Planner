@@ -324,10 +324,7 @@ function buildTestApp(config = createTestConfig()): FastifyInstance {
   const taskService = new TaskService(new MemoryTaskRepository())
 
   return buildApiApp({
-    chaosInboxService: new ChaosInboxService(
-      new MemoryChaosInboxRepository(),
-      taskService,
-    ),
+    chaosInboxService: new ChaosInboxService(new MemoryChaosInboxRepository()),
     config,
     database: null,
     requestAuthenticator: new JwtRequestAuthenticator(config.jwtAuth!),

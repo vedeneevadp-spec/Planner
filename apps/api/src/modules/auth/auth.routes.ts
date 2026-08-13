@@ -12,8 +12,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import {
-  assertInMemoryRateLimit,
   getClientAddress,
+  type RateLimiter,
 } from '../../bootstrap/rate-limit.js'
 import { requireRequestAuth } from '../../bootstrap/request-auth.js'
 import { parseOrThrow } from '../../bootstrap/validation.js'
@@ -25,6 +25,7 @@ type AuthRateLimitedAction =
 
 interface AuthRouteOptions {
   isSecureCookie: boolean
+  rateLimiter: RateLimiter
   refreshCookieMaxAgeSeconds: number
 }
 
@@ -67,7 +68,12 @@ export function registerAuthRoutes(
       request.body ?? {},
       'invalid_body',
     )
-    assertAuthRateLimit(request, 'sign-in', input.email)
+    await assertAuthRateLimit(
+      options.rateLimiter,
+      request,
+      'sign-in',
+      input.email,
+    )
 
     const response = await service.signIn(input, getRequestMetadata(request))
 
@@ -80,7 +86,12 @@ export function registerAuthRoutes(
       request.body ?? {},
       'invalid_body',
     )
-    assertAuthRateLimit(request, 'sign-up', input.email)
+    await assertAuthRateLimit(
+      options.rateLimiter,
+      request,
+      'sign-up',
+      input.email,
+    )
 
     const response = await service.signUp(
       {
@@ -135,7 +146,12 @@ export function registerAuthRoutes(
       request.body ?? {},
       'invalid_body',
     )
-    assertAuthRateLimit(request, 'password-reset-request', input.email)
+    await assertAuthRateLimit(
+      options.rateLimiter,
+      request,
+      'password-reset-request',
+      input.email,
+    )
 
     await service.requestPasswordReset(input.email, getRequestMetadata(request))
 
@@ -148,7 +164,11 @@ export function registerAuthRoutes(
       request.body ?? {},
       'invalid_body',
     )
-    assertAuthRateLimit(request, 'password-reset-confirm')
+    await assertAuthRateLimit(
+      options.rateLimiter,
+      request,
+      'password-reset-confirm',
+    )
 
     const response = await service.confirmPasswordReset(
       input,
@@ -336,18 +356,33 @@ function readOptionalHeader(value: unknown): string | undefined {
     : undefined
 }
 
-function assertAuthRateLimit(
+async function assertAuthRateLimit(
+  rateLimiter: RateLimiter,
   request: FastifyRequest,
   action: AuthRateLimitedAction,
   discriminator = 'global',
-): void {
+): Promise<void> {
   const options = AUTH_RATE_LIMITS[action]
   const clientAddress = getClientAddress(request)
   const normalizedDiscriminator = discriminator.trim().toLowerCase() || 'global'
 
-  assertInMemoryRateLimit({
-    key: `auth:${action}:${clientAddress}:${normalizedDiscriminator}`,
-    limit: options.limit,
-    windowMs: options.windowMs,
-  })
+  const buckets = [
+    rateLimiter.consume({
+      key: `auth:${action}:ip:${clientAddress}`,
+      limit: Math.max(options.limit * 10, 20),
+      windowMs: options.windowMs,
+    }),
+  ]
+
+  if (normalizedDiscriminator !== 'global') {
+    buckets.push(
+      rateLimiter.consume({
+        key: `auth:${action}:account:${normalizedDiscriminator}`,
+        limit: options.limit,
+        windowMs: options.windowMs,
+      }),
+    )
+  }
+
+  await Promise.all(buckets)
 }

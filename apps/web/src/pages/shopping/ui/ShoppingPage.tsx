@@ -1,6 +1,7 @@
 import { type FormEvent, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
+import type { SessionReadiness } from '@/features/session'
 import {
   findShoppingListItemByText,
   formatShoppingListText,
@@ -16,8 +17,10 @@ import {
   useUpdateShoppingListItem,
 } from '@/features/shopping-list'
 import { cx } from '@/shared/lib/classnames'
+import { useBrowserOffline } from '@/shared/lib/offline-sync'
 import { CheckIcon, TrashIcon } from '@/shared/ui/Icon'
 import pageStyles from '@/shared/ui/Page'
+import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
 
 import styles from './ShoppingPage.module.css'
 
@@ -51,6 +54,7 @@ const DRAFT_CATEGORY_OPTIONS = SHOPPING_CATEGORY_OPTIONS.filter(
 )
 const FAVORITE_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/favorite.webp`
 const URGENT_ICON_SRC = `${SHOPPING_ICON_BASE_URL}/urgent.webp`
+type ShoppingBlockingState = 'error' | 'loading' | 'offline' | null
 
 export function ShoppingPage() {
   const [searchParams] = useSearchParams()
@@ -70,6 +74,7 @@ export function ShoppingPage() {
   )
   const pendingItemIdsRef = useRef<Set<string>>(new Set())
   const shoppingListQuery = useShoppingListSummary()
+  const isBrowserOffline = useBrowserOffline()
   const syncStatus = useShoppingListSyncStatus()
   const createItemMutation = useCreateShoppingListItem()
   const updateItemMutation = useUpdateShoppingListItem()
@@ -91,8 +96,7 @@ export function ShoppingPage() {
     () =>
       formError ||
       getShoppingErrorMessage(
-        shoppingListQuery.error ??
-          createItemMutation.error ??
+        createItemMutation.error ??
           updateItemMutation.error ??
           removeItemMutation.error ??
           syncStatus.error,
@@ -101,11 +105,113 @@ export function ShoppingPage() {
       createItemMutation.error,
       formError,
       removeItemMutation.error,
-      shoppingListQuery.error,
       syncStatus.error,
       updateItemMutation.error,
     ],
   )
+  const hasShoppingData = shoppingListQuery.data !== undefined
+  const isOffline =
+    isBrowserOffline ||
+    shoppingListQuery.readiness.status === 'offlineWithCache'
+  const blockingState = resolveShoppingBlockingState({
+    hasData: hasShoppingData,
+    isCacheHydrating: shoppingListQuery.isCacheHydrating,
+    isLoading: shoppingListQuery.isLoading,
+    isOffline,
+    readiness: shoppingListQuery.readiness,
+  })
+  const hasAccessIssue = isShoppingAccessUnavailable(
+    shoppingListQuery.readiness,
+  )
+  const isRestoring =
+    shoppingListQuery.readiness.status === 'restoringWithCache' ||
+    shoppingListQuery.readiness.reason === 'auth_restoring' ||
+    shoppingListQuery.readiness.reason === 'planner_pending'
+  const canMutate = !hasAccessIssue && !isRestoring
+
+  function retryShopping() {
+    void Promise.allSettled([
+      shoppingListQuery.retrySession(),
+      shoppingListQuery.refetch(),
+    ])
+  }
+
+  if (blockingState) {
+    return (
+      <section className={`${pageStyles.page} ${styles.page}`}>
+        <div className={styles.content}>
+          {blockingState === 'loading' ? (
+            <PageStateView
+              kind="loading"
+              skeletonVariant="list"
+              title={
+                isBrowserOffline && shoppingListQuery.isCacheHydrating
+                  ? 'Проверяем сохранённый список'
+                  : 'Загружаем список покупок'
+              }
+            />
+          ) : blockingState === 'offline' ? (
+            <PageStateView
+              action={{ label: 'Повторить', onClick: retryShopping }}
+              description="На этом устройстве ещё нет сохранённого списка. Подключитесь к сети и попробуйте снова."
+              kind="offline"
+              lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
+              showUnknownLastSync
+              title="Список покупок недоступен без подключения"
+            />
+          ) : (
+            <PageStateView
+              action={{ label: 'Повторить', onClick: retryShopping }}
+              description={
+                hasAccessIssue
+                  ? 'Восстановите сессию и повторите загрузку.'
+                  : 'Попробуйте загрузить список ещё раз.'
+              }
+              kind="error"
+              title={
+                hasAccessIssue
+                  ? 'Нужно восстановить доступ к списку'
+                  : 'Не удалось загрузить список покупок'
+              }
+            />
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  const status = hasAccessIssue ? (
+    <PageStatusBanner
+      action={{ label: 'Обновить доступ', onClick: retryShopping }}
+      description="Показываем сохранённый список. Для синхронизации восстановите сессию."
+      kind="error"
+      lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
+      showUnknownLastSync
+      title="Нужно восстановить доступ"
+    />
+  ) : isOffline ? (
+    <PageStatusBanner
+      action={{ label: 'Обновить', onClick: retryShopping }}
+      kind="offline"
+      lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
+      showUnknownLastSync
+    />
+  ) : isRestoring ? (
+    <PageStatusBanner
+      description="Показываем сохранённый список и восстанавливаем синхронизацию."
+      kind="info"
+      lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
+      showUnknownLastSync
+      title="Восстанавливаем данные"
+    />
+  ) : shoppingListQuery.error ? (
+    <PageStatusBanner
+      action={{ label: 'Обновить', onClick: retryShopping }}
+      kind="error"
+      lastSyncedAt={shoppingListQuery.lastSuccessfulSyncAt}
+      showUnknownLastSync
+    />
+  ) : undefined
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -223,7 +329,7 @@ export function ShoppingPage() {
             id={checkboxId}
             type="checkbox"
             checked={isCompleted}
-            disabled={isItemPending}
+            disabled={isItemPending || !canMutate}
             onChange={() => {
               runItemMutation(item.id, () =>
                 updateItemMutation.mutateAsync({
@@ -271,7 +377,7 @@ export function ShoppingPage() {
                 : `Добавить в избранное: ${item.text}`
             }
             aria-pressed={isFavorite}
-            disabled={isItemPending}
+            disabled={isItemPending || !canMutate}
             onClick={() => {
               handleToggleFavorite(item)
             }}
@@ -292,7 +398,7 @@ export function ShoppingPage() {
                   : `Пометить срочным: ${item.text}`
               }
               aria-pressed={isUrgent}
-              disabled={isItemPending}
+              disabled={isItemPending || !canMutate}
               onClick={() => {
                 handleToggleUrgent(item)
               }}
@@ -304,7 +410,7 @@ export function ShoppingPage() {
             className={styles.iconButton}
             type="button"
             aria-label={`Удалить ${item.text}`}
-            disabled={isItemPending}
+            disabled={isItemPending || !canMutate}
             onClick={() => {
               runItemMutation(item.id, () =>
                 removeItemMutation.mutateAsync(item.id),
@@ -350,7 +456,7 @@ export function ShoppingPage() {
               value={draft}
               maxLength={5000}
               placeholder="Добавить покупку"
-              disabled={isSubmitting}
+              disabled={isSubmitting || !canMutate}
               onChange={(event) => {
                 setDraft(event.target.value)
                 setFormError(null)
@@ -372,7 +478,7 @@ export function ShoppingPage() {
                       : `Выбрать вид: ${option.label}`
                   }
                   aria-pressed={draftCategory === option.value}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !canMutate}
                   onClick={() => {
                     setDraftCategory((currentCategory) =>
                       currentCategory === option.value ? null : option.value,
@@ -389,11 +495,13 @@ export function ShoppingPage() {
             className={styles.addButton}
             type="submit"
             aria-label={isSubmitting ? 'Сохраняем покупку' : 'Добавить покупку'}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !canMutate}
           >
             <CheckIcon size={18} strokeWidth={2.15} />
           </button>
         </form>
+
+        {status}
 
         {errorMessage ? (
           <p className={styles.errorMessage}>{errorMessage}</p>
@@ -425,7 +533,7 @@ export function ShoppingPage() {
             <button
               className={styles.syncButton}
               type="button"
-              disabled={syncStatus.isSyncing}
+              disabled={syncStatus.isSyncing || !canMutate}
               onClick={() => {
                 void syncStatus.retry()
               }}
@@ -497,12 +605,51 @@ function getShoppingErrorMessage(error: unknown): string | null {
   }
 
   if (error instanceof Error && isShoppingSessionReadinessError(error)) {
-    return 'Нет соединения. Изменения сохранятся локально и синхронизируются автоматически.'
+    return 'Сессия недоступна. Войдите в аккаунт снова и повторите действие.'
   }
 
   return error instanceof Error
     ? error.message
     : 'Не удалось загрузить список покупок.'
+}
+
+function resolveShoppingBlockingState(input: {
+  hasData: boolean
+  isCacheHydrating: boolean
+  isLoading: boolean
+  isOffline: boolean
+  readiness: SessionReadiness
+}): ShoppingBlockingState {
+  if (input.hasData) {
+    return null
+  }
+
+  if (
+    input.isCacheHydrating ||
+    input.isLoading ||
+    input.readiness.reason === 'auth_restoring' ||
+    input.readiness.reason === 'planner_pending'
+  ) {
+    return 'loading'
+  }
+
+  if (isShoppingAccessUnavailable(input.readiness)) {
+    return 'error'
+  }
+
+  if (input.isOffline) {
+    return 'offline'
+  }
+
+  return 'error'
+}
+
+function isShoppingAccessUnavailable(
+  readiness: Pick<SessionReadiness, 'reason'>,
+): boolean {
+  return (
+    readiness.reason === 'no_session' || readiness.reason === 'unauthorized'
+  )
 }
 
 function isShoppingSessionReadinessError(error: Error): boolean {

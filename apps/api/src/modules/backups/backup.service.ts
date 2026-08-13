@@ -39,7 +39,7 @@ export class UserBackupService {
   ): UserBackupPreviewResult {
     assertAuthenticatedPersonalWorkspace(context)
 
-    const warnings = getPreviewWarnings(context, archive)
+    const warnings = getUserBackupRestoreWarnings(context, archive)
     const tables = userBackupTableNameSchema.options
       .map((name): { count: number; name: UserBackupTableName } => ({
         count: archive.tables[name]?.length ?? 0,
@@ -87,7 +87,7 @@ export class UserBackupService {
       )
     }
 
-    const warnings = getPreviewWarnings(context, request.archive)
+    const warnings = getUserBackupRestoreWarnings(context, request.archive)
 
     if (warnings.length > 0) {
       throw new HttpError(
@@ -100,7 +100,7 @@ export class UserBackupService {
 
     return this.repository.restorePersonalWorkspace({
       archive: request.archive,
-      archiveDigest: createArchiveDigest(request.archive),
+      archiveDigest: createUserBackupArchiveDigest(request.archive),
       context,
       idempotencyKey,
       restoreProfile: request.restoreProfile,
@@ -132,7 +132,7 @@ function assertAuthenticatedPersonalWorkspace(
   }
 }
 
-function getPreviewWarnings(
+export function getUserBackupRestoreWarnings(
   context: UserBackupContext & {
     actorUserId: string
     workspaceKind: 'personal'
@@ -751,7 +751,9 @@ function readStringField(row: UserBackupRow, fieldName: string): string | null {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
-function createArchiveDigest(archive: UserBackupArchive): string {
+export function createUserBackupArchiveDigest(
+  archive: UserBackupArchive,
+): string {
   return createHash('sha256').update(canonicalJson(archive)).digest('hex')
 }
 

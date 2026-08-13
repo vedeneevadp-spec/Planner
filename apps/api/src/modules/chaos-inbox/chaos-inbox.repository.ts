@@ -3,10 +3,11 @@ import type {
   BulkUpdateChaosInboxItemsCommand,
   ChaosInboxListResult,
   ChaosInboxReadContext,
+  ChaosInboxTaskConversionResult,
+  ConvertChaosInboxItemsCommand,
   CreateChaosInboxItemsCommand,
   DeleteChaosInboxItemCommand,
   ListChaosInboxItemsCommand,
-  MarkChaosInboxItemConvertedCommand,
   StoredChaosInboxItemRecord,
   UpdateChaosInboxItemCommand,
 } from './chaos-inbox.model.js'
@@ -26,9 +27,9 @@ export interface ChaosInboxRepository {
   bulkUpdate(
     command: BulkUpdateChaosInboxItemsCommand,
   ): Promise<StoredChaosInboxItemRecord[]>
-  markConverted(
-    command: MarkChaosInboxItemConvertedCommand,
-  ): Promise<StoredChaosInboxItemRecord>
+  convertToTasks(
+    command: ConvertChaosInboxItemsCommand,
+  ): Promise<ChaosInboxTaskConversionResult[]>
   remove(command: DeleteChaosInboxItemCommand): Promise<void>
   bulkRemove(command: BulkDeleteChaosInboxItemsCommand): Promise<void>
 }

@@ -5,7 +5,7 @@
 export const internalAppTables = Object.freeze([
   'cleaning_operations',
   'device_sessions',
-  'outbox',
+  'rate_limit_buckets',
   'schema_migrations',
   'self_care_command_ledger',
   'sync_cursors',

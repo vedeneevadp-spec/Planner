@@ -3,6 +3,7 @@ import { generateUuidV7 } from '@planner/contracts'
 import { TaskNotFoundError, TaskVersionConflictError } from './task.errors.js'
 import type {
   CloseTaskChainCommand,
+  CompleteRecurringTaskCommand,
   CopyTaskToPersonalCommand,
   CreateTaskCommand,
   CreateTaskNextStageCommand,
@@ -143,6 +144,66 @@ export class MemoryTaskRepository implements TaskRepository {
     })
 
     return Promise.resolve(task)
+  }
+
+  completeRecurring(
+    command: CompleteRecurringTaskCommand,
+  ): Promise<StoredTaskRecord> {
+    const task = this.getTaskOrThrow(
+      command.taskId,
+      command.context.workspaceId,
+    )
+    const alreadyCompleted = task.status === 'done'
+
+    if (!alreadyCompleted) {
+      this.assertVersion(task, command.expectedVersion)
+    }
+
+    const completedTask = alreadyCompleted
+      ? task
+      : applyTaskStatus(task, 'done')
+
+    if (!alreadyCompleted) {
+      this.tasks.set(completedTask.id, completedTask)
+      this.appendTaskEvent(command, {
+        eventType: 'task.status_changed',
+        payload: {
+          status: completedTask.status,
+          version: completedTask.version,
+        },
+        taskId: completedTask.id,
+      })
+      this.propagateLinkedTaskStatus(
+        { ...command, status: 'done' },
+        completedTask,
+      )
+    }
+
+    const existingNextOccurrence = [...this.tasks.values()].some(
+      (candidate) =>
+        candidate.workspaceId === command.context.workspaceId &&
+        candidate.deletedAt === null &&
+        candidate.plannedDate === command.nextPlannedDate &&
+        (candidate.recurrence?.seriesId === command.recurrenceSeriesId ||
+          candidate.routine?.seriesId === command.recurrenceSeriesId),
+    )
+
+    if (!existingNextOccurrence) {
+      const nextTask = createStoredTaskRecord(command.nextTaskInput, {
+        authorDisplayName: command.context.actorDisplayName,
+        authorUserId: command.context.actorUserId,
+        clientTimeZone: command.context.clientTimeZone,
+        workspaceId: command.context.workspaceId,
+      })
+      this.tasks.set(nextTask.id, nextTask)
+      this.appendTaskEvent(command, {
+        eventType: 'task.created',
+        payload: { task: nextTask },
+        taskId: nextTask.id,
+      })
+    }
+
+    return Promise.resolve(completedTask)
   }
 
   createNextStage(

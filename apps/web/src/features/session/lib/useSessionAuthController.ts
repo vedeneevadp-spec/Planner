@@ -70,6 +70,8 @@ import {
 } from './workspace-selection'
 
 const DEFERRED_REFRESH_RETRY_DELAYS_MS = [5_000, 15_000, 60_000, 5 * 60_000]
+const LOCAL_DATA_CLEANUP_FAILED_MESSAGE =
+  'Вы вышли из аккаунта, но локальные данные удалить не удалось. Закройте другие вкладки приложения, проверьте доступ к хранилищу и обновите страницу.'
 
 export function useSessionAuthController(): SessionAuthState {
   const isAuthEnabled = plannerApiConfig.authProvider === 'planner'
@@ -197,6 +199,14 @@ export function useSessionAuthController(): SessionAuthState {
       const refreshToken = isNativeSessionRuntime
         ? snapshot.refreshToken
         : undefined
+      const offlineCleanup = import('./session-offline-data-cleanup')
+        .then(({ clearSessionOfflineWorkspaceData }) =>
+          clearSessionOfflineWorkspaceData(actorUserId),
+        )
+        .catch((error: unknown) => ({
+          failures: [error],
+          workspaceIds: [],
+        }))
 
       clearRefreshTimer()
       deferredRefreshRetryCountRef.current = 0
@@ -209,6 +219,13 @@ export function useSessionAuthController(): SessionAuthState {
           actorUserId,
           apiBaseUrl: plannerApiConfig.apiBaseUrl,
         })
+
+        const { clearAndroidVoiceAssistantSessionContext } =
+          await import('@/features/voice-assistant')
+
+        await clearAndroidVoiceAssistantSessionContext().catch((error) => {
+          console.error('Failed to clear native voice session context.', error)
+        })
       }
 
       pendingSignOutNoticeRef.current = notice
@@ -220,6 +237,23 @@ export function useSessionAuthController(): SessionAuthState {
       clearLastActorUserId()
       await clearStoredAuthSession()
       dispatchAuthState({ type: 'auth.session_cleared' })
+      const offlineCleanupResult = await offlineCleanup
+
+      if (offlineCleanupResult.failures.length > 0) {
+        setAuthNotice(LOCAL_DATA_CLEANUP_FAILED_MESSAGE)
+        console.error(
+          'Failed to clear offline workspace data after session removal.',
+          offlineCleanupResult.failures,
+        )
+        recordClientEvent(
+          'auth_local_data_cleanup_failed',
+          {
+            failureCount: offlineCleanupResult.failures.length,
+            workspaceCount: offlineCleanupResult.workspaceIds.length,
+          },
+          { level: 'error' },
+        )
+      }
       recordClientEvent(
         'auth_session_cleared',
         {

@@ -28,11 +28,11 @@ Current guard status: no forbidden production matches.
 
 ## Safe Instant Scenarios
 
-These direct `Date` usages remain acceptable because they create, serialize, or compare absolute instants such as `createdAt`, `updatedAt`, deletion markers, tokens, audit, outbox, notification sends, cache expiry, or operational metrics.
+These direct `Date` usages remain acceptable because they create, serialize, or compare absolute instants such as `createdAt`, `updatedAt`, deletion markers, tokens, audit, notification sends, cache expiry, or operational metrics.
 
 - `apps/api/src/modules/tasks/*`, `habits/*`, `self-care/*`, `cleaning/*`, `daily-plans/*`, `life-spheres/*`, `task-templates/*`, `chaos-inbox/*`: repository metadata and mutation instants.
 - `apps/api/src/modules/session/*`, `auth/*`, `mcp-haotika/*`, `apps/web/src/features/session/*`: token/session expiry and invite/member audit instants.
-- `apps/api/src/modules/outbox/*`, `task-reminders/*`, `self-care-reminders/*`, `push-notifications/*`: processed/sent/registration instants.
+- `apps/api/src/modules/task-reminders/*`, `self-care-reminders/*`, `push-notifications/*`: delivery, expiry, retry, and registration instants.
 - `apps/web/src/features/*/offline-*store.ts`, `planner-records.ts`, `planner-mutations.ts`: offline sync mutation instants.
 - `apps/api/src/bootstrap/observability.ts`, `build-app.ts`, `apps/web/src/shared/lib/observability/client-events.ts`: operational timestamps.
 - `apps/api/src/modules/voice/voice.service.ts`: `Date.parse(security.issuedAt)` validates an issued-at instant, not a planner date.

@@ -12,7 +12,8 @@ Accepted
 - `apps/api` для backend modular monolith
 - `packages/contracts` для shared DTO и schema-контрактов
 - `db/migrations` для SQL-first схемы PostgreSQL
-- `task_events` + `outbox` для sync/integration trail без pure event sourcing
+- `task_events` для sync trail без pure event sourcing; неиспользуемый outbox
+  удалён миграцией `20260812_000093_remove_unused_outbox.sql`
 - Chaotika Auth проверяется на backend boundary; frontend не получает прямой
   write access к Postgres
 

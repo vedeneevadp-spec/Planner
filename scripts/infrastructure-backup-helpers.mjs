@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import {
+  copyFile,
   lstat,
   mkdir,
   readFile,
@@ -69,6 +70,62 @@ export async function collectFileInventory(rootDirectory) {
   files.sort((left, right) => left.path.localeCompare(right.path))
 
   return files
+}
+
+/**
+ * Copies only regular files and directories while deliberately normalizing
+ * directory permissions. The production asset tree uses setgid directories;
+ * preserving that bit would conflict with systemd RestrictSUIDSGID in the
+ * unprivileged backup service.
+ */
+export async function copyBackupAssetDirectory(
+  sourceDirectory,
+  destinationDirectory,
+) {
+  const sourceMetadata = await lstat(sourceDirectory)
+
+  if (sourceMetadata.isSymbolicLink() || !sourceMetadata.isDirectory()) {
+    throw new Error('Backup asset source must be a regular directory.')
+  }
+
+  await mkdir(destinationDirectory, { mode: 0o700 })
+  await copyBackupAssetEntries(
+    path.resolve(sourceDirectory),
+    path.resolve(destinationDirectory),
+    '',
+  )
+}
+
+async function copyBackupAssetEntries(sourceRoot, destinationRoot, relative) {
+  const sourceDirectory = path.join(sourceRoot, relative)
+  const entries = await readdir(sourceDirectory, { withFileTypes: true })
+
+  for (const entry of entries) {
+    const relativePath = path.join(relative, entry.name)
+    const sourcePath = path.join(sourceRoot, relativePath)
+    const destinationPath = path.join(destinationRoot, relativePath)
+    const portablePath = relativePath.split(path.sep).join('/')
+
+    if (entry.isSymbolicLink()) {
+      throw new Error(
+        `Backup asset snapshots cannot contain symbolic links: ${portablePath}`,
+      )
+    }
+
+    if (entry.isDirectory()) {
+      await mkdir(destinationPath, { mode: 0o700 })
+      await copyBackupAssetEntries(sourceRoot, destinationRoot, relativePath)
+      continue
+    }
+
+    if (!entry.isFile()) {
+      throw new Error(
+        `Backup asset snapshots contain an unsupported entry: ${portablePath}`,
+      )
+    }
+
+    await copyFile(sourcePath, destinationPath)
+  }
 }
 
 async function walkDirectory(rootDirectory, directory, files) {

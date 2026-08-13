@@ -8,12 +8,14 @@ import styles from './TodayPage.module.css'
 interface TodayPageLayoutProps {
   children: ReactNode
   openDraft: TaskComposerDraft | null
+  status?: ReactNode | undefined
   todayKey: string
 }
 
 export function TodayPageLayout({
   children,
   openDraft,
+  status,
   todayKey,
 }: TodayPageLayoutProps) {
   return (
@@ -24,6 +26,19 @@ export function TodayPageLayout({
         openDraft={openDraft}
       />
 
+      <div className={styles.taskScroll}>
+        <div className={styles.taskScrollInner}>
+          {status}
+          {children}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+export function TodayPageStateLayout({ children }: { children: ReactNode }) {
+  return (
+    <section className={`${pageStyles.page} ${styles.todayPage}`}>
       <div className={styles.taskScroll}>
         <div className={styles.taskScrollInner}>{children}</div>
       </div>

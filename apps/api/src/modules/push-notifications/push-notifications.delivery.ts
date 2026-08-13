@@ -25,6 +25,7 @@ const PUSH_NOTIFICATION_CHANNEL_ID = 'chaotika-general'
 const PUSH_NOTIFICATION_ICON = 'ic_stat_chaotika'
 const MULTICAST_BATCH_SIZE = 500
 const ACCESS_TOKEN_REFRESH_GRACE_MS = 60_000
+const DEFAULT_REQUEST_TIMEOUT_MS = 10_000
 const INVALID_FCM_ERROR_CODES = new Set(['INVALID_ARGUMENT', 'UNREGISTERED'])
 
 export class FirebasePushNotificationSender implements PushNotificationSender {
@@ -35,7 +36,12 @@ export class FirebasePushNotificationSender implements PushNotificationSender {
   constructor(
     private readonly config: FirebasePushConfig,
     private readonly fetchFn: FetchFn = fetch,
+    private readonly requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   ) {
+    if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+      throw new Error('Firebase request timeout must be a positive number.')
+    }
+
     this.signingKey = importPKCS8(config.privateKey, 'RS256')
   }
 
@@ -94,7 +100,7 @@ export class FirebasePushNotificationSender implements PushNotificationSender {
     didRetryAuth = false,
   ): Promise<SingleTokenSendResult> {
     const accessToken = await this.getAccessToken()
-    const response = await this.fetchFn(this.getFcmSendUrl(), {
+    const response = await this.fetchWithTimeout(this.getFcmSendUrl(), {
       body: JSON.stringify(buildFcmSendRequestBody(token, message)),
       headers: {
         authorization: `Bearer ${accessToken}`,
@@ -144,7 +150,7 @@ export class FirebasePushNotificationSender implements PushNotificationSender {
 
   private async requestAccessToken(): Promise<string> {
     const assertion = await this.createAccessTokenAssertion()
-    const response = await this.fetchFn(FCM_OAUTH_TOKEN_URL, {
+    const response = await this.fetchWithTimeout(FCM_OAUTH_TOKEN_URL, {
       body: new URLSearchParams({
         assertion,
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
@@ -191,6 +197,35 @@ export class FirebasePushNotificationSender implements PushNotificationSender {
     return `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(
       this.config.projectId,
     )}/messages:send`
+  }
+
+  private async fetchWithTimeout(
+    input: Parameters<FetchFn>[0],
+    init: Parameters<FetchFn>[1],
+  ): Promise<Response> {
+    const controller = new AbortController()
+    let timeout: NodeJS.Timeout | null = null
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error('Firebase Cloud Messaging request timed out.'))
+        controller.abort()
+      }, this.requestTimeoutMs)
+      timeout.unref?.()
+    })
+
+    try {
+      return await Promise.race([
+        this.fetchFn(input, {
+          ...init,
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ])
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
+    }
   }
 }
 

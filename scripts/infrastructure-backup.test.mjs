@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  stat,
   utimes,
   writeFile,
 } from 'node:fs/promises'
@@ -15,6 +16,7 @@ import test from 'node:test'
 
 import {
   collectFileInventory,
+  copyBackupAssetDirectory,
   createDatabaseUrl,
   createDrillDatabaseName,
   createInfrastructureBackupId,
@@ -186,6 +188,36 @@ test('collects a deterministic asset inventory and rejects symbolic links', asyn
     await assert.rejects(
       () => collectFileInventory(root),
       /cannot contain symbolic links/,
+    )
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+})
+
+test('copies asset snapshots without preserving setgid directory metadata', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'planner-backup-copy-'))
+  const source = path.join(root, 'source')
+  const destination = path.join(root, 'destination')
+
+  try {
+    await mkdir(path.join(source, 'profiles'), { recursive: true })
+    await writeFile(path.join(source, 'icon.png'), 'icon')
+    await writeFile(path.join(source, 'profiles', 'avatar.webp'), 'avatar')
+
+    await copyBackupAssetDirectory(source, destination)
+
+    assert.equal(
+      await readFile(path.join(destination, 'icon.png'), 'utf8'),
+      'icon',
+    )
+    assert.equal(
+      await readFile(path.join(destination, 'profiles', 'avatar.webp'), 'utf8'),
+      'avatar',
+    )
+    assert.equal((await stat(destination)).mode & 0o7777, 0o700)
+    assert.equal(
+      (await stat(path.join(destination, 'profiles'))).mode & 0o7777,
+      0o700,
     )
   } finally {
     await rm(root, { force: true, recursive: true })

@@ -43,6 +43,14 @@ const nativePushMocks = vi.hoisted(() => ({
   unregisterStoredNativePushDevice: vi.fn(),
 }))
 
+const nativeVoiceMocks = vi.hoisted(() => ({
+  clearAndroidVoiceAssistantSessionContext: vi.fn(),
+}))
+
+const sessionOfflineDataMocks = vi.hoisted(() => ({
+  clearSessionOfflineWorkspaceData: vi.fn(),
+}))
+
 vi.mock('@/shared/config/planner-api', () => ({
   plannerApiConfig: {
     apiBaseUrl: 'https://api.chaotika.test',
@@ -80,6 +88,11 @@ vi.mock('../lib/native-push-notifications', () => ({
     nativePushMocks.unregisterStoredNativePushDevice,
 }))
 
+vi.mock('@/features/voice-assistant', () => ({
+  clearAndroidVoiceAssistantSessionContext:
+    nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext,
+}))
+
 vi.mock('../lib/native-session-storage', () => ({
   addNativeAppStateChangeListener:
     nativeSessionMocks.addNativeAppStateChangeListener,
@@ -87,6 +100,11 @@ vi.mock('../lib/native-session-storage', () => ({
   getNativeAppIsActive: nativeSessionMocks.getNativeAppIsActive,
   isNativeSessionPersistenceRuntime:
     nativeSessionMocks.isNativeSessionPersistenceRuntime,
+}))
+
+vi.mock('../lib/session-offline-data-cleanup', () => ({
+  clearSessionOfflineWorkspaceData:
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
 }))
 
 import { useSessionAuth } from '../lib/useSessionAuth'
@@ -139,6 +157,8 @@ describe('SessionProvider', () => {
 
     browserDeviceMocks.getBrowserAuthDeviceId.mockReset()
     nativePushMocks.unregisterStoredNativePushDevice.mockReset()
+    nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext.mockReset()
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockReset()
     nativeSessionMocks.addNativeAppStateChangeListener.mockReset()
     nativeSessionMocks.getNativeAuthDeviceId.mockReset()
     nativeSessionMocks.getNativeAppIsActive.mockReset()
@@ -162,6 +182,13 @@ describe('SessionProvider', () => {
     nativePushMocks.unregisterStoredNativePushDevice.mockResolvedValue(
       undefined,
     )
+    nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext.mockResolvedValue(
+      undefined,
+    )
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockResolvedValue({
+      failures: [],
+      workspaceIds: [],
+    })
     nativeSessionMocks.getNativeAuthDeviceId.mockResolvedValue(
       'native-device-1',
     )
@@ -482,6 +509,37 @@ describe('SessionProvider', () => {
     expect(authApiMocks.refreshAuthSession).not.toHaveBeenCalled()
   })
 
+  it('clears the native voice session context when the user signs out', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createUsableNativeStoredSession(),
+    )
+    authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
+
+    render(
+      <SessionProvider>
+        <SignOutProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Sign out' }),
+      ).not.toBeDisabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => {
+      expect(
+        nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext,
+      ).toHaveBeenCalledTimes(1)
+      expect(authStorageMocks.clearStoredAuthSession).toHaveBeenCalledTimes(1)
+      expect(
+        sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
+      ).toHaveBeenCalledWith('user-1')
+    })
+  })
+
   it('keeps the current native account when device storage is temporarily empty on resume', async () => {
     const warnSpy = vi
       .spyOn(console, 'warn')
@@ -787,6 +845,22 @@ function UpdatePasswordProbe() {
       }}
     >
       Update password
+    </button>
+  )
+}
+
+function SignOutProbe() {
+  const auth = useSessionAuth()
+
+  return (
+    <button
+      disabled={!auth.accessToken}
+      type="button"
+      onClick={() => {
+        void auth.signOut()
+      }}
+    >
+      Sign out
     </button>
   )
 }

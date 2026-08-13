@@ -1,5 +1,6 @@
 export type ClientDiagnosticEventName =
   | 'auth_device_session_kept'
+  | 'auth_local_data_cleanup_failed'
   | 'auth_recovery_decision'
   | 'auth_refresh_failed'
   | 'auth_request_failed'

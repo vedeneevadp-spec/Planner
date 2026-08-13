@@ -1,10 +1,11 @@
-import { cp, mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
 import { runInfrastructureBackupCommand } from './infrastructure-backup-command.mjs'
 import {
   collectFileInventory,
+  copyBackupAssetDirectory,
   createInfrastructureBackupId,
   createInfrastructureBackupManifest,
   createPgToolConnectionString,
@@ -42,6 +43,7 @@ try {
 
   await runInfrastructureBackupCommand('pg_dump', [
     '--format=custom',
+    '--enable-row-security',
     '--no-owner',
     '--no-privileges',
     '--file',
@@ -53,12 +55,7 @@ try {
   let assetSourcePresent = true
 
   try {
-    await cp(assetSourceDirectory, assetDirectory, {
-      errorOnExist: true,
-      force: false,
-      recursive: true,
-      verbatimSymlinks: true,
-    })
+    await copyBackupAssetDirectory(assetSourceDirectory, assetDirectory)
   } catch (error) {
     if (!isFileNotFoundError(error)) {
       throw error

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readClientEvents } from '@/shared/lib/observability'
 
 const capacitorMocks = vi.hoisted(() => ({
+  durableGet: vi.fn(),
   durableRemove: vi.fn(),
   durableSet: vi.fn(),
   get: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock('@capacitor/core', () => ({
     isNativePlatform: capacitorMocks.isNativePlatform,
   },
   registerPlugin: () => ({
+    get: capacitorMocks.durableGet,
     remove: capacitorMocks.durableRemove,
     set: capacitorMocks.durableSet,
   }),

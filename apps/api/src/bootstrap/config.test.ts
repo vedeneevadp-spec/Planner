@@ -10,6 +10,10 @@ const VALID_PRODUCTION_ENV = {
   AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
   DATABASE_URL: 'postgres://planner:planner@127.0.0.1:54329/planner',
   NODE_ENV: 'production',
+  USER_BACKUP_RESTORE_HELPER_SECRET:
+    'planner-test-restore-helper-secret-32-chars',
+  USER_BACKUP_RESTORE_HELPER_URL:
+    'http://127.0.0.1:3012/internal/user-backup/restore',
 } satisfies NodeJS.ProcessEnv
 
 void describe('createApiConfig', () => {
@@ -224,6 +228,32 @@ void describe('createApiConfig', () => {
           API_DB_RLS_MODE: 'maybe',
         }),
       /Invalid API_DB_RLS_MODE/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          MIGRATE_DATABASE_URL:
+            'postgres://owner:secret@127.0.0.1:5432/planner',
+        }),
+      /MIGRATE_DATABASE_URL must not be exposed/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          USER_BACKUP_RESTORE_DATABASE_URL:
+            'postgres://restore:secret@127.0.0.1:5432/planner',
+        }),
+      /USER_BACKUP_RESTORE_DATABASE_URL must not be exposed/,
+    )
+    assert.throws(
+      () =>
+        createApiConfig({
+          ...VALID_PRODUCTION_ENV,
+          USER_BACKUP_RESTORE_HELPER_URL: undefined,
+        }),
+      /must be configured together/,
     )
   })
 

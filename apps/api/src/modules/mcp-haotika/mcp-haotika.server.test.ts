@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test'
 
 import Fastify, { type FastifyInstance } from 'fastify'
 
+import { MemoryRateLimiter } from '../../bootstrap/rate-limit.js'
 import type { AiContextService } from '../ai-context/index.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
 import { MemoryMcpAuditLogRepository } from './mcp-haotika.audit.js'
@@ -120,6 +121,7 @@ function createMcpTestApp(options: {
       new MemoryMcpOAuthTokenRepository(),
       config,
     ),
+    rateLimiter: new MemoryRateLimiter(),
     sessionService,
   })
 

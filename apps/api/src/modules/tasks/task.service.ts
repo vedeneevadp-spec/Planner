@@ -1,6 +1,7 @@
 import {
   addDateDays,
   addDateMonthsClamped,
+  generateUuidV7,
   getDateDistance,
   getDateKeyInTimeZone,
   getIsoWeekday as getIsoWeekdayForDateOnly,
@@ -11,6 +12,7 @@ import { HttpError } from '../../bootstrap/http-error.js'
 import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
 import type {
   CloseTaskChainCommand,
+  CompleteRecurringTaskCommand,
   CreateTaskCommand,
   CreateTaskNextStageCommand,
   DeleteTaskCommand,
@@ -33,7 +35,10 @@ import {
 } from './task.shared.js'
 
 export class TaskService {
-  constructor(private readonly repository: TaskRepository) {}
+  constructor(
+    private readonly repository: TaskRepository,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   listTasks(context: TaskReadContext, filters?: TaskListFilters) {
     return this.repository.listByWorkspace(context, filters)
@@ -188,6 +193,33 @@ export class TaskService {
       assertCanCompleteConfirmedSharedTask(context, task, status)
 
       if (
+        status === 'done' &&
+        (isActiveTaskStatus(task.status) || task.status === 'done')
+      ) {
+        const nextOccurrence = buildNextRecurringOccurrence(
+          context,
+          task,
+          this.now(),
+        )
+
+        if (nextOccurrence) {
+          const recurringCommand: CompleteRecurringTaskCommand = {
+            context,
+            nextPlannedDate: nextOccurrence.plannedDate,
+            nextTaskInput: nextOccurrence.input,
+            recurrenceSeriesId: nextOccurrence.seriesId,
+            taskId,
+          }
+
+          if (expectedVersion !== undefined) {
+            recurringCommand.expectedVersion = expectedVersion
+          }
+
+          return this.repository.completeRecurring(recurringCommand)
+        }
+      }
+
+      if (
         expectedVersion !== undefined &&
         task.version !== expectedVersion &&
         task.status === status
@@ -205,9 +237,6 @@ export class TaskService {
         command.expectedVersion = expectedVersion
       }
 
-      let shouldCreateNextRecurringOccurrence =
-        isActiveTaskStatus(task.status) && status === 'done'
-
       return Promise.resolve()
         .then(() => this.repository.updateStatus(command))
         .catch(async (error: unknown) => {
@@ -215,20 +244,11 @@ export class TaskService {
             const currentTask = await this.repository.findById(context, taskId)
 
             if (currentTask?.status === status) {
-              shouldCreateNextRecurringOccurrence = false
-
               return currentTask
             }
           }
 
           throw error
-        })
-        .then(async (updatedTask) => {
-          if (shouldCreateNextRecurringOccurrence) {
-            await this.createNextRecurringOccurrence(context, updatedTask)
-          }
-
-          return updatedTask
         })
     })
   }
@@ -421,76 +441,66 @@ export class TaskService {
       return this.repository.remove(command)
     })
   }
+}
 
-  private async createNextRecurringOccurrence(
-    context: TaskWriteContext,
-    completedTask: StoredTaskRecord,
-  ): Promise<void> {
-    const recurrence = getTaskRecurrencePattern(
-      completedTask,
-      context.clientTimeZone,
-    )
+function buildNextRecurringOccurrence(
+  context: TaskWriteContext,
+  task: StoredTaskRecord,
+  now: Date,
+): {
+  input: CompleteRecurringTaskCommand['nextTaskInput']
+  plannedDate: string
+  seriesId: string
+} | null {
+  const recurrence = getTaskRecurrencePattern(task, context.clientTimeZone, now)
 
-    if (!recurrence) {
-      return
-    }
+  if (!recurrence) {
+    return null
+  }
 
-    const nextPlannedDate = getNextRecurringDate(
-      getRecurringReferenceDate(completedTask, context.clientTimeZone),
-      recurrence,
-    )
+  const plannedDate = getNextRecurringDate(
+    getRecurringReferenceDate(task, context.clientTimeZone, now),
+    recurrence,
+  )
 
-    if (!nextPlannedDate) {
-      return
-    }
+  if (!plannedDate) {
+    return null
+  }
 
-    const workspaceTasks = await this.repository.listByWorkspace(context)
-    const hasExistingNextOccurrence = workspaceTasks.some(
-      (task) =>
-        task.id !== completedTask.id &&
-        isActiveTaskStatus(task.status) &&
-        task.plannedDate === nextPlannedDate &&
-        hasRecurringSeries(task, recurrence.seriesId),
-    )
-
-    if (hasExistingNextOccurrence) {
-      return
-    }
-
-    await this.repository.create({
-      context,
-      input: {
-        assigneeUserId: completedTask.assigneeUserId,
-        dueDate:
-          completedTask.dueDate === completedTask.plannedDate
-            ? nextPlannedDate
-            : null,
-        icon: completedTask.icon,
-        importance: completedTask.importance,
-        note: completedTask.note,
-        plannedDate: nextPlannedDate,
-        plannedEndTime: completedTask.plannedEndTime,
-        plannedStartTime: completedTask.plannedStartTime,
-        project: completedTask.project,
-        projectId: completedTask.projectId,
-        recurrence: completedTask.recurrence,
-        remindBeforeStart: completedTask.remindBeforeStart === true,
-        reminderOffsets: completedTask.reminderOffsets,
-        reminderTimeZone: context.clientTimeZone,
-        resource: completedTask.resource,
-        requiresConfirmation: completedTask.requiresConfirmation,
-        routine: completedTask.routine,
-        sphereId: completedTask.sphereId,
-        title: completedTask.title,
-        urgency: completedTask.urgency,
-      },
-    })
+  return {
+    input: {
+      assigneeUserId: task.assigneeUserId,
+      dueDate: task.dueDate === task.plannedDate ? plannedDate : null,
+      icon: task.icon,
+      id: generateUuidV7(),
+      importance: task.importance,
+      necessity: task.necessity,
+      note: task.note,
+      plannedDate,
+      plannedEndTime: task.plannedEndTime,
+      plannedStartTime: task.plannedStartTime,
+      project: task.project,
+      projectId: task.projectId,
+      recurrence: task.recurrence,
+      remindBeforeStart: task.remindBeforeStart === true,
+      reminderOffsets: task.reminderOffsets,
+      reminderTimeZone: context.clientTimeZone,
+      resource: task.resource,
+      requiresConfirmation: task.requiresConfirmation,
+      routine: task.routine,
+      sphereId: task.sphereId,
+      title: task.title,
+      urgency: task.urgency,
+    },
+    plannedDate,
+    seriesId: recurrence.seriesId,
   }
 }
 
 function getTaskRecurrencePattern(
   task: StoredTaskRecord,
   timeZone?: string,
+  now = new Date(),
 ): NonNullable<StoredTaskRecord['recurrence']> | null {
   if (task.recurrence) {
     return task.recurrence.isActive ? task.recurrence : null
@@ -507,24 +517,19 @@ function getTaskRecurrencePattern(
     interval: 1,
     isActive: true,
     seriesId: task.routine.seriesId,
-    startDate: task.plannedDate ?? getRecurringReferenceDate(task, timeZone),
+    startDate:
+      task.plannedDate ?? getRecurringReferenceDate(task, timeZone, now),
   }
-}
-
-function hasRecurringSeries(task: StoredTaskRecord, seriesId: string): boolean {
-  return (
-    task.recurrence?.seriesId === seriesId ||
-    task.routine?.seriesId === seriesId
-  )
 }
 
 function getRecurringReferenceDate(
   task: StoredTaskRecord,
   timeZone?: string,
+  now = new Date(),
 ): string {
   const completedDate = task.completedAt
     ? getDateKeyInTimeZone(task.completedAt, timeZone ?? 'UTC')
-    : getDateKeyInTimeZone(new Date(), timeZone ?? 'UTC')
+    : getDateKeyInTimeZone(now, timeZone ?? 'UTC')
 
   if (!task.plannedDate) {
     return completedDate

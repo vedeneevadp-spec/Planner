@@ -1,14 +1,19 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from '@tanstack/react-query'
 import {
   lazy,
   type PointerEvent,
   type PropsWithChildren,
   Suspense,
+  useEffect,
   useRef,
   useState,
 } from 'react'
 
-import { usePlannerTimeZone } from '@/features/session'
+import { usePlannerTimeZone, useSessionAuth } from '@/features/session'
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
 import type { PlannerState } from '../model/planner.types'
@@ -40,8 +45,31 @@ export function PlannerQueryProvider({ children }: PropsWithChildren) {
   )
 
   return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <PlannerQuerySessionBoundary />
+      {children}
+    </QueryClientProvider>
   )
+}
+
+function PlannerQuerySessionBoundary() {
+  const queryClient = useQueryClient()
+  const { lifecycleStatus, userId } = useSessionAuth()
+  const previousUserIdRef = useRef(userId)
+
+  useEffect(() => {
+    const previousUserId = previousUserIdRef.current
+    previousUserIdRef.current = userId
+
+    if (
+      lifecycleStatus === 'signed_out' ||
+      (previousUserId !== null && previousUserId !== userId)
+    ) {
+      queryClient.clear()
+    }
+  }, [lifecycleStatus, queryClient, userId])
+
+  return null
 }
 
 export function PlannerProvider({ children }: PropsWithChildren) {

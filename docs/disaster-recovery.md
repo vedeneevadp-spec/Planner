@@ -88,16 +88,23 @@ Prerequisites на VPS:
 - изолированный PostgreSQL cluster/environment для drill.
 
 1. Создать `/etc/planner/backup.env` по
-   `deploy/backup.env.example`, выставить owner `root:root` и mode `0600`.
-2. Создать `/etc/planner/restic-password` с owner `root:planner` и mode `0640`,
-   чтобы systemd jobs от пользователя `planner` могли прочитать пароль.
+   `deploy/backup.env.example`, обязательно задать `BACKUP_DATABASE_URL` для
+   Timeweb login `planner_backup` только с привилегией `SELECT`, выставить owner
+   `root:root` и mode `0600`. Migration `000096` добавляет отдельную RLS policy,
+   запрещает backup login выполнение app-функций, а deploy сравнивает строки
+   каждой таблицы с owner connection на одном PostgreSQL snapshot.
+2. Создать `/etc/planner/restic-password`; deploy назначит owner
+   `root:planner-backup` и mode `0640`, чтобы пароль мог прочитать только
+   backup-user.
 3. Инициализировать repository один раз: `restic init`.
 4. В `/etc/planner/planner.env` настроить persistent
    `API_ICON_ASSET_DIR=/var/lib/planner/icon-assets`,
-   `USER_BACKUP_RESTORE_DATABASE_URL`, `BACKUP_AUTOMATION_ENABLED=1` и
+   `USER_BACKUP_RESTORE_DATABASE_URL`, `USER_BACKUP_RESTORE_HELPER_URL`,
+   `USER_BACKUP_RESTORE_HELPER_SECRET`, `BACKUP_AUTOMATION_ENABLED=1` и
    `RESTORE_DRILL_AUTOMATION_ENABLED=1`.
 5. Выполнить обычный `npm run deploy:prod`. Deploy проверит конфигурацию,
-   подключение и права restore role, установит units и включит timers.
+   подключение и права restore role, запустит `backup:database:check` для
+   read-only backup login, установит units и включит timers.
 6. Запустить первый backup и drill вручную.
 
 Не загружайте secrets в git и не передавайте connection strings аргументами
@@ -178,7 +185,10 @@ Failure webhook или email является сигналом доставки,
 2. Остановить API и maintenance worker:
 
 ```bash
-sudo systemctl stop planner-api planner-task-reminders
+sudo systemctl stop \
+  planner-api \
+  planner-user-backup-restore \
+  planner-task-reminders
 ```
 
 3. Сохранить текущее поврежденное состояние отдельно, если оно читается.
@@ -213,7 +223,9 @@ MIGRATE_DATABASE_URL="$RECOVERY_DATABASE_URL" npm run db:migrate
 sudo rsync -a --delete \
   /srv/planner-recovery/<path-to-backup-set>/assets/ \
   /var/lib/planner/icon-assets/
-sudo chown -R planner:planner /var/lib/planner/icon-assets
+sudo chown -R root:planner-assets /var/lib/planner/icon-assets
+sudo find /var/lib/planner/icon-assets -type d -exec chmod 2770 {} +
+sudo find /var/lib/planner/icon-assets -type f -exec chmod 0660 {} +
 ```
 
 9. Обновить production DB URLs на новую DB. Отдельно обновить runtime,

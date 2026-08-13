@@ -1,0 +1,41 @@
+[Unit]
+Description=Planner constrained user backup restore helper
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=planner-restore
+Group=planner-restore
+SupplementaryGroups=planner-assets
+WorkingDirectory=/opt/planner/current
+EnvironmentFile=/etc/planner/restore-helper.env
+ExecStart=/usr/bin/node /opt/planner/current/apps/api/dist/user-backup-restore.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+UMask=0027
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/planner/icon-assets
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

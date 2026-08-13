@@ -1,4 +1,7 @@
-import type { PushNotificationsService } from '../push-notifications/index.js'
+import {
+  classifyReminderPushDelivery,
+  type PushNotificationsService,
+} from '../push-notifications/index.js'
 import type {
   DueSelfCareReminder,
   SelfCareReminderProcessResult,
@@ -17,6 +20,7 @@ export class SelfCareRemindersService {
     const reminders = await this.repository.claimDueReminders(limit)
     let deliveredCount = 0
     let releasedCount = 0
+    let undeliverableCount = 0
 
     for (const reminder of reminders) {
       try {
@@ -37,16 +41,33 @@ export class SelfCareRemindersService {
           },
         )
 
-        if (shouldRetryReminder(result)) {
-          await this.repository.releaseClaim(reminder.id)
-          releasedCount += 1
+        const outcome = classifyReminderPushDelivery(result)
+
+        if (outcome === 'delivered') {
+          await this.repository.markDelivered(reminder.id)
+          deliveredCount += 1
           continue
         }
 
-        await this.repository.markDelivered(reminder.id)
-        deliveredCount += 1
-      } catch {
-        await this.repository.releaseClaim(reminder.id)
+        if (outcome === 'invalid_recipient' || outcome === 'no_recipient') {
+          await this.repository.markUndeliverable(reminder.id, outcome)
+          undeliverableCount += 1
+          continue
+        }
+
+        if (outcome === 'retryable') {
+          await this.repository.releaseClaim(
+            reminder.id,
+            'push_delivery_retryable',
+          )
+          releasedCount += 1
+          continue
+        }
+      } catch (error) {
+        await this.repository.releaseClaim(
+          reminder.id,
+          formatDeliveryError(error),
+        )
         releasedCount += 1
       }
     }
@@ -55,8 +76,17 @@ export class SelfCareRemindersService {
       claimedCount: reminders.length,
       deliveredCount,
       releasedCount,
+      undeliverableCount,
     }
   }
+}
+
+function formatDeliveryError(error: unknown): string {
+  if (error instanceof Error) {
+    return `${error.name}: ${error.message}`
+  }
+
+  return 'Unknown reminder delivery error.'
 }
 
 function buildSelfCareReminderBody(reminder: DueSelfCareReminder): string {
@@ -100,16 +130,4 @@ function pluralRu(
   }
 
   return many
-}
-
-function shouldRetryReminder(result: {
-  deliveredCount: number
-  failedCount: number
-  invalidTokenCount: number
-}): boolean {
-  return (
-    result.deliveredCount === 0 &&
-    result.failedCount > 0 &&
-    result.invalidTokenCount === 0
-  )
 }

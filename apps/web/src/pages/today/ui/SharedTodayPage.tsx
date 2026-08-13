@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { type ReactNode, useMemo } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { useUploadedIconAssets } from '@/features/emoji-library'
@@ -18,7 +18,7 @@ import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
 
-export function SharedTodayPage() {
+export function SharedTodayPage({ status }: { status?: ReactNode }) {
   const { data: session } = usePlannerSession()
   const [searchParams] = useSearchParams()
   const {
@@ -55,7 +55,11 @@ export function SharedTodayPage() {
   )
 
   return (
-    <TodayPageLayout openDraft={widgetTaskComposerDraft} todayKey={todayKey}>
+    <TodayPageLayout
+      openDraft={widgetTaskComposerDraft}
+      status={status}
+      todayKey={todayKey}
+    >
       <TodayTaskSections
         actions={{
           copyTaskToPersonal,

@@ -19,6 +19,7 @@ interface DueTaskReminderRow {
 
 const CLAIM_TIMEOUT_INTERVAL = "interval '5 minutes'"
 const STALE_GRACE_INTERVAL = "interval '5 minutes'"
+const MAX_DELIVERY_ATTEMPTS = 8
 
 export class PostgresTaskReminderRepository implements TaskReminderRepository {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
@@ -28,8 +29,11 @@ export class PostgresTaskReminderRepository implements TaskReminderRepository {
       update app.task_reminders as reminder
       set
         claimed_at = null,
-        sent_at = now()
+        expired_at = now(),
+        last_error = 'delivery_window_expired'
       where reminder.sent_at is null
+        and reminder.expired_at is null
+        and reminder.failed_at is null
         and reminder.canceled_at is null
         and ${reminderStartAtSql('reminder')} <= now() - ${sql.raw(STALE_GRACE_INTERVAL)}
     `.execute(this.db)
@@ -50,6 +54,8 @@ export class PostgresTaskReminderRepository implements TaskReminderRepository {
           on task.id = reminder.task_id
           and task.workspace_id = reminder.workspace_id
         where reminder.sent_at is null
+          and reminder.expired_at is null
+          and reminder.failed_at is null
           and reminder.canceled_at is null
           and (
             reminder.claimed_at is null
@@ -82,20 +88,48 @@ export class PostgresTaskReminderRepository implements TaskReminderRepository {
       .updateTable('app.task_reminders')
       .set({
         claimed_at: null,
+        last_error: null,
         sent_at: new Date().toISOString(),
       })
       .where('id', '=', reminderId)
+      .where('expired_at', 'is', null)
+      .where('failed_at', 'is', null)
+      .where('canceled_at', 'is', null)
       .execute()
   }
 
-  async releaseClaim(reminderId: string): Promise<void> {
-    await this.db
-      .updateTable('app.task_reminders')
-      .set({
-        claimed_at: null,
-      })
-      .where('id', '=', reminderId)
-      .execute()
+  async markUndeliverable(reminderId: string, reason: string): Promise<void> {
+    await sql`
+      update app.task_reminders
+      set
+        attempt_count = attempt_count + 1,
+        claimed_at = null,
+        failed_at = now(),
+        last_error = left(${reason}, 1000)
+      where id = cast(${reminderId} as uuid)
+        and sent_at is null
+        and expired_at is null
+        and failed_at is null
+        and canceled_at is null
+    `.execute(this.db)
+  }
+
+  async releaseClaim(reminderId: string, error: string): Promise<void> {
+    await sql`
+      update app.task_reminders
+      set
+        attempt_count = attempt_count + 1,
+        claimed_at = null,
+        failed_at = case
+          when attempt_count + 1 >= ${MAX_DELIVERY_ATTEMPTS} then now()
+          else failed_at
+        end,
+        last_error = left(${error}, 1000)
+      where id = cast(${reminderId} as uuid)
+        and sent_at is null
+        and expired_at is null
+        and canceled_at is null
+    `.execute(this.db)
   }
 }
 

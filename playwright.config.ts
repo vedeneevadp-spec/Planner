@@ -14,6 +14,7 @@ export default defineConfig({
     timeout: 10_000,
   },
   fullyParallel: false,
+  globalSetup: './tests/e2e/global-setup.ts',
   retries: process.env.CI ? 1 : 0,
   testDir: './tests/e2e',
   timeout: 60_000,
@@ -23,7 +24,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'npm run -w apps/api start',
+      command: 'npm run -w apps/api start:source',
       env: {
         API_AUTH_MODE: 'jwt',
         API_CORS_ORIGIN: webBaseUrl,
@@ -34,6 +35,10 @@ export default defineConfig({
         AUTH_JWT_SECRET: 'planner-e2e-jwt-secret-with-at-least-32-chars',
         DATABASE_URL: databaseUrl,
         NODE_ENV: 'production',
+        USER_BACKUP_RESTORE_HELPER_SECRET:
+          'planner-e2e-restore-helper-secret-32-chars',
+        USER_BACKUP_RESTORE_HELPER_URL:
+          'http://127.0.0.1:3012/internal/user-backup/restore',
       },
       reuseExistingServer,
       timeout: 30_000,
