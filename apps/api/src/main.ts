@@ -125,6 +125,9 @@ export function createApiKernel(
     config.storageDriver === 'postgres'
       ? createDatabaseConnection(createDatabaseConfig(env))
       : null
+  const rateLimiter = database
+    ? new PostgresRateLimiter(database.db)
+    : new MemoryRateLimiter()
   const backupRestoreExecutor = config.userBackupRestoreHelper
     ? new HttpUserBackupRestoreClient(config.userBackupRestoreHelper)
     : null
@@ -161,14 +164,19 @@ export function createApiKernel(
   const sessionRepository = database
     ? new PostgresSessionRepository(database.db)
     : new MemorySessionRepository()
-  const authService =
+  const authRepository =
     database && config.plannerAuth
+      ? new PostgresAuthRepository(database.db)
+      : null
+  const authService =
+    authRepository && config.plannerAuth
       ? new AuthService(
-          new PostgresAuthRepository(database.db),
+          authRepository,
           config.plannerAuth.smtp
             ? new SmtpAuthEmailSender(config.plannerAuth)
             : new NoopAuthEmailSender(config.appEnv),
           config.plannerAuth,
+          rateLimiter,
         )
       : undefined
   const userBackupService = database
@@ -240,7 +248,7 @@ export function createApiKernel(
   const backgroundJobs: Array<{ stop: () => Promise<void> }> = []
   const requestAuthenticator =
     config.authMode === 'jwt' && config.jwtAuth
-      ? new JwtRequestAuthenticator(config.jwtAuth)
+      ? new JwtRequestAuthenticator(config.jwtAuth, authRepository ?? undefined)
       : new NoopRequestAuthenticator()
   const app = buildApiApp({
     aiContextService,
@@ -256,9 +264,7 @@ export function createApiKernel(
     mcpAuditRepository,
     mcpOAuthService,
     pushNotificationsService,
-    rateLimiter: database
-      ? new PostgresRateLimiter(database.db)
-      : new MemoryRateLimiter(),
+    rateLimiter,
     requestAuthenticator,
     selfCareService,
     sessionService,

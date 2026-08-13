@@ -676,6 +676,45 @@ void describe('Postgres auth runtime functions', () => {
     }
   })
 
+  void test('invalidates access sessions as soon as their refresh family is revoked', async () => {
+    const fixture = createFixture()
+
+    try {
+      await seedRefreshFixture(fixture)
+
+      const activeResult = await client.query<{ active: boolean }>(
+        `
+          select app.auth_is_session_active($1::uuid, $2::uuid) as active
+        `,
+        [fixture.userId, fixture.sessionId],
+      )
+
+      assert.equal(activeResult.rows[0]?.active, true)
+
+      await client.query(`select app.auth_revoke_refresh_token($1)`, [
+        `${fixture.prefix}-active-hash`,
+      ])
+
+      const revokedResult = await client.query<{ active: boolean }>(
+        `
+          select app.auth_is_session_active($1::uuid, $2::uuid) as active
+        `,
+        [fixture.userId, fixture.sessionId],
+      )
+      const wrongUserResult = await client.query<{ active: boolean }>(
+        `
+          select app.auth_is_session_active($1::uuid, $2::uuid) as active
+        `,
+        [randomUUID(), fixture.sessionId],
+      )
+
+      assert.equal(revokedResult.rows[0]?.active, false)
+      assert.equal(wrongUserResult.rows[0]?.active, false)
+    } finally {
+      await cleanupRefreshFixture(fixture)
+    }
+  })
+
   void test('keeps auth_rotate_refresh_token signature and local naming stable', async () => {
     const functionMetadata = await client.query<{
       args: string

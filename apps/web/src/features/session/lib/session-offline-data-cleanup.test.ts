@@ -97,6 +97,21 @@ describe('clearSessionOfflineWorkspaceData', () => {
     )
   })
 
+  it('captures workspace ids before loading the asynchronous cleanup stores', async () => {
+    const cleanup = clearSessionOfflineWorkspaceData('user-1')
+
+    mocks.getSelectedWorkspaceId.mockReturnValue(null)
+    mocks.getCachedSession.mockReturnValue(null)
+
+    const result = await cleanup
+
+    expect(result.workspaceIds).toEqual([
+      'workspace-current',
+      'workspace-other',
+      'workspace-selected',
+    ])
+  })
+
   it('continues all purges and reports failures without crossing account scope', async () => {
     const cleanupFailure = new Error('IndexedDB is blocked')
     mocks.clearPlanner.mockRejectedValueOnce(cleanupFailure)

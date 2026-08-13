@@ -61,6 +61,12 @@ void describe('createApiConfig', () => {
     )
   })
 
+  void it('defaults locally issued access tokens to fifteen minutes', () => {
+    const config = createApiConfig(VALID_PRODUCTION_ENV)
+
+    assert.equal(config.plannerAuth?.accessTokenTtlSeconds, 900)
+  })
+
   void it('builds Firebase push config from explicit env vars', () => {
     const config = createApiConfig({
       ...VALID_PRODUCTION_ENV,

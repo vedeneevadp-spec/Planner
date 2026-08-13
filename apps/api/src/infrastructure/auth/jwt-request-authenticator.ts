@@ -22,8 +22,15 @@ export interface JwtAuthRuntimeConfig {
   secret: string
 }
 
+export interface AccessSessionValidator {
+  isSessionActive: (userId: string, sessionId: string) => Promise<boolean>
+}
+
 export class JwtRequestAuthenticator implements RequestAuthenticator {
-  constructor(private readonly config: JwtAuthRuntimeConfig) {}
+  constructor(
+    private readonly config: JwtAuthRuntimeConfig,
+    private readonly sessionValidator?: AccessSessionValidator | undefined,
+  ) {}
 
   async authenticate(
     request: FastifyRequest,
@@ -38,9 +45,23 @@ export class JwtRequestAuthenticator implements RequestAuthenticator {
       )
     }
 
+    const claims = await this.verifyAccessToken(accessToken)
+
+    if (this.sessionValidator) {
+      if (
+        !claims.sessionId ||
+        !(await this.sessionValidator.isSessionActive(
+          claims.sub,
+          claims.sessionId,
+        ))
+      ) {
+        throw invalidAccessTokenError()
+      }
+    }
+
     return {
       accessToken,
-      claims: await this.verifyAccessToken(accessToken),
+      claims,
     }
   }
 

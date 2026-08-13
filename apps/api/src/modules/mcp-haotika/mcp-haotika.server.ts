@@ -157,17 +157,23 @@ export function registerMcpHaotikaRoutes(
     }
 
     try {
-      const redirectUrl = await options.oauthService.completeAuthorize({
-        clientId: form.client_id,
-        codeChallenge: form.code_challenge,
-        codeChallengeMethod: form.code_challenge_method,
-        email: form.email ?? '',
-        password: form.password ?? '',
-        redirectUri: form.redirect_uri ?? '',
-        resource: form.resource,
-        scope: form.scope,
-        state: form.state,
-      })
+      const redirectUrl = await options.oauthService.completeAuthorize(
+        {
+          clientId: form.client_id,
+          codeChallenge: form.code_challenge,
+          codeChallengeMethod: form.code_challenge_method,
+          email: form.email ?? '',
+          password: form.password ?? '',
+          redirectUri: form.redirect_uri ?? '',
+          resource: form.resource,
+          scope: form.scope,
+          state: form.state,
+        },
+        {
+          ipAddress: getClientAddress(request),
+          userAgent: readUserAgent(request) ?? undefined,
+        },
+      )
 
       return reply.redirect(redirectUrl, 302)
     } catch (error) {
@@ -178,6 +184,19 @@ export function registerMcpHaotikaRoutes(
           .send(
             renderAuthorizePage({
               errorMessage: 'Неверный email или пароль.',
+              query: form,
+              values: form,
+            }),
+          )
+      }
+
+      if (error instanceof HttpError && error.statusCode === 429) {
+        return reply
+          .code(429)
+          .type('text/html; charset=utf-8')
+          .send(
+            renderAuthorizePage({
+              errorMessage: 'Слишком много попыток. Попробуйте позже.',
               query: form,
               values: form,
             }),

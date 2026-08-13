@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { buildApiApp } from '../../bootstrap/build-app.js'
 import { createApiConfig } from '../../bootstrap/config.js'
+import { MemoryRateLimiter } from '../../bootstrap/rate-limit.js'
 import { JwtRequestAuthenticator } from '../../infrastructure/auth/jwt-request-authenticator.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
 import { MemoryTaskRepository, TaskService } from '../tasks/index.js'
@@ -301,6 +302,47 @@ void describe('OAuth routes', () => {
 
     assert.notEqual(retriedToken.refresh_token, initialToken.refresh_token)
   })
+
+  void it('rejects an existing access token immediately after sign-out', async () => {
+    const setup = await createOAuthTestApp()
+
+    app = setup.app
+
+    const token = await setup.service.signIn(
+      {
+        email: 'alice@planner.local',
+        password: 'secret-password',
+      },
+      { ipAddress: '198.51.100.10' },
+    )
+    const authenticatedResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${token.accessToken}`,
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(authenticatedResponse.statusCode, 200)
+
+    const signOutResponse = await app.inject({
+      method: 'POST',
+      payload: { refreshToken: token.refreshToken },
+      url: '/api/v1/auth/sign-out',
+    })
+
+    assert.equal(signOutResponse.statusCode, 204)
+
+    const revokedResponse = await app.inject({
+      headers: {
+        authorization: `Bearer ${token.accessToken}`,
+      },
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(revokedResponse.statusCode, 401)
+  })
 })
 
 async function createOAuthTestApp(): Promise<{
@@ -320,6 +362,7 @@ async function createOAuthTestApp(): Promise<{
     repository,
     new NoopAuthEmailSender(config.appEnv),
     config.plannerAuth!,
+    new MemoryRateLimiter(),
   )
 
   await service.signUp(
@@ -335,7 +378,10 @@ async function createOAuthTestApp(): Promise<{
       authService: service,
       config,
       database: null,
-      requestAuthenticator: new JwtRequestAuthenticator(config.jwtAuth!),
+      requestAuthenticator: new JwtRequestAuthenticator(
+        config.jwtAuth!,
+        repository,
+      ),
       sessionService: new SessionService(new MemorySessionRepository()),
       taskService: new TaskService(new MemoryTaskRepository()),
     }),
@@ -489,6 +535,18 @@ class TestAuthRepository implements AuthRepository {
     return Promise.resolve(
       this.users.find((user) => user.email === email.trim().toLowerCase()) ??
         null,
+    )
+  }
+
+  isSessionActive(userId: string, sessionId: string): Promise<boolean> {
+    return Promise.resolve(
+      this.refreshTokens.some(
+        (token) =>
+          token.userId === userId &&
+          token.sessionId === sessionId &&
+          !token.revokedAt &&
+          token.expiresAt.getTime() > Date.now(),
+      ),
     )
   }
 

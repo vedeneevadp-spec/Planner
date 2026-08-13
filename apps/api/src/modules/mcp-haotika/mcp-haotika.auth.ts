@@ -9,7 +9,7 @@ import {
   HAOTIKA_MCP_READ_SCOPES,
   type HaotikaMcpScope,
 } from '../ai-context/index.js'
-import type { AuthService } from '../auth/index.js'
+import type { AuthRequestMetadata, AuthService } from '../auth/index.js'
 import type {
   CreateMcpOAuthTokenCommand,
   McpAuthContext,
@@ -90,7 +90,10 @@ export class McpOAuthService {
     private readonly authService?: AuthService | undefined,
   ) {}
 
-  async completeAuthorize(input: CompleteMcpAuthorizeInput): Promise<string> {
+  async completeAuthorize(
+    input: CompleteMcpAuthorizeInput,
+    metadata: AuthRequestMetadata,
+  ): Promise<string> {
     if (!this.config.enabled) {
       throw new McpHaotikaError(
         'MCP_DISABLED',
@@ -118,15 +121,12 @@ export class McpOAuthService {
       )
     }
 
-    const token = await this.authService.signIn(
+    const user = await this.authService.authenticatePassword(
       {
         email: input.email,
         password: input.password,
       },
-      {
-        ipAddress: undefined,
-        userAgent: 'mcp-oauth',
-      },
+      metadata,
     )
     const code = createOpaqueToken('hac')
     const scopes = parseRequestedScopes(input.scope)
@@ -139,7 +139,7 @@ export class McpOAuthService {
       redirectUri: input.redirectUri,
       resource,
       scopes,
-      userId: token.user.id,
+      userId: user.id,
     })
     cleanupExpiredAuthorizationCodes(this.authorizationCodes)
 

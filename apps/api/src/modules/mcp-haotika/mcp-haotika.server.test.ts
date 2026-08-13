@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test'
 
 import Fastify, { type FastifyInstance } from 'fastify'
 
+import { HttpError } from '../../bootstrap/http-error.js'
 import { MemoryRateLimiter } from '../../bootstrap/rate-limit.js'
 import type { AiContextService } from '../ai-context/index.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
@@ -89,10 +90,50 @@ void describe('MCP Haotika server', () => {
       'RATE_LIMIT_EXCEEDED',
     )
   })
+
+  void it('renders a safe OAuth page when the shared credential limit is reached', async () => {
+    app = createMcpTestApp({
+      devNoAuth: false,
+      oauthService: {
+        completeAuthorize: () =>
+          Promise.reject(
+            new HttpError(
+              429,
+              'rate_limit_exceeded',
+              'Too many requests. Please try again later.',
+            ),
+          ),
+      } as unknown as McpOAuthService,
+      rateLimitPerMinute: 30,
+    })
+
+    const response = await app.inject({
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      method: 'POST',
+      payload: new URLSearchParams({
+        client_id: 'chatgpt',
+        code_challenge: 'challenge',
+        code_challenge_method: 'S256',
+        email: 'owner@example.test',
+        password: 'wrong-password',
+        redirect_uri: 'https://chatgpt.test/oauth/callback',
+        response_type: 'code',
+      }).toString(),
+      url: '/oauth/authorize',
+    })
+
+    assert.equal(response.statusCode, 429)
+    assert.match(String(response.headers['content-type']), /text\/html/)
+    assert.match(response.body, /Слишком много попыток/)
+    assert.doesNotMatch(response.body, /Too many requests/)
+  })
 })
 
 function createMcpTestApp(options: {
   devNoAuth: boolean
+  oauthService?: McpOAuthService
   rateLimitPerMinute: number
 }): FastifyInstance {
   const app = Fastify({ logger: false })
@@ -117,10 +158,9 @@ function createMcpTestApp(options: {
     } as unknown as AiContextService,
     auditRepository: new MemoryMcpAuditLogRepository(),
     config,
-    oauthService: new McpOAuthService(
-      new MemoryMcpOAuthTokenRepository(),
-      config,
-    ),
+    oauthService:
+      options.oauthService ??
+      new McpOAuthService(new MemoryMcpOAuthTokenRepository(), config),
     rateLimiter: new MemoryRateLimiter(),
     sessionService,
   })

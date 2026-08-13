@@ -509,10 +509,23 @@ describe('SessionProvider', () => {
     expect(authApiMocks.refreshAuthSession).not.toHaveBeenCalled()
   })
 
-  it('clears the native voice session context when the user signs out', async () => {
+  it('starts offline cleanup before clearing session metadata on sign out', async () => {
+    const cleanupOrder: string[] = []
     authStorageMocks.readStoredAuthSession.mockResolvedValue(
       createUsableNativeStoredSession(),
     )
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockImplementation(
+      () => {
+        cleanupOrder.push('offline-workspaces')
+
+        return Promise.resolve({ failures: [], workspaceIds: [] })
+      },
+    )
+    authStorageMocks.clearStoredAuthSession.mockImplementation(() => {
+      cleanupOrder.push('auth-session')
+
+      return Promise.resolve()
+    })
     authApiMocks.signOutAuthSession.mockResolvedValue(undefined)
 
     render(
@@ -538,6 +551,7 @@ describe('SessionProvider', () => {
         sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
       ).toHaveBeenCalledWith('user-1')
     })
+    expect(cleanupOrder).toEqual(['offline-workspaces', 'auth-session'])
   })
 
   it('keeps the current native account when device storage is temporarily empty on resume', async () => {

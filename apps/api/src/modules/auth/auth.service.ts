@@ -14,8 +14,10 @@ import {
 import { SignJWT } from 'jose'
 
 import { HttpError } from '../../bootstrap/http-error.js'
+import type { RateLimiter } from '../../bootstrap/rate-limit.js'
 import type { AuthEmailSender } from './auth.email.js'
 import type {
+  AuthCredentialRecord,
   AuthRequestMetadata,
   AuthSessionTokenRecord,
   AuthUserRecord,
@@ -24,6 +26,9 @@ import type {
 import type { AuthRepository } from './auth.repository.js'
 
 const SCRYPT_KEY_LENGTH = 64
+const CREDENTIAL_ATTEMPT_ACCOUNT_LIMIT = 5
+const CREDENTIAL_ATTEMPT_IP_LIMIT = 50
+const CREDENTIAL_ATTEMPT_WINDOW_MS = 15 * 60_000
 const SCRYPT_OPTIONS = {
   N: 16_384,
   maxmem: 64 * 1024 * 1024,
@@ -44,6 +49,7 @@ export class AuthService {
     private readonly repository: AuthRepository,
     private readonly emailSender: AuthEmailSender,
     private readonly config: PlannerAuthRuntimeConfig,
+    private readonly rateLimiter: RateLimiter,
   ) {
     this.jwtSecretKey = new TextEncoder().encode(config.jwt.secret)
   }
@@ -52,16 +58,22 @@ export class AuthService {
     input: { email: string; password: string },
     metadata: AuthRequestMetadata,
   ): Promise<AuthTokenResponse> {
-    const credential = await this.repository.findCredentialByEmail(input.email)
-
-    if (
-      !credential ||
-      !(await verifyPassword(input.password, credential.passwordHash))
-    ) {
-      throw invalidCredentialsError()
-    }
+    const credential = await this.authenticatePassword(input, metadata)
 
     return this.createSession(credential, metadata)
+  }
+
+  async authenticatePassword(
+    input: { email: string; password: string },
+    metadata: AuthRequestMetadata,
+  ): Promise<AuthUserRecord> {
+    const credential = await this.verifyCredential(input, metadata)
+
+    return {
+      displayName: credential.displayName,
+      email: credential.email,
+      id: credential.id,
+    }
   }
 
   async createOAuthAuthorizationCode(
@@ -75,14 +87,7 @@ export class AuthService {
     },
     metadata: AuthRequestMetadata,
   ): Promise<string> {
-    const credential = await this.repository.findCredentialByEmail(input.email)
-
-    if (
-      !credential ||
-      !(await verifyPassword(input.password, credential.passwordHash))
-    ) {
-      throw invalidCredentialsError()
-    }
+    const credential = await this.authenticatePassword(input, metadata)
 
     const code = createOpaqueToken()
 
@@ -270,6 +275,39 @@ export class AuthService {
     })
 
     return this.createTokenResponse(user, refreshToken, sessionId)
+  }
+
+  private async verifyCredential(
+    input: { email: string; password: string },
+    metadata: AuthRequestMetadata,
+  ): Promise<AuthCredentialRecord> {
+    const normalizedEmail = normalizeEmail(input.email)
+    const clientAddress = metadata.ipAddress?.trim() || 'unknown'
+
+    await Promise.all([
+      this.rateLimiter.consume({
+        key: `auth:credentials:ip:${clientAddress}`,
+        limit: CREDENTIAL_ATTEMPT_IP_LIMIT,
+        windowMs: CREDENTIAL_ATTEMPT_WINDOW_MS,
+      }),
+      this.rateLimiter.consume({
+        key: `auth:credentials:account:${normalizedEmail}`,
+        limit: CREDENTIAL_ATTEMPT_ACCOUNT_LIMIT,
+        windowMs: CREDENTIAL_ATTEMPT_WINDOW_MS,
+      }),
+    ])
+
+    const credential =
+      await this.repository.findCredentialByEmail(normalizedEmail)
+
+    if (
+      !credential ||
+      !(await verifyPassword(input.password, credential.passwordHash))
+    ) {
+      throw invalidCredentialsError()
+    }
+
+    return credential
   }
 
   private async createTokenResponse(

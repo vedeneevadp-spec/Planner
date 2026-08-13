@@ -1282,7 +1282,7 @@ function createBacklogPaths(): OpenAPIV3.PathsObject {
         noContentDescription: 'Auth session revoked.',
         operationId: 'signOut',
         requestSchema: 'AuthSignOutInput',
-        summary: 'Sign out and revoke a refresh session',
+        summary: 'Sign out and revoke the browser or device session',
         tags: ['auth'],
       }),
     },
