@@ -96,6 +96,22 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
       .execute()
   }
 
+  async markUndeliverable(reminderId: string, reason: string): Promise<void> {
+    await sql`
+      update app.self_care_reminders
+      set
+        attempt_count = attempt_count + 1,
+        claimed_at = null,
+        failed_at = now(),
+        last_error = left(${reason}, 1000)
+      where id = cast(${reminderId} as uuid)
+        and sent_at is null
+        and expired_at is null
+        and failed_at is null
+        and canceled_at is null
+    `.execute(this.db)
+  }
+
   async releaseClaim(reminderId: string, error: string): Promise<void> {
     await sql`
       update app.self_care_reminders

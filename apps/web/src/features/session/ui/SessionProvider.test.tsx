@@ -47,6 +47,10 @@ const nativeVoiceMocks = vi.hoisted(() => ({
   clearAndroidVoiceAssistantSessionContext: vi.fn(),
 }))
 
+const sessionOfflineDataMocks = vi.hoisted(() => ({
+  clearSessionOfflineWorkspaceData: vi.fn(),
+}))
+
 vi.mock('@/shared/config/planner-api', () => ({
   plannerApiConfig: {
     apiBaseUrl: 'https://api.chaotika.test',
@@ -96,6 +100,11 @@ vi.mock('../lib/native-session-storage', () => ({
   getNativeAppIsActive: nativeSessionMocks.getNativeAppIsActive,
   isNativeSessionPersistenceRuntime:
     nativeSessionMocks.isNativeSessionPersistenceRuntime,
+}))
+
+vi.mock('../lib/session-offline-data-cleanup', () => ({
+  clearSessionOfflineWorkspaceData:
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
 }))
 
 import { useSessionAuth } from '../lib/useSessionAuth'
@@ -149,6 +158,7 @@ describe('SessionProvider', () => {
     browserDeviceMocks.getBrowserAuthDeviceId.mockReset()
     nativePushMocks.unregisterStoredNativePushDevice.mockReset()
     nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext.mockReset()
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockReset()
     nativeSessionMocks.addNativeAppStateChangeListener.mockReset()
     nativeSessionMocks.getNativeAuthDeviceId.mockReset()
     nativeSessionMocks.getNativeAppIsActive.mockReset()
@@ -175,6 +185,10 @@ describe('SessionProvider', () => {
     nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext.mockResolvedValue(
       undefined,
     )
+    sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockResolvedValue({
+      failures: [],
+      workspaceIds: [],
+    })
     nativeSessionMocks.getNativeAuthDeviceId.mockResolvedValue(
       'native-device-1',
     )
@@ -520,6 +534,9 @@ describe('SessionProvider', () => {
         nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext,
       ).toHaveBeenCalledTimes(1)
       expect(authStorageMocks.clearStoredAuthSession).toHaveBeenCalledTimes(1)
+      expect(
+        sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
+      ).toHaveBeenCalledWith('user-1')
     })
   })
 

@@ -8,7 +8,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useSessionFeatureReadiness } from '@/features/session'
 import {
@@ -22,6 +22,7 @@ import {
   enqueueShoppingListOfflineMutation,
   isShoppingListOfflineStorageAvailable,
   loadCachedShoppingListItems,
+  loadCachedShoppingListSnapshot,
   removeCachedShoppingListItem,
   replaceCachedShoppingListItems,
   type ShoppingListOfflineMutationInput,
@@ -68,6 +69,11 @@ export interface ShoppingListOfflineStatus {
   conflictedMutationCount: number
   queuedMutationCount: number
 }
+
+interface ShoppingListCacheState {
+  cacheIdentity: string
+  lastSuccessfulSyncAt: string | null
+}
 export {
   isShoppingListItemCompleted,
   type ShoppingListItem,
@@ -106,13 +112,26 @@ const shoppingListQueueRevisions = new Map<string, number>()
 const shoppingListCompletedDrainRevisions = new Map<string, number>()
 
 export function useShoppingListItems(options: { enabled?: boolean } = {}) {
-  const { api, session, workspaceId } = useShoppingListApi(options)
+  const shoppingListApi = useShoppingListApi(options)
+  const { api, session, workspaceId } = shoppingListApi
   const queryClient = useQueryClient()
-  const hasSession = options.enabled !== false && Boolean(session)
   const queryKey = useMemo(
     () => shoppingListQueryKey(workspaceId),
     [workspaceId],
   )
+  const cacheIdentity = workspaceId
+  const [cacheHydration, setCacheHydration] =
+    useState<ShoppingListCacheState | null>(null)
+  const [syncFreshness, setSyncFreshness] =
+    useState<ShoppingListCacheState | null>(null)
+  const isCacheHydrating =
+    options.enabled !== false &&
+    workspaceId !== 'pending' &&
+    cacheHydration?.cacheIdentity !== cacheIdentity
+  const lastSuccessfulSyncAt =
+    syncFreshness?.cacheIdentity === cacheIdentity
+      ? syncFreshness.lastSuccessfulSyncAt
+      : null
 
   const drainQueuedMutations = useCallback(async () => {
     if (!api || !session) {
@@ -134,31 +153,42 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
 
     let isActive = true
 
-    void loadCachedShoppingListItems(session.workspaceId).then(
-      (cachedItems) => {
-        if (!isActive || cachedItems.length === 0) {
+    void loadCachedShoppingListSnapshot(session.workspaceId)
+      .then((cachedSnapshot) => {
+        if (!isActive || !cachedSnapshot) {
           return
         }
 
+        setSyncFreshness({
+          cacheIdentity,
+          lastSuccessfulSyncAt: cachedSnapshot.lastSuccessfulSyncAt,
+        })
         queryClient.setQueryData<ShoppingListItem[]>(
           queryKey,
-          (currentItems) => currentItems ?? cachedItems,
+          (currentItems) => currentItems ?? cachedSnapshot.items,
         )
-      },
-    )
+      })
+      .catch((error) => {
+        console.warn('Failed to read cached shopping list.', error)
+      })
+      .finally(() => {
+        if (isActive) {
+          setCacheHydration({ cacheIdentity, lastSuccessfulSyncAt: null })
+        }
+      })
 
     return () => {
       isActive = false
     }
-  }, [options.enabled, queryClient, queryKey, session])
+  }, [cacheIdentity, options.enabled, queryClient, queryKey, session])
 
   useOfflineQueueDrain({
     drain: drainQueuedMutations,
     enabled: Boolean(api && session),
   })
 
-  return useQuery({
-    enabled: hasSession,
+  const query = useQuery({
+    enabled: Boolean(api && session),
     queryFn: async ({ signal }) => {
       if (!session) {
         throw new Error(
@@ -166,21 +196,40 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
         )
       }
 
-      if (!api) {
-        return loadCachedShoppingListItems(session.workspaceId)
-      }
-
       try {
         await drainQueuedMutations()
 
-        const items = await api.listItems(signal)
+        const items = await requireShoppingListApi(api).listItems(signal)
+        const syncedAt = new Date().toISOString()
 
-        await replaceCachedShoppingListItems(session.workspaceId, items)
+        try {
+          await replaceCachedShoppingListItems(
+            session.workspaceId,
+            items,
+            syncedAt,
+          )
+        } catch (error) {
+          console.warn('Failed to cache shopping list items.', error)
+        }
+        setSyncFreshness({
+          cacheIdentity,
+          lastSuccessfulSyncAt: syncedAt,
+        })
 
         return items
       } catch (error) {
         if (isQueueableShoppingListMutationError(error)) {
-          return loadCachedShoppingListItems(session.workspaceId)
+          const cachedSnapshot = await loadCachedShoppingListSnapshot(
+            session.workspaceId,
+          )
+
+          if (cachedSnapshot) {
+            setSyncFreshness({
+              cacheIdentity,
+              lastSuccessfulSyncAt: cachedSnapshot.lastSuccessfulSyncAt,
+            })
+            return cachedSnapshot.items
+          }
         }
 
         throw error
@@ -191,6 +240,16 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
       !isQueueableShoppingListMutationError(error) && failureCount < 2,
     staleTime: 30_000,
   })
+
+  return {
+    ...query,
+    isCacheHydrating: query.data === undefined && isCacheHydrating,
+    lastSuccessfulSyncAt,
+    readiness: shoppingListApi.getReadiness({
+      hasCachedData: query.data !== undefined,
+    }),
+    retrySession: shoppingListApi.sessionQuery.refetch,
+  }
 }
 
 export function useShoppingListSyncStatus(options: { enabled?: boolean } = {}) {
@@ -626,9 +685,10 @@ export function useShoppingListSummary(options: { enabled?: boolean } = {}) {
 }
 
 function useShoppingListApi(options: { enabled?: boolean } = {}) {
-  const { apiConfig, session, workspaceId } = useSessionFeatureReadiness({
+  const sessionReadiness = useSessionFeatureReadiness({
     enabled: options.enabled,
   })
+  const { apiConfig } = sessionReadiness
   const api = useMemo(
     () => (apiConfig ? createShoppingListApiClient(apiConfig) : null),
     [apiConfig],
@@ -636,8 +696,7 @@ function useShoppingListApi(options: { enabled?: boolean } = {}) {
 
   return {
     api,
-    session,
-    workspaceId,
+    ...sessionReadiness,
   }
 }
 

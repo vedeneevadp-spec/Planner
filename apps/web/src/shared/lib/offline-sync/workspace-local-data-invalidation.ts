@@ -1,7 +1,7 @@
 import { generateUuidV7 } from '@planner/contracts'
 
 export type WorkspaceLocalDataInvalidationReason =
-  'account-deletion' | 'backup-restore'
+  'account-deletion' | 'backup-restore' | 'session-cleared'
 
 interface WorkspaceLocalDataInvalidationEvent {
   eventId: string
@@ -158,7 +158,9 @@ function parseWorkspaceLocalDataInvalidationEvent(
       eventId.length === 0 ||
       typeof occurredAt !== 'number' ||
       !Number.isFinite(occurredAt) ||
-      (reason !== 'account-deletion' && reason !== 'backup-restore') ||
+      (reason !== 'account-deletion' &&
+        reason !== 'backup-restore' &&
+        reason !== 'session-cleared') ||
       typeof workspaceId !== 'string' ||
       workspaceId.length === 0
     ) {

@@ -13,12 +13,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ShoppingPage } from './ShoppingPage'
 
 const mocks = vi.hoisted(() => ({
+  browserOffline: false,
   createItem: vi.fn(),
   removeItem: vi.fn(),
   useShoppingListSummary: vi.fn(),
   useShoppingListSyncStatus: vi.fn(),
   updateItem: vi.fn(),
 }))
+
+vi.mock('@/shared/lib/offline-sync', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+
+  return {
+    ...actual,
+    useBrowserOffline: () => mocks.browserOffline,
+  }
+})
 
 vi.mock('@/features/shopping-list', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -47,18 +57,14 @@ vi.mock('@/features/shopping-list', async (importOriginal) => {
 
 describe('ShoppingPage', () => {
   beforeEach(() => {
+    mocks.browserOffline = false
     mocks.createItem.mockReset()
     mocks.createItem.mockResolvedValue(undefined)
     mocks.removeItem.mockReset()
     mocks.removeItem.mockResolvedValue(undefined)
     mocks.updateItem.mockReset()
     mocks.updateItem.mockResolvedValue(undefined)
-    mocks.useShoppingListSummary.mockReturnValue({
-      activeItems: [],
-      completedItems: [],
-      error: null,
-      isLoading: false,
-    })
+    mocks.useShoppingListSummary.mockReturnValue(createShoppingListSummary())
     mocks.useShoppingListSyncStatus.mockReturnValue({
       conflictedMutationCount: 0,
       error: null,
@@ -73,43 +79,87 @@ describe('ShoppingPage', () => {
     cleanup()
   })
 
-  it('shows a local sync message instead of raw session readiness errors', () => {
-    mocks.useShoppingListSummary.mockReturnValue({
-      activeItems: [],
-      completedItems: [],
-      error: new Error(
-        'Planner session is required to load shopping list items.',
-      ),
-      isLoading: false,
-    })
+  it('blocks the composer when there is no session instead of promising a local save', () => {
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({
+        data: undefined,
+        error: new Error(
+          'Planner session is required to load shopping list items.',
+        ),
+        readiness: createReadiness({
+          canReadCachedData: false,
+          canRenderAppContent: false,
+          canUseProtectedApi: false,
+          canWriteProtectedData: false,
+          reason: 'no_session',
+          status: 'blockedAuth',
+        }),
+      }),
+    )
+
+    renderShoppingPage('/shopping')
+
+    expect(screen.getByText('Нужно восстановить доступ к списку')).toBeVisible()
+    expect(
+      screen.queryByPlaceholderText('Добавить покупку'),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Изменения сохранятся локально/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows offline no-cache state instead of an empty shopping list', () => {
+    mocks.browserOffline = true
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({ data: undefined }),
+    )
 
     renderShoppingPage('/shopping')
 
     expect(
-      screen.getByText(
-        'Нет соединения. Изменения сохранятся локально и синхронизируются автоматически.',
-      ),
+      screen.getByText('Список покупок недоступен без подключения'),
     ).toBeVisible()
+    expect(screen.queryByText('Список пуст.')).not.toBeInTheDocument()
+  })
+
+  it('renders an empty cached snapshot offline with sync provenance', () => {
+    mocks.browserOffline = true
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({
+        lastSuccessfulSyncAt: '2026-08-13T09:00:00.000Z',
+        readiness: createReadiness({
+          canWriteProtectedData: false,
+          reason: 'auth_deferred',
+          status: 'offlineWithCache',
+        }),
+      }),
+    )
+
+    renderShoppingPage('/shopping')
+
+    expect(screen.getByText('Список пуст.')).toBeVisible()
+    expect(screen.getByText('Нет подключения')).toBeVisible()
+    expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
   })
 
   it('filters items from the shopping query parameters', () => {
-    mocks.useShoppingListSummary.mockReturnValue({
-      activeItems: [
-        createShoppingItem({
-          id: 'item-1',
-          shoppingCategory: 'groceries',
-          text: 'Молоко',
-        }),
-        createShoppingItem({
-          id: 'item-2',
-          shoppingCategory: 'household',
-          text: 'Губки',
-        }),
-      ],
-      completedItems: [],
-      error: null,
-      isLoading: false,
-    })
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({
+        activeItems: [
+          createShoppingItem({
+            id: 'item-1',
+            shoppingCategory: 'groceries',
+            text: 'Молоко',
+          }),
+          createShoppingItem({
+            id: 'item-2',
+            shoppingCategory: 'household',
+            text: 'Губки',
+          }),
+        ],
+        completedItems: [],
+      }),
+    )
 
     renderShoppingPage('/shopping?shoppingCategory=groceries')
 
@@ -169,15 +219,15 @@ describe('ShoppingPage', () => {
   it('locks only the shopping row being changed', async () => {
     const save = createDeferred<void>()
     mocks.updateItem.mockReturnValue(save.promise)
-    mocks.useShoppingListSummary.mockReturnValue({
-      activeItems: [
-        createShoppingItem({ id: 'item-1', text: 'Молоко' }),
-        createShoppingItem({ id: 'item-2', text: 'Хлеб' }),
-      ],
-      completedItems: [],
-      error: null,
-      isLoading: false,
-    })
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({
+        activeItems: [
+          createShoppingItem({ id: 'item-1', text: 'Молоко' }),
+          createShoppingItem({ id: 'item-2', text: 'Хлеб' }),
+        ],
+        completedItems: [],
+      }),
+    )
 
     renderShoppingPage('/shopping')
     fireEvent.click(screen.getByLabelText('Добавить в избранное: Молоко'))
@@ -203,6 +253,36 @@ function renderShoppingPage(initialEntry: string) {
       <ShoppingPage />
     </MemoryRouter>,
   )
+}
+
+function createShoppingListSummary(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    activeItems: [],
+    completedItems: [],
+    data: [],
+    error: null,
+    isCacheHydrating: false,
+    isLoading: false,
+    lastSuccessfulSyncAt: null,
+    readiness: createReadiness(),
+    refetch: vi.fn(() => Promise.resolve()),
+    retrySession: vi.fn(() => Promise.resolve()),
+    ...overrides,
+  }
+}
+
+function createReadiness(overrides: Record<string, unknown> = {}) {
+  return {
+    canReadCachedData: true,
+    canRenderAppContent: true,
+    canUseProtectedApi: true,
+    canWriteProtectedData: true,
+    reason: 'ready',
+    status: 'ready',
+    ...overrides,
+  }
 }
 
 function createShoppingItem(

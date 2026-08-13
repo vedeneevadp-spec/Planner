@@ -13,6 +13,7 @@ export interface DueSelfCareReminder {
 export interface SelfCareReminderRepository {
   claimDueReminders: (limit: number) => Promise<DueSelfCareReminder[]>
   markDelivered: (reminderId: string) => Promise<void>
+  markUndeliverable: (reminderId: string, reason: string) => Promise<void>
   releaseClaim: (reminderId: string, error: string) => Promise<void>
 }
 
@@ -20,4 +21,5 @@ export interface SelfCareReminderProcessResult {
   claimedCount: number
   deliveredCount: number
   releasedCount: number
+  undeliverableCount: number
 }

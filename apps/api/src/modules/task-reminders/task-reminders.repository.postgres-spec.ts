@@ -33,7 +33,7 @@ void after(async () => {
   }
 })
 
-void test('task reminders distinguish expired and permanently failed delivery', async () => {
+void test('task reminders distinguish expired, retry-exhausted and undeliverable outcomes', async () => {
   const actorUserId = randomUUID()
 
   await cleanupRepositoryContractUsers(connection, [actorUserId])
@@ -49,8 +49,10 @@ void test('task reminders distinguish expired and permanently failed delivery', 
     })
     const expiredTaskId = randomUUID()
     const failedTaskId = randomUUID()
+    const undeliverableTaskId = randomUUID()
     const expiredReminderId = randomUUID()
     const failedReminderId = randomUUID()
+    const undeliverableReminderId = randomUUID()
     const yesterday = addDateDays(getTodayDate('UTC'), -1)
     const soon = new Date(Date.now() + 2 * 60_000)
     const soonDate = getDateKeyInTimeZone(soon, 'UTC')
@@ -62,10 +64,17 @@ void test('task reminders distinguish expired and permanently failed delivery', 
           id, workspace_id, title, description, created_by, updated_by
         )
         values
-          ($1, $3, 'Expired reminder task', '', $4, $4),
-          ($2, $3, 'Failed reminder task', '', $4, $4)
+          ($1, $4, 'Expired reminder task', '', $5, $5),
+          ($2, $4, 'Failed reminder task', '', $5, $5),
+          ($3, $4, 'Undeliverable reminder task', '', $5, $5)
       `,
-      [expiredTaskId, failedTaskId, workspace.workspaceId, actorUserId],
+      [
+        expiredTaskId,
+        failedTaskId,
+        undeliverableTaskId,
+        workspace.workspaceId,
+        actorUserId,
+      ],
     )
     await connection.pool.query(
       `
@@ -80,12 +89,14 @@ void test('task reminders distinguish expired and permanently failed delivery', 
           time_zone
         )
         values
-          ($1, $3, $4, $5, $6::date, '09:00:00'::time, 15, 'UTC'),
-          ($2, $3, $7, $5, $8::date, $9::time, 15, 'UTC')
+          ($1, $4, $5, $6, $7::date, '09:00:00'::time, 15, 'UTC'),
+          ($2, $4, $8, $6, $9::date, $10::time, 15, 'UTC'),
+          ($3, $4, $11, $6, $9::date, $10::time, 15, 'UTC')
       `,
       [
         expiredReminderId,
         failedReminderId,
+        undeliverableReminderId,
         workspace.workspaceId,
         expiredTaskId,
         actorUserId,
@@ -93,6 +104,7 @@ void test('task reminders distinguish expired and permanently failed delivery', 
         failedTaskId,
         soonDate,
         soonTime,
+        undeliverableTaskId,
       ],
     )
 
@@ -110,6 +122,7 @@ void test('task reminders distinguish expired and permanently failed delivery', 
         `delivery attempt ${attempt} failed`,
       )
     }
+    await repository.markUndeliverable(undeliverableReminderId, 'no_recipient')
 
     const result = await connection.pool.query<{
       attemptCount: number
@@ -128,14 +141,15 @@ void test('task reminders distinguish expired and permanently failed delivery', 
           last_error as "lastError",
           sent_at as "sentAt"
         from app.task_reminders
-        where id in ($1, $2)
+        where id in ($1, $2, $3)
         order by id
       `,
-      [expiredReminderId, failedReminderId],
+      [expiredReminderId, failedReminderId, undeliverableReminderId],
     )
     const byId = new Map(result.rows.map((row) => [row.id, row]))
     const expired = byId.get(expiredReminderId)
     const failed = byId.get(failedReminderId)
+    const undeliverable = byId.get(undeliverableReminderId)
 
     assert.equal(expired?.sentAt, null)
     assert.ok(expired?.expiredAt)
@@ -144,6 +158,10 @@ void test('task reminders distinguish expired and permanently failed delivery', 
     assert.equal(failed?.attemptCount, 8)
     assert.ok(failed?.failedAt)
     assert.equal(failed?.lastError, 'delivery attempt 8 failed')
+    assert.equal(undeliverable?.sentAt, null)
+    assert.equal(undeliverable?.attemptCount, 1)
+    assert.ok(undeliverable?.failedAt)
+    assert.equal(undeliverable?.lastError, 'no_recipient')
   } finally {
     await cleanupRepositoryContractUsers(connection, [actorUserId])
   }

@@ -33,7 +33,7 @@ describe('workspace local data invalidation', () => {
     const rawValue = JSON.stringify({
       eventId: 'event-from-another-tab',
       occurredAt: Date.now(),
-      reason: 'account-deletion',
+      reason: 'session-cleared',
       workspaceId: 'workspace-1',
     })
     const reloadPage = vi.fn()

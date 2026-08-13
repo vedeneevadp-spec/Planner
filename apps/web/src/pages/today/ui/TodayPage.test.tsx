@@ -39,6 +39,11 @@ interface PlannerSessionStub {
   }
 }
 
+interface PlannerSessionQueryStub {
+  data: PlannerSessionStub
+  refetch: () => Promise<unknown>
+}
+
 const mocks = vi.hoisted(() => {
   const selfCareDashboards: Record<
     string,
@@ -50,24 +55,44 @@ const mocks = vi.hoisted(() => {
   > = {}
 
   return {
+    browserOffline: false,
     cleaningTodayRequest: vi.fn(),
     cleaningTodayResponses,
     copyTaskToPersonal: vi.fn(),
     createNextTaskStage: vi.fn(),
     detachTaskFromChain: vi.fn(),
     moveTaskToPersonal: vi.fn(),
+    plannerState: {
+      errorMessage: null as string | null,
+      hasTaskReadError: false,
+      hasTaskRecords: true,
+      isLoading: false,
+      isTaskCacheHydrating: false,
+      isTaskOffline: false,
+      readiness: {
+        canReadCachedData: true,
+        canRenderAppContent: true,
+        canUseProtectedApi: true,
+        canWriteProtectedData: true,
+        reason: 'ready',
+        status: 'ready',
+      },
+      taskLastSuccessfulSyncAt: null as string | null,
+    },
+    refresh: vi.fn(),
     removeTask: vi.fn(),
     selfCareDashboards,
     selfCareDashboardRequest: vi.fn(),
     setTaskPlannedDate: vi.fn(),
     setTaskStatus: vi.fn(),
+    sessionRefetch: vi.fn(),
     shoppingActiveItems: [] as ChaosInboxItemRecord[],
     shoppingItemPending: false,
     shoppingItemUpdate: vi.fn(),
     taskComposer: vi.fn(),
     updateTask: vi.fn(),
     updateUserPreferences: vi.fn(),
-    usePlannerSession: vi.fn<() => { data: PlannerSessionStub }>(),
+    usePlannerSession: vi.fn<() => PlannerSessionQueryStub>(),
   }
 })
 
@@ -77,12 +102,14 @@ vi.mock('@/features/emoji-library', () => ({
 
 vi.mock('@/features/planner', () => ({
   usePlanner: () => ({
+    ...mocks.plannerState,
     copyTaskToPersonal: mocks.copyTaskToPersonal,
     createNextTaskStage: mocks.createNextTaskStage,
     detachTaskFromChain: mocks.detachTaskFromChain,
     isTaskPending: () => false,
     moveTaskToPersonal: mocks.moveTaskToPersonal,
     removeTask: mocks.removeTask,
+    refresh: mocks.refresh,
     setTaskPlannedDate: mocks.setTaskPlannedDate,
     setTaskStatus: mocks.setTaskStatus,
     spheres: [],
@@ -90,6 +117,15 @@ vi.mock('@/features/planner', () => ({
     updateTask: mocks.updateTask,
   }),
 }))
+
+vi.mock('@/shared/lib/offline-sync', async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>()
+
+  return {
+    ...actual,
+    useBrowserOffline: () => mocks.browserOffline,
+  }
+})
 
 vi.mock('@/features/cleaning', () => ({
   useCleaningToday: (date: string) => {
@@ -438,7 +474,10 @@ function renderTodayPage({
   tasks: Task[]
 }) {
   plannerTasks = tasks
-  mocks.usePlannerSession.mockReturnValue({ data: createSession(kind) })
+  mocks.usePlannerSession.mockReturnValue({
+    data: createSession(kind),
+    refetch: mocks.sessionRefetch,
+  })
 
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -458,17 +497,39 @@ describe('TodayPage', () => {
   beforeEach(() => {
     window.localStorage.clear()
     plannerTasks = []
+    mocks.browserOffline = false
     mocks.cleaningTodayRequest.mockReset()
     mocks.cleaningTodayResponses = {}
     mocks.copyTaskToPersonal.mockReset()
     mocks.createNextTaskStage.mockReset()
     mocks.detachTaskFromChain.mockReset()
     mocks.moveTaskToPersonal.mockReset()
+    Object.assign(mocks.plannerState, {
+      errorMessage: null,
+      hasTaskReadError: false,
+      hasTaskRecords: true,
+      isLoading: false,
+      isTaskCacheHydrating: false,
+      isTaskOffline: false,
+      readiness: {
+        canReadCachedData: true,
+        canRenderAppContent: true,
+        canUseProtectedApi: true,
+        canWriteProtectedData: true,
+        reason: 'ready',
+        status: 'ready',
+      },
+      taskLastSuccessfulSyncAt: null,
+    })
+    mocks.refresh.mockReset()
+    mocks.refresh.mockResolvedValue(undefined)
     mocks.removeTask.mockReset()
     mocks.selfCareDashboards = {}
     mocks.selfCareDashboardRequest.mockReset()
     mocks.setTaskPlannedDate.mockReset()
     mocks.setTaskStatus.mockReset()
+    mocks.sessionRefetch.mockReset()
+    mocks.sessionRefetch.mockResolvedValue(undefined)
     mocks.shoppingActiveItems = []
     mocks.shoppingItemPending = false
     mocks.shoppingItemUpdate.mockReset()
@@ -481,6 +542,50 @@ describe('TodayPage', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('shows a skeleton while the task cache is being checked', () => {
+    Object.assign(mocks.plannerState, {
+      hasTaskRecords: false,
+      isTaskCacheHydrating: true,
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(screen.getByText('Загружаем план на сегодня')).toBeVisible()
+    expect(screen.getByTestId('page-state-skeleton')).toBeVisible()
+    expect(screen.queryByText('План на сегодня')).not.toBeInTheDocument()
+  })
+
+  it('shows an offline no-cache state instead of an empty plan', () => {
+    mocks.browserOffline = true
+    Object.assign(mocks.plannerState, {
+      hasTaskRecords: false,
+      isTaskCacheHydrating: false,
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(
+      screen.getByText('План на сегодня недоступен без подключения'),
+    ).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible()
+  })
+
+  it('keeps cached tasks visible offline with the last sync status', () => {
+    mocks.browserOffline = true
+    Object.assign(mocks.plannerState, {
+      taskLastSuccessfulSyncAt: '2026-08-13T09:00:00.000Z',
+    })
+    const todayKey = getDateKey(new Date())
+
+    renderTodayPage({
+      tasks: [createTask({ plannedDate: todayKey, title: 'Из кеша' })],
+    })
+
+    expect(screen.getByText('Из кеша')).toBeVisible()
+    expect(screen.getByText('Нет подключения')).toBeVisible()
+    expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
   })
 
   it('keeps today, routine and attention sections expanded by default', () => {
