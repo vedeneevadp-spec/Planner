@@ -102,7 +102,10 @@ test('holds the remote lock around preparation, rsync, and release', async () =>
     'await remoteLock.release()',
   )
   assert.match(deploySource, /ConnectTimeout=10/)
-  assert.match(deploySource, /ServerAliveInterval=15/)
+  assert.match(deploySource, /ServerAliveInterval=5/)
+  assert.match(deploySource, /ServerAliveCountMax=12/)
+  assert.match(deploySource, /IPQoS=none/)
+  assert.match(deploySource, /RSYNC_REMOTE_SHELL/)
   assert.match(deploySource, /Timed out after 15 seconds/)
   assert.match(deploySource, /signal: options\.signal/)
 })

@@ -54,6 +54,21 @@ const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
 const REMOTE_DEPLOY_LOCK_MARKER = '__PLANNER_DEPLOY_LOCK_ACQUIRED__'
 const REMOTE_DEPLOY_LOCK_TIMEOUT_MS = 15_000
+const SSH_CONNECTION_ARGS = [
+  '-o',
+  'BatchMode=yes',
+  '-o',
+  'ConnectTimeout=10',
+  '-o',
+  'ServerAliveInterval=5',
+  '-o',
+  'ServerAliveCountMax=12',
+  '-o',
+  'TCPKeepAlive=yes',
+  '-o',
+  'IPQoS=none',
+]
+const RSYNC_REMOTE_SHELL = ['ssh', ...SSH_CONNECTION_ARGS].join(' ')
 const LOCAL_CHECK_ENV_OVERRIDES_TO_CLEAR = [
   'API_AUTH_MODE',
   'VITE_API_ACCESS_TOKEN',
@@ -439,7 +454,7 @@ NODE
 async function ensureRemoteDirectories(layout, signal) {
   await runWithInput(
     'ssh',
-    [config.remoteHost, 'bash', '-se'],
+    [...SSH_CONNECTION_ARGS, config.remoteHost, 'bash', '-se'],
     createRemotePreparationScript(layout),
     { signal },
   )
@@ -460,6 +475,8 @@ async function syncProject(layout, signal) {
       '-az',
       '--delete',
       '--delete-excluded',
+      '-e',
+      RSYNC_REMOTE_SHELL,
       '--filter',
       `merge ${filterPath}`,
       './',
@@ -491,6 +508,8 @@ async function syncIconAssets(signal) {
 
   const rsyncArgs = [
     '-az',
+    '-e',
+    RSYNC_REMOTE_SHELL,
     `${config.iconLocalDirectory.replace(/\/$/, '')}/`,
     `${config.remoteHost}:${config.iconRemoteDirectory.replace(/\/$/, '')}/`,
   ]
@@ -530,18 +549,7 @@ async function acquireRemoteDeployLock(layout) {
   )}`
   const child = spawn(
     resolveCommand('ssh'),
-    [
-      '-o',
-      'BatchMode=yes',
-      '-o',
-      'ConnectTimeout=10',
-      '-o',
-      'ServerAliveInterval=15',
-      '-o',
-      'ServerAliveCountMax=2',
-      config.remoteHost,
-      remoteCommand,
-    ],
+    [...SSH_CONNECTION_ARGS, config.remoteHost, remoteCommand],
     { stdio: ['pipe', 'pipe', 'inherit'] },
   )
   const abortController = new AbortController()
@@ -1581,7 +1589,7 @@ prune_releases || echo "Release retention cleanup failed; continuing with the he
 async function runRemoteRelease(layout, signal) {
   await runWithInput(
     'ssh',
-    [config.remoteHost, 'bash', '-se'],
+    [...SSH_CONNECTION_ARGS, config.remoteHost, 'bash', '-se'],
     createRemoteReleaseScript(layout),
     { signal },
   )
