@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
@@ -53,6 +54,8 @@ const skipIcons =
   args.has('--skip-icons') || process.env.DEPLOY_SKIP_ICONS === '1'
 const REMOTE_DEPLOY_LOCK_MARKER = '__PLANNER_DEPLOY_LOCK_ACQUIRED__'
 const REMOTE_DEPLOY_LOCK_TIMEOUT_MS = 15_000
+const SOURCE_UPLOAD_CHUNK_BYTES = 256 * 1024
+const SOURCE_UPLOAD_ATTEMPTS = 3
 const SSH_CONNECTION_ARGS = [
   '-o',
   'BatchMode=yes',
@@ -464,7 +467,6 @@ async function syncProject(layout, signal) {
     path.join(tmpdir(), 'planner-deploy-source-'),
   )
   const archivePath = path.join(archiveDirectory, 'source.tar.gz')
-  const remoteArchivePath = `${layout.releaseDirectory}/.deploy-source.tar.gz`
 
   try {
     await run(
@@ -478,19 +480,15 @@ async function syncProject(layout, signal) {
       return
     }
 
-    await run(
-      'scp',
-      [
-        ...SSH_CONNECTION_ARGS,
-        archivePath,
-        `${config.remoteHost}:${remoteArchivePath}`,
-      ],
-      { signal },
+    const archiveUpload = await uploadSourceArchiveInChunks(
+      archivePath,
+      layout,
+      signal,
     )
     await runWithInput(
       'ssh',
       [...SSH_CONNECTION_ARGS, config.remoteHost, 'bash', '-se'],
-      createRemoteSourceExtractionScript(layout),
+      createRemoteSourceExtractionScript(layout, archiveUpload),
       { signal },
     )
   } finally {
@@ -498,14 +496,105 @@ async function syncProject(layout, signal) {
   }
 }
 
-export function createRemoteSourceExtractionScript(layout) {
+async function uploadSourceArchiveInChunks(archivePath, layout, signal) {
+  const archive = await readFile(archivePath)
+  const sha256 = createHash('sha256').update(archive).digest('hex')
+  const partCount = Math.ceil(archive.length / SOURCE_UPLOAD_CHUNK_BYTES)
+
+  if (partCount === 0) {
+    throw new Error('[deploy] Refusing to upload an empty source archive.')
+  }
+
+  console.log(
+    `[deploy] Uploading source archive in ${partCount} verified chunk(s).`,
+  )
+
+  for (let index = 0; index < partCount; index += 1) {
+    const partName = `.deploy-source.part.${String(index).padStart(4, '0')}`
+    const localPartPath = path.join(path.dirname(archivePath), partName)
+    const remotePartPath = `${layout.releaseDirectory}/${partName}`
+    const start = index * SOURCE_UPLOAD_CHUNK_BYTES
+    const end = Math.min(start + SOURCE_UPLOAD_CHUNK_BYTES, archive.length)
+
+    await writeFile(localPartPath, archive.subarray(start, end))
+    await uploadSourceChunkWithRetries(
+      localPartPath,
+      remotePartPath,
+      index,
+      partCount,
+      signal,
+    )
+  }
+
+  return { partCount, sha256 }
+}
+
+async function uploadSourceChunkWithRetries(
+  localPartPath,
+  remotePartPath,
+  index,
+  partCount,
+  signal,
+) {
+  for (let attempt = 1; attempt <= SOURCE_UPLOAD_ATTEMPTS; attempt += 1) {
+    try {
+      await run(
+        'scp',
+        [
+          ...SSH_CONNECTION_ARGS,
+          localPartPath,
+          `${config.remoteHost}:${remotePartPath}`,
+        ],
+        { signal },
+      )
+      return
+    } catch (error) {
+      if (signal?.aborted || attempt === SOURCE_UPLOAD_ATTEMPTS) {
+        throw error
+      }
+
+      console.warn(
+        `[deploy] Source chunk ${index + 1}/${partCount} upload failed; retrying (${attempt + 1}/${SOURCE_UPLOAD_ATTEMPTS}).`,
+      )
+    }
+  }
+}
+
+export function createRemoteSourceExtractionScript(layout, archiveUpload) {
+  const partCount = archiveUpload?.partCount
+  const sha256 = archiveUpload?.sha256
+
+  if (!Number.isSafeInteger(partCount) || partCount < 1 || partCount > 9999) {
+    throw new Error('Source archive part count must be between 1 and 9999.')
+  }
+
+  if (typeof sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error('Source archive SHA-256 must be a lowercase hex digest.')
+  }
+
   return `
 set -euo pipefail
 
 release_dir=${shellQuote(layout.releaseDirectory)}
 archive_path=${shellQuote(`${layout.releaseDirectory}/.deploy-source.tar.gz`)}
+parts_prefix=${shellQuote(`${layout.releaseDirectory}/.deploy-source.part.`)}
+part_count=${partCount}
+expected_sha256=${shellQuote(sha256)}
 
-test -f "$archive_path"
+: > "$archive_path"
+for part_index in $(seq 0 $((part_count - 1))); do
+  part_path="$(printf '%s%04d' "$parts_prefix" "$part_index")"
+  test -f "$part_path"
+  cat "$part_path" >> "$archive_path"
+done
+
+printf '%s  %s\n' "$expected_sha256" "$archive_path" | sha256sum -c -
+
+for part_index in $(seq 0 $((part_count - 1))); do
+  part_path="$(printf '%s%04d' "$parts_prefix" "$part_index")"
+  rm -f "$part_path"
+done
+
 tar -xzf "$archive_path" -C "$release_dir"
 rm -f "$archive_path"
 test -f "$release_dir/package.json"

@@ -145,13 +145,22 @@ test('packages only the committed Git tree into the inactive release', async () 
     resolve(repositoryRoot, 'scripts/deploy-prod.mjs'),
     'utf8',
   )
-  const extractionScript = createRemoteSourceExtractionScript(layout)
+  const extractionScript = createRemoteSourceExtractionScript(layout, {
+    partCount: 14,
+    sha256: 'a'.repeat(64),
+  })
 
   assert.match(deploySource, /'git',[\s\S]*'archive'/)
   assert.match(deploySource, /layout\.releaseId/)
   assert.match(deploySource, /'scp'/)
+  assert.match(deploySource, /SOURCE_UPLOAD_CHUNK_BYTES = 256 \* 1024/)
+  assert.match(deploySource, /SOURCE_UPLOAD_ATTEMPTS = 3/)
+  assert.match(deploySource, /createHash\('sha256'\)/)
   assert.doesNotMatch(deploySource, /collectTrackedProjectFiles/)
   assertBashSyntax(extractionScript)
+  assert.match(extractionScript, /part_count=14/)
+  assert.match(extractionScript, /sha256sum -c -/)
+  assert.match(extractionScript, /\.deploy-source\.part\./)
   assert.match(extractionScript, /tar -xzf "\$archive_path"/)
   assert.match(extractionScript, /test -f "\$release_dir\/package\.json"/)
 })

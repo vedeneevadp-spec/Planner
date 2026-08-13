@@ -281,6 +281,9 @@ npm run deploy:prod
 2. берет неблокирующий remote `flock` до локального `npm run ci` и удерживает
    его во время передачи source archive, build, migrations, activation, healthchecks и
    retention; параллельный deploy сразу завершается, не ожидая освобождения lock
+   Source archive передается небольшими частями с retry, после чего сервер проверяет
+   SHA-256 собранного архива до распаковки. Частичный или поврежденный release не
+   будет собран или активирован после обрыва SSH.
 3. запускает `npm run ci`, если не указан `--skip-checks`
 4. синхронизирует проект в неизменяемый каталог
    `/opt/planner/releases/<commit>`, не затрагивая текущий release
