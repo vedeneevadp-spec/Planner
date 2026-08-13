@@ -1,6 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { HttpError, isHttpError } from '../../bootstrap/http-error.js'
+import {
+  getClientAddress,
+  MemoryRateLimiter,
+  type RateLimiter,
+} from '../../bootstrap/rate-limit.js'
 import type { DatabaseConnection } from '../../infrastructure/db/client.js'
 import { pingDatabase } from '../../infrastructure/db/client.js'
 import type { UserBackupRestoreExecutor } from './backup.restore-executor.js'
@@ -15,12 +20,17 @@ import {
 interface BuildUserBackupRestoreHelperAppInput {
   database: DatabaseConnection
   executor: UserBackupRestoreExecutor
+  rateLimiter?: RateLimiter
   secret: string
 }
+
+const RESTORE_REQUEST_LIMIT = 5
+const RESTORE_REQUEST_WINDOW_MS = 60_000
 
 export function buildUserBackupRestoreHelperApp({
   database,
   executor,
+  rateLimiter = new MemoryRateLimiter(),
   secret,
 }: BuildUserBackupRestoreHelperAppInput): FastifyInstance {
   const app = Fastify({
@@ -42,29 +52,41 @@ export function buildUserBackupRestoreHelperApp({
     return { status: 'ready' }
   })
 
-  app.post('/internal/user-backup/restore', async (request) => {
-    if (!Buffer.isBuffer(request.body)) {
-      throw new HttpError(
-        415,
-        'backup_restore_helper_media_type_required',
-        'Backup restore helper accepts JSON requests only.',
-      )
-    }
+  app.post(
+    '/internal/user-backup/restore',
+    {
+      onRequest: async (request) => {
+        await rateLimiter.consume({
+          key: `user-backup-restore-helper:${getClientAddress(request)}`,
+          limit: RESTORE_REQUEST_LIMIT,
+          windowMs: RESTORE_REQUEST_WINDOW_MS,
+        })
+      },
+    },
+    async (request) => {
+      if (!Buffer.isBuffer(request.body)) {
+        throw new HttpError(
+          415,
+          'backup_restore_helper_media_type_required',
+          'Backup restore helper accepts JSON requests only.',
+        )
+      }
 
-    verifyUserBackupRestoreSignature({
-      body: request.body,
-      secret,
-      signature: readHeader(
-        request.headers[USER_BACKUP_RESTORE_SIGNATURE_HEADER],
-      ),
-      timestamp: readHeader(
-        request.headers[USER_BACKUP_RESTORE_TIMESTAMP_HEADER],
-      ),
-    })
-    const input = parseUserBackupRestoreHelperBody(request.body)
+      verifyUserBackupRestoreSignature({
+        body: request.body,
+        secret,
+        signature: readHeader(
+          request.headers[USER_BACKUP_RESTORE_SIGNATURE_HEADER],
+        ),
+        timestamp: readHeader(
+          request.headers[USER_BACKUP_RESTORE_TIMESTAMP_HEADER],
+        ),
+      })
+      const input = parseUserBackupRestoreHelperBody(request.body)
 
-    return executor.restorePersonalWorkspace(input)
-  })
+      return executor.restorePersonalWorkspace(input)
+    },
+  )
 
   app.setErrorHandler((error, request, reply) => {
     const httpError = isHttpError(error)

@@ -143,6 +143,50 @@ void test('restore helper endpoint rejects unsigned calls before execution', asy
   }
 })
 
+void test('restore helper rate-limits requests before restore execution', async () => {
+  let executionCount = 0
+  const app = buildUserBackupRestoreHelperApp({
+    database: {} as DatabaseConnection,
+    executor: {
+      restorePersonalWorkspace: () => {
+        executionCount += 1
+
+        throw new Error('Restore executor must not run for unsigned requests.')
+      },
+    },
+    secret: SECRET,
+  })
+
+  try {
+    for (let requestNumber = 1; requestNumber <= 5; requestNumber += 1) {
+      const response = await app.inject({
+        headers: { 'content-type': 'application/json' },
+        method: 'POST',
+        payload: createRequestBody(),
+        url: '/internal/user-backup/restore',
+      })
+
+      assert.equal(response.statusCode, 401)
+    }
+
+    const rateLimited = await app.inject({
+      headers: { 'content-type': 'text/plain' },
+      method: 'POST',
+      payload: 'request must be rejected before body handling',
+      url: '/internal/user-backup/restore',
+    })
+
+    assert.equal(rateLimited.statusCode, 429)
+    assert.equal(
+      rateLimited.json<{ error: { code: string } }>().error.code,
+      'rate_limit_exceeded',
+    )
+    assert.equal(executionCount, 0)
+  } finally {
+    await app.close()
+  }
+})
+
 void test('API restore client signs helper requests without forwarding auth context', async () => {
   const input = parseUserBackupRestoreHelperBody(createRequestBody())
   const fetchImplementation = ((
