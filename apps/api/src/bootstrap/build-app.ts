@@ -8,7 +8,7 @@ import type {
 } from '@planner/contracts'
 import { healthResponseSchema } from '@planner/contracts'
 import Fastify from 'fastify'
-import { RateLimiterMemory } from 'rate-limiter-flexible'
+import fastifyRateLimit from 'fastify-rate-limit'
 
 import type { DatabaseConnection } from '../infrastructure/db/client.js'
 import { pingDatabase } from '../infrastructure/db/client.js'
@@ -69,9 +69,9 @@ import {
 } from './observability.js'
 import { registerOpenApi } from './openapi.js'
 import {
+  getClientAddress,
   MemoryRateLimiter,
   type RateLimiter,
-  readRateLimitRetryAfterSeconds,
 } from './rate-limit.js'
 import {
   NoopRequestAuthenticator,
@@ -142,12 +142,6 @@ export function buildApiApp({
     },
     trustProxy: config.trustedProxyHops,
   })
-  const protectedRequestRateLimiter = new RateLimiterMemory({
-    duration: RATE_LIMIT_WINDOW_MS / 1000,
-    keyPrefix: 'api-protected',
-    points: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
-  })
-
   app.register(cors, {
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -157,7 +151,23 @@ export function buildApiApp({
   registerApiObservability(app)
   registerOpenApi(app, config)
   if (aiContextService && mcpOAuthService && mcpAuditRepository) {
-    app.register((instance) => {
+    app.register(async (instance) => {
+      instance.register(fastifyRateLimit, {
+        errorResponseBuilder: (_request, context) =>
+          new HttpError(
+            429,
+            'rate_limit_exceeded',
+            'Too many requests. Please try again later.',
+            {
+              retryAfterSeconds: Math.max(1, Math.ceil(context.ttl / 1000)),
+            },
+          ),
+        global: false,
+        keyGenerator: getClientAddress,
+        max: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
+        timeWindow: RATE_LIMIT_WINDOW_MS,
+      })
+      await instance.after()
       registerMcpHaotikaRoutes(instance, {
         aiContextService,
         auditRepository: mcpAuditRepository,
@@ -210,25 +220,26 @@ export function buildApiApp({
     taskService,
   })
 
-  app.register((instance) => {
-    instance.decorateRequest('authContext', null)
-    instance.addHook('preParsing', async (request, reply, payload) => {
-      if (isPublicRequest(request.method, request.url)) {
-        return payload
-      }
-
-      try {
-        await protectedRequestRateLimiter.consume(request.ip)
-      } catch (error) {
-        const retryAfterSeconds = readRateLimitRetryAfterSeconds(error)
-
-        reply.header('retry-after', String(retryAfterSeconds))
-        throw new HttpError(
+  app.register(async (instance) => {
+    instance.register(fastifyRateLimit, {
+      errorResponseBuilder: (_request, context) =>
+        new HttpError(
           429,
           'rate_limit_exceeded',
           'Too many requests. Please try again later.',
-          { retryAfterSeconds },
-        )
+          {
+            retryAfterSeconds: Math.max(1, Math.ceil(context.ttl / 1000)),
+          },
+        ),
+      keyGenerator: getClientAddress,
+      max: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
+      timeWindow: RATE_LIMIT_WINDOW_MS,
+    })
+    await instance.after()
+    instance.decorateRequest('authContext', null)
+    instance.addHook('preParsing', async (request, _reply, payload) => {
+      if (isPublicRequest(request.method, request.url)) {
+        return payload
       }
 
       request.authContext = await requestAuthenticator.authenticate(request)
