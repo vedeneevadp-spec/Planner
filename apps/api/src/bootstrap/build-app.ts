@@ -67,7 +67,11 @@ import {
   registerApiObservability,
 } from './observability.js'
 import { registerOpenApi } from './openapi.js'
-import { MemoryRateLimiter, type RateLimiter } from './rate-limit.js'
+import {
+  getClientAddress,
+  MemoryRateLimiter,
+  type RateLimiter,
+} from './rate-limit.js'
 import {
   NoopRequestAuthenticator,
   type RequestAuthenticator,
@@ -100,6 +104,9 @@ export interface BuildApiAppOptions {
   userBackupService?: UserBackupService
   voiceCommandService?: VoiceCommandService
 }
+
+const PROTECTED_API_RATE_LIMIT_PER_MINUTE = 600
+const RATE_LIMIT_WINDOW_MS = 60_000
 
 export function buildApiApp({
   config,
@@ -202,6 +209,11 @@ export function buildApiApp({
       return
     }
 
+    await rateLimiter.consume({
+      key: `api:protected:ip:${getClientAddress(request)}`,
+      limit: PROTECTED_API_RATE_LIMIT_PER_MINUTE,
+      windowMs: RATE_LIMIT_WINDOW_MS,
+    })
     request.authContext = await requestAuthenticator.authenticate(request)
   })
 

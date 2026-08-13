@@ -157,6 +157,11 @@ export function registerMcpHaotikaRoutes(
     }
 
     try {
+      await options.rateLimiter.consume({
+        key: `mcp:oauth-authorize:ip:${getClientAddress(request)}`,
+        limit: Math.max(options.config.rateLimitPerMinute * 5, 100),
+        windowMs: 60_000,
+      })
       const redirectUrl = await options.oauthService.completeAuthorize(
         {
           clientId: form.client_id,

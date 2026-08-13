@@ -3615,6 +3615,52 @@ void describe('buildApiApp', () => {
     assert.equal(body.error.code, 'authentication_required')
   })
 
+  void it('rate limits protected requests before request authentication', async () => {
+    let authenticateCalls = 0
+
+    app = buildApiApp({
+      config: createTestConfig({
+        API_AUTH_MODE: 'jwt',
+        AUTH_JWT_SECRET: 'planner-test-jwt-secret-with-at-least-32-chars',
+      }),
+      database: null,
+      rateLimiter: {
+        consume(options) {
+          assert.match(options.key, /^api:protected:ip:/)
+
+          return Promise.reject(
+            new HttpError(
+              429,
+              'rate_limit_exceeded',
+              'Too many requests. Please try again later.',
+            ),
+          )
+        },
+      },
+      requestAuthenticator: {
+        authenticate() {
+          authenticateCalls += 1
+
+          return Promise.resolve(AUTH_CONTEXT)
+        },
+      },
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/session',
+    })
+
+    assert.equal(response.statusCode, 429)
+    assert.equal(authenticateCalls, 0)
+
+    const body = apiErrorSchema.parse(response.json())
+
+    assert.equal(body.error.code, 'rate_limit_exceeded')
+  })
+
   void it('resolves session and task writes from authenticated requests', async () => {
     app = buildApiApp({
       config: createTestConfig({

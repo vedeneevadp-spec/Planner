@@ -4,7 +4,10 @@ import { afterEach, describe, it } from 'node:test'
 import Fastify, { type FastifyInstance } from 'fastify'
 
 import { HttpError } from '../../bootstrap/http-error.js'
-import { MemoryRateLimiter } from '../../bootstrap/rate-limit.js'
+import {
+  MemoryRateLimiter,
+  type RateLimiter,
+} from '../../bootstrap/rate-limit.js'
 import type { AiContextService } from '../ai-context/index.js'
 import { MemorySessionRepository, SessionService } from '../session/index.js'
 import { MemoryMcpAuditLogRepository } from './mcp-haotika.audit.js'
@@ -129,11 +132,64 @@ void describe('MCP Haotika server', () => {
     assert.match(response.body, /Слишком много попыток/)
     assert.doesNotMatch(response.body, /Too many requests/)
   })
+
+  void it('rate limits OAuth authorize before password verification', async () => {
+    let authorizeCalls = 0
+
+    app = createMcpTestApp({
+      devNoAuth: false,
+      oauthService: {
+        completeAuthorize: () => {
+          authorizeCalls += 1
+
+          return Promise.resolve(
+            'https://chatgpt.test/oauth/callback?code=code',
+          )
+        },
+      } as unknown as McpOAuthService,
+      rateLimiter: {
+        consume(options) {
+          assert.match(options.key, /^mcp:oauth-authorize:ip:/)
+
+          return Promise.reject(
+            new HttpError(
+              429,
+              'rate_limit_exceeded',
+              'Too many requests. Please try again later.',
+            ),
+          )
+        },
+      },
+      rateLimitPerMinute: 30,
+    })
+
+    const response = await app.inject({
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      method: 'POST',
+      payload: new URLSearchParams({
+        client_id: 'chatgpt',
+        code_challenge: 'challenge',
+        code_challenge_method: 'S256',
+        email: 'owner@example.test',
+        password: 'wrong-password',
+        redirect_uri: 'https://chatgpt.test/oauth/callback',
+        response_type: 'code',
+      }).toString(),
+      url: '/oauth/authorize',
+    })
+
+    assert.equal(response.statusCode, 429)
+    assert.equal(authorizeCalls, 0)
+    assert.match(response.body, /Слишком много попыток/)
+  })
 })
 
 function createMcpTestApp(options: {
   devNoAuth: boolean
   oauthService?: McpOAuthService
+  rateLimiter?: RateLimiter
   rateLimitPerMinute: number
 }): FastifyInstance {
   const app = Fastify({ logger: false })
@@ -161,7 +217,7 @@ function createMcpTestApp(options: {
     oauthService:
       options.oauthService ??
       new McpOAuthService(new MemoryMcpOAuthTokenRepository(), config),
-    rateLimiter: new MemoryRateLimiter(),
+    rateLimiter: options.rateLimiter ?? new MemoryRateLimiter(),
     sessionService,
   })
 
