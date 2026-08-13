@@ -301,11 +301,59 @@ remote_root=${shellQuote(layout.remoteRoot)}
 release_dir=${shellQuote(layout.releaseDirectory)}
 current_link=${shellQuote(layout.currentLink)}
 
+ensure_system_group() {
+  group_name="$1"
+
+  if ! getent group "$group_name" >/dev/null; then
+    groupadd --system "$group_name"
+  fi
+}
+
+ensure_system_user() {
+  user_name="$1"
+  group_name="$2"
+
+  if ! id -u "$user_name" >/dev/null 2>&1; then
+    useradd --system --gid "$group_name" --home-dir /nonexistent --shell /usr/sbin/nologin "$user_name"
+  elif [ "$(id -gn "$user_name")" != "$group_name" ]; then
+    echo "Existing system user $user_name has an unexpected primary group." >&2
+    return 1
+  fi
+}
+
+for service_group in \
+  planner-api \
+  planner-alert \
+  planner-assets \
+  planner-backup \
+  planner-build \
+  planner-migrate \
+  planner-push \
+  planner-restore \
+  planner-worker; do
+  ensure_system_group "$service_group"
+done
+
+ensure_system_user planner-api planner-api
+ensure_system_user planner-alert planner-alert
+ensure_system_user planner-backup planner-backup
+ensure_system_user planner-build planner-build
+ensure_system_user planner-migrate planner-migrate
+ensure_system_user planner-restore planner-restore
+ensure_system_user planner-worker planner-worker
+
+# Keep the immediately previous, pre-isolation release operable during an
+# automatic rollback. The legacy account is not used by the new units.
+if id -u planner >/dev/null 2>&1; then
+  usermod -a -G planner-assets,planner-backup,planner-push planner
+fi
+
 mkdir -p \
   ${shellQuote(layout.releasesRoot)} \
   ${shellQuote(layout.backupsDirectory)} \
   ${shellQuote(`${layout.backupsDirectory}/infrastructure`)} \
   ${shellQuote(layout.stateDirectory)} \
+  ${shellQuote(`${layout.sharedRoot}/build-cache`)} \
   ${shellQuote(`${layout.stateDirectory}/restic-cache`)} \
   ${shellQuote(config.iconRemoteDirectory)}
 
@@ -329,10 +377,18 @@ if [ -d "$release_dir" ]; then
 fi
 
 mkdir -p "$release_dir"
-chown -R planner:planner \
-  "$release_dir" \
-  ${shellQuote(layout.sharedRoot)} \
-  ${shellQuote(config.iconRemoteDirectory)}
+chown -R planner-build:planner-build "$release_dir"
+chown -R planner-build:planner-build ${shellQuote(`${layout.sharedRoot}/build-cache`)}
+chown -R planner-backup:planner-backup \
+  ${shellQuote(layout.backupsDirectory)} \
+  ${shellQuote(layout.stateDirectory)}
+chown -R root:planner-assets ${shellQuote(config.iconRemoteDirectory)}
+find ${shellQuote(config.iconRemoteDirectory)} -type d -exec chmod 2770 {} +
+find ${shellQuote(config.iconRemoteDirectory)} -type f -exec chmod 0660 {} +
+chmod 0700 \
+  ${shellQuote(`${layout.sharedRoot}/build-cache`)} \
+  ${shellQuote(layout.backupsDirectory)} \
+  ${shellQuote(layout.stateDirectory)}
 chmod 711 "$remote_root" ${shellQuote(layout.sharedRoot)}
 `
 }
@@ -600,13 +656,15 @@ release_dir=${shellQuote(layout.releaseDirectory)}
 releases_root=${shellQuote(layout.releasesRoot)}
 current_link=${shellQuote(layout.currentLink)}
 shared_state_dir=${shellQuote(layout.stateDirectory)}
+build_cache_dir=${shellQuote(`${layout.sharedRoot}/build-cache`)}
 backups_dir=${shellQuote(layout.backupsDirectory)}
 release_retention=${config.releaseRetention}
 env_file="/etc/planner/planner.env"
-  backup_env_file="/etc/planner/backup.env"
+backup_env_file="/etc/planner/backup.env"
 previous_release=""
 switched=0
 backup_units_available=0
+restore_helper_available=0
 
 wait_for_url() {
   url="$1"
@@ -693,15 +751,36 @@ validate_production_env() {
   auth_smtp_password_value="$(read_env_value AUTH_SMTP_PASSWORD)"
   auth_smtp_port_value="$(read_env_value AUTH_SMTP_PORT)"
   auth_smtp_user_value="$(read_env_value AUTH_SMTP_USER)"
+  firebase_service_account_path_value="$(read_env_value FIREBASE_SERVICE_ACCOUNT_PATH)"
   database_url_value="$(require_env_value DATABASE_URL)"
   migrate_database_url_value="$(read_env_value MIGRATE_DATABASE_URL)"
   user_backup_restore_database_url_value="$(read_env_value USER_BACKUP_RESTORE_DATABASE_URL)"
+  user_backup_restore_helper_secret_value="$(read_env_value USER_BACKUP_RESTORE_HELPER_SECRET)"
+  user_backup_restore_helper_url_value="$(read_env_value USER_BACKUP_RESTORE_HELPER_URL)"
+  user_backup_restore_helper_port_value="$(read_env_value API_BACKUP_RESTORE_HELPER_PORT)"
   task_reminders_database_url_value="$(read_env_value TASK_REMINDERS_DATABASE_URL)"
   worker_database_url_value="$(read_env_value WORKER_DATABASE_URL)"
   api_icon_asset_dir_value="$(read_env_value API_ICON_ASSET_DIR)"
   backup_automation_enabled_value="$(read_env_value BACKUP_AUTOMATION_ENABLED)"
   restore_drill_automation_enabled_value="$(read_env_value RESTORE_DRILL_AUTOMATION_ENABLED)"
   effective_task_reminders_runtime_value="\${api_task_reminders_runtime_value:-api}"
+
+  if [ -n "$firebase_service_account_path_value" ]; then
+    if [ "$firebase_service_account_path_value" != "/etc/planner/firebase-service-account.json" ]; then
+      echo "FIREBASE_SERVICE_ACCOUNT_PATH must use the managed /etc/planner credential path." >&2
+      return 1
+    fi
+
+    if [ ! -f "$firebase_service_account_path_value" ] || [ -L "$firebase_service_account_path_value" ]; then
+      echo "FIREBASE_SERVICE_ACCOUNT_PATH must be an existing regular file, not a symlink." >&2
+      return 1
+    fi
+  fi
+
+  if [ "$api_icon_asset_dir_value" != ${shellQuote(config.iconRemoteDirectory)} ]; then
+    echo "API_ICON_ASSET_DIR must match the managed persistent production asset directory." >&2
+    return 1
+  fi
 
   if [ "$node_env_value" != "production" ]; then
     echo "NODE_ENV must be production in $env_file." >&2
@@ -776,9 +855,19 @@ validate_production_env() {
     backup_alert_telegram_bot_token_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_TELEGRAM_BOT_TOKEN)"
     backup_alert_telegram_chat_id_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_TELEGRAM_CHAT_ID)"
     backup_alert_email_to_value="$(read_env_file_value "$backup_env_file" BACKUP_ALERT_EMAIL_TO)"
+    backup_database_url_value="$(read_env_file_value "$backup_env_file" BACKUP_DATABASE_URL)"
 
     if [ -z "$restic_repository_value" ]; then
       echo "RESTIC_REPOSITORY is required in $backup_env_file." >&2
+      return 1
+    fi
+
+    if [ -z "$backup_database_url_value" ]; then
+      echo "BACKUP_DATABASE_URL is required in $backup_env_file for scheduled backups." >&2
+      return 1
+    fi
+
+    if ! validate_database_transport "$backup_database_url_value"; then
       return 1
     fi
 
@@ -789,6 +878,11 @@ validate_production_env() {
 
     if [ -n "$restic_password_file_value" ] && [ ! -f "$restic_password_file_value" ]; then
       echo "RESTIC_PASSWORD_FILE does not exist." >&2
+      return 1
+    fi
+
+    if [ -n "$restic_password_file_value" ] && { [ "$restic_password_file_value" != "/etc/planner/restic-password" ] || [ -L "$restic_password_file_value" ]; }; then
+      echo "RESTIC_PASSWORD_FILE must be the managed regular file /etc/planner/restic-password." >&2
       return 1
     fi
 
@@ -850,8 +944,38 @@ validate_production_env() {
     return 1
   fi
 
+  if [ "\${#user_backup_restore_helper_secret_value}" -lt 32 ]; then
+    echo "USER_BACKUP_RESTORE_HELPER_SECRET must contain at least 32 characters." >&2
+    return 1
+  fi
+
+  case "$user_backup_restore_helper_secret_value" in
+    change*|replace*|secret*|your*)
+      echo "USER_BACKUP_RESTORE_HELPER_SECRET still looks like a placeholder." >&2
+      return 1
+      ;;
+  esac
+
+  if [ "$user_backup_restore_helper_url_value" != "http://127.0.0.1:3012/internal/user-backup/restore" ]; then
+    echo "USER_BACKUP_RESTORE_HELPER_URL must target the managed loopback restore helper." >&2
+    return 1
+  fi
+
+  if [ -n "$user_backup_restore_helper_port_value" ] && [ "$user_backup_restore_helper_port_value" != "3012" ]; then
+    echo "API_BACKUP_RESTORE_HELPER_PORT must be 3012 for the managed loopback helper." >&2
+    return 1
+  fi
+
   if [ "$user_backup_restore_database_url_value" = "$database_url_value" ]; then
     echo "USER_BACKUP_RESTORE_DATABASE_URL must not reuse the runtime DATABASE_URL." >&2
+    return 1
+  fi
+
+  if ! validate_database_transport "$user_backup_restore_database_url_value"; then
+    return 1
+  fi
+
+  if [ -n "$migrate_database_url_value" ] && ! validate_database_transport "$migrate_database_url_value"; then
     return 1
   fi
 
@@ -860,10 +984,213 @@ validate_production_env() {
     return 1
   fi
 
-  if [ "$api_db_rls_mode_value" = "transaction_local" ] && [ "$effective_task_reminders_runtime_value" = "worker" ] && [ -z "$task_reminders_database_url_value" ] && [ -z "$worker_database_url_value" ]; then
-    echo "TASK_REMINDERS_DATABASE_URL or WORKER_DATABASE_URL must be configured when task reminders worker runs with strict transaction_local API runtime." >&2
+  if [ "$effective_task_reminders_runtime_value" = "worker" ] && [ -z "$task_reminders_database_url_value" ] && [ -z "$worker_database_url_value" ]; then
+    echo "TASK_REMINDERS_DATABASE_URL or WORKER_DATABASE_URL must be configured for the isolated reminders worker." >&2
     return 1
   fi
+
+  effective_worker_database_url_value="\${task_reminders_database_url_value:-$worker_database_url_value}"
+  if [ "$effective_task_reminders_runtime_value" = "worker" ] && ! validate_database_transport "$effective_worker_database_url_value"; then
+    return 1
+  fi
+}
+
+write_env_subset() {
+  write_env_subset_from "$env_file" "$@"
+}
+
+write_env_subset_from() {
+  source="$1"
+  target="$2"
+  shift 2
+  next="\${target}.next"
+
+  install -o root -g root -m 0600 /dev/null "$next"
+
+  for key in "$@"; do
+    if [ -f "$source" ]; then
+      line="$(grep -E "^\${key}=" "$source" | tail -n 1 || true)"
+    else
+      line=""
+    fi
+
+    if [ -n "$line" ]; then
+      printf '%s\n' "$line" >> "$next"
+    fi
+  done
+
+  mv -f "$next" "$target"
+}
+
+install_legacy_runtime_compatibility() {
+  source_release="$1"
+  legacy_api_unit="$source_release/deploy/systemd/planner-api.service"
+
+  if ! grep -Eq '^User=planner$' "$legacy_api_unit" || ! grep -Eq '^EnvironmentFile=/etc/planner/planner\\.env$' "$legacy_api_unit"; then
+    return 0
+  fi
+
+  if ! id -u planner >/dev/null 2>&1; then
+    echo "Legacy rollback requires the planner system user." >&2
+    return 1
+  fi
+
+  # A rollback to the pre-isolation unit layout must restore only the legacy
+  # permissions that those units require. The next forward deploy reapplies
+  # the split root-owned env files and planner-backup ownership.
+  chown root:planner "$env_file"
+  chmod 0640 "$env_file"
+  if [ -f "$backup_env_file" ]; then
+    chown root:planner "$backup_env_file"
+    chmod 0640 "$backup_env_file"
+  fi
+  chown -R planner:planner "$shared_state_dir" "$backups_dir"
+  chmod 0700 "$shared_state_dir" "$backups_dir"
+}
+
+install_service_envs() {
+  chmod 0711 /etc/planner
+  chown root:root "$env_file"
+  chmod 0600 "$env_file"
+
+  firebase_service_account_path_value="$(read_env_value FIREBASE_SERVICE_ACCOUNT_PATH)"
+  if [ -n "$firebase_service_account_path_value" ]; then
+    chown root:planner-push "$firebase_service_account_path_value"
+    chmod 0640 "$firebase_service_account_path_value"
+  fi
+
+  if [ -f "$backup_env_file" ]; then
+    restic_password_file_value="$(read_env_file_value "$backup_env_file" RESTIC_PASSWORD_FILE)"
+    if [ "$restic_password_file_value" = "/etc/planner/restic-password" ] && [ -f "$restic_password_file_value" ] && [ ! -L "$restic_password_file_value" ]; then
+      chown root:planner-backup "$restic_password_file_value"
+      chmod 0640 "$restic_password_file_value"
+    fi
+  fi
+
+  write_env_subset /etc/planner/api.env \
+    NODE_ENV \
+    API_AUTH_MODE \
+    API_STORAGE_DRIVER \
+    API_DB_RLS_MODE \
+    API_DB_WRITE_FALLBACK \
+    API_DB_CONNECTION_TIMEOUT_MS \
+    API_DB_QUERY_TIMEOUT_MS \
+    API_DB_IDLE_TRANSACTION_TIMEOUT_MS \
+    API_DB_STATEMENT_TIMEOUT_MS \
+    API_TRUST_PROXY_HOPS \
+    API_TASK_REMINDERS_RUNTIME \
+    API_HOST \
+    API_PORT \
+    API_CORS_ORIGIN \
+    API_ICON_ASSET_DIR \
+    DATABASE_URL \
+    AUTH_JWT_SECRET \
+    AUTH_JWT_ISSUER \
+    AUTH_JWT_AUDIENCE \
+    AUTH_ACCESS_TOKEN_TTL_SECONDS \
+    AUTH_REFRESH_TOKEN_TTL_SECONDS \
+    AUTH_PASSWORD_RESET_TTL_SECONDS \
+    AUTH_PUBLIC_APP_URL \
+    AUTH_EMAIL_FROM \
+    AUTH_SMTP_HOST \
+    AUTH_SMTP_PORT \
+    AUTH_SMTP_SECURE \
+    AUTH_SMTP_USER \
+    AUTH_SMTP_PASSWORD \
+    ALICE_OAUTH_CLIENT_ID \
+    ALICE_OAUTH_CLIENT_SECRET \
+    ALICE_OAUTH_REDIRECT_URI \
+    ALICE_OAUTH_CODE_TTL_SECONDS \
+    ALICE_LLM_PROVIDER \
+    ALICE_LLM_ENDPOINT \
+    ALICE_LLM_MODEL \
+    ALICE_LLM_API_KEY \
+    ALICE_LLM_TIMEOUT_MS \
+    ALICE_LLM_YANDEX_FOLDER_ID \
+    VOICE_STT_YANDEX_API_KEY \
+    VOICE_STT_YANDEX_ENDPOINT \
+    VOICE_STT_YANDEX_FOLDER_ID \
+    VOICE_STT_YANDEX_IAM_TOKEN \
+    VOICE_STT_LANGUAGE \
+    VOICE_STT_TIMEOUT_MS \
+    YANDEX_API_KEY \
+    YANDEX_FOLDER_ID \
+    YANDEX_IAM_TOKEN \
+    HAOTIKA_MCP_ENABLED \
+    HAOTIKA_MCP_PUBLIC_BASE_URL \
+    HAOTIKA_MCP_DEV_NO_AUTH \
+    HAOTIKA_MCP_RATE_LIMIT_PER_MINUTE \
+    HAOTIKA_OAUTH_ISSUER \
+    HAOTIKA_OAUTH_ALLOWED_REDIRECT_URIS \
+    HAOTIKA_DEFAULT_TIMEZONE \
+    FIREBASE_SERVICE_ACCOUNT_JSON \
+    FIREBASE_SERVICE_ACCOUNT_PATH \
+    FIREBASE_PROJECT_ID \
+    FIREBASE_CLIENT_EMAIL \
+    FIREBASE_PRIVATE_KEY \
+    USER_BACKUP_RESTORE_HELPER_URL \
+    USER_BACKUP_RESTORE_HELPER_SECRET
+
+  write_env_subset /etc/planner/reminders.env \
+    NODE_ENV \
+    TASK_REMINDERS_DATABASE_URL \
+    WORKER_DATABASE_URL \
+    API_DB_CONNECTION_TIMEOUT_MS \
+    API_DB_QUERY_TIMEOUT_MS \
+    API_DB_IDLE_TRANSACTION_TIMEOUT_MS \
+    API_DB_STATEMENT_TIMEOUT_MS \
+    TASK_REMINDERS_BATCH_SIZE \
+    TASK_REMINDERS_INTERVAL_MS \
+    SELF_CARE_REMINDERS_BATCH_SIZE \
+    SELF_CARE_REMINDERS_INTERVAL_MS \
+    FIREBASE_SERVICE_ACCOUNT_JSON \
+    FIREBASE_SERVICE_ACCOUNT_PATH \
+    FIREBASE_PROJECT_ID \
+    FIREBASE_CLIENT_EMAIL \
+    FIREBASE_PRIVATE_KEY
+
+  write_env_subset /etc/planner/restore-helper.env \
+    NODE_ENV \
+    USER_BACKUP_RESTORE_DATABASE_URL \
+    USER_BACKUP_RESTORE_HELPER_SECRET \
+    API_BACKUP_RESTORE_HELPER_PORT \
+    API_ICON_ASSET_DIR \
+    API_DB_CONNECTION_TIMEOUT_MS \
+    API_DB_QUERY_TIMEOUT_MS \
+    API_DB_IDLE_TRANSACTION_TIMEOUT_MS \
+    API_DB_STATEMENT_TIMEOUT_MS
+
+  write_env_subset /etc/planner/backup-runtime.env \
+    API_ICON_ASSET_DIR
+
+  write_env_subset /etc/planner/backup-alert-runtime.env \
+    AUTH_EMAIL_FROM \
+    AUTH_SMTP_HOST \
+    AUTH_SMTP_PORT \
+    AUTH_SMTP_SECURE \
+    AUTH_SMTP_USER \
+    AUTH_SMTP_PASSWORD
+
+  write_env_subset_from "$backup_env_file" /etc/planner/backup-job.env \
+    RESTIC_REPOSITORY \
+    RESTIC_PASSWORD \
+    RESTIC_PASSWORD_FILE \
+    AWS_ACCESS_KEY_ID \
+    AWS_SECRET_ACCESS_KEY \
+    AWS_SESSION_TOKEN \
+    AWS_DEFAULT_REGION \
+    BACKUP_DATABASE_URL \
+    RESTIC_KEEP_DAILY \
+    RESTIC_KEEP_WEEKLY \
+    RESTIC_KEEP_MONTHLY \
+    BACKUP_LOCAL_KEEP_DAYS \
+    RESTORE_DRILL_ADMIN_DATABASE_URL
+
+  write_env_subset_from "$backup_env_file" /etc/planner/backup-alert.env \
+    BACKUP_ALERT_WEBHOOK_URL \
+    BACKUP_ALERT_TELEGRAM_BOT_TOKEN \
+    BACKUP_ALERT_TELEGRAM_CHAT_ID \
+    BACKUP_ALERT_EMAIL_TO
 }
 
 atomic_switch() {
@@ -878,6 +1205,7 @@ atomic_switch() {
 install_runtime_configs() {
   source_release="$1"
   release_commit="\${source_release##*/}"
+  restore_helper_available=0
   backup_units=(
     planner-backup-alert@.service
     planner-backup.service
@@ -891,6 +1219,7 @@ install_runtime_configs() {
   test -f "$source_release/deploy/systemd/planner-api.service"
   test -f "$source_release/deploy/systemd/planner-task-reminders.service"
   test -f "$source_release/deploy/caddy/Caddyfile"
+  install_service_envs
 
   if [ "\${#release_commit}" -ne 40 ] || printf '%s' "$release_commit" | grep -Eq '[^0-9a-f]'; then
     echo "Cannot derive a Git commit from release path: $source_release" >&2
@@ -907,12 +1236,28 @@ install_runtime_configs() {
   install -o root -g root -m 0644 \
     "$source_release/deploy/systemd/planner-task-reminders.service" \
     /etc/systemd/system/planner-task-reminders.service.next
+  if [ -f "$source_release/deploy/systemd/planner-user-backup-restore.service" ]; then
+    restore_helper_available=1
+    install -o root -g root -m 0644 \
+      "$source_release/deploy/systemd/planner-user-backup-restore.service" \
+      /etc/systemd/system/planner-user-backup-restore.service.next
+  fi
   install -o root -g root -m 0644 \
     "$source_release/deploy/caddy/Caddyfile" \
     /etc/caddy/Caddyfile.next
 
   mv -f /etc/systemd/system/planner-api.service.next /etc/systemd/system/planner-api.service
   mv -f /etc/systemd/system/planner-task-reminders.service.next /etc/systemd/system/planner-task-reminders.service
+  if [ "$restore_helper_available" = "1" ]; then
+    mv -f \
+      /etc/systemd/system/planner-user-backup-restore.service.next \
+      /etc/systemd/system/planner-user-backup-restore.service
+  else
+    systemctl disable --now planner-user-backup-restore.service || true
+    rm -f \
+      /etc/systemd/system/planner-user-backup-restore.service \
+      /etc/systemd/system/planner-user-backup-restore.service.next
+  fi
   mv -f /etc/caddy/Caddyfile.next /etc/caddy/Caddyfile
   mv -f /etc/planner/release.env.next /etc/planner/release.env
 
@@ -939,6 +1284,18 @@ install_runtime_configs() {
     for unit in "\${backup_units[@]}"; do
       rm -f "/etc/systemd/system/$unit" "/etc/systemd/system/$unit.next"
     done
+  fi
+
+  install_legacy_runtime_compatibility "$source_release"
+}
+
+apply_restore_helper_state() {
+  if [ "$restore_helper_available" = "1" ]; then
+    systemctl enable planner-user-backup-restore.service
+    systemctl restart planner-user-backup-restore.service
+    wait_for_url http://127.0.0.1:3012/internal/ready
+  else
+    systemctl disable --now planner-user-backup-restore.service || true
   fi
 }
 
@@ -996,6 +1353,7 @@ rollback_release() {
       atomic_switch "$previous_release" || rollback_failed=1
       install_runtime_configs "$previous_release" || rollback_failed=1
       systemctl daemon-reload || rollback_failed=1
+      apply_restore_helper_state || rollback_failed=1
       systemctl restart planner-api || rollback_failed=1
       apply_worker_state || rollback_failed=1
       apply_backup_state || rollback_failed=1
@@ -1047,17 +1405,40 @@ cd "$release_dir"
 validate_production_env
 
 mkdir -p \
+  "$build_cache_dir" \
   "$shared_state_dir/tmp" \
   "$shared_state_dir/restic-cache" \
   "$backups_dir/infrastructure"
 rm -rf "$release_dir/tmp"
 ln -s "$shared_state_dir/tmp" "$release_dir/tmp"
-chown -R planner:planner "$release_dir" "$shared_state_dir" ${shellQuote(config.iconRemoteDirectory)}
+chown -R planner-build:planner-build "$release_dir"
+chown -R planner-build:planner-build "$build_cache_dir"
+chown -R planner-backup:planner-backup "$shared_state_dir" "$backups_dir"
+chown -R root:planner-assets ${shellQuote(config.iconRemoteDirectory)}
+find ${shellQuote(config.iconRemoteDirectory)} -type d -exec chmod 2770 {} +
+find ${shellQuote(config.iconRemoteDirectory)} -type f -exec chmod 0660 {} +
+chmod 0700 "$shared_state_dir" "$backups_dir"
+chmod 0700 "$build_cache_dir"
 chmod 711 "$remote_root" ${shellQuote(layout.sharedRoot)}
 
-runuser -u planner -- env HUSKY=0 npm run toolchain:check
-runuser -u planner -- env HUSKY=0 npm ci --include=dev --ignore-scripts
-runuser -u planner -- env HUSKY=0 npm rebuild @firebase/util protobufjs esbuild
+runuser -u planner-build -- env -i \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  HOME=/nonexistent \
+  npm_config_cache="$build_cache_dir" \
+  HUSKY=0 \
+  npm run toolchain:check
+runuser -u planner-build -- env -i \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  HOME=/nonexistent \
+  npm_config_cache="$build_cache_dir" \
+  HUSKY=0 \
+  npm ci --include=dev --ignore-scripts
+runuser -u planner-build -- env -i \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  HOME=/nonexistent \
+  npm_config_cache="$build_cache_dir" \
+  HUSKY=0 \
+  npm rebuild @firebase/util protobufjs esbuild
 
 WEB_AUTH_PROVIDER="$(read_env_value WEB_AUTH_PROVIDER)"
 if [ -z "$WEB_AUTH_PROVIDER" ]; then
@@ -1068,10 +1449,27 @@ if [ -z "$WEB_AUTH_PROVIDER" ]; then
   fi
 fi
 
-runuser -u planner -- env \
+runuser -u planner-build -- env -i \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  HOME=/nonexistent \
+  npm_config_cache="$build_cache_dir" \
   VITE_API_BASE_URL=${shellQuote(`https://${config.domain}`)} \
   VITE_AUTH_PROVIDER="$WEB_AUTH_PROVIDER" \
   npm run build
+test -f "$release_dir/apps/api/dist/server.js"
+test -f "$release_dir/apps/api/dist/task-reminders.js"
+test -f "$release_dir/apps/api/dist/user-backup-restore.js"
+runuser -u planner-build -- env -i \
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  HOME=/nonexistent \
+  npm_config_cache="$build_cache_dir" \
+  HUSKY=0 \
+  npm prune --omit=dev --ignore-scripts
+test ! -e "$release_dir/node_modules/tsx"
+test ! -e "$release_dir/node_modules/typescript"
+test ! -e "$release_dir/node_modules/vite"
+chown -R root:root "$release_dir"
+chmod -R u=rwX,go=rX "$release_dir"
 caddy validate --config "$release_dir/deploy/caddy/Caddyfile"
 
 DATABASE_URL_VALUE="$(require_env_value DATABASE_URL)"
@@ -1082,35 +1480,61 @@ if [ -z "$MIGRATE_DATABASE_URL_VALUE" ]; then
 fi
 
 if [ "${skipDbBackup ? '1' : '0'}" != "1" ]; then
-  runuser -u planner -- \
+  DB_DEPLOY_BACKUP_KEEP_VALUE="$(read_env_value DB_DEPLOY_BACKUP_KEEP)"
+  runuser -u planner-backup -- \
     flock -w 300 "$shared_state_dir/backup.lock" \
-    env HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" DB_BACKUP_DIR="$backups_dir" npm run db:backup
+    env -i \
+      PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+      HOME=/nonexistent \
+      MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" \
+      DB_BACKUP_DIR="$backups_dir" \
+      DB_DEPLOY_BACKUP_KEEP="$DB_DEPLOY_BACKUP_KEEP_VALUE" \
+      node scripts/db-backup.mjs
 fi
 
 DB_MIGRATE_MODE_VALUE="$(read_env_value DB_MIGRATE_MODE)"
-MIGRATE_ENV=(HUSKY=0 MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE")
+MIGRATE_ENV=(MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE")
 if [ -n "$DB_MIGRATE_MODE_VALUE" ]; then
   MIGRATE_ENV+=(DB_MIGRATE_MODE="$DB_MIGRATE_MODE_VALUE")
 fi
 
-runuser -u planner -- env "\${MIGRATE_ENV[@]}" npm run db:migrate
-runuser -u planner -- env \\
-  HUSKY=0 \\
+runuser -u planner-migrate -- env -i \\
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+  HOME=/nonexistent \\
+  "\${MIGRATE_ENV[@]}" \\
+  node scripts/db-migrate.mjs
+runuser -u planner-migrate -- env -i \\
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+  HOME=/nonexistent \\
   MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" \\
-  npm run db:security:repair
+  node scripts/db-security-repair.mjs
 
-SECURITY_ENV=(HUSKY=0 DATABASE_URL="$DATABASE_URL_VALUE" NODE_ENV="$node_env_value" API_DB_RLS_MODE="$api_db_rls_mode_value")
+SECURITY_ENV=(DATABASE_URL="$DATABASE_URL_VALUE" NODE_ENV="$node_env_value" API_DB_RLS_MODE="$api_db_rls_mode_value")
 if [ "$api_db_rls_mode_value" = "transaction_local" ]; then
   SECURITY_ENV+=(DB_SECURITY_REQUIRE_NON_OWNER=1)
 fi
 
-runuser -u planner -- env \\
+runuser -u planner-migrate -- env -i \\
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+  HOME=/nonexistent \\
   "\${SECURITY_ENV[@]}" \\
-  npm run db:security:check
-runuser -u planner -- env \\
-  HUSKY=0 \\
+  node scripts/db-security-check.mjs
+runuser -u planner-migrate -- env -i \\
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+  HOME=/nonexistent \\
   USER_BACKUP_RESTORE_DATABASE_URL="$USER_BACKUP_RESTORE_DATABASE_URL_VALUE" \\
-  npm run backup:restore-db:check
+  node scripts/check-user-backup-restore-database.mjs
+
+BACKUP_AUTOMATION_ENABLED_VALUE="$(read_env_value BACKUP_AUTOMATION_ENABLED)"
+if [ "$BACKUP_AUTOMATION_ENABLED_VALUE" = "1" ]; then
+  BACKUP_DATABASE_URL_VALUE="$(read_env_file_value "$backup_env_file" BACKUP_DATABASE_URL)"
+  runuser -u planner-migrate -- env -i \\
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+    HOME=/nonexistent \\
+    MIGRATE_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" \\
+    BACKUP_DATABASE_URL="$BACKUP_DATABASE_URL_VALUE" \\
+    node scripts/check-backup-database.mjs
+fi
 
 previous_release="$(readlink -f "$current_link" 2>/dev/null || true)"
 if [ -n "$previous_release" ] && [ ! -d "$previous_release" ]; then
@@ -1122,21 +1546,22 @@ TASK_REMINDERS_RUNTIME_VALUE="$(read_env_value API_TASK_REMINDERS_RUNTIME)"
 if [ -z "$TASK_REMINDERS_RUNTIME_VALUE" ]; then
   TASK_REMINDERS_RUNTIME_VALUE="api"
 fi
-BACKUP_AUTOMATION_ENABLED_VALUE="$(read_env_value BACKUP_AUTOMATION_ENABLED)"
 RESTORE_DRILL_AUTOMATION_ENABLED_VALUE="$(read_env_value RESTORE_DRILL_AUTOMATION_ENABLED)"
 
 atomic_switch "$release_dir"
 switched=1
 install_runtime_configs "$release_dir"
 systemctl daemon-reload
+apply_restore_helper_state
 systemctl restart planner-api
 wait_for_url ${shellQuote(`http://127.0.0.1:3001${config.healthPath}`)}
-runuser -u planner -- env \\
-  HUSKY=0 \\
+runuser -u planner-migrate -- env -i \\
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \\
+  HOME=/nonexistent \\
   SMOKE_CLEANUP_DATABASE_URL="$MIGRATE_DATABASE_URL_VALUE" \\
   SMOKE_API_BASE_URL=http://127.0.0.1:3001 \\
   SMOKE_CLEANUP_DATABASE=1 \\
-  npm run smoke:api:prod
+  node scripts/api-prod-smoke.mjs
 
 apply_worker_state
 apply_backup_state
@@ -1145,7 +1570,8 @@ wait_for_url ${shellQuote(`https://${config.domain}${config.healthPath}`)}
 wait_for_url ${shellQuote(`https://${config.domain}/`)}
 
 touch "$release_dir/.deploy-complete"
-chown planner:planner "$release_dir/.deploy-complete"
+chown root:root "$release_dir/.deploy-complete"
+chmod 0444 "$release_dir/.deploy-complete"
 switched=0
 trap - ERR
 prune_releases || echo "Release retention cleanup failed; continuing with the healthy release." >&2

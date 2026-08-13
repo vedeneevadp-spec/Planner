@@ -6,20 +6,38 @@ OnFailure=planner-backup-alert@%n.service
 
 [Service]
 Type=oneshot
-User=planner
-Group=planner
+User=planner-backup
+Group=planner-backup
 WorkingDirectory=/opt/planner/current
-EnvironmentFile=/etc/planner/planner.env
+EnvironmentFile=/etc/planner/backup-runtime.env
 EnvironmentFile=/etc/planner/release.env
-EnvironmentFile=-/etc/planner/backup.env
+EnvironmentFile=/etc/planner/backup-job.env
 Environment=INFRASTRUCTURE_BACKUP_DIR=/opt/planner/shared/backups/infrastructure
 Environment=RESTIC_CACHE_DIR=/opt/planner/shared/state/restic-cache
 Environment=BACKUP_REQUIRE_OFFSITE=1
-ExecStart=/usr/bin/flock -w 300 /opt/planner/shared/state/backup.lock /usr/bin/npm run backup:prune
+ExecStart=/usr/bin/flock -w 300 /opt/planner/shared/state/backup.lock /usr/bin/node /opt/planner/current/scripts/infrastructure-backup-prune.mjs
 Nice=15
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 NoNewPrivileges=true
+PrivateDevices=true
 PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/opt/planner/shared/backups /opt/planner/shared/state
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
 UMask=0077
 TimeoutStartSec=4h

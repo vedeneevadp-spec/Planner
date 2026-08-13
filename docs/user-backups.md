@@ -74,8 +74,9 @@ restore. Это системные данные, а не данные отдел
 
 ## Привилегированное подключение
 
-Production runtime использует non-owner `DATABASE_URL`, которому намеренно
-запрещены прямые записи во внутренние таблицы. Restore использует отдельный пул:
+Production API использует non-owner `DATABASE_URL`, которому намеренно
+запрещены прямые записи во внутренние таблицы. Привилегированный restore URL
+получает только отдельный loopback helper:
 
 ```text
 USER_BACKUP_RESTORE_DATABASE_URL
@@ -83,16 +84,20 @@ USER_BACKUP_RESTORE_DATABASE_URL
 
 Deploy требует, чтобы URL был настроен и не совпадал с runtime `DATABASE_URL`.
 Доступ должен принадлежать отдельной maintenance/restore роли или owner/admin
-role. Этот credential используется только restore repository; обычные API
-операции продолжают работать через strict RLS runtime connection.
+role. `planner-api` не получает этот credential: он подписывает уже
+провалидированный запрос HMAC и отправляет его на
+`http://127.0.0.1:3012/internal/user-backup/restore`. Helper повторно проверяет
+подпись, freshness, digest, schema и same-user/same-workspace scope, после чего
+выполняет только allowlisted merge-алгоритм.
 
-Перед atomic switch deploy запускает `npm run backup:restore-db:check` и
+Перед atomic switch deploy запускает restore DB check и
 проверяет read-write connection, наличие таблиц, table privileges и возможность
 обхода RLS. Текущая реализация привилегированной транзакции не поддерживает роль,
 которая видит только обычные authenticated RLS policies.
 
-Если отдельное подключение не настроено, production restore возвращает `503`
-без изменения данных.
+Production API fail-fast не запускается, если ему случайно передали
+`USER_BACKUP_RESTORE_DATABASE_URL`, migration URL или worker URL. Если helper
+недоступен, restore возвращает `503` без изменения данных.
 
 ## Формат архива
 

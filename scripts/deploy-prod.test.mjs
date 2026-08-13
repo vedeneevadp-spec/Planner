@@ -169,6 +169,16 @@ test('keeps the legacy production root available during first preparation', () =
   assert.match(script, /ln -s "\$remote_root" "\$current_link"/)
   assert.match(script, /Refusing to overwrite the active release/)
   assert.doesNotMatch(script, /rm -rf "\$remote_root"/)
+  assert.match(script, /ensure_system_user planner-api planner-api/)
+  assert.match(script, /ensure_system_user planner-worker planner-worker/)
+  assert.match(script, /ensure_system_user planner-restore planner-restore/)
+  assert.match(script, /ensure_system_user planner-backup planner-backup/)
+  assert.match(script, /ensure_system_user planner-alert planner-alert/)
+  assert.match(
+    script,
+    /usermod -a -G planner-assets,planner-backup,planner-push planner/,
+  )
+  assert.doesNotMatch(script, /chown -R planner:planner/)
 })
 
 test('builds and migrates before the atomic switch, with post-switch rollback', () => {
@@ -176,22 +186,35 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
 
   assertBashSyntax(script)
   assert.match(script, /^set -Eeuo pipefail$/m)
-  assertOrder(script, 'npm run toolchain:check', 'npm ci')
-  assertOrder(script, 'npm ci', 'npm run build')
-  assertOrder(script, 'npm run build', 'npm run db:migrate')
-  assertOrder(script, 'npm run db:migrate', 'npm run db:security:repair')
-  assertOrder(script, 'npm run db:security:repair', 'npm run db:security:check')
+  assertOrder(script, 'npm run toolchain:check', 'npm ci --include=dev')
+  assertOrder(script, 'npm ci --include=dev', 'npm run build')
+  assertOrder(script, 'npm run build', 'npm prune --omit=dev')
+  assertOrder(script, 'npm prune --omit=dev', 'node scripts/db-migrate.mjs')
   assertOrder(
     script,
-    'npm run db:security:check',
+    'node scripts/db-migrate.mjs',
+    'node scripts/db-security-repair.mjs',
+  )
+  assertOrder(
+    script,
+    'node scripts/db-security-repair.mjs',
+    'node scripts/db-security-check.mjs',
+  )
+  assertOrder(
+    script,
+    'node scripts/db-security-check.mjs',
     'atomic_switch "$release_dir"',
   )
   assertOrder(
     script,
-    'npm run backup:restore-db:check',
+    'node scripts/check-user-backup-restore-database.mjs',
     'atomic_switch "$release_dir"',
   )
-  assertOrder(script, 'npm run db:migrate', 'atomic_switch "$release_dir"')
+  assertOrder(
+    script,
+    'node scripts/db-migrate.mjs',
+    'atomic_switch "$release_dir"',
+  )
   assertOrder(
     script,
     'atomic_switch "$release_dir"',
@@ -206,7 +229,9 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   assert.match(script, /flock -w 300 "\$shared_state_dir\/backup\.lock"/)
   assert.match(script, /BACKUP_AUTOMATION_ENABLED_VALUE/)
   assert.match(script, /USER_BACKUP_RESTORE_DATABASE_URL/)
-  assert.match(script, /npm run backup:restore-db:check/)
+  assert.match(script, /USER_BACKUP_RESTORE_HELPER_SECRET/)
+  assert.match(script, /USER_BACKUP_RESTORE_HELPER_URL/)
+  assert.match(script, /node scripts\/check-user-backup-restore-database\.mjs/)
   assert.match(
     script,
     /USER_BACKUP_RESTORE_DATABASE_URL must not reuse the runtime DATABASE_URL/,
@@ -216,6 +241,65 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   assert.match(script, /planner-restore-drill\.timer/)
   assert.match(script, /atomic_switch "\$previous_release"/)
   assert.match(script, /install_runtime_configs "\$previous_release"/)
+  assert.match(script, /apply_restore_helper_state/)
+  assert.match(script, /install_legacy_runtime_compatibility/)
+  assert.match(script, /chown root:planner "\$env_file"/)
+  assert.match(
+    script,
+    /chown -R planner:planner "\$shared_state_dir" "\$backups_dir"/,
+  )
+  assert.match(script, /write_env_subset \/etc\/planner\/api\.env/)
+  assert.match(script, /write_env_subset \/etc\/planner\/reminders\.env/)
+  assert.match(script, /write_env_subset \/etc\/planner\/restore-helper\.env/)
+  assert.match(script, /write_env_subset \/etc\/planner\/backup-runtime\.env/)
+  assert.match(script, /chown -R root:root "\$release_dir"/)
+  assert.match(script, /test ! -e "\$release_dir\/node_modules\/tsx"/)
+  assert.match(script, /chmod 0600 "\$env_file"/)
+
+  const apiEnvBlock = extractBetween(
+    script,
+    'write_env_subset /etc/planner/api.env',
+    'write_env_subset /etc/planner/reminders.env',
+  )
+  const remindersEnvBlock = extractBetween(
+    script,
+    'write_env_subset /etc/planner/reminders.env',
+    'write_env_subset /etc/planner/restore-helper.env',
+  )
+  const restoreEnvBlock = extractBetween(
+    script,
+    'write_env_subset /etc/planner/restore-helper.env',
+    'write_env_subset /etc/planner/backup-runtime.env',
+  )
+  const backupRuntimeEnvBlock = extractBetween(
+    script,
+    'write_env_subset /etc/planner/backup-runtime.env',
+    'write_env_subset /etc/planner/backup-alert-runtime.env',
+  )
+  const backupJobEnvBlock = extractBetween(
+    script,
+    'write_env_subset_from "$backup_env_file" /etc/planner/backup-job.env',
+    'write_env_subset_from "$backup_env_file" /etc/planner/backup-alert.env',
+  )
+
+  assert.match(apiEnvBlock, /DATABASE_URL/)
+  assert.match(apiEnvBlock, /USER_BACKUP_RESTORE_HELPER_SECRET/)
+  assert.doesNotMatch(apiEnvBlock, /MIGRATE_DATABASE_URL/)
+  assert.doesNotMatch(apiEnvBlock, /USER_BACKUP_RESTORE_DATABASE_URL/)
+  assert.doesNotMatch(apiEnvBlock, /TASK_REMINDERS_DATABASE_URL/)
+  assert.match(remindersEnvBlock, /TASK_REMINDERS_DATABASE_URL/)
+  assert.match(remindersEnvBlock, /SELF_CARE_REMINDERS_BATCH_SIZE/)
+  assert.doesNotMatch(remindersEnvBlock, /AUTH_JWT_SECRET/)
+  assert.doesNotMatch(remindersEnvBlock, /MIGRATE_DATABASE_URL/)
+  assert.match(restoreEnvBlock, /USER_BACKUP_RESTORE_DATABASE_URL/)
+  assert.doesNotMatch(restoreEnvBlock, /\n {4}DATABASE_URL \\/)
+  assert.doesNotMatch(restoreEnvBlock, /AUTH_JWT_SECRET/)
+  assert.doesNotMatch(backupRuntimeEnvBlock, /MIGRATE_DATABASE_URL/)
+  assert.doesNotMatch(backupRuntimeEnvBlock, /BACKUP_DATABASE_URL/)
+  assert.match(backupJobEnvBlock, /BACKUP_DATABASE_URL/)
+  assert.doesNotMatch(backupJobEnvBlock, /MIGRATE_DATABASE_URL/)
+  assert.match(script, /node scripts\/check-backup-database\.mjs/)
+  assert.match(script, /BACKUP_DATABASE_URL="\$BACKUP_DATABASE_URL_VALUE"/)
   assert.match(script, /rm -f "\$release_dir\/\.deploy-complete"/)
   assert.match(script, /reload_caddy/)
   assert.match(script, /prune_releases/)
@@ -235,6 +319,7 @@ test('repairs grants for internal offline command ledgers', () => {
 test('runtime services and Caddy resolve the current release symlink', async () => {
   const [
     apiUnit,
+    restoreHelperUnit,
     workerUnit,
     backupUnit,
     backupTimer,
@@ -248,6 +333,13 @@ test('runtime services and Caddy resolve the current release symlink', async () 
   ] = await Promise.all([
     readFile(
       resolve(repositoryRoot, 'deploy/systemd/planner-api.service'),
+      'utf8',
+    ),
+    readFile(
+      resolve(
+        repositoryRoot,
+        'deploy/systemd/planner-user-backup-restore.service',
+      ),
       'utf8',
     ),
     readFile(
@@ -284,9 +376,24 @@ test('runtime services and Caddy resolve the current release symlink', async () 
   ])
 
   assert.match(apiUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
+  assert.match(apiUnit, /^User=planner-api$/m)
+  assert.match(apiUnit, /^EnvironmentFile=\/etc\/planner\/api\.env$/m)
+  assert.match(apiUnit, /^ProtectSystem=strict$/m)
+  assert.match(apiUnit, /^NoNewPrivileges=true$/m)
+  assert.match(apiUnit, /apps\/api\/dist\/server\.js/)
+  assert.match(restoreHelperUnit, /^User=planner-restore$/m)
+  assert.match(
+    restoreHelperUnit,
+    /^EnvironmentFile=\/etc\/planner\/restore-helper\.env$/m,
+  )
+  assert.match(restoreHelperUnit, /^ProtectSystem=strict$/m)
   assert.match(workerUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
+  assert.match(workerUnit, /^User=planner-worker$/m)
+  assert.match(workerUnit, /^EnvironmentFile=\/etc\/planner\/reminders\.env$/m)
+  assert.match(workerUnit, /apps\/api\/dist\/task-reminders\.js/)
   assert.match(backupUnit, /^WorkingDirectory=\/opt\/planner\/current$/m)
-  assert.match(backupUnit, /^EnvironmentFile=-\/etc\/planner\/backup\.env$/m)
+  assert.match(backupUnit, /^User=planner-backup$/m)
+  assert.match(backupUnit, /^EnvironmentFile=\/etc\/planner\/backup-job\.env$/m)
   assert.match(backupUnit, /^EnvironmentFile=\/etc\/planner\/release\.env$/m)
   assert.match(
     backupPruneUnit,
@@ -297,11 +404,12 @@ test('runtime services and Caddy resolve the current release symlink', async () 
     /^EnvironmentFile=\/etc\/planner\/release\.env$/m,
   )
   assert.match(backupUnit, /BACKUP_REQUIRE_OFFSITE=1/)
+  assert.doesNotMatch(backupUnit, /planner\.env/)
   assert.match(backupTimer, /^Persistent=true$/m)
   assert.match(backupTimer, /^RandomizedDelaySec=30m$/m)
-  assert.match(backupPruneUnit, /npm run backup:prune/)
+  assert.match(backupPruneUnit, /infrastructure-backup-prune\.mjs/)
   assert.match(backupPruneTimer, /^OnCalendar=Sun /m)
-  assert.match(restoreDrillUnit, /npm run backup:restore-drill/)
+  assert.match(restoreDrillUnit, /infrastructure-restore-drill\.mjs/)
   assert.match(restoreDrillTimer, /^OnCalendar=\*-\*-01 /m)
   assert.match(
     caddyfile,
@@ -349,4 +457,14 @@ function assertOrder(source, before, after) {
   assert.notEqual(beforeIndex, -1, `Missing marker: ${before}`)
   assert.notEqual(afterIndex, -1, `Missing marker: ${after}`)
   assert.ok(beforeIndex < afterIndex, `${before} must precede ${after}`)
+}
+
+function extractBetween(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker)
+  const end = source.indexOf(endMarker, start + startMarker.length)
+
+  assert.notEqual(start, -1, `Missing marker: ${startMarker}`)
+  assert.notEqual(end, -1, `Missing marker: ${endMarker}`)
+
+  return source.slice(start, end)
 }

@@ -297,7 +297,8 @@ fallback hook; production LLM provider для него пока не подкл�
   non-owner DB role. `MIGRATE_DATABASE_URL` используется deploy-скриптом для
   backup/migrations/smoke cleanup под owner/admin role.
 - `USER_BACKUP_RESTORE_DATABASE_URL` задает отдельное привилегированное
-  подключение, используемое только same-scope merge restore; оно не должно
+  подключение для локального `planner-user-backup-restore`; API не получает
+  этот credential и вызывает helper по loopback через HMAC. URL не должен
   совпадать с runtime `DATABASE_URL`
 - `API_DB_RLS_MODE` переопределяет RLS strategy:
   `disabled`, `claims_only`, `enabled`, `transaction_local`,
@@ -443,10 +444,15 @@ Production-данные приложения живут в Timeweb Managed Postg
 - VPS `147.45.158.186`
 - Caddy как HTTPS reverse proxy
 - systemd service `planner-api`
+- systemd service `planner-user-backup-restore` для строго ограниченного
+  same-scope restore
 - systemd service `planner-task-reminders`, если
   `API_TASK_REMINDERS_RUNTIME=worker`
-- production env в `/etc/planner/planner.env`
-- web build обслуживается из `/opt/planner/apps/web/dist`
+- root-only source env в `/etc/planner/planner.env`; deploy генерирует узкие
+  `api.env`, `restore-helper.env`, `reminders.env` и backup env-файлы
+- API, restore helper, reminders, backup и alert работают под разными Unix
+  users; active release принадлежит root и недоступен им для записи
+- web build обслуживается из `/opt/planner/current/apps/web/dist`
 - загруженные иконки лежат в `/var/lib/planner/icon-assets`
 
 После первичной подготовки сервера обновление выполняется командой:

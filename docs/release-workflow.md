@@ -125,7 +125,15 @@ maintenance-запросы без JWT subject.
 
 Same-scope пользовательский restore использует отдельный
 `USER_BACKUP_RESTORE_DATABASE_URL`. Deploy требует этот URL и запрещает
-совпадение с runtime `DATABASE_URL`.
+совпадение с runtime `DATABASE_URL`, но передает credential только отдельному
+`planner-user-backup-restore`. API получает loopback URL и HMAC secret, а не
+привилегированный DB URL.
+
+`/etc/planner/planner.env` служит только root-only источником конфигурации.
+Deploy атомарно создает минимальные env-файлы для API, reminder worker, restore
+helper, backup и alert jobs. Active release после сборки и `npm prune
+--omit=dev` становится root-owned/read-only; runtime запускает собранный JS без
+`tsx`, TypeScript и Vite.
 
 Migration runner хранит checksum примененных файлов и берет PostgreSQL advisory
 lock; уже примененные SQL-файлы нужно менять новой migration, а не правкой

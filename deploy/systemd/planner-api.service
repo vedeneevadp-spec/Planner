@@ -1,19 +1,42 @@
 [Unit]
 Description=Planner API
-After=network-online.target
+After=network-online.target planner-user-backup-restore.service
 Wants=network-online.target
+Requires=planner-user-backup-restore.service
 
 [Service]
 Type=simple
-User=planner
-Group=planner
+User=planner-api
+Group=planner-api
+SupplementaryGroups=planner-assets planner-push
 WorkingDirectory=/opt/planner/current
-EnvironmentFile=/etc/planner/planner.env
-ExecStart=/usr/bin/npm run -w apps/api start
+EnvironmentFile=/etc/planner/api.env
+ExecStart=/usr/bin/node /opt/planner/current/apps/api/dist/server.js
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=30
+UMask=0027
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/planner/icon-assets
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target

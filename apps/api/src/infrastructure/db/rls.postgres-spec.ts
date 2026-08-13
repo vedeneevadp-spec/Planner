@@ -646,6 +646,47 @@ void describe('Postgres RLS policies', () => {
       assert.ok(policyNames.has(policyName), `${policyName} policy is missing.`)
     }
   })
+
+  void test('keeps every RLS table visible to only the isolated backup login', async () => {
+    const missingPolicies = await client.query<{ table_name: string }>(`
+      select relation.relname as table_name
+      from pg_class relation
+      join pg_namespace namespace on namespace.oid = relation.relnamespace
+      where namespace.nspname = 'app'
+        and relation.relkind in ('p', 'r')
+        and relation.relrowsecurity
+        and not exists (
+          select 1
+          from pg_policy policy
+          where policy.polrelid = relation.oid
+            and policy.polname = 'planner_backup_select_all'
+            and policy.polcmd in ('*', 'r')
+        )
+      order by relation.relname
+    `)
+
+    assert.deepEqual(missingPolicies.rows, [])
+
+    const publicFunctions = await client.query<{
+      arguments: string
+      function_name: string
+    }>(`
+      select
+        procedure.proname as function_name,
+        pg_get_function_identity_arguments(procedure.oid) as arguments
+      from pg_proc procedure
+      join pg_namespace namespace on namespace.oid = procedure.pronamespace
+      cross join lateral aclexplode(
+        coalesce(procedure.proacl, acldefault('f', procedure.proowner))
+      ) acl
+      where namespace.nspname = 'app'
+        and acl.grantee = 0
+        and acl.privilege_type = 'EXECUTE'
+      order by procedure.proname, arguments
+    `)
+
+    assert.deepEqual(publicFunctions.rows, [])
+  })
 })
 
 function createFixture(): RlsFixture {

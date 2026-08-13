@@ -42,6 +42,7 @@ try {
 
   await runInfrastructureBackupCommand('pg_dump', [
     '--format=custom',
+    '--enable-row-security',
     '--no-owner',
     '--no-privileges',
     '--file',

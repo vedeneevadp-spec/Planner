@@ -24,7 +24,7 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: 'npm run -w apps/api start',
+      command: 'npm run -w apps/api start:source',
       env: {
         API_AUTH_MODE: 'jwt',
         API_CORS_ORIGIN: webBaseUrl,

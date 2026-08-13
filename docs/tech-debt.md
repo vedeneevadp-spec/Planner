@@ -5,6 +5,35 @@
 Цель документа - зафиксировать риски, которые повышают вероятность повторных
 регрессий в авторизации, mobile runtime, offline/cache и основных planner flows.
 
+## Закрыто в коде 2026-08-13: production API имел широкую зону поражения
+
+Исходный риск: API, reminder worker и backup jobs работали как `planner`,
+читали общий `planner.env`, active release принадлежал тому же пользователю, а
+API напрямую открывал privileged restore connection. Production также запускал
+исходный TypeScript через dev-only `tsx` и оставлял dev toolchain в release.
+
+Реализовано:
+
+- отдельные `planner-api`, `planner-worker`, `planner-restore`,
+  `planner-backup`, `planner-alert`, build и migrate users;
+- root-only source env и минимальные service-specific env-файлы;
+- privileged restore вынесен в loopback helper с HMAC/freshness/digest/scope
+  validation; production API fail-fast отвергает restore/migration/worker DB
+  URLs;
+- API/helper/worker собираются в JS, после сборки выполняется `npm prune
+--omit=dev`; active release становится root-owned/read-only;
+- systemd units получили `NoNewPrivileges`, `ProtectSystem=strict`, private
+  tmp/devices, capability/namespace restrictions и точечные writable paths;
+- Firebase, scheduled backup DB, Restic и alert secrets разделены по Unix
+  groups и env-файлам; migration URL не попадает в systemd backup jobs;
+- rollback совместим с предыдущим release, где restore-helper unit ещё
+  отсутствовал.
+
+Репозиторные contract tests подтверждают shell syntax/order, отсутствие dev
+runtime, env/user boundaries и helper authentication. Операционное закрытие
+нужно подтвердить отдельным production deploy: проверить service users,
+systemd hardening, права release/env/assets, helper readiness и внешний smoke.
+
 ## Закрыто в коде 2026-08-12: пять P1 из повторного аудита
 
 1. Native auth session и device id переведены с backupable Preferences на

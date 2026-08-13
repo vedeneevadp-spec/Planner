@@ -24,6 +24,7 @@ import {
   SmtpAuthEmailSender,
 } from './modules/auth/index.js'
 import {
+  HttpUserBackupRestoreClient,
   PostgresUserBackupRepository,
   UserBackupService,
 } from './modules/backups/index.js'
@@ -111,7 +112,6 @@ import {
 
 export interface ApiKernel {
   app: FastifyInstance
-  backupRestoreDatabase: DatabaseConnection | null
   config: ReturnType<typeof createApiConfig>
   database: DatabaseConnection | null
   stopBackgroundJobs: () => Promise<void>
@@ -125,12 +125,9 @@ export function createApiKernel(
     config.storageDriver === 'postgres'
       ? createDatabaseConnection(createDatabaseConfig(env))
       : null
-  const backupRestoreDatabase =
-    database && env.USER_BACKUP_RESTORE_DATABASE_URL?.trim()
-      ? createDatabaseConnection({
-          connectionString: env.USER_BACKUP_RESTORE_DATABASE_URL.trim(),
-        })
-      : null
+  const backupRestoreExecutor = config.userBackupRestoreHelper
+    ? new HttpUserBackupRestoreClient(config.userBackupRestoreHelper)
+    : null
   const taskRepository = database
     ? new PostgresTaskRepository(database.db)
     : new MemoryTaskRepository()
@@ -179,8 +176,8 @@ export function createApiKernel(
         new PostgresUserBackupRepository(
           database.db,
           config.iconAssetDirectory,
-          backupRestoreDatabase?.db ??
-            (config.appEnv === 'production' ? null : database.db),
+          config.appEnv === 'production' ? null : database.db,
+          backupRestoreExecutor,
         ),
         env.npm_package_version ?? '1.0.0',
       )
@@ -302,7 +299,6 @@ export function createApiKernel(
 
   return {
     app,
-    backupRestoreDatabase,
     config,
     database,
     stopBackgroundJobs: async () => {
@@ -330,9 +326,5 @@ export async function destroyApiKernel(kernel: ApiKernel): Promise<void> {
 
   if (kernel.database) {
     await destroyDatabaseConnection(kernel.database)
-  }
-
-  if (kernel.backupRestoreDatabase) {
-    await destroyDatabaseConnection(kernel.backupRestoreDatabase)
   }
 }
