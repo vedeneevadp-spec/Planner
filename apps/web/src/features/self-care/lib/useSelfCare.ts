@@ -58,6 +58,7 @@ import {
   enqueueSelfCareOfflineMutation,
   getSelfCareOfflineStorageHealth,
   getSelfCareOfflineWorkspaceWriteGeneration,
+  isSelfCareOccurrenceClosedConflict,
   isSelfCareOfflineStorageAvailable,
   isSelfCareOfflineWorkspaceWriteGenerationCurrent,
   listSelfCareOfflineMutations,
@@ -421,6 +422,7 @@ export function useSelfCareTemplates(options: { enabled?: boolean } = {}) {
 
 const EMPTY_SELF_CARE_OFFLINE_QUEUE_COUNTS = {
   awaitingRefresh: 0,
+  closedOccurrenceConflicts: 0,
   conflicted: 0,
   failed: 0,
   pending: 0,
@@ -555,25 +557,38 @@ export function useSelfCareOfflineQueue() {
       setScopeDraining(false)
     }
   }, [context, queryClient, reconcileAwaiting, refreshCounts, setScopeDraining])
-  const discardConflicts = useCallback(async () => {
-    const mutations = await listSelfCareOfflineMutations(
-      context.storageWorkspaceId,
-      context.actorUserId,
-    )
-    await Promise.all(
-      mutations
-        .filter((mutation) => mutation.status === 'conflicted')
-        .map((mutation) =>
-          cancelSelfCareOfflineMutation(
-            mutation.id,
-            context.storageWorkspaceId,
-            context.actorUserId,
+  const discardConflictsMatching = useCallback(
+    async (matches: (mutation: SelfCareOfflineMutationRecord) => boolean) => {
+      const mutations = await listSelfCareOfflineMutations(
+        context.storageWorkspaceId,
+        context.actorUserId,
+      )
+      await Promise.all(
+        mutations
+          .filter(
+            (mutation) => mutation.status === 'conflicted' && matches(mutation),
+          )
+          .map((mutation) =>
+            cancelSelfCareOfflineMutation(
+              mutation.id,
+              context.storageWorkspaceId,
+              context.actorUserId,
+            ),
           ),
-        ),
-    )
-    await hydrateSelfCareQueriesFromCache(queryClient, context)
-    await refreshCounts()
-  }, [context, queryClient, refreshCounts])
+      )
+      await hydrateSelfCareQueriesFromCache(queryClient, context)
+      await refreshCounts()
+    },
+    [context, queryClient, refreshCounts],
+  )
+  const discardConflicts = useCallback(
+    () => discardConflictsMatching(() => true),
+    [discardConflictsMatching],
+  )
+  const discardClosedOccurrenceConflicts = useCallback(
+    () => discardConflictsMatching(isSelfCareOccurrenceClosedConflict),
+    [discardConflictsMatching],
+  )
   const refreshAndRetryConflicts = useCallback(async () => {
     if (
       !context.api ||
@@ -656,6 +671,7 @@ export function useSelfCareOfflineQueue() {
       storageHealth === 'ready' &&
       isSelfCareOfflineStorageAvailable(),
     canWriteFromSession: context.canQueueOfflineWrites,
+    discardClosedOccurrenceConflicts,
     discardConflicts,
     isDraining: drainingByScope.get(scopeToken) ?? false,
     refreshAndRetryConflicts,
@@ -2123,8 +2139,23 @@ async function rebaseConflictedSelfCareMutations(
     context.storageWorkspaceId,
     context.actorUserId,
   )
+  const excludedRebaseIds = new Set<string>()
+  for (const mutation of mutations) {
+    if (!isSelfCareOccurrenceClosedConflict(mutation)) {
+      continue
+    }
+
+    excludedRebaseIds.add(mutation.id)
+    for (const dependentId of collectSelfCareDependentIds(
+      mutations,
+      mutation.id,
+    )) {
+      excludedRebaseIds.add(dependentId)
+    }
+  }
   const conflictRoots = mutations.filter(
-    (mutation) => mutation.status === 'conflicted',
+    (mutation) =>
+      mutation.status === 'conflicted' && !excludedRebaseIds.has(mutation.id),
   )
 
   if (!conflictRoots.length) {
@@ -2135,7 +2166,9 @@ async function rebaseConflictedSelfCareMutations(
   for (const root of conflictRoots) {
     rebaseIds.add(root.id)
     for (const dependentId of collectSelfCareDependentIds(mutations, root.id)) {
-      rebaseIds.add(dependentId)
+      if (!excludedRebaseIds.has(dependentId)) {
+        rebaseIds.add(dependentId)
+      }
     }
   }
 

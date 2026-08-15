@@ -325,6 +325,48 @@ describe('offline self-care read cache', () => {
     ).resolves.toMatchObject({ pending: 2, total: 2 })
   })
 
+  it('counts current and legacy closed-occurrence conflicts separately', async () => {
+    const current = await enqueueMutation('workspace-1', ACTOR_USER_ID, 'USD')
+    const legacy = await enqueueMutation('workspace-1', ACTOR_USER_ID, 'EUR')
+    const generation = getSelfCareOfflineWorkspaceWriteGeneration('workspace-1')
+
+    await markSelfCareOfflineMutationConflicted(
+      current!.id,
+      'workspace-1',
+      ACTOR_USER_ID,
+      generation,
+      {
+        actualVersion: 2,
+        code: 'self_care_occurrence_closed',
+        entityId: 'occurrence-1',
+        entityType: 'occurrence',
+        expectedVersion: null,
+      },
+      'The self-care occurrence was already completed or changed.',
+    )
+    await markSelfCareOfflineMutationConflicted(
+      legacy!.id,
+      'workspace-1',
+      ACTOR_USER_ID,
+      generation,
+      {
+        actualVersion: 3,
+        entityId: 'occurrence-2',
+        entityType: 'occurrence',
+        expectedVersion: null,
+      },
+      'The self-care occurrence was already completed or changed.',
+    )
+
+    await expect(
+      countSelfCareOfflineMutations('workspace-1', ACTOR_USER_ID),
+    ).resolves.toMatchObject({
+      closedOccurrenceConflicts: 2,
+      conflicted: 2,
+      total: 2,
+    })
+  })
+
   it('rejects operation-id collisions without exposing or mutating another actor queue', async () => {
     const operationId = generateUuidV7()
     const firstInput = {
