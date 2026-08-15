@@ -10,3 +10,12 @@ export const internalAppTables = Object.freeze([
   'self_care_command_ledger',
   'sync_cursors',
 ])
+
+// The provider can reapply broad database privileges after migrations. These
+// roles must never retain EXECUTE on application functions: PUBLIC is the
+// PostgreSQL default, while planner_backup is the read-only logical-backup
+// login configured for production.
+export const restrictedAppFunctionRoles = Object.freeze([
+  'planner_backup',
+  'public',
+])

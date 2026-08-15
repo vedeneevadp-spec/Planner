@@ -5,7 +5,10 @@ import {
   createPgConnectionConfig,
   preparePgAdminConnection,
 } from './pg-connection-config.mjs'
-import { internalAppTables } from './db-security-repair-config.mjs'
+import {
+  internalAppTables,
+  restrictedAppFunctionRoles,
+} from './db-security-repair-config.mjs'
 
 const connectionString =
   process.env.MIGRATE_DATABASE_URL ??
@@ -14,7 +17,7 @@ const connectionString =
 const args = new Set(process.argv.slice(2))
 const dryRun =
   args.has('--dry-run') || process.env.DB_SECURITY_REPAIR_DRY_RUN === '1'
-const revokedRoles = ['authenticated', 'public']
+const revokedTableRoles = ['authenticated', 'public']
 
 if (args.has('--help') || args.has('-h')) {
   printHelp()
@@ -29,11 +32,22 @@ try {
 
   const before = await readInternalTableGrants(client)
   const owners = await readInternalTableOwners(client)
-  const statements = createRepairStatements(owners)
+  const availableFunctionRoles = await readAvailableRoles(
+    client,
+    restrictedAppFunctionRoles,
+  )
+  const beforeFunctionGrants = await readRestrictedAppFunctionGrants(
+    client,
+    availableFunctionRoles,
+  )
+  const statements = createRepairStatements(owners, availableFunctionRoles)
 
   if (dryRun) {
     console.log('Database security repair dry run.')
     console.log(formatGrantSummary('Current grants', before))
+    console.log(
+      `Restricted app function grants: ${beforeFunctionGrants.length}`,
+    )
     console.log(
       statements.map((statement) => `Would run: ${statement}`).join('\n'),
     )
@@ -45,6 +59,10 @@ try {
   }
 
   const after = await readInternalTableGrants(client)
+  const afterFunctionGrants = await readRestrictedAppFunctionGrants(
+    client,
+    availableFunctionRoles,
+  )
 
   if (after.length > 0) {
     throw new Error(
@@ -55,7 +73,19 @@ try {
     )
   }
 
+  if (afterFunctionGrants.length > 0) {
+    throw new Error(
+      [
+        'Database security repair did not remove restricted app function grants:',
+        formatFunctionGrantRows(afterFunctionGrants),
+      ].join(' '),
+    )
+  }
+
   console.log(formatGrantSummary('Removed grants', before))
+  console.log(
+    `Removed restricted app function grants: ${beforeFunctionGrants.length}`,
+  )
   console.log('Database security repair completed.')
 } finally {
   await closePgClient(client)
@@ -71,7 +101,7 @@ async function readInternalTableGrants(client) {
          and lower(grantee) = any($2::text[])
        order by table_name, grantee, privilege_type
     `,
-    [internalAppTables, revokedRoles],
+    [internalAppTables, revokedTableRoles],
   )
 
   return result.rows.map((row) => ({
@@ -100,17 +130,17 @@ async function readInternalTableOwners(client) {
     .filter((ownerName) => typeof ownerName === 'string' && ownerName.length)
 }
 
-function createRepairStatements(owners) {
+function createRepairStatements(owners, availableFunctionRoles) {
   const tableList = internalAppTables
     .map((tableName) => `app.${quoteIdentifier(tableName)}`)
     .join(', ')
-  const statements = revokedRoles.map(
+  const statements = revokedTableRoles.map(
     (role) =>
       `revoke all privileges on table ${tableList} from ${quoteGrantRole(role)}`,
   )
 
   for (const owner of owners) {
-    for (const role of revokedRoles) {
+    for (const role of revokedTableRoles) {
       statements.push(
         [
           'alter default privileges',
@@ -122,7 +152,80 @@ function createRepairStatements(owners) {
     }
   }
 
+  for (const role of availableFunctionRoles) {
+    statements.push(
+      `revoke execute on all functions in schema app from ${quoteGrantRole(role)}`,
+    )
+  }
+
   return statements
+}
+
+async function readAvailableRoles(client, roleNames) {
+  const databaseRoles = roleNames.filter((roleName) => roleName !== 'public')
+  const result = await client.query(
+    `
+      select rolname
+        from pg_roles
+       where rolname = any($1::text[])
+       order by rolname
+    `,
+    [databaseRoles],
+  )
+  const existingRoles = new Set(result.rows.map((row) => String(row.rolname)))
+
+  return roleNames.filter(
+    (roleName) => roleName === 'public' || existingRoles.has(roleName),
+  )
+}
+
+async function readRestrictedAppFunctionGrants(client, roleNames) {
+  if (roleNames.length === 0) {
+    return []
+  }
+
+  const result = await client.query(
+    `
+      select
+        procedure.oid::regprocedure::text as function_name,
+        restricted.role_name
+      from pg_proc procedure
+      join pg_namespace namespace on namespace.oid = procedure.pronamespace
+      cross join unnest($1::text[]) as restricted(role_name)
+      where namespace.nspname = 'app'
+        and (
+          (
+            restricted.role_name = 'public'
+            and exists (
+              select 1
+              from aclexplode(
+                coalesce(
+                  procedure.proacl,
+                  acldefault('f', procedure.proowner)
+                )
+              ) as privilege
+              where privilege.grantee = 0
+                and privilege.privilege_type = 'EXECUTE'
+            )
+          )
+          or (
+            restricted.role_name <> 'public'
+            and has_function_privilege(
+              restricted.role_name,
+              procedure.oid,
+              'EXECUTE'
+            )
+          )
+        )
+      order by function_name, restricted.role_name
+    `,
+    [roleNames],
+  )
+
+  return result.rows.map((row) => ({
+    functionName: String(row.function_name),
+    roleName: String(row.role_name),
+  }))
 }
 
 function formatGrantSummary(label, grants) {
@@ -135,6 +238,12 @@ function formatGrantRows(grants) {
       (grant) =>
         `app.${grant.tableName}:${grant.grantee}:${grant.privilegeType}`,
     )
+    .join(', ')
+}
+
+function formatFunctionGrantRows(grants) {
+  return grants
+    .map((grant) => `${grant.functionName}:${grant.roleName}:EXECUTE`)
     .join(', ')
 }
 
@@ -159,6 +268,7 @@ Environment:
 Repairs:
   Revokes direct authenticated/public privileges from internal app tables and
   removes matching default table privileges for the current internal table
-  owners. Run npm run db:security:check after repair.
+  owners. Also revokes EXECUTE on app functions from PUBLIC and the production
+  backup role. Run npm run db:security:check after repair.
 `)
 }
