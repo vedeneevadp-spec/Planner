@@ -11,12 +11,14 @@ import { NativePlannerWidgetSync } from './NativePlannerWidgetSync'
 interface PlannerStub {
   isLoading: boolean
   isSyncing: boolean
+  refresh: () => Promise<void>
   setTaskStatus: (taskId: string, status: 'done') => Promise<boolean>
   spheres: []
   tasks: Task[]
 }
 
 interface SessionAuthStub {
+  lifecycleStatus: 'authenticated' | 'signed_out'
   sessionVersion: number
 }
 
@@ -58,6 +60,9 @@ const mocks = vi.hoisted(() => ({
       (input: Record<string, unknown>) => Promise<Record<string, unknown>>
     >(),
   consumePendingNativePlannerWidgetRoute: vi.fn<() => Promise<string | null>>(),
+  configureNativePlannerWidgetBackgroundSync:
+    vi.fn<(input: Record<string, string>) => Promise<void>>(),
+  disableNativePlannerWidgetBackgroundSync: vi.fn<() => Promise<void>>(),
   isAndroidPlannerWidgetRuntime: vi.fn<() => boolean>(),
   persistNativePlannerWidgetSnapshot:
     vi.fn<(snapshot: unknown) => Promise<void>>(),
@@ -92,13 +97,26 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/features/cleaning', () => ({
+  cleaningTodayQueryKey: (
+    workspaceId: string,
+    actorUserId: string,
+    date: string,
+  ) => ['cleaning', workspaceId, actorUserId, 'today', date],
   createCleaningApiClient: () => mocks.createCleaningApiClient(),
   queueCleaningTaskCompletion: (input: Record<string, unknown>) =>
     mocks.queueCleaningTaskCompletion(input),
 }))
 
 vi.mock('@/features/self-care', () => ({
+  createSelfCareQueryOwnerId: (workspaceId: string, actorUserId: string) =>
+    JSON.stringify([workspaceId, actorUserId]),
   createSelfCareApiClient: () => mocks.createSelfCareApiClient(),
+  selfCareDashboardQueryKey: (ownerId: string, date: string) => [
+    'self-care',
+    ownerId,
+    'dashboard',
+    date,
+  ],
 }))
 
 vi.mock('@/features/session', () => ({
@@ -149,8 +167,12 @@ vi.mock('../lib/native-planner-widget', () => ({
       now,
       supplementalData,
     ),
+  configureNativePlannerWidgetBackgroundSync: (input: Record<string, string>) =>
+    mocks.configureNativePlannerWidgetBackgroundSync(input),
   consumePendingNativePlannerWidgetRoute: () =>
     mocks.consumePendingNativePlannerWidgetRoute(),
+  disableNativePlannerWidgetBackgroundSync: () =>
+    mocks.disableNativePlannerWidgetBackgroundSync(),
   getNativePlannerWidgetCleaningTaskId: (taskId: string) =>
     taskId.startsWith('cleaning:') ? taskId.slice('cleaning:'.length) : null,
   isAndroidPlannerWidgetRuntime: () => mocks.isAndroidPlannerWidgetRuntime(),
@@ -209,12 +231,16 @@ describe('NativePlannerWidgetSync', () => {
       version: 5,
     })
     mocks.consumePendingNativePlannerWidgetRoute.mockResolvedValue(null)
+    mocks.configureNativePlannerWidgetBackgroundSync.mockResolvedValue(
+      undefined,
+    )
+    mocks.disableNativePlannerWidgetBackgroundSync.mockResolvedValue(undefined)
     mocks.isAndroidPlannerWidgetRuntime.mockReturnValue(true)
     mocks.persistNativePlannerWidgetSnapshot.mockResolvedValue(undefined)
     mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([])
     mocks.createPlannerApiClient.mockReturnValue({
+      getTaskReadModel: vi.fn().mockResolvedValue({ items: [] }),
       listLifeSpheres: vi.fn().mockResolvedValue([]),
-      listTasks: vi.fn().mockResolvedValue([]),
       setTaskStatus: vi.fn(),
     })
     mocks.completeCleaningTask.mockResolvedValue({})
@@ -246,12 +272,72 @@ describe('NativePlannerWidgetSync', () => {
       createSessionFeatureReadinessStub(createSessionStub('personal')),
     )
     mocks.useSessionAuth.mockReturnValue({
+      lifecycleStatus: 'authenticated',
       sessionVersion: 1,
     })
   })
 
   afterEach(() => {
     cleanup()
+  })
+
+  it('configures native background sync for the personal workspace', async () => {
+    mocks.usePlanner.mockReturnValue(createPlannerStub())
+
+    renderSync()
+
+    await waitFor(() => {
+      expect(
+        mocks.configureNativePlannerWidgetBackgroundSync,
+      ).toHaveBeenCalledWith({
+        apiBaseUrl: 'http://localhost:3000',
+        timeZone: 'Europe/Astrakhan',
+        workspaceId: 'personal-workspace',
+      })
+    })
+  })
+
+  it('refetches planner, self-care, and cleaning data when the app resumes', async () => {
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    const getToday = vi.fn().mockResolvedValue({ generalItems: [], items: [] })
+    const getDashboard = vi.fn().mockResolvedValue({
+      flexibleGoals: [],
+      overdueItems: [],
+      todayItems: [],
+    })
+
+    mocks.usePlanner.mockReturnValue(createPlannerStub({ refresh }))
+    mocks.createCleaningApiClient.mockReturnValue({
+      completeTask: mocks.completeCleaningTask,
+      getToday,
+    })
+    mocks.createSelfCareApiClient.mockReturnValue({ getDashboard })
+
+    renderSync()
+
+    await waitFor(() => {
+      expect(mocks.addNativePlannerWidgetResumeListener).toHaveBeenCalled()
+      expect(getToday).toHaveBeenCalled()
+      expect(getDashboard).toHaveBeenCalled()
+    })
+    refresh.mockClear()
+    getToday.mockClear()
+    getDashboard.mockClear()
+
+    const resumeListener =
+      mocks.addNativePlannerWidgetResumeListener.mock.calls[0]?.[0]
+
+    if (!resumeListener) {
+      throw new Error('Expected Android widget resume listener.')
+    }
+
+    resumeListener()
+
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(getToday).toHaveBeenCalledTimes(1)
+      expect(getDashboard).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('acknowledges widget completions after a successful task update', async () => {
@@ -324,12 +410,14 @@ describe('NativePlannerWidgetSync', () => {
       title: 'Personal task',
       workspaceId: 'personal-workspace',
     })
-    const listTasks = vi.fn().mockResolvedValue([personalTask])
+    const getTaskReadModel = vi.fn().mockResolvedValue({
+      items: [personalTask],
+    })
     const listLifeSpheres = vi.fn().mockResolvedValue([])
 
     mocks.createPlannerApiClient.mockReturnValue({
+      getTaskReadModel,
       listLifeSpheres,
-      listTasks,
       setTaskStatus: vi.fn(),
     })
     mocks.useSessionFeatureReadiness.mockReturnValue(
@@ -378,8 +466,10 @@ describe('NativePlannerWidgetSync', () => {
     const setTaskStatus = vi.fn().mockResolvedValue(completedPersonalTask)
 
     mocks.createPlannerApiClient.mockReturnValue({
+      getTaskReadModel: vi.fn().mockResolvedValue({
+        items: [personalTask],
+      }),
       listLifeSpheres: vi.fn().mockResolvedValue([]),
-      listTasks: vi.fn().mockResolvedValue([personalTask]),
       setTaskStatus,
     })
     mocks.readPendingNativePlannerWidgetCompletedTasks.mockResolvedValue([
@@ -506,6 +596,7 @@ function createPlannerStub(
   overrides: {
     isLoading?: boolean
     isSyncing?: boolean
+    refresh?: () => Promise<void>
     setTaskStatus?: (taskId: string, status: 'done') => Promise<boolean>
     tasks?: Task[]
   } = {},
@@ -513,6 +604,7 @@ function createPlannerStub(
   return {
     isLoading: false,
     isSyncing: false,
+    refresh: vi.fn().mockResolvedValue(undefined),
     setTaskStatus: vi.fn().mockResolvedValue(true),
     spheres: [],
     tasks: [baseTask],

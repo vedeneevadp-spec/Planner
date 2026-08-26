@@ -122,11 +122,11 @@ function useMutation<
   return useTanstackMutation({ ...options, networkMode: 'always' })
 }
 
-function cleaningQueryKey(workspaceId: string, actorUserId: string) {
+export function cleaningQueryKey(workspaceId: string, actorUserId: string) {
   return ['cleaning', workspaceId, actorUserId] as const
 }
 
-function cleaningTodayQueryKey(
+export function cleaningTodayQueryKey(
   workspaceId: string,
   actorUserId: string,
   date: string,

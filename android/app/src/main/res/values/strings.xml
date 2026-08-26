@@ -9,6 +9,7 @@
     <string name="planner_today_widget_title">Все задачи</string>
     <string name="planner_today_widget_description">Краткий список задач Chaotika.</string>
     <string name="planner_widget_add_task_content_description">Добавить задачу</string>
+    <string name="planner_widget_refresh_content_description">Обновить данные</string>
     <string name="planner_widget_complete_task_content_description">Отметить выполненной: %1$s</string>
     <string name="planner_widget_configuration_done">Готово</string>
     <string name="planner_widget_configuration_opacity">Непрозрачность фона</string>
@@ -18,12 +19,12 @@
     <string name="planner_widget_configuration_title">Настройки виджета</string>
     <string name="planner_widget_done_summary">%1$d/%2$d выполнено</string>
     <string name="planner_widget_empty_today">Активных задач нет.</string>
-    <string name="planner_widget_no_snapshot_empty">Откройте Chaotika, чтобы обновить виджет.</string>
+    <string name="planner_widget_no_snapshot_empty">Нажмите обновить или откройте Chaotika.</string>
     <string name="planner_widget_no_snapshot_summary">Ждет данных из приложения</string>
     <string name="planner_widget_no_today_tasks">Сегодня без задач</string>
     <string name="planner_widget_overdue_task">Требует внимания: %1$s</string>
     <string name="planner_widget_preview_date">сегодня</string>
-    <string name="planner_widget_stale_empty">Откройте приложение, чтобы обновить задачи.</string>
+    <string name="planner_widget_stale_empty">Нажмите обновить, чтобы загрузить задачи.</string>
     <string name="planner_widget_stale_summary">Данные за прошлый день</string>
     <string name="planner_widget_stale_title">Нужно обновить</string>
     <string name="planner_widget_timed_task">%1$s  %2$s</string>

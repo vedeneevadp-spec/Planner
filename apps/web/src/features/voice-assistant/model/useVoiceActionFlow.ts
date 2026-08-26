@@ -783,7 +783,9 @@ function createActionDependencies(input: {
     removeTask: (taskId) => input.planner.removeTask(taskId),
     taskClient: plannerApi
       ? {
+          getTask: (taskId) => plannerApi.getTask(taskId),
           listTasks: (filters) => plannerApi.listTasks(filters),
+          listTasksCursor: (filters) => plannerApi.listTasksCursor(filters),
           setTaskSchedule: (taskId, scheduleInput) =>
             plannerApi.setTaskSchedule(taskId, scheduleInput),
         }

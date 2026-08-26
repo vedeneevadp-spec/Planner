@@ -10,6 +10,7 @@ export {
   SelfCareApiError,
 } from './lib/self-care-api'
 export {
+  createSelfCareQueryOwnerId,
   getSelfCareErrorMessage,
   isSelfCareApiUnavailableError,
   SELF_CARE_API_UNAVAILABLE_MESSAGE,
@@ -19,6 +20,7 @@ export {
   selfCareHistoryQueryKey,
   selfCareItemsQueryKey,
   selfCarePlanQueryKey,
+  type SelfCareQueryOwnerId,
   selfCareRitualStepDraftsQueryKey,
   selfCareSettingsQueryKey,
   selfCareTemplatesQueryKey,

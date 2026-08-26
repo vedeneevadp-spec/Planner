@@ -46,8 +46,14 @@ export interface NativePlannerWidgetSupplementalData {
 
 interface PlannerWidgetPlugin {
   ackPendingCompletedTasks: (input: { taskIds: string[] }) => Promise<void>
+  configureBackgroundSync: (input: {
+    apiBaseUrl: string
+    timeZone: string
+    workspaceId: string
+  }) => Promise<void>
   consumePendingCompletedTasks: () => Promise<{ taskIds: string[] }>
   consumePendingRoute: () => Promise<{ path: string | null }>
+  disableBackgroundSync: () => Promise<void>
   readPendingCompletedTasks: () => Promise<{ taskIds: string[] }>
   refresh: () => Promise<void>
 }
@@ -147,6 +153,26 @@ export async function persistNativePlannerWidgetSnapshot(
     value: JSON.stringify(snapshot),
   })
   await NativePlannerWidget.refresh()
+}
+
+export async function configureNativePlannerWidgetBackgroundSync(input: {
+  apiBaseUrl: string
+  timeZone: string
+  workspaceId: string
+}): Promise<void> {
+  if (!isAndroidPlannerWidgetRuntime()) {
+    return
+  }
+
+  await NativePlannerWidget.configureBackgroundSync(input)
+}
+
+export async function disableNativePlannerWidgetBackgroundSync(): Promise<void> {
+  if (!isAndroidPlannerWidgetRuntime()) {
+    return
+  }
+
+  await NativePlannerWidget.disableBackgroundSync()
 }
 
 async function readPersistedNativePlannerWidgetSnapshot(): Promise<NativePlannerWidgetSnapshot | null> {

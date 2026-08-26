@@ -577,16 +577,16 @@ export class AiContextService {
         resolveOverdueAsOfDate(rangeTo, timezone),
       )
 
-      results.push(
-        ...dedupeAiItems([
-          ...selfCare.scheduled,
-          ...selfCare.remaining,
-          ...selfCare.completed,
-          ...selfCare.overdue,
-        ])
-          .filter((item) => matchesSearch(item, normalizedQuery))
-          .filter((item) => matchesSearchStatus(item.status, params.status)),
-      )
+      const selfCareResults = [
+        ...selfCare.completed,
+        ...selfCare.overdue,
+        ...selfCare.remaining,
+        ...selfCare.scheduled,
+      ]
+        .filter((item) => matchesSearch(item, normalizedQuery))
+        .filter((item) => matchesSearchStatus(item.status, params.status))
+
+      results.push(...dedupeItems(selfCareResults))
     }
 
     const compacted = compactArrayForAi(results, {
@@ -1091,7 +1091,9 @@ export class AiContextService {
     )
     const flexibleGoals = mapFlexibleGoalContexts(dashboard.flexibleGoals, date)
     const planned = normalizeSelfCareItemsForAi(
-      todayItems.map((item) => mapSelfCareTodayItem(item, 'planned')),
+      todayItems
+        .filter(isSelfCareTodayItemActivelyPlanned)
+        .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const completed = normalizeSelfCareItemsForAi(
       todayItems
@@ -1160,7 +1162,9 @@ export class AiContextService {
       to,
     )
     const planned = filterSelfCareItemsForAi(
-      plan.occurrences.map((item) => mapSelfCareTodayItem(item, 'planned')),
+      plan.occurrences
+        .filter(isSelfCareTodayItemActivelyPlanned)
+        .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const missed = filterSelfCareItemsForAi(
       plan.occurrences
@@ -1482,22 +1486,26 @@ function isSelfCareTodayItemMissed(item: SelfCareTodayItem): boolean {
   return status === 'missed' || status === 'skipped'
 }
 
-function isSelfCareTodayItemRemaining(
-  item: SelfCareTodayItem,
-  asOfDate: string,
-): boolean {
+function isSelfCareTodayItemActivelyPlanned(item: SelfCareTodayItem): boolean {
   if (isSelfCareTodayItemCompleted(item)) {
     return false
   }
 
   const status = item.occurrence?.status ?? item.completion?.status ?? null
 
-  if (
-    status === 'cancelled' ||
-    status === 'missed' ||
-    status === 'moved' ||
-    status === 'skipped'
-  ) {
+  return (
+    status !== 'cancelled' &&
+    status !== 'missed' &&
+    status !== 'moved' &&
+    status !== 'skipped'
+  )
+}
+
+function isSelfCareTodayItemRemaining(
+  item: SelfCareTodayItem,
+  asOfDate: string,
+): boolean {
+  if (!isSelfCareTodayItemActivelyPlanned(item)) {
     return false
   }
 

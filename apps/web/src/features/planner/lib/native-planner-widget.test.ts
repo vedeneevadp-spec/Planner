@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const capacitorMocks = vi.hoisted(() => ({
   ackPendingCompletedTasks: vi.fn(),
+  configureBackgroundSync: vi.fn(),
   consumePendingCompletedTasks: vi.fn(),
   consumePendingRoute: vi.fn(),
+  disableBackgroundSync: vi.fn(),
   getPlatform: vi.fn(),
   isNativePlatform: vi.fn(),
   preferencesGet: vi.fn(),
@@ -29,8 +31,10 @@ vi.mock('@capacitor/core', () => ({
   },
   registerPlugin: vi.fn(() => ({
     ackPendingCompletedTasks: capacitorMocks.ackPendingCompletedTasks,
+    configureBackgroundSync: capacitorMocks.configureBackgroundSync,
     consumePendingCompletedTasks: capacitorMocks.consumePendingCompletedTasks,
     consumePendingRoute: capacitorMocks.consumePendingRoute,
+    disableBackgroundSync: capacitorMocks.disableBackgroundSync,
     readPendingCompletedTasks: capacitorMocks.readPendingCompletedTasks,
     refresh: capacitorMocks.refresh,
   })),
@@ -49,6 +53,8 @@ import type { Task } from '@/entities/task'
 import {
   ackPendingNativePlannerWidgetCompletedTasks,
   buildNativePlannerWidgetSnapshot,
+  configureNativePlannerWidgetBackgroundSync,
+  disableNativePlannerWidgetBackgroundSync,
   getNativePlannerWidgetCleaningTaskId,
   persistNativePlannerWidgetSnapshot,
   readPendingNativePlannerWidgetCompletedTasks,
@@ -419,6 +425,25 @@ describe('native planner widget snapshot', () => {
     expect(capacitorMocks.ackPendingCompletedTasks).toHaveBeenCalledWith({
       taskIds: ['task-1', 'task-2'],
     })
+  })
+
+  it('configures and disables native background synchronization', async () => {
+    capacitorMocks.configureBackgroundSync.mockResolvedValue(undefined)
+    capacitorMocks.disableBackgroundSync.mockResolvedValue(undefined)
+
+    await configureNativePlannerWidgetBackgroundSync({
+      apiBaseUrl: 'https://chaotika.ru',
+      timeZone: 'Asia/Novosibirsk',
+      workspaceId: 'personal-workspace',
+    })
+    await disableNativePlannerWidgetBackgroundSync()
+
+    expect(capacitorMocks.configureBackgroundSync).toHaveBeenCalledWith({
+      apiBaseUrl: 'https://chaotika.ru',
+      timeZone: 'Asia/Novosibirsk',
+      workspaceId: 'personal-workspace',
+    })
+    expect(capacitorMocks.disableBackgroundSync).toHaveBeenCalledTimes(1)
   })
 
   it('persists and refreshes the Android widget when snapshot content changes', async () => {

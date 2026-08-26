@@ -25,11 +25,13 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
     @Override
     public void onEnabled(Context context) {
         scheduleNextDayRefresh(context);
+        PlannerWidgetSyncScheduler.schedule(context, true);
     }
 
     @Override
     public void onDisabled(Context context) {
         cancelNextDayRefresh(context);
+        PlannerWidgetSyncScheduler.cancelIfUnused(context);
     }
 
     @Override
@@ -47,6 +49,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             Intent.ACTION_TIMEZONE_CHANGED.equals(action)
         ) {
             PlannerWidgetUpdateDispatcher.updateAllWidgets(context);
+            PlannerWidgetSyncScheduler.scheduleImmediate(context);
             scheduleNextDayRefresh(context);
             return;
         }
@@ -58,6 +61,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
         scheduleNextDayRefresh(context);
+        PlannerWidgetSyncScheduler.schedule(context, true);
 
         for (int appWidgetId : appWidgetIds) {
             updateWidget(context, appWidgetManager, appWidgetId);
@@ -114,6 +118,10 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(
             R.id.planner_widget_add_button,
             createAddTaskPendingIntent(context)
+        );
+        views.setOnClickPendingIntent(
+            R.id.planner_widget_refresh_button,
+            createManualRefreshPendingIntent(context)
         );
         applyDisplayOptions(views, displayOptions);
         views.setOnClickPendingIntent(R.id.planner_widget_root, createOpenTodayPendingIntent(context));
@@ -239,6 +247,7 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
         }
 
         PlannerWidgetUpdateDispatcher.updateAllWidgets(context);
+        PlannerWidgetSyncScheduler.scheduleImmediate(context);
     }
 
     static PendingIntent createCompleteTaskPendingIntentTemplate(Context context) {
@@ -266,6 +275,15 @@ public class PlannerWidgetProvider extends AppWidgetProvider {
             1010,
             PlannerWidgetStorage.ACTION_ADD_TASK
         );
+    }
+
+    static PendingIntent createManualRefreshPendingIntent(Context context) {
+        Intent intent = new Intent(context, PlannerWidgetProvider.class);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE;
+
+        intent.setAction(PlannerWidgetStorage.ACTION_REFRESH_WIDGET);
+
+        return PendingIntent.getBroadcast(context, 1011, intent, flags);
     }
 
     private static PendingIntent createOpenRoutePendingIntent(

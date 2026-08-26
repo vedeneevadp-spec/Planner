@@ -42,6 +42,12 @@ export interface VoiceActionCachedTask {
 }
 
 export interface VoiceActionTaskClient {
+  getTask?: (taskId: string) => Promise<TaskRecord>
+  listTasksCursor?: (filters: {
+    direction: 'desc'
+    limit: 500
+    scope: 'active'
+  }) => Promise<{ items: TaskRecord[] }>
   listTasks: (filters?: {
     limit?: number | undefined
     plannedDate?: string | undefined
