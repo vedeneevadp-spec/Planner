@@ -12,7 +12,6 @@ import {
   type SelfCarePlanResponse,
   type SelfCareTodayItem,
   type Task,
-  type TaskStatus,
   type WorkspaceGroupRole,
   type WorkspaceKind,
   type WorkspaceRole,
@@ -28,6 +27,7 @@ import type {
   AiCalendarEvent,
   AiCleaningOverdueZoneGroup,
   AiCleaningTask,
+  AiContextSourceCoverage,
   AiFlexibleGoalContext,
   AiFlexibleGoalSummary,
   AiHabitItem,
@@ -38,6 +38,7 @@ import type {
   AiSelfCareDuplicate,
   AiSelfCareItem,
   AiShoppingItem,
+  AiSourceCoverage,
   AiSuggestedMode,
   AiTaskGroup,
   AiTaskItem,
@@ -54,6 +55,8 @@ import type {
 } from './ai-context.types.js'
 
 const DEFAULT_TIMEZONE = 'Europe/Astrakhan'
+const AI_SOURCE_PAGE_SIZE = 100
+const AI_SOURCE_MAX_ITEMS = 500
 
 interface SessionSnapshotLike {
   actor: {
@@ -83,10 +86,21 @@ interface SessionServiceLike {
 }
 
 interface TaskServiceLike {
-  listTasks(
+  getTaskReadModel(
     context: AiServiceReadContext,
-    filters?: { limit?: number; plannedDate?: string; status?: TaskStatus },
-  ): Promise<Array<Task & { userId?: string; workspaceId?: string }>>
+    filters: {
+      activeLimit: number
+      dateFrom: string
+      dateTo: string
+      historyLimit: number
+      rangeLimit: number
+    },
+  ): Promise<{
+    items: Array<Task & { userId?: string; workspaceId?: string }>
+    returnedCount: number
+    totalCount: number
+    truncated: boolean
+  }>
 }
 
 interface ChaosInboxServiceLike {
@@ -178,6 +192,10 @@ interface LoadedContext {
     suggestedFocus: string | null
   }
   shopping: AiShoppingItem[]
+  sourceCoverage: {
+    shopping: AiSourceCoverage
+    tasks: AiSourceCoverage
+  }
   tasks: {
     all: AiTaskItem[]
     completedToday: AiTaskItem[]
@@ -205,6 +223,7 @@ export class AiContextService {
     const result: TodayContext = {
       date,
       generatedAt: new Date().toISOString(),
+      sourceCoverage: loaded.sourceCoverage,
       timezone,
     }
     const shopping = markShoppingOverdue(loaded.shopping, date)
@@ -323,7 +342,8 @@ export class AiContextService {
       params.userId,
       timezone,
     )
-    const tasks = await this.listTasks(context, params.userId)
+    const taskLoad = await this.listTasks(context, params.userId, from, to)
+    const tasks = taskLoad.items
     const activeTasks = tasks.filter(isActiveTask)
     const weekTasks = activeTasks.filter((task) =>
       isTaskInRange(task, from, to),
@@ -335,10 +355,8 @@ export class AiContextService {
     const overdueTasks = activeTasks.filter((task) =>
       isTaskOverdue(task, overdueAsOfDate),
     )
-    const shopping = markShoppingOverdue(
-      await this.listShopping(context, params.userId),
-      overdueAsOfDate,
-    )
+    const shoppingLoad = await this.listShopping(context, params.userId)
+    const shopping = markShoppingOverdue(shoppingLoad.items, overdueAsOfDate)
     const activeShopping = shopping.filter(isActiveShoppingItem)
     const completedShopping = shopping.filter(isCompletedShoppingItem)
     const overdueShopping = activeShopping.filter(
@@ -433,6 +451,10 @@ export class AiContextService {
           shoppingActive: limitItems(activeShopping),
           tasksActive: limitItems(taskItems),
         },
+        sourceCoverage: {
+          shopping: shoppingLoad.coverage,
+          tasks: taskLoad.coverage,
+        },
         summary: {
           cleaningActive,
           cleaningOverdue: cleaning.overdue.length,
@@ -494,9 +516,13 @@ export class AiContextService {
     )
     const normalizedQuery = query.toLowerCase()
     const results: PlannerSearchResult['items'] = []
+    const sourceCoverage: AiContextSourceCoverage = {}
 
     if (types.includes('tasks') || types.includes('calendar')) {
-      const tasks = await this.listTasks(context, params.userId)
+      const taskLoad = await this.listTasks(context, params.userId, from, to)
+      const tasks = taskLoad.items
+
+      sourceCoverage.tasks = taskLoad.coverage
 
       if (types.includes('tasks')) {
         results.push(
@@ -520,11 +546,11 @@ export class AiContextService {
     }
 
     if (types.includes('shopping')) {
+      const shoppingLoad = await this.listShopping(context, params.userId)
+
+      sourceCoverage.shopping = shoppingLoad.coverage
       results.push(
-        ...markShoppingOverdue(
-          await this.listShopping(context, params.userId),
-          searchAsOfDate,
-        )
+        ...markShoppingOverdue(shoppingLoad.items, searchAsOfDate)
           .filter((item) => matchesSearch(item, normalizedQuery))
           .filter((item) => matchesSearchStatus(item.status, params.status)),
       )
@@ -551,16 +577,16 @@ export class AiContextService {
         resolveOverdueAsOfDate(rangeTo, timezone),
       )
 
-      results.push(
-        ...dedupeAiItems([
-          ...selfCare.scheduled,
-          ...selfCare.remaining,
-          ...selfCare.completed,
-          ...selfCare.overdue,
-        ])
-          .filter((item) => matchesSearch(item, normalizedQuery))
-          .filter((item) => matchesSearchStatus(item.status, params.status)),
-      )
+      const selfCareResults = [
+        ...selfCare.completed,
+        ...selfCare.overdue,
+        ...selfCare.remaining,
+        ...selfCare.scheduled,
+      ]
+        .filter((item) => matchesSearch(item, normalizedQuery))
+        .filter((item) => matchesSearchStatus(item.status, params.status))
+
+      results.push(...dedupeItems(selfCareResults))
     }
 
     const compacted = compactArrayForAi(results, {
@@ -573,6 +599,7 @@ export class AiContextService {
       items: compacted.items,
       query,
       returnedCount: compacted.returnedCount,
+      sourceCoverage,
       totalCount: compacted.totalCount,
     }
   }
@@ -586,7 +613,8 @@ export class AiContextService {
       params.userId,
       timezone,
     )
-    const tasks = await this.listTasks(context, params.userId)
+    const taskLoad = await this.listTasks(context, params.userId, from, to)
+    const tasks = taskLoad.items
     const activeTasks = tasks.filter(isActiveTask)
     const rangeTasks = activeTasks.filter((task) =>
       isTaskInRange(task, from, to),
@@ -599,10 +627,8 @@ export class AiContextService {
     const overdueTasks = activeTasks.filter((task) =>
       isTaskOverdue(task, overdueAsOfDate),
     )
-    const shopping = markShoppingOverdue(
-      await this.listShopping(context, params.userId),
-      overdueAsOfDate,
-    )
+    const shoppingLoad = await this.listShopping(context, params.userId)
+    const shopping = markShoppingOverdue(shoppingLoad.items, overdueAsOfDate)
     const activeShopping = shopping.filter(isActiveShoppingItem)
     const completedShopping = shopping.filter(isCompletedShoppingItem)
     const overdueShopping = activeShopping.filter(
@@ -716,6 +742,10 @@ export class AiContextService {
         cleaningOverdueByZone: groupCleaningOverdueByZone(cleaning.overdue),
         overdue: buildOverdueSummary(overdueByDomain),
         overdueItemsByDomain,
+        sourceCoverage: {
+          shopping: shoppingLoad.coverage,
+          tasks: taskLoad.coverage,
+        },
         suggestedFocus: buildSuggestedFocus(stats),
         timezone,
         to,
@@ -783,12 +813,14 @@ export class AiContextService {
     userId: string,
     date: string,
   ): Promise<LoadedContext> {
-    const [tasks, shopping, cleaning, selfCare] = await Promise.all([
-      this.listTasks(context, userId),
+    const [taskLoad, shoppingLoad, cleaning, selfCare] = await Promise.all([
+      this.listTasks(context, userId, date, date),
       this.listShopping(context, userId),
       this.getCleaningToday(context, date),
       this.getSelfCareDay(context, date),
     ])
+    const tasks = taskLoad.items
+    const shopping = shoppingLoad.items
     const activeTasks = tasks.filter(isActiveTask)
     const todayTasks = activeTasks.filter((task) => isTaskForDate(task, date))
     const completedTodayTasks = tasks.filter(
@@ -809,6 +841,10 @@ export class AiContextService {
       },
       selfCare,
       shopping,
+      sourceCoverage: {
+        shopping: shoppingLoad.coverage,
+        tasks: taskLoad.coverage,
+      },
       tasks: {
         all: currentTasks.map((task) => mapTaskItem(task, date)),
         completedToday: completedTodayTasks.map((task) =>
@@ -879,48 +915,109 @@ export class AiContextService {
   private async listTasks(
     context: AiServiceReadContext,
     userId: string,
-  ): Promise<Array<Task & { userId?: string; workspaceId?: string }>> {
-    const tasks = await this.dependencies.taskService.listTasks(context, {
-      limit: 100,
-    })
+    from?: string,
+    to?: string,
+  ): Promise<{
+    coverage: AiSourceCoverage
+    items: Array<Task & { userId?: string; workspaceId?: string }>
+  }> {
+    const fallbackDate = getTodayDate(
+      context.clientTimeZone ?? DEFAULT_TIMEZONE,
+    )
+    const dateFrom = from ?? to ?? fallbackDate
+    const dateTo = to ?? from ?? fallbackDate
+    const result = await this.dependencies.taskService.getTaskReadModel(
+      context,
+      {
+        activeLimit: AI_SOURCE_MAX_ITEMS,
+        dateFrom,
+        dateTo,
+        historyLimit: 250,
+        rangeLimit: AI_SOURCE_MAX_ITEMS,
+      },
+    )
+    const items = result.items.filter((task) => belongsToUser(task, userId))
 
-    return tasks.filter((task) => belongsToUser(task, userId))
+    return {
+      coverage: {
+        returnedCount: items.length,
+        totalCount: result.totalCount,
+        truncated: result.truncated || items.length < result.returnedCount,
+      },
+      items,
+    }
   }
 
   private async listShopping(
     context: AiServiceReadContext,
     userId: string,
-  ): Promise<AiShoppingItem[]> {
+  ): Promise<{ coverage: AiSourceCoverage; items: AiShoppingItem[] }> {
     if (!this.dependencies.chaosInboxService) {
-      return []
+      return {
+        coverage: { returnedCount: 0, totalCount: 0, truncated: false },
+        items: [],
+      }
     }
 
-    const result = await this.dependencies.chaosInboxService.listItems(
-      context,
-      {
-        kind: 'shopping',
-        limit: 100,
-        page: 1,
-      },
-    )
+    const sourceItems = new Map<string, ChaosInboxItemRecord>()
+    let page = 1
+    let totalCount = 0
 
-    return result.items
+    while (sourceItems.size < AI_SOURCE_MAX_ITEMS) {
+      const result = await this.dependencies.chaosInboxService.listItems(
+        context,
+        {
+          kind: 'shopping',
+          limit: AI_SOURCE_PAGE_SIZE,
+          page,
+        },
+      )
+      const sizeBeforePage = sourceItems.size
+
+      totalCount = Math.max(totalCount, result.total)
+
+      for (const item of result.items) {
+        sourceItems.set(item.id, item)
+      }
+
+      if (
+        result.items.length < AI_SOURCE_PAGE_SIZE ||
+        sourceItems.size >= totalCount ||
+        sourceItems.size === sizeBeforePage
+      ) {
+        break
+      }
+
+      page += 1
+    }
+
+    const userItems = [...sourceItems.values()]
       .filter((item) => item.kind === 'shopping')
       .filter((item) => item.userId === userId)
-      .map((item) => ({
-        activatedAt: item.activatedAt,
-        addedAt: item.createdAt,
-        category: item.shoppingCategory,
-        completedAt: item.completedAt,
-        dueDate: item.dueDate,
-        source: 'shopping' as const,
-        status:
-          item.status === 'archived' || item.status === 'converted'
-            ? 'done'
-            : 'todo',
-        title: item.text,
-        urgent: item.priority === 'high' || item.isFavorite,
-      }))
+    const items = userItems.map((item) => ({
+      activatedAt: item.activatedAt,
+      addedAt: item.createdAt,
+      category: item.shoppingCategory,
+      completedAt: item.completedAt,
+      dueDate: item.dueDate,
+      source: 'shopping' as const,
+      status:
+        item.status === 'archived' || item.status === 'converted'
+          ? 'done'
+          : 'todo',
+      title: item.text,
+      urgent: item.priority === 'high' || item.isFavorite,
+    }))
+
+    return {
+      coverage: {
+        returnedCount: items.length,
+        totalCount,
+        truncated:
+          sourceItems.size < totalCount || userItems.length < sourceItems.size,
+      },
+      items,
+    }
   }
 
   private async getCleaningToday(
@@ -994,7 +1091,9 @@ export class AiContextService {
     )
     const flexibleGoals = mapFlexibleGoalContexts(dashboard.flexibleGoals, date)
     const planned = normalizeSelfCareItemsForAi(
-      todayItems.map((item) => mapSelfCareTodayItem(item, 'planned')),
+      todayItems
+        .filter(isSelfCareTodayItemActivelyPlanned)
+        .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const completed = normalizeSelfCareItemsForAi(
       todayItems
@@ -1063,7 +1162,9 @@ export class AiContextService {
       to,
     )
     const planned = filterSelfCareItemsForAi(
-      plan.occurrences.map((item) => mapSelfCareTodayItem(item, 'planned')),
+      plan.occurrences
+        .filter(isSelfCareTodayItemActivelyPlanned)
+        .map((item) => mapSelfCareTodayItem(item, 'planned')),
     )
     const missed = filterSelfCareItemsForAi(
       plan.occurrences
@@ -1385,22 +1486,26 @@ function isSelfCareTodayItemMissed(item: SelfCareTodayItem): boolean {
   return status === 'missed' || status === 'skipped'
 }
 
-function isSelfCareTodayItemRemaining(
-  item: SelfCareTodayItem,
-  asOfDate: string,
-): boolean {
+function isSelfCareTodayItemActivelyPlanned(item: SelfCareTodayItem): boolean {
   if (isSelfCareTodayItemCompleted(item)) {
     return false
   }
 
   const status = item.occurrence?.status ?? item.completion?.status ?? null
 
-  if (
-    status === 'cancelled' ||
-    status === 'missed' ||
-    status === 'moved' ||
-    status === 'skipped'
-  ) {
+  return (
+    status !== 'cancelled' &&
+    status !== 'missed' &&
+    status !== 'moved' &&
+    status !== 'skipped'
+  )
+}
+
+function isSelfCareTodayItemRemaining(
+  item: SelfCareTodayItem,
+  asOfDate: string,
+): boolean {
+  if (!isSelfCareTodayItemActivelyPlanned(item)) {
     return false
   }
 

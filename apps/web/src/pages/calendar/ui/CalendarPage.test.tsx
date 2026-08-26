@@ -51,6 +51,12 @@ function createSelfCarePlanData():
 }
 
 const mocks = vi.hoisted(() => ({
+  calendarTaskRangeQuery: {
+    data: undefined,
+    error: null as Error | null,
+    isPending: false,
+    refetch: vi.fn(() => Promise.resolve()),
+  },
   hasTaskReadError: false,
   hasTaskRecords: true,
   isTaskOffline: false,
@@ -79,6 +85,7 @@ const mocks = vi.hoisted(() => ({
   },
   tasks: [] as Task[],
   taskComposer: vi.fn<(props: TaskComposerMockProps) => void>(),
+  usePlannerTaskCursor: vi.fn(),
   usePlannerSession: vi.fn<() => { data: SessionStub }>(),
 }))
 
@@ -87,6 +94,7 @@ vi.mock('@/features/emoji-library', () => ({
 }))
 
 vi.mock('@/features/planner', () => ({
+  toPlannerTask: (task: Task) => task,
   usePlanner: () => ({
     copyTaskToPersonal: vi.fn(),
     hasTaskReadError: mocks.hasTaskReadError,
@@ -107,6 +115,11 @@ vi.mock('@/features/planner', () => ({
     tasks: mocks.tasks,
     updateTask: vi.fn(),
   }),
+  usePlannerTaskCursor: (...args: unknown[]) => {
+    mocks.usePlannerTaskCursor(...args)
+
+    return mocks.calendarTaskRangeQuery
+  },
 }))
 
 vi.mock('@/features/self-care', () => ({
@@ -139,6 +152,11 @@ describe('CalendarPage', () => {
   beforeEach(() => {
     currentSession = createSession('week')
     mocks.mutatePreferences.mockReset()
+    mocks.calendarTaskRangeQuery.data = undefined
+    mocks.calendarTaskRangeQuery.error = null
+    mocks.calendarTaskRangeQuery.isPending = false
+    mocks.calendarTaskRangeQuery.refetch.mockReset()
+    mocks.calendarTaskRangeQuery.refetch.mockResolvedValue(undefined)
     mocks.hasTaskReadError = false
     mocks.hasTaskRecords = true
     mocks.isTaskOffline = false
@@ -166,6 +184,7 @@ describe('CalendarPage', () => {
     mocks.selfCareSettingsQuery.refetch.mockResolvedValue(undefined)
     mocks.tasks = []
     mocks.taskComposer.mockReset()
+    mocks.usePlannerTaskCursor.mockReset()
     mocks.usePlannerSession.mockImplementation(() => ({ data: currentSession }))
   })
 
@@ -199,6 +218,20 @@ describe('CalendarPage', () => {
     renderCalendarPage('/calendar')
 
     expect(screen.getByLabelText('Расписание')).toBeVisible()
+  })
+
+  it('loads only the visible calendar range through the bounded cursor', () => {
+    renderCalendarPage('/calendar?calendarView=week')
+
+    expect(mocks.usePlannerTaskCursor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dateMode: 'planned',
+        direction: 'asc',
+        limit: 500,
+        scope: 'all',
+      }),
+      { enabled: true },
+    )
   })
 
   it('marks week view for its scoped responsive layout', () => {

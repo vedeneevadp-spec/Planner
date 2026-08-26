@@ -21,6 +21,7 @@ export function TodayPage() {
     isTaskOffline,
     readiness,
     refresh,
+    taskReadModelCoverage,
     taskLastSuccessfulSyncAt,
   } = usePlanner()
   const isBrowserOffline = useBrowserOffline()
@@ -117,6 +118,12 @@ export function TodayPage() {
       lastSyncedAt={taskLastSuccessfulSyncAt}
       showUnknownLastSync
     />
+  ) : taskReadModelCoverage?.truncated ? (
+    <PageStatusBanner
+      description={getTaskSnapshotCoverageDescription(taskReadModelCoverage)}
+      kind="info"
+      title="Большой архив загружен частично"
+    />
   ) : undefined
 
   return session?.workspace.kind === 'shared' ? (
@@ -124,6 +131,16 @@ export function TodayPage() {
   ) : (
     <PersonalTodayPage status={status} />
   )
+}
+
+function getTaskSnapshotCoverageDescription(
+  coverage: NonNullable<ReturnType<typeof usePlanner>['taskReadModelCoverage']>,
+): string {
+  if (coverage.sources.active.truncated || coverage.sources.range.truncated) {
+    return 'Показываем ограниченный snapshot. Все активные задачи сверх лимита и продолжение выбранного диапазона доступны через постраничную загрузку.'
+  }
+
+  return `Все активные задачи загружены. В истории показаны последние ${coverage.sources.history.returnedCount} из ${coverage.sources.history.totalCount} закрытых задач.`
 }
 
 function resolveTodayBlockingState(input: {

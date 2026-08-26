@@ -161,6 +161,7 @@ export function usePlannerState(): PlannerState {
     sphereQueryKey,
     spheresQuery,
     taskQueryKey,
+    taskReadModelCoverage,
     taskTemplateQueryKey,
     taskTemplatesQuery,
     tasksQuery,
@@ -168,6 +169,7 @@ export function usePlannerState(): PlannerState {
     authSessionVersion: sessionVersion,
     onServerReadSuccess: recordServerReadSuccess,
     plannerApi,
+    plannerTimeZone,
     queryClient,
     workspaceId,
   })
@@ -1428,6 +1430,7 @@ export function usePlannerState(): PlannerState {
     taskLastSuccessfulSyncAt,
     taskTemplateLastSuccessfulSyncAt,
     taskTemplates,
+    taskReadModelCoverage,
     undoNextTaskStage,
     updateSphere,
     updateTask,

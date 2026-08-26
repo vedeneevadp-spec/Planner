@@ -48,6 +48,39 @@ public class PlannerWidgetPlugin extends Plugin {
         call.resolve();
     }
 
+    @PluginMethod
+    public void configureBackgroundSync(PluginCall call) {
+        PlannerWidgetSyncConfig config = new PlannerWidgetSyncConfig(
+            call.getString("apiBaseUrl", ""),
+            call.getString("workspaceId", ""),
+            call.getString("timeZone", "")
+        );
+
+        if (!config.isValid()) {
+            call.reject("Valid widget API, workspace, and time zone are required.");
+            return;
+        }
+
+        if (!PlannerWidgetStorage.writeSyncConfig(getContext(), config)) {
+            call.reject("Failed to persist widget background sync configuration.");
+            return;
+        }
+
+        PlannerWidgetSyncScheduler.schedule(getContext(), true);
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void disableBackgroundSync(PluginCall call) {
+        if (!PlannerWidgetStorage.clearSyncConfig(getContext())) {
+            call.reject("Failed to clear widget background sync configuration.");
+            return;
+        }
+
+        PlannerWidgetSyncScheduler.cancel(getContext());
+        call.resolve();
+    }
+
     private static JSObject createTaskIdsResponse(List<String> taskIds) {
         JSONArray taskIdValues = new JSONArray();
         JSObject response = new JSObject();

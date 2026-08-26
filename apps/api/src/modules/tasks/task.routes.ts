@@ -2,6 +2,8 @@ import {
   newTaskInputSchema,
   taskChainCloseInputSchema,
   taskChainDetachInputSchema,
+  taskCursorListFiltersSchema,
+  taskCursorListResponseSchema,
   taskDetailsUpdateInputSchema,
   taskEventListFiltersSchema,
   taskEventListResponseSchema,
@@ -13,6 +15,8 @@ import {
   taskNextStageUndoInputSchema,
   taskNextStageUndoResponseSchema,
   taskPersonalTransferInputSchema,
+  taskReadModelFiltersSchema,
+  taskReadModelResponseSchema,
   taskRecordSchema,
   taskScheduleUpdateInputSchema,
   taskStatusUpdateInputSchema,
@@ -60,6 +64,42 @@ export function registerTaskRoutes(
     const result = await service.listTaskPage(context, filters)
 
     return taskListPageResponseSchema.parse(result)
+  })
+
+  app.get('/api/v1/tasks/cursor', async (request) => {
+    const filters = parseOrThrow(
+      taskCursorListFiltersSchema,
+      request.query,
+      'invalid_query',
+    )
+    const context = await resolveRouteReadContext(request, sessionService)
+    const result = await service.listTasksCursor(context, filters)
+
+    return taskCursorListResponseSchema.parse(result)
+  })
+
+  app.get('/api/v1/tasks/read-model', async (request) => {
+    const filters = parseOrThrow(
+      taskReadModelFiltersSchema,
+      request.query,
+      'invalid_query',
+    )
+    const context = await resolveRouteReadContext(request, sessionService)
+    const result = await service.getTaskReadModel(context, filters)
+
+    return taskReadModelResponseSchema.parse(result)
+  })
+
+  app.get('/api/v1/tasks/:taskId', async (request) => {
+    const params = parseOrThrow(
+      taskParamsSchema,
+      request.params,
+      'invalid_params',
+    )
+    const context = await resolveRouteReadContext(request, sessionService)
+    const task = await service.getTask(context, params.taskId)
+
+    return taskRecordSchema.parse(task)
   })
 
   app.get('/api/v1/task-events', async (request) => {

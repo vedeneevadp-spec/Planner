@@ -262,6 +262,13 @@ describe('self-care offline drain', () => {
         workspaceId: WORKSPACE_ID,
       }),
     ).resolves.toMatchObject({ conflicted: 1, processed: 1 })
+    const [conflictedMutation] = await listSelfCareOfflineMutations(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    )
+    expect(conflictedMutation?.conflict?.code).toBe(
+      'self_care_version_conflict',
+    )
     await expect(
       drainSelfCareOfflineQueue({
         actorUserId: ACTOR_USER_ID,

@@ -49,6 +49,7 @@ import {
   getSelfCareOfflineWorkspaceWriteGeneration,
   listSelfCareOfflineMutations,
   loadCachedSelfCareRead,
+  markSelfCareOfflineMutationConflicted,
   probeSelfCareOfflineStorage,
   reportSelfCareOfflineStorageFailure,
   resetSelfCareOfflineDatabaseForTests,
@@ -1314,6 +1315,59 @@ describe('self-care persistent reads and offline commands', () => {
           selfCareSettingsQueryKey(OWNER_ID),
         )?.settings.currency,
       ).toBe('USD')
+    })
+
+    it('does not retry a legacy closed-occurrence conflict and discards it explicitly', async () => {
+      const mutation = await enqueueSelfCareOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        command: {
+          expectedVersion: 5,
+          input: { currency: 'USD' },
+          type: 'update_settings',
+        },
+        occurredAt: '2026-06-18T08:00:00.000Z',
+        operationId: generateUuidV7(),
+        optimisticResult: createSettingsResult('USD', 6),
+        workspaceId: WORKSPACE_ID,
+      })
+      await markSelfCareOfflineMutationConflicted(
+        mutation!.id,
+        WORKSPACE_ID,
+        ACTOR_USER_ID,
+        getSelfCareOfflineWorkspaceWriteGeneration(WORKSPACE_ID),
+        {
+          actualVersion: 6,
+          entityId: OCCURRENCE_ID,
+          entityType: 'occurrence',
+          expectedVersion: null,
+        },
+        'The self-care occurrence was already completed or changed.',
+      )
+      const queue = renderHook(() => useSelfCareOfflineQueue(), {
+        wrapper: createQueryWrapper(queryClient),
+      })
+
+      await waitFor(() => {
+        expect(queue.result.current.closedOccurrenceConflicts).toBe(1)
+      })
+      vi.mocked(selfCareApi.executeOfflineCommand).mockClear()
+
+      await act(async () => {
+        await queue.result.current.refreshAndRetryConflicts()
+      })
+
+      expect(selfCareApi.executeOfflineCommand).not.toHaveBeenCalled()
+      expect(queue.result.current.closedOccurrenceConflicts).toBe(1)
+
+      await act(async () => {
+        await queue.result.current.discardClosedOccurrenceConflicts()
+      })
+      await waitFor(() => {
+        expect(queue.result.current.total).toBe(0)
+      })
+      await expect(
+        listSelfCareOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+      ).resolves.toEqual([])
     })
   })
 

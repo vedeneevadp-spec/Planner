@@ -1,4 +1,4 @@
-import { type Kysely, sql } from 'kysely'
+import { type Kysely, type SelectQueryBuilder, sql } from 'kysely'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import {
@@ -7,13 +7,16 @@ import {
 } from '../../infrastructure/db/rls.js'
 import type { DatabaseSchema } from '../../infrastructure/db/schema.js'
 import { LifeSphereNotFoundError } from '../life-spheres/life-sphere.errors.js'
-import type { CreateTaskCommand, TaskListFilters } from './task.model.js'
+import type {
+  CreateTaskCommand,
+  TaskCursorPageQuery,
+  TaskListFilters,
+} from './task.model.js'
 import {
   LEGACY_PROJECT_NAME_KEY,
   type ProjectRow,
   type ResolvedTaskAssignee,
   type ResolvedTaskProject,
-  TASK_LIST_BATCH_SIZE,
   type TaskListRow,
   type TaskRow,
   type TaskRowsQuery,
@@ -25,7 +28,14 @@ export async function loadTaskRowsWithPrimaryTimeBlock(
   workspaceId: string,
   filters?: TaskListFilters,
 ): Promise<TaskListRow[]> {
-  const taskRows = await loadTaskRowsInBatches(executor, workspaceId, filters)
+  const taskRows =
+    filters?.limit !== undefined || filters?.offset !== undefined
+      ? await loadTaskRowsPage(executor, workspaceId, {
+          ...filters,
+          limit: filters.limit ?? 100,
+          offset: filters.offset ?? 0,
+        })
+      : await loadTaskRows(executor, workspaceId, filters)
 
   if (taskRows.length === 0) {
     return []
@@ -62,6 +72,63 @@ export async function loadTaskRowsWithPrimaryTimeBlock(
       time_block_timezone: timeBlock?.timezone ?? null,
     }
   })
+}
+
+export async function loadTaskRowsCursorWithPrimaryTimeBlock(
+  executor: DatabaseExecutor,
+  workspaceId: string,
+  query: TaskCursorPageQuery,
+): Promise<{ rows: TaskListRow[]; totalCount: number }> {
+  if (query.limit === 0) {
+    return {
+      rows: [],
+      totalCount: await countTaskRowsForCursor(executor, workspaceId, query),
+    }
+  }
+
+  const [taskRows, totalCount] = await Promise.all([
+    loadTaskRowsCursorPage(executor, workspaceId, query),
+    countTaskRowsForCursor(executor, workspaceId, query),
+  ])
+
+  if (taskRows.length === 0) {
+    return { rows: [], totalCount }
+  }
+
+  const [
+    primaryTimeBlocks,
+    projectTitles,
+    assigneeDisplayNames,
+    authorDisplayNames,
+  ] = await Promise.all([
+    loadPrimaryTimeBlocksForTasks(executor, workspaceId, taskRows),
+    loadProjectTitlesForTasks(executor, workspaceId, taskRows),
+    loadAssigneeDisplayNamesForTasks(executor, taskRows),
+    loadAuthorDisplayNamesForTasks(executor, taskRows),
+  ])
+
+  return {
+    rows: taskRows.map((taskRow) => {
+      const timeBlock = primaryTimeBlocks.get(taskRow.id)
+
+      return {
+        ...taskRow,
+        assignee_display_name: taskRow.assignee_user_id
+          ? (assigneeDisplayNames.get(taskRow.assignee_user_id) ?? null)
+          : null,
+        author_display_name: taskRow.created_by
+          ? (authorDisplayNames.get(taskRow.created_by) ?? null)
+          : null,
+        project_title: taskRow.project_id
+          ? (projectTitles.get(taskRow.project_id) ?? null)
+          : null,
+        time_block_ends_at: timeBlock?.ends_at ?? null,
+        time_block_starts_at: timeBlock?.starts_at ?? null,
+        time_block_timezone: timeBlock?.timezone ?? null,
+      }
+    }),
+    totalCount,
+  }
 }
 
 export async function loadTaskRowsPageWithPrimaryTimeBlock(
@@ -129,38 +196,72 @@ export function loadTaskRowsPage(
   return query.execute()
 }
 
-export async function loadTaskRowsInBatches(
+export function loadTaskRowsCursorPage(
+  executor: DatabaseExecutor,
+  workspaceId: string,
+  cursorQuery: TaskCursorPageQuery,
+): Promise<TaskRow[]> {
+  let query = applyTaskCursorFilters(
+    executor
+      .selectFrom('app.tasks')
+      .selectAll()
+      .where('workspace_id', '=', workspaceId)
+      .where('deleted_at', 'is', null),
+    cursorQuery,
+  )
+
+  if (cursorQuery.anchor) {
+    const comparison = cursorQuery.direction === 'asc' ? sql`>` : sql`<`
+
+    query = query.where(sql<boolean>`
+      (app.tasks.created_at, app.tasks.id)
+      ${comparison}
+      (${cursorQuery.anchor.createdAt}::timestamptz, ${cursorQuery.anchor.id}::uuid)
+    `)
+  }
+
+  return query
+    .orderBy('created_at', cursorQuery.direction === 'asc' ? 'asc' : 'desc')
+    .orderBy('id', cursorQuery.direction === 'asc' ? 'asc' : 'desc')
+    .limit(cursorQuery.limit + 1)
+    .execute()
+}
+
+async function countTaskRowsForCursor(
+  executor: DatabaseExecutor,
+  workspaceId: string,
+  cursorQuery: TaskCursorPageQuery,
+): Promise<number> {
+  const result = await applyTaskCursorFilters(
+    executor
+      .selectFrom('app.tasks')
+      .select((expressionBuilder) =>
+        expressionBuilder.fn.countAll().as('count'),
+      )
+      .where('workspace_id', '=', workspaceId)
+      .where('deleted_at', 'is', null),
+    cursorQuery,
+  ).executeTakeFirstOrThrow()
+
+  return Number(result.count)
+}
+
+export function loadTaskRows(
   executor: DatabaseExecutor,
   workspaceId: string,
   filters?: TaskListFilters,
 ): Promise<TaskRow[]> {
-  const taskRows: TaskRow[] = []
-  let offset = 0
-
-  for (;;) {
-    const query = applyTaskListFilters(
-      executor
-        .selectFrom('app.tasks')
-        .selectAll()
-        .where('workspace_id', '=', workspaceId)
-        .where('deleted_at', 'is', null),
-      filters,
-    )
-      .orderBy('created_at', 'asc')
-      .orderBy('id', 'asc')
-      .limit(TASK_LIST_BATCH_SIZE)
-      .offset(offset)
-
-    const batch = await query.execute()
-
-    taskRows.push(...batch)
-
-    if (batch.length < TASK_LIST_BATCH_SIZE) {
-      return taskRows
-    }
-
-    offset += TASK_LIST_BATCH_SIZE
-  }
+  return applyTaskListFilters(
+    executor
+      .selectFrom('app.tasks')
+      .selectAll()
+      .where('workspace_id', '=', workspaceId)
+      .where('deleted_at', 'is', null),
+    filters,
+  )
+    .orderBy('created_at', 'asc')
+    .orderBy('id', 'asc')
+    .execute()
 }
 
 export async function loadPrimaryTimeBlocksForTasks(
@@ -527,6 +628,43 @@ function applyTaskListFilters(
         expressionBuilder('project_id', '=', sphereId),
         expressionBuilder('sphere_id', '=', sphereId),
       ]),
+    )
+  }
+
+  return filteredQuery
+}
+
+function applyTaskCursorFilters<Output>(
+  query: SelectQueryBuilder<DatabaseSchema, 'app.tasks', Output>,
+  cursorQuery: TaskCursorPageQuery,
+): SelectQueryBuilder<DatabaseSchema, 'app.tasks', Output> {
+  let filteredQuery = query
+
+  if (cursorQuery.scope === 'active') {
+    filteredQuery = filteredQuery.where('status', 'in', [
+      'todo',
+      'in_progress',
+      'ready_for_review',
+    ])
+  } else if (cursorQuery.scope === 'closed') {
+    filteredQuery = filteredQuery.where('status', 'in', ['done', 'archived'])
+  }
+
+  if (cursorQuery.dateFrom && cursorQuery.dateTo) {
+    filteredQuery = filteredQuery.where(
+      cursorQuery.dateMode === 'planned'
+        ? sql<boolean>`
+            coalesce(app.tasks.local_date, app.tasks.planned_on)
+            between ${cursorQuery.dateFrom}::date and ${cursorQuery.dateTo}::date
+          `
+        : sql<boolean>`
+            coalesce(
+              app.tasks.local_date,
+              app.tasks.planned_on,
+              app.tasks.due_on,
+              (app.tasks.completed_at at time zone 'UTC')::date
+            ) between ${cursorQuery.dateFrom}::date and ${cursorQuery.dateTo}::date
+          `,
     )
   }
 

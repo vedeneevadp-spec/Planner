@@ -402,6 +402,96 @@ export const taskListPageResponseSchema = z.object({
   nextOffset: z.number().int().nonnegative().nullable(),
   offset: z.number().int().nonnegative(),
 })
+
+const taskDateKeySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/u, 'Expected a YYYY-MM-DD date.')
+
+export const taskCursorScopeSchema = z.enum(['active', 'all', 'closed'])
+export const taskCursorDirectionSchema = z.enum(['asc', 'desc'])
+export const taskCursorDateModeSchema = z.enum(['planned', 'relevant'])
+
+export const taskCursorListFiltersSchema = z
+  .object({
+    cursor: z.string().min(1).max(2048).optional(),
+    dateFrom: taskDateKeySchema.optional(),
+    dateMode: taskCursorDateModeSchema.optional().default('relevant'),
+    dateTo: taskDateKeySchema.optional(),
+    direction: taskCursorDirectionSchema.optional().default('asc'),
+    limit: z.coerce.number().int().min(1).max(500).optional().default(100),
+    scope: taskCursorScopeSchema.optional().default('all'),
+  })
+  .superRefine((value, context) => {
+    if (Boolean(value.dateFrom) !== Boolean(value.dateTo)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'dateFrom and dateTo must be provided together.',
+        path: value.dateFrom ? ['dateTo'] : ['dateFrom'],
+      })
+    }
+
+    if (value.dateFrom && value.dateTo && value.dateFrom > value.dateTo) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'dateFrom must be less than or equal to dateTo.',
+        path: ['dateFrom'],
+      })
+    }
+  })
+
+export const taskCursorListResponseSchema = z.object({
+  hasMore: z.boolean(),
+  items: z.array(taskRecordSchema),
+  limit: z.number().int().min(1).max(500),
+  nextCursor: z.string().nullable(),
+  returnedCount: z.number().int().nonnegative(),
+  totalCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+})
+
+export const taskReadModelFiltersSchema = z
+  .object({
+    activeLimit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .optional()
+      .default(500),
+    dateFrom: taskDateKeySchema,
+    dateTo: taskDateKeySchema,
+    historyLimit: z.coerce
+      .number()
+      .int()
+      .min(0)
+      .max(250)
+      .optional()
+      .default(100),
+    rangeLimit: z.coerce.number().int().min(1).max(500).optional().default(250),
+  })
+  .refine((value) => value.dateFrom <= value.dateTo, {
+    message: 'dateFrom must be less than or equal to dateTo.',
+    path: ['dateFrom'],
+  })
+
+export const taskReadModelSourceSchema = z.object({
+  returnedCount: z.number().int().nonnegative(),
+  totalCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+})
+
+export const taskReadModelResponseSchema = z.object({
+  eventCursor: z.number().int().nonnegative(),
+  items: z.array(taskRecordSchema),
+  returnedCount: z.number().int().nonnegative(),
+  sources: z.object({
+    active: taskReadModelSourceSchema,
+    history: taskReadModelSourceSchema,
+    range: taskReadModelSourceSchema,
+  }),
+  totalCount: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+})
 export const chaosInboxItemRecordSchema = chaosInboxItemSchema.extend({
   workspaceId: z.string(),
   deletedAt: z.string().nullable(),
@@ -714,6 +804,16 @@ export type TaskEventListResponse = z.infer<typeof taskEventListResponseSchema>
 export type TaskEventRecord = z.infer<typeof taskEventRecordSchema>
 export type TaskListFilters = z.infer<typeof taskListFiltersSchema>
 export type TaskListPageResponse = z.infer<typeof taskListPageResponseSchema>
+export type TaskCursorDateMode = z.infer<typeof taskCursorDateModeSchema>
+export type TaskCursorDirection = z.infer<typeof taskCursorDirectionSchema>
+export type TaskCursorListFilters = z.infer<typeof taskCursorListFiltersSchema>
+export type TaskCursorListResponse = z.infer<
+  typeof taskCursorListResponseSchema
+>
+export type TaskCursorScope = z.infer<typeof taskCursorScopeSchema>
+export type TaskReadModelFilters = z.infer<typeof taskReadModelFiltersSchema>
+export type TaskReadModelResponse = z.infer<typeof taskReadModelResponseSchema>
+export type TaskReadModelSource = z.infer<typeof taskReadModelSourceSchema>
 export type TaskPersonalTransferInput = z.infer<
   typeof taskPersonalTransferInputSchema
 >

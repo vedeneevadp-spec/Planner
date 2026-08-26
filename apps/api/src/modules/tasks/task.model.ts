@@ -2,6 +2,10 @@ import type {
   NewTaskInput,
   Task,
   TaskCompletionType,
+  TaskCursorDateMode,
+  TaskCursorDirection,
+  TaskCursorListFilters,
+  TaskCursorScope,
   TaskEventListFilters,
   TaskEventRecord,
   TaskNextStageInput,
@@ -40,6 +44,55 @@ export interface TaskListPageResult {
   limit: number
   nextOffset: number | null
   offset: number
+}
+
+export interface TaskCursorAnchor {
+  createdAt: string
+  id: string
+}
+
+export interface TaskCursorPageQuery {
+  anchor?: TaskCursorAnchor | undefined
+  dateFrom?: string | undefined
+  dateMode: TaskCursorDateMode
+  dateTo?: string | undefined
+  direction: TaskCursorDirection
+  limit: number
+  scope: TaskCursorScope
+}
+
+export interface TaskCursorPageResult {
+  hasMore: boolean
+  items: StoredTaskRecord[]
+  totalCount: number
+}
+
+export interface TaskCursorListResult extends TaskCursorPageResult {
+  limit: number
+  nextCursor: string | null
+  returnedCount: number
+  truncated: boolean
+}
+
+export type TaskCursorFilters = TaskCursorListFilters
+
+export interface TaskReadModelSourceResult {
+  returnedCount: number
+  totalCount: number
+  truncated: boolean
+}
+
+export interface TaskReadModelResult {
+  eventCursor: number
+  items: StoredTaskRecord[]
+  returnedCount: number
+  sources: {
+    active: TaskReadModelSourceResult
+    history: TaskReadModelSourceResult
+    range: TaskReadModelSourceResult
+  }
+  totalCount: number
+  truncated: boolean
 }
 
 export type StoredTaskEventRecord = TaskEventRecord

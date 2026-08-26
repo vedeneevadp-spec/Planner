@@ -77,6 +77,28 @@ const mocks = vi.hoisted(() => {
         reason: 'ready',
         status: 'ready',
       },
+      taskReadModelCoverage: null as null | {
+        returnedCount: number
+        sources: {
+          active: {
+            returnedCount: number
+            totalCount: number
+            truncated: boolean
+          }
+          history: {
+            returnedCount: number
+            totalCount: number
+            truncated: boolean
+          }
+          range: {
+            returnedCount: number
+            totalCount: number
+            truncated: boolean
+          }
+        }
+        totalCount: number
+        truncated: boolean
+      },
       taskLastSuccessfulSyncAt: null as string | null,
     },
     refresh: vi.fn(),
@@ -519,6 +541,7 @@ describe('TodayPage', () => {
         reason: 'ready',
         status: 'ready',
       },
+      taskReadModelCoverage: null,
       taskLastSuccessfulSyncAt: null,
     })
     mocks.refresh.mockReset()
@@ -586,6 +609,30 @@ describe('TodayPage', () => {
     expect(screen.getByText('Из кеша')).toBeVisible()
     expect(screen.getByText('Нет подключения')).toBeVisible()
     expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
+  })
+
+  it('does not hide a truncated task archive from the user', () => {
+    Object.assign(mocks.plannerState, {
+      taskReadModelCoverage: {
+        returnedCount: 101,
+        sources: {
+          active: { returnedCount: 1, totalCount: 1, truncated: false },
+          history: { returnedCount: 100, totalCount: 321, truncated: true },
+          range: { returnedCount: 1, totalCount: 1, truncated: false },
+        },
+        totalCount: 322,
+        truncated: true,
+      },
+    })
+
+    renderTodayPage({ tasks: [createTask()] })
+
+    expect(screen.getByText('Большой архив загружен частично')).toBeVisible()
+    expect(
+      screen.getByText(
+        'Все активные задачи загружены. В истории показаны последние 100 из 321 закрытых задач.',
+      ),
+    ).toBeVisible()
   })
 
   it('keeps today, routine and attention sections expanded by default', () => {

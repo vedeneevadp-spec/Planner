@@ -82,7 +82,7 @@ export async function prepareRescheduleAction(
   let tasks: TaskRecord[]
 
   try {
-    tasks = await dependencies.taskClient.listTasks()
+    tasks = await listRescheduleCandidates(dependencies.taskClient)
   } catch {
     return createPreview(intent, {
       canExecute: false,
@@ -315,6 +315,22 @@ function isActivePlannerTaskStatus(status: string): boolean {
   return status !== 'done' && status !== 'archived'
 }
 
+async function listRescheduleCandidates(
+  taskClient: VoiceActionTaskClient,
+): Promise<TaskRecord[]> {
+  if (taskClient.listTasksCursor) {
+    const page = await taskClient.listTasksCursor({
+      direction: 'desc',
+      limit: 500,
+      scope: 'active',
+    })
+
+    return page.items
+  }
+
+  return taskClient.listTasks({ limit: 100 })
+}
+
 function resolveRescheduleCandidates(
   tasks: TaskRecord[],
   targetQuery: string,
@@ -461,7 +477,15 @@ async function findTaskById(
   taskClient: VoiceActionTaskClient,
   taskId: string,
 ): Promise<TaskRecord | null> {
-  const tasks = await taskClient.listTasks()
+  if (taskClient.getTask) {
+    try {
+      return await taskClient.getTask(taskId)
+    } catch {
+      return null
+    }
+  }
+
+  const tasks = await taskClient.listTasks({ limit: 100 })
 
   return tasks.find((task) => task.id === taskId) ?? null
 }

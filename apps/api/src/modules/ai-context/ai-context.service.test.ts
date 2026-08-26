@@ -101,6 +101,52 @@ void describe('AiContextService', () => {
     assert.equal(context.stats?.loadLevel, 'low')
   })
 
+  void it('reports bounded task and shopping source coverage to AI clients', async () => {
+    const taskReadModelCalls: unknown[] = []
+    const service = createService(
+      [
+        createTask({
+          plannedDate: '2026-06-21',
+          title: 'Visible bounded task',
+        }),
+      ],
+      [],
+      {
+        shoppingItems: [createShoppingItem({ text: 'Visible shopping item' })],
+        shoppingTotalCount: 1_000,
+        taskReadModelCalls,
+        taskTotalCount: 10_000,
+        taskTruncated: true,
+      },
+    )
+
+    const context = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['tasks', 'shopping'],
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(context.sourceCoverage.tasks, {
+      returnedCount: 1,
+      totalCount: 10_000,
+      truncated: true,
+    })
+    assert.deepEqual(context.sourceCoverage.shopping, {
+      returnedCount: 1,
+      totalCount: 1_000,
+      truncated: true,
+    })
+    assert.deepEqual(taskReadModelCalls, [
+      {
+        activeLimit: 500,
+        dateFrom: '2026-06-21',
+        dateTo: '2026-06-21',
+        historyLimit: 250,
+        rangeLimit: 500,
+      },
+    ])
+  })
+
   void it('uses planner timezone for default today context near a UTC boundary', async () => {
     mock.timers.enable({
       apis: ['Date'],
@@ -775,7 +821,7 @@ void describe('AiContextService', () => {
       userId: USER_ID,
     })
 
-    assert.equal(context.summary.scheduledCount, 4)
+    assert.equal(context.summary.scheduledCount, 3)
     assert.equal(context.summary.remainingCount, 2)
     assert.equal(context.summary.completedCount, 1)
     assert.equal(context.summary.missedCount, 1)
@@ -789,6 +835,10 @@ void describe('AiContextService', () => {
       context.remaining.some((item) => item.title === 'Skipped routine'),
       false,
     )
+    assert.equal(
+      context.scheduled.some((item) => item.title === 'Skipped routine'),
+      false,
+    )
     assert.equal(context.missed[0]?.category, 'beauty')
     assert.equal(context.missed[0]?.status, 'missed')
     assert.equal(context.overdue[0]?.category, 'sleep')
@@ -796,6 +846,106 @@ void describe('AiContextService', () => {
     assert.equal(
       context.overdue.some((item) => item.title === 'Skipped routine'),
       false,
+    )
+  })
+
+  void it('excludes moved and completed self-care occurrences from planned contexts', async () => {
+    mock.timers.enable({
+      apis: ['Date'],
+      now: new Date('2026-08-26T05:00:00.000Z'),
+    })
+    const movedManicure = createSelfCareTodayItem({
+      category: 'body',
+      date: '2026-08-24',
+      occurrenceId: 'manicure-moved',
+      occurrenceStatus: 'moved',
+      title: 'Маникюр',
+      type: 'appointment',
+    })
+    const completedCare = createSelfCareTodayItem({
+      category: 'beauty',
+      date: '2026-08-24',
+      occurrenceId: 'morning-care-done',
+      occurrenceStatus: 'done',
+      title: 'Утренний уход',
+      type: 'ritual',
+    })
+    const activeYoga = createSelfCareTodayItem({
+      category: 'movement',
+      date: '2026-08-24',
+      occurrenceId: 'yoga-active',
+      title: 'Йога',
+      type: 'task',
+    })
+    const replacementManicure = createSelfCareTodayItem({
+      category: 'body',
+      date: '2026-08-25',
+      occurrenceId: 'manicure-replacement',
+      title: 'Маникюр',
+      type: 'appointment',
+    })
+    const service = createService([], [], {
+      selfCareDashboard: {
+        flexibleGoals: [],
+        overdueItems: [],
+        planningHints: [],
+        todayItems: [movedManicure, completedCare, activeYoga],
+        upcomingImportant: [],
+      },
+      selfCarePlan: {
+        courses: [],
+        from: '2026-08-24',
+        medical: [],
+        occurrences: [movedManicure, completedCare, replacementManicure],
+        planningHints: [],
+        to: '2026-08-25',
+      },
+    })
+
+    const todayContext = await service.getTodayContext({
+      date: '2026-08-24',
+      include: ['selfcare'],
+      userId: USER_ID,
+    })
+    const rangeContext = await service.getSelfCareContext({
+      from: '2026-08-24',
+      to: '2026-08-25',
+      userId: USER_ID,
+    })
+    const searchResult = await service.searchPlanner({
+      from: '2026-08-24',
+      query: 'Маникюр',
+      to: '2026-08-25',
+      types: ['selfcare'],
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(
+      todayContext.selfCare?.planned.map((item) => item.title),
+      ['Йога'],
+    )
+    assert.deepEqual(
+      todayContext.selfCare?.scheduled.map((item) => item.title),
+      ['Йога'],
+    )
+    assert.deepEqual(
+      todayContext.selfCare?.completed.map((item) => item.title),
+      ['Утренний уход'],
+    )
+    assert.deepEqual(
+      rangeContext.planned.map((item) => ({
+        date: item.date,
+        title: item.title,
+      })),
+      [{ date: '2026-08-25', title: 'Маникюр' }],
+    )
+    assert.deepEqual(rangeContext.scheduled, rangeContext.planned)
+    assert.deepEqual(
+      searchResult.items.map((item) => ({
+        date: 'date' in item ? item.date : null,
+        title: item.title,
+      })),
+      [{ date: '2026-08-25', title: 'Маникюр' }],
     )
   })
 
@@ -1048,6 +1198,10 @@ interface CreateServiceOptions {
   selfCareHistory?: SelfCareHistoryResponse | undefined
   selfCarePlan?: SelfCarePlanResponse | undefined
   shoppingItems?: ChaosInboxItemRecord[] | undefined
+  shoppingTotalCount?: number | undefined
+  taskReadModelCalls?: unknown[] | undefined
+  taskTotalCount?: number | undefined
+  taskTruncated?: boolean | undefined
 }
 
 function createService(
@@ -1083,7 +1237,16 @@ function createService(
       },
     },
     taskService: {
-      listTasks: () => Promise.resolve(tasks),
+      getTaskReadModel: (_context, filters) => {
+        options.taskReadModelCalls?.push(filters)
+
+        return Promise.resolve({
+          items: tasks,
+          returnedCount: tasks.length,
+          totalCount: options.taskTotalCount ?? tasks.length,
+          truncated: options.taskTruncated ?? false,
+        })
+      },
     },
   }
 
@@ -1092,7 +1255,8 @@ function createService(
       listItems: () =>
         Promise.resolve({
           items: options.shoppingItems ?? [],
-          total: options.shoppingItems?.length ?? 0,
+          total:
+            options.shoppingTotalCount ?? options.shoppingItems?.length ?? 0,
         }),
     }
   }

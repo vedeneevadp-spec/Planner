@@ -1,6 +1,7 @@
 import type {
   TaskNextStageResponse,
   TaskNextStageUndoInput,
+  TaskReadModelResponse,
   TaskStageType,
 } from '@planner/contracts'
 
@@ -26,6 +27,10 @@ export interface PlannerState {
   spheres: Sphere[]
   tasks: Task[]
   taskTemplates: TaskTemplate[]
+  taskReadModelCoverage: Omit<
+    TaskReadModelResponse,
+    'eventCursor' | 'items'
+  > | null
   readiness: SessionReadiness
   conflictedMutationCount: number
   hasLifeSphereRecords: boolean

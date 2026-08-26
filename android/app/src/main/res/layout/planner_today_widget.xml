@@ -45,6 +45,17 @@
         </LinearLayout>
 
         <ImageButton
+            android:id="@+id/planner_widget_refresh_button"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/planner_widget_control_background"
+            android:contentDescription="@string/planner_widget_refresh_content_description"
+            android:padding="9dp"
+            android:scaleType="center"
+            android:src="@drawable/planner_widget_icon_refresh" />
+
+        <ImageButton
             android:id="@+id/planner_widget_add_button"
             android:layout_width="38dp"
             android:layout_height="38dp"

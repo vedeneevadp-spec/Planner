@@ -24,7 +24,6 @@ import {
   replaceCachedLifeSphereRecords,
   replaceCachedTaskRecords,
   replaceCachedTaskTemplateRecords,
-  setLastTaskEventId,
 } from '../lib/offline-planner-store'
 import {
   drainPlannerOfflineQueue,
@@ -223,7 +222,6 @@ export function usePlannerOfflineSync({
       })
 
       if (result.nextEventId > afterEventId) {
-        await setLastTaskEventId(workspaceId, result.nextEventId)
         await queryClient.invalidateQueries({ queryKey: taskQueryKey })
       }
     })()

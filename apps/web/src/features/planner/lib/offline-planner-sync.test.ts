@@ -13,6 +13,7 @@ import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   enqueuePlannerOfflineMutation,
+  getLastTaskEventId,
   getPlannerDataLastSuccessfulSyncAt,
   loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
@@ -87,9 +88,16 @@ describe('offline planner sync', () => {
   it('commits an empty server snapshot and its freshness atomically', async () => {
     const syncedAt = '2026-08-06T08:30:00.000Z'
 
-    await replaceCachedTaskRecordsFromServer(WORKSPACE_ID, [], syncedAt)
+    await replaceCachedTaskRecordsFromServer(
+      WORKSPACE_ID,
+      [],
+      syncedAt,
+      undefined,
+      42,
+    )
 
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([])
+    expect(await getLastTaskEventId(WORKSPACE_ID)).toBe(42)
     expect(
       await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID, 'tasks'),
     ).toBe(syncedAt)
@@ -106,12 +114,37 @@ describe('offline planner sync', () => {
         WORKSPACE_ID,
         [invalidRecord],
         '2026-08-06T08:30:00.000Z',
+        undefined,
+        43,
       ),
     ).rejects.toBeDefined()
     expect(
       await getPlannerDataLastSuccessfulSyncAt(WORKSPACE_ID, 'tasks'),
     ).toBeNull()
+    expect(await getLastTaskEventId(WORKSPACE_ID)).toBe(0)
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual([])
+  })
+
+  it('never regresses the task event cursor with an older snapshot', async () => {
+    await replaceCachedTaskRecordsFromServer(
+      WORKSPACE_ID,
+      [createTaskRecord('task-newer')],
+      '2026-08-06T09:00:00.000Z',
+      undefined,
+      42,
+    )
+    await replaceCachedTaskRecordsFromServer(
+      WORKSPACE_ID,
+      [createTaskRecord('task-older')],
+      '2026-08-06T08:30:00.000Z',
+      undefined,
+      41,
+    )
+
+    expect(await getLastTaskEventId(WORKSPACE_ID)).toBe(42)
+    expect(
+      (await loadCachedTaskRecords(WORKSPACE_ID)).map((task) => task.id),
+    ).toEqual(['task-newer'])
   })
 
   it('replays queued creates through the API and caches the server record', async () => {
@@ -193,7 +226,11 @@ describe('offline planner sync', () => {
           status: 409,
         }),
       ),
-      listTasks: vi.fn().mockResolvedValue([stage.current, stage.next]),
+      getTask: vi.fn((taskId: string) =>
+        Promise.resolve(
+          taskId === stage.current.id ? stage.current : stage.next,
+        ),
+      ),
     })
 
     await enqueueNextStageMutation(stage)
@@ -211,7 +248,9 @@ describe('offline planner sync', () => {
       synced: 1,
     })
     expect(api.createNextTaskStage).toHaveBeenCalledTimes(1)
-    expect(api.listTasks).toHaveBeenCalledTimes(1)
+    expect(api.getTask).toHaveBeenCalledTimes(2)
+    expect(api.getTask).toHaveBeenCalledWith(stage.current.id)
+    expect(api.getTask).toHaveBeenCalledWith(stage.next.id)
     expect(await countConflictedPlannerOfflineMutations(WORKSPACE_ID)).toBe(0)
     expect(await loadCachedTaskRecords(WORKSPACE_ID)).toEqual(
       expect.arrayContaining([stage.current, stage.next]),
@@ -625,9 +664,12 @@ function createPlannerApiClientMock(
     detachTaskFromChain: vi.fn(),
     getDailyPlan: vi.fn(),
     getLifeSphereWeeklyStats: vi.fn(),
+    getTask: vi.fn(),
+    getTaskReadModel: vi.fn(),
     listLifeSpheres: vi.fn(),
     listTaskEvents: vi.fn(),
     listTasks: vi.fn(),
+    listTasksCursor: vi.fn(),
     listTasksPage: vi.fn(),
     listTaskTemplates: vi.fn(),
     removeLifeSphere: vi.fn(),

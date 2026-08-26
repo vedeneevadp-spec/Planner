@@ -167,6 +167,7 @@ public class PlannerWidgetConfigurationActivity extends Activity {
             selectedShowCleaning
         );
         PlannerWidgetUpdateDispatcher.updateAllWidgets(this);
+        PlannerWidgetSyncScheduler.schedule(this, true);
 
         Intent result = new Intent();
         result.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);

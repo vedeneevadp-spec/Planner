@@ -22,6 +22,8 @@ export {
   clearCleaningOfflineWorkspaceData,
 } from './lib/offline-cleaning-store'
 export {
+  cleaningQueryKey,
+  cleaningTodayQueryKey,
   getCleaningErrorMessage,
   isCleaningConnectionError,
   useCleaningPlan,

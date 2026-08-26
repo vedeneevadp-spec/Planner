@@ -9,7 +9,10 @@ import {
   createReleaseLayout,
   parseReleaseRetention,
 } from './deploy-prod-helpers.mjs'
-import { internalAppTables } from './db-security-repair-config.mjs'
+import {
+  internalAppTables,
+  restrictedAppFunctionRoles,
+} from './db-security-repair-config.mjs'
 import {
   createRemoteDatabaseTransportValidatorScript,
   createRemoteDeployLockScript,
@@ -308,7 +311,7 @@ test('builds and migrates before the atomic switch, with post-switch rollback', 
   assert.match(script, /prune_releases/)
 })
 
-test('repairs grants for internal offline command ledgers', () => {
+test('repairs internal table and backup function grant drift', async () => {
   assert.deepEqual(internalAppTables, [
     'cleaning_operations',
     'device_sessions',
@@ -317,6 +320,19 @@ test('repairs grants for internal offline command ledgers', () => {
     'self_care_command_ledger',
     'sync_cursors',
   ])
+  assert.deepEqual(restrictedAppFunctionRoles, ['planner_backup', 'public'])
+
+  const repairSource = await readFile(
+    resolve(repositoryRoot, 'scripts/db-security-repair.mjs'),
+    'utf8',
+  )
+
+  assert.match(
+    repairSource,
+    /revoke execute on all functions in schema app from/,
+  )
+  assert.match(repairSource, /readRestrictedAppFunctionGrants/)
+  assert.match(repairSource, /has_function_privilege/)
 })
 
 test('runtime services and Caddy resolve the current release symlink', async () => {

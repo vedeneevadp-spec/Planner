@@ -905,6 +905,160 @@ export function createPaths(): OpenAPIV3.PathsObject {
         tags: ['tasks'],
       },
     },
+    '/api/v1/tasks/cursor': {
+      get: {
+        operationId: 'listTasksCursor',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          {
+            in: 'query',
+            name: 'cursor',
+            required: false,
+            schema: {
+              maxLength: 2048,
+              minLength: 1,
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'dateFrom',
+            required: false,
+            schema: {
+              format: 'date',
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'dateMode',
+            required: false,
+            schema: {
+              default: 'relevant',
+              enum: ['planned', 'relevant'],
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'dateTo',
+            required: false,
+            schema: {
+              format: 'date',
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'direction',
+            required: false,
+            schema: {
+              default: 'asc',
+              enum: ['asc', 'desc'],
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'limit',
+            required: false,
+            schema: {
+              default: 100,
+              maximum: 500,
+              minimum: 1,
+              type: 'integer',
+            },
+          },
+          {
+            in: 'query',
+            name: 'scope',
+            required: false,
+            schema: {
+              default: 'all',
+              enum: ['active', 'all', 'closed'],
+              type: 'string',
+            },
+          },
+        ],
+        responses: {
+          200: jsonResponse('TaskCursorListResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'List a bounded task page using a stable keyset cursor',
+        tags: ['tasks'],
+      },
+    },
+    '/api/v1/tasks/read-model': {
+      get: {
+        operationId: 'getTaskReadModel',
+        parameters: [
+          parameter('requiredWorkspaceIdHeader'),
+          {
+            in: 'query',
+            name: 'dateFrom',
+            required: true,
+            schema: {
+              format: 'date',
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'dateTo',
+            required: true,
+            schema: {
+              format: 'date',
+              type: 'string',
+            },
+          },
+          {
+            in: 'query',
+            name: 'activeLimit',
+            required: false,
+            schema: {
+              default: 500,
+              maximum: 500,
+              minimum: 1,
+              type: 'integer',
+            },
+          },
+          {
+            in: 'query',
+            name: 'rangeLimit',
+            required: false,
+            schema: {
+              default: 250,
+              maximum: 500,
+              minimum: 1,
+              type: 'integer',
+            },
+          },
+          {
+            in: 'query',
+            name: 'historyLimit',
+            required: false,
+            schema: {
+              default: 100,
+              maximum: 250,
+              minimum: 0,
+              type: 'integer',
+            },
+          },
+        ],
+        responses: {
+          200: jsonResponse('TaskReadModelResponse'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Load a bounded task snapshot for planner surfaces',
+        tags: ['tasks'],
+      },
+    },
     '/api/v1/task-events': {
       get: {
         operationId: 'listTaskEvents',
@@ -996,6 +1150,20 @@ export function createPaths(): OpenAPIV3.PathsObject {
       },
     },
     '/api/v1/tasks/{taskId}': {
+      get: {
+        operationId: 'getTask',
+        parameters: [taskIdParameter(), parameter('requiredWorkspaceIdHeader')],
+        responses: {
+          200: jsonResponse('TaskRecord'),
+          400: errorResponse(),
+          401: errorResponse(),
+          403: errorResponse(),
+          404: errorResponse(),
+        },
+        security: [{ bearerAuth: [] }, {}],
+        summary: 'Get a task by id',
+        tags: ['tasks'],
+      },
       patch: {
         operationId: 'updateTask',
         parameters: [

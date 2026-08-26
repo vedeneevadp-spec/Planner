@@ -227,6 +227,53 @@ describe('SelfCarePage states', () => {
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible()
   })
 
+  it('shows one server-state action when an occurrence was already changed', () => {
+    const discardClosedOccurrenceConflicts = vi.fn(() => Promise.resolve())
+    mocks.useSelfCareOfflineQueue.mockReturnValue(
+      createOfflineQueue({
+        closedOccurrenceConflicts: 1,
+        conflicted: 1,
+        discardClosedOccurrenceConflicts,
+        total: 1,
+      }),
+    )
+
+    renderPage()
+
+    expect(screen.getByText('Серверные данные уже изменились')).toBeVisible()
+    expect(
+      screen.getByText(/Событие уже завершено или изменено на сервере/),
+    ).toBeVisible()
+    expect(
+      screen.queryByText('Нужно проверить изменения'),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Оставить данные сервера' }),
+    )
+
+    expect(discardClosedOccurrenceConflicts).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps retry controls for other conflicts in a mixed queue', () => {
+    mocks.useSelfCareOfflineQueue.mockReturnValue(
+      createOfflineQueue({
+        closedOccurrenceConflicts: 1,
+        conflicted: 2,
+        total: 2,
+      }),
+    )
+
+    renderPage()
+
+    expect(screen.getByText('Серверные данные уже изменились')).toBeVisible()
+    expect(screen.getByText('Нужно проверить изменения')).toBeVisible()
+    expect(screen.getByText(/1 изменение требует сверки/)).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Обновить и повторить' }),
+    ).toBeVisible()
+  })
+
   it('shows the device-save banner for queued changes during a network failure', () => {
     mocks.useSelfCareOfflineQueue.mockReturnValue(
       createOfflineQueue({ pending: 1, total: 1 }),
@@ -617,7 +664,9 @@ function createOfflineQueue(overrides: Record<string, unknown> = {}) {
     awaitingRefresh: 0,
     canQueueWrites: true,
     canWriteFromSession: true,
+    closedOccurrenceConflicts: 0,
     conflicted: 0,
+    discardClosedOccurrenceConflicts: vi.fn(() => Promise.resolve()),
     discardConflicts: vi.fn(() => Promise.resolve()),
     failed: 0,
     isDraining: false,

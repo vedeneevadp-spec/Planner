@@ -16,12 +16,15 @@ import {
 } from '@/entities/task'
 import {
   type CleaningApiClient,
+  cleaningTodayQueryKey,
   createCleaningApiClient,
   queueCleaningTaskCompletion,
 } from '@/features/cleaning'
 import {
   createSelfCareApiClient,
+  createSelfCareQueryOwnerId,
   type SelfCareApiClient,
+  selfCareDashboardQueryKey,
 } from '@/features/self-care'
 import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
@@ -34,7 +37,9 @@ import {
   ackPendingNativePlannerWidgetCompletedTasks,
   addNativePlannerWidgetResumeListener,
   buildNativePlannerWidgetSnapshot,
+  configureNativePlannerWidgetBackgroundSync,
   consumePendingNativePlannerWidgetRoute,
+  disableNativePlannerWidgetBackgroundSync,
   getNativePlannerWidgetCleaningTaskId,
   isAndroidPlannerWidgetRuntime,
   persistNativePlannerWidgetSnapshot,
@@ -80,23 +85,9 @@ type NativeWidgetSphereQueryKey = readonly [
   number,
 ]
 
-type NativeWidgetSelfCareQueryKey = readonly [
-  'planner',
-  'native-widget',
-  'personal-self-care',
-  string,
-  string,
-  number,
-]
+type NativeWidgetSelfCareQueryKey = ReturnType<typeof selfCareDashboardQueryKey>
 
-type NativeWidgetCleaningQueryKey = readonly [
-  'planner',
-  'native-widget',
-  'personal-cleaning',
-  string,
-  string,
-  number,
-]
+type NativeWidgetCleaningQueryKey = ReturnType<typeof cleaningTodayQueryKey>
 
 interface NativeWidgetPlannerRef {
   actorUserId: string | undefined
@@ -121,7 +112,7 @@ const EMPTY_PERSONAL_SPHERES: Sphere[] = []
 
 export function NativePlannerWidgetSync() {
   const activePlanner = usePlanner()
-  const { sessionVersion } = useSessionAuth()
+  const { lifecycleStatus, sessionVersion } = useSessionAuth()
   const { apiConfig, session } = useSessionFeatureReadiness()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -186,27 +177,26 @@ export function NativePlannerWidgetSync() {
     ],
     [personalWorkspaceId, sessionVersion],
   )
+  const selfCareQueryOwnerId = useMemo(
+    () =>
+      createSelfCareQueryOwnerId(
+        personalWorkspaceId ?? 'pending',
+        session?.actorUserId ?? 'pending',
+      ),
+    [personalWorkspaceId, session?.actorUserId],
+  )
   const selfCareQueryKey = useMemo<NativeWidgetSelfCareQueryKey>(
-    () => [
-      'planner',
-      'native-widget',
-      'personal-self-care',
-      personalWorkspaceId ?? 'pending',
-      widgetDateKey,
-      sessionVersion,
-    ],
-    [personalWorkspaceId, sessionVersion, widgetDateKey],
+    () => selfCareDashboardQueryKey(selfCareQueryOwnerId, widgetDateKey),
+    [selfCareQueryOwnerId, widgetDateKey],
   )
   const cleaningQueryKey = useMemo<NativeWidgetCleaningQueryKey>(
-    () => [
-      'planner',
-      'native-widget',
-      'personal-cleaning',
-      personalWorkspaceId ?? 'pending',
-      widgetDateKey,
-      sessionVersion,
-    ],
-    [personalWorkspaceId, sessionVersion, widgetDateKey],
+    () =>
+      cleaningTodayQueryKey(
+        personalWorkspaceId ?? 'pending',
+        session?.actorUserId ?? 'pending',
+        widgetDateKey,
+      ),
+    [personalWorkspaceId, session?.actorUserId, widgetDateKey],
   )
   const shouldLoadPersonalWorkspace =
     isAndroidPlannerWidgetRuntime() &&
@@ -215,7 +205,11 @@ export function NativePlannerWidgetSync() {
   const personalTasksQuery = useQuery({
     enabled: shouldLoadPersonalWorkspace,
     queryFn: () =>
-      loadPersonalWidgetTaskRecords(personalApi, personalWorkspaceId),
+      loadPersonalWidgetTaskRecords(
+        personalApi,
+        personalWorkspaceId,
+        widgetDateKey,
+      ),
     queryKey: personalTaskQueryKey,
     retry: 1,
     staleTime: 30_000,
@@ -255,6 +249,11 @@ export function NativePlannerWidgetSync() {
     retry: 1,
     staleTime: 20_000,
   })
+  const refetchPersonalTasks = personalTasksQuery.refetch
+  const refetchPersonalSpheres = personalSpheresQuery.refetch
+  const refetchSelfCare = selfCareQuery.refetch
+  const refetchCleaning = cleaningQuery.refetch
+  const refreshActivePlanner = activePlanner.refresh
   const personalTaskRecords =
     personalTasksQuery.data ?? EMPTY_PERSONAL_TASK_RECORDS
   const widgetTasks = useMemo(
@@ -311,6 +310,35 @@ export function NativePlannerWidgetSync() {
     useRef<Promise<NativeCompletionSyncResult> | null>(null)
   const previousSessionVersionRef = useRef(sessionVersion)
   const wasSyncingRef = useRef(false)
+
+  const refreshWidgetData = useCallback(async () => {
+    if (!isAndroidPlannerWidgetRuntime()) {
+      return
+    }
+
+    const requests: Promise<unknown>[] = []
+
+    if (isActivePersonalWorkspace) {
+      requests.push(refreshActivePlanner())
+    } else if (shouldLoadPersonalWorkspace) {
+      requests.push(refetchPersonalTasks(), refetchPersonalSpheres())
+    }
+
+    if (shouldLoadSupplementalData) {
+      requests.push(refetchSelfCare(), refetchCleaning())
+    }
+
+    await Promise.allSettled(requests)
+  }, [
+    isActivePersonalWorkspace,
+    refetchCleaning,
+    refetchPersonalSpheres,
+    refetchPersonalTasks,
+    refetchSelfCare,
+    refreshActivePlanner,
+    shouldLoadPersonalWorkspace,
+    shouldLoadSupplementalData,
+  ])
 
   useEffect(() => {
     plannerRef.current = {
@@ -562,6 +590,32 @@ export function NativePlannerWidgetSync() {
   }, [consumePendingRoute])
 
   useEffect(() => {
+    if (!isAndroidPlannerWidgetRuntime()) {
+      return
+    }
+
+    if (apiConfig && personalWorkspaceId) {
+      void configureNativePlannerWidgetBackgroundSync({
+        apiBaseUrl: apiConfig.apiBaseUrl,
+        timeZone: widgetTimeZone,
+        workspaceId: personalWorkspaceId,
+      }).catch((error) => {
+        console.warn(
+          'Failed to configure Android widget background sync.',
+          error,
+        )
+      })
+      return
+    }
+
+    if (lifecycleStatus === 'disabled' || lifecycleStatus === 'signed_out') {
+      void disableNativePlannerWidgetBackgroundSync().catch((error) => {
+        console.warn('Failed to disable Android widget background sync.', error)
+      })
+    }
+  }, [apiConfig, lifecycleStatus, personalWorkspaceId, widgetTimeZone])
+
+  useEffect(() => {
     if (previousSessionVersionRef.current === sessionVersion) {
       return
     }
@@ -598,7 +652,7 @@ export function NativePlannerWidgetSync() {
 
       timeoutId = window.setTimeout(
         () => {
-          syncFromNativeWidget()
+          void refreshWidgetData()
           scheduleNextDaySync()
         },
         Math.max(1_000, nextDay.getTime() - now.getTime()),
@@ -612,7 +666,7 @@ export function NativePlannerWidgetSync() {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [syncFromNativeWidget])
+  }, [refreshWidgetData])
 
   useEffect(() => {
     if (!isAndroidPlannerWidgetRuntime()) {
@@ -626,6 +680,7 @@ export function NativePlannerWidgetSync() {
       }
 
       consumePendingRoute()
+      void refreshWidgetData()
       syncFromNativeWidget()
     })
 
@@ -639,7 +694,7 @@ export function NativePlannerWidgetSync() {
           console.warn('Failed to remove planner widget listener.', error)
         })
     }
-  }, [consumePendingRoute, syncFromNativeWidget])
+  }, [consumePendingRoute, refreshWidgetData, syncFromNativeWidget])
 
   return null
 }
@@ -647,13 +702,21 @@ export function NativePlannerWidgetSync() {
 async function loadPersonalWidgetTaskRecords(
   api: PlannerApiClient | null,
   workspaceId: string | undefined,
+  date: string,
 ): Promise<TaskRecord[]> {
   if (!api || !workspaceId) {
     return []
   }
 
   try {
-    const records = await api.listTasks()
+    const response = await api.getTaskReadModel({
+      activeLimit: 500,
+      dateFrom: date,
+      dateTo: date,
+      historyLimit: 0,
+      rangeLimit: 250,
+    })
+    const records = response.items
     await replaceCachedTaskRecords(workspaceId, records)
 
     return records

@@ -5,6 +5,9 @@ import { HttpError } from '../../bootstrap/http-error.js'
 import type {
   CompleteRecurringTaskCommand,
   CreateTaskCommand,
+  TaskCursorPageQuery,
+  TaskListFilters,
+  TaskReadContext,
 } from './task.model.js'
 import { MemoryTaskRepository } from './task.repository.memory.js'
 import { TaskService } from './task.service.js'
@@ -50,6 +53,156 @@ const BASE_INPUT = {
   sphereId: null,
   title: 'Task reminder test',
 }
+
+class ReadModelProbeRepository extends MemoryTaskRepository {
+  cursorPageCalls = 0
+  fullListCalls = 0
+  latestEventCalls = 0
+
+  override listByWorkspace(
+    context: TaskReadContext,
+    filters?: TaskListFilters,
+  ) {
+    this.fullListCalls += 1
+
+    return super.listByWorkspace(context, filters)
+  }
+
+  override listCursorPageByWorkspace(
+    context: TaskReadContext,
+    query: TaskCursorPageQuery,
+  ) {
+    this.cursorPageCalls += 1
+
+    return super.listCursorPageByWorkspace(context, query)
+  }
+
+  override getLatestEventIdByWorkspace(context: TaskReadContext) {
+    this.latestEventCalls += 1
+
+    return super.getLatestEventIdByWorkspace(context)
+  }
+}
+
+void test('TaskService keeps the planner read model bounded for 10,000 tasks', async () => {
+  const repository = new ReadModelProbeRepository()
+  const service = new TaskService(repository)
+
+  await Promise.all(
+    Array.from({ length: 10_000 }, (_, index) =>
+      service.createTask(PERSONAL_CONTEXT, {
+        ...BASE_INPUT,
+        plannedDate: index % 2 === 0 ? '2026-05-05' : null,
+        title: `Large fixture task ${index}`,
+      }),
+    ),
+  )
+
+  const snapshot = await service.getTaskReadModel(PERSONAL_CONTEXT, {
+    activeLimit: 500,
+    dateFrom: '2026-05-05',
+    dateTo: '2026-05-06',
+    historyLimit: 100,
+    rangeLimit: 250,
+  })
+
+  assert.equal(snapshot.items.length <= 500 + 250 + 100, true)
+  assert.equal(snapshot.returnedCount, snapshot.items.length)
+  assert.equal(
+    new Set(snapshot.items.map((task) => task.id)).size,
+    snapshot.items.length,
+  )
+  assert.equal(snapshot.totalCount, 10_000)
+  assert.equal(snapshot.eventCursor, 10_000)
+  assert.deepEqual(snapshot.sources.active, {
+    returnedCount: 500,
+    totalCount: 10_000,
+    truncated: true,
+  })
+  assert.deepEqual(snapshot.sources.range, {
+    returnedCount: 250,
+    totalCount: 5_000,
+    truncated: true,
+  })
+  assert.equal(snapshot.truncated, true)
+  assert.equal(repository.fullListCalls, 0)
+  assert.equal(repository.latestEventCalls, 1)
+  assert.equal(repository.cursorPageCalls, 4)
+})
+
+void test('TaskService cursor does not duplicate or skip baseline tasks after a concurrent insert', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const baselineTasks = await Promise.all(
+    ['First', 'Second', 'Third'].map((title) =>
+      service.createTask(PERSONAL_CONTEXT, {
+        ...BASE_INPUT,
+        title,
+      }),
+    ),
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 2))
+
+  const filters = {
+    dateMode: 'relevant' as const,
+    direction: 'desc' as const,
+    limit: 1,
+    scope: 'all' as const,
+  }
+  const firstPage = await service.listTasksCursor(PERSONAL_CONTEXT, filters)
+  const insertedTask = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Inserted after first page',
+  })
+  const collectedIds = firstPage.items.map((task) => task.id)
+  let cursor = firstPage.nextCursor
+
+  while (cursor) {
+    const page = await service.listTasksCursor(PERSONAL_CONTEXT, {
+      ...filters,
+      cursor,
+    })
+
+    collectedIds.push(...page.items.map((task) => task.id))
+    cursor = page.nextCursor
+  }
+
+  assert.deepEqual(
+    [...collectedIds].sort(),
+    baselineTasks.map((task) => task.id).sort(),
+  )
+  assert.equal(new Set(collectedIds).size, collectedIds.length)
+  assert.equal(collectedIds.includes(insertedTask.id), false)
+})
+
+void test('TaskService rejects a cursor with a non-UUID anchor before querying the repository', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const cursor = Buffer.from(
+    JSON.stringify({
+      createdAt: '2026-08-25T00:00:00.000Z',
+      dateFrom: null,
+      dateMode: 'relevant',
+      dateTo: null,
+      direction: 'asc',
+      id: 'not-a-uuid',
+      scope: 'all',
+      version: 1,
+    }),
+    'utf8',
+  ).toString('base64url')
+
+  await assert.rejects(
+    service.listTasksCursor(PERSONAL_CONTEXT, {
+      cursor,
+      dateMode: 'relevant',
+      direction: 'asc',
+      limit: 100,
+      scope: 'all',
+    }),
+    (error: unknown) =>
+      error instanceof HttpError && error.code === 'invalid_task_cursor',
+  )
+})
 
 void test('TaskService allows a personal task reminder when start time is set', async () => {
   const service = new TaskService(new MemoryTaskRepository())

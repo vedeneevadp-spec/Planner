@@ -39,10 +39,17 @@ export type SelfCareOfflineStorageHealth = 'failed' | 'ready' | 'unknown'
 
 export interface SelfCareOfflineMutationConflict {
   actualVersion: number | null
+  code?: string | undefined
   entityId: string | null
   entityType: string | null
   expectedVersion: number | null
 }
+
+export const SELF_CARE_OCCURRENCE_CLOSED_ERROR_CODE =
+  'self_care_occurrence_closed'
+
+const LEGACY_SELF_CARE_OCCURRENCE_CLOSED_ERROR_MESSAGE =
+  'The self-care occurrence was already completed or changed.'
 
 export class SelfCareOfflineMutationCollisionError extends Error {
   readonly code = 'self_care_local_operation_id_conflict'
@@ -81,6 +88,27 @@ export interface SelfCareOfflineMutationRecord {
   status: SelfCareOfflineMutationStatus
   updatedAt: string
   workspaceId: string
+}
+
+export function isSelfCareOccurrenceClosedConflict(
+  mutation: Pick<
+    SelfCareOfflineMutationRecord,
+    'conflict' | 'lastError' | 'status'
+  >,
+): boolean {
+  if (mutation.status !== 'conflicted') {
+    return false
+  }
+
+  if (mutation.conflict?.code === SELF_CARE_OCCURRENCE_CLOSED_ERROR_CODE) {
+    return true
+  }
+
+  return (
+    !mutation.conflict?.code &&
+    mutation.conflict?.entityType === 'occurrence' &&
+    mutation.lastError === LEGACY_SELF_CARE_OCCURRENCE_CLOSED_ERROR_MESSAGE
+  )
 }
 
 export interface EnqueueSelfCareOfflineMutationInput {
@@ -664,6 +692,7 @@ export async function countSelfCareOfflineMutations(
   actorUserId: string,
 ): Promise<{
   awaitingRefresh: number
+  closedOccurrenceConflicts: number
   conflicted: number
   failed: number
   pending: number
@@ -673,6 +702,8 @@ export async function countSelfCareOfflineMutations(
 
   return {
     awaitingRefresh: rows.filter((row) => row.status === 'awaiting_refresh')
+      .length,
+    closedOccurrenceConflicts: rows.filter(isSelfCareOccurrenceClosedConflict)
       .length,
     conflicted: rows.filter((row) => row.status === 'conflicted').length,
     failed: rows.filter((row) => row.status === 'failed').length,

@@ -1143,30 +1143,56 @@ function SelfCareQueueStatus({
   queue: ReturnType<typeof useSelfCareOfflineQueue>
 }) {
   if (queue.conflicted > 0) {
+    const refreshableConflictCount = Math.max(
+      0,
+      queue.conflicted - queue.closedOccurrenceConflicts,
+    )
+
     return (
       <>
-        <PageStatusBanner
-          action={{
-            label: 'Обновить и повторить',
-            onClick: () => {
-              void queue.refreshAndRetryConflicts()
-            },
-          }}
-          description={`${queue.conflicted} ${queue.conflicted === 1 ? 'изменение требует' : 'изменения требуют'} сверки с актуальными данными. Ничего не заменено без вашего решения.`}
-          kind="error"
-          title="Нужно проверить изменения"
-        />
-        <PageStatusBanner
-          action={{
-            label: 'Отменить локальные изменения',
-            onClick: () => {
-              void queue.discardConflicts()
-            },
-          }}
-          description="Конфликтующие изменения и зависящие от них локальные шаги будут отменены."
-          kind="info"
-          title="Можно оставить данные сервера"
-        />
+        {queue.closedOccurrenceConflicts > 0 ? (
+          <PageStatusBanner
+            action={{
+              label: 'Оставить данные сервера',
+              onClick: () => {
+                void queue.discardClosedOccurrenceConflicts()
+              },
+            }}
+            description={
+              queue.closedOccurrenceConflicts === 1
+                ? 'Событие уже завершено или изменено на сервере. Повторять локальное изменение не нужно; связанные с ним локальные шаги будут отменены.'
+                : 'События уже завершены или изменены на сервере. Повторять локальные изменения не нужно; связанные с ними локальные шаги будут отменены.'
+            }
+            kind="info"
+            title="Серверные данные уже изменились"
+          />
+        ) : null}
+        {refreshableConflictCount > 0 ? (
+          <>
+            <PageStatusBanner
+              action={{
+                label: 'Обновить и повторить',
+                onClick: () => {
+                  void queue.refreshAndRetryConflicts()
+                },
+              }}
+              description={`${refreshableConflictCount} ${refreshableConflictCount === 1 ? 'изменение требует' : 'изменения требуют'} сверки с актуальными данными. Ничего не заменено без вашего решения.`}
+              kind="error"
+              title="Нужно проверить изменения"
+            />
+            <PageStatusBanner
+              action={{
+                label: 'Отменить локальные изменения',
+                onClick: () => {
+                  void queue.discardConflicts()
+                },
+              }}
+              description="Конфликтующие изменения и зависящие от них локальные шаги будут отменены."
+              kind="info"
+              title="Можно оставить данные сервера"
+            />
+          </>
+        ) : null}
       </>
     )
   }

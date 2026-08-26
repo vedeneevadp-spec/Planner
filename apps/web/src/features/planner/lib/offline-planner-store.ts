@@ -587,6 +587,7 @@ export async function replaceCachedTaskRecordsFromServer(
   expectedWriteGeneration = getPlannerOfflineWorkspaceWriteGeneration(
     workspaceId,
   ),
+  taskEventCursor?: number,
 ): Promise<void> {
   const db = await getPlannerOfflineDatabase(workspaceId)
 
@@ -609,6 +610,19 @@ export async function replaceCachedTaskRecordsFromServer(
     expectedWriteGeneration,
     [db.cachedTasks, db.dataSyncMetadata],
     async () => {
+      const taskEventKey = createSyncMetadataKey(workspaceId)
+      const currentTaskEventCursor =
+        taskEventCursor === undefined
+          ? undefined
+          : await db.syncMetadata.get(taskEventKey)
+
+      if (
+        taskEventCursor !== undefined &&
+        (currentTaskEventCursor?.value ?? 0) > taskEventCursor
+      ) {
+        return
+      }
+
       await db.cachedTasks.where('workspaceId').equals(workspaceId).delete()
 
       if (rows.length > 0) {
@@ -621,6 +635,15 @@ export async function replaceCachedTaskRecordsFromServer(
         'tasks',
         lastSuccessfulSyncAt,
       )
+
+      if (taskEventCursor !== undefined) {
+        await db.syncMetadata.put({
+          key: taskEventKey,
+          updatedAt: lastSuccessfulSyncAt,
+          value: taskEventCursor,
+          workspaceId,
+        })
+      }
     },
   )
 }
@@ -1136,13 +1159,17 @@ export async function setLastTaskEventId(
     'sync-metadata',
     expectedWriteGeneration,
     [db.syncMetadata],
-    () =>
-      db.syncMetadata.put({
-        key: createSyncMetadataKey(workspaceId),
+    async () => {
+      const key = createSyncMetadataKey(workspaceId)
+      const current = await db.syncMetadata.get(key)
+
+      await db.syncMetadata.put({
+        key,
         updatedAt: new Date().toISOString(),
-        value,
+        value: Math.max(current?.value ?? 0, value),
         workspaceId,
-      }),
+      })
+    },
   )
 }
 

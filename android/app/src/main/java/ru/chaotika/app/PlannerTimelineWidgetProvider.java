@@ -17,6 +17,16 @@ public class PlannerTimelineWidgetProvider extends AppWidgetProvider {
     private static final Locale RU_LOCALE = Locale.forLanguageTag("ru-RU");
 
     @Override
+    public void onEnabled(Context context) {
+        PlannerWidgetSyncScheduler.schedule(context, true);
+    }
+
+    @Override
+    public void onDisabled(Context context) {
+        PlannerWidgetSyncScheduler.cancelIfUnused(context);
+    }
+
+    @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent == null ? null : intent.getAction();
 
@@ -31,6 +41,7 @@ public class PlannerTimelineWidgetProvider extends AppWidgetProvider {
             Intent.ACTION_TIMEZONE_CHANGED.equals(action)
         ) {
             PlannerWidgetUpdateDispatcher.updateAllWidgets(context);
+            PlannerWidgetSyncScheduler.scheduleImmediate(context);
             return;
         }
 
@@ -39,6 +50,8 @@ public class PlannerTimelineWidgetProvider extends AppWidgetProvider {
 
     @Override
     public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
+        PlannerWidgetSyncScheduler.schedule(context, true);
+
         for (int appWidgetId : appWidgetIds) {
             updateWidget(context, appWidgetManager, appWidgetId);
         }
@@ -89,6 +102,10 @@ public class PlannerTimelineWidgetProvider extends AppWidgetProvider {
         views.setOnClickPendingIntent(
             R.id.planner_timeline_add_button,
             PlannerWidgetProvider.createAddTaskPendingIntent(context)
+        );
+        views.setOnClickPendingIntent(
+            R.id.planner_timeline_refresh_button,
+            PlannerWidgetProvider.createManualRefreshPendingIntent(context)
         );
         views.setOnClickPendingIntent(
             R.id.planner_timeline_root,
@@ -162,6 +179,7 @@ public class PlannerTimelineWidgetProvider extends AppWidgetProvider {
         }
 
         PlannerWidgetUpdateDispatcher.updateAllWidgets(context);
+        PlannerWidgetSyncScheduler.scheduleImmediate(context);
     }
 
     private static int getBackgroundResource(int opacityPercent) {

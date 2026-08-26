@@ -285,15 +285,18 @@ function readConflict(error: unknown): SelfCareOfflineMutationConflict {
     expectedVersion: null,
   }
 
-  if (!(error instanceof SelfCareApiError) || !isRecord(error.details)) {
+  if (!(error instanceof SelfCareApiError)) {
     return fallback
   }
 
+  const details = isRecord(error.details) ? error.details : {}
+
   return {
-    actualVersion: readNumber(error.details.actualVersion),
-    entityId: readString(error.details.entityId),
-    entityType: readString(error.details.entityType),
-    expectedVersion: readNumber(error.details.expectedVersion),
+    actualVersion: readNumber(details.actualVersion),
+    code: error.code,
+    entityId: readString(details.entityId),
+    entityType: readString(details.entityType),
+    expectedVersion: readNumber(details.expectedVersion),
   }
 }
 

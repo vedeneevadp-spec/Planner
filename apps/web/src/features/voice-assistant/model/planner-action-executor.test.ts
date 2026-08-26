@@ -570,6 +570,44 @@ describe('PlannerActionExecutor', () => {
     )
   })
 
+  it('loads bounded active cursor candidates for reschedule', async () => {
+    const executor = new PlannerActionExecutor()
+    const deps = createDependencies()
+    const listTasks = vi.mocked(deps.taskClient!.listTasks)
+    const listTasksCursor = vi.fn().mockResolvedValue({
+      items: [
+        createTaskRecord({
+          id: 'task-cursor',
+          title: 'Позвонить врачу',
+          version: 4,
+        }),
+      ],
+    })
+
+    deps.taskClient!.listTasksCursor = listTasksCursor
+
+    await expect(
+      executor.prepareAction(
+        createIntent({
+          date: '2026-05-30',
+          intent: 'reschedule_task',
+          targetQuery: 'позвонить врачу',
+        }),
+        CONTEXT,
+        deps,
+      ),
+    ).resolves.toMatchObject({
+      candidates: [expect.objectContaining({ taskId: 'task-cursor' })],
+      status: 'ready_for_confirmation',
+    })
+    expect(listTasksCursor).toHaveBeenCalledWith({
+      direction: 'desc',
+      limit: 500,
+      scope: 'active',
+    })
+    expect(listTasks).not.toHaveBeenCalled()
+  })
+
   it('executes and undoes reschedule with previous schedule and updated version', async () => {
     const executor = new PlannerActionExecutor()
     const task = createTaskRecord({

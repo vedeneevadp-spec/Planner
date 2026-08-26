@@ -7,6 +7,17 @@ export type AiLoadLevel = 'critical' | 'high' | 'low' | 'normal'
 export type AiLoadReasonSeverity = 'critical' | 'high' | 'low' | 'medium'
 export type AiSuggestedMode = 'light' | 'minimum' | 'normal'
 
+export interface AiSourceCoverage {
+  returnedCount: number
+  totalCount: number
+  truncated: boolean
+}
+
+export interface AiContextSourceCoverage {
+  shopping?: AiSourceCoverage
+  tasks?: AiSourceCoverage
+}
+
 export interface AiTaskItem {
   area?: string | null
   dueDate?: string | null
@@ -166,6 +177,7 @@ export interface TodayContext {
     suggestedFocus?: string | null
   }
   selfCareFlexibleGoals?: AiFlexibleGoalSummary
+  sourceCoverage: AiContextSourceCoverage
   shopping?: {
     active: AiShoppingItem[]
     activeCount: number
@@ -264,6 +276,7 @@ export interface WeekContext {
     shoppingActive: AiShoppingItem[]
     tasksActive: AiTaskItem[]
   }
+  sourceCoverage: AiContextSourceCoverage
   summary: {
     cleaningActive: number
     cleaningOverdueCurrentBacklog: number
@@ -315,6 +328,7 @@ export interface PlannerSearchResult {
   >
   query: string
   returnedCount: number
+  sourceCoverage: AiContextSourceCoverage
   totalCount: number
 }
 
@@ -377,6 +391,7 @@ export interface OverloadContext {
     score: number
     structuredReasons: AiLoadReason[]
   }
+  sourceCoverage: AiContextSourceCoverage
   cleaningOverdueByZone?: AiCleaningOverdueZoneGroup[]
   overdue?: AiOverdueSummary
   overdueItemsByDomain?: AiOverdueItemsByDomain
