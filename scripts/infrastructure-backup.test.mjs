@@ -36,6 +36,10 @@ import {
   buildBackupAlertEmail,
   buildBackupAlertRequest,
 } from './infrastructure-backup-alert.mjs'
+import {
+  cleanupRestoreDrillResources,
+  runRestoreDrillLifecycle,
+} from './infrastructure-restore-drill-lifecycle.mjs'
 
 test('builds webhook, Telegram, and email backup failure alerts', () => {
   const common = {
@@ -113,6 +117,117 @@ test('restore drill validates only active icon asset references', async () => {
     source,
     /from app\.emoji_assets\s+where deleted_at is null\s+and value like/,
   )
+})
+
+test('restore drill reports success only after cleanup', async () => {
+  const events = []
+
+  const result = await runRestoreDrillLifecycle({
+    cleanup: async () => {
+      events.push('cleanup')
+    },
+    execute: async () => {
+      events.push('execute')
+      return { backupId: 'planner-infra-test' }
+    },
+    onFailure: async () => {
+      events.push('failure')
+    },
+    onSuccess: async () => {
+      events.push('success')
+    },
+  })
+
+  assert.deepEqual(result, { backupId: 'planner-infra-test' })
+  assert.deepEqual(events, ['execute', 'cleanup', 'success'])
+})
+
+test('restore drill cleanup failures produce a failed lifecycle result', async () => {
+  const events = []
+  let reportedError = null
+
+  await assert.rejects(
+    () =>
+      runRestoreDrillLifecycle({
+        cleanup: async () => {
+          events.push('cleanup')
+          throw new Error('dropdb failed')
+        },
+        execute: async () => {
+          events.push('execute')
+          return { backupId: 'planner-infra-test' }
+        },
+        onFailure: async (error) => {
+          events.push('failure')
+          reportedError = error
+        },
+        onSuccess: async () => {
+          events.push('success')
+        },
+      }),
+    /dropdb failed/,
+  )
+
+  assert.equal(reportedError?.message, 'dropdb failed')
+  assert.deepEqual(events, ['execute', 'cleanup', 'failure'])
+})
+
+test('restore drill attempts every cleanup step and aggregates failures', async () => {
+  const events = []
+
+  await assert.rejects(
+    () =>
+      cleanupRestoreDrillResources({
+        databaseCleanupRequired: true,
+        drillRolesCreated: ['authenticated'],
+        dropDatabase: async () => {
+          events.push('database')
+          throw new Error('dropdb failed')
+        },
+        removeDrillRoles: async () => {
+          events.push('roles')
+          throw new Error('drop role failed')
+        },
+        removeTemporaryDirectory: async () => {
+          events.push('temporary directory')
+        },
+      }),
+    (error) => {
+      assert.ok(error instanceof AggregateError)
+      assert.match(error.message, /database: dropdb failed/)
+      assert.match(error.message, /roles: drop role failed/)
+      return true
+    },
+  )
+
+  assert.deepEqual(events, ['database', 'roles', 'temporary directory'])
+})
+
+test('restore drill preserves execution and cleanup failures in the report', async () => {
+  let reportedError = null
+
+  await assert.rejects(
+    () =>
+      runRestoreDrillLifecycle({
+        cleanup: async () => {
+          throw new Error('role cleanup failed')
+        },
+        execute: async () => {
+          throw new Error('restore validation failed')
+        },
+        onFailure: async (error) => {
+          reportedError = error
+        },
+        onSuccess: async () => {
+          assert.fail('success must not be reported')
+        },
+      }),
+    /execution failed and cleanup was incomplete/,
+  )
+
+  assert.ok(reportedError instanceof AggregateError)
+  assert.match(reportedError.message, /restore validation failed/)
+  assert.match(reportedError.message, /role cleanup failed/)
 })
 
 test('creates stable infrastructure backup identifiers and drill database names', () => {

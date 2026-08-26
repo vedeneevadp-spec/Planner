@@ -155,8 +155,11 @@ Drill никогда не должен указывать на production databa
 5. Migration runner доводит схему вперед до текущей версии.
 6. Проверяются migrations, users, workspaces, invalid constraints и наличие
    каждого asset, на который ссылается восстановленная DB.
-7. Report записывается атомарно.
-8. Одноразовая база, временные роли и файлы удаляются.
+7. Одноразовая база, временные роли и файлы удаляются. Все cleanup-шаги
+   выполняются даже при ошибке одного из них.
+8. Успешный report записывается атомарно только после полного cleanup. Ошибка
+   удаления записывает `failed`, завершает unit ненулевым кодом и запускает
+   `OnFailure` alert.
 
 `RESTORE_DRILL_ADMIN_DATABASE_URL` должен вести в отдельный recovery cluster,
 где job имеет право создавать и удалять базы.
@@ -248,5 +251,8 @@ sudo find /var/lib/planner/icon-assets -type f -exec chmod 0660 {} +
 - failure alert доставлен;
 - monthly drill восстанавливает именно offsite snapshot;
 - drill report содержит ноль invalid constraints и все asset references;
+- drill получает `success` только после удаления временной DB, ролей и файлов;
+- принудительная ошибка `dropdb` или удаления роли дает `failed`, ненулевой exit
+  code и failure alert;
 - фактические RPO/RTO записываются после каждого drill;
 - доступ к bucket и recovery cluster проверяется отдельно от production VPS.
