@@ -95,6 +95,178 @@ void describe('MCP Haotika server', () => {
     )
   })
 
+  void it('rejects request bodies above the MCP endpoint budget', async () => {
+    app = createMcpTestApp({
+      devNoAuth: true,
+      rateLimitPerMinute: 30,
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: {
+        id: 1,
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+          arguments: { query: 'x'.repeat(300 * 1024) },
+          name: 'search_planner',
+        },
+      },
+      url: '/mcp',
+    })
+
+    assert.equal(response.statusCode, 413)
+  })
+
+  void it('rejects an oversized batch before tool fan-out', async () => {
+    let toolCalls = 0
+
+    app = createMcpTestApp({
+      aiContextService: {
+        getTodayContext: () => {
+          toolCalls += 1
+
+          return Promise.resolve(createTodayContextResult())
+        },
+      } as unknown as AiContextService,
+      devNoAuth: true,
+      rateLimitPerMinute: 30,
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: Array.from({ length: 21 }, (_, index) =>
+        createTodayToolCall(index + 1),
+      ),
+      url: '/mcp',
+    })
+
+    assert.equal(response.statusCode, 400)
+    assert.equal(
+      response.json<{ error: { code: number } }>().error.code,
+      -32600,
+    )
+    assert.equal(toolCalls, 0)
+  })
+
+  void it('rate limits the HTTP request before batch fan-out', async () => {
+    let rateLimitCalls = 0
+    let toolCalls = 0
+
+    app = createMcpTestApp({
+      aiContextService: {
+        getTodayContext: () => {
+          toolCalls += 1
+
+          return Promise.resolve(createTodayContextResult())
+        },
+      } as unknown as AiContextService,
+      devNoAuth: true,
+      rateLimiter: {
+        consume(options) {
+          rateLimitCalls += 1
+          assert.match(options.key, /^mcp:request:ip:/)
+
+          return Promise.reject(
+            new HttpError(
+              429,
+              'rate_limit_exceeded',
+              'Too many requests. Please try again later.',
+            ),
+          )
+        },
+      },
+      rateLimitPerMinute: 30,
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: [createTodayToolCall(1), createTodayToolCall(2)],
+      url: '/mcp',
+    })
+
+    assert.equal(response.statusCode, 429)
+    assert.equal(rateLimitCalls, 1)
+    assert.equal(toolCalls, 0)
+  })
+
+  void it('limits batch execution concurrency and preserves response order', async () => {
+    let activeToolCalls = 0
+    let maxActiveToolCalls = 0
+    let toolCalls = 0
+
+    app = createMcpTestApp({
+      aiContextService: {
+        getTodayContext: () =>
+          new Promise((resolve) => {
+            activeToolCalls += 1
+            toolCalls += 1
+            maxActiveToolCalls = Math.max(maxActiveToolCalls, activeToolCalls)
+
+            setImmediate(() => {
+              activeToolCalls -= 1
+              resolve(createTodayContextResult())
+            })
+          }),
+      } as unknown as AiContextService,
+      devNoAuth: true,
+      rateLimitPerMinute: 100,
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: Array.from({ length: 20 }, (_, index) =>
+        createTodayToolCall(index + 1),
+      ),
+      url: '/mcp',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = response.json<Array<{ id: number }>>()
+
+    assert.deepEqual(
+      body.map((message) => message.id),
+      Array.from({ length: 20 }, (_, index) => index + 1),
+    )
+    assert.equal(toolCalls, 20)
+    assert.equal(maxActiveToolCalls, 4)
+  })
+
+  void it('keeps initialize and tools/list compatible within batch budgets', async () => {
+    app = createMcpTestApp({
+      devNoAuth: true,
+      rateLimitPerMinute: 30,
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      payload: [
+        { id: 1, jsonrpc: '2.0', method: 'initialize' },
+        { id: 2, jsonrpc: '2.0', method: 'tools/list' },
+      ],
+      url: '/mcp',
+    })
+
+    assert.equal(response.statusCode, 200)
+
+    const body = response.json<
+      Array<{
+        id: number
+        result: {
+          protocolVersion?: string
+          tools?: Array<{ name: string }>
+        }
+      }>
+    >()
+
+    assert.equal(body[0]?.result.protocolVersion, '2025-11-25')
+    assert.equal(
+      body[1]?.result.tools?.some((tool) => tool.name === 'get_today_context'),
+      true,
+    )
+  })
+
   void it('renders a safe OAuth page when the shared credential limit is reached', async () => {
     app = createMcpTestApp({
       devNoAuth: false,
@@ -237,6 +409,7 @@ void describe('MCP Haotika server', () => {
 })
 
 function createMcpTestApp(options: {
+  aiContextService?: AiContextService
   devNoAuth: boolean
   oauthService?: McpOAuthService
   rateLimiter?: RateLimiter
@@ -265,14 +438,11 @@ function createMcpTestApp(options: {
     })
     await instance.after()
     registerMcpHaotikaRoutes(instance, {
-      aiContextService: {
-        getTodayContext: () =>
-          Promise.resolve({
-            date: '2026-06-21',
-            generatedAt: '2026-06-21T00:00:00.000Z',
-            timezone: 'Europe/Astrakhan',
-          }),
-      } as unknown as AiContextService,
+      aiContextService:
+        options.aiContextService ??
+        ({
+          getTodayContext: () => Promise.resolve(createTodayContextResult()),
+        } as unknown as AiContextService),
       auditRepository: new MemoryMcpAuditLogRepository(),
       config,
       oauthService:
@@ -284,6 +454,26 @@ function createMcpTestApp(options: {
   })
 
   return app
+}
+
+function createTodayToolCall(id: number) {
+  return {
+    id,
+    jsonrpc: '2.0',
+    method: 'tools/call',
+    params: {
+      arguments: { date: '2026-06-21' },
+      name: 'get_today_context',
+    },
+  }
+}
+
+function createTodayContextResult() {
+  return {
+    date: '2026-06-21',
+    generatedAt: '2026-06-21T00:00:00.000Z',
+    timezone: 'Europe/Astrakhan',
+  }
 }
 
 interface McpJsonRpcToolResponse {

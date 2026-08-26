@@ -30,6 +30,9 @@ import {
 } from './mcp-haotika.types.js'
 
 const MCP_PROTOCOL_VERSION = '2025-11-25'
+const MCP_REQUEST_BODY_LIMIT_BYTES = 256 * 1024
+const MCP_MAX_BATCH_SIZE = 20
+const MCP_MAX_CONCURRENCY = 4
 const MCP_HAOTIKA_PUBLIC_DOCS = [
   'Haotika MCP Connector',
   '',
@@ -37,6 +40,7 @@ const MCP_HAOTIKA_PUBLIC_DOCS = [
   'Transport: Streamable HTTP-compatible JSON-RPC over POST /mcp.',
   'Auth: OAuth authorization-code flow with PKCE S256 and resource-bound tokens.',
   'Tools: get_today_context, get_week_context, search_planner, get_overload_context, get_selfcare_context.',
+  `Limits: ${MCP_REQUEST_BODY_LIMIT_BYTES / 1024} KiB per request, ${MCP_MAX_BATCH_SIZE} JSON-RPC messages per batch, ${MCP_MAX_CONCURRENCY} concurrent messages per request.`,
   'No write tools are exposed.',
 ].join('\n')
 
@@ -299,39 +303,63 @@ export function registerMcpHaotikaRoutes(
     return reply.code(200).send({})
   })
 
-  app.post('/mcp', async (request, reply) => {
-    if (!options.config.enabled) {
-      return sendMcpHttpError(
-        reply,
-        503,
-        'MCP_DISABLED',
-        'MCP connector is disabled.',
-      )
-    }
-
-    const payload = request.body
-
-    if (Array.isArray(payload)) {
-      const responses = (
-        await Promise.all(
-          payload.map((message) =>
-            handleJsonRpcMessage(message, request, reply, options),
-          ),
+  app.post(
+    '/mcp',
+    {
+      bodyLimit: MCP_REQUEST_BODY_LIMIT_BYTES,
+      config: {
+        rateLimit: {
+          groupId: 'mcp-json-rpc',
+          max: getMcpIpRateLimit(options),
+          timeWindow: 60_000,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!options.config.enabled) {
+        return sendMcpHttpError(
+          reply,
+          503,
+          'MCP_DISABLED',
+          'MCP connector is disabled.',
         )
-      ).filter((message) => message !== null)
+      }
 
-      return responses.length ? reply.send(responses) : reply.code(204).send()
-    }
+      await assertMcpRequestRateLimit(options, request)
+      const payload = request.body
 
-    const response = await handleJsonRpcMessage(
-      payload,
-      request,
-      reply,
-      options,
-    )
+      if (Array.isArray(payload)) {
+        if (payload.length === 0 || payload.length > MCP_MAX_BATCH_SIZE) {
+          return reply
+            .code(400)
+            .send(
+              createJsonRpcError(
+                null,
+                -32600,
+                `Batch must contain between 1 and ${MCP_MAX_BATCH_SIZE} messages.`,
+              ),
+            )
+        }
 
-    return response === null ? reply.code(204).send() : reply.send(response)
-  })
+        const responses = (
+          await mapWithConcurrency(payload, MCP_MAX_CONCURRENCY, (message) =>
+            handleJsonRpcMessage(message, request, reply, options),
+          )
+        ).filter((message) => message !== null)
+
+        return responses.length ? reply.send(responses) : reply.code(204).send()
+      }
+
+      const response = await handleJsonRpcMessage(
+        payload,
+        request,
+        reply,
+        options,
+      )
+
+      return response === null ? reply.code(204).send() : reply.send(response)
+    },
+  )
 }
 
 async function handleJsonRpcMessage(
@@ -527,6 +555,48 @@ async function assertMcpRateLimit(
       429,
     )
   }
+}
+
+async function assertMcpRequestRateLimit(
+  options: RegisterMcpHaotikaRoutesOptions,
+  request: FastifyRequest,
+): Promise<void> {
+  await options.rateLimiter.consume({
+    key: `mcp:request:ip:${getClientAddress(request)}`,
+    limit: getMcpIpRateLimit(options),
+    windowMs: 60_000,
+  })
+}
+
+function getMcpIpRateLimit(options: RegisterMcpHaotikaRoutesOptions): number {
+  return Math.max(options.config.rateLimitPerMinute * 5, 100)
+}
+
+async function mapWithConcurrency<Input, Output>(
+  items: readonly Input[],
+  concurrency: number,
+  mapper: (item: Input, index: number) => Promise<Output>,
+): Promise<Output[]> {
+  const iterator = items.entries()
+  const results = new Array<Output>(items.length)
+  const workerCount = Math.min(concurrency, items.length)
+
+  const worker = async () => {
+    for (;;) {
+      const next = iterator.next()
+
+      if (next.done) {
+        return
+      }
+
+      const [index, item] = next.value
+      results[index] = await mapper(item, index)
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, worker))
+
+  return results
 }
 
 function createToolJsonRpcResult(

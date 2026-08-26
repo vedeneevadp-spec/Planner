@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import type { AiContextService } from '../ai-context/index.js'
+import {
+  getTodayContextInputSchema,
+  getWeekContextInputSchema,
+  jsonSchemas,
+  searchPlannerInputSchema,
+} from './mcp-haotika.schemas.js'
 import { executeMcpTool, MCP_HAOTIKA_TOOLS } from './mcp-haotika.tools.js'
 import { McpHaotikaError } from './mcp-haotika.types.js'
 
@@ -40,6 +46,32 @@ void describe('MCP Haotika tools', () => {
     )
   })
 
+  void it('bounds array inputs in runtime and advertised schemas', () => {
+    assert.equal(
+      getTodayContextInputSchema.safeParse({
+        include: Array.from({ length: 8 }, () => 'tasks'),
+      }).success,
+      false,
+    )
+    assert.equal(
+      getWeekContextInputSchema.safeParse({
+        include: Array.from({ length: 21 }, () => 'tasks'),
+      }).success,
+      false,
+    )
+    assert.equal(
+      searchPlannerInputSchema.safeParse({
+        query: 'plan',
+        types: Array.from({ length: 7 }, () => 'tasks'),
+      }).success,
+      false,
+    )
+
+    assert.equal(readMaxItems('get_today_context', 'include'), 7)
+    assert.equal(readMaxItems('get_week_context', 'include'), 20)
+    assert.equal(readMaxItems('search_planner', 'types'), 6)
+  })
+
   void it('get_today_context calls the core context service', async () => {
     const calls: unknown[] = []
     const aiContextService = {
@@ -73,4 +105,15 @@ void describe('MCP Haotika tools', () => {
 
 function createFakeAiContextService(): AiContextService {
   return {} as unknown as AiContextService
+}
+
+function readMaxItems(
+  toolName: keyof typeof jsonSchemas,
+  propertyName: string,
+): unknown {
+  const schema = jsonSchemas[toolName] as {
+    properties: Record<string, { maxItems?: unknown }>
+  }
+
+  return schema.properties[propertyName]?.maxItems
 }

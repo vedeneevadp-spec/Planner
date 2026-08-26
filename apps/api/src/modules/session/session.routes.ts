@@ -29,6 +29,8 @@ import { areLegacySessionOverridesAllowed } from '../../bootstrap/route-context.
 import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from './session.service.js'
 
+const PROFILE_BODY_LIMIT_BYTES = 3 * 1024 * 1024
+
 const legacySessionHeadersSchema = z.object({
   'x-actor-user-id': z.string().min(1).optional(),
   'x-workspace-id': z.string().min(1).optional(),
@@ -70,17 +72,21 @@ export function registerSessionRoutes(
     return sessionResponseSchema.parse(session)
   })
 
-  app.patch('/api/v1/profile', async (request) => {
-    const context = resolveRequiredSessionContext(request)
-    const input = parseOrThrow(
-      updateUserProfileInputSchema,
-      request.body ?? {},
-      'invalid_body',
-    )
-    const profile = await service.updateUserProfile(context, input)
+  app.patch(
+    '/api/v1/profile',
+    { bodyLimit: PROFILE_BODY_LIMIT_BYTES },
+    async (request) => {
+      const context = resolveRequiredSessionContext(request)
+      const input = parseOrThrow(
+        updateUserProfileInputSchema,
+        request.body ?? {},
+        'invalid_body',
+      )
+      const profile = await service.updateUserProfile(context, input)
 
-    return userProfileSchema.parse(profile)
-  })
+      return userProfileSchema.parse(profile)
+    },
+  )
 
   app.delete('/api/v1/profile', async (request, reply) => {
     const context = resolveRequiredSessionContext(request)

@@ -15,6 +15,8 @@ import { parseOrThrow } from '../../bootstrap/validation.js'
 import type { SessionService } from '../session/index.js'
 import type { EmojiSetService } from './emoji-set.service.js'
 
+const EMOJI_SET_BODY_LIMIT_BYTES = 25 * 1024 * 1024
+
 const emojiSetParamsSchema = z.object({
   emojiSetId: z.string().min(1),
 })
@@ -60,42 +62,50 @@ export function registerEmojiSetRoutes(
     reply.code(204).send()
   })
 
-  app.post('/api/v1/emoji-sets', async (request, reply) => {
-    const input = parseOrThrow(
-      newEmojiSetInputSchema,
-      request.body,
-      'invalid_body',
-    )
-    const context = await resolveRouteWriteContext(request, sessionService)
-    const emojiSet = await service.createEmojiSet(context, input)
+  app.post(
+    '/api/v1/emoji-sets',
+    { bodyLimit: EMOJI_SET_BODY_LIMIT_BYTES },
+    async (request, reply) => {
+      const input = parseOrThrow(
+        newEmojiSetInputSchema,
+        request.body,
+        'invalid_body',
+      )
+      const context = await resolveRouteWriteContext(request, sessionService)
+      const emojiSet = await service.createEmojiSet(context, input)
 
-    reply.code(201)
+      reply.code(201)
 
-    return emojiSetRecordSchema.parse(emojiSet)
-  })
+      return emojiSetRecordSchema.parse(emojiSet)
+    },
+  )
 
-  app.post('/api/v1/emoji-sets/:emojiSetId/items', async (request, reply) => {
-    const params = parseOrThrow(
-      emojiSetParamsSchema,
-      request.params,
-      'invalid_params',
-    )
-    const input = parseOrThrow(
-      addEmojiSetItemsInputSchema,
-      request.body,
-      'invalid_body',
-    )
-    const context = await resolveRouteWriteContext(request, sessionService)
-    const emojiSet = await service.addEmojiSetItems(
-      context,
-      params.emojiSetId,
-      input,
-    )
+  app.post(
+    '/api/v1/emoji-sets/:emojiSetId/items',
+    { bodyLimit: EMOJI_SET_BODY_LIMIT_BYTES },
+    async (request, reply) => {
+      const params = parseOrThrow(
+        emojiSetParamsSchema,
+        request.params,
+        'invalid_params',
+      )
+      const input = parseOrThrow(
+        addEmojiSetItemsInputSchema,
+        request.body,
+        'invalid_body',
+      )
+      const context = await resolveRouteWriteContext(request, sessionService)
+      const emojiSet = await service.addEmojiSetItems(
+        context,
+        params.emojiSetId,
+        input,
+      )
 
-    reply.code(201)
+      reply.code(201)
 
-    return emojiSetRecordSchema.parse(emojiSet)
-  })
+      return emojiSetRecordSchema.parse(emojiSet)
+    },
+  )
 
   app.delete(
     '/api/v1/emoji-sets/:emojiSetId/items/:iconAssetId',

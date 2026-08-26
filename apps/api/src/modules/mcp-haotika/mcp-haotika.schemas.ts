@@ -15,13 +15,18 @@ export const mcpToolNameSchema = z.enum([
 
 export type McpToolName = z.infer<typeof mcpToolNameSchema>
 
+const MAX_WEEK_CONTEXT_INCLUDE_ITEMS = 20
+
 export const getTodayContextInputSchema = z
   .object({
     date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    include: z.array(z.enum(TODAY_CONTEXT_INCLUDE_KEYS)).optional(),
+    include: z
+      .array(z.enum(TODAY_CONTEXT_INCLUDE_KEYS))
+      .max(TODAY_CONTEXT_INCLUDE_KEYS.length)
+      .optional(),
     timezone: z.string().trim().min(1).max(100).optional(),
   })
   .strict()
@@ -32,7 +37,10 @@ export const getWeekContextInputSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    include: z.array(z.string().trim().min(1).max(40)).optional(),
+    include: z
+      .array(z.string().trim().min(1).max(40))
+      .max(MAX_WEEK_CONTEXT_INCLUDE_ITEMS)
+      .optional(),
     timezone: z.string().trim().min(1).max(100).optional(),
     to: z
       .string()
@@ -54,7 +62,10 @@ export const searchPlannerInputSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
-    types: z.array(z.enum(PLANNER_SEARCH_TYPES)).optional(),
+    types: z
+      .array(z.enum(PLANNER_SEARCH_TYPES))
+      .max(PLANNER_SEARCH_TYPES.length)
+      .optional(),
   })
   .strict()
 
@@ -107,6 +118,7 @@ export const jsonSchemas = {
       date: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       include: {
         items: { enum: TODAY_CONTEXT_INCLUDE_KEYS, type: 'string' },
+        maxItems: TODAY_CONTEXT_INCLUDE_KEYS.length,
         type: 'array',
       },
       timezone: { maxLength: 100, minLength: 1, type: 'string' },
@@ -119,6 +131,7 @@ export const jsonSchemas = {
       from: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       include: {
         items: { maxLength: 40, minLength: 1, type: 'string' },
+        maxItems: MAX_WEEK_CONTEXT_INCLUDE_ITEMS,
         type: 'array',
       },
       timezone: { maxLength: 100, minLength: 1, type: 'string' },
@@ -139,6 +152,7 @@ export const jsonSchemas = {
       to: { pattern: '^\\d{4}-\\d{2}-\\d{2}$', type: 'string' },
       types: {
         items: { enum: PLANNER_SEARCH_TYPES, type: 'string' },
+        maxItems: PLANNER_SEARCH_TYPES.length,
         type: 'array',
       },
     },

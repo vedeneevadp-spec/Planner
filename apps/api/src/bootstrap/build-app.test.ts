@@ -378,6 +378,31 @@ void describe('buildApiApp', () => {
     )
   })
 
+  void it('uses a one MiB default request body budget', async () => {
+    app = buildApiApp({
+      config: createTestConfig(),
+      database: null,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+
+    assert.equal(app.initialConfig.bodyLimit, 1024 * 1024)
+
+    const response = await app.inject({
+      headers: {
+        'x-actor-user-id': DEFAULT_OWNER_USER_ID,
+        'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
+      },
+      method: 'PATCH',
+      payload: {
+        padding: 'x'.repeat(1024 * 1024),
+      },
+      url: '/api/v1/preferences',
+    })
+
+    assert.equal(response.statusCode, 413)
+  })
+
   void it('lists all application users for the global owner', async () => {
     app = buildApiApp({
       config: createTestConfig(),
@@ -1945,27 +1970,31 @@ void describe('buildApiApp', () => {
       taskService: new TaskService(new MemoryTaskRepository()),
     })
 
+    const createPayload = {
+      description: 'Uploaded icons for planning markers',
+      items: [
+        {
+          keywords: ['focus', 'target'],
+          label: 'Focus',
+          value: `data:image/png;base64,${Buffer.alloc(800 * 1024, 1).toString('base64')}`,
+        },
+        {
+          label: 'Folder',
+          value: 'data:image/webp;base64,UklGRg==',
+        },
+      ],
+      title: 'Planner icons',
+    }
+
+    assert.ok(Buffer.byteLength(JSON.stringify(createPayload)) > 1024 * 1024)
+
     const createResponse = await app.inject({
       headers: {
         'x-actor-user-id': DEFAULT_OWNER_USER_ID,
         'x-workspace-id': DEFAULT_OWNER_WORKSPACE_ID,
       },
       method: 'POST',
-      payload: {
-        description: 'Uploaded icons for planning markers',
-        items: [
-          {
-            keywords: ['focus', 'target'],
-            label: 'Focus',
-            value: 'data:image/png;base64,iVBORw0KGgo=',
-          },
-          {
-            label: 'Folder',
-            value: 'data:image/webp;base64,UklGRg==',
-          },
-        ],
-        title: 'Planner icons',
-      },
+      payload: createPayload,
       url: '/api/v1/emoji-sets',
     })
 
@@ -2167,16 +2196,20 @@ void describe('buildApiApp', () => {
 
     const actorUserId = '11111111-1111-4111-8111-111111111111'
     const workspaceId = '22222222-2222-4222-8222-222222222222'
+    const profilePayload = {
+      avatarDataUrl: `data:image/png;base64,${Buffer.alloc(900 * 1024, 1).toString('base64')}`,
+      displayName: 'Planner Captain',
+    }
+
+    assert.ok(Buffer.byteLength(JSON.stringify(profilePayload)) > 1024 * 1024)
+
     const updateResponse = await app.inject({
       headers: {
         'x-actor-user-id': actorUserId,
         'x-workspace-id': workspaceId,
       },
       method: 'PATCH',
-      payload: {
-        avatarDataUrl: 'data:image/png;base64,iVBORw0KGgo=',
-        displayName: 'Planner Captain',
-      },
+      payload: profilePayload,
       url: '/api/v1/profile',
     })
 
