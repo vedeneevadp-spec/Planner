@@ -12,6 +12,11 @@ ChatGPT Developer Mode. Коннектор read-only: он не создает, 
 POST /mcp
 ```
 
+Один HTTP request ограничен 256 KiB. JSON-RPC batch должен содержать от 1 до
+20 сообщений; одновременно внутри одного request выполняются не более 4
+сообщений. Лимит HTTP requests по IP применяется до batch fan-out, а лимиты
+tool calls по credential и IP сохраняются для каждого сообщения.
+
 `initialize` и `tools/list` доступны без bearer token. Это Mixed Auth модель:
 список tools виден ChatGPT при создании Draft app, а каждый protected
 `tools/call` требует OAuth access token и scopes из tool metadata.

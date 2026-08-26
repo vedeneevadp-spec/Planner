@@ -79,6 +79,8 @@ import {
 } from './request-auth.js'
 import { registerApiRouteRegistry } from './route-registry.js'
 
+const DEFAULT_API_BODY_LIMIT_BYTES = 1024 * 1024
+
 export interface BuildApiAppOptions {
   config: ApiConfig
   database: DatabaseConnection | null
@@ -134,7 +136,7 @@ export function buildApiApp({
   voiceCommandService,
 }: BuildApiAppOptions) {
   const app = Fastify({
-    bodyLimit: 25 * 1024 * 1024,
+    bodyLimit: DEFAULT_API_BODY_LIMIT_BYTES,
     genReqId: createRequestId,
     logger: config.appEnv !== 'test',
     routerOptions: {
