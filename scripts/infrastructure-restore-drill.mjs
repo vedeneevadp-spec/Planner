@@ -12,6 +12,10 @@ import {
   verifyInfrastructureBackupSet,
   writeJsonAtomic,
 } from './infrastructure-backup-helpers.mjs'
+import {
+  cleanupRestoreDrillResources,
+  runRestoreDrillLifecycle,
+} from './infrastructure-restore-drill-lifecycle.mjs'
 
 const environment = process.env
 const adminDatabaseUrl = environment.RESTORE_DRILL_ADMIN_DATABASE_URL?.trim()
@@ -31,111 +35,107 @@ const reportPath = path.resolve(
     path.join(backupRoot, 'restore-drill-status.json'),
 )
 const startedAt = new Date().toISOString()
+const databaseName = createDrillDatabaseName()
+const drillDatabaseUrl = createDatabaseUrl(adminDatabaseUrl, databaseName)
 const temporaryDirectory = await mkdtemp(
   path.join(os.tmpdir(), 'planner-restore-drill-'),
 )
-const databaseName = createDrillDatabaseName()
-const drillDatabaseUrl = createDatabaseUrl(adminDatabaseUrl, databaseName)
-let databaseCreated = false
-let drillRolesCreated = []
+let databaseCleanupRequired = false
+const drillRolesCreated = []
 
-try {
-  const backupSetDirectory = await resolveBackupSetDirectory(temporaryDirectory)
-  const verified = await verifyInfrastructureBackupSet(backupSetDirectory, {
-    runCommand: runInfrastructureBackupCommand,
-  })
+await runRestoreDrillLifecycle({
+  cleanup: () =>
+    cleanupRestoreDrillResources({
+      databaseCleanupRequired,
+      drillRolesCreated,
+      dropDatabase: () =>
+        runInfrastructureBackupCommand('dropdb', [
+          '--maintenance-db',
+          adminDatabaseUrl,
+          '--force',
+          '--if-exists',
+          databaseName,
+        ]),
+      removeDrillRoles: () =>
+        removeDrillRoles(adminDatabaseUrl, drillRolesCreated),
+      removeTemporaryDirectory: () =>
+        rm(temporaryDirectory, { force: true, recursive: true }),
+    }),
+  execute: async () => {
+    const backupSetDirectory =
+      await resolveBackupSetDirectory(temporaryDirectory)
+    const verified = await verifyInfrastructureBackupSet(backupSetDirectory, {
+      runCommand: runInfrastructureBackupCommand,
+    })
 
-  drillRolesCreated = await ensureDrillRoles(adminDatabaseUrl)
-  await runInfrastructureBackupCommand('createdb', [
-    '--maintenance-db',
-    adminDatabaseUrl,
-    databaseName,
-  ])
-  databaseCreated = true
-
-  await runInfrastructureBackupCommand('pg_restore', [
-    '--exit-on-error',
-    '--single-transaction',
-    '--no-owner',
-    '--no-privileges',
-    '--dbname',
-    drillDatabaseUrl,
-    verified.dumpPath,
-  ])
-
-  await runInfrastructureBackupCommand(
-    process.execPath,
-    ['scripts/db-migrate.mjs'],
-    {
-      env: {
-        ...environment,
-        DATABASE_URL: drillDatabaseUrl,
-        MIGRATE_DATABASE_URL: drillDatabaseUrl,
-        DB_MIGRATE_MODE: '',
-      },
-    },
-  )
-
-  const validation = await validateRestoredDatabase(
-    drillDatabaseUrl,
-    verified.assetDirectory,
-  )
-  const completedAt = new Date().toISOString()
-
-  await writeJsonAtomic(reportPath, {
-    backupId: verified.manifest.backupId,
-    completedAt,
-    database: {
-      invalidConstraints: validation.invalidConstraints,
-      migrationCount: validation.migrationCount,
-      userCount: validation.userCount,
-      workspaceCount: validation.workspaceCount,
-    },
-    durationMs: Date.parse(completedAt) - Date.parse(startedAt),
-    restoredAssetReferences: validation.assetReferenceCount,
-    startedAt,
-    status: 'success',
-  })
-  console.log(
-    `[backup] Restore drill succeeded for ${verified.manifest.backupId}.`,
-  )
-} catch (error) {
-  await writeJsonAtomic(reportPath, {
-    error: error instanceof Error ? error.message : String(error),
-    failedAt: new Date().toISOString(),
-    startedAt,
-    status: 'failed',
-  }).catch(() => undefined)
-  throw error
-} finally {
-  if (databaseCreated) {
-    await runInfrastructureBackupCommand('dropdb', [
+    await ensureDrillRoles(adminDatabaseUrl, drillRolesCreated)
+    databaseCleanupRequired = true
+    await runInfrastructureBackupCommand('createdb', [
       '--maintenance-db',
       adminDatabaseUrl,
-      '--force',
-      '--if-exists',
       databaseName,
-    ]).catch((error) => {
-      console.error(
-        `[backup] Failed to remove restore drill database ${databaseName}:`,
-        error,
-      )
-    })
-  }
+    ])
 
-  if (drillRolesCreated.length > 0) {
-    await removeDrillRoles(adminDatabaseUrl, drillRolesCreated).catch(
-      (error) => {
-        console.error(
-          '[backup] Failed to remove temporary restore drill roles:',
-          error,
-        )
+    await runInfrastructureBackupCommand('pg_restore', [
+      '--exit-on-error',
+      '--single-transaction',
+      '--no-owner',
+      '--no-privileges',
+      '--dbname',
+      drillDatabaseUrl,
+      verified.dumpPath,
+    ])
+
+    await runInfrastructureBackupCommand(
+      process.execPath,
+      ['scripts/db-migrate.mjs'],
+      {
+        env: {
+          ...environment,
+          DATABASE_URL: drillDatabaseUrl,
+          MIGRATE_DATABASE_URL: drillDatabaseUrl,
+          DB_MIGRATE_MODE: '',
+        },
       },
     )
-  }
 
-  await rm(temporaryDirectory, { force: true, recursive: true })
-}
+    return {
+      validation: await validateRestoredDatabase(
+        drillDatabaseUrl,
+        verified.assetDirectory,
+      ),
+      verified,
+    }
+  },
+  onFailure: (error) =>
+    writeJsonAtomic(reportPath, {
+      error: error.message,
+      failedAt: new Date().toISOString(),
+      startedAt,
+      status: 'failed',
+    }),
+  onSuccess: async ({ validation, verified }) => {
+    const completedAt = new Date().toISOString()
+
+    await writeJsonAtomic(reportPath, {
+      backupId: verified.manifest.backupId,
+      completedAt,
+      database: {
+        invalidConstraints: validation.invalidConstraints,
+        migrationCount: validation.migrationCount,
+        userCount: validation.userCount,
+        workspaceCount: validation.workspaceCount,
+      },
+      durationMs: Date.parse(completedAt) - Date.parse(startedAt),
+      restoredAssetReferences: validation.assetReferenceCount,
+      startedAt,
+      status: 'success',
+    })
+    console.log(
+      `[backup] Restore drill succeeded for ${verified.manifest.backupId}.`,
+    )
+  },
+})
 
 async function resolveBackupSetDirectory(restoreRoot) {
   if (environment.BACKUP_SET_DIR?.trim()) {
@@ -226,10 +226,9 @@ async function validateRestoredDatabase(connectionString, assetDirectory) {
   }
 }
 
-async function ensureDrillRoles(connectionString) {
+async function ensureDrillRoles(connectionString, createdRoles) {
   const client = new Client({ connectionString })
   const requiredRoles = ['authenticated']
-  const createdRoles = []
 
   await client.connect()
 
