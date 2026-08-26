@@ -68,6 +68,7 @@ export interface TodayTaskActions {
 
 interface TodayTaskSectionsProps {
   actions: TodayTaskActions
+  closedTaskPagination?: ReactNode
   extras?: TodayTaskSectionExtras
   model: TodayTaskModel
   spheres: NonNullable<TaskSectionProps['spheres']>
@@ -226,6 +227,7 @@ function renderTaskSection({
 
 export function TodayTaskSections({
   actions,
+  closedTaskPagination,
   extras = {},
   model,
   spheres,
@@ -357,6 +359,8 @@ export function TodayTaskSections({
         sectionTasks: model.archivedTasks,
         title: 'Архив',
       })}
+
+      {closedTaskPagination}
     </>
   )
 }

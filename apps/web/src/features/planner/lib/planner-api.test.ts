@@ -187,6 +187,7 @@ describe('plannerApi', () => {
     })
 
     expect(snapshot.eventCursor).toBe(42)
+    expect(snapshot.historyNextCursor).toBeNull()
     expect(page.limit).toBe(25)
 
     const [readModelInput] = fetchMock.mock.calls[0]!

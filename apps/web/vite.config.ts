@@ -29,6 +29,10 @@ export default defineConfig({
       : []),
   ],
   build: {
+    modulePreload: {
+      resolveDependencies: (filename, dependencies) =>
+        dependencies.filter((dependency) => dependency !== filename),
+    },
     rollupOptions: {
       output: {
         codeSplitting: {

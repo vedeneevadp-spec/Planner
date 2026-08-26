@@ -14,6 +14,7 @@ import {
   listSelfCareOfflineMutations,
   markSelfCareOfflineMutationAwaitingRefresh,
   resetSelfCareOfflineDatabaseForTests,
+  SELF_CARE_ORPHANED_DEPENDENCY_ERROR_CODE,
 } from './offline-self-care-store'
 import { type SelfCareApiClient, SelfCareApiError } from './self-care-api'
 import {
@@ -104,6 +105,42 @@ describe('self-care offline drain', () => {
     expect(
       executeOfflineCommand.mock.calls.map(([request]) => request.operationId),
     ).toEqual([operationId, operationId])
+  })
+
+  it('turns an orphaned dependency into an actionable conflict instead of a silent no-op', async () => {
+    const operationId = generateUuidV7()
+    await enqueueSelfCareOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      command: createCommand('USD'),
+      dependsOn: [generateUuidV7()],
+      occurredAt: '2026-08-06T08:00:00.000Z',
+      operationId,
+      optimisticResult: createResult('USD'),
+      workspaceId: WORKSPACE_ID,
+    })
+    const executeOfflineCommand =
+      vi.fn<SelfCareApiClient['executeOfflineCommand']>()
+
+    await expect(
+      drainSelfCareOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        api: createApi(executeOfflineCommand),
+        workspaceId: WORKSPACE_ID,
+      }),
+    ).resolves.toMatchObject({ conflicted: 1, processed: 0 })
+    expect(executeOfflineCommand).not.toHaveBeenCalled()
+    const [orphanedMutation] = await listSelfCareOfflineMutations(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    )
+    expect(orphanedMutation).toMatchObject({
+      dependsOn: [],
+      operationId,
+      status: 'conflicted',
+    })
+    expect(orphanedMutation?.conflict?.code).toBe(
+      SELF_CARE_ORPHANED_DEPENDENCY_ERROR_CODE,
+    )
   })
 
   it('is single-flight for the same actor and workspace', async () => {

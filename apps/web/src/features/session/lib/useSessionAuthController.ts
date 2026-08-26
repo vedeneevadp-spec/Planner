@@ -222,7 +222,7 @@ export function useSessionAuthController(): SessionAuthState {
         })
 
         const { clearAndroidVoiceAssistantSessionContext } =
-          await import('@/features/voice-assistant')
+          await import('@/features/voice-assistant/native')
 
         await clearAndroidVoiceAssistantSessionContext().catch((error) => {
           console.error('Failed to clear native voice session context.', error)

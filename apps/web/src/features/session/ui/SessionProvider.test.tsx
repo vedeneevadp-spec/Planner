@@ -88,7 +88,7 @@ vi.mock('../lib/native-push-notifications', () => ({
     nativePushMocks.unregisterStoredNativePushDevice,
 }))
 
-vi.mock('@/features/voice-assistant', () => ({
+vi.mock('@/features/voice-assistant/native', () => ({
   clearAndroidVoiceAssistantSessionContext:
     nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext,
 }))

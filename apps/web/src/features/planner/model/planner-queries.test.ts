@@ -11,6 +11,7 @@ describe('planner task snapshot', () => {
   it('uses the bounded read model instead of the legacy full task list', async () => {
     const response: TaskReadModelResponse = {
       eventCursor: 12,
+      historyNextCursor: null,
       items: [],
       returnedCount: 0,
       sources: {

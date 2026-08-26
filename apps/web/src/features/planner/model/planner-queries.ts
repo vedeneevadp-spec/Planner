@@ -172,6 +172,7 @@ export function usePlannerQueries({
       if (workspaceId) {
         setTaskReadModelState({
           coverage: {
+            historyNextCursor: response.historyNextCursor,
             returnedCount: response.returnedCount,
             sources: response.sources,
             totalCount: response.totalCount,

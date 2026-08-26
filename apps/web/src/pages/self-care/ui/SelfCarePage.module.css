@@ -4,6 +4,85 @@
   padding-bottom: 1.4rem;
 }
 
+.queueNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  min-height: 3rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.48rem 0.55rem 0.48rem 0.72rem;
+  background: var(--surface-muted);
+}
+
+.queueNoticeError {
+  border-color: var(--danger-border);
+  background: color-mix(in srgb, var(--danger-bg) 52%, var(--surface-muted));
+}
+
+.queueNoticeOffline {
+  border-color: color-mix(in srgb, var(--warning) 22%, var(--line));
+  background: color-mix(in srgb, var(--warning-bg) 45%, var(--surface-muted));
+}
+
+.queueNoticeText {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+  line-height: 1.25;
+}
+
+.queueNoticeText strong {
+  font-size: 0.9rem;
+}
+
+.queueNoticeText span {
+  color: var(--text-soft);
+  font-size: 0.8rem;
+}
+
+.queueNoticeText .queueNoticeActionError {
+  color: var(--danger);
+}
+
+.queueNoticeActions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.38rem;
+}
+
+.queueNoticeButton {
+  min-height: 2rem;
+  border: 1px solid var(--accent-border-strong);
+  border-radius: 999px;
+  padding: 0.34rem 0.68rem;
+  color: var(--accent-text-on-fill);
+  background: var(--accent-fill);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.queueNoticeButtonSecondary {
+  color: var(--text);
+  background: var(--field-bg-strong);
+}
+
+.queueNoticeButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.queueNoticeButton:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
 .tabs {
   display: flex;
   gap: 0.18rem;

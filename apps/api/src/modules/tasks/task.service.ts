@@ -107,6 +107,12 @@ export class TaskService {
       await this.repository.getLatestEventIdByWorkspace(context)
     const oldestActiveLimit = Math.ceil(filters.activeLimit / 2)
     const newestActiveLimit = filters.activeLimit - oldestActiveLimit
+    const historyCursorFilters = {
+      dateMode: 'relevant' as const,
+      direction: 'desc' as const,
+      limit: filters.historyLimit,
+      scope: 'closed' as const,
+    }
     const [oldestActive, newestActive, range, history] = await Promise.all([
       this.repository.listCursorPageByWorkspace(context, {
         dateMode: 'relevant',
@@ -129,10 +135,7 @@ export class TaskService {
         scope: 'all',
       }),
       this.repository.listCursorPageByWorkspace(context, {
-        dateMode: 'relevant',
-        direction: 'desc',
-        limit: filters.historyLimit,
-        scope: 'closed',
+        ...historyCursorFilters,
       }),
     ])
     const activeItemsById = new Map<string, StoredTaskRecord>()
@@ -157,9 +160,21 @@ export class TaskService {
       range: toTaskReadModelSource(range),
     }
     const items = sortStoredTasks([...itemsById.values()])
+    const lastHistoryTask = history.items.at(-1)
+    const historyNextCursor =
+      history.hasMore && lastHistoryTask
+        ? encodeTaskCursor(
+            {
+              createdAt: lastHistoryTask.createdAt,
+              id: lastHistoryTask.id,
+            },
+            historyCursorFilters,
+          )
+        : null
 
     return {
       eventCursor,
+      historyNextCursor,
       items,
       returnedCount: items.length,
       sources,

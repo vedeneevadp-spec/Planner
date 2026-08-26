@@ -1142,73 +1142,125 @@ function SelfCareQueueStatus({
   isOffline: boolean
   queue: ReturnType<typeof useSelfCareOfflineQueue>
 }) {
+  const [pendingAction, setPendingAction] = useState<
+    'discard' | 'refresh' | 'retry' | null
+  >(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const isBusy = pendingAction !== null || queue.isDraining
+
+  async function runAction(
+    action: NonNullable<typeof pendingAction>,
+    callback: () => Promise<unknown>,
+  ) {
+    if (isBusy) {
+      return
+    }
+
+    setActionError(null)
+    setPendingAction(action)
+
+    try {
+      await callback()
+    } catch (error) {
+      setActionError(getSelfCareErrorMessage(error))
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
   if (queue.conflicted > 0) {
     const refreshableConflictCount = Math.max(
       0,
       queue.conflicted - queue.closedOccurrenceConflicts,
     )
+    const hasRefreshableConflicts = refreshableConflictCount > 0
+    const hasClosedOccurrenceConflicts = queue.closedOccurrenceConflicts > 0
+    const description = hasRefreshableConflicts
+      ? hasClosedOccurrenceConflicts
+        ? `${refreshableConflictCount} ${refreshableConflictCount === 1 ? 'изменение требует' : 'изменения требуют'} сверки; ${queue.closedOccurrenceConflicts} уже изменено на сервере.`
+        : `${refreshableConflictCount} ${refreshableConflictCount === 1 ? 'изменение требует' : 'изменения требуют'} сверки с актуальными данными.`
+      : queue.closedOccurrenceConflicts === 1
+        ? 'Событие уже завершено или изменено на сервере.'
+        : 'События уже завершены или изменены на сервере.'
 
     return (
-      <>
-        {queue.closedOccurrenceConflicts > 0 ? (
-          <PageStatusBanner
-            action={{
-              label: 'Оставить данные сервера',
-              onClick: () => {
-                void queue.discardClosedOccurrenceConflicts()
-              },
-            }}
-            description={
-              queue.closedOccurrenceConflicts === 1
-                ? 'Событие уже завершено или изменено на сервере. Повторять локальное изменение не нужно; связанные с ним локальные шаги будут отменены.'
-                : 'События уже завершены или изменены на сервере. Повторять локальные изменения не нужно; связанные с ними локальные шаги будут отменены.'
-            }
-            kind="info"
-            title="Серверные данные уже изменились"
-          />
-        ) : null}
-        {refreshableConflictCount > 0 ? (
+      <SelfCareQueueNotice
+        actionError={actionError}
+        actions={
           <>
-            <PageStatusBanner
-              action={{
-                label: 'Обновить и повторить',
-                onClick: () => {
-                  void queue.refreshAndRetryConflicts()
-                },
+            {hasRefreshableConflicts ? (
+              <button
+                className={styles.queueNoticeButton}
+                disabled={isBusy}
+                type="button"
+                onClick={() => {
+                  void runAction('refresh', queue.refreshAndRetryConflicts)
+                }}
+              >
+                {pendingAction === 'refresh'
+                  ? 'Сверяем…'
+                  : 'Сверить и отправить'}
+              </button>
+            ) : null}
+            <button
+              className={`${styles.queueNoticeButton} ${styles.queueNoticeButtonSecondary}`}
+              disabled={isBusy}
+              type="button"
+              onClick={() => {
+                void runAction(
+                  'discard',
+                  hasRefreshableConflicts
+                    ? queue.discardConflicts
+                    : queue.discardClosedOccurrenceConflicts,
+                )
               }}
-              description={`${refreshableConflictCount} ${refreshableConflictCount === 1 ? 'изменение требует' : 'изменения требуют'} сверки с актуальными данными. Ничего не заменено без вашего решения.`}
-              kind="error"
-              title="Нужно проверить изменения"
-            />
-            <PageStatusBanner
-              action={{
-                label: 'Отменить локальные изменения',
-                onClick: () => {
-                  void queue.discardConflicts()
-                },
-              }}
-              description="Конфликтующие изменения и зависящие от них локальные шаги будут отменены."
-              kind="info"
-              title="Можно оставить данные сервера"
-            />
+            >
+              {pendingAction === 'discard' ? 'Отменяем…' : 'Оставить серверные'}
+            </button>
           </>
-        ) : null}
-      </>
+        }
+        description={description}
+        isBusy={isBusy}
+        kind="error"
+        title={
+          hasRefreshableConflicts
+            ? 'Нужно сверить изменения'
+            : 'Серверные данные уже изменились'
+        }
+      />
     )
   }
 
   if (queue.failed > 0 && !isOffline) {
     return (
-      <PageStatusBanner
-        action={{
-          label: 'Повторить',
-          onClick: () => {
-            void queue.retry()
-          },
-        }}
-        description="Изменения остаются на устройстве. Можно повторить отправку."
+      <SelfCareQueueNotice
+        actionError={actionError}
+        actions={
+          <button
+            className={styles.queueNoticeButton}
+            disabled={isBusy}
+            type="button"
+            onClick={() => {
+              void runAction('retry', queue.retry)
+            }}
+          >
+            {pendingAction === 'retry' || queue.isDraining
+              ? 'Отправляем…'
+              : 'Повторить'}
+          </button>
+        }
+        description={
+          queue.failed === 1
+            ? 'Изменение осталось на устройстве.'
+            : `${queue.failed} изменений остались на устройстве.`
+        }
+        isBusy={isBusy}
         kind="error"
-        title="Не все изменения синхронизированы"
+        title={
+          queue.failed === 1
+            ? 'Изменение не отправлено'
+            : 'Не все изменения отправлены'
+        }
       />
     )
   }
@@ -1216,8 +1268,11 @@ function SelfCareQueueStatus({
   if (isOffline && (queue.pending > 0 || queue.failed > 0)) {
     const count = queue.pending + queue.failed
     return (
-      <PageStatusBanner
+      <SelfCareQueueNotice
+        actionError={null}
+        actions={null}
         description={formatQueuedChangeCount(count)}
+        isBusy={false}
         kind="offline"
         title="Изменения сохранены на устройстве"
       />
@@ -1225,6 +1280,42 @@ function SelfCareQueueStatus({
   }
 
   return null
+}
+
+function SelfCareQueueNotice({
+  actionError,
+  actions,
+  description,
+  isBusy,
+  kind,
+  title,
+}: {
+  actionError: string | null
+  actions: React.ReactNode
+  description: string
+  isBusy: boolean
+  kind: 'error' | 'offline'
+  title: string
+}) {
+  return (
+    <div
+      aria-busy={isBusy}
+      aria-live="polite"
+      className={`${styles.queueNotice} ${kind === 'error' ? styles.queueNoticeError : styles.queueNoticeOffline}`}
+      role={kind === 'error' || actionError ? 'alert' : 'status'}
+    >
+      <div className={styles.queueNoticeText}>
+        <strong>{title}</strong>
+        <span>{description}</span>
+        {actionError ? (
+          <span className={styles.queueNoticeActionError}>{actionError}</span>
+        ) : null}
+      </div>
+      {actions ? (
+        <div className={styles.queueNoticeActions}>{actions}</div>
+      ) : null}
+    </div>
+  )
 }
 
 function formatQueuedChangeCount(count: number): string {

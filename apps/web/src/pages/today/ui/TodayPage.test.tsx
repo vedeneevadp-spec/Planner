@@ -62,6 +62,7 @@ const mocks = vi.hoisted(() => {
     createNextTaskStage: vi.fn(),
     detachTaskFromChain: vi.fn(),
     moveTaskToPersonal: vi.fn(),
+    fetchNextTaskPage: vi.fn(),
     plannerState: {
       errorMessage: null as string | null,
       hasTaskReadError: false,
@@ -78,6 +79,7 @@ const mocks = vi.hoisted(() => {
         status: 'ready',
       },
       taskReadModelCoverage: null as null | {
+        historyNextCursor: string | null
         returnedCount: number
         sources: {
           active: {
@@ -112,8 +114,10 @@ const mocks = vi.hoisted(() => {
     shoppingItemPending: false,
     shoppingItemUpdate: vi.fn(),
     taskComposer: vi.fn(),
+    taskCursorRefetch: vi.fn(),
     updateTask: vi.fn(),
     updateUserPreferences: vi.fn(),
+    usePlannerTaskInfiniteCursor: vi.fn(),
     usePlannerSession: vi.fn<() => PlannerSessionQueryStub>(),
   }
 })
@@ -123,6 +127,7 @@ vi.mock('@/features/emoji-library', () => ({
 }))
 
 vi.mock('@/features/planner', () => ({
+  toPlannerTask: (task: Task) => task,
   usePlanner: () => ({
     ...mocks.plannerState,
     copyTaskToPersonal: mocks.copyTaskToPersonal,
@@ -138,6 +143,18 @@ vi.mock('@/features/planner', () => ({
     tasks: plannerTasks,
     updateTask: mocks.updateTask,
   }),
+  usePlannerTaskInfiniteCursor: (...args: unknown[]) => {
+    mocks.usePlannerTaskInfiniteCursor(...args)
+
+    return {
+      data: undefined,
+      fetchNextPage: mocks.fetchNextTaskPage,
+      hasNextPage: undefined,
+      isError: false,
+      isFetching: false,
+      refetch: mocks.taskCursorRefetch,
+    }
+  },
 }))
 
 vi.mock('@/shared/lib/offline-sync', async (importOriginal) => {
@@ -526,6 +543,8 @@ describe('TodayPage', () => {
     mocks.createNextTaskStage.mockReset()
     mocks.detachTaskFromChain.mockReset()
     mocks.moveTaskToPersonal.mockReset()
+    mocks.fetchNextTaskPage.mockReset()
+    mocks.fetchNextTaskPage.mockResolvedValue(undefined)
     Object.assign(mocks.plannerState, {
       errorMessage: null,
       hasTaskReadError: false,
@@ -557,10 +576,13 @@ describe('TodayPage', () => {
     mocks.shoppingItemPending = false
     mocks.shoppingItemUpdate.mockReset()
     mocks.taskComposer.mockReset()
+    mocks.taskCursorRefetch.mockReset()
+    mocks.taskCursorRefetch.mockResolvedValue(undefined)
     mocks.updateTask.mockReset()
     mocks.updateTask.mockResolvedValue(true)
     mocks.updateUserPreferences.mockReset()
     mocks.usePlannerSession.mockReset()
+    mocks.usePlannerTaskInfiniteCursor.mockReset()
   })
 
   afterEach(() => {
@@ -611,9 +633,10 @@ describe('TodayPage', () => {
     expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
   })
 
-  it('does not hide a truncated task archive from the user', () => {
+  it('offers compact cursor pagination for a truncated task archive', async () => {
     Object.assign(mocks.plannerState, {
       taskReadModelCoverage: {
+        historyNextCursor: 'history-cursor-100',
         returnedCount: 101,
         sources: {
           active: { returnedCount: 1, totalCount: 1, truncated: false },
@@ -627,12 +650,64 @@ describe('TodayPage', () => {
 
     renderTodayPage({ tasks: [createTask()] })
 
-    expect(screen.getByText('Большой архив загружен частично')).toBeVisible()
     expect(
-      screen.getByText(
-        'Все активные задачи загружены. В истории показаны последние 100 из 321 закрытых задач.',
-      ),
-    ).toBeVisible()
+      screen.queryByText('Большой архив загружен частично'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('Показано 100 из 321 закрытых задач')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }))
+
+    await waitFor(() => {
+      expect(mocks.usePlannerTaskInfiniteCursor).toHaveBeenLastCalledWith(
+        {
+          dateMode: 'relevant',
+          direction: 'desc',
+          limit: 100,
+          scope: 'closed',
+        },
+        {
+          enabled: true,
+          initialCursor: 'history-cursor-100',
+        },
+      )
+    })
+  })
+
+  it('loads beyond the bounded archive when the deployed server has no snapshot cursor yet', async () => {
+    Object.assign(mocks.plannerState, {
+      taskReadModelCoverage: {
+        historyNextCursor: null,
+        returnedCount: 100,
+        sources: {
+          active: { returnedCount: 0, totalCount: 0, truncated: false },
+          history: { returnedCount: 100, totalCount: 487, truncated: true },
+          range: { returnedCount: 0, totalCount: 0, truncated: false },
+        },
+        totalCount: 487,
+        truncated: true,
+      },
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    expect(screen.getByText('Показано 100 из 487 закрытых задач')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Загрузить ещё' }))
+
+    await waitFor(() => {
+      expect(mocks.usePlannerTaskInfiniteCursor).toHaveBeenLastCalledWith(
+        {
+          dateMode: 'relevant',
+          direction: 'desc',
+          limit: 200,
+          scope: 'closed',
+        },
+        {
+          enabled: true,
+          initialCursor: null,
+        },
+      )
+    })
   })
 
   it('keeps today, routine and attention sections expanded by default', () => {
