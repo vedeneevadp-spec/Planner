@@ -6,10 +6,12 @@ import {
   getDateKeyInTimeZone,
   getIsoWeekday as getIsoWeekdayForDateOnly,
   getIsoWeekStartDate,
+  type TaskReadModelFilters,
 } from '@planner/contracts'
 
 import { HttpError } from '../../bootstrap/http-error.js'
 import { canWriteWorkspaceContent } from '../../shared/workspace-access.js'
+import { decodeTaskCursor, encodeTaskCursor } from './task.cursor.js'
 import type {
   CloseTaskChainCommand,
   CompleteRecurringTaskCommand,
@@ -18,6 +20,8 @@ import type {
   DeleteTaskCommand,
   DetachTaskChainCommand,
   StoredTaskRecord,
+  TaskCursorFilters,
+  TaskCursorListResult,
   TaskEventFilters,
   TaskListFilters,
   TaskReadContext,
@@ -32,7 +36,19 @@ import {
   isActiveTaskStatus,
   normalizeTaskReminderOffsets,
   normalizeTaskSchedule,
+  sortStoredTasks,
 } from './task.shared.js'
+
+function toTaskReadModelSource(result: {
+  items: StoredTaskRecord[]
+  totalCount: number
+}) {
+  return {
+    returnedCount: result.items.length,
+    totalCount: result.totalCount,
+    truncated: result.items.length < result.totalCount,
+  }
+}
 
 export class TaskService {
   constructor(
@@ -46,6 +62,127 @@ export class TaskService {
 
   listTaskPage(context: TaskReadContext, filters?: TaskListFilters) {
     return this.repository.listPageByWorkspace(context, filters)
+  }
+
+  async listTasksCursor(
+    context: TaskReadContext,
+    filters: TaskCursorFilters,
+  ): Promise<TaskCursorListResult> {
+    const anchor = decodeTaskCursor(filters.cursor, filters)
+    const result = await this.repository.listCursorPageByWorkspace(context, {
+      ...(anchor ? { anchor } : {}),
+      ...(filters.dateFrom ? { dateFrom: filters.dateFrom } : {}),
+      dateMode: filters.dateMode,
+      ...(filters.dateTo ? { dateTo: filters.dateTo } : {}),
+      direction: filters.direction,
+      limit: filters.limit,
+      scope: filters.scope,
+    })
+    const lastTask = result.items.at(-1)
+    const nextCursor =
+      result.hasMore && lastTask
+        ? encodeTaskCursor(
+            { createdAt: lastTask.createdAt, id: lastTask.id },
+            filters,
+          )
+        : null
+
+    return {
+      ...result,
+      limit: filters.limit,
+      nextCursor,
+      returnedCount: result.items.length,
+      truncated: result.hasMore,
+    }
+  }
+
+  async getTaskReadModel(
+    context: TaskReadContext,
+    filters: TaskReadModelFilters,
+  ) {
+    // Read the event watermark first. Any mutation committed after this point
+    // keeps a larger event id and will be replayed by incremental sync even if
+    // it races one of the bounded snapshot queries below.
+    const eventCursor =
+      await this.repository.getLatestEventIdByWorkspace(context)
+    const oldestActiveLimit = Math.ceil(filters.activeLimit / 2)
+    const newestActiveLimit = filters.activeLimit - oldestActiveLimit
+    const [oldestActive, newestActive, range, history] = await Promise.all([
+      this.repository.listCursorPageByWorkspace(context, {
+        dateMode: 'relevant',
+        direction: 'asc',
+        limit: oldestActiveLimit,
+        scope: 'active',
+      }),
+      this.repository.listCursorPageByWorkspace(context, {
+        dateMode: 'relevant',
+        direction: 'desc',
+        limit: newestActiveLimit,
+        scope: 'active',
+      }),
+      this.repository.listCursorPageByWorkspace(context, {
+        dateFrom: filters.dateFrom,
+        dateMode: 'relevant',
+        dateTo: filters.dateTo,
+        direction: 'asc',
+        limit: filters.rangeLimit,
+        scope: 'all',
+      }),
+      this.repository.listCursorPageByWorkspace(context, {
+        dateMode: 'relevant',
+        direction: 'desc',
+        limit: filters.historyLimit,
+        scope: 'closed',
+      }),
+    ])
+    const activeItemsById = new Map<string, StoredTaskRecord>()
+
+    for (const task of [...oldestActive.items, ...newestActive.items]) {
+      activeItemsById.set(task.id, task)
+    }
+
+    const active = {
+      items: [...activeItemsById.values()],
+      totalCount: Math.max(oldestActive.totalCount, newestActive.totalCount),
+    }
+    const itemsById = new Map<string, StoredTaskRecord>()
+
+    for (const task of [...active.items, ...range.items, ...history.items]) {
+      itemsById.set(task.id, task)
+    }
+
+    const sources = {
+      active: toTaskReadModelSource(active),
+      history: toTaskReadModelSource(history),
+      range: toTaskReadModelSource(range),
+    }
+    const items = sortStoredTasks([...itemsById.values()])
+
+    return {
+      eventCursor,
+      items,
+      returnedCount: items.length,
+      sources,
+      totalCount: active.totalCount + history.totalCount,
+      truncated:
+        sources.active.truncated ||
+        sources.history.truncated ||
+        sources.range.truncated,
+    }
+  }
+
+  async getTask(context: TaskReadContext, taskId: string) {
+    const task = await this.repository.findById(context, taskId)
+
+    if (!task) {
+      throw new HttpError(
+        404,
+        'task_not_found',
+        `Task "${taskId}" was not found.`,
+      )
+    }
+
+    return task
   }
 
   listTaskEvents(context: TaskReadContext, filters?: TaskEventFilters) {

@@ -204,6 +204,101 @@ export function defineTaskRepositoryContractSuite(input: {
       }
     })
 
+    void test('keeps keyset pages stable across concurrent inserts', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const baselineTasks = []
+
+        for (const title of ['Cursor first', 'Cursor second', 'Cursor third']) {
+          baselineTasks.push(
+            await harness.repository.create({
+              context: harness.personalContext,
+              input: createTaskInput({
+                plannedDate: '2026-05-23',
+                title,
+              }),
+            }),
+          )
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 2))
+
+        const cursorQuery = {
+          dateMode: 'relevant' as const,
+          direction: 'desc' as const,
+          limit: 1,
+          scope: 'all' as const,
+        }
+        const firstPage = await harness.repository.listCursorPageByWorkspace(
+          harness.personalContext,
+          cursorQuery,
+        )
+        const insertedTask = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({
+            plannedDate: '2026-05-23',
+            title: 'Concurrent insert',
+          }),
+        })
+        const collectedIds = firstPage.items.map((task) => task.id)
+        let lastTask = firstPage.items.at(-1)
+        let hasMore = firstPage.hasMore
+
+        while (hasMore && lastTask) {
+          const page = await harness.repository.listCursorPageByWorkspace(
+            harness.personalContext,
+            {
+              ...cursorQuery,
+              anchor: {
+                createdAt: lastTask.createdAt,
+                id: lastTask.id,
+              },
+            },
+          )
+
+          collectedIds.push(...page.items.map((task) => task.id))
+          lastTask = page.items.at(-1)
+          hasMore = page.hasMore
+        }
+
+        assert.deepEqual(
+          [...collectedIds].sort(),
+          baselineTasks.map((task) => task.id).sort(),
+        )
+        assert.equal(new Set(collectedIds).size, collectedIds.length)
+        assert.equal(collectedIds.includes(insertedTask.id), false)
+
+        const rangePage = await harness.repository.listCursorPageByWorkspace(
+          harness.personalContext,
+          {
+            dateFrom: '2026-05-23',
+            dateMode: 'relevant',
+            dateTo: '2026-05-23',
+            direction: 'asc',
+            limit: 2,
+            scope: 'all',
+          },
+        )
+        const limitedLegacyList = await harness.repository.listByWorkspace(
+          harness.personalContext,
+          { limit: 1, offset: 1 },
+        )
+
+        assert.equal(rangePage.totalCount, 4)
+        assert.equal(rangePage.items.length, 2)
+        assert.equal(rangePage.hasMore, true)
+        assert.equal(limitedLegacyList.length, 1)
+        assert.ok(
+          (await harness.repository.getLatestEventIdByWorkspace(
+            harness.personalContext,
+          )) > 0,
+        )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('keeps task update, schedule, delete, and conflict behavior consistent', async () => {
       const harness = await input.createHarness()
 

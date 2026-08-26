@@ -1,5 +1,6 @@
 import {
   type LifeSphereRecord,
+  type TaskReadModelResponse,
   type TaskRecord,
   type TaskTemplateRecord,
 } from '@planner/contracts'
@@ -8,7 +9,9 @@ import {
   useQuery,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+
+import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
 import {
   getPlannerOfflineWorkspaceWriteGeneration,
@@ -24,6 +27,11 @@ import {
 import { requirePlannerApi } from './planner-error-policy'
 
 export const TASK_EVENT_POLL_INTERVAL_MS = 15_000
+export const PLANNER_TASK_SNAPSHOT_LIMITS = {
+  activeLimit: 500,
+  historyLimit: 100,
+  rangeLimit: 250,
+} as const
 
 export type PlannerTaskQueryKey = readonly ['planner', 'tasks', string, number]
 export type PlannerSphereQueryKey = readonly [
@@ -46,6 +54,7 @@ interface PlannerQueriesParams {
     lastSuccessfulSyncAt: string,
   ) => void
   plannerApi: PlannerApiClient | null
+  plannerTimeZone: string
   queryClient: QueryClient
   workspaceId: string | undefined
 }
@@ -58,7 +67,13 @@ interface PlannerQueries {
   taskTemplateQueryKey: PlannerTaskTemplateQueryKey
   taskTemplatesQuery: UseQueryResult<TaskTemplateRecord[], Error>
   tasksQuery: UseQueryResult<TaskRecord[], Error>
+  taskReadModelCoverage: TaskReadModelCoverage | null
 }
+
+export type TaskReadModelCoverage = Omit<
+  TaskReadModelResponse,
+  'eventCursor' | 'items'
+>
 
 export function getPlannerTaskQueryKey(
   workspaceId: string | undefined,
@@ -86,13 +101,36 @@ export function getPlannerTaskTemplateQueryKey(
   ]
 }
 
+export function loadPlannerTaskSnapshot(
+  plannerApi: PlannerApiClient,
+  dateFrom: string,
+  dateTo: string,
+  signal?: AbortSignal,
+) {
+  return plannerApi.getTaskReadModel(
+    {
+      ...PLANNER_TASK_SNAPSHOT_LIMITS,
+      dateFrom,
+      dateTo,
+    },
+    signal,
+  )
+}
+
 export function usePlannerQueries({
   authSessionVersion,
   onServerReadSuccess,
   plannerApi,
+  plannerTimeZone,
   queryClient,
   workspaceId,
 }: PlannerQueriesParams): PlannerQueries {
+  const [taskReadModelState, setTaskReadModelState] = useState<{
+    coverage: TaskReadModelCoverage
+    workspaceId: string
+  } | null>(null)
+  const todayKey = getTodayDate(plannerTimeZone)
+  const tomorrowKey = addDateDays(todayKey, 1)
   const taskQueryKey = useMemo(
     () => getPlannerTaskQueryKey(workspaceId, authSessionVersion),
     [authSessionVersion, workspaceId],
@@ -122,8 +160,26 @@ export function usePlannerQueries({
       const writeGeneration = workspaceId
         ? getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
         : 0
-      const records = await requirePlannerApi(plannerApi).listTasks({}, signal)
+      const response = await loadPlannerTaskSnapshot(
+        requirePlannerApi(plannerApi),
+        todayKey,
+        tomorrowKey,
+        signal,
+      )
+      const records = response.items
       const lastSuccessfulSyncAt = new Date().toISOString()
+
+      if (workspaceId) {
+        setTaskReadModelState({
+          coverage: {
+            returnedCount: response.returnedCount,
+            sources: response.sources,
+            totalCount: response.totalCount,
+            truncated: response.truncated,
+          },
+          workspaceId,
+        })
+      }
 
       if (workspaceId) {
         void replaceCachedTaskRecordsFromServer(
@@ -131,6 +187,7 @@ export function usePlannerQueries({
           records,
           lastSuccessfulSyncAt,
           writeGeneration,
+          response.eventCursor,
         ).catch((error) => {
           console.warn('Failed to persist server task snapshot.', error)
         })
@@ -210,6 +267,10 @@ export function usePlannerQueries({
     taskQueryKey,
     taskTemplateQueryKey,
     taskTemplatesQuery,
+    taskReadModelCoverage:
+      taskReadModelState && taskReadModelState.workspaceId === workspaceId
+        ? taskReadModelState.coverage
+        : null,
     tasksQuery,
   }
 }

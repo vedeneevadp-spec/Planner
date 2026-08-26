@@ -48,4 +48,3 @@ export const TASK_URGENCY_KEY = 'taskUrgency'
 export const DEFAULT_TASK_IMPORTANCE = 'not_important'
 export const DEFAULT_TASK_NECESSITY = 'desired'
 export const DEFAULT_TASK_URGENCY = 'not_urgent'
-export const TASK_LIST_BATCH_SIZE = 20

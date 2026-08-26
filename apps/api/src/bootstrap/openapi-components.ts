@@ -1293,6 +1293,116 @@ export function createComponentSchemas(): Record<
       required: ['hasMore', 'items', 'limit', 'nextOffset', 'offset'],
       type: 'object',
     },
+    TaskCursorListResponse: {
+      additionalProperties: false,
+      properties: {
+        hasMore: {
+          type: 'boolean',
+        },
+        items: {
+          items: {
+            $ref: '#/components/schemas/TaskRecord',
+          },
+          type: 'array',
+        },
+        limit: {
+          maximum: 500,
+          minimum: 1,
+          type: 'integer',
+        },
+        nextCursor: nullableStringSchema(),
+        returnedCount: {
+          minimum: 0,
+          type: 'integer',
+        },
+        totalCount: {
+          minimum: 0,
+          type: 'integer',
+        },
+        truncated: {
+          type: 'boolean',
+        },
+      },
+      required: [
+        'hasMore',
+        'items',
+        'limit',
+        'nextCursor',
+        'returnedCount',
+        'totalCount',
+        'truncated',
+      ],
+      type: 'object',
+    },
+    TaskReadModelSource: {
+      additionalProperties: false,
+      properties: {
+        returnedCount: {
+          minimum: 0,
+          type: 'integer',
+        },
+        totalCount: {
+          minimum: 0,
+          type: 'integer',
+        },
+        truncated: {
+          type: 'boolean',
+        },
+      },
+      required: ['returnedCount', 'totalCount', 'truncated'],
+      type: 'object',
+    },
+    TaskReadModelResponse: {
+      additionalProperties: false,
+      properties: {
+        eventCursor: {
+          minimum: 0,
+          type: 'integer',
+        },
+        items: {
+          items: {
+            $ref: '#/components/schemas/TaskRecord',
+          },
+          type: 'array',
+        },
+        returnedCount: {
+          minimum: 0,
+          type: 'integer',
+        },
+        sources: {
+          additionalProperties: false,
+          properties: {
+            active: {
+              $ref: '#/components/schemas/TaskReadModelSource',
+            },
+            history: {
+              $ref: '#/components/schemas/TaskReadModelSource',
+            },
+            range: {
+              $ref: '#/components/schemas/TaskReadModelSource',
+            },
+          },
+          required: ['active', 'history', 'range'],
+          type: 'object',
+        },
+        totalCount: {
+          minimum: 0,
+          type: 'integer',
+        },
+        truncated: {
+          type: 'boolean',
+        },
+      },
+      required: [
+        'eventCursor',
+        'items',
+        'returnedCount',
+        'sources',
+        'totalCount',
+        'truncated',
+      ],
+      type: 'object',
+    },
     TaskTemplateListResponse: {
       items: {
         $ref: '#/components/schemas/TaskTemplateRecord',

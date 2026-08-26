@@ -19,9 +19,11 @@ import {
   receivedWorkspaceInvitationListResponseSchema,
   sessionResponseSchema,
   sessionWorkspaceMembershipSchema,
+  taskCursorListResponseSchema,
   taskEventListResponseSchema,
   taskListPageResponseSchema,
   taskListResponseSchema,
+  taskReadModelResponseSchema,
   taskRecordSchema,
   taskTemplateListResponseSchema,
   taskTemplateRecordSchema,
@@ -846,6 +848,64 @@ void describe('buildApiApp', () => {
     assert.equal(taskPage.items[0]?.id, createdTask.id)
     assert.equal(taskPage.hasMore, false)
     assert.equal(taskPage.nextOffset, null)
+
+    const getResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: `/api/v1/tasks/${createdTask.id}`,
+    })
+
+    assert.equal(getResponse.statusCode, 200)
+    assert.equal(taskRecordSchema.parse(getResponse.json()).id, createdTask.id)
+
+    const readModelResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/tasks/read-model?dateFrom=2026-04-16&dateTo=2026-04-16&activeLimit=10&rangeLimit=10&historyLimit=10',
+    })
+
+    assert.equal(readModelResponse.statusCode, 200)
+
+    const taskReadModel = taskReadModelResponseSchema.parse(
+      readModelResponse.json(),
+    )
+
+    assert.equal(taskReadModel.items.length, 1)
+    assert.equal(taskReadModel.totalCount, 1)
+    assert.equal(taskReadModel.returnedCount, 1)
+    assert.equal(taskReadModel.sources.active.totalCount, 0)
+    assert.equal(taskReadModel.sources.range.totalCount, 1)
+    assert.equal(taskReadModel.truncated, false)
+
+    const cursorResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/tasks/cursor?scope=closed&direction=desc&limit=1',
+    })
+
+    assert.equal(cursorResponse.statusCode, 200)
+
+    const cursorPage = taskCursorListResponseSchema.parse(cursorResponse.json())
+
+    assert.equal(cursorPage.items[0]?.id, createdTask.id)
+    assert.equal(cursorPage.totalCount, 1)
+    assert.equal(cursorPage.truncated, false)
+
+    const invalidCursorResponse = await app.inject({
+      headers: {
+        'x-workspace-id': 'workspace-1',
+      },
+      method: 'GET',
+      url: '/api/v1/tasks/cursor?cursor=not-a-valid-cursor',
+    })
+
+    assert.equal(invalidCursorResponse.statusCode, 400)
 
     const deleteResponse = await app.inject({
       headers: {

@@ -101,6 +101,52 @@ void describe('AiContextService', () => {
     assert.equal(context.stats?.loadLevel, 'low')
   })
 
+  void it('reports bounded task and shopping source coverage to AI clients', async () => {
+    const taskReadModelCalls: unknown[] = []
+    const service = createService(
+      [
+        createTask({
+          plannedDate: '2026-06-21',
+          title: 'Visible bounded task',
+        }),
+      ],
+      [],
+      {
+        shoppingItems: [createShoppingItem({ text: 'Visible shopping item' })],
+        shoppingTotalCount: 1_000,
+        taskReadModelCalls,
+        taskTotalCount: 10_000,
+        taskTruncated: true,
+      },
+    )
+
+    const context = await service.getTodayContext({
+      date: '2026-06-21',
+      include: ['tasks', 'shopping'],
+      userId: USER_ID,
+    })
+
+    assert.deepEqual(context.sourceCoverage.tasks, {
+      returnedCount: 1,
+      totalCount: 10_000,
+      truncated: true,
+    })
+    assert.deepEqual(context.sourceCoverage.shopping, {
+      returnedCount: 1,
+      totalCount: 1_000,
+      truncated: true,
+    })
+    assert.deepEqual(taskReadModelCalls, [
+      {
+        activeLimit: 500,
+        dateFrom: '2026-06-21',
+        dateTo: '2026-06-21',
+        historyLimit: 250,
+        rangeLimit: 500,
+      },
+    ])
+  })
+
   void it('uses planner timezone for default today context near a UTC boundary', async () => {
     mock.timers.enable({
       apis: ['Date'],
@@ -1048,6 +1094,10 @@ interface CreateServiceOptions {
   selfCareHistory?: SelfCareHistoryResponse | undefined
   selfCarePlan?: SelfCarePlanResponse | undefined
   shoppingItems?: ChaosInboxItemRecord[] | undefined
+  shoppingTotalCount?: number | undefined
+  taskReadModelCalls?: unknown[] | undefined
+  taskTotalCount?: number | undefined
+  taskTruncated?: boolean | undefined
 }
 
 function createService(
@@ -1083,7 +1133,16 @@ function createService(
       },
     },
     taskService: {
-      listTasks: () => Promise.resolve(tasks),
+      getTaskReadModel: (_context, filters) => {
+        options.taskReadModelCalls?.push(filters)
+
+        return Promise.resolve({
+          items: tasks,
+          returnedCount: tasks.length,
+          totalCount: options.taskTotalCount ?? tasks.length,
+          truncated: options.taskTruncated ?? false,
+        })
+      },
     },
   }
 
@@ -1092,7 +1151,8 @@ function createService(
       listItems: () =>
         Promise.resolve({
           items: options.shoppingItems ?? [],
-          total: options.shoppingItems?.length ?? 0,
+          total:
+            options.shoppingTotalCount ?? options.shoppingItems?.length ?? 0,
         }),
     }
   }

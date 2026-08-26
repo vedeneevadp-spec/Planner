@@ -12,6 +12,8 @@ import type {
   MoveTaskToPersonalCommand,
   StoredTaskEventRecord,
   StoredTaskRecord,
+  TaskCursorPageQuery,
+  TaskCursorPageResult,
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
@@ -50,7 +52,16 @@ export class MemoryTaskRepository implements TaskRepository {
         matchesTaskFilters(task, filters),
     )
 
-    return Promise.resolve(sortStoredTasks(tasks))
+    const sortedTasks = sortStoredTasks(tasks)
+
+    if (filters?.limit === undefined && filters?.offset === undefined) {
+      return Promise.resolve(sortedTasks)
+    }
+
+    const offset = filters.offset ?? 0
+    const limit = filters.limit ?? 100
+
+    return Promise.resolve(sortedTasks.slice(offset, offset + limit))
   }
 
   listPageByWorkspace(
@@ -74,6 +85,31 @@ export class MemoryTaskRepository implements TaskRepository {
       limit,
       nextOffset: nextOffset < sortedTasks.length ? nextOffset : null,
       offset,
+    })
+  }
+
+  listCursorPageByWorkspace(
+    context: TaskReadContext,
+    query: TaskCursorPageQuery,
+  ): Promise<TaskCursorPageResult> {
+    const matchingTasks = [...this.tasks.values()].filter(
+      (task) =>
+        task.workspaceId === context.workspaceId &&
+        matchesTaskCursorQuery(task, query),
+    )
+    const totalCount = matchingTasks.length
+    const orderedTasks = matchingTasks.sort((left, right) =>
+      compareTaskCursorOrder(left, right, query.direction),
+    )
+    const afterCursor = query.anchor
+      ? orderedTasks.filter((task) => compareTaskToCursor(task, query) > 0)
+      : orderedTasks
+    const items = afterCursor.slice(0, query.limit)
+
+    return Promise.resolve({
+      hasMore: afterCursor.length > items.length,
+      items,
+      totalCount,
     })
   }
 
@@ -112,6 +148,14 @@ export class MemoryTaskRepository implements TaskRepository {
       events,
       nextEventId: events.at(-1)?.id ?? afterEventId,
     })
+  }
+
+  getLatestEventIdByWorkspace(context: TaskReadContext): Promise<number> {
+    const latestEventId = this.events
+      .filter((event) => event.workspaceId === context.workspaceId)
+      .reduce((latest, event) => Math.max(latest, event.id), 0)
+
+    return Promise.resolve(latestEventId)
   }
 
   create(command: CreateTaskCommand): Promise<StoredTaskRecord> {
@@ -733,4 +777,87 @@ export class MemoryTaskRepository implements TaskRepository {
       )
     }
   }
+}
+
+function matchesTaskCursorQuery(
+  task: StoredTaskRecord,
+  query: TaskCursorPageQuery,
+): boolean {
+  if (task.deletedAt !== null) {
+    return false
+  }
+
+  const isClosed = task.status === 'done' || task.status === 'archived'
+
+  if (
+    (query.scope === 'active' && isClosed) ||
+    (query.scope === 'closed' && !isClosed)
+  ) {
+    return false
+  }
+
+  if (!query.dateFrom || !query.dateTo) {
+    return true
+  }
+
+  const taskDate =
+    query.dateMode === 'planned'
+      ? task.plannedDate
+      : (task.plannedDate ??
+        task.dueDate ??
+        task.completedAt?.slice(0, 10) ??
+        null)
+
+  return Boolean(
+    taskDate && taskDate >= query.dateFrom && taskDate <= query.dateTo,
+  )
+}
+
+function compareTaskCursorOrder(
+  left: StoredTaskRecord,
+  right: StoredTaskRecord,
+  direction: TaskCursorPageQuery['direction'],
+): number {
+  return compareCursorValues(
+    left.createdAt,
+    left.id,
+    right.createdAt,
+    right.id,
+    direction,
+  )
+}
+
+function compareTaskToCursor(
+  task: StoredTaskRecord,
+  query: TaskCursorPageQuery,
+): number {
+  const anchor = query.anchor
+
+  if (!anchor) {
+    return 1
+  }
+
+  return compareCursorValues(
+    task.createdAt,
+    task.id,
+    anchor.createdAt,
+    anchor.id,
+    query.direction,
+  )
+}
+
+function compareCursorValues(
+  leftCreatedAt: string,
+  leftId: string,
+  rightCreatedAt: string,
+  rightId: string,
+  direction: TaskCursorPageQuery['direction'],
+): number {
+  const createdAtComparison = leftCreatedAt.localeCompare(rightCreatedAt)
+  const comparison =
+    createdAtComparison === 0
+      ? leftId.localeCompare(rightId)
+      : createdAtComparison
+
+  return direction === 'asc' ? comparison : -comparison
 }

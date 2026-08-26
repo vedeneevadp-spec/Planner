@@ -100,6 +100,7 @@ function createPlannerState(
     spheres: [],
     taskActionSnackbar: null,
     taskLastSuccessfulSyncAt: '2026-04-20T08:00:00.000Z',
+    taskReadModelCoverage: null,
     taskTemplateLastSuccessfulSyncAt: '2026-04-20T08:00:00.000Z',
     tasks: [createTask()],
     taskTemplates: [],

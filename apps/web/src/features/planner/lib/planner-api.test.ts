@@ -140,6 +140,74 @@ describe('plannerApi', () => {
     )
   })
 
+  it('requests bounded task read models and keyset pages', async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            eventCursor: 42,
+            items: [],
+            returnedCount: 0,
+            sources: {
+              active: { returnedCount: 0, totalCount: 0, truncated: false },
+              history: { returnedCount: 0, totalCount: 0, truncated: false },
+              range: { returnedCount: 0, totalCount: 0, truncated: false },
+            },
+            totalCount: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            hasMore: false,
+            items: [],
+            limit: 25,
+            nextCursor: null,
+            returnedCount: 0,
+            totalCount: 0,
+            truncated: false,
+          }),
+          { status: 200 },
+        ),
+      )
+    const api = createPlannerApiClient(TEST_CONFIG, fetchMock)
+
+    const snapshot = await api.getTaskReadModel({
+      dateFrom: '2026-04-15',
+      dateTo: '2026-04-16',
+    })
+    const page = await api.listTasksCursor({
+      dateFrom: '2026-04-15',
+      dateTo: '2026-04-16',
+      limit: 25,
+    })
+
+    expect(snapshot.eventCursor).toBe(42)
+    expect(page.limit).toBe(25)
+
+    const [readModelInput] = fetchMock.mock.calls[0]!
+    const [cursorInput] = fetchMock.mock.calls[1]!
+    const readModelUrl = new URL(
+      readModelInput instanceof Request ? readModelInput.url : readModelInput,
+    )
+    const cursorUrl = new URL(
+      cursorInput instanceof Request ? cursorInput.url : cursorInput,
+    )
+
+    expect(readModelUrl.pathname).toBe('/api/v1/tasks/read-model')
+    expect(readModelUrl.searchParams.get('activeLimit')).toBe('500')
+    expect(readModelUrl.searchParams.get('historyLimit')).toBe('100')
+    expect(readModelUrl.searchParams.get('rangeLimit')).toBe('250')
+    expect(cursorUrl.pathname).toBe('/api/v1/tasks/cursor')
+    expect(cursorUrl.searchParams.get('dateMode')).toBe('relevant')
+    expect(cursorUrl.searchParams.get('direction')).toBe('asc')
+    expect(cursorUrl.searchParams.get('scope')).toBe('all')
+  })
+
   it('forwards abort signals for query-driven task fetches', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify([]), {

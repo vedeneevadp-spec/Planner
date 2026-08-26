@@ -17,10 +17,12 @@ export {
 export type {
   AiCalendarEvent,
   AiCleaningTask,
+  AiContextSourceCoverage,
   AiHabitItem,
   AiLoadLevel,
   AiSelfCareItem,
   AiShoppingItem,
+  AiSourceCoverage,
   AiSuggestedMode,
   AiTaskItem,
   GetOverloadContextParams,

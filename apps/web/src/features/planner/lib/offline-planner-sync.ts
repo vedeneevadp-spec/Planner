@@ -351,9 +351,10 @@ async function createNextTaskStageOrReconcile(
       throw error
     }
 
-    const tasks = await api.listTasks()
-    const currentTask = tasks.find((task) => task.id === mutation.taskId)
-    const nextTask = tasks.find((task) => task.id === mutation.nextTaskId)
+    const [currentTask, nextTask] = await Promise.all([
+      api.getTask(mutation.taskId),
+      api.getTask(mutation.nextTaskId),
+    ]).catch(() => [null, null] as const)
     const isAcknowledgedStage = Boolean(
       currentTask &&
       nextTask &&

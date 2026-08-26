@@ -8,6 +8,8 @@ import type {
   DetachTaskChainCommand,
   MoveTaskToPersonalCommand,
   StoredTaskRecord,
+  TaskCursorPageQuery,
+  TaskCursorPageResult,
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
@@ -30,6 +32,10 @@ export interface TaskRepository {
     context: TaskReadContext,
     filters?: TaskListFilters,
   ): Promise<TaskListPageResult>
+  listCursorPageByWorkspace(
+    context: TaskReadContext,
+    query: TaskCursorPageQuery,
+  ): Promise<TaskCursorPageResult>
   findById(
     context: TaskReadContext,
     taskId: string,
@@ -38,6 +44,7 @@ export interface TaskRepository {
     context: TaskReadContext,
     filters?: TaskEventFilters,
   ): Promise<TaskEventListResult>
+  getLatestEventIdByWorkspace(context: TaskReadContext): Promise<number>
   closeChain(command: CloseTaskChainCommand): Promise<StoredTaskRecord>
   completeRecurring(
     command: CompleteRecurringTaskCommand,

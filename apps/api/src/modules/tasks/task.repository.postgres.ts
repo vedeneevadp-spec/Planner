@@ -20,6 +20,8 @@ import type {
   DetachTaskChainCommand,
   MoveTaskToPersonalCommand,
   StoredTaskRecord,
+  TaskCursorPageQuery,
+  TaskCursorPageResult,
   TaskEventFilters,
   TaskEventListResult,
   TaskListFilters,
@@ -54,6 +56,7 @@ import {
   loadCurrentTask,
   loadPrimaryTimeBlock,
   loadProjectTitle,
+  loadTaskRowsCursorWithPrimaryTimeBlock,
   loadTaskRowsPageWithPrimaryTimeBlock,
   loadTaskRowsWithPrimaryTimeBlock,
   loadUserDisplayName,
@@ -138,6 +141,33 @@ export class PostgresTaskRepository implements TaskRepository {
     }
   }
 
+  async listCursorPageByWorkspace(
+    context: TaskReadContext,
+    query: TaskCursorPageQuery,
+  ): Promise<TaskCursorPageResult> {
+    const result = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        loadTaskRowsCursorWithPrimaryTimeBlock(
+          executor,
+          context.workspaceId,
+          query,
+        ),
+      context.actorUserId,
+    )
+    const hasMore = result.rows.length > query.limit
+    const items = result.rows
+      .slice(0, query.limit)
+      .map((taskRow) => mapTaskRecordFromListRow(taskRow))
+
+    return {
+      hasMore,
+      items,
+      totalCount: result.totalCount,
+    }
+  }
+
   async findById(
     context: TaskReadContext,
     taskId: string,
@@ -211,6 +241,24 @@ export class PostgresTaskRepository implements TaskRepository {
       events,
       nextEventId,
     }
+  }
+
+  async getLatestEventIdByWorkspace(context: TaskReadContext): Promise<number> {
+    const row = await withOptionalRls(
+      this.db,
+      context.auth,
+      (executor) =>
+        executor
+          .selectFrom('app.task_events')
+          .select('id')
+          .where('workspace_id', '=', context.workspaceId)
+          .orderBy('id', 'desc')
+          .limit(1)
+          .executeTakeFirst(),
+      context.actorUserId,
+    )
+
+    return row?.id ?? 0
   }
 
   async create(command: CreateTaskCommand): Promise<StoredTaskRecord> {

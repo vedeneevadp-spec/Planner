@@ -25,6 +25,10 @@ import {
   taskChainCloseInputSchema,
   type TaskChainDetachInput,
   taskChainDetachInputSchema,
+  type TaskCursorListFilters,
+  taskCursorListFiltersSchema,
+  type TaskCursorListResponse,
+  taskCursorListResponseSchema,
   type TaskDetailsUpdateInput,
   taskDetailsUpdateInputSchema,
   type TaskEventListFilters,
@@ -46,6 +50,10 @@ import {
   taskNextStageUndoResponseSchema,
   type TaskPersonalTransferInput,
   taskPersonalTransferInputSchema,
+  type TaskReadModelFilters,
+  taskReadModelFiltersSchema,
+  type TaskReadModelResponse,
+  taskReadModelResponseSchema,
   type TaskRecord,
   taskRecordSchema,
   type TaskScheduleUpdateInput,
@@ -67,6 +75,18 @@ import {
 
 type FetchFn = ApiClientFetch
 type RequestSignal = ApiRequestSignal
+type TaskCursorRequestFilters = Omit<
+  TaskCursorListFilters,
+  'dateMode' | 'direction' | 'limit' | 'scope'
+> &
+  Partial<
+    Pick<TaskCursorListFilters, 'dateMode' | 'direction' | 'limit' | 'scope'>
+  >
+type TaskReadModelRequestFilters = Pick<
+  TaskReadModelFilters,
+  'dateFrom' | 'dateTo'
+> &
+  Partial<Omit<TaskReadModelFilters, 'dateFrom' | 'dateTo'>>
 
 export class PlannerApiError extends Error {
   readonly code: string
@@ -137,6 +157,7 @@ export interface PlannerApiClient {
     to: string,
     signal?: RequestSignal,
   ) => Promise<WeeklySphereStatsResponse>
+  getTask: (taskId: string, signal?: RequestSignal) => Promise<TaskRecord>
   listLifeSpheres: (signal?: RequestSignal) => Promise<LifeSphereRecord[]>
   listTaskEvents: (
     filters?: TaskEventListFilters,
@@ -146,11 +167,19 @@ export interface PlannerApiClient {
     filters?: TaskListFilters,
     signal?: RequestSignal,
   ) => Promise<TaskRecord[]>
+  listTasksCursor: (
+    filters: TaskCursorRequestFilters,
+    signal?: RequestSignal,
+  ) => Promise<TaskCursorListResponse>
   listTasksPage: (
     filters?: TaskListFilters,
     signal?: RequestSignal,
   ) => Promise<TaskListPageResponse>
   listTaskTemplates: (signal?: RequestSignal) => Promise<TaskTemplateRecord[]>
+  getTaskReadModel: (
+    filters: TaskReadModelRequestFilters,
+    signal?: RequestSignal,
+  ) => Promise<TaskReadModelResponse>
   removeTaskTemplate: (templateId: string) => Promise<void>
   moveTaskToPersonal: (
     taskId: string,
@@ -296,6 +325,16 @@ export function createPlannerApiClient(
         signal,
       })
     },
+    async listTasksCursor(filters, signal) {
+      const validatedFilters = taskCursorListFiltersSchema.parse(filters)
+
+      return request({
+        path: '/api/v1/tasks/cursor',
+        query: validatedFilters,
+        responseSchema: taskCursorListResponseSchema,
+        signal,
+      })
+    },
     async listTasksPage(filters = {}, signal) {
       const validatedFilters = taskListFiltersSchema.parse(filters)
 
@@ -303,6 +342,23 @@ export function createPlannerApiClient(
         path: '/api/v1/tasks/page',
         query: validatedFilters,
         responseSchema: taskListPageResponseSchema,
+        signal,
+      })
+    },
+    async getTaskReadModel(filters, signal) {
+      const validatedFilters = taskReadModelFiltersSchema.parse(filters)
+
+      return request({
+        path: '/api/v1/tasks/read-model',
+        query: validatedFilters,
+        responseSchema: taskReadModelResponseSchema,
+        signal,
+      })
+    },
+    async getTask(taskId, signal) {
+      return request({
+        path: `/api/v1/tasks/${encodeURIComponent(taskId)}`,
+        responseSchema: taskRecordSchema,
         signal,
       })
     },

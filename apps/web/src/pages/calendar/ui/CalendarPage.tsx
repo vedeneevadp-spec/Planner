@@ -13,7 +13,11 @@ import {
 } from '@/entities/task'
 import { TaskCard } from '@/entities/task/ui'
 import { useUploadedIconAssets } from '@/features/emoji-library'
-import { usePlanner } from '@/features/planner'
+import {
+  toPlannerTask,
+  usePlanner,
+  usePlannerTaskCursor,
+} from '@/features/planner'
 import { useSelfCarePlan, useSelfCareSettings } from '@/features/self-care'
 import {
   type SessionReadiness,
@@ -661,10 +665,6 @@ export function CalendarPage() {
   const [periodTransition, setPeriodTransition] =
     useState<CalendarPeriodDirection | null>(null)
   const createTaskRequestId = searchParams.get(TASK_CREATE_SEARCH_PARAM)
-  const selectedTask = useMemo(
-    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
-    [selectedTaskId, tasks],
-  )
   const taskComposerDraft = useMemo<TaskComposerDraft | null>(
     () =>
       createTaskRequestId
@@ -675,10 +675,6 @@ export function CalendarPage() {
         : null,
     [anchorDate, createTaskRequestId],
   )
-  const workspaceUsersQuery = useWorkspaceUsers({
-    enabled: Boolean(selectedTask && isSharedWorkspace),
-  })
-  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const weekDateKeys = useMemo(() => getWeekDateKeys(anchorDate), [anchorDate])
   const scheduleDateKeys = useMemo(
     () => getScheduleDateKeys(anchorDate),
@@ -712,6 +708,35 @@ export function CalendarPage() {
       startDateKey: weekDateKeys[0] ?? anchorDate,
     }
   }, [anchorDate, scheduleDateKeys, viewMode, weekDateKeys])
+  const calendarTaskRangeQuery = usePlannerTaskCursor(
+    {
+      dateFrom: addDateDays(visibleDateRange.startDateKey, -1),
+      dateMode: 'planned',
+      dateTo: addDateDays(visibleDateRange.endDateKey, 1),
+      direction: 'asc',
+      limit: 500,
+      scope: 'all',
+    },
+    { enabled: Boolean(session?.workspaceId) },
+  )
+  const plannerCalendarTasks = useMemo<Task[]>(() => {
+    const tasksById = new Map(tasks.map((task) => [task.id, task]))
+
+    for (const task of calendarTaskRangeQuery.data?.items ?? []) {
+      tasksById.set(task.id, toPlannerTask(task, plannerTimeZone))
+    }
+
+    return [...tasksById.values()]
+  }, [calendarTaskRangeQuery.data?.items, plannerTimeZone, tasks])
+  const selectedTask = useMemo(
+    () =>
+      plannerCalendarTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [plannerCalendarTasks, selectedTaskId],
+  )
+  const workspaceUsersQuery = useWorkspaceUsers({
+    enabled: Boolean(selectedTask && isSharedWorkspace),
+  })
+  const workspaceUsers = workspaceUsersQuery.data?.users ?? []
   const isSelfCareCalendarEnabled = session?.workspace.kind === 'personal'
   const selfCareSettingsQuery = useSelfCareSettings({
     enabled: isSelfCareCalendarEnabled,
@@ -792,16 +817,16 @@ export function CalendarPage() {
   )
   const calendarTasks = useMemo<CalendarDisplayTask[]>(
     () => [
-      ...tasks,
+      ...plannerCalendarTasks,
       ...buildRecurringGhostTasks(
-        tasks,
+        plannerCalendarTasks,
         visibleDateRange.startDateKey,
         visibleDateRange.endDateKey,
         todayKey,
       ),
       ...selfCareCalendarTasks,
     ],
-    [selfCareCalendarTasks, tasks, todayKey, visibleDateRange],
+    [plannerCalendarTasks, selfCareCalendarTasks, todayKey, visibleDateRange],
   )
   const monthLoad = useMemo(
     () => buildCalendarMonthLoad(calendarTasks, anchorDate),
@@ -832,12 +857,19 @@ export function CalendarPage() {
       ? ('offline' as const)
       : calendarBlockingState === null &&
           (isCalendarRestoring ||
+            (calendarTaskRangeQuery.isPending &&
+              calendarTaskRangeQuery.data === undefined) ||
             (isSelfCareCalendarLoading && !hasSelfCareCalendarData))
         ? ('info' as const)
         : calendarBlockingState === null &&
-            (hasTaskReadError || Boolean(selfCareCalendarError))
+            (hasTaskReadError ||
+              Boolean(calendarTaskRangeQuery.error) ||
+              Boolean(selfCareCalendarError))
           ? ('error' as const)
-          : null
+          : calendarBlockingState === null &&
+              calendarTaskRangeQuery.data?.truncated
+            ? ('info' as const)
+            : null
   const isCalendarAccessIssue = isCalendarAccessUnavailable(readiness)
   const calendarBannerTitle =
     calendarBannerKind === 'offline'
@@ -845,7 +877,9 @@ export function CalendarPage() {
       : calendarBannerKind === 'info'
         ? isCalendarRestoring
           ? 'Восстанавливаем доступ'
-          : 'Дополняем календарь'
+          : calendarTaskRangeQuery.data?.truncated
+            ? 'Большой диапазон загружен частично'
+            : 'Дополняем календарь'
         : isCalendarAccessIssue
           ? 'Нужно восстановить доступ'
           : 'Календарь обновился не полностью'
@@ -857,7 +891,9 @@ export function CalendarPage() {
       : calendarBannerKind === 'info'
         ? isCalendarRestoring
           ? 'Сохранённые данные доступны для просмотра. Изменения появятся после восстановления доступа.'
-          : 'Основные задачи уже доступны. Данные заботы о себе ещё загружаются.'
+          : calendarTaskRangeQuery.data?.truncated
+            ? `Показаны первые ${calendarTaskRangeQuery.data.returnedCount} из ${calendarTaskRangeQuery.data.totalCount} задач выбранного диапазона.`
+            : 'Основные задачи уже доступны. Остальные данные календаря ещё загружаются.'
         : isCalendarAccessIssue
           ? 'Сохранённые данные доступны для просмотра. Обновите доступ, чтобы снова получать изменения.'
           : 'Сохранённые данные остаются доступны. Повторите обновление.'
@@ -891,13 +927,15 @@ export function CalendarPage() {
   }, [calendarTasks, viewMode, weekDateKeys])
   const dayUnscheduledTasks = useMemo(() => {
     const scheduledTaskIds = new Set(
-      buildTimelineLayout(tasks, anchorDate).map((entry) => entry.task.id),
+      buildTimelineLayout(plannerCalendarTasks, anchorDate).map(
+        (entry) => entry.task.id,
+      ),
     )
 
-    return selectPlannedTasks(tasks, anchorDate).filter(
+    return selectPlannedTasks(plannerCalendarTasks, anchorDate).filter(
       (task) => !scheduledTaskIds.has(task.id),
     )
-  }, [anchorDate, tasks])
+  }, [anchorDate, plannerCalendarTasks])
   const timeRange = useMemo(
     () => getTimeRange(calendarTasks, timedDateKeys),
     [calendarTasks, timedDateKeys],
@@ -1001,7 +1039,10 @@ export function CalendarPage() {
   }
 
   function refreshCalendar() {
-    const refreshOperations: Array<Promise<unknown>> = [refresh()]
+    const refreshOperations: Array<Promise<unknown>> = [
+      refresh(),
+      calendarTaskRangeQuery.refetch(),
+    ]
 
     if (isSelfCareCalendarEnabled) {
       refreshOperations.push(selfCareSettingsQuery.refetch())
@@ -1723,7 +1764,7 @@ export function CalendarPage() {
                   </button>
                 </div>
                 <TaskCard
-                  allTasks={tasks}
+                  allTasks={plannerCalendarTasks}
                   task={selectedTask}
                   sphere={spheres.find(
                     (sphere) => sphere.id === selectedTask.projectId,
