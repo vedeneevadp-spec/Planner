@@ -482,6 +482,7 @@ export const taskReadModelSourceSchema = z.object({
 
 export const taskReadModelResponseSchema = z.object({
   eventCursor: z.number().int().nonnegative(),
+  historyNextCursor: z.string().nullable().optional().default(null),
   items: z.array(taskRecordSchema),
   returnedCount: z.number().int().nonnegative(),
   sources: z.object({

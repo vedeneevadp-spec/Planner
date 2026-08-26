@@ -114,6 +114,7 @@ void test('TaskService keeps the planner read model bounded for 10,000 tasks', a
   )
   assert.equal(snapshot.totalCount, 10_000)
   assert.equal(snapshot.eventCursor, 10_000)
+  assert.equal(snapshot.historyNextCursor, null)
   assert.deepEqual(snapshot.sources.active, {
     returnedCount: 500,
     totalCount: 10_000,
@@ -128,6 +129,56 @@ void test('TaskService keeps the planner read model bounded for 10,000 tasks', a
   assert.equal(repository.fullListCalls, 0)
   assert.equal(repository.latestEventCalls, 1)
   assert.equal(repository.cursorPageCalls, 4)
+})
+
+void test('TaskService continues closed-task history after the bounded snapshot cursor', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const closedTasks = await Promise.all(
+    ['First closed', 'Second closed', 'Third closed'].map(async (title) => {
+      const task = await service.createTask(PERSONAL_CONTEXT, {
+        ...BASE_INPUT,
+        title,
+      })
+
+      return service.setTaskStatus(
+        PERSONAL_CONTEXT,
+        task.id,
+        'done',
+        task.version,
+      )
+    }),
+  )
+  const snapshot = await service.getTaskReadModel(PERSONAL_CONTEXT, {
+    activeLimit: 10,
+    dateFrom: '2099-01-01',
+    dateTo: '2099-01-01',
+    historyLimit: 1,
+    rangeLimit: 10,
+  })
+
+  assert.equal(snapshot.sources.history.returnedCount, 1)
+  assert.equal(snapshot.sources.history.totalCount, 3)
+  assert.ok(snapshot.historyNextCursor)
+
+  const nextPage = await service.listTasksCursor(PERSONAL_CONTEXT, {
+    cursor: snapshot.historyNextCursor,
+    dateMode: 'relevant',
+    direction: 'desc',
+    limit: 2,
+    scope: 'closed',
+  })
+  const snapshotTaskId = snapshot.items[0]?.id
+
+  assert.equal(nextPage.returnedCount, 2)
+  assert.equal(nextPage.totalCount, 3)
+  assert.equal(
+    nextPage.items.some((task) => task.id === snapshotTaskId),
+    false,
+  )
+  assert.deepEqual(
+    [snapshotTaskId, ...nextPage.items.map((task) => task.id)].sort(),
+    closedTasks.map((task) => task.id).sort(),
+  )
 })
 
 void test('TaskService cursor does not duplicate or skip baseline tasks after a concurrent insert', async () => {

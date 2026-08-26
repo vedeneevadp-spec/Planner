@@ -118,9 +118,11 @@ export function TodayPage() {
       lastSyncedAt={taskLastSuccessfulSyncAt}
       showUnknownLastSync
     />
-  ) : taskReadModelCoverage?.truncated ? (
+  ) : taskReadModelCoverage &&
+    (taskReadModelCoverage.sources.active.truncated ||
+      taskReadModelCoverage.sources.range.truncated) ? (
     <PageStatusBanner
-      description={getTaskSnapshotCoverageDescription(taskReadModelCoverage)}
+      description={getTaskSnapshotCoverageDescription()}
       kind="info"
       title="Большой архив загружен частично"
     />
@@ -133,14 +135,8 @@ export function TodayPage() {
   )
 }
 
-function getTaskSnapshotCoverageDescription(
-  coverage: NonNullable<ReturnType<typeof usePlanner>['taskReadModelCoverage']>,
-): string {
-  if (coverage.sources.active.truncated || coverage.sources.range.truncated) {
-    return 'Показываем ограниченный snapshot. Все активные задачи сверх лимита и продолжение выбранного диапазона доступны через постраничную загрузку.'
-  }
-
-  return `Все активные задачи загружены. В истории показаны последние ${coverage.sources.history.returnedCount} из ${coverage.sources.history.totalCount} закрытых задач.`
+function getTaskSnapshotCoverageDescription(): string {
+  return 'Показываем ограниченный snapshot. Все активные задачи сверх лимита и продолжение выбранного диапазона доступны через постраничную загрузку.'
 }
 
 function resolveTodayBlockingState(input: {

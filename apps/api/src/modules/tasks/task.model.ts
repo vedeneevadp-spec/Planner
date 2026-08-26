@@ -84,6 +84,7 @@ export interface TaskReadModelSourceResult {
 
 export interface TaskReadModelResult {
   eventCursor: number
+  historyNextCursor: string | null
   items: StoredTaskRecord[]
   returnedCount: number
   sources: {

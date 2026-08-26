@@ -47,6 +47,8 @@ export interface SelfCareOfflineMutationConflict {
 
 export const SELF_CARE_OCCURRENCE_CLOSED_ERROR_CODE =
   'self_care_occurrence_closed'
+export const SELF_CARE_ORPHANED_DEPENDENCY_ERROR_CODE =
+  'self_care_orphaned_dependency'
 
 const LEGACY_SELF_CARE_OCCURRENCE_CLOSED_ERROR_MESSAGE =
   'The self-care occurrence was already completed or changed.'
@@ -779,6 +781,81 @@ export async function markSelfCareOfflineMutationConflicted(
       updatedAt: new Date().toISOString(),
     }),
   )
+}
+
+export async function markSelfCareOfflineMutationOrphaned(
+  mutationId: string,
+  workspaceId: string,
+  actorUserId: string,
+  expectedWriteGeneration: number,
+): Promise<boolean> {
+  const db = getSelfCareOfflineDatabase()
+
+  if (!db) {
+    return false
+  }
+
+  const repaired = await runSerializedWrite(queueWriteKey(workspaceId), () =>
+    db.transaction('rw', db.mutationQueue, async () => {
+      if (
+        !isSelfCareOfflineWorkspaceWriteGenerationCurrent(
+          workspaceId,
+          expectedWriteGeneration,
+        )
+      ) {
+        return false
+      }
+
+      const ownerMutations = await listOwnerMutations(
+        db,
+        workspaceId,
+        actorUserId,
+      )
+      const current = ownerMutations.find(
+        (mutation) => mutation.id === mutationId,
+      )
+
+      if (!current || !RETRYABLE_STATUSES.includes(current.status)) {
+        return false
+      }
+
+      const ownerMutationIds = new Set(
+        ownerMutations.map((mutation) => mutation.id),
+      )
+      const retainedDependencies = current.dependsOn.filter((dependency) =>
+        ownerMutationIds.has(dependency),
+      )
+
+      if (retainedDependencies.length === current.dependsOn.length) {
+        return false
+      }
+
+      await db.mutationQueue.put({
+        ...current,
+        conflict: {
+          actualVersion: null,
+          code: SELF_CARE_ORPHANED_DEPENDENCY_ERROR_CODE,
+          entityId: null,
+          entityType: null,
+          expectedVersion: null,
+        },
+        dependsOn: retainedDependencies,
+        lastError:
+          'Не удалось восстановить связь с предыдущим локальным изменением. Сверьте данные перед повторной отправкой.',
+        serverResult: null,
+        status: 'conflicted',
+        updatedAt: new Date().toISOString(),
+      })
+
+      return true
+    }),
+  )
+
+  if (repaired) {
+    notifyQueueListeners()
+  }
+
+  return repaired
 }
 
 export async function markSelfCareOfflineMutationAwaitingRefresh(

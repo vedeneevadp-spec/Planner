@@ -1359,6 +1359,10 @@ export function createComponentSchemas(): Record<
           minimum: 0,
           type: 'integer',
         },
+        historyNextCursor: {
+          nullable: true,
+          type: 'string',
+        },
         items: {
           items: {
             $ref: '#/components/schemas/TaskRecord',
@@ -1395,6 +1399,7 @@ export function createComponentSchemas(): Record<
       },
       required: [
         'eventCursor',
+        'historyNextCursor',
         'items',
         'returnedCount',
         'sources',

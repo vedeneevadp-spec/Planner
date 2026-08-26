@@ -216,15 +216,35 @@ describe('SelfCarePage states', () => {
     },
   )
 
-  it('keeps an online synchronization failure visible and actionable', () => {
+  it('shows progress while retrying an online synchronization failure', async () => {
+    let resolveRetry: (() => void) | null = null
+    const retry = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveRetry = resolve
+        }),
+    )
     mocks.useSelfCareOfflineQueue.mockReturnValue(
-      createOfflineQueue({ failed: 1, total: 1 }),
+      createOfflineQueue({ failed: 1, retry, total: 1 }),
     )
 
     renderPage()
 
-    expect(screen.getByText('Не все изменения синхронизированы')).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible()
+    expect(screen.getByText('Изменение не отправлено')).toBeVisible()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+
+    const pendingButton = await screen.findByRole('button', {
+      name: 'Отправляем…',
+    })
+    expect(pendingButton).toBeDisabled()
+    expect(retry).toHaveBeenCalledTimes(1)
+
+    resolveRetry!()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled()
+    })
   })
 
   it('shows one server-state action when an occurrence was already changed', () => {
@@ -248,9 +268,7 @@ describe('SelfCarePage states', () => {
       screen.queryByText('Нужно проверить изменения'),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Оставить данные сервера' }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Оставить серверные' }))
 
     expect(discardClosedOccurrenceConflicts).toHaveBeenCalledTimes(1)
   })
@@ -266,11 +284,12 @@ describe('SelfCarePage states', () => {
 
     renderPage()
 
-    expect(screen.getByText('Серверные данные уже изменились')).toBeVisible()
-    expect(screen.getByText('Нужно проверить изменения')).toBeVisible()
-    expect(screen.getByText(/1 изменение требует сверки/)).toBeVisible()
+    expect(screen.getByText('Нужно сверить изменения')).toBeVisible()
     expect(
-      screen.getByRole('button', { name: 'Обновить и повторить' }),
+      screen.getByText(/1 изменение требует сверки; 1 уже изменено/),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Сверить и отправить' }),
     ).toBeVisible()
   })
 

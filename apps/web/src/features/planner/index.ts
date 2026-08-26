@@ -5,7 +5,10 @@ export {
 } from './lib/offline-planner-store'
 export { usePlanner } from './lib/usePlanner'
 export { usePlannerApiClient } from './lib/usePlannerApiClient'
-export { usePlannerTaskCursor } from './lib/usePlannerTaskCursor'
+export {
+  usePlannerTaskCursor,
+  usePlannerTaskInfiniteCursor,
+} from './lib/usePlannerTaskCursor'
 export { toPlannerTask } from './model/planner-records'
 export { LazyNativePlannerWidgetSync as NativePlannerWidgetSync } from './ui/LazyNativePlannerWidgetSync'
 export { PlannerProvider, PlannerQueryProvider } from './ui/PlannerProvider'

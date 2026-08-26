@@ -18,10 +18,12 @@ import {
   getSelfCareTaskKey,
 } from '../lib/today-self-care'
 import { buildTodayTaskModel } from '../lib/today-task-model'
+import { useTodayClosedTaskPagination } from '../model/useTodayClosedTaskPagination'
 import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
 import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
+import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
 import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
@@ -41,6 +43,7 @@ export function PersonalTodayPage({ status }: { status?: ReactNode }) {
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
+    taskReadModelCoverage,
     updateTask,
   } = usePlanner()
   const { uploadedIcons } = useUploadedIconAssets()
@@ -60,15 +63,23 @@ export function PersonalTodayPage({ status }: { status?: ReactNode }) {
   const taskView = useTodayTaskView(searchParams)
   const taskCardVariant = taskView === 'list' ? 'compact' : 'card'
   const routineSummary = useTodayRoutineSummary(todayKey)
+  const closedTaskPagination = useTodayClosedTaskPagination({
+    initialCursor: taskReadModelCoverage?.historyNextCursor ?? null,
+    initialReturnedCount:
+      taskReadModelCoverage?.sources.history.returnedCount ?? 0,
+    plannerTimeZone,
+    tasks,
+    totalCount: taskReadModelCoverage?.sources.history.totalCount ?? 0,
+  })
   const taskModel = useMemo(
     () =>
       buildTodayTaskModel({
         plannerTimeZone,
-        tasks,
+        tasks: closedTaskPagination.tasks,
         todayKey,
         tomorrowKey,
       }),
-    [plannerTimeZone, tasks, todayKey, tomorrowKey],
+    [closedTaskPagination.tasks, plannerTimeZone, todayKey, tomorrowKey],
   )
   const selfCareModel = useMemo(
     () =>
@@ -147,6 +158,18 @@ export function PersonalTodayPage({ status }: { status?: ReactNode }) {
           setTaskStatus,
           updateTask,
         }}
+        closedTaskPagination={
+          <TodayClosedTaskPagination
+            errorMessage={closedTaskPagination.errorMessage}
+            hasMore={closedTaskPagination.hasMore}
+            isLoading={closedTaskPagination.isLoading}
+            loadedCount={closedTaskPagination.loadedCount}
+            totalCount={closedTaskPagination.totalCount}
+            onLoadMore={() => {
+              void closedTaskPagination.loadMore()
+            }}
+          />
+        }
         extras={{
           overdue: {
             itemCount: selfCareOverdueTaskCards.length,
@@ -173,7 +196,7 @@ export function PersonalTodayPage({ status }: { status?: ReactNode }) {
         model={taskModel}
         spheres={spheres}
         taskView={taskView}
-        tasks={tasks}
+        tasks={closedTaskPagination.tasks}
         todayKey={todayKey}
         tomorrowKey={tomorrowKey}
         uploadedIcons={uploadedIcons}

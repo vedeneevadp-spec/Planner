@@ -9,6 +9,7 @@ import {
   markSelfCareOfflineMutationAwaitingRefresh,
   markSelfCareOfflineMutationConflicted,
   markSelfCareOfflineMutationFailed,
+  markSelfCareOfflineMutationOrphaned,
   markSelfCareOfflineMutationSyncing,
   type SelfCareOfflineMutationConflict,
   type SelfCareOfflineMutationRecord,
@@ -104,6 +105,22 @@ async function drainSelfCareOfflineQueueOnce({
       actorUserId,
       generation,
     )
+    const orphanedMutation = findOrphanedRetryableMutation(mutations)
+
+    if (orphanedMutation) {
+      const repaired = await markSelfCareOfflineMutationOrphaned(
+        orphanedMutation.id,
+        workspaceId,
+        actorUserId,
+        generation,
+      )
+
+      if (repaired) {
+        result.conflicted += 1
+      }
+      continue
+    }
+
     const mutation = findNextDrainableMutation(mutations)
 
     if (!mutation) {
@@ -252,6 +269,20 @@ function findNextDrainableMutation(
       (mutation) =>
         RETRYABLE_MUTATION_STATUSES.has(mutation.status) &&
         !hasBlockingDependency(mutation, mutations),
+    ) ?? null
+  )
+}
+
+function findOrphanedRetryableMutation(
+  mutations: readonly SelfCareOfflineMutationRecord[],
+): SelfCareOfflineMutationRecord | null {
+  const mutationIds = new Set(mutations.map((mutation) => mutation.id))
+
+  return (
+    mutations.find(
+      (mutation) =>
+        RETRYABLE_MUTATION_STATUSES.has(mutation.status) &&
+        mutation.dependsOn.some((dependency) => !mutationIds.has(dependency)),
     ) ?? null
   )
 }

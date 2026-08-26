@@ -902,6 +902,7 @@ void describe('buildApiApp', () => {
     assert.equal(taskReadModel.items.length, 1)
     assert.equal(taskReadModel.totalCount, 1)
     assert.equal(taskReadModel.returnedCount, 1)
+    assert.equal(taskReadModel.historyNextCursor, null)
     assert.equal(taskReadModel.sources.active.totalCount, 0)
     assert.equal(taskReadModel.sources.range.totalCount, 1)
     assert.equal(taskReadModel.truncated, false)
