@@ -141,9 +141,9 @@
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.5",
     "@vitejs/plugin-react": "^6.0.5",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",
@@ -155,7 +155,7 @@
     "globals": "^17.9.0",
     "husky": "^9.1.7",
     "jsdom": "^27.4.0",
-    "knip": "^6.32.1",
+    "knip": "^6.32.2",
     "lint-staged": "^17.3.0",
     "prettier": "^3.9.6",
     "rollup-plugin-visualizer": "^7.0.1",
@@ -163,6 +163,6 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
     "vite": "^8.1.5",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
