@@ -47,6 +47,7 @@ import {
   getFirstErrorMessage,
   getFrequencyUnitOptions,
   getHeroHint,
+  getHiddenOverdueCleaningItems,
   getIsoWeekdayFromDate,
   getPostponedCleaningItems,
   getWeekdayLabel,
@@ -93,9 +94,16 @@ export function CleaningPage() {
   const zones = plan?.zones ?? []
   const todayItems = today?.items ?? []
   const generalItems = today?.generalItems ?? []
-  const postponedItems = getPostponedCleaningItems(plan, today, todayKey)
+  const overdueItems = getHiddenOverdueCleaningItems(today)
+  const overdueTaskIds = new Set(overdueItems.map((item) => item.task.id))
+  const postponedItems = getPostponedCleaningItems(
+    plan,
+    today,
+    todayKey,
+  ).filter((item) => !overdueTaskIds.has(item.task.id))
   const visibleTodayItems = filterItemsByFocusMode(todayItems, focusMode)
   const visibleGeneralItems = filterItemsByFocusMode(generalItems, focusMode)
+  const visibleOverdueItems = filterItemsByFocusMode(overdueItems, focusMode)
   const shouldShowGeneralSection = generalItems.length > 0
   const readiness = hasLoadedPlan
     ? planQuery.readiness
@@ -332,6 +340,34 @@ export function CleaningPage() {
                 }
               : undefined
           }
+        />
+      ) : null}
+
+      {overdueItems.length > 0 ? (
+        <TaskSection
+          title="Просрочено"
+          emptyMessage="Для выбранного режима просрочек нет."
+          items={visibleOverdueItems}
+          isBusy={isBusy}
+          showZone
+          onComplete={(taskId) => {
+            void completeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onPostpone={(taskId) => {
+            void postponeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onSkip={(taskId) => {
+            void skipTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
         />
       ) : null}
 
