@@ -1215,15 +1215,29 @@ describe('CleaningPage', () => {
     expect(screen.queryByText('Помыть окно')).not.toBeInTheDocument()
   })
 
-  it('does not render duplicate recommended or accumulated task sections', () => {
+  it('shows overdue tasks from other zones without duplicating current tasks', () => {
     const zone = createZone()
+    const otherZone: CleaningZoneRecord = {
+      ...createZone(),
+      dayOfWeek: 5,
+      id: 'zone-2',
+      title: 'Кухня',
+    }
     const dueItem = createCleaningItem(zone, {
       id: 'task-due',
       title: 'Протереть пол',
     })
-    const accumulatedItem = createCleaningItem(zone, {
+    dueItem.isOverdue = true
+
+    const overdueItem = createCleaningItem(otherZone, {
       id: 'task-accumulated',
       title: 'Помыть плинтусы',
+    })
+    overdueItem.isOverdue = true
+
+    const accumulatedNotOverdueItem = createCleaningItem(otherZone, {
+      id: 'task-accumulated-not-overdue',
+      title: 'Протереть двери',
     })
     const seasonalItem = createCleaningItem(zone, {
       id: 'task-seasonal',
@@ -1234,7 +1248,7 @@ describe('CleaningPage', () => {
       zoneId: null,
     })
     const today = createTodayResponse(
-      [accumulatedItem],
+      [dueItem, overdueItem, accumulatedNotOverdueItem],
       zone,
       [dueItem],
       [seasonalItem],
@@ -1268,7 +1282,29 @@ describe('CleaningPage', () => {
       screen.queryByRole('heading', { name: 'Сезонные' }),
     ).not.toBeInTheDocument()
     expect(screen.getAllByText('Протереть пол')).toHaveLength(1)
-    expect(screen.queryByText('Помыть плинтусы')).not.toBeInTheDocument()
+
+    const overdueSection = screen
+      .getByRole('heading', { name: 'Просрочено' })
+      .closest('section')
+
+    if (!overdueSection) {
+      throw new Error('Overdue cleaning section was not found.')
+    }
+
+    expect(within(overdueSection).getByText('Помыть плинтусы')).toBeVisible()
+    expect(within(overdueSection).getByText('Кухня')).toBeVisible()
+    expect(
+      within(overdueSection).getByRole('button', {
+        name: 'Отметить «Помыть плинтусы» выполненной',
+      }),
+    ).toBeVisible()
+    expect(
+      within(overdueSection).getByRole('button', { name: 'Отложить' }),
+    ).toBeVisible()
+    expect(
+      within(overdueSection).getByRole('button', { name: 'Пропустить' }),
+    ).toBeVisible()
+    expect(screen.queryByText('Протереть двери')).not.toBeInTheDocument()
     expect(screen.getAllByText('Полив')).toHaveLength(1)
   })
 

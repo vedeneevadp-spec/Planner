@@ -294,6 +294,22 @@ export function filterItemsByFocusMode(
   return items.filter((item) => item.task.priority === mode)
 }
 
+export function getHiddenOverdueCleaningItems(
+  today: CleaningTodayResponse | null | undefined,
+): CleaningTaskWithState[] {
+  if (!today) {
+    return []
+  }
+
+  const visibleTaskIds = new Set(
+    [...today.items, ...today.generalItems].map((item) => item.task.id),
+  )
+
+  return today.accumulatedItems.filter(
+    (item) => item.isOverdue && !visibleTaskIds.has(item.task.id),
+  )
+}
+
 export function getPostponedCleaningItems(
   plan: CleaningListResponse | undefined,
   today: CleaningTodayResponse | null | undefined,

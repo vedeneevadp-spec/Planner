@@ -143,7 +143,14 @@ function TaskSectionContent(
             </div>
           ) : null}
           <div className={styles.taskCardHeader}>
-            <h4>{item.task.title}</h4>
+            <div>
+              {props.showZone && !usesCompactHeader ? (
+                <p className={styles.taskZoneLabel}>
+                  {item.zone?.title ?? 'Без зоны'}
+                </p>
+              ) : null}
+              <h4>{item.task.title}</h4>
+            </div>
             {!usesCompactHeader ? (
               <div className={styles.taskCardHeaderActions}>
                 <span
