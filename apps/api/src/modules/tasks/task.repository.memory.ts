@@ -32,6 +32,7 @@ import {
   applyTaskStatus,
   applyTaskUpdate,
   createStoredTaskRecord,
+  getClosedTaskCursorPriority,
   markTaskDeleted,
   matchesTaskFilters,
   sortStoredTasks,
@@ -99,7 +100,7 @@ export class MemoryTaskRepository implements TaskRepository {
     )
     const totalCount = matchingTasks.length
     const orderedTasks = matchingTasks.sort((left, right) =>
-      compareTaskCursorOrder(left, right, query.direction),
+      compareTaskCursorOrder(left, right, query),
     )
     const afterCursor = query.anchor
       ? orderedTasks.filter((task) => compareTaskToCursor(task, query) > 0)
@@ -816,14 +817,24 @@ function matchesTaskCursorQuery(
 function compareTaskCursorOrder(
   left: StoredTaskRecord,
   right: StoredTaskRecord,
-  direction: TaskCursorPageQuery['direction'],
+  query: TaskCursorPageQuery,
 ): number {
+  if (query.scope === 'closed') {
+    const priorityComparison =
+      getClosedTaskCursorPriority(left.status) -
+      getClosedTaskCursorPriority(right.status)
+
+    if (priorityComparison !== 0) {
+      return priorityComparison
+    }
+  }
+
   return compareCursorValues(
     left.createdAt,
     left.id,
     right.createdAt,
     right.id,
-    direction,
+    query.direction,
   )
 }
 
@@ -835,6 +846,19 @@ function compareTaskToCursor(
 
   if (!anchor) {
     return 1
+  }
+
+  if (query.scope === 'closed') {
+    if (anchor.closedPriority === null) {
+      throw new Error('Closed task cursor requires a priority anchor.')
+    }
+
+    const priorityComparison =
+      getClosedTaskCursorPriority(task.status) - anchor.closedPriority
+
+    if (priorityComparison !== 0) {
+      return priorityComparison
+    }
   }
 
   return compareCursorValues(

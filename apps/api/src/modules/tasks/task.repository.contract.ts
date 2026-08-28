@@ -251,6 +251,7 @@ export function defineTaskRepositoryContractSuite(input: {
             {
               ...cursorQuery,
               anchor: {
+                closedPriority: null,
                 createdAt: lastTask.createdAt,
                 id: lastTask.id,
               },
@@ -294,6 +295,71 @@ export function defineTaskRepositoryContractSuite(input: {
             harness.personalContext,
           )) > 0,
         )
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('prioritizes archived tasks before completed history in closed cursor pages', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const archiveCandidate = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({ title: 'Archive priority' }),
+        })
+        const archivedTask = await harness.repository.updateStatus({
+          context: harness.personalContext,
+          expectedVersion: archiveCandidate.version,
+          status: 'archived',
+          taskId: archiveCandidate.id,
+        })
+
+        await new Promise((resolve) => setTimeout(resolve, 2))
+
+        const historyCandidate = await harness.repository.create({
+          context: harness.personalContext,
+          input: createTaskInput({ title: 'Newer completed history' }),
+        })
+        const completedTask = await harness.repository.updateStatus({
+          context: harness.personalContext,
+          expectedVersion: historyCandidate.version,
+          status: 'done',
+          taskId: historyCandidate.id,
+        })
+        const cursorQuery = {
+          dateMode: 'relevant' as const,
+          direction: 'desc' as const,
+          limit: 1,
+          scope: 'closed' as const,
+        }
+        const firstPage = await harness.repository.listCursorPageByWorkspace(
+          harness.personalContext,
+          cursorQuery,
+        )
+        const secondPage = await harness.repository.listCursorPageByWorkspace(
+          harness.personalContext,
+          {
+            ...cursorQuery,
+            anchor: {
+              closedPriority: 0,
+              createdAt: archivedTask.createdAt,
+              id: archivedTask.id,
+            },
+          },
+        )
+
+        assert.equal(firstPage.totalCount, 2)
+        assert.equal(firstPage.hasMore, true)
+        assert.deepEqual(
+          firstPage.items.map((task) => task.id),
+          [archivedTask.id],
+        )
+        assert.deepEqual(
+          secondPage.items.map((task) => task.id),
+          [completedTask.id],
+        )
+        assert.equal(secondPage.hasMore, false)
       } finally {
         await harness.cleanup()
       }

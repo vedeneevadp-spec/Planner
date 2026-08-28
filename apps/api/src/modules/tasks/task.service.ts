@@ -33,6 +33,7 @@ import type {
 } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
 import {
+  getClosedTaskCursorPriority,
   isActiveTaskStatus,
   normalizeTaskReminderOffsets,
   normalizeTaskSchedule,
@@ -82,7 +83,14 @@ export class TaskService {
     const nextCursor =
       result.hasMore && lastTask
         ? encodeTaskCursor(
-            { createdAt: lastTask.createdAt, id: lastTask.id },
+            {
+              closedPriority:
+                filters.scope === 'closed'
+                  ? getClosedTaskCursorPriority(lastTask.status)
+                  : null,
+              createdAt: lastTask.createdAt,
+              id: lastTask.id,
+            },
             filters,
           )
         : null
@@ -165,6 +173,9 @@ export class TaskService {
       history.hasMore && lastHistoryTask
         ? encodeTaskCursor(
             {
+              closedPriority: getClosedTaskCursorPriority(
+                lastHistoryTask.status,
+              ),
               createdAt: lastHistoryTask.createdAt,
               id: lastHistoryTask.id,
             },

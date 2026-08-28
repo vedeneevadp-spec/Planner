@@ -181,6 +181,91 @@ void test('TaskService continues closed-task history after the bounded snapshot 
   )
 })
 
+void test('TaskService loads the archive before trimming completed history', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const archiveCandidate = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Archive priority',
+  })
+  const archivedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    archiveCandidate.id,
+    'archived',
+    archiveCandidate.version,
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 2))
+
+  const historyCandidate = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Newer completed history',
+  })
+  const completedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    historyCandidate.id,
+    'done',
+    historyCandidate.version,
+  )
+  const snapshot = await service.getTaskReadModel(PERSONAL_CONTEXT, {
+    activeLimit: 10,
+    dateFrom: '2099-01-01',
+    dateTo: '2099-01-01',
+    historyLimit: 1,
+    rangeLimit: 10,
+  })
+
+  assert.deepEqual(snapshot.sources.history, {
+    returnedCount: 1,
+    totalCount: 2,
+    truncated: true,
+  })
+  assert.deepEqual(
+    snapshot.items.map((task) => task.id),
+    [archivedTask.id],
+  )
+  assert.ok(snapshot.historyNextCursor)
+
+  const nextPage = await service.listTasksCursor(PERSONAL_CONTEXT, {
+    cursor: snapshot.historyNextCursor,
+    dateMode: 'relevant',
+    direction: 'desc',
+    limit: 1,
+    scope: 'closed',
+  })
+
+  assert.deepEqual(
+    nextPage.items.map((task) => task.id),
+    [completedTask.id],
+  )
+  assert.equal(nextPage.nextCursor, null)
+
+  const legacyCursor = Buffer.from(
+    JSON.stringify({
+      createdAt: completedTask.createdAt,
+      dateFrom: null,
+      dateMode: 'relevant',
+      dateTo: null,
+      direction: 'desc',
+      id: completedTask.id,
+      scope: 'closed',
+      version: 1,
+    }),
+    'utf8',
+  ).toString('base64url')
+  const restartedPage = await service.listTasksCursor(PERSONAL_CONTEXT, {
+    cursor: legacyCursor,
+    dateMode: 'relevant',
+    direction: 'desc',
+    limit: 1,
+    scope: 'closed',
+  })
+
+  assert.deepEqual(
+    restartedPage.items.map((task) => task.id),
+    [archivedTask.id],
+  )
+})
+
 void test('TaskService cursor does not duplicate or skip baseline tasks after a concurrent insert', async () => {
   const service = new TaskService(new MemoryTaskRepository())
   const baselineTasks = await Promise.all(

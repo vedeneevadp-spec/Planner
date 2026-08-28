@@ -47,6 +47,7 @@ export interface TaskListPageResult {
 }
 
 export interface TaskCursorAnchor {
+  closedPriority: 0 | 1 | null
   createdAt: string
   id: string
 }

@@ -9,7 +9,7 @@ interface TaskCursorPayload extends TaskCursorAnchor {
   dateTo: string | null
   direction: TaskCursorFilters['direction']
   scope: TaskCursorFilters['scope']
-  version: 1
+  version: 1 | 2
 }
 
 export function encodeTaskCursor(
@@ -23,7 +23,7 @@ export function encodeTaskCursor(
     dateTo: filters.dateTo ?? null,
     direction: filters.direction,
     scope: filters.scope,
-    version: 1,
+    version: 2,
   }
 
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
@@ -42,8 +42,16 @@ export function decodeTaskCursor(
       Buffer.from(cursor, 'base64url').toString('utf8'),
     ) as Partial<TaskCursorPayload>
 
+    const isLegacyCursor =
+      payload.version === 1 && payload.closedPriority === undefined
+    const isCurrentCursor =
+      payload.version === 2 &&
+      (filters.scope === 'closed'
+        ? payload.closedPriority === 0 || payload.closedPriority === 1
+        : payload.closedPriority === null)
+
     if (
-      payload.version !== 1 ||
+      (!isLegacyCursor && !isCurrentCursor) ||
       typeof payload.createdAt !== 'string' ||
       Number.isNaN(Date.parse(payload.createdAt)) ||
       typeof payload.id !== 'string' ||
@@ -57,7 +65,14 @@ export function decodeTaskCursor(
       throw new Error('Cursor payload does not match the query.')
     }
 
+    if (isLegacyCursor && filters.scope === 'closed') {
+      // Version 1 sorted all closed tasks only by creation time. Restarting the
+      // first page avoids skipping archived tasks after archive-first ordering.
+      return undefined
+    }
+
     return {
+      closedPriority: payload.closedPriority ?? null,
       createdAt: payload.createdAt,
       id: payload.id,
     }

@@ -350,6 +350,10 @@ export function isActiveTaskStatus(status: TaskStatus): boolean {
   return status !== 'done' && status !== 'archived'
 }
 
+export function getClosedTaskCursorPriority(status: TaskStatus): 0 | 1 {
+  return status === 'archived' ? 0 : 1
+}
+
 export function compareStoredTasks(
   left: StoredTaskRecord,
   right: StoredTaskRecord,
