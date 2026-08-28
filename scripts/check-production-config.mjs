@@ -17,6 +17,7 @@ const [
   infrastructureBackupSource,
   backupDatabaseCheckSource,
   backupReadRoleMigration,
+  sharedTaskNotificationsBackupRoleMigration,
 ] = await Promise.all([
   readFile(new URL('../deploy/caddy/Caddyfile', import.meta.url), 'utf8'),
   readFile(
@@ -68,6 +69,13 @@ const [
   readFile(
     new URL(
       '../db/migrations/20260813_000096_backup_read_role.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+  readFile(
+    new URL(
+      '../db/migrations/20260828_000100_shared_task_notifications_backup_role.sql',
       import.meta.url,
     ),
     'utf8',
@@ -156,6 +164,14 @@ assert.match(backupDatabaseCheckSource, /has_function_privilege/)
 assert.match(backupReadRoleMigration, /planner_backup_select_all/)
 assert.match(backupReadRoleMigration, /session_user = %L/)
 assert.match(backupReadRoleMigration, /from planner_backup/)
+assert.match(
+  sharedTaskNotificationsBackupRoleMigration,
+  /grant select on table app\.shared_task_notifications to planner_backup/,
+)
+assert.match(
+  sharedTaskNotificationsBackupRoleMigration,
+  /revoke insert, update, delete, truncate, references, trigger/,
+)
 assert.match(
   productionEnvironmentExample,
   /^USER_BACKUP_RESTORE_DATABASE_URL=/m,
