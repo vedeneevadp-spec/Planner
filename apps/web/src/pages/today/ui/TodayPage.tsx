@@ -1,3 +1,5 @@
+import { useSearchParams } from 'react-router'
+
 import { usePlanner } from '@/features/planner'
 import { type SessionReadiness, usePlannerSession } from '@/features/session'
 import { useBrowserOffline } from '@/shared/lib/offline-sync'
@@ -10,6 +12,7 @@ import { TodayPageStateLayout } from './TodayPageLayout'
 type TodayBlockingState = 'error' | 'loading' | 'offline' | null
 
 export function TodayPage() {
+  const [searchParams] = useSearchParams()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const {
@@ -39,6 +42,7 @@ export function TodayPage() {
     readiness.reason === 'auth_restoring' ||
     readiness.reason === 'planner_pending'
   const hasAccessIssue = isTodayAccessUnavailable(readiness)
+  const openTaskId = normalizeOpenTaskId(searchParams.get('taskId'))
 
   function retryToday() {
     void Promise.allSettled([sessionQuery.refetch(), refresh()])
@@ -129,10 +133,16 @@ export function TodayPage() {
   ) : undefined
 
   return session?.workspace.kind === 'shared' ? (
-    <SharedTodayPage status={status} />
+    <SharedTodayPage openTaskId={openTaskId} status={status} />
   ) : (
-    <PersonalTodayPage status={status} />
+    <PersonalTodayPage openTaskId={openTaskId} status={status} />
   )
+}
+
+function normalizeOpenTaskId(value: string | null): string | null {
+  const normalizedValue = value?.trim() ?? ''
+
+  return /^[A-Za-z0-9_-]{1,128}$/.test(normalizedValue) ? normalizedValue : null
 }
 
 function getTaskSnapshotCoverageDescription(): string {

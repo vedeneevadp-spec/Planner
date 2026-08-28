@@ -8,6 +8,7 @@ import type {
   TaskCursorPageQuery,
   TaskListFilters,
   TaskReadContext,
+  UpdateTaskStatusCommand,
 } from './task.model.js'
 import { MemoryTaskRepository } from './task.repository.memory.js'
 import { TaskService } from './task.service.js'
@@ -178,6 +179,91 @@ void test('TaskService continues closed-task history after the bounded snapshot 
   assert.deepEqual(
     [snapshotTaskId, ...nextPage.items.map((task) => task.id)].sort(),
     closedTasks.map((task) => task.id).sort(),
+  )
+})
+
+void test('TaskService loads the archive before trimming completed history', async () => {
+  const service = new TaskService(new MemoryTaskRepository())
+  const archiveCandidate = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Archive priority',
+  })
+  const archivedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    archiveCandidate.id,
+    'archived',
+    archiveCandidate.version,
+  )
+
+  await new Promise((resolve) => setTimeout(resolve, 2))
+
+  const historyCandidate = await service.createTask(PERSONAL_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Newer completed history',
+  })
+  const completedTask = await service.setTaskStatus(
+    PERSONAL_CONTEXT,
+    historyCandidate.id,
+    'done',
+    historyCandidate.version,
+  )
+  const snapshot = await service.getTaskReadModel(PERSONAL_CONTEXT, {
+    activeLimit: 10,
+    dateFrom: '2099-01-01',
+    dateTo: '2099-01-01',
+    historyLimit: 1,
+    rangeLimit: 10,
+  })
+
+  assert.deepEqual(snapshot.sources.history, {
+    returnedCount: 1,
+    totalCount: 2,
+    truncated: true,
+  })
+  assert.deepEqual(
+    snapshot.items.map((task) => task.id),
+    [archivedTask.id],
+  )
+  assert.ok(snapshot.historyNextCursor)
+
+  const nextPage = await service.listTasksCursor(PERSONAL_CONTEXT, {
+    cursor: snapshot.historyNextCursor,
+    dateMode: 'relevant',
+    direction: 'desc',
+    limit: 1,
+    scope: 'closed',
+  })
+
+  assert.deepEqual(
+    nextPage.items.map((task) => task.id),
+    [completedTask.id],
+  )
+  assert.equal(nextPage.nextCursor, null)
+
+  const legacyCursor = Buffer.from(
+    JSON.stringify({
+      createdAt: completedTask.createdAt,
+      dateFrom: null,
+      dateMode: 'relevant',
+      dateTo: null,
+      direction: 'desc',
+      id: completedTask.id,
+      scope: 'closed',
+      version: 1,
+    }),
+    'utf8',
+  ).toString('base64url')
+  const restartedPage = await service.listTasksCursor(PERSONAL_CONTEXT, {
+    cursor: legacyCursor,
+    dateMode: 'relevant',
+    direction: 'desc',
+    limit: 1,
+    scope: 'closed',
+  })
+
+  assert.deepEqual(
+    restartedPage.items.map((task) => task.id),
+    [archivedTask.id],
   )
 })
 
@@ -688,6 +774,42 @@ class RecordingMemoryTaskRepository extends MemoryTaskRepository {
     return super.completeRecurring(command)
   }
 }
+
+class StatusRecordingMemoryTaskRepository extends MemoryTaskRepository {
+  readonly statusCommands: UpdateTaskStatusCommand[] = []
+
+  override updateStatus(command: UpdateTaskStatusCommand) {
+    this.statusCommands.push(command)
+    return super.updateStatus(command)
+  }
+}
+
+void test('TaskService emits ready for review only for a real status transition', async () => {
+  const repository = new StatusRecordingMemoryTaskRepository()
+  const service = new TaskService(repository)
+  const task = await service.createTask(SHARED_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Review transition',
+  })
+
+  const readyTask = await service.setTaskStatus(
+    SHARED_CONTEXT,
+    task.id,
+    'ready_for_review',
+    task.version,
+  )
+  const replayedTask = await service.setTaskStatus(
+    SHARED_CONTEXT,
+    task.id,
+    'ready_for_review',
+    readyTask.version,
+  )
+
+  assert.equal(readyTask.status, 'ready_for_review')
+  assert.equal(replayedTask.version, readyTask.version)
+  assert.equal(repository.statusCommands.length, 1)
+  assert.equal(repository.statusCommands[0]?.previousStatus, 'todo')
+})
 
 void test('TaskService moves only authored shared tasks to personal workspace', async () => {
   const service = new TaskService(new MemoryTaskRepository())

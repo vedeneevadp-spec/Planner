@@ -33,6 +33,7 @@ import type {
 } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
 import {
+  getClosedTaskCursorPriority,
   isActiveTaskStatus,
   normalizeTaskReminderOffsets,
   normalizeTaskSchedule,
@@ -82,7 +83,14 @@ export class TaskService {
     const nextCursor =
       result.hasMore && lastTask
         ? encodeTaskCursor(
-            { createdAt: lastTask.createdAt, id: lastTask.id },
+            {
+              closedPriority:
+                filters.scope === 'closed'
+                  ? getClosedTaskCursorPriority(lastTask.status)
+                  : null,
+              createdAt: lastTask.createdAt,
+              id: lastTask.id,
+            },
             filters,
           )
         : null
@@ -165,6 +173,9 @@ export class TaskService {
       history.hasMore && lastHistoryTask
         ? encodeTaskCursor(
             {
+              closedPriority: getClosedTaskCursorPriority(
+                lastHistoryTask.status,
+              ),
               createdAt: lastHistoryTask.createdAt,
               id: lastHistoryTask.id,
             },
@@ -344,6 +355,10 @@ export class TaskService {
       assertCanManageSharedTaskStatus(context, task, status)
       assertCanCompleteConfirmedSharedTask(context, task, status)
 
+      if (status === 'ready_for_review' && task.status === status) {
+        return task
+      }
+
       if (
         status === 'done' &&
         (isActiveTaskStatus(task.status) || task.status === 'done')
@@ -381,6 +396,7 @@ export class TaskService {
 
       const command: UpdateTaskStatusCommand = {
         context,
+        previousStatus: task.status,
         taskId,
         status,
       }
@@ -1052,7 +1068,11 @@ function canAssigneeChangeSharedTaskStatus(
   }
 
   if (status === 'ready_for_review') {
-    return task.status === 'todo' || task.status === 'in_progress'
+    return (
+      task.status === 'todo' ||
+      task.status === 'in_progress' ||
+      task.status === 'ready_for_review'
+    )
   }
 
   return false

@@ -8,6 +8,7 @@ export const internalAppTables = Object.freeze([
   'rate_limit_buckets',
   'schema_migrations',
   'self_care_command_ledger',
+  'shared_task_notifications',
   'sync_cursors',
 ])
 

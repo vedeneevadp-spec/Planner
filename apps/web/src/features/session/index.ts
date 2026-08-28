@@ -3,6 +3,10 @@ export {
   createAdminUsersApiClient,
 } from './lib/admin-users-api'
 export {
+  createPushNotificationsApiClient,
+  PushNotificationsApiError,
+} from './lib/push-notifications-api'
+export {
   createSharedWorkspace,
   deleteCurrentUserAccount,
   deleteSharedWorkspace,

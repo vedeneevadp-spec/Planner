@@ -71,6 +71,7 @@ interface TodayTaskSectionsProps {
   closedTaskPagination?: ReactNode
   extras?: TodayTaskSectionExtras
   model: TodayTaskModel
+  openTaskId?: string | null | undefined
   spheres: NonNullable<TaskSectionProps['spheres']>
   taskView: TodayTaskView
   tasks: Task[]
@@ -137,6 +138,7 @@ interface RenderTaskSectionInput {
   actions: TodayTaskActions
   emptyMessage: string
   key: string
+  openTaskId?: string | null | undefined
   options?: TodayTaskSectionOptions
   sectionTasks: Task[]
   spheres: NonNullable<TaskSectionProps['spheres']>
@@ -153,6 +155,7 @@ function renderTaskSection({
   actions,
   emptyMessage,
   key,
+  openTaskId,
   options = {},
   sectionTasks,
   spheres,
@@ -201,6 +204,7 @@ function renderTaskSection({
       todayKey={todayKey}
       tomorrowKey={tomorrowKey}
       tone={options.tone ?? 'default'}
+      openTaskId={openTaskId}
       onRemove={(taskId) => {
         void actions.removeTask(taskId)
       }}
@@ -230,6 +234,7 @@ export function TodayTaskSections({
   closedTaskPagination,
   extras = {},
   model,
+  openTaskId,
   spheres,
   taskView,
   tasks,
@@ -251,6 +256,7 @@ export function TodayTaskSections({
   })
   const common = {
     actions,
+    openTaskId,
     spheres,
     taskView,
     tasks,

@@ -41,7 +41,12 @@ void test('processDueReminders sends self-care push and marks it delivered', asy
     path: '/self-care',
     selfCareItemId: reminder.itemId,
     type: 'self-care-reminder',
+    workspaceId: reminder.workspaceId,
   })
+  assert.equal(
+    sentMessages[0]?.message.notificationTag,
+    `self-care-reminder:${reminder.id}`,
+  )
 })
 
 void test('processDueReminders releases claim when push should retry', async () => {

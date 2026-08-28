@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 
+test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.14' } })
+
 function createE2eUser(prefix: string) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -87,11 +89,22 @@ test('keeps the personal Today flow intact after the refactor', async ({
   await page
     .getByRole('button', { name: `Действия с задачей ${tomorrowTask}` })
     .click()
+  const scheduleSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      /^\/api\/v1\/tasks\/[^/]+\/schedule$/.test(
+        new URL(response.url()).pathname,
+      ) &&
+      response.ok(),
+  )
   await page.getByRole('menuitem', { name: 'На завтра' }).click()
+  await scheduleSaved
 
-  await expect(
-    page.getByRole('button', { exact: true, name: 'Завтра' }),
-  ).toBeVisible()
+  const tomorrowSection = page
+    .getByRole('button', { exact: true, name: 'Завтра' })
+    .locator('xpath=ancestor::section[1]')
+
+  await expect(tomorrowSection.getByText(tomorrowTask)).toBeVisible()
 
   await createTodayTask(page, completedTask)
 
@@ -99,7 +112,11 @@ test('keeps the personal Today flow intact after the refactor', async ({
     .getByRole('button', { exact: true, name: 'Сегодня' })
     .locator('xpath=ancestor::section[1]')
 
-  await todaySection.getByRole('button', { name: 'Завершить задачу' }).click()
+  await todaySection
+    .getByRole('article')
+    .filter({ hasText: completedTask })
+    .getByRole('button', { name: 'Завершить задачу' })
+    .click()
 
   const doneTodayToggle = page.getByRole('button', {
     exact: true,
@@ -115,7 +132,14 @@ test('keeps the personal Today flow intact after the refactor', async ({
   await expect(page.getByText(completedTask)).toBeVisible()
 
   await page.getByRole('button', { name: 'Открыть антиперегруз' }).click()
+  const preferencesSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      new URL(response.url()).pathname === '/api/v1/preferences' &&
+      response.ok(),
+  )
   await page.getByRole('button', { name: /Минимум/ }).click()
+  await preferencesSaved
   await page.reload()
   await page.getByRole('button', { name: 'Открыть антиперегруз' }).click()
   await expect(page.getByRole('button', { name: /Минимум/ })).toHaveAttribute(

@@ -1,4 +1,4 @@
-import { type Kysely, type Selectable } from 'kysely'
+import { type Kysely, type Selectable, sql } from 'kysely'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
 import {
@@ -27,15 +27,34 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
       this.db,
       session.auth,
       async (trx) => {
+        if (session.auth) {
+          await sql`
+            select app.claim_push_device_registration(
+              cast(${input.platform} as app.push_platform),
+              ${input.installationId},
+              ${input.token}
+            )
+          `.execute(trx)
+        } else {
+          await trx
+            .deleteFrom('app.push_devices')
+            .where('platform', '=', input.platform)
+            .where('user_id', '!=', session.actorUserId)
+            .where((expressionBuilder) =>
+              expressionBuilder.or([
+                expressionBuilder('installation_id', '=', input.installationId),
+                expressionBuilder('token', '=', input.token),
+              ]),
+            )
+            .execute()
+        }
+
         await trx
-          .updateTable('app.push_devices')
-          .set({
-            deleted_at: new Date(),
-          })
+          .deleteFrom('app.push_devices')
           .where('platform', '=', input.platform)
           .where('token', '=', input.token)
           .where('installation_id', '!=', input.installationId)
-          .where('deleted_at', 'is', null)
+          .where('user_id', '=', session.actorUserId)
           .execute()
 
         const row = await trx
@@ -82,14 +101,10 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
       session.auth,
       async (trx) => {
         await trx
-          .updateTable('app.push_devices')
-          .set({
-            deleted_at: new Date(),
-          })
+          .deleteFrom('app.push_devices')
           .where('installation_id', '=', installationId)
           .where('platform', '=', 'android')
           .where('user_id', '=', session.actorUserId)
-          .where('workspace_id', '=', session.workspaceId)
           .where('deleted_at', 'is', null)
           .execute()
       },
@@ -108,7 +123,6 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
           .selectFrom('app.push_devices')
           .select('token')
           .where('user_id', '=', resolveRecipientUserId(recipient))
-          .where('workspace_id', '=', recipient.workspaceId)
           .where('deleted_at', 'is', null)
           .orderBy('last_registered_at', 'desc')
           .execute(),
@@ -131,11 +145,11 @@ export class PostgresPushNotificationsRepository implements PushNotificationsRep
       recipient ? resolveRecipientAuth(recipient) : null,
       (executor) =>
         executor
-          .updateTable('app.push_devices')
-          .set({
-            deleted_at: new Date(),
-          })
+          .deleteFrom('app.push_devices')
           .where('token', 'in', [...tokens])
+          .$if(Boolean(recipient), (query) =>
+            query.where('user_id', '=', resolveRecipientUserId(recipient!)),
+          )
           .where('deleted_at', 'is', null)
           .execute(),
       recipient ? resolveRecipientActorOverride(recipient) : undefined,

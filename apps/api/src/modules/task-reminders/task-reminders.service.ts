@@ -32,7 +32,9 @@ export class TaskRemindersService {
               path: '/today',
               taskId: reminder.taskId,
               type: 'task-reminder',
+              workspaceId: reminder.workspaceId,
             },
+            notificationTag: `task-reminder:${reminder.id}`,
             title: 'Скоро задача',
           },
         )

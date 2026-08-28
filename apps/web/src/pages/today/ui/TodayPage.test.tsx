@@ -12,6 +12,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -783,6 +784,35 @@ describe('TodayPage', () => {
     expect(
       screen.getByRole('button', { name: 'Остальные задачи' }),
     ).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('opens a task targeted by the notification deep link', async () => {
+    const todayKey = getDateKey(new Date())
+
+    renderTodayPage({
+      initialEntry: '/today?taskId=target-task',
+      kind: 'shared',
+      tasks: [
+        createTask({
+          id: 'today-task',
+          plannedDate: todayKey,
+          title: 'Задача на сегодня',
+        }),
+        createTask({
+          id: 'target-task',
+          title: 'Задача из уведомления',
+        }),
+      ],
+    })
+
+    expect(
+      screen.getByRole('button', { name: 'Остальные задачи' }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Карточка задачи',
+    })
+
+    expect(within(dialog).getByText('Задача из уведомления')).toBeVisible()
   })
 
   it('starts other tasks collapsed when tomorrow is visible before it', () => {

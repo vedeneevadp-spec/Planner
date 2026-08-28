@@ -249,6 +249,7 @@ function buildFcmSendRequestBody(
         notification: {
           channel_id: PUSH_NOTIFICATION_CHANNEL_ID,
           icon: PUSH_NOTIFICATION_ICON,
+          ...(message.notificationTag ? { tag: message.notificationTag } : {}),
         },
         priority: 'HIGH',
       },

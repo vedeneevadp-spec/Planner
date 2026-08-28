@@ -67,6 +67,25 @@ export function useUpdateUserPreferences() {
                   ...(input.lastSeenTimeZone !== undefined
                     ? { lastSeenTimeZone: input.lastSeenTimeZone }
                     : {}),
+                  ...(input.sharedTaskAssignedNotificationsEnabled !== undefined
+                    ? {
+                        sharedTaskAssignedNotificationsEnabled:
+                          input.sharedTaskAssignedNotificationsEnabled,
+                      }
+                    : {}),
+                  ...(input.sharedTaskCreatedNotificationsEnabled !== undefined
+                    ? {
+                        sharedTaskCreatedNotificationsEnabled:
+                          input.sharedTaskCreatedNotificationsEnabled,
+                      }
+                    : {}),
+                  ...(input.sharedTaskReadyForReviewNotificationsEnabled !==
+                  undefined
+                    ? {
+                        sharedTaskReadyForReviewNotificationsEnabled:
+                          input.sharedTaskReadyForReviewNotificationsEnabled,
+                      }
+                    : {}),
                   ...(input.timeZoneMode
                     ? { timeZoneMode: input.timeZoneMode }
                     : {}),

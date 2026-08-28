@@ -201,6 +201,9 @@ export function loadTaskRowsCursorPage(
   workspaceId: string,
   cursorQuery: TaskCursorPageQuery,
 ): Promise<TaskRow[]> {
+  const closedPriority = sql<number>`
+    case when app.tasks.status = 'archived' then 0 else 1 end
+  `
   let query = applyTaskCursorFilters(
     executor
       .selectFrom('app.tasks')
@@ -213,11 +216,37 @@ export function loadTaskRowsCursorPage(
   if (cursorQuery.anchor) {
     const comparison = cursorQuery.direction === 'asc' ? sql`>` : sql`<`
 
-    query = query.where(sql<boolean>`
-      (app.tasks.created_at, app.tasks.id)
-      ${comparison}
-      (${cursorQuery.anchor.createdAt}::timestamptz, ${cursorQuery.anchor.id}::uuid)
-    `)
+    if (cursorQuery.scope === 'closed') {
+      if (cursorQuery.anchor.closedPriority === null) {
+        throw new HttpError(
+          400,
+          'invalid_task_cursor',
+          'Closed task cursor requires a priority anchor.',
+        )
+      }
+
+      query = query.where(sql<boolean>`
+        (
+          ${closedPriority} > ${cursorQuery.anchor.closedPriority}
+          or (
+            ${closedPriority} = ${cursorQuery.anchor.closedPriority}
+            and (app.tasks.created_at, app.tasks.id)
+              ${comparison}
+              (${cursorQuery.anchor.createdAt}::timestamptz, ${cursorQuery.anchor.id}::uuid)
+          )
+        )
+      `)
+    } else {
+      query = query.where(sql<boolean>`
+        (app.tasks.created_at, app.tasks.id)
+        ${comparison}
+        (${cursorQuery.anchor.createdAt}::timestamptz, ${cursorQuery.anchor.id}::uuid)
+      `)
+    }
+  }
+
+  if (cursorQuery.scope === 'closed') {
+    query = query.orderBy(closedPriority, 'asc')
   }
 
   return query

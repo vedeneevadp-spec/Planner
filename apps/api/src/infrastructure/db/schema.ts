@@ -682,6 +682,9 @@ export interface AppUsersTable {
   id: Generated<string>
   last_seen_time_zone: string | null
   locale: string
+  shared_task_assigned_notifications_enabled: Generated<boolean>
+  shared_task_created_notifications_enabled: Generated<boolean>
+  shared_task_ready_for_review_notifications_enabled: Generated<boolean>
   time_zone_mode: Generated<'device' | 'manual' | 'workspace'>
   timezone: string
   updated_at: Generated<TimestampColumn>
@@ -927,6 +930,29 @@ export interface AppTaskRemindersTable {
   workspace_id: string
 }
 
+export interface AppSharedTaskNotificationsTable {
+  actor_user_id: string | null
+  attempt_count: Generated<number>
+  available_at: Generated<TimestampColumn>
+  canceled_at: TimestampColumn | null
+  claimed_at: TimestampColumn | null
+  created_at: Generated<TimestampColumn>
+  failed_at: TimestampColumn | null
+  id: Generated<string>
+  kind:
+    | 'shared_task_assigned'
+    | 'shared_task_created'
+    | 'shared_task_ready_for_review'
+  last_error: string | null
+  recipient_user_id: string
+  sent_at: TimestampColumn | null
+  source_event_id: string
+  task_id: string
+  updated_at: Generated<TimestampColumn>
+  version: Generated<number>
+  workspace_id: string
+}
+
 export interface AppRateLimitBucketsTable {
   bucket_key: string
   request_count: number
@@ -1023,6 +1049,7 @@ export interface DatabaseSchema {
   'app.self_care_exercise_details': AppSelfCareExerciseDetailsTable
   'app.self_care_item_alternatives': AppSelfCareItemAlternativesTable
   'app.self_care_items': AppSelfCareItemsTable
+  'app.shared_task_notifications': AppSharedTaskNotificationsTable
   'app.self_care_medical_details': AppSelfCareMedicalDetailsTable
   'app.self_care_measurement_details': AppSelfCareMeasurementDetailsTable
   'app.self_care_minimum_items': AppSelfCareMinimumItemsTable

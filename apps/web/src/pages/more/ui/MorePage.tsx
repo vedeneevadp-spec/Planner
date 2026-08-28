@@ -40,6 +40,7 @@ import {
 import { cx } from '@/shared/lib/classnames'
 import { useColorTheme } from '@/shared/lib/theme'
 import {
+  BellIcon,
   ChatIcon,
   DownloadIcon,
   EditIcon,
@@ -628,11 +629,18 @@ export function MorePage() {
           <span>{themeLabel}</span>
         </button>
         {session ? (
-          <MoreActionLink
-            icon={<MicIcon size={19} strokeWidth={2} />}
-            label="Голосовой помощник"
-            to="/voice-assistant/settings"
-          />
+          <>
+            <MoreActionLink
+              icon={<BellIcon size={19} strokeWidth={2} />}
+              label="Уведомления"
+              to="/notifications/settings"
+            />
+            <MoreActionLink
+              icon={<MicIcon size={19} strokeWidth={2} />}
+              label="Голосовой помощник"
+              to="/voice-assistant/settings"
+            />
+          </>
         ) : null}
       </section>
 

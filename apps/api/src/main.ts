@@ -90,6 +90,11 @@ import {
   SessionService,
 } from './modules/session/index.js'
 import {
+  PostgresSharedTaskNotificationsRepository,
+  SharedTaskNotificationsPoller,
+  SharedTaskNotificationsService,
+} from './modules/shared-task-notifications/index.js'
+import {
   PostgresTaskReminderRepository,
   TaskRemindersPoller,
   TaskRemindersService,
@@ -296,11 +301,21 @@ export function createApiKernel(
       selfCareRemindersService,
       app.log,
     )
+    const sharedTaskNotificationsService = new SharedTaskNotificationsService(
+      new PostgresSharedTaskNotificationsRepository(database.db),
+      pushNotificationsService,
+    )
+    const sharedTaskNotificationsPoller = new SharedTaskNotificationsPoller(
+      sharedTaskNotificationsService,
+      app.log,
+    )
 
     taskRemindersPoller.start()
     selfCareRemindersPoller.start()
+    sharedTaskNotificationsPoller.start()
     backgroundJobs.push(taskRemindersPoller)
     backgroundJobs.push(selfCareRemindersPoller)
+    backgroundJobs.push(sharedTaskNotificationsPoller)
   }
 
   return {

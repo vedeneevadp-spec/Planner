@@ -423,6 +423,7 @@ export class PostgresTaskRepository implements TaskRepository {
             actorUserId: command.context.actorUserId,
             eventType: 'task.created',
             payload: {
+              origin: 'manual',
               task: record,
             },
             taskId: task.id,
@@ -683,7 +684,7 @@ export class PostgresTaskRepository implements TaskRepository {
           await writeTaskMutationArtifacts(trx, {
             actorUserId: command.context.actorUserId,
             eventType: 'task.created',
-            payload: { task: nextRecord },
+            payload: { origin: 'recurrence', task: nextRecord },
             taskId: insertedTask.id,
             workspaceId: command.context.workspaceId,
           })
@@ -938,6 +939,7 @@ export class PostgresTaskRepository implements TaskRepository {
           actorUserId: command.context.actorUserId,
           eventType: 'task.created',
           payload: {
+            origin: 'next_stage',
             task: nextTask,
           },
           taskId: nextTask.id,
@@ -1701,6 +1703,7 @@ export class PostgresTaskRepository implements TaskRepository {
           actorUserId: command.context.actorUserId,
           eventType: 'task.status_changed',
           payload: {
+            previousStatus: command.previousStatus ?? null,
             status: record.status,
             version: record.version,
           },

@@ -82,8 +82,28 @@ void test('PostgresPushNotificationsRepository registers devices under RLS auth 
     ])
     assert.deepEqual(await repository.listActiveTokens(otherSession), [])
 
-    await repository.deactivateTokens([`fcm-token-${actorUserId}`], session)
+    const reassignedDevice = await repository.upsertDevice(otherSession, {
+      installationId: `android-${actorUserId}`,
+      platform: 'android',
+      token: `fcm-token-${otherActorUserId}`,
+    })
+
+    assert.equal(reassignedDevice.userId, otherActorUserId)
+    assert.equal(reassignedDevice.workspaceId, otherWorkspace.workspaceId)
     assert.deepEqual(await repository.listActiveTokens(session), [])
+    assert.deepEqual(await repository.listActiveTokens(otherSession), [
+      `fcm-token-${otherActorUserId}`,
+    ])
+
+    await repository.removeDevice(session, `android-${actorUserId}`)
+    assert.deepEqual(await repository.listActiveTokens(otherSession), [
+      `fcm-token-${otherActorUserId}`,
+    ])
+    await repository.deactivateTokens(
+      [`fcm-token-${otherActorUserId}`],
+      otherSession,
+    )
+    assert.deepEqual(await repository.listActiveTokens(otherSession), [])
 
     await repository.upsertDevice(session, {
       installationId: `android-${actorUserId}`,

@@ -35,6 +35,7 @@ export interface TaskSectionProps {
   tomorrowKey: string
   tone?: 'default' | 'warning' | 'success'
   isTaskPending?: ((taskId: string) => boolean) | undefined
+  openTaskId?: string | null | undefined
   onCreateNextStage?:
     | ((
         taskId: string,
@@ -74,6 +75,7 @@ export function TaskSection({
   tomorrowKey,
   tone = 'default',
   isTaskPending,
+  openTaskId,
   onCreateNextStage,
   onCopyToPersonal,
   onDetachFromChain,
@@ -83,7 +85,12 @@ export function TaskSection({
   onUpdate,
   onRemove,
 }: TaskSectionProps) {
-  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed)
+  const containsOpenTask = Boolean(
+    openTaskId && tasks.some((task) => task.id === openTaskId),
+  )
+  const [isCollapsed, setIsCollapsed] = useState(
+    defaultCollapsed && !containsOpenTask,
+  )
   const [openActionMenuTaskId, setOpenActionMenuTaskId] = useState<
     string | null
   >(null)
@@ -169,6 +176,7 @@ export function TaskSection({
                   uploadedIcons={uploadedIcons}
                   workspaceUsers={workspaceUsers}
                   tone={tone}
+                  openViewer={task.id === openTaskId}
                   onCreateNextStage={onCreateNextStage}
                   onCopyToPersonal={onCopyToPersonal}
                   onDetachFromChain={onDetachFromChain}

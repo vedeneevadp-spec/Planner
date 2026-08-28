@@ -83,12 +83,7 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
   ): Promise<void> {
     const device = this.findByInstallation('android', installationId)
 
-    if (
-      !device ||
-      device.userId !== session.actorUserId ||
-      device.workspaceId !== session.workspaceId ||
-      device.deletedAt
-    ) {
+    if (!device || device.userId !== session.actorUserId || device.deletedAt) {
       return Promise.resolve()
     }
 
@@ -111,8 +106,7 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
         .filter(
           (device) =>
             device.deletedAt === null &&
-            device.userId === resolveRecipientUserId(recipient) &&
-            device.workspaceId === recipient.workspaceId,
+            device.userId === resolveRecipientUserId(recipient),
         )
         .sort((left, right) =>
           right.lastRegisteredAt.localeCompare(left.lastRegisteredAt),
@@ -123,7 +117,7 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
 
   deactivateTokens(
     tokens: readonly string[],
-    _recipient?: PushNotificationRecipient | PushNotificationSession,
+    recipient?: PushNotificationRecipient | PushNotificationSession,
   ): Promise<void> {
     if (tokens.length === 0) {
       return Promise.resolve()
@@ -133,7 +127,11 @@ export class MemoryPushNotificationsRepository implements PushNotificationsRepos
     const invalidTokens = new Set(tokens)
 
     for (const [id, device] of this.devices.entries()) {
-      if (device.deletedAt || !invalidTokens.has(device.token)) {
+      if (
+        device.deletedAt ||
+        !invalidTokens.has(device.token) ||
+        (recipient && device.userId !== resolveRecipientUserId(recipient))
+      ) {
         continue
       }
 

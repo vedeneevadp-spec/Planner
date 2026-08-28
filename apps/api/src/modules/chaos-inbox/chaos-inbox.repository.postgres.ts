@@ -322,7 +322,7 @@ export class PostgresChaosInboxRepository implements ChaosInboxRepository {
           await writeTaskMutationArtifacts(trx, {
             actorUserId: command.context.actorUserId,
             eventType: 'task.created',
-            payload: { task: taskRecord },
+            payload: { origin: 'chaos_conversion', task: taskRecord },
             taskId: task.id,
             workspaceId: command.context.workspaceId,
           })

@@ -47,6 +47,7 @@ export interface TaskListPageResult {
 }
 
 export interface TaskCursorAnchor {
+  closedPriority: 0 | 1 | null
   createdAt: string
   id: string
 }
@@ -140,6 +141,7 @@ export interface CreateTaskCommand {
 
 export interface UpdateTaskStatusCommand {
   context: TaskWriteContext
+  previousStatus?: TaskStatus
   taskId: string
   status: TaskStatus
   expectedVersion?: number

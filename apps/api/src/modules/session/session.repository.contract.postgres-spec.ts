@@ -422,6 +422,9 @@ void test('PostgresSessionRepository updates user preferences under runtime RLS'
       }),
       {
         energyMode: 'minimum',
+        sharedTaskAssignedNotificationsEnabled: false,
+        sharedTaskCreatedNotificationsEnabled: false,
+        sharedTaskReadyForReviewNotificationsEnabled: false,
       },
     )
     const updatedSession = await repository.resolve({
@@ -435,10 +438,18 @@ void test('PostgresSessionRepository updates user preferences under runtime RLS'
       defaultTimeZone: null,
       energyMode: 'minimum',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: false,
+      sharedTaskCreatedNotificationsEnabled: false,
+      sharedTaskReadyForReviewNotificationsEnabled: false,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     })
     assert.equal(updatedSession.userPreferences.energyMode, 'minimum')
+    assert.equal(
+      updatedSession.userPreferences
+        .sharedTaskReadyForReviewNotificationsEnabled,
+      false,
+    )
   } finally {
     await cleanupUsers([userId])
   }

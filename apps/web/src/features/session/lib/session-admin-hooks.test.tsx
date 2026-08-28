@@ -274,6 +274,49 @@ describe('session admin hooks', () => {
     })
   })
 
+  it('optimistically updates shared task notification preferences', async () => {
+    const response = createDeferred<Response>()
+    fetchMock.mockReturnValueOnce(response.promise)
+
+    const { queryClient, wrapper } = createQueryWrapperWithClient()
+    queryClient.setQueryData(['planner', 'session'], createSessionResponse())
+    const { result } = renderHook(() => useUpdateUserPreferences(), {
+      wrapper,
+    })
+    let mutationPromise: ReturnType<typeof result.current.mutateAsync>
+
+    act(() => {
+      mutationPromise = result.current.mutateAsync({
+        sharedTaskReadyForReviewNotificationsEnabled: false,
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData<SessionResponse>(['planner', 'session'])
+          ?.userPreferences.sharedTaskReadyForReviewNotificationsEnabled,
+      ).toBe(false)
+    })
+
+    response.resolve(
+      jsonResponse({
+        calendarViewMode: 'week',
+        defaultTimeZone: null,
+        energyMode: 'normal',
+        lastSeenTimeZone: null,
+        sharedTaskAssignedNotificationsEnabled: true,
+        sharedTaskCreatedNotificationsEnabled: true,
+        sharedTaskReadyForReviewNotificationsEnabled: false,
+        timeZoneMode: 'device',
+        voiceAssistantEnabled: true,
+      }),
+    )
+
+    await act(async () => {
+      await mutationPromise
+    })
+  })
+
   it('updates profile data in the cached planner session', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
