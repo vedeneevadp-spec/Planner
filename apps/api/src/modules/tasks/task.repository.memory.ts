@@ -183,6 +183,7 @@ export class MemoryTaskRepository implements TaskRepository {
     this.appendTaskEvent(command, {
       eventType: 'task.created',
       payload: {
+        origin: 'manual',
         task,
       },
       taskId: task.id,
@@ -243,7 +244,7 @@ export class MemoryTaskRepository implements TaskRepository {
       this.tasks.set(nextTask.id, nextTask)
       this.appendTaskEvent(command, {
         eventType: 'task.created',
-        payload: { task: nextTask },
+        payload: { origin: 'recurrence', task: nextTask },
         taskId: nextTask.id,
       })
     }
@@ -332,6 +333,7 @@ export class MemoryTaskRepository implements TaskRepository {
     this.appendTaskEvent(command, {
       eventType: 'task.created',
       payload: {
+        origin: 'next_stage',
         task: nextTask,
       },
       taskId: nextTask.id,
@@ -564,6 +566,7 @@ export class MemoryTaskRepository implements TaskRepository {
     this.appendTaskEvent(command, {
       eventType: 'task.status_changed',
       payload: {
+        previousStatus: command.previousStatus ?? null,
         status: nextTask.status,
         version: nextTask.version,
       },

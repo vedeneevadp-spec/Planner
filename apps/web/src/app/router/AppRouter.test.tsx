@@ -38,6 +38,10 @@ vi.mock('@/pages/more', () => ({
   MorePage: () => <div>More page</div>,
 }))
 
+vi.mock('@/pages/notifications-settings', () => ({
+  NotificationsSettingsPage: () => <div>Notifications settings page</div>,
+}))
+
 vi.mock('@/pages/profile', () => ({
   ProfilePage: () => <div>Profile page</div>,
 }))
@@ -203,6 +207,24 @@ describe('AppRouter', () => {
     expect(
       await screen.findByText('Voice assistant settings page'),
     ).toBeVisible()
+  })
+
+  it('keeps notification settings available in shared workspaces', async () => {
+    mockUsePlannerSession.mockReturnValue({
+      data: {
+        workspace: {
+          kind: 'shared',
+        },
+      },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/notifications/settings']}>
+        <AppRouter />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Notifications settings page')).toBeVisible()
   })
 
   it('keeps contacts available in shared workspaces', async () => {

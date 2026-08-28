@@ -36,7 +36,9 @@ export class SelfCareRemindersService {
               path: '/self-care',
               selfCareItemId: reminder.itemId,
               type: 'self-care-reminder',
+              workspaceId: reminder.workspaceId,
             },
+            notificationTag: `self-care-reminder:${reminder.id}`,
             title: 'Забота о себе',
           },
         )

@@ -9,6 +9,8 @@ export interface TaskRemindersWorkerRuntimeConfig {
   firebasePush: FirebasePushConfig
   selfCareBatchSize: number
   selfCareIntervalMs: number
+  sharedTaskNotificationsBatchSize: number
+  sharedTaskNotificationsIntervalMs: number
   taskBatchSize: number
   taskIntervalMs: number
 }
@@ -66,6 +68,16 @@ export function createTaskRemindersWorkerRuntimeConfig(
       env.SELF_CARE_REMINDERS_INTERVAL_MS,
       taskIntervalMs,
       'SELF_CARE_REMINDERS_INTERVAL_MS',
+    ),
+    sharedTaskNotificationsBatchSize: readPositiveInteger(
+      env.SHARED_TASK_NOTIFICATIONS_BATCH_SIZE,
+      50,
+      'SHARED_TASK_NOTIFICATIONS_BATCH_SIZE',
+    ),
+    sharedTaskNotificationsIntervalMs: readPositiveInteger(
+      env.SHARED_TASK_NOTIFICATIONS_INTERVAL_MS,
+      5_000,
+      'SHARED_TASK_NOTIFICATIONS_INTERVAL_MS',
     ),
     taskBatchSize: readPositiveInteger(
       env.TASK_REMINDERS_BATCH_SIZE,

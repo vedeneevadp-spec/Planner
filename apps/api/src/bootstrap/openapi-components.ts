@@ -952,6 +952,15 @@ export function createComponentSchemas(): Record<
         energyMode: {
           $ref: '#/components/schemas/EnergyMode',
         },
+        sharedTaskAssignedNotificationsEnabled: {
+          type: 'boolean',
+        },
+        sharedTaskCreatedNotificationsEnabled: {
+          type: 'boolean',
+        },
+        sharedTaskReadyForReviewNotificationsEnabled: {
+          type: 'boolean',
+        },
         voiceAssistantEnabled: {
           type: 'boolean',
         },
@@ -1073,6 +1082,15 @@ export function createComponentSchemas(): Record<
         },
         energyMode: {
           $ref: '#/components/schemas/EnergyMode',
+        },
+        sharedTaskAssignedNotificationsEnabled: {
+          type: 'boolean',
+        },
+        sharedTaskCreatedNotificationsEnabled: {
+          type: 'boolean',
+        },
+        sharedTaskReadyForReviewNotificationsEnabled: {
+          type: 'boolean',
         },
         voiceAssistantEnabled: {
           type: 'boolean',

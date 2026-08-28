@@ -12,6 +12,7 @@ export type AppRouteId =
   | 'habitRedirect'
   | 'habitsRedirect'
   | 'more'
+  | 'notificationsSettings'
   | 'profile'
   | 'selfCare'
   | 'shopping'
@@ -122,6 +123,11 @@ export const appRouteDefinitions = [
   {
     id: 'more',
     path: '/more',
+    workspaceKinds: allWorkspaceKinds,
+  },
+  {
+    id: 'notificationsSettings',
+    path: '/notifications/settings',
     workspaceKinds: allWorkspaceKinds,
   },
   {

@@ -55,6 +55,7 @@ void describe('FirebasePushNotificationSender', () => {
       {
         body: 'Body',
         data: { taskId: 'task-1' },
+        notificationTag: 'shared-task-notification:notification-1',
         title: 'Title',
       },
     )
@@ -85,6 +86,7 @@ void describe('FirebasePushNotificationSender', () => {
             notification: {
               channel_id: 'chaotika-general',
               icon: 'ic_stat_chaotika',
+              tag: 'shared-task-notification:notification-1',
             },
             priority: 'HIGH',
           },

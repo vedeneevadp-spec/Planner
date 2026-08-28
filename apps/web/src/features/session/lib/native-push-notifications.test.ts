@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   register: vi.fn(),
   removeListener: vi.fn(),
   requestPermissions: vi.fn(),
+  unregister: vi.fn(),
 }))
 
 vi.mock('@capacitor/app', () => ({
@@ -49,6 +50,7 @@ vi.mock('@capacitor/push-notifications', () => ({
     createChannel: mocks.createChannel,
     register: mocks.register,
     requestPermissions: mocks.requestPermissions,
+    unregister: mocks.unregister,
   },
 }))
 
@@ -57,13 +59,18 @@ vi.mock('./push-notifications-api', () => ({
 }))
 
 import {
+  getNativePushPermissionStatus,
   isAndroidPushNotificationsRuntime,
   registerNativePushNotifications,
+  requestNativePushPermission,
+  resolvePushNotificationNavigation,
   unregisterStoredNativePushDevice,
 } from './native-push-notifications'
+import { getSelectedWorkspaceId } from './workspace-selection'
 
 describe('native push notifications', () => {
   beforeEach(() => {
+    window.localStorage.clear()
     mocks.isNativePlatform.mockReturnValue(true)
     mocks.getPlatform.mockReturnValue('android')
     mocks.addListener.mockResolvedValue({
@@ -76,6 +83,7 @@ describe('native push notifications', () => {
     mocks.preferencesSet.mockResolvedValue(undefined)
     mocks.register.mockResolvedValue(undefined)
     mocks.requestPermissions.mockResolvedValue({ receive: 'granted' })
+    mocks.unregister.mockResolvedValue(undefined)
     mocks.appGetInfo.mockResolvedValue({ version: '1.2.3' })
   })
 
@@ -98,6 +106,7 @@ describe('native push notifications', () => {
   it('registers Android push listeners and stores the device context', async () => {
     const listeners = new Map<string, PushListener>()
     const apiClient = createPushApiClient()
+    const navigate = vi.fn()
     mocks.addListener.mockImplementation(
       (
         event: string,
@@ -118,6 +127,7 @@ describe('native push notifications', () => {
     const cleanup = await registerNativePushNotifications({
       actorUserId: 'user-1',
       apiClient,
+      navigate,
       workspaceId: 'workspace-1',
     })
 
@@ -153,6 +163,21 @@ describe('native push notifications', () => {
       }),
     })
 
+    listeners.get('pushNotificationActionPerformed')?.({
+      notification: {
+        data: {
+          path: '/today',
+          taskId: 'task-2',
+          type: 'shared-task-assigned',
+          workspaceId: 'workspace-2',
+        },
+        id: 'notification-1',
+      },
+    } as never)
+
+    expect(getSelectedWorkspaceId('user-1')).toBe('workspace-2')
+    expect(navigate).toHaveBeenCalledWith('/today?taskId=task-2')
+
     await cleanup()
 
     expect(mocks.removeListener).toHaveBeenCalledTimes(4)
@@ -173,6 +198,99 @@ describe('native push notifications', () => {
     await cleanup()
 
     expect(mocks.removeListener).toHaveBeenCalledTimes(4)
+  })
+
+  it('reads and requests Android push permission before registering', async () => {
+    mocks.checkPermissions
+      .mockResolvedValueOnce({ receive: 'prompt' })
+      .mockResolvedValueOnce({ receive: 'prompt' })
+    mocks.requestPermissions.mockResolvedValueOnce({ receive: 'granted' })
+
+    await expect(getNativePushPermissionStatus()).resolves.toBe('prompt')
+    await expect(requestNativePushPermission()).resolves.toBe('granted')
+
+    expect(mocks.requestPermissions).toHaveBeenCalledTimes(1)
+    expect(mocks.register).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps native permission helpers inert outside Android', async () => {
+    mocks.isNativePlatform.mockReturnValue(false)
+
+    await expect(getNativePushPermissionStatus()).resolves.toBe('unavailable')
+    await expect(requestNativePushPermission()).resolves.toBe('unavailable')
+
+    expect(mocks.checkPermissions).not.toHaveBeenCalled()
+    expect(mocks.requestPermissions).not.toHaveBeenCalled()
+    expect(mocks.register).not.toHaveBeenCalled()
+  })
+
+  it('validates push paths and shared task identifiers', () => {
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/today',
+        taskId: 'task-1',
+        type: 'shared-task-ready-for-review',
+        workspaceId: 'workspace-2',
+      }),
+    ).toEqual({
+      path: '/today?taskId=task-1',
+      workspaceId: 'workspace-2',
+    })
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/today',
+        taskId: 'task-1',
+        type: 'task-reminder',
+        workspaceId: 'workspace-2',
+      }),
+    ).toEqual({
+      path: '/today?taskId=task-1',
+      workspaceId: 'workspace-2',
+    })
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/today',
+        taskId: 'task-1',
+        type: 'task-reminder',
+      }),
+    ).toEqual({ path: '/today?taskId=task-1' })
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/self-care',
+        type: 'self-care-reminder',
+        workspaceId: 'workspace-2',
+      }),
+    ).toEqual({
+      path: '/self-care',
+      workspaceId: 'workspace-2',
+    })
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/self-care',
+        type: 'self-care-reminder',
+      }),
+    ).toEqual({ path: '/self-care' })
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/today',
+        type: 'shared-task-created',
+        workspaceId: 'workspace-2',
+      }),
+    ).toBeNull()
+    expect(
+      resolvePushNotificationNavigation({
+        path: '//example.test',
+        taskId: 'task-1',
+        workspaceId: 'workspace-2',
+      }),
+    ).toBeNull()
+    expect(
+      resolvePushNotificationNavigation({
+        path: '/today',
+        taskId: '../task-1',
+        workspaceId: 'workspace-2',
+      }),
+    ).toBeNull()
   })
 
   it('unregisters a stored Android push device and clears local context', async () => {
@@ -198,9 +316,38 @@ describe('native push notifications', () => {
       workspaceId: 'workspace-1',
     })
     expect(apiClient.removeDevice).toHaveBeenCalledWith('installation-1')
+    expect(mocks.unregister).toHaveBeenCalledTimes(1)
     expect(mocks.preferencesRemove).toHaveBeenCalledWith({
       key: 'planner.push.registration-context',
     })
+  })
+
+  it('keeps stored context when both server and native cleanup fail', async () => {
+    const apiClient = createPushApiClient()
+    vi.mocked(apiClient.removeDevice).mockRejectedValueOnce(
+      new Error('server unavailable'),
+    )
+    mocks.createPushNotificationsApiClient.mockReturnValue(apiClient)
+    mocks.unregister.mockRejectedValueOnce(new Error('native unavailable'))
+    mocks.preferencesGet.mockResolvedValueOnce({
+      value: JSON.stringify({
+        actorUserId: 'stored-user',
+        installationId: 'installation-1',
+        workspaceId: 'workspace-1',
+      }),
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    try {
+      await unregisterStoredNativePushDevice({
+        accessToken: 'access-token',
+        apiBaseUrl: 'https://api.chaotika.test',
+      })
+    } finally {
+      warn.mockRestore()
+    }
+
+    expect(mocks.preferencesRemove).not.toHaveBeenCalled()
   })
 
   it('does not unregister push devices outside Android native runtime', async () => {

@@ -8,6 +8,7 @@ import type {
   TaskCursorPageQuery,
   TaskListFilters,
   TaskReadContext,
+  UpdateTaskStatusCommand,
 } from './task.model.js'
 import { MemoryTaskRepository } from './task.repository.memory.js'
 import { TaskService } from './task.service.js'
@@ -773,6 +774,42 @@ class RecordingMemoryTaskRepository extends MemoryTaskRepository {
     return super.completeRecurring(command)
   }
 }
+
+class StatusRecordingMemoryTaskRepository extends MemoryTaskRepository {
+  readonly statusCommands: UpdateTaskStatusCommand[] = []
+
+  override updateStatus(command: UpdateTaskStatusCommand) {
+    this.statusCommands.push(command)
+    return super.updateStatus(command)
+  }
+}
+
+void test('TaskService emits ready for review only for a real status transition', async () => {
+  const repository = new StatusRecordingMemoryTaskRepository()
+  const service = new TaskService(repository)
+  const task = await service.createTask(SHARED_CONTEXT, {
+    ...BASE_INPUT,
+    title: 'Review transition',
+  })
+
+  const readyTask = await service.setTaskStatus(
+    SHARED_CONTEXT,
+    task.id,
+    'ready_for_review',
+    task.version,
+  )
+  const replayedTask = await service.setTaskStatus(
+    SHARED_CONTEXT,
+    task.id,
+    'ready_for_review',
+    readyTask.version,
+  )
+
+  assert.equal(readyTask.status, 'ready_for_review')
+  assert.equal(replayedTask.version, readyTask.version)
+  assert.equal(repository.statusCommands.length, 1)
+  assert.equal(repository.statusCommands[0]?.previousStatus, 'todo')
+})
 
 void test('TaskService moves only authored shared tasks to personal workspace', async () => {
   const service = new TaskService(new MemoryTaskRepository())

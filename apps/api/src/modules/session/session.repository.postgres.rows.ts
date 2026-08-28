@@ -13,6 +13,9 @@ export interface SessionRow {
   defaultTimeZone: string | null
   energyMode: EnergyMode
   lastSeenTimeZone: string | null
+  sharedTaskAssignedNotificationsEnabled: boolean
+  sharedTaskCreatedNotificationsEnabled: boolean
+  sharedTaskReadyForReviewNotificationsEnabled: boolean
   timeZoneMode: 'device' | 'manual' | 'workspace'
   voiceAssistantEnabled: boolean
   actorDisplayName: string
@@ -103,6 +106,9 @@ export interface AppActorRow {
   defaultTimeZone: string | null
   energyMode: EnergyMode
   lastSeenTimeZone: string | null
+  sharedTaskAssignedNotificationsEnabled: boolean
+  sharedTaskCreatedNotificationsEnabled: boolean
+  sharedTaskReadyForReviewNotificationsEnabled: boolean
   timeZoneMode: 'device' | 'manual' | 'workspace'
   voiceAssistantEnabled: boolean
   displayName: string

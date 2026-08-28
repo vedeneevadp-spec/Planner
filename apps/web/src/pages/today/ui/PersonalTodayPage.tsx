@@ -28,7 +28,13 @@ import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
 import { TodayTaskSections } from './TodayTaskSections'
 
-export function PersonalTodayPage({ status }: { status?: ReactNode }) {
+export function PersonalTodayPage({
+  openTaskId,
+  status,
+}: {
+  openTaskId?: string | null | undefined
+  status?: ReactNode
+}) {
   const sessionQuery = usePlannerSession()
   const [searchParams] = useSearchParams()
   const updateUserPreferencesMutation = useUpdateUserPreferences()
@@ -194,6 +200,7 @@ export function PersonalTodayPage({ status }: { status?: ReactNode }) {
           },
         }}
         model={taskModel}
+        openTaskId={openTaskId}
         spheres={spheres}
         taskView={taskView}
         tasks={closedTaskPagination.tasks}

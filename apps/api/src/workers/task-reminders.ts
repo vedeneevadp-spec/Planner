@@ -14,6 +14,11 @@ import {
   SelfCareRemindersService,
 } from '../modules/self-care-reminders/index.js'
 import {
+  PostgresSharedTaskNotificationsRepository,
+  SharedTaskNotificationsPoller,
+  SharedTaskNotificationsService,
+} from '../modules/shared-task-notifications/index.js'
+import {
   PostgresTaskReminderRepository,
   TaskRemindersPoller,
   TaskRemindersService,
@@ -35,6 +40,10 @@ const taskRemindersService = new TaskRemindersService(
 )
 const selfCareRemindersService = new SelfCareRemindersService(
   new PostgresSelfCareReminderRepository(database.db),
+  pushNotificationsService,
+)
+const sharedTaskNotificationsService = new SharedTaskNotificationsService(
+  new PostgresSharedTaskNotificationsRepository(database.db),
   pushNotificationsService,
 )
 const logger = {
@@ -59,9 +68,19 @@ const selfCarePoller = new SelfCareRemindersPoller(
     unrefTimer: false,
   },
 )
+const sharedTaskNotificationsPoller = new SharedTaskNotificationsPoller(
+  sharedTaskNotificationsService,
+  logger,
+  {
+    batchSize: config.sharedTaskNotificationsBatchSize,
+    intervalMs: config.sharedTaskNotificationsIntervalMs,
+    unrefTimer: false,
+  },
+)
 
 poller.start()
 selfCarePoller.start()
+sharedTaskNotificationsPoller.start()
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
@@ -73,6 +92,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   console.log(`Stopping task reminders worker after ${signal}.`)
   await poller.stop()
   await selfCarePoller.stop()
+  await sharedTaskNotificationsPoller.stop()
   await destroyDatabaseConnection(database)
   process.exit(0)
 }

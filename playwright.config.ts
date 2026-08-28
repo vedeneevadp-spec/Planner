@@ -32,6 +32,7 @@ export default defineConfig({
         API_HOST: '127.0.0.1',
         API_PORT: apiPort,
         API_STORAGE_DRIVER: 'postgres',
+        API_TRUST_PROXY_HOPS: '1',
         AUTH_JWT_SECRET: 'planner-e2e-jwt-secret-with-at-least-32-chars',
         DATABASE_URL: databaseUrl,
         NODE_ENV: 'production',

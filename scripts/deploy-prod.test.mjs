@@ -318,6 +318,7 @@ test('repairs internal table and backup function grant drift', async () => {
     'rate_limit_buckets',
     'schema_migrations',
     'self_care_command_ledger',
+    'shared_task_notifications',
     'sync_cursors',
   ])
   assert.deepEqual(restrictedAppFunctionRoles, ['planner_backup', 'public'])

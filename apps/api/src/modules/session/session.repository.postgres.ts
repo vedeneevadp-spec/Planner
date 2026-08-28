@@ -882,6 +882,24 @@ export class PostgresSessionRepository implements SessionRepository {
       ...(input.lastSeenTimeZone !== undefined
         ? { last_seen_time_zone: input.lastSeenTimeZone }
         : {}),
+      ...(input.sharedTaskAssignedNotificationsEnabled !== undefined
+        ? {
+            shared_task_assigned_notifications_enabled:
+              input.sharedTaskAssignedNotificationsEnabled,
+          }
+        : {}),
+      ...(input.sharedTaskCreatedNotificationsEnabled !== undefined
+        ? {
+            shared_task_created_notifications_enabled:
+              input.sharedTaskCreatedNotificationsEnabled,
+          }
+        : {}),
+      ...(input.sharedTaskReadyForReviewNotificationsEnabled !== undefined
+        ? {
+            shared_task_ready_for_review_notifications_enabled:
+              input.sharedTaskReadyForReviewNotificationsEnabled,
+          }
+        : {}),
       ...(input.timeZoneMode ? { time_zone_mode: input.timeZoneMode } : {}),
       ...(input.voiceAssistantEnabled !== undefined
         ? { voice_assistant_enabled: input.voiceAssistantEnabled }
@@ -892,6 +910,9 @@ export class PostgresSessionRepository implements SessionRepository {
       'default_time_zone as defaultTimeZone',
       'energy_mode as energyMode',
       'last_seen_time_zone as lastSeenTimeZone',
+      'shared_task_assigned_notifications_enabled as sharedTaskAssignedNotificationsEnabled',
+      'shared_task_created_notifications_enabled as sharedTaskCreatedNotificationsEnabled',
+      'shared_task_ready_for_review_notifications_enabled as sharedTaskReadyForReviewNotificationsEnabled',
       'time_zone_mode as timeZoneMode',
       'voice_assistant_enabled as voiceAssistantEnabled',
     ] as const
@@ -943,6 +964,12 @@ export class PostgresSessionRepository implements SessionRepository {
       defaultTimeZone: updatedPreferences.defaultTimeZone,
       energyMode: updatedPreferences.energyMode,
       lastSeenTimeZone: updatedPreferences.lastSeenTimeZone,
+      sharedTaskAssignedNotificationsEnabled:
+        updatedPreferences.sharedTaskAssignedNotificationsEnabled,
+      sharedTaskCreatedNotificationsEnabled:
+        updatedPreferences.sharedTaskCreatedNotificationsEnabled,
+      sharedTaskReadyForReviewNotificationsEnabled:
+        updatedPreferences.sharedTaskReadyForReviewNotificationsEnabled,
       timeZoneMode: updatedPreferences.timeZoneMode,
       voiceAssistantEnabled: updatedPreferences.voiceAssistantEnabled,
     }
@@ -1205,6 +1232,9 @@ export class PostgresSessionRepository implements SessionRepository {
         defaultTimeZone: null,
         energyMode: 'normal',
         lastSeenTimeZone: null,
+        sharedTaskAssignedNotificationsEnabled: true,
+        sharedTaskCreatedNotificationsEnabled: true,
+        sharedTaskReadyForReviewNotificationsEnabled: true,
         timeZoneMode: 'device',
         voiceAssistantEnabled: true,
         displayName: this.resolveAuthDisplayName(authContext),
@@ -1260,6 +1290,12 @@ export class PostgresSessionRepository implements SessionRepository {
         default_time_zone: actor.defaultTimeZone,
         energy_mode: actor.energyMode,
         last_seen_time_zone: actor.lastSeenTimeZone,
+        shared_task_assigned_notifications_enabled:
+          actor.sharedTaskAssignedNotificationsEnabled,
+        shared_task_created_notifications_enabled:
+          actor.sharedTaskCreatedNotificationsEnabled,
+        shared_task_ready_for_review_notifications_enabled:
+          actor.sharedTaskReadyForReviewNotificationsEnabled,
         time_zone_mode: actor.timeZoneMode,
         voice_assistant_enabled: actor.voiceAssistantEnabled,
         display_name: actor.displayName,
@@ -1276,6 +1312,9 @@ export class PostgresSessionRepository implements SessionRepository {
         'default_time_zone as defaultTimeZone',
         'energy_mode as energyMode',
         'last_seen_time_zone as lastSeenTimeZone',
+        'shared_task_assigned_notifications_enabled as sharedTaskAssignedNotificationsEnabled',
+        'shared_task_created_notifications_enabled as sharedTaskCreatedNotificationsEnabled',
+        'shared_task_ready_for_review_notifications_enabled as sharedTaskReadyForReviewNotificationsEnabled',
         'time_zone_mode as timeZoneMode',
         'voice_assistant_enabled as voiceAssistantEnabled',
         'display_name as displayName',
@@ -1350,6 +1389,12 @@ export class PostgresSessionRepository implements SessionRepository {
         defaultTimeZone: session.defaultTimeZone,
         energyMode: session.energyMode,
         lastSeenTimeZone: session.lastSeenTimeZone,
+        sharedTaskAssignedNotificationsEnabled:
+          session.sharedTaskAssignedNotificationsEnabled,
+        sharedTaskCreatedNotificationsEnabled:
+          session.sharedTaskCreatedNotificationsEnabled,
+        sharedTaskReadyForReviewNotificationsEnabled:
+          session.sharedTaskReadyForReviewNotificationsEnabled,
         timeZoneMode: session.timeZoneMode,
         voiceAssistantEnabled: session.voiceAssistantEnabled,
       },

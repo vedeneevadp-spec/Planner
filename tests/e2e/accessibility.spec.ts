@@ -1,6 +1,8 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, type Page, test } from '@playwright/test'
 
+test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.11' } })
+
 const blockingImpacts = new Set(['critical', 'serious'])
 
 function createE2eUser(prefix: string) {

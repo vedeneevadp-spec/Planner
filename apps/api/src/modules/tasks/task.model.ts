@@ -141,6 +141,7 @@ export interface CreateTaskCommand {
 
 export interface UpdateTaskStatusCommand {
   context: TaskWriteContext
+  previousStatus?: TaskStatus
   taskId: string
   status: TaskStatus
   expectedVersion?: number

@@ -26,6 +26,7 @@ export interface PushNotificationRecipient {
 export interface PushNotificationMessage {
   body: string
   data?: Record<string, string> | undefined
+  notificationTag?: string | undefined
   title: string
 }
 

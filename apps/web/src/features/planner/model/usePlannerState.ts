@@ -228,6 +228,7 @@ export function usePlannerState(): PlannerState {
   }, [workspaceId])
   const {
     conflictedMutationCount,
+    flushQueuedMutationQueue,
     isDrainingOfflineQueue,
     isLifeSphereCacheHydrating,
     isTaskCacheHydrating,
@@ -897,6 +898,12 @@ export function usePlannerState(): PlannerState {
   }
 
   async function closeTaskChain(taskId: string): Promise<boolean> {
+    const didFlush = await runMutation(flushQueuedMutationQueue)
+
+    if (!didFlush) {
+      return false
+    }
+
     const task = getCachedTaskRecord(taskId)
 
     if (!task) {

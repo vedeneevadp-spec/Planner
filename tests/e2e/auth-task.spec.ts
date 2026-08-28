@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test'
 
+test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.12' } })
+
 function createE2eUser(prefix: string) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
@@ -199,7 +201,15 @@ test('keeps desktop chain notification actions clickable', async ({ page }) => {
   await expect(nextStageDialog).toBeVisible()
   await nextStageDialog.getByRole('button', { name: 'Закрыть' }).last().click()
 
+  const chainCloseResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /^\/api\/v1\/tasks\/[^/]+\/chain\/close$/.test(
+        new URL(response.url()).pathname,
+      ),
+  )
   await notification.getByRole('button', { name: 'Завершить цепочку' }).click()
+  expect((await chainCloseResponse).ok()).toBe(true)
   await expect(notification).toContainText('Цепочка завершена')
   await notification
     .getByRole('button', { name: 'Закрыть уведомление' })

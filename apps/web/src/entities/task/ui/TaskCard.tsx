@@ -111,6 +111,7 @@ interface TaskCardProps {
   variant?: 'card' | 'compact' | 'detail' | undefined
   tone?: 'default' | 'warning' | 'success'
   isPending?: boolean | undefined
+  openViewer?: boolean | undefined
   uploadedIcons?: UploadedIconAsset[] | undefined
   onCreateNextStage?:
     | ((
@@ -148,6 +149,7 @@ export function TaskCard({
   variant = 'card',
   tone = 'default',
   isPending = false,
+  openViewer = false,
   uploadedIcons = [],
   onCreateNextStage,
   onCopyToPersonal,
@@ -160,7 +162,7 @@ export function TaskCard({
   onActionMenuOpenChange,
 }: TaskCardProps) {
   const [isEditing, setIsEditing] = useState(false)
-  const [isViewing, setIsViewing] = useState(false)
+  const [isViewing, setIsViewing] = useState(openViewer)
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false)
   const [nextStageRequest, setNextStageRequest] = useState<{
     completeCurrent: boolean

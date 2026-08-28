@@ -67,6 +67,7 @@ interface PlannerOfflineSyncParams {
 
 interface PlannerOfflineSync {
   conflictedMutationCount: number
+  flushQueuedMutationQueue: () => Promise<void>
   isDrainingOfflineQueue: boolean
   isLifeSphereCacheHydrating: boolean
   isTaskCacheHydrating: boolean
@@ -364,18 +365,20 @@ export function usePlannerOfflineSync({
     workspaceId,
   ])
 
-  const requestQueuedMutationDrain = useCallback(() => {
+  const flushQueuedMutationQueue = useCallback(async () => {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return
     }
 
-    void (async () => {
-      await drainQueuedMutations()
-      await drainQueuedMutations()
-    })().catch((error) => {
+    await drainQueuedMutations()
+    await drainQueuedMutations()
+  }, [drainQueuedMutations])
+
+  const requestQueuedMutationDrain = useCallback(() => {
+    void flushQueuedMutationQueue().catch((error) => {
       setMutationErrorMessage(getErrorMessage(error))
     })
-  }, [drainQueuedMutations, setMutationErrorMessage])
+  }, [flushQueuedMutationQueue, setMutationErrorMessage])
 
   useEffect(() => {
     if (!workspaceId) {
@@ -558,6 +561,7 @@ export function usePlannerOfflineSync({
 
   return {
     conflictedMutationCount,
+    flushQueuedMutationQueue,
     isDrainingOfflineQueue,
     isLifeSphereCacheHydrating,
     isTaskCacheHydrating,

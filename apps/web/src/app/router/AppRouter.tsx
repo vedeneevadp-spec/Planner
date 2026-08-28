@@ -40,6 +40,11 @@ const ContactsPage = lazy(() =>
 const MorePage = lazy(() =>
   import('@/pages/more').then((module) => ({ default: module.MorePage })),
 )
+const NotificationsSettingsPage = lazy(() =>
+  import('@/pages/notifications-settings').then((module) => ({
+    default: module.NotificationsSettingsPage,
+  })),
+)
 const ProfilePage = lazy(() =>
   import('@/pages/profile').then((module) => ({ default: module.ProfilePage })),
 )
@@ -125,6 +130,7 @@ const routeElements = {
   habitRedirect: <HabitsRedirect />,
   habitsRedirect: <HabitsRedirect />,
   more: <MorePage />,
+  notificationsSettings: <NotificationsSettingsPage />,
   profile: <ProfilePage />,
   selfCare: <SelfCarePage />,
   shopping: <ShoppingPage />,

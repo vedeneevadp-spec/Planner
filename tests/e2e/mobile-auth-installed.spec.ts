@@ -1,6 +1,8 @@
 import { expect, type Page, type Route, test } from '@playwright/test'
 import { Client } from 'pg'
 
+test.use({ extraHTTPHeaders: { 'x-forwarded-for': '192.0.2.13' } })
+
 interface MobileInstalledSmokeRuntime {
   expireNativeAuthSession: () => void
   readNativeAuthSession: () => MobileInstalledAuthSession | null

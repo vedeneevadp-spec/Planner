@@ -1,1 +1,4 @@
-export { clearAndroidVoiceAssistantSessionContext } from './lib/native-voice-assistant'
+export {
+  clearAndroidVoiceAssistantSessionContext,
+  openAndroidSystemAppSettings,
+} from './lib/native-voice-assistant'

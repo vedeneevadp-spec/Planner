@@ -218,6 +218,8 @@ export class PostgresTaskPoolerWriteFallback {
               ${command.context.actorUserId},
               'task.created'::app.task_event_type,
               jsonb_build_object(
+                'origin',
+                'manual',
                 'task',
                 jsonb_build_object(
                   'completedAt',
@@ -665,6 +667,8 @@ export class PostgresTaskPoolerWriteFallback {
               ${command.context.actorUserId},
               'task.status_changed'::app.task_event_type,
               jsonb_build_object(
+                'previousStatus',
+                cast(${command.previousStatus ?? null} as text),
                 'status',
                 cast(${command.status} as text),
                 'version',

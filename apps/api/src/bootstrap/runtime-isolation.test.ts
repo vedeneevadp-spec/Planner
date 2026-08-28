@@ -20,6 +20,8 @@ void test('reminders worker accepts only its dedicated database and push config'
 
   assert.match(config.connectionString, /worker/)
   assert.equal(config.selfCareBatchSize, 25)
+  assert.equal(config.sharedTaskNotificationsBatchSize, 50)
+  assert.equal(config.sharedTaskNotificationsIntervalMs, 5_000)
   assert.equal(config.taskBatchSize, 25)
   assert.throws(
     () =>
@@ -39,12 +41,16 @@ void test('reminders worker keeps task and self-care batch sizes independent', (
     ...FIREBASE_ENV,
     NODE_ENV: 'production',
     SELF_CARE_REMINDERS_BATCH_SIZE: '11',
+    SHARED_TASK_NOTIFICATIONS_BATCH_SIZE: '31',
+    SHARED_TASK_NOTIFICATIONS_INTERVAL_MS: '7000',
     TASK_REMINDERS_BATCH_SIZE: '17',
     TASK_REMINDERS_DATABASE_URL:
       'postgres://worker:secret@127.0.0.1:5432/planner',
   })
 
   assert.equal(config.selfCareBatchSize, 11)
+  assert.equal(config.sharedTaskNotificationsBatchSize, 31)
+  assert.equal(config.sharedTaskNotificationsIntervalMs, 7_000)
   assert.equal(config.taskBatchSize, 17)
 })
 

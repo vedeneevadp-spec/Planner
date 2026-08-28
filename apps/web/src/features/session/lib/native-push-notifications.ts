@@ -1,5 +1,8 @@
 import { App } from '@capacitor/app'
-import { type PluginListenerHandle } from '@capacitor/core'
+import {
+  type PermissionState,
+  type PluginListenerHandle,
+} from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
 import {
   PushNotifications,
@@ -13,11 +16,30 @@ import {
   createPushNotificationsApiClient,
   type PushNotificationsApiClient,
 } from './push-notifications-api'
+import { setSelectedWorkspaceId } from './workspace-selection'
 
 const PUSH_CHANNEL_ID = 'chaotika-general'
 const PUSH_STORAGE_PREFIX = 'planner.push.'
 const PUSH_INSTALLATION_ID_KEY = `${PUSH_STORAGE_PREFIX}installation-id`
 const PUSH_REGISTRATION_CONTEXT_KEY = `${PUSH_STORAGE_PREFIX}registration-context`
+const SAFE_PUSH_PATHS = new Set([
+  '/notifications/settings',
+  '/self-care',
+  '/today',
+])
+const SHARED_TASK_NOTIFICATION_TYPES = new Set([
+  'shared-task-assigned',
+  'shared-task-created',
+  'shared-task-ready-for-review',
+])
+const PUSH_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]{1,128}$/
+
+export type NativePushPermissionStatus = PermissionState | 'unavailable'
+
+export interface PushNotificationNavigationTarget {
+  path: string
+  workspaceId?: string | undefined
+}
 
 export interface StoredPushRegistrationContext {
   actorUserId: string
@@ -28,11 +50,38 @@ export interface StoredPushRegistrationContext {
 interface RegisterNativePushNotificationsOptions {
   actorUserId: string
   apiClient: PushNotificationsApiClient
+  navigate?: ((path: string) => void) | undefined
   workspaceId: string
 }
 
 export function isAndroidPushNotificationsRuntime(): boolean {
   return isAndroidNativeRuntime()
+}
+
+export async function getNativePushPermissionStatus(): Promise<NativePushPermissionStatus> {
+  if (!isAndroidPushNotificationsRuntime()) {
+    return 'unavailable'
+  }
+
+  return (await PushNotifications.checkPermissions()).receive
+}
+
+export async function requestNativePushPermission(): Promise<NativePushPermissionStatus> {
+  if (!isAndroidPushNotificationsRuntime()) {
+    return 'unavailable'
+  }
+
+  const current = await PushNotifications.checkPermissions()
+  const receive =
+    current.receive === 'granted'
+      ? current.receive
+      : (await PushNotifications.requestPermissions()).receive
+
+  if (receive === 'granted') {
+    await PushNotifications.register()
+  }
+
+  return receive
 }
 
 export async function registerNativePushNotifications(
@@ -68,7 +117,11 @@ export async function registerNativePushNotifications(
     await PushNotifications.addListener(
       'pushNotificationActionPerformed',
       ({ notification }) => {
-        handlePushNotificationAction(notification)
+        handlePushNotificationAction(
+          notification,
+          options.actorUserId,
+          options.navigate,
+        )
       },
     ),
   )
@@ -113,29 +166,43 @@ export async function unregisterStoredNativePushDevice(options: {
   const context = await readStoredPushRegistrationContext()
 
   if (!context) {
+    await unregisterNativePushToken()
     return
   }
 
   const actorUserId = options.actorUserId ?? context.actorUserId
+  let removedFromServer = false
 
-  if (!actorUserId && !options.accessToken) {
-    await clearStoredPushRegistrationContext()
-    return
+  if (actorUserId || options.accessToken) {
+    const apiClient = createPushNotificationsApiClient({
+      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+      actorUserId: actorUserId ?? context.actorUserId,
+      apiBaseUrl: options.apiBaseUrl,
+      workspaceId: context.workspaceId,
+    })
+
+    try {
+      await apiClient.removeDevice(context.installationId)
+      removedFromServer = true
+    } catch (error) {
+      console.warn('Failed to unregister Android push device.', error)
+    }
   }
 
-  const apiClient = createPushNotificationsApiClient({
-    ...(options.accessToken ? { accessToken: options.accessToken } : {}),
-    actorUserId: actorUserId ?? context.actorUserId,
-    apiBaseUrl: options.apiBaseUrl,
-    workspaceId: context.workspaceId,
-  })
+  const unregisteredNatively = await unregisterNativePushToken()
 
-  try {
-    await apiClient.removeDevice(context.installationId)
-  } catch (error) {
-    console.warn('Failed to unregister Android push device.', error)
-  } finally {
+  if (removedFromServer || unregisteredNatively) {
     await clearStoredPushRegistrationContext()
+  }
+}
+
+async function unregisterNativePushToken(): Promise<boolean> {
+  try {
+    await PushNotifications.unregister()
+    return true
+  } catch (error) {
+    console.warn('Failed to unregister the native Android push token.', error)
+    return false
   }
 }
 
@@ -164,21 +231,88 @@ async function upsertRegisteredPushDevice(options: {
 
 function handlePushNotificationAction(
   notification: PushNotificationSchema,
+  actorUserId: string,
+  navigate: (path: string) => void = (path) => {
+    window.location.assign(path)
+  },
 ): void {
-  const notificationData: unknown = notification.data
+  const target = resolvePushNotificationNavigation(notification.data)
 
+  if (!target) {
+    return
+  }
+
+  if (target.workspaceId) {
+    setSelectedWorkspaceId(target.workspaceId, actorUserId)
+  }
+
+  navigate(target.path)
+}
+
+export function resolvePushNotificationNavigation(
+  notificationData: unknown,
+): PushNotificationNavigationTarget | null {
   if (!notificationData || typeof notificationData !== 'object') {
-    return
+    return null
   }
 
-  const pathValue =
-    'path' in notificationData ? notificationData.path : undefined
+  const record = notificationData as Record<string, unknown>
+  const path = typeof record.path === 'string' ? record.path : null
 
-  if (typeof pathValue !== 'string' || !pathValue.startsWith('/')) {
-    return
+  if (!path || !SAFE_PUSH_PATHS.has(path)) {
+    return null
   }
 
-  window.location.assign(pathValue)
+  const taskId = normalizePushIdentifier(record.taskId)
+  const workspaceId = normalizePushIdentifier(record.workspaceId)
+  const type = typeof record.type === 'string' ? record.type : null
+
+  if (
+    (record.taskId !== undefined && taskId === null) ||
+    (record.workspaceId !== undefined && workspaceId === null)
+  ) {
+    return null
+  }
+
+  const isSharedTaskNotification =
+    type !== null && SHARED_TASK_NOTIFICATION_TYPES.has(type)
+
+  if (isSharedTaskNotification) {
+    if (path !== '/today' || !taskId || !workspaceId) {
+      return null
+    }
+
+    return {
+      path: `/today?taskId=${encodeURIComponent(taskId)}`,
+      workspaceId,
+    }
+  }
+
+  if (path === '/today' && taskId) {
+    return {
+      path: `/today?taskId=${encodeURIComponent(taskId)}`,
+      ...(workspaceId ? { workspaceId } : {}),
+    }
+  }
+
+  if (taskId) {
+    return null
+  }
+
+  return {
+    path,
+    ...(workspaceId ? { workspaceId } : {}),
+  }
+}
+
+function normalizePushIdentifier(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const normalizedValue = value.trim()
+
+  return PUSH_IDENTIFIER_PATTERN.test(normalizedValue) ? normalizedValue : null
 }
 
 function resolveDeviceLocale(): string {

@@ -197,6 +197,9 @@ export const userPreferencesSchema = z.object({
   defaultTimeZone: z.string().nullable().default(null),
   energyMode: energyModeSchema,
   lastSeenTimeZone: z.string().nullable().default(null),
+  sharedTaskAssignedNotificationsEnabled: z.boolean().optional(),
+  sharedTaskCreatedNotificationsEnabled: z.boolean().optional(),
+  sharedTaskReadyForReviewNotificationsEnabled: z.boolean().optional(),
   timeZoneMode: timeZoneModeSchema.default('device'),
   voiceAssistantEnabled: z.boolean().default(true),
 })
@@ -309,6 +312,9 @@ export const userPreferencesUpdateInputSchema = z
     defaultTimeZone: z.string().trim().min(1).nullable().optional(),
     energyMode: energyModeSchema.optional(),
     lastSeenTimeZone: z.string().trim().min(1).nullable().optional(),
+    sharedTaskAssignedNotificationsEnabled: z.boolean().optional(),
+    sharedTaskCreatedNotificationsEnabled: z.boolean().optional(),
+    sharedTaskReadyForReviewNotificationsEnabled: z.boolean().optional(),
     timeZoneMode: timeZoneModeSchema.optional(),
     voiceAssistantEnabled: z.boolean().optional(),
   })
@@ -319,6 +325,9 @@ export const userPreferencesUpdateInputSchema = z
         value.defaultTimeZone !== undefined ||
         value.energyMode ||
         value.lastSeenTimeZone !== undefined ||
+        value.sharedTaskAssignedNotificationsEnabled !== undefined ||
+        value.sharedTaskCreatedNotificationsEnabled !== undefined ||
+        value.sharedTaskReadyForReviewNotificationsEnabled !== undefined ||
         value.timeZoneMode ||
         value.voiceAssistantEnabled !== undefined,
       ),

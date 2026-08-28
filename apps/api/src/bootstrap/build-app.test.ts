@@ -591,6 +591,7 @@ void describe('buildApiApp', () => {
       method: 'PATCH',
       payload: {
         calendarViewMode: 'schedule',
+        sharedTaskCreatedNotificationsEnabled: false,
       },
       url: '/api/v1/preferences',
     })
@@ -601,6 +602,9 @@ void describe('buildApiApp', () => {
       defaultTimeZone: null,
       energyMode: 'normal',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: true,
+      sharedTaskCreatedNotificationsEnabled: false,
+      sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     })
@@ -623,6 +627,9 @@ void describe('buildApiApp', () => {
       defaultTimeZone: null,
       energyMode: 'maximum',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: true,
+      sharedTaskCreatedNotificationsEnabled: false,
+      sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
     })
@@ -634,6 +641,8 @@ void describe('buildApiApp', () => {
       },
       method: 'PATCH',
       payload: {
+        sharedTaskAssignedNotificationsEnabled: false,
+        sharedTaskReadyForReviewNotificationsEnabled: false,
         voiceAssistantEnabled: false,
       },
       url: '/api/v1/preferences',
@@ -645,6 +654,9 @@ void describe('buildApiApp', () => {
       defaultTimeZone: null,
       energyMode: 'maximum',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: false,
+      sharedTaskCreatedNotificationsEnabled: false,
+      sharedTaskReadyForReviewNotificationsEnabled: false,
       timeZoneMode: 'device',
       voiceAssistantEnabled: false,
     })
@@ -666,6 +678,9 @@ void describe('buildApiApp', () => {
         defaultTimeZone: null,
         energyMode: 'maximum',
         lastSeenTimeZone: null,
+        sharedTaskAssignedNotificationsEnabled: false,
+        sharedTaskCreatedNotificationsEnabled: false,
+        sharedTaskReadyForReviewNotificationsEnabled: false,
         timeZoneMode: 'device',
         voiceAssistantEnabled: false,
       },
@@ -3632,6 +3647,9 @@ void describe('buildApiApp', () => {
     assert.equal(response.statusCode, 200)
 
     const body: {
+      components?: {
+        schemas?: Record<string, { properties?: Record<string, unknown> }>
+      }
       openapi?: string
       paths?: Record<string, unknown>
     } = response.json()
@@ -3657,6 +3675,21 @@ void describe('buildApiApp', () => {
     assert.ok(body.paths?.['/api/v1/workspace-users/{membershipId}'])
     assert.ok(body.paths?.['/api/v1/workspace-users/{membershipId}/group-role'])
     assert.ok(body.paths?.['/api/v1/workspaces/shared'])
+    assert.ok(
+      body.components?.schemas?.PushDeviceRecord?.properties?.workspaceId,
+    )
+    assert.ok(
+      body.components?.schemas?.UserPreferences?.properties
+        ?.sharedTaskCreatedNotificationsEnabled,
+    )
+    assert.ok(
+      body.components?.schemas?.UserPreferencesUpdateInput?.properties
+        ?.sharedTaskAssignedNotificationsEnabled,
+    )
+    assert.ok(
+      body.components?.schemas?.UserPreferencesUpdateInput?.properties
+        ?.sharedTaskReadyForReviewNotificationsEnabled,
+    )
   })
 
   void it('serves the Swagger UI with its static security policy', async () => {

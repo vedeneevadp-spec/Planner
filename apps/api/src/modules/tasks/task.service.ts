@@ -355,6 +355,10 @@ export class TaskService {
       assertCanManageSharedTaskStatus(context, task, status)
       assertCanCompleteConfirmedSharedTask(context, task, status)
 
+      if (status === 'ready_for_review' && task.status === status) {
+        return task
+      }
+
       if (
         status === 'done' &&
         (isActiveTaskStatus(task.status) || task.status === 'done')
@@ -392,6 +396,7 @@ export class TaskService {
 
       const command: UpdateTaskStatusCommand = {
         context,
+        previousStatus: task.status,
         taskId,
         status,
       }
@@ -1063,7 +1068,11 @@ function canAssigneeChangeSharedTaskStatus(
   }
 
   if (status === 'ready_for_review') {
-    return task.status === 'todo' || task.status === 'in_progress'
+    return (
+      task.status === 'todo' ||
+      task.status === 'in_progress' ||
+      task.status === 'ready_for_review'
+    )
   }
 
   return false

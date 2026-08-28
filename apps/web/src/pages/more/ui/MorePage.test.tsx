@@ -368,7 +368,7 @@ describe('MorePage', () => {
     expect(screen.queryByText(/secret details/)).not.toBeInTheDocument()
   })
 
-  it('shows voice assistant as a settings link after the theme control', () => {
+  it('shows notification and voice settings after the theme control', () => {
     renderMorePage({
       planner: {
         readiness: {
@@ -386,10 +386,14 @@ describe('MorePage', () => {
     const controls = Array.from(settings.querySelectorAll('button, a'))
 
     expect(
+      within(settings).getByRole('link', { name: 'Уведомления' }),
+    ).toHaveAttribute('href', '/notifications/settings')
+    expect(
       within(settings).getByRole('link', { name: 'Голосовой помощник' }),
     ).toHaveAttribute('href', '/voice-assistant/settings')
     expect(controls.map((control) => control.textContent?.trim())).toEqual([
       expect.stringMatching(/тема/i),
+      'Уведомления',
       'Голосовой помощник',
     ])
   })

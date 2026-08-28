@@ -72,6 +72,9 @@ interface MemoryUser extends AdminUserRecord {
   defaultTimeZone: string | null
   energyMode: EnergyMode
   lastSeenTimeZone: string | null
+  sharedTaskAssignedNotificationsEnabled: boolean
+  sharedTaskCreatedNotificationsEnabled: boolean
+  sharedTaskReadyForReviewNotificationsEnabled: boolean
   timeZoneMode: 'device' | 'manual' | 'workspace'
   voiceAssistantEnabled: boolean
 }
@@ -100,6 +103,9 @@ export class MemorySessionRepository implements SessionRepository {
       defaultTimeZone: null,
       energyMode: 'normal',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: true,
+      sharedTaskCreatedNotificationsEnabled: true,
+      sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: 'Tikondra',
@@ -116,6 +122,9 @@ export class MemorySessionRepository implements SessionRepository {
       defaultTimeZone: null,
       energyMode: 'normal',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: true,
+      sharedTaskCreatedNotificationsEnabled: true,
+      sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: 'Planner Reader',
@@ -775,6 +784,9 @@ export class MemorySessionRepository implements SessionRepository {
       defaultTimeZone?: string | null
       energyMode?: EnergyMode
       lastSeenTimeZone?: string | null
+      sharedTaskAssignedNotificationsEnabled?: boolean
+      sharedTaskCreatedNotificationsEnabled?: boolean
+      sharedTaskReadyForReviewNotificationsEnabled?: boolean
       timeZoneMode?: 'device' | 'manual' | 'workspace'
       voiceAssistantEnabled?: boolean
     },
@@ -799,6 +811,15 @@ export class MemorySessionRepository implements SessionRepository {
       input.lastSeenTimeZone === undefined
         ? user.lastSeenTimeZone
         : input.lastSeenTimeZone
+    user.sharedTaskAssignedNotificationsEnabled =
+      input.sharedTaskAssignedNotificationsEnabled ??
+      user.sharedTaskAssignedNotificationsEnabled
+    user.sharedTaskCreatedNotificationsEnabled =
+      input.sharedTaskCreatedNotificationsEnabled ??
+      user.sharedTaskCreatedNotificationsEnabled
+    user.sharedTaskReadyForReviewNotificationsEnabled =
+      input.sharedTaskReadyForReviewNotificationsEnabled ??
+      user.sharedTaskReadyForReviewNotificationsEnabled
     user.timeZoneMode = input.timeZoneMode ?? user.timeZoneMode
     user.voiceAssistantEnabled =
       input.voiceAssistantEnabled ?? user.voiceAssistantEnabled
@@ -809,6 +830,12 @@ export class MemorySessionRepository implements SessionRepository {
       defaultTimeZone: user.defaultTimeZone,
       energyMode: user.energyMode,
       lastSeenTimeZone: user.lastSeenTimeZone,
+      sharedTaskAssignedNotificationsEnabled:
+        user.sharedTaskAssignedNotificationsEnabled,
+      sharedTaskCreatedNotificationsEnabled:
+        user.sharedTaskCreatedNotificationsEnabled,
+      sharedTaskReadyForReviewNotificationsEnabled:
+        user.sharedTaskReadyForReviewNotificationsEnabled,
       timeZoneMode: user.timeZoneMode,
       voiceAssistantEnabled: user.voiceAssistantEnabled,
     })
@@ -902,6 +929,12 @@ export class MemorySessionRepository implements SessionRepository {
         defaultTimeZone: actor.defaultTimeZone,
         energyMode: actor.energyMode,
         lastSeenTimeZone: actor.lastSeenTimeZone,
+        sharedTaskAssignedNotificationsEnabled:
+          actor.sharedTaskAssignedNotificationsEnabled,
+        sharedTaskCreatedNotificationsEnabled:
+          actor.sharedTaskCreatedNotificationsEnabled,
+        sharedTaskReadyForReviewNotificationsEnabled:
+          actor.sharedTaskReadyForReviewNotificationsEnabled,
         timeZoneMode: actor.timeZoneMode,
         voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
@@ -987,6 +1020,12 @@ export class MemorySessionRepository implements SessionRepository {
         defaultTimeZone: actor.defaultTimeZone,
         energyMode: actor.energyMode,
         lastSeenTimeZone: actor.lastSeenTimeZone,
+        sharedTaskAssignedNotificationsEnabled:
+          actor.sharedTaskAssignedNotificationsEnabled,
+        sharedTaskCreatedNotificationsEnabled:
+          actor.sharedTaskCreatedNotificationsEnabled,
+        sharedTaskReadyForReviewNotificationsEnabled:
+          actor.sharedTaskReadyForReviewNotificationsEnabled,
         timeZoneMode: actor.timeZoneMode,
         voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
@@ -1036,6 +1075,9 @@ export class MemorySessionRepository implements SessionRepository {
       defaultTimeZone: null,
       energyMode: 'normal',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: true,
+      sharedTaskCreatedNotificationsEnabled: true,
+      sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
@@ -1065,6 +1107,9 @@ export class MemorySessionRepository implements SessionRepository {
       defaultTimeZone: null,
       energyMode: 'normal',
       lastSeenTimeZone: null,
+      sharedTaskAssignedNotificationsEnabled: true,
+      sharedTaskCreatedNotificationsEnabled: true,
+      sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
       voiceAssistantEnabled: true,
       displayName: 'Planner User',
