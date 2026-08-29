@@ -49,7 +49,7 @@ public class PlannerWidgetPlugin extends Plugin {
     }
 
     @PluginMethod
-    public void configureBackgroundSync(PluginCall call) {
+    public synchronized void configureBackgroundSync(PluginCall call) {
         PlannerWidgetSyncConfig config = new PlannerWidgetSyncConfig(
             call.getString("apiBaseUrl", ""),
             call.getString("workspaceId", ""),
@@ -61,12 +61,17 @@ public class PlannerWidgetPlugin extends Plugin {
             return;
         }
 
-        if (!PlannerWidgetStorage.writeSyncConfig(getContext(), config)) {
+        PlannerWidgetSyncConfig storedConfig = PlannerWidgetStorage.readSyncConfig(getContext());
+        boolean configChanged = !config.hasSameValues(storedConfig);
+
+        if (
+            configChanged && !PlannerWidgetStorage.writeSyncConfig(getContext(), config)
+        ) {
             call.reject("Failed to persist widget background sync configuration.");
             return;
         }
 
-        PlannerWidgetSyncScheduler.schedule(getContext(), true);
+        PlannerWidgetSyncScheduler.schedule(getContext(), configChanged);
         call.resolve();
     }
 

@@ -1258,11 +1258,15 @@ export function usePlannerState(): PlannerState {
     )
   }
 
-  async function refresh(): Promise<void> {
+  async function refresh(
+    options: { retryDeniedAuth?: boolean } = {},
+  ): Promise<void> {
     setMutationErrorMessage(null)
 
     if (isAuthEnabled && (!accessToken || hasUnauthorizedAuthError)) {
-      const recoveryResult = await recoverSession()
+      const recoveryResult = await recoverSession({
+        retryDeniedRefresh: options.retryDeniedAuth,
+      })
 
       if (recoveryResult === 'signed_out') {
         return

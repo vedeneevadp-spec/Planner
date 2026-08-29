@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { readClientEvents } from '@/shared/lib/observability'
 
 const capacitorMocks = vi.hoisted(() => ({
+  commitRefresh: vi.fn(),
   durableGet: vi.fn(),
   durableRemove: vi.fn(),
   durableSet: vi.fn(),
   get: vi.fn(),
   getPlatform: vi.fn(),
   isNativePlatform: vi.fn(),
+  prepareRefresh: vi.fn(),
   remove: vi.fn(),
   set: vi.fn(),
 }))
@@ -26,7 +28,9 @@ vi.mock('@capacitor/core', () => ({
     isNativePlatform: capacitorMocks.isNativePlatform,
   },
   registerPlugin: () => ({
+    commitRefresh: capacitorMocks.commitRefresh,
     get: capacitorMocks.durableGet,
+    prepareRefresh: capacitorMocks.prepareRefresh,
     remove: capacitorMocks.durableRemove,
     set: capacitorMocks.durableSet,
   }),
@@ -43,6 +47,7 @@ vi.mock('@capacitor/preferences', () => ({
 import {
   AuthSessionStorageError,
   clearStoredAuthSession,
+  commitStoredAuthSessionRefresh,
   getRememberSessionPreference,
   prepareStoredAuthSessionRefresh,
   readStoredAuthSession,
@@ -64,6 +69,11 @@ const session: StoredAuthSession = {
 
 describe('auth-session-storage', () => {
   beforeEach(() => {
+    capacitorMocks.commitRefresh.mockReset()
+    capacitorMocks.commitRefresh.mockImplementation(
+      (options: { refreshedSession: string }) =>
+        Promise.resolve({ value: options.refreshedSession }),
+    )
     capacitorMocks.durableRemove.mockReset()
     capacitorMocks.durableRemove.mockResolvedValue(undefined)
     capacitorMocks.durableSet.mockReset()
@@ -73,6 +83,23 @@ describe('auth-session-storage', () => {
     capacitorMocks.getPlatform.mockReturnValue('android')
     capacitorMocks.isNativePlatform.mockReset()
     capacitorMocks.isNativePlatform.mockReturnValue(false)
+    capacitorMocks.prepareRefresh.mockReset()
+    capacitorMocks.prepareRefresh.mockImplementation(
+      (options: { expectedSession: string }) => {
+        const expectedSession = JSON.parse(
+          options.expectedSession,
+        ) as StoredAuthSession
+
+        return Promise.resolve({
+          value: JSON.stringify({
+            ...expectedSession,
+            refreshRotationRequestId:
+              expectedSession.refreshRotationRequestId ??
+              '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+          }),
+        })
+      },
+    )
     capacitorMocks.remove.mockReset()
     capacitorMocks.set.mockReset()
     capacitorMocks.set.mockResolvedValue(undefined)
@@ -165,10 +192,10 @@ describe('auth-session-storage', () => {
     expect(preparedSession.refreshRotationRequestId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     )
-    expect(capacitorMocks.durableSet).toHaveBeenCalledWith({
-      key: 'planner.auth.planner.auth.session',
-      value: JSON.stringify(preparedSession),
+    expect(capacitorMocks.prepareRefresh).toHaveBeenCalledWith({
+      expectedSession: JSON.stringify(session),
     })
+    expect(capacitorMocks.durableSet).not.toHaveBeenCalled()
   })
 
   it('reuses a durable native rotation request without rewriting it', async () => {
@@ -180,7 +207,33 @@ describe('auth-session-storage', () => {
 
     await expect(
       prepareStoredAuthSessionRefresh(preparedSession),
-    ).resolves.toBe(preparedSession)
+    ).resolves.toEqual(preparedSession)
+    expect(capacitorMocks.prepareRefresh).toHaveBeenCalledWith({
+      expectedSession: JSON.stringify(preparedSession),
+    })
+    expect(capacitorMocks.durableSet).not.toHaveBeenCalled()
+  })
+
+  it('atomically commits a native refresh without overwriting newer state', async () => {
+    capacitorMocks.isNativePlatform.mockReturnValue(true)
+    const attemptedSession: StoredAuthSession = {
+      ...session,
+      refreshRotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+    }
+    const refreshedSession: StoredAuthSession = {
+      ...session,
+      accessToken: 'fresh-access-token',
+      refreshRotationRequestId: '0198f5f3-01d0-7a3f-88cb-9cb66f8f8585',
+      refreshToken: 'fresh-refresh-token',
+    }
+
+    await expect(
+      commitStoredAuthSessionRefresh(attemptedSession, refreshedSession),
+    ).resolves.toEqual(refreshedSession)
+    expect(capacitorMocks.commitRefresh).toHaveBeenCalledWith({
+      attemptedSession: JSON.stringify(attemptedSession),
+      refreshedSession: JSON.stringify(refreshedSession),
+    })
     expect(capacitorMocks.durableSet).not.toHaveBeenCalled()
   })
 
@@ -189,7 +242,7 @@ describe('auth-session-storage', () => {
       .spyOn(console, 'error')
       .mockImplementation(() => undefined)
     capacitorMocks.isNativePlatform.mockReturnValue(true)
-    capacitorMocks.durableSet.mockRejectedValue(
+    capacitorMocks.prepareRefresh.mockRejectedValue(
       new Error('Preferences unavailable'),
     )
 
@@ -201,7 +254,7 @@ describe('auth-session-storage', () => {
         (event) =>
           event.name === 'auth_storage_failed' &&
           event.details.fallback === 'none' &&
-          event.details.operation === 'write',
+          event.details.operation === 'prepare_refresh',
       ),
     ).toBe(true)
 

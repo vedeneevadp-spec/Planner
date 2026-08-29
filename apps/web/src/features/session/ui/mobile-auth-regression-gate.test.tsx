@@ -40,6 +40,13 @@ const authApiMocks = vi.hoisted(() => ({
 
 const authStorageMocks = vi.hoisted(() => ({
   clearStoredAuthSession: vi.fn(),
+  commitStoredAuthSessionRefresh:
+    vi.fn<
+      (
+        attemptedSession: StoredAuthSession,
+        refreshedSession: StoredAuthSession,
+      ) => Promise<StoredAuthSession>
+    >(),
   prepareStoredAuthSessionRefresh:
     vi.fn<(session: StoredAuthSession) => Promise<StoredAuthSession>>(),
   readStoredAuthSession: vi.fn<() => Promise<StoredAuthSession | null>>(),
@@ -82,6 +89,8 @@ vi.mock('../lib/auth-api', () => ({
 
 vi.mock('../lib/auth-session-storage', () => ({
   clearStoredAuthSession: authStorageMocks.clearStoredAuthSession,
+  commitStoredAuthSessionRefresh:
+    authStorageMocks.commitStoredAuthSessionRefresh,
   getRememberSessionPreference: () => true,
   prepareStoredAuthSessionRefresh:
     authStorageMocks.prepareStoredAuthSessionRefresh,
@@ -131,6 +140,7 @@ describe('mobile auth regression gate', () => {
     authApiMocks.updatePassword.mockReset()
 
     authStorageMocks.clearStoredAuthSession.mockReset()
+    authStorageMocks.commitStoredAuthSessionRefresh.mockReset()
     authStorageMocks.prepareStoredAuthSessionRefresh.mockReset()
     authStorageMocks.readStoredAuthSession.mockReset()
     authStorageMocks.writeStoredAuthSession.mockReset()
@@ -150,6 +160,12 @@ describe('mobile auth regression gate', () => {
         error.status === 401,
     )
     authStorageMocks.clearStoredAuthSession.mockResolvedValue(undefined)
+    authStorageMocks.commitStoredAuthSessionRefresh.mockImplementation(
+      async (_attemptedSession, refreshedSession) => {
+        await authStorageMocks.writeStoredAuthSession(refreshedSession)
+        return refreshedSession
+      },
+    )
     authStorageMocks.prepareStoredAuthSessionRefresh.mockImplementation(
       (storedSession) => Promise.resolve(storedSession),
     )

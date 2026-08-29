@@ -11,7 +11,14 @@ const plannerAuthStorage =
   registerPlugin<PlannerAuthStoragePlugin>('PlannerAuthStorage')
 
 interface PlannerAuthStoragePlugin {
+  commitRefresh: (options: {
+    attemptedSession: string
+    refreshedSession: string
+  }) => Promise<{ value: string }>
   get: (options: { key: string }) => Promise<{ value: string | null }>
+  prepareRefresh: (options: {
+    expectedSession: string
+  }) => Promise<{ value: string }>
   remove: (options: { key: string }) => Promise<void>
   set: (options: { key: string; value: string }) => Promise<void>
 }
@@ -63,6 +70,26 @@ export function createNativeSessionStorage(): AuthStorage {
       await setNativePreference(toNativeAuthStorageKey(key), value)
     },
   }
+}
+
+export async function prepareNativeAuthSessionRefresh(
+  expectedSession: string,
+): Promise<string> {
+  const { value } = await plannerAuthStorage.prepareRefresh({ expectedSession })
+
+  return value
+}
+
+export async function commitNativeAuthSessionRefresh(
+  attemptedSession: string,
+  refreshedSession: string,
+): Promise<string> {
+  const { value } = await plannerAuthStorage.commitRefresh({
+    attemptedSession,
+    refreshedSession,
+  })
+
+  return value
 }
 
 export async function clearNativeSessionStorage(keys: string[]): Promise<void> {

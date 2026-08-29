@@ -18,7 +18,8 @@ interface PlannerStub {
 }
 
 interface SessionAuthStub {
-  lifecycleStatus: 'authenticated' | 'signed_out'
+  lifecycleStatus:
+    'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
   sessionVersion: number
 }
 
@@ -297,6 +298,54 @@ describe('NativePlannerWidgetSync', () => {
     })
   })
 
+  it('does not reconfigure background sync during a shared-workspace auth refresh', async () => {
+    mocks.usePlanner.mockReturnValue(createPlannerStub())
+    mocks.useSessionFeatureReadiness.mockReturnValue(
+      createSessionFeatureReadinessStub(createSessionStub('shared')),
+    )
+
+    const { rerenderSync } = renderSync()
+
+    await waitFor(() => {
+      expect(
+        mocks.configureNativePlannerWidgetBackgroundSync,
+      ).toHaveBeenCalledTimes(1)
+    })
+
+    const refreshedReadiness = createSessionFeatureReadinessStub(
+      createSessionStub('shared'),
+    )
+    refreshedReadiness.apiConfig.accessToken = 'refreshed-access-token'
+    mocks.useSessionFeatureReadiness.mockReturnValue(refreshedReadiness)
+    mocks.useSessionAuth.mockReturnValue({
+      lifecycleStatus: 'restoring',
+      sessionVersion: 2,
+    })
+
+    rerenderSync()
+
+    expect(
+      mocks.configureNativePlannerWidgetBackgroundSync,
+    ).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables background sync on sign-out even if stale config remains', async () => {
+    mocks.usePlanner.mockReturnValue(createPlannerStub())
+    mocks.useSessionAuth.mockReturnValue({
+      lifecycleStatus: 'signed_out',
+      sessionVersion: 2,
+    })
+
+    renderSync()
+
+    await waitFor(() => {
+      expect(mocks.disableNativePlannerWidgetBackgroundSync).toHaveBeenCalled()
+    })
+    expect(
+      mocks.configureNativePlannerWidgetBackgroundSync,
+    ).not.toHaveBeenCalled()
+  })
+
   it('refetches planner, self-care, and cleaning data when the app resumes', async () => {
     const refresh = vi.fn().mockResolvedValue(undefined)
     const getToday = vi.fn().mockResolvedValue({ generalItems: [], items: [] })
@@ -546,13 +595,19 @@ function renderSync() {
     },
   })
 
-  return render(
+  const renderTree = () => (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
         <NativePlannerWidgetSync />
       </MemoryRouter>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+  const rendered = render(renderTree())
+
+  return {
+    ...rendered,
+    rerenderSync: () => rendered.rerender(renderTree()),
+  }
 }
 
 function createSessionStub(kind: 'personal' | 'shared'): PlannerSessionStub {

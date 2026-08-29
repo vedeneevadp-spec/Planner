@@ -14,7 +14,7 @@ final class PlannerWidgetSyncScheduler {
 
     private PlannerWidgetSyncScheduler() {}
 
-    static void schedule(Context context, boolean includeImmediate) {
+    static synchronized void schedule(Context context, boolean includeImmediate) {
         Context appContext = context.getApplicationContext();
 
         if (
@@ -38,9 +38,11 @@ final class PlannerWidgetSyncScheduler {
             .setPeriodic(PERIODIC_INTERVAL_MILLIS)
             .build();
 
-        scheduler.schedule(periodicJob);
+        if (scheduler.getPendingJob(PERIODIC_JOB_ID) == null) {
+            scheduler.schedule(periodicJob);
+        }
 
-        if (includeImmediate) {
+        if (includeImmediate && scheduler.getPendingJob(IMMEDIATE_JOB_ID) == null) {
             JobInfo immediateJob = new JobInfo.Builder(IMMEDIATE_JOB_ID, service)
                 .setBackoffCriteria(30_000L, JobInfo.BACKOFF_POLICY_EXPONENTIAL)
                 .setMinimumLatency(0L)
@@ -61,7 +63,7 @@ final class PlannerWidgetSyncScheduler {
         }
     }
 
-    static void cancel(Context context) {
+    static synchronized void cancel(Context context) {
         JobScheduler scheduler = getScheduler(context.getApplicationContext());
 
         if (scheduler != null) {

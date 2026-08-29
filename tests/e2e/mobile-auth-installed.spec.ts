@@ -91,14 +91,125 @@ test.beforeEach(async ({ page }) => {
       wakeWordSensitivity: 0.99,
     })
 
+    const authSessionStorageKey =
+      'CapacitorStorage.planner.auth.planner.auth.session'
+    const parseAuthSession = (
+      value: unknown,
+    ): MobileInstalledAuthSession | null => {
+      if (typeof value !== 'string') {
+        return null
+      }
+
+      try {
+        const parsedSession = JSON.parse(value) as unknown
+
+        return isMobileInstalledAuthSession(parsedSession)
+          ? parsedSession
+          : null
+      } catch {
+        return null
+      }
+    }
+    const createUuidV7 = () => {
+      const value = crypto.getRandomValues(new Uint8Array(16))
+      const timestamp = Date.now()
+
+      value[0] = timestamp / 2 ** 40
+      value[1] = timestamp / 2 ** 32
+      value[2] = timestamp / 2 ** 24
+      value[3] = timestamp / 2 ** 16
+      value[4] = timestamp / 2 ** 8
+      value[5] = timestamp
+      value[6] = ((value[6] ?? 0) & 0x0f) | 0x70
+      value[8] = ((value[8] ?? 0) & 0x3f) | 0x80
+
+      const hex = Array.from(value, (byte) =>
+        byte.toString(16).padStart(2, '0'),
+      ).join('')
+
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+    }
+
     window.Capacitor = {
       nativeCallback: () => Promise.resolve(`callback-${crypto.randomUUID()}`),
       nativePromise: (pluginName, methodName, options) => {
         if (pluginName === 'PlannerAuthStorage') {
           const input = options as {
+            attemptedSession?: string
+            expectedSession?: string
             key?: string
+            refreshedSession?: string
             value?: string
           }
+
+          if (methodName === 'prepareRefresh') {
+            const expectedSession = parseAuthSession(input.expectedSession)
+            const latestSession = parseAuthSession(
+              window.localStorage.getItem(authSessionStorageKey),
+            )
+
+            if (
+              !expectedSession?.refreshToken ||
+              !latestSession?.refreshToken
+            ) {
+              return Promise.reject(
+                new Error('Valid auth refresh sessions are required.'),
+              )
+            }
+
+            const preparedSession =
+              latestSession.refreshToken === expectedSession.refreshToken &&
+              !latestSession.refreshRotationRequestId
+                ? {
+                    ...latestSession,
+                    refreshRotationRequestId: createUuidV7(),
+                  }
+                : latestSession
+
+            window.localStorage.setItem(
+              authSessionStorageKey,
+              JSON.stringify(preparedSession),
+            )
+
+            return Promise.resolve({
+              value: JSON.stringify(preparedSession),
+            })
+          }
+
+          if (methodName === 'commitRefresh') {
+            const attemptedSession = parseAuthSession(input.attemptedSession)
+            const refreshedSession = parseAuthSession(input.refreshedSession)
+            const latestSession = parseAuthSession(
+              window.localStorage.getItem(authSessionStorageKey),
+            )
+
+            if (
+              !attemptedSession?.refreshToken ||
+              !refreshedSession?.refreshToken ||
+              !latestSession?.refreshToken
+            ) {
+              return Promise.reject(
+                new Error('Valid auth refresh sessions are required.'),
+              )
+            }
+
+            const committedSession =
+              latestSession.refreshToken === attemptedSession.refreshToken &&
+              latestSession.refreshRotationRequestId ===
+                attemptedSession.refreshRotationRequestId
+                ? refreshedSession
+                : latestSession
+
+            window.localStorage.setItem(
+              authSessionStorageKey,
+              JSON.stringify(committedSession),
+            )
+
+            return Promise.resolve({
+              value: JSON.stringify(committedSession),
+            })
+          }
+
           const storageKey = input.key ? `CapacitorStorage.${input.key}` : null
 
           if (!storageKey) {
@@ -132,6 +243,8 @@ test.beforeEach(async ({ page }) => {
               return Promise.resolve({ path: null })
 
             case 'ackPendingCompletedTasks':
+            case 'configureBackgroundSync':
+            case 'disableBackgroundSync':
             case 'refresh':
               return Promise.resolve({})
           }
@@ -266,7 +379,9 @@ test.beforeEach(async ({ page }) => {
       PluginHeaders: [
         {
           methods: [
+            { name: 'commitRefresh', rtype: 'promise' },
             { name: 'get', rtype: 'promise' },
+            { name: 'prepareRefresh', rtype: 'promise' },
             { name: 'remove', rtype: 'promise' },
             { name: 'set', rtype: 'promise' },
           ],
@@ -278,6 +393,8 @@ test.beforeEach(async ({ page }) => {
             { name: 'readPendingCompletedTasks', rtype: 'promise' },
             { name: 'consumePendingRoute', rtype: 'promise' },
             { name: 'ackPendingCompletedTasks', rtype: 'promise' },
+            { name: 'configureBackgroundSync', rtype: 'promise' },
+            { name: 'disableBackgroundSync', rtype: 'promise' },
             { name: 'refresh', rtype: 'promise' },
           ],
           name: 'PlannerWidget',

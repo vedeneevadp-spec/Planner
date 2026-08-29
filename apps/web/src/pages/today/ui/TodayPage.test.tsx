@@ -634,6 +634,25 @@ describe('TodayPage', () => {
     expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
   })
 
+  it('forces a retry of denied auth when access recovery is requested', () => {
+    Object.assign(mocks.plannerState, {
+      readiness: {
+        canReadCachedData: true,
+        canRenderAppContent: true,
+        canUseProtectedApi: false,
+        canWriteProtectedData: false,
+        reason: 'auth_deferred',
+        status: 'blockedAuth',
+      },
+    })
+
+    renderTodayPage({ tasks: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить доступ' }))
+
+    expect(mocks.refresh).toHaveBeenCalledWith({ retryDeniedAuth: true })
+  })
+
   it('offers compact cursor pagination for a truncated task archive', async () => {
     Object.assign(mocks.plannerState, {
       taskReadModelCoverage: {

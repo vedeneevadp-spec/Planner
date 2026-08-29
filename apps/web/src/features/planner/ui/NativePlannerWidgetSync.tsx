@@ -154,8 +154,11 @@ export function NativePlannerWidgetSync() {
       workspaceId: personalWorkspaceId,
     })
   }, [apiConfig, personalWorkspaceId])
+  const widgetApiBaseUrl = apiConfig?.apiBaseUrl
   const widgetTimeZone =
     apiConfig?.clientTimeZone ?? getDeviceTimeZone() ?? 'UTC'
+  const shouldDisableNativeBackgroundSync =
+    lifecycleStatus === 'disabled' || lifecycleStatus === 'signed_out'
   const widgetDateKey = getDateKeyInTimeZone(new Date(), widgetTimeZone)
   const personalTaskQueryKey = useMemo<NativeWidgetTaskQueryKey>(
     () => [
@@ -594,9 +597,16 @@ export function NativePlannerWidgetSync() {
       return
     }
 
-    if (apiConfig && personalWorkspaceId) {
+    if (shouldDisableNativeBackgroundSync) {
+      void disableNativePlannerWidgetBackgroundSync().catch((error) => {
+        console.warn('Failed to disable Android widget background sync.', error)
+      })
+      return
+    }
+
+    if (widgetApiBaseUrl && personalWorkspaceId) {
       void configureNativePlannerWidgetBackgroundSync({
-        apiBaseUrl: apiConfig.apiBaseUrl,
+        apiBaseUrl: widgetApiBaseUrl,
         timeZone: widgetTimeZone,
         workspaceId: personalWorkspaceId,
       }).catch((error) => {
@@ -605,15 +615,13 @@ export function NativePlannerWidgetSync() {
           error,
         )
       })
-      return
     }
-
-    if (lifecycleStatus === 'disabled' || lifecycleStatus === 'signed_out') {
-      void disableNativePlannerWidgetBackgroundSync().catch((error) => {
-        console.warn('Failed to disable Android widget background sync.', error)
-      })
-    }
-  }, [apiConfig, lifecycleStatus, personalWorkspaceId, widgetTimeZone])
+  }, [
+    personalWorkspaceId,
+    shouldDisableNativeBackgroundSync,
+    widgetApiBaseUrl,
+    widgetTimeZone,
+  ])
 
   useEffect(() => {
     if (previousSessionVersionRef.current === sessionVersion) {
