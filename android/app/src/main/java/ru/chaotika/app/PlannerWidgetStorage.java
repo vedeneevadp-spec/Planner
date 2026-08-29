@@ -337,6 +337,15 @@ final class PlannerWidgetSyncConfig {
         );
     }
 
+    boolean hasSameValues(PlannerWidgetSyncConfig other) {
+        return (
+            other != null &&
+            apiBaseUrl.equals(other.apiBaseUrl) &&
+            workspaceId.equals(other.workspaceId) &&
+            timeZone.equals(other.timeZone)
+        );
+    }
+
     JSONObject toJson() {
         JSONObject value = new JSONObject();
 

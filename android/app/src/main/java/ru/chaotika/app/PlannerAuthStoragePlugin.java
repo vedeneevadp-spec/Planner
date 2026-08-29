@@ -11,6 +11,67 @@ public class PlannerAuthStoragePlugin extends Plugin {
     private static final String PREFERENCES_GROUP = "CapacitorStorage";
 
     @PluginMethod
+    public void prepareRefresh(PluginCall call) {
+        String expectedSessionValue = call.getString("expectedSession");
+        PlannerWidgetAuthSession expectedSession = PlannerWidgetAuthSession.parse(
+            expectedSessionValue
+        );
+
+        if (expectedSession == null) {
+            call.reject("A valid expected auth session is required.");
+            return;
+        }
+
+        try {
+            PlannerWidgetAuthSession preparedSession = PlannerWidgetAuthSessionStore.prepareForRefresh(
+                getContext(),
+                expectedSession
+            );
+
+            if (preparedSession == null) {
+                call.reject("Failed to prepare secure auth refresh.");
+                return;
+            }
+
+            resolveSession(call, preparedSession);
+        } catch (RuntimeException exception) {
+            call.reject("Failed to prepare secure auth refresh.", exception);
+        }
+    }
+
+    @PluginMethod
+    public void commitRefresh(PluginCall call) {
+        PlannerWidgetAuthSession attemptedSession = PlannerWidgetAuthSession.parse(
+            call.getString("attemptedSession")
+        );
+        PlannerWidgetAuthSession refreshedSession = PlannerWidgetAuthSession.parse(
+            call.getString("refreshedSession")
+        );
+
+        if (attemptedSession == null || refreshedSession == null) {
+            call.reject("Valid attempted and refreshed auth sessions are required.");
+            return;
+        }
+
+        try {
+            PlannerWidgetAuthSession committedSession = PlannerWidgetAuthSessionStore.commitRefresh(
+                getContext(),
+                attemptedSession,
+                refreshedSession
+            );
+
+            if (committedSession == null) {
+                call.reject("Failed to commit secure auth refresh.");
+                return;
+            }
+
+            resolveSession(call, committedSession);
+        } catch (RuntimeException exception) {
+            call.reject("Failed to commit secure auth refresh.", exception);
+        }
+    }
+
+    @PluginMethod
     public void get(PluginCall call) {
         String key = call.getString("key");
 
@@ -72,5 +133,15 @@ public class PlannerAuthStoragePlugin extends Plugin {
         } catch (RuntimeException exception) {
             call.reject("Failed to remove secure auth storage.", exception);
         }
+    }
+
+    private static void resolveSession(
+        PluginCall call,
+        PlannerWidgetAuthSession session
+    ) {
+        com.getcapacitor.JSObject result = new com.getcapacitor.JSObject();
+
+        result.put("value", session.toJson().toString());
+        call.resolve(result);
     }
 }

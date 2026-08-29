@@ -23,6 +23,7 @@ const authApiMocks = vi.hoisted(() => ({
 
 const authStorageMocks = vi.hoisted(() => ({
   clearStoredAuthSession: vi.fn(),
+  commitStoredAuthSessionRefresh: vi.fn(),
   prepareStoredAuthSessionRefresh: vi.fn(),
   readStoredAuthSession: vi.fn(),
   writeStoredAuthSession: vi.fn(),
@@ -71,6 +72,8 @@ vi.mock('../lib/auth-api', () => ({
 
 vi.mock('../lib/auth-session-storage', () => ({
   clearStoredAuthSession: authStorageMocks.clearStoredAuthSession,
+  commitStoredAuthSessionRefresh:
+    authStorageMocks.commitStoredAuthSessionRefresh,
   getRememberSessionPreference: () => true,
   prepareStoredAuthSessionRefresh:
     authStorageMocks.prepareStoredAuthSessionRefresh,
@@ -151,6 +154,7 @@ describe('SessionProvider', () => {
     authApiMocks.updatePassword.mockReset()
 
     authStorageMocks.clearStoredAuthSession.mockReset()
+    authStorageMocks.commitStoredAuthSessionRefresh.mockReset()
     authStorageMocks.prepareStoredAuthSessionRefresh.mockReset()
     authStorageMocks.readStoredAuthSession.mockReset()
     authStorageMocks.writeStoredAuthSession.mockReset()
@@ -172,6 +176,15 @@ describe('SessionProvider', () => {
         error.status === 401,
     )
     authStorageMocks.clearStoredAuthSession.mockResolvedValue(undefined)
+    authStorageMocks.commitStoredAuthSessionRefresh.mockImplementation(
+      async (
+        _attemptedSession: StoredAuthSession,
+        refreshedSession: StoredAuthSession,
+      ) => {
+        await authStorageMocks.writeStoredAuthSession(refreshedSession)
+        return refreshedSession
+      },
+    )
     authStorageMocks.prepareStoredAuthSessionRefresh.mockImplementation(
       (storedSession: StoredAuthSession) => Promise.resolve(storedSession),
     )
@@ -660,6 +673,51 @@ describe('SessionProvider', () => {
     })
 
     expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes the latest session atomically prepared by the native bridge', async () => {
+    const oldSession = createExpiredStoredSession()
+    const preparedSession: StoredAuthSession = {
+      ...oldSession,
+      accessToken: 'widget-access-token',
+      refreshRotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+      refreshToken: 'widget-refresh-token',
+    }
+
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(oldSession)
+    authStorageMocks.prepareStoredAuthSessionRefresh.mockResolvedValue(
+      preparedSession,
+    )
+    authApiMocks.refreshAuthSession.mockResolvedValue(createTokenResponse())
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledWith(
+        {
+          refreshToken: 'widget-refresh-token',
+          rotationRequestId: '0198f5f2-01d0-7a3f-88cb-9cb66f8f8585',
+        },
+        {
+          deviceId: 'native-device-1',
+          rememberSession: true,
+          tokenTransport: 'body',
+        },
+      )
+    })
+    expect(
+      authStorageMocks.commitStoredAuthSessionRefresh,
+    ).toHaveBeenCalledWith(
+      preparedSession,
+      expect.objectContaining({
+        accessToken: 'new-access-token',
+        refreshToken: 'new-refresh-token',
+      }),
+    )
   })
 
   it('keeps the native device session when refresh is denied by the server', async () => {

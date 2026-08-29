@@ -1,12 +1,14 @@
-import { generateUuidV7, isUuidV7 } from '@planner/contracts'
+import { isUuidV7 } from '@planner/contracts'
 
 import { recordClientEvent } from '@/shared/lib/observability'
 
 import {
   type AuthStorage,
   clearNativeSessionStorage,
+  commitNativeAuthSessionRefresh,
   createNativeSessionStorage,
   isNativeSessionPersistenceRuntime,
+  prepareNativeAuthSessionRefresh,
 } from './native-session-storage'
 
 const AUTH_SESSION_STORAGE_KEY = 'planner.auth.session'
@@ -146,24 +148,30 @@ export async function writeStoredAuthSession(
 export async function prepareStoredAuthSessionRefresh(
   session: StoredAuthSession,
 ): Promise<StoredAuthSession> {
-  if (
-    !isNativeSessionPersistenceRuntime() ||
-    !session.refreshToken ||
-    session.refreshRotationRequestId
-  ) {
+  if (!isNativeSessionPersistenceRuntime() || !session.refreshToken) {
     return session
   }
 
-  const preparedSession: StoredAuthSession = {
-    ...session,
-    refreshRotationRequestId: generateUuidV7(),
+  return runNativeRefreshStorageOperation('prepare_refresh', () =>
+    prepareNativeAuthSessionRefresh(JSON.stringify(session)),
+  )
+}
+
+export async function commitStoredAuthSessionRefresh(
+  attemptedSession: StoredAuthSession,
+  refreshedSession: StoredAuthSession,
+): Promise<StoredAuthSession> {
+  if (!isNativeSessionPersistenceRuntime()) {
+    await writeStoredAuthSession(refreshedSession)
+    return refreshedSession
   }
 
-  // Persist the operation before the request. If this fails, the server must
-  // not rotate the token because a process restart could not replay it safely.
-  await writeStoredAuthSession(preparedSession)
-
-  return preparedSession
+  return runNativeRefreshStorageOperation('commit_refresh', () =>
+    commitNativeAuthSessionRefresh(
+      JSON.stringify(attemptedSession),
+      JSON.stringify(refreshedSession),
+    ),
+  )
 }
 
 export async function clearStoredAuthSession(
@@ -276,7 +284,14 @@ function createBrowserAuthStorage(): AuthStorage {
 }
 
 function recordAuthStorageFailure(
-  operation: 'clear' | 'parse' | 'read' | 'remove' | 'write',
+  operation:
+    | 'clear'
+    | 'commit_refresh'
+    | 'parse'
+    | 'prepare_refresh'
+    | 'read'
+    | 'remove'
+    | 'write',
   storage: 'active' | 'local' | 'native' | 'session',
   error: unknown,
   options: {
@@ -294,6 +309,34 @@ function recordAuthStorageFailure(
     },
     { level: 'warn' },
   )
+}
+
+async function runNativeRefreshStorageOperation(
+  operation: 'commit_refresh' | 'prepare_refresh',
+  action: () => Promise<string>,
+): Promise<StoredAuthSession> {
+  try {
+    const rawSession = await action()
+    const parsedSession = JSON.parse(rawSession) as unknown
+
+    if (isStoredAuthSession(parsedSession)) {
+      return parsedSession
+    }
+
+    throw new Error('Native auth refresh storage returned an invalid session.')
+  } catch (error) {
+    console.error('Failed to commit native auth refresh storage.', error)
+    recordAuthStorageFailure(operation, 'native', error, { fallback: 'none' })
+
+    if (error instanceof AuthSessionStorageError) {
+      throw error
+    }
+
+    throw new AuthSessionStorageError(
+      'Native auth refresh state could not be persisted durably.',
+      { cause: error },
+    )
+  }
 }
 
 function getStorageErrorKind(error: unknown): string {

@@ -30,6 +30,7 @@ import {
 } from './auth-api'
 import {
   clearStoredAuthSession,
+  commitStoredAuthSessionRefresh,
   getRememberSessionPreference,
   prepareStoredAuthSessionRefresh,
   readStoredAuthSession,
@@ -163,24 +164,10 @@ export function useSessionAuthController(): SessionAuthState {
     [isNativeSessionRuntime, resolveAuthDeviceId],
   )
 
-  const persistAuthSession = useCallback(
-    async (session: {
-      accessToken: string
-      expiresAt: string
-      refreshToken?: string | undefined
-      user: {
-        email: string
-        id: string
-      }
-    }): Promise<void> => {
+  const restoreStoredAuthSession = useCallback(
+    (storedSession: StoredAuthSession): void => {
       deferredRefreshRetryCountRef.current = 0
       clearRefreshTimer()
-
-      const storedSession = toStoredAuthSession(session, {
-        includeRefreshToken: isNativeSessionRuntime,
-      })
-
-      await writeStoredAuthSession(storedSession)
       blockedNativeRefreshTokenRef.current = null
       setPasswordResetToken(null)
       clearPasswordResetUrlParams()
@@ -192,6 +179,58 @@ export function useSessionAuthController(): SessionAuthState {
       })
     },
     [clearRefreshTimer, isNativeSessionRuntime],
+  )
+
+  const persistAuthSession = useCallback(
+    async (session: {
+      accessToken: string
+      expiresAt: string
+      refreshToken?: string | undefined
+      user: {
+        email: string
+        id: string
+      }
+    }): Promise<void> => {
+      const storedSession = toStoredAuthSession(session, {
+        includeRefreshToken: isNativeSessionRuntime,
+      })
+
+      await writeStoredAuthSession(storedSession)
+      restoreStoredAuthSession(storedSession)
+    },
+    [isNativeSessionRuntime, restoreStoredAuthSession],
+  )
+
+  const persistRefreshedAuthSession = useCallback(
+    async (
+      session: {
+        accessToken: string
+        expiresAt: string
+        refreshToken?: string | undefined
+        user: {
+          email: string
+          id: string
+        }
+      },
+      attemptedStoredSession: StoredAuthSession | null,
+    ): Promise<void> => {
+      const refreshedStoredSession = toStoredAuthSession(session, {
+        includeRefreshToken: isNativeSessionRuntime,
+      })
+      let committedSession = refreshedStoredSession
+
+      if (attemptedStoredSession) {
+        committedSession = await commitStoredAuthSessionRefresh(
+          attemptedStoredSession,
+          refreshedStoredSession,
+        )
+      } else {
+        await writeStoredAuthSession(refreshedStoredSession)
+      }
+
+      restoreStoredAuthSession(committedSession)
+    },
+    [isNativeSessionRuntime, restoreStoredAuthSession],
   )
 
   const clearAuthSession = useCallback(
@@ -389,17 +428,20 @@ export function useSessionAuthController(): SessionAuthState {
 
           case 'request_refresh':
             let refreshStoredSession = storedSession
+            let attemptedRefreshToken = recoveryCommand.refreshToken
 
             try {
               if (isNativeSessionRuntime && refreshStoredSession) {
                 refreshStoredSession =
                   await prepareStoredAuthSessionRefresh(refreshStoredSession)
+                attemptedRefreshToken =
+                  refreshStoredSession.refreshToken ?? attemptedRefreshToken
               }
 
               const refreshedSession = await refreshAuthSession(
-                recoveryCommand.refreshToken
+                attemptedRefreshToken
                   ? {
-                      refreshToken: recoveryCommand.refreshToken,
+                      refreshToken: attemptedRefreshToken,
                       ...(refreshStoredSession?.refreshRotationRequestId
                         ? {
                             rotationRequestId:
@@ -412,11 +454,12 @@ export function useSessionAuthController(): SessionAuthState {
               )
               recordClientEvent('auth_refresh_succeeded', {
                 nativeRuntime: isNativeSessionRuntime,
-                tokenTransport: recoveryCommand.refreshToken
-                  ? 'body'
-                  : 'cookie',
+                tokenTransport: attemptedRefreshToken ? 'body' : 'cookie',
               })
-              await persistAuthSession(refreshedSession)
+              await persistRefreshedAuthSession(
+                refreshedSession,
+                refreshStoredSession,
+              )
 
               return 'recovered' as const
             } catch (error) {
@@ -428,16 +471,14 @@ export function useSessionAuthController(): SessionAuthState {
                   hasStoredSession: Boolean(storedSession),
                   nativeRuntime: isNativeSessionRuntime,
                   status: getAuthErrorStatus(error),
-                  tokenTransport: recoveryCommand.refreshToken
-                    ? 'body'
-                    : 'cookie',
+                  tokenTransport: attemptedRefreshToken ? 'body' : 'cookie',
                 },
                 { level: isRetryableAuthError(error) ? 'warn' : 'error' },
               )
               const refreshFailureCommand = transitionSessionAuthMachine({
                 error,
                 nativeRuntime: isNativeSessionRuntime,
-                refreshToken: recoveryCommand.refreshToken,
+                refreshToken: attemptedRefreshToken,
                 storedSession: refreshStoredSession,
                 type: 'auth.refresh_failed',
               })
@@ -549,7 +590,7 @@ export function useSessionAuthController(): SessionAuthState {
       isAuthEnabled,
       isNativeSessionRuntime,
       keepDeviceSession,
-      persistAuthSession,
+      persistRefreshedAuthSession,
       snapshot.refreshToken,
     ],
   )

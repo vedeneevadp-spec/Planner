@@ -58,7 +58,7 @@ export interface PlannerState {
   taskTemplateLastSuccessfulSyncAt: string | null
   clearTaskActionSnackbar: () => void
   isTaskPending: (taskId: string) => boolean
-  refresh: () => Promise<void>
+  refresh: (options?: { retryDeniedAuth?: boolean }) => Promise<void>
   addSphere: (input: NewLifeSphereInput) => Promise<boolean>
   addTask: (input: NewTaskInput) => Promise<boolean>
   addTaskTemplate: (input: NewTaskTemplateInput) => Promise<boolean>

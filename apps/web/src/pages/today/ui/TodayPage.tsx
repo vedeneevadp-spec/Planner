@@ -45,7 +45,10 @@ export function TodayPage() {
   const openTaskId = normalizeOpenTaskId(searchParams.get('taskId'))
 
   function retryToday() {
-    void Promise.allSettled([sessionQuery.refetch(), refresh()])
+    void Promise.allSettled([
+      sessionQuery.refetch(),
+      refresh({ retryDeniedAuth: true }),
+    ])
   }
 
   if (blockingState) {

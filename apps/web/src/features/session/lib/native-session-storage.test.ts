@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const capacitorMocks = vi.hoisted(() => ({
   addListener: vi.fn(),
+  commitRefresh: vi.fn(),
   durableGet: vi.fn(),
   durableRemove: vi.fn(),
   durableSet: vi.fn(),
   getPlatform: vi.fn(),
   getState: vi.fn(),
   isNativePlatform: vi.fn(),
+  prepareRefresh: vi.fn(),
 }))
 
 vi.mock('@capacitor/app', () => ({
@@ -23,7 +25,9 @@ vi.mock('@capacitor/core', () => ({
     isNativePlatform: capacitorMocks.isNativePlatform,
   },
   registerPlugin: () => ({
+    commitRefresh: capacitorMocks.commitRefresh,
     get: capacitorMocks.durableGet,
+    prepareRefresh: capacitorMocks.prepareRefresh,
     remove: capacitorMocks.durableRemove,
     set: capacitorMocks.durableSet,
   }),
@@ -32,15 +36,18 @@ vi.mock('@capacitor/core', () => ({
 import {
   addNativeAppStateChangeListener,
   clearNativeSessionStorage,
+  commitNativeAuthSessionRefresh,
   createNativeSessionStorage,
   getNativeAppIsActive,
   getNativeAuthDeviceId,
   isNativeSessionPersistenceRuntime,
+  prepareNativeAuthSessionRefresh,
 } from './native-session-storage'
 
 describe('native session storage', () => {
   beforeEach(() => {
     capacitorMocks.addListener.mockReset()
+    capacitorMocks.commitRefresh.mockReset()
     capacitorMocks.durableGet.mockReset()
     capacitorMocks.durableRemove.mockReset()
     capacitorMocks.durableRemove.mockResolvedValue(undefined)
@@ -51,6 +58,7 @@ describe('native session storage', () => {
     capacitorMocks.getState.mockReset()
     capacitorMocks.isNativePlatform.mockReset()
     capacitorMocks.isNativePlatform.mockReturnValue(true)
+    capacitorMocks.prepareRefresh.mockReset()
   })
 
   it('detects native runtime through Capacitor', () => {
@@ -120,6 +128,29 @@ describe('native session storage', () => {
     })
     expect(capacitorMocks.durableRemove).toHaveBeenNthCalledWith(2, {
       key: 'planner.auth.sb-token-user',
+    })
+  })
+
+  it('coordinates refresh preparation and commit through the native bridge', async () => {
+    capacitorMocks.prepareRefresh.mockResolvedValue({
+      value: 'prepared-session',
+    })
+    capacitorMocks.commitRefresh.mockResolvedValue({
+      value: 'committed-session',
+    })
+
+    await expect(
+      prepareNativeAuthSessionRefresh('expected-session'),
+    ).resolves.toBe('prepared-session')
+    await expect(
+      commitNativeAuthSessionRefresh('prepared-session', 'refreshed-session'),
+    ).resolves.toBe('committed-session')
+    expect(capacitorMocks.prepareRefresh).toHaveBeenCalledWith({
+      expectedSession: 'expected-session',
+    })
+    expect(capacitorMocks.commitRefresh).toHaveBeenCalledWith({
+      attemptedSession: 'prepared-session',
+      refreshedSession: 'refreshed-session',
     })
   })
 
