@@ -82,9 +82,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
-        Context context = getContext();
-
-        context.startService(WakeWordService.createStopIntent(context));
+        stopWakeWordServiceSilently();
         call.resolve(createStateResponse(VoiceAssistantState.IDLE.value));
     }
 
@@ -92,7 +90,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
     public void clearSessionContext(PluginCall call) {
         Context context = getContext();
 
-        context.startService(WakeWordService.createStopIntent(context));
+        stopWakeWordServiceSilently();
         try {
             PlannerVoiceAssistantStorage.clearSessionContext(context);
             call.resolve(createStateResponse(VoiceAssistantState.IDLE.value));
@@ -189,7 +187,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         PlannerVoiceAssistantStorage.storeWakeWordEnabled(getContext(), isEnabled);
 
         if (!isEnabled) {
-            getContext().startService(WakeWordService.createStopIntent(getContext()));
+            stopWakeWordServiceSilently();
         } else if (degradeIfWakeModelMissing()) {
             call.resolve(new JSObject());
             return;
@@ -225,7 +223,7 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
         PlannerVoiceAssistantStorage.storeBackgroundWakeWordEnabled(getContext(), isEnabled);
 
         if (!isEnabled) {
-            getContext().startService(WakeWordService.createStopIntent(getContext()));
+            stopWakeWordServiceSilently();
         } else if (!tryStartConfiguredWakeWordService()) {
             call.reject("Не удалось запустить фоновый wake word.");
             return;
@@ -619,10 +617,22 @@ public class PlannerVoiceAssistantPlugin extends Plugin {
     }
 
     private void stopWakeWordServiceSilently() {
+        Context context = getContext();
+        boolean preserveBlockedStatus =
+            AndroidVoiceRuntimeStore.snapshot(context).status == AndroidVoiceRuntimeStatus.BLOCKED;
+
+        PlannerVoiceAssistantStorage.storeState(context, VoiceAssistantState.IDLE);
+        if (preserveBlockedStatus) {
+            AndroidVoiceRuntimeStore.recordEvent(context, AndroidVoiceRuntimeMetric.WAKE_SERVICE_STOPPED);
+        } else {
+            AndroidVoiceRuntimeStore.markServiceStopped(context);
+        }
+
         try {
-            getContext().startService(WakeWordService.createStopIntent(getContext()));
+            context.stopService(WakeWordService.createStopIntent(context));
         } catch (RuntimeException ignored) {
-            PlannerVoiceAssistantStorage.storeState(getContext(), VoiceAssistantState.IDLE);
+            // The requested state is already persisted. Stopping an app-owned
+            // service must never crash the Capacitor plugin while backgrounded.
         }
     }
 
