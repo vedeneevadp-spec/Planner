@@ -20,6 +20,23 @@ interface AuthRefreshFixture {
   userId: string
 }
 
+interface PasswordResetFixture {
+  deviceId: string
+  displayName: string
+  email: string
+  existingRefreshTokenId: string
+  existingSessionId: string
+  newPasswordHash: string
+  newRefreshTokenHash: string
+  newRefreshTokenId: string
+  newSessionId: string
+  oldPasswordHash: string
+  resetTokenHash: string
+  resetTokenId: string
+  userAgent: string
+  userId: string
+}
+
 const client = new Client({
   connectionString,
   connectionTimeoutMillis: 10_000,
@@ -676,6 +693,158 @@ void describe('Postgres auth runtime functions', () => {
     }
   })
 
+  void test('completes a password reset exactly once and replaces active sessions', async () => {
+    const fixture = createPasswordResetFixture()
+
+    try {
+      await seedPasswordResetFixture(fixture)
+
+      const completionResult = await client.query<{
+        display_name: string
+        email: string
+        id: string
+        session_id: string
+      }>(
+        `
+          select id, email, display_name, session_id
+          from app.auth_complete_password_reset(
+            $1,
+            $2,
+            $3::uuid,
+            $4,
+            $5::uuid,
+            now() + interval '30 days',
+            $6,
+            $7,
+            '127.0.0.1'
+          )
+        `,
+        [
+          fixture.resetTokenHash,
+          fixture.newPasswordHash,
+          fixture.newRefreshTokenId,
+          fixture.newRefreshTokenHash,
+          fixture.newSessionId,
+          fixture.deviceId,
+          fixture.userAgent,
+        ],
+      )
+
+      assert.deepEqual(completionResult.rows, [
+        {
+          display_name: fixture.displayName,
+          email: fixture.email,
+          id: fixture.userId,
+          session_id: fixture.newSessionId,
+        },
+      ])
+
+      const credentialState = await client.query<{
+        password_hash: string
+      }>(
+        `
+          select password_hash
+          from app.auth_credentials
+          where user_id = $1::uuid
+        `,
+        [fixture.userId],
+      )
+      const resetTokenState = await client.query<{
+        was_used: boolean
+      }>(
+        `
+          select used_at is not null as was_used
+          from app.auth_password_reset_tokens
+          where id = $1::uuid
+        `,
+        [fixture.resetTokenId],
+      )
+      const refreshTokenState = await client.query<{
+        active_replacement_count: string
+        revoked_existing_count: string
+      }>(
+        `
+          select
+            count(*) filter (
+              where id = $2::uuid
+                and revoked_at is not null
+            ) as revoked_existing_count,
+            count(*) filter (
+              where id = $3::uuid
+                and token_hash = $4
+                and session_id = $5::uuid
+                and device_id = $6
+                and revoked_at is null
+            ) as active_replacement_count
+          from app.auth_refresh_tokens
+          where user_id = $1::uuid
+        `,
+        [
+          fixture.userId,
+          fixture.existingRefreshTokenId,
+          fixture.newRefreshTokenId,
+          fixture.newRefreshTokenHash,
+          fixture.newSessionId,
+          fixture.deviceId,
+        ],
+      )
+
+      assert.equal(
+        credentialState.rows[0]?.password_hash,
+        fixture.newPasswordHash,
+      )
+      assert.equal(resetTokenState.rows[0]?.was_used, true)
+      assert.equal(
+        Number(refreshTokenState.rows[0]?.revoked_existing_count ?? 0),
+        1,
+      )
+      assert.equal(
+        Number(refreshTokenState.rows[0]?.active_replacement_count ?? 0),
+        1,
+      )
+
+      const retryRefreshTokenId = randomUUID()
+      const retryResult = await client.query(
+        `
+          select *
+          from app.auth_complete_password_reset(
+            $1,
+            $2,
+            $3::uuid,
+            $4,
+            $5::uuid,
+            now() + interval '30 days',
+            $6,
+            $7,
+            '127.0.0.1'
+          )
+        `,
+        [
+          fixture.resetTokenHash,
+          `${fixture.newPasswordHash}-retry`,
+          retryRefreshTokenId,
+          `${fixture.newRefreshTokenHash}-retry`,
+          randomUUID(),
+          fixture.deviceId,
+          fixture.userAgent,
+        ],
+      )
+      const retryTokenState = await client.query<{ count: string }>(
+        `
+          select count(*)
+          from app.auth_refresh_tokens
+          where id = $1::uuid
+        `,
+        [retryRefreshTokenId],
+      )
+
+      assert.equal(retryResult.rows.length, 0)
+      assert.equal(Number(retryTokenState.rows[0]?.count ?? 0), 0)
+    } finally {
+      await cleanupPasswordResetFixture(fixture)
+    }
+  })
+
   void test('invalidates access sessions as soon as their refresh family is revoked', async () => {
     const fixture = createFixture()
 
@@ -813,6 +982,125 @@ function createFixture(): AuthRefreshFixture {
     userAgent: `ChaotikaMobile/${suffix}`,
     userId: randomUUID(),
   }
+}
+
+function createPasswordResetFixture(): PasswordResetFixture {
+  const suffix = randomUUID()
+
+  return {
+    deviceId: `password-reset-device-${suffix}`,
+    displayName: 'Password Reset User',
+    email: `password-reset-${suffix}@example.test`,
+    existingRefreshTokenId: randomUUID(),
+    existingSessionId: randomUUID(),
+    newPasswordHash: `password-reset-new-hash-${suffix}`,
+    newRefreshTokenHash: `password-reset-new-refresh-hash-${suffix}`,
+    newRefreshTokenId: randomUUID(),
+    newSessionId: randomUUID(),
+    oldPasswordHash: `password-reset-old-hash-${suffix}`,
+    resetTokenHash: `password-reset-token-hash-${suffix}`,
+    resetTokenId: randomUUID(),
+    userAgent: `ChaotikaPasswordReset/${suffix}`,
+    userId: randomUUID(),
+  }
+}
+
+async function seedPasswordResetFixture(
+  fixture: PasswordResetFixture,
+): Promise<void> {
+  await cleanupPasswordResetFixture(fixture)
+
+  await client.query(
+    `
+      insert into app.users (
+        id,
+        email,
+        display_name,
+        app_role,
+        locale,
+        timezone
+      )
+      values ($1::uuid, $2, $3, 'user', 'ru', 'UTC')
+    `,
+    [fixture.userId, fixture.email, fixture.displayName],
+  )
+  await client.query(
+    `
+      insert into app.auth_credentials (
+        user_id,
+        email,
+        password_hash
+      )
+      values ($1::uuid, $2, $3)
+    `,
+    [fixture.userId, fixture.email, fixture.oldPasswordHash],
+  )
+  await client.query(
+    `
+      insert into app.auth_refresh_tokens (
+        id,
+        user_id,
+        token_hash,
+        session_id,
+        expires_at,
+        device_id,
+        user_agent,
+        ip_address
+      )
+      values (
+        $1::uuid,
+        $2::uuid,
+        $3,
+        $4::uuid,
+        now() + interval '30 days',
+        $5,
+        $6,
+        '127.0.0.1'
+      )
+    `,
+    [
+      fixture.existingRefreshTokenId,
+      fixture.userId,
+      `${fixture.resetTokenHash}-existing-refresh`,
+      fixture.existingSessionId,
+      fixture.deviceId,
+      fixture.userAgent,
+    ],
+  )
+  await client.query(
+    `
+      insert into app.auth_password_reset_tokens (
+        id,
+        user_id,
+        token_hash,
+        expires_at,
+        user_agent,
+        ip_address
+      )
+      values (
+        $1::uuid,
+        $2::uuid,
+        $3,
+        now() + interval '30 minutes',
+        $4,
+        '127.0.0.1'
+      )
+    `,
+    [
+      fixture.resetTokenId,
+      fixture.userId,
+      fixture.resetTokenHash,
+      fixture.userAgent,
+    ],
+  )
+}
+
+async function cleanupPasswordResetFixture(
+  fixture: PasswordResetFixture,
+): Promise<void> {
+  await client.query('delete from app.users where id = $1::uuid', [
+    fixture.userId,
+  ])
 }
 
 async function seedRefreshFixture(fixture: AuthRefreshFixture): Promise<void> {

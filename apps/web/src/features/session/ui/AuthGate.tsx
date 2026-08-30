@@ -99,6 +99,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     isAuthEnabled,
     isLoading,
     isPasswordRecovery,
+    isSignInRequired,
     lifecycleStatus,
     recoverSession,
     requestPasswordReset,
@@ -150,6 +151,7 @@ export function AuthGate({ children }: PropsWithChildren) {
     isPasswordRecovery,
     isPlannerSessionPending: plannerSessionQuery.isPending,
     isRecovering,
+    isSignInRequired,
     lifecycleStatus,
   })
 

@@ -14,6 +14,8 @@ import type { SessionReadiness } from '@/features/session'
 import { SelfCarePage } from './SelfCarePage'
 
 const mocks = vi.hoisted(() => ({
+  recoverSession:
+    vi.fn<() => Promise<'deferred' | 'recovered' | 'signed_out'>>(),
   retryActiveTab: vi.fn<() => Promise<void>>(),
   retrySession: vi.fn<() => Promise<unknown>>(),
   useBrowserOffline: vi.fn<() => boolean>(),
@@ -25,6 +27,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/session', () => ({
   usePlannerTimeZone: () => 'Europe/Samara',
+  useSessionAuth: () => ({
+    isAuthEnabled: true,
+    recoverSession: mocks.recoverSession,
+  }),
   useSessionFeatureReadiness: mocks.useSessionFeatureReadiness,
 }))
 
@@ -91,6 +97,7 @@ vi.mock('./SelfCarePage.tabs', () => ({
 describe('SelfCarePage states', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.recoverSession.mockResolvedValue('recovered')
     mocks.retryActiveTab.mockResolvedValue()
     mocks.retrySession.mockResolvedValue(undefined)
     mocks.useBrowserOffline.mockReturnValue(false)
@@ -368,6 +375,9 @@ describe('SelfCarePage states', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Обновить доступ' }))
 
     await waitFor(() => {
+      expect(mocks.recoverSession).toHaveBeenCalledWith({
+        retryDeniedRefresh: true,
+      })
       expect(mocks.retrySession).toHaveBeenCalledTimes(1)
     })
     expect(mocks.retryActiveTab).not.toHaveBeenCalled()

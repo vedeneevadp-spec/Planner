@@ -9,6 +9,7 @@ import {
 
 import {
   usePlannerSession,
+  useSessionAuth,
   useSessionFeatureReadiness,
   useUpdateUserPreferences,
   useUpdateWorkspaceSettings,
@@ -44,6 +45,7 @@ interface VoiceSettingsFeedback {
 }
 
 export function VoiceAssistantSettingsPanel() {
+  const auth = useSessionAuth()
   const sessionQuery = usePlannerSession()
   const session = sessionQuery.data
   const { readiness } = useSessionFeatureReadiness({
@@ -348,7 +350,24 @@ export function VoiceAssistantSettingsPanel() {
               ? {
                   label: 'Обновить доступ',
                   onClick: () => {
-                    void sessionQuery.refetch()
+                    void (async () => {
+                      if (
+                        auth.isAuthEnabled &&
+                        (readiness.reason === 'auth_deferred' ||
+                          readiness.reason === 'no_session' ||
+                          readiness.reason === 'unauthorized')
+                      ) {
+                        const recoveryResult = await auth.recoverSession({
+                          retryDeniedRefresh: true,
+                        })
+
+                        if (recoveryResult !== 'recovered') {
+                          return
+                        }
+                      }
+
+                      await sessionQuery.refetch()
+                    })()
                   },
                 }
               : undefined

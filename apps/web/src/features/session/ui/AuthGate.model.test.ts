@@ -20,6 +20,7 @@ const DEFAULT_INPUT: ResolveAuthGateViewInput = {
   isPasswordRecovery: false,
   isPlannerSessionPending: false,
   isRecovering: false,
+  isSignInRequired: false,
   lifecycleStatus: 'signed_out',
 }
 
@@ -81,6 +82,19 @@ describe('AuthGate view model', () => {
       override: {
         hasPlannerSession: true,
         isNativeSessionRuntime: true,
+        lifecycleStatus: 'deferred',
+      },
+    },
+    {
+      expected: {
+        type: 'auth_form',
+      },
+      name: 'requires a new sign-in after a denied manual refresh',
+      override: {
+        hasAuthNotice: true,
+        hasPlannerSession: true,
+        isNativeSessionRuntime: true,
+        isSignInRequired: true,
         lifecycleStatus: 'deferred',
       },
     },

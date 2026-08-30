@@ -47,6 +47,8 @@ interface UpdateWorkspaceSettingsHookResult {
 
 const mocks = vi.hoisted(() => ({
   browserOffline: false,
+  recoverSession:
+    vi.fn<() => Promise<'deferred' | 'recovered' | 'signed_out'>>(),
   getVoiceAssistantNativeStatus:
     vi.fn<() => Promise<VoiceAssistantNativeStatus>>(),
   isAndroidVoiceAssistantRuntime: vi.fn(() => false),
@@ -79,6 +81,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/session', () => ({
   usePlannerSession: () => mocks.usePlannerSession(),
+  useSessionAuth: () => ({
+    isAuthEnabled: true,
+    recoverSession: mocks.recoverSession,
+  }),
   useSessionFeatureReadiness: () => ({ readiness: mocks.readiness }),
   useUpdateUserPreferences: () => mocks.useUpdateUserPreferences(),
   useUpdateWorkspaceSettings: () => mocks.useUpdateWorkspaceSettings(),
@@ -112,6 +118,7 @@ describe('VoiceAssistantSettingsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.browserOffline = false
+    mocks.recoverSession.mockResolvedValue('recovered')
     mocks.isAndroidVoiceAssistantRuntime.mockReturnValue(false)
     mocks.openAndroidBatteryOptimizationSettings.mockResolvedValue(undefined)
     mocks.openAndroidSystemAppSettings.mockResolvedValue(undefined)
@@ -259,6 +266,24 @@ describe('VoiceAssistantSettingsPanel', () => {
       expect(
         screen.getByRole('switch', { name: 'Wake word "Хаотика"' }),
       ).toBeEnabled()
+    })
+  })
+
+  it('retries denied auth before refreshing server settings', async () => {
+    const refetch = vi.fn(() => Promise.resolve())
+    mocks.readiness = {
+      canWriteProtectedData: false,
+      reason: 'auth_deferred',
+    }
+
+    renderSettings({ refetch })
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить доступ' }))
+
+    await waitFor(() => {
+      expect(mocks.recoverSession).toHaveBeenCalledWith({
+        retryDeniedRefresh: true,
+      })
+      expect(refetch).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -587,10 +612,12 @@ describe('VoiceAssistantSettingsPanel', () => {
 
 function renderSettings({
   appRole = 'owner',
+  refetch = vi.fn(() => Promise.resolve()),
   voiceAssistantEnabled = true,
   wakeWordTrainingModeEnabled = false,
 }: {
   appRole?: AppRole
+  refetch?: () => Promise<unknown>
   voiceAssistantEnabled?: boolean
   wakeWordTrainingModeEnabled?: boolean
 } = {}) {
@@ -609,7 +636,7 @@ function renderSettings({
     },
     error: null,
     isPending: false,
-    refetch: vi.fn(() => Promise.resolve()),
+    refetch,
   })
 
   return render(<VoiceAssistantSettingsPanel />)

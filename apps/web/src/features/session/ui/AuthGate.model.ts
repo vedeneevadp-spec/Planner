@@ -35,6 +35,7 @@ export interface ResolveAuthGateViewInput {
   isPasswordRecovery: boolean
   isPlannerSessionPending: boolean
   isRecovering: boolean
+  isSignInRequired: boolean
   lifecycleStatus: SessionAuthLifecycleStatus
 }
 
@@ -43,6 +44,12 @@ export function resolveAuthGateView(
 ): AuthGateView {
   if (!input.isAuthEnabled && !input.canResolvePlannerSession) {
     return statusPanel('disabled_auth_configuration')
+  }
+
+  if (input.isSignInRequired) {
+    return {
+      type: 'auth_form',
+    }
   }
 
   if (

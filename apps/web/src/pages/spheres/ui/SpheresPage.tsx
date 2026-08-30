@@ -250,7 +250,7 @@ export function SpheresPage() {
   }
 
   function refreshSpheres() {
-    void refresh()
+    void refresh({ retryDeniedAuth: isSpheresAccessIssue })
   }
 
   useEffect(() => {

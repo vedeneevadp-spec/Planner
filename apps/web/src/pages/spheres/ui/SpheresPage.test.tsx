@@ -121,7 +121,7 @@ describe('SpheresPage states', () => {
     expect(mocks.refresh).toHaveBeenCalledTimes(1)
   })
 
-  it('does not describe an unavailable auth session as offline', () => {
+  it('does not describe an unavailable auth session as offline and retries denied auth', () => {
     mocks.hasLifeSphereRecords = false
     mocks.hasTaskRecords = false
     mocks.isLoading = true
@@ -134,6 +134,8 @@ describe('SpheresPage states', () => {
 
     expect(screen.getByText(/Не удалось подтвердить доступ/)).toBeVisible()
     expect(screen.queryByText('Нет подключения')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(mocks.refresh).toHaveBeenCalledWith({ retryDeniedAuth: true })
   })
 
   it('shows offline with retry when no complete cache is available', () => {

@@ -97,6 +97,7 @@ export function useSessionAuthController(): SessionAuthState {
         : readPasswordResetToken(window.location),
   )
   const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const [isSignInRequired, setIsSignInRequired] = useState(false)
   const [{ lifecycleStatus, sessionVersion, snapshot }, dispatchAuthState] =
     useReducer(sessionAuthReducer, isAuthEnabled, createInitialSessionAuthState)
   const isPasswordRecovery = passwordResetToken !== null
@@ -172,6 +173,7 @@ export function useSessionAuthController(): SessionAuthState {
       setPasswordResetToken(null)
       clearPasswordResetUrlParams()
       setAuthNotice(null)
+      setIsSignInRequired(false)
       dispatchAuthState({
         includeRefreshToken: isNativeSessionRuntime,
         session: storedSession,
@@ -271,6 +273,7 @@ export function useSessionAuthController(): SessionAuthState {
       pendingSignOutNoticeRef.current = notice
       blockedNativeRefreshTokenRef.current = null
       setAuthNotice(notice === false ? null : notice)
+      setIsSignInRequired(false)
       setPasswordResetToken(null)
       clearCachedPlannerSession(actorUserId)
       clearSelectedWorkspaceId(actorUserId)
@@ -336,6 +339,7 @@ export function useSessionAuthController(): SessionAuthState {
         SessionAuthMachineCommand,
         { type: 'keep_device_session' }
       >,
+      options: { requireSignIn?: boolean } = {},
     ) => {
       if (command.reason === 'retryable_refresh_error') {
         recordClientEvent(
@@ -354,7 +358,12 @@ export function useSessionAuthController(): SessionAuthState {
       }
 
       console.warn(command.logMessage, command.error)
-      setAuthNotice(null)
+      if (options.requireSignIn) {
+        setAuthNotice(DEFAULT_EXPIRED_SESSION_MESSAGE)
+        setIsSignInRequired(true)
+      } else {
+        setAuthNotice(null)
+      }
       dispatchAuthState({
         includeRefreshToken: isNativeSessionRuntime,
         session: command.storedSession,
@@ -547,7 +556,11 @@ export function useSessionAuthController(): SessionAuthState {
                       return storageCommand.result
 
                     case 'keep_device_session':
-                      return keepDeviceSession(storageCommand)
+                      return keepDeviceSession(storageCommand, {
+                        requireSignIn:
+                          options.retryDeniedRefresh === true &&
+                          storageCommand.reason === 'server_denied_refresh',
+                      })
 
                     case 'clear_expired_session':
                       await clearAuthSession(storageCommand.notice)
@@ -874,6 +887,7 @@ export function useSessionAuthController(): SessionAuthState {
       isAuthEnabled,
       isLoading: isAuthEnabled && snapshot.isLoading,
       isPasswordRecovery,
+      isSignInRequired,
       lifecycleStatus,
       recoverSession,
       requestPasswordReset,
@@ -890,6 +904,7 @@ export function useSessionAuthController(): SessionAuthState {
     expireSession,
     isAuthEnabled,
     isPasswordRecovery,
+    isSignInRequired,
     lifecycleStatus,
     recoverSession,
     requestPasswordReset,

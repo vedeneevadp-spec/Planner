@@ -747,6 +747,9 @@ describe('SessionProvider', () => {
         'mobile@example.com',
       )
       expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+      expect(screen.getByTestId('auth-sign-in-required')).toHaveTextContent(
+        'no',
+      )
     })
     expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
     expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
@@ -775,6 +778,45 @@ describe('SessionProvider', () => {
     })
 
     expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires sign-in after a denied manual refresh without clearing local session data', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createExpiredStoredSession(),
+    )
+    authApiMocks.refreshAuthSession.mockRejectedValue({ status: 401 })
+
+    render(
+      <SessionProvider>
+        <AuthSnapshotProbe />
+      </SessionProvider>,
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+      expect(screen.getByTestId('auth-sign-in-required')).toHaveTextContent(
+        'no',
+      )
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry denied refresh' }),
+    )
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(2)
+      expect(screen.getByTestId('auth-sign-in-required')).toHaveTextContent(
+        'yes',
+      )
+      expect(screen.getByTestId('auth-notice')).toHaveTextContent(
+        'Войдите заново',
+      )
+    })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(
+      sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,
+    ).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
   })
 
   it('does not persist refresh tokens in browser session storage', async () => {
@@ -947,6 +989,18 @@ function AuthSnapshotProbe() {
         {auth.accessToken ?? 'none'}
       </output>
       <output data-testid="auth-session-version">{auth.sessionVersion}</output>
+      <output data-testid="auth-sign-in-required">
+        {auth.isSignInRequired ? 'yes' : 'no'}
+      </output>
+      <output data-testid="auth-notice">{auth.authNotice ?? 'none'}</output>
+      <button
+        type="button"
+        onClick={() => {
+          void auth.recoverSession({ retryDeniedRefresh: true })
+        }}
+      >
+        Retry denied refresh
+      </button>
     </>
   )
 }

@@ -12,6 +12,7 @@ export interface PasswordSignUpResult {
 
 export type SessionRecoveryResult = 'deferred' | 'recovered' | 'signed_out'
 export interface SessionRecoveryOptions {
+  /** Explicit user retry: retry a blocked token, then require sign-in if the server denies it again. */
   retryDeniedRefresh?: boolean | undefined
 }
 export type SessionAuthLifecycleStatus =
@@ -27,6 +28,7 @@ export interface SessionAuthState {
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean
+  isSignInRequired: boolean
   lifecycleStatus: SessionAuthLifecycleStatus
   recoverSession: (
     options?: SessionRecoveryOptions,

@@ -498,6 +498,7 @@ function createAuthState(
     isAuthEnabled: true,
     isLoading: false,
     isPasswordRecovery: false,
+    isSignInRequired: false,
     lifecycleStatus: 'authenticated',
     recoverSession: vi.fn(() => Promise.resolve('recovered' as const)),
     requestPasswordReset: vi.fn(() => Promise.resolve()),

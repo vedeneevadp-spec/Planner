@@ -1040,7 +1040,7 @@ export function CalendarPage() {
 
   function refreshCalendar() {
     const refreshOperations: Array<Promise<unknown>> = [
-      refresh(),
+      refresh({ retryDeniedAuth: isCalendarAccessIssue }),
       calendarTaskRangeQuery.refetch(),
     ]
 
