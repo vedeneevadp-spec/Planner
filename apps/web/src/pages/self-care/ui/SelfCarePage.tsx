@@ -14,7 +14,7 @@ import {
   SELF_CARE_API_UNAVAILABLE_MESSAGE,
   useSelfCareOfflineQueue,
 } from '@/features/self-care'
-import { useSessionFeatureReadiness } from '@/features/session'
+import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
 import {
   isBrowserRetryableOfflineError,
   useBrowserOffline,
@@ -88,6 +88,7 @@ const SelfCareAnalyticsTab = lazy(() =>
 
 export function SelfCarePage() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const auth = useSessionAuth()
   const routeState = getSelfCarePageRouteState(searchParams)
   const { activeTab, createDialogMode } = routeState
   const {
@@ -280,6 +281,16 @@ export function SelfCarePage() {
     setFormError(null)
     void (async () => {
       if (!selfCareReadiness.canUseProtectedApi) {
+        if (isSessionUnavailable && auth.isAuthEnabled) {
+          const recoveryResult = await auth.recoverSession({
+            retryDeniedRefresh: true,
+          })
+
+          if (recoveryResult !== 'recovered') {
+            return
+          }
+        }
+
         await selfCareSessionQuery.refetch()
         return
       }

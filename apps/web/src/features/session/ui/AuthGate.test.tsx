@@ -20,6 +20,7 @@ interface SessionAuthStub {
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean
+  isSignInRequired: boolean
   lifecycleStatus:
     'authenticated' | 'deferred' | 'disabled' | 'restoring' | 'signed_out'
   recoverSession: () => Promise<'deferred' | 'recovered' | 'signed_out'>
@@ -88,6 +89,7 @@ describe('AuthGate', () => {
       isAuthEnabled: true,
       isLoading: false,
       isPasswordRecovery: false,
+      isSignInRequired: false,
       lifecycleStatus: 'signed_out',
       recoverSession: vi.fn<
         () => Promise<'deferred' | 'recovered' | 'signed_out'>
@@ -216,6 +218,33 @@ describe('AuthGate', () => {
     expect(
       screen.queryByText('Нужно восстановить вход'),
     ).not.toBeInTheDocument()
+  })
+
+  it('shows sign-in without discarding cached content after a denied manual refresh', () => {
+    auth.authNotice =
+      'Сессия истекла или больше не принимается сервером. Войдите заново.'
+    auth.email = 'mobile@example.com'
+    auth.isSignInRequired = true
+    auth.lifecycleStatus = 'deferred'
+    mocks.isNativeSessionPersistenceRuntime.mockReturnValue(true)
+    plannerSessionQuery.data = {
+      actorUserId: 'user-1',
+      workspaceId: 'workspace-1',
+    }
+
+    render(
+      <AuthGate>
+        <main>Planner content</main>
+      </AuthGate>,
+    )
+
+    expect(
+      screen.getByRole('heading', { name: 'Войдите в Chaotika' }),
+    ).toBeVisible()
+    expect(screen.getByLabelText('Email')).toHaveValue('mobile@example.com')
+    expect(screen.getByRole('alert')).toHaveTextContent('Войдите заново')
+    expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
+    expect(auth.expireSession).not.toHaveBeenCalled()
   })
 
   it('shows a disabled-auth configuration error when no session can be bootstrapped', () => {

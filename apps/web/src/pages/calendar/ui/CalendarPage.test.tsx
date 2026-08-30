@@ -469,7 +469,7 @@ describe('CalendarPage', () => {
     })
   })
 
-  it('does not describe an unavailable auth session as offline', () => {
+  it('does not describe an unavailable auth session as offline and retries denied auth', () => {
     currentSession = createSession('schedule')
     mocks.hasTaskRecords = false
     mocks.isLoading = true
@@ -482,6 +482,8 @@ describe('CalendarPage', () => {
 
     expect(screen.getByText(/Не удалось подтвердить доступ/)).toBeVisible()
     expect(screen.queryByText('Нет подключения')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(mocks.refresh).toHaveBeenCalledWith({ retryDeniedAuth: true })
   })
 
   it('shows offline with retry when the schedule has no local task cache', () => {

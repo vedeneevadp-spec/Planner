@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface StoredAuthSession {
@@ -287,6 +294,55 @@ describe('mobile auth regression gate', () => {
     ).toBe(true)
   })
 
+  it('opens sign-in after a denied manual refresh without clearing cached planner data', async () => {
+    authStorageMocks.readStoredAuthSession.mockResolvedValue(
+      createExpiredStoredSession(),
+    )
+    authApiMocks.refreshAuthSession.mockRejectedValue({ status: 401 })
+    authApiMocks.signInWithPassword.mockResolvedValue(createTokenResponse())
+
+    renderMobileApp()
+
+    await waitFor(() => {
+      expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+      expect(screen.getByText('Planner content')).toBeVisible()
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry denied refresh' }),
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Войдите в Chaotika' }),
+    ).toBeVisible()
+    expect(screen.getByLabelText('Email')).toHaveValue('mobile@example.com')
+    expect(screen.getByRole('alert')).toHaveTextContent('Войдите заново')
+    expect(screen.queryByText('Planner content')).not.toBeInTheDocument()
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+    expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Пароль'), {
+      target: { value: 'correct-password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Войти' }))
+
+    await waitFor(() => {
+      expect(authApiMocks.signInWithPassword).toHaveBeenCalledWith(
+        {
+          email: 'mobile@example.com',
+          password: 'correct-password',
+        },
+        {
+          deviceId: 'native-device-1',
+          rememberSession: true,
+          tokenTransport: 'body',
+        },
+      )
+      expect(screen.getByText('Planner content')).toBeVisible()
+    })
+    expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+  })
+
   it('reuses a single native refresh during startup and resume replay', async () => {
     let resolveRefresh!: (response: AuthTokenResponse) => void
     const refreshPromise = new Promise<AuthTokenResponse>((resolve) => {
@@ -362,9 +418,19 @@ function AuthProbe() {
   const auth = useSessionAuth()
 
   return (
-    <output data-testid="auth-access-token">
-      {auth.accessToken ?? 'none'}
-    </output>
+    <>
+      <output data-testid="auth-access-token">
+        {auth.accessToken ?? 'none'}
+      </output>
+      <button
+        type="button"
+        onClick={() => {
+          void auth.recoverSession({ retryDeniedRefresh: true })
+        }}
+      >
+        Retry denied refresh
+      </button>
+    </>
   )
 }
 

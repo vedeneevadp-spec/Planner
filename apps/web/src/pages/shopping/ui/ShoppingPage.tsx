@@ -1,7 +1,7 @@
 import { type FormEvent, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 
-import type { SessionReadiness } from '@/features/session'
+import { type SessionReadiness, useSessionAuth } from '@/features/session'
 import {
   findShoppingListItemByText,
   formatShoppingListText,
@@ -58,6 +58,7 @@ type ShoppingBlockingState = 'error' | 'loading' | 'offline' | null
 
 export function ShoppingPage() {
   const [searchParams] = useSearchParams()
+  const auth = useSessionAuth()
   const [draft, setDraft] = useState('')
   const [draftCategory, setDraftCategory] = useState<ShoppingCategory | null>(
     null,
@@ -130,10 +131,22 @@ export function ShoppingPage() {
   const canMutate = !hasAccessIssue && !isRestoring
 
   function retryShopping() {
-    void Promise.allSettled([
-      shoppingListQuery.retrySession(),
-      shoppingListQuery.refetch(),
-    ])
+    void (async () => {
+      if (hasAccessIssue && auth.isAuthEnabled) {
+        const recoveryResult = await auth.recoverSession({
+          retryDeniedRefresh: true,
+        })
+
+        if (recoveryResult !== 'recovered') {
+          return
+        }
+      }
+
+      await Promise.allSettled([
+        shoppingListQuery.retrySession(),
+        shoppingListQuery.refetch(),
+      ])
+    })()
   }
 
   if (blockingState) {

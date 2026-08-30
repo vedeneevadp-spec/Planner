@@ -432,6 +432,7 @@ function createAuthState(
     isAuthEnabled: true,
     isLoading: false,
     isPasswordRecovery: false,
+    isSignInRequired: false,
     lifecycleStatus: 'authenticated',
     recoverSession: vi.fn().mockResolvedValue('recovered'),
     requestPasswordReset: vi.fn().mockResolvedValue(undefined),

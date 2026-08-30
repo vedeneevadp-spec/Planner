@@ -15,10 +15,18 @@ import { ShoppingPage } from './ShoppingPage'
 const mocks = vi.hoisted(() => ({
   browserOffline: false,
   createItem: vi.fn(),
+  recoverSession: vi.fn(),
   removeItem: vi.fn(),
   useShoppingListSummary: vi.fn(),
   useShoppingListSyncStatus: vi.fn(),
   updateItem: vi.fn(),
+}))
+
+vi.mock('@/features/session', () => ({
+  useSessionAuth: () => ({
+    isAuthEnabled: true,
+    recoverSession: mocks.recoverSession,
+  }),
 }))
 
 vi.mock('@/shared/lib/offline-sync', async (importOriginal) => {
@@ -62,6 +70,8 @@ describe('ShoppingPage', () => {
     mocks.createItem.mockResolvedValue(undefined)
     mocks.removeItem.mockReset()
     mocks.removeItem.mockResolvedValue(undefined)
+    mocks.recoverSession.mockReset()
+    mocks.recoverSession.mockResolvedValue('recovered')
     mocks.updateItem.mockReset()
     mocks.updateItem.mockResolvedValue(undefined)
     mocks.useShoppingListSummary.mockReturnValue(createShoppingListSummary())
@@ -140,6 +150,34 @@ describe('ShoppingPage', () => {
     expect(screen.getByText('Список пуст.')).toBeVisible()
     expect(screen.getByText('Нет подключения')).toBeVisible()
     expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
+  })
+
+  it('retries a denied auth session before refreshing cached shopping data', async () => {
+    const refetch = vi.fn(() => Promise.resolve())
+    const retrySession = vi.fn(() => Promise.resolve())
+    mocks.useShoppingListSummary.mockReturnValue(
+      createShoppingListSummary({
+        readiness: createReadiness({
+          canUseProtectedApi: false,
+          canWriteProtectedData: false,
+          reason: 'no_session',
+          status: 'offlineWithCache',
+        }),
+        refetch,
+        retrySession,
+      }),
+    )
+
+    renderShoppingPage('/shopping')
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить доступ' }))
+
+    await waitFor(() => {
+      expect(mocks.recoverSession).toHaveBeenCalledWith({
+        retryDeniedRefresh: true,
+      })
+      expect(retrySession).toHaveBeenCalledTimes(1)
+      expect(refetch).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('filters items from the shopping query parameters', () => {
