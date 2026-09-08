@@ -142,7 +142,7 @@ export function buildApiApp({
     routerOptions: {
       maxParamLength: 260,
     },
-    trustProxy: config.trustedProxyHops,
+    trustProxy: config.trustedProxies,
   })
   app.register(cors, {
     credentials: true,

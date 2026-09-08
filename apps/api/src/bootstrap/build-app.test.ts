@@ -3742,6 +3742,50 @@ void describe('buildApiApp', () => {
     assert.equal(body.error.code, 'authentication_required')
   })
 
+  void it('trusts forwarded metadata only from configured proxy addresses', async () => {
+    app = buildApiApp({
+      config: createTestConfig({ API_TRUST_PROXY_HOPS: '1' }),
+      database: null,
+      sessionService: new SessionService(new MemorySessionRepository()),
+      taskService: new TaskService(new MemoryTaskRepository()),
+    })
+    app.get('/proxy-metadata-test', (request) => ({
+      ip: request.ip,
+      host: request.host,
+      protocol: request.protocol,
+    }))
+    const headers = {
+      host: 'api.example.test',
+      'x-forwarded-for': '198.51.100.12, 203.0.113.5',
+      'x-forwarded-host': 'forwarded.example.test',
+      'x-forwarded-proto': 'https',
+    }
+    const untrusted = await app.inject({
+      url: '/proxy-metadata-test',
+      remoteAddress: '192.0.2.10',
+      headers,
+    })
+    assert.equal(untrusted.statusCode, 200)
+    assert.deepEqual(untrusted.json(), {
+      ip: '192.0.2.10',
+      host: 'api.example.test',
+      protocol: 'http',
+    })
+    for (const remoteAddress of ['127.0.0.1', '::1']) {
+      const trusted: LightMyRequestResponse = await app.inject({
+        url: '/proxy-metadata-test',
+        remoteAddress,
+        headers,
+      })
+      assert.equal(trusted.statusCode, 200)
+      assert.deepEqual(trusted.json(), {
+        ip: '203.0.113.5',
+        host: 'forwarded.example.test',
+        protocol: 'https',
+      })
+    }
+  })
+
   void it('rate limits protected requests before request authentication', async () => {
     let authenticateCalls = 0
 

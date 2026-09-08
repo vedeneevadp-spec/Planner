@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
@@ -111,12 +111,15 @@ function createPlannerState(
   }
 }
 
-function renderPlannerProvider() {
-  return render(
-    <PlannerProvider>
-      <div>Planner content</div>
-    </PlannerProvider>,
-  )
+async function renderPlannerProvider() {
+  await act(async () => {
+    render(
+      <PlannerProvider>
+        <div>Planner content</div>
+      </PlannerProvider>,
+    )
+    await import('./PlannerTaskActionSnackbar')
+  })
 }
 
 describe('PlannerProvider', () => {
@@ -129,7 +132,7 @@ describe('PlannerProvider', () => {
     vi.clearAllMocks()
   })
 
-  it('does not offer the next stage action for a regular completion notice', () => {
+  it('does not offer the next stage action for a regular completion notice', async () => {
     mocks.usePlannerState.mockReturnValue(
       createPlannerState({
         taskActionSnackbar: {
@@ -139,15 +142,15 @@ describe('PlannerProvider', () => {
       }),
     )
 
-    renderPlannerProvider()
+    await renderPlannerProvider()
 
-    expect(screen.getByRole('status')).toHaveTextContent('Выполнено')
+    expect(await screen.findByRole('status')).toHaveTextContent('Выполнено')
     expect(
       screen.queryByRole('button', { name: 'Создать следующий этап' }),
     ).not.toBeInTheDocument()
   })
 
-  it('shows soft chain actions after completing a chain stage', () => {
+  it('shows soft chain actions after completing a chain stage', async () => {
     const closeTaskChain = vi.fn(() => Promise.resolve(true))
 
     mocks.usePlannerState.mockReturnValue(
@@ -161,9 +164,9 @@ describe('PlannerProvider', () => {
       }),
     )
 
-    renderPlannerProvider()
+    await renderPlannerProvider()
 
-    const snackbar = screen.getByRole('status')
+    const snackbar = await screen.findByRole('status')
     const setPointerCapture = vi.fn()
     Object.defineProperty(snackbar, 'setPointerCapture', {
       configurable: true,
@@ -193,7 +196,7 @@ describe('PlannerProvider', () => {
     expect(closeTaskChain).toHaveBeenCalledWith('task-1')
   })
 
-  it('closes the snackbar with a horizontal swipe', () => {
+  it('closes the snackbar with a horizontal swipe', async () => {
     const clearTaskActionSnackbar = vi.fn()
 
     mocks.usePlannerState.mockReturnValue(
@@ -206,9 +209,9 @@ describe('PlannerProvider', () => {
       }),
     )
 
-    renderPlannerProvider()
+    await renderPlannerProvider()
 
-    const snackbar = screen.getByRole('status')
+    const snackbar = await screen.findByRole('status')
 
     fireEvent.pointerDown(snackbar, {
       button: 0,

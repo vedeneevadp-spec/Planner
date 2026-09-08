@@ -154,6 +154,15 @@ test('registers a user and creates a task through the app shell', async ({
 })
 
 test('keeps desktop chain notification actions clickable', async ({ page }) => {
+  const renderErrors: string[] = []
+  page.on('console', (message) => {
+    if (
+      message.type() === 'error' &&
+      message.text().includes('Cannot update a component')
+    ) {
+      renderErrors.push(message.text())
+    }
+  })
   const user = createE2eUser('e2e-task-chain-notice')
   const taskTitle = `E2E chain task ${user.suffix}`
 
@@ -215,6 +224,7 @@ test('keeps desktop chain notification actions clickable', async ({ page }) => {
     .getByRole('button', { name: 'Закрыть уведомление' })
     .click()
   await expect(notification).toBeHidden()
+  expect(renderErrors).toEqual([])
 })
 
 test('creates and edits one task offline despite repeated submits', async ({

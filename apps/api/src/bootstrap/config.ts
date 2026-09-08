@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { isIP } from 'node:net'
 
 import {
   type StorageDriver,
@@ -16,7 +17,7 @@ export type ApiDatabaseRlsMode =
   | 'enabled'
   | 'session_connection'
   | 'transaction_local'
-export type ApiTrustedProxyHops = false | number
+export type ApiTrustedProxies = false | string[]
 export type TaskRemindersRuntimeMode = 'api' | 'disabled' | 'worker'
 
 const SECURE_POSTGRES_SSL_MODES = new Set([
@@ -74,7 +75,7 @@ export interface ApiConfig {
   port: number
   storageDriver: StorageDriver
   taskRemindersRuntime: TaskRemindersRuntimeMode
-  trustedProxyHops: ApiTrustedProxyHops
+  trustedProxies: ApiTrustedProxies
   userBackupRestoreHelper: UserBackupRestoreHelperClientConfig | null
   voiceStt: VoiceSttConfig
 }
@@ -162,22 +163,35 @@ function parseDatabaseRlsMode(
   throw new Error(`Invalid API_DB_RLS_MODE: ${value}`)
 }
 
-function parseTrustedProxyHops(value: string | undefined): ApiTrustedProxyHops {
-  if (!value || value === '0' || value === 'false') {
-    return false
+function parseTrustedProxies(env: NodeJS.ProcessEnv): ApiTrustedProxies {
+  const value = env.API_TRUST_PROXY_ADDRESSES?.trim()
+  if (value !== undefined) {
+    if (!value || value === 'false' || value === '0') return false
+    const addresses = value.split(',').map((address) => address.trim())
+    for (const address of addresses) {
+      const [host, prefix, ...extra] = address.split('/')
+      const version = isIP(host ?? '')
+      if (
+        !version ||
+        extra.length > 0 ||
+        (prefix !== undefined &&
+          (!/^\d{1,3}$/.test(prefix) ||
+            Number(prefix) > (version === 4 ? 32 : 128)))
+      ) {
+        throw new Error(
+          'Invalid API_TRUST_PROXY_ADDRESSES: expected IP addresses or CIDR ranges.',
+        )
+      }
+    }
+    return addresses
   }
-
-  if (value === 'true') {
-    return 1
-  }
-
-  const parsed = Number(value)
-
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10) {
-    throw new Error(`Invalid API_TRUST_PROXY_HOPS: ${value}`)
-  }
-
-  return parsed
+  const legacy = env.API_TRUST_PROXY_HOPS?.trim()
+  if (!legacy || legacy === '0' || legacy === 'false') return false
+  // Preserve existing single-Caddy deployments without trusting arbitrary peers.
+  if (legacy === '1' || legacy === 'true') return ['127.0.0.1', '::1']
+  throw new Error(
+    'API_TRUST_PROXY_HOPS is unsupported; configure API_TRUST_PROXY_ADDRESSES with trusted proxy IPs/CIDRs.',
+  )
 }
 
 function parseTaskRemindersRuntime(
@@ -619,7 +633,7 @@ export function createApiConfig(
     taskRemindersRuntime: parseTaskRemindersRuntime(
       env.API_TASK_REMINDERS_RUNTIME,
     ),
-    trustedProxyHops: parseTrustedProxyHops(env.API_TRUST_PROXY_HOPS),
+    trustedProxies: parseTrustedProxies(env),
     userBackupRestoreHelper,
     voiceStt: createVoiceSttConfig(env),
   }

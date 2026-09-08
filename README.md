@@ -305,8 +305,10 @@ fallback hook; production LLM provider для него пока не подкл�
   `session_connection`. `transaction_local` требует, чтобы runtime DB user мог
   `SET ROLE authenticated`; `claims_only` сохраняет JWT claims в DB context без
   переключения Postgres role
-- `API_TRUST_PROXY_HOPS=1` явно доверяет одному reverse proxy hop; без этой
-  настройки API не читает `x-forwarded-for` напрямую
+- `API_TRUST_PROXY_ADDRESSES=127.0.0.1,::1` доверяет forwarded headers только
+  от указанных IP/CIDR (список через запятую). Без настройки прокси не доверяются.
+  Legacy `API_TRUST_PROXY_HOPS=1` / `true` совместимы только с loopback Caddy;
+  для нескольких прокси нужно явно указать их адреса. Новая настройка имеет приоритет.
 - `API_TASK_REMINDERS_RUNTIME` управляет напоминаниями задач и заботы:
   `api` запускает poller внутри API процесса, `worker` запускает отдельный
   production systemd service `planner-task-reminders`, `disabled` полностью

@@ -53,6 +53,7 @@ import {
   updateTaskRecord,
   updateTaskTemplateLifeSphereRecords,
 } from './planner-records'
+import { setPlannerTaskQueryData } from './planner-task-cache'
 
 interface PlannerMutationContext {
   optimisticTaskId: string | undefined
@@ -267,7 +268,7 @@ export function usePlannerMutations({
         sphereQueryKey,
         (current = []) => replaceLifeSphereRecord(current, sphere),
       )
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         updateTaskLifeSphereRecords(current, sphere),
       )
       queryClient.setQueryData<TaskTemplateRecord[]>(
@@ -290,7 +291,7 @@ export function usePlannerMutations({
         sphereQueryKey,
         (current = []) => removeLifeSphereRecord(current, sphereId),
       )
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         detachLifeSphereFromTaskRecords(current, sphereId),
       )
       queryClient.setQueryData<TaskTemplateRecord[]>(
@@ -319,7 +320,7 @@ export function usePlannerMutations({
         workspaceId: session?.workspaceId ?? 'pending',
       })
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(current, optimisticTask),
       )
 
@@ -337,7 +338,7 @@ export function usePlannerMutations({
       rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task, _input, context) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceOptimisticTaskRecord(current, context?.optimisticTaskId, task),
       )
     },
@@ -367,7 +368,7 @@ export function usePlannerMutations({
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
       const now = new Date().toISOString()
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         updateTaskRecord(current, taskId, (task) =>
           createOptimisticUpdatedTaskRecord(task, input, now),
         ),
@@ -386,7 +387,7 @@ export function usePlannerMutations({
       rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(current, task),
       )
     },
@@ -418,7 +419,7 @@ export function usePlannerMutations({
         ...(title !== undefined ? { title } : {}),
       }),
     onSuccess: (result) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(
           replaceTaskRecord(current, result.currentTask),
           result.nextTask,
@@ -434,7 +435,7 @@ export function usePlannerMutations({
     mutationFn: ({ input, taskId }: UndoNextTaskStageMutationVariables) =>
       requirePlannerApi(plannerApi).undoCreateNextTaskStage(taskId, input),
     onSuccess: (result) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(
           removeTaskRecord(current, result.removedTaskId),
           result.currentTask,
@@ -455,7 +456,7 @@ export function usePlannerMutations({
         expectedVersion,
       }),
     onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(current, task),
       )
     },
@@ -473,7 +474,7 @@ export function usePlannerMutations({
         expectedVersion,
       }),
     onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(current, task),
       )
     },
@@ -540,7 +541,7 @@ export function usePlannerMutations({
 
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         updateTaskRecord(current, taskId, (task) =>
           createOptimisticTaskStatusRecord(task, status),
         ),
@@ -559,7 +560,7 @@ export function usePlannerMutations({
       rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(current, task),
       )
     },
@@ -584,7 +585,7 @@ export function usePlannerMutations({
 
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         updateTaskRecord(current, taskId, (task) =>
           createOptimisticTaskScheduleRecord(task, schedule),
         ),
@@ -603,7 +604,7 @@ export function usePlannerMutations({
       rollbackTaskMutation(queryClient, taskQueryKey, context)
     },
     onSuccess: (task) => {
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         replaceTaskRecord(current, task),
       )
     },
@@ -624,7 +625,7 @@ export function usePlannerMutations({
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         removeTaskRecord(current, taskId),
       )
 
@@ -675,7 +676,7 @@ export function usePlannerMutations({
       const previousTaskRecords =
         queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? []
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) =>
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
         removeTaskRecord(current, taskId),
       )
 
@@ -869,7 +870,7 @@ function rollbackTaskMutation(
     return
   }
 
-  queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => {
+  setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) => {
     if (!context.previousTaskRecord) {
       return context.optimisticTaskId
         ? removeTaskRecord(current, context.optimisticTaskId)

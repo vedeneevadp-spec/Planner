@@ -65,7 +65,6 @@ import {
   createOptimisticTaskScheduleRecord,
   createOptimisticTaskStatusRecord,
   createOptimisticUpdatedTaskRecord,
-  getTaskRecord,
   removeTaskRecord,
   replaceTaskRecord,
   sortSpheres,
@@ -74,6 +73,10 @@ import {
   toPlannerTask,
   toPlannerTaskTemplate,
 } from './planner-records'
+import {
+  getPlannerCachedTaskRecord,
+  setPlannerTaskQueryData,
+} from './planner-task-cache'
 
 type PlannerSyncFreshnessByScope = Record<PlannerDataSyncScope, string | null>
 type PlannerTaskOfflineMutationInput = Extract<
@@ -390,10 +393,15 @@ export function usePlannerState(): PlannerState {
   }
 
   function getCachedTaskRecord(taskId: string): TaskRecord | undefined {
-    return getTaskRecord(
-      queryClient.getQueryData<TaskRecord[]>(taskQueryKey) ?? [],
-      taskId,
-    )
+    const record = getPlannerCachedTaskRecord(queryClient, taskQueryKey, taskId)
+    if (record) {
+      // Commands need the full versioned record even when it was loaded only
+      // by the calendar/history page. Offline mutations then persist it too.
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current) =>
+        replaceTaskRecord(current, record),
+      )
+    }
+    return record
   }
 
   async function runMutation(
@@ -454,7 +462,7 @@ export function usePlannerState(): PlannerState {
         return null
       }
 
-      queryClient.setQueryData<TaskRecord[]>(taskQueryKey, (current = []) => {
+      setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) => {
         if (projection.optimisticTask) {
           return replaceTaskRecord(current, projection.optimisticTask)
         }
