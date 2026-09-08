@@ -41,6 +41,113 @@ void after(async () => {
   }
 })
 
+void test('PostgresSelfCareRepository shares timezone and DST rules between generated and manual occurrences', async () => {
+  const actorUserId = randomUUID()
+  const workspace = await seedRepositoryContractWorkspace(connection, {
+    userId: actorUserId,
+    kind: 'personal',
+  })
+  const context = {
+    actorUserId,
+    auth: createRepositoryContractAuthContext({
+      email: workspace.email,
+      userId: actorUserId,
+    }),
+    clientTimeZone: 'Europe/Amsterdam',
+    groupRole: null,
+    role: 'owner' as const,
+    workspaceId: workspace.workspaceId,
+    workspaceKind: 'personal' as const,
+  }
+  let statements = 0
+  const db = connection.db.withPlugin({
+    transformQuery(args) {
+      statements += 1
+      return args.node
+    },
+    transformResult(args) {
+      return Promise.resolve(args.result)
+    },
+  })
+  const repository = new PostgresSelfCareRepository(db)
+  try {
+    const habit = await repository.createItem({
+      context,
+      input: selfCareItemInputSchema.parse({
+        category: 'movement',
+        type: 'habit',
+        title: 'Timed habit',
+        scheduleRule: {
+          repeatKind: 'daily',
+          startDate: '2026-03-01',
+          preferredTime: '02:30',
+          timezone: null,
+        },
+      }),
+    })
+    statements = 0
+    const march = await repository.generateOccurrences({
+      context,
+      from: '2026-03-01',
+      to: '2026-03-31',
+    })
+    const monthStatements = statements
+    assert.equal(march.length, 31)
+    assert.equal(
+      march.find((entry) => entry.scheduledFor === '2026-03-29')?.dueAt,
+      '2026-03-29T01:00:00.000Z',
+    )
+
+    statements = 0
+    const october = await repository.generateOccurrences({
+      context,
+      from: '2026-10-25',
+      to: '2026-10-25',
+    })
+    // A month must use the same query count as one day: no per-occurrence
+    // database calls to convert wall-clock times after JS has converted them.
+    assert.equal(monthStatements, statements)
+    assert.equal(october[0]?.dueAt, '2026-10-25T00:30:00.000Z')
+    assert.equal(october[0]?.itemId, habit.id)
+
+    const manual = await repository.createItem({
+      context,
+      input: selfCareItemInputSchema.parse({
+        category: 'relax',
+        type: 'rest_action',
+        title: 'Manual rest',
+      }),
+    })
+    for (const [scheduledFor, dueAt] of [
+      ['2026-03-29', '2026-03-29T01:00:00.000Z'],
+      ['2026-10-25', '2026-10-25T00:30:00.000Z'],
+    ]) {
+      const occurrence = await repository.scheduleItem({
+        context,
+        itemId: manual.id,
+        input: selfCareItemScheduleInputSchema.parse({
+          scheduledFor,
+          scheduledTime: '02:30',
+        }),
+      })
+      assert.equal(occurrence.dueAt, dueAt)
+    }
+    const explicit = await repository.scheduleItem({
+      context,
+      itemId: manual.id,
+      input: selfCareItemScheduleInputSchema.parse({
+        scheduledFor: '2026-06-25',
+        scheduledTime: '09:00',
+        timezone: 'Asia/Kathmandu',
+      }),
+    })
+    assert.equal(explicit.dueAt, '2026-06-25T03:15:00.000Z')
+    assert.equal(explicit.reminderTimeZone, 'Asia/Kathmandu')
+  } finally {
+    await cleanupRepositoryContractUsers(connection, [actorUserId])
+  }
+})
+
 void test('PostgresSelfCareRepository syncs archived migrated items with legacy habits', async () => {
   const actorUserId = randomUUID()
   const habitId = randomUUID()

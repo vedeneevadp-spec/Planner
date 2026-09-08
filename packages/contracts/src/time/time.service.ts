@@ -12,6 +12,8 @@ const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u
 const LOCAL_TIME_PATTERN = /^\d{2}:\d{2}$/u
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
+const zonedFormatters = new Map<string, Intl.DateTimeFormat>()
+const MAX_CACHED_TIME_ZONES = 100
 
 interface DateParts {
   day: number
@@ -185,7 +187,7 @@ export function normalizeTimeZone(
 
 export function isValidTimeZone(timeZone: string): boolean {
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone }).format(zeroDate())
+    getZonedFormatter(timeZone).format(zeroDate())
 
     return true
   } catch {
@@ -380,28 +382,61 @@ function resolveInstantForLocalDateTime(input: {
   )
   const start = nominalUtc - 18 * HOUR_MS
   const end = nominalUtc + 18 * HOUR_MS
-  const exactMatches: number[] = []
-  let nearestLater: number | null = null
+  const offsets = new Set<number>()
+  let firstLaterHour: number | null = null
 
-  for (let cursor = start; cursor <= end; cursor += MINUTE_MS) {
+  // Sample both sides of timezone transitions, then verify the candidate
+  // instants. Do not construct a formatter for every minute in a 36-hour scan.
+  for (let cursor = start; cursor <= end; cursor += HOUR_MS) {
     const parts = getZonedDateTimeParts(new Date(cursor), input.timeZone)
-    const cursorKey = plainDateTimeKey(parts)
-
-    if (cursorKey === targetKey) {
-      exactMatches.push(cursor)
-    }
-
-    if (nearestLater === null && cursorKey > targetKey) {
-      nearestLater = cursor
+    offsets.add(
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second,
+      ) - cursor,
+    )
+    if (firstLaterHour === null && plainDateTimeKey(parts) > targetKey) {
+      firstLaterHour = cursor
     }
   }
 
+  const exactMatches = [...offsets]
+    // Keep the existing minute precision, including historical second offsets.
+    .map((offset) => Math.ceil((nominalUtc - offset) / MINUTE_MS) * MINUTE_MS)
+    .filter(
+      (candidate) =>
+        candidate >= start &&
+        candidate <= end &&
+        plainDateTimeKey(
+          getZonedDateTimeParts(new Date(candidate), input.timeZone),
+        ) === targetKey,
+    )
   if (exactMatches.length > 0) {
-    return exactMatches[0]!
+    return Math.min(...exactMatches)
   }
 
-  if (nearestLater !== null) {
-    return nearestLater
+  if (firstLaterHour !== null) {
+    // A nonexistent local time resolves to the first valid minute after the
+    // gap, not to that time plus the size of the DST jump.
+    let lower = Math.max(start, firstLaterHour - HOUR_MS)
+    let upper = firstLaterHour
+    while (lower < upper) {
+      const middle =
+        lower + Math.floor((upper - lower) / MINUTE_MS / 2) * MINUTE_MS
+      const key = plainDateTimeKey(
+        getZonedDateTimeParts(new Date(middle), input.timeZone),
+      )
+      if (key > targetKey) {
+        upper = middle
+      } else {
+        lower = middle + MINUTE_MS
+      }
+    }
+    return upper
   }
 
   throw new Error(
@@ -409,10 +444,11 @@ function resolveInstantForLocalDateTime(input: {
   )
 }
 
-function getZonedDateTimeParts(
-  date: Date,
-  timeZone: IanaTimeZone,
-): ZonedDateTimeParts {
+function getZonedFormatter(timeZone: IanaTimeZone): Intl.DateTimeFormat {
+  const cached = zonedFormatters.get(timeZone)
+  if (cached) {
+    return cached
+  }
   const formatter = new Intl.DateTimeFormat('en-US', {
     day: '2-digit',
     hour: '2-digit',
@@ -423,6 +459,18 @@ function getZonedDateTimeParts(
     timeZone,
     year: 'numeric',
   })
+  if (zonedFormatters.size >= MAX_CACHED_TIME_ZONES) {
+    zonedFormatters.delete(zonedFormatters.keys().next().value!)
+  }
+  zonedFormatters.set(timeZone, formatter)
+  return formatter
+}
+
+function getZonedDateTimeParts(
+  date: Date,
+  timeZone: IanaTimeZone,
+): ZonedDateTimeParts {
+  const formatter = getZonedFormatter(timeZone)
   const parts = Object.fromEntries(
     formatter
       .formatToParts(date)

@@ -18,6 +18,43 @@ import {
 } from './time.service'
 
 describe('TimeService', () => {
+  it.each([
+    ['Australia/Lord_Howe', '2026-10-04', '02:15', '2026-10-03T15:30:00.000Z'],
+    ['Australia/Lord_Howe', '2026-04-05', '01:45', '2026-04-04T14:45:00.000Z'],
+    ['Asia/Kathmandu', '2026-06-25', '09:00', '2026-06-25T03:15:00.000Z'],
+    ['Pacific/Chatham', '2026-06-25', '09:00', '2026-06-24T20:15:00.000Z'],
+    ['Pacific/Apia', '2011-12-30', '12:00', '2011-12-30T10:00:00.000Z'],
+    ['Pacific/Kiritimati', '2026-01-01', '00:00', '2025-12-31T10:00:00.000Z'],
+  ])(
+    'resolves fractional offsets and transitions in %s at %s %s',
+    (timeZone, localDate, localTime, expected) => {
+      expect(
+        makeFixedZoneDateTime({ localDate, localTime, timeZone }).instantUtc,
+      ).toBe(expected)
+    },
+  )
+
+  it('keeps a month of conversions within a bounded formatting budget', () => {
+    const formatToParts = vi.spyOn(
+      Intl.DateTimeFormat.prototype,
+      'formatToParts',
+    )
+    try {
+      for (const localDate of enumerateDateRange('2026-03-01', '2026-03-31')) {
+        makeFixedZoneDateTime({
+          localDate,
+          localTime: '02:30',
+          timeZone: 'Europe/Amsterdam',
+        })
+      }
+      // Operation counts avoid machine-dependent timing assertions. The old
+      // minute scan performed more than 67,000 formats/constructions per month.
+      expect(formatToParts.mock.calls.length).toBeLessThan(1_500)
+    } finally {
+      formatToParts.mockRestore()
+    }
+  })
+
   it('keeps date-only values as calendar dates across timezone changes', () => {
     const value = { kind: 'date_only' as const, localDate: '2026-06-25' }
 

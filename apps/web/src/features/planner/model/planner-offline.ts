@@ -47,6 +47,7 @@ import {
   updateTaskLifeSphereRecords,
   updateTaskTemplateLifeSphereRecords,
 } from './planner-records'
+import { setPlannerTaskQueryData } from './planner-task-cache'
 
 interface PlannerOfflineSyncParams {
   actorUserId: string | undefined
@@ -281,9 +282,8 @@ export function usePlannerOfflineSync({
               sphereQueryKey,
               (current = []) => replaceLifeSphereRecord(current, sphere),
             )
-            queryClient.setQueryData<TaskRecord[]>(
-              taskQueryKey,
-              (current = []) => updateTaskLifeSphereRecords(current, sphere),
+            setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
+              updateTaskLifeSphereRecords(current, sphere),
             )
             queryClient.setQueryData<TaskTemplateRecord[]>(
               taskTemplateQueryKey,
@@ -292,15 +292,13 @@ export function usePlannerOfflineSync({
             )
           },
           onTaskDeleted: (taskId) => {
-            queryClient.setQueryData<TaskRecord[]>(
-              taskQueryKey,
-              (current = []) => removeTaskRecord(current, taskId),
+            setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
+              removeTaskRecord(current, taskId),
             )
           },
           onTaskSynced: (task) => {
-            queryClient.setQueryData<TaskRecord[]>(
-              taskQueryKey,
-              (current = []) => replaceTaskRecord(current, task),
+            setPlannerTaskQueryData(queryClient, taskQueryKey, (current = []) =>
+              replaceTaskRecord(current, task),
             )
           },
           workspaceId,
@@ -399,10 +397,13 @@ export function usePlannerOfflineSync({
           return
         }
 
-        queryClient.setQueryData<TaskRecord[]>(
-          taskQueryKey,
-          (currentTaskRecords) => currentTaskRecords ?? cachedTaskRecords,
-        )
+        if (queryClient.getQueryData(taskQueryKey) === undefined) {
+          setPlannerTaskQueryData(
+            queryClient,
+            taskQueryKey,
+            () => cachedTaskRecords,
+          )
+        }
       })
       .catch((error) => {
         console.warn('Failed to hydrate cached planner tasks.', error)

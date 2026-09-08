@@ -315,7 +315,7 @@ void describe('createApiConfig', () => {
       API_TASK_REMINDERS_RUNTIME: 'worker',
     })
 
-    assert.equal(config.trustedProxyHops, 1)
+    assert.deepEqual(config.trustedProxies, ['127.0.0.1', '::1'])
     assert.equal(config.taskRemindersRuntime, 'worker')
 
     assert.throws(
@@ -333,6 +333,52 @@ void describe('createApiConfig', () => {
           API_TASK_REMINDERS_RUNTIME: 'cron',
         }),
       /API_TASK_REMINDERS_RUNTIME/,
+    )
+  })
+
+  void it('accepts only explicit proxy IPs or CIDRs and gives them precedence over legacy hops', () => {
+    assert.deepEqual(
+      createApiConfig({
+        NODE_ENV: 'test',
+        API_TRUST_PROXY_ADDRESSES:
+          '127.0.0.1, ::1, 10.10.0.0/16, 2001:db8::/32',
+        API_TRUST_PROXY_HOPS: '9',
+      }).trustedProxies,
+      ['127.0.0.1', '::1', '10.10.0.0/16', '2001:db8::/32'],
+    )
+    for (const value of ['', 'false', '0']) {
+      assert.equal(
+        createApiConfig({
+          NODE_ENV: 'test',
+          API_TRUST_PROXY_ADDRESSES: value,
+          API_TRUST_PROXY_HOPS: '1',
+        }).trustedProxies,
+        false,
+      )
+    }
+    assert.equal(createApiConfig({ NODE_ENV: 'test' }).trustedProxies, false)
+    for (const value of [
+      'true',
+      '1',
+      'proxy.internal',
+      '127.0.0.1/33',
+      '::1/129',
+      '127.0.0.1/',
+      '127.0.0.1,,::1',
+      '127.0.0.1/8/9',
+    ]) {
+      assert.throws(
+        () =>
+          createApiConfig({
+            NODE_ENV: 'test',
+            API_TRUST_PROXY_ADDRESSES: value,
+          }),
+        /API_TRUST_PROXY_ADDRESSES/,
+      )
+    }
+    assert.throws(
+      () => createApiConfig({ NODE_ENV: 'test', API_TRUST_PROXY_HOPS: '2' }),
+      /API_TRUST_PROXY_HOPS/,
     )
   })
 })

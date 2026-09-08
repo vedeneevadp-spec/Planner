@@ -1,17 +1,39 @@
 import type {
   TaskCursorListFilters,
   TaskCursorListResponse,
+  TaskRecord,
 } from '@planner/contracts'
 import {
   type InfiniteData,
+  notifyManager,
   useInfiniteQuery,
   useQuery,
+  useQueryClient,
   type UseQueryResult,
 } from '@tanstack/react-query'
+import { useCallback, useSyncExternalStore } from 'react'
 
-import { useSessionFeatureReadiness } from '@/features/session'
+import { useSessionAuth, useSessionFeatureReadiness } from '@/features/session'
 
+import {
+  getPlannerTaskQueryKey,
+  type PlannerTaskQueryKey,
+} from '../model/planner-queries'
+import { mergeTaskPageWithSnapshot } from '../model/planner-task-cache'
 import { usePlannerApiClient } from './usePlannerApiClient'
+
+function useTaskSnapshot(taskQueryKey: PlannerTaskQueryKey) {
+  const queryClient = useQueryClient()
+  // Subscribe without installing another queryFn/options on the snapshot query.
+  return useSyncExternalStore(
+    useCallback(
+      (notify) =>
+        queryClient.getQueryCache().subscribe(notifyManager.batchCalls(notify)),
+      [queryClient],
+    ),
+    () => queryClient.getQueryData<TaskRecord[]>(taskQueryKey),
+  )
+}
 
 export function usePlannerTaskCursor(
   filters: TaskCursorListFilters,
@@ -19,6 +41,12 @@ export function usePlannerTaskCursor(
 ): UseQueryResult<TaskCursorListResponse, Error> {
   const plannerApi = usePlannerApiClient()
   const { apiConfig } = useSessionFeatureReadiness()
+  const { sessionVersion } = useSessionAuth()
+  const taskQueryKey = getPlannerTaskQueryKey(
+    apiConfig?.workspaceId,
+    sessionVersion,
+  )
+  const snapshot = useTaskSnapshot(taskQueryKey)
 
   return useQuery({
     enabled: options.enabled !== false && plannerApi !== null,
@@ -29,13 +57,8 @@ export function usePlannerTaskCursor(
 
       return plannerApi.listTasksCursor(filters, signal)
     },
-    queryKey: [
-      'planner',
-      'tasks',
-      'cursor',
-      apiConfig?.workspaceId ?? 'pending',
-      filters,
-    ],
+    queryKey: [...taskQueryKey, 'cursor', filters],
+    select: (page) => mergeTaskPageWithSnapshot(page, snapshot ?? []),
   })
 }
 export function usePlannerTaskInfiniteCursor(
@@ -47,6 +70,12 @@ export function usePlannerTaskInfiniteCursor(
 ) {
   const plannerApi = usePlannerApiClient()
   const { apiConfig } = useSessionFeatureReadiness()
+  const { sessionVersion } = useSessionAuth()
+  const taskQueryKey = getPlannerTaskQueryKey(
+    apiConfig?.workspaceId,
+    sessionVersion,
+  )
+  const snapshot = useTaskSnapshot(taskQueryKey)
 
   return useInfiniteQuery<
     TaskCursorListResponse,
@@ -69,13 +98,17 @@ export function usePlannerTaskInfiniteCursor(
       )
     },
     queryKey: [
-      'planner',
-      'tasks',
+      ...taskQueryKey,
       'cursor',
       'infinite',
-      apiConfig?.workspaceId ?? 'pending',
       filters,
       options.initialCursor,
     ],
+    select: (data) => ({
+      ...data,
+      pages: data.pages.map((page) =>
+        mergeTaskPageWithSnapshot(page, snapshot ?? []),
+      ),
+    }),
   })
 }
