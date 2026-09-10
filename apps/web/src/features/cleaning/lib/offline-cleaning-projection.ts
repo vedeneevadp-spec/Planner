@@ -534,7 +534,7 @@ function buildToday(
     (item) =>
       item.task.scope === 'zone' &&
       item.task.zoneId !== null &&
-      zoneIds.has(item.task.zoneId) &&
+      (zoneIds.has(item.task.zoneId) || item.state.nextDueAt === date) &&
       item.isDue,
   )
   const generalItems = allItems.filter(
@@ -671,13 +671,21 @@ function calculateNextDueDate(
             : task.frequencyInterval * 7,
         )
 
-  if (!task.isSeasonal || task.seasonMonths.length === 0) {
-    return base
+  if (task.scope === 'zone' && zone) {
+    const difference = zone.dayOfWeek - getIsoWeekday(base)
+    const zoneDate = addDateDays(
+      base,
+      difference < 0 ? difference + 7 : difference,
+    )
+
+    return task.isSeasonal && task.seasonMonths.length > 0
+      ? findNextSeasonalWeekday(zoneDate, zone.dayOfWeek, task.seasonMonths)
+      : zoneDate
   }
 
-  return task.scope === 'zone' && zone
-    ? findNextSeasonalWeekday(base, zone.dayOfWeek, task.seasonMonths)
-    : findNextSeasonalDate(base, task.seasonMonths)
+  return task.isSeasonal && task.seasonMonths.length > 0
+    ? findNextSeasonalDate(base, task.seasonMonths)
+    : base
 }
 
 function getActionTargetDate(

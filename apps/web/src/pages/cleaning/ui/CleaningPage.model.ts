@@ -310,6 +310,24 @@ export function getHiddenOverdueCleaningItems(
   )
 }
 
+export function getOtherZoneDueTodayCleaningItems(
+  today: CleaningTodayResponse | null | undefined,
+): CleaningTaskWithState[] {
+  if (!today) {
+    return []
+  }
+
+  const todayZoneIds = new Set(today.zones.map((zone) => zone.id))
+
+  return today.items.filter(
+    (item) =>
+      item.task.zoneId !== null &&
+      !todayZoneIds.has(item.task.zoneId) &&
+      item.state.nextDueAt === today.date &&
+      !item.isOverdue,
+  )
+}
+
 export function getPostponedCleaningItems(
   plan: CleaningListResponse | undefined,
   today: CleaningTodayResponse | null | undefined,

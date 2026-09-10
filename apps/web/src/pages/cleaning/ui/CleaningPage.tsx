@@ -49,6 +49,7 @@ import {
   getHeroHint,
   getHiddenOverdueCleaningItems,
   getIsoWeekdayFromDate,
+  getOtherZoneDueTodayCleaningItems,
   getPostponedCleaningItems,
   getWeekdayLabel,
   MONTHS,
@@ -94,6 +95,13 @@ export function CleaningPage() {
   const zones = plan?.zones ?? []
   const todayItems = today?.items ?? []
   const generalItems = today?.generalItems ?? []
+  const otherZoneDueItems = getOtherZoneDueTodayCleaningItems(today)
+  const otherZoneDueTaskIds = new Set(
+    otherZoneDueItems.map((item) => item.task.id),
+  )
+  const todayZoneItems = todayItems.filter(
+    (item) => !otherZoneDueTaskIds.has(item.task.id),
+  )
   const overdueItems = getHiddenOverdueCleaningItems(today)
   const overdueTaskIds = new Set(overdueItems.map((item) => item.task.id))
   const postponedItems = getPostponedCleaningItems(
@@ -101,7 +109,11 @@ export function CleaningPage() {
     today,
     todayKey,
   ).filter((item) => !overdueTaskIds.has(item.task.id))
-  const visibleTodayItems = filterItemsByFocusMode(todayItems, focusMode)
+  const visibleTodayItems = filterItemsByFocusMode(todayZoneItems, focusMode)
+  const visibleOtherZoneDueItems = filterItemsByFocusMode(
+    otherZoneDueItems,
+    focusMode,
+  )
   const visibleGeneralItems = filterItemsByFocusMode(generalItems, focusMode)
   const visibleOverdueItems = filterItemsByFocusMode(overdueItems, focusMode)
   const shouldShowGeneralSection = generalItems.length > 0
@@ -371,12 +383,39 @@ export function CleaningPage() {
         />
       ) : null}
 
+      {otherZoneDueItems.length > 0 ? (
+        <TaskSection
+          title="Срок сегодня в других зонах"
+          emptyMessage="Для выбранного режима задач нет."
+          items={visibleOtherZoneDueItems}
+          isBusy={isBusy}
+          showZone
+          onComplete={(taskId) => {
+            void completeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onPostpone={(taskId) => {
+            void postponeTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+          onSkip={(taskId) => {
+            void skipTaskMutation.mutateAsync({
+              input: createActionInput(todayKey),
+              taskId,
+            })
+          }}
+        />
+      ) : null}
+
       {today?.zones.length ? (
         <TaskSection
           title="Все задачи зоны"
           emptyMessage={
-            today.summary.completedTodayCount > 0 &&
-            today.summary.dueCount === 0
+            today.summary.completedTodayCount > 0 && todayZoneItems.length === 0
               ? 'На сегодня всё отмечено.'
               : 'Для выбранного режима задач нет.'
           }

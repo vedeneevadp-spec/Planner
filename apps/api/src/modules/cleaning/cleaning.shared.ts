@@ -176,7 +176,8 @@ export function buildCleaningTodayResponse(input: {
     (item) =>
       item.task.scope === 'zone' &&
       item.task.zoneId !== null &&
-      todayZoneIds.has(item.task.zoneId) &&
+      (todayZoneIds.has(item.task.zoneId) ||
+        item.state.nextDueAt === input.date) &&
       item.isDue,
   )
   const generalItems = allItems.filter(
@@ -369,11 +370,13 @@ export function calculateNextCleaningDueDate(
           )
         : addDaysToDateKey(fromDate, task.frequencyInterval * 7)
 
+  const zoneDate = calculateCleaningZoneDateOnOrAfter(zone, baseDate)
+
   if (!task.isSeasonal || task.seasonMonths.length === 0) {
-    return baseDate
+    return zoneDate
   }
 
-  return findNextSeasonalWeekday(baseDate, zone.dayOfWeek, task.seasonMonths)
+  return findNextSeasonalWeekday(zoneDate, zone.dayOfWeek, task.seasonMonths)
 }
 
 export function calculateNextGeneralCleaningDueDate(

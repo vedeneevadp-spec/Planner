@@ -63,6 +63,7 @@ export interface AiShoppingItem {
 }
 
 export interface AiCleaningTask {
+  completedAt?: string | null
   date?: string | null
   source: 'cleaning'
   status: 'done' | 'overdue' | 'todo' | (string & {})
@@ -152,6 +153,8 @@ export interface TodayContext {
     totalCount: number
   }
   cleaning?: {
+    completed: AiCleaningTask[]
+    completedCount: number
     overdue: AiCleaningTask[]
     tasks: AiCleaningTask[]
     todayZone?: string | null

@@ -4,6 +4,7 @@ import type {
   CleaningTaskHistoryAction,
   CleaningTaskRecord,
   CleaningTaskStateRecord,
+  CleaningTodayResponse,
   CleaningZoneRecord,
 } from '@planner/contracts'
 import { describe, expect, it } from 'vitest'
@@ -12,6 +13,7 @@ import type { CleaningOfflineMutationRecord } from './offline-cleaning-mutation'
 import {
   applyCleaningServerConfirmation,
   projectCleaningPlan,
+  projectCleaningToday,
 } from './offline-cleaning-projection'
 
 describe('cleaning offline projection', () => {
@@ -27,6 +29,50 @@ describe('cleaning offline projection', () => {
     )
 
     expect(projected.states[0]?.postponeCount).toBe(0)
+  })
+
+  it('aligns an offline zone-task completion with the zone weekday', () => {
+    const zone = zoneRecord(1, 'Кухня', 1)
+    const task: CleaningTaskRecord = {
+      ...taskRecord(),
+      scope: 'zone',
+      zoneId: zone.id,
+    }
+    const projected = projectCleaningPlan(
+      {
+        history: [],
+        states: [taskStateRecord(0)],
+        tasks: [task],
+        zones: [zone],
+      },
+      [actionMutation('completed', 'operation-complete', 1)],
+    )
+
+    expect(projected.states[0]?.nextDueAt).toBe('2026-08-17')
+  })
+
+  it('keeps an explicitly due task from another zone in the offline today list', () => {
+    const zone = zoneRecord(1, 'Кухня', 1)
+    const task: CleaningTaskRecord = {
+      ...taskRecord(),
+      scope: 'zone',
+      zoneId: zone.id,
+    }
+    const state: CleaningTaskStateRecord = {
+      ...taskStateRecord(0),
+      nextDueAt: '2026-08-12',
+    }
+    const projected = projectCleaningToday(emptyToday('2026-08-12'), {
+      history: [],
+      states: [state],
+      tasks: [task],
+      zones: [zone],
+    })
+
+    expect(projected.zones).toEqual([])
+    expect(projected.items.map((item) => item.task.id)).toEqual([task.id])
+    expect(projected.accumulatedItems).toEqual([])
+    expect(projected.summary.dueCount).toBe(1)
   })
 
   it('retains sequential actions of different types on the same date', () => {
@@ -109,10 +155,14 @@ function zoneUpdateMutation(): CleaningOfflineMutationRecord {
   }
 }
 
-function zoneRecord(version: number, title: string): CleaningZoneRecord {
+function zoneRecord(
+  version: number,
+  title: string,
+  dayOfWeek = 4,
+): CleaningZoneRecord {
   return {
     createdAt: '2026-08-06T08:00:00.000Z',
-    dayOfWeek: 4,
+    dayOfWeek,
     deletedAt: null,
     description: '',
     id: 'zone-1',
@@ -123,6 +173,31 @@ function zoneRecord(version: number, title: string): CleaningZoneRecord {
     userId: 'user-1',
     version,
     workspaceId: 'workspace-1',
+  }
+}
+
+function emptyToday(date: string): CleaningTodayResponse {
+  return {
+    accumulatedItems: [],
+    date,
+    dayOfWeek: 3,
+    generalItems: [],
+    history: [],
+    items: [],
+    quickItems: [],
+    seasonalItems: [],
+    summary: {
+      accumulatedCount: 0,
+      activeZoneCount: 0,
+      completedTodayCount: 0,
+      dueCount: 0,
+      generalCount: 0,
+      quickCount: 0,
+      seasonalCount: 0,
+      urgentCount: 0,
+    },
+    urgentItems: [],
+    zones: [],
   }
 }
 

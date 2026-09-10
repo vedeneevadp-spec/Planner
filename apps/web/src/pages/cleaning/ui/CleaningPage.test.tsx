@@ -1215,7 +1215,7 @@ describe('CleaningPage', () => {
     expect(screen.queryByText('Помыть окно')).not.toBeInTheDocument()
   })
 
-  it('shows overdue tasks from other zones without duplicating current tasks', () => {
+  it('shows due and overdue tasks from other zones without duplicating current tasks', () => {
     const zone = createZone()
     const otherZone: CleaningZoneRecord = {
       ...createZone(),
@@ -1239,6 +1239,7 @@ describe('CleaningPage', () => {
       id: 'task-accumulated-not-overdue',
       title: 'Протереть двери',
     })
+    accumulatedNotOverdueItem.state.nextDueAt = '2026-05-19'
     const seasonalItem = createCleaningItem(zone, {
       id: 'task-seasonal',
       isSeasonal: true,
@@ -1248,9 +1249,9 @@ describe('CleaningPage', () => {
       zoneId: null,
     })
     const today = createTodayResponse(
-      [dueItem, overdueItem, accumulatedNotOverdueItem],
+      [dueItem, overdueItem],
       zone,
-      [dueItem],
+      [dueItem, accumulatedNotOverdueItem],
       [seasonalItem],
     )
 
@@ -1304,7 +1305,18 @@ describe('CleaningPage', () => {
     expect(
       within(overdueSection).getByRole('button', { name: 'Пропустить' }),
     ).toBeVisible()
-    expect(screen.queryByText('Протереть двери')).not.toBeInTheDocument()
+    const otherZoneDueSection = screen
+      .getByRole('heading', { name: 'Срок сегодня в других зонах' })
+      .closest('section')
+
+    if (!otherZoneDueSection) {
+      throw new Error('Other-zone due cleaning section was not found.')
+    }
+
+    expect(
+      within(otherZoneDueSection).getByText('Протереть двери'),
+    ).toBeVisible()
+    expect(within(otherZoneDueSection).getByText('Кухня')).toBeVisible()
     expect(screen.getAllByText('Полив')).toHaveLength(1)
   })
 
