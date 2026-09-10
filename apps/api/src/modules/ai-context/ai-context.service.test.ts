@@ -5,6 +5,7 @@ import { afterEach, describe, it, mock } from 'node:test'
 import {
   addDateDays,
   type ChaosInboxItemRecord,
+  type CleaningListResponse,
   type CleaningTodayResponse,
   getTodayDate,
   type SelfCareAnalyticsResponse,
@@ -497,6 +498,88 @@ void describe('AiContextService', () => {
         zone,
       })),
       expectedGroups,
+    )
+  })
+
+  void it('exposes completed cleaning history in day, week, and search contexts', async () => {
+    const service = createService([], [], {
+      cleaningList: createCleaningListResponse([
+        {
+          completedAt: '2026-09-09T05:54:59.493Z',
+          date: '2026-09-09',
+          taskId: 'cleaning-table',
+          title: 'Протереть стол',
+          zoneId: 'zone-kirill',
+          zoneTitle: 'Комната Кирилла',
+        },
+        {
+          completedAt: '2026-09-09T13:23:56.580Z',
+          date: '2026-09-09',
+          taskId: 'cleaning-hall-floor',
+          title: 'Помыть полы в прихожей',
+          zoneId: 'zone-living-room',
+          zoneTitle: 'Гостиная',
+        },
+      ]),
+      cleaningToday: createCleaningTodayResponse([]),
+    })
+
+    const todayContext = await service.getTodayContext({
+      date: '2026-09-09',
+      include: ['cleaning'],
+      userId: USER_ID,
+    })
+    const weekContext = await service.getWeekContext({
+      from: '2026-09-08',
+      to: '2026-09-10',
+      userId: USER_ID,
+    })
+    const searchResult = await service.searchPlanner({
+      from: '2026-09-08',
+      query: 'Протереть стол',
+      status: 'done',
+      to: '2026-09-10',
+      types: ['cleaning'],
+      userId: USER_ID,
+    })
+
+    assert.equal(todayContext.cleaning?.completedCount, 2)
+    assert.deepEqual(
+      todayContext.cleaning?.completed.map((item) => ({
+        completedAt: item.completedAt,
+        date: item.date,
+        status: item.status,
+        title: item.title,
+        zone: item.zone,
+      })),
+      [
+        {
+          completedAt: '2026-09-09T05:54:59.493Z',
+          date: '2026-09-09',
+          status: 'done',
+          title: 'Протереть стол',
+          zone: 'Комната Кирилла',
+        },
+        {
+          completedAt: '2026-09-09T13:23:56.580Z',
+          date: '2026-09-09',
+          status: 'done',
+          title: 'Помыть полы в прихожей',
+          zone: 'Гостиная',
+        },
+      ],
+    )
+    assert.equal(weekContext.progress.cleaningCompleted.count, 2)
+    assert.deepEqual(
+      weekContext.progress.cleaningCompleted.items.map((item) => item.title),
+      ['Протереть стол', 'Помыть полы в прихожей'],
+    )
+    assert.deepEqual(
+      searchResult.items.map((item) => ({
+        status: 'status' in item ? item.status : null,
+        title: item.title,
+      })),
+      [{ status: 'done', title: 'Протереть стол' }],
     )
   })
 
@@ -1184,6 +1267,7 @@ void describe('AiContextService', () => {
 })
 
 interface CreateServiceOptions {
+  cleaningList?: CleaningListResponse | undefined
   cleaningToday?: CleaningTodayResponse | undefined
   selfCareAnalytics?: SelfCareAnalyticsResponse | undefined
   selfCareDashboard?:
@@ -1264,6 +1348,11 @@ function createService(
   if (options.cleaningToday) {
     dependencies.cleaningService = {
       getToday: () => Promise.resolve(options.cleaningToday!),
+      ...(options.cleaningList
+        ? {
+            listCleaning: () => Promise.resolve(options.cleaningList!),
+          }
+        : {}),
     }
   }
 
@@ -1416,6 +1505,84 @@ function createCleaningTodayResponse(
       },
     ],
   } as unknown as CleaningTodayResponse
+}
+
+function createCleaningListResponse(
+  completions: Array<{
+    completedAt: string
+    date: string
+    taskId: string
+    title: string
+    zoneId: string
+    zoneTitle: string
+  }>,
+): CleaningListResponse {
+  return {
+    history: completions.map((completion, index) => ({
+      action: 'completed',
+      createdAt: completion.completedAt,
+      date: completion.date,
+      id: `history-${index}`,
+      note: '',
+      targetDate: null,
+      taskId: completion.taskId,
+      userId: USER_ID,
+      workspaceId: WORKSPACE_ID,
+      zoneId: completion.zoneId,
+    })),
+    states: completions.map((completion) => ({
+      lastCompletedAt: completion.completedAt,
+      lastPostponedAt: null,
+      lastSkippedAt: null,
+      nextDueAt: '2026-09-16',
+      postponeCount: 0,
+      taskId: completion.taskId,
+      updatedAt: completion.completedAt,
+      version: 1,
+      workspaceId: WORKSPACE_ID,
+    })),
+    tasks: completions.map((completion) => ({
+      assignee: 'anyone',
+      createdAt: completion.completedAt,
+      customIntervalDays: null,
+      deletedAt: null,
+      depth: 'regular',
+      description: '',
+      energy: 'normal',
+      estimatedMinutes: 10,
+      frequencyInterval: 1,
+      frequencyType: 'weekly',
+      id: completion.taskId,
+      impactScore: 3,
+      isActive: true,
+      isSeasonal: false,
+      priority: 'normal',
+      scope: 'zone',
+      seasonMonths: [],
+      sortOrder: 0,
+      tags: [],
+      title: completion.title,
+      updatedAt: completion.completedAt,
+      userId: USER_ID,
+      version: 1,
+      workspaceId: WORKSPACE_ID,
+      zoneId: completion.zoneId,
+    })),
+    zones: completions.map((completion, index) => ({
+      createdAt: completion.completedAt,
+      dayOfWeek: index + 1,
+      deletedAt: null,
+      description: '',
+      id: completion.zoneId,
+      isActive: true,
+      sortOrder: index,
+      title: completion.zoneTitle,
+      updatedAt: completion.completedAt,
+      userId: USER_ID,
+      version: 1,
+      workspaceId: WORKSPACE_ID,
+    })),
+  }
 }
 
 function createSelfCareTodayItem(input: {

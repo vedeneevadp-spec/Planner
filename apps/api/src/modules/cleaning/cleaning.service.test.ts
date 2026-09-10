@@ -190,6 +190,50 @@ void test('CleaningService accumulates untouched zone tasks after their assigned
   assert.equal(nextDay.summary.accumulatedCount, 1)
 })
 
+void test('CleaningService includes an explicitly due task from another zone before it becomes overdue', async () => {
+  const service = new CleaningService(new MemoryCleaningRepository())
+  const zone = await service.createZone(
+    OWNER_CONTEXT,
+    newCleaningZoneInputSchema.parse({
+      dayOfWeek: 1,
+      title: 'Кухня',
+    }),
+  )
+  const task = await service.createTask(
+    OWNER_CONTEXT,
+    newCleaningTaskInputSchema.parse({
+      title: 'Помыть аэрогриль',
+      zoneId: zone.id,
+    }),
+  )
+
+  await service.postponeTask(
+    OWNER_CONTEXT,
+    task.id,
+    cleaningTaskActionInputSchema.parse({
+      date: '2026-09-07',
+      mode: 'specific_date',
+      targetDate: '2026-09-09',
+    }),
+  )
+
+  const dueDay = await service.getToday(OWNER_CONTEXT, '2026-09-09')
+
+  assert.equal(
+    dueDay.zones.some((item) => item.id === zone.id),
+    false,
+  )
+  assert.equal(
+    dueDay.items.some((item) => item.task.id === task.id),
+    true,
+  )
+  assert.equal(
+    dueDay.accumulatedItems.some((item) => item.task.id === task.id),
+    false,
+  )
+  assert.equal(dueDay.summary.dueCount, 1)
+})
+
 void test('CleaningService includes seasonal tasks in the general flow only during configured months', async () => {
   const service = new CleaningService(new MemoryCleaningRepository())
   const task = await service.createTask(

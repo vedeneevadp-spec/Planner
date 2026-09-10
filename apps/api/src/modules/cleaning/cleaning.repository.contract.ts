@@ -521,6 +521,42 @@ export function defineCleaningRepositoryContractSuite(input: {
       }
     })
 
+    void test('aligns a completed zone task recurrence with the zone weekday', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const zone = await harness.repository.createZone({
+          context: harness.context,
+          input: newCleaningZoneInputSchema.parse({
+            dayOfWeek: 1,
+            title: 'Monday zone',
+          }),
+        })
+        const task = await harness.repository.createTask({
+          context: harness.context,
+          input: newCleaningTaskInputSchema.parse({
+            frequencyInterval: 1,
+            frequencyType: 'weekly',
+            title: 'Weekly zone task',
+            zoneId: zone.id,
+          }),
+        })
+
+        const completedAction = await harness.repository.recordTaskAction({
+          action: 'completed',
+          context: harness.context,
+          input: cleaningTaskActionInputSchema.parse({
+            date: '2026-09-02',
+          }),
+          taskId: task.id,
+        })
+
+        assert.equal(completedAction.state.nextDueAt, '2026-09-14')
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
     void test('rejects stale concurrent actions but permits a later fresh action of another type', async () => {
       const harness = await input.createHarness()
 

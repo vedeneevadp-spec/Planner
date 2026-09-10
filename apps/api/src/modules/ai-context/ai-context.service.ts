@@ -3,6 +3,7 @@ import {
   type ChaosInboxItemRecord,
   type ChaosInboxKind,
   type ChaosInboxStatus,
+  type CleaningListResponse,
   type CleaningTodayResponse,
   enumerateDateRange,
   getIsoWeekStartDate,
@@ -18,6 +19,7 @@ import {
 } from '@planner/contracts'
 
 import type { AuthenticatedRequestContext } from '../../bootstrap/request-auth.js'
+import { buildCleaningTodayResponse } from '../cleaning/cleaning.shared.js'
 import { compactArrayForAi, compactForAi } from './ai-context.compact.js'
 import {
   PLANNER_SEARCH_TYPES,
@@ -120,6 +122,7 @@ interface CleaningServiceLike {
     context: AiServiceReadContext,
     date: string,
   ): Promise<CleaningTodayResponse>
+  listCleaning?(context: AiServiceReadContext): Promise<CleaningListResponse>
 }
 
 interface SelfCareServiceLike {
@@ -172,6 +175,7 @@ export interface AiContextServiceDependencies {
 interface LoadedContext {
   calendar: AiCalendarEvent[]
   cleaning: {
+    completed: AiCleaningTask[]
     overdue: AiCleaningTask[]
     tasks: AiCleaningTask[]
     todayZone: string | null
@@ -299,6 +303,8 @@ export class AiContextService {
 
     if (include.includes('cleaning')) {
       result.cleaning = {
+        completed: limitItems(loaded.cleaning.completed),
+        completedCount: loaded.cleaning.completed.length,
         overdue: limitItems(loaded.cleaning.overdue),
         tasks: limitItems(loaded.cleaning.tasks),
         todayZone: loaded.cleaning.todayZone,
@@ -364,9 +370,7 @@ export class AiContextService {
     )
     const cleaning = await this.getCleaningRange(context, from, to)
     const cleaningActive = countActiveCleaningTasks(cleaning)
-    const cleaningCompleted = cleaning.tasks.filter(
-      (item) => item.status === 'done',
-    )
+    const cleaningCompleted = cleaning.completed
     const selfCare = await this.getSelfCareRange(
       context,
       from,
@@ -557,11 +561,12 @@ export class AiContextService {
     }
 
     if (types.includes('cleaning')) {
-      const date = params.from ?? getTodayDate(timezone)
-      const cleaning = await this.getCleaningToday(context, date)
+      const rangeFrom = params.from ?? getTodayDate(timezone)
+      const rangeTo = params.to ?? rangeFrom
+      const cleaning = await this.getCleaningRange(context, rangeFrom, rangeTo)
 
       results.push(
-        ...[...cleaning.tasks, ...cleaning.overdue]
+        ...[...cleaning.tasks, ...cleaning.overdue, ...cleaning.completed]
           .filter((item) => matchesDateRange(item.date, from, to))
           .filter((item) => matchesSearch(item, normalizedQuery))
           .filter((item) => matchesSearchStatus(item.status, params.status)),
@@ -1025,24 +1030,15 @@ export class AiContextService {
     date: string,
   ): Promise<LoadedContext['cleaning']> {
     if (!this.dependencies.cleaningService) {
-      return { overdue: [], tasks: [], todayZone: null }
+      return { completed: [], overdue: [], tasks: [], todayZone: null }
     }
 
-    const result = await this.dependencies.cleaningService.getToday(
-      context,
-      date,
-    )
-    const tasks = result.items.map(mapCleaningTask)
-    const overdue = result.accumulatedItems.map(mapCleaningTask)
-    const todayZone =
-      result.zones.find((zone) => zone.dayOfWeek === result.dayOfWeek)?.title ??
-      null
+    const snapshot = await this.loadCleaningSnapshot(context)
+    const result = snapshot
+      ? buildCleaningTodayResponse({ ...snapshot, date })
+      : await this.dependencies.cleaningService.getToday(context, date)
 
-    return {
-      overdue,
-      tasks,
-      todayZone,
-    }
+    return mapCleaningContext(result, snapshot, date, date)
   }
 
   private async getCleaningRange(
@@ -1050,16 +1046,42 @@ export class AiContextService {
     from: string,
     to: string,
   ): Promise<LoadedContext['cleaning']> {
+    if (!this.dependencies.cleaningService) {
+      return { completed: [], overdue: [], tasks: [], todayZone: null }
+    }
+
     const dates = enumerateDateRange(from, to).slice(0, 14)
-    const results = await Promise.all(
-      dates.map((date) => this.getCleaningToday(context, date)),
-    )
+    const snapshot = await this.loadCleaningSnapshot(context)
+    const results = snapshot
+      ? dates.map((date) =>
+          mapCleaningContext(
+            buildCleaningTodayResponse({ ...snapshot, date }),
+            snapshot,
+            date,
+            date,
+          ),
+        )
+      : await Promise.all(
+          dates.map((date) => this.getCleaningToday(context, date)),
+        )
 
     return {
+      completed: snapshot
+        ? mapCompletedCleaningTasks(snapshot, from, to)
+        : dedupeCleaningItems(results.flatMap((result) => result.completed)),
       overdue: dedupeItems(results.flatMap((result) => result.overdue)),
       tasks: dedupeItems(results.flatMap((result) => result.tasks)),
       todayZone: results[0]?.todayZone ?? null,
     }
+  }
+
+  private loadCleaningSnapshot(
+    context: AiServiceReadContext,
+  ): Promise<CleaningListResponse | null> {
+    return (
+      this.dependencies.cleaningService?.listCleaning?.(context) ??
+      Promise.resolve(null)
+    )
   }
 
   private async getSelfCareDay(
@@ -1297,6 +1319,62 @@ function mapCleaningTask(
     title: item.task.title,
     zone: item.zone?.title ?? null,
   }
+}
+
+function mapCleaningContext(
+  result: CleaningTodayResponse,
+  snapshot: CleaningListResponse | null,
+  from: string,
+  to: string,
+): LoadedContext['cleaning'] {
+  return {
+    completed: snapshot ? mapCompletedCleaningTasks(snapshot, from, to) : [],
+    overdue: result.accumulatedItems.map(mapCleaningTask),
+    tasks: result.items.map(mapCleaningTask),
+    todayZone:
+      result.zones.find((zone) => zone.dayOfWeek === result.dayOfWeek)?.title ??
+      null,
+  }
+}
+
+function mapCompletedCleaningTasks(
+  snapshot: CleaningListResponse,
+  from: string,
+  to: string,
+): AiCleaningTask[] {
+  const taskById = new Map(snapshot.tasks.map((task) => [task.id, task]))
+  const zoneById = new Map(snapshot.zones.map((zone) => [zone.id, zone]))
+
+  return dedupeCleaningItems(
+    snapshot.history.flatMap((historyItem): AiCleaningTask[] => {
+      if (
+        historyItem.action !== 'completed' ||
+        !matchesDateRange(historyItem.date, from, to)
+      ) {
+        return []
+      }
+
+      const task = taskById.get(historyItem.taskId)
+
+      if (!task) {
+        return []
+      }
+
+      const zoneId = historyItem.zoneId ?? task.zoneId
+      const zone = zoneId ? zoneById.get(zoneId) : undefined
+
+      return [
+        {
+          completedAt: historyItem.createdAt,
+          date: historyItem.date,
+          source: 'cleaning',
+          status: 'done',
+          title: task.title,
+          zone: zone?.title ?? null,
+        },
+      ]
+    }),
+  )
 }
 
 function mapSelfCareTodayItem(
@@ -2240,6 +2318,24 @@ function dedupeItems<
 
   for (const item of items) {
     const key = `${item.source}:${item.title}:${item.date ?? ''}`
+
+    if (!seen.has(key)) {
+      seen.add(key)
+      result.push(item)
+    }
+  }
+
+  return result
+}
+
+function dedupeCleaningItems(items: AiCleaningTask[]): AiCleaningTask[] {
+  const seen = new Set<string>()
+  const result: AiCleaningTask[] = []
+
+  for (const item of items) {
+    const key = `${item.title}:${item.zone ?? ''}:${item.date ?? ''}:${
+      item.status
+    }`
 
     if (!seen.has(key)) {
       seen.add(key)
