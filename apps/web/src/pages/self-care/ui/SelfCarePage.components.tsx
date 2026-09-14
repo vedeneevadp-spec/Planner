@@ -585,12 +585,11 @@ export function SelfCareRitualsTab({
   ritualStepDrafts,
   todayKey,
   uploadedIcons,
-  onCardAction,
   onAddCare,
   onArchiveItem,
   onEditItem,
   onRestartCourse,
-  onToggleRitualStep,
+  onScheduleItem,
 }: {
   canAddCare: boolean
   dashboardItems: SelfCareTodayItem[]
@@ -602,12 +601,11 @@ export function SelfCareRitualsTab({
   ritualStepDrafts: RitualStepDrafts
   todayKey: string
   uploadedIcons: UploadedIconAsset[]
-  onCardAction: (entry: SelfCareTodayItem) => void
   onAddCare: () => void
   onArchiveItem: (entry: SelfCareTodayItem) => void
   onEditItem: (entry: SelfCareTodayItem) => void
   onRestartCourse: (entry: SelfCareTodayItem) => void
-  onToggleRitualStep: (entry: SelfCareTodayItem, stepId: string) => void
+  onScheduleItem: (entry: SelfCareTodayItem) => void
 }) {
   const grouped = useMemo(() => groupItemsByCategory(list), [list])
   const latestCompletionByItemId = useMemo(
@@ -675,10 +673,17 @@ export function SelfCareRitualsTab({
                   scheduleRule: entry.scheduleRule,
                   todayKey,
                 })
+              const scheduleEntry = plan?.occurrences.find(
+                (plannedEntry) =>
+                  plannedEntry.item.id === item.id &&
+                  plannedEntry.occurrence?.status === 'scheduled' &&
+                  plannedEntry.occurrence.scheduledFor === nextOccurrenceDate,
+              ) ?? { ...entry, occurrence: null }
 
               return (
                 <SelfCareItemCard
                   key={item.id}
+                  actions="all"
                   entry={entry}
                   isBusy={isBusy}
                   todayKey={todayKey}
@@ -689,11 +694,11 @@ export function SelfCareRitualsTab({
                     todayKey,
                   )}
                   uploadedIcons={uploadedIcons}
-                  onAction={onCardAction}
                   onArchive={onArchiveItem}
                   onEdit={onEditItem}
                   onRestartCourse={onRestartCourse}
-                  onToggleStep={onToggleRitualStep}
+                  onSchedule={() => onScheduleItem(scheduleEntry)}
+                  scheduleActionLabel="Запланировать"
                   compact
                 />
               )
@@ -855,13 +860,13 @@ function SelfCareItemCard({
   todayKey,
   uploadedIcons,
 }: {
-  actions?: 'plan' | 'today'
+  actions?: 'all' | 'plan' | 'today'
   compact?: boolean
   entry: SelfCareTodayItem
   isBusy: boolean
   isTodayView?: boolean
   nextOccurrenceDate?: string | null | undefined
-  onAction: (entry: SelfCareTodayItem) => void
+  onAction?: (entry: SelfCareTodayItem) => void
   onArchive: (entry: SelfCareTodayItem) => void
   onCancelOccurrence?: (entry: SelfCareTodayItem) => void
   onEdit: (entry: SelfCareTodayItem) => void
@@ -911,17 +916,19 @@ function SelfCareItemCard({
     ? onRestartCourse
     : undefined
   const shouldShowSkipAction = Boolean(onSkipOccurrence && entry.occurrence)
-  const shouldShowScheduleAction = Boolean(onSchedule && entry.occurrence)
-  const todayActionOrder = getSelfCareTodayCardActionOrder({
+  const shouldShowScheduleAction = Boolean(
+    onSchedule && (actions === 'all' ? !restartCourseAction : entry.occurrence),
+  )
+  const cardActionOrder = getSelfCareTodayCardActionOrder({
     hasRestartAction: Boolean(restartCourseAction),
     hasScheduleAction: shouldShowScheduleAction,
     hasSkipAction: shouldShowSkipAction,
-  })
+  }).filter((action) => actions !== 'all' || action !== 'complete')
 
-  function renderTodayAction(action: (typeof todayActionOrder)[number]) {
+  function renderCardAction(action: (typeof cardActionOrder)[number]) {
     switch (action) {
       case 'complete':
-        return (
+        return onAction ? (
           <button
             key={action}
             className={cx(styles.cardActionButton, styles.cardActionButtonDone)}
@@ -933,7 +940,7 @@ function SelfCareItemCard({
           >
             <CheckIcon size={18} strokeWidth={2.3} />
           </button>
-        )
+        ) : null
 
       case 'edit':
         return (
@@ -1000,7 +1007,7 @@ function SelfCareItemCard({
             key={action}
             className={cx(styles.cardTextButton, styles.cardTextButtonSoft)}
             type="button"
-            disabled={isBusy || isDone}
+            disabled={isBusy || (actions === 'all' ? isInactive : isDone)}
             onClick={() => onSchedule(entry)}
           >
             {scheduleActionLabel}
@@ -1120,7 +1127,7 @@ function SelfCareItemCard({
             </button>
           </>
         ) : (
-          todayActionOrder.map(renderTodayAction)
+          cardActionOrder.map(renderCardAction)
         )}
       </div>
     </article>
