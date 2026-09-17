@@ -1,29 +1,31 @@
-import { PageStatusBanner } from '@/shared/ui/PageState'
+import type { ReactNode } from 'react'
 
 import type { TodayRoutineSummaryModel } from '../model/useTodayRoutineSummary'
-import { TodaySourceStatus } from './TodaySourceStatus'
+import { TodaySourceStatus, type TodayStatusSource } from './TodaySourceStatus'
+import { TodayStatusNotice } from './TodayStatusNotice'
 
 export function TodayRoutineStatus({
+  additionalSources = [],
+  status,
   summary,
 }: {
+  additionalSources?: TodayStatusSource[]
+  status?: ReactNode
   summary: TodayRoutineSummaryModel
 }) {
   return (
     <>
-      <TodaySourceStatus
-        emptyMessage="Покупки: список пуст."
-        isEmpty={summary.shoppingItems.length === 0}
-        label="Покупки"
-        query={summary.shoppingQuery}
-      />
-      <TodaySourceStatus
-        emptyMessage="Уборка: на сегодня задач нет."
-        isEmpty={summary.cleaningSummary === null}
-        label="Уборка"
-        query={summary.cleaningQuery}
-      />
+      {status ?? (
+        <TodaySourceStatus
+          sources={[
+            { label: 'Покупки', query: summary.shoppingQuery },
+            { label: 'Уборка', query: summary.cleaningQuery },
+            ...additionalSources,
+          ]}
+        />
+      )}
       {summary.shoppingActionError ? (
-        <PageStatusBanner
+        <TodayStatusNotice
           action={
             summary.onRetryShoppingAction
               ? {
@@ -33,9 +35,7 @@ export function TodayRoutineStatus({
                 }
               : undefined
           }
-          description="Попробуйте ещё раз или откройте список покупок."
-          kind="error"
-          title="Не удалось отметить покупку купленной"
+          message="Не удалось отметить покупку купленной"
         />
       ) : null}
     </>

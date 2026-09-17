@@ -4,6 +4,7 @@ import {
   generateUuidV7,
   getDateDistance,
   getDateKeyInTimeZone,
+  getDayRangeUtc,
   getIsoWeekday as getIsoWeekdayForDateOnly,
   getIsoWeekStartDate,
   type TaskReadModelFilters,
@@ -121,31 +122,44 @@ export class TaskService {
       limit: filters.historyLimit,
       scope: 'closed' as const,
     }
-    const [oldestActive, newestActive, range, history] = await Promise.all([
-      this.repository.listCursorPageByWorkspace(context, {
-        dateMode: 'relevant',
-        direction: 'asc',
-        limit: oldestActiveLimit,
-        scope: 'active',
-      }),
-      this.repository.listCursorPageByWorkspace(context, {
-        dateMode: 'relevant',
-        direction: 'desc',
-        limit: newestActiveLimit,
-        scope: 'active',
-      }),
-      this.repository.listCursorPageByWorkspace(context, {
-        dateFrom: filters.dateFrom,
-        dateMode: 'relevant',
-        dateTo: filters.dateTo,
-        direction: 'asc',
-        limit: filters.rangeLimit,
-        scope: 'all',
-      }),
-      this.repository.listCursorPageByWorkspace(context, {
-        ...historyCursorFilters,
-      }),
-    ])
+    const dailyLoadTimeZone = context.clientTimeZone ?? 'UTC'
+    const dailyLoadRange = getDayRangeUtc({
+      localDate: filters.dateFrom,
+      timeZone: dailyLoadTimeZone,
+    })
+    const [oldestActive, newestActive, range, history, dailyLoad] =
+      await Promise.all([
+        this.repository.listCursorPageByWorkspace(context, {
+          dateMode: 'relevant',
+          direction: 'asc',
+          limit: oldestActiveLimit,
+          scope: 'active',
+        }),
+        this.repository.listCursorPageByWorkspace(context, {
+          dateMode: 'relevant',
+          direction: 'desc',
+          limit: newestActiveLimit,
+          scope: 'active',
+        }),
+        this.repository.listCursorPageByWorkspace(context, {
+          dateFrom: filters.dateFrom,
+          dateMode: 'relevant',
+          dateTo: filters.dateTo,
+          direction: 'asc',
+          limit: filters.rangeLimit,
+          scope: 'all',
+        }),
+        this.repository.listCursorPageByWorkspace(context, {
+          ...historyCursorFilters,
+        }),
+        this.repository.listCursorPageByWorkspace(context, {
+          dailyLoad: { date: filters.dateFrom, ...dailyLoadRange },
+          dateMode: 'planned',
+          direction: 'asc',
+          limit: filters.rangeLimit,
+          scope: 'all',
+        }),
+      ])
     const activeItemsById = new Map<string, StoredTaskRecord>()
 
     for (const task of [...oldestActive.items, ...newestActive.items]) {
@@ -158,12 +172,22 @@ export class TaskService {
     }
     const itemsById = new Map<string, StoredTaskRecord>()
 
-    for (const task of [...active.items, ...range.items, ...history.items]) {
+    for (const task of [
+      ...active.items,
+      ...range.items,
+      ...history.items,
+      ...dailyLoad.items,
+    ]) {
       itemsById.set(task.id, task)
     }
 
     const sources = {
       active: toTaskReadModelSource(active),
+      dailyLoad: {
+        ...toTaskReadModelSource(dailyLoad),
+        date: filters.dateFrom,
+        timeZone: dailyLoadTimeZone,
+      },
       history: toTaskReadModelSource(history),
       range: toTaskReadModelSource(range),
     }
@@ -192,6 +216,7 @@ export class TaskService {
       totalCount: active.totalCount + history.totalCount,
       truncated:
         sources.active.truncated ||
+        sources.dailyLoad.truncated ||
         sources.history.truncated ||
         sources.range.truncated,
     }

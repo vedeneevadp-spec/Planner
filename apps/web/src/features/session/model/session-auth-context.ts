@@ -28,6 +28,7 @@ export interface SessionAuthState {
   isAuthEnabled: boolean
   isLoading: boolean
   isPasswordRecovery: boolean
+  isRecoveringSession: boolean
   isSignInRequired: boolean
   lifecycleStatus: SessionAuthLifecycleStatus
   recoverSession: (

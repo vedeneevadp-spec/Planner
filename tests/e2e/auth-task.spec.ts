@@ -124,11 +124,43 @@ test('registers a user and creates a task through the app shell', async ({
   await editTaskDialog
     .getByRole('textbox', { name: 'Задача' })
     .fill(updatedTaskTitle)
+  const updated = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      /^\/api\/v1\/tasks\/[^/]+$/.test(new URL(response.url()).pathname) &&
+      response.ok(),
+  )
+  const updateRefreshed = updated.then(() =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === '/api/v1/tasks/read-model' &&
+        response.ok(),
+    ),
+  )
   await editTaskDialog.getByRole('button', { name: 'Сохранить' }).click()
+  await updateRefreshed
 
   await expect(page.getByText(updatedTaskTitle)).toBeVisible()
 
+  const completed = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      /^\/api\/v1\/tasks\/[^/]+\/status$/.test(
+        new URL(response.url()).pathname,
+      ) &&
+      response.ok(),
+  )
+  const completionRefreshed = completed.then(() =>
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname === '/api/v1/tasks/read-model' &&
+        response.ok(),
+    ),
+  )
   await page.getByRole('button', { name: 'Завершить задачу' }).click()
+  await completionRefreshed
   const doneTodayToggle = page.getByRole('button', {
     exact: true,
     name: 'Выполнено сегодня',

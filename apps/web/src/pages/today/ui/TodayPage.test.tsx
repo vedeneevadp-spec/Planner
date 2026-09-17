@@ -7,6 +7,7 @@ import type {
   SelfCareTodayItem,
 } from '@planner/contracts'
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -18,8 +19,10 @@ import { MemoryRouter, useLocation } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Task } from '@/entities/task'
+import type { SessionReadiness } from '@/features/session'
 import { addDays, getDateKey } from '@/shared/lib/date'
 import { setStoredTodayTaskView } from '@/shared/lib/today-task-view'
+import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
 import { TodayPage } from './TodayPage'
 
@@ -54,6 +57,7 @@ interface SourceQueryStub {
   isCacheHydrating?: boolean
   isShowingCachedData?: boolean
   lastSuccessfulSyncAt?: string | null
+  readiness?: SessionReadiness
 }
 
 const mocks = vi.hoisted(() => {
@@ -72,6 +76,8 @@ const mocks = vi.hoisted(() => {
 
   return {
     browserOffline: false,
+    isRecoveringSession: false,
+    sessionIsFetching: false,
     cleaningTodayRequest: vi.fn(),
     cleaningTodayResponses,
     cleaningQueryOverrides,
@@ -88,6 +94,7 @@ const mocks = vi.hoisted(() => {
       isLoading: false,
       isTaskCacheHydrating: false,
       isTaskOffline: false,
+      isTaskReadFetching: false,
       readiness: {
         canReadCachedData: true,
         canRenderAppContent: true,
@@ -100,6 +107,13 @@ const mocks = vi.hoisted(() => {
         historyNextCursor: string | null
         returnedCount: number
         sources: {
+          dailyLoad?: {
+            date: string
+            timeZone: string
+            returnedCount: number
+            totalCount: number
+            truncated: boolean
+          }
           active: {
             returnedCount: number
             totalCount: number
@@ -248,7 +262,11 @@ vi.mock('@/features/self-care', () => ({
 }))
 
 vi.mock('@/features/session', () => ({
-  usePlannerSession: () => mocks.usePlannerSession(),
+  usePlannerSession: () => ({
+    ...mocks.usePlannerSession(),
+    isFetching: mocks.sessionIsFetching,
+  }),
+  useSessionAuth: () => ({ isRecoveringSession: mocks.isRecoveringSession }),
   usePlannerTimeZone: () => 'UTC',
   useUpdateUserPreferences: () => ({
     mutate: mocks.updateUserPreferences,
@@ -330,6 +348,23 @@ function createCompleteTaskCoverage(taskCount = 1) {
     },
     totalCount: taskCount,
     truncated: false,
+  }
+}
+
+function createCompleteDailyLoadCoverage(taskCount = 1) {
+  const coverage = createCompleteTaskCoverage(taskCount)
+  return {
+    ...coverage,
+    sources: {
+      ...coverage.sources,
+      dailyLoad: {
+        date: getTodayDate('UTC'),
+        timeZone: 'UTC',
+        returnedCount: taskCount,
+        totalCount: taskCount,
+        truncated: false,
+      },
+    },
   }
 }
 
@@ -649,11 +684,21 @@ function rerenderTodayPage(rendered: ReturnType<typeof render>) {
   )
 }
 
+function expectReadNoticesToBeAbsent() {
+  expect(
+    screen
+      .queryAllByRole('status')
+      .filter((notice) => notice.textContent?.trim()),
+  ).toHaveLength(0)
+}
+
 describe('TodayPage', () => {
   beforeEach(() => {
     window.localStorage.clear()
     plannerTasks = []
     mocks.browserOffline = false
+    mocks.isRecoveringSession = false
+    mocks.sessionIsFetching = false
     mocks.cleaningTodayRequest.mockReset()
     mocks.cleaningTodayResponses = {}
     mocks.cleaningQueryOverrides = {}
@@ -672,6 +717,7 @@ describe('TodayPage', () => {
       isLoading: false,
       isTaskCacheHydrating: false,
       isTaskOffline: false,
+      isTaskReadFetching: false,
       readiness: {
         canReadCachedData: true,
         canRenderAppContent: true,
@@ -731,7 +777,7 @@ describe('TodayPage', () => {
         tasks: [createTask({ plannedDate: today, title: 'Рабочая задача' })],
       })
 
-      expect(screen.getByText(`${label}: загружаем данные`)).toBeVisible()
+      expectReadNoticesToBeAbsent()
       expect(screen.getByText('Рабочая задача')).toBeVisible()
       expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
 
@@ -741,19 +787,13 @@ describe('TodayPage', () => {
       })
       rerenderTodayPage(rendered)
 
-      expect(
-        screen.getByText(`${label}: не удалось загрузить данные`),
-      ).toBeVisible()
+      expect(screen.getByText(`Не обновились: ${label}.`)).toBeVisible()
       expect(screen.getByText('Рабочая задача')).toBeVisible()
       expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
-      fireEvent.click(
-        screen.getByRole('button', { name: `Повторить: ${label}` }),
-      )
+      fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
 
       await waitFor(() => {
-        expect(
-          screen.getByRole('button', { name: `Повторить: ${label}` }),
-        ).toBeEnabled()
+        expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled()
       })
       expect(mocks.shoppingRefetch).toHaveBeenCalledTimes(
         source === 'shopping' ? 1 : 0,
@@ -773,13 +813,82 @@ describe('TodayPage', () => {
 
       setSourceQueryOverride(source, {})
       rerenderTodayPage(rendered)
-      expect(screen.getByText(emptyMessage)).toBeVisible()
+      expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
       expect(
-        screen.queryByText(`${label}: не удалось загрузить данные`),
+        screen.queryByText(`Не обновились: ${label}.`),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Повторить' }),
       ).not.toBeInTheDocument()
       expect(screen.getByText('Рабочая задача')).toBeVisible()
     },
   )
+
+  it.each(supplementarySources)(
+    'keeps $label silent for cached data, readiness changes and unfinished reads',
+    ({ source }) => {
+      const rendered = renderTodayPage({
+        tasks: [
+          createTask({
+            plannedDate: getDateKey(new Date()),
+            title: 'Доступная задача',
+          }),
+        ],
+      })
+      const readiness: SessionReadiness = {
+        canReadCachedData: true,
+        canRenderAppContent: true,
+        canUseProtectedApi: false,
+        canWriteProtectedData: false,
+        reason: 'planner_error',
+        status: 'offlineWithCache',
+      }
+      const silentStates: SourceQueryStub[] = [
+        { data: undefined },
+        { isShowingCachedData: true },
+        { readiness },
+        { readiness: { ...readiness, reason: 'auth_restoring' } },
+        { readiness: { ...readiness, reason: 'planner_pending' } },
+        { error: new Error('Previous request failed'), isFetching: true },
+        { error: new Error('Previous request failed'), isPending: true },
+        {
+          readError: new Error('Previous request failed'),
+          isCacheHydrating: true,
+        },
+      ]
+
+      for (const state of silentStates) {
+        setSourceQueryOverride(source, state)
+        rerenderTodayPage(rendered)
+        expectReadNoticesToBeAbsent()
+        expect(screen.getByText('Доступная задача')).toBeVisible()
+      }
+    },
+  )
+
+  it('hides the previous source failure during a manual retry and reports only its settled result', async () => {
+    let finishRetry: (() => void) | undefined
+    const retryPromise = new Promise<void>((resolve) => {
+      finishRetry = resolve
+    })
+    mocks.shoppingRefetch.mockReturnValue(retryPromise)
+    setSourceQueryOverride('shopping', { error: new Error('HTTP 503') })
+    const rendered = renderTodayPage({ tasks: [] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expectReadNoticesToBeAbsent()
+    expect(mocks.shoppingRefetch).toHaveBeenCalledOnce()
+
+    await act(async () => {
+      finishRetry?.()
+      await retryPromise
+    })
+    expect(screen.getByText('Не обновились: Покупки.')).toBeVisible()
+
+    setSourceQueryOverride('shopping', {})
+    rerenderTodayPage(rendered)
+    expectReadNoticesToBeAbsent()
+  })
 
   it.each(supplementarySources)(
     'preserves cached $label items after a failed refresh',
@@ -809,10 +918,10 @@ describe('TodayPage', () => {
 
       renderTodayPage({ tasks: [] })
 
+      expect(screen.getByText(`Не обновились: ${label}.`)).toBeVisible()
       expect(
-        screen.getByText(`${label}: данные могут быть устаревшими`),
-      ).toBeVisible()
-      expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
+        screen.queryByText(/Последняя синхронизация:/),
+      ).not.toBeInTheDocument()
       expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
       expect(
         screen.getByRole('button', {
@@ -834,6 +943,71 @@ describe('TodayPage', () => {
     },
   )
 
+  it('stays silent during source loading, then aggregates confirmed failures and disappears after recovery', async () => {
+    const today = getDateKey(new Date())
+    supplementarySources.forEach(({ source }) => {
+      setSourceQueryOverride(source, {
+        data: undefined,
+        isFetching: true,
+        isPending: true,
+      })
+    })
+    const rendered = renderTodayPage({
+      tasks: [createTask({ plannedDate: today, title: 'Рабочая задача' })],
+    })
+
+    expectReadNoticesToBeAbsent()
+    expect(
+      screen.queryByRole('button', { name: 'Повторить' }),
+    ).not.toBeInTheDocument()
+
+    setSourceQueryOverride('shopping', { error: new Error('HTTP 500') })
+    setSourceQueryOverride('cleaning', {
+      isShowingCachedData: true,
+      readError: new Error('HTTP 503'),
+    })
+    setSourceQueryOverride('todayCare', {
+      data: undefined,
+      error: new Error('HTTP 503'),
+    })
+    setSourceQueryOverride('tomorrowCare', {})
+    rerenderTodayPage(rendered)
+
+    expect(
+      screen.getByText('Не обновились: Покупки, Уборка, Забота на сегодня.'),
+    ).toBeVisible()
+    expect(screen.queryByText(/Загружаем:/)).not.toBeInTheDocument()
+    expect(screen.getByText('Рабочая задача')).toBeVisible()
+    expect(
+      screen
+        .getAllByRole('status')
+        .filter((notice) => notice.textContent?.trim()),
+    ).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled()
+    })
+    expect(mocks.shoppingRefetch).toHaveBeenCalledOnce()
+    expect(mocks.cleaningRefetch).toHaveBeenCalledExactlyOnceWith(today)
+    expect(mocks.selfCareRefetch).toHaveBeenCalledExactlyOnceWith(today)
+    expect(mocks.sessionRefetch).not.toHaveBeenCalled()
+
+    supplementarySources.forEach(({ source }) => {
+      setSourceQueryOverride(source, {})
+    })
+    rerenderTodayPage(rendered)
+
+    expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Повторить' }),
+    ).not.toBeInTheDocument()
+    supplementarySources.forEach(({ emptyMessage }) => {
+      expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Рабочая задача')).toBeVisible()
+  })
+
   it('does not show disabled self-care integration as a failed source', () => {
     const tomorrow = getDateKey(addDays(new Date(), 1))
     setSelfCareDashboard(
@@ -845,8 +1019,7 @@ describe('TodayPage', () => {
     }
     renderTodayPage({ tasks: [] })
 
-    expect(screen.queryByText(/Забота на завтра:/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Забота на сегодня:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
   })
 
   it('does not describe an empty shopping cache as fresh after an online network fallback', () => {
@@ -857,16 +1030,12 @@ describe('TodayPage', () => {
     }
     renderTodayPage({ tasks: [] })
 
-    expect(
-      screen.getByText('Покупки: данные могут быть устаревшими'),
-    ).toBeVisible()
+    expect(screen.getByText('Не обновились: Покупки.')).toBeVisible()
     expect(screen.queryByText('Покупки: список пуст.')).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Повторить: Покупки' }),
-    ).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled()
   })
 
-  it('shows failed quick shopping updates and retries the same action', () => {
+  it('preserves failed shopping actions alongside a global read notice and retries the same action', () => {
     mocks.shoppingActiveItems = [createShoppingItem()]
     const rendered = renderTodayPage({ tasks: [] })
     fireEvent.click(
@@ -880,8 +1049,14 @@ describe('TodayPage', () => {
     }
     mocks.shoppingItemVariables = input
     mocks.shoppingItemError = new Error('HTTP 500')
+    mocks.plannerState.hasTaskReadError = true
     rerenderTodayPage(rendered)
 
+    expect(
+      screen.getByText(
+        'Не удалось обновить задачи · показываем сохранённые данные',
+      ),
+    ).toBeVisible()
     expect(
       screen.getByText('Не удалось отметить покупку купленной'),
     ).toBeVisible()
@@ -908,7 +1083,7 @@ describe('TodayPage', () => {
     expect(
       screen.queryByText('Не удалось отметить покупку купленной'),
     ).not.toBeInTheDocument()
-    expect(screen.getByText('Покупки: список пуст.')).toBeVisible()
+    expect(screen.queryByText('Покупки: список пуст.')).not.toBeInTheDocument()
   })
 
   it('shows a skeleton while the task cache is being checked', () => {
@@ -939,9 +1114,10 @@ describe('TodayPage', () => {
     expect(screen.getByRole('button', { name: 'Повторить' })).toBeVisible()
   })
 
-  it('keeps cached tasks visible offline with the last sync status', () => {
+  it('keeps cached tasks visible offline with one compact notice', () => {
     mocks.browserOffline = true
     Object.assign(mocks.plannerState, {
+      isTaskReadFetching: true,
       taskLastSuccessfulSyncAt: '2026-08-13T09:00:00.000Z',
     })
     const todayKey = getDateKey(new Date())
@@ -951,27 +1127,301 @@ describe('TodayPage', () => {
     })
 
     expect(screen.getByText('Из кеша')).toBeVisible()
-    expect(screen.getByText('Нет подключения')).toBeVisible()
-    expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
+    expect(
+      screen.getByText('Нет подключения · показываем сохранённые данные'),
+    ).toBeVisible()
+    expect(
+      screen
+        .getAllByRole('status')
+        .filter((notice) => notice.textContent?.trim()),
+    ).toHaveLength(1)
+    expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Последняя синхронизация:/),
+    ).not.toBeInTheDocument()
   })
 
-  it('forces a retry of denied auth when access recovery is requested', () => {
-    Object.assign(mocks.plannerState, {
-      readiness: {
+  it.each([
+    'task loading',
+    'cache hydrating',
+    'task fetching',
+    'session fetching',
+    'session recovery',
+    'cache restoring',
+    'auth restoring',
+    'session pending',
+  ])('keeps cached content silent during %s despite stale errors', (state) => {
+    mocks.plannerState.hasTaskReadError = true
+    mocks.plannerState.isTaskOffline = true
+    if (state === 'task loading') mocks.plannerState.isLoading = true
+    if (state === 'cache hydrating')
+      mocks.plannerState.isTaskCacheHydrating = true
+    if (state === 'task fetching') mocks.plannerState.isTaskReadFetching = true
+    if (state === 'session fetching') mocks.sessionIsFetching = true
+    if (state === 'session recovery') mocks.isRecoveringSession = true
+    if (state === 'cache restoring') {
+      mocks.plannerState.readiness.status = 'restoringWithCache'
+    }
+    if (state === 'auth restoring') {
+      mocks.plannerState.readiness.reason = 'auth_restoring'
+    }
+    if (state === 'session pending') {
+      mocks.plannerState.readiness.reason = 'planner_pending'
+    }
+    setSourceQueryOverride('shopping', {
+      error: new Error('Previous HTTP 503'),
+    })
+    const rendered = renderTodayPage({
+      tasks: [
+        createTask({ plannedDate: getDateKey(new Date()), title: 'Из кеша' }),
+      ],
+    })
+
+    expect(screen.getByText('Из кеша')).toBeVisible()
+    expectReadNoticesToBeAbsent()
+
+    mocks.plannerState.isLoading = false
+    mocks.plannerState.isTaskCacheHydrating = false
+    mocks.plannerState.isTaskReadFetching = false
+    mocks.sessionIsFetching = false
+    mocks.isRecoveringSession = false
+    mocks.plannerState.readiness.status = 'ready'
+    mocks.plannerState.readiness.reason = 'ready'
+    rerenderTodayPage(rendered)
+
+    expect(
+      screen.getByText(
+        'Не удалось обновить задачи · показываем сохранённые данные',
+      ),
+    ).toBeVisible()
+    expect(screen.queryByText(/Нет подключения/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+
+    mocks.plannerState.hasTaskReadError = false
+    mocks.plannerState.isTaskOffline = false
+    setSourceQueryOverride('shopping', {})
+    rerenderTodayPage(rendered)
+    expectReadNoticesToBeAbsent()
+    expect(screen.getByText('Из кеша')).toBeVisible()
+  })
+
+  it('does not infer a connection failure from cached task readiness while the browser is online', () => {
+    Object.assign(mocks.plannerState.readiness, {
+      canUseProtectedApi: false,
+      canWriteProtectedData: false,
+      reason: 'planner_error',
+      status: 'offlineWithCache',
+    })
+    renderTodayPage({ tasks: [createTask()] })
+
+    expectReadNoticesToBeAbsent()
+    expect(screen.queryByText(/Нет подключения/)).not.toBeInTheDocument()
+  })
+
+  it.each(['auth_deferred', 'unauthorized', 'no_session'] as const)(
+    'keeps a stale %s access warning hidden while the session recovers',
+    (reason) => {
+      mocks.isRecoveringSession = true
+      Object.assign(mocks.plannerState.readiness, {
+        canUseProtectedApi: false,
+        canWriteProtectedData: false,
+        reason,
+        status: 'offlineWithCache',
+      })
+      setSourceQueryOverride('shopping', { error: new Error('HTTP 401') })
+      const rendered = renderTodayPage({ tasks: [createTask()] })
+
+      expectReadNoticesToBeAbsent()
+
+      mocks.isRecoveringSession = false
+      rerenderTodayPage(rendered)
+      expect(screen.getByText('Нужно восстановить доступ')).toBeVisible()
+      expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Нет подключения/)).not.toBeInTheDocument()
+    },
+  )
+
+  it('keeps manual recovery silent until its confirmed result is available', async () => {
+    let finishRetry: (() => void) | undefined
+    const retryPromise = new Promise<void>((resolve) => {
+      finishRetry = resolve
+    })
+    mocks.refresh.mockReturnValue(retryPromise)
+    mocks.plannerState.hasTaskReadError = true
+    const rendered = renderTodayPage({ tasks: [createTask()] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
+    expectReadNoticesToBeAbsent()
+    expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith({
+      retryDeniedAuth: true,
+    })
+
+    await act(async () => {
+      finishRetry?.()
+      await retryPromise
+    })
+    expect(
+      screen.getByText(
+        'Не удалось обновить задачи · показываем сохранённые данные',
+      ),
+    ).toBeVisible()
+
+    mocks.plannerState.hasTaskReadError = false
+    rerenderTodayPage(rendered)
+    expectReadNoticesToBeAbsent()
+  })
+
+  it('keeps a failed shopping action actionable during background task refresh', () => {
+    mocks.plannerState.isTaskReadFetching = true
+    mocks.plannerState.hasTaskReadError = true
+    mocks.shoppingActiveItems = [createShoppingItem()]
+    mocks.shoppingItemVariables = {
+      itemId: 'shopping-1',
+      patch: { priority: null, status: 'archived' },
+    }
+    mocks.shoppingItemError = new Error('HTTP 500')
+    renderTodayPage({ tasks: [] })
+
+    expect(
+      screen.getByText('Не удалось отметить покупку купленной'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('button', { name: 'Повторить отметку покупки' }),
+    ).toBeEnabled()
+    expect(
+      screen.queryByText(/Не удалось обновить задачи/),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+  })
+
+  it.each(['personal', 'shared'] as const)(
+    'shows one access notice in the %s workspace and forces recovery for the shared auth failure',
+    (kind) => {
+      const readiness: SessionReadiness = {
         canReadCachedData: true,
         canRenderAppContent: true,
         canUseProtectedApi: false,
         canWriteProtectedData: false,
         reason: 'auth_deferred',
-        status: 'blockedAuth',
+        status: 'offlineWithCache',
+      }
+      Object.assign(mocks.plannerState, {
+        readiness,
+        taskLastSuccessfulSyncAt: '2026-09-17T06:46:00.000Z',
+      })
+      supplementarySources.forEach(({ source }) => {
+        setSourceQueryOverride(source, {
+          isShowingCachedData: true,
+          lastSuccessfulSyncAt: '2026-09-17T06:46:00.000Z',
+          readiness,
+        })
+      })
+
+      renderTodayPage({
+        kind,
+        tasks: [
+          createTask({
+            plannedDate: getDateKey(new Date()),
+            title: 'Сохранённая задача',
+          }),
+        ],
+      })
+
+      expect(screen.getByText('Нужно восстановить доступ')).toBeVisible()
+      expect(screen.getByText('Сохранённая задача')).toBeVisible()
+      expect(
+        screen
+          .getAllByRole('status')
+          .filter((notice) => notice.textContent?.trim()),
+      ).toHaveLength(1)
+      expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(/Последняя синхронизация:/),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: 'Повторить' }),
+      ).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: 'Обновить доступ' }))
+
+      expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith({
+        retryDeniedAuth: true,
+      })
+      expect(mocks.sessionRefetch).toHaveBeenCalledOnce()
+      expect(mocks.shoppingRefetch).not.toHaveBeenCalled()
+      expect(mocks.cleaningRefetch).not.toHaveBeenCalled()
+      expect(mocks.selfCareRefetch).not.toHaveBeenCalled()
+    },
+  )
+
+  it.each(['restoring', 'task error'] as const)(
+    'suppresses supplementary read notices while the main plan is %s',
+    (state) => {
+      if (state === 'restoring') {
+        Object.assign(mocks.plannerState.readiness, {
+          canUseProtectedApi: false,
+          canWriteProtectedData: false,
+          reason: 'auth_restoring',
+          status: 'restoringWithCache',
+        })
+      } else {
+        mocks.plannerState.hasTaskReadError = true
+      }
+      setSourceQueryOverride('shopping', { error: new Error('HTTP 500') })
+      setSourceQueryOverride('todayCare', { isShowingCachedData: true })
+
+      renderTodayPage({
+        tasks: [
+          createTask({ plannedDate: getDateKey(new Date()), title: 'Из кеша' }),
+        ],
+      })
+
+      expect(screen.getByText('Из кеша')).toBeVisible()
+      expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/Загружаем:/)).not.toBeInTheDocument()
+      expect(
+        screen
+          .queryAllByRole('status')
+          .filter((notice) => notice.textContent?.trim()),
+      ).toHaveLength(state === 'restoring' ? 0 : 1)
+    },
+  )
+
+  it('shows only actionable source errors and stays silent about partial task coverage after recovery', async () => {
+    mocks.plannerState.taskReadModelCoverage = {
+      ...createCompleteTaskCoverage(),
+      sources: {
+        ...createCompleteTaskCoverage().sources,
+        active: { returnedCount: 1, totalCount: 201, truncated: true },
       },
+      totalCount: 201,
+      truncated: true,
+    }
+    setSourceQueryOverride('shopping', { error: new Error('HTTP 500') })
+    const rendered = renderTodayPage({ tasks: [createTask()] })
+
+    expect(screen.getByText('Не обновились: Покупки.')).toBeVisible()
+    expect(
+      screen.queryByText('Часть задач ещё не загружена'),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled()
     })
+    expect(mocks.shoppingRefetch).toHaveBeenCalledOnce()
+    expect(mocks.cleaningRefetch).not.toHaveBeenCalled()
+    expect(mocks.selfCareRefetch).not.toHaveBeenCalled()
 
-    renderTodayPage({ tasks: [] })
+    setSourceQueryOverride('shopping', {})
+    rerenderTodayPage(rendered)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Обновить доступ' }))
-
-    expect(mocks.refresh).toHaveBeenCalledWith({ retryDeniedAuth: true })
+    expectReadNoticesToBeAbsent()
+    expect(
+      screen.queryByText('Часть задач ещё не загружена'),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText(/Не обновились:/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Повторить' }),
+    ).not.toBeInTheDocument()
   })
 
   it('offers compact cursor pagination for a truncated task archive', async () => {
@@ -1319,13 +1769,112 @@ describe('TodayPage', () => {
       fireEvent.click(
         panel.getByRole('button', { name: 'Открыть антиперегруз' }),
       )
+      expect(panel.getByText('Оценённая часть')).toBeVisible()
+      expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
       expect(
-        panel.getByText(/Итоговую нагрузку пока нельзя оценить/),
-      ).toBeVisible()
+        panel.queryByText(/В расчёте задачи с планом на сегодня/),
+      ).not.toBeInTheDocument()
+      expect(
+        panel.queryByText(/Список задач может быть неполным или устаревшим/),
+      ).not.toBeInTheDocument()
       expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
       expect(
         panel.queryByText(/План задач укладывается|План выглядит реалистично/),
       ).not.toBeInTheDocument()
+    },
+  )
+
+  it('uses complete today coverage despite truncated active tasks and a large archive', () => {
+    const coverage = createCompleteDailyLoadCoverage(8)
+    mocks.plannerState.taskReadModelCoverage = {
+      ...coverage,
+      historyNextCursor: 'next-closed-page',
+      sources: {
+        ...coverage.sources,
+        active: { returnedCount: 100, totalCount: 200, truncated: true },
+        history: { returnedCount: 100, totalCount: 500, truncated: true },
+      },
+      returnedCount: 200,
+      totalCount: 700,
+      truncated: true,
+    }
+    renderTodayPage({
+      tasks: Array.from({ length: 8 }, (_, index) =>
+        createTask({
+          id: `assessed-${index}`,
+          plannedDate: getTodayDate('UTC'),
+          resource: index === 0 ? -2 : 0,
+        }),
+      ),
+    })
+    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+
+    expect(panel.getByText('Оценено 8 из 8')).toBeVisible()
+    expect(panel.getByText('спокойно')).toBeVisible()
+    expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
+    expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    expect(panel.getByText('Нагрузка задач')).toBeVisible()
+    expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
+  })
+
+  it('uses a complete global snapshot when the daily source reaches its limit', () => {
+    const coverage = createCompleteDailyLoadCoverage(251)
+    coverage.sources.dailyLoad.returnedCount = 250
+    coverage.sources.dailyLoad.truncated = true
+    coverage.sources.range.returnedCount = 250
+    coverage.sources.range.truncated = true
+    mocks.plannerState.taskReadModelCoverage = coverage
+    renderTodayPage({
+      tasks: Array.from({ length: 251 }, (_, index) =>
+        createTask({
+          id: `assessed-${index}`,
+          plannedDate: getTodayDate('UTC'),
+          resource: index === 0 ? -2 : 0,
+        }),
+      ),
+    })
+    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+
+    expect(panel.getByText('Оценено 251 из 251')).toBeVisible()
+    expect(panel.getByText('спокойно')).toBeVisible()
+    expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
+    expect(panel.queryByText(/по загруженным задачам/)).not.toBeInTheDocument()
+  })
+
+  it.each(['truncated sources', 'different date', 'different timezone'])(
+    'keeps daily load provisional with %s',
+    (scenario) => {
+      const coverage = createCompleteDailyLoadCoverage()
+      if (scenario === 'truncated sources') {
+        coverage.sources.dailyLoad.totalCount = 2
+        coverage.sources.dailyLoad.truncated = true
+        coverage.sources.active.totalCount = 2
+        coverage.sources.active.truncated = true
+        coverage.sources.history.totalCount = 1
+        coverage.sources.history.truncated = true
+        coverage.sources.range.totalCount = 2
+        coverage.sources.range.truncated = true
+        coverage.totalCount = 3
+        coverage.truncated = true
+      }
+      if (scenario === 'different date') {
+        coverage.sources.dailyLoad.date = addDateDays(getTodayDate('UTC'), -1)
+      }
+      if (scenario === 'different timezone') {
+        coverage.sources.dailyLoad.timeZone = 'Asia/Novosibirsk'
+      }
+      mocks.plannerState.taskReadModelCoverage = coverage
+      renderTodayPage({
+        tasks: [createTask({ plannedDate: getTodayDate('UTC'), resource: -2 })],
+      })
+      const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+
+      expect(panel.getByText('неполная оценка')).toBeVisible()
+      expect(
+        panel.getByText('Оценено 1 из 1 · по загруженным задачам'),
+      ).toBeVisible()
+      expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
     },
   )
 
@@ -1334,8 +1883,11 @@ describe('TodayPage', () => {
     'task offline',
     'task read error',
     'restoring cache',
+    'authentication expired',
+    'task loading',
+    'cache hydrating',
   ])('keeps cached assessed tasks provisional while %s', (scenario) => {
-    mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage()
+    mocks.plannerState.taskReadModelCoverage = createCompleteDailyLoadCoverage()
     mocks.plannerState.taskLastSuccessfulSyncAt = '2026-09-16T06:00:00.000Z'
     if (scenario === 'browser offline') mocks.browserOffline = true
     if (scenario === 'task offline') mocks.plannerState.isTaskOffline = true
@@ -1343,6 +1895,14 @@ describe('TodayPage', () => {
       mocks.plannerState.hasTaskReadError = true
     if (scenario === 'restoring cache') {
       mocks.plannerState.readiness.status = 'restoringWithCache'
+    }
+    if (scenario === 'authentication expired') {
+      mocks.plannerState.readiness.reason = 'unauthorized'
+      mocks.plannerState.readiness.canUseProtectedApi = false
+    }
+    if (scenario === 'task loading') mocks.plannerState.isLoading = true
+    if (scenario === 'cache hydrating') {
+      mocks.plannerState.isTaskCacheHydrating = true
     }
     renderTodayPage({
       tasks: [
@@ -1361,9 +1921,7 @@ describe('TodayPage', () => {
     ).toBeVisible()
     expect(panel.getByText('неполная оценка')).toBeVisible()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
-    expect(
-      panel.getByText(/Итоговую нагрузку пока нельзя оценить/),
-    ).toBeVisible()
+    expect(panel.getByText('Оценённая часть')).toBeVisible()
     expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
     expect(
       panel.queryByText(/План задач укладывается|План выглядит реалистично/),
@@ -1393,9 +1951,8 @@ describe('TodayPage', () => {
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
-    expect(
-      panel.getByText('План задач укладывается в выбранный лимит.'),
-    ).toBeVisible()
+    expect(panel.getByText('Нагрузка задач')).toBeVisible()
+    expect(panel.getByText('2 из 8 ресурса')).toBeVisible()
   })
 
   it('keeps explicit neutral task assessment complete independently of failed care reads', () => {
@@ -1409,17 +1966,13 @@ describe('TodayPage', () => {
     })
     const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
 
-    expect(
-      screen.getByText('Забота на сегодня: не удалось загрузить данные'),
-    ).toBeVisible()
+    expect(screen.getByText('Не обновились: Забота на сегодня.')).toBeVisible()
     expect(panel.getByText('Оценено 1 из 1')).toBeVisible()
     expect(panel.getByText('спокойно')).toBeVisible()
     expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
     fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
     expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
-    expect(
-      panel.getByText('План задач укладывается в выбранный лимит.'),
-    ).toBeVisible()
+    expect(panel.getByText('Нагрузка задач')).toBeVisible()
   })
 
   it('persists only a newly selected energy mode', () => {

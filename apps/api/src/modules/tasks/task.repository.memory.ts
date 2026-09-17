@@ -33,6 +33,7 @@ import {
   applyTaskUpdate,
   createStoredTaskRecord,
   getClosedTaskCursorPriority,
+  isActiveTaskStatus,
   markTaskDeleted,
   matchesTaskFilters,
   sortStoredTasks,
@@ -798,6 +799,24 @@ function matchesTaskCursorQuery(
     (query.scope === 'closed' && !isClosed)
   ) {
     return false
+  }
+
+  if (query.dailyLoad) {
+    const { date, startUtc, endUtc } = query.dailyLoad
+    const instant =
+      task.status === 'done'
+        ? task.completedAt
+        : isActiveTaskStatus(task.status) &&
+            task.schedule?.kind === 'fixed_zone_datetime'
+          ? task.schedule.instantUtc
+          : null
+
+    return instant
+      ? Date.parse(instant) >= Date.parse(startUtc) &&
+          Date.parse(instant) < Date.parse(endUtc)
+      : isActiveTaskStatus(task.status) &&
+          task.schedule?.kind !== 'fixed_zone_datetime' &&
+          task.plannedDate === date
   }
 
   if (!query.dateFrom || !query.dateTo) {

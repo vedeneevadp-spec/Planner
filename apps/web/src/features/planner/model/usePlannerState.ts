@@ -1427,6 +1427,7 @@ export function usePlannerState(): PlannerState {
     hasReadError,
     hasTaskRecords,
     hasTaskReadError,
+    isTaskReadFetching: sessionQuery.isFetching || tasksQuery.isFetching,
     hasTaskTemplateReadError,
     isLifeSphereOffline,
     isLifeSphereCacheHydrating,

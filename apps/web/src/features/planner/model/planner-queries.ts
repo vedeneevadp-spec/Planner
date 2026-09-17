@@ -9,7 +9,7 @@ import {
   useQuery,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
@@ -127,7 +127,8 @@ export function usePlannerQueries({
 }: PlannerQueriesParams): PlannerQueries {
   const [taskReadModelState, setTaskReadModelState] = useState<{
     coverage: TaskReadModelCoverage
-    workspaceId: string
+    dayScope: string
+    queryScope: string
   } | null>(null)
   const todayKey = getTodayDate(plannerTimeZone)
   const tomorrowKey = addDateDays(todayKey, 1)
@@ -135,6 +136,10 @@ export function usePlannerQueries({
     () => getPlannerTaskQueryKey(workspaceId, authSessionVersion),
     [authSessionVersion, workspaceId],
   )
+  const queryScope = taskQueryKey.join(':')
+  const dayScope = `${todayKey}:${plannerTimeZone}`
+  const taskReadModel =
+    taskReadModelState?.queryScope === queryScope ? taskReadModelState : null
   const sphereQueryKey = useMemo(
     () => getPlannerSphereQueryKey(workspaceId, authSessionVersion),
     [authSessionVersion, workspaceId],
@@ -144,14 +149,11 @@ export function usePlannerQueries({
     [authSessionVersion, workspaceId],
   )
   const invalidatePlannerQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['planner', 'session'] }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'spheres'] }),
-      queryClient.invalidateQueries({
-        queryKey: ['planner', 'task-templates'],
-      }),
-      queryClient.invalidateQueries({ queryKey: ['planner', 'tasks'] }),
-    ])
+    await Promise.all(
+      ['session', 'spheres', 'task-templates', 'tasks'].map((scope) =>
+        queryClient.invalidateQueries({ queryKey: ['planner', scope] }),
+      ),
+    )
   }, [queryClient])
 
   const tasksQuery = useQuery<TaskRecord[], Error>({
@@ -160,35 +162,30 @@ export function usePlannerQueries({
       const writeGeneration = workspaceId
         ? getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
         : 0
-      const response = await loadPlannerTaskSnapshot(
+      const {
+        items: records,
+        eventCursor,
+        ...coverage
+      } = await loadPlannerTaskSnapshot(
         requirePlannerApi(plannerApi),
         todayKey,
         tomorrowKey,
         signal,
       )
-      const records = response.items
       const lastSuccessfulSyncAt = new Date().toISOString()
 
       if (workspaceId) {
         setTaskReadModelState({
-          coverage: {
-            historyNextCursor: response.historyNextCursor,
-            returnedCount: response.returnedCount,
-            sources: response.sources,
-            totalCount: response.totalCount,
-            truncated: response.truncated,
-          },
-          workspaceId,
+          coverage,
+          dayScope,
+          queryScope,
         })
-      }
-
-      if (workspaceId) {
         void replaceCachedTaskRecordsFromServer(
           workspaceId,
           records,
           lastSuccessfulSyncAt,
           writeGeneration,
-          response.eventCursor,
+          eventCursor,
         ).catch((error) => {
           console.warn('Failed to persist server task snapshot.', error)
         })
@@ -201,6 +198,14 @@ export function usePlannerQueries({
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
+  useEffect(() => {
+    if (plannerApi && taskReadModel && taskReadModel.dayScope !== dayScope) {
+      void queryClient.invalidateQueries({
+        queryKey: taskQueryKey,
+        exact: true,
+      })
+    }
+  }, [plannerApi, dayScope, queryClient, taskQueryKey, taskReadModel])
   const spheresQuery = useQuery<LifeSphereRecord[], Error>({
     enabled: plannerApi !== null,
     queryFn: async ({ signal }) => {
@@ -269,9 +274,7 @@ export function usePlannerQueries({
     taskTemplateQueryKey,
     taskTemplatesQuery,
     taskReadModelCoverage:
-      taskReadModelState && taskReadModelState.workspaceId === workspaceId
-        ? taskReadModelState.coverage
-        : null,
+      taskReadModel?.dayScope === dayScope ? taskReadModel.coverage : null,
     tasksQuery,
   }
 }

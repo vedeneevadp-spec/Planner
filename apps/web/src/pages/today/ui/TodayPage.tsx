@@ -1,20 +1,32 @@
+import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 
 import { usePlanner } from '@/features/planner'
-import { type SessionReadiness, usePlannerSession } from '@/features/session'
+import {
+  type SessionReadiness,
+  usePlannerSession,
+  usePlannerTimeZone,
+  useSessionAuth,
+} from '@/features/session'
 import { useBrowserOffline } from '@/shared/lib/offline-sync'
-import { PageStateView, PageStatusBanner } from '@/shared/ui/PageState'
+import { getTodayDate } from '@/shared/time/time.service'
+import { PageStateView } from '@/shared/ui/PageState'
 
 import { PersonalTodayPage } from './PersonalTodayPage'
 import { SharedTodayPage } from './SharedTodayPage'
 import { TodayPageStateLayout } from './TodayPageLayout'
+import { TodayStatusNotice } from './TodayStatusNotice'
 
 type TodayBlockingState = 'error' | 'loading' | 'offline' | null
 
 export function TodayPage() {
+  const [isRetrying, setIsRetrying] = useState(false)
   const [searchParams] = useSearchParams()
   const sessionQuery = usePlannerSession()
+  const { isRecoveringSession } = useSessionAuth()
   const session = sessionQuery.data
+  const plannerTimeZone = usePlannerTimeZone()
+  const todayKey = getTodayDate(plannerTimeZone)
   const {
     errorMessage,
     hasTaskReadError,
@@ -22,26 +34,44 @@ export function TodayPage() {
     isLoading,
     isTaskCacheHydrating,
     isTaskOffline,
+    isTaskReadFetching,
     readiness,
     refresh,
     taskReadModelCoverage,
     taskLastSuccessfulSyncAt,
   } = usePlanner()
   const isBrowserOffline = useBrowserOffline()
-  const isOffline =
-    isBrowserOffline || isTaskOffline || readiness.status === 'offlineWithCache'
-  const blockingState = resolveTodayBlockingState({
-    hasTaskRecords,
-    isCacheHydrating: isTaskCacheHydrating,
-    isLoading,
-    isOffline,
-    readiness,
-  })
+  const isOffline = isBrowserOffline || isTaskOffline
   const isRestoring =
     readiness.status === 'restoringWithCache' ||
     readiness.reason === 'auth_restoring' ||
     readiness.reason === 'planner_pending'
   const hasAccessIssue = isTodayAccessUnavailable(readiness)
+  const isReadPending =
+    isLoading ||
+    isTaskCacheHydrating ||
+    isRestoring ||
+    isTaskReadFetching ||
+    sessionQuery.isFetching ||
+    isRecoveringSession ||
+    isRetrying
+  const blockingState = resolveTodayBlockingState({
+    hasTaskRecords,
+    isCacheHydrating: isTaskCacheHydrating,
+    isLoading: isReadPending,
+    isOffline: isBrowserOffline,
+    readiness,
+  })
+  const dailyLoadCoverage = taskReadModelCoverage?.sources.dailyLoad
+  const hasCompleteTaskSnapshot =
+    taskReadModelCoverage &&
+    !taskReadModelCoverage.sources.active.truncated &&
+    !taskReadModelCoverage.sources.history.truncated
+  const hasCompleteDailyLoad = dailyLoadCoverage
+    ? dailyLoadCoverage.date === todayKey &&
+      dailyLoadCoverage.timeZone === plannerTimeZone &&
+      (!dailyLoadCoverage.truncated || hasCompleteTaskSnapshot)
+    : hasCompleteTaskSnapshot
   const isTaskDataComplete = Boolean(
     hasTaskRecords &&
     !isLoading &&
@@ -50,17 +80,16 @@ export function TodayPage() {
     !isOffline &&
     !isRestoring &&
     !hasAccessIssue &&
-    taskReadModelCoverage &&
-    !taskReadModelCoverage.sources.active.truncated &&
-    !taskReadModelCoverage.sources.history.truncated,
+    hasCompleteDailyLoad,
   )
   const openTaskId = normalizeOpenTaskId(searchParams.get('taskId'))
 
   function retryToday() {
+    setIsRetrying(true)
     void Promise.allSettled([
       sessionQuery.refetch(),
       refresh({ retryDeniedAuth: true }),
-    ])
+    ]).finally(() => setIsRetrying(false))
   }
 
   if (blockingState) {
@@ -105,48 +134,28 @@ export function TodayPage() {
     )
   }
 
-  const status = hasAccessIssue ? (
-    <PageStatusBanner
-      action={{ label: 'Обновить доступ', onClick: retryToday }}
-      description="Показываем сохранённый план. Для синхронизации восстановите сессию."
-      kind="error"
-      lastSyncedAt={taskLastSuccessfulSyncAt}
-      showUnknownLastSync
-      title="Нужно восстановить доступ"
+  const status = isBrowserOffline ? (
+    <TodayStatusNotice
+      action={{ disabled: isRetrying, label: 'Обновить', onClick: retryToday }}
+      message="Нет подключения · показываем сохранённые данные"
     />
-  ) : isOffline ? (
-    <PageStatusBanner
-      action={{ label: 'Обновить', onClick: retryToday }}
-      kind="offline"
-      lastSyncedAt={taskLastSuccessfulSyncAt}
-      showUnknownLastSync
+  ) : isReadPending ? (
+    false
+  ) : hasAccessIssue ? (
+    <TodayStatusNotice
+      action={{
+        disabled: isRetrying,
+        label: 'Обновить доступ',
+        onClick: retryToday,
+      }}
+      message="Нужно восстановить доступ"
     />
-  ) : isRestoring ? (
-    <PageStatusBanner
-      description="Показываем сохранённый план и восстанавливаем синхронизацию."
-      kind="info"
-      lastSyncedAt={taskLastSuccessfulSyncAt}
-      showUnknownLastSync
-      title="Восстанавливаем данные"
-    />
-  ) : hasTaskReadError ? (
-    <PageStatusBanner
-      action={{ label: 'Обновить', onClick: retryToday }}
-      description={errorMessage || undefined}
-      kind="error"
-      lastSyncedAt={taskLastSuccessfulSyncAt}
-      showUnknownLastSync
-    />
-  ) : taskReadModelCoverage &&
-    (taskReadModelCoverage.sources.active.truncated ||
-      taskReadModelCoverage.sources.range.truncated) ? (
-    <PageStatusBanner
-      description={getTaskSnapshotCoverageDescription()}
-      kind="info"
-      title="Большой архив загружен частично"
+  ) : hasTaskReadError || isTaskOffline ? (
+    <TodayStatusNotice
+      action={{ disabled: isRetrying, label: 'Обновить', onClick: retryToday }}
+      message="Не удалось обновить задачи · показываем сохранённые данные"
     />
   ) : undefined
-
   return session?.workspace.kind === 'shared' ? (
     <SharedTodayPage openTaskId={openTaskId} status={status} />
   ) : (
@@ -164,10 +173,6 @@ function normalizeOpenTaskId(value: string | null): string | null {
   return /^[A-Za-z0-9_-]{1,128}$/.test(normalizedValue) ? normalizedValue : null
 }
 
-function getTaskSnapshotCoverageDescription(): string {
-  return 'Показываем ограниченный snapshot. Все активные задачи сверх лимита и продолжение выбранного диапазона доступны через постраничную загрузку.'
-}
-
 function resolveTodayBlockingState(input: {
   hasTaskRecords: boolean
   isCacheHydrating: boolean
@@ -179,8 +184,15 @@ function resolveTodayBlockingState(input: {
     return null
   }
 
+  if (input.isCacheHydrating) {
+    return 'loading'
+  }
+
+  if (input.isOffline) {
+    return 'offline'
+  }
+
   if (
-    input.isCacheHydrating ||
     input.isLoading ||
     input.readiness.reason === 'auth_restoring' ||
     input.readiness.reason === 'planner_pending'
@@ -190,10 +202,6 @@ function resolveTodayBlockingState(input: {
 
   if (isTodayAccessUnavailable(input.readiness)) {
     return 'error'
-  }
-
-  if (input.isOffline) {
-    return 'offline'
   }
 
   return 'error'

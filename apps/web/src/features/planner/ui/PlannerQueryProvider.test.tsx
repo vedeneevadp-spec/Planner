@@ -80,6 +80,7 @@ function createAuthState(
     isAuthEnabled: true,
     isLoading: false,
     isPasswordRecovery: false,
+    isRecoveringSession: false,
     isSignInRequired: false,
     lifecycleStatus,
     recoverSession: vi.fn(),

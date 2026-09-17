@@ -107,7 +107,7 @@ void test('TaskService keeps the planner read model bounded for 10,000 tasks', a
     rangeLimit: 250,
   })
 
-  assert.equal(snapshot.items.length <= 500 + 250 + 100, true)
+  assert.equal(snapshot.items.length <= 500 + 250 + 100 + 250, true)
   assert.equal(snapshot.returnedCount, snapshot.items.length)
   assert.equal(
     new Set(snapshot.items.map((task) => task.id)).size,
@@ -126,10 +126,123 @@ void test('TaskService keeps the planner read model bounded for 10,000 tasks', a
     totalCount: 5_000,
     truncated: true,
   })
+  assert.deepEqual(snapshot.sources.dailyLoad, {
+    date: '2026-05-05',
+    timeZone: 'UTC',
+    returnedCount: 250,
+    totalCount: 5_000,
+    truncated: true,
+  })
   assert.equal(snapshot.truncated, true)
   assert.equal(repository.fullListCalls, 0)
   assert.equal(repository.latestEventCalls, 1)
-  assert.equal(repository.cursorPageCalls, 4)
+  assert.equal(repository.cursorPageCalls, 5)
+})
+
+void test('TaskService reports complete daily load independently from archived history and respects the local day', async (context) => {
+  context.mock.timers.enable({
+    apis: ['Date'],
+    now: new Date('2026-09-16T16:59:59.999Z'),
+  })
+  const repository = new MemoryTaskRepository()
+  const service = new TaskService(repository)
+  const plannerContext = {
+    ...PERSONAL_CONTEXT,
+    clientTimeZone: 'Asia/Novosibirsk',
+  }
+  async function completeOldTask(title: string) {
+    const task = await service.createTask(plannerContext, {
+      ...BASE_INPUT,
+      plannedDate: '2020-01-01',
+      plannedStartTime: null,
+      title,
+    })
+    return service.setTaskStatus(plannerContext, task.id, 'done', task.version)
+  }
+
+  await completeOldTask('Completed before the local day')
+  context.mock.timers.tick(1)
+  const completedAtStart = await completeOldTask('Completed at local midnight')
+  const plannedToday = await service.createTask(plannerContext, {
+    ...BASE_INPUT,
+    plannedDate: '2026-09-17',
+    plannedStartTime: null,
+  })
+  const fixedZoneToday = await service.createTask(
+    { ...plannerContext, clientTimeZone: 'UTC' },
+    {
+      ...BASE_INPUT,
+      plannedDate: '2026-09-16',
+      plannedStartTime: '19:00',
+    },
+  )
+  await service.createTask(
+    { ...plannerContext, clientTimeZone: 'UTC' },
+    {
+      ...BASE_INPUT,
+      plannedDate: '2026-09-17',
+      plannedStartTime: '18:00',
+    },
+  )
+  const archiveCandidate = await service.createTask(plannerContext, {
+    ...BASE_INPUT,
+    plannedDate: '2026-09-17',
+    plannedStartTime: null,
+  })
+  await service.setTaskStatus(
+    plannerContext,
+    archiveCandidate.id,
+    'archived',
+    archiveCandidate.version,
+  )
+  context.mock.timers.tick(86_400_000 - 1)
+  const completedAtEnd = await completeOldTask(
+    'Completed just before next local day',
+  )
+  context.mock.timers.tick(1)
+  await completeOldTask('Completed on next local day')
+  const snapshot = await service.getTaskReadModel(plannerContext, {
+    activeLimit: 10,
+    dateFrom: '2026-09-17',
+    dateTo: '2026-09-18',
+    historyLimit: 1,
+    rangeLimit: 10,
+  })
+
+  assert.equal(snapshot.sources.history.truncated, true)
+  assert.deepEqual(snapshot.sources.dailyLoad, {
+    date: '2026-09-17',
+    timeZone: 'Asia/Novosibirsk',
+    returnedCount: 4,
+    totalCount: 4,
+    truncated: false,
+  })
+  const snapshotIds = new Set(snapshot.items.map(({ id }) => id))
+  for (const task of [
+    completedAtStart,
+    completedAtEnd,
+    plannedToday,
+    fixedZoneToday,
+  ]) {
+    assert.equal(snapshotIds.has(task.id), true)
+  }
+  const dailyPage = await repository.listCursorPageByWorkspace(plannerContext, {
+    dailyLoad: {
+      date: '2026-09-17',
+      startUtc: '2026-09-16T17:00:00.000Z',
+      endUtc: '2026-09-17T17:00:00.000Z',
+    },
+    dateMode: 'planned',
+    direction: 'asc',
+    limit: 10,
+    scope: 'all',
+  })
+  assert.deepEqual(
+    dailyPage.items.map(({ id }) => id).sort(),
+    [completedAtStart, completedAtEnd, plannedToday, fixedZoneToday]
+      .map(({ id }) => id)
+      .sort(),
+  )
 })
 
 void test('TaskService continues closed-task history after the bounded snapshot cursor', async () => {

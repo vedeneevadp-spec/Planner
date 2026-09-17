@@ -67,15 +67,17 @@ describe('ResourcePlanPanel', () => {
     fireEvent.click(toggle)
 
     expect(
-      screen.getByRole('heading', {
-        name: 'Сколько у тебя ресурса сегодня?',
-      }),
+      screen.getByRole('group', { name: 'Ресурс на сегодня' }),
     ).toBeVisible()
     expect(screen.getByRole('button', { name: /Норм/ })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    expect(screen.getByText('Задач для расчёта пока нет.')).toBeVisible()
+    expect(screen.getByText('0 из 8 ресурса')).toBeVisible()
+    expect(screen.queryByText('Режим')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Обычный темп без героизма.'),
+    ).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Максимум/ }))
 
@@ -115,7 +117,7 @@ describe('ResourcePlanPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Открыть антиперегруз' }),
     )
-    expect(screen.getByText(/Нагрузка пока неизвестна/)).toBeVisible()
+    expect(screen.getByText('Нагрузка неизвестна')).toBeVisible()
     expect(screen.getByText('— из 8 ресурса')).toBeVisible()
     expect(
       screen.queryByText(/План.*(реалистич|укладывается)/),
@@ -145,7 +147,7 @@ describe('ResourcePlanPanel', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Открыть антиперегруз' }),
     )
-    expect(screen.getByText(/Без оценки: 1/)).toBeVisible()
+    expect(screen.getByText('Оценённая часть')).toBeVisible()
     expect(
       screen.queryByText(/План задач укладывается/),
     ).not.toBeInTheDocument()
@@ -160,9 +162,8 @@ describe('ResourcePlanPanel', () => {
     )
     expect(screen.getByText('Оценено 2 из 2')).toBeVisible()
     expect(screen.getByText('спокойно')).toBeVisible()
-    expect(
-      screen.getByText('План задач укладывается в выбранный лимит.'),
-    ).toBeVisible()
+    expect(screen.getByText('Нагрузка задач')).toBeVisible()
+    expect(screen.queryByText('Оценённая часть')).not.toBeInTheDocument()
   })
 
   it('qualifies a high known subtotal without calling the whole day overloaded', () => {
@@ -212,8 +213,13 @@ describe('ResourcePlanPanel', () => {
         screen.getByRole('button', { name: 'Открыть антиперегруз' }),
       )
       expect(
-        screen.getByText(/Список задач может быть неполным или устаревшим/),
-      ).toBeVisible()
+        screen.queryByText(/Список задач может быть неполным или устаревшим/),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.queryByText(/В расчёте задачи с планом на сегодня/),
+      ).not.toBeInTheDocument()
+      expect(screen.getByText('неполная оценка')).toBeVisible()
+      expect(screen.queryByText('спокойно')).not.toBeInTheDocument()
       expect(
         screen.queryByText(/План задач укладывается/),
       ).not.toBeInTheDocument()

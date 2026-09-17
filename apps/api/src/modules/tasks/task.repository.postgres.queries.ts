@@ -679,6 +679,24 @@ function applyTaskCursorFilters<Output>(
     filteredQuery = filteredQuery.where('status', 'in', ['done', 'archived'])
   }
 
+  if (cursorQuery.dailyLoad) {
+    const { date, startUtc, endUtc } = cursorQuery.dailyLoad
+    return filteredQuery.where(sql<boolean>`
+      ((
+        app.tasks.status in ('todo', 'in_progress', 'ready_for_review')
+        and case when app.tasks.time_kind = 'fixed_zone_datetime' then
+          app.tasks.starts_at_utc >= ${startUtc}::timestamptz
+          and app.tasks.starts_at_utc < ${endUtc}::timestamptz
+        else coalesce(app.tasks.local_date, app.tasks.planned_on) = ${date}::date
+        end
+      ) or (
+        app.tasks.status = 'done'
+        and app.tasks.completed_at >= ${startUtc}::timestamptz
+        and app.tasks.completed_at < ${endUtc}::timestamptz
+      ))
+    `)
+  }
+
   if (cursorQuery.dateFrom && cursorQuery.dateTo) {
     filteredQuery = filteredQuery.where(
       cursorQuery.dateMode === 'planned'

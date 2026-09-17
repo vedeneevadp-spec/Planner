@@ -54,6 +54,7 @@ export interface TaskCursorAnchor {
 
 export interface TaskCursorPageQuery {
   anchor?: TaskCursorAnchor | undefined
+  dailyLoad?: { date: string; startUtc: string; endUtc: string } | undefined
   dateFrom?: string | undefined
   dateMode: TaskCursorDateMode
   dateTo?: string | undefined
@@ -90,6 +91,9 @@ export interface TaskReadModelResult {
   returnedCount: number
   sources: {
     active: TaskReadModelSourceResult
+    dailyLoad?:
+      | (TaskReadModelSourceResult & { date: string; timeZone: string })
+      | undefined
     history: TaskReadModelSourceResult
     range: TaskReadModelSourceResult
   }
