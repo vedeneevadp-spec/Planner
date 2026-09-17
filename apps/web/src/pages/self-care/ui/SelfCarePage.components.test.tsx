@@ -34,10 +34,9 @@ describe('Self-care tab states', () => {
         uploadedIcons={[]}
         onAddCare={onAddCare}
         onArchiveItem={vi.fn()}
-        onCardAction={vi.fn()}
         onEditItem={vi.fn()}
         onRestartCourse={vi.fn()}
-        onToggleRitualStep={vi.fn()}
+        onScheduleItem={vi.fn()}
       />,
     )
 
@@ -73,10 +72,9 @@ describe('Self-care tab states', () => {
         uploadedIcons={[]}
         onAddCare={onAddCare}
         onArchiveItem={vi.fn()}
-        onCardAction={vi.fn()}
         onEditItem={vi.fn()}
         onRestartCourse={vi.fn()}
-        onToggleRitualStep={vi.fn()}
+        onScheduleItem={vi.fn()}
       />,
     )
 

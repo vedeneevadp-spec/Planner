@@ -512,9 +512,22 @@ export function SelfCarePage() {
     }
 
     const entry = scheduleDialogEntry
+    const scheduledEntry =
+      activeTab === 'rituals'
+        ? {
+            ...entry,
+            occurrence:
+              plan?.occurrences.find(
+                (plannedEntry) =>
+                  plannedEntry.item.id === entry.item.id &&
+                  plannedEntry.occurrence?.status === 'scheduled' &&
+                  plannedEntry.occurrence.scheduledFor === input.scheduledFor,
+              )?.occurrence ?? entry.occurrence,
+          }
+        : entry
     setFormError(null)
     void scheduleSelfCareEntryOccurrence({
-      entry,
+      entry: scheduledEntry,
       input,
       moveNote:
         entry.occurrence && entry.occurrence.scheduledFor < todayKey
@@ -961,11 +974,10 @@ export function SelfCarePage() {
           ritualStepDrafts={ritualStepDrafts}
           todayKey={todayKey}
           uploadedIcons={uploadedIcons}
-          onCardAction={handleCardAction}
           onArchiveItem={handleArchiveItem}
           onEditItem={handleEditItem}
           onRestartCourse={handleRestartCourse}
-          onToggleRitualStep={handleToggleRitualStep}
+          onScheduleItem={handleScheduleItem}
           onAddCare={openCreateDialog}
         />
       ) : null}

@@ -1,18 +1,20 @@
 import type { LifeSphereRecord, TaskRecord } from '@planner/contracts'
 
 import {
-  createOfflineDrainErrorHandler,
   createOfflineDrainResult,
-  drainOfflineQueue,
   getOfflineErrorMessage,
-  isBrowserRetryableOfflineError,
   readOfflineConflictDetails,
 } from '@/shared/lib/offline-sync'
 
 import {
+  getPlannerMutationDependencies,
+  getPlannerMutationTargets,
+} from './offline-planner-conflicts'
+import {
   completePlannerOfflineMutation,
   getPlannerOfflineWorkspaceWriteGeneration,
   isPlannerOfflineWorkspaceWriteGenerationCurrent,
+  listPlannerOfflineMutations,
   listRetryablePlannerOfflineMutations,
   markPlannerOfflineMutationConflicted,
   markPlannerOfflineMutationFailed,
@@ -74,78 +76,104 @@ export async function drainPlannerOfflineQueue({
     callbacks.onTaskSynced = onTaskSynced
   }
 
-  const handleError = createOfflineDrainErrorHandler<PlannerOfflineDrainResult>(
-    {
-      getErrorMessage,
-      isTerminalError: isTerminalPlannerSyncError,
-      markConflicted: (mutationId, conflict) =>
-        markPlannerOfflineMutationConflicted(
-          mutationId,
-          conflict,
-          workspaceId,
-          expectedWriteGeneration,
-        ),
-      markFailed: (mutationId, message) =>
-        markPlannerOfflineMutationFailed(
-          mutationId,
-          message,
-          workspaceId,
-          expectedWriteGeneration,
-        ),
-      readConflict: (error) =>
-        error instanceof PlannerApiError
-          ? readOfflineConflictDetails(error.details)
-          : { actualVersion: null, expectedVersion: null },
-    },
+  const mutations = await listPlannerOfflineMutations(
+    workspaceId,
+    actorUserId,
+    expectedWriteGeneration,
   )
+  const blockedTargets = new Set<string>()
+  const block = (mutation: PlannerOfflineMutationRecord) => {
+    getPlannerMutationTargets(mutation).forEach((key) =>
+      blockedTargets.add(key),
+    )
+  }
 
-  return drainOfflineQueue({
-    adapter: {
-      completeMutation: (mutationId) =>
-        completePlannerOfflineMutation(
-          mutationId,
-          workspaceId,
-          expectedWriteGeneration,
-        ),
-      getMutationId: (mutation) => mutation.id,
-      listRetryableMutations: () =>
-        listRetryablePlannerOfflineMutations(
-          workspaceId,
-          actorUserId,
-          expectedWriteGeneration,
-        ),
-      markMutationSyncing: (mutationId) =>
-        markPlannerOfflineMutationSyncing(
-          mutationId,
-          workspaceId,
-          expectedWriteGeneration,
-        ),
-    },
-    apply: (mutation) =>
-      applyOfflineMutation(api, mutation, callbacks, expectedWriteGeneration),
-    result,
-    onError: (input) => {
+  for (const mutation of mutations) {
+    if (
+      !isPlannerOfflineWorkspaceWriteGenerationCurrent(
+        workspaceId,
+        expectedWriteGeneration,
+      )
+    )
+      break
+    if (mutation.status === 'conflicted') {
+      block(mutation)
+      continue
+    }
+    if (
+      getPlannerMutationDependencies(mutation).some((key) =>
+        blockedTargets.has(key),
+      )
+    ) {
+      await markPlannerOfflineMutationConflicted(
+        mutation.id,
+        {
+          actualVersion: null,
+          code: 'dependency_blocked',
+          expectedVersion: null,
+          message: 'Ожидает решения по предыдущему связанному изменению.',
+        },
+        workspaceId,
+        expectedWriteGeneration,
+      )
+      block(mutation)
+      result.conflicted += 1
+      continue
+    }
+    result.processed += 1
+    await markPlannerOfflineMutationSyncing(
+      mutation.id,
+      workspaceId,
+      expectedWriteGeneration,
+    )
+    try {
+      await applyOfflineMutation(
+        api,
+        mutation,
+        callbacks,
+        expectedWriteGeneration,
+      )
+      await completePlannerOfflineMutation(
+        mutation.id,
+        workspaceId,
+        expectedWriteGeneration,
+      )
+      result.synced += 1
+    } catch (error) {
       if (
-        input.error instanceof PlannerOfflineDrainInvalidatedError ||
+        error instanceof PlannerOfflineDrainInvalidatedError ||
         !isPlannerOfflineWorkspaceWriteGenerationCurrent(
           workspaceId,
           expectedWriteGeneration,
         )
-      ) {
-        return Promise.resolve('break')
+      )
+        break
+      if (isTerminalPlannerSyncError(error)) {
+        await markPlannerOfflineMutationConflicted(
+          mutation.id,
+          {
+            ...readOfflineConflictDetails(error.details),
+            code: error.code,
+            message: getErrorMessage(error),
+          },
+          workspaceId,
+          expectedWriteGeneration,
+        )
+        block(mutation)
+        result.conflicted += 1
+        continue
       }
-
-      return handleError(input)
-    },
-  })
-}
-
-export function isQueueablePlannerMutationError(error: unknown): boolean {
-  if (error instanceof PlannerApiError) {
-    return false
+      await markPlannerOfflineMutationFailed(
+        mutation.id,
+        getErrorMessage(error),
+        workspaceId,
+        expectedWriteGeneration,
+      )
+      result.failed += 1
+      break
+    }
   }
-
-  return isBrowserRetryableOfflineError(error)
+  return result
 }
 
 async function applyOfflineMutation(
@@ -452,13 +480,16 @@ function assertPlannerOfflineDrainIsCurrent(
 }
 
 function isTerminalPlannerSyncError(error: unknown): error is PlannerApiError {
+  if (!(error instanceof PlannerApiError)) return false
+  // Authentication, throttling and transport/server failures need recovery or
+  // backoff. A refusal of this command needs an explicit user decision.
   return (
-    error instanceof PlannerApiError &&
-    (error.code === 'life_sphere_version_conflict' ||
-      error.code === 'life_sphere_not_found' ||
-      error.code === 'task_assignee_not_found' ||
-      error.code === 'task_not_found' ||
-      error.code === 'task_version_conflict')
+    error.status >= 400 &&
+    error.status < 500 &&
+    ![401, 408, 429].includes(error.status) &&
+    error.code !== 'workspace_access_denied' &&
+    error.code !== 'workspace_write_forbidden' &&
+    error.code !== 'session_not_found'
   )
 }
 

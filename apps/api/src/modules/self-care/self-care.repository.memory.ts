@@ -62,6 +62,7 @@ import {
   fingerprintSelfCareCommandRequest,
 } from './self-care.offline-command.js'
 import type { SelfCareRepository } from './self-care.repository.js'
+import { reconcileSelfCareSchedule } from './self-care.schedule-reconciliation.js'
 import {
   addDays,
   buildAnalyticsResponse,
@@ -298,7 +299,6 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
     if (nextRule) {
       this.scheduleRules.set(nextRule.id, nextRule)
-      this.relinkOpenOccurrencesToScheduleRule(nextRule)
     }
 
     if (nextSteps) {
@@ -376,6 +376,49 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       this.courseDetails.set(record.id, record)
     }
 
+    const reconciliationRule =
+      nextRule ??
+      (command.input.courseDetails
+        ? [...this.scheduleRules.values()].find(
+            (entry) => entry.itemId === item.id,
+          )
+        : null)
+    if (reconciliationRule) {
+      const result = reconcileSelfCareSchedule({
+        completions: [...this.completions.values()].filter(
+          (entry) => entry.itemId === item.id,
+        ),
+        courseDetails:
+          [...this.courseDetails.values()].find(
+            (entry) => entry.itemId === item.id,
+          ) ?? null,
+        from: getDateKeyInTimeZone(
+          new Date(),
+          command.context.clientTimeZone ??
+            reconciliationRule.timezone ??
+            'UTC',
+        ),
+        item: nextItem,
+        occurrences: [...this.occurrences.values()].filter(
+          (entry) => entry.itemId === item.id,
+        ),
+        preserveOccurrenceId: command.preserveOccurrenceId,
+        stepDrafts: [...this.stepDrafts.values()].filter(
+          (entry) => entry.itemId === item.id,
+        ),
+        scheduleRule: {
+          ...reconciliationRule,
+          timezone:
+            reconciliationRule.timezone ??
+            command.context.clientTimeZone ??
+            'UTC',
+        },
+      })
+      for (const id of result.removedIds) this.occurrences.delete(id)
+      for (const occurrence of [...result.updated, ...result.inserted]) {
+        this.occurrences.set(occurrence.id, occurrence)
+      }
+    }
     return nextItem
   }
 
@@ -490,6 +533,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const stepCompletions = createRitualStepCompletions(
       'pending',
       command.input,
+      steps,
     )
     const status = inferRitualCompletionStatus({
       requestedStatus: command.input.status,
@@ -620,6 +664,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
     const pendingStepCompletions = createRitualStepCompletions(
       'pending',
       command.input,
+      steps,
     )
     const status = inferRitualCompletionStatus({
       requestedStatus: command.input.status,
@@ -942,6 +987,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       const nextOccurrence = {
         ...existing,
         completedAt: null,
+        generatedAt: null,
         dueAt,
         movedTo: null,
         reminderOffsetsMinutes: command.input.reminderOffsetsMinutes,
@@ -978,6 +1024,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       const nextOccurrence = {
         ...existing,
         completedAt: null,
+        generatedAt: null,
         dueAt,
         movedTo: null,
         reminderOffsetsMinutes: command.input.reminderOffsetsMinutes,
@@ -1007,6 +1054,7 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       scheduledFor: command.input.scheduledFor,
       scheduleRule,
     })
+    occurrence.generatedAt = null
     occurrence.reminderOffsetsMinutes = command.input.reminderOffsetsMinutes
     occurrence.reminderTimeZone = reminderTimeZone
     this.occurrences.set(occurrence.id, occurrence)
@@ -1236,10 +1284,13 @@ export class MemorySelfCareRepository implements SelfCareRepository {
 
   async updateRitualSteps(command: UpdateSelfCareRitualStepsCommand) {
     this.getWritableItem(command.context, command.itemId)
+    const records = command.steps.map((step, index) =>
+      createRitualStepRecord(command.itemId, step, index),
+    )
+    assertChildRecordIdsAvailable(this.steps, records, command.itemId, true)
     this.deleteForItem(this.steps, command.itemId)
     this.deleteForItem(this.stepDrafts, command.itemId)
-    command.steps.forEach((step, index) => {
-      const record = createRitualStepRecord(command.itemId, step, index)
+    records.forEach((record) => {
       this.steps.set(record.id, record)
     })
     return this.listItems(command.context)
@@ -1618,25 +1669,6 @@ export class MemorySelfCareRepository implements SelfCareRepository {
       [...this.scheduleRules.values()].find((rule) => rule.itemId === itemId) ??
       null
     )
-  }
-
-  private relinkOpenOccurrencesToScheduleRule(rule: SelfCareScheduleRule) {
-    for (const occurrence of this.occurrences.values()) {
-      if (
-        occurrence.itemId !== rule.itemId ||
-        occurrence.scheduleRuleId !== null ||
-        occurrence.completedAt !== null ||
-        (occurrence.status !== 'scheduled' && occurrence.status !== 'missed')
-      ) {
-        continue
-      }
-
-      this.occurrences.set(occurrence.id, {
-        ...occurrence,
-        scheduleRuleId: rule.id,
-        updatedAt: new Date().toISOString(),
-      })
-    }
   }
 
   private findProgressCompletionForDate(input: {

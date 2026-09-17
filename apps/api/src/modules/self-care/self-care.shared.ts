@@ -549,12 +549,17 @@ export function createCompletionRecord(
 export function createRitualStepCompletions(
   completionId: string,
   input: SelfCareRitualCompletionInput,
+  steps: SelfCareRitualStep[] = [],
 ): SelfCareRitualStepCompletion[] {
   return input.steps.map((step) => ({
     completionId,
     id: generateUuidV7(),
     isDone: step.isDone,
     stepId: step.stepId,
+    stepTitle:
+      steps.find((candidate) => candidate.id === step.stepId)?.title ?? null,
+    stepOrder:
+      steps.find((candidate) => candidate.id === step.stepId)?.order ?? null,
   }))
 }
 

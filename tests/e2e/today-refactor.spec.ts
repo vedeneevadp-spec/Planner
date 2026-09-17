@@ -173,3 +173,134 @@ test('keeps shared Today free of personal resource and self-care blocks', async 
     page.getByRole('button', { exact: true, name: 'Сегодня' }),
   ).toBeVisible()
 })
+
+test('keeps Today tasks usable while supplementary sources fail and recover independently', async ({
+  page,
+}, testInfo) => {
+  const user = createE2eUser('e2e-today-source-recovery')
+  const taskTitle = `Доступная задача ${user.suffix}`
+  const recoveredSources = new Set<string>()
+  const failedSources = new Set<string>()
+
+  function sourceKey(url: URL): string | null {
+    if (
+      url.pathname === '/api/v1/chaos-inbox' &&
+      url.searchParams.get('kind') === 'shopping'
+    ) {
+      return 'shopping'
+    }
+    if (url.pathname === '/api/v1/cleaning/today') return 'cleaning'
+    if (url.pathname === '/api/v1/self-care/dashboard') {
+      return `care:${url.searchParams.get('date')}`
+    }
+    return null
+  }
+
+  await page.route('**/api/v1/**', async (route) => {
+    const request = route.request()
+    const key = sourceKey(new URL(request.url()))
+    if (request.method() === 'GET' && key && !recoveredSources.has(key)) {
+      failedSources.add(key)
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Temporary source outage' }),
+      })
+      return
+    }
+    await route.continue()
+  })
+
+  await registerUser({ ...user, page })
+
+  const labels = ['Покупки', 'Уборка', 'Забота на сегодня', 'Забота на завтра']
+  for (const label of labels) {
+    await expect(
+      page.getByText(`${label}: не удалось загрузить данные`, { exact: true }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: `Повторить: ${label}`, exact: true }),
+    ).toBeEnabled()
+  }
+
+  await createTodayTask(page, taskTitle)
+  const task = page.getByRole('article').filter({ hasText: taskTitle })
+  await expect(
+    task.getByRole('button', { name: 'Завершить задачу' }),
+  ).toBeEnabled()
+  await page.screenshot({
+    path: testInfo.outputPath('td09-source-errors.png'),
+    fullPage: true,
+  })
+
+  const careKeys = [...failedSources]
+    .filter((key) => key.startsWith('care:'))
+    .sort()
+  expect(careKeys).toHaveLength(2)
+  const sources = [
+    { key: 'shopping', label: labels[0]!, empty: 'Покупки: список пуст.' },
+    {
+      key: 'cleaning',
+      label: labels[1]!,
+      empty: 'Уборка: на сегодня задач нет.',
+    },
+    {
+      key: careKeys[0]!,
+      label: labels[2]!,
+      empty: 'Забота на сегодня: активных задач нет.',
+    },
+    {
+      key: careKeys[1]!,
+      label: labels[3]!,
+      empty: 'Забота на завтра: активных задач нет.',
+    },
+  ]
+
+  for (const [index, source] of sources.entries()) {
+    recoveredSources.add(source.key)
+    const refreshed = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' &&
+        sourceKey(new URL(response.url())) === source.key &&
+        response.ok(),
+    )
+    await page
+      .getByRole('button', { name: `Повторить: ${source.label}`, exact: true })
+      .click()
+    await refreshed
+    await expect(page.getByText(source.empty, { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('button', {
+        name: `Повторить: ${source.label}`,
+        exact: true,
+      }),
+    ).toHaveCount(0)
+    await expect(task).toBeVisible()
+    for (const pending of sources.slice(index + 1)) {
+      await expect(
+        page.getByRole('button', {
+          name: `Повторить: ${pending.label}`,
+          exact: true,
+        }),
+      ).toBeVisible()
+    }
+  }
+
+  await page.screenshot({
+    path: testInfo.outputPath('td09-source-recovered.png'),
+    fullPage: true,
+  })
+  const completed = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'PATCH' &&
+      /^\/api\/v1\/tasks\/[^/]+\/status$/.test(
+        new URL(response.url()).pathname,
+      ) &&
+      response.ok(),
+  )
+  await task.getByRole('button', { name: 'Завершить задачу' }).click()
+  await completed
+  await expect(
+    page.getByRole('button', { name: 'Выполнено сегодня', exact: true }),
+  ).toBeVisible()
+})

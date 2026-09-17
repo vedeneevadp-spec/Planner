@@ -3,7 +3,7 @@ import type { NewTaskInput, Task } from './task.types'
 
 export type TaskTypeValue = '' | 'important' | 'routine' | 'habit'
 export type ResourceValue =
-  '' | '-1' | '-2' | '-3' | '-4' | '1' | '2' | '3' | '4'
+  '' | '-1' | '-2' | '-3' | '-4' | '0' | '1' | '2' | '3' | '4'
 
 export const TASK_NECESSITY_LABELS: Record<Task['necessity'], string> = {
   desired: 'Желательно',
@@ -44,13 +44,13 @@ export function getTaskNecessityLabel(necessity: Task['necessity']): string {
 }
 
 export function getResourceFromValue(value: ResourceValue): Task['resource'] {
-  return value ? clampTaskResource(Number(value)) : 0
+  return value === '' ? null : clampTaskResource(Number(value))
 }
 
 export function getResourceValueFromTaskResource(
   value: Task['resource'],
 ): ResourceValue {
-  if (value === null || value === 0) {
+  if (value === null) {
     return ''
   }
 

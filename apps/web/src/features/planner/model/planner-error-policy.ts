@@ -2,7 +2,6 @@ import { isUnauthorizedSessionApiError } from '@/features/session'
 import { isBrowserRetryableOfflineError } from '@/shared/lib/offline-sync'
 
 import { isPlannerOfflineStorageAvailable } from '../lib/offline-planner-store'
-import { isQueueablePlannerMutationError } from '../lib/offline-planner-sync'
 import {
   isUnauthorizedPlannerApiError,
   type PlannerApiClient,
@@ -110,7 +109,7 @@ export function shouldKeepOptimisticMutation(error: unknown): boolean {
     (error instanceof PlannerApiUnavailableError ||
       isUnauthorizedPlannerApiError(error) ||
       isUnauthorizedSessionApiError(error) ||
-      isQueueablePlannerMutationError(error))
+      isRetryablePlannerConnectionError(error))
   )
 }
 

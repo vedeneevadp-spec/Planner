@@ -1,7 +1,7 @@
 import { getTaskResource, isActiveTaskStatus, type Task } from '@/entities/task'
 
 export type EnergyMode = 'maximum' | 'minimum' | 'normal'
-export type LoadState = 'calm' | 'edge' | 'overload'
+export type LoadState = 'calm' | 'edge' | 'overload' | 'unknown'
 
 export interface EnergyModeConfig {
   description: string
@@ -12,10 +12,15 @@ export interface EnergyModeConfig {
 }
 
 export interface DailyLoadAnalysis {
+  assessedState: Exclude<LoadState, 'unknown'>
+  assessedTaskCount: number
+  isComplete: boolean
   resourceLimit: number
   overloadScore: number
   state: LoadState
   totalResource: number
+  totalTaskCount: number
+  unassessedTaskCount: number
 }
 
 export interface DailyTaskGroups {
@@ -66,21 +71,35 @@ const ROUTINE_KEYWORDS = [
 export function analyzeDailyLoad(
   tasks: Task[],
   energyMode: EnergyMode,
+  isTaskDataComplete = true,
 ): DailyLoadAnalysis {
   const resourceLimit = ENERGY_MODE_CONFIGS[energyMode].resourceLimit
+  const assessedTasks = tasks.filter(
+    (task) =>
+      typeof task.resource === 'number' && Number.isFinite(task.resource),
+  )
+  const assessedTaskCount = assessedTasks.length
+  const totalTaskCount = tasks.length
+  const unassessedTaskCount = totalTaskCount - assessedTaskCount
+  const isComplete = isTaskDataComplete && unassessedTaskCount === 0
   const totalResource = Math.max(
     0,
-    tasks.reduce((sum, task) => sum - getTaskResource(task), 0),
+    assessedTasks.reduce((sum, task) => sum - getTaskResource(task), 0),
   )
   const overloadScore = Math.round((totalResource / resourceLimit) * 100)
-  const state: LoadState =
+  const assessedState: DailyLoadAnalysis['assessedState'] =
     overloadScore > 100 ? 'overload' : overloadScore >= 80 ? 'edge' : 'calm'
 
   return {
+    assessedState,
+    assessedTaskCount,
+    isComplete,
     resourceLimit,
     overloadScore,
-    state,
+    state: isComplete ? assessedState : 'unknown',
     totalResource,
+    totalTaskCount,
+    unassessedTaskCount,
   }
 }
 
@@ -143,6 +162,10 @@ export function getUnloadCandidates(tasks: Task[], limit = 3): Task[] {
 }
 
 export function getLoadStateLabel(state: LoadState): string {
+  if (state === 'unknown') {
+    return 'неполная оценка'
+  }
+
   if (state === 'overload') {
     return 'перегруз'
   }

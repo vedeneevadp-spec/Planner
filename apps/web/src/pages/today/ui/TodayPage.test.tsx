@@ -45,6 +45,17 @@ interface PlannerSessionQueryStub {
   refetch: () => Promise<unknown>
 }
 
+interface SourceQueryStub {
+  data?: unknown
+  error?: unknown
+  readError?: unknown
+  isFetching?: boolean
+  isPending?: boolean
+  isCacheHydrating?: boolean
+  isShowingCachedData?: boolean
+  lastSuccessfulSyncAt?: string | null
+}
+
 const mocks = vi.hoisted(() => {
   const selfCareDashboards: Record<
     string,
@@ -54,11 +65,17 @@ const mocks = vi.hoisted(() => {
     string,
     CleaningTodayResponse | undefined
   > = {}
+  const cleaningQueryOverrides: Record<string, SourceQueryStub> = {}
+  const selfCareQueryOverrides: Record<string, SourceQueryStub> = {}
+  const shoppingQueryOverrides: SourceQueryStub = {}
+  const shoppingItemError: unknown = null
 
   return {
     browserOffline: false,
     cleaningTodayRequest: vi.fn(),
     cleaningTodayResponses,
+    cleaningQueryOverrides,
+    cleaningRefetch: vi.fn<(date: string) => Promise<unknown>>(),
     copyTaskToPersonal: vi.fn(),
     createNextTaskStage: vi.fn(),
     detachTaskFromChain: vi.fn(),
@@ -108,12 +125,20 @@ const mocks = vi.hoisted(() => {
     removeTask: vi.fn(),
     selfCareDashboards,
     selfCareDashboardRequest: vi.fn(),
+    selfCareQueryOverrides,
+    selfCareRefetch: vi.fn<(date: string) => Promise<unknown>>(),
     setTaskPlannedDate: vi.fn(),
     setTaskStatus: vi.fn(),
     sessionRefetch: vi.fn(),
     shoppingActiveItems: [] as ChaosInboxItemRecord[],
     shoppingItemPending: false,
     shoppingItemUpdate: vi.fn(),
+    shoppingItemError,
+    shoppingItemVariables: undefined as
+      | { itemId: string; patch: { priority: null; status: 'archived' } }
+      | undefined,
+    shoppingQueryOverrides,
+    shoppingRefetch: vi.fn<() => Promise<unknown>>(),
     taskComposer: vi.fn(),
     taskCursorRefetch: vi.fn(),
     updateTask: vi.fn(),
@@ -172,22 +197,37 @@ vi.mock('@/features/cleaning', () => ({
     mocks.cleaningTodayRequest(date)
 
     return {
-      data: mocks.cleaningTodayResponses[date],
+      data:
+        mocks.cleaningTodayResponses[date] ??
+        createCleaningTodayResponse({ date }),
+      error: null,
+      isFetching: false,
+      isPending: false,
+      refetch: () => mocks.cleaningRefetch(date),
+      ...mocks.cleaningQueryOverrides[date],
     }
   },
 }))
 
 vi.mock('@/features/shopping-list', () => ({
   useShoppingListSummary: () => ({
+    data: mocks.shoppingActiveItems,
+    error: null,
+    isFetching: false,
+    isPending: false,
+    refetch: mocks.shoppingRefetch,
     activeItemCount: mocks.shoppingActiveItems.length,
     activeItems: mocks.shoppingActiveItems,
     completedItemCount: 0,
     completedItems: [],
     totalItemCount: mocks.shoppingActiveItems.length,
+    ...mocks.shoppingQueryOverrides,
   }),
   useUpdateShoppingListItem: () => ({
     isPending: mocks.shoppingItemPending,
     mutate: mocks.shoppingItemUpdate,
+    error: mocks.shoppingItemError,
+    variables: mocks.shoppingItemVariables,
   }),
 }))
 
@@ -196,7 +236,13 @@ vi.mock('@/features/self-care', () => ({
     mocks.selfCareDashboardRequest(date)
 
     return {
-      data: mocks.selfCareDashboards[date],
+      data:
+        mocks.selfCareDashboards[date] ?? createSelfCareDashboard([], { date }),
+      error: null,
+      isFetching: false,
+      isPending: false,
+      refetch: () => mocks.selfCareRefetch(date),
+      ...mocks.selfCareQueryOverrides[date],
     }
   },
 }))
@@ -262,6 +308,28 @@ function createTask(overrides: Partial<Task> = {}): Task {
     title: 'Неразложенная задача',
     urgency: 'not_urgent',
     ...overrides,
+  }
+}
+
+function createCompleteTaskCoverage(taskCount = 1) {
+  return {
+    historyNextCursor: null,
+    returnedCount: taskCount,
+    sources: {
+      active: {
+        returnedCount: taskCount,
+        totalCount: taskCount,
+        truncated: false,
+      },
+      history: { returnedCount: 0, totalCount: 0, truncated: false },
+      range: {
+        returnedCount: taskCount,
+        totalCount: taskCount,
+        truncated: false,
+      },
+    },
+    totalCount: taskCount,
+    truncated: false,
   }
 }
 
@@ -533,6 +601,54 @@ function LocationProbe() {
   return <output data-testid="today-location">{location.search}</output>
 }
 
+const supplementarySources = [
+  {
+    source: 'shopping',
+    label: 'Покупки',
+    emptyMessage: 'Покупки: список пуст.',
+  },
+  {
+    source: 'cleaning',
+    label: 'Уборка',
+    emptyMessage: 'Уборка: на сегодня задач нет.',
+  },
+  {
+    source: 'todayCare',
+    label: 'Забота на сегодня',
+    emptyMessage: 'Забота на сегодня: активных задач нет.',
+  },
+  {
+    source: 'tomorrowCare',
+    label: 'Забота на завтра',
+    emptyMessage: 'Забота на завтра: активных задач нет.',
+  },
+] as const
+
+function setSourceQueryOverride(
+  source: (typeof supplementarySources)[number]['source'],
+  override: SourceQueryStub,
+) {
+  const today = getDateKey(new Date())
+  if (source === 'shopping') {
+    mocks.shoppingQueryOverrides = override
+  } else if (source === 'cleaning') {
+    mocks.cleaningQueryOverrides[today] = override
+  } else {
+    const date =
+      source === 'todayCare' ? today : getDateKey(addDays(new Date(), 1))
+    mocks.selfCareQueryOverrides[date] = override
+  }
+}
+
+function rerenderTodayPage(rendered: ReturnType<typeof render>) {
+  rendered.rerender(
+    <MemoryRouter initialEntries={['/today']}>
+      <TodayPage />
+      <LocationProbe />
+    </MemoryRouter>,
+  )
+}
+
 describe('TodayPage', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -540,6 +656,9 @@ describe('TodayPage', () => {
     mocks.browserOffline = false
     mocks.cleaningTodayRequest.mockReset()
     mocks.cleaningTodayResponses = {}
+    mocks.cleaningQueryOverrides = {}
+    mocks.cleaningRefetch.mockReset()
+    mocks.cleaningRefetch.mockResolvedValue(undefined)
     mocks.copyTaskToPersonal.mockReset()
     mocks.createNextTaskStage.mockReset()
     mocks.detachTaskFromChain.mockReset()
@@ -569,6 +688,9 @@ describe('TodayPage', () => {
     mocks.removeTask.mockReset()
     mocks.selfCareDashboards = {}
     mocks.selfCareDashboardRequest.mockReset()
+    mocks.selfCareQueryOverrides = {}
+    mocks.selfCareRefetch.mockReset()
+    mocks.selfCareRefetch.mockResolvedValue(undefined)
     mocks.setTaskPlannedDate.mockReset()
     mocks.setTaskStatus.mockReset()
     mocks.sessionRefetch.mockReset()
@@ -576,6 +698,11 @@ describe('TodayPage', () => {
     mocks.shoppingActiveItems = []
     mocks.shoppingItemPending = false
     mocks.shoppingItemUpdate.mockReset()
+    mocks.shoppingItemError = null
+    mocks.shoppingItemVariables = undefined
+    mocks.shoppingQueryOverrides = {}
+    mocks.shoppingRefetch.mockReset()
+    mocks.shoppingRefetch.mockResolvedValue(undefined)
     mocks.taskComposer.mockReset()
     mocks.taskCursorRefetch.mockReset()
     mocks.taskCursorRefetch.mockResolvedValue(undefined)
@@ -588,6 +715,200 @@ describe('TodayPage', () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it.each(supplementarySources)(
+    'keeps tasks available through $label loading, failure, targeted retry and empty success',
+    async ({ source, label, emptyMessage }) => {
+      const today = getDateKey(new Date())
+      const tomorrow = getDateKey(addDays(new Date(), 1))
+      setSourceQueryOverride(source, {
+        data: undefined,
+        isFetching: true,
+        isPending: true,
+      })
+      const rendered = renderTodayPage({
+        tasks: [createTask({ plannedDate: today, title: 'Рабочая задача' })],
+      })
+
+      expect(screen.getByText(`${label}: загружаем данные`)).toBeVisible()
+      expect(screen.getByText('Рабочая задача')).toBeVisible()
+      expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
+
+      setSourceQueryOverride(source, {
+        data: undefined,
+        error: new Error('HTTP 500'),
+      })
+      rerenderTodayPage(rendered)
+
+      expect(
+        screen.getByText(`${label}: не удалось загрузить данные`),
+      ).toBeVisible()
+      expect(screen.getByText('Рабочая задача')).toBeVisible()
+      expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
+      fireEvent.click(
+        screen.getByRole('button', { name: `Повторить: ${label}` }),
+      )
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole('button', { name: `Повторить: ${label}` }),
+        ).toBeEnabled()
+      })
+      expect(mocks.shoppingRefetch).toHaveBeenCalledTimes(
+        source === 'shopping' ? 1 : 0,
+      )
+      expect(mocks.cleaningRefetch).toHaveBeenCalledTimes(
+        source === 'cleaning' ? 1 : 0,
+      )
+      expect(mocks.selfCareRefetch).toHaveBeenCalledTimes(
+        source === 'todayCare' || source === 'tomorrowCare' ? 1 : 0,
+      )
+      if (source === 'cleaning')
+        expect(mocks.cleaningRefetch).toHaveBeenCalledWith(today)
+      if (source === 'todayCare')
+        expect(mocks.selfCareRefetch).toHaveBeenCalledWith(today)
+      if (source === 'tomorrowCare')
+        expect(mocks.selfCareRefetch).toHaveBeenCalledWith(tomorrow)
+
+      setSourceQueryOverride(source, {})
+      rerenderTodayPage(rendered)
+      expect(screen.getByText(emptyMessage)).toBeVisible()
+      expect(
+        screen.queryByText(`${label}: не удалось загрузить данные`),
+      ).not.toBeInTheDocument()
+      expect(screen.getByText('Рабочая задача')).toBeVisible()
+    },
+  )
+
+  it.each(supplementarySources)(
+    'preserves cached $label items after a failed refresh',
+    ({ source, label, emptyMessage }) => {
+      const today = getDateKey(new Date())
+      const tomorrow = getDateKey(addDays(new Date(), 1))
+      mocks.shoppingActiveItems = [createShoppingItem()]
+      mocks.cleaningTodayResponses[today] = createCleaningTodayResponse({
+        items: [createCleaningTaskWithState(createCleaningZone())],
+      })
+      setSelfCareDashboard(createSelfCareDashboard([createSelfCareTodayItem()]))
+      setSelfCareDashboard(
+        createSelfCareDashboard(
+          [
+            createSelfCareTodayItem({
+              item: { id: 'tomorrow-care', title: 'Завтрашняя забота' },
+            }),
+          ],
+          { date: tomorrow },
+        ),
+      )
+      setSourceQueryOverride(source, {
+        error: new Error('HTTP 503'),
+        isShowingCachedData: true,
+        lastSuccessfulSyncAt: '2026-09-16T06:00:00.000Z',
+      })
+
+      renderTodayPage({ tasks: [] })
+
+      expect(
+        screen.getByText(`${label}: данные могут быть устаревшими`),
+      ).toBeVisible()
+      expect(screen.getByText(/Последняя синхронизация:/)).toBeVisible()
+      expect(screen.queryByText(emptyMessage)).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', {
+          name: 'Отметить покупку купленной: Молоко',
+        }),
+      ).toBeVisible()
+      expect(
+        screen.getByRole('link', { name: /Открыть уборку: Кухня/ }),
+      ).toBeVisible()
+      expect(
+        screen.getByRole('link', {
+          name: 'Открыть заботу: Компактная привычка',
+        }),
+      ).toBeVisible()
+      fireEvent.click(screen.getByRole('button', { name: 'Завтра' }))
+      expect(
+        screen.getByRole('link', { name: 'Открыть заботу: Завтрашняя забота' }),
+      ).toBeVisible()
+    },
+  )
+
+  it('does not show disabled self-care integration as a failed source', () => {
+    const tomorrow = getDateKey(addDays(new Date(), 1))
+    setSelfCareDashboard(
+      createSelfCareDashboard([], { showSelfCareInMainTasks: false }),
+    )
+    mocks.selfCareQueryOverrides[tomorrow] = {
+      data: undefined,
+      error: new Error('HTTP 500'),
+    }
+    renderTodayPage({ tasks: [] })
+
+    expect(screen.queryByText(/Забота на завтра:/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Забота на сегодня:/)).not.toBeInTheDocument()
+  })
+
+  it('does not describe an empty shopping cache as fresh after an online network fallback', () => {
+    mocks.shoppingQueryOverrides = {
+      error: null,
+      readError: new TypeError('Failed to fetch'),
+      isShowingCachedData: true,
+    }
+    renderTodayPage({ tasks: [] })
+
+    expect(
+      screen.getByText('Покупки: данные могут быть устаревшими'),
+    ).toBeVisible()
+    expect(screen.queryByText('Покупки: список пуст.')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Повторить: Покупки' }),
+    ).toBeEnabled()
+  })
+
+  it('shows failed quick shopping updates and retries the same action', () => {
+    mocks.shoppingActiveItems = [createShoppingItem()]
+    const rendered = renderTodayPage({ tasks: [] })
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Отметить покупку купленной: Молоко',
+      }),
+    )
+    const input = {
+      itemId: 'shopping-1',
+      patch: { priority: null, status: 'archived' as const },
+    }
+    mocks.shoppingItemVariables = input
+    mocks.shoppingItemError = new Error('HTTP 500')
+    rerenderTodayPage(rendered)
+
+    expect(
+      screen.getByText('Не удалось отметить покупку купленной'),
+    ).toBeVisible()
+    expect(
+      screen.getByRole('button', {
+        name: 'Отметить покупку купленной: Молоко',
+      }),
+    ).toBeVisible()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Повторить отметку покупки' }),
+    )
+    expect(mocks.shoppingItemUpdate).toHaveBeenLastCalledWith(input)
+    expect(mocks.shoppingItemUpdate).toHaveBeenCalledTimes(2)
+
+    mocks.shoppingItemPending = true
+    rerenderTodayPage(rendered)
+    expect(
+      screen.getByRole('button', { name: 'Повторить отметку покупки' }),
+    ).toBeDisabled()
+    mocks.shoppingItemPending = false
+    mocks.shoppingItemError = null
+    mocks.shoppingActiveItems = []
+    rerenderTodayPage(rendered)
+    expect(
+      screen.queryByText('Не удалось отметить покупку купленной'),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText('Покупки: список пуст.')).toBeVisible()
   })
 
   it('shows a skeleton while the task cache is being checked', () => {
@@ -969,6 +1290,138 @@ describe('TodayPage', () => {
     expect(mocks.selfCareDashboardRequest).not.toHaveBeenCalled()
   })
 
+  it.each(['missing coverage', 'partial history with complete range'])(
+    'does not infer a complete daily load from assessed tasks with %s',
+    (scenario) => {
+      if (scenario === 'partial history with complete range') {
+        mocks.plannerState.taskReadModelCoverage = {
+          ...createCompleteTaskCoverage(),
+          historyNextCursor: 'next-closed-page',
+          sources: {
+            ...createCompleteTaskCoverage().sources,
+            history: { returnedCount: 0, totalCount: 1, truncated: true },
+          },
+          totalCount: 2,
+          truncated: true,
+        }
+      }
+      renderTodayPage({
+        tasks: [
+          createTask({ plannedDate: getDateKey(new Date()), resource: -2 }),
+        ],
+      })
+      const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+
+      expect(panel.getByText('неполная оценка')).toBeVisible()
+      expect(
+        panel.getByText('Оценено 1 из 1 · по загруженным задачам'),
+      ).toBeVisible()
+      fireEvent.click(
+        panel.getByRole('button', { name: 'Открыть антиперегруз' }),
+      )
+      expect(
+        panel.getByText(/Итоговую нагрузку пока нельзя оценить/),
+      ).toBeVisible()
+      expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
+      expect(
+        panel.queryByText(/План задач укладывается|План выглядит реалистично/),
+      ).not.toBeInTheDocument()
+    },
+  )
+
+  it.each([
+    'browser offline',
+    'task offline',
+    'task read error',
+    'restoring cache',
+  ])('keeps cached assessed tasks provisional while %s', (scenario) => {
+    mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage()
+    mocks.plannerState.taskLastSuccessfulSyncAt = '2026-09-16T06:00:00.000Z'
+    if (scenario === 'browser offline') mocks.browserOffline = true
+    if (scenario === 'task offline') mocks.plannerState.isTaskOffline = true
+    if (scenario === 'task read error')
+      mocks.plannerState.hasTaskReadError = true
+    if (scenario === 'restoring cache') {
+      mocks.plannerState.readiness.status = 'restoringWithCache'
+    }
+    renderTodayPage({
+      tasks: [
+        createTask({
+          plannedDate: getDateKey(new Date()),
+          resource: -2,
+          title: 'Оценённая задача из кеша',
+        }),
+      ],
+    })
+    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+
+    expect(screen.getByText('Оценённая задача из кеша')).toBeVisible()
+    expect(
+      panel.getByText('Оценено 1 из 1 · по загруженным задачам'),
+    ).toBeVisible()
+    expect(panel.getByText('неполная оценка')).toBeVisible()
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    expect(
+      panel.getByText(/Итоговую нагрузку пока нельзя оценить/),
+    ).toBeVisible()
+    expect(panel.queryByText('спокойно')).not.toBeInTheDocument()
+    expect(
+      panel.queryByText(/План задач укладывается|План выглядит реалистично/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('restores the full assessed daily load after a successful task refresh', async () => {
+    mocks.plannerState.hasTaskReadError = true
+    const rendered = renderTodayPage({
+      tasks: [
+        createTask({ plannedDate: getDateKey(new Date()), resource: -2 }),
+      ],
+    })
+    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+    expect(panel.getByText('неполная оценка')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить' }))
+    await waitFor(() => {
+      expect(mocks.refresh).toHaveBeenCalledWith({ retryDeniedAuth: true })
+      expect(mocks.sessionRefetch).toHaveBeenCalledOnce()
+    })
+
+    mocks.plannerState.hasTaskReadError = false
+    mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage()
+    rerenderTodayPage(rendered)
+
+    expect(panel.getByText('Оценено 1 из 1')).toBeVisible()
+    expect(panel.getByText('спокойно')).toBeVisible()
+    expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    expect(
+      panel.getByText('План задач укладывается в выбранный лимит.'),
+    ).toBeVisible()
+  })
+
+  it('keeps explicit neutral task assessment complete independently of failed care reads', () => {
+    mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage()
+    setSourceQueryOverride('todayCare', {
+      data: undefined,
+      error: new Error('HTTP 500'),
+    })
+    renderTodayPage({
+      tasks: [createTask({ plannedDate: getDateKey(new Date()), resource: 0 })],
+    })
+    const panel = within(screen.getByRole('region', { name: 'Антиперегруз' }))
+
+    expect(
+      screen.getByText('Забота на сегодня: не удалось загрузить данные'),
+    ).toBeVisible()
+    expect(panel.getByText('Оценено 1 из 1')).toBeVisible()
+    expect(panel.getByText('спокойно')).toBeVisible()
+    expect(panel.queryByText('неполная оценка')).not.toBeInTheDocument()
+    fireEvent.click(panel.getByRole('button', { name: 'Открыть антиперегруз' }))
+    expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
+    expect(
+      panel.getByText('План задач укладывается в выбранный лимит.'),
+    ).toBeVisible()
+  })
+
   it('persists only a newly selected energy mode', () => {
     renderTodayPage({ tasks: [] })
 
@@ -989,6 +1442,7 @@ describe('TodayPage', () => {
   it('moves the selected unload candidate to tomorrow', () => {
     const todayKey = getDateKey(new Date())
     const tomorrowKey = getDateKey(addDays(new Date(), 1))
+    mocks.plannerState.taskReadModelCoverage = createCompleteTaskCoverage(2)
 
     renderTodayPage({
       tasks: [

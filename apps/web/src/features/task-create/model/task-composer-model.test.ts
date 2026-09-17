@@ -81,40 +81,44 @@ describe('task-composer-model', () => {
     expect(input?.reminderTimeZone).toBeUndefined()
   })
 
-  it('keeps multiple reminder offsets for personal tasks with a start time', () => {
-    const input = buildTaskComposerTaskInput({
-      assigneeUserId: '',
-      canUseRecurrence: false,
-      icon: 'briefcase',
-      initialPlannedDate: null,
-      isImportant: false,
-      isSharedWorkspace: false,
-      note: '',
-      necessity: 'desired',
-      plannedDate: '2026-04-22',
-      plannedEndTime: '',
-      plannedStartTime: '10:00',
-      plannerTimeZone: 'Europe/Astrakhan',
-      projectId: PROJECT.id,
-      recurrenceForm: createDefaultTaskRecurrenceForm(),
-      reminderOffsets: [15, 60],
-      requiresConfirmation: false,
-      resource: '',
-      routineForm: createDefaultRoutineTaskForm(),
-      spheres: [PROJECT],
-      taskType: '',
-      title: 'Созвон',
-      todayKey: '2026-04-22',
-    })
+  it.each(['', '0'] as const)(
+    'keeps reminder offsets and the meaning of resource %j when composing a task',
+    (resource) => {
+      const input = buildTaskComposerTaskInput({
+        assigneeUserId: '',
+        canUseRecurrence: false,
+        icon: 'briefcase',
+        initialPlannedDate: null,
+        isImportant: false,
+        isSharedWorkspace: false,
+        note: '',
+        necessity: 'desired',
+        plannedDate: '2026-04-22',
+        plannedEndTime: '',
+        plannedStartTime: '10:00',
+        plannerTimeZone: 'Europe/Astrakhan',
+        projectId: PROJECT.id,
+        recurrenceForm: createDefaultTaskRecurrenceForm(),
+        reminderOffsets: [15, 60],
+        requiresConfirmation: false,
+        resource,
+        routineForm: createDefaultRoutineTaskForm(),
+        spheres: [PROJECT],
+        taskType: '',
+        title: 'Созвон',
+        todayKey: '2026-04-22',
+      })
 
-    expect(input).toMatchObject({
-      plannedDate: '2026-04-22',
-      plannedStartTime: '10:00',
-      reminderOffsets: [15, 60],
-      remindBeforeStart: true,
-      title: 'Созвон',
-    })
-  })
+      expect(input).toMatchObject({
+        plannedDate: '2026-04-22',
+        plannedStartTime: '10:00',
+        reminderOffsets: [15, 60],
+        remindBeforeStart: true,
+        resource: resource === '' ? null : 0,
+        title: 'Созвон',
+      })
+    },
+  )
 
   it('rolls reminder tasks to tomorrow when today start time already passed', () => {
     const input = buildTaskComposerTaskInput({

@@ -80,6 +80,7 @@ interface PlannerOfflineMutationBase {
   attemptCount: number
   conflictActualVersion: number | null
   conflictExpectedVersion: number | null
+  conflictCode?: string | null
   createdAt: string
   id: string
   lastError: string | null
@@ -1049,6 +1050,22 @@ export async function listRetryablePlannerOfflineMutations(
     workspaceId,
   ),
 ): Promise<PlannerOfflineMutationRecord[]> {
+  return (
+    await listPlannerOfflineMutations(
+      workspaceId,
+      actorUserId,
+      expectedReadGeneration,
+    )
+  ).filter((mutation) => RETRYABLE_QUEUE_STATUSES.includes(mutation.status))
+}
+
+export async function listPlannerOfflineMutations(
+  workspaceId: string,
+  actorUserId?: string,
+  expectedReadGeneration = getPlannerOfflineWorkspaceWriteGeneration(
+    workspaceId,
+  ),
+): Promise<PlannerOfflineMutationRecord[]> {
   const db = await getPlannerOfflineDatabase(workspaceId)
 
   if (!db) {
@@ -1058,11 +1075,7 @@ export async function listRetryablePlannerOfflineMutations(
   const rows = await db.mutationQueue
     .where('workspaceId')
     .equals(workspaceId)
-    .filter(
-      (mutation) =>
-        (!actorUserId || mutation.actorUserId === actorUserId) &&
-        RETRYABLE_QUEUE_STATUSES.includes(mutation.status),
-    )
+    .filter((mutation) => !actorUserId || mutation.actorUserId === actorUserId)
     .toArray()
 
   if (
@@ -1075,6 +1088,37 @@ export async function listRetryablePlannerOfflineMutations(
   }
 
   return rows.sort(compareOfflineMutations)
+}
+
+export async function resolvePlannerOfflineConflict(
+  workspaceId: string,
+  actorUserId: string,
+  mutationId: string,
+  action: 'retry' | 'discard',
+  expectedWriteGeneration = getPlannerOfflineWorkspaceWriteGeneration(
+    workspaceId,
+  ),
+): Promise<void> {
+  const { applyPlannerOfflineConflictResolution } =
+    await import('./offline-planner-conflicts')
+  const db = await getPlannerOfflineDatabase(workspaceId)
+  if (!db) return
+  await runPlannerCacheWrite(
+    db,
+    workspaceId,
+    'mutation-queue',
+    expectedWriteGeneration,
+    [db.mutationQueue],
+    () =>
+      applyPlannerOfflineConflictResolution(
+        db.mutationQueue,
+        workspaceId,
+        actorUserId,
+        mutationId,
+        action,
+        compareOfflineMutations,
+      ),
+  )
 }
 
 export async function countRetryablePlannerOfflineMutations(
@@ -1251,6 +1295,7 @@ export async function markPlannerOfflineMutationConflicted(
   mutationId: string,
   details: {
     actualVersion: number | null
+    code?: string
     expectedVersion: number | null
     message: string
   },
@@ -1271,6 +1316,7 @@ export async function markPlannerOfflineMutationConflicted(
     () =>
       db.mutationQueue.update(mutationId, {
         conflictActualVersion: details.actualVersion,
+        conflictCode: details.code ?? null,
         conflictExpectedVersion: details.expectedVersion,
         lastError: details.message,
         status: 'conflicted',

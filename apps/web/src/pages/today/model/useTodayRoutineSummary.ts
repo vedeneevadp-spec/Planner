@@ -13,11 +13,15 @@ export interface CleaningRoutineSummary {
 }
 
 export interface TodayRoutineSummaryModel {
+  cleaningQuery: ReturnType<typeof useCleaningToday>
   cleaningSummary: CleaningRoutineSummary | null
   isShoppingItemPending: boolean
   itemCount: number
+  shoppingActionError: unknown
   shoppingItems: ShoppingListItem[]
+  shoppingQuery: ReturnType<typeof useShoppingListSummary>
   onCompleteShoppingItem: (itemId: string) => void
+  onRetryShoppingAction: (() => void) | undefined
 }
 
 function buildCleaningRoutineSummary(
@@ -60,11 +64,23 @@ export function useTodayRoutineSummary(
   const cleaningSummary = buildCleaningRoutineSummary(cleaningTodayQuery.data)
 
   return {
+    cleaningQuery: cleaningTodayQuery,
     cleaningSummary,
     isShoppingItemPending: updateShoppingItemMutation.isPending,
     itemCount:
       (shoppingSummary.activeItemCount > 0 ? 1 : 0) + (cleaningSummary ? 1 : 0),
+    shoppingActionError: updateShoppingItemMutation.error,
     shoppingItems: shoppingSummary.activeItems,
+    shoppingQuery: shoppingSummary,
+    onRetryShoppingAction: updateShoppingItemMutation.variables
+      ? () => {
+          if (updateShoppingItemMutation.variables) {
+            updateShoppingItemMutation.mutate(
+              updateShoppingItemMutation.variables,
+            )
+          }
+        }
+      : undefined,
     onCompleteShoppingItem: (itemId) => {
       updateShoppingItemMutation.mutate({
         itemId,

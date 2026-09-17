@@ -57,6 +57,8 @@ function createPlannerState(
     clearTaskActionSnackbar: vi.fn(),
     closeTaskChain: vi.fn(),
     conflictedMutationCount: 0,
+    loadOfflineConflictGroups: vi.fn().mockResolvedValue([]),
+    resolveOfflineConflict: vi.fn().mockResolvedValue(undefined),
     copyTaskToPersonal: vi.fn(),
     createNextTaskStage: vi.fn(),
     debugErrorDetails: null,
@@ -123,6 +125,65 @@ async function renderPlannerProvider() {
 }
 
 describe('PlannerProvider', () => {
+  it('shows retained input and requires an explicit second action before discarding a refused group', async () => {
+    const resolveOfflineConflict = vi.fn().mockResolvedValue(undefined)
+    const loadOfflineConflictGroups = vi.fn().mockResolvedValue([
+      {
+        id: 'refused-command',
+        mutations: [
+          {
+            actorUserId: 'user-1',
+            attemptCount: 1,
+            conflictActualVersion: null,
+            conflictExpectedVersion: null,
+            conflictCode: 'task_manage_forbidden',
+            createdAt: '2026-09-14T00:00:00.000Z',
+            updatedAt: '2026-09-14T00:00:00.000Z',
+            id: 'refused-command',
+            lastError: 'Нет прав на изменение задачи',
+            status: 'conflicted',
+            workspaceId: 'workspace-1',
+            type: 'task.update',
+            taskId: 'task-1',
+            expectedVersion: 4,
+            input: { title: 'Мой заголовок', note: 'Не потерять заметку' },
+          },
+        ],
+      },
+    ])
+    mocks.usePlannerState.mockReturnValue(
+      createPlannerState({
+        conflictedMutationCount: 1,
+        loadOfflineConflictGroups,
+        resolveOfflineConflict,
+      }),
+    )
+    await renderPlannerProvider()
+    fireEvent.click(
+      await screen.findByText('Несинхронизированные изменения (1)'),
+    )
+    expect(
+      await screen.findByText('Нет прав на изменение задачи'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Версия на сервере изменилась/),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Сохранённые данные'))
+    expect(screen.getByText(/Не потерять заметку/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить из очереди…' }))
+    expect(resolveOfflineConflict).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(resolveOfflineConflict).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Удалить из очереди…' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Удалить группу окончательно' }),
+    )
+    expect(resolveOfflineConflict).toHaveBeenCalledWith(
+      'refused-command',
+      'discard',
+    )
+  })
+
   beforeEach(() => {
     mocks.usePlannerState.mockReturnValue(createPlannerState())
   })

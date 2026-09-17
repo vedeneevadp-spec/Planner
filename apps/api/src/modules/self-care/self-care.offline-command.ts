@@ -71,6 +71,10 @@ export async function dispatchSelfCareOfflineCommand(
         context,
         input: { ...command.input, expectedVersion: command.expectedVersion },
         itemId: command.itemId,
+        preserveOccurrenceId:
+          command.scheduleChange && 'occurrenceId' in command.scheduleChange
+            ? command.scheduleChange.occurrenceId
+            : undefined,
       })
       const scheduleResult = command.scheduleChange
         ? await applyScheduleChange(

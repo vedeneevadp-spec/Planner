@@ -39,6 +39,133 @@ function createTask(overrides: Partial<Task> = {}): Task {
 }
 
 describe('resource plan', () => {
+  it('keeps twelve unrated tasks unknown instead of reporting a calm day', () => {
+    const analysis = analyzeDailyLoad(
+      Array.from({ length: 12 }, () => createTask({ resource: null })),
+      'normal',
+    )
+
+    expect(analysis).toMatchObject({
+      assessedState: 'calm',
+      assessedTaskCount: 0,
+      isComplete: false,
+      overloadScore: 0,
+      state: 'unknown',
+      totalResource: 0,
+      totalTaskCount: 12,
+      unassessedTaskCount: 12,
+    })
+  })
+
+  it('counts an explicit zero as assessed while leaving missing resource unknown', () => {
+    const analysis = analyzeDailyLoad(
+      [0, -2, null].map((resource) => createTask({ resource })),
+      'normal',
+    )
+
+    expect(analysis).toMatchObject({
+      assessedState: 'calm',
+      assessedTaskCount: 2,
+      isComplete: false,
+      overloadScore: 25,
+      state: 'unknown',
+      totalResource: 2,
+      totalTaskCount: 3,
+      unassessedTaskCount: 1,
+    })
+  })
+
+  it.each([
+    undefined,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ])(
+    'treats invalid resource %s as unassessed without estimating it',
+    (resource) => {
+      const task = Object.assign(
+        createTask({
+          importance: 'important',
+          plannedStartTime: '09:00',
+          plannedEndTime: '18:00',
+        }),
+        { resource },
+      )
+      expect(analyzeDailyLoad([task], 'normal')).toMatchObject({
+        assessedTaskCount: 0,
+        isComplete: false,
+        state: 'unknown',
+        totalResource: 0,
+        unassessedTaskCount: 1,
+      })
+    },
+  )
+
+  it('preserves known overload while the overall assessment remains unknown', () => {
+    const analysis = analyzeDailyLoad(
+      [-4, -4, -4, null].map((resource) => createTask({ resource })),
+      'normal',
+    )
+
+    expect(analysis).toMatchObject({
+      assessedState: 'overload',
+      assessedTaskCount: 3,
+      isComplete: false,
+      overloadScore: 150,
+      state: 'unknown',
+      totalResource: 12,
+      totalTaskCount: 4,
+      unassessedTaskCount: 1,
+    })
+  })
+
+  it('completes the assessment for explicit zero and restoring resource', () => {
+    expect(
+      analyzeDailyLoad(
+        [0, 2].map((resource) => createTask({ resource })),
+        'normal',
+      ),
+    ).toMatchObject({
+      assessedState: 'calm',
+      assessedTaskCount: 2,
+      isComplete: true,
+      state: 'calm',
+      totalResource: 0,
+      totalTaskCount: 2,
+      unassessedTaskCount: 0,
+    })
+  })
+
+  it('keeps fully rated tasks unknown when task data itself is incomplete', () => {
+    expect(analyzeDailyLoad([createTask()], 'normal', false)).toMatchObject({
+      assessedState: 'calm',
+      assessedTaskCount: 1,
+      isComplete: false,
+      state: 'unknown',
+      totalResource: 2,
+      totalTaskCount: 1,
+      unassessedTaskCount: 0,
+    })
+  })
+
+  it.each([
+    { dataComplete: true, expectedState: 'calm' },
+    { dataComplete: false, expectedState: 'unknown' },
+  ] as const)(
+    'distinguishes an empty list with completeness $dataComplete',
+    ({ dataComplete, expectedState }) => {
+      expect(analyzeDailyLoad([], 'normal', dataComplete)).toMatchObject({
+        assessedState: 'calm',
+        assessedTaskCount: 0,
+        isComplete: dataComplete,
+        state: expectedState,
+        totalResource: 0,
+        totalTaskCount: 0,
+        unassessedTaskCount: 0,
+      })
+    },
+  )
+
   it('marks minimum mode as overloaded when resource exceeds the limit', () => {
     const analysis = analyzeDailyLoad(
       [createTask(), createTask(), createTask()],
@@ -163,6 +290,7 @@ describe('resource plan', () => {
     ['calm', 'спокойно'],
     ['edge', 'на грани'],
     ['overload', 'перегруз'],
+    ['unknown', 'неполная оценка'],
   ] as const)('formats the %s state', (state, expected) => {
     expect(getLoadStateLabel(state)).toBe(expected)
   })

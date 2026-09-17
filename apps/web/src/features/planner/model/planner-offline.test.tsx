@@ -1,12 +1,13 @@
 import 'fake-indexeddb/auto'
 
 import { QueryClient } from '@tanstack/react-query'
-import { cleanup, renderHook, waitFor } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SessionReadiness } from '@/features/session'
 
 import * as plannerOfflineStore from '../lib/offline-planner-store'
+import type { PlannerApiClient } from '../lib/planner-api'
 import { usePlannerOfflineSync } from './planner-offline'
 
 const plannerOfflineStoreMocks = vi.hoisted(() => ({
@@ -42,6 +43,55 @@ describe('usePlannerOfflineSync cache hydration', () => {
     cleanup()
     await plannerOfflineStore.resetPlannerOfflineDatabaseForTests()
     vi.restoreAllMocks()
+  })
+
+  it('handles a queue-read rejection from mount and online events without an unhandled promise', async () => {
+    vi.spyOn(
+      plannerOfflineStore,
+      'listPlannerOfflineMutations',
+    ).mockRejectedValue(new Error('Database has been closed'))
+    const queryClient = new QueryClient()
+    const setMutationErrorMessage = vi.fn()
+    const params = {
+      actorUserId: 'user-1',
+      workspaceId: 'workspace-1',
+      queryClient,
+      invalidatePlannerQueries: vi.fn().mockResolvedValue(undefined),
+      recoverSession: vi.fn().mockResolvedValue(undefined),
+      readiness: createReadiness(),
+      plannerApi: {
+        listTaskEvents: vi.fn().mockResolvedValue({ nextEventId: 0 }),
+      } as unknown as PlannerApiClient,
+      setMutationErrorMessage,
+      spheres: undefined,
+      tasks: undefined,
+      taskTemplates: undefined,
+      sphereQueryKey: ['planner', 'spheres', 'workspace-1', 1] as const,
+      taskQueryKey: ['planner', 'tasks', 'workspace-1', 1] as const,
+      taskTemplateQueryKey: [
+        'planner',
+        'task-templates',
+        'workspace-1',
+        1,
+      ] as const,
+    }
+    const { unmount } = renderHook(() => usePlannerOfflineSync(params))
+    await waitFor(() =>
+      expect(setMutationErrorMessage).toHaveBeenCalledWith(
+        'Database has been closed',
+      ),
+    )
+    setMutationErrorMessage.mockClear()
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() =>
+      expect(setMutationErrorMessage).toHaveBeenCalledWith(
+        'Database has been closed',
+      ),
+    )
+    unmount()
+    queryClient.clear()
   })
 
   it('keeps each cache scope pending until its local read finishes', async () => {

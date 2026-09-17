@@ -231,6 +231,8 @@ export function usePlannerState(): PlannerState {
   }, [workspaceId])
   const {
     conflictedMutationCount,
+    loadOfflineConflictGroups,
+    resolveOfflineConflict,
     flushQueuedMutationQueue,
     isDrainingOfflineQueue,
     isLifeSphereCacheHydrating,
@@ -1367,6 +1369,8 @@ export function usePlannerState(): PlannerState {
     clearTaskActionSnackbar,
     closeTaskChain,
     conflictedMutationCount,
+    loadOfflineConflictGroups,
+    resolveOfflineConflict,
     createNextTaskStage,
     copyTaskToPersonal,
     detachTaskFromChain,
