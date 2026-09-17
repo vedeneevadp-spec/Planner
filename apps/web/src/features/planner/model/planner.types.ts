@@ -45,6 +45,7 @@ export interface PlannerState {
   hasReadError: boolean
   hasTaskRecords: boolean
   hasTaskReadError: boolean
+  isTaskReadFetching: boolean
   hasTaskTemplateReadError: boolean
   isLifeSphereOffline: boolean
   isLifeSphereCacheHydrating: boolean

@@ -97,6 +97,7 @@ export function useSessionAuthController(): SessionAuthState {
         : readPasswordResetToken(window.location),
   )
   const [authNotice, setAuthNotice] = useState<string | null>(null)
+  const [isRecoveringSession, setIsRecoveringSession] = useState(false)
   const [isSignInRequired, setIsSignInRequired] = useState(false)
   const [{ lifecycleStatus, sessionVersion, snapshot }, dispatchAuthState] =
     useReducer(sessionAuthReducer, isAuthEnabled, createInitialSessionAuthState)
@@ -401,6 +402,7 @@ export function useSessionAuthController(): SessionAuthState {
         return sessionRecoveryRef.current
       }
 
+      setIsRecoveringSession(true)
       const recovery = (async () => {
         setAuthNotice(null)
 
@@ -591,6 +593,7 @@ export function useSessionAuthController(): SessionAuthState {
         }
       })().finally(() => {
         sessionRecoveryRef.current = null
+        setIsRecoveringSession(false)
       })
 
       sessionRecoveryRef.current = recovery
@@ -887,6 +890,7 @@ export function useSessionAuthController(): SessionAuthState {
       isAuthEnabled,
       isLoading: isAuthEnabled && snapshot.isLoading,
       isPasswordRecovery,
+      isRecoveringSession,
       isSignInRequired,
       lifecycleStatus,
       recoverSession,
@@ -904,6 +908,7 @@ export function useSessionAuthController(): SessionAuthState {
     expireSession,
     isAuthEnabled,
     isPasswordRecovery,
+    isRecoveringSession,
     isSignInRequired,
     lifecycleStatus,
     recoverSession,

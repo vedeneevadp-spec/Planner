@@ -496,6 +496,12 @@ export const taskReadModelResponseSchema = z.object({
   returnedCount: z.number().int().nonnegative(),
   sources: z.object({
     active: taskReadModelSourceSchema,
+    dailyLoad: taskReadModelSourceSchema
+      .extend({
+        date: taskDateKeySchema,
+        timeZone: z.string(),
+      })
+      .optional(),
     history: taskReadModelSourceSchema,
     range: taskReadModelSourceSchema,
   }),

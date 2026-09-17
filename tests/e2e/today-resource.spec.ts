@@ -180,7 +180,10 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   await expect(
     panel.getByText('неполная оценка', { exact: true }),
   ).toBeVisible()
-  await expect(panel.getByText(/Нагрузка пока неизвестна/)).toBeVisible()
+  await expect(panel.getByText('Нагрузка неизвестна')).toBeVisible()
+  await expect(
+    panel.getByRole('group', { name: 'Ресурс на сегодня' }),
+  ).toBeVisible()
   await expect(panel.getByText('спокойно', { exact: true })).toHaveCount(0)
   await expect(panel.getByText(/План.*(реалистич|укладывается)/)).toHaveCount(0)
   await captureResourceState(page, testInfo, 'unrated')
@@ -213,7 +216,8 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   await expect(
     panel.getByText('Оценено 1 из 12', { exact: true }),
   ).toBeVisible()
-  await expect(panel.getByText(/Без оценки: 11/)).toBeVisible()
+  await expect(panel.getByText('Оценённая часть')).toBeVisible()
+  await expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
   await expect(panel.getByText('спокойно', { exact: true })).toHaveCount(0)
   await expect(panel.getByText(/План.*(реалистич|укладывается)/)).toHaveCount(0)
   await captureResourceState(page, testInfo, 'partial')
@@ -244,11 +248,8 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
     panel.getByText('Оценено 12 из 12', { exact: true }),
   ).toBeVisible()
   await expect(panel.getByText('спокойно', { exact: true })).toBeVisible()
-  await expect(
-    panel.getByText('План задач укладывается в выбранный лимит.', {
-      exact: true,
-    }),
-  ).toBeVisible()
+  await expect(panel.getByText('Нагрузка задач')).toBeVisible()
+  await expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
   await captureResourceState(page, testInfo, 'complete')
 
   // Even twelve assessed cached tasks must not imply a complete load after a
@@ -272,9 +273,14 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
       exact: true,
     }),
   ).toBeVisible()
+  await expect(panel.getByText('неполная оценка')).toBeVisible()
+  await expect(panel.getByText('Оценённая часть')).toBeVisible()
   await expect(
-    panel.getByText(/Итоговую нагрузку пока нельзя оценить/),
-  ).toBeVisible()
+    panel.getByText(/В расчёте задачи с планом на сегодня/),
+  ).toHaveCount(0)
+  await expect(
+    panel.getByText(/Список задач может быть неполным или устаревшим/),
+  ).toHaveCount(0)
   await expect(panel.getByText('спокойно', { exact: true })).toHaveCount(0)
   await expect(panel.getByText(/План.*(реалистич|укладывается)/)).toHaveCount(0)
   await captureResourceState(page, testInfo, 'task-read-error')

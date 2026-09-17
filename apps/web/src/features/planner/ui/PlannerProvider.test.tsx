@@ -69,6 +69,7 @@ function createPlannerState(
     hasReadError: false,
     hasTaskRecords: true,
     hasTaskReadError: false,
+    isTaskReadFetching: false,
     hasTaskTemplateReadError: false,
     isLifeSphereCacheHydrating: false,
     isLifeSphereOffline: false,

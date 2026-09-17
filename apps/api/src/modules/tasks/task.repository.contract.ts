@@ -2,7 +2,13 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { describe, test } from 'node:test'
 
-import type { NewTaskInput, TaskUpdateInput } from '@planner/contracts'
+import {
+  addDateDays,
+  getDateKeyInTimeZone,
+  getDayRangeUtc,
+  type NewTaskInput,
+  type TaskUpdateInput,
+} from '@planner/contracts'
 
 import type { StoredTaskRecord, TaskWriteContext } from './task.model.js'
 import type { TaskRepository } from './task.repository.js'
@@ -360,6 +366,107 @@ export function defineTaskRepositoryContractSuite(input: {
           [completedTask.id],
         )
         assert.equal(secondPage.hasMore, false)
+      } finally {
+        await harness.cleanup()
+      }
+    })
+
+    void test('bounds daily load by local planned and completed dates without including archive, deletion, or other workspaces', async () => {
+      const harness = await input.createHarness()
+
+      try {
+        const { repository, personalContext } = harness
+        const oldTask = await repository.create({
+          context: personalContext,
+          input: createTaskInput({ plannedDate: '2020-01-01' }),
+        })
+        const completedTask = await repository.updateStatus({
+          context: personalContext,
+          taskId: oldTask.id,
+          status: 'done',
+          expectedVersion: oldTask.version,
+        })
+        assert.ok(completedTask.completedAt)
+        const timeZone = 'Asia/Novosibirsk'
+        const date = getDateKeyInTimeZone(completedTask.completedAt, timeZone)
+        const plannedTask = await repository.create({
+          context: personalContext,
+          input: createTaskInput({ plannedDate: date }),
+        })
+        const fixedZoneTask = await repository.create({
+          context: { ...personalContext, clientTimeZone: 'UTC' },
+          input: createTaskInput({
+            plannedDate: addDateDays(date, -1),
+            plannedStartTime: '19:00',
+          }),
+        })
+        await repository.create({
+          context: { ...personalContext, clientTimeZone: 'UTC' },
+          input: createTaskInput({
+            plannedDate: date,
+            plannedStartTime: '18:00',
+          }),
+        })
+        const archivedTask = await repository.create({
+          context: personalContext,
+          input: createTaskInput({ plannedDate: date }),
+        })
+        await repository.updateStatus({
+          context: personalContext,
+          taskId: archivedTask.id,
+          status: 'archived',
+          expectedVersion: archivedTask.version,
+        })
+        const deletedTask = await repository.create({
+          context: personalContext,
+          input: createTaskInput({ plannedDate: date }),
+        })
+        const deletedCompletedTask = await repository.updateStatus({
+          context: personalContext,
+          taskId: deletedTask.id,
+          status: 'done',
+          expectedVersion: deletedTask.version,
+        })
+        await repository.remove({
+          context: personalContext,
+          taskId: deletedCompletedTask.id,
+          expectedVersion: deletedCompletedTask.version,
+        })
+        const otherWorkspaceTask = await repository.create({
+          context: harness.sharedContext,
+          input: createTaskInput({ plannedDate: date }),
+        })
+        await repository.updateStatus({
+          context: harness.sharedContext,
+          taskId: otherWorkspaceTask.id,
+          status: 'done',
+          expectedVersion: otherWorkspaceTask.version,
+        })
+        const query = {
+          dailyLoad: { date, ...getDayRangeUtc({ localDate: date, timeZone }) },
+          dateMode: 'planned' as const,
+          direction: 'asc' as const,
+          scope: 'all' as const,
+        }
+        const page = await repository.listCursorPageByWorkspace(
+          personalContext,
+          { ...query, limit: 10 },
+        )
+        assert.equal(page.totalCount, 3)
+        assert.equal(page.hasMore, false)
+        assert.deepEqual(
+          page.items.map(({ id }) => id).sort(),
+          [plannedTask, fixedZoneTask, completedTask]
+            .map(({ id }) => id)
+            .sort(),
+        )
+        const boundedPage = await repository.listCursorPageByWorkspace(
+          personalContext,
+          { ...query, limit: 1 },
+        )
+        assert.equal(boundedPage.items.length, 1)
+        assert.equal(boundedPage.totalCount, 3)
+        assert.equal(boundedPage.hasMore, true)
       } finally {
         await harness.cleanup()
       }

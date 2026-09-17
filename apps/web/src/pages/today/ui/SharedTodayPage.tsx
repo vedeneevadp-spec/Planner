@@ -16,7 +16,6 @@ import { useTodayClosedTaskPagination } from '../model/useTodayClosedTaskPaginat
 import { useTodayRoutineSummary } from '../model/useTodayRoutineSummary'
 import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
-import styles from './TodayPage.module.css'
 import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineStatus } from './TodayRoutineStatus'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
@@ -76,12 +75,9 @@ export function SharedTodayPage({
   return (
     <TodayPageLayout
       openDraft={widgetTaskComposerDraft}
-      status={status}
+      status={<TodayRoutineStatus status={status} summary={routineSummary} />}
       todayKey={todayKey}
     >
-      <div className={styles.sourceStatuses}>
-        <TodayRoutineStatus summary={routineSummary} />
-      </div>
       <TodayTaskSections
         actions={{
           copyTaskToPersonal,

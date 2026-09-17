@@ -40,17 +40,6 @@ export function ResourcePlanPanel({
   const meterWidth = Math.min(analysis.overloadScore, 100)
   const isEmpty = isTaskDataComplete && analysis.totalTaskCount === 0
   const hasKnownLoad = analysis.assessedTaskCount > 0 || isEmpty
-  const explanation = !isTaskDataComplete
-    ? 'Список задач может быть неполным или устаревшим. Итоговую нагрузку пока нельзя оценить.'
-    : isEmpty
-      ? 'Задач для расчёта пока нет.'
-      : analysis.assessedTaskCount === 0
-        ? 'Нагрузка пока неизвестна. Ресурс можно указать при редактировании задачи; это необязательно.'
-        : !analysis.isComplete
-          ? `Без оценки: ${analysis.unassessedTaskCount}. Показана нагрузка только по оценённым задачам.`
-          : analysis.state === 'calm'
-            ? 'План задач укладывается в выбранный лимит.'
-            : null
 
   return (
     <section
@@ -102,11 +91,12 @@ export function ResourcePlanPanel({
         {!isTaskDataComplete ? ' · по загруженным задачам' : null}
       </p>
       {isExpanded ? (
-        <h3 className={styles.title}>Сколько у тебя ресурса сегодня?</h3>
-      ) : null}
-      {isExpanded ? (
         <>
-          <div className={styles.modeGrid}>
+          <div
+            className={styles.modeGrid}
+            role="group"
+            aria-label="Ресурс на сегодня"
+          >
             {energyModes.map((mode) => {
               const config = ENERGY_MODE_CONFIGS[mode]
               const isActive = mode === energyMode
@@ -122,28 +112,25 @@ export function ResourcePlanPanel({
                   aria-pressed={isActive}
                   onClick={() => onEnergyModeChange(mode)}
                 >
-                  <strong>{config.label}</strong>
-                  <span>{config.description}</span>
+                  {config.label}
                 </button>
               )
             })}
           </div>
 
-          <div className={styles.loadCard}>
+          <div>
             <div className={styles.loadHeader}>
-              <div>
-                <span>
-                  {analysis.isComplete ? 'Нагрузка задач' : 'Оценённая часть'}
-                </span>
-                <strong>
-                  {hasKnownLoad ? analysis.totalResource : '—'} из{' '}
-                  {analysis.resourceLimit} ресурса
-                </strong>
-              </div>
-              <div>
-                <span>Режим</span>
-                <strong>{activeConfig.label}</strong>
-              </div>
+              <span>
+                {!hasKnownLoad
+                  ? 'Нагрузка неизвестна'
+                  : analysis.isComplete
+                    ? 'Нагрузка задач'
+                    : 'Оценённая часть'}
+              </span>
+              <strong>
+                {hasKnownLoad ? analysis.totalResource : '—'} из{' '}
+                {analysis.resourceLimit} ресурса
+              </strong>
             </div>
 
             {hasKnownLoad ? (
@@ -159,14 +146,6 @@ export function ResourcePlanPanel({
             ) : null}
           </div>
 
-          <p className={styles.scope}>
-            В расчёте задачи с планом на сегодня и выполненные сегодня.
-            Отдельные разделы заботы, уборки и покупок в расчёт не входят.
-          </p>
-          {explanation ? (
-            <p className={styles.helperText}>{explanation}</p>
-          ) : null}
-
           {unloadCandidates.length > 0 ? (
             <div className={styles.unloadBox}>
               <div>
@@ -179,7 +158,6 @@ export function ResourcePlanPanel({
                       ? 'Оценённая часть выше лимита'
                       : 'Оценённая часть близка к лимиту'}
                 </h4>
-                <p>Можно мягко снять лишнее, не удаляя задачу.</p>
               </div>
               <div className={styles.unloadList}>
                 {unloadCandidates.map((task) => (

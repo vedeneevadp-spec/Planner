@@ -9,7 +9,7 @@ import {
   useQuery,
   type UseQueryResult,
 } from '@tanstack/react-query'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { addDateDays, getTodayDate } from '@/shared/time/time.service'
 
@@ -126,7 +126,10 @@ export function usePlannerQueries({
   workspaceId,
 }: PlannerQueriesParams): PlannerQueries {
   const [taskReadModelState, setTaskReadModelState] = useState<{
+    authSessionVersion: number
     coverage: TaskReadModelCoverage
+    date: string
+    timeZone: string
     workspaceId: string
   } | null>(null)
   const todayKey = getTodayDate(plannerTimeZone)
@@ -171,6 +174,7 @@ export function usePlannerQueries({
 
       if (workspaceId) {
         setTaskReadModelState({
+          authSessionVersion,
           coverage: {
             historyNextCursor: response.historyNextCursor,
             returnedCount: response.returnedCount,
@@ -178,6 +182,8 @@ export function usePlannerQueries({
             totalCount: response.totalCount,
             truncated: response.truncated,
           },
+          date: todayKey,
+          timeZone: plannerTimeZone,
           workspaceId,
         })
       }
@@ -201,6 +207,28 @@ export function usePlannerQueries({
     retry: (failureCount, error) =>
       !isUnauthorizedPlannerApiError(error) && failureCount < 2,
   })
+  useEffect(() => {
+    if (
+      plannerApi &&
+      taskReadModelState &&
+      taskReadModelState.workspaceId === workspaceId &&
+      (taskReadModelState.date !== todayKey ||
+        taskReadModelState.timeZone !== plannerTimeZone)
+    ) {
+      void queryClient.invalidateQueries({
+        queryKey: taskQueryKey,
+        exact: true,
+      })
+    }
+  }, [
+    plannerApi,
+    plannerTimeZone,
+    queryClient,
+    taskQueryKey,
+    taskReadModelState,
+    todayKey,
+    workspaceId,
+  ])
   const spheresQuery = useQuery<LifeSphereRecord[], Error>({
     enabled: plannerApi !== null,
     queryFn: async ({ signal }) => {
@@ -269,7 +297,11 @@ export function usePlannerQueries({
     taskTemplateQueryKey,
     taskTemplatesQuery,
     taskReadModelCoverage:
-      taskReadModelState && taskReadModelState.workspaceId === workspaceId
+      taskReadModelState &&
+      taskReadModelState.workspaceId === workspaceId &&
+      taskReadModelState.authSessionVersion === authSessionVersion &&
+      taskReadModelState.date === todayKey &&
+      taskReadModelState.timeZone === plannerTimeZone
         ? taskReadModelState.coverage
         : null,
     tasksQuery,

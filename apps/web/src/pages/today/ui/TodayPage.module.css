@@ -33,26 +33,51 @@
   gap: 0.78rem;
 }
 
-.sourceEmpty {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: 0.88rem;
-  line-height: 1.3;
-}
-
-.sourceStatuses {
+.statusNotice {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem 0.8rem;
-}
-
-.sourceStatuses:empty {
-  display: none;
-}
-
-.sourceStatuses > div {
-  flex: 1 1 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
   min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.35rem 0.7rem;
+  color: var(--text-soft);
+  background: var(--surface-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.statusNotice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.statusNoticeAction {
+  flex-shrink: 0;
+  min-height: 2.75rem;
+  border: 0;
+  border-radius: 8px;
+  padding: 0.35rem 0.3rem;
+  color: var(--accent-strong);
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.statusNoticeAction:hover {
+  background: var(--accent-muted);
+}
+
+.statusNoticeAction:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.statusNoticeAction:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .closedTaskPagination {

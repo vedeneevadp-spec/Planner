@@ -1,13 +1,9 @@
 import { useState } from 'react'
 
 import type { SessionReadiness } from '@/features/session'
-import {
-  isBrowserRetryableOfflineError,
-  useBrowserOffline,
-} from '@/shared/lib/offline-sync'
-import { PageStatusBanner } from '@/shared/ui/PageState'
+import { useBrowserOffline } from '@/shared/lib/offline-sync'
 
-import styles from './TodayPage.module.css'
+import { TodayStatusNotice } from './TodayStatusNotice'
 
 interface TodaySourceQuery {
   data: unknown
@@ -18,106 +14,90 @@ interface TodaySourceQuery {
   isCacheHydrating?: boolean
   isCacheLoading?: boolean
   isShowingCachedData?: boolean
-  lastSuccessfulSyncAt?: string | null
   readiness?: SessionReadiness
   refetch: () => Promise<unknown>
   retrySession?: () => Promise<unknown>
 }
 
-export function TodaySourceStatus({
-  emptyMessage,
-  isEmpty,
-  label,
-  query,
-}: {
-  emptyMessage: string
-  isEmpty: boolean
+export interface TodayStatusSource {
   label: string
   query: TodaySourceQuery
+}
+
+export function TodaySourceStatus({
+  sources,
+}: {
+  sources: TodayStatusSource[]
 }) {
   const isBrowserOffline = useBrowserOffline()
   const [isRetrying, setIsRetrying] = useState(false)
-  const [retryError, setRetryError] = useState<unknown>(null)
-  const hasData = query.data !== undefined
-  const error = query.error ?? query.readError ?? retryError
-  const isOffline =
-    isBrowserOffline ||
-    isBrowserRetryableOfflineError(error) ||
-    query.readiness?.status === 'offlineWithCache'
-  const isRestoring =
-    query.readiness?.reason === 'auth_restoring' ||
-    query.readiness?.reason === 'planner_pending'
-  const hasAccessIssue =
-    query.readiness !== undefined && !query.readiness.canUseProtectedApi
-  const isLoading =
-    !hasData &&
-    (query.isCacheHydrating ||
-      query.isCacheLoading ||
-      (!isOffline && !error && (query.isPending || isRestoring)))
+  const unavailableSources = sources.filter(({ query }) =>
+    isSourceUnavailable(query, isBrowserOffline),
+  )
 
   async function retry() {
     setIsRetrying(true)
-    setRetryError(null)
-    try {
-      if (hasAccessIssue && query.retrySession) {
-        await query.retrySession()
-      } else {
-        await query.refetch()
-      }
-    } catch (nextError) {
-      setRetryError(nextError)
-    } finally {
-      setIsRetrying(false)
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div aria-busy="true">
-        <PageStatusBanner
-          description=""
-          kind="info"
-          title={`${label}: загружаем данные`}
-        />
-      </div>
+    const retries = new Set(
+      unavailableSources.map(({ query }) =>
+        query.readiness &&
+        !query.readiness.canUseProtectedApi &&
+        query.retrySession
+          ? query.retrySession
+          : query.refetch,
+      ),
     )
+    await Promise.allSettled([...retries].map(async (refetch) => refetch()))
+    setIsRetrying(false)
   }
 
-  if (
-    !hasData ||
-    error ||
-    isOffline ||
-    hasAccessIssue ||
-    query.isShowingCachedData
-  ) {
+  const unavailableLabels = Array.from(
+    new Set(unavailableSources.map(({ label }) => label)),
+  )
+
+  if (isRetrying && !isBrowserOffline) {
+    return null
+  }
+
+  if (unavailableLabels.length > 0) {
     return (
-      <PageStatusBanner
+      <TodayStatusNotice
         action={{
-          disabled: isRetrying || query.isFetching,
-          label: `Повторить: ${label}`,
+          disabled:
+            isRetrying ||
+            unavailableSources.some(({ query }) => query.isFetching),
+          label: 'Повторить',
           onClick: () => {
             void retry()
           },
         }}
-        description={
-          hasData
-            ? 'Сохранённые данные остаются доступны. После обновления список может измениться.'
-            : 'Этот раздел пока не удалось проверить. Остальные задачи остаются доступны.'
-        }
-        kind={isOffline ? 'offline' : error || !hasData ? 'error' : 'info'}
-        lastSyncedAt={query.lastSuccessfulSyncAt}
-        title={
-          hasData
-            ? `${label}: данные могут быть устаревшими`
-            : `${label}: не удалось загрузить данные`
-        }
+        message={`Не обновились: ${unavailableLabels.join(', ')}.`}
       />
     )
   }
 
-  return isEmpty ? (
-    <p className={styles.sourceEmpty} role="status">
-      {emptyMessage}
-    </p>
-  ) : null
+  return null
+}
+
+function isSourceUnavailable(
+  query: TodaySourceQuery,
+  isBrowserOffline: boolean,
+): boolean {
+  if (isBrowserOffline) {
+    return true
+  }
+
+  const isRestoring =
+    query.readiness?.reason === 'auth_restoring' ||
+    query.readiness?.reason === 'planner_pending'
+  if (
+    query.isFetching ||
+    query.isPending ||
+    query.isCacheHydrating ||
+    query.isCacheLoading ||
+    isRestoring
+  ) {
+    return false
+  }
+
+  return Boolean(query.error ?? query.readError)
 }

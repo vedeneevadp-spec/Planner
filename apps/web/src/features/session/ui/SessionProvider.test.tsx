@@ -216,26 +216,41 @@ describe('SessionProvider', () => {
     )
   })
 
-  it('reuses an in-flight refresh when native resume fires during restore', async () => {
+  it('keeps recovery pending through native resume deduplication and refreshed session persistence', async () => {
     let resolveRefresh!: (response: AuthTokenResponse) => void
     const refreshPromise = new Promise<AuthTokenResponse>((resolve) => {
       resolveRefresh = resolve
+    })
+    let resolvePersistence!: () => void
+    const persistencePromise = new Promise<void>((resolve) => {
+      resolvePersistence = resolve
     })
 
     authStorageMocks.readStoredAuthSession.mockResolvedValue(
       createExpiredStoredSession(),
     )
     authApiMocks.refreshAuthSession.mockReturnValue(refreshPromise)
+    authStorageMocks.commitStoredAuthSessionRefresh.mockImplementation(
+      async (
+        _attemptedSession: StoredAuthSession,
+        refreshedSession: StoredAuthSession,
+      ) => {
+        await persistencePromise
+        await authStorageMocks.writeStoredAuthSession(refreshedSession)
+        return refreshedSession
+      },
+    )
 
     const { unmount } = render(
       <SessionProvider>
-        <div />
+        <AuthSnapshotProbe />
       </SessionProvider>,
     )
 
     await waitFor(() => {
       expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
       expect(appStateListener).not.toBeNull()
+      expect(screen.getByTestId('auth-recovering')).toHaveTextContent('yes')
     })
 
     await act(async () => {
@@ -249,6 +264,7 @@ describe('SessionProvider', () => {
       ).toBeGreaterThanOrEqual(3)
     })
     expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('auth-recovering')).toHaveTextContent('yes')
 
     const refreshedSession = createTokenResponse()
 
@@ -258,7 +274,21 @@ describe('SessionProvider', () => {
     })
 
     await waitFor(() => {
+      expect(authStorageMocks.commitStoredAuthSessionRefresh).toHaveBeenCalled()
+    })
+    expect(screen.getByTestId('auth-recovering')).toHaveTextContent('yes')
+
+    await act(async () => {
+      resolvePersistence()
+      await persistencePromise
+    })
+
+    await waitFor(() => {
       expect(authStorageMocks.writeStoredAuthSession).toHaveBeenCalled()
+      expect(screen.getByTestId('auth-recovering')).toHaveTextContent('no')
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent(
+        'new-access-token',
+      )
     })
     const storedSession = readLastWrittenStoredAuthSession()
     expect(storedSession).toMatchObject({
@@ -275,6 +305,54 @@ describe('SessionProvider', () => {
 
     unmount()
   })
+
+  it.each([
+    { name: 'network failure', error: new TypeError('Network request failed') },
+    {
+      name: 'denied refresh',
+      error: Object.assign(new Error('Unauthorized'), { status: 401 }),
+    },
+  ])(
+    'ends recovery after a pending $name while preserving the deferred device session',
+    async ({ error }) => {
+      let rejectRefresh!: (error: unknown) => void
+      const refreshPromise = new Promise<AuthTokenResponse>((_, reject) => {
+        rejectRefresh = reject
+      })
+      authStorageMocks.readStoredAuthSession.mockResolvedValue(
+        createExpiredStoredSession(),
+      )
+      authApiMocks.refreshAuthSession.mockReturnValue(refreshPromise)
+
+      render(
+        <SessionProvider>
+          <AuthSnapshotProbe />
+        </SessionProvider>,
+      )
+
+      await waitFor(() => {
+        expect(authApiMocks.refreshAuthSession).toHaveBeenCalledOnce()
+        expect(screen.getByTestId('auth-recovering')).toHaveTextContent('yes')
+      })
+      await act(async () => {
+        rejectRefresh(error)
+        await refreshPromise.catch(() => undefined)
+      })
+      await waitFor(() => {
+        expect(screen.getByTestId('auth-recovering')).toHaveTextContent('no')
+        expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+          'deferred',
+        )
+      })
+      expect(screen.getByTestId('auth-email')).toHaveTextContent(
+        'mobile@example.com',
+      )
+      expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+      expect(screen.getByTestId('auth-protected-api')).toHaveTextContent('no')
+      expect(authStorageMocks.clearStoredAuthSession).not.toHaveBeenCalled()
+      expect(authApiMocks.signOutAuthSession).not.toHaveBeenCalled()
+    },
+  )
 
   it('keeps the native account snapshot when refresh is deferred by a retryable error', async () => {
     authStorageMocks.readStoredAuthSession.mockResolvedValue(
@@ -312,13 +390,17 @@ describe('SessionProvider', () => {
     vi.useFakeTimers()
 
     const refreshedSession = createTokenResponse()
+    let resolveRefresh!: (response: AuthTokenResponse) => void
+    const refreshPromise = new Promise<AuthTokenResponse>((resolve) => {
+      resolveRefresh = resolve
+    })
 
     authStorageMocks.readStoredAuthSession.mockResolvedValue(
       createExpiredStoredSession(),
     )
     authApiMocks.refreshAuthSession
       .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockResolvedValueOnce(refreshedSession)
+      .mockReturnValueOnce(refreshPromise)
 
     render(
       <SessionProvider>
@@ -333,6 +415,7 @@ describe('SessionProvider', () => {
       'mobile@example.com',
     )
     expect(screen.getByTestId('auth-access-token')).toHaveTextContent('none')
+    expect(screen.getByTestId('auth-recovering')).toHaveTextContent('no')
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000)
@@ -340,6 +423,20 @@ describe('SessionProvider', () => {
     await flushAsyncWork()
 
     expect(authApiMocks.refreshAuthSession).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId('auth-recovering')).toHaveTextContent('yes')
+    expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent('deferred')
+    expect(screen.getByTestId('auth-protected-api')).toHaveTextContent('no')
+    await act(async () => {
+      resolveRefresh(refreshedSession)
+      await refreshPromise
+    })
+    await flushAsyncWork()
+
+    expect(screen.getByTestId('auth-recovering')).toHaveTextContent('no')
+    expect(screen.getByTestId('auth-lifecycle')).toHaveTextContent(
+      'authenticated',
+    )
+    expect(screen.getByTestId('auth-protected-api')).toHaveTextContent('yes')
     const storedSession = readLastWrittenStoredAuthSession()
     expect(storedSession).toMatchObject({
       accessToken: 'new-access-token',
@@ -989,6 +1086,13 @@ function AuthSnapshotProbe() {
         {auth.accessToken ?? 'none'}
       </output>
       <output data-testid="auth-session-version">{auth.sessionVersion}</output>
+      <output data-testid="auth-recovering">
+        {auth.isRecoveringSession ? 'yes' : 'no'}
+      </output>
+      <output data-testid="auth-lifecycle">{auth.lifecycleStatus}</output>
+      <output data-testid="auth-protected-api">
+        {auth.canUseProtectedApi ? 'yes' : 'no'}
+      </output>
       <output data-testid="auth-sign-in-required">
         {auth.isSignInRequired ? 'yes' : 'no'}
       </output>

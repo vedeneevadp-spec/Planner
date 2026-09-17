@@ -24,11 +24,9 @@ import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
-import styles from './TodayPage.module.css'
 import { TodayPageLayout } from './TodayPageLayout'
 import { TodayRoutineStatus } from './TodayRoutineStatus'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
-import { TodaySourceStatus } from './TodaySourceStatus'
 import { TodayTaskSections } from './TodayTaskSections'
 
 export function PersonalTodayPage({
@@ -150,7 +148,34 @@ export function PersonalTodayPage({
   return (
     <TodayPageLayout
       openDraft={widgetTaskComposerDraft}
-      status={status}
+      status={
+        <TodayRoutineStatus
+          additionalSources={
+            showSelfCareSourceStatus
+              ? [
+                  {
+                    label: 'Забота на сегодня',
+                    query: {
+                      ...selfCareDashboardQuery,
+                      readiness,
+                      retrySession: sessionQuery.refetch,
+                    },
+                  },
+                  {
+                    label: 'Забота на завтра',
+                    query: {
+                      ...tomorrowSelfCareDashboardQuery,
+                      readiness,
+                      retrySession: sessionQuery.refetch,
+                    },
+                  },
+                ]
+              : []
+          }
+          status={status}
+          summary={routineSummary}
+        />
+      }
       todayKey={todayKey}
     >
       <ResourcePlanPanel
@@ -163,39 +188,6 @@ export function PersonalTodayPage({
           void setTaskPlannedDate(taskId, tomorrowKey)
         }}
       />
-
-      <div className={styles.sourceStatuses}>
-        <TodayRoutineStatus summary={routineSummary} />
-        {showSelfCareSourceStatus ? (
-          <>
-            <TodaySourceStatus
-              key={todayKey}
-              emptyMessage="Забота на сегодня: активных задач нет."
-              isEmpty={
-                selfCareModel.routineEntries.length === 0 &&
-                selfCareModel.overdueEntries.length === 0
-              }
-              label="Забота на сегодня"
-              query={{
-                ...selfCareDashboardQuery,
-                readiness,
-                retrySession: sessionQuery.refetch,
-              }}
-            />
-            <TodaySourceStatus
-              key={tomorrowKey}
-              emptyMessage="Забота на завтра: активных задач нет."
-              isEmpty={selfCareModel.tomorrowEntries.length === 0}
-              label="Забота на завтра"
-              query={{
-                ...tomorrowSelfCareDashboardQuery,
-                readiness,
-                retrySession: sessionQuery.refetch,
-              }}
-            />
-          </>
-        ) : null}
-      </div>
 
       <TodayTaskSections
         actions={{
