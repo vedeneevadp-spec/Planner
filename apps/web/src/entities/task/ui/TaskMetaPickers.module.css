@@ -48,6 +48,10 @@
   gap: 0.35rem;
 }
 
+.resourceChoiceCluster {
+  flex-basis: 100%;
+}
+
 .segmentButton {
   display: inline-flex;
   align-items: center;

@@ -24,14 +24,19 @@ import { useWidgetTaskComposerDraft } from '../model/useWidgetTaskComposerDraft'
 import { ResourcePlanPanel } from './ResourcePlanPanel'
 import { SelfCareTodayTaskCard } from './SelfCareTodayTaskCard'
 import { TodayClosedTaskPagination } from './TodayClosedTaskPagination'
+import styles from './TodayPage.module.css'
 import { TodayPageLayout } from './TodayPageLayout'
+import { TodayRoutineStatus } from './TodayRoutineStatus'
 import { TodayRoutineSummaryCards } from './TodayRoutineSummaryCards'
+import { TodaySourceStatus } from './TodaySourceStatus'
 import { TodayTaskSections } from './TodayTaskSections'
 
 export function PersonalTodayPage({
+  isTaskDataComplete,
   openTaskId,
   status,
 }: {
+  isTaskDataComplete: boolean
   openTaskId?: string | null | undefined
   status?: ReactNode
 }) {
@@ -46,6 +51,7 @@ export function PersonalTodayPage({
     spheres,
     isTaskPending,
     moveTaskToPersonal,
+    readiness,
     removeTask,
     setTaskPlannedDate,
     setTaskStatus,
@@ -95,6 +101,11 @@ export function PersonalTodayPage({
       }),
     [selfCareDashboardQuery.data, tomorrowSelfCareDashboardQuery.data],
   )
+  const showSelfCareSourceStatus =
+    selfCareDashboardEnabled &&
+    (selfCareDashboardQuery.data?.settings.showSelfCareInMainTasks ??
+      tomorrowSelfCareDashboardQuery.data?.settings.showSelfCareInMainTasks ??
+      true)
   const selfCareRoutineTaskCards = selfCareModel.routineEntries.map((entry) => (
     <SelfCareTodayTaskCard
       key={getSelfCareTaskKey(entry)}
@@ -144,6 +155,7 @@ export function PersonalTodayPage({
     >
       <ResourcePlanPanel
         energyMode={energyMode}
+        isTaskDataComplete={isTaskDataComplete}
         isTaskPending={isTaskPending}
         tasks={taskModel.resourceTasks}
         onEnergyModeChange={selectEnergyMode}
@@ -151,6 +163,39 @@ export function PersonalTodayPage({
           void setTaskPlannedDate(taskId, tomorrowKey)
         }}
       />
+
+      <div className={styles.sourceStatuses}>
+        <TodayRoutineStatus summary={routineSummary} />
+        {showSelfCareSourceStatus ? (
+          <>
+            <TodaySourceStatus
+              key={todayKey}
+              emptyMessage="Забота на сегодня: активных задач нет."
+              isEmpty={
+                selfCareModel.routineEntries.length === 0 &&
+                selfCareModel.overdueEntries.length === 0
+              }
+              label="Забота на сегодня"
+              query={{
+                ...selfCareDashboardQuery,
+                readiness,
+                retrySession: sessionQuery.refetch,
+              }}
+            />
+            <TodaySourceStatus
+              key={tomorrowKey}
+              emptyMessage="Забота на завтра: активных задач нет."
+              isEmpty={selfCareModel.tomorrowEntries.length === 0}
+              label="Забота на завтра"
+              query={{
+                ...tomorrowSelfCareDashboardQuery,
+                readiness,
+                retrySession: sessionQuery.refetch,
+              }}
+            />
+          </>
+        ) : null}
+      </div>
 
       <TodayTaskSections
         actions={{

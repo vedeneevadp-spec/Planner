@@ -189,7 +189,9 @@ test('keeps desktop chain notification actions clickable', async ({ page }) => {
   })
   await nextStageDialog.getByRole('button', { name: 'Создать' }).click()
 
-  const notification = page.getByRole('status')
+  const notification = page.getByRole('status').filter({
+    has: page.getByRole('button', { name: 'Закрыть уведомление' }),
+  })
   await expect(notification).toContainText('Следующий этап создан')
   await notification
     .getByRole('button', { name: 'Закрыть уведомление' })

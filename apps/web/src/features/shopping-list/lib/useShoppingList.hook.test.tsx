@@ -62,6 +62,7 @@ describe('useShoppingList hooks', () => {
   })
 
   it('loads and summarizes shopping list items through the protected API', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const activeItem = createShoppingItemRecord({
       id: 'item-active',
       status: 'new',
@@ -100,6 +101,7 @@ describe('useShoppingList hooks', () => {
     expect(headers.get('x-workspace-id')).toBe('workspace-1')
     expect(result.current.activeItems).toEqual([activeItem])
     expect(result.current.completedItems).toEqual([completedItem])
+    expect(consoleError).not.toHaveBeenCalled()
   })
 
   it('keeps the shopping query idle when there is no planner session', () => {
@@ -119,6 +121,60 @@ describe('useShoppingList hooks', () => {
     expect(result.current.fetchStatus).toBe('idle')
     expect(result.current.totalItemCount).toBe(0)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('marks a successful cache fallback as stale and clears its read error after recovery', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const cachedItem = createShoppingItemRecord({
+      id: 'item-cached',
+      status: 'new',
+      text: 'Молоко из кеша',
+    })
+    await replaceCachedShoppingListItems(
+      'workspace-1',
+      [cachedItem],
+      '2026-09-16T06:00:00.000Z',
+    )
+    const networkError = new TypeError('Failed to fetch')
+    fetchMock.mockRejectedValue(networkError)
+    const wrapper = createQueryWrapper()
+    const { result } = renderHook(() => useShoppingListSummary(), {
+      wrapper,
+    })
+    const secondObserver = renderHook(() => useShoppingListSummary(), {
+      wrapper,
+    })
+
+    await waitFor(() => {
+      expect(result.current.isShowingCachedData).toBe(true)
+      expect(secondObserver.result.current.isShowingCachedData).toBe(true)
+    })
+    expect(result.current.isSuccess).toBe(true)
+    expect(result.current.error).toBeNull()
+    expect(result.current.readError).toBe(networkError)
+    expect(result.current.activeItems).toEqual([cachedItem])
+    expect(result.current.lastSuccessfulSyncAt).toBe('2026-09-16T06:00:00.000Z')
+
+    const updatedItem = { ...cachedItem, text: 'Свежий ответ сервера' }
+    fetchMock.mockResolvedValue(
+      jsonResponse({
+        items: [updatedItem],
+        limit: 200,
+        page: 1,
+        total: 1,
+      }),
+    )
+    await act(async () => {
+      await result.current.refetch()
+    })
+
+    await waitFor(() => {
+      expect(result.current.activeItems).toEqual([updatedItem])
+      expect(result.current.isShowingCachedData).toBe(false)
+      expect(result.current.readError).toBeNull()
+      expect(secondObserver.result.current.readError).toBeNull()
+    })
+    expect(consoleError).not.toHaveBeenCalled()
   })
 
   it('creates a shopping item with normalized API payload', async () => {

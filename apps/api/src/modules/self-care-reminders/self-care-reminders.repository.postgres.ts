@@ -5,6 +5,7 @@ import type {
   DueSelfCareReminder,
   SelfCareReminderRepository,
 } from './self-care-reminders.model.js'
+import { PostgresSelfCareReminderOccurrenceGenerator } from './self-care-reminders.occurrence-generator.js'
 
 interface DueSelfCareReminderRow {
   id: string
@@ -26,6 +27,9 @@ export class PostgresSelfCareReminderRepository implements SelfCareReminderRepos
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
   async claimDueReminders(limit: number): Promise<DueSelfCareReminder[]> {
+    await new PostgresSelfCareReminderOccurrenceGenerator(
+      this.db,
+    ).materializeUpcomingOccurrences()
     await this.cancelInvalidPendingReminders()
     await this.markStalePendingRemindersExpired()
     await this.materializeDueReminders()

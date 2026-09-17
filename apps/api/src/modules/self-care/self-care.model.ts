@@ -75,6 +75,7 @@ export interface UpdateSelfCareItemCommand {
   context: SelfCareWriteContext
   input: SelfCareItemUpdateInput
   itemId: string
+  preserveOccurrenceId?: string | undefined
 }
 
 export interface ArchiveSelfCareItemCommand {

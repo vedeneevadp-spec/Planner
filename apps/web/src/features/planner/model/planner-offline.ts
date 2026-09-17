@@ -4,7 +4,13 @@ import {
   type TaskTemplateRecord,
 } from '@planner/contracts'
 import type { QueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import type { SessionReadiness } from '@/features/session'
 import { recordClientEvent } from '@/shared/lib/observability'
@@ -13,27 +19,30 @@ import {
   useOfflineQueueDrain,
 } from '@/shared/lib/offline-sync'
 
+import type { PlannerOfflineConflictGroup } from '../lib/offline-planner-conflicts'
 import {
   countConflictedPlannerOfflineMutations,
   countRetryablePlannerOfflineMutations,
   getLastTaskEventId,
   getPlannerDataLastSuccessfulSyncAt,
+  getPlannerOfflineWorkspaceWriteGeneration,
+  listPlannerOfflineMutations,
   loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
   loadCachedTaskTemplateRecords,
   replaceCachedLifeSphereRecords,
   replaceCachedTaskRecords,
   replaceCachedTaskTemplateRecords,
+  resolvePlannerOfflineConflict,
 } from '../lib/offline-planner-store'
-import {
-  drainPlannerOfflineQueue,
-  isQueueablePlannerMutationError,
-} from '../lib/offline-planner-sync'
 import {
   isUnauthorizedPlannerApiError,
   type PlannerApiClient,
 } from '../lib/planner-api'
-import { getErrorMessage } from './planner-error-policy'
+import {
+  getErrorMessage,
+  isRetryablePlannerConnectionError,
+} from './planner-error-policy'
 import {
   type PlannerSphereQueryKey,
   type PlannerTaskQueryKey,
@@ -79,6 +88,11 @@ interface PlannerOfflineSync {
   queuedMutationCount: number
   refreshQueuedMutationCount: () => Promise<void>
   requestQueuedMutationDrain: () => void
+  loadOfflineConflictGroups: () => Promise<PlannerOfflineConflictGroup[]>
+  resolveOfflineConflict: (
+    mutationId: string,
+    action: 'retry' | 'discard',
+  ) => Promise<void>
 }
 
 type PlannerCacheHydrationScope = 'life-spheres' | 'task-templates' | 'tasks'
@@ -106,6 +120,14 @@ export function usePlannerOfflineSync({
   tasks,
   workspaceId,
 }: PlannerOfflineSyncParams): PlannerOfflineSync {
+  const scope = `${actorUserId ?? ''}:${workspaceId ?? ''}`
+  const scopeRef = useRef(scope)
+  useLayoutEffect(() => {
+    scopeRef.current = scope
+    return () => {
+      scopeRef.current = ''
+    }
+  }, [scope])
   const taskEventCursorSyncRef = useRef<Promise<void> | null>(null)
   const [isDrainingOfflineQueue, setIsDrainingOfflineQueue] = useState(false)
   const [queuedMutationCount, setQueuedMutationCount] = useState(0)
@@ -241,7 +263,7 @@ export function usePlannerOfflineSync({
         return
       }
 
-      if (!isQueueablePlannerMutationError(error)) {
+      if (!isRetryablePlannerConnectionError(error)) {
         setMutationErrorMessage(getErrorMessage(error))
       }
     } finally {
@@ -273,6 +295,15 @@ export function usePlannerOfflineSync({
 
     await plannerDrainCoordinator
       .drain(`${currentActorUserId}:${workspaceId}`, async () => {
+        const queued = await listPlannerOfflineMutations(
+          workspaceId,
+          currentActorUserId,
+        )
+        if (!queued.some((mutation) => mutation.status !== 'conflicted')) return
+        // Replay is needed only for a non-empty queue. Keep it off the normal
+        // application entry path; its input is already durable before loading.
+        const { drainPlannerOfflineQueue } =
+          await import('../lib/offline-planner-sync')
         setIsDrainingOfflineQueue(true)
         const result = await drainPlannerOfflineQueue({
           actorUserId: currentActorUserId,
@@ -333,7 +364,7 @@ export function usePlannerOfflineSync({
             { level: 'warn' },
           )
           setMutationErrorMessage(
-            'Часть offline-изменений конфликтует с серверной версией. Обновили данные, повторите действие.',
+            'Некоторые изменения не синхронизированы. Ввод сохранён: откройте «Несинхронизированные изменения».',
           )
         }
 
@@ -374,9 +405,57 @@ export function usePlannerOfflineSync({
 
   const requestQueuedMutationDrain = useCallback(() => {
     void flushQueuedMutationQueue().catch((error) => {
-      setMutationErrorMessage(getErrorMessage(error))
+      if (scopeRef.current === scope)
+        setMutationErrorMessage(getErrorMessage(error))
     })
-  }, [flushQueuedMutationQueue, setMutationErrorMessage])
+  }, [flushQueuedMutationQueue, scope, setMutationErrorMessage])
+
+  const loadOfflineConflictGroups = useCallback(async () => {
+    if (!actorUserId || !workspaceId || scopeRef.current !== scope) return []
+    const { groupPlannerOfflineConflicts } =
+      await import('../lib/offline-planner-conflicts')
+    const mutations = await listPlannerOfflineMutations(
+      workspaceId,
+      actorUserId,
+    )
+    return scopeRef.current === scope
+      ? groupPlannerOfflineConflicts(mutations)
+      : []
+  }, [actorUserId, scope, workspaceId])
+
+  const resolveOfflineConflict = useCallback(
+    async (mutationId: string, action: 'retry' | 'discard') => {
+      if (!actorUserId || !workspaceId || scopeRef.current !== scope) return
+      const generation = getPlannerOfflineWorkspaceWriteGeneration(workspaceId)
+      await plannerDrainCoordinator.drain(
+        `${scope}:resolve:${mutationId}:${action}`,
+        async () => {
+          if (scopeRef.current !== scope) return
+          await resolvePlannerOfflineConflict(
+            workspaceId,
+            actorUserId,
+            mutationId,
+            action,
+            generation,
+          )
+        },
+      )
+      if (scopeRef.current !== scope) return
+      setMutationErrorMessage(null)
+      await refreshQueuedMutationCount()
+      if (action === 'retry') await flushQueuedMutationQueue()
+      else await invalidatePlannerQueries()
+    },
+    [
+      actorUserId,
+      flushQueuedMutationQueue,
+      invalidatePlannerQueries,
+      refreshQueuedMutationCount,
+      scope,
+      setMutationErrorMessage,
+      workspaceId,
+    ],
+  )
 
   useEffect(() => {
     if (!workspaceId) {
@@ -521,7 +600,7 @@ export function usePlannerOfflineSync({
   }, [taskTemplates, workspaceId])
 
   useOfflineQueueDrain({
-    drain: drainQueuedMutations,
+    drain: requestQueuedMutationDrain,
     enabled: Boolean(
       plannerApi && workspaceId && readiness.canWriteProtectedData,
     ),
@@ -573,6 +652,8 @@ export function usePlannerOfflineSync({
     queuedMutationCount,
     refreshQueuedMutationCount,
     requestQueuedMutationDrain,
+    loadOfflineConflictGroups,
+    resolveOfflineConflict,
   }
 }
 

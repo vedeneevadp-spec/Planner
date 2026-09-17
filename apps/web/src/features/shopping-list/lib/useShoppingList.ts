@@ -4,6 +4,7 @@ import {
 } from '@planner/contracts'
 import {
   type QueryClient,
+  skipToken,
   useMutation,
   useQuery,
   useQueryClient,
@@ -124,6 +125,14 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
     useState<ShoppingListCacheState | null>(null)
   const [syncFreshness, setSyncFreshness] =
     useState<ShoppingListCacheState | null>(null)
+  const readErrorQueryKey = [...queryKey, 'read-error'] as const
+  // All observers share the fallback outcome, just as they share the item data.
+  const { data: readError } = useQuery<unknown>({
+    enabled: false,
+    initialData: null,
+    queryFn: skipToken,
+    queryKey: readErrorQueryKey,
+  })
   const isCacheHydrating =
     options.enabled !== false &&
     workspaceId !== 'pending' &&
@@ -201,6 +210,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
 
         const items = await requireShoppingListApi(api).listItems(signal)
         const syncedAt = new Date().toISOString()
+        queryClient.setQueryData(readErrorQueryKey, null)
 
         try {
           await replaceCachedShoppingListItems(
@@ -224,6 +234,7 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
           )
 
           if (cachedSnapshot) {
+            queryClient.setQueryData(readErrorQueryKey, error)
             setSyncFreshness({
               cacheIdentity,
               lastSuccessfulSyncAt: cachedSnapshot.lastSuccessfulSyncAt,
@@ -244,7 +255,9 @@ export function useShoppingListItems(options: { enabled?: boolean } = {}) {
   return {
     ...query,
     isCacheHydrating: query.data === undefined && isCacheHydrating,
+    isShowingCachedData: Boolean(readError),
     lastSuccessfulSyncAt,
+    readError,
     readiness: shoppingListApi.getReadiness({
       hasCachedData: query.data !== undefined,
     }),

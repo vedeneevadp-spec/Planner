@@ -26,6 +26,13 @@ function loadTaskActionSnackbar() {
 }
 const PlannerTaskActionSnackbar = lazy(loadTaskActionSnackbar)
 
+function loadOfflineConflicts() {
+  return import('./PlannerOfflineConflicts').then((module) => ({
+    default: module.PlannerOfflineConflicts,
+  }))
+}
+const PlannerOfflineConflicts = lazy(loadOfflineConflicts)
+
 export function PlannerQueryProvider({ children }: PropsWithChildren) {
   const [queryClient] = useState(
     () =>
@@ -78,6 +85,7 @@ export function PlannerProvider({ children }: PropsWithChildren) {
     // unmount the planner or hide the confirmation of a saved offline command.
     const warm = () => {
       void loadTaskActionSnackbar().catch(() => undefined)
+      void loadOfflineConflicts().catch(() => undefined)
     }
     warm()
     window.addEventListener('online', warm)
@@ -96,10 +104,23 @@ export function PlannerProvider({ children }: PropsWithChildren) {
       </button>
     </div>
   ) : null
+  const conflictsFallback = (
+    <div role="status">
+      Несинхронизированные изменения сохранены на устройстве. Для открытия
+      списка восстановите соединение и перезапустите приложение.
+    </div>
+  )
 
   return (
     <PlannerContext.Provider value={planner}>
       {children}
+      {planner.conflictedMutationCount > 0 ? (
+        <AsyncLoadErrorBoundary fallback={conflictsFallback}>
+          <Suspense fallback={conflictsFallback}>
+            <PlannerOfflineConflicts planner={planner} />
+          </Suspense>
+        </AsyncLoadErrorBoundary>
+      ) : null}
       {planner.taskActionSnackbar ? (
         <AsyncLoadErrorBoundary fallback={snackbarFallback}>
           <Suspense fallback={snackbarFallback}>

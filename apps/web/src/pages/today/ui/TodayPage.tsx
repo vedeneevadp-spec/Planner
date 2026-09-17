@@ -42,6 +42,18 @@ export function TodayPage() {
     readiness.reason === 'auth_restoring' ||
     readiness.reason === 'planner_pending'
   const hasAccessIssue = isTodayAccessUnavailable(readiness)
+  const isTaskDataComplete = Boolean(
+    hasTaskRecords &&
+    !isLoading &&
+    !isTaskCacheHydrating &&
+    !hasTaskReadError &&
+    !isOffline &&
+    !isRestoring &&
+    !hasAccessIssue &&
+    taskReadModelCoverage &&
+    !taskReadModelCoverage.sources.active.truncated &&
+    !taskReadModelCoverage.sources.history.truncated,
+  )
   const openTaskId = normalizeOpenTaskId(searchParams.get('taskId'))
 
   function retryToday() {
@@ -138,7 +150,11 @@ export function TodayPage() {
   return session?.workspace.kind === 'shared' ? (
     <SharedTodayPage openTaskId={openTaskId} status={status} />
   ) : (
-    <PersonalTodayPage openTaskId={openTaskId} status={status} />
+    <PersonalTodayPage
+      isTaskDataComplete={isTaskDataComplete}
+      openTaskId={openTaskId}
+      status={status}
+    />
   )
 }
 

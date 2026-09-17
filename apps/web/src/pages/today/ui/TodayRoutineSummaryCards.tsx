@@ -7,9 +7,12 @@ import {
   TodayRoutineLinkCard,
 } from './TodayRoutineCard'
 
-interface TodayRoutineSummaryCardsProps extends Omit<
+interface TodayRoutineSummaryCardsProps extends Pick<
   TodayRoutineSummaryModel,
-  'itemCount'
+  | 'cleaningSummary'
+  | 'isShoppingItemPending'
+  | 'shoppingItems'
+  | 'onCompleteShoppingItem'
 > {
   variant: TodayRoutineCardVariant
 }

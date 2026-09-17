@@ -108,8 +108,9 @@ const USER_BACKUP_V1_COLUMNS = {
   self_care_completions:
     'id,item_id,occurrence_id,user_id,scheduled_for,completed_at,status,duration_minutes,note,completed_variant,alternative_title,mood_before,mood_after,energy_before,energy_after,price,currency,measurement_value,measurement_unit,exercise_sets,created_by,created_at,updated_at,version',
   self_care_ritual_steps:
-    'id,item_id,title,sort_order,is_optional,default_checked,created_at,updated_at',
-  self_care_ritual_step_completions: 'id,completion_id,step_id,is_done',
+    'id,item_id,title,sort_order,is_optional,default_checked,created_at,updated_at,deleted_at',
+  self_care_ritual_step_completions:
+    'id,completion_id,step_id,is_done,step_title,step_order',
   self_care_ritual_step_drafts:
     'id,item_id,occurrence_id,user_id,workspace_id,date,step_ids,created_at,updated_at,version',
   self_care_procedure_details:

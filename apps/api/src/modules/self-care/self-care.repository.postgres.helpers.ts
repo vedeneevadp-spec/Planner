@@ -239,6 +239,8 @@ export function mapStepCompletionRow(
     id: row.id,
     isDone: row.is_done,
     stepId: row.step_id,
+    stepTitle: row.step_title,
+    stepOrder: row.step_order,
   }
 }
 
@@ -437,6 +439,7 @@ export async function selectChildren<TTable extends keyof DatabaseSchema>(
     select *
     from ${sql.table(String(table))}
     where item_id = any(${itemIds})
+    ${table === 'app.self_care_ritual_steps' ? sql`and deleted_at is null` : sql``}
   `.execute(executor)
 
   return result.rows

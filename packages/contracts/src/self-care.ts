@@ -282,6 +282,8 @@ export const selfCareRitualStepCompletionSchema = z.object({
   id: z.string(),
   isDone: z.boolean(),
   stepId: z.string(),
+  stepTitle: z.string().nullable().optional(),
+  stepOrder: z.number().int().nonnegative().nullable().optional(),
 })
 
 const selfCareRitualStepDraftInputObjectSchema = z.object({
@@ -878,6 +880,32 @@ export const selfCareItemInputSchema =
 export const selfCareItemUpdateInputSchema = selfCareItemInputObjectSchema
   .partial()
   .extend({
+    // PATCH must not reapply create defaults for fields absent from the request.
+    alternatives: selfCareItemInputObjectSchema.shape.alternatives
+      .removeDefault()
+      .optional(),
+    description: selfCareItemInputObjectSchema.shape.description
+      .removeDefault()
+      .optional(),
+    importance: selfCareItemInputObjectSchema.shape.importance
+      .removeDefault()
+      .optional(),
+    isActive: selfCareItemInputObjectSchema.shape.isActive
+      .removeDefault()
+      .optional(),
+    isArchived: selfCareItemInputObjectSchema.shape.isArchived
+      .removeDefault()
+      .optional(),
+    isPrivate: selfCareItemInputObjectSchema.shape.isPrivate
+      .removeDefault()
+      .optional(),
+    migratedFromHabitId: selfCareItemInputObjectSchema.shape.migratedFromHabitId
+      .removeDefault()
+      .optional(),
+    preferredTimeOfDay: selfCareItemInputObjectSchema.shape.preferredTimeOfDay
+      .removeDefault()
+      .optional(),
+    steps: selfCareItemInputObjectSchema.shape.steps.removeDefault().optional(),
     expectedVersion: z.number().int().positive().optional(),
     minimumVersion: selfCareMinimumVersionInputSchema.nullable().optional(),
   })

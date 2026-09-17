@@ -180,6 +180,10 @@ const DRAIN_RESOURCE_OPTIONS = RESOURCE_OPTIONS.filter(
 const RESTORE_RESOURCE_OPTIONS = RESOURCE_OPTIONS.filter(
   (option) => option.kind === 'restore',
 )
+const RESOURCE_UNRATED_AND_NEUTRAL_OPTIONS = [
+  { label: 'Не указано', value: '' },
+  { label: 'Нейтрально', value: '0' },
+] as const
 
 interface PickerProps<Value extends string> {
   className?: string | undefined
@@ -258,6 +262,28 @@ export function ResourcePicker({
         role="group"
         aria-labelledby={labelId}
       >
+        <div
+          className={cx(styles.resourceCluster, styles.resourceChoiceCluster)}
+        >
+          {RESOURCE_UNRATED_AND_NEUTRAL_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              className={cx(
+                styles.segmentButton,
+                styles.necessityButton,
+                option.value === value && styles.segmentButtonActive,
+              )}
+              type="button"
+              aria-pressed={option.value === value}
+              onClick={() =>
+                onChange(option.value === value ? '' : option.value)
+              }
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
         <div className={styles.resourceCluster}>
           {DRAIN_RESOURCE_OPTIONS.map((option) => (
             <ResourceOptionButton

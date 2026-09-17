@@ -1644,12 +1644,17 @@ export function createSelfCareContractSchemas(): Record<
       },
       updatedAt: stringSchema(),
     }),
-    SelfCareRitualStepCompletion: objectSchema({
-      completionId: stringSchema(),
-      id: stringSchema(),
-      isDone: booleanSchema(),
-      stepId: stringSchema(),
-    }),
+    SelfCareRitualStepCompletion: objectSchema(
+      {
+        completionId: stringSchema(),
+        id: stringSchema(),
+        isDone: booleanSchema(),
+        stepId: stringSchema(),
+        stepTitle: nullableStringSchema(),
+        stepOrder: { type: 'integer', minimum: 0, nullable: true },
+      },
+      ['completionId', 'id', 'isDone', 'stepId'],
+    ),
     SelfCareRitualStepDraft: objectSchema({
       date: {
         minLength: 1,

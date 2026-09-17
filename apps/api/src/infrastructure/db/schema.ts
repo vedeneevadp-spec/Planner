@@ -283,6 +283,11 @@ export interface AppSelfCareOccurrencesTable {
   version: Generated<number>
 }
 
+export interface AppSelfCareReminderGenerationTable {
+  checked_at: TimestampColumn
+  schedule_rule_id: string
+}
+
 export interface AppSelfCareRemindersTable {
   attempt_count: Generated<number>
   canceled_at: TimestampColumn | null
@@ -348,6 +353,7 @@ export interface AppSelfCareCompletionsTable {
 
 export interface AppSelfCareRitualStepsTable {
   created_at: Generated<TimestampColumn>
+  deleted_at: Generated<TimestampColumn | null>
   default_checked: boolean
   id: Generated<string>
   is_optional: boolean
@@ -362,6 +368,8 @@ export interface AppSelfCareRitualStepCompletionsTable {
   id: Generated<string>
   is_done: boolean
   step_id: string
+  step_title: Generated<string | null>
+  step_order: Generated<number | null>
 }
 
 export interface AppSelfCareRitualStepDraftsTable {
@@ -1055,6 +1063,7 @@ export interface DatabaseSchema {
   'app.self_care_minimum_items': AppSelfCareMinimumItemsTable
   'app.self_care_occurrences': AppSelfCareOccurrencesTable
   'app.self_care_procedure_details': AppSelfCareProcedureDetailsTable
+  'app.self_care_reminder_generation': AppSelfCareReminderGenerationTable
   'app.self_care_reminders': AppSelfCareRemindersTable
   'app.self_care_ritual_step_completions': AppSelfCareRitualStepCompletionsTable
   'app.self_care_ritual_step_drafts': AppSelfCareRitualStepDraftsTable

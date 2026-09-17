@@ -5,6 +5,7 @@ import type {
   NewLifeSphereInput,
   NewTaskInput,
   TaskRecord,
+  TaskUpdateInput,
 } from '@planner/contracts'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -15,11 +16,13 @@ import {
   enqueuePlannerOfflineMutation,
   getLastTaskEventId,
   getPlannerDataLastSuccessfulSyncAt,
+  listPlannerOfflineMutations,
   loadCachedLifeSphereRecords,
   loadCachedTaskRecords,
   replaceCachedTaskRecords,
   replaceCachedTaskRecordsFromServer,
   resetPlannerOfflineDatabaseForTests,
+  resolvePlannerOfflineConflict,
   setPlannerDataLastSuccessfulSyncAt,
 } from './offline-planner-store'
 import { drainPlannerOfflineQueue } from './offline-planner-sync'
@@ -44,6 +47,21 @@ const createInput: NewTaskInput = {
   title: 'Offline task',
 }
 
+const updateInput: TaskUpdateInput = {
+  assigneeUserId: null,
+  dueDate: null,
+  note: '',
+  plannedDate: null,
+  plannedEndTime: null,
+  plannedStartTime: null,
+  project: '',
+  projectId: null,
+  resource: null,
+  requiresConfirmation: false,
+  sphereId: null,
+  title: 'Offline task',
+}
+
 const createSphereInput: NewLifeSphereInput = {
   color: '#2f6f62',
   description: 'Offline sphere',
@@ -55,6 +73,379 @@ const createSphereInput: NewLifeSphereInput = {
 describe('offline planner sync', () => {
   beforeEach(async () => {
     await resetPlannerOfflineDatabaseForTests()
+  })
+
+  it.each([400, 403, 409, 422])(
+    'retains a permanent %s refusal without poisoning independent commands or later drains',
+    async (status) => {
+      const refused = await enqueuePlannerOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        type: 'task.update',
+        taskId: 'refused',
+        expectedVersion: 3,
+        input: {
+          ...updateInput,
+          title: 'Сохранить ввод',
+          note: 'Важная заметка',
+        },
+      })
+      await enqueuePlannerOfflineMutation({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        type: 'task.status.update',
+        taskId: 'independent',
+        expectedVersion: 1,
+        statusValue: 'done',
+      })
+      const api = createPlannerApiClientMock({
+        updateTask: vi.fn().mockRejectedValue(
+          new PlannerApiError('Изменение отклонено', {
+            status,
+            code: 'task_manage_forbidden',
+          }),
+        ),
+        setTaskStatus: vi
+          .fn()
+          .mockResolvedValue(createTaskRecord('independent')),
+      })
+      expect(
+        await drainPlannerOfflineQueue({
+          actorUserId: ACTOR_USER_ID,
+          workspaceId: WORKSPACE_ID,
+          api,
+        }),
+      ).toEqual({ conflicted: 1, failed: 0, processed: 2, synced: 1 })
+      await drainPlannerOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        api,
+      })
+      expect(api.updateTask).toHaveBeenCalledTimes(1)
+      expect(api.setTaskStatus).toHaveBeenCalledTimes(1)
+      expect(
+        await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+      ).toEqual([
+        expect.objectContaining({
+          id: refused?.id,
+          status: 'conflicted',
+          conflictCode: 'task_manage_forbidden',
+          attemptCount: 1,
+          expectedVersion: 3,
+          input: {
+            ...updateInput,
+            title: 'Сохранить ввод',
+            note: 'Важная заметка',
+          },
+        }),
+      ])
+    },
+  )
+
+  it.each([401, 408, 429, 500, 503])(
+    'preserves queue ordering during a transient %s response',
+    async (status) => {
+      for (const taskId of ['first', 'second'])
+        await enqueuePlannerOfflineMutation({
+          actorUserId: ACTOR_USER_ID,
+          workspaceId: WORKSPACE_ID,
+          type: 'task.status.update',
+          taskId,
+          expectedVersion: 1,
+          statusValue: 'done',
+        })
+      const api = createPlannerApiClientMock({
+        setTaskStatus: vi.fn().mockRejectedValue(
+          new PlannerApiError('Попробуйте позже', {
+            status,
+            code: 'unavailable',
+          }),
+        ),
+      })
+      expect(
+        await drainPlannerOfflineQueue({
+          actorUserId: ACTOR_USER_ID,
+          workspaceId: WORKSPACE_ID,
+          api,
+        }),
+      ).toEqual({ conflicted: 0, failed: 1, processed: 1, synced: 0 })
+      expect(api.setTaskStatus).toHaveBeenCalledTimes(1)
+      expect(
+        (await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID)).map(
+          ({ status, attemptCount }) => ({ status, attemptCount }),
+        ),
+      ).toEqual([
+        { status: 'failed', attemptCount: 1 },
+        { status: 'pending', attemptCount: 0 },
+      ])
+    },
+  )
+
+  it('blocks a refused create, its next stage and later edits across drains; retry preserves the entire sequence', async () => {
+    const stage = createTaskNextStageRecords()
+    const root = await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.create',
+      taskId: stage.source.id,
+      input: { ...createInput, id: stage.source.id },
+    })
+    await waitForNextMutationTimestamp()
+    await enqueueNextStageMutation(stage)
+    const api = createPlannerApiClientMock({
+      createTask: vi.fn().mockRejectedValue(
+        new PlannerApiError('Отклонено', {
+          status: 403,
+          code: 'task_manage_forbidden',
+        }),
+      ),
+      createNextTaskStage: vi.fn().mockResolvedValue(stage.response),
+      updateTask: vi.fn().mockResolvedValue(stage.next),
+      setTaskStatus: vi.fn().mockResolvedValue(createTaskRecord('independent')),
+    })
+    await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      api,
+    })
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.update',
+      taskId: stage.next.id,
+      expectedVersion: 1,
+      input: { ...updateInput, note: 'Следующий этап: сохранить' },
+    })
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.status.update',
+      taskId: 'independent',
+      expectedVersion: 1,
+      statusValue: 'done',
+    })
+    await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      api,
+    })
+    expect(api.createTask).toHaveBeenCalledTimes(1)
+    expect(api.createNextTaskStage).not.toHaveBeenCalled()
+    expect(api.updateTask).not.toHaveBeenCalled()
+    expect(api.setTaskStatus).toHaveBeenCalledTimes(1)
+    const saved = await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID)
+    expect(
+      saved.map(({ status, attemptCount }) => ({ status, attemptCount })),
+    ).toEqual([
+      { status: 'conflicted', attemptCount: 1 },
+      { status: 'conflicted', attemptCount: 0 },
+      { status: 'conflicted', attemptCount: 0 },
+    ])
+    await resolvePlannerOfflineConflict(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+      root!.id,
+      'retry',
+    )
+    const retried = await listPlannerOfflineMutations(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+    )
+    expect(
+      retried.map(({ id, createdAt, type }) => ({ id, createdAt, type })),
+    ).toEqual(saved.map(({ id, createdAt, type }) => ({ id, createdAt, type })))
+    expect(retried.every(({ status }) => status === 'pending')).toBe(true)
+    vi.mocked(api.createTask).mockResolvedValue(stage.source)
+    await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      api,
+    })
+    expect(api.createNextTaskStage).toHaveBeenCalledWith(
+      stage.source.id,
+      expect.objectContaining({ expectedVersion: 1 }),
+    )
+    expect(api.updateTask).toHaveBeenCalledWith(stage.next.id, {
+      ...updateInput,
+      expectedVersion: 1,
+      note: 'Следующий этап: сохранить',
+    })
+    expect(
+      await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).toEqual([])
+  })
+
+  it('blocks task references to a refused sphere and discards only its dependent group for the current actor', async () => {
+    const root = await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'lifeSphere.create',
+      sphereId: createSphereInput.id!,
+      input: createSphereInput,
+    })
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.create',
+      taskId: 'dependent',
+      input: {
+        ...createInput,
+        id: 'dependent',
+        sphereId: createSphereInput.id!,
+      },
+    })
+    await enqueuePlannerOfflineMutation({
+      actorUserId: 'other-user',
+      workspaceId: WORKSPACE_ID,
+      type: 'task.create',
+      taskId: 'other-actor',
+      input: {
+        ...createInput,
+        id: 'other-actor',
+        sphereId: createSphereInput.id!,
+      },
+    })
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.create',
+      taskId: 'independent',
+      input: { ...createInput, id: 'independent' },
+    })
+    const api = createPlannerApiClientMock({
+      createLifeSphere: vi.fn().mockRejectedValue(
+        new PlannerApiError('Ошибка данных', {
+          status: 400,
+          code: 'invalid_request',
+        }),
+      ),
+      createTask: vi.fn().mockResolvedValue(createTaskRecord('independent')),
+    })
+    await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      api,
+    })
+    expect(api.createTask).toHaveBeenCalledTimes(1)
+    expect(api.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'independent' }),
+    )
+    await resolvePlannerOfflineConflict(
+      WORKSPACE_ID,
+      'other-user',
+      root!.id,
+      'discard',
+    )
+    expect(
+      await countConflictedPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).toBe(2)
+    await resolvePlannerOfflineConflict(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+      root!.id,
+      'discard',
+    )
+    expect(
+      await listPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).toEqual([])
+    expect(
+      await listPlannerOfflineMutations(WORKSPACE_ID, 'other-user'),
+    ).toHaveLength(1)
+  })
+
+  it('does not block a task referencing an existing sphere whose edit was refused', async () => {
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'lifeSphere.update',
+      sphereId: createSphereInput.id!,
+      input: { ...createSphereInput, expectedVersion: 1 },
+    })
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.create',
+      taskId: 'independent',
+      input: {
+        ...createInput,
+        id: 'independent',
+        sphereId: createSphereInput.id!,
+      },
+    })
+    const api = createPlannerApiClientMock({
+      updateLifeSphere: vi.fn().mockRejectedValue(
+        new PlannerApiError('Версия сферы изменилась', {
+          status: 409,
+          code: 'life_sphere_version_conflict',
+        }),
+      ),
+      createTask: vi.fn().mockResolvedValue(createTaskRecord('independent')),
+    })
+    expect(
+      await drainPlannerOfflineQueue({
+        actorUserId: ACTOR_USER_ID,
+        workspaceId: WORKSPACE_ID,
+        api,
+      }),
+    ).toEqual({ conflicted: 1, failed: 0, processed: 2, synced: 1 })
+    expect(api.createTask).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps original versions when retrying a conflict and blocks a later same-task edit', async () => {
+    const root = await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.update',
+      taskId: 'stale',
+      input: { ...updateInput, title: 'Мой заголовок' },
+      expectedVersion: 2,
+    })
+    await waitForNextMutationTimestamp()
+    await enqueuePlannerOfflineMutation({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      type: 'task.status.update',
+      taskId: 'stale',
+      statusValue: 'done',
+      expectedVersion: 3,
+    })
+    const api = createPlannerApiClientMock({
+      updateTask: vi.fn().mockRejectedValue(
+        new PlannerApiError('Версия изменилась', {
+          status: 409,
+          code: 'task_version_conflict',
+          details: { actualVersion: 5, expectedVersion: 2 },
+        }),
+      ),
+    })
+    await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      api,
+    })
+    await resolvePlannerOfflineConflict(
+      WORKSPACE_ID,
+      ACTOR_USER_ID,
+      root!.id,
+      'retry',
+    )
+    await drainPlannerOfflineQueue({
+      actorUserId: ACTOR_USER_ID,
+      workspaceId: WORKSPACE_ID,
+      api,
+    })
+    expect(api.updateTask).toHaveBeenCalledTimes(2)
+    expect(api.updateTask).toHaveBeenLastCalledWith('stale', {
+      ...updateInput,
+      title: 'Мой заголовок',
+      expectedVersion: 2,
+    })
+    expect(api.setTaskStatus).not.toHaveBeenCalled()
+    expect(
+      await countConflictedPlannerOfflineMutations(WORKSPACE_ID, ACTOR_USER_ID),
+    ).toBe(2)
   })
 
   it('tracks server freshness separately from local cache writes', async () => {

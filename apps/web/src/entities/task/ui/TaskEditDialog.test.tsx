@@ -46,6 +46,49 @@ describe('TaskEditDialog', () => {
     cleanup()
   })
 
+  it.each([
+    { initial: null, choice: null, expected: null },
+    { initial: 0, choice: null, expected: 0 },
+    { initial: null, choice: 'Нейтрально', expected: 0 },
+    { initial: 0, choice: 'Не указано', expected: null },
+  ])(
+    'saves resource $initial with choice $choice as $expected while editing another field',
+    async ({ initial, choice, expected }) => {
+      const onUpdate = vi.fn().mockResolvedValue(true)
+      render(
+        <TaskEditDialog
+          currentActorUserId="user-1"
+          todayKey="2026-05-19"
+          task={createTask({ resource: initial })}
+          spheres={[]}
+          uploadedIcons={[]}
+          onClose={vi.fn()}
+          onUpdate={onUpdate}
+        />,
+      )
+      expect(
+        screen.getByRole('button', {
+          name: initial === null ? 'Не указано' : 'Нейтрально',
+        }),
+      ).toHaveAttribute('aria-pressed', 'true')
+      fireEvent.change(screen.getByLabelText('Задача'), {
+        target: { value: 'Updated title' },
+      })
+      if (choice) fireEvent.click(screen.getByRole('button', { name: choice }))
+      const saveButtons = screen.getAllByRole('button', { name: 'Сохранить' })
+      fireEvent.click(saveButtons[saveButtons.length - 1]!)
+      await waitFor(() =>
+        expect(onUpdate).toHaveBeenCalledWith(
+          'task-1',
+          expect.objectContaining({
+            title: 'Updated title',
+            resource: expected,
+          }),
+        ),
+      )
+    },
+  )
+
   it('submits normalized personal task updates and closes after success', async () => {
     const onClose = vi.fn()
     const onUpdate = vi.fn(() => Promise.resolve(true))

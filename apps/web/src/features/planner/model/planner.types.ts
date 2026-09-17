@@ -23,6 +23,8 @@ import type {
 } from '@/entities/task-template'
 import type { SessionReadiness } from '@/features/session'
 
+import type { PlannerOfflineConflictGroup } from '../lib/offline-planner-conflicts'
+
 export interface PlannerState {
   spheres: Sphere[]
   tasks: Task[]
@@ -33,6 +35,11 @@ export interface PlannerState {
   > | null
   readiness: SessionReadiness
   conflictedMutationCount: number
+  loadOfflineConflictGroups: () => Promise<PlannerOfflineConflictGroup[]>
+  resolveOfflineConflict: (
+    mutationId: string,
+    action: 'retry' | 'discard',
+  ) => Promise<void>
   hasLifeSphereRecords: boolean
   hasLifeSphereReadError: boolean
   hasReadError: boolean
