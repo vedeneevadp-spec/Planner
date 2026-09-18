@@ -44,10 +44,6 @@ const nativePushMocks = vi.hoisted(() => ({
   unregisterStoredNativePushDevice: vi.fn(),
 }))
 
-const nativeVoiceMocks = vi.hoisted(() => ({
-  clearAndroidVoiceAssistantSessionContext: vi.fn(),
-}))
-
 const sessionOfflineDataMocks = vi.hoisted(() => ({
   clearSessionOfflineWorkspaceData: vi.fn(),
 }))
@@ -89,11 +85,6 @@ vi.mock('../lib/browser-auth-device-id', () => ({
 vi.mock('../lib/native-push-notifications', () => ({
   unregisterStoredNativePushDevice:
     nativePushMocks.unregisterStoredNativePushDevice,
-}))
-
-vi.mock('@/features/voice-assistant/native', () => ({
-  clearAndroidVoiceAssistantSessionContext:
-    nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext,
 }))
 
 vi.mock('../lib/native-session-storage', () => ({
@@ -161,7 +152,6 @@ describe('SessionProvider', () => {
 
     browserDeviceMocks.getBrowserAuthDeviceId.mockReset()
     nativePushMocks.unregisterStoredNativePushDevice.mockReset()
-    nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext.mockReset()
     sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockReset()
     nativeSessionMocks.addNativeAppStateChangeListener.mockReset()
     nativeSessionMocks.getNativeAuthDeviceId.mockReset()
@@ -193,9 +183,6 @@ describe('SessionProvider', () => {
       'browser-device-1',
     )
     nativePushMocks.unregisterStoredNativePushDevice.mockResolvedValue(
-      undefined,
-    )
-    nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext.mockResolvedValue(
       undefined,
     )
     sessionOfflineDataMocks.clearSessionOfflineWorkspaceData.mockResolvedValue({
@@ -653,9 +640,6 @@ describe('SessionProvider', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
 
     await waitFor(() => {
-      expect(
-        nativeVoiceMocks.clearAndroidVoiceAssistantSessionContext,
-      ).toHaveBeenCalledTimes(1)
       expect(authStorageMocks.clearStoredAuthSession).toHaveBeenCalledTimes(1)
       expect(
         sessionOfflineDataMocks.clearSessionOfflineWorkspaceData,

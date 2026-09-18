@@ -148,201 +148,6 @@ export function createComponentSchemas(): Record<
     },
     UpdateUserProfileInput: genericJsonObjectSchema(),
     UserProfile: genericJsonObjectSchema(),
-    VoiceCommandResponse: {
-      additionalProperties: false,
-      properties: {
-        intent: genericJsonObjectSchema(),
-        stt: genericJsonObjectSchema(),
-        transcript: {
-          minLength: 1,
-          type: 'string',
-        },
-      },
-      required: ['intent', 'stt', 'transcript'],
-      type: 'object',
-    },
-    VoiceMetricEvent: {
-      additionalProperties: false,
-      properties: {
-        action_preview_duration_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        appRole: {
-          enum: ['owner', 'test'],
-          type: 'string',
-        },
-        audioBytes: {
-          minimum: 0,
-          type: 'integer',
-        },
-        audioDurationMs: {
-          minimum: 0,
-          type: 'integer',
-        },
-        audio_signal_to_recorder_delay_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        confidenceBucket: {
-          enum: ['low', 'medium', 'high'],
-          type: 'string',
-        },
-        createdAt: {
-          minLength: 1,
-          type: 'string',
-        },
-        durationBucket: {
-          enum: ['short', 'normal', 'long'],
-          type: 'string',
-        },
-        errorCode: {
-          maxLength: 160,
-          minLength: 1,
-          type: 'string',
-        },
-        eventName: {
-          enum: [
-            'voice_started',
-            'wake_detected',
-            'push_to_talk_started',
-            'command_recording_started',
-            'command_recording_cancelled',
-            'local_validation_failed',
-            'stt_upload_started',
-            'stt_upload_completed',
-            'stt_error',
-            'transcript_received',
-            'intent_parsed',
-            'action_preview_created',
-            'confirmation_shown',
-            'confirmation_accepted',
-            'confirmation_cancelled',
-            'confirmation_edited',
-            'clarification_requested',
-            'action_executed',
-            'action_failed',
-            'undo_requested',
-            'undo_success',
-            'undo_failed',
-            'audio_signal_start_played',
-            'audio_signal_success_played',
-            'audio_signal_suppressed',
-            'audio_signal_error',
-            'voice_cue_listening_played',
-            'voice_cue_done_played',
-            'voice_cue_suppressed',
-            'web_voice_unsupported',
-            'web_voice_permission_denied',
-            'web_voice_timeout',
-            'llm_fallback_requested',
-            'llm_fallback_used',
-            'llm_fallback_rejected_schema',
-            'llm_fallback_rejected_safety',
-            'llm_fallback_latency_ms',
-            'llm_fallback_provider_error',
-            'llm_fallback_cost_estimated',
-          ],
-          type: 'string',
-        },
-        intentType: {
-          enum: [
-            'create_task',
-            'add_shopping_item',
-            'get_shopping_list',
-            'reschedule_task',
-            'get_agenda',
-            'clarify',
-            'unsupported',
-          ],
-          type: 'string',
-        },
-        llm_fallback_cost_estimated: {
-          minimum: 0,
-          type: 'number',
-        },
-        llm_fallback_latency_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        mic_click_to_confirmation_card_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        modelVersion: {
-          maxLength: 160,
-          minLength: 1,
-          type: 'string',
-        },
-        parser_duration_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        platform: {
-          enum: ['android', 'web', 'backend'],
-          type: 'string',
-        },
-        previewStatus: {
-          maxLength: 160,
-          minLength: 1,
-          type: 'string',
-        },
-        resultStatus: {
-          maxLength: 160,
-          minLength: 1,
-          type: 'string',
-        },
-        source: {
-          enum: [
-            'android_wake_word',
-            'android_push_to_talk',
-            'web_push_to_talk',
-            'backend_text',
-          ],
-          type: 'string',
-        },
-        sttProvider: {
-          enum: ['yandex_speechkit', 'stub', 'local_stub'],
-          type: 'string',
-        },
-        stt_upload_duration_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        start_signal_duration_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        time_to_confirmation_card_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        wake_detected_to_confirmation_card_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        wake_detected_to_recorder_start_ms: {
-          minimum: 0,
-          type: 'number',
-        },
-        wakeWordProvider: {
-          enum: ['custom_onnx', 'custom_tflite', 'mock'],
-          type: 'string',
-        },
-      },
-      required: ['appRole', 'createdAt', 'eventName', 'platform', 'source'],
-      type: 'object',
-    },
-    VoiceMetricResponse: {
-      additionalProperties: false,
-      properties: {
-        ok: {
-          type: 'boolean',
-        },
-      },
-      required: ['ok'],
-      type: 'object',
-    },
     WeeklySphereStatsRecordResponse: genericJsonObjectSchema(),
     AuthRefreshInput: {
       additionalProperties: false,
@@ -926,6 +731,10 @@ export function createComponentSchemas(): Record<
           type: 'boolean',
         },
         wakeWordTrainingModeEnabled: {
+          deprecated: true,
+          enum: [false],
+          description:
+            'Legacy compatibility only; always false in responses and ignored in updates.',
           type: 'boolean',
         },
       },
@@ -962,6 +771,10 @@ export function createComponentSchemas(): Record<
           type: 'boolean',
         },
         voiceAssistantEnabled: {
+          deprecated: true,
+          enum: [false],
+          description:
+            'Legacy compatibility only; always false in responses and ignored in updates.',
           type: 'boolean',
         },
       },
@@ -1065,13 +878,13 @@ export function createComponentSchemas(): Record<
           type: 'boolean',
         },
         wakeWordTrainingModeEnabled: {
+          deprecated: true,
+          description:
+            'Legacy compatibility only; always false in responses and ignored in updates.',
           type: 'boolean',
         },
       },
-      required: [
-        'taskCompletionConfettiEnabled',
-        'wakeWordTrainingModeEnabled',
-      ],
+      required: ['taskCompletionConfettiEnabled'],
       type: 'object',
     },
     UserPreferencesUpdateInput: {
@@ -1093,6 +906,9 @@ export function createComponentSchemas(): Record<
           type: 'boolean',
         },
         voiceAssistantEnabled: {
+          deprecated: true,
+          description:
+            'Legacy compatibility only; always false in responses and ignored in updates.',
           type: 'boolean',
         },
       },

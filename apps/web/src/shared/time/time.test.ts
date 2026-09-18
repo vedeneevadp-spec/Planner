@@ -134,7 +134,7 @@ describe('TimeService', () => {
     })
   })
 
-  it('parses voice "tomorrow at 9" relative to planner timezone', () => {
+  it('parses "tomorrow at 9" relative to planner timezone', () => {
     const parsed = parseRussianSchedulePhrase('завтра в 9', {
       locale: 'ru-RU',
       plannerTimeZone: 'Europe/Astrakhan',
@@ -149,7 +149,7 @@ describe('TimeService', () => {
     })
   })
 
-  it('parses voice daily floating recurrence', () => {
+  it('parses daily floating recurrence', () => {
     const parsed = parseRussianSchedulePhrase('каждый день в 8', {
       locale: 'ru-RU',
       plannerTimeZone: 'Europe/Astrakhan',

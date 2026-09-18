@@ -387,9 +387,9 @@ async function requestNativePushPermission(): Promise<NativePushPermissionStatus
 }
 
 async function openAndroidSystemAppSettings(): Promise<void> {
-  const nativeVoiceAssistant = await import('@/features/voice-assistant/native')
+  const nativeAppSettings = await import('@/shared/lib/native-app-settings')
 
-  await nativeVoiceAssistant.openAndroidSystemAppSettings()
+  await nativeAppSettings.openAndroidSystemAppSettings()
 }
 
 function SettingsSwitch({

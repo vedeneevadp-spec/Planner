@@ -89,7 +89,7 @@ vi.mock('@/features/session/native-push', () => ({
   requestNativePushPermission: () => mocks.requestNativePushPermission(),
 }))
 
-vi.mock('@/features/voice-assistant/native', () => ({
+vi.mock('@/shared/lib/native-app-settings', () => ({
   openAndroidSystemAppSettings: () => mocks.openAndroidSystemAppSettings(),
 }))
 
@@ -240,5 +240,46 @@ describe('NotificationsSettingsPage', () => {
     expect(
       screen.queryByRole('button', { name: 'Отправить тестовое уведомление' }),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Открыть настройки' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens Android app settings when notifications are denied', async () => {
+    mocks.isAndroidPushNotificationsRuntime.mockReturnValue(true)
+    mocks.getNativePushPermissionStatus.mockResolvedValue('denied')
+
+    render(<NotificationsSettingsPage />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Открыть настройки' }),
+    )
+
+    await waitFor(() => {
+      expect(mocks.openAndroidSystemAppSettings).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('reports system settings errors and allows another attempt', async () => {
+    mocks.isAndroidPushNotificationsRuntime.mockReturnValue(true)
+    mocks.getNativePushPermissionStatus.mockResolvedValue('denied')
+    mocks.openAndroidSystemAppSettings.mockRejectedValueOnce(
+      new Error('Unavailable'),
+    )
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    render(<NotificationsSettingsPage />)
+    const button = await screen.findByRole('button', {
+      name: 'Открыть настройки',
+    })
+    fireEvent.click(button)
+
+    expect(
+      await screen.findByText('Не удалось выполнить действие'),
+    ).toBeVisible()
+    expect(button).toBeEnabled()
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(mocks.openAndroidSystemAppSettings).toHaveBeenCalledTimes(2)
+    })
   })
 })

@@ -37,7 +37,6 @@ def hasReleaseSigningConfig = [
     releaseKeyAlias,
     releaseKeyPassword,
 ].every { value -> value != null }
-def wakewordParityApplicationIdSuffix = project.findProperty('wakewordParityApplicationIdSuffix')
 def androidAbiFilters = (project.findProperty('androidAbiFilters') ?: '')
     .toString()
     .split(',')
@@ -64,8 +63,8 @@ android {
         applicationId "ru.chaotika.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 27
-        versionName "1.1.19"
+        versionCode 28
+        versionName "1.1.20"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         if (!androidAbiFilters.isEmpty()) {
             ndk {
@@ -75,15 +74,11 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            // Exclude retired local recognition assets even if old ignored files are restored.
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:wakewords:*.onnx:*.tflite'
         }
     }
     buildTypes {
-        debug {
-            if (wakewordParityApplicationIdSuffix != null) {
-                applicationIdSuffix wakewordParityApplicationIdSuffix.toString()
-            }
-        }
         release {
             if (hasReleaseSigningConfig) {
                 signingConfig = signingConfigs.release
@@ -99,8 +94,6 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
-    implementation "com.google.ai.edge.litert:litert:$liteRtVersion"
-    implementation "com.microsoft.onnxruntime:onnxruntime-android:$onnxRuntimeAndroidVersion"
     implementation project(':capacitor-android')
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.json:json:20240303"
@@ -117,10 +110,8 @@ def releaseBuildRequested = gradle.startParameter.taskNames.any { taskName ->
     taskName.toLowerCase().contains('release')
 }
 
-if (hasGoogleServicesJSON && wakewordParityApplicationIdSuffix == null) {
+if (hasGoogleServicesJSON) {
     apply plugin: 'com.google.gms.google-services'
-} else if (wakewordParityApplicationIdSuffix != null) {
-    logger.info("google-services plugin not applied for wakeword parity applicationId suffix")
 } else if (releaseBuildRequested) {
     throw new GradleException(
         "android/app/google-services.json is required for release builds because the app registers Firebase push notifications."

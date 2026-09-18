@@ -1,4 +1,4 @@
-const CACHE_NAME = 'chaotika-runtime-v3'
+const CACHE_NAME = 'chaotika-runtime-v4'
 const CACHE_PREFIX = 'chaotika-'
 const NAVIGATION_NETWORK_TIMEOUT_MS = 2_000
 const APP_SHELL_URLS = [

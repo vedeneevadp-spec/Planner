@@ -8,10 +8,11 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        PlannerAppUpgradeCleanup.run(this);
         registerPlugin(PlannerAuthStoragePlugin.class);
         registerPlugin(PlannerBackupFilesPlugin.class);
         registerPlugin(PlannerWidgetPlugin.class);
-        registerPlugin(PlannerVoiceAssistantPlugin.class);
+        registerPlugin(PlannerAppSettingsPlugin.class);
         super.onCreate(savedInstanceState);
         PlannerWidgetStorage.storePendingRouteFromIntent(this, getIntent());
     }

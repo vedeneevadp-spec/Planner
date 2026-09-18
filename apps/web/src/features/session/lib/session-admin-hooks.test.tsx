@@ -184,7 +184,6 @@ describe('session admin hooks', () => {
       jsonResponse({
         calendarViewMode: 'month',
         energyMode: 'maximum',
-        voiceAssistantEnabled: false,
       }),
     )
 
@@ -206,7 +205,6 @@ describe('session admin hooks', () => {
         energyMode: 'maximum',
         lastSeenTimeZone: null,
         timeZoneMode: 'device',
-        voiceAssistantEnabled: false,
       })
     })
 
@@ -224,7 +222,6 @@ describe('session admin hooks', () => {
       energyMode: 'maximum',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: false,
     })
   })
 
@@ -265,7 +262,6 @@ describe('session admin hooks', () => {
         energyMode: 'normal',
         lastSeenTimeZone: 'Asia/Novosibirsk',
         timeZoneMode: 'device',
-        voiceAssistantEnabled: true,
       }),
     )
 
@@ -308,7 +304,6 @@ describe('session admin hooks', () => {
         sharedTaskCreatedNotificationsEnabled: true,
         sharedTaskReadyForReviewNotificationsEnabled: false,
         timeZoneMode: 'device',
-        voiceAssistantEnabled: true,
       }),
     )
 
@@ -384,7 +379,6 @@ describe('session admin hooks', () => {
       await expect(
         result.current.mutateAsync({
           taskCompletionConfettiEnabled: false,
-          wakeWordTrainingModeEnabled: false,
         }),
       ).rejects.toThrow('Forbidden.')
     })
@@ -397,7 +391,6 @@ describe('session admin hooks', () => {
     expect(cachedSession?.workspaceSettings).toEqual({
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     })
   })
 })
@@ -534,7 +527,6 @@ function createSessionResponse(): SessionResponse {
       energyMode: 'normal',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       id: 'workspace-1',
@@ -546,7 +538,6 @@ function createSessionResponse(): SessionResponse {
     workspaceSettings: {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [
       {

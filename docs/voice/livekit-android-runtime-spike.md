@@ -1,5 +1,7 @@
 # LiveKit Android Runtime Spike
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 ## Goal
 
 This spike checks whether a LiveKit Wakeword classifier can be used in the

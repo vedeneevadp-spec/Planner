@@ -490,14 +490,12 @@ function createSessionResponse(input: {
       energyMode: 'normal',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     },
     workspace,
     workspaceId,
     workspaceSettings: {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     },
     workspaces,
   }

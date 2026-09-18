@@ -697,7 +697,6 @@ export interface AppUsersTable {
   timezone: string
   updated_at: Generated<TimestampColumn>
   version: Generated<number>
-  voice_assistant_enabled: Generated<boolean>
 }
 
 export interface AppAuthCredentialsTable {
@@ -798,7 +797,6 @@ export interface AppWorkspacesTable {
   owner_user_id: string
   slug: string
   task_completion_confetti_enabled: boolean
-  wake_word_training_mode_enabled: Generated<boolean>
   updated_at: Generated<TimestampColumn>
   version: Generated<number>
 }

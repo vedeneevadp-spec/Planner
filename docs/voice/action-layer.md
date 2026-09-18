@@ -1,5 +1,7 @@
 # Voice Action Layer v1
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 Статус: реализован v1 web/client action layer. Это не полный production
 backend/action infrastructure.
 

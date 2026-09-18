@@ -1,5 +1,7 @@
 # LiveKit Android Parity
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 Android closed rollout requires a parity check against Python
 `livekit.wakeword.WakeWordModel` before `ioContractConfirmedForAndroid` can be
 set to `true`.

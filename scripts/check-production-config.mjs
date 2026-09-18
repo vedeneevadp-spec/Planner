@@ -87,8 +87,8 @@ const permissionsPolicy = caddyfile.match(/Permissions-Policy\s+"([^"]+)"/)?.[1]
 assert.ok(permissionsPolicy, 'Caddyfile must define Permissions-Policy.')
 assert.match(
   permissionsPolicy,
-  /(?:^|,\s*)microphone=\(self\)(?:,|$)/,
-  'Production web voice requires microphone access for the current origin.',
+  /(?:^|,\s*)microphone=\(\)(?:,|$)/,
+  'Production web must disable microphone access.',
 )
 assert.match(
   permissionsPolicy,

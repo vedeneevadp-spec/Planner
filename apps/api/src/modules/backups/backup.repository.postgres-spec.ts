@@ -434,3 +434,137 @@ void test('PostgresUserBackupRepository restores missing rows idempotently', asy
     await connection.pool.query(`delete from app.users where id = $1`, [userId])
   }
 })
+
+for (const legacy of [false, true]) {
+  void test(`PostgresUserBackupRepository restores ${legacy ? 'legacy' : 'current'} settings and voice-sourced purchases`, async () => {
+    const userId = randomUUID()
+    const workspaceId = randomUUID()
+    const purchaseId = randomUUID()
+    const taskId = randomUUID()
+    const email = `backup-settings-${userId}@example.test`
+    const context = {
+      actorUserId: userId,
+      auth: createSessionAuthContext({ email, userId }),
+      workspaceId,
+      workspaceKind: 'personal' as const,
+      workspaceName: 'Backup settings',
+    }
+    const repository = new PostgresUserBackupRepository(
+      connection.db,
+      assetDirectory,
+    )
+
+    try {
+      await connection.pool.query(
+        `insert into app.users (id,email,display_name,calendar_view_mode,energy_mode,default_time_zone,last_seen_time_zone,time_zone_mode) values ($1,$2,'Saved profile','month','minimum','Asia/Novosibirsk','Europe/Moscow','manual')`,
+        [userId, email],
+      )
+      await connection.pool.query(
+        `insert into app.workspaces (id,owner_user_id,name,slug,kind,default_time_zone,task_completion_confetti_enabled) values ($1,$2,'Backup settings',$3,'personal','Asia/Novosibirsk',false)`,
+        [workspaceId, userId, `backup-settings-${workspaceId}`],
+      )
+      await connection.pool.query(
+        `insert into app.workspace_members (id,user_id,workspace_id,role) values ($1,$2,$3,'owner')`,
+        [randomUUID(), userId, workspaceId],
+      )
+      await connection.pool.query(
+        `insert into app.chaos_inbox_items (id,workspace_id,user_id,text,source,kind,created_by,updated_by) values ($1,$2,$3,'Покупка Алисы','voice','shopping',$3,$3)`,
+        [purchaseId, workspaceId, userId],
+      )
+      await connection.pool.query(
+        `insert into app.tasks (id,workspace_id,title,created_by,updated_by) values ($1,$2,'Существующая задача',$3,$3)`,
+        [taskId, workspaceId, userId],
+      )
+      const exported = await repository.exportPersonalWorkspace({
+        appVersion: '1.1.19',
+        context,
+      })
+      assert.equal(
+        'voice_assistant_enabled' in exported.tables.users![0]!,
+        false,
+      )
+      assert.equal(
+        'wake_word_training_mode_enabled' in exported.tables.workspaces![0]!,
+        false,
+      )
+      const rawArchive = JSON.parse(JSON.stringify(exported)) as typeof exported
+      if (legacy) {
+        rawArchive.tables.users![0]!.voice_assistant_enabled = true
+        rawArchive.tables.workspaces![0]!.wake_word_training_mode_enabled = true
+      }
+      const archive = userBackupArchiveSchema.parse(rawArchive)
+      assert.equal(
+        'voice_assistant_enabled' in archive.tables.users![0]!,
+        false,
+      )
+      assert.equal(
+        'wake_word_training_mode_enabled' in archive.tables.workspaces![0]!,
+        false,
+      )
+      await connection.pool.query(
+        `delete from app.chaos_inbox_items where id=$1`,
+        [purchaseId],
+      )
+      await connection.pool.query(`delete from app.tasks where id=$1`, [taskId])
+      await connection.pool.query(
+        `update app.users set display_name='Changed',calendar_view_mode='day',energy_mode='normal',default_time_zone=null,last_seen_time_zone=null,time_zone_mode='device' where id=$1`,
+        [userId],
+      )
+      await connection.pool.query(
+        `update app.workspaces set default_time_zone=null,task_completion_confetti_enabled=true where id=$1`,
+        [workspaceId],
+      )
+      await repository.restorePersonalWorkspace({
+        archive,
+        archiveDigest: (legacy ? 'c' : 'd').repeat(64),
+        context,
+        idempotencyKey: randomUUID(),
+        restoreProfile: true,
+        restoreWorkspaceSettings: true,
+      })
+      const restored = await repository.exportPersonalWorkspace({
+        appVersion: '1.1.19',
+        context,
+      })
+      for (const column of [
+        'display_name',
+        'calendar_view_mode',
+        'energy_mode',
+        'default_time_zone',
+        'last_seen_time_zone',
+        'time_zone_mode',
+      ]) {
+        assert.equal(
+          restored.tables.users![0]![column],
+          exported.tables.users![0]![column],
+        )
+      }
+      for (const column of [
+        'default_time_zone',
+        'task_completion_confetti_enabled',
+      ]) {
+        assert.equal(
+          restored.tables.workspaces![0]![column],
+          exported.tables.workspaces![0]![column],
+        )
+      }
+      assert.equal(restored.tables.chaos_inbox_items![0]!.source, 'voice')
+      assert.equal(restored.tables.chaos_inbox_items![0]!.text, 'Покупка Алисы')
+      assert.equal(restored.tables.tasks![0]!.title, 'Существующая задача')
+      assert.deepEqual(
+        userBackupArchiveSchema.parse(JSON.parse(JSON.stringify(restored))),
+        restored,
+      )
+    } finally {
+      await connection.pool.query(
+        `delete from app.workspace_members where user_id=$1`,
+        [userId],
+      )
+      await connection.pool.query(
+        `delete from app.workspaces where owner_user_id=$1`,
+        [userId],
+      )
+      await connection.pool.query(`delete from app.users where id=$1`, [userId])
+    }
+  })
+}

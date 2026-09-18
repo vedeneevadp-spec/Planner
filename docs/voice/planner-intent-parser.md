@@ -1,5 +1,7 @@
 # PlannerIntentParser v1
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 `PlannerIntentParser` - общий слой разбора текста для Android wake word,
 Android push-to-talk, web push-to-talk и backend text flow.
 
