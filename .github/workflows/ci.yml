@@ -64,7 +64,11 @@ jobs:
           DATABASE_URL: postgres://planner_runtime:planner_runtime@127.0.0.1:5432/planner_ci
           DB_SECURITY_REQUIRE_NON_OWNER: '1'
       - run: npm run ci
+      - name: Prepare isolated voice migration test database
+        run: docker exec "${{ job.services.postgres.id }}" createdb --username planner voice_migration_tests
       - run: npm run test:api:postgres
+        env:
+          VOICE_REMOVAL_MIGRATION_TEST_DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/voice_migration_tests
       - run: npm run smoke:api:prod
         env:
           API_AUTH_MODE: jwt
@@ -138,7 +142,11 @@ jobs:
         env:
           DATABASE_URL: postgres://planner_runtime:planner_runtime@127.0.0.1:5432/planner_ci
           DB_SECURITY_REQUIRE_NON_OWNER: '1'
+      - name: Prepare isolated voice migration test database
+        run: docker exec "${{ job.services.postgres.id }}" createdb --username planner voice_migration_tests
       - run: npm run test:api:postgres
+        env:
+          VOICE_REMOVAL_MIGRATION_TEST_DATABASE_URL: postgres://planner:planner@127.0.0.1:5432/voice_migration_tests
       - run: npm run smoke:api:prod
         env:
           API_AUTH_MODE: jwt
