@@ -111,7 +111,7 @@ describe('ResourcePlanPanel', () => {
         onMoveTaskTomorrow={vi.fn()}
       />,
     )
-    expect(screen.getByText('Оценено 0 из 12')).toBeVisible()
+    expect(screen.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(screen.getByText('неполная оценка')).toBeVisible()
     expect(screen.queryByText('спокойно')).not.toBeInTheDocument()
     fireEvent.click(
@@ -142,7 +142,7 @@ describe('ResourcePlanPanel', () => {
         ]}
       />,
     )
-    expect(screen.getByText('Оценено 1 из 2')).toBeVisible()
+    expect(screen.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(screen.getByText('неполная оценка')).toBeVisible()
     fireEvent.click(
       screen.getByRole('button', { name: 'Открыть антиперегруз' }),
@@ -160,7 +160,7 @@ describe('ResourcePlanPanel', () => {
         ]}
       />,
     )
-    expect(screen.getByText('Оценено 2 из 2')).toBeVisible()
+    expect(screen.queryByText(/^Оценено /)).not.toBeInTheDocument()
     expect(screen.getByText('спокойно')).toBeVisible()
     expect(screen.getByText('Нагрузка задач')).toBeVisible()
     expect(screen.queryByText('Оценённая часть')).not.toBeInTheDocument()
@@ -207,7 +207,9 @@ describe('ResourcePlanPanel', () => {
         />,
       )
       expect(screen.getByText('неполная оценка')).toBeVisible()
-      expect(screen.getByText(/по загруженным задачам/)).toBeVisible()
+      expect(
+        screen.queryByText(/по загруженным задачам/),
+      ).not.toBeInTheDocument()
       expect(screen.queryByText('нет задач')).not.toBeInTheDocument()
       fireEvent.click(
         screen.getByRole('button', { name: 'Открыть антиперегруз' }),

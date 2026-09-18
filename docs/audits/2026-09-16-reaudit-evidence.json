@@ -1,0 +1,1120 @@
+{
+  "auditedAt": "2026-09-16T09:45:28.122Z",
+  "scope": "current worktree with uncommitted selected fixes; read-only source audit; synthetic isolated database only",
+  "inventory": {
+    "head": "bbdea25840e8f9ab078fedb3e767cd0d338ae142",
+    "branch": "codex/fix-selected-tech-debt-20260916",
+    "trackedFiles": 1355,
+    "allFiles": 1375,
+    "sourceFiles": 1102,
+    "sourceLines": 305922,
+    "testFiles": 226,
+    "migrations": 106,
+    "largest": [
+      {
+        "path": "apps/api/src/bootstrap/build-app.test.ts",
+        "lines": 3921,
+        "sha256": "2ebd829399a450eb10ba7d1292022d90deb9e82895e78a1be6be4479acbbb5b5"
+      },
+      {
+        "path": "apps/api/src/modules/self-care/self-care.repository.postgres.ts",
+        "lines": 3393,
+        "sha256": "b470a46b068ea46593dd7c9bb3e87d612005a0495bad0c374b6990f5ab07f850"
+      },
+      {
+        "path": "apps/web/src/features/self-care/lib/useSelfCare.ts",
+        "lines": 2671,
+        "sha256": "d514244d5d0346f0c3dcb9718ac14fdbfee0b4b8c292114b24cdd0e6380e68d7"
+      },
+      {
+        "path": "apps/api/src/bootstrap/openapi-paths.ts",
+        "lines": 2541,
+        "sha256": "cbc297e28e5d92b2a769e23740700e04befefdce6464cd1e32ab6f3ae64f8e05"
+      },
+      {
+        "path": "apps/api/src/modules/ai-context/ai-context.service.ts",
+        "lines": 2366,
+        "sha256": "26952a521f8c60bea46b3e7735da525396eb28b9ce74c7112e9dd63bdea9d8c5"
+      },
+      {
+        "path": "apps/api/src/bootstrap/openapi-contract-schemas.ts",
+        "lines": 2334,
+        "sha256": "ccfa0612bd5deee83bf1b98f1299a628b2b44632da19be8ce07d2adb4a38e304"
+      },
+      {
+        "path": "apps/api/src/modules/self-care/self-care.shared.ts",
+        "lines": 2256,
+        "sha256": "e80c8a04a821f1258905781d4777b9904b31c20657cca39ff9ba631dfbafca58"
+      },
+      {
+        "path": "apps/api/src/modules/tasks/task.repository.postgres.ts",
+        "lines": 2253,
+        "sha256": "6fec7e1b1f994df2832a495ff723182a492bf04681b40a20658b93c731369e18"
+      },
+      {
+        "path": "apps/web/src/features/self-care/lib/useSelfCare.test.tsx",
+        "lines": 2218,
+        "sha256": "642002f193048c22ce2123e12151f25255e8b283ac1122d2ca58f507ddf58f8a"
+      },
+      {
+        "path": "apps/web/src/pages/self-care/ui/SelfCarePage.module.css",
+        "lines": 2199,
+        "sha256": "bf6f6c2a56a585e75cea72073d0a878c29f0cd6841c72537a2505a99a7038046"
+      },
+      {
+        "path": "apps/api/src/modules/self-care/self-care.repository.memory.ts",
+        "lines": 2189,
+        "sha256": "393fd7b5446a8e6da9a69b8f959a42072d151ebd5d657cfd219e31cc1a3603b6"
+      },
+      {
+        "path": "apps/api/src/modules/self-care/self-care.repository.memory.test.ts",
+        "lines": 2179,
+        "sha256": "0b49a3dc0e4f77583bf90a42a3dc82f0437a705d0b90984031c6bdc03ec9ae34"
+      },
+      {
+        "path": "apps/web/src/features/planner/lib/offline-planner-store.ts",
+        "lines": 2148,
+        "sha256": "4c9dabec97ee705f07c73267ea25ecff689e12dd569e356d8b426fdc5bd7ca14"
+      },
+      {
+        "path": "packages/contracts/src/voice-test-corpus/corpus.ts",
+        "lines": 2133,
+        "sha256": "6a30eb376c3f4008f3965a1548c4a31ad925a4e07ecbf8127d78c8d1469526fe"
+      }
+    ]
+  },
+  "sourceFingerprintSha256": "994e00223aad6e5085e21c8289f49313a6431fc36da2be023ff580419dc975ad",
+  "sourceFilesChangedDuringAudit": [],
+  "quality": {
+    "toolchain": "Node24.19.0/npm12.0.2 passed",
+    "check": {
+      "exitCode": 1,
+      "cause": "scripts/deploy-prod.test.mjs:315 stale internalAppTables expectation"
+    },
+    "lint": "passed",
+    "format": "passed",
+    "typecheck": "passed",
+    "migrations": "106 applied; hygiene passed",
+    "productionConfigPolicy": "passed, not live production verification",
+    "deployTests": {
+      "passed": 9,
+      "failed": 1
+    },
+    "backupTests": {
+      "passed": 15,
+      "failed": 0
+    },
+    "mobileReleaseTests": {
+      "passed": 5,
+      "failed": 0
+    },
+    "actionlint": "passed",
+    "voiceQuality": "passed synthetic corpus",
+    "web": {
+      "passed": 1314,
+      "files": 144
+    },
+    "api": {
+      "passed": 374,
+      "failed": 0,
+      "coverageLines": 90.53,
+      "coverageBranches": 81.19
+    },
+    "postgres": {
+      "passed": 90,
+      "failed": 1,
+      "skipped": 0,
+      "cause": "self-care.repository.regression.postgres-spec.ts:103 compares unordered arrays after restore",
+      "focusedRepeat": {
+        "passed": 3,
+        "failed": 1
+      },
+      "contractCoverage": {
+        "passed": 50,
+        "coverageLines": 81.44,
+        "coverageBranches": 70.96
+      },
+      "poolerCoverage": {
+        "passed": 11,
+        "coverageLines": 91.75
+      }
+    },
+    "e2e": {
+      "passed": 19,
+      "failed": 0,
+      "workers": 1,
+      "nativeDevice": false
+    },
+    "deadcode": "passed",
+    "openapi": "passed; generic schemas remain",
+    "mobileConfig": "passed",
+    "dbSecurity": "owner and non-owner runtime roles passed on isolated DB",
+    "dependencyAudit": "runtime and full npm audit clean",
+    "build": {
+      "passed": true,
+      "entryKb": 107.9,
+      "initialJsKb": 781.8,
+      "initialLimitKb": 782
+    }
+  },
+  "webCoverage": {
+    "total": {
+      "lines": {
+        "total": 17640,
+        "covered": 12639,
+        "skipped": 0,
+        "pct": 71.64
+      },
+      "statements": {
+        "total": 17974,
+        "covered": 12848,
+        "skipped": 0,
+        "pct": 71.48
+      },
+      "functions": {
+        "total": 5080,
+        "covered": 3602,
+        "skipped": 0,
+        "pct": 70.9
+      },
+      "branches": {
+        "total": 16097,
+        "covered": 10448,
+        "skipped": 0,
+        "pct": 64.9
+      },
+      "branchesTrue": {
+        "total": 0,
+        "covered": 0,
+        "skipped": 0,
+        "pct": 100
+      }
+    },
+    "hotspots": {
+      "apps/web/src/features/habits/lib/useHabits.ts": {
+        "lines": {
+          "total": 318,
+          "covered": 1,
+          "skipped": 0,
+          "pct": 0.31
+        },
+        "functions": {
+          "total": 88,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 0
+        },
+        "statements": {
+          "total": 324,
+          "covered": 1,
+          "skipped": 0,
+          "pct": 0.3
+        },
+        "branches": {
+          "total": 162,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 0
+        }
+      },
+      "apps/web/src/features/planner/lib/offline-planner-sync.ts": {
+        "lines": {
+          "total": 136,
+          "covered": 120,
+          "skipped": 0,
+          "pct": 88.23
+        },
+        "functions": {
+          "total": 19,
+          "covered": 18,
+          "skipped": 0,
+          "pct": 94.73
+        },
+        "statements": {
+          "total": 137,
+          "covered": 120,
+          "skipped": 0,
+          "pct": 87.59
+        },
+        "branches": {
+          "total": 79,
+          "covered": 68,
+          "skipped": 0,
+          "pct": 86.07
+        }
+      },
+      "apps/web/src/features/planner/lib/usePlannerTaskCursor.ts": {
+        "lines": {
+          "total": 26,
+          "covered": 24,
+          "skipped": 0,
+          "pct": 92.3
+        },
+        "functions": {
+          "total": 11,
+          "covered": 11,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 26,
+          "covered": 24,
+          "skipped": 0,
+          "pct": 92.3
+        },
+        "branches": {
+          "total": 17,
+          "covered": 14,
+          "skipped": 0,
+          "pct": 82.35
+        }
+      },
+      "apps/web/src/features/planner/model/planner-mutations.ts": {
+        "lines": {
+          "total": 205,
+          "covered": 56,
+          "skipped": 0,
+          "pct": 27.31
+        },
+        "functions": {
+          "total": 109,
+          "covered": 24,
+          "skipped": 0,
+          "pct": 22.01
+        },
+        "statements": {
+          "total": 206,
+          "covered": 57,
+          "skipped": 0,
+          "pct": 27.66
+        },
+        "branches": {
+          "total": 115,
+          "covered": 13,
+          "skipped": 0,
+          "pct": 11.3
+        }
+      },
+      "apps/web/src/features/planner/model/planner-offline.ts": {
+        "lines": {
+          "total": 195,
+          "covered": 134,
+          "skipped": 0,
+          "pct": 68.71
+        },
+        "functions": {
+          "total": 56,
+          "covered": 41,
+          "skipped": 0,
+          "pct": 73.21
+        },
+        "statements": {
+          "total": 202,
+          "covered": 136,
+          "skipped": 0,
+          "pct": 67.32
+        },
+        "branches": {
+          "total": 150,
+          "covered": 92,
+          "skipped": 0,
+          "pct": 61.33
+        }
+      },
+      "apps/web/src/features/planner/model/planner-queries.ts": {
+        "lines": {
+          "total": 51,
+          "covered": 44,
+          "skipped": 0,
+          "pct": 86.27
+        },
+        "functions": {
+          "total": 18,
+          "covered": 11,
+          "skipped": 0,
+          "pct": 61.11
+        },
+        "statements": {
+          "total": 51,
+          "covered": 44,
+          "skipped": 0,
+          "pct": 86.27
+        },
+        "branches": {
+          "total": 30,
+          "covered": 14,
+          "skipped": 0,
+          "pct": 46.66
+        }
+      },
+      "apps/web/src/features/planner/model/usePlannerState.ts": {
+        "lines": {
+          "total": 359,
+          "covered": 152,
+          "skipped": 0,
+          "pct": 42.33
+        },
+        "functions": {
+          "total": 86,
+          "covered": 37,
+          "skipped": 0,
+          "pct": 43.02
+        },
+        "statements": {
+          "total": 360,
+          "covered": 152,
+          "skipped": 0,
+          "pct": 42.22
+        },
+        "branches": {
+          "total": 332,
+          "covered": 144,
+          "skipped": 0,
+          "pct": 43.37
+        }
+      },
+      "apps/web/src/features/self-care/lib/useSelfCare.ts": {
+        "lines": {
+          "total": 629,
+          "covered": 513,
+          "skipped": 0,
+          "pct": 81.55
+        },
+        "functions": {
+          "total": 231,
+          "covered": 194,
+          "skipped": 0,
+          "pct": 83.98
+        },
+        "statements": {
+          "total": 639,
+          "covered": 522,
+          "skipped": 0,
+          "pct": 81.69
+        },
+        "branches": {
+          "total": 445,
+          "covered": 291,
+          "skipped": 0,
+          "pct": 65.39
+        }
+      },
+      "apps/web/src/features/voice-assistant/model/useVoiceActionFlow.ts": {
+        "lines": {
+          "total": 204,
+          "covered": 93,
+          "skipped": 0,
+          "pct": 45.58
+        },
+        "functions": {
+          "total": 48,
+          "covered": 15,
+          "skipped": 0,
+          "pct": 31.25
+        },
+        "statements": {
+          "total": 206,
+          "covered": 94,
+          "skipped": 0,
+          "pct": 45.63
+        },
+        "branches": {
+          "total": 137,
+          "covered": 38,
+          "skipped": 0,
+          "pct": 27.73
+        }
+      },
+      "apps/web/src/pages/today/ui/ResourcePlanPanel.tsx": {
+        "lines": {
+          "total": 17,
+          "covered": 17,
+          "skipped": 0,
+          "pct": 100
+        },
+        "functions": {
+          "total": 7,
+          "covered": 7,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 18,
+          "covered": 18,
+          "skipped": 0,
+          "pct": 100
+        },
+        "branches": {
+          "total": 53,
+          "covered": 52,
+          "skipped": 0,
+          "pct": 98.11
+        }
+      }
+    }
+  },
+  "diagnostics": {
+    "backend": {
+      "checkedAt": "2026-09-16T09:35:46.785Z",
+      "database": "isolated localhost:55439/planner_reaudit",
+      "findings": [
+        {
+          "id": "ritual_form_draft_loss",
+          "beforeDraftCount": 1,
+          "afterDraftCount": 0,
+          "occurrenceRemoved": true,
+          "itemId": "01a0a992-84ab-75ab-b185-fc1bf65d2acb",
+          "completedHistoryAffected": false
+        },
+        {
+          "id": "backup_cannot_restore_retired_step",
+          "beforeBackupStepCount": 2,
+          "afterRemovalStepCount": 1,
+          "afterRestoreStepCount": 1,
+          "retiredStepId": "01a0a992-852e-7538-9782-2ddb04eb0e51",
+          "retainedDeletedAt": "2026-09-16T09:35:47.094Z",
+          "tableResult": {
+            "inserted": 0,
+            "kept": 4,
+            "name": "self_care_ritual_steps",
+            "resurrected": 0,
+            "skipped": 0,
+            "updated": 0
+          }
+        },
+        {
+          "id": "nullable_rule_timezone_drift",
+          "itemId": "01a0a992-85c4-7f59-b31b-0b36e6553ef2",
+          "persistedRuleTimezone": null,
+          "plannerTimezone": "Asia/Novosibirsk",
+          "interactiveDueAt": "2026-09-16T02:00:00.000Z",
+          "backgroundDueAt": "2026-09-17T09:00:00.000Z",
+          "expectedNextDueAt": "2026-09-17T02:00:00.000Z",
+          "interpretation": "Observed interactive02Z vs background09Z; fixture profileUTC. expectedNextDueAt is continuation of interactive timezone, not an established product-policy requirement."
+        },
+        {
+          "id": "TD13_still_reproduced",
+          "firstClaimId": "01a0a992-860b-7d43-b036-cee732c4de1b",
+          "secondClaimId": "01a0a992-860b-7d43-b036-cee732c4de1b",
+          "acknowledgedBetweenClaims": false,
+          "actualPushSent": false
+        },
+        {
+          "id": "same_actor_workspace_provision_race",
+          "actorId": "078caa42-9b8d-45c5-aba6-a3de83995840",
+          "firstRows": [
+            {
+              "provisioned_workspace_id": "870a66b4-fb8c-4f06-b6a2-415582e020c1"
+            }
+          ],
+          "secondRows": [],
+          "separateFromDistinctActorSlugCollision": true
+        }
+      ],
+      "cleanupConfirmed": true,
+      "passed": true
+    },
+    "backupScope": {
+      "checkedAt": "2026-09-16T09:39:41.332Z",
+      "database": "isolated localhost:55439/planner_reaudit",
+      "syntheticOnly": true,
+      "passed": true,
+      "confirmedCrossUserWrite": true,
+      "requiredKnownIdentifier": "victim self_care_item UUID only",
+      "attackerCanReadVictimItemThroughNormalApi": false,
+      "validationWarnings": [],
+      "previewCanRestore": true,
+      "victimStepTitlesBefore": ["Original victim step"],
+      "victimStepTitlesAfter": [
+        "Original victim step",
+        "Injected synthetic step"
+      ],
+      "restoreItems": {
+        "inserted": 0,
+        "kept": 1,
+        "name": "self_care_items",
+        "resurrected": 0,
+        "skipped": 0,
+        "updated": 0
+      },
+      "restoreSteps": {
+        "inserted": 1,
+        "kept": 0,
+        "name": "self_care_ritual_steps",
+        "resurrected": 0,
+        "skipped": 0,
+        "updated": 0
+      },
+      "fixtureIds": {
+        "attackerUserId": "2624da13-a545-452a-9cfd-ee6fbff9c244",
+        "victimUserId": "79ad0c93-3ecf-4d84-aebf-11b4c2df0493",
+        "attackerWorkspaceId": "5973559e-7e89-4806-b462-cee785eaac0c",
+        "victimWorkspaceId": "bcfc4967-3a28-49bb-b1bd-36fa57d32d09",
+        "victimItemId": "01a0a996-18de-71d4-b1e1-faaccae8744d"
+      },
+      "cleanupConfirmed": true
+    },
+    "replay": {
+      "backend": "isolated planner_reaudit / API3106",
+      "runtime": "current source + fake-indexeddb + real HTTP; injected acknowledgement interruption, not a physical browser crash",
+      "response-lost": {
+        "first": {
+          "failed": 1,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 0
+        },
+        "serverAfterFirst": {
+          "title": "edited-response-lost",
+          "version": 2,
+          "status": "todo"
+        },
+        "afterFirst": [
+          {
+            "id": "01a0a994-fd32-7760-8ef7-db819a80d615",
+            "type": "task.update",
+            "taskId": "01a0a994-fca8-7b82-81c4-c89f44653ba9",
+            "status": "failed",
+            "expectedVersion": 1,
+            "actualVersion": null,
+            "attemptCount": 1
+          }
+        ],
+        "replay": {
+          "failed": 0,
+          "processed": 2,
+          "synced": 1,
+          "conflicted": 2
+        },
+        "afterReplay": [
+          {
+            "id": "01a0a994-fd32-7760-8ef7-db819a80d615",
+            "type": "task.update",
+            "taskId": "01a0a994-fca8-7b82-81c4-c89f44653ba9",
+            "status": "conflicted",
+            "code": "task_version_conflict",
+            "expectedVersion": 1,
+            "actualVersion": 2,
+            "attemptCount": 2
+          },
+          {
+            "id": "01a0a994-fd7f-7bde-8fb8-b036372a4aa5",
+            "type": "task.status.update",
+            "taskId": "01a0a994-fca8-7b82-81c4-c89f44653ba9",
+            "status": "conflicted",
+            "code": "dependency_blocked",
+            "expectedVersion": 2,
+            "actualVersion": null,
+            "attemptCount": 0
+          }
+        ],
+        "retry": {
+          "failed": 0,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 2
+        },
+        "afterRetry": [
+          {
+            "id": "01a0a994-fd32-7760-8ef7-db819a80d615",
+            "type": "task.update",
+            "taskId": "01a0a994-fca8-7b82-81c4-c89f44653ba9",
+            "status": "conflicted",
+            "code": "task_version_conflict",
+            "expectedVersion": 1,
+            "actualVersion": 2,
+            "attemptCount": 3
+          },
+          {
+            "id": "01a0a994-fd7f-7bde-8fb8-b036372a4aa5",
+            "type": "task.status.update",
+            "taskId": "01a0a994-fca8-7b82-81c4-c89f44653ba9",
+            "status": "conflicted",
+            "code": "dependency_blocked",
+            "expectedVersion": 2,
+            "actualVersion": null,
+            "attemptCount": 0
+          }
+        ],
+        "independentStatus": "done",
+        "calls": [
+          {
+            "method": "update",
+            "id": "01a0a994-fca8-7b82-81c4-c89f44653ba9",
+            "responseVersion": 2
+          }
+        ]
+      },
+      "after-callback-before-complete": {
+        "first": {
+          "failed": 1,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 0
+        },
+        "serverAfterFirst": {
+          "title": "edited-after-callback-before-complete",
+          "version": 2,
+          "status": "todo"
+        },
+        "afterFirst": [
+          {
+            "id": "01a0a994-fe32-7bac-ad5e-0286af23badf",
+            "type": "task.update",
+            "taskId": "01a0a994-fe10-7814-8d04-7c0b2c5bf1be",
+            "status": "failed",
+            "expectedVersion": 1,
+            "actualVersion": null,
+            "attemptCount": 1
+          }
+        ],
+        "replay": {
+          "failed": 0,
+          "processed": 2,
+          "synced": 1,
+          "conflicted": 2
+        },
+        "afterReplay": [
+          {
+            "id": "01a0a994-fe32-7bac-ad5e-0286af23badf",
+            "type": "task.update",
+            "taskId": "01a0a994-fe10-7814-8d04-7c0b2c5bf1be",
+            "status": "conflicted",
+            "code": "task_version_conflict",
+            "expectedVersion": 1,
+            "actualVersion": 2,
+            "attemptCount": 2
+          },
+          {
+            "id": "01a0a994-fe54-7ac5-8b63-4483fae598ce",
+            "type": "task.status.update",
+            "taskId": "01a0a994-fe10-7814-8d04-7c0b2c5bf1be",
+            "status": "conflicted",
+            "code": "dependency_blocked",
+            "expectedVersion": 2,
+            "actualVersion": null,
+            "attemptCount": 0
+          }
+        ],
+        "retry": {
+          "failed": 0,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 2
+        },
+        "afterRetry": [
+          {
+            "id": "01a0a994-fe32-7bac-ad5e-0286af23badf",
+            "type": "task.update",
+            "taskId": "01a0a994-fe10-7814-8d04-7c0b2c5bf1be",
+            "status": "conflicted",
+            "code": "task_version_conflict",
+            "expectedVersion": 1,
+            "actualVersion": 2,
+            "attemptCount": 3
+          },
+          {
+            "id": "01a0a994-fe54-7ac5-8b63-4483fae598ce",
+            "type": "task.status.update",
+            "taskId": "01a0a994-fe10-7814-8d04-7c0b2c5bf1be",
+            "status": "conflicted",
+            "code": "dependency_blocked",
+            "expectedVersion": 2,
+            "actualVersion": null,
+            "attemptCount": 0
+          }
+        ],
+        "independentStatus": "done",
+        "calls": [
+          {
+            "method": "update",
+            "id": "01a0a994-fe10-7814-8d04-7c0b2c5bf1be",
+            "responseVersion": 2
+          }
+        ]
+      },
+      "pendingCacheOverwrite": {
+        "beforeRead": [
+          {
+            "title": "cache-first-offline-edit",
+            "version": 2
+          }
+        ],
+        "afterRead": [
+          {
+            "title": "cache-original",
+            "version": 1
+          }
+        ],
+        "replay": {
+          "failed": 0,
+          "processed": 2,
+          "synced": 1,
+          "conflicted": 1
+        },
+        "serverAfter": {
+          "title": "cache-first-offline-edit",
+          "version": 2
+        },
+        "queue": [
+          {
+            "id": "01a0a994-feba-7d11-ad5e-1d9438efa289",
+            "type": "task.update",
+            "taskId": "01a0a994-fe9d-78cb-b2a3-54e8caf89a14",
+            "status": "conflicted",
+            "code": "task_version_conflict",
+            "expectedVersion": 1,
+            "actualVersion": 2,
+            "attemptCount": 1
+          }
+        ]
+      }
+    },
+    "orphanCache": {
+      "cleanedWorkspaceIds": ["personal-a"],
+      "failures": [],
+      "personalAfter": [],
+      "leftSharedAfter": ["synthetic shared confidential"],
+      "leftSharedQueueAfter": [
+        {
+          "type": "task.status.update",
+          "status": "pending",
+          "actorUserId": "synthetic-user-a",
+          "workspaceId": "left-shared-b"
+        }
+      ]
+    },
+    "baseline": {
+      "voiceWorkspace": {
+        "preparedFor": "personal-A",
+        "executedFor": "shared-B",
+        "status": "success",
+        "writes": [
+          {
+            "workspaceId": "shared-B",
+            "input": {
+              "assigneeUserId": null,
+              "dueDate": null,
+              "icon": "",
+              "importance": "not_important",
+              "note": "",
+              "plannedDate": null,
+              "plannedEndTime": null,
+              "plannedStartTime": null,
+              "project": "",
+              "projectId": null,
+              "recurrence": null,
+              "remindBeforeStart": false,
+              "reminderOffsets": [],
+              "requiresConfirmation": false,
+              "resource": null,
+              "routine": null,
+              "sphereId": null,
+              "title": "личная тестовая задача",
+              "urgency": "not_urgent",
+              "id": "01a0a997-60b7-7427-8eb0-cae5ff71481b"
+            }
+          }
+        ]
+      },
+      "queueTerminal403": {
+        "calls": ["forbidden-task", "valid-task"],
+        "drainResults": [
+          {
+            "failed": 0,
+            "processed": 2,
+            "synced": 1,
+            "conflicted": 1
+          },
+          {
+            "failed": 0,
+            "processed": 0,
+            "synced": 0,
+            "conflicted": 0
+          },
+          {
+            "failed": 0,
+            "processed": 0,
+            "synced": 0,
+            "conflicted": 0
+          }
+        ],
+        "queue": []
+      },
+      "coordinator": {
+        "whileAHangs": ["A"],
+        "afterACompletes": ["A", "B"]
+      },
+      "iosBridge": {
+        "registeredMethods": ["get", "set", "remove"],
+        "requiredBySharedNativeClient": [
+          "get",
+          "set",
+          "remove",
+          "prepareRefresh",
+          "commitRefresh"
+        ]
+      }
+    },
+    "product": {
+      "futureActivity": {
+        "color": "#000",
+        "completedCount": 0,
+        "activityState": "active",
+        "icon": "",
+        "idleDays": 0,
+        "isUnassigned": false,
+        "lastActivityAt": "2026-12-01",
+        "overdueCount": 0,
+        "plannedCount": 0,
+        "projectId": "s",
+        "sphereId": "s",
+        "title": "Здоровье",
+        "totalResource": 0,
+        "weeklyLoad": 0,
+        "weeklyShare": 0
+      },
+      "archivedLoad": {
+        "color": "#000",
+        "completedCount": 0,
+        "activityState": "active",
+        "icon": "",
+        "idleDays": 0,
+        "isUnassigned": false,
+        "lastActivityAt": "2026-09-16",
+        "overdueCount": 0,
+        "plannedCount": 0,
+        "projectId": "s",
+        "sphereId": "s",
+        "title": "Здоровье",
+        "totalResource": 4,
+        "weeklyLoad": 4,
+        "weeklyShare": 100
+      },
+      "completedThisWeekPlannedLastWeek": {
+        "color": "#000",
+        "completedCount": 1,
+        "activityState": "active",
+        "icon": "",
+        "idleDays": 0,
+        "isUnassigned": false,
+        "lastActivityAt": "2026-09-16",
+        "overdueCount": 0,
+        "plannedCount": 0,
+        "projectId": "s",
+        "sphereId": "s",
+        "title": "Здоровье",
+        "totalResource": 0,
+        "weeklyLoad": 0,
+        "weeklyShare": 0
+      },
+      "historyDate": {
+        "stored": "2026-09-15T18:30:00.000Z",
+        "renderedDate": "2026-09-15",
+        "localDate": "2026-09-16"
+      },
+      "td10Now": {
+        "unrated12": {
+          "assessedState": "calm",
+          "assessedTaskCount": 0,
+          "isComplete": false,
+          "resourceLimit": 8,
+          "overloadScore": 0,
+          "state": "unknown",
+          "totalResource": 0,
+          "totalTaskCount": 12,
+          "unassessedTaskCount": 12
+        },
+        "neutralKnown": {
+          "assessedState": "calm",
+          "assessedTaskCount": 1,
+          "isComplete": true,
+          "resourceLimit": 8,
+          "overloadScore": 0,
+          "state": "calm",
+          "totalResource": 0,
+          "totalTaskCount": 1,
+          "unassessedTaskCount": 0
+        },
+        "partialSource": {
+          "assessedState": "calm",
+          "assessedTaskCount": 1,
+          "isComplete": false,
+          "resourceLimit": 8,
+          "overloadScore": 13,
+          "state": "unknown",
+          "totalResource": 1,
+          "totalTaskCount": 1,
+          "unassessedTaskCount": 0
+        }
+      },
+      "unloadPolicy": ["urgent-required-due-today", "optional"]
+    },
+    "shopping": {
+      "synthetic": true,
+      "requests": [
+        "http://127.0.0.1:3106/api/v1/chaos-inbox?kind=shopping&limit=200",
+        "http://127.0.0.1:3106/api/v1/chaos-inbox?kind=shopping&limit=200",
+        "http://127.0.0.1:3106/api/v1/chaos-inbox?kind=shopping&limit=200",
+        "http://127.0.0.1:3106/api/v1/chaos-inbox?kind=shopping&limit=200",
+        "http://127.0.0.1:3106/api/v1/chaos-inbox?kind=shopping&limit=200"
+      ],
+      "oldItemId": "01a0a995-da69-728d-8597-8d296150aec1",
+      "total": 201,
+      "loaded": 200,
+      "oldActiveInFirstPage": false,
+      "activeApiTotal": 1,
+      "activeApiContainsOld": true,
+      "oldVisible": false,
+      "failureCount": 2,
+      "staleStatus": {
+        "alerts": [],
+        "statuses": [],
+        "retryButtons": []
+      },
+      "todayShowsShoppingError": true
+    },
+    "readModel": {
+      "environment": "local Postgres18; synthetic rows; RLS transaction_local; warm serial calls, no HTTP/native/network",
+      "results": [
+        {
+          "taskCount": 100,
+          "returned": 100,
+          "coverage": {
+            "active": {
+              "returnedCount": 80,
+              "totalCount": 80,
+              "truncated": false
+            },
+            "history": {
+              "returnedCount": 20,
+              "totalCount": 20,
+              "truncated": false
+            },
+            "range": {
+              "returnedCount": 97,
+              "totalCount": 97,
+              "truncated": false
+            }
+          },
+          "queryCount": 37,
+          "selects": 22,
+          "exactCounts": 4,
+          "iterations": 8,
+          "medianMs": 19.2,
+          "maxMs": 20.9,
+          "payloadBytes": 92843
+        },
+        {
+          "taskCount": 1000,
+          "returned": 649,
+          "coverage": {
+            "active": {
+              "returnedCount": 500,
+              "totalCount": 800,
+              "truncated": true
+            },
+            "history": {
+              "returnedCount": 100,
+              "totalCount": 200,
+              "truncated": true
+            },
+            "range": {
+              "returnedCount": 250,
+              "totalCount": 968,
+              "truncated": true
+            }
+          },
+          "queryCount": 37,
+          "selects": 22,
+          "exactCounts": 4,
+          "iterations": 8,
+          "medianMs": 52.6,
+          "maxMs": 54,
+          "payloadBytes": 602133
+        },
+        {
+          "taskCount": 10000,
+          "returned": 649,
+          "coverage": {
+            "active": {
+              "returnedCount": 500,
+              "totalCount": 8000,
+              "truncated": true
+            },
+            "history": {
+              "returnedCount": 100,
+              "totalCount": 2000,
+              "truncated": true
+            },
+            "range": {
+              "returnedCount": 250,
+              "totalCount": 9678,
+              "truncated": true
+            }
+          },
+          "queryCount": 37,
+          "selects": 22,
+          "exactCounts": 4,
+          "iterations": 8,
+          "medianMs": 238.8,
+          "maxMs": 241.3,
+          "payloadBytes": 602487
+        }
+      ]
+    },
+    "ai": {
+      "todayCompleted": ["Completed yesterday but planned today"],
+      "providedGeneralItems": ["General cleaning due today"],
+      "aiCleaningTasks": [],
+      "aiCleaningOverdue": [],
+      "requestedRange": {
+        "from": "2030-01-01",
+        "to": "2030-01-31"
+      },
+      "cleaningDatesActuallyRead": [
+        "2030-01-01",
+        "2030-01-02",
+        "2030-01-03",
+        "2030-01-04",
+        "2030-01-05",
+        "2030-01-06",
+        "2030-01-07",
+        "2030-01-08",
+        "2030-01-09",
+        "2030-01-10",
+        "2030-01-11",
+        "2030-01-12",
+        "2030-01-13",
+        "2030-01-14"
+      ],
+      "rangeCoverage": {
+        "shopping": {
+          "returnedCount": 0,
+          "totalCount": 0,
+          "truncated": false
+        },
+        "tasks": {
+          "returnedCount": 2,
+          "totalCount": 2,
+          "truncated": false
+        }
+      }
+    },
+    "aiEvidenceLevel": "AI Today scope mismatch: CODE only; completed-date and general-cleaning mapping: synthetic in-memory AiContextService adapters, no live MCP"
+  },
+  "limitations": [
+    "Production and database54329 not accessed",
+    "No physical Android/iOS device, real microphone, or real push delivery",
+    "Full suite serial E2E does not disprove provisioning races",
+    "Runtime local service/helper diagnostics are not full live HTTP backup-helper penetration testing",
+    "Readmodel serial warm timings are not production latency, p95, or mobile first-render times"
+  ],
+  "auditCompletedAt": "2026-09-16T09:54:57.009Z",
+  "cleanup": {
+    "temporaryApiStopped": true,
+    "temporaryWebStopped": true,
+    "temporaryDatabaseContainerRemoved": "planner-reaudit-20260916",
+    "realDatabaseTouched": false
+  }
+}

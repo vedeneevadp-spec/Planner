@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -47,10 +48,14 @@ describe('TaskEditDialog', () => {
   })
 
   it.each([
-    { initial: null, choice: null, expected: null },
+    { initial: null, choice: null, expected: 0 },
     { initial: 0, choice: null, expected: 0 },
-    { initial: null, choice: 'Нейтрально', expected: 0 },
-    { initial: 0, choice: 'Не указано', expected: null },
+    { initial: -2, choice: null, expected: -2 },
+    { initial: 3, choice: null, expected: 3 },
+    { initial: null, choice: 'Расход 2', expected: -2 },
+    { initial: 0, choice: 'Восстановление 3', expected: 3 },
+    { initial: -2, choice: 'Расход 2', expected: 0 },
+    { initial: 3, choice: 'Восстановление 3', expected: 0 },
   ])(
     'saves resource $initial with choice $choice as $expected while editing another field',
     async ({ initial, choice, expected }) => {
@@ -66,11 +71,12 @@ describe('TaskEditDialog', () => {
           onUpdate={onUpdate}
         />,
       )
+      const resourcePicker = within(
+        screen.getByRole('group', { name: 'Ресурс' }),
+      )
       expect(
-        screen.getByRole('button', {
-          name: initial === null ? 'Не указано' : 'Нейтрально',
-        }),
-      ).toHaveAttribute('aria-pressed', 'true')
+        resourcePicker.queryAllByRole('button', { pressed: true }),
+      ).toHaveLength(initial ? 1 : 0)
       fireEvent.change(screen.getByLabelText('Задача'), {
         target: { value: 'Updated title' },
       })

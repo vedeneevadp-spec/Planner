@@ -86,10 +86,6 @@ export function ResourcePlanPanel({
           </button>
         </div>
       </div>
-      <p className={styles.coverage}>
-        Оценено {analysis.assessedTaskCount} из {analysis.totalTaskCount}
-        {!isTaskDataComplete ? ' · по загруженным задачам' : null}
-      </p>
       {isExpanded ? (
         <>
           <div
