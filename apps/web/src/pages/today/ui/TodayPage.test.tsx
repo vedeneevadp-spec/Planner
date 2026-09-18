@@ -34,7 +34,6 @@ interface PlannerSessionStub {
   role: 'owner'
   userPreferences: {
     energyMode: 'normal'
-    voiceAssistantEnabled: true
   }
   workspace: {
     id: string
@@ -290,7 +289,6 @@ function createSession(kind: WorkspaceKind): PlannerSessionStub {
     role: 'owner',
     userPreferences: {
       energyMode: 'normal',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       id: `${kind}-workspace`,

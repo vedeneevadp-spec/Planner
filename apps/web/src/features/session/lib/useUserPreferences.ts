@@ -89,9 +89,6 @@ export function useUpdateUserPreferences() {
                   ...(input.timeZoneMode
                     ? { timeZoneMode: input.timeZoneMode }
                     : {}),
-                  ...(input.voiceAssistantEnabled !== undefined
-                    ? { voiceAssistantEnabled: input.voiceAssistantEnabled }
-                    : {}),
                 },
               }
             : current,

@@ -91,7 +91,6 @@ const USER_SAFE_RESTORE_COLUMNS = [
   'time_zone_mode',
   'calendar_view_mode',
   'energy_mode',
-  'voice_assistant_enabled',
 ] as const
 
 const WORKSPACE_SAFE_RESTORE_COLUMNS = [
@@ -99,7 +98,6 @@ const WORKSPACE_SAFE_RESTORE_COLUMNS = [
   'description',
   'default_time_zone',
   'task_completion_confetti_enabled',
-  'wake_word_training_mode_enabled',
 ] as const
 
 const NON_RESTORED_UPDATE_COLUMNS = new Set([

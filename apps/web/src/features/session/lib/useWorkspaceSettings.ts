@@ -68,12 +68,6 @@ export function useUpdateWorkspaceSettings() {
                           input.taskCompletionConfettiEnabled,
                       }
                     : {}),
-                  ...(input.wakeWordTrainingModeEnabled !== undefined
-                    ? {
-                        wakeWordTrainingModeEnabled:
-                          input.wakeWordTrainingModeEnabled,
-                      }
-                    : {}),
                 },
               }
             : current,

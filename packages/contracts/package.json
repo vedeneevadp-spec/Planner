@@ -4,8 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./backup": "./src/backup.ts",
-    "./voice-test-corpus": "./src/voice-test-corpus/index.ts"
+    "./backup": "./src/backup.ts"
   },
   "dependencies": {
     "zod": "^4.4.3"

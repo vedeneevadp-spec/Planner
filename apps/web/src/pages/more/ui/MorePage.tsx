@@ -45,7 +45,6 @@ import {
   DownloadIcon,
   EditIcon,
   GearIcon,
-  MicIcon,
   MoonIcon,
   PlusIcon,
   SunIcon,
@@ -629,18 +628,11 @@ export function MorePage() {
           <span>{themeLabel}</span>
         </button>
         {session ? (
-          <>
-            <MoreActionLink
-              icon={<BellIcon size={19} strokeWidth={2} />}
-              label="Уведомления"
-              to="/notifications/settings"
-            />
-            <MoreActionLink
-              icon={<MicIcon size={19} strokeWidth={2} />}
-              label="Голосовой помощник"
-              to="/voice-assistant/settings"
-            />
-          </>
+          <MoreActionLink
+            icon={<BellIcon size={19} strokeWidth={2} />}
+            label="Уведомления"
+            to="/notifications/settings"
+          />
         ) : null}
       </section>
 

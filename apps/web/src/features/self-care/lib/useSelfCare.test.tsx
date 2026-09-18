@@ -1772,7 +1772,6 @@ function createPersonalSession(
       energyMode: 'normal',
       lastSeenTimeZone: null,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       id: WORKSPACE_ID,
@@ -1784,7 +1783,6 @@ function createPersonalSession(
     workspaceSettings: {
       defaultTimeZone: null,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     },
     workspaces: [],
     ...overrides,

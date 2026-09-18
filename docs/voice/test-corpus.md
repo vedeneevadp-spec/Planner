@@ -1,5 +1,7 @@
 # Voice test corpus
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 Статус: `voice-command-corpus.v1` реализован как shared TypeScript fixture в
 `packages/contracts/src/voice-test-corpus`.
 

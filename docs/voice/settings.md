@@ -1,5 +1,7 @@
 # Voice Assistant Settings
 
+> Архив: встроенный голосовой ввод удалён. Это описание предыдущей реализации, не инструкция для текущей версии. Интеграция с Алисой сохранена. См. [отчёт и план перехода](../voice-removal/report.md).
+
 ## Responsibility
 
 The settings layer controls availability and local runtime behavior for the existing voice assistant. It does not add intents, change parsing or action execution, enable auto-confirm, connect TTS, or expose STT/LLM provider choices.

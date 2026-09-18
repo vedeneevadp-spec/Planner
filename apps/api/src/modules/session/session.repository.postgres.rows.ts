@@ -17,7 +17,6 @@ export interface SessionRow {
   sharedTaskCreatedNotificationsEnabled: boolean
   sharedTaskReadyForReviewNotificationsEnabled: boolean
   timeZoneMode: 'device' | 'manual' | 'workspace'
-  voiceAssistantEnabled: boolean
   actorDisplayName: string
   actorEmail: string
   actorId: string
@@ -26,7 +25,6 @@ export interface SessionRow {
   role: WorkspaceRole
   taskCompletionConfettiEnabled: boolean
   workspaceDefaultTimeZone: string | null
-  wakeWordTrainingModeEnabled: boolean
   workspaceId: string
   workspaceKind: WorkspaceKind
   workspaceName: string
@@ -110,7 +108,6 @@ export interface AppActorRow {
   sharedTaskCreatedNotificationsEnabled: boolean
   sharedTaskReadyForReviewNotificationsEnabled: boolean
   timeZoneMode: 'device' | 'manual' | 'workspace'
-  voiceAssistantEnabled: boolean
   displayName: string
   email: string
   id: string

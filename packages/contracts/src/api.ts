@@ -181,7 +181,6 @@ export const sessionWorkspaceMembershipSchema = sessionWorkspaceSchema.extend({
 export const workspaceSettingsSchema = z.object({
   defaultTimeZone: z.string().nullable().default(null),
   taskCompletionConfettiEnabled: z.boolean(),
-  wakeWordTrainingModeEnabled: z.boolean().default(false),
 })
 
 export const calendarViewModeSchema = z.enum([
@@ -201,7 +200,6 @@ export const userPreferencesSchema = z.object({
   sharedTaskCreatedNotificationsEnabled: z.boolean().optional(),
   sharedTaskReadyForReviewNotificationsEnabled: z.boolean().optional(),
   timeZoneMode: timeZoneModeSchema.default('device'),
-  voiceAssistantEnabled: z.boolean().default(true),
 })
 
 export const sessionResponseSchema = z.object({
@@ -303,7 +301,6 @@ export const updateSharedWorkspaceInputSchema = z.object({
 export const workspaceSettingsUpdateInputSchema = z.object({
   defaultTimeZone: z.string().trim().min(1).nullable().optional(),
   taskCompletionConfettiEnabled: z.boolean(),
-  wakeWordTrainingModeEnabled: z.boolean(),
 })
 
 export const userPreferencesUpdateInputSchema = z
@@ -316,7 +313,6 @@ export const userPreferencesUpdateInputSchema = z
     sharedTaskCreatedNotificationsEnabled: z.boolean().optional(),
     sharedTaskReadyForReviewNotificationsEnabled: z.boolean().optional(),
     timeZoneMode: timeZoneModeSchema.optional(),
-    voiceAssistantEnabled: z.boolean().optional(),
   })
   .refine(
     (value) =>
@@ -328,8 +324,7 @@ export const userPreferencesUpdateInputSchema = z
         value.sharedTaskAssignedNotificationsEnabled !== undefined ||
         value.sharedTaskCreatedNotificationsEnabled !== undefined ||
         value.sharedTaskReadyForReviewNotificationsEnabled !== undefined ||
-        value.timeZoneMode ||
-        value.voiceAssistantEnabled !== undefined,
+        value.timeZoneMode,
       ),
     'At least one preference must be updated.',
   )
@@ -709,12 +704,6 @@ export type AssignableAppRole = z.infer<typeof assignableAppRoleSchema>
 export type AssignableWorkspaceGroupRole = z.infer<
   typeof assignableWorkspaceGroupRoleSchema
 >
-
-export function canUseVoiceAssistant(
-  appRole: AppRole | null | undefined,
-): boolean {
-  return appRole === 'owner' || appRole === 'test'
-}
 
 export type HealthDatabaseStatus = z.infer<typeof healthDatabaseStatusSchema>
 export type HealthResponse = z.infer<typeof healthResponseSchema>

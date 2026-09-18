@@ -28,7 +28,6 @@ interface SessionStub {
   userPreferences: {
     calendarViewMode: CalendarViewMode
     energyMode: 'normal'
-    voiceAssistantEnabled: true
   }
   workspace: {
     kind: 'personal' | 'shared'
@@ -902,7 +901,6 @@ function createSession(calendarViewMode: CalendarViewMode): SessionStub {
     userPreferences: {
       calendarViewMode,
       energyMode: 'normal',
-      voiceAssistantEnabled: true,
     },
     workspace: {
       kind: 'personal',

@@ -838,14 +838,12 @@ export class PostgresSessionRepository implements SessionRepository {
               : {}),
             task_completion_confetti_enabled:
               input.taskCompletionConfettiEnabled,
-            wake_word_training_mode_enabled: input.wakeWordTrainingModeEnabled,
           })
           .where('id', '=', session.workspaceId)
           .where('deleted_at', 'is', null)
           .returning([
             'default_time_zone as defaultTimeZone',
             'task_completion_confetti_enabled as taskCompletionConfettiEnabled',
-            'wake_word_training_mode_enabled as wakeWordTrainingModeEnabled',
           ])
           .executeTakeFirst(),
     )
@@ -862,7 +860,6 @@ export class PostgresSessionRepository implements SessionRepository {
       defaultTimeZone: updatedWorkspace.defaultTimeZone,
       taskCompletionConfettiEnabled:
         updatedWorkspace.taskCompletionConfettiEnabled,
-      wakeWordTrainingModeEnabled: updatedWorkspace.wakeWordTrainingModeEnabled,
     }
   }
 
@@ -901,9 +898,6 @@ export class PostgresSessionRepository implements SessionRepository {
           }
         : {}),
       ...(input.timeZoneMode ? { time_zone_mode: input.timeZoneMode } : {}),
-      ...(input.voiceAssistantEnabled !== undefined
-        ? { voice_assistant_enabled: input.voiceAssistantEnabled }
-        : {}),
     }
     const returningColumns = [
       'calendar_view_mode as calendarViewMode',
@@ -914,7 +908,6 @@ export class PostgresSessionRepository implements SessionRepository {
       'shared_task_created_notifications_enabled as sharedTaskCreatedNotificationsEnabled',
       'shared_task_ready_for_review_notifications_enabled as sharedTaskReadyForReviewNotificationsEnabled',
       'time_zone_mode as timeZoneMode',
-      'voice_assistant_enabled as voiceAssistantEnabled',
     ] as const
 
     if (authContext) {
@@ -971,7 +964,6 @@ export class PostgresSessionRepository implements SessionRepository {
       sharedTaskReadyForReviewNotificationsEnabled:
         updatedPreferences.sharedTaskReadyForReviewNotificationsEnabled,
       timeZoneMode: updatedPreferences.timeZoneMode,
-      voiceAssistantEnabled: updatedPreferences.voiceAssistantEnabled,
     }
   }
 
@@ -1236,7 +1228,6 @@ export class PostgresSessionRepository implements SessionRepository {
         sharedTaskCreatedNotificationsEnabled: true,
         sharedTaskReadyForReviewNotificationsEnabled: true,
         timeZoneMode: 'device',
-        voiceAssistantEnabled: true,
         displayName: this.resolveAuthDisplayName(authContext),
         email: this.resolveAuthEmail(authContext),
         id: authContext.claims.sub,
@@ -1297,7 +1288,6 @@ export class PostgresSessionRepository implements SessionRepository {
         shared_task_ready_for_review_notifications_enabled:
           actor.sharedTaskReadyForReviewNotificationsEnabled,
         time_zone_mode: actor.timeZoneMode,
-        voice_assistant_enabled: actor.voiceAssistantEnabled,
         display_name: actor.displayName,
         email: actor.email,
         id: actor.id,
@@ -1316,7 +1306,6 @@ export class PostgresSessionRepository implements SessionRepository {
         'shared_task_created_notifications_enabled as sharedTaskCreatedNotificationsEnabled',
         'shared_task_ready_for_review_notifications_enabled as sharedTaskReadyForReviewNotificationsEnabled',
         'time_zone_mode as timeZoneMode',
-        'voice_assistant_enabled as voiceAssistantEnabled',
         'display_name as displayName',
         'email',
         'id',
@@ -1396,7 +1385,6 @@ export class PostgresSessionRepository implements SessionRepository {
         sharedTaskReadyForReviewNotificationsEnabled:
           session.sharedTaskReadyForReviewNotificationsEnabled,
         timeZoneMode: session.timeZoneMode,
-        voiceAssistantEnabled: session.voiceAssistantEnabled,
       },
       workspace: {
         id: session.workspaceId,
@@ -1408,7 +1396,6 @@ export class PostgresSessionRepository implements SessionRepository {
       workspaceSettings: {
         defaultTimeZone: session.workspaceDefaultTimeZone,
         taskCompletionConfettiEnabled: session.taskCompletionConfettiEnabled,
-        wakeWordTrainingModeEnabled: session.wakeWordTrainingModeEnabled,
       },
       workspaces,
     }

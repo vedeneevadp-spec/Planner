@@ -36,7 +36,6 @@ interface MemoryWorkspace {
   ownerUserId: string
   slug: string
   taskCompletionConfettiEnabled: boolean
-  wakeWordTrainingModeEnabled: boolean
 }
 
 interface MemoryMembership {
@@ -76,7 +75,6 @@ interface MemoryUser extends AdminUserRecord {
   sharedTaskCreatedNotificationsEnabled: boolean
   sharedTaskReadyForReviewNotificationsEnabled: boolean
   timeZoneMode: 'device' | 'manual' | 'workspace'
-  voiceAssistantEnabled: boolean
 }
 
 const DEFAULT_ACTOR_ID = '11111111-1111-4111-8111-111111111111'
@@ -91,7 +89,6 @@ const DEFAULT_MEMORY_WORKSPACE: MemoryWorkspace = {
   ownerUserId: DEFAULT_ACTOR_ID,
   slug: 'personal',
   taskCompletionConfettiEnabled: true,
-  wakeWordTrainingModeEnabled: false,
 }
 
 export class MemorySessionRepository implements SessionRepository {
@@ -107,7 +104,6 @@ export class MemorySessionRepository implements SessionRepository {
       sharedTaskCreatedNotificationsEnabled: true,
       sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
       displayName: 'Tikondra',
       email: 'dev@planner.local',
       id: DEFAULT_ACTOR_ID,
@@ -126,7 +122,6 @@ export class MemorySessionRepository implements SessionRepository {
       sharedTaskCreatedNotificationsEnabled: true,
       sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
       displayName: 'Planner Reader',
       email: 'reader@planner.local',
       id: '44444444-4444-4444-8444-444444444444',
@@ -279,7 +274,6 @@ export class MemorySessionRepository implements SessionRepository {
       ownerUserId: session.actorUserId,
       slug: `shared-${id.replaceAll('-', '').slice(-8)}`,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     }
 
     this.workspaces = [...this.workspaces, workspace]
@@ -745,7 +739,6 @@ export class MemorySessionRepository implements SessionRepository {
     input: {
       defaultTimeZone?: string | null | undefined
       taskCompletionConfettiEnabled?: boolean | undefined
-      wakeWordTrainingModeEnabled?: boolean | undefined
     },
   ) {
     const workspace = this.getWorkspaceById(session.workspaceId)
@@ -765,14 +758,10 @@ export class MemorySessionRepository implements SessionRepository {
       workspace.taskCompletionConfettiEnabled =
         input.taskCompletionConfettiEnabled
     }
-    if (input.wakeWordTrainingModeEnabled !== undefined) {
-      workspace.wakeWordTrainingModeEnabled = input.wakeWordTrainingModeEnabled
-    }
 
     return Promise.resolve({
       defaultTimeZone: workspace.defaultTimeZone,
       taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
-      wakeWordTrainingModeEnabled: workspace.wakeWordTrainingModeEnabled,
     })
   }
 
@@ -788,7 +777,6 @@ export class MemorySessionRepository implements SessionRepository {
       sharedTaskCreatedNotificationsEnabled?: boolean
       sharedTaskReadyForReviewNotificationsEnabled?: boolean
       timeZoneMode?: 'device' | 'manual' | 'workspace'
-      voiceAssistantEnabled?: boolean
     },
   ) {
     const user = this.getUserById(session.actorUserId)
@@ -821,8 +809,6 @@ export class MemorySessionRepository implements SessionRepository {
       input.sharedTaskReadyForReviewNotificationsEnabled ??
       user.sharedTaskReadyForReviewNotificationsEnabled
     user.timeZoneMode = input.timeZoneMode ?? user.timeZoneMode
-    user.voiceAssistantEnabled =
-      input.voiceAssistantEnabled ?? user.voiceAssistantEnabled
     user.updatedAt = new Date().toISOString()
 
     return Promise.resolve({
@@ -837,7 +823,6 @@ export class MemorySessionRepository implements SessionRepository {
       sharedTaskReadyForReviewNotificationsEnabled:
         user.sharedTaskReadyForReviewNotificationsEnabled,
       timeZoneMode: user.timeZoneMode,
-      voiceAssistantEnabled: user.voiceAssistantEnabled,
     })
   }
 
@@ -936,7 +921,6 @@ export class MemorySessionRepository implements SessionRepository {
         sharedTaskReadyForReviewNotificationsEnabled:
           actor.sharedTaskReadyForReviewNotificationsEnabled,
         timeZoneMode: actor.timeZoneMode,
-        voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
       workspace: {
         id: workspace.id,
@@ -948,7 +932,6 @@ export class MemorySessionRepository implements SessionRepository {
       workspaceSettings: {
         defaultTimeZone: workspace.defaultTimeZone,
         taskCompletionConfettiEnabled: workspace.taskCompletionConfettiEnabled,
-        wakeWordTrainingModeEnabled: workspace.wakeWordTrainingModeEnabled,
       },
       workspaces: memberships.map((membership) => {
         const membershipWorkspace = this.getWorkspaceById(
@@ -1027,7 +1010,6 @@ export class MemorySessionRepository implements SessionRepository {
         sharedTaskReadyForReviewNotificationsEnabled:
           actor.sharedTaskReadyForReviewNotificationsEnabled,
         timeZoneMode: actor.timeZoneMode,
-        voiceAssistantEnabled: actor.voiceAssistantEnabled,
       },
       workspace: {
         id: fallbackWorkspace.id,
@@ -1040,8 +1022,6 @@ export class MemorySessionRepository implements SessionRepository {
         defaultTimeZone: fallbackWorkspace.defaultTimeZone,
         taskCompletionConfettiEnabled:
           fallbackWorkspace.taskCompletionConfettiEnabled,
-        wakeWordTrainingModeEnabled:
-          fallbackWorkspace.wakeWordTrainingModeEnabled,
       },
       workspaces: workspaceMemberships,
     }
@@ -1079,7 +1059,6 @@ export class MemorySessionRepository implements SessionRepository {
       sharedTaskCreatedNotificationsEnabled: true,
       sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
       displayName: normalizedEmail.split('@')[0] ?? 'Planner User',
       email: normalizedEmail,
       id: actorUserId,
@@ -1111,7 +1090,6 @@ export class MemorySessionRepository implements SessionRepository {
       sharedTaskCreatedNotificationsEnabled: true,
       sharedTaskReadyForReviewNotificationsEnabled: true,
       timeZoneMode: 'device',
-      voiceAssistantEnabled: true,
       displayName: 'Planner User',
       email: `${actorUserId}@planner.local`,
       id: actorUserId,
@@ -1198,7 +1176,6 @@ export class MemorySessionRepository implements SessionRepository {
       ownerUserId: actorUserId,
       slug: `personal-${actorUserId.replaceAll('-', '').slice(0, 12)}`,
       taskCompletionConfettiEnabled: true,
-      wakeWordTrainingModeEnabled: false,
     }
 
     this.workspaces = [...this.workspaces, workspace]
