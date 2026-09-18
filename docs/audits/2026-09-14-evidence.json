@@ -1,0 +1,265 @@
+{
+  "date": "2026-09-14",
+  "head": "bbdea25840e8f9ab078fedb3e767cd0d338ae142",
+  "scope": "Local checkout audit; synthetic data; no production/device validation",
+  "inventory": {
+    "head": "bbdea25840e8f9ab078fedb3e767cd0d338ae142",
+    "tracked": 1355,
+    "sourceLike": 1086,
+    "sourceLines": 301636,
+    "testFiles": 221,
+    "migrations": 103,
+    "hotspots": [
+      [3921, "apps/api/src/bootstrap/build-app.test.ts"],
+      [3250, "apps/api/src/modules/self-care/self-care.repository.postgres.ts"],
+      [2671, "apps/web/src/features/self-care/lib/useSelfCare.ts"],
+      [2541, "apps/api/src/bootstrap/openapi-paths.ts"],
+      [2366, "apps/api/src/modules/ai-context/ai-context.service.ts"],
+      [2329, "apps/api/src/bootstrap/openapi-contract-schemas.ts"],
+      [2253, "apps/api/src/modules/tasks/task.repository.postgres.ts"],
+      [2251, "apps/api/src/modules/self-care/self-care.shared.ts"],
+      [2218, "apps/web/src/features/self-care/lib/useSelfCare.test.tsx"],
+      [2199, "apps/web/src/pages/self-care/ui/SelfCarePage.module.css"],
+      [
+        2179,
+        "apps/api/src/modules/self-care/self-care.repository.memory.test.ts"
+      ],
+      [2157, "apps/api/src/modules/self-care/self-care.repository.memory.ts"],
+      [2133, "packages/contracts/src/voice-test-corpus/corpus.ts"],
+      [2102, "apps/web/src/features/planner/lib/offline-planner-store.ts"],
+      [2046, "apps/web/src/features/self-care/lib/offline-self-care-store.ts"],
+      [1998, "apps/api/src/modules/self-care/self-care.shared.test.ts"],
+      [1941, "apps/web/src/pages/self-care/ui/SelfCarePage.helpers.ts"],
+      [1897, "apps/api/src/bootstrap/openapi-components.ts"]
+    ]
+  },
+  "backend": {
+    "reminderGeneration": {
+      "occurrencesImmediatelyAfterCreate": 0,
+      "claimedBeforeAnyRead": 0,
+      "claimedAfterDashboardRead": 1
+    },
+    "reminderClaimLease": {
+      "firstIds": ["01a0a097-3153-71ce-b117-19ea1e4f8dfb"],
+      "secondIds": ["01a0a097-3153-71ce-b117-19ea1e4f8dfb"],
+      "repeatedBeforeDelivery": true
+    },
+    "ritualHistory": {
+      "completionId": "01a0a097-317d-7f1c-b0ac-2394bad367ab",
+      "stepCompletionsBeforeEdit": 1,
+      "stepCompletionsAfterEdit": 0,
+      "survivingCompletions": 1
+    },
+    "scheduleChange": {
+      "updatedRule": {
+        "allowMultiplePerDay": false,
+        "createdAt": "2026-09-14T15:44:18.331Z",
+        "dayOfMonth": null,
+        "daysOfWeek": [1],
+        "endDate": null,
+        "flexiblePeriod": null,
+        "flexibleTargetCount": null,
+        "generateInCalendar": false,
+        "generateInTaskList": true,
+        "id": "01a0a097-319b-79d8-8d29-91cac043b433",
+        "intervalUnit": null,
+        "intervalValue": null,
+        "itemId": "01a0a097-319b-75d6-893e-8c9efff3fde2",
+        "monthOfYear": null,
+        "preferredTime": "12:00",
+        "reminderOffsetsMinutes": [],
+        "repeatKind": "weekly",
+        "startDate": "2026-09-14",
+        "timezone": "UTC",
+        "updatedAt": "2026-09-14T15:44:18.378Z",
+        "weekOfMonth": null
+      },
+      "scheduledOccurrences": [
+        {
+          "date": "2026-09-14",
+          "dueAt": "2026-09-14T09:00:00.000Z",
+          "status": "scheduled"
+        },
+        {
+          "date": "2026-09-15",
+          "dueAt": "2026-09-15T09:00:00.000Z",
+          "status": "scheduled"
+        },
+        {
+          "date": "2026-09-16",
+          "dueAt": "2026-09-16T09:00:00.000Z",
+          "status": "scheduled"
+        },
+        {
+          "date": "2026-09-17",
+          "dueAt": "2026-09-17T09:00:00.000Z",
+          "status": "scheduled"
+        },
+        {
+          "date": "2026-09-18",
+          "dueAt": "2026-09-18T09:00:00.000Z",
+          "status": "scheduled"
+        },
+        {
+          "date": "2026-09-19",
+          "dueAt": "2026-09-19T09:00:00.000Z",
+          "status": "scheduled"
+        },
+        {
+          "date": "2026-09-20",
+          "dueAt": "2026-09-20T09:00:00.000Z",
+          "status": "scheduled"
+        }
+      ]
+    }
+  },
+  "frontend": {
+    "voiceWorkspace": {
+      "preparedFor": "personal-A",
+      "executedFor": "shared-B",
+      "status": "success",
+      "writes": [
+        {
+          "workspaceId": "shared-B",
+          "input": {
+            "assigneeUserId": null,
+            "dueDate": null,
+            "icon": "",
+            "importance": "not_important",
+            "note": "",
+            "plannedDate": null,
+            "plannedEndTime": null,
+            "plannedStartTime": null,
+            "project": "",
+            "projectId": null,
+            "recurrence": null,
+            "remindBeforeStart": false,
+            "reminderOffsets": [],
+            "requiresConfirmation": false,
+            "resource": null,
+            "routine": null,
+            "sphereId": null,
+            "title": "личная тестовая задача",
+            "urgency": "not_urgent",
+            "id": "01a0a097-f159-7154-808c-302c4ffaf7ce"
+          }
+        }
+      ]
+    },
+    "queueTerminal403": {
+      "calls": ["forbidden-task", "forbidden-task", "forbidden-task"],
+      "drainResults": [
+        {
+          "failed": 1,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 0
+        },
+        {
+          "failed": 1,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 0
+        },
+        {
+          "failed": 1,
+          "processed": 1,
+          "synced": 0,
+          "conflicted": 0
+        }
+      ],
+      "queue": [
+        {
+          "taskId": "forbidden-task",
+          "status": "failed",
+          "attemptCount": 3
+        },
+        {
+          "taskId": "valid-task",
+          "status": "pending",
+          "attemptCount": 0
+        }
+      ]
+    },
+    "coordinator": {
+      "whileAHangs": ["A"],
+      "afterACompletes": ["A", "B"]
+    },
+    "iosBridge": {
+      "registeredMethods": ["get", "set", "remove"],
+      "requiredBySharedNativeClient": [
+        "get",
+        "set",
+        "remove",
+        "prepareRefresh",
+        "commitRefresh"
+      ]
+    }
+  },
+  "product": {
+    "unrated12": {
+      "today": {
+        "resourceLimit": 8,
+        "overloadScore": 0,
+        "state": "calm",
+        "totalResource": 0
+      },
+      "calendar": "overload"
+    },
+    "futureActivity": {
+      "lastActivityAt": "2026-12-01",
+      "idleDays": 0,
+      "activityState": "active"
+    },
+    "archivedLoad": {
+      "plannedCount": 0,
+      "completedCount": 0,
+      "weeklyLoad": 4,
+      "weeklyShare": 100
+    },
+    "unloadOrder": ["urgent-required-due-today", "optional"],
+    "historyDate": {
+      "stored": "2026-09-13T18:30:00.000Z",
+      "displayedDateOnly": "2026-09-13",
+      "expectedDateOnly": "2026-09-14"
+    }
+  },
+  "validation": {
+    "webTests": 1248,
+    "apiTests": 369,
+    "postgresTests": 83,
+    "webCoverage": {
+      "lines": 71.37,
+      "branches": 64.56
+    },
+    "apiCoverage": {
+      "lines": 90.28,
+      "branches": 80.76
+    },
+    "postgresContractLines": 81.31,
+    "poolerContractLines": 91.75,
+    "e2eInitial": {
+      "passed": 16,
+      "failed": 1,
+      "cause": "users_single_owner_idx on concurrent initial registration; mapped to auth_email_taken"
+    },
+    "e2eSingleRerunPassed": 1,
+    "npmRuntimeVulnerabilities": 0,
+    "npmFullAudit": "clean",
+    "initialJsKb": 781.4,
+    "initialJsBudgetKb": 782,
+    "entryJsKb": 105.7
+  },
+  "manualUI": {
+    "environment": "http://127.0.0.1:5177, isolated synthetic user",
+    "date": "2026-09-14",
+    "taskCount": 12,
+    "taskResource": null,
+    "todayDisplayed": [
+      "0 / 8 ресурса",
+      "спокойно",
+      "План выглядит реалистично"
+    ],
+    "calendarLoadIndicatorClaimed": false
+  }
+}

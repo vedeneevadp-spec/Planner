@@ -101,7 +101,7 @@ async function waitForTaskQueueCompletion(
     .toBe(0)
 }
 
-test('keeps unrated Today tasks unknown and counts only explicit resource ratings', async ({
+test('defaults task forms to neutral and preserves legacy unknown resource coverage', async ({
   page,
 }, testInfo) => {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -126,7 +126,17 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   await composer.getByRole('textbox', { name: 'Задача' }).fill(title)
   await expect(
     composer.getByRole('button', { name: 'Не указано', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true')
+  ).toHaveCount(0)
+  await expect(
+    composer.getByRole('button', { name: 'Нейтрально', exact: true }),
+  ).toHaveCount(0)
+  const composerResource = composer.getByRole('group', { name: 'Ресурс' })
+  await expect(
+    composerResource.getByRole('button', { pressed: false }),
+  ).toHaveCount(8)
+  await composerResource.screenshot({
+    path: testInfo.outputPath('resource-picker-create-desktop.png'),
+  })
   const createdResponse = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
@@ -136,7 +146,7 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   await composer.getByRole('button', { name: 'Добавить задачу' }).click()
   const firstResponse = await createdResponse
   const first = (await firstResponse.json()) as ApiTask
-  expect(first.resource).toBeNull()
+  expect(first.resource).toBe(0)
   await expect(page.getByText(title, { exact: true })).toBeVisible()
 
   // Reuse only this synthetic user's authorization from the actual UI command.
@@ -157,8 +167,23 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   const tasksUrl = request.url()
   const createPayload = request.postDataJSON() as Record<string, unknown>
   delete createPayload.id
-  expect(createPayload.resource).toBeNull()
+  expect(createPayload.resource).toBe(0)
   expect(createPayload.plannedDate).toBeTruthy()
+
+  // Existing unrated tasks can still arrive from the API. Keep coverage for
+  // their partial-load state while new form submissions default to neutral.
+  await waitForTaskQueueCompletion(page, headers)
+  const legacyTask = await page.request.patch(`${tasksUrl}/${first.id}`, {
+    headers,
+    data: {
+      ...createPayload,
+      expectedVersion: first.version,
+      resource: null,
+    },
+  })
+  expect(legacyTask.ok()).toBe(true)
+  expect(((await legacyTask.json()) as ApiTask).resource).toBeNull()
+  createPayload.resource = null
   const taskIds = [first.id]
   for (let index = 2; index <= 12; index += 1) {
     const response = await page.request.post(tasksUrl, {
@@ -174,9 +199,7 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   await waitForTaskQueueCompletion(page, headers)
   await page.reload()
   let panel = await expandResourcePanel(page)
-  await expect(
-    panel.getByText('Оценено 0 из 12', { exact: true }),
-  ).toBeVisible()
+  await expect(panel.getByText(/^Оценено /)).toHaveCount(0)
   await expect(
     panel.getByText('неполная оценка', { exact: true }),
   ).toBeVisible()
@@ -197,8 +220,26 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   const edit = page.getByRole('dialog', { name: 'Редактировать задачу' })
   await expect(
     edit.getByRole('button', { name: 'Не указано', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await edit.getByRole('button', { name: 'Нейтрально', exact: true }).click()
+  ).toHaveCount(0)
+  await expect(
+    edit.getByRole('button', { name: 'Нейтрально', exact: true }),
+  ).toHaveCount(0)
+  const editResource = edit.getByRole('group', { name: 'Ресурс' })
+  const drain = editResource.getByRole('button', { name: 'Расход 2' })
+  await expect(
+    editResource.getByRole('button', { pressed: false }),
+  ).toHaveCount(8)
+  await drain.click()
+  await expect(drain).toHaveAttribute('aria-pressed', 'true')
+  await drain.click()
+  await expect(
+    editResource.getByRole('button', { pressed: false }),
+  ).toHaveCount(8)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await editResource.screenshot({
+    path: testInfo.outputPath('resource-picker-edit-mobile.png'),
+  })
+  await page.setViewportSize({ width: 1360, height: 900 })
   const editedResponse = page.waitForResponse(
     (response) =>
       response.request().method() === 'PATCH' &&
@@ -213,9 +254,7 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   await waitForTaskQueueCompletion(page, headers)
   await page.reload()
   panel = await expandResourcePanel(page)
-  await expect(
-    panel.getByText('Оценено 1 из 12', { exact: true }),
-  ).toBeVisible()
+  await expect(panel.getByText(/^Оценено /)).toHaveCount(0)
   await expect(panel.getByText('Оценённая часть')).toBeVisible()
   await expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
   await expect(panel.getByText('спокойно', { exact: true })).toHaveCount(0)
@@ -244,9 +283,7 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   }
   await page.reload()
   panel = await expandResourcePanel(page)
-  await expect(
-    panel.getByText('Оценено 12 из 12', { exact: true }),
-  ).toBeVisible()
+  await expect(panel.getByText(/^Оценено /)).toHaveCount(0)
   await expect(panel.getByText('спокойно', { exact: true })).toBeVisible()
   await expect(panel.getByText('Нагрузка задач')).toBeVisible()
   await expect(panel.getByText('0 из 8 ресурса')).toBeVisible()
@@ -268,11 +305,7 @@ test('keeps unrated Today tasks unknown and counts only explicit resource rating
   )
   await page.reload()
   panel = await expandResourcePanel(page)
-  await expect(
-    panel.getByText('Оценено 12 из 12 · по загруженным задачам', {
-      exact: true,
-    }),
-  ).toBeVisible()
+  await expect(panel.getByText(/^Оценено /)).toHaveCount(0)
   await expect(panel.getByText('неполная оценка')).toBeVisible()
   await expect(panel.getByText('Оценённая часть')).toBeVisible()
   await expect(
