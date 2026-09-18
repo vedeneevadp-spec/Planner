@@ -44,7 +44,7 @@ export function getTaskNecessityLabel(necessity: Task['necessity']): string {
 }
 
 export function getResourceFromValue(value: ResourceValue): Task['resource'] {
-  return value === '' ? null : clampTaskResource(Number(value))
+  return value === '' ? 0 : clampTaskResource(Number(value))
 }
 
 export function getResourceValueFromTaskResource(

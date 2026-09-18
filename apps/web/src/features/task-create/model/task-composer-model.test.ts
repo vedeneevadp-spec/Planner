@@ -82,7 +82,7 @@ describe('task-composer-model', () => {
   })
 
   it.each(['', '0'] as const)(
-    'keeps reminder offsets and the meaning of resource %j when composing a task',
+    'keeps reminder offsets and defaults resource %j to neutral when composing a task',
     (resource) => {
       const input = buildTaskComposerTaskInput({
         assigneeUserId: '',
@@ -114,7 +114,7 @@ describe('task-composer-model', () => {
         plannedStartTime: '10:00',
         reminderOffsets: [15, 60],
         remindBeforeStart: true,
-        resource: resource === '' ? null : 0,
+        resource: 0,
         title: 'Созвон',
       })
     },

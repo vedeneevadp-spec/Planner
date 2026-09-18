@@ -8,27 +8,25 @@ import { ResourcePicker, TaskResourceMeter } from './TaskMetaPickers'
 afterEach(cleanup)
 
 describe('ResourcePicker', () => {
-  it('distinguishes an unrated task from neutral and can clear a rating', () => {
+  it('offers only resource levels and clears the selected level on repeat click', () => {
     function Picker() {
       const [value, setValue] = useState<ResourceValue>('')
       return <ResourcePicker value={value} onChange={setValue} />
     }
     render(<Picker />)
-    const unrated = screen.getByRole('button', { name: 'Не указано' })
-    const neutral = screen.getByRole('button', { name: 'Нейтрально' })
-    expect(unrated).toHaveAttribute('aria-pressed', 'true')
-    expect(neutral).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(neutral)
-    expect(neutral).toHaveAttribute('aria-pressed', 'true')
-    expect(unrated).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(screen.getByRole('button', { name: 'Расход 2' }))
-    expect(neutral).toHaveAttribute('aria-pressed', 'false')
-    fireEvent.click(unrated)
-    expect(unrated).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByRole('button', { name: 'Расход 2' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    )
+    expect(screen.queryByRole('button', { name: 'Не указано' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Нейтрально' })).toBeNull()
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(8)
+
+    const drain = screen.getByRole('button', { name: 'Расход 2' })
+    const restore = screen.getByRole('button', { name: 'Восстановление 3' })
+    fireEvent.click(drain)
+    expect(drain).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(restore)
+    expect(drain).toHaveAttribute('aria-pressed', 'false')
+    expect(restore).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(restore)
+    expect(screen.getAllByRole('button', { pressed: false })).toHaveLength(8)
   })
 })
 

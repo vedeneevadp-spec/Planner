@@ -7,8 +7,13 @@ import {
 } from './task-meta'
 
 describe('task resource form values', () => {
-  it.each<[ResourceValue, number | null]>([
-    ['', null],
+  it('defaults an empty selection to neutral, including previously unrated tasks', () => {
+    expect(getResourceFromValue('')).toBe(0)
+    expect(getResourceValueFromTaskResource(null)).toBe('')
+    expect(getResourceFromValue(getResourceValueFromTaskResource(null))).toBe(0)
+  })
+
+  it.each<[ResourceValue, number]>([
     ['0', 0],
     ['-4', -4],
     ['-1', -1],
